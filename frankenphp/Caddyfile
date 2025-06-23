@@ -1,0 +1,30 @@
+# frankenphp/Caddyfile
+
+{
+    frankenphp
+    auto_https off
+}
+
+:9001 {
+    root * /app/public
+
+    # A route block is mandatory to order the request handlers.
+    route {
+        # This single directive is the most robust way to handle
+        # a front-controller pattern like Symfony's. It will:
+        # 1. Look for a static file matching the path (e.g., /style.css).
+        # 2. If not found, it internally rewrites the path to /index.php,
+        #    keeping the original URL so Symfony's router can see it.
+        try_files {path} /index.php?{query}
+
+        # The request is then passed to php_server. It will either serve
+        # the static file found by try_files, or execute the rewritten
+        # index.php request.
+        php_server
+    }
+
+    log {
+       output stdout
+       level INFO
+    }
+}
