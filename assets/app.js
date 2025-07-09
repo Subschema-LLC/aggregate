@@ -8,6 +8,5 @@ import './bootstrap.js';
 
 import './vendor/bulma/bulma.min.css';
 import './styles/app.css';
-import './styles/card.css';
 
 console.log('This log comes from assets/app.js - welcome to AssetMapper! 🎉');

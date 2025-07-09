@@ -1,5 +1,5 @@
 import { Controller } from '@hotwired/stimulus'
-
+import '../styles/card.css';
 export default class extends Controller {
     static targets = ['content', 'footer']
     static classes = ['expanded', 'loading', 'highlight']
