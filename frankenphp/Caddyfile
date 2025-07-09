@@ -8,6 +8,12 @@
 :9001 {
     root * /app/public
 
+    # Handle assets first - before the route block
+        @assets path /assets/*
+        handle @assets {
+            file_server
+        }
+
     # A route block is mandatory to order the request handlers.
     route {
         # This single directive is the most robust way to handle
