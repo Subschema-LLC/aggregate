@@ -2,6 +2,8 @@
 
 This Symfony application is configured to run with FrankenPHP via Docker.
 
+This will not have a UI to start, but will use YAML config files to set up.
+
 ## Requirements
 
 - Docker
