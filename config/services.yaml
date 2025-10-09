@@ -16,5 +16,10 @@ services:
     App\:
         resource: '../src/'
 
+    App\Security\IpRateLimiter:
+        arguments:
+            $storageDir: '%kernel.project_dir%/var/rate_limit'
+            $maxPerMinute: '%env(default:100:int:RATE_LIMIT_PER_MINUTE)%'
+
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones
