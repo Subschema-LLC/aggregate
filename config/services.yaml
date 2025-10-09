@@ -16,10 +16,17 @@ services:
     App\:
         resource: '../src/'
 
+    App\Service\AggregateConfigLoader:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+            $environment: '%kernel.environment%'
+
     App\Security\IpRateLimiter:
         arguments:
             $storageDir: '%kernel.project_dir%/var/rate_limit'
-            $maxPerMinute: '%env(default:100:int:RATE_LIMIT_PER_MINUTE)%'
+            $maxPerMinute: 100
+        calls:
+            - setConfigLoader: ['@App\Service\AggregateConfigLoader']
 
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones

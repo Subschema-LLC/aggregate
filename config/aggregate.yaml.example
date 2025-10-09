@@ -1,26 +1,71 @@
-# Single-file configuration for on-prem deployments
+# Aggregate Analytics Configuration
 # Copy this file to config/aggregate.yaml and adjust values.
-# Values defined here will be exported as environment variables at boot time
-# (unless already set by the environment), so existing Symfony configs keep working.
+#
+# You can either:
+# 1. Use environment-specific sections (dev, prod, test)
+# 2. Use a flat structure (values apply to all environments)
+# 3. Create separate files: aggregate_dev.yaml, aggregate_prod.yaml
 
-# Database connection string (used by Doctrine & Messenger when using doctrine transport)
-# Examples:
-#  PostgreSQL:  postgresql://app:!ChangeMe!@database:5432/app?serverVersion=16
-#  MySQL:      mysql://app:!ChangeMe!@database:3306/app?serverVersion=8.0
-#  SQLite:     sqlite:///%kernel.project_dir%/var/data.db
+# Option 1: Environment-specific configuration (recommended)
+environments:
+  dev:
+    database_url: "postgresql://app:!ChangeMe!@database:5432/app?serverVersion=16"
+    messenger_transport_dsn: "doctrine://default"
+    daily_salt_secret: "dev-salt-CHANGE-ME-IN-PRODUCTION"
+    rate_limit_per_minute: 1000
+    app_host: "http://localhost"
+    js_namespace: "MyAnalytics"
+
+  prod:
+    database_url: "postgresql://app:SECURE_PASSWORD@database:5432/app?serverVersion=16"
+    messenger_transport_dsn: "doctrine://default"
+    # REQUIRED: Generate with: openssl rand -base64 32
+    daily_salt_secret: "CHANGE-ME-TO-SECURE-RANDOM-STRING"
+    rate_limit_per_minute: 100
+    app_host: "https://analytics.example.com"
+    js_namespace: "MyAnalytics"
+
+  test:
+    database_url: "postgresql://app:!ChangeMe!@database:5432/app_test?serverVersion=16"
+    messenger_transport_dsn: "doctrine://default"
+    daily_salt_secret: "test-salt"
+    rate_limit_per_minute: 1000
+    js_namespace: "MyAnalytics"
+
+# Option 2: Flat configuration (applies to all environments unless overridden)
+# Uncomment and use these if you prefer a simpler single-environment setup:
+#
 # database_url: "postgresql://app:!ChangeMe!@database:5432/app?serverVersion=16"
-
-# Message queue DSN (Symfony Messenger):
-#  Database-backed queue: doctrine://default
-#  RabbitMQ:              amqp://guest:guest@rabbitmq:5672/%2f/messages
-#  Redis:                 redis://redis:6379/messages
 # messenger_transport_dsn: "doctrine://default"
-
-# Daily salt secret for anonymized IP hashing (REQUIRED for production)
-# daily_salt_secret: "change-me-to-a-random-string"
-
-# Per-IP rate limit per minute for /api/receive (POC limiter)
+# daily_salt_secret: "CHANGE-ME-TO-RANDOM-STRING"
 # rate_limit_per_minute: 100
-
-# Public hostname where this app is served (used primarily for docs/snippet generation)
 # app_host: "https://analytics.example.com"
+# js_namespace: "MyAnalytics"
+
+# Configuration options:
+#
+# database_url (required)
+#   Database connection string. Examples:
+#   - PostgreSQL: postgresql://user:pass@host:5432/dbname?serverVersion=16
+#   - MySQL:      mysql://user:pass@host:3306/dbname?serverVersion=8.0
+#   - SQLite:     sqlite:///%kernel.project_dir%/var/data.db
+#
+# messenger_transport_dsn (required)
+#   Message queue transport:
+#   - doctrine://default          (database-backed, good for small/medium)
+#   - amqp://guest:guest@rabbitmq:5672/%2f/messages  (RabbitMQ, recommended for high-volume)
+#   - redis://redis:6379/messages (Redis)
+#
+# daily_salt_secret (required)
+#   Random secret for daily IP hashing. Generate with: openssl rand -base64 32
+#   MUST be unique and kept secret. Changing this invalidates all existing hashes.
+#
+# rate_limit_per_minute (optional, default: 100)
+#   Maximum API requests per IP per minute
+#
+# app_host (optional)
+#   Public hostname for documentation and script generation
+#
+# js_namespace (optional, default: MyAnalytics)
+#   JavaScript global variable name: window.{js_namespace}
+#   Examples: MyAnalytics, Company1Analytics, Tracker

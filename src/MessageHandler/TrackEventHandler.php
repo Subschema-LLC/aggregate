@@ -6,6 +6,7 @@ use App\Entity\Event;
 use App\Entity\PageView;
 use App\Repository\WebsiteRepository;
 use App\Message\TrackEventMessage;
+use App\Service\AggregateConfigLoader;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
@@ -15,6 +16,7 @@ class TrackEventHandler
     public function __construct(
         private readonly WebsiteRepository $websites,
         private readonly EntityManagerInterface $em,
+        private readonly AggregateConfigLoader $config,
     ) {}
 
     public function __invoke(TrackEventMessage $msg): void
@@ -52,7 +54,7 @@ class TrackEventHandler
 
     private function hashDailyIp(string $ip): string
     {
-        $salt = $_ENV['DAILY_SALT_SECRET'] ?? 'dev-salt';
+        $salt = $this->config->getWithEnvFallback('daily_salt_secret', 'dev-salt');
         $day = (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->format('Y-m-d');
         return hash('sha256', $ip.'|'.$day.'|'.$salt);
     }

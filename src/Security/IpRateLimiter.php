@@ -2,8 +2,12 @@
 
 namespace App\Security;
 
+use App\Service\AggregateConfigLoader;
+
 class IpRateLimiter
 {
+    private ?AggregateConfigLoader $configLoader = null;
+
     public function __construct(
         private readonly string $storageDir,
         private readonly int $maxPerMinute = 100
@@ -11,6 +15,19 @@ class IpRateLimiter
         if (!is_dir($this->storageDir)) {
             @mkdir($this->storageDir, 0777, true);
         }
+    }
+
+    public function setConfigLoader(AggregateConfigLoader $configLoader): void
+    {
+        $this->configLoader = $configLoader;
+    }
+
+    private function getMaxPerMinute(): int
+    {
+        if ($this->configLoader) {
+            return (int) $this->configLoader->getWithEnvFallback('rate_limit_per_minute', $this->maxPerMinute);
+        }
+        return $this->maxPerMinute;
     }
 
     public function allow(string $ip): bool
@@ -33,7 +50,7 @@ class IpRateLimiter
         }
         $data['count']++;
         @file_put_contents($bucket, json_encode($data), LOCK_EX);
-        return $data['count'] <= $this->maxPerMinute;
+        return $data['count'] <= $this->getMaxPerMinute();
     }
 
     private function getBucketPath(string $ip): string

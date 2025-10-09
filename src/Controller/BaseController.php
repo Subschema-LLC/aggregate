@@ -7,6 +7,8 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
 
+/* this is not yet used  */
+
 class BaseController extends AbstractController
 {
     #[Route('/', name: 'base')]

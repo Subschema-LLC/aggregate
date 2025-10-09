@@ -11,8 +11,9 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     environment:
-      - APP_ENV=dev
-      - APP_DEBUG=1
+      - APP_ENV=${APP_ENV:-dev}
+      - APP_DEBUG=${APP_DEBUG:-1}
+      # Database config for Docker default - override in config/aggregate.yaml
       - DATABASE_URL=postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-!ChangeMe!}@database:5432/${POSTGRES_DB:-app}?serverVersion=${POSTGRES_VERSION:-16}
     depends_on:
       database:
@@ -25,7 +26,27 @@ services:
     volumes:
       - .:/app:delegated
     working_dir: /app
+    environment:
+      - APP_ENV=${APP_ENV:-dev}
     command: php bin/console asset-map:compile
+
+  worker:
+    image: dunglas/frankenphp:latest-php8.2
+    volumes:
+      - .:/app:delegated
+      - ./php/conf.d/symfony.ini:/usr/local/etc/php/conf.d/symfony.ini:ro
+    working_dir: /app
+    environment:
+      - APP_ENV=${APP_ENV:-dev}
+      - APP_DEBUG=${APP_DEBUG:-1}
+      # All analytics config should be in config/aggregate.yaml
+      # These are Docker defaults only
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-!ChangeMe!}@database:5432/${POSTGRES_DB:-app}?serverVersion=${POSTGRES_VERSION:-16}
+    command: php -d variables_order=EGPCS bin/console messenger:consume async -vv
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: unless-stopped
 
   ###> doctrine/doctrine-bundle ###
   database:

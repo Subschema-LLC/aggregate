@@ -1,8 +1,17 @@
 (function(){
+  // Configurable namespace - defaults to 'MyAnalytics' but can be overridden via data-namespace attribute
+  var namespace = 'MyAnalytics';
+  try {
+    var s = document.currentScript || (function(){var ss=document.getElementsByTagName('script'); return ss[ss.length-1];})();
+    if (s && s.dataset && s.dataset.namespace) {
+      namespace = s.dataset.namespace;
+    }
+  } catch(e) {}
+
   var Analytics = {
     config: {
-      endpoint: (window.MyAnalytics && window.MyAnalytics.endpoint) || '/api/receive',
-      websiteToken: (window.MyAnalytics && window.MyAnalytics.websiteToken) || null
+      endpoint: (window[namespace] && window[namespace].endpoint) || '/api/receive',
+      websiteToken: (window[namespace] && window[namespace].websiteToken) || null
     },
     consent: false,
     ensureIds: function(){
@@ -64,11 +73,11 @@
     }
   };
 
-  // expose
-  window.MyAnalytics = window.MyAnalytics || {};
-  window.MyAnalytics.track = Analytics.track.bind(Analytics);
-  window.MyAnalytics.setConsent = Analytics.setConsent.bind(Analytics);
-  window.MyAnalytics.configure = function(opts){
+  // expose on configurable namespace
+  window[namespace] = window[namespace] || {};
+  window[namespace].track = Analytics.track.bind(Analytics);
+  window[namespace].setConsent = Analytics.setConsent.bind(Analytics);
+  window[namespace].configure = function(opts){
     Analytics.config.endpoint = opts && opts.endpoint || Analytics.config.endpoint;
     Analytics.config.websiteToken = opts && opts.websiteToken || Analytics.config.websiteToken;
     if (opts && typeof opts.consent !== 'undefined') Analytics.consent = !!opts.consent;
@@ -98,9 +107,9 @@
   } catch(e) {}
 
   // if configured inline, copy values
-  if (window.MyAnalytics.endpoint) Analytics.config.endpoint = window.MyAnalytics.endpoint;
-  if (window.MyAnalytics.websiteToken) Analytics.config.websiteToken = window.MyAnalytics.websiteToken;
-  if (typeof window.MyAnalytics.consent !== 'undefined') Analytics.consent = !!window.MyAnalytics.consent;
+  if (window[namespace].endpoint) Analytics.config.endpoint = window[namespace].endpoint;
+  if (window[namespace].websiteToken) Analytics.config.websiteToken = window[namespace].websiteToken;
+  if (typeof window[namespace].consent !== 'undefined') Analytics.consent = !!window[namespace].consent;
 
   // auto pageview on load
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
