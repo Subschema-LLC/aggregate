@@ -27,7 +27,20 @@ docker compose exec php php bin/console doctrine:migrations:migrate -n
 ```sql
 INSERT INTO websites (name, domain, public_token) VALUES ('My Site', 'example.com', 'abc-123-def-456');
 ```
-4. Configure environment variables (compose, .env, or server env):
+4. Configure using a single YAML file (recommended for on‑prem):
+- Copy `config/aggregate.yaml.example` to `config/aggregate.yaml` and fill in your values.
+- Values from `aggregate.yaml` are exported as environment variables at boot unless already set.
+
+Example `config/aggregate.yaml`:
+```yaml
+database_url: "postgresql://app:!ChangeMe!@database:5432/app?serverVersion=16"
+messenger_transport_dsn: "doctrine://default"
+daily_salt_secret: "change-me-to-a-random-string"
+rate_limit_per_minute: 100
+app_host: "https://analytics.example.com"
+```
+
+Alternatively, you can still use environment variables (compose, .env, or server env):
 - DAILY_SALT_SECRET: a random string (required for anonymized IP hashing)
 - MESSENGER_TRANSPORT_DSN: e.g. `doctrine://default` for DB-backed queue, or RabbitMQ/Redis DSN
 - RATE_LIMIT_PER_MINUTE: defaults to 100 if not set
@@ -78,6 +91,29 @@ window.MyAnalytics.setConsent(true);
 ```js
 window.MyAnalytics.track('signup-click', { plan_type: 'pro' });
 ```
+
+### Tag Manager Integration
+You can include the script via a tag manager (e.g., Google Tag Manager) using a Custom HTML tag. Two options:
+
+1) Inline config + external script:
+```html
+<script>
+  window.MyAnalytics = { endpoint: 'https://your-host/api/receive', websiteToken: 'abc-123-def-456' };
+</script>
+<script src="https://your-host/aggregate.js" async></script>
+```
+
+2) Configure via URL parameters or data-attributes (no inline JS needed):
+```html
+<!-- URL params -->
+<script src="https://your-host/aggregate.js?endpoint=https%3A%2F%2Fyour-host%2Fapi%2Freceive&token=abc-123-def-456" async></script>
+
+<!-- Or data-attributes -->
+<script src="https://your-host/aggregate.js" data-endpoint="https://your-host/api/receive" data-website-token="abc-123-def-456" async></script>
+```
+You can also pre-set consent via `consent=1` query param or `data-consent="1"`. The snippet exposes:
+- `window.MyAnalytics.setConsent(true)` to switch to Tier 2 IDs
+- `window.MyAnalytics.track(name, data)` to send custom events
 
 ## Security & Throttling
 - Domain whitelisting: `/api/receive` checks the Origin/Referer against the `websites.domain` (subdomains allowed)

@@ -71,11 +71,36 @@
   window.MyAnalytics.configure = function(opts){
     Analytics.config.endpoint = opts && opts.endpoint || Analytics.config.endpoint;
     Analytics.config.websiteToken = opts && opts.websiteToken || Analytics.config.websiteToken;
+    if (opts && typeof opts.consent !== 'undefined') Analytics.consent = !!opts.consent;
   };
+
+  // Try to read configuration from script tag (query params or data-attributes)
+  try {
+    var s = document.currentScript || (function(){var ss=document.getElementsByTagName('script'); return ss[ss.length-1];})();
+    if (s) {
+      if (s.dataset) {
+        if (s.dataset.endpoint) Analytics.config.endpoint = s.dataset.endpoint;
+        if (s.dataset.websiteToken) Analytics.config.websiteToken = s.dataset.websiteToken;
+        if (typeof s.dataset.consent !== 'undefined') Analytics.consent = (s.dataset.consent === 'true' || s.dataset.consent === '1');
+      }
+      if (s.src) {
+        try {
+          var u = new URL(s.src, location.origin);
+          var ep = u.searchParams.get('endpoint');
+          var wt = u.searchParams.get('token') || u.searchParams.get('websiteToken');
+          var cs = u.searchParams.get('consent');
+          if (ep) Analytics.config.endpoint = ep;
+          if (wt) Analytics.config.websiteToken = wt;
+          if (cs !== null) Analytics.consent = (cs === 'true' || cs === '1');
+        } catch(e) {}
+      }
+    }
+  } catch(e) {}
 
   // if configured inline, copy values
   if (window.MyAnalytics.endpoint) Analytics.config.endpoint = window.MyAnalytics.endpoint;
   if (window.MyAnalytics.websiteToken) Analytics.config.websiteToken = window.MyAnalytics.websiteToken;
+  if (typeof window.MyAnalytics.consent !== 'undefined') Analytics.consent = !!window.MyAnalytics.consent;
 
   // auto pageview on load
   if (document.readyState === 'complete' || document.readyState === 'interactive') {

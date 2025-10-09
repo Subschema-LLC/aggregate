@@ -1,0 +1,26 @@
+# Single-file configuration for on-prem deployments
+# Copy this file to config/aggregate.yaml and adjust values.
+# Values defined here will be exported as environment variables at boot time
+# (unless already set by the environment), so existing Symfony configs keep working.
+
+# Database connection string (used by Doctrine & Messenger when using doctrine transport)
+# Examples:
+#  PostgreSQL:  postgresql://app:!ChangeMe!@database:5432/app?serverVersion=16
+#  MySQL:      mysql://app:!ChangeMe!@database:3306/app?serverVersion=8.0
+#  SQLite:     sqlite:///%kernel.project_dir%/var/data.db
+# database_url: "postgresql://app:!ChangeMe!@database:5432/app?serverVersion=16"
+
+# Message queue DSN (Symfony Messenger):
+#  Database-backed queue: doctrine://default
+#  RabbitMQ:              amqp://guest:guest@rabbitmq:5672/%2f/messages
+#  Redis:                 redis://redis:6379/messages
+# messenger_transport_dsn: "doctrine://default"
+
+# Daily salt secret for anonymized IP hashing (REQUIRED for production)
+# daily_salt_secret: "change-me-to-a-random-string"
+
+# Per-IP rate limit per minute for /api/receive (POC limiter)
+# rate_limit_per_minute: 100
+
+# Public hostname where this app is served (used primarily for docs/snippet generation)
+# app_host: "https://analytics.example.com"
