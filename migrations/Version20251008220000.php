@@ -26,18 +26,18 @@ final class Version20251008220000 extends AbstractMigration
         $websites->addUniqueIndex(['public_token'], 'UNIQ_WEBSITES_PUBLIC_TOKEN');
 
         // page_views
-        $pageViews = $schema->createTable('page_views');
-        $pageViews->addColumn('id', 'integer', ['autoincrement' => true]);
-        $pageViews->addColumn('website_id', 'integer');
-        $pageViews->addColumn('url', 'text');
-        $pageViews->addColumn('referrer', 'text', ['notnull' => false]);
-        $pageViews->addColumn('daily_ip_hash', 'string', ['length' => 191]);
-        $pageViews->addColumn('generalized_user_agent', 'string', ['length' => 191]);
-        $pageViews->addColumn('screen_width', 'integer', ['notnull' => false]);
-        $pageViews->addColumn('created_at', 'datetime_immutable');
-        $pageViews->setPrimaryKey(['id']);
-        $pageViews->addIndex(['website_id'], 'IDX_PAGE_VIEWS_WEBSITE_ID');
-        $pageViews->addForeignKeyConstraint('websites', ['website_id'], ['id'], ['onDelete' => 'CASCADE'], 'FK_PAGE_VIEWS_WEBSITE');
+        $views = $schema->createTable('page_views');
+        $views->addColumn('id', 'integer', ['autoincrement' => true]);
+        $views->addColumn('website_id', 'integer');
+        $views->addColumn('url', 'text');
+        $views->addColumn('referrer', 'text', ['notnull' => false]);
+        $views->addColumn('daily_ip_hash', 'string', ['length' => 191]);
+        $views->addColumn('generalized_user_agent', 'string', ['length' => 191]);
+        $views->addColumn('screen_width', 'integer', ['notnull' => false]);
+        $views->addColumn('created_at', 'datetime_immutable');
+        $views->setPrimaryKey(['id']);
+        $views->addIndex(['website_id'], 'IDX_PAGE_VIEWS_WEBSITE_ID');
+        $views->addForeignKeyConstraint('websites', ['website_id'], ['id'], ['onDelete' => 'CASCADE'], 'FK_PAGE_VIEWS_WEBSITE');
 
         // events
         $events = $schema->createTable('events');

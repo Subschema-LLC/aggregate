@@ -1,0 +1,54 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Install Aggregate Analytics{% endblock %}
+
+{% block body %}
+<div class="columns is-centered">
+    <div class="column is-6">
+        <div class="box">
+            <h1 class="title has-text-primary">
+                <span class="icon-text">
+                    <span class="icon">
+                        <i class="fas fa-download"></i>
+                    </span>
+                    <span>Install Aggregate Analytics</span>
+                </span>
+            </h1>
+
+            <div class="content">
+                <p>Welcome! Let's get your analytics platform up and running.</p>
+
+                <div class="notification is-info is-light">
+                    <p><strong>What will happen:</strong></p>
+                    <ul>
+                        <li>An admin user will be created with credentials from your <code>config/aggregate.yaml</code></li>
+                        <li>You'll be able to log in and start tracking analytics</li>
+                    </ul>
+                </div>
+
+                <p class="mt-4">Ready to install?</p>
+            </div>
+
+            <form action="{{ path('app_install_execute') }}" method="post">
+                <div class="buttons">
+                    <button type="submit" class="button is-primary is-large">
+                        <span class="icon">
+                            <i class="fas fa-rocket"></i>
+                        </span>
+                        <span>Install Now</span>
+                    </button>
+                </div>
+            </form>
+
+            <div class="notification is-warning is-light mt-5">
+                <strong>Before installing, make sure you have:</strong>
+                <ul class="mt-2">
+                    <li>✓ Configured <code>config/aggregate.yaml</code> with your settings</li>
+                    <li>✓ Run database migrations: <code>php bin/console doctrine:migrations:migrate</code></li>
+                    <li>✓ Set admin credentials in the YAML config</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

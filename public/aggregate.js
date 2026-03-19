@@ -1,6 +1,6 @@
 (function(){
-  // Configurable namespace - defaults to 'MyAnalytics' but can be overridden via data-namespace attribute
-  var namespace = 'MyAnalytics';
+  // Configurable namespace - defaults to 'Aggregate' but can be overridden via data-namespace attribute
+  var namespace = 'Aggregate';
   try {
     var s = document.currentScript || (function(){var ss=document.getElementsByTagName('script'); return ss[ss.length-1];})();
     if (s && s.dataset && s.dataset.namespace) {
@@ -14,26 +14,85 @@
       websiteToken: (window[namespace] && window[namespace].websiteToken) || null
     },
     consent: false,
+
+    // Privacy-compliant session cookie helpers
+    getSessionCookie: function(){
+      try {
+        var name = 'aggregate_session=';
+        var cookies = document.cookie.split(';');
+        for (var i = 0; i < cookies.length; i++) {
+          var cookie = cookies[i].trim();
+          if (cookie.indexOf(name) === 0) {
+            return decodeURIComponent(cookie.substring(name.length));
+          }
+        }
+        return null;
+      } catch(e) {
+        return null;
+      }
+    },
+
+    setSessionCookie: function(sessionId){
+      try {
+        var cookieValue = 'aggregate_session=' + encodeURIComponent(sessionId) + ';' +
+          'path=/;' +
+          'max-age=1800;' +  // 30 minutes - compliant with privacy laws
+          'SameSite=Lax';
+
+        // Add Secure flag for HTTPS (required for strict compliance)
+        if (location.protocol === 'https:') {
+          cookieValue += ';Secure';
+        }
+
+        document.cookie = cookieValue;
+      } catch(e) {}
+    },
+
+    deleteSessionCookie: function(){
+      try {
+        document.cookie = 'aggregate_session=; path=/; max-age=0; SameSite=Lax';
+      } catch(e) {}
+    },
+
     ensureIds: function(){
       try {
+        // Tier 1: No consent - no IDs
         if (!this.consent) return {visitorId: null, sessionId: null};
-        var vKey = 'my_analytics_visitor_id';
-        var sKey = 'my_analytics_session_id';
+
+        // Tier 2: Consent granted - use privacy-compliant identifiers
+        var vKey = 'aggregate_visitor_id';
+        var sKey = 'aggregate_session_id';
+
+        // Get or create visitor ID (persistent across sessions via localStorage)
         var visitorId = localStorage.getItem(vKey);
         if (!visitorId) {
           visitorId = self.crypto && self.crypto.randomUUID ? self.crypto.randomUUID() : (Math.random().toString(36).slice(2) + Date.now());
           localStorage.setItem(vKey, visitorId);
         }
-        var sessionId = sessionStorage.getItem(sKey);
+
+        // Get or create session ID with fallback priority:
+        // 1. Session cookie (preferred - works across page loads)
+        // 2. sessionStorage (fallback if cookies disabled)
+        // 3. Generate new UUID
+        var sessionId = this.getSessionCookie();
+        if (!sessionId) {
+          sessionId = sessionStorage.getItem(sKey);
+        }
         if (!sessionId) {
           sessionId = self.crypto && self.crypto.randomUUID ? self.crypto.randomUUID() : (Math.random().toString(36).slice(2) + Date.now());
           sessionStorage.setItem(sKey, sessionId);
+          this.setSessionCookie(sessionId);  // Set privacy-compliant 30-minute cookie
+        } else {
+          // Refresh cookie expiry on each request (sliding window)
+          this.setSessionCookie(sessionId);
         }
+
         return {visitorId: visitorId, sessionId: sessionId};
       } catch(e) {
         return {visitorId: null, sessionId: null};
       }
     },
+
     send: function(payload){
       if (!this.config.websiteToken) return;
       payload.websiteToken = this.config.websiteToken;
@@ -52,14 +111,16 @@
         }).catch(function(){});
       } catch(e) {}
     },
-    trackPageview: function(){
+
+    trackView: function(){
       this.send({
         url: location.href,
         referrer: document.referrer || null,
         screenWidth: (screen && screen.width) || null
       });
     },
-    track: function(eventName, eventData){
+
+    emit: function(eventName, eventData){
       this.send({
         url: location.href,
         referrer: document.referrer || null,
@@ -68,14 +129,25 @@
         eventData: eventData || null
       });
     },
+
     setConsent: function(granted){
-      this.consent = !!granted; // switches to Tier 2 when true
+      var wasConsented = this.consent;
+      this.consent = !!granted;
+
+      // Privacy compliance: Clean up all tracking data when consent is withdrawn
+      if (wasConsented && !granted) {
+        try {
+          localStorage.removeItem('aggregate_visitor_id');
+          sessionStorage.removeItem('aggregate_session_id');
+          this.deleteSessionCookie();
+        } catch(e) {}
+      }
     }
   };
 
   // expose on configurable namespace
   window[namespace] = window[namespace] || {};
-  window[namespace].track = Analytics.track.bind(Analytics);
+  window[namespace].emit = Analytics.emit.bind(Analytics);
   window[namespace].setConsent = Analytics.setConsent.bind(Analytics);
   window[namespace].configure = function(opts){
     Analytics.config.endpoint = opts && opts.endpoint || Analytics.config.endpoint;
@@ -113,8 +185,8 @@
 
   // auto pageview on load
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
-    setTimeout(function(){ Analytics.trackPageview(); }, 0);
+    setTimeout(function(){ Analytics.trackView(); }, 0);
   } else {
-    document.addEventListener('DOMContentLoaded', function(){ Analytics.trackPageview(); });
+    document.addEventListener('DOMContentLoaded', function(){ Analytics.trackView(); });
   }
 })();

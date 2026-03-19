@@ -17,6 +17,7 @@ services:
         resource: '../src/'
 
     App\Service\AggregateConfigLoader:
+        public: true
         arguments:
             $projectDir: '%kernel.project_dir%'
             $environment: '%kernel.environment%'

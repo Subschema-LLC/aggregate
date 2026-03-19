@@ -2,14 +2,14 @@
 
 namespace App\Repository;
 
-use App\Entity\PageView;
+use App\Entity\View;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
-class PageViewRepository extends ServiceEntityRepository
+class ViewRepository extends ServiceEntityRepository
 {
     public function __construct(ManagerRegistry $registry)
     {
-        parent::__construct($registry, PageView::class);
+        parent::__construct($registry, View::class);
     }
 }

@@ -9,22 +9,14 @@
 # Option 1: Environment-specific configuration (recommended)
 environments:
   dev:
-    # Choose your database (PostgreSQL example - see full list below)
-    database_url: "postgresql://app:!ChangeMe!@database:5432/app?serverVersion=16"
-    # Or MySQL: "mysql://app:!ChangeMe!@database:3306/app?serverVersion=8.0"
-    # Or MariaDB: "mysql://app:!ChangeMe!@database:3306/app?serverVersion=mariadb-11.4"
-    # Or MS SQL: "sqlsrv://sa:YourPassword@sqlserver:1433/app?serverVersion=2022"
-    # Or SQLite: "sqlite:///%kernel.project_dir%/var/data.db"
+    database_url: "sqlite:///%kernel.project_dir%/var/data.db"
     messenger_transport_dsn: "doctrine://default"
-    daily_salt_secret: "dev-salt-CHANGE-ME-IN-PRODUCTION"
+    daily_salt_secret: "d9SgR6zEHOT3oeXLHbr0ELrzPFQ0v3wkDxsUTRRuLko="
     rate_limit_per_minute: 1000
     app_host: "http://localhost"
     js_namespace: "Aggregate"
-    admin_username: "admin"
-    admin_password: "changeme"
 
   prod:
-    # Production database - choose based on your infrastructure
     database_url: "postgresql://app:SECURE_PASSWORD@database:5432/app?serverVersion=16"
     messenger_transport_dsn: "doctrine://default"
     # REQUIRED: Generate with: openssl rand -base64 32
@@ -32,8 +24,6 @@ environments:
     rate_limit_per_minute: 100
     app_host: "https://analytics.example.com"
     js_namespace: "Aggregate"
-    admin_username: "admin"
-    admin_password: "CHANGE-ME-TO-SECURE-PASSWORD"
 
   test:
     database_url: "postgresql://app:!ChangeMe!@database:5432/app_test?serverVersion=16"
@@ -55,31 +45,10 @@ environments:
 # Configuration options:
 #
 # database_url (required)
-#   Database connection string. All major databases are supported:
-#
-#   PostgreSQL (Recommended for production):
-#     postgresql://user:pass@host:5432/dbname?serverVersion=16
-#     postgresql://user:pass@host:5432/dbname?serverVersion=15
-#
-#   MySQL:
-#     mysql://user:pass@host:3306/dbname?serverVersion=8.0
-#     mysql://user:pass@host:3306/dbname?serverVersion=8.4
-#
-#   MariaDB:
-#     mysql://user:pass@host:3306/dbname?serverVersion=mariadb-10.11
-#     mysql://user:pass@host:3306/dbname?serverVersion=mariadb-11.4
-#
-#   Microsoft SQL Server:
-#     sqlsrv://user:pass@host:1433/dbname?serverVersion=2019
-#     sqlsrv://user:pass@host:1433/dbname?serverVersion=2022
-#
-#   SQLite (Development/Small deployments):
-#     sqlite:///%kernel.project_dir%/var/data.db
-#
-#   Notes:
-#   - serverVersion must match your database version for optimal performance
-#   - For MS SQL Server, requires pdo_sqlsrv PHP extension
-#   - MariaDB uses mysql:// driver with serverVersion prefix
+#   Database connection string. Examples:
+#   - PostgreSQL: postgresql://user:pass@host:5432/dbname?serverVersion=16
+#   - MySQL:      mysql://user:pass@host:3306/dbname?serverVersion=8.0
+#   - SQLite:     sqlite:///%kernel.project_dir%/var/data.db
 #
 # messenger_transport_dsn (required)
 #   Message queue transport:
