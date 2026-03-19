@@ -23,6 +23,7 @@ environments:
     admin_username: "admin"
     admin_password: "changeme"
 
+
   prod:
     # Production database - choose based on your infrastructure
     database_url: "postgresql://app:SECURE_PASSWORD@database:5432/app?serverVersion=16"

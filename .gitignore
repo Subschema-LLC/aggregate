@@ -18,3 +18,8 @@
 /public/assets/
 /assets/vendor/
 ###< symfony/asset-mapper ###
+
+###> aggregate-analytics ###
+/config/websites.yaml
+/config/aggregate.yaml
+###< aggregate-analytics ###

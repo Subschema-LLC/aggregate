@@ -1,0 +1,343 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block body %}
+<h1 class="title">Dashboard</h1>
+<h2 class="subtitle">Welcome, {{ app.user.username }}!</h2>
+
+<div class="box">
+    <div class="level">
+        <div class="level-left">
+            <div class="level-item">
+                <h3 class="title is-4">
+                    <span class="icon-text">
+                        <span class="icon">
+                            <i class="fas fa-globe"></i>
+                        </span>
+                        <span>Your Websites</span>
+                    </span>
+                </h3>
+            </div>
+        </div>
+        <div class="level-right">
+            <div class="level-item">
+                <button class="button is-primary js-modal-trigger" data-target="add-website-modal">
+                    <span class="icon">
+                        <i class="fas fa-plus"></i>
+                    </span>
+                    <span>Add Website</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    {% if websites is empty %}
+        <div class="notification is-info is-light">
+            <p>You haven't added any websites yet.</p>
+            <p class="mt-3">Click the "Add Website" button above to create your first website.</p>
+        </div>
+    {% else %}
+        <div class="tabs is-boxed">
+            <ul>
+                {% for website in websites %}
+                    <li {% if loop.first %}class="is-active"{% endif %} data-tab="website-{{ loop.index }}">
+                        <a>
+                            <span class="icon is-small"><i class="fas fa-globe"></i></span>
+                            <span>{{ website.name }}</span>
+                        </a>
+                    </li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        {% for website in websites %}
+            <div class="tab-content {% if not loop.first %}is-hidden{% endif %}" id="website-{{ loop.index }}">
+                <div class="content">
+                    <h4 class="title is-5">{{ website.name }}</h4>
+                    <p><strong>Domain:</strong> <code>{{ website.domain }}</code></p>
+                    <p><strong>Website Token:</strong> <code>{{ website.token }}</code></p>
+
+                    <h5 class="title is-6 mt-5">
+                        <span class="icon-text">
+                            <span class="icon">
+                                <i class="fas fa-code"></i>
+                            </span>
+                            <span>Integration Code</span>
+                        </span>
+                    </h5>
+
+                    <div class="notification is-light">
+                        <p class="mb-3">Add this code to your website's <code>&lt;head&gt;</code> section:</p>
+                        <pre><code>&lt;script&gt;
+  window.{{ js_namespace }} = {
+    endpoint: '{{ app_host }}/api/receive',
+    websiteToken: '{{ website.token }}'
+  };
+&lt;/script&gt;
+&lt;script src="{{ app_host }}/aggregate.js" defer&gt;&lt;/script&gt;</code></pre>
+                        <button class="button is-small is-info mt-3 copy-btn" data-clipboard-target="#code-{{ loop.index }}">
+                            <span class="icon">
+                                <i class="fas fa-copy"></i>
+                            </span>
+                            <span>Copy to Clipboard</span>
+                        </button>
+                        <textarea id="code-{{ loop.index }}" class="is-hidden">&lt;script&gt;
+  window.{{ js_namespace }} = {
+    endpoint: '{{ app_host }}/api/receive',
+    websiteToken: '{{ website.token }}'
+  };
+&lt;/script&gt;
+&lt;script src="{{ app_host }}/aggregate.js" defer&gt;&lt;/script&gt;</textarea>
+                    </div>
+
+                    <h5 class="title is-6 mt-5">
+                        <span class="icon-text">
+                            <span class="icon">
+                                <i class="fas fa-chart-line"></i>
+                            </span>
+                            <span>Track Custom Events</span>
+                        </span>
+                    </h5>
+
+                    <div class="notification is-light">
+                        <p class="mb-3">Track custom events in your JavaScript:</p>
+                        <pre><code>// Track a button click
+window.{{ js_namespace }}.emit('button_click', {
+  button_id: 'signup',
+  button_text: 'Sign Up Now'
+});
+
+// Track form submission
+window.{{ js_namespace }}.emit('form_submit', {
+  form_name: 'contact',
+  form_fields: 3
+});
+
+// Track video play
+window.{{ js_namespace }}.emit('video_play', {
+  video_id: 'intro-video',
+  video_duration: 120
+});</code></pre>
+                    </div>
+
+                    <h5 class="title is-6 mt-5">
+                        <span class="icon-text">
+                            <span class="icon">
+                                <i class="fas fa-user-shield"></i>
+                            </span>
+                            <span>Consent Management (Optional)</span>
+                        </span>
+                    </h5>
+
+                    <div class="notification is-light">
+                        <p class="mb-3">For privacy compliance, enable Tier 2 tracking after user consent:</p>
+                        <pre><code>// Enable consent-based tracking
+window.{{ js_namespace }}.setConsent(true);
+
+// Withdraw consent
+window.{{ js_namespace }}.setConsent(false);</code></pre>
+                        <p class="mt-3"><em>By default, Tier 1 (cookieless) tracking is active without consent.</em></p>
+                    </div>
+
+                    <div class="mt-5">
+                        <form action="{{ path('app_website_delete', {token: website.token}) }}" method="post" onsubmit="return confirm('Are you sure you want to delete this website? This action cannot be undone.');">
+                            <button type="submit" class="button is-danger is-outlined">
+                                <span class="icon">
+                                    <i class="fas fa-trash"></i>
+                                </span>
+                                <span>Delete Website</span>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+    {% endif %}
+</div>
+
+<div class="box mt-5">
+    <h3 class="title is-4">
+        <span class="icon-text">
+            <span class="icon">
+                <i class="fas fa-user-cog"></i>
+            </span>
+            <span>Account Management</span>
+        </span>
+    </h3>
+
+    <div class="content">
+        <p><strong>Username:</strong> {{ app.user.username }}</p>
+        <p><strong>Roles:</strong>
+            {% for role in app.user.roles %}
+                <span class="tag is-info">{{ role }}</span>
+            {% endfor %}
+        </p>
+    </div>
+
+    <div class="mt-4">
+        <h5 class="title is-6">
+            <span class="icon-text">
+                <span class="icon">
+                    <i class="fas fa-cogs"></i>
+                </span>
+                <span>Worker Status</span>
+            </span>
+        </h5>
+        <div class="level">
+            <div class="level-left">
+                <div class="level-item">
+                    {% if worker_running %}
+                        <span class="tag is-success is-medium">
+                            <span class="icon">
+                                <i class="fas fa-check-circle"></i>
+                            </span>
+                            <span>Worker Running</span>
+                        </span>
+                    {% else %}
+                        <span class="tag is-danger is-medium">
+                            <span class="icon">
+                                <i class="fas fa-times-circle"></i>
+                            </span>
+                            <span>Worker Stopped</span>
+                        </span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="level-right">
+                <div class="level-item">
+                    <form action="{{ path('app_worker_restart') }}" method="post">
+                        <button type="submit" class="button is-primary">
+                            <span class="icon">
+                                <i class="fas fa-sync-alt"></i>
+                            </span>
+                            <span>Restart Worker</span>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <p class="help">The worker processes analytics events in the background.</p>
+    </div>
+</div>
+
+<!-- Add Website Modal -->
+<div id="add-website-modal" class="modal">
+    <div class="modal-background"></div>
+    <div class="modal-card">
+        <header class="modal-card-head">
+            <p class="modal-card-title">
+                <span class="icon-text">
+                    <span class="icon">
+                        <i class="fas fa-plus"></i>
+                    </span>
+                    <span>Add New Website</span>
+                </span>
+            </p>
+            <button class="delete" aria-label="close"></button>
+        </header>
+        <form action="{{ path('app_website_create') }}" method="post">
+            <section class="modal-card-body">
+                <div class="field">
+                    <label class="label" for="website-name">Website Name</label>
+                    <div class="control has-icons-left">
+                        <input class="input" type="text" id="website-name" name="name" placeholder="My Awesome Site" required>
+                        <span class="icon is-small is-left">
+                            <i class="fas fa-tag"></i>
+                        </span>
+                    </div>
+                    <p class="help">A friendly name to identify this website</p>
+                </div>
+
+                <div class="field">
+                    <label class="label" for="website-domain">Domain</label>
+                    <div class="control has-icons-left">
+                        <input class="input" type="text" id="website-domain" name="domain" placeholder="example.com" required>
+                        <span class="icon is-small is-left">
+                            <i class="fas fa-globe"></i>
+                        </span>
+                    </div>
+                    <p class="help">The domain where analytics will be tracked (without http://)</p>
+                </div>
+            </section>
+            <footer class="modal-card-foot">
+                <button type="submit" class="button is-success">
+                    <span class="icon">
+                        <i class="fas fa-check"></i>
+                    </span>
+                    <span>Create Website</span>
+                </button>
+                <button type="button" class="button js-modal-close">Cancel</button>
+            </footer>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block javascripts %}
+{{ parent() }}
+<script>
+    // Modal handling
+    document.addEventListener('DOMContentLoaded', () => {
+        // Open modal
+        document.querySelectorAll('.js-modal-trigger').forEach(trigger => {
+            trigger.addEventListener('click', () => {
+                const modal = document.getElementById(trigger.dataset.target);
+                modal.classList.add('is-active');
+            });
+        });
+
+        // Close modal
+        function closeModal(modal) {
+            modal.classList.remove('is-active');
+        }
+
+        document.querySelectorAll('.modal .delete, .modal .js-modal-close, .modal-background').forEach(closeBtn => {
+            closeBtn.addEventListener('click', () => {
+                const modal = closeBtn.closest('.modal');
+                closeModal(modal);
+            });
+        });
+
+        // Tab switching
+        const tabs = document.querySelectorAll('[data-tab]');
+        tabs.forEach(tab => {
+            tab.addEventListener('click', (e) => {
+                e.preventDefault();
+                const targetId = tab.getAttribute('data-tab');
+
+                // Remove active class from all tabs
+                tabs.forEach(t => t.classList.remove('is-active'));
+                // Add active to clicked tab
+                tab.classList.add('is-active');
+
+                // Hide all tab contents
+                document.querySelectorAll('.tab-content').forEach(content => {
+                    content.classList.add('is-hidden');
+                });
+
+                // Show target content
+                document.getElementById(targetId).classList.remove('is-hidden');
+            });
+        });
+
+        // Copy to clipboard
+        document.querySelectorAll('.copy-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const targetId = btn.getAttribute('data-clipboard-target');
+                const textarea = document.querySelector(targetId);
+                textarea.select();
+                document.execCommand('copy');
+
+                btn.classList.add('is-success');
+                btn.querySelector('span:last-child').textContent = 'Copied!';
+
+                setTimeout(() => {
+                    btn.classList.remove('is-success');
+                    btn.querySelector('span:last-child').textContent = 'Copy to Clipboard';
+                }, 2000);
+            });
+        });
+    });
+</script>
+{% endblock %}

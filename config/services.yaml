@@ -22,6 +22,10 @@ services:
             $projectDir: '%kernel.project_dir%'
             $environment: '%kernel.environment%'
 
+    App\Service\WebsiteConfigManager:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
     App\Security\IpRateLimiter:
         arguments:
             $storageDir: '%kernel.project_dir%/var/rate_limit'

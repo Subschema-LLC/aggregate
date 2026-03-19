@@ -21,6 +21,7 @@
                 <div class="notification is-info is-light">
                     <p><strong>What will happen:</strong></p>
                     <ul>
+                        <li>Database migrations will be run automatically</li>
                         <li>An admin user will be created with credentials from your <code>config/aggregate.yaml</code></li>
                         <li>You'll be able to log in and start tracking analytics</li>
                     </ul>
@@ -43,9 +44,9 @@
             <div class="notification is-warning is-light mt-5">
                 <strong>Before installing, make sure you have:</strong>
                 <ul class="mt-2">
-                    <li>✓ Configured <code>config/aggregate.yaml</code> with your settings</li>
-                    <li>✓ Run database migrations: <code>php bin/console doctrine:migrations:migrate</code></li>
+                    <li>✓ Configured <code>config/aggregate.yaml</code> with your database settings</li>
                     <li>✓ Set admin credentials in the YAML config</li>
+                    <li>✓ MySQL/PostgreSQL database is running and accessible</li>
                 </ul>
             </div>
         </div>

@@ -16,17 +16,22 @@ class HomeController extends AbstractController
     #[Route('/', name: 'app_home')]
     public function index(): Response
     {
-        // If user is logged in, redirect to dashboard
-        if ($this->getUser()) {
-            return $this->redirectToRoute('app_dashboard');
-        }
+        try {
+            // If user is logged in, redirect to dashboard
+            if ($this->getUser()) {
+                return $this->redirectToRoute('app_dashboard');
+            }
 
-        // Check if installed
-        if (!$this->installationChecker->isInstalled()) {
+            // Check if installed
+            if (!$this->installationChecker->isInstalled()) {
+                return $this->redirectToRoute('app_install');
+            }
+
+            // Show login page
+            return $this->redirectToRoute('app_login');
+        } catch (\Exception $e) {
+            // If anything fails, just redirect to install
             return $this->redirectToRoute('app_install');
         }
-
-        // Show login page
-        return $this->redirectToRoute('app_login');
     }
 }
