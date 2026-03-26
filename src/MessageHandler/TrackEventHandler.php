@@ -3,7 +3,6 @@
 namespace App\MessageHandler;
 
 use App\Entity\Event;
-use App\Entity\View;
 use App\Repository\WebsiteRepository;
 use App\Message\TrackEventMessage;
 use App\Service\AggregateConfigLoader;
@@ -23,34 +22,21 @@ class TrackEventHandler
     {
         $website = $this->websites->findOneByPublicToken($msg->websiteToken);
         if (!$website) {
-            // Silently drop invalid website to keep worker resilient
             return;
         }
 
-        $hash = $this->hashDailyIp($msg->ip);
-        $ua = $this->generalizeUserAgent($msg->userAgent);
-
-        // Always record a page view (default mode)
-        $pv = (new View())
+        $event = (new Event())
             ->setWebsite($website)
+            ->setEventName($msg->eventName ?? 'view')
             ->setUrl($msg->url)
             ->setReferrer($msg->referrer)
-            ->setDailyIpHash($hash)
-            ->setGeneralizedUserAgent($ua)
+            ->setDailyIpHash($this->hashDailyIp($msg->ip))
+            ->setGeneralizedUserAgent($this->generalizeUserAgent($msg->userAgent))
             ->setScreenWidth($msg->screenWidth)
-            ->setSessionId($msg->sessionId);
-        $this->em->persist($pv);
+            ->setSessionId($msg->sessionId)
+            ->setCustomData($this->sanitizeEventData($msg->eventData));
 
-        if ($msg->eventName) {
-            $ev = (new Event())
-                ->setWebsite($website)
-                ->setView($pv)
-                ->setEventName($msg->eventName)
-                ->setCustomData($this->sanitizeEventData($msg->eventData))
-                ->setSessionId($msg->sessionId);
-            $this->em->persist($ev);
-        }
-
+        $this->em->persist($event);
         $this->em->flush();
     }
 
@@ -81,13 +67,11 @@ class TrackEventHandler
     private function sanitizeEventData(?array $data): ?array
     {
         if ($data === null) { return null; }
-        // Limit depth/size to prevent abuse
         $clean = [];
         foreach ($data as $k => $v) {
             if (!is_string($k)) { continue; }
             if (is_scalar($v) || $v === null) {
-                $val = is_string($v) ? substr($v, 0, 500) : $v;
-                $clean[substr($k, 0, 100)] = $val;
+                $clean[substr($k, 0, 100)] = is_string($v) ? substr($v, 0, 500) : $v;
             }
         }
         return $clean ?: null;

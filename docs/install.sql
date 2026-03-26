@@ -31,44 +31,32 @@ CREATE TABLE IF NOT EXISTS `websites` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -----------------------------------------------------------------------------
--- page_views
+-- events
+-- Single table for all analytics data. A "view" (page view / screen view) is
+-- stored as event_name = 'view'. Custom events use the name sent by the client.
+--
+-- Useful BI queries:
+--   Page views:    SELECT * FROM events WHERE event_name = 'view'
+--   Custom events: SELECT * FROM events WHERE event_name != 'view'
+--   Sessions:      SELECT COUNT(DISTINCT session_id) FROM events WHERE event_name = 'view'
 -- -----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `page_views` (
+CREATE TABLE IF NOT EXISTS `events` (
     `id`                     INT          NOT NULL AUTO_INCREMENT,
     `website_id`             INT          NOT NULL,
+    `event_name`             VARCHAR(191) NOT NULL DEFAULT 'view',
     `url`                    LONGTEXT     NOT NULL,
     `referrer`               LONGTEXT     DEFAULT NULL,
     `daily_ip_hash`          VARCHAR(191) NOT NULL,
     `generalized_user_agent` VARCHAR(191) NOT NULL,
     `screen_width`           INT          DEFAULT NULL,
-    `created_at`             DATETIME     NOT NULL COMMENT '(DC2Type:datetime_immutable)',
     `session_id`             VARCHAR(191) DEFAULT NULL,
+    `custom_data`            JSON         DEFAULT NULL,
+    `created_at`             DATETIME     NOT NULL COMMENT '(DC2Type:datetime_immutable)',
     PRIMARY KEY (`id`),
-    KEY `IDX_PAGE_VIEWS_WEBSITE_ID` (`website_id`),
-    KEY `IDX_PAGE_VIEWS_SESSION_ID` (`session_id`),
-    CONSTRAINT `FK_PAGE_VIEWS_WEBSITE`
-        FOREIGN KEY (`website_id`) REFERENCES `websites` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- -----------------------------------------------------------------------------
--- events
--- -----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `events` (
-    `id`           INT          NOT NULL AUTO_INCREMENT,
-    `website_id`   INT          NOT NULL,
-    `page_view_id` INT          DEFAULT NULL,
-    `event_name`   VARCHAR(191) NOT NULL,
-    `custom_data`  JSON         DEFAULT NULL,
-    `created_at`   DATETIME     NOT NULL COMMENT '(DC2Type:datetime_immutable)',
-    `session_id`   VARCHAR(191) DEFAULT NULL,
-    PRIMARY KEY (`id`),
-    KEY `IDX_EVENTS_WEBSITE_ID`   (`website_id`),
-    KEY `IDX_EVENTS_PAGE_VIEW_ID` (`page_view_id`),
-    KEY `IDX_EVENTS_SESSION_ID`   (`session_id`),
+    KEY `IDX_EVENTS_WEBSITE_ID`  (`website_id`),
+    KEY `IDX_EVENTS_SESSION_ID`  (`session_id`),
     CONSTRAINT `FK_EVENTS_WEBSITE`
-        FOREIGN KEY (`website_id`)   REFERENCES `websites`    (`id`) ON DELETE CASCADE,
-    CONSTRAINT `FK_EVENTS_PAGE_VIEW`
-        FOREIGN KEY (`page_view_id`) REFERENCES `page_views`  (`id`) ON DELETE SET NULL
+        FOREIGN KEY (`website_id`) REFERENCES `websites` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -----------------------------------------------------------------------------
@@ -117,7 +105,8 @@ CREATE TABLE IF NOT EXISTS `doctrine_migration_versions` (
 INSERT IGNORE INTO `doctrine_migration_versions` (`version`, `executed_at`, `execution_time`) VALUES
     ('DoctrineMigrations\\Version20251008220000', NOW(), 0),
     ('DoctrineMigrations\\Version20260318000000', NOW(), 0),
-    ('DoctrineMigrations\\Version20260318100000', NOW(), 0);
+    ('DoctrineMigrations\\Version20260318100000', NOW(), 0),
+    ('DoctrineMigrations\\Version20260325000000', NOW(), 0);
 
 SET foreign_key_checks = 1;
 
