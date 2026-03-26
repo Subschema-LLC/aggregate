@@ -23,4 +23,5 @@
 ###> aggregate-analytics ###
 /config/websites.yaml
 /config/aggregate.yaml
+/.env.prod
 ###< aggregate-analytics ###
