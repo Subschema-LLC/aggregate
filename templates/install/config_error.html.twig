@@ -16,7 +16,7 @@
             </h1>
 
             <div class="content">
-                <p>The application cannot be installed because the configuration file is missing or invalid.</p>
+                <p>The application cannot start because required configuration is missing.</p>
 
                 <h2 class="subtitle">Errors:</h2>
                 <ul>
@@ -27,39 +27,20 @@
 
                 <h2 class="subtitle mt-5">To fix this:</h2>
                 <ol>
-                    <li>Copy <code>config/aggregate.yaml.example</code> to <code>config/aggregate.yaml</code></li>
-                    <li>Edit <code>config/aggregate.yaml</code> and configure at minimum:
-                        <ul>
-                            <li><code>database_url</code></li>
-                            <li><code>daily_salt_secret</code> (generate with: <code>openssl rand -base64 32</code>)</li>
-                            <li><code>admin_username</code></li>
-                            <li><code>admin_password</code></li>
-                        </ul>
+                    <li>Create a <code>.env</code> file in the project root with at minimum:
+                        <pre class="mt-2"><code>APP_ENV=prod
+APP_SECRET=your-secret-here
+DATABASE_URL="mysql://user:pass@localhost:3306/dbname?serverVersion=8.0"
+MESSENGER_TRANSPORT_DSN=doctrine://default</code></pre>
                     </li>
-                    <li>Run database migrations: <code>php bin/console doctrine:migrations:migrate</code></li>
+                    <li>Generate <code>APP_SECRET</code> with: <code>openssl rand -hex 32</code></li>
                     <li>Refresh this page</li>
                 </ol>
             </div>
 
-            <div class="notification is-warning is-light mt-5">
-                <strong>Sample config/aggregate.yaml:</strong>
-                <pre><code>environments:
-  dev:
-    database_url: "sqlite:///%kernel.project_dir%/var/data.db"
-    messenger_transport_dsn: "doctrine://default"
-    daily_salt_secret: "CHANGE-ME-TO-SECURE-RANDOM-STRING"
-    rate_limit_per_minute: 1000
-    app_host: "http://localhost"
-    js_namespace: "Aggregate"
-    admin_username: "admin"
-    admin_password: "changeme"</code></pre>
-            </div>
-
             <div class="buttons mt-5">
                 <a href="{{ path('app_install') }}" class="button is-primary">
-                    <span class="icon">
-                        <i class="fas fa-sync"></i>
-                    </span>
+                    <span class="icon"><i class="fas fa-sync"></i></span>
                     <span>Retry</span>
                 </a>
             </div>

@@ -5,29 +5,28 @@ This guide walks you through deploying Aggregate Analytics on a Plesk hosting en
 ## Prerequisites
 
 - Plesk Obsidian 18.0.35+ or later
-- PHP 8.2 or higher
-- MySQL 8.0+ or PostgreSQL 13+
+- PHP 8.2 or higher (PHP 8.3 recommended)
+- MySQL 8.0+ or MariaDB 10.6+
 - SSH access to your server
-- Composer installed
 
-## Quick Start
+## Quick Reference — Plesk-Specific Paths
+
+On Plesk, PHP and Composer are not in the default system `PATH` for root SSH sessions. Use the full paths:
 
 ```bash
-# 1. Upload or git clone the project to your Plesk domain directory
-cd ~/your-domain.com
-git clone <repo-url> analytics
-cd analytics
+# PHP (adjust version as needed)
+/opt/plesk/php/8.3/bin/php
 
-# 2. Run the setup script
-./plesk-setup.sh
+# Composer
+/opt/psa/var/modules/composer/composer.phar
 
-# 3. Configure Plesk domain settings (see below)
-
-# 4. Create your first website
-php bin/console app:create-website
+# Example: install dependencies
+/opt/plesk/php/8.3/bin/php /opt/psa/var/modules/composer/composer.phar install --no-dev --optimize-autoloader
 ```
 
-## Detailed Setup
+---
+
+## Step-by-Step Setup
 
 ### 1. Domain and PHP Configuration
 
@@ -41,108 +40,139 @@ php bin/console app:create-website
 1. Go to **Domains** > **your-domain.com** > **PHP Settings**
 2. Select **PHP 8.2** or higher
 3. Ensure these extensions are enabled:
-   - `ctype`
-   - `iconv`
-   - `pdo_mysql` or `pdo_pgsql`
-   - `mbstring`
-   - `xml`
-   - `curl`
-   - `intl`
+   - `ctype`, `iconv`, `pdo_mysql`, `mbstring`, `xml`, `curl`, `intl`
 
-### 2. Database Setup
+### 2. Upload Application Files
 
-#### Option A: Create via Plesk Panel
-1. Go to **Databases** > **Add Database**
-2. Database name: `analytics`
-3. Create a database user with full privileges
-4. Note the credentials
+Clone or upload the application to your Plesk domain directory:
 
-#### Option B: Use existing database
-Use your existing Plesk database credentials.
-
-#### Configure Database Connection
-Edit `config/aggregate.yaml`:
-
-```yaml
-database_url: "mysql://username:password@localhost:3306/analytics?serverVersion=8.0"
-# Or for PostgreSQL:
-# database_url: "postgresql://username:password@localhost:5432/analytics?serverVersion=16"
+```bash
+cd /var/www/vhosts/your-domain.com
+git clone <repo-url> analytics
+cd analytics
 ```
 
-### 3. Configuration
+### 3. Install Composer Dependencies
 
-Copy and edit the configuration file:
+```bash
+cd /var/www/vhosts/your-domain.com/analytics
+
+/opt/plesk/php/8.3/bin/php \
+  /opt/psa/var/modules/composer/composer.phar \
+  install --no-dev --optimize-autoloader
+```
+
+### 4. Database Setup
+
+#### Create via Plesk Panel
+1. Go to **Databases** > **Add Database**
+2. Database name: e.g. `analytics_prod`
+3. Create a database user with full privileges
+4. Note the host, database name, username, and password
+
+### 5. Create the `.env` File
+
+Create `.env` in the project root. This file is **not committed to git** and contains your server-specific credentials.
+
+```bash
+nano /var/www/vhosts/your-domain.com/analytics/.env
+```
+
+Paste and fill in:
+
+```dotenv
+APP_ENV=prod
+APP_DEBUG=0
+APP_SECRET=generate-with-openssl-rand-hex-32
+DATABASE_URL="mysql://db_user:db_pass@localhost:3306/db_name?serverVersion=8.0"
+MESSENGER_TRANSPORT_DSN=doctrine://default
+MAILER_DSN=null://null
+```
+
+> **Password special characters:** URL-encode any special characters in your password.
+> `%` → `%25`, `@` → `%40`
+> Example: `WKDx%@7` becomes `WKDx%2540%407` in the URL.
+
+### 6. Copy App Configuration
 
 ```bash
 cp config/aggregate.yaml.example config/aggregate.yaml
-nano config/aggregate.yaml
 ```
 
-#### Required Settings
-
-**1. Generate a secure secret:**
-```bash
-openssl rand -base64 32
-```
-Add to `config/aggregate.yaml`:
-```yaml
-daily_salt_secret: "your-generated-secret-here"
-```
-
-**2. Database URL** (see step 2 above)
-
-**3. Messenger Transport:**
-For simple Plesk setup, use database-backed queue:
-```yaml
-messenger_transport_dsn: "doctrine://default?auto_setup=0"
-```
-
-#### Optional Settings
+You can optionally set `app_host` to your domain. The web installer will generate `daily_salt_secret` automatically.
 
 ```yaml
-rate_limit_per_minute: 100
-app_host: "https://analytics.your-domain.com"
-js_namespace: "Aggregate"
+environments:
+  prod:
+    app_host: "https://analytics.your-domain.com"
+    rate_limit_per_minute: 100
+    js_namespace: "Aggregate"
 ```
 
-### 4. Run Setup Script
+### 7. Run Database Migrations
 
 ```bash
-chmod +x plesk-setup.sh
-./plesk-setup.sh
+cd /var/www/vhosts/your-domain.com/analytics
+
+/opt/plesk/php/8.3/bin/php bin/console doctrine:migrations:migrate --no-interaction
 ```
 
-The script will:
-- Check PHP version and dependencies
-- Install Composer packages
-- Create environment configuration
-- Run database migrations
-- Set up file permissions
-- Compile frontend assets
+### 8. Compile Frontend Assets
 
-### 5. Background Worker Setup
+```bash
+/opt/plesk/php/8.3/bin/php bin/console asset-map:compile
+```
 
-The analytics system requires a background worker to process events. Choose one option:
+### 9. Set File Permissions
 
-#### Option A: Using Plesk Scheduled Tasks (Simple)
+```bash
+cd /var/www/vhosts/your-domain.com/analytics
 
-1. Go to **Tools & Settings** > **Scheduled Tasks**
+# Replace aggregate_admin with your actual Plesk domain user
+chown -R aggregate_admin:psacln var/ public/
+chmod -R 775 var/
+```
+
+### 10. Complete Setup via Web Installer
+
+Open your browser and go to:
+
+```
+https://analytics.your-domain.com/install
+```
+
+The web installer will:
+- Auto-generate a `daily_salt_secret`
+- Let you set admin credentials
+- Let you configure the JS namespace
+- Create your first tracked website
+
+---
+
+## Background Worker Setup
+
+The analytics system requires a background worker to process queued events. **Events will not be recorded without it.**
+
+### Option A: Plesk Scheduled Tasks (Simplest)
+
+1. Go to **Tools & Settings** > **Scheduled Tasks** (or per-domain: **Domains** > **your-domain.com** > **Scheduled Tasks**)
 2. Add new task:
-   - **Command**: `cd /var/www/vhosts/your-domain.com/analytics && php bin/console messenger:consume async --time-limit=3600`
-   - **Run**: Every hour (or more frequently)
-   - **Run as**: Your domain user
+   - **Command**: `cd /var/www/vhosts/your-domain.com/analytics && /opt/plesk/php/8.3/bin/php bin/console messenger:consume async --time-limit=3600`
+   - **Run**: Every hour
+   - **Run as**: Your domain user (e.g. `aggregate_admin`)
 
-**Note**: This runs the worker for 1 hour, then restarts it. Not ideal for high traffic but works for small/medium sites.
+This restarts the worker every hour. Suitable for low-to-medium traffic.
 
-#### Option B: Using systemd (Recommended for Production)
+### Option B: systemd (Recommended for Production)
 
-Create a systemd service file:
+Create a service file:
 
 ```bash
 sudo nano /etc/systemd/system/analytics-worker.service
 ```
 
-Content:
+Content (adjust paths and user):
+
 ```ini
 [Unit]
 Description=Aggregate Analytics Worker
@@ -150,9 +180,9 @@ After=network.target
 
 [Service]
 Type=simple
-User=your-plesk-user
+User=aggregate_admin
 WorkingDirectory=/var/www/vhosts/your-domain.com/analytics
-ExecStart=/usr/bin/php bin/console messenger:consume async --time-limit=3600 --memory-limit=128M
+ExecStart=/opt/plesk/php/8.3/bin/php bin/console messenger:consume async --time-limit=3600 --memory-limit=128M
 Restart=always
 RestartSec=10
 
@@ -161,6 +191,7 @@ WantedBy=multi-user.target
 ```
 
 Enable and start:
+
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable analytics-worker
@@ -168,23 +199,22 @@ sudo systemctl start analytics-worker
 sudo systemctl status analytics-worker
 ```
 
-#### Option C: Using Supervisor (Alternative)
+### Option C: Supervisor
 
-Install supervisor:
+Install and configure Supervisor:
+
 ```bash
 sudo apt-get install supervisor
-```
 
-Create configuration:
-```bash
 sudo nano /etc/supervisor/conf.d/analytics-worker.conf
 ```
 
 Content:
+
 ```ini
 [program:analytics-worker]
-command=php /var/www/vhosts/your-domain.com/analytics/bin/console messenger:consume async --time-limit=3600
-user=your-plesk-user
+command=/opt/plesk/php/8.3/bin/php /var/www/vhosts/your-domain.com/analytics/bin/console messenger:consume async --time-limit=3600
+user=aggregate_admin
 numprocs=1
 autostart=true
 autorestart=true
@@ -192,211 +222,126 @@ stderr_logfile=/var/www/vhosts/your-domain.com/analytics/var/log/worker.err.log
 stdout_logfile=/var/www/vhosts/your-domain.com/analytics/var/log/worker.out.log
 ```
 
-Reload supervisor:
+Reload:
+
 ```bash
 sudo supervisorctl reread
 sudo supervisorctl update
 sudo supervisorctl start analytics-worker
 ```
 
-### 6. Website Management
-
-#### Create a Website
-```bash
-php bin/console app:create-website
-```
-
-Follow the prompts to enter:
-- Website name
-- Domain (e.g., `example.com`)
-
-The command will output a public token. Save this token.
-
-#### List Websites
-```bash
-php bin/console app:list-websites
-```
-
-### 7. Frontend Integration
-
-Add to your website's HTML:
-
-```html
-<script>
-  window.Aggregate = {
-    endpoint: 'https://analytics.your-domain.com/api/receive',
-    websiteToken: 'your-token-from-step-6'
-  };
-</script>
-<script src="https://analytics.your-domain.com/aggregate.js" async></script>
-```
-
-### 8. Testing
-
-#### Health Check
-```bash
-curl https://analytics.your-domain.com/api/health
-```
-
-Expected response:
-```json
-{"status":"ok","timestamp":"2024-01-15T10:30:00+00:00"}
-```
-
-#### Send Test Event
-```bash
-curl -X POST https://analytics.your-domain.com/api/receive \
-  -H "Origin: https://example.com" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://example.com/test",
-    "referrer": "",
-    "screenWidth": 1920,
-    "eventName": "view",
-    "websiteToken": "your-token-here"
-  }'
-```
-
-#### Check Worker Logs
-```bash
-tail -f var/log/prod.log
-```
+---
 
 ## SSL/HTTPS Setup
 
-### Option 1: Let's Encrypt (Recommended)
 1. Go to **Domains** > **your-domain.com** > **SSL/TLS Certificates**
-2. Click **Install** next to Let's Encrypt
-3. Follow the wizard
+2. Click **Install** next to Let's Encrypt and follow the wizard
 
-### Option 2: Custom Certificate
-Upload your SSL certificate through Plesk's SSL/TLS Certificates section.
+---
 
-## File Permissions
+## Updating the Application
 
-Ensure proper permissions:
 ```bash
 cd /var/www/vhosts/your-domain.com/analytics
-chmod -R 775 var/cache var/log
-chown -R your-user:psacln var/cache var/log
-```
 
-## Maintenance
-
-### Update Application
-```bash
-cd ~/your-domain.com/analytics
+# Pull latest code
 git pull
-composer install --no-dev --optimize-autoloader
-php bin/console cache:clear --env=prod
-php bin/console doctrine:migrations:migrate --no-interaction
-php bin/console asset-map:compile
+
+# Install dependencies (no-dev for production)
+/opt/plesk/php/8.3/bin/php \
+  /opt/psa/var/modules/composer/composer.phar \
+  install --no-dev --optimize-autoloader
+
+# Run migrations
+/opt/plesk/php/8.3/bin/php bin/console doctrine:migrations:migrate --no-interaction
+
+# Clear cache
+/opt/plesk/php/8.3/bin/php bin/console cache:clear
+
+# Compile assets
+/opt/plesk/php/8.3/bin/php bin/console asset-map:compile
+
+# Fix permissions
+chown -R aggregate_admin:psacln var/
+chmod -R 775 var/
+
+# Restart worker
+sudo systemctl restart analytics-worker
 ```
 
-### Clear Cache
-```bash
-php bin/console cache:clear --env=prod
-```
-
-### Database Backup
-Use Plesk's built-in database backup:
-1. Go to **Databases** > **your-database**
-2. Click **Export Dump**
-
-Or via command line:
-```bash
-# MySQL
-mysqldump -u username -p analytics > backup.sql
-
-# PostgreSQL
-pg_dump -U username analytics > backup.sql
-```
+---
 
 ## Troubleshooting
 
-### 500 Internal Server Error
-1. Check file permissions on `var/cache` and `var/log`
-2. Check PHP error log: `/var/www/vhosts/your-domain.com/logs/error_log`
-3. Check application log: `var/log/prod.log`
+### Blank page or 500 error
 
-### Events not being processed
-1. Check worker is running:
-   ```bash
-   # If using systemd:
-   sudo systemctl status analytics-worker
-
-   # If using supervisor:
-   sudo supervisorctl status analytics-worker
-   ```
-2. Check worker logs: `var/log/prod.log`
-3. Manually process queue:
-   ```bash
-   php bin/console messenger:consume async -vv
-   ```
+1. Check PHP error log: `/var/www/vhosts/your-domain.com/logs/error_log`
+2. Check application log: `var/log/prod.log`
+3. Verify `.env` exists and has correct values (especially `APP_ENV=prod`)
+4. Verify permissions: `chown -R aggregate_admin:psacln var/ && chmod -R 775 var/`
 
 ### Database connection errors
-1. Verify credentials in `config/aggregate.yaml`
-2. Test connection:
+
+1. Verify `DATABASE_URL` in `.env`
+2. Test the connection:
    ```bash
-   php bin/console dbal:run-sql "SELECT 1"
+   /opt/plesk/php/8.3/bin/php bin/console dbal:run-sql "SELECT 1"
+   ```
+3. Check special characters in password are URL-encoded
+
+### Events not being processed
+
+1. Check worker is running:
+   ```bash
+   sudo systemctl status analytics-worker
+   # or
+   sudo supervisorctl status analytics-worker
+   ```
+2. Check logs: `tail -f var/log/prod.log`
+3. Manually process queue to see errors:
+   ```bash
+   /opt/plesk/php/8.3/bin/php bin/console messenger:consume async -vv
    ```
 
-### CORS issues
-Ensure the domain in your website record matches the actual domain sending requests. Subdomains are automatically allowed.
+### Cache permission errors after `composer install`
 
-## Performance Optimization
+If Composer runs as a different user (e.g. root during SSH), reset permissions:
 
-### OpCache
-Enable in Plesk > PHP Settings:
-```ini
-opcache.enable=1
-opcache.memory_consumption=256
-opcache.max_accelerated_files=20000
-opcache.validate_timestamps=0
-```
-
-After enabling, restart PHP-FPM:
 ```bash
-sudo systemctl restart php8.2-fpm
+chown -R aggregate_admin:psacln var/
+chmod -R 775 var/
 ```
 
-### Database Indexing
-Migrations include necessary indexes. For high-traffic sites, consider:
-- Regular `ANALYZE` on tables
-- Partitioning `page_views` table by date
+### CORS / 403 Forbidden
+
+Ensure the domain in your website record (set during web installer) exactly matches the domain sending requests. Subdomains are automatically allowed.
+
+---
 
 ## Security Checklist
 
-- [ ] Use HTTPS (SSL certificate installed)
-- [ ] Strong `daily_salt_secret` (32+ characters)
-- [ ] Strong `APP_SECRET` in `.env.local`
+- [ ] HTTPS (SSL certificate installed)
+- [ ] Strong `APP_SECRET` in `.env` (`openssl rand -hex 32`)
+- [ ] Strong `daily_salt_secret` (auto-generated by installer, or `openssl rand -base64 32`)
+- [ ] `APP_DEBUG=0` in `.env`
+- [ ] `.env` is not publicly accessible (it's outside `public/`, so this is automatic)
 - [ ] Database user has minimal required privileges
-- [ ] `APP_DEBUG=0` in production
-- [ ] File permissions properly set (no 777 except temporarily)
-- [ ] Regular backups configured
-- [ ] Worker process running as non-root user
-
-## Support
-
-For issues or questions:
-- Check logs: `var/log/prod.log`
-- GitHub Issues: [repository URL]
-- Documentation: README.md
+- [ ] File permissions correct (`775` on `var/`, not `777`)
+- [ ] Worker running as non-root user
+- [ ] Regular database backups configured
 
 ## Production Checklist
 
 Before going live:
 
 - [ ] SSL certificate installed and working
-- [ ] Domain configured correctly in Plesk
-- [ ] PHP 8.2+ with required extensions
-- [ ] Database created and migrated
-- [ ] `config/aggregate.yaml` fully configured
-- [ ] `.env.local` created with `APP_ENV=prod`
+- [ ] Document root set to `public/` in Plesk
+- [ ] PHP 8.2+ with required extensions enabled
+- [ ] `.env` created with correct credentials
+- [ ] Database created and migrations run
+- [ ] Assets compiled (`asset-map:compile`)
 - [ ] Background worker running
-- [ ] First website created
-- [ ] Test event successfully tracked
-- [ ] Health endpoint responding
+- [ ] Web installer completed at `/install`
+- [ ] Test event successfully tracked (`curl /api/health`)
 - [ ] File permissions correct
 - [ ] Backups configured
-- [ ] Error logs monitored

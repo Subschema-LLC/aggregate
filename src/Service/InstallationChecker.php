@@ -20,24 +20,20 @@ class InstallationChecker
         }
     }
 
+    /**
+     * Config is valid when DATABASE_URL is available as a standard env var.
+     * Doctrine will fail to boot if it is missing, so this is the right gate.
+     */
     public function isConfigValid(): bool
     {
-        try {
-            return !empty($this->config->getWithEnvFallback('database_url', null));
-        } catch (\Exception) {
-            return false;
-        }
+        return !empty($_ENV['DATABASE_URL'] ?? $_SERVER['DATABASE_URL'] ?? '');
     }
 
     public function getConfigErrors(): array
     {
         $errors = [];
-        try {
-            if (empty($this->config->getWithEnvFallback('database_url', null))) {
-                $errors[] = 'database_url is not configured in config/aggregate.yaml';
-            }
-        } catch (\Exception) {
-            $errors[] = 'config/aggregate.yaml file is missing or invalid';
+        if (empty($_ENV['DATABASE_URL'] ?? $_SERVER['DATABASE_URL'] ?? '')) {
+            $errors[] = 'DATABASE_URL is not set. Add it to your .env file (see .env.dev for an example).';
         }
         return $errors;
     }
