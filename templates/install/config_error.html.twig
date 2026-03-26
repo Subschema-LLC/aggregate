@@ -1,0 +1,69 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Configuration Error{% endblock %}
+
+{% block body %}
+<div class="columns is-centered">
+    <div class="column is-6">
+        <div class="box">
+            <h1 class="title has-text-danger">
+                <span class="icon-text">
+                    <span class="icon">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </span>
+                    <span>Configuration Error</span>
+                </span>
+            </h1>
+
+            <div class="content">
+                <p>The application cannot be installed because the configuration file is missing or invalid.</p>
+
+                <h2 class="subtitle">Errors:</h2>
+                <ul>
+                    {% for error in errors %}
+                        <li class="has-text-danger">{{ error }}</li>
+                    {% endfor %}
+                </ul>
+
+                <h2 class="subtitle mt-5">To fix this:</h2>
+                <ol>
+                    <li>Copy <code>config/aggregate.yaml.example</code> to <code>config/aggregate.yaml</code></li>
+                    <li>Edit <code>config/aggregate.yaml</code> and configure at minimum:
+                        <ul>
+                            <li><code>database_url</code></li>
+                            <li><code>daily_salt_secret</code> (generate with: <code>openssl rand -base64 32</code>)</li>
+                            <li><code>admin_username</code></li>
+                            <li><code>admin_password</code></li>
+                        </ul>
+                    </li>
+                    <li>Run database migrations: <code>php bin/console doctrine:migrations:migrate</code></li>
+                    <li>Refresh this page</li>
+                </ol>
+            </div>
+
+            <div class="notification is-warning is-light mt-5">
+                <strong>Sample config/aggregate.yaml:</strong>
+                <pre><code>environments:
+  dev:
+    database_url: "sqlite:///%kernel.project_dir%/var/data.db"
+    messenger_transport_dsn: "doctrine://default"
+    daily_salt_secret: "CHANGE-ME-TO-SECURE-RANDOM-STRING"
+    rate_limit_per_minute: 1000
+    app_host: "http://localhost"
+    js_namespace: "Aggregate"
+    admin_username: "admin"
+    admin_password: "changeme"</code></pre>
+            </div>
+
+            <div class="buttons mt-5">
+                <a href="{{ path('app_install') }}" class="button is-primary">
+                    <span class="icon">
+                        <i class="fas fa-sync"></i>
+                    </span>
+                    <span>Retry</span>
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

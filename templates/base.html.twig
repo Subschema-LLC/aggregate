@@ -1,24 +1,76 @@
 <!DOCTYPE html>
-<html>
-    <head>
-        <meta charset="UTF-8">
-        <title>{% block title %}Welcome!{% endblock %}</title>
-        <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 128 128%22><text y=%221.2em%22 font-size=%2296%22>⚫️</text><text y=%221.3em%22 x=%220.2em%22 font-size=%2276%22 fill=%22%23fff%22>sf</text></svg>">
-        {% block stylesheets %}
-            {# <link href="{{ asset('styles/vendor/bulma/bulma.min.css') }}" type="text/css" rel="stylesheet"> #}
-            {# CSS assets will be handled by the importmap in the javascripts block #}
-        {% endblock %}
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Aggregate Analytics{% endblock %}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.2/css/bulma.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    {% block stylesheets %}{% endblock %}
+</head>
+<body>
+    {% if app.user %}
+    <nav class="navbar is-dark" role="navigation" aria-label="main navigation">
+        <div class="navbar-brand">
+            <a class="navbar-item" href="{{ path('app_dashboard') }}">
+                <strong>Aggregate Analytics</strong>
+            </a>
+        </div>
 
-        {% block javascripts %}
-            {% block importmap %}{{ importmap('app') }}{% endblock %}
-        {% endblock %}
-    </head>
-    <body>
-        {% block body %}
-            <div>
-                <p data-controller="hello"></p>
+        <div class="navbar-menu">
+            <div class="navbar-end">
+                <div class="navbar-item">
+                    <span class="icon-text">
+                        <span class="icon">
+                            <i class="fas fa-user"></i>
+                        </span>
+                        <span>{{ app.user.username }}</span>
+                    </span>
+                </div>
+                <div class="navbar-item">
+                    <a href="{{ path('app_logout') }}" class="button is-light">
+                        <span class="icon">
+                            <i class="fas fa-sign-out-alt"></i>
+                        </span>
+                        <span>Logout</span>
+                    </a>
+                </div>
             </div>
-            {% include 'components/card.html.twig' %}
-        {% endblock %}
-    </body>
+        </div>
+    </nav>
+    {% endif %}
+
+    <section class="section">
+        <div class="container">
+            {% for message in app.flashes('success') %}
+                <div class="notification is-success is-light">
+                    <button class="delete"></button>
+                    {{ message }}
+                </div>
+            {% endfor %}
+
+            {% for message in app.flashes('error') %}
+                <div class="notification is-danger is-light">
+                    <button class="delete"></button>
+                    {{ message }}
+                </div>
+            {% endfor %}
+
+            {% block body %}{% endblock %}
+        </div>
+    </section>
+
+    {% block javascripts %}
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            (document.querySelectorAll('.notification .delete') || []).forEach(($delete) => {
+                const $notification = $delete.parentNode;
+                $delete.addEventListener('click', () => {
+                    $notification.parentNode.removeChild($notification);
+                });
+            });
+        });
+    </script>
+    {% endblock %}
+</body>
 </html>

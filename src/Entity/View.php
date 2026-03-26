@@ -2,12 +2,12 @@
 
 namespace App\Entity;
 
-use App\Repository\PageViewRepository;
+use App\Repository\ViewRepository;
 use Doctrine\ORM\Mapping as ORM;
 
-#[ORM\Entity(repositoryClass: PageViewRepository::class)]
+#[ORM\Entity(repositoryClass: ViewRepository::class)]
 #[ORM\Table(name: 'page_views')]
-class PageView
+class View
 {
     #[ORM\Id]
     #[ORM\GeneratedValue]
@@ -32,6 +32,9 @@ class PageView
 
     #[ORM\Column(type: 'integer', nullable: true)]
     private ?int $screenWidth = null;
+
+    #[ORM\Column(type: 'string', length: 191, nullable: true)]
+    private ?string $sessionId = null;
 
     #[ORM\Column(type: 'datetime_immutable')]
     private \DateTimeImmutable $createdAt;
@@ -59,6 +62,9 @@ class PageView
 
     public function getScreenWidth(): ?int { return $this->screenWidth; }
     public function setScreenWidth(?int $w): self { $this->screenWidth = $w; return $this; }
+
+    public function getSessionId(): ?string { return $this->sessionId; }
+    public function setSessionId(?string $sessionId): self { $this->sessionId = $sessionId; return $this; }
 
     public function getCreatedAt(): \DateTimeImmutable { return $this->createdAt; }
 }

@@ -9,28 +9,39 @@
 # Option 1: Environment-specific configuration (recommended)
 environments:
   dev:
+    # Choose your database (PostgreSQL example - see full list below)
     database_url: "postgresql://app:!ChangeMe!@database:5432/app?serverVersion=16"
+    # Or MySQL: "mysql://app:!ChangeMe!@database:3306/app?serverVersion=8.0"
+    # Or MariaDB: "mysql://app:!ChangeMe!@database:3306/app?serverVersion=mariadb-11.4"
+    # Or MS SQL: "sqlsrv://sa:YourPassword@sqlserver:1433/app?serverVersion=2022"
+    # Or SQLite: "sqlite:///%kernel.project_dir%/var/data.db"
     messenger_transport_dsn: "doctrine://default"
     daily_salt_secret: "dev-salt-CHANGE-ME-IN-PRODUCTION"
     rate_limit_per_minute: 1000
     app_host: "http://localhost"
-    js_namespace: "MyAnalytics"
+    js_namespace: "Aggregate"
+    admin_username: "admin"
+    admin_password: "changeme"
+
 
   prod:
+    # Production database - choose based on your infrastructure
     database_url: "postgresql://app:SECURE_PASSWORD@database:5432/app?serverVersion=16"
     messenger_transport_dsn: "doctrine://default"
     # REQUIRED: Generate with: openssl rand -base64 32
     daily_salt_secret: "CHANGE-ME-TO-SECURE-RANDOM-STRING"
     rate_limit_per_minute: 100
     app_host: "https://analytics.example.com"
-    js_namespace: "MyAnalytics"
+    js_namespace: "Aggregate"
+    admin_username: "admin"
+    admin_password: "CHANGE-ME-TO-SECURE-PASSWORD"
 
   test:
     database_url: "postgresql://app:!ChangeMe!@database:5432/app_test?serverVersion=16"
     messenger_transport_dsn: "doctrine://default"
     daily_salt_secret: "test-salt"
     rate_limit_per_minute: 1000
-    js_namespace: "MyAnalytics"
+    js_namespace: "Aggregate"
 
 # Option 2: Flat configuration (applies to all environments unless overridden)
 # Uncomment and use these if you prefer a simpler single-environment setup:
@@ -40,15 +51,36 @@ environments:
 # daily_salt_secret: "CHANGE-ME-TO-RANDOM-STRING"
 # rate_limit_per_minute: 100
 # app_host: "https://analytics.example.com"
-# js_namespace: "MyAnalytics"
+# js_namespace: "Aggregate"
 
 # Configuration options:
 #
 # database_url (required)
-#   Database connection string. Examples:
-#   - PostgreSQL: postgresql://user:pass@host:5432/dbname?serverVersion=16
-#   - MySQL:      mysql://user:pass@host:3306/dbname?serverVersion=8.0
-#   - SQLite:     sqlite:///%kernel.project_dir%/var/data.db
+#   Database connection string. All major databases are supported:
+#
+#   PostgreSQL (Recommended for production):
+#     postgresql://user:pass@host:5432/dbname?serverVersion=16
+#     postgresql://user:pass@host:5432/dbname?serverVersion=15
+#
+#   MySQL:
+#     mysql://user:pass@host:3306/dbname?serverVersion=8.0
+#     mysql://user:pass@host:3306/dbname?serverVersion=8.4
+#
+#   MariaDB:
+#     mysql://user:pass@host:3306/dbname?serverVersion=mariadb-10.11
+#     mysql://user:pass@host:3306/dbname?serverVersion=mariadb-11.4
+#
+#   Microsoft SQL Server:
+#     sqlsrv://user:pass@host:1433/dbname?serverVersion=2019
+#     sqlsrv://user:pass@host:1433/dbname?serverVersion=2022
+#
+#   SQLite (Development/Small deployments):
+#     sqlite:///%kernel.project_dir%/var/data.db
+#
+#   Notes:
+#   - serverVersion must match your database version for optimal performance
+#   - For MS SQL Server, requires pdo_sqlsrv PHP extension
+#   - MariaDB uses mysql:// driver with serverVersion prefix
 #
 # messenger_transport_dsn (required)
 #   Message queue transport:
@@ -66,6 +98,6 @@ environments:
 # app_host (optional)
 #   Public hostname for documentation and script generation
 #
-# js_namespace (optional, default: MyAnalytics)
+# js_namespace (optional, default: Aggregate)
 #   JavaScript global variable name: window.{js_namespace}
-#   Examples: MyAnalytics, Company1Analytics, Tracker
+#   Examples: Aggregate, MyAnalytics, Company1Analytics, Tracker

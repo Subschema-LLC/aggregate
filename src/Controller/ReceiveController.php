@@ -14,6 +14,8 @@ use Symfony\Component\Routing\Annotation\Route;
 use Symfony\Component\Serializer\SerializerInterface;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 
+/* TO DO: UTM parameter or custom handling */
+
 class ReceiveController
 {
     public function __construct(

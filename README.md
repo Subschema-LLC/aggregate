@@ -6,20 +6,39 @@ An open-source, self-hosted, privacy-first analytics system with a two-tier trac
 
 - **Cookieless default tracking (Tier 1)** with server-side anonymization (daily salted IP hash + generalized User-Agent)
 - **Consent-based tracking (Tier 2)** with optional visitorId/sessionId when consent is granted
+- **Privacy-compliant session cookies**: Only set with consent, 30-minute expiry, SameSite=Lax, Secure
+- **GDPR, CCPA, ePrivacy compliant**: Full compliance guide included (see [docs/PRIVACY-COMPLIANCE.md](docs/PRIVACY-COMPLIANCE.md))
 - **Fast ingestion** via Symfony Messenger and background worker
 - **Domain whitelisting** and per-IP rate limiting
+- **Multi-database support**: PostgreSQL, MySQL, MariaDB, MS SQL Server, and SQLite via YAML configuration
 - **Self-hosted**: Full control over your data
-- **Easy setup**: One-command installation with Docker
+- **Easy setup**: One-command installation with Docker or native
 
 ## Requirements
 
+**Choose your deployment method:**
+
+### Option A: Docker (Recommended for Development)
 - Docker and Docker Compose
 - (Optional) Make for simplified commands
-- (Optional) PHP 8.2+ for local development without Docker
+
+### Option B: Native Installation (Production/Shared Hosting)
+- PHP 8.2+ with extensions: `ctype`, `iconv`, `pdo`, `mbstring`, `xml`, `curl`, `intl`
+- **Database** (choose one):
+  - PostgreSQL 13+ (recommended for production)
+  - MySQL 5.7+ or 8.0+
+  - MariaDB 10.6+ or 11.x
+  - Microsoft SQL Server 2017+ (requires `pdo_sqlsrv`)
+  - SQLite 3 (development/small sites)
+- Composer
+- Supervisor or systemd (for background worker)
+- Web server (Nginx, Apache, or FrankenPHP)
 
 ## Quick Start
 
-### Using Make (Recommended)
+### Option A: Docker Setup (Recommended for Development)
+
+**Using Make (Recommended):**
 
 ```bash
 # Clone the repository
@@ -46,7 +65,7 @@ make create-website
 make status
 ```
 
-### Manual Setup
+**Manual Docker Setup:**
 
 ```bash
 # 1. Clone and configure
@@ -75,6 +94,110 @@ docker compose exec -T database psql -U app -d app -c \
   "INSERT INTO websites (name, domain, public_token) VALUES ('My Site', 'example.com', '$(openssl rand -hex 16)');"
 ```
 
+### Option B: Native Installation (Production/Shared Hosting)
+
+**Quick Install Script:**
+
+```bash
+# Clone the repository
+git clone <your-repo-url>
+cd aggregate-sy
+
+# Run the installation script
+chmod +x install.sh
+./install.sh
+```
+
+The script will guide you through:
+- Installing Composer dependencies
+- Configuring the database
+- Setting up the worker service
+- Creating your first website
+
+**Manual Native Setup:**
+
+```bash
+# 1. Clone and install dependencies
+git clone <your-repo-url>
+cd aggregate-sy
+composer install --no-dev --optimize-autoloader
+
+# 2. Configure environment
+cp .env .env.local
+cp config/aggregate.yaml.example config/aggregate.yaml
+
+# 3. Edit configuration files
+nano .env.local
+# Set APP_ENV=prod and APP_SECRET
+
+nano config/aggregate.yaml
+# Configure:
+#   - daily_salt_secret (openssl rand -base64 32)
+#   - database_url (your database connection)
+#   - messenger_transport_dsn
+
+# 4. Set up database
+php bin/console doctrine:database:create
+php bin/console doctrine:migrations:migrate -n
+
+# 5. Compile assets
+php bin/console asset-map:compile
+
+# 6. Set permissions
+chmod -R 755 var/ public/
+chown -R www-data:www-data var/ public/  # Adjust user as needed
+
+# 7. Create a website
+php bin/console app:create-website
+
+# 8. Set up the worker (see Worker Setup section below)
+```
+
+**Worker Setup (Required for Event Processing):**
+
+Choose one method:
+
+**A. Using systemd (Recommended for Linux servers):**
+
+```bash
+# Create service file
+sudo nano /etc/systemd/system/aggregate-worker.service
+
+# Add content from docs/systemd/aggregate-worker.service
+# Then enable and start:
+sudo systemctl enable aggregate-worker
+sudo systemctl start aggregate-worker
+sudo systemctl status aggregate-worker
+```
+
+**B. Using Supervisor:**
+
+```bash
+# Install supervisor
+sudo apt-get install supervisor  # Debian/Ubuntu
+# or
+sudo yum install supervisor      # CentOS/RHEL
+
+# Create config
+sudo nano /etc/supervisor/conf.d/aggregate-worker.conf
+
+# Add content from docs/supervisor/aggregate-worker.conf
+# Then reload:
+sudo supervisorctl reread
+sudo supervisorctl update
+sudo supervisorctl start aggregate-worker:*
+```
+
+**C. Using cron (Simple but less reliable):**
+
+```bash
+# Add to crontab
+crontab -e
+
+# Add this line (runs every minute):
+* * * * * cd /path/to/aggregate-sy && php bin/console messenger:consume async --time-limit=60 >> var/log/worker.log 2>&1
+```
+
 ## Configuration
 
 All configuration is managed through `config/aggregate.yaml`. This file supports:
@@ -98,9 +221,12 @@ nano config/aggregate.yaml
 - `daily_salt_secret`: Secure random string for IP hashing (minimum 16 characters)
   - Generate with: `openssl rand -base64 32`
   - **Critical**: Must be kept secret and unique per installation
-- `database_url`: Database connection string
+- `database_url`: Database connection string (see [Database Guide](docs/DATABASE.md))
   - PostgreSQL: `postgresql://user:pass@host:5432/dbname?serverVersion=16`
   - MySQL: `mysql://user:pass@host:3306/dbname?serverVersion=8.0`
+  - MariaDB: `mysql://user:pass@host:3306/dbname?serverVersion=mariadb-11.4`
+  - SQL Server: `sqlsrv://user:pass@host:1433/dbname?serverVersion=2022`
+  - SQLite: `sqlite:///%kernel.project_dir%/var/data.db`
 - `messenger_transport_dsn`: Message queue configuration
   - Simple: `doctrine://default` (database-backed)
   - Production: `amqp://guest:guest@rabbitmq:5672/%2f/messages` (RabbitMQ)
@@ -108,7 +234,7 @@ nano config/aggregate.yaml
 **Optional Settings:**
 - `rate_limit_per_minute`: API requests per IP (default: 100)
 - `app_host`: Public hostname for documentation
-- `js_namespace`: JavaScript global variable name (default: `MyAnalytics`)
+- `js_namespace`: JavaScript global variable name (default: `Aggregate`)
 
 ### Environment-Specific Configuration
 
@@ -181,7 +307,7 @@ Add to your website:
 
 ```html
 <script>
-  window.MyAnalytics = {
+  window.Aggregate = {
     endpoint: 'https://your-host/api/receive',
     websiteToken: 'your-website-token'
   };
@@ -192,11 +318,11 @@ Add to your website:
 ### Custom Event Tracking
 
 ```javascript
-// Track custom events
-window.MyAnalytics.track('signup-click', { plan_type: 'pro' });
+// Emit custom events
+window.Aggregate.emit('signup-click', { plan_type: 'pro' });
 
 // Enable consent-based tracking (Tier 2)
-window.MyAnalytics.setConsent(true);
+window.Aggregate.setConsent(true);
 ```
 
 ### Testing
@@ -241,45 +367,285 @@ curl -i -X POST http://localhost/api/receive \
 Serve the public file at `/aggregate.js` and embed it on your site:
 ```html
 <script>
-  window.MyAnalytics = {
+  window.Aggregate = {
     endpoint: 'https://your-host/api/receive',
     websiteToken: 'abc-123-def-456'
   };
 </script>
 <script src="https://your-host/aggregate.js" async></script>
 ```
-- It auto-sends a pageview on load.
+- It auto-sends a view on load.
 - For consent-based tracking (Tier 2), call:
 ```js
-window.MyAnalytics.setConsent(true);
+window.Aggregate.setConsent(true);
 ```
-- Track custom events:
+- Emit custom events:
 ```js
-window.MyAnalytics.track('signup-click', { plan_type: 'pro' });
+window.Aggregate.emit('signup-click', { plan_type: 'pro' });
 ```
 
-### Tag Manager Integration
-You can include the script via a tag manager (e.g., Google Tag Manager) using a Custom HTML tag. Two options:
+### Google Tag Manager (GTM) Integration
 
-1) Inline config + external script:
+Complete setup guide for integrating with Google Tag Manager for both pixel tracking and custom event tracking.
+
+#### Step 1: Install the Tracking Pixel in GTM
+
+1. **Create a Custom HTML Tag**
+   - In GTM, go to **Tags** → **New**
+   - Click **Tag Configuration** → **Custom HTML**
+   - Name it: "Analytics Tracking Pixel"
+
+2. **Add the Tracking Script**
+
+   Choose one of these configuration methods:
+
+   **Option A: Inline Configuration (Recommended)**
+   ```html
+   <script>
+     window.Aggregate = {
+       endpoint: 'https://your-analytics-host.com/api/receive',
+       websiteToken: 'your-website-token-here'
+     };
+   </script>
+   <script src="https://your-analytics-host.com/aggregate.js" async></script>
+   ```
+
+   **Option B: Data Attributes (No inline JS)**
+   ```html
+   <script
+     src="https://your-analytics-host.com/aggregate.js"
+     data-endpoint="https://your-analytics-host.com/api/receive"
+     data-website-token="your-website-token-here"
+     async>
+   </script>
+   ```
+
+   **Option C: URL Parameters**
+   ```html
+   <script src="https://your-analytics-host.com/aggregate.js?endpoint=https%3A%2F%2Fyour-analytics-host.com%2Fapi%2Freceive&token=your-website-token-here" async></script>
+   ```
+
+3. **Set the Trigger**
+   - Click **Triggering** → **Choose a trigger**
+   - Select **All Pages** (for view tracking on every page)
+   - Or create a custom trigger for specific pages
+
+4. **Save and Publish**
+   - Click **Save**
+   - Submit changes and publish your GTM container
+
+#### Step 2: Track Custom Events from GTM
+
+**Method A: Using GTM's Custom HTML Tag for Specific Events**
+
+1. Create a new **Custom HTML Tag**
+2. Name it based on the event (e.g., "Track Button Click - CTA")
+3. Add this code:
+   ```html
+   <script>
+     if (window.Aggregate && window.Aggregate.emit) {
+       window.Aggregate.emit('cta_click', {
+         button_text: 'Get Started',
+         location: 'homepage_hero'
+       });
+     }
+   </script>
+   ```
+4. Set a trigger (e.g., click on specific button/element)
+
+**Method B: Using GTM Variables for Dynamic Event Tracking**
+
+1. Create a **Custom HTML Tag**
+2. Name it: "Analytics Custom Event - Generic"
+3. Add this code:
+   ```html
+   <script>
+     (function() {
+       if (window.Aggregate && window.Aggregate.emit) {
+         var eventName = {{Event Name Variable}};
+         var eventData = {
+           category: {{Event Category}},
+           label: {{Event Label}},
+           value: {{Event Value}}
+         };
+         window.Aggregate.emit(eventName, eventData);
+       }
+     })();
+   </script>
+   ```
+4. Create corresponding **User-Defined Variables** in GTM:
+   - `Event Name Variable` (e.g., Data Layer Variable: `eventName`)
+   - `Event Category`, `Event Label`, `Event Value`
+
+5. Trigger this tag using **Custom Events** or **Click Triggers**
+
+#### Step 3: GDPR/Consent Management Integration
+
+If you need to respect user consent before enabling Tier 2 tracking:
+
+1. **Create a Tag for Consent Opt-in**
+   - Tag Type: **Custom HTML**
+   - Name: "Analytics Enable Consent"
+   - Code:
+     ```html
+     <script>
+       if (window.Aggregate && window.Aggregate.setConsent) {
+         window.Aggregate.setConsent(true);
+       }
+     </script>
+     ```
+   - **Trigger**: Fire when user accepts cookies/consent
+     - Example: `consentGranted` Custom Event
+     - Or use your CMP's (Consent Management Platform) built-in triggers
+
+2. **Optional: Pre-enable Consent via Data Attribute**
+   ```html
+   <script
+     src="https://your-analytics-host.com/aggregate.js"
+     data-endpoint="https://your-analytics-host.com/api/receive"
+     data-website-token="your-website-token-here"
+     data-consent="1"
+     async>
+   </script>
+   ```
+
+#### Step 4: Common Event Tracking Examples
+
+**Track Form Submissions**
 ```html
 <script>
-  window.MyAnalytics = { endpoint: 'https://your-host/api/receive', websiteToken: 'abc-123-def-456' };
+  window.Aggregate.emit('form_submit', {
+    form_name: {{Form Name}},
+    form_id: {{Form ID}}
+  });
 </script>
-<script src="https://your-host/aggregate.js" async></script>
 ```
+- **Trigger**: Form Submission trigger for your target form
 
-2) Configure via URL parameters or data-attributes (no inline JS needed):
+**Track Button Clicks**
 ```html
-<!-- URL params -->
-<script src="https://your-host/aggregate.js?endpoint=https%3A%2F%2Fyour-host%2Fapi%2Freceive&token=abc-123-def-456" async></script>
-
-<!-- Or data-attributes -->
-<script src="https://your-host/aggregate.js" data-endpoint="https://your-host/api/receive" data-website-token="abc-123-def-456" async></script>
+<script>
+  window.Aggregate.emit('button_click', {
+    button_text: {{Click Text}},
+    button_url: {{Click URL}},
+    page_url: {{Page URL}}
+  });
+</script>
 ```
-You can also pre-set consent via `consent=1` query param or `data-consent="1"`. The snippet exposes:
-- `window.MyAnalytics.setConsent(true)` to switch to Tier 2 IDs
-- `window.MyAnalytics.track(name, data)` to send custom events
+- **Trigger**: Click - All Elements, filter by Click Classes/IDs
+
+**Track Scroll Depth**
+```html
+<script>
+  window.Aggregate.emit('scroll_depth', {
+    depth_percentage: {{Scroll Depth Threshold}},
+    page_url: {{Page URL}}
+  });
+</script>
+```
+- **Trigger**: Scroll Depth (e.g., 25%, 50%, 75%, 100%)
+
+**Track Video Views**
+```html
+<script>
+  window.Aggregate.emit('video_interaction', {
+    video_title: {{Video Title}},
+    video_action: {{Video Status}},  // 'start', 'pause', 'complete'
+    video_duration: {{Video Duration}},
+    video_percent: {{Video Percent}}
+  });
+</script>
+```
+- **Trigger**: YouTube Video or Video trigger in GTM
+
+**Track E-commerce Events**
+```html
+<script>
+  window.Aggregate.emit('add_to_cart', {
+    product_id: {{Product ID}},
+    product_name: {{Product Name}},
+    product_price: {{Product Price}},
+    quantity: {{Product Quantity}}
+  });
+</script>
+```
+- **Trigger**: Custom Event `addToCart` from Data Layer
+
+#### Step 5: Testing Your GTM Setup
+
+1. **Enable GTM Preview Mode**
+   - In GTM, click **Preview**
+   - Enter your website URL
+
+2. **Check Tag Firing**
+   - Verify "Analytics Tracking Pixel" fires on page load
+   - Verify custom event tags fire when triggered
+
+3. **Monitor Network Requests**
+   - Open browser DevTools → Network tab
+   - Look for POST requests to `/api/receive`
+   - Verify 202 Accepted response
+
+4. **Check Analytics Backend**
+   ```bash
+   # Query database for recent events
+   make logs-worker
+   # Or check your database directly
+   ```
+
+#### Troubleshooting
+
+**Pixel not loading:**
+- Check GTM Preview mode to see if tag fires
+- Verify `https://your-analytics-host.com/aggregate.js` is accessible
+- Check browser console for errors
+
+**Events not tracking:**
+- Verify `window.Aggregate.emit` is available in browser console
+- Ensure tracking pixel loaded before custom event tags fire
+- Add tag sequencing: Make custom event tags wait for pixel tag
+
+**403 Forbidden errors:**
+- Verify your domain is correctly set in the `websites` table
+- Check `Origin` header is being sent (subdomains are auto-allowed)
+
+**429 Too Many Requests:**
+- Increase `rate_limit_per_minute` in `config/aggregate.yaml`
+- Check for infinite loops in your event tracking code
+
+#### Advanced: Using dataLayer for Event Tracking
+
+Push events to GTM's dataLayer, then capture with a single generic tag:
+
+```javascript
+// On your website
+window.dataLayer = window.dataLayer || [];
+dataLayer.push({
+  'event': 'customAnalyticsEvent',
+  'eventName': 'signup_click',
+  'eventData': {
+    'plan': 'pro',
+    'source': 'pricing_page'
+  }
+});
+```
+
+**GTM Tag Configuration:**
+1. Create trigger: Custom Event = `customAnalyticsEvent`
+2. Create tag:
+   ```html
+   <script>
+     if (window.Aggregate && window.Aggregate.emit) {
+       window.Aggregate.emit(
+         {{DLV - eventName}},
+         {{DLV - eventData}}
+       );
+     }
+   </script>
+   ```
+3. Create Data Layer Variables:
+   - `DLV - eventName` → Data Layer Variable Name: `eventName`
+   - `DLV - eventData` → Data Layer Variable Name: `eventData`
 
 ## Security & Privacy
 
@@ -290,10 +656,31 @@ The `/api/receive` endpoint checks the `Origin` or `Referer` header against the 
 Simple per-IP rate limiting (default: 100 requests/minute) prevents abuse. Stored in `var/rate_limit/` directory.
 
 ### Privacy Features
-- **Daily IP hashing**: IPs are immediately hashed with current UTC date + `DAILY_SALT_SECRET`, making cross-day tracking impossible
-- **No PII storage**: Raw IP addresses are never stored
-- **User-Agent generalization**: Full User-Agent strings are generalized to basic categories (e.g., "Chrome on Desktop")
-- **Cookieless by default**: No cookies or client-side storage unless user provides consent
+
+**Two-Tier Tracking System:**
+
+**Tier 1 (Default - No Consent Required):**
+- ✅ **Cookieless tracking**: No cookies or persistent identifiers
+- ✅ **Daily IP hashing**: IPs are immediately hashed with current UTC date + `DAILY_SALT_SECRET`, making cross-day tracking impossible
+- ✅ **No PII storage**: Raw IP addresses are never stored
+- ✅ **User-Agent generalization**: Full User-Agent strings are generalized to basic categories (e.g., "Chrome on Desktop")
+- ✅ **Anonymous by design**: Cannot identify individual users
+- ✅ **GDPR Article 6(1)(f)**: Legitimate interest basis
+
+**Tier 2 (Requires Explicit Consent):**
+- 📝 **Session cookie**: `aggregate_session` (30-minute expiry, SameSite=Lax, Secure on HTTPS)
+- 📝 **Visitor ID**: Stored in localStorage for cross-session tracking
+- 📝 **Session ID**: Stored in sessionStorage and session cookie
+- 📝 **Consent-based**: Only activated when `window.Aggregate.setConsent(true)` is called
+- 📝 **Revocable**: Call `window.Aggregate.setConsent(false)` to withdraw consent and delete all data
+
+**Privacy Compliance:**
+- ✅ **GDPR compliant** (EU): Consent-based processing, data minimization, storage limitation
+- ✅ **CCPA compliant** (California): No sale of data, user control, disclosure requirements
+- ✅ **ePrivacy Directive** (EU): Prior consent for cookies, information requirements
+- ✅ **PECR compliant** (UK): Soft opt-in, clear information, easy rejection
+
+📖 **Full compliance guide**: [docs/PRIVACY-COMPLIANCE.md](docs/PRIVACY-COMPLIANCE.md)
 
 ## Data Model
 

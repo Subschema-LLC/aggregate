@@ -3,7 +3,7 @@
 namespace App\MessageHandler;
 
 use App\Entity\Event;
-use App\Entity\PageView;
+use App\Entity\View;
 use App\Repository\WebsiteRepository;
 use App\Message\TrackEventMessage;
 use App\Service\AggregateConfigLoader;
@@ -31,21 +31,23 @@ class TrackEventHandler
         $ua = $this->generalizeUserAgent($msg->userAgent);
 
         // Always record a page view (default mode)
-        $pv = (new PageView())
+        $pv = (new View())
             ->setWebsite($website)
             ->setUrl($msg->url)
             ->setReferrer($msg->referrer)
             ->setDailyIpHash($hash)
             ->setGeneralizedUserAgent($ua)
-            ->setScreenWidth($msg->screenWidth);
+            ->setScreenWidth($msg->screenWidth)
+            ->setSessionId($msg->sessionId);
         $this->em->persist($pv);
 
         if ($msg->eventName) {
             $ev = (new Event())
                 ->setWebsite($website)
-                ->setPageView($pv)
+                ->setView($pv)
                 ->setEventName($msg->eventName)
-                ->setCustomData($this->sanitizeEventData($msg->eventData));
+                ->setCustomData($this->sanitizeEventData($msg->eventData))
+                ->setSessionId($msg->sessionId);
             $this->em->persist($ev);
         }
 

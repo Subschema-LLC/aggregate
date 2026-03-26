@@ -15,7 +15,7 @@ class ScriptController
     #[Route('/aggregate.js', name: 'aggregate_script', methods: ['GET'])]
     public function __invoke(): Response
     {
-        $namespace = $this->config->getWithEnvFallback('js_namespace', 'MyAnalytics');
+        $namespace = $this->config->getWithEnvFallback('js_namespace', 'Aggregate');
 
         $scriptPath = __DIR__ . '/../../public/aggregate.js';
         if (!file_exists($scriptPath)) {
@@ -27,7 +27,7 @@ class ScriptController
         // Replace the default namespace with configured one
         // This allows users to set it once in config instead of via data-attribute
         $content = preg_replace(
-            "/var namespace = 'MyAnalytics';/",
+            "/var namespace = 'Aggregate';/",
             "var namespace = '" . addslashes($namespace) . "';",
             $content
         );
