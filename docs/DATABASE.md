@@ -16,13 +16,10 @@ Aggregate Analytics supports **PostgreSQL**, **MySQL**, **MariaDB**, **Microsoft
 
 ## Quick Reference
 
-Configure your database in `config/aggregate.yaml`:
+Set `DATABASE_URL` in your `.env` file (project root, not committed to git):
 
-```yaml
-environments:
-  prod:
-    database_url: "DATABASE_CONNECTION_STRING_HERE"
-    # ... other settings
+```dotenv
+DATABASE_URL="DATABASE_CONNECTION_STRING_HERE"
 ```
 
 ### Connection String Format
@@ -82,12 +79,9 @@ GRANT ALL PRIVILEGES ON DATABASE analytics TO analytics_user;
 GRANT ALL ON SCHEMA public TO analytics_user;
 ```
 
-**2. Configure connection:**
-```yaml
-# config/aggregate.yaml
-environments:
-  prod:
-    database_url: "postgresql://analytics_user:your_secure_password@localhost:5432/analytics?serverVersion=16"
+**2. Configure connection in `.env`:**
+```dotenv
+DATABASE_URL="postgresql://analytics_user:your_secure_password@localhost:5432/analytics?serverVersion=16"
 ```
 
 **3. Run migrations:**
@@ -107,9 +101,8 @@ php bin/console doctrine:migrations:migrate -n
 ### Performance Tuning
 
 **Indexes (automatically created by migrations):**
-- `page_views.website_id`
 - `events.website_id`
-- `events.page_view_id`
+- `events.session_id`
 - `websites.public_token` (unique)
 
 **Recommended settings for analytics workload:**
@@ -166,12 +159,9 @@ GRANT ALL PRIVILEGES ON analytics.* TO 'analytics_user'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
-**2. Configure connection:**
-```yaml
-# config/aggregate.yaml
-environments:
-  prod:
-    database_url: "mysql://analytics_user:your_secure_password@localhost:3306/analytics?serverVersion=8.0"
+**2. Configure connection in `.env`:**
+```dotenv
+DATABASE_URL="mysql://analytics_user:your_secure_password@localhost:3306/analytics?serverVersion=8.0"
 ```
 
 **3. Run migrations:**
@@ -229,15 +219,12 @@ GRANT ALL PRIVILEGES ON analytics.* TO 'analytics_user'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
-**2. Configure connection:**
+**2. Configure connection in `.env`:**
 
 **Important:** Use `mariadb-` prefix in serverVersion!
 
-```yaml
-# config/aggregate.yaml
-environments:
-  prod:
-    database_url: "mysql://analytics_user:your_secure_password@localhost:3306/analytics?serverVersion=mariadb-11.4"
+```dotenv
+DATABASE_URL="mysql://analytics_user:your_secure_password@localhost:3306/analytics?serverVersion=mariadb-11.4"
 ```
 
 **3. Run migrations:**
@@ -312,12 +299,9 @@ ALTER ROLE db_owner ADD MEMBER analytics_user;
 GO
 ```
 
-**2. Configure connection:**
-```yaml
-# config/aggregate.yaml
-environments:
-  prod:
-    database_url: "sqlsrv://analytics_user:YourSecurePassword123!@localhost:1433/analytics?serverVersion=2022"
+**2. Configure connection in `.env`:**
+```dotenv
+DATABASE_URL="sqlsrv://analytics_user:YourSecurePassword123!@localhost:1433/analytics?serverVersion=2022"
 ```
 
 **3. Run migrations:**
@@ -337,18 +321,18 @@ php bin/console doctrine:migrations:migrate -n
 ### Connection String Options
 
 **Named Instance:**
-```yaml
-database_url: "sqlsrv://user:pass@localhost\\INSTANCENAME:1433/dbname?serverVersion=2022"
+```dotenv
+DATABASE_URL="sqlsrv://user:pass@localhost\\INSTANCENAME:1433/dbname?serverVersion=2022"
 ```
 
 **Integrated Authentication (Windows):**
-```yaml
-database_url: "sqlsrv://localhost:1433/analytics?serverVersion=2022&TrustServerCertificate=yes"
+```dotenv
+DATABASE_URL="sqlsrv://localhost:1433/analytics?serverVersion=2022&TrustServerCertificate=yes"
 ```
 
 **Azure SQL Database:**
-```yaml
-database_url: "sqlsrv://user@server:pass@servername.database.windows.net:1433/analytics?serverVersion=2019&Encrypt=yes"
+```dotenv
+DATABASE_URL="sqlsrv://user@server:pass@servername.database.windows.net:1433/analytics?serverVersion=2019&Encrypt=yes"
 ```
 
 ### Troubleshooting
@@ -386,12 +370,9 @@ sudo apt-get install php8.2-sqlite3
 
 ### Setup
 
-**1. Configure connection:**
-```yaml
-# config/aggregate.yaml
-environments:
-  dev:
-    database_url: "sqlite:///%kernel.project_dir%/var/data.db"
+**1. Configure connection in `.env`:**
+```dotenv
+DATABASE_URL="sqlite:///%kernel.project_dir%/var/data.db"
 ```
 
 **2. Run migrations:**
@@ -457,7 +438,7 @@ $websites->addColumn('name', 'string', ['length' => 191]);
    mysqldump analytics > backup.sql
    ```
 
-2. **Update `config/aggregate.yaml` with new database URL**
+2. **Update `DATABASE_URL` in your `.env` file**
 
 3. **Create new database schema:**
    ```bash

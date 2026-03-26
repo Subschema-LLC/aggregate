@@ -10,7 +10,7 @@ An open-source, self-hosted, privacy-first analytics system with a two-tier trac
 - **GDPR, CCPA, ePrivacy compliant**: Full compliance guide included (see [docs/PRIVACY-COMPLIANCE.md](docs/PRIVACY-COMPLIANCE.md))
 - **Fast ingestion** via Symfony Messenger and background worker
 - **Domain whitelisting** and per-IP rate limiting
-- **Multi-database support**: PostgreSQL, MySQL, MariaDB, MS SQL Server, and SQLite via YAML configuration
+- **Multi-database support**: PostgreSQL, MySQL, MariaDB, MS SQL Server, and SQLite
 - **Self-hosted**: Full control over your data
 - **Easy setup**: One-command installation with Docker or native
 
@@ -45,12 +45,9 @@ An open-source, self-hosted, privacy-first analytics system with a two-tier trac
 git clone <your-repo-url>
 cd aggregate-sy
 
-# Copy and edit configuration
+# Copy and edit app configuration (salt, rate limit, js namespace)
 cp config/aggregate.yaml.example config/aggregate.yaml
 nano config/aggregate.yaml
-
-# Generate a secure secret (use this for daily_salt_secret)
-openssl rand -base64 32
 
 # Start services
 make start
@@ -58,12 +55,11 @@ make start
 # Run migrations
 make migrate
 
-# Create your first website
-make create-website
-
 # Check system status
 make status
 ```
+
+Then open `http://localhost/install` in your browser to complete setup (create admin account, configure settings).
 
 **Manual Docker Setup:**
 
@@ -72,47 +68,20 @@ make status
 git clone <your-repo-url>
 cd aggregate-sy
 
-# 2. Copy configuration file
+# 2. Copy app configuration
 cp config/aggregate.yaml.example config/aggregate.yaml
-
-# 3. Edit config/aggregate.yaml
 nano config/aggregate.yaml
 
-# Set at minimum:
-#   - daily_salt_secret (generate with: openssl rand -base64 32)
-#   - database_url
-#   - messenger_transport_dsn
-
-# 4. Start services
+# 3. Start services
 docker compose up -d
 
-# 5. Run migrations
+# 4. Run migrations
 docker compose exec php php bin/console doctrine:migrations:migrate -n
 
-# 6. Create a website
-docker compose exec -T database psql -U app -d app -c \
-  "INSERT INTO websites (name, domain, public_token) VALUES ('My Site', 'example.com', '$(openssl rand -hex 16)');"
+# 5. Open http://localhost/install to complete web installer
 ```
 
 ### Option B: Native Installation (Production/Shared Hosting)
-
-**Quick Install Script:**
-
-```bash
-# Clone the repository
-git clone <your-repo-url>
-cd aggregate-sy
-
-# Run the installation script
-chmod +x install.sh
-./install.sh
-```
-
-The script will guide you through:
-- Installing Composer dependencies
-- Configuring the database
-- Setting up the worker service
-- Creating your first website
 
 **Manual Native Setup:**
 
@@ -122,33 +91,30 @@ git clone <your-repo-url>
 cd aggregate-sy
 composer install --no-dev --optimize-autoloader
 
-# 2. Configure environment
-cp .env .env.local
+# 2. Create .env in the project root (not committed to git)
+cat > .env <<'EOF'
+APP_ENV=prod
+APP_SECRET=$(openssl rand -hex 32)
+DATABASE_URL="mysql://user:pass@localhost:3306/dbname?serverVersion=8.0"
+MESSENGER_TRANSPORT_DSN=doctrine://default
+MAILER_DSN=null://null
+EOF
+
+# 3. Copy app configuration
 cp config/aggregate.yaml.example config/aggregate.yaml
 
-# 3. Edit configuration files
-nano .env.local
-# Set APP_ENV=prod and APP_SECRET
-
-nano config/aggregate.yaml
-# Configure:
-#   - daily_salt_secret (openssl rand -base64 32)
-#   - database_url (your database connection)
-#   - messenger_transport_dsn
-
-# 4. Set up database
-php bin/console doctrine:database:create
+# 4. Run migrations
 php bin/console doctrine:migrations:migrate -n
 
 # 5. Compile assets
 php bin/console asset-map:compile
 
 # 6. Set permissions
-chmod -R 755 var/ public/
+chmod -R 775 var/
 chown -R www-data:www-data var/ public/  # Adjust user as needed
 
-# 7. Create a website
-php bin/console app:create-website
+# 7. Open https://your-domain.com/install in your browser
+#    The web installer will collect admin credentials and finalize setup.
 
 # 8. Set up the worker (see Worker Setup section below)
 ```
@@ -200,61 +166,49 @@ crontab -e
 
 ## Configuration
 
-All configuration is managed through `config/aggregate.yaml`. This file supports:
+Configuration is split between two places:
 
-1. **Environment-specific configuration** (recommended for multiple environments)
-2. **Flat configuration** (simple single-environment setup)
-3. **Separate files** per environment (`aggregate_dev.yaml`, `aggregate_prod.yaml`, etc.)
+- **`.env`** (server-level, never committed to git): Symfony infrastructure — database connection, message queue, app secret.
+- **`config/aggregate.yaml`** (app-level, example committed): Analytics-specific settings — daily salt, rate limit, JS namespace.
 
-### Quick Setup
+The web installer at `/install` sets up `aggregate.yaml` automatically on first run.
 
-Copy the example file and edit it:
+### Environment File (`.env`)
+
+Create `.env` in the project root (copy from `.env.dev` or `.env.prod` as a starting point):
+
+```bash
+APP_ENV=prod
+APP_SECRET=generate-with-openssl-rand-hex-32
+DATABASE_URL="mysql://user:pass@localhost:3306/dbname?serverVersion=8.0"
+MESSENGER_TRANSPORT_DSN=doctrine://default
+MAILER_DSN=null://null
+```
+
+Connection string formats for `DATABASE_URL` (see [Database Guide](docs/DATABASE.md)):
+- PostgreSQL: `postgresql://user:pass@host:5432/dbname?serverVersion=16`
+- MySQL: `mysql://user:pass@host:3306/dbname?serverVersion=8.0`
+- MariaDB: `mysql://user:pass@host:3306/dbname?serverVersion=mariadb-11.4`
+- SQL Server: `sqlsrv://user:pass@host:1433/dbname?serverVersion=2022`
+- SQLite: `sqlite:///%kernel.project_dir%/var/data.db`
+
+### App Configuration (`config/aggregate.yaml`)
+
+Copy the example and adjust as needed:
 
 ```bash
 cp config/aggregate.yaml.example config/aggregate.yaml
-nano config/aggregate.yaml
 ```
 
-### Configuration Options
-
-**Required Settings:**
-- `daily_salt_secret`: Secure random string for IP hashing (minimum 16 characters)
-  - Generate with: `openssl rand -base64 32`
-  - **Critical**: Must be kept secret and unique per installation
-- `database_url`: Database connection string (see [Database Guide](docs/DATABASE.md))
-  - PostgreSQL: `postgresql://user:pass@host:5432/dbname?serverVersion=16`
-  - MySQL: `mysql://user:pass@host:3306/dbname?serverVersion=8.0`
-  - MariaDB: `mysql://user:pass@host:3306/dbname?serverVersion=mariadb-11.4`
-  - SQL Server: `sqlsrv://user:pass@host:1433/dbname?serverVersion=2022`
-  - SQLite: `sqlite:///%kernel.project_dir%/var/data.db`
-- `messenger_transport_dsn`: Message queue configuration
-  - Simple: `doctrine://default` (database-backed)
-  - Production: `amqp://guest:guest@rabbitmq:5672/%2f/messages` (RabbitMQ)
-
-**Optional Settings:**
-- `rate_limit_per_minute`: API requests per IP (default: 100)
-- `app_host`: Public hostname for documentation
+**Settings:**
+- `daily_salt_secret`: Auto-generated by the web installer if not set. Can also be generated with `openssl rand -base64 32`.
+- `rate_limit_per_minute`: API requests per IP per minute (default: `100`)
+- `app_host`: Public hostname, used in dashboard integration snippets
 - `js_namespace`: JavaScript global variable name (default: `Aggregate`)
-
-### Environment-Specific Configuration
-
-Use the `environments` section in `aggregate.yaml`:
-
-```yaml
-environments:
-  dev:
-    daily_salt_secret: "dev-secret-CHANGE-IN-PROD"
-    database_url: "postgresql://app:password@localhost:5432/app_dev"
-    
-  prod:
-    daily_salt_secret: "SECURE-RANDOM-STRING-HERE"
-    database_url: "postgresql://app:password@db-server:5432/app"
-    rate_limit_per_minute: 100
-```
 
 ### Customizing the JavaScript Namespace
 
-Set `js_namespace` in `config/aggregate.yaml`:
+Set `js_namespace` in `config/aggregate.yaml` (or via the web installer):
 
 ```yaml
 js_namespace: "Company1Analytics"
@@ -273,7 +227,7 @@ window.Company1Analytics.track('signup', {plan: 'pro'});
 
 ### Environment Variable Override
 
-Any setting in `aggregate.yaml` can be overridden with environment variables (uppercase with underscores):
+App-specific settings from `aggregate.yaml` can be overridden with environment variables:
 
 ```bash
 export DAILY_SALT_SECRET="override-value"
@@ -610,7 +564,7 @@ If you need to respect user consent before enabling Tier 2 tracking:
 - Check `Origin` header is being sent (subdomains are auto-allowed)
 
 **429 Too Many Requests:**
-- Increase `rate_limit_per_minute` in `config/aggregate.yaml`
+- Increase `rate_limit_per_minute` in `config/aggregate.yaml` (or via the web installer)
 - Check for infinite loops in your event tracking code
 
 #### Advanced: Using dataLayer for Event Tracking
@@ -687,11 +641,20 @@ Simple per-IP rate limiting (default: 100 requests/minute) prevents abuse. Store
 **websites**
 - `id`, `name`, `domain`, `public_token`
 
-**page_views**
-- `id`, `website_id`, `url`, `referrer`, `daily_ip_hash`, `generalized_user_agent`, `screen_width`, `created_at`
+**events** (single table — page views are events with `event_name = 'view'`)
+- `id`, `website_id`, `event_name`, `url`, `referrer`, `daily_ip_hash`, `generalized_user_agent`, `screen_width`, `session_id`, `custom_data` (JSON), `created_at`
 
-**events**
-- `id`, `website_id`, `page_view_id`, `event_name`, `custom_data` (JSON), `created_at`
+Query examples for BI tools (PowerBI, Looker, Tableau) — no joins needed:
+```sql
+-- Page views only
+SELECT * FROM events WHERE event_name = 'view';
+
+-- Custom events only
+SELECT * FROM events WHERE event_name != 'view';
+
+-- All events with context
+SELECT * FROM events;
+```
 
 ## Production Considerations
 

@@ -21,19 +21,18 @@ This guide covers both Docker and native (non-Docker) deployment methods for Agg
 git clone <repo-url>
 cd aggregate-sy
 
-# Configure
+# Copy app configuration (salt, rate limit, js namespace)
 cp config/aggregate.yaml.example config/aggregate.yaml
-nano config/aggregate.yaml  # Set daily_salt_secret and other settings
+nano config/aggregate.yaml
 
 # Start services
 make start
 
 # Run migrations
 make migrate
-
-# Create website
-make create-website
 ```
+
+Then open `http://localhost/install` in your browser to complete setup.
 
 ### Docker Architecture
 
@@ -92,31 +91,34 @@ The installer will:
 # 1. Install dependencies
 composer install --no-dev --optimize-autoloader
 
-# 2. Configure environment
-cp .env .env.local
-nano .env.local
-# Set APP_ENV=prod and APP_SECRET
+# 2. Create .env in project root (never committed to git)
+#    This is your server's environment file.
+cat > .env <<'EOF'
+APP_ENV=prod
+APP_DEBUG=0
+APP_SECRET=change-me-use-openssl-rand-hex-32
+DATABASE_URL="mysql://user:pass@localhost:3306/dbname?serverVersion=8.0"
+MESSENGER_TRANSPORT_DSN=doctrine://default
+MAILER_DSN=null://null
+EOF
 
-# 3. Configure application
+# 3. Copy app configuration
 cp config/aggregate.yaml.example config/aggregate.yaml
-nano config/aggregate.yaml
-# Set daily_salt_secret (openssl rand -base64 32)
-# Configure database_url
-# Configure messenger_transport_dsn
+# Optionally edit daily_salt_secret, rate_limit_per_minute, app_host, js_namespace
+# The web installer will auto-generate daily_salt_secret if not set.
 
-# 4. Set up database
-php bin/console doctrine:database:create
+# 4. Run migrations
 php bin/console doctrine:migrations:migrate -n
 
 # 5. Compile assets
 php bin/console asset-map:compile
 
 # 6. Set permissions
-chmod -R 755 var/ public/
+chmod -R 775 var/
 chown -R www-data:www-data var/ public/
 
-# 7. Create website
-php bin/console app:create-website
+# 7. Open https://your-domain.com/install — the web installer will
+#    collect admin credentials and finalize configuration.
 ```
 
 ---
@@ -290,8 +292,9 @@ sudo certbot --nginx -d analytics.example.com
 ```
 
 **2. Secure secrets:**
-- Never commit `.env.local` or `config/aggregate.yaml` with production secrets
-- Use strong `daily_salt_secret` (32+ characters)
+- Never commit `.env` (server-specific env file) to version control — it is gitignored by default
+- `config/aggregate.yaml` should not contain production secrets if committed; use the `environments:` structure and keep the example file committed only
+- Use strong `daily_salt_secret` (32+ characters); the web installer auto-generates one
 - Rotate secrets periodically
 
 **3. Database access:**
@@ -314,7 +317,7 @@ chown -R www-data:www-data var/ public/
 
 **1. Use production environment:**
 ```bash
-# In .env.local
+# In .env (your server's environment file)
 APP_ENV=prod
 APP_DEBUG=0
 ```
@@ -332,11 +335,11 @@ opcache.validate_timestamps=0  ; Disable for production
 SQLite is fine for small deployments, but use PostgreSQL or MySQL for production.
 
 **4. Use Redis or RabbitMQ for messaging:**
-```yaml
-# config/aggregate.yaml
-messenger_transport_dsn: "amqp://user:pass@rabbitmq:5672/%2f/messages"
+```bash
+# In .env
+MESSENGER_TRANSPORT_DSN="amqp://user:pass@rabbitmq:5672/%2f/messages"
 # or
-messenger_transport_dsn: "redis://localhost:6379/messages"
+MESSENGER_TRANSPORT_DSN="redis://localhost:6379/messages"
 ```
 
 **5. Scale workers:**
@@ -383,8 +386,11 @@ tail -f /var/log/nginx/aggregate_error.log
 
 **4. Database monitoring:**
 ```sql
--- Check recent events
-SELECT COUNT(*) FROM page_views WHERE created_at > NOW() - INTERVAL '1 hour';
+-- Check recent page views (last hour)
+SELECT COUNT(*) FROM events WHERE event_name = 'view' AND created_at > NOW() - INTERVAL 1 HOUR;
+
+-- Check recent custom events (last hour)
+SELECT COUNT(*) FROM events WHERE event_name != 'view' AND created_at > NOW() - INTERVAL 1 HOUR;
 
 -- Check websites
 SELECT * FROM websites;
@@ -403,8 +409,8 @@ mysqldump -u dbuser -p dbname > backup_$(date +%Y%m%d).sql
 
 **2. Application backups:**
 ```bash
-# Backup config
-tar -czf config_backup_$(date +%Y%m%d).tar.gz config/ .env.local
+# Backup config (include .env and aggregate.yaml — keep secure!)
+tar -czf config_backup_$(date +%Y%m%d).tar.gz .env config/aggregate.yaml
 
 # Full backup (exclude vendor and cache)
 tar -czf app_backup_$(date +%Y%m%d).tar.gz \
@@ -472,9 +478,10 @@ chown -R www-data:www-data var/ public/
 
 ### Database connection errors
 
-- Verify credentials in `config/aggregate.yaml`
+- Verify `DATABASE_URL` in your `.env` file
 - Check database is running
 - Test connection: `php bin/console doctrine:query:sql "SELECT 1"`
+- Note: Special characters in passwords must be URL-encoded (`%` → `%25`, `@` → `%40`)
 
 ### 500 errors
 

@@ -8,8 +8,11 @@ use Symfony\Component\HttpKernel\Event\RequestEvent;
 use Symfony\Component\HttpKernel\KernelEvents;
 
 /**
- * Loads config from aggregate.yaml and makes it available as environment variables
- * for Doctrine, Messenger, and other Symfony components that expect env vars.
+ * Loads app-specific config from aggregate.yaml and exposes it as env vars
+ * for Symfony components that expect them.
+ *
+ * DATABASE_URL and MESSENGER_TRANSPORT_DSN are standard Symfony env vars
+ * configured in .env files — they are NOT managed here.
  */
 class ConfigEnvVarListener implements EventSubscriberInterface
 {
@@ -21,7 +24,6 @@ class ConfigEnvVarListener implements EventSubscriberInterface
 
     public static function getSubscribedEvents(): array
     {
-        // Run early, before most other listeners
         return [
             KernelEvents::REQUEST => ['onKernelRequest', 1024],
         ];
@@ -35,9 +37,6 @@ class ConfigEnvVarListener implements EventSubscriberInterface
 
         self::$loaded = true;
 
-        // Export config values as environment variables if not already set
-        $this->setEnvIfNotExists('DATABASE_URL', $this->config->get('database_url'));
-        $this->setEnvIfNotExists('MESSENGER_TRANSPORT_DSN', $this->config->get('messenger_transport_dsn'));
         $this->setEnvIfNotExists('DAILY_SALT_SECRET', $this->config->get('daily_salt_secret'));
         $this->setEnvIfNotExists('RATE_LIMIT_PER_MINUTE', $this->config->get('rate_limit_per_minute'));
         $this->setEnvIfNotExists('APP_HOST', $this->config->get('app_host'));
@@ -50,7 +49,6 @@ class ConfigEnvVarListener implements EventSubscriberInterface
             return;
         }
 
-        // Only set if not already defined
         if (!isset($_ENV[$key]) && !isset($_SERVER[$key])) {
             $_ENV[$key] = (string) $value;
             $_SERVER[$key] = (string) $value;
