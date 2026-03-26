@@ -32,7 +32,6 @@ class AggregateConfigLoader
         // Try main aggregate.yaml
         $mainFile = $this->projectDir . '/config/aggregate.yaml';
         if (!file_exists($mainFile)) {
-            // No config file, return empty config
             return;
         }
 
@@ -42,11 +41,9 @@ class AggregateConfigLoader
         if (isset($data['environments'][$this->environment])) {
             $this->config = $data['environments'][$this->environment];
         } elseif (isset($data['environments'])) {
-            // environments key exists but current env not defined
             $this->config = [];
         } else {
-            // Flat structure - use root level values
-            unset($data['environments']); // Remove if accidentally present
+            unset($data['environments']);
             $this->config = $data;
         }
     }
@@ -70,20 +67,49 @@ class AggregateConfigLoader
     }
 
     /**
+     * Persist a key/value into the config file and in-memory config.
+     * Handles both flat and environments-nested yaml structures.
+     */
+    public function set(string $key, mixed $value): void
+    {
+        $this->load();
+        $this->config[$key] = $value;
+
+        // Prefer environment-specific file if it was the source
+        $envFile = $this->projectDir . '/config/aggregate_' . $this->environment . '.yaml';
+        if (file_exists($envFile)) {
+            $data = Yaml::parseFile($envFile) ?? [];
+            $data[$key] = $value;
+            file_put_contents($envFile, Yaml::dump($data, 4, 2));
+            return;
+        }
+
+        $mainFile = $this->projectDir . '/config/aggregate.yaml';
+        $data = file_exists($mainFile) ? (Yaml::parseFile($mainFile) ?? []) : [];
+
+        if (isset($data['environments'][$this->environment])) {
+            $data['environments'][$this->environment][$key] = $value;
+        } elseif (isset($data['environments'])) {
+            $data['environments'][$this->environment][$key] = $value;
+        } else {
+            $data[$key] = $value;
+        }
+
+        file_put_contents($mainFile, Yaml::dump($data, 4, 2));
+    }
+
+    /**
      * Get a config value, checking both aggregate.yaml and environment variables.
      * Environment variables take precedence.
      */
     public function getWithEnvFallback(string $key, mixed $default = null): mixed
     {
-        // Convert snake_case to UPPER_CASE for env var
         $envKey = strtoupper($key);
 
-        // Check environment variable first
         if (isset($_ENV[$envKey])) {
             return $_ENV[$envKey];
         }
 
-        // Fall back to aggregate.yaml
         return $this->get($key, $default);
     }
 }

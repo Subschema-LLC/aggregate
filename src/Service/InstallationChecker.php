@@ -14,11 +14,8 @@ class InstallationChecker
     public function isInstalled(): bool
     {
         try {
-            // Check if any users exist in the database
-            $userCount = $this->userRepository->count([]);
-            return $userCount > 0;
-        } catch (\Exception $e) {
-            // If database is not set up, consider it not installed
+            return $this->userRepository->count([]) > 0;
+        } catch (\Exception) {
             return false;
         }
     }
@@ -26,13 +23,8 @@ class InstallationChecker
     public function isConfigValid(): bool
     {
         try {
-            // Check if required config values exist
-            $adminUsername = $this->config->getWithEnvFallback('admin_username', null);
-            $adminPassword = $this->config->getWithEnvFallback('admin_password', null);
-            $dailySalt = $this->config->getWithEnvFallback('daily_salt_secret', null);
-
-            return !empty($adminUsername) && !empty($adminPassword) && !empty($dailySalt);
-        } catch (\Exception $e) {
+            return !empty($this->config->getWithEnvFallback('database_url', null));
+        } catch (\Exception) {
             return false;
         }
     }
@@ -40,21 +32,13 @@ class InstallationChecker
     public function getConfigErrors(): array
     {
         $errors = [];
-
         try {
-            if (empty($this->config->getWithEnvFallback('admin_username', null))) {
-                $errors[] = 'admin_username is not configured in config/aggregate.yaml';
+            if (empty($this->config->getWithEnvFallback('database_url', null))) {
+                $errors[] = 'database_url is not configured in config/aggregate.yaml';
             }
-            if (empty($this->config->getWithEnvFallback('admin_password', null))) {
-                $errors[] = 'admin_password is not configured in config/aggregate.yaml';
-            }
-            if (empty($this->config->getWithEnvFallback('daily_salt_secret', null))) {
-                $errors[] = 'daily_salt_secret is not configured in config/aggregate.yaml';
-            }
-        } catch (\Exception $e) {
+        } catch (\Exception) {
             $errors[] = 'config/aggregate.yaml file is missing or invalid';
         }
-
         return $errors;
     }
 }
