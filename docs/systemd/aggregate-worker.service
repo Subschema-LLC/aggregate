@@ -1,0 +1,23 @@
+[Unit]
+Description=Aggregate Analytics Worker
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/aggregate-sy
+ExecStart=/usr/bin/php /var/www/aggregate-sy/bin/console messenger:consume async --time-limit=3600 --memory-limit=128M
+Restart=always
+RestartSec=10
+
+# Environment variables
+Environment="APP_ENV=prod"
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aggregate-worker
+
+[Install]
+WantedBy=multi-user.target
