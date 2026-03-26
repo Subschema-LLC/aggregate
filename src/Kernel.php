@@ -13,14 +13,16 @@ class Kernel extends BaseKernel
     {
         parent::boot();
 
-        // Validate critical security configuration
+        // Validate daily_salt_secret only when one has been configured.
+        // During initial install the salt does not exist yet — the installer
+        // generates and persists it before creating the admin user.
         $configLoader = $this->container->get(\App\Service\AggregateConfigLoader::class);
         $salt = $configLoader->getWithEnvFallback('daily_salt_secret', '');
 
-        if (empty($salt) || $salt === 'dev-salt' || strlen($salt) < 16) {
+        if (!empty($salt) && $salt !== 'dev-salt' && strlen($salt) < 16) {
             throw new \RuntimeException(
-                'daily_salt_secret must be set to a secure random string (minimum 16 characters) in config/aggregate.yaml. ' .
-                'Generate one with: openssl rand -base64 32'
+                'daily_salt_secret in config/aggregate.yaml is too short (minimum 16 characters). ' .
+                'Regenerate with: openssl rand -base64 32'
             );
         }
     }
