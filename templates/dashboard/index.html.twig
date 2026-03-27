@@ -112,19 +112,19 @@
 window.{{ js_namespace }}.emit('button_click', {
   button_id: 'signup',
   button_text: 'Sign Up Now'
-});
+}, 'signup_goal');
 
 // Track form submission
 window.{{ js_namespace }}.emit('form_submit', {
   form_name: 'contact',
   form_fields: 3
-});
+}, 'lead_submit');
 
 // Track video play
 window.{{ js_namespace }}.emit('video_play', {
   video_id: 'intro-video',
   video_duration: 120
-});</code></pre>
+}, 'video_engagement');</code></pre>
                     </div>
 
                     <h5 class="title is-6 mt-5">

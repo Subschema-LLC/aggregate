@@ -294,8 +294,8 @@ Add to your website:
 ### Custom Event Tracking
 
 ```javascript
-// Emit custom events
-window.Aggregate.emit('signup-click', { plan_type: 'pro' });
+// emit(eventName, eventData, goalEvent)
+window.Aggregate.emit('signup-click', { plan_type: 'pro' }, 'trial_signup');
 
 // Enable consent-based tracking (Tier 2)
 window.Aggregate.setConsent(true);
@@ -319,7 +319,8 @@ curl -i -X POST http://localhost/api/receive \
     "screenWidth":1920,
     "eventName":"signup-click",
     "websiteToken":"your-token-here",
-    "eventData": {"plan_type":"pro"}
+    "eventData": {"plan_type":"pro"},
+    "goalEvent":"trial_signup"
   }'
 ```
 
@@ -369,7 +370,7 @@ window.Aggregate.setConsent(true);
 ```
 - Emit custom events:
 ```js
-window.Aggregate.emit('signup-click', { plan_type: 'pro' });
+window.Aggregate.emit('signup-click', { plan_type: 'pro' }, 'trial_signup');
 ```
 
 ### Google Tag Manager (GTM) Integration
@@ -435,7 +436,7 @@ Complete setup guide for integrating with Google Tag Manager for both pixel trac
        window.Aggregate.emit('cta_click', {
          button_text: 'Get Started',
          location: 'homepage_hero'
-       });
+       }, 'signup_goal');
      }
    </script>
    ```
@@ -456,7 +457,8 @@ Complete setup guide for integrating with Google Tag Manager for both pixel trac
            label: {{Event Label}},
            value: {{Event Value}}
          };
-         window.Aggregate.emit(eventName, eventData);
+         var goalEvent = {{Goal Event Variable}};
+         window.Aggregate.emit(eventName, eventData, goalEvent);
        }
      })();
    </script>
@@ -464,6 +466,7 @@ Complete setup guide for integrating with Google Tag Manager for both pixel trac
 4. Create corresponding **User-Defined Variables** in GTM:
    - `Event Name Variable` (e.g., Data Layer Variable: `eventName`)
    - `Event Category`, `Event Label`, `Event Value`
+   - `Goal Event Variable` (optional; e.g., Data Layer Variable: `goalEvent`)
 
 5. Trigger this tag using **Custom Events** or **Click Triggers**
 
@@ -505,7 +508,7 @@ If you need to respect user consent before enabling Tier 2 tracking:
   window.Aggregate.emit('form_submit', {
     form_name: {{Form Name}},
     form_id: {{Form ID}}
-  });
+  }, 'lead_submit');
 </script>
 ```
 - **Trigger**: Form Submission trigger for your target form
@@ -554,7 +557,7 @@ If you need to respect user consent before enabling Tier 2 tracking:
     product_name: {{Product Name}},
     product_price: {{Product Price}},
     quantity: {{Product Quantity}}
-  });
+  }, 'add_to_cart_goal');
 </script>
 ```
 - **Trigger**: Custom Event `addToCart` from Data Layer
@@ -611,6 +614,7 @@ window.dataLayer = window.dataLayer || [];
 dataLayer.push({
   'event': 'customAnalyticsEvent',
   'eventName': 'signup_click',
+  'goalEvent': 'trial_signup',
   'eventData': {
     'plan': 'pro',
     'source': 'pricing_page'
@@ -626,7 +630,8 @@ dataLayer.push({
      if (window.Aggregate && window.Aggregate.emit) {
        window.Aggregate.emit(
          {{DLV - eventName}},
-         {{DLV - eventData}}
+         {{DLV - eventData}},
+         {{DLV - goalEvent}}
        );
      }
    </script>
@@ -634,6 +639,7 @@ dataLayer.push({
 3. Create Data Layer Variables:
    - `DLV - eventName` → Data Layer Variable Name: `eventName`
    - `DLV - eventData` → Data Layer Variable Name: `eventData`
+   - `DLV - goalEvent` → Data Layer Variable Name: `goalEvent` (optional)
 
 ## Security & Privacy
 
