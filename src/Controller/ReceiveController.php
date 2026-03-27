@@ -2,12 +2,10 @@
 
 namespace App\Controller;
 
-use App\Dto\TrackEventDto;
 use App\Message\TrackEventMessage;
 use App\Service\WebsiteConfigManager;
 use App\Security\IpRateLimiter;
 use Psr\Log\LoggerInterface;
-use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -19,7 +17,6 @@ class ReceiveController
     #[Route('/api/receive', name: 'api_receive', methods: ['POST'])]
     public function __invoke(
         Request $request,
-        #[MapRequestPayload] TrackEventDto $dto,
         WebsiteConfigManager $websiteManager,
         MessageBusInterface $bus,
         IpRateLimiter $rateLimiter,
@@ -27,6 +24,8 @@ class ReceiveController
     ): Response
     {
         try {
+            $payload = $this->decodePayload($request);
+
             // Naive rate limit per IP
             $ip = $request->getClientIp() ?? '0.0.0.0';
             if (!$rateLimiter->allow($ip)) {
@@ -34,7 +33,17 @@ class ReceiveController
             }
 
             // Find website by public token
-            $website = $websiteManager->findOneByToken($dto->websiteToken);
+            $websiteToken = trim((string) ($payload['websiteToken'] ?? ''));
+            if ($websiteToken === '') {
+                return $this->jsonWithCors($request, ['error' => 'websiteToken is required'], Response::HTTP_BAD_REQUEST);
+            }
+
+            $url = trim((string) ($payload['url'] ?? ''));
+            if ($url === '' || filter_var($url, FILTER_VALIDATE_URL) === false) {
+                return $this->jsonWithCors($request, ['error' => 'url is required and must be valid'], Response::HTTP_BAD_REQUEST);
+            }
+
+            $website = $websiteManager->findOneByToken($websiteToken);
             if (!$website) {
                 return $this->jsonWithCors($request, ['error' => 'Invalid websiteToken'], Response::HTTP_BAD_REQUEST);
             }
@@ -48,17 +57,17 @@ class ReceiveController
             $ua = $request->headers->get('User-Agent', '');
 
             $bus->dispatch(new TrackEventMessage(
-                websiteToken: $dto->websiteToken,
-                url: $dto->url,
-                referrer: $dto->referrer,
-                screenWidth: $dto->screenWidth,
-                eventName: $dto->eventName,
-                goalEvent: $dto->goalEvent,
-                eventData: $dto->eventData,
+                websiteToken: $websiteToken,
+                url: $url,
+                referrer: $this->normalizeOptionalUrl($payload['referrer'] ?? null),
+                screenWidth: $this->normalizeOptionalInt($payload['screenWidth'] ?? null),
+                eventName: $this->normalizeOptionalString($payload['eventName'] ?? null, 191),
+                goalEvent: $this->normalizeOptionalString($payload['goalEvent'] ?? null, 191),
+                eventData: $this->normalizeOptionalArray($payload['eventData'] ?? null),
                 ip: $ip,
                 userAgent: $ua,
-                visitorId: $dto->visitorId,
-                sessionId: $dto->sessionId
+                visitorId: $this->normalizeOptionalString($payload['visitorId'] ?? null, 255),
+                sessionId: $this->normalizeOptionalString($payload['sessionId'] ?? null, 255),
             ));
 
             return $this->jsonWithCors($request, ['status' => 'accepted'], Response::HTTP_ACCEPTED);
@@ -104,6 +113,59 @@ class ReceiveController
         $response->headers->set('Access-Control-Allow-Methods', 'POST, OPTIONS');
         $response->headers->set('Access-Control-Allow-Headers', $allowHeaders);
         $response->headers->set('Access-Control-Max-Age', '86400');
+    }
+
+    private function decodePayload(Request $request): array
+    {
+        try {
+            $payload = $request->toArray();
+        } catch (\Throwable) {
+            throw new \InvalidArgumentException('Invalid JSON payload');
+        }
+
+        if (!is_array($payload)) {
+            throw new \InvalidArgumentException('Invalid payload');
+        }
+
+        return $payload;
+    }
+
+    private function normalizeOptionalString(mixed $value, int $maxLength): ?string
+    {
+        if (!is_scalar($value) || $value === '') {
+            return null;
+        }
+
+        return substr((string) $value, 0, $maxLength);
+    }
+
+    private function normalizeOptionalInt(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (!is_numeric($value)) {
+            return null;
+        }
+
+        return (int) $value;
+    }
+
+    private function normalizeOptionalArray(mixed $value): ?array
+    {
+        return is_array($value) ? $value : null;
+    }
+
+    private function normalizeOptionalUrl(mixed $value): ?string
+    {
+        if (!is_scalar($value) || $value === '') {
+            return null;
+        }
+
+        $url = trim((string) $value);
+
+        return filter_var($url, FILTER_VALIDATE_URL) ? $url : null;
     }
 
     private function isOriginAllowed(?string $originHeader, string $expectedDomain): bool
