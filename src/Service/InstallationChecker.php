@@ -13,6 +13,10 @@ class InstallationChecker
 
     public function isInstalled(): bool
     {
+        if ($this->config->get('installed') === true) {
+            return true;
+        }
+
         try {
             return $this->userRepository->count([]) > 0;
         } catch (\Exception) {
@@ -26,14 +30,18 @@ class InstallationChecker
      */
     public function isConfigValid(): bool
     {
-        return !empty($_ENV['DATABASE_URL'] ?? $_SERVER['DATABASE_URL'] ?? '');
+        return !empty($_ENV['DATABASE_URL'] ?? $_SERVER['DATABASE_URL'] ?? '') &&
+               !empty($_ENV['APP_SECRET'] ?? $_SERVER['APP_SECRET'] ?? '');
     }
 
     public function getConfigErrors(): array
     {
         $errors = [];
         if (empty($_ENV['DATABASE_URL'] ?? $_SERVER['DATABASE_URL'] ?? '')) {
-            $errors[] = 'DATABASE_URL is not set. Add it to your .env file (see .env.dev for an example).';
+            $errors[] = 'DATABASE_URL is not set. Add it to your .env file.';
+        }
+        if (empty($_ENV['APP_SECRET'] ?? $_SERVER['APP_SECRET'] ?? '')) {
+            $errors[] = 'APP_SECRET is not set. Generate one with "openssl rand -hex 32" and add it to your .env file.';
         }
         return $errors;
     }

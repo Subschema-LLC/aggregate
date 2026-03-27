@@ -2,8 +2,7 @@
 
 namespace App\Command;
 
-use App\Entity\Website;
-use Doctrine\ORM\EntityManagerInterface;
+use App\Service\WebsiteConfigManager;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -18,7 +17,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 class CreateWebsiteCommand extends Command
 {
     public function __construct(
-        private readonly EntityManagerInterface $em
+        private readonly WebsiteConfigManager $websiteManager
     ) {
         parent::__construct();
     }
@@ -58,16 +57,10 @@ class CreateWebsiteCommand extends Command
         // Generate token
         $token = bin2hex(random_bytes(16));
 
-        // Create website entity
-        $website = new Website();
-        $website->setName($name);
-        $website->setDomain($domain);
-        $website->setPublicToken($token);
+        // Create website in YAML
+        $this->websiteManager->addWebsite($name, $domain, $token);
 
-        $this->em->persist($website);
-        $this->em->flush();
-
-        $io->success('Website created successfully!');
+        $io->success('Website created successfully (saved to config/websites.yaml)!');
 
         $io->section('Integration Code');
         $io->writeln('Add this code to your website:');

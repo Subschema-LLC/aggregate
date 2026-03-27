@@ -120,13 +120,14 @@
       });
     },
 
-    emit: function(eventName, eventData){
+    emit: function(eventName, eventData, goalEvent){
       this.send({
         url: location.href,
         referrer: document.referrer || null,
         screenWidth: (screen && screen.width) || null,
         eventName: eventName || null,
-        eventData: eventData || null
+        eventData: eventData || null,
+        goalEvent: goalEvent || null
       });
     },
 

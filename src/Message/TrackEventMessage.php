@@ -10,6 +10,7 @@ class TrackEventMessage
         public ?string $referrer,
         public ?int $screenWidth,
         public ?string $eventName,
+        public ?string $goalEvent,
         public ?array $eventData,
         public string $ip,
         public string $userAgent,
