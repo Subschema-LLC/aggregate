@@ -19,7 +19,7 @@ class InstallationChecker
 
         try {
             return $this->userRepository->count([]) > 0;
-        } catch (\Exception) {
+        } catch (\Throwable) {
             return false;
         }
     }

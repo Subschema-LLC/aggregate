@@ -1,12 +1,25 @@
-.PHONY: help install setup start stop restart logs migrate worker test clean
+.PHONY: help install setup start stop restart logs migrate worker test clean \
+	start-mysql start-postgres start-mariadb \
+	migrate-mysql migrate-postgres migrate-mariadb \
+	install-mysql install-postgres install-mariadb
 
 # Detect if Docker is available and being used
 USE_DOCKER := $(shell command -v docker >/dev/null 2>&1 && [ -f compose.yaml ] && echo 1 || echo 0)
+DOCKER_PROFILE ?= mysql
+MYSQL_DOCKER_DSN ?= mysql://app:!ChangeMe!@database:3306/aggregate_analytics?serverVersion=8.0
+POSTGRES_DOCKER_DSN ?= postgresql://app:!ChangeMe!@database:5432/aggregate_analytics?serverVersion=16
+MARIADB_DOCKER_DSN ?= mysql://app:!ChangeMe!@database:3306/aggregate_analytics?serverVersion=mariadb-11.4
 
 ifeq ($(USE_DOCKER),1)
+    COMPOSE = docker compose --profile $(DOCKER_PROFILE)
     PHP_CMD = docker compose exec php php
-    DB_CMD = docker compose exec -T database psql -U app -d app
-    COMPOSE = docker compose
+    ifeq ($(DOCKER_PROFILE),postgres)
+        DB_CMD = $(COMPOSE) exec database-postgres psql -U $${POSTGRES_USER:-app} -d $${POSTGRES_DB:-aggregate_analytics}
+    else ifeq ($(DOCKER_PROFILE),mariadb)
+        DB_CMD = $(COMPOSE) exec database-mariadb mysql -u$${MARIADB_USER:-app} -p$${MARIADB_PASSWORD:-!ChangeMe!} $${MARIADB_DATABASE:-aggregate_analytics}
+    else
+        DB_CMD = $(COMPOSE) exec database-mysql mysql -u$${MYSQL_USER:-app} -p$${MYSQL_PASSWORD:-!ChangeMe!} $${MYSQL_DATABASE:-aggregate_analytics}
+    endif
 else
     PHP_CMD = php
     DB_CMD = psql
@@ -17,6 +30,7 @@ help: ## Show this help message
 	@echo 'Usage: make [target]'
 	@echo ''
 	@echo 'Deployment mode: $(if $(filter 1,$(USE_DOCKER)),Docker,Native)'
+	@echo 'Docker profile: $(DOCKER_PROFILE)'
 	@echo ''
 	@echo 'Available targets:'
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -29,6 +43,7 @@ ifeq ($(USE_DOCKER),1)
 		cp config/aggregate.yaml.example config/aggregate.yaml; \
 		echo "⚠️  Edit config/aggregate.yaml and set daily_salt_secret"; \
 	fi
+	@echo "Using Docker profile: $(DOCKER_PROFILE)"
 	@echo "Starting services..."
 	$(COMPOSE) up -d
 	@echo "Waiting for database to be ready..."
@@ -46,8 +61,36 @@ endif
 	@echo "Next steps:"
 	@echo "  1. Create a website with 'make create-website'"
 	@echo "  2. Check status with 'make status'"
+	@echo "Tip: choose DB profile with 'make <target> DOCKER_PROFILE=postgres' (or mariadb/mysql)"
 
 setup: install ## Alias for install
+
+start-mysql: ## Start Docker services with MySQL profile
+	@DOCKER_DATABASE_URL="$(MYSQL_DOCKER_DSN)" $(MAKE) start DOCKER_PROFILE=mysql
+
+start-postgres: ## Start Docker services with PostgreSQL profile
+	@DOCKER_DATABASE_URL="$(POSTGRES_DOCKER_DSN)" $(MAKE) start DOCKER_PROFILE=postgres
+
+start-mariadb: ## Start Docker services with MariaDB profile
+	@DOCKER_DATABASE_URL="$(MARIADB_DOCKER_DSN)" $(MAKE) start DOCKER_PROFILE=mariadb
+
+migrate-mysql: ## Run migrations using MySQL profile
+	@DOCKER_DATABASE_URL="$(MYSQL_DOCKER_DSN)" $(MAKE) migrate DOCKER_PROFILE=mysql
+
+migrate-postgres: ## Run migrations using PostgreSQL profile
+	@DOCKER_DATABASE_URL="$(POSTGRES_DOCKER_DSN)" $(MAKE) migrate DOCKER_PROFILE=postgres
+
+migrate-mariadb: ## Run migrations using MariaDB profile
+	@DOCKER_DATABASE_URL="$(MARIADB_DOCKER_DSN)" $(MAKE) migrate DOCKER_PROFILE=mariadb
+
+install-mysql: ## Docker install flow with MySQL profile
+	@DOCKER_DATABASE_URL="$(MYSQL_DOCKER_DSN)" $(MAKE) install DOCKER_PROFILE=mysql
+
+install-postgres: ## Docker install flow with PostgreSQL profile
+	@DOCKER_DATABASE_URL="$(POSTGRES_DOCKER_DSN)" $(MAKE) install DOCKER_PROFILE=postgres
+
+install-mariadb: ## Docker install flow with MariaDB profile
+	@DOCKER_DATABASE_URL="$(MARIADB_DOCKER_DSN)" $(MAKE) install DOCKER_PROFILE=mariadb
 
 start: ## Start all services
 ifeq ($(USE_DOCKER),1)
@@ -124,7 +167,7 @@ endif
 
 db-shell: ## Open database shell
 ifeq ($(USE_DOCKER),1)
-	$(COMPOSE) exec database psql -U app -d app
+	$(DB_CMD)
 else
 	@echo "Connect to your database using your configured credentials"
 endif

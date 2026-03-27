@@ -257,40 +257,11 @@ window.{{ js_namespace }}.setConsent(false);</code></pre>
                 <span>Worker Status</span>
             </span>
         </h5>
-        <div class="level">
-            <div class="level-left">
-                <div class="level-item">
-                    {% if worker_running %}
-                        <span class="tag is-success is-medium">
-                            <span class="icon">
-                                <i class="fas fa-check-circle"></i>
-                            </span>
-                            <span>Worker Running</span>
-                        </span>
-                    {% else %}
-                        <span class="tag is-danger is-medium">
-                            <span class="icon">
-                                <i class="fas fa-times-circle"></i>
-                            </span>
-                            <span>Worker Stopped</span>
-                        </span>
-                    {% endif %}
-                </div>
-            </div>
-            <div class="level-right">
-                <div class="level-item">
-                    <form action="{{ path('app_worker_restart') }}" method="post">
-                        <button type="submit" class="button is-primary">
-                            <span class="icon">
-                                <i class="fas fa-sync-alt"></i>
-                            </span>
-                            <span>Restart Worker</span>
-                        </button>
-                    </form>
-                </div>
-            </div>
+        <div class="notification is-light">
+            <p>The worker runs outside the dashboard and should be managed by Docker, systemd, or Supervisor.</p>
+            <p class="mt-2"><strong>Command:</strong> <code>php bin/console messenger:consume async --time-limit=3600 --memory-limit=128M</code></p>
+            <p class="help mt-2">See <code>docs/systemd/aggregate-worker.service</code> or <code>docs/supervisor/aggregate-worker.conf</code> for production examples.</p>
         </div>
-        <p class="help">The worker processes analytics events in the background.</p>
     </div>
 </div>
 

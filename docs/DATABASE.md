@@ -1,6 +1,6 @@
 # Database Configuration Guide
 
-Aggregate Analytics supports **PostgreSQL**, **MySQL**, **MariaDB**, **Microsoft SQL Server**, and **SQLite** via YAML configuration.
+Aggregate Analytics supports **PostgreSQL**, **MySQL**, **MariaDB**, **Microsoft SQL Server**, and **SQLite**.
 
 ## Table of Contents
 
@@ -16,7 +16,7 @@ Aggregate Analytics supports **PostgreSQL**, **MySQL**, **MariaDB**, **Microsoft
 
 ## Quick Reference
 
-Set `DATABASE_URL` in your `.env` file (project root, not committed to git):
+Set `DATABASE_URL` in your `.env` or `.env.local` file (project root, not committed to git):
 
 ```dotenv
 DATABASE_URL="DATABASE_CONNECTION_STRING_HERE"
@@ -101,9 +101,7 @@ php bin/console doctrine:migrations:migrate -n
 ### Performance Tuning
 
 **Indexes (automatically created by migrations):**
-- `events.website_id`
 - `events.session_id`
-- `websites.public_token` (unique)
 
 **Recommended settings for analytics workload:**
 ```ini
@@ -415,14 +413,22 @@ The database file will be created automatically at `var/data.db`.
 
 ### Database-Agnostic Migrations
 
-All migrations use Doctrine DBAL's platform-agnostic schema API, ensuring compatibility across all supported databases:
+Schema migrations use Doctrine DBAL's platform-agnostic schema API, ensuring compatibility across supported relational databases.
+
+The project currently uses a single baseline migration:
+
+- `migrations/Version20260330000000.php`
+
+This baseline creates:
+- `events`
+- `users` (dashboard auth, optional in API-only mode)
+- `messenger_messages` (used only in async queue mode)
 
 ```php
-// Example from migrations/Version20251008220000.php
-$websites = $schema->createTable('websites');
-$websites->addColumn('id', 'integer', ['autoincrement' => true]);
-$websites->addColumn('name', 'string', ['length' => 191]);
-// ... works on all databases!
+$events = $schema->createTable('events');
+$events->addColumn('website_token', 'string', ['length' => 191]);
+$events->addColumn('custom_data', 'json', ['notnull' => false]);
+// ... works across supported databases
 ```
 
 ### Switching Databases

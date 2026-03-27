@@ -29,6 +29,10 @@ class InstallController extends AbstractController
     #[Route('/install', name: 'app_install')]
     public function install(): Response
     {
+        if (!$this->config->isDashboardEnabled()) {
+            throw $this->createNotFoundException('Dashboard is disabled.');
+        }
+
         if ($this->installationChecker->isInstalled()) {
             return $this->redirectToRoute('app_home');
         }
@@ -45,12 +49,16 @@ class InstallController extends AbstractController
     #[Route('/install/execute', name: 'app_install_execute', methods: ['POST'])]
     public function executeInstall(Request $request): Response
     {
+        if (!$this->config->isDashboardEnabled()) {
+            throw $this->createNotFoundException('Dashboard is disabled.');
+        }
+
         if ($this->installationChecker->isInstalled()) {
             return $this->redirectToRoute('app_home');
         }
 
         if (!$this->installationChecker->isConfigValid()) {
-            $this->addFlash('error', 'Configuration is invalid. Please fix config/aggregate.yaml');
+            $this->addFlash('error', 'Configuration is invalid. Please fix your .env/.env.local values.');
             return $this->redirectToRoute('app_install');
         }
 
@@ -104,19 +112,7 @@ class InstallController extends AbstractController
             // Mark as installed in config
             $this->config->set('installed', true);
 
-            // Start background worker
-            $workerCommand = sprintf(
-                'nohup php %s/bin/console messenger:consume async --time-limit=3600 --memory-limit=128M > %s/var/log/worker.log 2>&1 & echo $!',
-                $this->kernel->getProjectDir(),
-                $this->kernel->getProjectDir()
-            );
-
-            $pid = shell_exec($workerCommand);
-            if ($pid) {
-                file_put_contents($this->kernel->getProjectDir() . '/var/worker.pid', trim($pid));
-            }
-
-            $this->addFlash('success', 'Installation completed! Please log in.');
+            $this->addFlash('success', 'Installation completed. Log in now. Configure a worker later only if you switch to async ingestion mode.');
             return $this->redirectToRoute('app_login');
         } catch (\Exception $e) {
             $this->addFlash('error', 'Installation failed: ' . $e->getMessage());

@@ -13,11 +13,8 @@ services:
     environment:
       - APP_ENV=${APP_ENV:-dev}
       - APP_DEBUG=${APP_DEBUG:-1}
-      # Database config for Docker default - override in config/aggregate.yaml
-      - DATABASE_URL=mysql://${MYSQL_USER:-app}:${MYSQL_PASSWORD:-!ChangeMe!}@database:3306/${MYSQL_DATABASE:-aggregate_analytics}?serverVersion=${MYSQL_VERSION:-8.0}
+      - DATABASE_URL=${DOCKER_DATABASE_URL:-mysql://${MYSQL_USER:-app}:${MYSQL_PASSWORD:-!ChangeMe!}@database:3306/${MYSQL_DATABASE:-aggregate_analytics}?serverVersion=${MYSQL_VERSION:-8.0}}
     depends_on:
-      database:
-        condition: service_healthy
       asset-compile:
         condition: service_completed_successfully
 
@@ -39,17 +36,12 @@ services:
     environment:
       - APP_ENV=${APP_ENV:-dev}
       - APP_DEBUG=${APP_DEBUG:-1}
-      # All analytics config should be in config/aggregate.yaml
-      # These are Docker defaults only
-      - DATABASE_URL=mysql://${MYSQL_USER:-app}:${MYSQL_PASSWORD:-!ChangeMe!}@database:3306/${MYSQL_DATABASE:-aggregate_analytics}?serverVersion=${MYSQL_VERSION:-8.0}
+      - DATABASE_URL=${DOCKER_DATABASE_URL:-mysql://${MYSQL_USER:-app}:${MYSQL_PASSWORD:-!ChangeMe!}@database:3306/${MYSQL_DATABASE:-aggregate_analytics}?serverVersion=${MYSQL_VERSION:-8.0}}
     command: php -d variables_order=EGPCS bin/console messenger:consume async -vv
-    depends_on:
-      database:
-        condition: service_healthy
     restart: unless-stopped
 
-  ###> doctrine/doctrine-bundle ###
-  database:
+  database-mysql:
+    profiles: ["mysql"]
     image: mysql:${MYSQL_VERSION:-8.0}
     environment:
       MYSQL_DATABASE: ${MYSQL_DATABASE:-aggregate_analytics}
@@ -64,10 +56,55 @@ services:
     ports:
       - "3307:3306"
     volumes:
-      - database_data:/var/lib/mysql:rw
-  ###< doctrine/doctrine-bundle ###
+      - database_mysql_data:/var/lib/mysql:rw
+    networks:
+      default:
+        aliases: ["database"]
+
+  database-postgres:
+    profiles: ["postgres"]
+    image: postgres:${POSTGRES_VERSION:-16}
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-aggregate_analytics}
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-!ChangeMe!}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app} -d ${POSTGRES_DB:-aggregate_analytics}"]
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    ports:
+      - "5433:5432"
+    volumes:
+      - database_postgres_data:/var/lib/postgresql/data:rw
+    networks:
+      default:
+        aliases: ["database"]
+
+  database-mariadb:
+    profiles: ["mariadb"]
+    image: mariadb:${MARIADB_VERSION:-11.4}
+    environment:
+      MARIADB_DATABASE: ${MARIADB_DATABASE:-aggregate_analytics}
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-root}
+      MARIADB_USER: ${MARIADB_USER:-app}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:-!ChangeMe!}
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    ports:
+      - "3308:3306"
+    volumes:
+      - database_mariadb_data:/var/lib/mysql:rw
+    networks:
+      default:
+        aliases: ["database"]
 
 volumes:
-  database_data:
+  database_mysql_data:
+  database_postgres_data:
+  database_mariadb_data:
   caddy_data:
   caddy_config:

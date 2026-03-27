@@ -11,6 +11,7 @@ environments:
     rate_limit_per_minute: 1000
     app_host: "http://localhost"
     js_namespace: "Aggregate"
+    dashboard_enabled: true
 
   prod:
     # REQUIRED: Generate with: openssl rand -base64 32
@@ -18,11 +19,13 @@ environments:
     rate_limit_per_minute: 100
     app_host: "https://analytics.example.com"
     js_namespace: "Aggregate"
+    dashboard_enabled: true
 
   test:
-    daily_salt_secret: "test-salt"
+    daily_salt_secret: "test-salt-CHANGE-ME"
     rate_limit_per_minute: 1000
     js_namespace: "Aggregate"
+    dashboard_enabled: true
 
 # Configuration options:
 #
@@ -41,3 +44,7 @@ environments:
 # js_namespace (optional, default: Aggregate)
 #   JavaScript global variable name: window.{js_namespace}
 #   Examples: Aggregate, MyAnalytics, Tracker
+#
+# dashboard_enabled (optional, default: true)
+#   Enable dashboard/install/login UI routes.
+#   Set to false for API-only headless deployments managed via CLI/YAML.

@@ -70,46 +70,43 @@ cd /var/www/vhosts/your-domain.com/analytics
 3. Create a database user with full privileges
 4. Note the host, database name, username, and password
 
-### 5. Create the `.env` File
+### 5. Application Configuration
 
-Create `.env` in the project root. This file is **not committed to git** and contains your server-specific credentials.
-
-```bash
-nano /var/www/vhosts/your-domain.com/analytics/.env
-```
-
-Paste and fill in:
-
+Create `.env` in the project root for infrastructure settings:
 ```dotenv
 APP_ENV=prod
 APP_DEBUG=0
 APP_SECRET=generate-with-openssl-rand-hex-32
 DATABASE_URL="mysql://db_user:db_pass@localhost:3306/db_name?serverVersion=8.0"
-MESSENGER_TRANSPORT_DSN=doctrine://default
-MAILER_DSN=null://null
+MESSENGER_TRANSPORT_DSN=sync://   # default quick mode (no worker required)
 ```
 
-> **Password special characters:** URL-encode any special characters in your password.
-> `%` → `%25`, `@` → `%40`
-> Example: `WKDx%@7` becomes `WKDx%2540%407` in the URL.
+For async scale-up mode:
+```dotenv
+MESSENGER_TRANSPORT_DSN=doctrine://default
+```
 
-### 6. Copy App Configuration
-
+Create `config/aggregate.yaml` for app-level analytics settings:
 ```bash
 cp config/aggregate.yaml.example config/aggregate.yaml
 ```
-
-You can optionally set `app_host` to your domain. The web installer will generate `daily_salt_secret` automatically.
-
+Example `aggregate.yaml`:
 ```yaml
 environments:
   prod:
-    app_host: "https://analytics.your-domain.com"
+    daily_salt_secret: "generate-with-openssl-rand-base64-32"
     rate_limit_per_minute: 100
     js_namespace: "Aggregate"
+    dashboard_enabled: true
+    app_host: "https://analytics.your-domain.com"
 ```
 
-### 7. Run Database Migrations
+For API-only mode, add `DASHBOARD_ENABLED=0` in `.env` and run:
+```bash
+/opt/plesk/php/8.3/bin/php bin/console cache:clear
+```
+
+### 6. Run Database Migrations
 
 ```bash
 cd /var/www/vhosts/your-domain.com/analytics
@@ -117,13 +114,13 @@ cd /var/www/vhosts/your-domain.com/analytics
 /opt/plesk/php/8.3/bin/php bin/console doctrine:migrations:migrate --no-interaction
 ```
 
-### 8. Compile Frontend Assets
+### 7. Compile Frontend Assets
 
 ```bash
 /opt/plesk/php/8.3/bin/php bin/console asset-map:compile
 ```
 
-### 9. Set File Permissions
+### 8. Set File Permissions
 
 ```bash
 cd /var/www/vhosts/your-domain.com/analytics
@@ -133,7 +130,7 @@ chown -R aggregate_admin:psacln var/ public/
 chmod -R 775 var/
 ```
 
-### 10. Complete Setup via Web Installer
+### 9. Optional: Complete Dashboard Setup via Web Installer
 
 Open your browser and go to:
 
@@ -145,13 +142,19 @@ The web installer will:
 - Auto-generate a `daily_salt_secret`
 - Let you set admin credentials
 - Let you configure the JS namespace
-- Create your first tracked website
+- Dashboard setup is optional for API-only deployments
+
+CLI alternative for admin creation:
+```bash
+/opt/plesk/php/8.3/bin/php bin/console app:install
+```
 
 ---
 
 ## Background Worker Setup
 
-The analytics system requires a background worker to process queued events. **Events will not be recorded without it.**
+The analytics system requires a background worker only when using async queue mode.
+If `MESSENGER_TRANSPORT_DSN=sync://`, skip this section.
 
 ### Option A: Plesk Scheduled Tasks (Simplest)
 
@@ -314,7 +317,7 @@ chmod -R 775 var/
 
 ### CORS / 403 Forbidden
 
-Ensure the domain in your website record (set during web installer) exactly matches the domain sending requests. Subdomains are automatically allowed.
+Ensure the domain in your website record (`config/websites.yaml` or dashboard website manager) exactly matches the domain sending requests. Subdomains are automatically allowed.
 
 ---
 
