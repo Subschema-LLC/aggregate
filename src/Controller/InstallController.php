@@ -101,6 +101,9 @@ class InstallController extends AbstractController
             $this->em->persist($user);
             $this->em->flush();
 
+            // Mark as installed in config
+            $this->config->set('installed', true);
+
             // Start background worker
             $workerCommand = sprintf(
                 'nohup php %s/bin/console messenger:consume async --time-limit=3600 --memory-limit=128M > %s/var/log/worker.log 2>&1 & echo $!',

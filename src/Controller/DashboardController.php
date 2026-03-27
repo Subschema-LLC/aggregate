@@ -4,6 +4,7 @@ namespace App\Controller;
 
 use App\Service\AggregateConfigLoader;
 use App\Service\WebsiteConfigManager;
+use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -14,6 +15,7 @@ class DashboardController extends AbstractController
 {
     public function __construct(
         private readonly WebsiteConfigManager $websiteManager,
+        private readonly EntityManagerInterface $em,
         private readonly AggregateConfigLoader $config,
         private readonly KernelInterface $kernel,
     ) {}
@@ -24,6 +26,7 @@ class DashboardController extends AbstractController
         $websites = $this->websiteManager->getWebsites();
         $appHost = $this->config->getWithEnvFallback('app_host', 'http://localhost:8000');
         $jsNamespace = $this->config->getWithEnvFallback('js_namespace', 'Aggregate');
+        $rateLimit = $this->config->getWithEnvFallback('rate_limit_per_minute', 100);
 
         // Check if worker is running
         $pidFile = $this->kernel->getProjectDir() . '/var/worker.pid';
@@ -37,6 +40,7 @@ class DashboardController extends AbstractController
             'websites' => $websites,
             'app_host' => $appHost,
             'js_namespace' => $jsNamespace,
+            'rate_limit' => $rateLimit,
             'worker_running' => $workerRunning,
         ]);
     }
@@ -66,9 +70,9 @@ class DashboardController extends AbstractController
             $success = $this->websiteManager->addWebsite($name, $domain);
 
             if ($success) {
-                $this->addFlash('success', "Website '{$name}' created successfully! Check config/websites.yaml");
+                $this->addFlash('success', "Website '{$name}' created successfully!");
             } else {
-                $this->addFlash('error', 'Failed to write to config/websites.yaml. Please check file permissions.');
+                $this->addFlash('error', 'Failed to save to config/websites.yaml');
             }
         } catch (\Exception $e) {
             $this->addFlash('error', 'Failed to create website: ' . $e->getMessage());
@@ -128,6 +132,31 @@ class DashboardController extends AbstractController
             }
         } catch (\Exception $e) {
             $this->addFlash('error', 'Failed to restart worker: ' . $e->getMessage());
+        }
+
+        return $this->redirectToRoute('app_dashboard');
+    }
+
+    #[Route('/dashboard/settings/save', name: 'app_settings_save', methods: ['POST'])]
+    public function saveSettings(Request $request): Response
+    {
+        $appHost = trim($request->request->get('app_host', ''));
+        $jsNamespace = trim($request->request->get('js_namespace', 'Aggregate'));
+        $rateLimit = (int) $request->request->get('rate_limit', 100);
+
+        if (empty($appHost)) {
+            $this->addFlash('error', 'App Host is required.');
+            return $this->redirectToRoute('app_dashboard');
+        }
+
+        try {
+            $this->config->set('app_host', $appHost);
+            $this->config->set('js_namespace', $jsNamespace);
+            $this->config->set('rate_limit_per_minute', $rateLimit);
+
+            $this->addFlash('success', 'Settings updated successfully in config/aggregate.yaml!');
+        } catch (\Exception $e) {
+            $this->addFlash('error', 'Failed to save settings: ' . $e->getMessage());
         }
 
         return $this->redirectToRoute('app_dashboard');

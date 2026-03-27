@@ -13,20 +13,14 @@ use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 class TrackEventHandler
 {
     public function __construct(
-        private readonly WebsiteRepository $websites,
         private readonly EntityManagerInterface $em,
         private readonly AggregateConfigLoader $config,
     ) {}
 
     public function __invoke(TrackEventMessage $msg): void
     {
-        $website = $this->websites->findOneByPublicToken($msg->websiteToken);
-        if (!$website) {
-            return;
-        }
-
         $event = (new Event())
-            ->setWebsite($website)
+            ->setWebsiteToken($msg->websiteToken)
             ->setEventName($msg->eventName ?? 'view')
             ->setUrl($msg->url)
             ->setReferrer($msg->referrer)
@@ -34,6 +28,7 @@ class TrackEventHandler
             ->setGeneralizedUserAgent($this->generalizeUserAgent($msg->userAgent))
             ->setScreenWidth($msg->screenWidth)
             ->setSessionId($msg->sessionId)
+            ->setGoalEvent($msg->goalEvent)
             ->setCustomData($this->sanitizeEventData($msg->eventData));
 
         $this->em->persist($event);

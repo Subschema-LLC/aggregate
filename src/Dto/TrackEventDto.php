@@ -19,6 +19,9 @@ class TrackEventDto
     #[Assert\Length(max: 191)]
     public ?string $eventName = null;
 
+    #[Assert\Length(max: 191)]
+    public ?string $goalEvent = null;
+
     public ?array $eventData = null;
 
     #[Assert\NotBlank]

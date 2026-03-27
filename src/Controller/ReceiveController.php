@@ -4,30 +4,28 @@ namespace App\Controller;
 
 use App\Dto\TrackEventDto;
 use App\Message\TrackEventMessage;
-use App\Repository\WebsiteRepository;
+use App\Service\WebsiteConfigManager;
 use App\Security\IpRateLimiter;
+use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Routing\Annotation\Route;
-use Symfony\Component\Serializer\SerializerInterface;
-use Symfony\Component\Validator\Validator\ValidatorInterface;
-
-/* TO DO: UTM parameter or custom handling */
 
 class ReceiveController
 {
     public function __construct(
-        private readonly WebsiteRepository $websites,
-        private readonly ValidatorInterface $validator,
+        private readonly WebsiteConfigManager $websiteManager,
         private readonly MessageBusInterface $bus,
         private readonly IpRateLimiter $rateLimiter,
-        private readonly SerializerInterface $serializer,
     ) {}
 
     #[Route('/api/receive', name: 'api_receive', methods: ['POST'])]
-    public function __invoke(Request $request): Response
+    public function __invoke(
+        Request $request,
+        #[MapRequestPayload] TrackEventDto $dto
+    ): Response
     {
         // Naive rate limit per IP
         $ip = $request->getClientIp() ?? '0.0.0.0';
@@ -35,35 +33,15 @@ class ReceiveController
             return new JsonResponse(['error' => 'Too Many Requests'], Response::HTTP_TOO_MANY_REQUESTS);
         }
 
-        $data = json_decode($request->getContent() ?: '{}', true);
-        if (!is_array($data)) {
-            return new JsonResponse(['error' => 'Invalid JSON'], Response::HTTP_BAD_REQUEST);
-        }
-
-        $dto = new TrackEventDto();
-        $dto->url = $data['url'] ?? '';
-        $dto->referrer = $data['referrer'] ?? null;
-        $dto->screenWidth = isset($data['screenWidth']) ? (int) $data['screenWidth'] : null;
-        $dto->eventName = $data['eventName'] ?? null;
-        $dto->eventData = isset($data['eventData']) && is_array($data['eventData']) ? $data['eventData'] : null;
-        $dto->websiteToken = $data['websiteToken'] ?? '';
-        $dto->visitorId = $data['visitorId'] ?? null;
-        $dto->sessionId = $data['sessionId'] ?? null;
-
-        $errors = $this->validator->validate($dto);
-        if (count($errors) > 0) {
-            return new JsonResponse(['error' => 'Validation failed', 'details' => (string) $errors], Response::HTTP_BAD_REQUEST);
-        }
-
         // Find website by public token
-        $website = $this->websites->findOneByPublicToken($dto->websiteToken);
+        $website = $this->websiteManager->findOneByToken($dto->websiteToken);
         if (!$website) {
             return new JsonResponse(['error' => 'Invalid websiteToken'], Response::HTTP_BAD_REQUEST);
         }
 
         // Domain whitelisting using Origin or Referer
         $origin = $request->headers->get('Origin') ?: $request->headers->get('Referer');
-        if (!$this->isOriginAllowed($origin, $website->getDomain())) {
+        if (!$this->isOriginAllowed($origin, $website['domain'])) {
             return new JsonResponse(['error' => 'Forbidden origin'], Response::HTTP_FORBIDDEN);
         }
 
@@ -75,6 +53,7 @@ class ReceiveController
             referrer: $dto->referrer,
             screenWidth: $dto->screenWidth,
             eventName: $dto->eventName,
+            goalEvent: $dto->goalEvent,
             eventData: $dto->eventData,
             ip: $ip,
             userAgent: $ua,

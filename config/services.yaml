@@ -26,6 +26,7 @@ services:
         arguments:
             $projectDir: '%kernel.project_dir%'
 
+
     App\Security\IpRateLimiter:
         arguments:
             $storageDir: '%kernel.project_dir%/var/rate_limit'

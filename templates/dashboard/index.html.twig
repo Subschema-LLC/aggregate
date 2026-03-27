@@ -48,6 +48,12 @@
                         </a>
                     </li>
                 {% endfor %}
+                <li data-tab="settings">
+                    <a>
+                        <span class="icon is-small"><i class="fas fa-cog"></i></span>
+                        <span>Settings</span>
+                    </a>
+                </li>
             </ul>
         </div>
 
@@ -153,6 +159,73 @@ window.{{ js_namespace }}.setConsent(false);</code></pre>
                 </div>
             </div>
         {% endfor %}
+
+        <div class="tab-content is-hidden" id="settings">
+            <div class="columns">
+                <div class="column is-6">
+                    <form action="{{ path('app_settings_save') }}" method="post">
+                        <h4 class="title is-5">Application Configuration</h4>
+                        <p class="subtitle is-6">Stored in <code>config/aggregate.yaml</code></p>
+
+                        <div class="field">
+                            <label class="label">App Host</label>
+                            <div class="control has-icons-left">
+                                <input class="input" type="url" name="app_host" value="{{ app_host }}" required placeholder="https://analytics.example.com">
+                                <span class="icon is-small is-left">
+                                    <i class="fas fa-link"></i>
+                                </span>
+                            </div>
+                            <p class="help">Public URL where this app is hosted. Used for JS generation and documentation.</p>
+                        </div>
+
+                        <div class="field">
+                            <label class="label">JavaScript Namespace</label>
+                            <div class="control has-icons-left">
+                                <input class="input" type="text" name="js_namespace" value="{{ js_namespace }}" required placeholder="Aggregate">
+                                <span class="icon is-small is-left">
+                                    <i class="fas fa-terminal"></i>
+                                </span>
+                            </div>
+                            <p class="help">The global JS variable name (e.g., <code>window.{{ js_namespace }}</code>).</p>
+                        </div>
+
+                        <div class="field">
+                            <label class="label">Rate Limit (per minute)</label>
+                            <div class="control has-icons-left">
+                                <input class="input" type="number" name="rate_limit" value="{{ rate_limit }}" required min="1">
+                                <span class="icon is-small is-left">
+                                    <i class="fas fa-tachometer-alt"></i>
+                                </span>
+                            </div>
+                            <p class="help">Maximum number of events allowed per IP per minute.</p>
+                        </div>
+
+                        <div class="field">
+                            <div class="control">
+                                <button type="submit" class="button is-link">
+                                    <span class="icon"><i class="fas fa-save"></i></span>
+                                    <span>Save Settings</span>
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="column is-5 is-offset-1">
+                    <div class="message is-info">
+                        <div class="message-header">
+                            <p>YAML Fallback</p>
+                        </div>
+                        <div class="message-body content">
+                            <p>You can always edit these settings directly in:</p>
+                            <pre><code>config/aggregate.yaml</code></pre>
+                            <p>Manual changes in the YAML file will be reflected in this UI after a page refresh.</p>
+                            <p><strong>Note:</strong> Sensitive keys like <code>daily_salt_secret</code> can only be changed manually in the YAML file for security.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     {% endif %}
 </div>
 
