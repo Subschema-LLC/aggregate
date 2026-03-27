@@ -1,0 +1,31 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Aggregate Analytics{% endblock %}
+
+{% block body %}
+<div class="box">
+    <h1 class="title">Aggregate Analytics</h1>
+    <p class="subtitle">Headless, privacy-first event collection API</p>
+
+    <div class="content">
+        <p>Core endpoints are available:</p>
+        <ul>
+            <li><code>POST /api/receive</code> for event ingestion</li>
+            <li><code>GET /api/health</code> for health checks</li>
+            <li><code>GET /aggregate.js</code> for the tracking script</li>
+        </ul>
+    </div>
+
+    {% if dashboard_enabled %}
+        {% if is_installed %}
+            <a class="button is-primary" href="{{ path('app_login') }}">Open Dashboard Login</a>
+        {% else %}
+            <a class="button is-primary" href="{{ path('app_install') }}">Run Web Installer</a>
+        {% endif %}
+    {% else %}
+        <div class="notification is-warning is-light">
+            Dashboard is disabled. Set <code>dashboard_enabled: true</code> in <code>config/aggregate.yaml</code> to enable it.
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
