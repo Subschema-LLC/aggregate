@@ -1,0 +1,11 @@
+dashboard_controller:
+    resource: ../src/Controller/DashboardController.php
+    type: attribute
+
+install_controller:
+    resource: ../src/Controller/InstallController.php
+    type: attribute
+
+security_controller:
+    resource: ../src/Controller/SecurityController.php
+    type: attribute
