@@ -1,0 +1,77 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Login{% endblock %}
+
+{% block body %}
+<div class="columns is-centered">
+    <div class="column is-4">
+        <div class="box">
+            <h1 class="title has-text-centered">
+                <span class="icon-text">
+                    <span class="icon">
+                        <i class="fas fa-sign-in-alt"></i>
+                    </span>
+                    <span>Login</span>
+                </span>
+            </h1>
+
+            {% if error %}
+                <div class="notification is-danger is-light">
+                    {{ error.messageKey|trans(error.messageData, 'security') }}
+                </div>
+            {% endif %}
+
+            <form action="{{ path('app_login') }}" method="post">
+                <div class="field">
+                    <label class="label" for="username">Username</label>
+                    <div class="control has-icons-left">
+                        <input type="text"
+                               id="username"
+                               name="_username"
+                               value="{{ last_username }}"
+                               required
+                               autofocus
+                               class="input"
+                               placeholder="Enter your username">
+                        <span class="icon is-small is-left">
+                            <i class="fas fa-user"></i>
+                        </span>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label class="label" for="password">Password</label>
+                    <div class="control has-icons-left">
+                        <input type="password"
+                               id="password"
+                               name="_password"
+                               required
+                               class="input"
+                               placeholder="Enter your password">
+                        <span class="icon is-small is-left">
+                            <i class="fas fa-lock"></i>
+                        </span>
+                    </div>
+                </div>
+
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token('authenticate') }}">
+
+                <div class="field mt-5">
+                    <div class="control">
+                        <button type="submit" class="button is-primary is-fullwidth">
+                            <span class="icon">
+                                <i class="fas fa-sign-in-alt"></i>
+                            </span>
+                            <span>Sign in</span>
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <div class="has-text-centered mt-4">
+            <p class="has-text-grey">Aggregate Analytics</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
