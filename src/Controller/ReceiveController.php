@@ -61,43 +61,30 @@ class ReceiveController
             sessionId: $dto->sessionId
         ));
 
-        return $this->jsonWithCors($request, ['status' => 'accepted'], Response::HTTP_ACCEPTED, $website['domain']);
+        return $this->jsonWithCors($request, ['status' => 'accepted'], Response::HTTP_ACCEPTED);
     }
 
     #[Route('/api/receive', name: 'api_receive_options', methods: ['OPTIONS'])]
     public function options(Request $request): Response
     {
-        $origin = $request->headers->get('Origin');
-        if (!$this->isOriginAllowedForConfiguredWebsites($origin)) {
-            return new Response('', Response::HTTP_FORBIDDEN);
-        }
-
         $response = new Response('', Response::HTTP_NO_CONTENT);
         $this->applyCorsHeaders($response, $request);
 
         return $response;
     }
 
-    private function jsonWithCors(Request $request, array $payload, int $status, ?string $expectedDomain = null): JsonResponse
+    private function jsonWithCors(Request $request, array $payload, int $status): JsonResponse
     {
         $response = new JsonResponse($payload, $status);
-        $this->applyCorsHeaders($response, $request, $expectedDomain);
+        $this->applyCorsHeaders($response, $request);
 
         return $response;
     }
 
-    private function applyCorsHeaders(Response $response, Request $request, ?string $expectedDomain = null): void
+    private function applyCorsHeaders(Response $response, Request $request): void
     {
         $origin = $request->headers->get('Origin');
         if (!$origin) {
-            return;
-        }
-
-        $originAllowed = $expectedDomain !== null
-            ? $this->isOriginAllowed($origin, $expectedDomain)
-            : $this->isOriginAllowedForConfiguredWebsites($origin);
-
-        if (!$originAllowed) {
             return;
         }
 
@@ -109,22 +96,6 @@ class ReceiveController
         $response->headers->set('Access-Control-Allow-Methods', 'POST, OPTIONS');
         $response->headers->set('Access-Control-Allow-Headers', $allowHeaders);
         $response->headers->set('Access-Control-Max-Age', '86400');
-    }
-
-    private function isOriginAllowedForConfiguredWebsites(?string $originHeader): bool
-    {
-        if (!$originHeader) {
-            return false;
-        }
-
-        foreach ($this->websiteManager->getWebsites() as $website) {
-            $domain = $website['domain'] ?? '';
-            if ($domain !== '' && $this->isOriginAllowed($originHeader, $domain)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private function isOriginAllowed(?string $originHeader, string $expectedDomain): bool
