@@ -107,7 +107,8 @@
                     </h5>
 
                     <div class="notification is-light">
-                        <p class="mb-3">Track custom events in your JavaScript:</p>
+                        <p class="mb-2">Page views are tracked automatically when <code>{{ js_namespace }}.js</code> loads.</p>
+                        <p class="mb-3">Use <code>emit(...)</code> for custom events/goals:</p>
                         <pre><code>// Track a button click
 window.{{ js_namespace }}.emit('button_click', {
   button_id: 'signup',

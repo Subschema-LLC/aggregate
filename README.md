@@ -290,6 +290,7 @@ Add to your website:
 </script>
 <script src="https://your-host/aggregate.js" async></script>
 ```
+Page views are tracked automatically when the script loads. You only call `emit(...)` for custom events/goals.
 
 ### Custom Event Tracking
 
@@ -363,7 +364,7 @@ Serve the public file at `/aggregate.js` and embed it on your site:
 </script>
 <script src="https://your-host/aggregate.js" async></script>
 ```
-- It auto-sends a view on load.
+- It auto-sends a page view on load (no `emit(...)` call needed for page views).
 - For consent-based tracking (Tier 2), call:
 ```js
 window.Aggregate.setConsent(true);
