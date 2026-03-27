@@ -180,22 +180,30 @@ crontab -e
 
 Configuration is split between two places:
 
-- **`.env`** (server-level, never committed to git): Symfony infrastructure — database connection, message queue, app secret.
+- **`.env` or `.env.local`** (server-level, never committed to git): Symfony infrastructure — database connection, message queue, app secret.
 - **`config/aggregate.yaml`** (app-level, example committed): Analytics-specific settings — daily salt, rate limit, JS namespace, dashboard toggle.
 
 The web installer at `/install` is optional and only needed when you want dashboard-based setup.
 
-### Environment File (`.env`)
+### Environment File (`.env` or `.env.local`)
 
-Create `.env` in the project root (copy from `.env.dev` or `.env.prod` as a starting point):
+Create at least one env file in the project root:
+- `.env` (recommended baseline)
+- `.env.local` (server-only override)
+
+Use `.env.prod.example` or `.env.local.example` as your template.  
+`*.env.prod` by itself is not auto-loaded by Symfony runtime.
 
 ```bash
 APP_ENV=prod
+APP_DEBUG=0
 APP_SECRET=generate-with-openssl-rand-hex-32
 DATABASE_URL="mysql://user:pass@localhost:3306/dbname?serverVersion=8.0"
 MESSENGER_TRANSPORT_DSN=sync://
 MAILER_DSN=null://null
 ```
+
+If neither `.env` nor `.env.local` exists, set these as real server environment variables instead.
 
 For async scale-up mode, switch to:
 

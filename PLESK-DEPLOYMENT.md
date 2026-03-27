@@ -72,7 +72,7 @@ cd /var/www/vhosts/your-domain.com/analytics
 
 ### 5. Application Configuration
 
-Create `.env` in the project root for infrastructure settings:
+Create `.env` in the project root for infrastructure settings (or use `.env.local` only):
 ```dotenv
 APP_ENV=prod
 APP_DEBUG=0
@@ -80,6 +80,10 @@ APP_SECRET=generate-with-openssl-rand-hex-32
 DATABASE_URL="mysql://db_user:db_pass@localhost:3306/db_name?serverVersion=8.0"
 MESSENGER_TRANSPORT_DSN=sync://   # default quick mode (no worker required)
 ```
+
+Important:
+- Do not rely on `.env.prod` as your only file name; Symfony does not auto-load it by itself.
+- Keep at least one of `.env` or `.env.local` present unless you provide real OS-level env vars.
 
 For async scale-up mode:
 ```dotenv
@@ -284,9 +288,10 @@ sudo systemctl restart analytics-worker
 ### Blank page or 500 error
 
 1. Check PHP error log: `/var/www/vhosts/your-domain.com/logs/error_log`
-2. Check application log: `var/log/prod.log`
-3. Verify `.env` exists and has correct values (especially `APP_ENV=prod`)
-4. Verify permissions: `chown -R aggregate_admin:psacln var/ && chmod -R 775 var/`
+2. Check Nginx error log (if enabled): `/var/www/vhosts/your-domain.com/logs/proxy_error_log`
+3. App logs in production are written to `php://stderr`, so they appear in web server logs above (not `var/log/prod.log` by default)
+4. Verify `.env` exists and has correct values (especially `APP_ENV=prod`)
+5. Verify permissions: `chown -R aggregate_admin:psacln var/ && chmod -R 775 var/`
 
 ### Database connection errors
 
@@ -305,7 +310,11 @@ sudo systemctl restart analytics-worker
    # or
    sudo supervisorctl status analytics-worker
    ```
-2. Check logs: `tail -f var/log/prod.log`
+2. Check logs:
+   ```bash
+   tail -f /var/www/vhosts/your-domain.com/logs/error_log
+   tail -f /var/www/vhosts/your-domain.com/logs/proxy_error_log
+   ```
 3. Manually process queue to see errors:
    ```bash
    /opt/plesk/php/8.3/bin/php bin/console messenger:consume async -vv

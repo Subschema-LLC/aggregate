@@ -388,8 +388,9 @@ php bin/console messenger:stats
 
 **3. Logs:**
 ```bash
-# Application logs
-tail -f var/log/prod.log
+# Application logs (prod uses php://stderr by default)
+tail -f /var/www/vhosts/your-domain.com/logs/error_log
+tail -f /var/www/vhosts/your-domain.com/logs/proxy_error_log
 
 # Worker logs
 tail -f var/log/worker.log
@@ -501,7 +502,8 @@ chown -R www-data:www-data var/ public/
 
 ```bash
 # Check logs
-tail -f var/log/prod.log
+tail -f /var/www/vhosts/your-domain.com/logs/error_log
+tail -f /var/www/vhosts/your-domain.com/logs/proxy_error_log
 
 # Check web server logs
 tail -f /var/log/nginx/error.log
