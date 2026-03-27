@@ -22,9 +22,12 @@ services:
             - '../src/Kernel.php'
 
     App\Controller\HomeController: ~
-    App\Controller\ReceiveController: ~
-    App\Controller\ScriptController: ~
-    App\Controller\HealthController: ~
+    App\Controller\ReceiveController:
+        tags: ['controller.service_arguments']
+    App\Controller\ScriptController:
+        tags: ['controller.service_arguments']
+    App\Controller\HealthController:
+        tags: ['controller.service_arguments']
 
     App\Service\AggregateConfigLoader:
         public: true
