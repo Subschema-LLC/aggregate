@@ -106,13 +106,18 @@ For API-only mode, add `DASHBOARD_ENABLED=0` in `.env` and run:
 /opt/plesk/php/8.3/bin/php bin/console cache:clear
 ```
 
-### 6. Run Database Migrations
+### 6. Initialize Database Schema
 
+Preferred (Symfony migrations):
 ```bash
 cd /var/www/vhosts/your-domain.com/analytics
 
 /opt/plesk/php/8.3/bin/php bin/console doctrine:migrations:migrate --no-interaction
 ```
+
+Alternative for Plesk SQL import workflow (fresh install/reset on MySQL/MariaDB):
+- Import [docs/install_fresh.sql](docs/install_fresh.sql) in phpMyAdmin.
+- Then continue with step 7.
 
 ### 7. Compile Frontend Assets
 

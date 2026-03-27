@@ -1,0 +1,15 @@
+home_controller:
+    resource: ../src/Controller/HomeController.php
+    type: attribute
+
+receive_controller:
+    resource: ../src/Controller/ReceiveController.php
+    type: attribute
+
+script_controller:
+    resource: ../src/Controller/ScriptController.php
+    type: attribute
+
+health_controller:
+    resource: ../src/Controller/HealthController.php
+    type: attribute
