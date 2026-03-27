@@ -15,6 +15,16 @@ services:
     # this creates a service per class whose id is the fully-qualified class name
     App\:
         resource: '../src/'
+        exclude:
+            - '../src/Controller/'
+            - '../src/DependencyInjection/'
+            - '../src/Entity/'
+            - '../src/Kernel.php'
+
+    App\Controller\HomeController: ~
+    App\Controller\ReceiveController: ~
+    App\Controller\ScriptController: ~
+    App\Controller\HealthController: ~
 
     App\Service\AggregateConfigLoader:
         public: true

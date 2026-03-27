@@ -26,28 +26,35 @@ cp config/aggregate.yaml.example config/aggregate.yaml
 nano config/aggregate.yaml
 
 # Start services
-make start
+make start-mysql
 
 # Run migrations
-make migrate
+make migrate-mysql
 ```
 
-Then open `http://localhost/install` in your browser to complete setup.
+Optional dashboard setup: open `http://localhost/install` to create an admin user.
+
+If you use generic profile commands (`make start DOCKER_PROFILE=...`), set `DOCKER_DATABASE_URL` to a matching DSN.
+Wrapper targets (`make start-postgres`, `make start-mariadb`) set sensible defaults automatically.
 
 ### Docker Architecture
 
 - **php**: FrankenPHP web server
 - **worker**: Background job processor
-- **database**: PostgreSQL
+- **database**: selected profile (`mysql`, `postgres`, or `mariadb`)
 - **asset-compile**: Frontend asset compilation
 
 ### Docker Commands
 
 All `make` commands work automatically in Docker mode:
-- `make start` - Start containers
+- `make start-mysql` - Start containers with MySQL profile
+- `make start-postgres` - Start containers with PostgreSQL profile
+- `make start-mariadb` - Start containers with MariaDB profile
 - `make stop` - Stop containers
 - `make logs` - View logs
-- `make migrate` - Run migrations
+- `make migrate-mysql` - Run migrations with MySQL profile
+- `make migrate-postgres` - Run migrations with PostgreSQL profile
+- `make migrate-mariadb` - Run migrations with MariaDB profile
 - `make create-website` - Create tracking website
 
 ---
@@ -82,7 +89,7 @@ The installer will:
 3. Generate secure secrets
 4. Configure database
 5. Run migrations
-6. Set up worker process
+6. Configure ingestion mode (`sync://` quick mode or async queue mode)
 7. Create first website
 
 ### Manual Installation
@@ -98,13 +105,17 @@ APP_ENV=prod
 APP_DEBUG=0
 APP_SECRET=change-me-use-openssl-rand-hex-32
 DATABASE_URL="mysql://user:pass@localhost:3306/dbname?serverVersion=8.0"
-MESSENGER_TRANSPORT_DSN=doctrine://default
+MESSENGER_TRANSPORT_DSN=sync://   # default quick mode (no worker required)
 MAILER_DSN=null://null
 EOF
 
+# Async scale-up mode (worker required):
+# MESSENGER_TRANSPORT_DSN=doctrine://default
+
 # 3. Copy app configuration
 cp config/aggregate.yaml.example config/aggregate.yaml
-# Optionally edit daily_salt_secret, rate_limit_per_minute, app_host, js_namespace
+# Optionally edit daily_salt_secret, rate_limit_per_minute, app_host, js_namespace, dashboard_enabled
+# Optional API-only mode: set DASHBOARD_ENABLED=0 in .env and run php bin/console cache:clear
 # The web installer will auto-generate daily_salt_secret if not set.
 
 # 4. Run migrations
@@ -117,8 +128,9 @@ php bin/console asset-map:compile
 chmod -R 775 var/
 chown -R www-data:www-data var/ public/
 
-# 7. Open https://your-domain.com/install — the web installer will
-#    collect admin credentials and finalize configuration.
+# 7. Optional: open https://your-domain.com/install to create
+#    a dashboard admin user and update dashboard settings.
+#    CLI alternative: php bin/console app:install
 ```
 
 ---
@@ -196,7 +208,9 @@ chmod +x frankenphp
 
 ## Worker Process Setup
 
-The worker process handles background analytics event processing. **Required for the system to function.**
+The worker process handles background analytics event processing.
+It is required only when `MESSENGER_TRANSPORT_DSN` is async (for example `doctrine://default`, AMQP, Redis).
+If you use `MESSENGER_TRANSPORT_DSN=sync://`, no worker is needed.
 
 ### Option 1: systemd (Recommended)
 

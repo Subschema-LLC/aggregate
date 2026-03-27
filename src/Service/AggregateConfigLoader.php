@@ -22,29 +22,37 @@ class AggregateConfigLoader
 
         $this->loaded = true;
 
-        // Try environment-specific file first (e.g., aggregate_prod.yaml)
-        $envFile = $this->projectDir . '/config/aggregate_' . $this->environment . '.yaml';
-        if (file_exists($envFile)) {
-            $this->config = Yaml::parseFile($envFile);
-            return;
-        }
+        try {
+            // Try environment-specific file first (e.g., aggregate_prod.yaml)
+            $envFile = $this->projectDir . '/config/aggregate_' . $this->environment . '.yaml';
+            if (file_exists($envFile)) {
+                $this->config = Yaml::parseFile($envFile) ?? [];
+                return;
+            }
 
-        // Try main aggregate.yaml
-        $mainFile = $this->projectDir . '/config/aggregate.yaml';
-        if (!file_exists($mainFile)) {
-            return;
-        }
+            // Try main aggregate.yaml
+            $mainFile = $this->projectDir . '/config/aggregate.yaml';
+            if (!file_exists($mainFile)) {
+                return;
+            }
 
-        $data = Yaml::parseFile($mainFile);
+            $data = Yaml::parseFile($mainFile) ?? [];
 
-        // Check if using environment-specific structure
-        if (isset($data['environments'][$this->environment])) {
-            $this->config = $data['environments'][$this->environment];
-        } elseif (isset($data['environments'])) {
+            // Check if using environment-specific structure
+            if (isset($data['environments'][$this->environment])) {
+                $envConfig = $data['environments'][$this->environment];
+                unset($data['environments']);
+                $this->config = array_merge($data, $envConfig);
+            } elseif (isset($data['environments'])) {
+                unset($data['environments']);
+                $this->config = $data;
+            } else {
+                unset($data['environments']);
+                $this->config = $data;
+            }
+        } catch (\Throwable $e) {
+            // Fail gracefully if yaml is malformed
             $this->config = [];
-        } else {
-            unset($data['environments']);
-            $this->config = $data;
         }
     }
 
@@ -105,11 +113,43 @@ class AggregateConfigLoader
     public function getWithEnvFallback(string $key, mixed $default = null): mixed
     {
         $envKey = strtoupper($key);
+        $envValue = $_ENV[$envKey] ?? $_SERVER[$envKey] ?? '';
 
-        if (isset($_ENV[$envKey])) {
-            return $_ENV[$envKey];
+        if (!empty($envValue)) {
+            return $envValue;
         }
 
         return $this->get($key, $default);
+    }
+
+    public function getBoolWithEnvFallback(string $key, bool $default = false): bool
+    {
+        $value = $this->getWithEnvFallback($key, $default);
+
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_int($value)) {
+            return $value !== 0;
+        }
+
+        if (is_string($value)) {
+            $normalized = strtolower(trim($value));
+            if (in_array($normalized, ['1', 'true', 'yes', 'on'], true)) {
+                return true;
+            }
+
+            if (in_array($normalized, ['0', 'false', 'no', 'off'], true)) {
+                return false;
+            }
+        }
+
+        return $default;
+    }
+
+    public function isDashboardEnabled(): bool
+    {
+        return $this->getBoolWithEnvFallback('dashboard_enabled', true);
     }
 }

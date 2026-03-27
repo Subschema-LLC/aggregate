@@ -8,7 +8,7 @@ An open-source, self-hosted, privacy-first analytics system with a two-tier trac
 - **Consent-based tracking (Tier 2)** with optional visitorId/sessionId when consent is granted
 - **Privacy-compliant session cookies**: Only set with consent, 30-minute expiry, SameSite=Lax, Secure
 - **GDPR, CCPA, ePrivacy compliant**: Full compliance guide included (see [docs/PRIVACY-COMPLIANCE.md](docs/PRIVACY-COMPLIANCE.md))
-- **Fast ingestion** via Symfony Messenger and background worker
+- **Fast ingestion** via Symfony Messenger (`sync://` quick mode or async queue mode)
 - **Domain whitelisting** and per-IP rate limiting
 - **Multi-database support**: PostgreSQL, MySQL, MariaDB, MS SQL Server, and SQLite
 - **Self-hosted**: Full control over your data
@@ -31,7 +31,7 @@ An open-source, self-hosted, privacy-first analytics system with a two-tier trac
   - Microsoft SQL Server 2017+ (requires `pdo_sqlsrv`)
   - SQLite 3 (development/small sites)
 - Composer
-- Supervisor or systemd (for background worker)
+- Supervisor or systemd (only if using async queue mode)
 - Web server (Nginx, Apache, or FrankenPHP)
 
 ## Quick Start
@@ -49,17 +49,18 @@ cd aggregate-sy
 cp config/aggregate.yaml.example config/aggregate.yaml
 nano config/aggregate.yaml
 
-# Start services
-make start
+# Start services (MySQL default profile)
+make start-mysql
 
 # Run migrations
-make migrate
+make migrate-mysql
 
 # Check system status
 make status
 ```
 
-Then open `http://localhost/install` in your browser to complete setup (create admin account, configure settings).
+If you want the dashboard UI, open `http://localhost/install` after migrations.
+For API-only mode, set `dashboard_enabled: false` in `config/aggregate.yaml` and `DASHBOARD_ENABLED=0` in `.env`, then run `php bin/console cache:clear`.
 
 **Manual Docker Setup:**
 
@@ -72,13 +73,20 @@ cd aggregate-sy
 cp config/aggregate.yaml.example config/aggregate.yaml
 nano config/aggregate.yaml
 
-# 3. Start services
-docker compose up -d
+# 3. Start services with a DB profile
+docker compose --profile mysql up -d
 
 # 4. Run migrations
 docker compose exec php php bin/console doctrine:migrations:migrate -n
 
-# 5. Open http://localhost/install to complete web installer
+# 5. Optional: open http://localhost/install to create dashboard admin
+```
+
+For PostgreSQL or MariaDB profiles, set `DOCKER_DATABASE_URL` before starting containers. Example:
+
+```bash
+export DOCKER_DATABASE_URL="postgresql://app:!ChangeMe!@database:5432/aggregate_analytics?serverVersion=16"
+docker compose --profile postgres up -d
 ```
 
 ### Option B: Native Installation (Production/Shared Hosting)
@@ -96,9 +104,12 @@ cat > .env <<'EOF'
 APP_ENV=prod
 APP_SECRET=$(openssl rand -hex 32)
 DATABASE_URL="mysql://user:pass@localhost:3306/dbname?serverVersion=8.0"
-MESSENGER_TRANSPORT_DSN=doctrine://default
+MESSENGER_TRANSPORT_DSN=sync://
 MAILER_DSN=null://null
 EOF
+
+# Async scale-up mode (worker required):
+# MESSENGER_TRANSPORT_DSN=doctrine://default
 
 # 3. Copy app configuration
 cp config/aggregate.yaml.example config/aggregate.yaml
@@ -113,13 +124,14 @@ php bin/console asset-map:compile
 chmod -R 775 var/
 chown -R www-data:www-data var/ public/  # Adjust user as needed
 
-# 7. Open https://your-domain.com/install in your browser
-#    The web installer will collect admin credentials and finalize setup.
+# 7. Optional (dashboard only): open https://your-domain.com/install
+#    to create the admin user and save dashboard settings.
+#    CLI alternative: php bin/console app:install
 
-# 8. Set up the worker (see Worker Setup section below)
+# 8. If using async queue mode, set up the worker (see Worker Setup below)
 ```
 
-**Worker Setup (Required for Event Processing):**
+**Worker Setup (only required for async mode):**
 
 Choose one method:
 
@@ -169,9 +181,9 @@ crontab -e
 Configuration is split between two places:
 
 - **`.env`** (server-level, never committed to git): Symfony infrastructure — database connection, message queue, app secret.
-- **`config/aggregate.yaml`** (app-level, example committed): Analytics-specific settings — daily salt, rate limit, JS namespace.
+- **`config/aggregate.yaml`** (app-level, example committed): Analytics-specific settings — daily salt, rate limit, JS namespace, dashboard toggle.
 
-The web installer at `/install` sets up `aggregate.yaml` automatically on first run.
+The web installer at `/install` is optional and only needed when you want dashboard-based setup.
 
 ### Environment File (`.env`)
 
@@ -181,8 +193,14 @@ Create `.env` in the project root (copy from `.env.dev` or `.env.prod` as a star
 APP_ENV=prod
 APP_SECRET=generate-with-openssl-rand-hex-32
 DATABASE_URL="mysql://user:pass@localhost:3306/dbname?serverVersion=8.0"
-MESSENGER_TRANSPORT_DSN=doctrine://default
+MESSENGER_TRANSPORT_DSN=sync://
 MAILER_DSN=null://null
+```
+
+For async scale-up mode, switch to:
+
+```bash
+MESSENGER_TRANSPORT_DSN=doctrine://default
 ```
 
 Connection string formats for `DATABASE_URL` (see [Database Guide](docs/DATABASE.md)):
@@ -205,6 +223,9 @@ cp config/aggregate.yaml.example config/aggregate.yaml
 - `rate_limit_per_minute`: API requests per IP per minute (default: `100`)
 - `app_host`: Public hostname, used in dashboard integration snippets
 - `js_namespace`: JavaScript global variable name (default: `Aggregate`)
+- `dashboard_enabled`: Enable/disable dashboard/login/install behavior (default: `true`)
+- `DASHBOARD_ENABLED` (env var): Boot-time dashboard feature boundary for loading dashboard routes/services. Set `0` for API-only deploys.
+- After changing dashboard feature settings (`dashboard_enabled` or `DASHBOARD_ENABLED`) in production, run `php bin/console cache:clear`.
 
 ### Customizing the JavaScript Namespace
 
@@ -232,6 +253,7 @@ App-specific settings from `aggregate.yaml` can be overridden with environment v
 ```bash
 export DAILY_SALT_SECRET="override-value"
 export JS_NAMESPACE="MyCustomAnalytics"
+export DASHBOARD_ENABLED="0"
 ```
 
 ## Architecture
@@ -239,7 +261,7 @@ export JS_NAMESPACE="MyCustomAnalytics"
 The system includes these services:
 - **php**: FrankenPHP web server with Symfony application
 - **worker**: Background job processor for analytics events
-- **database**: PostgreSQL database
+- **database**: one selected Docker profile (`mysql`, `postgres`, or `mariadb`)
 - **asset-compile**: Compiles frontend assets on startup
 
 ## Usage
@@ -305,17 +327,29 @@ curl -i -X POST http://localhost/api/receive \
 
 - `make help` - Show all available commands
 - `make install` - Complete installation and setup
-- `make start` - Start all services
+- `make start` - Start all services (defaults to `DOCKER_PROFILE=mysql`)
 - `make stop` - Stop all services
 - `make restart` - Restart all services
 - `make logs` - View logs from all services
-- `make logs-worker` - View worker logs only
-- `make migrate` - Run database migrations
+- `make logs-worker` - View worker logs only (async mode)
+- `make migrate` - Run database migrations (use `DOCKER_PROFILE` for non-MySQL)
+- `make start-mysql` - Start Docker with MySQL profile + DSN
+- `make start-postgres` - Start Docker with PostgreSQL profile + DSN
+- `make start-mariadb` - Start Docker with MariaDB profile + DSN
+- `make migrate-mysql` - Run migrations for MySQL profile
+- `make migrate-postgres` - Run migrations for PostgreSQL profile
+- `make migrate-mariadb` - Run migrations for MariaDB profile
 - `make create-website` - Create a new website (interactive)
 - `make status` - Check service status and health
 - `make test-tracking` - Send a test tracking event
 - `make generate-salt` - Generate a random salt
 - `make clean` - Clean up containers and volumes
+
+Docker profile examples:
+- `make start-postgres`
+- `make migrate-postgres`
+- `make start-mariadb`
+- `make migrate-mariadb`
 
 ## JavaScript Snippet (aggregate.js)
 Serve the public file at `/aggregate.js` and embed it on your site:
@@ -560,11 +594,11 @@ If you need to respect user consent before enabling Tier 2 tracking:
 - Add tag sequencing: Make custom event tags wait for pixel tag
 
 **403 Forbidden errors:**
-- Verify your domain is correctly set in the `websites` table
+- Verify your domain is correctly set in `config/websites.yaml`
 - Check `Origin` header is being sent (subdomains are auto-allowed)
 
 **429 Too Many Requests:**
-- Increase `rate_limit_per_minute` in `config/aggregate.yaml` (or via the web installer)
+- Increase `rate_limit_per_minute` in `config/aggregate.yaml` (or via dashboard settings)
 - Check for infinite loops in your event tracking code
 
 #### Advanced: Using dataLayer for Event Tracking
@@ -638,11 +672,10 @@ Simple per-IP rate limiting (default: 100 requests/minute) prevents abuse. Store
 
 ## Data Model
 
-**websites**
-- `id`, `name`, `domain`, `public_token`
-
 **events** (single table — page views are events with `event_name = 'view'`)
-- `id`, `website_id`, `event_name`, `url`, `referrer`, `daily_ip_hash`, `generalized_user_agent`, `screen_width`, `session_id`, `custom_data` (JSON), `created_at`
+- `id`, `website_token`, `event_name`, `url`, `referrer`, `daily_ip_hash`, `generalized_user_agent`, `screen_width`, `session_id`, `custom_data` (JSON), `goal_event`, `created_at`
+
+Website registry is stored in `config/websites.yaml` (name/domain/token), not in relational tables.
 
 Query examples for BI tools (PowerBI, Looker, Tableau) — no joins needed:
 ```sql

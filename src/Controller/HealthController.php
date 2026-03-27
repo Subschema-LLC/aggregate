@@ -43,11 +43,11 @@ class HealthController
         }
 
         // Check messenger transport configuration
-        $transportDsn = $this->config->getWithEnvFallback('messenger_transport_dsn', '');
+        $transportDsn = $_ENV['MESSENGER_TRANSPORT_DSN'] ?? $_SERVER['MESSENGER_TRANSPORT_DSN'] ?? '';
         if (empty($transportDsn)) {
             $checks['messenger'] = [
                 'status' => 'warning',
-                'message' => 'messenger_transport_dsn not configured in aggregate.yaml'
+                'message' => 'MESSENGER_TRANSPORT_DSN not configured in .env/.env.local'
             ];
         } else {
             $checks['messenger'] = ['status' => 'ok'];

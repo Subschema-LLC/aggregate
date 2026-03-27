@@ -3,7 +3,6 @@
 namespace App\MessageHandler;
 
 use App\Entity\Event;
-use App\Repository\WebsiteRepository;
 use App\Message\TrackEventMessage;
 use App\Service\AggregateConfigLoader;
 use Doctrine\ORM\EntityManagerInterface;
