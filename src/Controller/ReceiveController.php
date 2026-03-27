@@ -36,13 +36,13 @@ class ReceiveController
         // Find website by public token
         $website = $this->websiteManager->findOneByToken($dto->websiteToken);
         if (!$website) {
-            return new JsonResponse(['error' => 'Invalid websiteToken'], Response::HTTP_BAD_REQUEST);
+            return $this->jsonWithCors($request, ['error' => 'Invalid websiteToken'], Response::HTTP_BAD_REQUEST);
         }
 
         // Domain whitelisting using Origin or Referer
         $origin = $request->headers->get('Origin') ?: $request->headers->get('Referer');
         if (!$this->isOriginAllowed($origin, $website['domain'])) {
-            return new JsonResponse(['error' => 'Forbidden origin'], Response::HTTP_FORBIDDEN);
+            return $this->jsonWithCors($request, ['error' => 'Forbidden origin'], Response::HTTP_FORBIDDEN);
         }
 
         $ua = $request->headers->get('User-Agent', '');
@@ -61,7 +61,70 @@ class ReceiveController
             sessionId: $dto->sessionId
         ));
 
-        return new JsonResponse(['status' => 'accepted'], Response::HTTP_ACCEPTED);
+        return $this->jsonWithCors($request, ['status' => 'accepted'], Response::HTTP_ACCEPTED, $website['domain']);
+    }
+
+    #[Route('/api/receive', name: 'api_receive_options', methods: ['OPTIONS'])]
+    public function options(Request $request): Response
+    {
+        $origin = $request->headers->get('Origin');
+        if (!$this->isOriginAllowedForConfiguredWebsites($origin)) {
+            return new Response('', Response::HTTP_FORBIDDEN);
+        }
+
+        $response = new Response('', Response::HTTP_NO_CONTENT);
+        $this->applyCorsHeaders($response, $request);
+
+        return $response;
+    }
+
+    private function jsonWithCors(Request $request, array $payload, int $status, ?string $expectedDomain = null): JsonResponse
+    {
+        $response = new JsonResponse($payload, $status);
+        $this->applyCorsHeaders($response, $request, $expectedDomain);
+
+        return $response;
+    }
+
+    private function applyCorsHeaders(Response $response, Request $request, ?string $expectedDomain = null): void
+    {
+        $origin = $request->headers->get('Origin');
+        if (!$origin) {
+            return;
+        }
+
+        $originAllowed = $expectedDomain !== null
+            ? $this->isOriginAllowed($origin, $expectedDomain)
+            : $this->isOriginAllowedForConfiguredWebsites($origin);
+
+        if (!$originAllowed) {
+            return;
+        }
+
+        $requestHeaders = $request->headers->get('Access-Control-Request-Headers');
+        $allowHeaders = $requestHeaders ?: 'Content-Type';
+
+        $response->headers->set('Access-Control-Allow-Origin', $origin);
+        $response->headers->set('Vary', 'Origin');
+        $response->headers->set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+        $response->headers->set('Access-Control-Allow-Headers', $allowHeaders);
+        $response->headers->set('Access-Control-Max-Age', '86400');
+    }
+
+    private function isOriginAllowedForConfiguredWebsites(?string $originHeader): bool
+    {
+        if (!$originHeader) {
+            return false;
+        }
+
+        foreach ($this->websiteManager->getWebsites() as $website) {
+            $domain = $website['domain'] ?? '';
+            if ($domain !== '' && $this->isOriginAllowed($originHeader, $domain)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function isOriginAllowed(?string $originHeader, string $expectedDomain): bool
