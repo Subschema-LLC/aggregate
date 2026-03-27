@@ -6,6 +6,7 @@ use App\Dto\TrackEventDto;
 use App\Message\TrackEventMessage;
 use App\Service\WebsiteConfigManager;
 use App\Security\IpRateLimiter;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -22,43 +23,53 @@ class ReceiveController
         WebsiteConfigManager $websiteManager,
         MessageBusInterface $bus,
         IpRateLimiter $rateLimiter,
+        LoggerInterface $logger,
     ): Response
     {
-        // Naive rate limit per IP
-        $ip = $request->getClientIp() ?? '0.0.0.0';
-        if (!$rateLimiter->allow($ip)) {
-            return new JsonResponse(['error' => 'Too Many Requests'], Response::HTTP_TOO_MANY_REQUESTS);
+        try {
+            // Naive rate limit per IP
+            $ip = $request->getClientIp() ?? '0.0.0.0';
+            if (!$rateLimiter->allow($ip)) {
+                return $this->jsonWithCors($request, ['error' => 'Too Many Requests'], Response::HTTP_TOO_MANY_REQUESTS);
+            }
+
+            // Find website by public token
+            $website = $websiteManager->findOneByToken($dto->websiteToken);
+            if (!$website) {
+                return $this->jsonWithCors($request, ['error' => 'Invalid websiteToken'], Response::HTTP_BAD_REQUEST);
+            }
+
+            // Domain whitelisting using Origin or Referer
+            $origin = $request->headers->get('Origin') ?: $request->headers->get('Referer');
+            if (!$this->isOriginAllowed($origin, $website['domain'])) {
+                return $this->jsonWithCors($request, ['error' => 'Forbidden origin'], Response::HTTP_FORBIDDEN);
+            }
+
+            $ua = $request->headers->get('User-Agent', '');
+
+            $bus->dispatch(new TrackEventMessage(
+                websiteToken: $dto->websiteToken,
+                url: $dto->url,
+                referrer: $dto->referrer,
+                screenWidth: $dto->screenWidth,
+                eventName: $dto->eventName,
+                goalEvent: $dto->goalEvent,
+                eventData: $dto->eventData,
+                ip: $ip,
+                userAgent: $ua,
+                visitorId: $dto->visitorId,
+                sessionId: $dto->sessionId
+            ));
+
+            return $this->jsonWithCors($request, ['status' => 'accepted'], Response::HTTP_ACCEPTED);
+        } catch (\Throwable $e) {
+            $logger->error('Failed to ingest analytics event', [
+                'exception' => $e,
+                'origin' => $request->headers->get('Origin'),
+            ]);
+
+            return $this->jsonWithCors($request, ['error' => 'Ingestion failed'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
-
-        // Find website by public token
-        $website = $websiteManager->findOneByToken($dto->websiteToken);
-        if (!$website) {
-            return $this->jsonWithCors($request, ['error' => 'Invalid websiteToken'], Response::HTTP_BAD_REQUEST);
-        }
-
-        // Domain whitelisting using Origin or Referer
-        $origin = $request->headers->get('Origin') ?: $request->headers->get('Referer');
-        if (!$this->isOriginAllowed($origin, $website['domain'])) {
-            return $this->jsonWithCors($request, ['error' => 'Forbidden origin'], Response::HTTP_FORBIDDEN);
-        }
-
-        $ua = $request->headers->get('User-Agent', '');
-
-        $bus->dispatch(new TrackEventMessage(
-            websiteToken: $dto->websiteToken,
-            url: $dto->url,
-            referrer: $dto->referrer,
-            screenWidth: $dto->screenWidth,
-            eventName: $dto->eventName,
-            goalEvent: $dto->goalEvent,
-            eventData: $dto->eventData,
-            ip: $ip,
-            userAgent: $ua,
-            visitorId: $dto->visitorId,
-            sessionId: $dto->sessionId
-        ));
-
-        return $this->jsonWithCors($request, ['status' => 'accepted'], Response::HTTP_ACCEPTED);
     }
 
     #[Route('/api/receive', name: 'api_receive_options', methods: ['OPTIONS'])]
