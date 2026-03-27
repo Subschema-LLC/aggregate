@@ -15,26 +15,23 @@ use Symfony\Component\Routing\Annotation\Route;
 
 class ReceiveController
 {
-    public function __construct(
-        private readonly WebsiteConfigManager $websiteManager,
-        private readonly MessageBusInterface $bus,
-        private readonly IpRateLimiter $rateLimiter,
-    ) {}
-
     #[Route('/api/receive', name: 'api_receive', methods: ['POST'])]
     public function __invoke(
         Request $request,
-        #[MapRequestPayload] TrackEventDto $dto
+        #[MapRequestPayload] TrackEventDto $dto,
+        WebsiteConfigManager $websiteManager,
+        MessageBusInterface $bus,
+        IpRateLimiter $rateLimiter,
     ): Response
     {
         // Naive rate limit per IP
         $ip = $request->getClientIp() ?? '0.0.0.0';
-        if (!$this->rateLimiter->allow($ip)) {
+        if (!$rateLimiter->allow($ip)) {
             return new JsonResponse(['error' => 'Too Many Requests'], Response::HTTP_TOO_MANY_REQUESTS);
         }
 
         // Find website by public token
-        $website = $this->websiteManager->findOneByToken($dto->websiteToken);
+        $website = $websiteManager->findOneByToken($dto->websiteToken);
         if (!$website) {
             return $this->jsonWithCors($request, ['error' => 'Invalid websiteToken'], Response::HTTP_BAD_REQUEST);
         }
@@ -47,7 +44,7 @@ class ReceiveController
 
         $ua = $request->headers->get('User-Agent', '');
 
-        $this->bus->dispatch(new TrackEventMessage(
+        $bus->dispatch(new TrackEventMessage(
             websiteToken: $dto->websiteToken,
             url: $dto->url,
             referrer: $dto->referrer,
