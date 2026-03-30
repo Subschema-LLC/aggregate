@@ -27,6 +27,7 @@ class TrackEventHandler
             ->setGeneralizedUserAgent($this->generalizeUserAgent($msg->userAgent))
             ->setScreenWidth($msg->screenWidth)
             ->setSessionId($msg->sessionId)
+            ->setConsentState($this->resolveConsentState($msg->consentState, $msg->sessionId))
             ->setGoalEvent($msg->goalEvent)
             ->setCustomData($this->sanitizeEventData($msg->eventData));
 
@@ -69,5 +70,19 @@ class TrackEventHandler
             }
         }
         return $clean ?: null;
+    }
+
+    private function resolveConsentState(?string $consentState, ?string $sessionId): string
+    {
+        if (in_array($consentState, ['granted', 'denied', 'unknown'], true)) {
+            return $consentState;
+        }
+
+        // Backward compatibility: old clients with a session id imply consent.
+        if ($sessionId !== null && $sessionId !== '') {
+            return 'granted';
+        }
+
+        return 'unknown';
     }
 }

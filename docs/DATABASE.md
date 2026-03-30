@@ -102,6 +102,7 @@ php bin/console doctrine:migrations:migrate -n
 
 **Indexes (automatically created by migrations):**
 - `events.session_id`
+- `events.consent_state`
 
 **Recommended settings for analytics workload:**
 ```ini
@@ -415,9 +416,10 @@ The database file will be created automatically at `var/data.db`.
 
 Schema migrations use Doctrine DBAL's platform-agnostic schema API, ensuring compatibility across supported relational databases.
 
-The project currently uses a single baseline migration:
+Current migrations:
 
-- `migrations/Version20260330000000.php`
+- `migrations/Version20260330000000.php` (baseline)
+- `migrations/Version20260330010000.php` (adds `events.consent_state`)
 
 This baseline creates:
 - `events`
@@ -427,6 +429,7 @@ This baseline creates:
 ```php
 $events = $schema->createTable('events');
 $events->addColumn('website_token', 'string', ['length' => 191]);
+$events->addColumn('consent_state', 'string', ['length' => 20, 'default' => 'unknown']);
 $events->addColumn('custom_data', 'json', ['notnull' => false]);
 // ... works across supported databases
 ```

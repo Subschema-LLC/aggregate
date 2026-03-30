@@ -38,6 +38,9 @@ class Event
     #[ORM\Column(type: 'string', length: 191, nullable: true)]
     private ?string $sessionId = null;
 
+    #[ORM\Column(type: 'string', length: 20, options: ['default' => 'unknown'])]
+    private string $consentState = 'unknown';
+
     #[ORM\Column(type: 'json', nullable: true)]
     private ?array $customData = null;
 
@@ -77,6 +80,9 @@ class Event
 
     public function getSessionId(): ?string { return $this->sessionId; }
     public function setSessionId(?string $sessionId): self { $this->sessionId = $sessionId; return $this; }
+
+    public function getConsentState(): string { return $this->consentState; }
+    public function setConsentState(string $consentState): self { $this->consentState = $consentState; return $this; }
 
     public function getCustomData(): ?array { return $this->customData; }
     public function setCustomData(?array $data): self { $this->customData = $data; return $this; }

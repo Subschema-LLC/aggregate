@@ -328,6 +328,7 @@ curl -i -X POST http://localhost/api/receive \
     "screenWidth":1920,
     "eventName":"signup-click",
     "websiteToken":"your-token-here",
+    "consentState":"granted",
     "eventData": {"plan_type":"pro"},
     "goalEvent":"trial_signup"
   }'
@@ -688,7 +689,7 @@ Simple per-IP rate limiting (default: 100 requests/minute) prevents abuse. Store
 ## Data Model
 
 **events** (single table — page views are events with `event_name = 'view'`)
-- `id`, `website_token`, `event_name`, `url`, `referrer`, `daily_ip_hash`, `generalized_user_agent`, `screen_width`, `session_id`, `custom_data` (JSON), `goal_event`, `created_at`
+- `id`, `website_token`, `event_name`, `url`, `referrer`, `daily_ip_hash`, `generalized_user_agent`, `screen_width`, `session_id`, `consent_state`, `custom_data` (JSON), `goal_event`, `created_at`
 
 Website registry is stored in `config/websites.yaml` (name/domain/token), not in relational tables.
 

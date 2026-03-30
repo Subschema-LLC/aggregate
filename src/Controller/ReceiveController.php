@@ -68,6 +68,7 @@ class ReceiveController
                 userAgent: $ua,
                 visitorId: $this->normalizeOptionalString($payload['visitorId'] ?? null, 255),
                 sessionId: $this->normalizeOptionalString($payload['sessionId'] ?? null, 255),
+                consentState: $this->normalizeConsentState($payload['consentState'] ?? null),
             ));
 
             return $this->jsonWithCors($request, ['status' => 'accepted'], Response::HTTP_ACCEPTED);
@@ -155,6 +156,20 @@ class ReceiveController
     private function normalizeOptionalArray(mixed $value): ?array
     {
         return is_array($value) ? $value : null;
+    }
+
+    private function normalizeConsentState(mixed $value): ?string
+    {
+        if (!is_scalar($value) || $value === '') {
+            return null;
+        }
+
+        $normalized = strtolower(trim((string) $value));
+
+        return match ($normalized) {
+            'granted', 'denied', 'unknown' => $normalized,
+            default => null,
+        };
     }
 
     private function normalizeOptionalUrl(mixed $value): ?string

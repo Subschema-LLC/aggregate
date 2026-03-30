@@ -26,12 +26,14 @@ CREATE TABLE IF NOT EXISTS `events` (
     `generalized_user_agent` VARCHAR(191) NOT NULL,
     `screen_width`           INT          DEFAULT NULL,
     `session_id`             VARCHAR(191) DEFAULT NULL,
+    `consent_state`          VARCHAR(20)  NOT NULL DEFAULT 'unknown',
     `custom_data`            JSON         DEFAULT NULL,
     `goal_event`             VARCHAR(191) DEFAULT NULL,
     `created_at`             DATETIME     NOT NULL COMMENT '(DC2Type:datetime_immutable)',
     PRIMARY KEY (`id`),
     KEY `IDX_EVENTS_WEBSITE_TOKEN` (`website_token`),
-    KEY `IDX_EVENTS_SESSION_ID` (`session_id`)
+    KEY `IDX_EVENTS_SESSION_ID` (`session_id`),
+    KEY `IDX_EVENTS_CONSENT_STATE` (`consent_state`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -----------------------------------------------------------------------------
@@ -67,7 +69,7 @@ CREATE TABLE IF NOT EXISTS `messenger_messages` (
 
 -- -----------------------------------------------------------------------------
 -- doctrine_migration_versions
--- Marks migrations as already applied for this baseline schema.
+-- Marks migrations as already applied for this schema.
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `doctrine_migration_versions` (
     `version`        VARCHAR(191) NOT NULL,
@@ -77,7 +79,8 @@ CREATE TABLE IF NOT EXISTS `doctrine_migration_versions` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT IGNORE INTO `doctrine_migration_versions` (`version`, `executed_at`, `execution_time`) VALUES
-    ('DoctrineMigrations\\Version20260330000000', NOW(), 0);
+    ('DoctrineMigrations\\Version20260330000000', NOW(), 0),
+    ('DoctrineMigrations\\Version20260330010000', NOW(), 0);
 
 -- =============================================================================
 -- Done.

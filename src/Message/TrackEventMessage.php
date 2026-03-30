@@ -15,6 +15,7 @@ class TrackEventMessage
         public string $ip,
         public string $userAgent,
         public ?string $visitorId,
-        public ?string $sessionId
+        public ?string $sessionId,
+        public ?string $consentState,
     ) {}
 }
