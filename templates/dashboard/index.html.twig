@@ -37,25 +37,25 @@
             <p>You haven't added any websites yet.</p>
             <p class="mt-3">Click the "Add Website" button above to create your first website.</p>
         </div>
-    {% else %}
-        <div class="tabs is-boxed">
-            <ul>
-                {% for website in websites %}
-                    <li {% if loop.first %}class="is-active"{% endif %} data-tab="website-{{ loop.index }}">
-                        <a>
-                            <span class="icon is-small"><i class="fas fa-globe"></i></span>
-                            <span>{{ website.name }}</span>
-                        </a>
-                    </li>
-                {% endfor %}
-                <li data-tab="settings">
+    {% endif %}
+    <div class="tabs is-boxed">
+        <ul>
+            {% for website in websites %}
+                <li {% if loop.first %}class="is-active"{% endif %} data-tab="website-{{ loop.index }}">
                     <a>
-                        <span class="icon is-small"><i class="fas fa-cog"></i></span>
-                        <span>Settings</span>
+                        <span class="icon is-small"><i class="fas fa-globe"></i></span>
+                        <span>{{ website.name }}</span>
                     </a>
                 </li>
-            </ul>
-        </div>
+            {% endfor %}
+            <li {% if websites is empty %}class="is-active"{% endif %} data-tab="settings">
+                <a>
+                    <span class="icon is-small"><i class="fas fa-cog"></i></span>
+                    <span>Settings</span>
+                </a>
+            </li>
+        </ul>
+    </div>
 
         {% for website in websites %}
             <div class="tab-content {% if not loop.first %}is-hidden{% endif %}" id="website-{{ loop.index }}">
@@ -161,7 +161,7 @@ window.{{ js_namespace }}.setConsent(false);</code></pre>
             </div>
         {% endfor %}
 
-        <div class="tab-content is-hidden" id="settings">
+        <div class="tab-content {% if websites is not empty %}is-hidden{% endif %}" id="settings">
             <div class="columns">
                 <div class="column is-6">
                     <form action="{{ path('app_settings_save') }}" method="post">
@@ -226,8 +226,104 @@ window.{{ js_namespace }}.setConsent(false);</code></pre>
                     </div>
                 </div>
             </div>
+
+            {% if is_granted('ROLE_ADMIN') %}
+                <hr>
+                <div class="columns">
+                    <div class="column is-5">
+                        <h4 class="title is-5">Add User</h4>
+                        <p class="subtitle is-6">Create dashboard users and set their initial passwords.</p>
+
+                        <form action="{{ path('app_user_create') }}" method="post">
+                            <input type="hidden" name="_csrf_token" value="{{ csrf_token('create_user') }}">
+
+                            <div class="field">
+                                <label class="label">Username</label>
+                                <div class="control has-icons-left">
+                                    <input class="input" type="text" name="username" required placeholder="new-user">
+                                    <span class="icon is-small is-left">
+                                        <i class="fas fa-user"></i>
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div class="field">
+                                <label class="label">Password</label>
+                                <div class="control has-icons-left">
+                                    <input class="input" type="password" name="password" minlength="8" required placeholder="Minimum 8 characters">
+                                    <span class="icon is-small is-left">
+                                        <i class="fas fa-lock"></i>
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div class="field">
+                                <label class="checkbox">
+                                    <input type="checkbox" name="is_admin" value="1">
+                                    Grant administrator access
+                                </label>
+                            </div>
+
+                            <div class="field">
+                                <div class="control">
+                                    <button type="submit" class="button is-link">
+                                        <span class="icon"><i class="fas fa-user-plus"></i></span>
+                                        <span>Create User</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div class="column is-7">
+                        <h4 class="title is-5">Set User Password</h4>
+                        <p class="subtitle is-6">Reset passwords for existing accounts.</p>
+
+                        {% if users is empty %}
+                            <div class="notification is-info is-light">
+                                No users found.
+                            </div>
+                        {% else %}
+                            <div class="table-container">
+                                <table class="table is-fullwidth is-striped is-hoverable is-size-7">
+                                    <thead>
+                                    <tr>
+                                        <th>User</th>
+                                        <th>Roles</th>
+                                        <th>Created</th>
+                                        <th>New Password</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody>
+                                    {% for user in users %}
+                                        <tr>
+                                            <td>{{ user.username }}</td>
+                                            <td>
+                                                {% for role in user.roles %}
+                                                    <span class="tag is-info is-light">{{ role }}</span>
+                                                {% endfor %}
+                                            </td>
+                                            <td>{{ user.createdAt|date('Y-m-d H:i') }}</td>
+                                            <td>
+                                                <form action="{{ path('app_user_password_update', {id: user.id}) }}" method="post" class="is-flex is-align-items-center" style="gap: 0.5rem;">
+                                                    <input type="hidden" name="_csrf_token" value="{{ csrf_token('update_user_password_' ~ user.id) }}">
+                                                    <input class="input is-small" type="password" name="new_password" minlength="8" required placeholder="Minimum 8 chars">
+                                                    <button type="submit" class="button is-small is-warning is-light">
+                                                        <span class="icon"><i class="fas fa-key"></i></span>
+                                                        <span>Update</span>
+                                                    </button>
+                                                </form>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endif %}
         </div>
-    {% endif %}
 </div>
 
 <div class="box mt-5">

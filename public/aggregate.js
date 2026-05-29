@@ -14,6 +14,7 @@
       websiteToken: (window[namespace] && window[namespace].websiteToken) || null
     },
     consent: false,
+    consentKnown: false,
 
     // Privacy-compliant session cookie helpers
     getSessionCookie: function(){
@@ -93,8 +94,14 @@
       }
     },
 
+    getConsentState: function(){
+      if (!this.consentKnown) return 'unknown';
+      return this.consent ? 'granted' : 'denied';
+    },
+
     send: function(payload){
       if (!this.config.websiteToken) return;
+      payload.consentState = this.getConsentState();
       payload.websiteToken = this.config.websiteToken;
       var ids = this.ensureIds();
       if (ids.visitorId) payload.visitorId = ids.visitorId;
@@ -132,11 +139,11 @@
     },
 
     setConsent: function(granted){
-      var wasConsented = this.consent;
       this.consent = !!granted;
+      this.consentKnown = true;
 
       // Privacy compliance: Clean up all tracking data when consent is withdrawn
-      if (wasConsented && !granted) {
+      if (!this.consent) {
         try {
           localStorage.removeItem('aggregate_visitor_id');
           sessionStorage.removeItem('aggregate_session_id');
@@ -153,7 +160,10 @@
   window[namespace].configure = function(opts){
     Analytics.config.endpoint = opts && opts.endpoint || Analytics.config.endpoint;
     Analytics.config.websiteToken = opts && opts.websiteToken || Analytics.config.websiteToken;
-    if (opts && typeof opts.consent !== 'undefined') Analytics.consent = !!opts.consent;
+    if (opts && typeof opts.consent !== 'undefined') {
+      Analytics.consent = !!opts.consent;
+      Analytics.consentKnown = true;
+    }
   };
 
   // Try to read configuration from script tag (query params or data-attributes)
@@ -163,7 +173,10 @@
       if (s.dataset) {
         if (s.dataset.endpoint) Analytics.config.endpoint = s.dataset.endpoint;
         if (s.dataset.websiteToken) Analytics.config.websiteToken = s.dataset.websiteToken;
-        if (typeof s.dataset.consent !== 'undefined') Analytics.consent = (s.dataset.consent === 'true' || s.dataset.consent === '1');
+        if (typeof s.dataset.consent !== 'undefined') {
+          Analytics.consent = (s.dataset.consent === 'true' || s.dataset.consent === '1');
+          Analytics.consentKnown = true;
+        }
       }
       if (s.src) {
         try {
@@ -173,7 +186,10 @@
           var cs = u.searchParams.get('consent');
           if (ep) Analytics.config.endpoint = ep;
           if (wt) Analytics.config.websiteToken = wt;
-          if (cs !== null) Analytics.consent = (cs === 'true' || cs === '1');
+          if (cs !== null) {
+            Analytics.consent = (cs === 'true' || cs === '1');
+            Analytics.consentKnown = true;
+          }
         } catch(e) {}
       }
     }
@@ -182,7 +198,10 @@
   // if configured inline, copy values
   if (window[namespace].endpoint) Analytics.config.endpoint = window[namespace].endpoint;
   if (window[namespace].websiteToken) Analytics.config.websiteToken = window[namespace].websiteToken;
-  if (typeof window[namespace].consent !== 'undefined') Analytics.consent = !!window[namespace].consent;
+  if (typeof window[namespace].consent !== 'undefined') {
+    Analytics.consent = !!window[namespace].consent;
+    Analytics.consentKnown = true;
+  }
 
   // auto pageview on load
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
