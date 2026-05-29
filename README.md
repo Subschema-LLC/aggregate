@@ -329,6 +329,7 @@ curl -i -X POST http://localhost/api/receive \
     "eventName":"signup-click",
     "websiteToken":"your-token-here",
     "consentState":"granted",
+    "consentMode":"granted",
     "eventData": {"plan_type":"pro"},
     "goalEvent":"trial_signup"
   }'

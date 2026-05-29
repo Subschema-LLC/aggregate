@@ -68,10 +68,12 @@ class ReceiveController
                 userAgent: $ua,
                 visitorId: $this->normalizeOptionalString($payload['visitorId'] ?? null, 255),
                 sessionId: $this->normalizeOptionalString($payload['sessionId'] ?? null, 255),
-                consentState: $this->normalizeConsentState($payload['consentState'] ?? null),
+                consentState: $this->normalizeConsentState($payload['consentState'] ?? ($payload['consentMode'] ?? null)),
             ));
 
             return $this->jsonWithCors($request, ['status' => 'accepted'], Response::HTTP_ACCEPTED);
+        } catch (\InvalidArgumentException $e) {
+            return $this->jsonWithCors($request, ['error' => $e->getMessage()], Response::HTTP_BAD_REQUEST);
         } catch (\Throwable $e) {
             $logger->error('Failed to ingest analytics event', [
                 'exception' => $e,
@@ -160,6 +162,10 @@ class ReceiveController
 
     private function normalizeConsentState(mixed $value): ?string
     {
+        if (is_bool($value)) {
+            return $value ? 'granted' : 'denied';
+        }
+
         if (!is_scalar($value) || $value === '') {
             return null;
         }
@@ -168,6 +174,8 @@ class ReceiveController
 
         return match ($normalized) {
             'granted', 'denied', 'unknown' => $normalized,
+            'true', '1' => 'granted',
+            'false', '0' => 'denied',
             default => null,
         };
     }

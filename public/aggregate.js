@@ -101,7 +101,9 @@
 
     send: function(payload){
       if (!this.config.websiteToken) return;
-      payload.consentState = this.getConsentState();
+      var consentState = this.getConsentState();
+      payload.consentState = consentState;
+      payload.consentMode = consentState;
       payload.websiteToken = this.config.websiteToken;
       var ids = this.ensureIds();
       if (ids.visitorId) payload.visitorId = ids.visitorId;
