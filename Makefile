@@ -136,7 +136,7 @@ migrate: ## Run database migrations
 	$(PHP_CMD) bin/console doctrine:migrations:migrate
 
 test: ## Run PHP and JavaScript privacy regression tests
-	php vendor/bin/phpunit
+	$(PHP_CMD) vendor/bin/phpunit
 	node tests/JavaScript/aggregate-consent.test.js
 
 worker: ## Manually start worker (for debugging)
