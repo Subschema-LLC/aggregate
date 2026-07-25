@@ -244,8 +244,8 @@ class DashboardController extends AbstractController
         }
 
         foreach ($paths as $path) {
-            if (strlen($path) > 255 || !str_starts_with($path, '/') || str_contains($path, '?') || str_contains($path, '#')) {
-                $this->addFlash('error', sprintf('Invalid excluded path "%s". Use a path beginning with / and omit query strings and fragments.', $path));
+            if (strlen($path) > 512 || !str_starts_with($path, '/') || str_contains($path, '?') || str_contains($path, '#')) {
+                $this->addFlash('error', sprintf('Invalid excluded path "%s". Use a path beginning with /, omit query strings/fragments, and keep it at most 512 characters.', $path));
                 return $this->redirectToRoute('app_dashboard');
             }
         }
