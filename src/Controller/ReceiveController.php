@@ -5,6 +5,10 @@ namespace App\Controller;
 use App\Message\TrackEventMessage;
 use App\Service\WebsiteConfigManager;
 use App\Security\IpRateLimiter;
+use App\Service\AnonymousEventRecorder;
+use App\Service\GeoIp\GeoIpResolverInterface;
+use App\Service\PrivacyPolicy;
+use App\Service\PrivacySanitizer;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -20,27 +24,56 @@ class ReceiveController
         WebsiteConfigManager $websiteManager,
         MessageBusInterface $bus,
         IpRateLimiter $rateLimiter,
+        PrivacySanitizer $sanitizer,
+        PrivacyPolicy $privacyPolicy,
+        GeoIpResolverInterface $geoIpResolver,
+        AnonymousEventRecorder $anonymousRecorder,
         LoggerInterface $logger,
     ): Response
     {
         try {
-            $payload = $this->decodePayload($request);
+            if (strlen($request->getContent()) > 65_536) {
+                return $this->jsonWithCors($request, ['error' => 'Payload is too large'], Response::HTTP_REQUEST_ENTITY_TOO_LARGE);
+            }
 
-            // Naive rate limit per IP
+            try {
+                $payload = $this->decodePayload($request);
+            } catch (\InvalidArgumentException) {
+                return $this->jsonWithCors($request, ['error' => 'Invalid JSON payload'], Response::HTTP_BAD_REQUEST);
+            }
+
+            // Despite its legacy name, this is the deployment-wide ingestion
+            // kill switch. Check it before deriving any request-based bucket.
+            if (!$privacyPolicy->isAnonymousTrackingEnabled()) {
+                return $this->jsonWithCors($request, ['status' => 'ignored'], Response::HTTP_ACCEPTED);
+            }
+
+            // New clients send pagePath. url remains a compatibility input,
+            // but its host, query and fragment are always discarded.
+            $pagePath = $sanitizer->sanitizePagePath($payload['pagePath'] ?? $payload['url'] ?? null);
+
+            // Exclusions are a server-side kill switch for sensitive routes,
+            // including when a client claims enhanced consent. Valid excluded
+            // paths are ignored before a local IP rate-limit bucket is made.
+            if ($pagePath !== null && $privacyPolicy->isExcludedPath($pagePath)) {
+                return $this->jsonWithCors($request, ['status' => 'ignored'], Response::HTTP_ACCEPTED);
+            }
+
+            // Apply the rate limiter only after the zero-collection controls.
+            // Excluded/disabled requests therefore create no local IP bucket.
+            // Other valid and invalid requests use a short-lived rotating HMAC
+            // bucket; the raw address never enters Messenger or analytics.
             $ip = $request->getClientIp() ?? '0.0.0.0';
             if (!$rateLimiter->allow($ip)) {
                 return $this->jsonWithCors($request, ['error' => 'Too Many Requests'], Response::HTTP_TOO_MANY_REQUESTS);
             }
 
             // Find website by public token
-            $websiteToken = trim((string) ($payload['websiteToken'] ?? ''));
-            if ($websiteToken === '') {
+            $websiteToken = is_string($payload['websiteToken'] ?? null)
+                ? trim($payload['websiteToken'])
+                : '';
+            if ($websiteToken === '' || strlen($websiteToken) > 191) {
                 return $this->jsonWithCors($request, ['error' => 'websiteToken is required'], Response::HTTP_BAD_REQUEST);
-            }
-
-            $url = trim((string) ($payload['url'] ?? ''));
-            if ($url === '' || filter_var($url, FILTER_VALIDATE_URL) === false) {
-                return $this->jsonWithCors($request, ['error' => 'url is required and must be valid'], Response::HTTP_BAD_REQUEST);
             }
 
             $website = $websiteManager->findOneByToken($websiteToken);
@@ -54,28 +87,78 @@ class ReceiveController
                 return $this->jsonWithCors($request, ['error' => 'Forbidden origin'], Response::HTTP_FORBIDDEN);
             }
 
-            $ua = $request->headers->get('User-Agent', '');
+            if ($pagePath === null) {
+                return $this->jsonWithCors($request, ['error' => 'pagePath is required'], Response::HTTP_BAD_REQUEST);
+            }
+
+            $referrerChannel = $sanitizer->sanitizeReferrerChannel(
+                $payload['referrerChannel'] ?? null,
+                $payload['referrer'] ?? null,
+                (string) $website['domain'],
+            );
+            $userAgent = (string) $request->headers->get('User-Agent', '');
+            $eventName = $sanitizer->sanitizeEventName($payload['eventName'] ?? null);
+            if ($eventName === null) {
+                return $this->jsonWithCors($request, ['error' => 'eventName is invalid'], Response::HTTP_BAD_REQUEST);
+            }
+            $deviceClass = $sanitizer->sanitizeDeviceClass($payload['deviceClass'] ?? null, $userAgent);
+            $viewportBucket = $sanitizer->sanitizeViewportBucket(
+                $payload['viewportBucket'] ?? null,
+                $payload['screenWidth'] ?? null,
+            );
+            $occurredAt = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+            // The resolver returns only a canonical country/continent code. It
+            // performs no network calls and never exposes the source address or
+            // detailed MMDB record to events, Messenger or logs.
+            $geoArea = $geoIpResolver->resolve($ip)?->value();
+            unset($ip);
+
+            if (!$privacyPolicy->hasEnhancedConsent($payload['consentState'] ?? null)) {
+                // Every safe named event is accepted anonymously, but attached
+                // identifiers, custom properties and goals are never copied.
+                $anonymousRecorder->record(
+                    websiteToken: $websiteToken,
+                    eventName: $eventName,
+                    pagePath: $pagePath,
+                    referrerChannel: $referrerChannel,
+                    deviceClass: $deviceClass,
+                    viewportBucket: $viewportBucket,
+                    geoArea: $geoArea,
+                    occurredAt: $occurredAt,
+                );
+
+                return $this->jsonWithCors($request, [
+                    'status' => 'recorded',
+                    'mode' => 'anonymous',
+                ], Response::HTTP_ACCEPTED);
+            }
 
             $bus->dispatch(new TrackEventMessage(
                 websiteToken: $websiteToken,
-                url: $url,
-                referrer: $this->normalizeOptionalUrl($payload['referrer'] ?? null),
-                screenWidth: $this->normalizeOptionalInt($payload['screenWidth'] ?? null),
-                eventName: $this->normalizeOptionalString($payload['eventName'] ?? null, 191),
-                goalEvent: $this->normalizeOptionalString($payload['goalEvent'] ?? null, 191),
-                eventData: $this->normalizeOptionalArray($payload['eventData'] ?? null),
-                ip: $ip,
-                userAgent: $ua,
-                visitorId: $this->normalizeOptionalString($payload['visitorId'] ?? null, 255),
-                sessionId: $this->normalizeOptionalString($payload['sessionId'] ?? null, 255),
-                consentState: $this->normalizeConsentState($payload['consentState'] ?? null),
+                eventName: $eventName,
+                pagePath: $pagePath,
+                referrerChannel: $referrerChannel,
+                deviceClass: $deviceClass,
+                viewportBucket: $viewportBucket,
+                screenWidth: $sanitizer->sanitizeScreenWidth($payload['screenWidth'] ?? null),
+                goalEvent: $sanitizer->sanitizeGoalEvent($payload['goalEvent'] ?? null),
+                eventData: $sanitizer->sanitizeEventData($payload['eventData'] ?? null),
+                generalizedUserAgent: $sanitizer->generalizeUserAgent($userAgent),
+                visitorId: $sanitizer->sanitizeIdentifier($payload['visitorId'] ?? null),
+                sessionId: $sanitizer->sanitizeIdentifier($payload['sessionId'] ?? null),
+                occurredAt: $occurredAt,
+                geoArea: $geoArea,
             ));
 
-            return $this->jsonWithCors($request, ['status' => 'accepted'], Response::HTTP_ACCEPTED);
+            return $this->jsonWithCors($request, [
+                'status' => 'accepted',
+                'mode' => 'enhanced',
+            ], Response::HTTP_ACCEPTED);
         } catch (\Throwable $e) {
             $logger->error('Failed to ingest analytics event', [
-                'exception' => $e,
-                'origin' => $request->headers->get('Origin'),
+                // Do not hand the exception or request metadata to a logger:
+                // transport/SQL exceptions can retain payload values.
+                'exception_class' => $e::class,
             ]);
 
             return $this->jsonWithCors($request, ['error' => 'Ingestion failed'], Response::HTTP_INTERNAL_SERVER_ERROR);
@@ -131,63 +214,13 @@ class ReceiveController
         return $payload;
     }
 
-    private function normalizeOptionalString(mixed $value, int $maxLength): ?string
-    {
-        if (!is_scalar($value) || $value === '') {
-            return null;
-        }
-
-        return substr((string) $value, 0, $maxLength);
-    }
-
-    private function normalizeOptionalInt(mixed $value): ?int
-    {
-        if ($value === null || $value === '') {
-            return null;
-        }
-
-        if (!is_numeric($value)) {
-            return null;
-        }
-
-        return (int) $value;
-    }
-
-    private function normalizeOptionalArray(mixed $value): ?array
-    {
-        return is_array($value) ? $value : null;
-    }
-
-    private function normalizeConsentState(mixed $value): ?string
-    {
-        if (!is_scalar($value) || $value === '') {
-            return null;
-        }
-
-        $normalized = strtolower(trim((string) $value));
-
-        return match ($normalized) {
-            'granted', 'denied', 'unknown' => $normalized,
-            default => null,
-        };
-    }
-
-    private function normalizeOptionalUrl(mixed $value): ?string
-    {
-        if (!is_scalar($value) || $value === '') {
-            return null;
-        }
-
-        $url = trim((string) $value);
-
-        return filter_var($url, FILTER_VALIDATE_URL) ? $url : null;
-    }
-
     private function isOriginAllowed(?string $originHeader, string $expectedDomain): bool
     {
         if (!$originHeader) { return false; }
         $domain = $this->extractDomain($originHeader);
         if (!$domain) { return false; }
+        $expectedDomain = strtolower(trim($expectedDomain, " \t\n\r\0\x0B."));
+        if ($expectedDomain === '') { return false; }
         // Allow subdomains of expectedDomain
         return $domain === $expectedDomain || str_ends_with($domain, '.' . $expectedDomain);
     }

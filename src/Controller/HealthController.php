@@ -25,21 +25,19 @@ class HealthController
         try {
             $this->connection->executeQuery('SELECT 1');
             $checks['database'] = ['status' => 'ok'];
-        } catch (\Throwable $e) {
-            $checks['database'] = ['status' => 'error', 'message' => $e->getMessage()];
+        } catch (\Throwable) {
+            $checks['database'] = ['status' => 'error', 'message' => 'Database check failed.'];
             $allHealthy = false;
         }
 
-        // Check daily_salt_secret configuration
-        $salt = $this->config->getWithEnvFallback('daily_salt_secret', '');
-        if (empty($salt) || $salt === 'dev-salt' || strlen($salt) < 16) {
-            $checks['config'] = [
+        if ($this->config->hasLoadError()) {
+            $checks['configuration'] = [
                 'status' => 'error',
-                'message' => 'daily_salt_secret not properly configured in aggregate.yaml'
+                'message' => 'Aggregate configuration is invalid.',
             ];
             $allHealthy = false;
         } else {
-            $checks['config'] = ['status' => 'ok'];
+            $checks['configuration'] = ['status' => 'ok'];
         }
 
         // Check messenger transport configuration

@@ -21,7 +21,7 @@ This guide covers both Docker and native (non-Docker) deployment methods for Agg
 git clone <repo-url>
 cd aggregate-sy
 
-# Copy app configuration (salt, rate limit, js namespace)
+# Copy app configuration (privacy controls, rate limit, JS namespace)
 cp config/aggregate.yaml.example config/aggregate.yaml
 nano config/aggregate.yaml
 
@@ -36,6 +36,17 @@ Optional dashboard setup: open `http://localhost/install` to create an admin use
 
 If you use generic profile commands (`make start DOCKER_PROFILE=...`), set `DOCKER_DATABASE_URL` to a matching DSN.
 Wrapper targets (`make start-postgres`, `make start-mariadb`) set sensible defaults automatically.
+
+To enable optional coarse geography in Docker, obtain and update a GeoLite2-Country-compatible MMDB yourself and mount it read-only into the `php` service, for example in `compose.override.yaml`:
+
+```yaml
+services:
+  php:
+    volumes:
+      - /srv/geoip/GeoLite2-Country.mmdb:/var/lib/GeoIP/GeoLite2-Country.mmdb:ro
+```
+
+Then set `anonymous_geo_enabled: true` and `anonymous_geo_database_path: /var/lib/GeoIP/GeoLite2-Country.mmdb` in `config/aggregate.yaml`. Aggregate does not download the database or use a hosted lookup API. A missing/unreadable database leaves geography empty and does not stop ingestion.
 
 ### Docker Architecture
 
@@ -66,7 +77,7 @@ Native deployment runs directly on your server without Docker. Ideal for shared 
 ### Requirements
 
 - PHP 8.2+ with extensions: `ctype`, `iconv`, `pdo`, `mbstring`, `xml`, `curl`, `intl`
-- PostgreSQL 13+, MySQL 8.0+, or SQLite 3
+- PostgreSQL 13+, MySQL 8.0+, MariaDB 10.6+, Microsoft SQL Server 2017+, or SQLite 3.25+
 - Composer
 - Web server (Nginx, Apache, or FrankenPHP)
 - Process supervisor (systemd, Supervisor, or cron)
@@ -114,9 +125,10 @@ EOF
 
 # 3. Copy app configuration
 cp config/aggregate.yaml.example config/aggregate.yaml
-# Optionally edit daily_salt_secret, rate_limit_per_minute, app_host, js_namespace, dashboard_enabled
+# Review rate_limit_per_minute, app_host, js_namespace, dashboard_enabled,
+# anonymous_tracking_enabled, anonymous_excluded_paths, and the optional
+# anonymous_geo_* coarse-geography controls
 # Optional API-only mode: set DASHBOARD_ENABLED=0 in .env and run php bin/console cache:clear
-# The web installer will auto-generate daily_salt_secret if not set.
 
 # 4. Run migrations
 php bin/console doctrine:migrations:migrate -n
@@ -133,6 +145,10 @@ chown -R www-data:www-data var/ public/
 #    After install, manage additional users/passwords in Dashboard Settings.
 #    CLI alternative: php bin/console app:install
 ```
+
+For optional coarse geography on a native deployment, place a current GeoLite2-Country-compatible MMDB on the local filesystem outside `public/`, make it read-only and readable by the PHP ingestion process, then configure its absolute path. Direct UNC/network-share and Windows device paths are rejected. Do not give the application write access to the database file.
+
+When a reverse proxy sits in front of PHP, list only its exact IP addresses or narrow CIDRs in the comma-separated `TRUSTED_PROXIES` environment variable, for example `TRUSTED_PROXIES=127.0.0.1,10.20.30.0/24`. The proxy must strip or overwrite client-supplied `X-Forwarded-*` headers before setting its own. Leave the variable blank for direct deployments. Never use `0.0.0.0/0`, `::/0`, or the Symfony `REMOTE_ADDR` shortcut: an overly broad or unsanitized trust boundary lets clients spoof forwarding headers. Without correct proxy trust, coarse geography will normally describe the proxy or remain empty rather than the visitor.
 
 ---
 
@@ -309,12 +325,16 @@ sudo certbot --nginx -d analytics.example.com
 **2. Secure secrets:**
 - Never commit `.env` (server-specific env file) to version control — it is gitignored by default
 - `config/aggregate.yaml` should not contain production secrets if committed; use the `environments:` structure and keep the example file committed only
-- Use strong `daily_salt_secret` (32+ characters); the web installer auto-generates one
+- Use a unique, strong `APP_SECRET` in the server environment
+- Review anonymous path exclusions and configure both database-backed BI minimum-cell thresholds in the admin dashboard before collection (`5` hourly; `25` daily geography defaults)
+- Leave coarse geography disabled unless its purpose, legal basis, notice, traffic volume, and local MMDB lifecycle have been reviewed
 - Rotate secrets periodically
 
 **3. Database access:**
 - Use strong database passwords
 - Restrict database access to localhost if possible
+- On PostgreSQL/MySQL/MariaDB/SQL Server, grant routine BI users access only to `bi_anonymous_events_v1` and, when needed, `bi_anonymous_geo_events_v1`, not the private raw `events` table
+- SQLite cannot enforce view-only grants; never distribute its database file to routine BI users—export approved view results or use a server database for direct BI access
 - Regular backups
 
 **4. File permissions:**
@@ -402,14 +422,17 @@ tail -f /var/log/nginx/aggregate_error.log
 
 **4. Database monitoring:**
 ```sql
--- Check recent page views (last hour)
-SELECT COUNT(*) FROM events WHERE event_name = 'view' AND created_at > NOW() - INTERVAL 1 HOUR;
+-- Use the grouped/suppressed BI contract for anonymous-mode monitoring
+SELECT * FROM bi_anonymous_events_v1 ORDER BY event_hour DESC;
 
--- Check recent custom events (last hour)
-SELECT COUNT(*) FROM events WHERE event_name != 'view' AND created_at > NOW() - INTERVAL 1 HOUR;
+-- Use the lower-dimensional, daily suppressed geography contract
+SELECT * FROM bi_anonymous_geo_events_v1 ORDER BY event_day DESC;
 
--- Check websites
-SELECT * FROM websites;
+-- MySQL/MariaDB example: recent enhanced events (private table)
+SELECT COUNT(*) FROM events
+WHERE privacy_mode = 'enhanced' AND created_at > NOW() - INTERVAL 1 HOUR;
+
+-- Website registration is stored in config/websites.yaml, not a database table.
 ```
 
 ### Backup
@@ -445,25 +468,30 @@ Add to crontab:
 
 ### Updates
 
+For upgrades that include the `Version20260724*` privacy migrations, pause `/api/receive` and stop all async workers before the steps below. The migrations permanently remove daily IP hashes, legacy non-granted event rows, and matching Doctrine-queue tracker envelopes. Inspect failed, external, and encoded/base64 queue transports separately before resuming ingestion.
+
 ```bash
 # 1. Backup first!
 
-# 2. Pull latest code
+# 2. Stop async workers (skip this command when using sync://) and pause the collection endpoint at the proxy
+sudo systemctl stop aggregate-worker
+
+# 3. Pull latest code
 git pull
 
-# 3. Install dependencies
+# 4. Install dependencies
 composer install --no-dev --optimize-autoloader
 
-# 4. Run migrations
+# 5. Run migrations
 php bin/console doctrine:migrations:migrate -n
 
-# 5. Clear cache
+# 6. Clear cache
 php bin/console cache:clear --env=prod
 
-# 6. Compile assets
+# 7. Compile assets
 php bin/console asset-map:compile
 
-# 7. Restart worker
+# 8. Restart the worker when using async mode, then resume the collection endpoint
 sudo systemctl restart aggregate-worker
 ```
 

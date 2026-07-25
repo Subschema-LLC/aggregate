@@ -71,7 +71,7 @@ class CreateWebsiteCommand extends Command
         $io->writeln("    websiteToken: '$token'");
         $io->writeln('  };');
         $io->writeln('</script>');
-        $io->writeln('<script src="https://your-analytics-host.com/aggregate.js" async></script>');
+        $io->writeln('<script src="https://your-analytics-host.com/aggregate.js" async referrerpolicy="no-referrer"></script>');
         $io->writeln('');
 
         $io->note('Replace "your-analytics-host.com" with your actual domain.');

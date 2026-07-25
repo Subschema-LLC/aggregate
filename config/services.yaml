@@ -4,6 +4,9 @@
 # Put parameters here that don't need to change on each machine where the app is deployed
 # https://symfony.com/doc/current/best_practices.html#use-parameters-for-application-configuration
 parameters:
+    # Empty by default. Deployments behind a reverse proxy may set exact proxy
+    # addresses/CIDRs through TRUSTED_PROXIES; never trust arbitrary clients.
+    env(TRUSTED_PROXIES): ''
 
 services:
     # default configuration for services in *this* file
@@ -39,10 +42,21 @@ services:
         arguments:
             $projectDir: '%kernel.project_dir%'
 
+    App\Service\GeoIp\GeoIpResolverInterface:
+        alias: App\Service\GeoIp\ConfiguredGeoIpResolver
+
+    App\Service\GeoIp\MmdbGeoCodeLookupInterface:
+        alias: App\Service\GeoIp\MaxMindMmdbGeoCodeLookup
+
+    App\Service\GeoIp\MaxMindMmdbGeoCodeLookup:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
 
     App\Security\IpRateLimiter:
         arguments:
             $storageDir: '%kernel.project_dir%/var/rate_limit'
+            $hashSecret: '%kernel.secret%'
             $maxPerMinute: 100
         calls:
             - setConfigLoader: ['@App\Service\AggregateConfigLoader']

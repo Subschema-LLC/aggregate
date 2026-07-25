@@ -6,16 +6,18 @@ class TrackEventMessage
 {
     public function __construct(
         public string $websiteToken,
-        public string $url,
-        public ?string $referrer,
+        public string $eventName,
+        public string $pagePath,
+        public string $referrerChannel,
+        public string $deviceClass,
+        public string $viewportBucket,
         public ?int $screenWidth,
-        public ?string $eventName,
         public ?string $goalEvent,
         public ?array $eventData,
-        public string $ip,
-        public string $userAgent,
+        public string $generalizedUserAgent,
         public ?string $visitorId,
         public ?string $sessionId,
-        public ?string $consentState,
+        public \DateTimeImmutable $occurredAt,
+        public ?string $geoArea = null,
     ) {}
 }

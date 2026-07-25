@@ -41,7 +41,7 @@ ifeq ($(USE_DOCKER),1)
 	@echo "Using Docker installation..."
 	@if [ ! -f config/aggregate.yaml ]; then \
 		cp config/aggregate.yaml.example config/aggregate.yaml; \
-		echo "⚠️  Edit config/aggregate.yaml and set daily_salt_secret"; \
+		echo "⚠️  Review the privacy measurement controls in config/aggregate.yaml"; \
 	fi
 	@echo "Using Docker profile: $(DOCKER_PROFILE)"
 	@echo "Starting services..."
@@ -135,6 +135,10 @@ endif
 migrate: ## Run database migrations
 	$(PHP_CMD) bin/console doctrine:migrations:migrate
 
+test: ## Run PHP and JavaScript privacy regression tests
+	$(PHP_CMD) vendor/bin/phpunit
+	node tests/JavaScript/aggregate-consent.test.js
+
 worker: ## Manually start worker (for debugging)
 	$(PHP_CMD) -d variables_order=EGPCS bin/console messenger:consume async -vv
 
@@ -156,7 +160,7 @@ test-tracking: ## Send a test tracking event
 	curl -i -X POST http://localhost/api/receive \
 		-H "Origin: http://localhost" \
 		-H "Content-Type: application/json" \
-		-d '{"url":"http://localhost/test","referrer":"http://localhost/","screenWidth":1920,"websiteToken":"'$$token'"}'
+		-d '{"eventName":"button_click","pagePath":"/test","referrerChannel":"internal","deviceClass":"desktop","viewportBucket":"large","consentState":"unknown","websiteToken":"'$$token'"}'
 
 clean: ## Clean up containers, volumes, and cache
 ifeq ($(USE_DOCKER),1)
@@ -184,7 +188,3 @@ cache-clear: ## Clear Symfony cache
 
 assets-compile: ## Compile frontend assets
 	$(PHP_CMD) bin/console asset-map:compile
-
-generate-salt: ## Generate a random salt for DAILY_SALT_SECRET
-	@echo "Random salt for DAILY_SALT_SECRET:"
-	@openssl rand -base64 32
