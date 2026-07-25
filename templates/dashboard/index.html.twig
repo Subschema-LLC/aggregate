@@ -81,7 +81,7 @@
     websiteToken: '{{ website.token }}'
   };
 &lt;/script&gt;
-&lt;script src="{{ app_host }}/aggregate.js" defer&gt;&lt;/script&gt;</code></pre>
+&lt;script src="{{ app_host }}/aggregate.js" defer referrerpolicy="no-referrer"&gt;&lt;/script&gt;</code></pre>
                         <button class="button is-small is-info mt-3 copy-btn" data-clipboard-target="#code-{{ loop.index }}">
                             <span class="icon">
                                 <i class="fas fa-copy"></i>
@@ -94,7 +94,7 @@
     websiteToken: '{{ website.token }}'
   };
 &lt;/script&gt;
-&lt;script src="{{ app_host }}/aggregate.js" defer&gt;&lt;/script&gt;</textarea>
+&lt;script src="{{ app_host }}/aggregate.js" defer referrerpolicy="no-referrer"&gt;&lt;/script&gt;</textarea>
                     </div>
 
                     <h5 class="title is-6 mt-5">
@@ -107,8 +107,9 @@
                     </h5>
 
                     <div class="notification is-light">
-                        <p class="mb-2">Page views are tracked automatically when <code>{{ js_namespace }}.js</code> loads.</p>
-                        <p class="mb-3">Use <code>emit(...)</code> for custom events/goals:</p>
+                        <p class="mb-2">An anonymous <code>view</code> event is measured automatically when <code>{{ js_namespace }}.js</code> loads.</p>
+                        <p class="mb-3">Use <code>emit(...)</code> at any time for named interactions. Without enhanced consent, only the safe event name and coarse context are retained; properties and goals are omitted.</p>
+                        <p class="mb-3">Keep names fixed and non-identifying: start with a letter; use at most 100 characters from letters, numbers, <code>_ . : -</code>; and never insert user-entered values.</p>
                         <pre><code>// Track a button click
 window.{{ js_namespace }}.emit('button_click', {
   button_id: 'signup',
@@ -133,22 +134,23 @@ window.{{ js_namespace }}.emit('video_play', {
                             <span class="icon">
                                 <i class="fas fa-user-shield"></i>
                             </span>
-                            <span>Consent Management (Optional)</span>
+                            <span>Enhanced Analytics Consent</span>
                         </span>
                     </h5>
 
                     <div class="notification is-light">
-                        <p class="mb-3">For privacy compliance, enable Tier 2 tracking after user consent:</p>
-                        <pre><code>// Enable consent-based tracking
+                        <p class="mb-3">Enable identifiers, event properties, goals, and exact dimensions only after the visitor accepts enhanced analytics:</p>
+                        <pre><code>// Accept enhanced analytics
 window.{{ js_namespace }}.setConsent(true);
 
-// Withdraw consent
+// Reject or withdraw enhanced analytics
 window.{{ js_namespace }}.setConsent(false);</code></pre>
-                        <p class="mt-3"><em>By default, Tier 1 (cookieless) tracking is active without consent.</em></p>
+                        <p class="mt-3"><em>Rejecting enhanced analytics removes browser identifiers and event details. Coarse page-view and named-event rows continue unless an administrator disables collection or excludes this path.</em></p>
                     </div>
 
                     <div class="mt-5">
                         <form action="{{ path('app_website_delete', {token: website.token}) }}" method="post" onsubmit="return confirm('Are you sure you want to delete this website? This action cannot be undone.');">
+                            <input type="hidden" name="_csrf_token" value="{{ csrf_token('delete_website_' ~ website.token) }}">
                             <button type="submit" class="button is-danger is-outlined">
                                 <span class="icon">
                                     <i class="fas fa-trash"></i>
@@ -165,6 +167,7 @@ window.{{ js_namespace }}.setConsent(false);</code></pre>
             <div class="columns">
                 <div class="column is-6">
                     <form action="{{ path('app_settings_save') }}" method="post">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token('app_settings') }}">
                         <h4 class="title is-5">Application Configuration</h4>
                         <p class="subtitle is-6">Stored in <code>config/aggregate.yaml</code></p>
 
@@ -221,13 +224,135 @@ window.{{ js_namespace }}.setConsent(false);</code></pre>
                             <p>You can always edit these settings directly in:</p>
                             <pre><code>config/aggregate.yaml</code></pre>
                             <p>Manual changes in the YAML file will be reflected in this UI after a page refresh.</p>
-                            <p><strong>Note:</strong> Sensitive keys like <code>daily_salt_secret</code> can only be changed manually in the YAML file for security.</p>
+                            <p>Settings supplied as server environment variables take precedence over values saved here.</p>
                         </div>
                     </div>
                 </div>
             </div>
 
             {% if is_granted('ROLE_ADMIN') %}
+                <hr>
+                <div class="columns">
+                    <div class="column is-6">
+                        <h4 class="title is-5">Analytics Collection</h4>
+                        <p class="subtitle is-6">Collection, sensitive-path, and coarse-geography controls stored in <code>config/aggregate.yaml</code>.</p>
+
+                        <form action="{{ path('app_anonymous_settings_save') }}" method="post">
+                            <input type="hidden" name="_csrf_token" value="{{ csrf_token('anonymous_settings') }}">
+
+                            <div class="field">
+                                <label class="checkbox">
+                                    <input type="checkbox" name="anonymous_tracking_enabled" value="1" {% if anonymous_tracking_enabled %}checked{% endif %}>
+                                    Enable analytics collection
+                                </label>
+                                <p class="help">When disabled, the server rejects anonymous and consented enhanced events.</p>
+                            </div>
+
+                            <div class="field">
+                                <label class="label" for="anonymous-excluded-paths">Excluded paths</label>
+                                <div class="control">
+                                    <textarea class="textarea is-family-monospace" id="anonymous-excluded-paths" name="anonymous_excluded_paths" rows="6" placeholder="/account/*&#10;/checkout/**&#10;/health">{{ anonymous_excluded_paths|join('\n') }}</textarea>
+                                </div>
+                                <p class="help">One path or glob per line. Query strings and fragments are never accepted. Matching paths are excluded from anonymous and enhanced collection.</p>
+                            </div>
+
+                            <hr>
+                            <h5 class="title is-6">Coarse Geography (Optional)</h5>
+
+                            <div class="field">
+                                <label class="checkbox">
+                                    <input type="checkbox" name="anonymous_geo_enabled" value="1" {% if anonymous_geo_enabled %}checked{% endif %}>
+                                    Derive coarse geography from the request IP
+                                </label>
+                                <p class="help">Off by default. The lookup uses only a local MMDB file; the IP and detailed lookup record are not added to the event or queue. Failed lookups leave geography empty without rejecting the event.</p>
+                            </div>
+
+                            <div class="field">
+                                <label class="label" for="anonymous-geo-level">Stored geography level</label>
+                                <div class="control">
+                                    <div class="select is-fullwidth">
+                                        <select id="anonymous-geo-level" name="anonymous_geo_level" required>
+                                            <option value="macro_region" {% if anonymous_geo_level == 'macro_region' %}selected{% endif %}>Macro-region (recommended)</option>
+                                            <option value="country" {% if anonymous_geo_level == 'country' %}selected{% endif %}>Country</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <p class="help">Macro-region stores a continent-level code such as <code>continent:NA</code>. Country stores an ISO country code such as <code>country:US</code>. This is approximate network-exit geography—not a visitor's precise physical location. City, subdivision, postcode, and coordinates are never retained.</p>
+                            </div>
+
+                            <div class="field">
+                                <label class="label" for="anonymous-geo-database-path">Local GeoIP database path</label>
+                                <div class="control">
+                                    <input class="input is-family-monospace" type="text" id="anonymous-geo-database-path" name="anonymous_geo_database_path" value="{{ anonymous_geo_database_path }}" maxlength="4096" placeholder="/var/lib/GeoIP/GeoLite2-Country.mmdb">
+                                </div>
+                                <p class="help">Use a local absolute path (recommended) or a path inside the project root to a read-only GeoLite2-Country-compatible <code>.mmdb</code>. URI schemes, project-directory escapes, UNC/network shares, and Windows device paths are rejected. The application does not download a database or call a GeoIP web service.</p>
+                            </div>
+
+                            <div class="field">
+                                <div class="control">
+                                    <button type="submit" class="button is-link">
+                                        <span class="icon"><i class="fas fa-shield-alt"></i></span>
+                                        <span>Save Collection Settings</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div class="column is-5 is-offset-1">
+                        <div class="message is-warning is-light">
+                            <div class="message-header">
+                                <p>What rejection means</p>
+                            </div>
+                            <div class="message-body content">
+                                <p><strong>Reject</strong> disables enhanced analytics: no visitor ID, session ID, cookie, event properties, goals, or exact dimensions.</p>
+                                <p>Anonymous rows retain a safe event name, UTC hour bucket, sanitized path, coarse referrer/device/viewport buckets, and optional coarse geography. They may still be personal data in context; the BI views group them and suppress low-volume cells.</p>
+                                <p>IP geolocation is itself processing of personal data in many jurisdictions, even though the analytics event does not retain the IP. Enable it only after documenting a legal basis and notice appropriate to the deployment.</p>
+                            </div>
+                        </div>
+
+                        <div class="mt-5">
+                            <h4 class="title is-5">BI Disclosure Thresholds</h4>
+                            <p class="subtitle is-6">Stored directly in <code>analytics_privacy_settings</code> and used immediately by the BI views.</p>
+
+                            {% if analytics_privacy_settings_error %}
+                                <div class="notification is-danger is-light">
+                                    The stored thresholds could not be loaded, so safe defaults are shown below. Saving valid values will repair a missing or invalid singleton row. If the table or columns are missing, run the database migrations first.
+                                </div>
+                            {% endif %}
+
+                            <form action="{{ path('app_analytics_privacy_settings_save') }}" method="post">
+                                <input type="hidden" name="_csrf_token" value="{{ csrf_token('analytics_privacy_settings') }}">
+
+                                <div class="field">
+                                    <label class="label" for="anonymous-min-cell-count">Minimum BI cell count</label>
+                                    <div class="control">
+                                        <input class="input" type="number" id="anonymous-min-cell-count" name="anonymous_min_cell_count" value="{{ anonymous_min_cell_count }}" min="2" max="1000" required>
+                                    </div>
+                                    <p class="help">Default: 5; allowed range: 2–1000. <code>bi_anonymous_events_v1</code> exposes only completed UTC-hour cells meeting this count.</p>
+                                </div>
+
+                                <div class="field">
+                                    <label class="label" for="anonymous-geo-min-cell-count">Minimum geography BI cell count</label>
+                                    <div class="control">
+                                        <input class="input" type="number" id="anonymous-geo-min-cell-count" name="anonymous_geo_min_cell_count" value="{{ anonymous_geo_min_cell_count }}" min="10" max="1000" required>
+                                    </div>
+                                    <p class="help">Default: 25; allowed range: 10–1000. <code>bi_anonymous_geo_events_v1</code> exposes completed UTC-day cells with primary and secondary suppression.</p>
+                                </div>
+
+                                <div class="field">
+                                    <div class="control">
+                                        <button type="submit" class="button is-link">
+                                            <span class="icon"><i class="fas fa-database"></i></span>
+                                            <span>Save BI Thresholds</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
                 <hr>
                 <div class="columns">
                     <div class="column is-5">
@@ -378,6 +503,7 @@ window.{{ js_namespace }}.setConsent(false);</code></pre>
             <button class="delete" aria-label="close"></button>
         </header>
         <form action="{{ path('app_website_create') }}" method="post">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token('create_website') }}">
             <section class="modal-card-body">
                 <div class="field">
                     <label class="label" for="website-name">Website Name</label>

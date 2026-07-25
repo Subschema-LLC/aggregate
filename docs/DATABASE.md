@@ -102,7 +102,9 @@ php bin/console doctrine:migrations:migrate -n
 
 **Indexes (automatically created by migrations):**
 - `events.session_id`
+- `events.visitor_id`
 - `events.consent_state`
+- `events (privacy_mode, website_token, created_at)`
 
 **Recommended settings for analytics workload:**
 ```ini
@@ -174,7 +176,6 @@ php bin/console doctrine:migrations:migrate -n
 |--------------|------------------------|
 | MySQL 8.4 | `?serverVersion=8.4` |
 | MySQL 8.0 | `?serverVersion=8.0` |
-| MySQL 5.7 | `?serverVersion=5.7` |
 
 ### Important Notes
 
@@ -356,6 +357,9 @@ DATABASE_URL="sqlsrv://user@server:pass@servername.database.windows.net:1433/ana
 
 **Simple file-based database for development and small deployments.**
 
+SQLite 3.25 or newer is required. The anonymous geography BI view uses common
+table expressions and window functions.
+
 ### Prerequisites
 
 **PHP Extension (usually included):**
@@ -393,6 +397,7 @@ The database file will be created automatically at `var/data.db`.
 - ❌ No concurrent writes (single writer)
 - ❌ Limited for high-traffic sites
 - ❌ No network access (file-based only)
+- ❌ No SQL users or table/view grants; anyone with the file can query raw `events`
 - ❌ Weaker type system
 
 ### When to Use
@@ -412,24 +417,46 @@ The database file will be created automatically at `var/data.db`.
 
 ## Migration and Compatibility
 
-### Database-Agnostic Migrations
+### Cross-Database Migrations
 
-Schema migrations use Doctrine DBAL's platform-agnostic schema API, ensuring compatibility across supported relational databases.
+Table and column migrations use Doctrine DBAL's schema API. BI-view migrations select explicit UTC/date SQL for each supported database platform and fail rather than silently creating an unsafe view on an unsupported platform or version.
 
 Current migrations:
 
 - `migrations/Version20260330000000.php` (baseline)
-- `migrations/Version20260330010000.php` (adds `events.consent_state`)
+- `migrations/Version20260330010000.php` (schema-neutral compatibility marker)
+- `migrations/Version20260529000000.php` (canonical `events.consent_state` migration)
+- `migrations/Version20260724000000.php` (unified anonymous/enhanced event privacy modes and permanent removal of daily IP hashes)
+- `migrations/Version20260724000250.php` (anonymous fail-safe default for newly inserted rows)
+- `migrations/Version20260724000500.php` (purge legacy non-granted enhanced rows and queued Doctrine tracker envelopes)
+- `migrations/Version20260724001000.php` (hourly grouped and threshold-filtered anonymous BI view)
+- `migrations/Version20260724001500.php` (optional coarse `events.geo_area` and geographic suppression setting)
+- `migrations/Version20260724002000.php` (daily, threshold-filtered anonymous geography BI view)
 
-This baseline creates:
-- `events`
+The current schema contains:
+- `events` (private individual rows for both `anonymous` and `enhanced` privacy modes, with optional coarse `geo_area`)
+- `analytics_privacy_settings` (database source of truth for hourly and geographic BI suppression thresholds)
+- `bi_anonymous_events_v1` (supported grouped anonymous-mode BI contract)
+- `bi_anonymous_geo_events_v1` (supported daily, lower-dimensional anonymous geography BI contract)
 - `users` (dashboard auth, optional in API-only mode)
 - `messenger_messages` (used only in async queue mode)
+
+For `privacy_mode = 'anonymous'`, `created_at` is a server-generated UTC hour boundary, not an exact event time. These are still individual rows and may be personal data in context, so keep `events` private. Routine BI users should query `bi_anonymous_events_v1`, which groups hourly cells and suppresses counts below `anonymous_min_cell_count`.
+
+When optional coarse geography is enabled, `events.geo_area` contains a normalized `continent:XX` or `country:XX` value for accepted anonymous and enhanced events. It never contains city, subdivision, postcode, or coordinates. Null means geography was disabled or unavailable. The source IP and full local-MMDB result are not stored or queued.
+
+Routine anonymous geography reporting should use `bi_anonymous_geo_events_v1`: `website_token`, UTC `event_day`, `event_name`, `geo_area`, and `event_count`. It excludes the current UTC day and applies `anonymous_geo_min_cell_count` (default `25`, range `10`–`1000`). It has no path, referrer, device, viewport, or identifier dimensions. Low-volume areas are combined into a thresholded `<level>:other` pool; when only one area is below threshold, the smallest visible area joins that pool as secondary suppression. The threshold counts events rather than distinct people, so the view reduces disclosure and direct-subtraction risk but does not establish legal anonymity or k-anonymity.
+
+For an upgrade from an older release, pause ingestion and stop async workers before running the `Version20260724*` migrations. The daily hashes, legacy non-granted rows, and matching Doctrine queue envelopes cannot be restored. Plain-text `LIKE` cleanup cannot guarantee removal from failed, external, or encoded/base64 queue transports; inspect and purge those separately. Rows already marked `granted` remain, including any rows for which an older release inferred consent from a session ID, so audit their provenance and purge them when it cannot be established.
 
 ```php
 $events = $schema->createTable('events');
 $events->addColumn('website_token', 'string', ['length' => 191]);
-$events->addColumn('consent_state', 'string', ['length' => 20, 'default' => 'unknown']);
+$events->addColumn('privacy_mode', 'string', ['length' => 20, 'default' => 'anonymous']);
+$events->addColumn('device_class', 'string', ['length' => 20, 'default' => 'unknown']);
+$events->addColumn('viewport_bucket', 'string', ['length' => 20, 'default' => 'unknown']);
+$events->addColumn('geo_area', 'string', ['length' => 16, 'notnull' => false]);
+$events->addColumn('consent_state', 'string', ['length' => 20, 'notnull' => false]);
 $events->addColumn('custom_data', 'json', ['notnull' => false]);
 // ... works across supported databases
 ```
@@ -568,10 +595,10 @@ php bin/console doctrine:migrations:status
 | Database | Min Version | Max Version | Production Ready | Notes |
 |----------|------------|-------------|------------------|-------|
 | PostgreSQL | 13 | 16+ | ✅ Yes | Recommended |
-| MySQL | 5.7 | 8.4+ | ✅ Yes | Well tested |
+| MySQL | 8.0 | 8.4+ | ✅ Yes | Geography BI view requires CTEs/window functions |
 | MariaDB | 10.6 | 11.4+ | ✅ Yes | MySQL compatible |
 | SQL Server | 2017 | 2022+ | ✅ Yes | Requires pdo_sqlsrv |
-| SQLite | 3.35 | Latest | ⚠️ Dev only | Not for high traffic |
+| SQLite | 3.25 | Latest | ⚠️ Dev only | Geography BI view requires window functions; not for high traffic |
 
 ---
 

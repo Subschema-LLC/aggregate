@@ -8,6 +8,7 @@ class AggregateConfigLoader
 {
     private array $config = [];
     private bool $loaded = false;
+    private bool $loadFailed = false;
 
     public function __construct(
         private readonly string $projectDir,
@@ -50,9 +51,25 @@ class AggregateConfigLoader
                 unset($data['environments']);
                 $this->config = $data;
             }
-        } catch (\Throwable $e) {
-            // Fail gracefully if yaml is malformed
+        } catch (\Throwable) {
+            // Consumers of privacy-sensitive settings can inspect this state
+            // and fail closed without exposing parser or filesystem details.
             $this->config = [];
+            $this->loadFailed = true;
+        }
+    }
+
+    public function hasLoadError(): bool
+    {
+        $this->load();
+
+        return $this->loadFailed || !$this->hasValidIngestionPrivacySettings();
+    }
+
+    public function assertHealthy(): void
+    {
+        if ($this->hasLoadError()) {
+            throw new \RuntimeException('Aggregate configuration is invalid.');
         }
     }
 
@@ -81,6 +98,7 @@ class AggregateConfigLoader
     public function set(string $key, mixed $value): void
     {
         $this->load();
+        $this->assertHealthy();
         $this->config[$key] = $value;
 
         // Prefer environment-specific file if it was the source
@@ -113,10 +131,15 @@ class AggregateConfigLoader
     public function getWithEnvFallback(string $key, mixed $default = null): mixed
     {
         $envKey = strtoupper($key);
-        $envValue = $_ENV[$envKey] ?? $_SERVER[$envKey] ?? '';
+        foreach ([$_ENV, $_SERVER] as $source) {
+            if (!array_key_exists($envKey, $source)) {
+                continue;
+            }
 
-        if (!empty($envValue)) {
-            return $envValue;
+            $envValue = $source[$envKey];
+            if ($envValue !== null && $envValue !== '') {
+                return $envValue;
+            }
         }
 
         return $this->get($key, $default);
@@ -151,5 +174,55 @@ class AggregateConfigLoader
     public function isDashboardEnabled(): bool
     {
         return $this->getBoolWithEnvFallback('dashboard_enabled', true);
+    }
+
+    private function hasValidIngestionPrivacySettings(): bool
+    {
+        $enabled = $this->getWithEnvFallback('anonymous_tracking_enabled', true);
+        if (!$this->isBooleanLike($enabled)) {
+            return false;
+        }
+
+        $excludedPaths = $this->getWithEnvFallback('anonymous_excluded_paths', []);
+        if (is_string($excludedPaths)) {
+            $excludedPaths = $excludedPaths === '' ? [] : explode(',', $excludedPaths);
+        }
+        if (!is_array($excludedPaths)) {
+            return false;
+        }
+
+        foreach ($excludedPaths as $path) {
+            if (!is_string($path)) {
+                return false;
+            }
+
+            $path = trim($path);
+            if ($path === ''
+                || strlen($path) > 512
+                || !str_starts_with($path, '/')
+                || str_contains($path, '?')
+                || str_contains($path, '#')) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function isBooleanLike(mixed $value): bool
+    {
+        if (is_bool($value)) {
+            return true;
+        }
+        if (is_int($value)) {
+            return $value === 0 || $value === 1;
+        }
+        if (!is_string($value)) {
+            return false;
+        }
+
+        return in_array(strtolower(trim($value)), [
+            '0', '1', 'false', 'true', 'no', 'yes', 'off', 'on',
+        ], true);
     }
 }

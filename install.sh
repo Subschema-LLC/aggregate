@@ -112,7 +112,7 @@ set_env_value "MAILER_DSN" "null://null" ".env.local"
 
 echo ""
 echo "Database Configuration (.env.local / DATABASE_URL):"
-echo "1) SQLite (Easiest, good for small sites)"
+echo "1) SQLite 3.25+ (Easiest, good for small sites)"
 echo "2) PostgreSQL (Recommended for production)"
 echo "3) MySQL"
 echo "4) MariaDB"
@@ -212,8 +212,6 @@ if [ ! -f config/aggregate.yaml ]; then
     echo ""
     echo "Creating config/aggregate.yaml..."
 
-    SALT_SECRET=$(openssl rand -base64 32)
-
     read -p "Public app host [http://localhost:9001]: " APP_HOST
     APP_HOST=${APP_HOST:-http://localhost:9001}
     read -p "JS namespace [Aggregate]: " JS_NAMESPACE
@@ -233,24 +231,27 @@ if [ ! -f config/aggregate.yaml ]; then
 
 environments:
   prod:
-    daily_salt_secret: "$SALT_SECRET"
     rate_limit_per_minute: 100
     app_host: "$APP_HOST"
     js_namespace: "$JS_NAMESPACE"
     dashboard_enabled: $DASHBOARD_ENABLED
+    anonymous_tracking_enabled: true
+    anonymous_excluded_paths: []
 
   dev:
-    daily_salt_secret: "$SALT_SECRET"
     rate_limit_per_minute: 1000
     app_host: "http://localhost:9001"
     js_namespace: "Aggregate"
     dashboard_enabled: true
+    anonymous_tracking_enabled: true
+    anonymous_excluded_paths: []
 
   test:
-    daily_salt_secret: "test-salt-CHANGE-ME"
     rate_limit_per_minute: 1000
     js_namespace: "Aggregate"
     dashboard_enabled: true
+    anonymous_tracking_enabled: true
+    anonymous_excluded_paths: []
 EOF
 
     echo -e "${GREEN}✓ config/aggregate.yaml created${NC}"

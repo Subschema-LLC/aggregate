@@ -1,0 +1,100 @@
+<?php
+
+declare(strict_types=1);
+
+namespace DoctrineMigrations;
+
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\DBAL\Platforms\SqlitePlatform;
+use Doctrine\DBAL\Platforms\SQLServerPlatform;
+use Doctrine\DBAL\Schema\Schema;
+use Doctrine\Migrations\AbstractMigration;
+
+final class Version20260724001000 extends AbstractMigration
+{
+    public function getDescription(): string
+    {
+        return 'Expose thresholded hourly anonymous event cells to BI tools';
+    }
+
+    public function isTransactional(): bool
+    {
+        // MySQL and MariaDB implicitly commit view DDL statements.
+        return false;
+    }
+
+    public function up(Schema $schema): void
+    {
+        $this->addSql(<<<'SQL'
+INSERT INTO analytics_privacy_settings (id, anonymous_min_cell_count, updated_at)
+SELECT 1, 5, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM analytics_privacy_settings WHERE id = 1)
+SQL);
+        $this->addDropViewSql('bi_anonymous_pageviews_v1');
+        $this->addDropViewSql('bi_anonymous_events_v1');
+        $this->addSql(sprintf(<<<'SQL'
+CREATE VIEW bi_anonymous_events_v1 AS
+SELECT
+    events.website_token,
+    events.created_at AS event_hour,
+    events.event_name,
+    events.url AS page_path,
+    COALESCE(events.referrer, 'unknown') AS referrer_channel,
+    events.device_class,
+    events.viewport_bucket,
+    COUNT(*) AS event_count
+FROM events
+CROSS JOIN analytics_privacy_settings privacy
+WHERE privacy.id = 1
+  AND privacy.anonymous_min_cell_count BETWEEN 2 AND 1000
+  AND events.privacy_mode = 'anonymous'
+  AND %s
+GROUP BY
+    events.website_token,
+    events.created_at,
+    events.event_name,
+    events.url,
+    COALESCE(events.referrer, 'unknown'),
+    events.device_class,
+    events.viewport_bucket,
+    privacy.anonymous_min_cell_count
+HAVING COUNT(*) >= privacy.anonymous_min_cell_count
+SQL, $this->completedHourPredicate()));
+    }
+
+    public function down(Schema $schema): void
+    {
+        $this->addDropViewSql('bi_anonymous_events_v1');
+    }
+
+    private function addDropViewSql(string $viewName): void
+    {
+        if ($this->connection->getDatabasePlatform() instanceof SQLServerPlatform) {
+            $this->addSql(
+                sprintf("IF OBJECT_ID('%1\$s', 'V') IS NOT NULL DROP VIEW %1\$s", $viewName),
+            );
+
+            return;
+        }
+
+        $this->addSql(sprintf('DROP VIEW IF EXISTS %s', $viewName));
+    }
+
+    private function completedHourPredicate(): string
+    {
+        $platform = $this->connection->getDatabasePlatform();
+
+        return match (true) {
+            $platform instanceof AbstractMySQLPlatform =>
+                "events.created_at < DATE_FORMAT(UTC_TIMESTAMP(), '%Y-%m-%d %H:00:00')",
+            $platform instanceof PostgreSQLPlatform =>
+                "events.created_at < date_trunc('hour', CURRENT_TIMESTAMP AT TIME ZONE 'UTC')",
+            $platform instanceof SQLServerPlatform =>
+                'events.created_at < DATEADD(hour, DATEDIFF(hour, 0, SYSUTCDATETIME()), 0)',
+            $platform instanceof SqlitePlatform =>
+                "events.created_at < strftime('%Y-%m-%d %H:00:00', 'now')",
+            default => '1 = 0',
+        };
+    }
+}

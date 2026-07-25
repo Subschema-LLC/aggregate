@@ -29,8 +29,6 @@
         php_server
     }
 
-    log {
-       output stdout
-       level INFO
-    }
+    # Access logging is intentionally disabled here. Tracking requests expose
+    # network identifiers before application-level anonymization can run.
 }

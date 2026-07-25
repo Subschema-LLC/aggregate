@@ -5,9 +5,11 @@ namespace App\Controller;
 use App\Entity\User;
 use App\Repository\UserRepository;
 use App\Service\AggregateConfigLoader;
+use App\Service\AnalyticsPrivacySettings;
 use App\Service\WebsiteConfigManager;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
+use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -19,9 +21,11 @@ class DashboardController extends AbstractController
     public function __construct(
         private readonly WebsiteConfigManager $websiteManager,
         private readonly AggregateConfigLoader $config,
+        private readonly AnalyticsPrivacySettings $analyticsPrivacySettings,
         private readonly UserRepository $userRepository,
         private readonly UserPasswordHasherInterface $passwordHasher,
         private readonly EntityManagerInterface $em,
+        private readonly LoggerInterface $logger,
     ) {}
 
     #[Route('/dashboard', name: 'app_dashboard')]
@@ -33,6 +37,36 @@ class DashboardController extends AbstractController
         $appHost = $this->config->getWithEnvFallback('app_host', 'http://localhost:8000');
         $jsNamespace = $this->config->getWithEnvFallback('js_namespace', 'Aggregate');
         $rateLimit = $this->config->getWithEnvFallback('rate_limit_per_minute', 100);
+        $anonymousTrackingEnabled = $this->config->getBoolWithEnvFallback('anonymous_tracking_enabled', true);
+        $anonymousExcludedPaths = $this->config->getWithEnvFallback('anonymous_excluded_paths', []);
+        $privacySettingsError = false;
+        try {
+            $minimumCellCounts = $this->analyticsPrivacySettings->getMinimumCellCounts();
+        } catch (\Throwable $e) {
+            $this->logger->error('Failed to load BI disclosure thresholds.', ['exception' => $e]);
+            $minimumCellCounts = [
+                'anonymous' => AnalyticsPrivacySettings::DEFAULT_MINIMUM_CELL_COUNT,
+                'geo' => AnalyticsPrivacySettings::DEFAULT_GEO_MINIMUM_CELL_COUNT,
+            ];
+            $privacySettingsError = true;
+        }
+        $anonymousGeoEnabled = $this->config->getBoolWithEnvFallback('anonymous_geo_enabled', false);
+        $anonymousGeoLevel = strtolower(trim((string) $this->config->getWithEnvFallback('anonymous_geo_level', 'macro_region')));
+        if (!in_array($anonymousGeoLevel, ['macro_region', 'country'], true)) {
+            $anonymousGeoLevel = 'macro_region';
+        }
+        $anonymousGeoDatabasePath = $this->config->getWithEnvFallback('anonymous_geo_database_path', '');
+        if (!is_string($anonymousGeoDatabasePath)) {
+            $anonymousGeoDatabasePath = '';
+        } else {
+            $anonymousGeoDatabasePath = trim($anonymousGeoDatabasePath);
+        }
+        if (is_string($anonymousExcludedPaths)) {
+            $anonymousExcludedPaths = preg_split('/[\r\n,]+/', $anonymousExcludedPaths) ?: [];
+        }
+        if (!is_array($anonymousExcludedPaths)) {
+            $anonymousExcludedPaths = [];
+        }
         $users = $this->isGranted('ROLE_ADMIN') ? $this->userRepository->findBy([], ['createdAt' => 'ASC']) : [];
 
         return $this->render('dashboard/index.html.twig', [
@@ -40,6 +74,14 @@ class DashboardController extends AbstractController
             'app_host' => $appHost,
             'js_namespace' => $jsNamespace,
             'rate_limit' => $rateLimit,
+            'anonymous_tracking_enabled' => $anonymousTrackingEnabled,
+            'anonymous_excluded_paths' => array_values(array_filter(array_map('strval', $anonymousExcludedPaths))),
+            'anonymous_min_cell_count' => $minimumCellCounts['anonymous'],
+            'anonymous_geo_enabled' => $anonymousGeoEnabled,
+            'anonymous_geo_level' => $anonymousGeoLevel,
+            'anonymous_geo_database_path' => $anonymousGeoDatabasePath,
+            'anonymous_geo_min_cell_count' => $minimumCellCounts['geo'],
+            'analytics_privacy_settings_error' => $privacySettingsError,
             'users' => $users,
         ]);
     }
@@ -48,6 +90,11 @@ class DashboardController extends AbstractController
     public function createWebsite(Request $request): Response
     {
         $this->denyIfDashboardDisabled();
+
+        if (!$this->isCsrfTokenValid('create_website', (string) $request->request->get('_csrf_token', ''))) {
+            $this->addFlash('error', 'Invalid security token. Please try again.');
+            return $this->redirectToRoute('app_dashboard');
+        }
 
         $name = trim($request->request->get('name', ''));
         $domain = trim($request->request->get('domain', ''));
@@ -83,9 +130,14 @@ class DashboardController extends AbstractController
     }
 
     #[Route('/dashboard/website/delete/{token}', name: 'app_website_delete', methods: ['POST'])]
-    public function deleteWebsite(string $token): Response
+    public function deleteWebsite(string $token, Request $request): Response
     {
         $this->denyIfDashboardDisabled();
+
+        if (!$this->isCsrfTokenValid('delete_website_'.$token, (string) $request->request->get('_csrf_token', ''))) {
+            $this->addFlash('error', 'Invalid security token. Please try again.');
+            return $this->redirectToRoute('app_dashboard');
+        }
 
         try {
             $success = $this->websiteManager->removeWebsite($token);
@@ -107,6 +159,11 @@ class DashboardController extends AbstractController
     {
         $this->denyIfDashboardDisabled();
 
+        if (!$this->isCsrfTokenValid('app_settings', (string) $request->request->get('_csrf_token', ''))) {
+            $this->addFlash('error', 'Invalid security token. Please try again.');
+            return $this->redirectToRoute('app_dashboard');
+        }
+
         $appHost = trim($request->request->get('app_host', ''));
         $jsNamespace = trim($request->request->get('js_namespace', 'Aggregate'));
         $rateLimit = (int) $request->request->get('rate_limit', 100);
@@ -124,6 +181,140 @@ class DashboardController extends AbstractController
             $this->addFlash('success', 'Settings updated successfully in config/aggregate.yaml!');
         } catch (\Exception $e) {
             $this->addFlash('error', 'Failed to save settings: ' . $e->getMessage());
+        }
+
+        return $this->redirectToRoute('app_dashboard');
+    }
+
+    #[Route('/dashboard/settings/anonymous', name: 'app_anonymous_settings_save', methods: ['POST'])]
+    public function saveAnonymousSettings(Request $request): Response
+    {
+        $this->denyIfDashboardDisabled();
+        $this->denyIfNotAdmin();
+
+        $csrfToken = (string) $request->request->get('_csrf_token', '');
+        if (!$this->isCsrfTokenValid('anonymous_settings', $csrfToken)) {
+            $this->addFlash('error', 'Invalid security token. Please try again.');
+            return $this->redirectToRoute('app_dashboard');
+        }
+
+        $enabled = $request->request->getBoolean('anonymous_tracking_enabled');
+        $rawPaths = (string) $request->request->get('anonymous_excluded_paths', '');
+        $geoEnabled = $request->request->getBoolean('anonymous_geo_enabled');
+        $geoLevel = trim((string) $request->request->get('anonymous_geo_level', 'macro_region'));
+        $geoDatabasePath = trim((string) $request->request->get('anonymous_geo_database_path', ''));
+
+        if (!in_array($geoLevel, ['macro_region', 'country'], true)) {
+            $this->addFlash('error', 'Geography level must be macro-region or country.');
+            return $this->redirectToRoute('app_dashboard');
+        }
+
+        if (strlen($geoDatabasePath) > 4096 || preg_match('/[\x00-\x1F\x7F]/', $geoDatabasePath) === 1) {
+            $this->addFlash('error', 'The GeoIP database path is invalid or too long.');
+            return $this->redirectToRoute('app_dashboard');
+        }
+
+        if ($geoDatabasePath !== '') {
+            $isWindowsDrivePath = preg_match('/^[A-Za-z]:[\\\\\/]/D', $geoDatabasePath) === 1;
+            $isAbsolutePath = str_starts_with($geoDatabasePath, '/')
+                || $isWindowsDrivePath;
+            $pathSegments = preg_split('#[\\\\/]#', $geoDatabasePath) ?: [];
+            if ((!$isWindowsDrivePath && preg_match('/^[A-Za-z][A-Za-z0-9+.-]*:/D', $geoDatabasePath) === 1)
+                || str_contains($geoDatabasePath, '://')
+                || str_starts_with($geoDatabasePath, '\\\\')
+                || str_starts_with($geoDatabasePath, '//')
+                || !str_ends_with(strtolower($geoDatabasePath), '.mmdb')
+                || (!$isAbsolutePath && in_array('..', $pathSegments, true))) {
+                $this->addFlash('error', 'Use a local filesystem path ending in .mmdb; URI, stream-wrapper, UNC/network, and project-root escape paths are not allowed.');
+                return $this->redirectToRoute('app_dashboard');
+            }
+        }
+
+        if (strlen($rawPaths) > 25_600) {
+            $this->addFlash('error', 'Excluded paths are too long.');
+            return $this->redirectToRoute('app_dashboard');
+        }
+
+        $paths = preg_split('/\R/', $rawPaths) ?: [];
+        $paths = array_values(array_unique(array_filter(array_map('trim', $paths), static fn (string $path): bool => $path !== '')));
+
+        if (count($paths) > 100) {
+            $this->addFlash('error', 'Use no more than 100 anonymous tracking exclusions.');
+            return $this->redirectToRoute('app_dashboard');
+        }
+
+        foreach ($paths as $path) {
+            if (strlen($path) > 512 || !str_starts_with($path, '/') || str_contains($path, '?') || str_contains($path, '#')) {
+                $this->addFlash('error', sprintf('Invalid excluded path "%s". Use a path beginning with /, omit query strings/fragments, and keep it at most 512 characters.', $path));
+                return $this->redirectToRoute('app_dashboard');
+            }
+        }
+
+        try {
+            $this->config->set('anonymous_tracking_enabled', $enabled);
+            $this->config->set('anonymous_excluded_paths', $paths);
+            $this->config->set('anonymous_geo_enabled', $geoEnabled);
+            $this->config->set('anonymous_geo_level', $geoLevel);
+            $this->config->set('anonymous_geo_database_path', $geoDatabasePath);
+            $effectiveGeoEnabled = $this->config->getBoolWithEnvFallback('anonymous_geo_enabled', false);
+            $effectiveGeoPath = $this->config->getWithEnvFallback('anonymous_geo_database_path', '');
+            if ($effectiveGeoEnabled && (!is_string($effectiveGeoPath) || trim($effectiveGeoPath) === '')) {
+                $this->addFlash('warning', 'Coarse geography is enabled without a local GeoIP database path. Events will continue with no geography until one is configured.');
+            }
+            $this->addFlash('success', 'Analytics collection settings updated successfully.');
+        } catch (\Exception $e) {
+            $this->addFlash('error', 'Failed to save analytics privacy settings: ' . $e->getMessage());
+        }
+
+        return $this->redirectToRoute('app_dashboard');
+    }
+
+    #[Route('/dashboard/settings/analytics-privacy', name: 'app_analytics_privacy_settings_save', methods: ['POST'])]
+    public function saveAnalyticsPrivacySettings(Request $request): Response
+    {
+        $this->denyIfDashboardDisabled();
+        $this->denyIfNotAdmin();
+
+        $csrfToken = (string) $request->request->get('_csrf_token', '');
+        if (!$this->isCsrfTokenValid('analytics_privacy_settings', $csrfToken)) {
+            $this->addFlash('error', 'Invalid security token. Please try again.');
+            return $this->redirectToRoute('app_dashboard');
+        }
+
+        $submittedSettings = $request->request->all();
+        $minimumCellCount = $this->parseIntegerSetting(
+            $submittedSettings['anonymous_min_cell_count'] ?? null,
+        );
+        $geoMinimumCellCount = $this->parseIntegerSetting(
+            $submittedSettings['anonymous_geo_min_cell_count'] ?? null,
+        );
+
+        if ($minimumCellCount === null || $geoMinimumCellCount === null) {
+            $this->addFlash('error', 'Both BI disclosure thresholds must be whole numbers.');
+            return $this->redirectToRoute('app_dashboard');
+        }
+
+        if ($minimumCellCount < AnalyticsPrivacySettings::MINIMUM_CELL_COUNT
+            || $minimumCellCount > AnalyticsPrivacySettings::MAXIMUM_CELL_COUNT) {
+            $this->addFlash('error', 'Minimum BI cell count must be between 2 and 1000.');
+            return $this->redirectToRoute('app_dashboard');
+        }
+
+        if ($geoMinimumCellCount < AnalyticsPrivacySettings::GEO_MINIMUM_CELL_COUNT
+            || $geoMinimumCellCount > AnalyticsPrivacySettings::MAXIMUM_CELL_COUNT) {
+            $this->addFlash('error', 'Geography minimum BI cell count must be between 10 and 1000.');
+            return $this->redirectToRoute('app_dashboard');
+        }
+
+        try {
+            $this->analyticsPrivacySettings->saveMinimumCellCounts(
+                $minimumCellCount,
+                $geoMinimumCellCount,
+            );
+            $this->addFlash('success', 'BI disclosure thresholds updated successfully.');
+        } catch (\Throwable $e) {
+            $this->logger->error('Failed to save BI disclosure thresholds.', ['exception' => $e]);
+            $this->addFlash('error', 'Failed to save BI disclosure thresholds. Check the application logs.');
         }
 
         return $this->redirectToRoute('app_dashboard');
@@ -235,7 +426,20 @@ class DashboardController extends AbstractController
     private function denyIfNotAdmin(): void
     {
         if (!$this->isGranted('ROLE_ADMIN')) {
-            throw $this->createAccessDeniedException('Only administrators can manage users.');
+            throw $this->createAccessDeniedException('Only administrators can perform this action.');
         }
+    }
+
+    private function parseIntegerSetting(mixed $value): ?int
+    {
+        if (is_int($value)) {
+            return $value;
+        }
+
+        if (!is_string($value) || preg_match('/^-?[0-9]+$/D', trim($value)) !== 1) {
+            return null;
+        }
+
+        return (int) $value;
     }
 }
