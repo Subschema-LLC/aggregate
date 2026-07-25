@@ -10,10 +10,11 @@ class IpRateLimiter
 
     public function __construct(
         private readonly string $storageDir,
-        private readonly int $maxPerMinute = 100
+        private readonly string $hashSecret,
+        private readonly int $maxPerMinute = 100,
     ) {
         if (!is_dir($this->storageDir)) {
-            @mkdir($this->storageDir, 0777, true);
+            @mkdir($this->storageDir, 0700, true);
         }
     }
 
@@ -32,30 +33,97 @@ class IpRateLimiter
 
     public function allow(string $ip): bool
     {
-        $bucket = $this->getBucketPath($ip);
         $now = time();
         $window = (int) floor($now / 60);
-        $data = [ 'window' => $window, 'count' => 0 ];
-        if (is_file($bucket)) {
-            $raw = @file_get_contents($bucket);
-            if ($raw !== false) {
-                $decoded = @json_decode($raw, true);
-                if (is_array($decoded) && isset($decoded['window'], $decoded['count'])) {
-                    $data = $decoded;
-                }
+        $this->cleanupExpiredBuckets($now);
+        $bucket = $this->getBucketPath($ip, $window);
+        $handle = @fopen($bucket, 'c+');
+        if ($handle === false) {
+            // Preserve availability if the optional local limiter storage is
+            // temporarily unavailable. Upstream rate limiting is still advised.
+            return true;
+        }
+
+        @chmod($bucket, 0600);
+        if (!flock($handle, LOCK_EX)) {
+            fclose($handle);
+
+            return true;
+        }
+
+        try {
+            rewind($handle);
+            $raw = stream_get_contents($handle);
+            $decoded = is_string($raw) && $raw !== '' ? json_decode($raw, true) : null;
+            $data = is_array($decoded) ? $decoded : [];
+
+            if (($data['window'] ?? null) !== $window) {
+                $data = ['window' => $window, 'count' => 0];
             }
+            $data['count'] = max(0, (int) ($data['count'] ?? 0)) + 1;
+
+            rewind($handle);
+            ftruncate($handle, 0);
+            fwrite($handle, json_encode($data, JSON_THROW_ON_ERROR));
+            fflush($handle);
+
+            return $data['count'] <= $this->getMaxPerMinute();
+        } finally {
+            flock($handle, LOCK_UN);
+            fclose($handle);
         }
-        if ($data['window'] !== $window) {
-            $data = ['window' => $window, 'count' => 0];
-        }
-        $data['count']++;
-        @file_put_contents($bucket, json_encode($data), LOCK_EX);
-        return $data['count'] <= $this->getMaxPerMinute();
     }
 
-    private function getBucketPath(string $ip): string
+    private function getBucketPath(string $ip, int $window): string
     {
-        $safe = preg_replace('/[^A-Za-z0-9_\.\-]/', '_', $ip);
-        return rtrim($this->storageDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $safe . '.json';
+        // Including the one-minute window prevents the on-disk identifier from
+        // linking the same address across rate-limit windows.
+        $bucketId = hash_hmac('sha256', $window."\0".$ip, $this->hashSecret);
+
+        return rtrim($this->storageDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $bucketId . '.json';
+    }
+
+    private function cleanupExpiredBuckets(int $now): void
+    {
+        $markerPath = rtrim($this->storageDir, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.'.cleanup';
+        $marker = @fopen($markerPath, 'c+');
+        if ($marker === false || !flock($marker, LOCK_EX | LOCK_NB)) {
+            if (is_resource($marker)) {
+                fclose($marker);
+            }
+
+            return;
+        }
+
+        try {
+            @chmod($markerPath, 0600);
+            $lastCleanup = (int) stream_get_contents($marker);
+            if ($lastCleanup >= $now - 60) {
+                return;
+            }
+
+            $files = @scandir($this->storageDir);
+            if (is_array($files)) {
+                foreach ($files as $file) {
+                    if (!str_ends_with($file, '.json')) {
+                        continue;
+                    }
+
+                    $path = $this->storageDir.DIRECTORY_SEPARATOR.$file;
+                    $modifiedAt = @filemtime($path);
+                    if ($modifiedAt !== false && $modifiedAt < $now - 120) {
+                        @unlink($path);
+                    }
+                }
+            }
+
+            rewind($marker);
+            ftruncate($marker, 0);
+            fwrite($marker, (string) $now);
+            fflush($marker);
+        } finally {
+            flock($marker, LOCK_UN);
+            fclose($marker);
+        }
     }
 }

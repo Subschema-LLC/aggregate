@@ -4,7 +4,6 @@ namespace App\MessageHandler;
 
 use App\Entity\Event;
 use App\Message\TrackEventMessage;
-use App\Service\AggregateConfigLoader;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
@@ -13,76 +12,29 @@ class TrackEventHandler
 {
     public function __construct(
         private readonly EntityManagerInterface $em,
-        private readonly AggregateConfigLoader $config,
     ) {}
 
     public function __invoke(TrackEventMessage $msg): void
     {
         $event = (new Event())
             ->setWebsiteToken($msg->websiteToken)
-            ->setEventName($msg->eventName ?? 'view')
-            ->setUrl($msg->url)
-            ->setReferrer($msg->referrer)
-            ->setDailyIpHash($this->hashDailyIp($msg->ip))
-            ->setGeneralizedUserAgent($this->generalizeUserAgent($msg->userAgent))
+            ->setPrivacyMode('enhanced')
+            ->setEventName($msg->eventName)
+            ->setUrl($msg->pagePath)
+            ->setReferrer($msg->referrerChannel)
+            ->setDeviceClass($msg->deviceClass)
+            ->setViewportBucket($msg->viewportBucket)
+            ->setGeoArea($msg->geoArea ?? null)
+            ->setGeneralizedUserAgent($msg->generalizedUserAgent)
             ->setScreenWidth($msg->screenWidth)
+            ->setVisitorId($msg->visitorId)
             ->setSessionId($msg->sessionId)
-            ->setConsentState($this->resolveConsentState($msg->consentState, $msg->sessionId))
+            ->setConsentState('granted')
             ->setGoalEvent($msg->goalEvent)
-            ->setCustomData($this->sanitizeEventData($msg->eventData));
+            ->setCustomData($msg->eventData)
+            ->setCreatedAt($msg->occurredAt);
 
         $this->em->persist($event);
         $this->em->flush();
-    }
-
-    private function hashDailyIp(string $ip): string
-    {
-        $salt = $this->config->getWithEnvFallback('daily_salt_secret', 'dev-salt');
-        $day = (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->format('Y-m-d');
-        return hash('sha256', $ip.'|'.$day.'|'.$salt);
-    }
-
-    private function generalizeUserAgent(string $ua): string
-    {
-        $uaLower = strtolower($ua);
-        $platform = str_contains($uaLower, 'mobile') || str_contains($uaLower, 'iphone') || str_contains($uaLower, 'android') ? 'Mobile' : 'Desktop';
-        $browser = 'Other';
-        foreach ([
-            'chrome' => 'Chrome',
-            'safari' => 'Safari',
-            'firefox' => 'Firefox',
-            'edge' => 'Edge',
-            'opera' => 'Opera',
-        ] as $needle => $name) {
-            if (str_contains($uaLower, $needle)) { $browser = $name; break; }
-        }
-        return sprintf('%s on %s', $browser, $platform);
-    }
-
-    private function sanitizeEventData(?array $data): ?array
-    {
-        if ($data === null) { return null; }
-        $clean = [];
-        foreach ($data as $k => $v) {
-            if (!is_string($k)) { continue; }
-            if (is_scalar($v) || $v === null) {
-                $clean[substr($k, 0, 100)] = is_string($v) ? substr($v, 0, 500) : $v;
-            }
-        }
-        return $clean ?: null;
-    }
-
-    private function resolveConsentState(?string $consentState, ?string $sessionId): string
-    {
-        if (in_array($consentState, ['granted', 'denied', 'unknown'], true)) {
-            return $consentState;
-        }
-
-        // Backward compatibility: old clients with a session id imply consent.
-        if ($sessionId !== null && $sessionId !== '') {
-            return 'granted';
-        }
-
-        return 'unknown';
     }
 }

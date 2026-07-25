@@ -88,10 +88,6 @@ class InstallCommand extends Command
             return Command::FAILURE;
         }
 
-        if (empty($this->config->getWithEnvFallback('daily_salt_secret', null))) {
-            $this->config->set('daily_salt_secret', base64_encode(random_bytes(32)));
-        }
-
         // Create admin user
         $user = new User();
         $user->setUsername((string) $adminUsername);
