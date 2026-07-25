@@ -12,7 +12,7 @@ use Doctrine\ORM\Mapping as ORM;
  */
 #[ORM\Entity(readOnly: true)]
 #[ORM\Table(name: 'analytics_privacy_settings')]
-final class AnalyticsPrivacySetting
+class AnalyticsPrivacySetting
 {
     #[ORM\Id]
     #[ORM\Column(type: 'integer')]
