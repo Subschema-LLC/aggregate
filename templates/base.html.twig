@@ -10,42 +10,7 @@
 </head>
 <body>
     {% if app.user %}
-    <nav class="navbar is-dark" role="navigation" aria-label="main navigation">
-        <div class="navbar-brand">
-            <a class="navbar-item" href="/dashboard">
-                <strong>Aggregate Analytics</strong>
-            </a>
-            <a class="navbar-item" href="{{ path('app_how_it_works') }}">
-                <span class="icon-text">
-                    <span class="icon">
-                        <i class="fas fa-circle-info"></i>
-                    </span>
-                    <span>How It Works</span>
-                </span>
-            </a>
-        </div>
-
-        <div class="navbar-menu">
-            <div class="navbar-end">
-                <div class="navbar-item">
-                    <span class="icon-text">
-                        <span class="icon">
-                            <i class="fas fa-user"></i>
-                        </span>
-                        <span>{{ app.user.username }}</span>
-                    </span>
-                </div>
-                <div class="navbar-item">
-                    <a href="/logout" class="button is-light">
-                        <span class="icon">
-                            <i class="fas fa-sign-out-alt"></i>
-                        </span>
-                        <span>Logout</span>
-                    </a>
-                </div>
-            </div>
-        </div>
-    </nav>
+        {% include 'navigation/main.html.twig' %}
     {% endif %}
 
     <section class="section">

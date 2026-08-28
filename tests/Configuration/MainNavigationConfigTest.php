@@ -1,0 +1,68 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Tests\Configuration;
+
+use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
+use Symfony\Component\Routing\RouterInterface;
+use Twig\Environment;
+
+final class MainNavigationConfigTest extends KernelTestCase
+{
+    public function testNavigationIsAvailableToTwigAndReferencesExistingRoutes(): void
+    {
+        self::bootKernel();
+
+        $container = self::getContainer();
+        $navigation = $container->getParameter('app.main_navigation');
+
+        self::assertIsArray($navigation);
+        self::assertArrayHasKey('brand', $navigation);
+        self::assertArrayHasKey('items', $navigation);
+        self::assertArrayHasKey('account', $navigation);
+        self::assertIsArray($navigation['brand']);
+        self::assertIsArray($navigation['items']);
+        self::assertIsArray($navigation['account']);
+        self::assertIsArray($navigation['account']['logout'] ?? null);
+
+        $twig = $container->get('twig');
+        self::assertInstanceOf(Environment::class, $twig);
+        self::assertSame($navigation, $twig->getGlobals()['main_navigation'] ?? null);
+
+        $router = $container->get('router');
+        self::assertInstanceOf(RouterInterface::class, $router);
+
+        $links = [
+            $navigation['brand'],
+            ...$navigation['items'],
+            $navigation['account']['logout'],
+        ];
+
+        foreach ($links as $link) {
+            self::assertIsArray($link);
+            self::assertIsString($link['label'] ?? null);
+            self::assertNotSame('', trim($link['label']));
+
+            $hasRoute = array_key_exists('route', $link);
+            $hasUrl = array_key_exists('url', $link);
+            self::assertNotSame($hasRoute, $hasUrl, 'A navigation link must define exactly one of "route" or "url".');
+
+            if ($hasRoute) {
+                self::assertIsString($link['route']);
+                self::assertNotNull(
+                    $router->getRouteCollection()->get($link['route']),
+                    sprintf('Navigation route "%s" does not exist.', $link['route']),
+                );
+                $routeParameters = $link['route_parameters'] ?? [];
+                self::assertIsArray($routeParameters);
+                self::assertNotSame('', $router->generate($link['route'], $routeParameters));
+
+                continue;
+            }
+
+            self::assertIsString($link['url']);
+            self::assertNotSame('', trim($link['url']));
+        }
+    }
+}

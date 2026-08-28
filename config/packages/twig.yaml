@@ -1,5 +1,7 @@
 twig:
     file_name_pattern: '*.twig'
+    globals:
+        main_navigation: '%app.main_navigation%'
 
 when@test:
     twig:
