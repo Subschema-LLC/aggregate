@@ -7,6 +7,7 @@ use App\Repository\UserRepository;
 use App\Service\AggregateConfigLoader;
 use App\Service\AnalyticsPrivacySettings;
 use App\Service\BrandingLogoManager;
+use App\Service\BrandingTheme;
 use App\Service\WebsiteConfigManager;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
@@ -209,6 +210,11 @@ class DashboardController extends AbstractController
         $uploadedLogo = $request->files->get('brand_logo');
         $brandNameOverridden = $this->config->hasEnvironmentOverride('brand_name', allowEmpty: true);
         $logoTextOverridden = $this->config->hasEnvironmentOverride('brand_logo_text', allowEmpty: true);
+        $brandNameChanged = !$brandNameOverridden
+            && $this->submittedBrandingValueChanged($request, 'brand_name', $brandName);
+        $logoTextChanged = !$logoTextOverridden
+            && $this->submittedBrandingValueChanged($request, 'brand_logo_text', $logoText);
+        $themeSettings = [];
 
         if (!$brandNameOverridden && $brandName === '') {
             $this->addFlash('error', 'Brand name is required.');
@@ -227,6 +233,83 @@ class DashboardController extends AbstractController
             || preg_match('/[\x00-\x1F\x7F]/u', $logoText) === 1)) {
             $this->addFlash('error', 'Logo text must be at most 100 characters and cannot contain control characters.');
             return $this->redirectToRoute('app_dashboard');
+        }
+
+        $themeColors = [
+            'brand_primary_color' => 'Primary color',
+            'brand_accent_color' => 'Accent color',
+            'brand_navbar_color' => 'Navigation color',
+            'brand_background_color' => 'Page background color',
+            'brand_surface_color' => 'Surface color',
+            'brand_text_color' => 'Text color',
+        ];
+        foreach ($themeColors as $key => $label) {
+            if (!$request->request->has($key)
+                || $this->config->hasEnvironmentOverride($key, allowEmpty: true)) {
+                continue;
+            }
+
+            $color = BrandingTheme::normalizeHexColor($request->request->get($key));
+            if ($color === null) {
+                $this->addFlash('error', $label.' must use #RGB or #RRGGBB hexadecimal notation.');
+                return $this->redirectToRoute('app_dashboard');
+            }
+
+            $originalColor = BrandingTheme::normalizeHexColor(
+                $request->request->get('_original_'.$key),
+            );
+            if ($request->request->has('_original_'.$key) && $color === $originalColor) {
+                continue;
+            }
+            $themeSettings[$key] = $color;
+        }
+
+        $themeFonts = [
+            'brand_font_family' => 'Interface font stack',
+            'brand_heading_font_family' => 'Heading font stack',
+        ];
+        foreach ($themeFonts as $key => $label) {
+            if (!$request->request->has($key)
+                || $this->config->hasEnvironmentOverride($key, allowEmpty: true)) {
+                continue;
+            }
+
+            $font = BrandingTheme::normalizeFontFamily($request->request->get($key));
+            if ($font === null) {
+                $this->addFlash('error', $label.' must contain one to eight comma-separated local/system font family names using only letters, numbers, spaces, underscores, or hyphens.');
+                return $this->redirectToRoute('app_dashboard');
+            }
+
+            $originalFont = BrandingTheme::normalizeFontFamily(
+                $request->request->get('_original_'.$key),
+            );
+            if ($request->request->has('_original_'.$key)
+                && $originalFont !== null
+                && $font['value'] === $originalFont['value']) {
+                continue;
+            }
+            $themeSettings[$key] = $font['value'];
+        }
+
+        $contrastKeys = [
+            'brand_background_color' => 'background_color',
+            'brand_surface_color' => 'surface_color',
+            'brand_text_color' => 'text_color',
+        ];
+        if (array_intersect_key($themeSettings, $contrastKeys) !== []) {
+            $currentTheme = (new BrandingTheme($this->config))->getConfiguredContrastColors();
+            $proposedContrastColors = [];
+            foreach ($contrastKeys as $configKey => $themeKey) {
+                $proposedContrastColors[$themeKey] = $themeSettings[$configKey] ?? $currentTheme[$themeKey];
+            }
+            if (!BrandingTheme::hasReadableTextContrast(
+                $proposedContrastColors['text_color'],
+                $proposedContrastColors['background_color'],
+                $proposedContrastColors['surface_color'],
+            )) {
+                $this->addFlash('error', 'Text color must have at least 4.5:1 contrast against both the page background and surface colors.');
+                return $this->redirectToRoute('app_dashboard');
+            }
         }
 
         if ($uploadedLogo !== null && !$uploadedLogo instanceof UploadedFile) {
@@ -269,18 +352,18 @@ class DashboardController extends AbstractController
         }
 
         try {
-            $settings = [];
-            if (!$brandNameOverridden) {
+            $settings = $themeSettings;
+            if ($brandNameChanged) {
                 $settings['brand_name'] = $brandName;
             }
-            if (!$logoTextOverridden) {
+            if ($logoTextChanged) {
                 $settings['brand_logo_text'] = $logoText;
             }
             if ($hasLogoMutation) {
                 $settings['brand_logo_path'] = $newLogoPath;
             }
             if ($settings === []) {
-                $this->addFlash('warning', 'Branding is controlled by environment variables; no YAML values were changed.');
+                $this->addFlash('warning', 'No branding changes were submitted; environment-controlled values were left unchanged.');
                 return $this->redirectToRoute('app_dashboard');
             }
             $this->config->setMany($settings);
@@ -310,6 +393,16 @@ class DashboardController extends AbstractController
         $this->addFlash('success', 'Branding updated successfully.');
 
         return $this->redirectToRoute('app_dashboard');
+    }
+
+    private function submittedBrandingValueChanged(Request $request, string $key, string $value): bool
+    {
+        $originalKey = '_original_'.$key;
+        if (!$request->request->has($originalKey)) {
+            return true;
+        }
+
+        return trim((string) $request->request->get($originalKey)) !== $value;
     }
 
     #[Route('/dashboard/settings/anonymous', name: 'app_anonymous_settings_save', methods: ['POST'])]

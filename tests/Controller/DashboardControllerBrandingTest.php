@@ -100,6 +100,201 @@ final class DashboardControllerBrandingTest extends TestCase
         self::assertSame(['Branding updated successfully.'], $request->getSession()->getFlashBag()->peek('success'));
     }
 
+    public function testIdentitySaveDoesNotOverwriteUnchangedThemeFormValues(): void
+    {
+        $request = $this->request([
+            '_csrf_token' => 'valid-token',
+            'brand_name' => 'Renamed Analytics',
+            '_original_brand_name' => 'Old Analytics',
+            'brand_logo_text' => 'Old',
+            '_original_brand_logo_text' => 'Old',
+            'brand_primary_color' => '#00d1b2',
+            '_original_brand_primary_color' => '#00D1B2',
+            'brand_accent_color' => '#485FC7',
+            '_original_brand_accent_color' => '#485fc7',
+            'brand_navbar_color' => '#14161A',
+            '_original_brand_navbar_color' => '#14161A',
+            'brand_background_color' => '#F5F5F5',
+            '_original_brand_background_color' => '#f5f5f5',
+            'brand_surface_color' => '#FFFFFF',
+            '_original_brand_surface_color' => '#fff',
+            'brand_text_color' => '#363636',
+            '_original_brand_text_color' => '#363636',
+            'brand_font_family' => 'system-ui, Arial, sans-serif',
+            '_original_brand_font_family' => 'system-ui, Arial, sans-serif',
+            'brand_heading_font_family' => 'Georgia, serif',
+            '_original_brand_heading_font_family' => '"Georgia", serif',
+        ]);
+        $config = $this->config();
+        $config->expects(self::once())
+            ->method('setMany')
+            ->with(['brand_name' => 'Renamed Analytics']);
+        $controller = $this->controller($config, $request);
+
+        $controller->saveBrandingSettings($request);
+
+        self::assertSame(['Branding updated successfully.'], $request->getSession()->getFlashBag()->peek('success'));
+    }
+
+    public function testEnvironmentControlledDarkSurfacesCanBeCorrectedWithWhiteText(): void
+    {
+        $request = $this->request([
+            '_csrf_token' => 'valid-token',
+            'brand_name' => 'Example Analytics',
+            'brand_logo_text' => 'Example',
+            'brand_text_color' => '#fff',
+        ]);
+        $config = $this->config();
+        $config->method('hasEnvironmentOverride')->willReturnCallback(
+            static fn (string $key): bool => in_array($key, [
+                'brand_background_color',
+                'brand_surface_color',
+            ], true),
+        );
+        $config->method('getWithEnvFallback')->willReturnCallback(
+            static fn (string $key, mixed $default = null): mixed => match ($key) {
+                'brand_background_color' => '#111827',
+                'brand_surface_color' => '#1F2937',
+                'brand_text_color' => '#777777',
+                default => $default,
+            },
+        );
+        $config->expects(self::once())
+            ->method('setMany')
+            ->with([
+                'brand_text_color' => '#FFFFFF',
+                'brand_name' => 'Example Analytics',
+                'brand_logo_text' => 'Example',
+            ]);
+        $controller = $this->controller($config, $request);
+
+        $controller->saveBrandingSettings($request);
+
+        self::assertSame(['Branding updated successfully.'], $request->getSession()->getFlashBag()->peek('success'));
+    }
+
+    public function testAdminCanSaveNormalizedThemeColorsAndFontsWithoutRewritingIdentity(): void
+    {
+        $request = $this->request([
+            '_csrf_token' => 'valid-token',
+            'brand_name' => 'Example Analytics',
+            '_original_brand_name' => 'Example Analytics',
+            'brand_logo_text' => 'Example',
+            '_original_brand_logo_text' => 'Example',
+            'brand_primary_color' => '#0ab',
+            'brand_accent_color' => '#123456',
+            'brand_background_color' => '#111827',
+            'brand_surface_color' => '#1F2937',
+            'brand_text_color' => '#F9FAFB',
+            'brand_font_family' => '"Open   Sans", serif',
+            'brand_heading_font_family' => 'Georgia, serif',
+        ]);
+        $config = $this->config();
+        $config->expects(self::once())
+            ->method('setMany')
+            ->with([
+                'brand_primary_color' => '#00AABB',
+                'brand_accent_color' => '#123456',
+                'brand_background_color' => '#111827',
+                'brand_surface_color' => '#1F2937',
+                'brand_text_color' => '#F9FAFB',
+                'brand_font_family' => 'Open Sans, serif',
+                'brand_heading_font_family' => 'Georgia, serif',
+            ]);
+        $controller = $this->controller($config, $request);
+
+        $controller->saveBrandingSettings($request);
+
+        self::assertSame(['Branding updated successfully.'], $request->getSession()->getFlashBag()->peek('success'));
+    }
+
+    public function testLowContrastThemeNeverChangesConfiguration(): void
+    {
+        $request = $this->request([
+            '_csrf_token' => 'valid-token',
+            'brand_name' => 'Example Analytics',
+            'brand_logo_text' => 'Example',
+            'brand_background_color' => '#FFFFFF',
+            'brand_surface_color' => '#EEEEEE',
+            'brand_text_color' => '#F0F0F0',
+        ]);
+        $config = $this->config();
+        $config->expects(self::never())->method('setMany');
+        $controller = $this->controller($config, $request);
+
+        $controller->saveBrandingSettings($request);
+
+        self::assertStringContainsString(
+            'at least 4.5:1 contrast',
+            $request->getSession()->getFlashBag()->peek('error')[0] ?? '',
+        );
+    }
+
+    public function testInvalidThemeColorNeverChangesConfiguration(): void
+    {
+        $request = $this->request([
+            '_csrf_token' => 'valid-token',
+            'brand_name' => 'Example Analytics',
+            'brand_logo_text' => 'Example',
+            'brand_primary_color' => 'red; background: black',
+        ]);
+        $config = $this->config();
+        $config->expects(self::never())->method('setMany');
+        $controller = $this->controller($config, $request);
+
+        $controller->saveBrandingSettings($request);
+
+        self::assertStringContainsString(
+            '#RGB or #RRGGBB',
+            $request->getSession()->getFlashBag()->peek('error')[0] ?? '',
+        );
+    }
+
+    public function testUnsafeThemeFontNeverChangesConfiguration(): void
+    {
+        $request = $this->request([
+            '_csrf_token' => 'valid-token',
+            'brand_name' => 'Example Analytics',
+            'brand_logo_text' => 'Example',
+            'brand_font_family' => 'Arial; background: url(https://example.test)',
+        ]);
+        $config = $this->config();
+        $config->expects(self::never())->method('setMany');
+        $controller = $this->controller($config, $request);
+
+        $controller->saveBrandingSettings($request);
+
+        self::assertStringContainsString(
+            'comma-separated local/system font family names',
+            $request->getSession()->getFlashBag()->peek('error')[0] ?? '',
+        );
+    }
+
+    public function testEnvironmentControlledThemeFieldIsIgnored(): void
+    {
+        $request = $this->request([
+            '_csrf_token' => 'valid-token',
+            'brand_name' => 'Example Analytics',
+            'brand_logo_text' => 'Example',
+            'brand_primary_color' => '#ABCDEF',
+        ]);
+        $config = $this->config();
+        $config->method('hasEnvironmentOverride')->willReturnCallback(
+            static fn (string $key): bool => $key === 'brand_primary_color',
+        );
+        $config->expects(self::once())
+            ->method('setMany')
+            ->with([
+                'brand_name' => 'Example Analytics',
+                'brand_logo_text' => 'Example',
+            ]);
+        $controller = $this->controller($config, $request);
+
+        $controller->saveBrandingSettings($request);
+
+        self::assertSame(['Branding updated successfully.'], $request->getSession()->getFlashBag()->peek('success'));
+    }
+
     public function testEnvironmentControlledTextIsIgnoredWhileYamlBackedTextIsSaved(): void
     {
         $request = $this->request([
@@ -131,7 +326,7 @@ final class DashboardControllerBrandingTest extends TestCase
         $controller->saveBrandingSettings($request);
 
         self::assertSame(
-            ['Branding is controlled by environment variables; no YAML values were changed.'],
+            ['No branding changes were submitted; environment-controlled values were left unchanged.'],
             $request->getSession()->getFlashBag()->peek('warning'),
         );
     }

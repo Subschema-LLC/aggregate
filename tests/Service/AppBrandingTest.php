@@ -6,6 +6,7 @@ namespace App\Tests\Service;
 
 use App\Service\AggregateConfigLoader;
 use App\Service\AppBranding;
+use App\Service\BrandingTheme;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Yaml\Yaml;
 
@@ -25,7 +26,19 @@ final class AppBrandingTest extends TestCase
         $this->projectDir = $this->temporaryDir.'/project';
         self::assertTrue(mkdir($this->projectDir.'/config', 0700, true));
 
-        foreach (['BRAND_NAME', 'BRAND_LOGO_TEXT', 'BRAND_LOGO_PATH'] as $key) {
+        foreach ([
+            'BRAND_NAME',
+            'BRAND_LOGO_TEXT',
+            'BRAND_LOGO_PATH',
+            'BRAND_PRIMARY_COLOR',
+            'BRAND_ACCENT_COLOR',
+            'BRAND_NAVBAR_COLOR',
+            'BRAND_BACKGROUND_COLOR',
+            'BRAND_SURFACE_COLOR',
+            'BRAND_TEXT_COLOR',
+            'BRAND_FONT_FAMILY',
+            'BRAND_HEADING_FONT_FAMILY',
+        ] as $key) {
             $this->savedEnvironment[$key] = [
                 'env_exists' => array_key_exists($key, $_ENV),
                 'env' => $_ENV[$key] ?? null,
@@ -65,6 +78,9 @@ final class AppBrandingTest extends TestCase
         self::assertNull($branding->getLogoPath());
         self::assertNull($branding->getLogoMimeType());
         self::assertNull($branding->getLogoVersion());
+        $brandingValues = $branding->toArray();
+        $theme = $brandingValues['theme'];
+        unset($brandingValues['theme']);
         self::assertSame([
             'name' => 'Aggregate Analytics',
             'logo_text' => 'Aggregate Analytics',
@@ -73,7 +89,9 @@ final class AppBrandingTest extends TestCase
             'name_overridden' => false,
             'logo_text_overridden' => false,
             'logo_path_overridden' => false,
-        ], $branding->toArray());
+        ], $brandingValues);
+        self::assertSame(BrandingTheme::DEFAULT_PRIMARY_COLOR, $theme['primary_color']);
+        self::assertSame(BrandingTheme::DEFAULT_FONT_FAMILY, $theme['font_family']);
     }
 
     public function testLegacyNavigationLabelIsUsedWhenNewBrandingKeysAreAbsent(): void

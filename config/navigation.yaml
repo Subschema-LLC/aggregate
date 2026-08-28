@@ -1,6 +1,7 @@
 # yaml-language-server: $schema=../vendor/symfony/dependency-injection/Loader/schema/services.schema.json
 # Main navigation content. The brand entry controls its link destination and
-# retains a legacy label fallback; primary branding comes from config/aggregate.yaml.
+# retains a legacy label fallback; identity and theme branding come from
+# config/aggregate.yaml.
 # Each link defines exactly one Symfony route or URL.
 # Clear the production cache after changing this file.
 parameters:

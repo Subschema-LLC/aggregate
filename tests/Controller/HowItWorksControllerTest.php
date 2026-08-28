@@ -49,14 +49,26 @@ final class HowItWorksControllerTest extends WebTestCase
         self::assertSelectorExists('a[href="/how-it-works"]');
     }
 
-    public function testYamlEnvironmentBrandingIsEscapedAndShownOnPublicPages(): void
+    public function testEnvironmentBrandingAndThemeAreSafelyShownOnPublicPages(): void
     {
-        $savedName = $_ENV['BRAND_NAME'] ?? null;
-        $hadName = array_key_exists('BRAND_NAME', $_ENV);
-        $savedLogoText = $_ENV['BRAND_LOGO_TEXT'] ?? null;
-        $hadLogoText = array_key_exists('BRAND_LOGO_TEXT', $_ENV);
-        $_ENV['BRAND_NAME'] = '<Example & Company>';
-        $_ENV['BRAND_LOGO_TEXT'] = 'Example <Insights>';
+        $overrides = [
+            'BRAND_NAME' => '<Example & Company>',
+            'BRAND_LOGO_TEXT' => 'Example <Insights>',
+            'BRAND_PRIMARY_COLOR' => '#abc',
+            'BRAND_BACKGROUND_COLOR' => '#111827',
+            'BRAND_SURFACE_COLOR' => '#1F2937',
+            'BRAND_TEXT_COLOR' => '#F9FAFB',
+            'BRAND_FONT_FAMILY' => 'Open Sans, serif',
+            'BRAND_HEADING_FONT_FAMILY' => 'Georgia, serif',
+        ];
+        $savedEnvironment = [];
+        foreach ($overrides as $key => $value) {
+            $savedEnvironment[$key] = [
+                'exists' => array_key_exists($key, $_ENV),
+                'value' => $_ENV[$key] ?? null,
+            ];
+            $_ENV[$key] = $value;
+        }
 
         try {
             $client = self::createClient();
@@ -77,17 +89,30 @@ final class HowItWorksControllerTest extends WebTestCase
                 '<Example & Company>',
                 (string) $client->getResponse()->getContent(),
             );
+            self::assertStringContainsString(
+                '--app-brand-primary: #AABBCC;',
+                (string) $client->getResponse()->getContent(),
+            );
+            self::assertStringContainsString(
+                '--app-brand-background: #111827;',
+                (string) $client->getResponse()->getContent(),
+            );
+            self::assertStringContainsString(
+                '--app-brand-font-family: "Open Sans", serif;',
+                (string) $client->getResponse()->getContent(),
+            );
+            self::assertStringContainsString(
+                '--app-brand-heading-font-family: "Georgia", serif;',
+                (string) $client->getResponse()->getContent(),
+            );
         } finally {
             self::ensureKernelShutdown();
-            if ($hadName) {
-                $_ENV['BRAND_NAME'] = $savedName;
-            } else {
-                unset($_ENV['BRAND_NAME']);
-            }
-            if ($hadLogoText) {
-                $_ENV['BRAND_LOGO_TEXT'] = $savedLogoText;
-            } else {
-                unset($_ENV['BRAND_LOGO_TEXT']);
+            foreach ($savedEnvironment as $key => $saved) {
+                if ($saved['exists']) {
+                    $_ENV[$key] = $saved['value'];
+                } else {
+                    unset($_ENV[$key]);
+                }
             }
         }
     }

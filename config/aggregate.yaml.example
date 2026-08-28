@@ -12,6 +12,14 @@ environments:
     brand_name: "Aggregate Analytics"
     brand_logo_text: "Aggregate Analytics"
     brand_logo_path: ""
+    brand_primary_color: "#00D1B2"
+    brand_accent_color: "#485FC7"
+    brand_navbar_color: "#14161A"
+    brand_background_color: "#F5F5F5"
+    brand_surface_color: "#FFFFFF"
+    brand_text_color: "#363636"
+    brand_font_family: "system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
+    brand_heading_font_family: "system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
     js_namespace: "Aggregate"
     dashboard_enabled: true
     anonymous_tracking_enabled: true
@@ -26,6 +34,14 @@ environments:
     brand_name: "Aggregate Analytics"
     brand_logo_text: "Aggregate Analytics"
     brand_logo_path: ""
+    brand_primary_color: "#00D1B2"
+    brand_accent_color: "#485FC7"
+    brand_navbar_color: "#14161A"
+    brand_background_color: "#F5F5F5"
+    brand_surface_color: "#FFFFFF"
+    brand_text_color: "#363636"
+    brand_font_family: "system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
+    brand_heading_font_family: "system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
     js_namespace: "Aggregate"
     dashboard_enabled: true
     anonymous_tracking_enabled: true
@@ -39,6 +55,14 @@ environments:
     brand_name: "Aggregate Analytics"
     brand_logo_text: "Aggregate Analytics"
     brand_logo_path: ""
+    brand_primary_color: "#00D1B2"
+    brand_accent_color: "#485FC7"
+    brand_navbar_color: "#14161A"
+    brand_background_color: "#F5F5F5"
+    brand_surface_color: "#FFFFFF"
+    brand_text_color: "#363636"
+    brand_font_family: "system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
+    brand_heading_font_family: "system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
     js_namespace: "Aggregate"
     dashboard_enabled: true
     anonymous_tracking_enabled: true
@@ -70,6 +94,37 @@ environments:
 #   Use an absolute path or a path relative to the project root. An empty value
 #   displays only brand_logo_text. UI uploads are copied below var/branding,
 #   which must be persisted across deployments and writable by the PHP process.
+#
+# brand_primary_color (optional, default: "#00D1B2")
+#   Primary interactive and emphasis color.
+#
+# brand_accent_color (optional, default: "#485FC7")
+#   Secondary accent color.
+#
+# brand_navbar_color (optional, default: "#14161A")
+#   Navigation bar background color.
+#
+# brand_background_color (optional, default: "#F5F5F5")
+#   Application page background color.
+#
+# brand_surface_color (optional, default: "#FFFFFF")
+#   Cards, panels, and other raised surface color.
+#
+# brand_text_color (optional, default: "#363636")
+#   Main application text color.
+#
+#   Theme colors accept #RGB or #RRGGBB hexadecimal notation and are normalized
+#   to six-digit form. Quote hex colors so YAML does not treat # as a comment.
+#   Text must have at least 4.5:1 contrast against both background and surface;
+#   lower-contrast YAML/env palettes fall back to safe defaults.
+#
+# brand_font_family (optional, default: system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif)
+#   Safe comma-separated local/system font stack used for application text.
+#   Fonts are never downloaded by this setting.
+#
+# brand_heading_font_family (optional, default: system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif)
+#   Safe comma-separated local/system font stack used for headings.
+#   Fonts are never downloaded by this setting.
 #
 # js_namespace (optional, default: Aggregate)
 #   JavaScript global variable name: window.{js_namespace}

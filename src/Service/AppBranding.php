@@ -27,11 +27,16 @@ final class AppBranding implements ResetInterface
     /** @var array{path: string, mime_type: string, version: string, content: string, last_modified: int|null}|null */
     private ?array $cachedLogo = null;
 
+    private readonly BrandingTheme $theme;
+
     public function __construct(
         private readonly AggregateConfigLoader $config,
         private readonly string $projectDir,
         private readonly array $mainNavigation = [],
-    ) {}
+        ?BrandingTheme $theme = null,
+    ) {
+        $this->theme = $theme ?? new BrandingTheme($config);
+    }
 
     public function getName(): string
     {
@@ -147,7 +152,7 @@ final class AppBranding implements ResetInterface
     }
 
     /**
-     * @return array{name: string, logo_text: string, has_logo: bool, logo_version: string|null, name_overridden: bool, logo_text_overridden: bool, logo_path_overridden: bool}
+     * @return array{name: string, logo_text: string, has_logo: bool, logo_version: string|null, name_overridden: bool, logo_text_overridden: bool, logo_path_overridden: bool, theme: array<string, mixed>}
      */
     public function toArray(): array
     {
@@ -162,6 +167,7 @@ final class AppBranding implements ResetInterface
             'name_overridden' => $this->hasEnvironmentOverride('brand_name'),
             'logo_text_overridden' => $this->hasEnvironmentOverride('brand_logo_text'),
             'logo_path_overridden' => $this->hasEnvironmentOverride('brand_logo_path'),
+            'theme' => $this->theme->toArray(),
         ];
     }
 
