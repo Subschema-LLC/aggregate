@@ -8,6 +8,21 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 final class HowItWorksControllerTest extends WebTestCase
 {
+    public function testBrandingTwigGlobalIsRegisteredAndComplete(): void
+    {
+        self::createClient();
+
+        $globals = self::getContainer()->get('twig')->getGlobals();
+        self::assertArrayHasKey('app_branding', $globals);
+        self::assertIsArray($globals['app_branding']);
+        self::assertNotSame('', $globals['app_branding']['name'] ?? '');
+        self::assertMatchesRegularExpression(
+            '/^#[0-9A-F]{6}$/D',
+            $globals['app_branding']['theme']['primary_color'] ?? '',
+        );
+        self::assertNotSame('', $globals['app_branding']['theme']['font_family_css'] ?? '');
+    }
+
     public function testOverviewPageIsPubliclyAvailable(): void
     {
         $client = self::createClient();
@@ -22,6 +37,10 @@ final class HowItWorksControllerTest extends WebTestCase
         self::assertSelectorTextContains('body', 'Drops a disallowed goal without dropping the event');
         self::assertSelectorExists('a[href="/how-it-works/data-visualization"]');
         self::assertSelectorExists('a[href="/"]');
+        self::assertDoesNotMatchRegularExpression(
+            '/--app-brand-[a-z-]+:\s*;/',
+            (string) $client->getResponse()->getContent(),
+        );
     }
 
     public function testDataVisualizationStructurePageIsPubliclyAvailable(): void
