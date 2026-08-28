@@ -1,6 +1,6 @@
 {% extends 'base.html.twig' %}
 
-{% block title %}Data Visualization Structure | Aggregate Analytics{% endblock %}
+{% block title %}Data Visualization Structure | {{ app_branding.name }}{% endblock %}
 
 {% block stylesheets %}
 <style>
@@ -24,8 +24,8 @@
             <span class="tag is-link is-light mb-4">Technical reference</span>
             <h1 class="title is-2">Data Structure for Visualization</h1>
             <p class="subtitle is-4">
-                Connect Tableau, Power BI, Looker, or another reporting tool to Aggregate's
-                versioned BI views without exposing private event rows.
+                Connect Tableau, Power BI, Looker, or another reporting tool to the versioned BI views
+                provided by {{ app_branding.name }} without exposing private event rows.
             </p>
         </div>
 
@@ -128,7 +128,7 @@
             </div>
 
             <div class="notification is-light mb-0">
-                The row grain is the combination of the first seven columns. Aggregate
+                The row grain is the combination of the first seven columns. Sum
                 <code>event_count</code> with <code>SUM(...)</code> when removing dimensions from a report.
                 This totals already-released cells; it does not re-run suppression at the broader grain or
                 recover hidden cells.
@@ -311,10 +311,10 @@
                             <tr><th scope="row"><code>event_name</code></th><td>String (191)</td><td>Required event name; defaults to <code>view</code>.</td></tr>
                             <tr><th scope="row"><code>url</code></th><td>Text</td><td>Required stored page path. Exposed as <code>page_path</code> by the hourly view.</td></tr>
                             <tr><th scope="row"><code>referrer</code></th><td>Nullable text</td><td>Stored referrer channel; exposed as <code>referrer_channel</code>.</td></tr>
-                            <tr><th scope="row"><code>privacy_mode</code></th><td>String (20)</td><td>Aggregate writes <code>anonymous</code> or <code>enhanced</code>; defaults to anonymous.</td></tr>
+                            <tr><th scope="row"><code>privacy_mode</code></th><td>String (20)</td><td>{{ app_branding.name }} writes <code>anonymous</code> or <code>enhanced</code>; defaults to anonymous.</td></tr>
                             <tr><th scope="row"><code>device_class</code></th><td>String (20)</td><td>Coarse device category for both modes.</td></tr>
                             <tr><th scope="row"><code>viewport_bucket</code></th><td>String (20)</td><td>Coarse viewport category for both modes.</td></tr>
-                            <tr><th scope="row"><code>geo_area</code></th><td>Nullable string (16)</td><td>Aggregate writes only canonical <code>continent:XX</code> or <code>country:XX</code> values; synthetic <code>other</code> values exist only in the geography view.</td></tr>
+                            <tr><th scope="row"><code>geo_area</code></th><td>Nullable string (16)</td><td>{{ app_branding.name }} writes only canonical <code>continent:XX</code> or <code>country:XX</code> values; synthetic <code>other</code> values exist only in the geography view.</td></tr>
                             <tr><th scope="row"><code>generalized_user_agent</code></th><td>Nullable string (191)</td><td>Enhanced only; forced to null in anonymous mode.</td></tr>
                             <tr><th scope="row"><code>screen_width</code></th><td>Nullable integer</td><td>Enhanced only; forced to null in anonymous mode.</td></tr>
                             <tr><th scope="row"><code>visitor_id</code></th><td>Nullable string (191)</td><td>Enhanced only; forced to null in anonymous mode.</td></tr>

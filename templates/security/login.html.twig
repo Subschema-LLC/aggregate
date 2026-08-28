@@ -1,6 +1,6 @@
 {% extends 'base.html.twig' %}
 
-{% block title %}Login{% endblock %}
+{% block title %}Login | {{ app_branding.name }}{% endblock %}
 
 {% block body %}
 <div class="columns is-centered">
@@ -70,7 +70,7 @@
         </div>
 
         <div class="has-text-centered mt-4">
-            <p><a href="{{ path('app_how_it_works') }}">Learn how Aggregate Analytics works</a></p>
+            <p><a href="{{ path('app_how_it_works') }}">Learn how {{ app_branding.name }} works</a></p>
         </div>
     </div>
 </div>

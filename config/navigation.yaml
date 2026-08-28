@@ -1,9 +1,13 @@
 # yaml-language-server: $schema=../vendor/symfony/dependency-injection/Loader/schema/services.schema.json
-# Main navigation content. Each link defines exactly one Symfony route or URL.
+# Main navigation content. The brand entry controls its link destination and
+# retains a legacy label fallback; identity and theme branding come from
+# config/aggregate.yaml.
+# Each link defines exactly one Symfony route or URL.
 # Clear the production cache after changing this file.
 parameters:
     app.main_navigation:
         brand:
+            # Backward-compatible fallback; runtime branding belongs in aggregate.yaml.
             label: 'Aggregate Analytics'
             route: 'app_home'
 

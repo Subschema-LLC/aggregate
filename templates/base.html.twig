@@ -3,28 +3,60 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}Aggregate Analytics{% endblock %}</title>
+    <title>{% block title %}{{ app_branding.name }}{% endblock %}</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.2/css/bulma.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        {% include 'branding/theme.css.twig' %}
+
+        .app-branding-identity {
+            align-items: center;
+            display: inline-flex;
+            gap: 0.5rem;
+        }
+
+        .app-branding-logo {
+            height: auto;
+            max-height: 2rem;
+            max-width: 10rem;
+            object-fit: contain;
+            width: auto;
+        }
+    </style>
     {% block stylesheets %}{% endblock %}
 </head>
 <body>
     {% if app.user %}
         {% include 'navigation/main.html.twig' %}
+    {% else %}
+        <nav class="navbar is-dark" role="navigation" aria-label="public navigation">
+            <div class="navbar-brand">
+                <a class="navbar-item" href="{{ path('app_home') }}">
+                    {% include 'branding/identity.html.twig' %}
+                </a>
+            </div>
+        </nav>
     {% endif %}
 
     <section class="section">
         <div class="container">
             {% for message in app.flashes('success') %}
-                <div class="notification is-success is-light">
-                    <button class="delete"></button>
+                <div class="notification is-success is-light" role="status">
+                    <button type="button" class="delete" aria-label="Dismiss notification"></button>
+                    {{ message }}
+                </div>
+            {% endfor %}
+
+            {% for message in app.flashes('warning') %}
+                <div class="notification is-warning is-light" role="status">
+                    <button type="button" class="delete" aria-label="Dismiss notification"></button>
                     {{ message }}
                 </div>
             {% endfor %}
 
             {% for message in app.flashes('error') %}
-                <div class="notification is-danger is-light">
-                    <button class="delete"></button>
+                <div class="notification is-danger is-light" role="alert">
+                    <button type="button" class="delete" aria-label="Dismiss notification"></button>
                     {{ message }}
                 </div>
             {% endfor %}
