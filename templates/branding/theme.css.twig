@@ -1,0 +1,320 @@
+{# All raw values below are canonicalized by BrandingTheme before reaching Twig. #}
+:root {
+    --app-brand-primary: {{ app_branding.theme.primary_color|raw }};
+    --app-brand-primary-contrast: {{ app_branding.theme.primary_contrast_color|raw }};
+    --app-brand-primary-text: {{ app_branding.theme.primary_text_color|raw }};
+    --app-brand-accent: {{ app_branding.theme.accent_color|raw }};
+    --app-brand-accent-contrast: {{ app_branding.theme.accent_contrast_color|raw }};
+    --app-brand-accent-text: {{ app_branding.theme.accent_text_color|raw }};
+    --app-brand-focus: {{ app_branding.theme.focus_color|raw }};
+    --app-brand-navbar: {{ app_branding.theme.navbar_color|raw }};
+    --app-brand-navbar-contrast: {{ app_branding.theme.navbar_contrast_color|raw }};
+    --app-brand-background: {{ app_branding.theme.background_color|raw }};
+    --app-brand-surface: {{ app_branding.theme.surface_color|raw }};
+    --app-brand-text: {{ app_branding.theme.text_color|raw }};
+    --app-brand-border: var(--app-brand-text);
+    --app-brand-font-family: {{ app_branding.theme.font_family_css|raw }};
+    --app-brand-heading-font-family: {{ app_branding.theme.heading_font_family_css|raw }};
+    --bulma-body-background-color: var(--app-brand-background);
+    --bulma-body-color: var(--app-brand-text);
+    --bulma-family-primary: var(--app-brand-font-family);
+    --bulma-link-text: var(--app-brand-accent-text);
+    --bulma-strong-color: var(--app-brand-text);
+    --bulma-text: var(--app-brand-text);
+}
+
+html,
+body {
+    background-color: var(--app-brand-background);
+    color: var(--app-brand-text);
+    font-family: var(--app-brand-font-family);
+    min-height: 100%;
+}
+
+button,
+input,
+select,
+textarea {
+    font-family: inherit;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.title,
+.subtitle,
+.content h1,
+.content h2,
+.content h3,
+.content h4,
+.content h5,
+.content h6,
+.modal-card-title,
+.app-branding-identity {
+    font-family: var(--app-brand-heading-font-family);
+}
+
+.title,
+.label,
+.content,
+.content strong,
+.checkbox,
+.modal-card-title,
+.table,
+.table th,
+.table td,
+.tabs a {
+    color: var(--app-brand-text);
+}
+
+.subtitle,
+.help,
+.heading {
+    color: var(--app-brand-text);
+}
+
+.notification .title,
+.notification .subtitle,
+.notification strong,
+.message .title,
+.message .subtitle,
+.message strong,
+.message-body .content,
+.message-body.content {
+    color: inherit;
+}
+
+.box,
+.table,
+.modal-card-head,
+.modal-card-body,
+.modal-card-foot {
+    background-color: var(--app-brand-surface);
+    color: var(--app-brand-text);
+}
+
+.input,
+.textarea,
+.select select {
+    background-color: var(--app-brand-surface);
+    border-color: var(--app-brand-border);
+    color: var(--app-brand-text);
+}
+
+.input::placeholder,
+.textarea::placeholder {
+    color: var(--app-brand-text);
+    font-style: italic;
+    opacity: 1;
+}
+
+.input[disabled],
+.textarea[disabled],
+.select select[disabled],
+fieldset[disabled] .input,
+fieldset[disabled] .textarea,
+fieldset[disabled] .select select {
+    background-color: var(--app-brand-background);
+    border-color: var(--app-brand-border);
+    color: var(--app-brand-text);
+    opacity: 1;
+    -webkit-text-fill-color: var(--app-brand-text);
+}
+
+.table th,
+.table td {
+    border-color: var(--app-brand-border);
+}
+
+.table.is-striped tbody tr:not(.is-selected):nth-child(even) {
+    background-color: var(--app-brand-background);
+}
+
+.table.is-hoverable tbody tr:not(.is-selected):hover {
+    background-color: var(--app-brand-background);
+}
+
+pre,
+code {
+    background-color: var(--app-brand-background);
+    color: var(--app-brand-text);
+}
+
+hr {
+    background-color: var(--app-brand-border);
+    height: 1px;
+}
+
+a:not(.button):not(.navbar-item) {
+    color: var(--app-brand-accent-text);
+}
+
+a:not(.button):not(.navbar-item):hover,
+a:not(.button):not(.navbar-item):focus-visible {
+    color: var(--app-brand-accent-text);
+    text-decoration: underline;
+}
+
+.content a:not(.button):not(.tag),
+.has-text-centered a:not(.button):not(.tag) {
+    text-decoration: underline;
+}
+
+.notification a:not(.button),
+.message a:not(.button) {
+    color: inherit;
+    text-decoration: underline;
+}
+
+.notification code,
+.message code {
+    background-color: transparent;
+    color: inherit;
+}
+
+.notification.is-light:not(.is-primary):not(.is-link):not(.is-info):not(.is-success):not(.is-warning):not(.is-danger),
+.button:not(.is-primary):not(.is-link):not(.is-info):not(.is-success):not(.is-warning):not(.is-danger):not(.is-dark):not(.is-black):not(.is-white):not(.is-text) {
+    background-color: var(--app-brand-surface);
+    border-color: var(--app-brand-border);
+    color: var(--app-brand-text);
+}
+
+.navbar.is-dark {
+    background-color: var(--app-brand-navbar);
+}
+
+.navbar.is-dark .navbar-menu {
+    background-color: var(--app-brand-navbar);
+}
+
+.navbar.is-dark .navbar-item,
+.navbar.is-dark .navbar-link {
+    color: var(--app-brand-navbar-contrast);
+}
+
+.navbar.is-dark a.navbar-item:hover,
+.navbar.is-dark a.navbar-item:focus-visible,
+.navbar.is-dark .navbar-link:hover,
+.navbar.is-dark .navbar-link:focus-visible {
+    background-color: transparent;
+    color: var(--app-brand-navbar-contrast);
+    text-decoration: underline;
+}
+
+.navbar.is-dark .app-branding-identity strong {
+    color: inherit;
+}
+
+.button.is-primary,
+.button.is-primary.is-light,
+.tag.is-primary,
+.tag.is-primary.is-light {
+    background-color: var(--app-brand-primary);
+    border-color: var(--app-brand-primary);
+    color: var(--app-brand-primary-contrast);
+}
+
+.button.is-link,
+.button.is-link.is-light,
+.tag.is-link,
+.tag.is-link.is-light {
+    background-color: var(--app-brand-accent);
+    border-color: var(--app-brand-accent);
+    color: var(--app-brand-accent-contrast);
+}
+
+.button.is-primary:hover,
+.button.is-primary:focus-visible,
+.button.is-primary.is-light:hover,
+.button.is-primary.is-light:focus-visible {
+    background-color: var(--app-brand-primary);
+    border-color: var(--app-brand-primary);
+    box-shadow: inset 0 0 0 2px currentColor;
+    color: var(--app-brand-primary-contrast);
+}
+
+.button.is-link:hover,
+.button.is-link:focus-visible,
+.button.is-link.is-light:hover,
+.button.is-link.is-light:focus-visible {
+    background-color: var(--app-brand-accent);
+    border-color: var(--app-brand-accent);
+    box-shadow: inset 0 0 0 2px currentColor;
+    color: var(--app-brand-accent-contrast);
+}
+
+.button.is-primary.is-outlined {
+    background-color: transparent;
+    border-color: var(--app-brand-primary-text);
+    color: var(--app-brand-primary-text);
+}
+
+.button.is-primary.is-outlined:hover,
+.button.is-primary.is-outlined:focus-visible {
+    background-color: var(--app-brand-primary);
+    color: var(--app-brand-primary-contrast);
+}
+
+.button.is-link.is-outlined {
+    background-color: transparent;
+    border-color: var(--app-brand-accent-text);
+    color: var(--app-brand-accent-text);
+}
+
+.button.is-link.is-outlined:hover,
+.button.is-link.is-outlined:focus-visible {
+    background-color: var(--app-brand-accent);
+    color: var(--app-brand-accent-contrast);
+}
+
+.has-text-primary {
+    color: var(--app-brand-primary-text) !important;
+}
+
+.tabs li.is-active a,
+.tabs.is-boxed li.is-active a {
+    background-color: var(--app-brand-surface);
+    border-bottom-color: var(--app-brand-focus);
+    color: var(--app-brand-accent-text);
+}
+
+.tabs.is-boxed li.is-active a {
+    border-color: var(--app-brand-border);
+    border-bottom-color: var(--app-brand-focus) !important;
+}
+
+.tabs.is-boxed a:hover,
+.tabs.is-boxed a:focus-visible {
+    background-color: var(--app-brand-background);
+    color: var(--app-brand-accent-text);
+}
+
+.tabs ul {
+    border-bottom-color: var(--app-brand-border);
+}
+
+.input:focus,
+.textarea:focus,
+.select select:focus {
+    border-color: var(--app-brand-focus);
+    box-shadow: 0 0 0 0.125em var(--app-brand-focus);
+}
+
+.select:not(.is-multiple):not(.is-loading)::after {
+    border-color: var(--app-brand-focus);
+}
+
+a:focus-visible,
+button:focus-visible,
+.button:focus-visible {
+    outline: 3px solid var(--app-brand-focus);
+    outline-offset: 2px;
+}
+
+.navbar.is-dark a:focus-visible,
+.navbar.is-dark button:focus-visible {
+    outline-color: var(--app-brand-navbar-contrast);
+}

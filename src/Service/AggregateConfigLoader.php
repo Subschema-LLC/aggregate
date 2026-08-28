@@ -3,8 +3,9 @@
 namespace App\Service;
 
 use Symfony\Component\Yaml\Yaml;
+use Symfony\Contracts\Service\ResetInterface;
 
-class AggregateConfigLoader
+class AggregateConfigLoader implements ResetInterface
 {
     private array $config = [];
     private bool $loaded = false;
@@ -27,7 +28,7 @@ class AggregateConfigLoader
             // Try environment-specific file first (e.g., aggregate_prod.yaml)
             $envFile = $this->projectDir . '/config/aggregate_' . $this->environment . '.yaml';
             if (file_exists($envFile)) {
-                $this->config = Yaml::parseFile($envFile) ?? [];
+                $this->config = $this->parseLockedFile($envFile) ?? [];
                 return;
             }
 
@@ -37,7 +38,7 @@ class AggregateConfigLoader
                 return;
             }
 
-            $data = Yaml::parseFile($mainFile) ?? [];
+            $data = $this->parseLockedFile($mainFile) ?? [];
 
             // Check if using environment-specific structure
             if (isset($data['environments'][$this->environment])) {
@@ -59,6 +60,29 @@ class AggregateConfigLoader
         }
     }
 
+    private function parseLockedFile(string $path): mixed
+    {
+        $handle = @fopen($path, 'rb');
+        if ($handle === false) {
+            throw new \RuntimeException('The application configuration could not be opened.');
+        }
+
+        try {
+            if (!flock($handle, LOCK_SH)) {
+                throw new \RuntimeException('The application configuration could not be locked for reading.');
+            }
+            $yaml = stream_get_contents($handle);
+            if (!is_string($yaml)) {
+                throw new \RuntimeException('The application configuration could not be read.');
+            }
+
+            return $yaml !== '' ? Yaml::parse($yaml) : null;
+        } finally {
+            @flock($handle, LOCK_UN);
+            fclose($handle);
+        }
+    }
+
     public function hasLoadError(): bool
     {
         $this->load();
@@ -69,7 +93,7 @@ class AggregateConfigLoader
     public function assertHealthy(): void
     {
         if ($this->hasLoadError()) {
-            throw new \RuntimeException('Aggregate configuration is invalid.');
+            throw new \RuntimeException('Application configuration is invalid.');
         }
     }
 
@@ -97,38 +121,155 @@ class AggregateConfigLoader
      */
     public function set(string $key, mixed $value): void
     {
-        $this->load();
-        $this->assertHealthy();
-        $this->config[$key] = $value;
+        $this->setMany([$key => $value]);
+    }
 
-        // Prefer environment-specific file if it was the source
-        $envFile = $this->projectDir . '/config/aggregate_' . $this->environment . '.yaml';
-        if (file_exists($envFile)) {
-            $data = Yaml::parseFile($envFile) ?? [];
-            $data[$key] = $value;
-            file_put_contents($envFile, Yaml::dump($data, 4, 2));
+    /**
+     * Persist related values as one configuration update.
+     *
+     * The configured file is locked and all values are written together before
+     * the in-memory values are changed. Writing the opened file preserves
+     * symlink targets, ownership, permissions, and filesystem ACLs.
+     *
+     * @param array<string, mixed> $values
+     */
+    public function setMany(array $values): void
+    {
+        if ($values === []) {
             return;
         }
 
-        $mainFile = $this->projectDir . '/config/aggregate.yaml';
-        $data = file_exists($mainFile) ? (Yaml::parseFile($mainFile) ?? []) : [];
-
-        if (isset($data['environments'][$this->environment])) {
-            $data['environments'][$this->environment][$key] = $value;
-        } elseif (isset($data['environments'])) {
-            $data['environments'][$this->environment][$key] = $value;
-        } else {
-            $data[$key] = $value;
+        foreach (array_keys($values) as $key) {
+            if (!is_string($key) || $key === '') {
+                throw new \InvalidArgumentException('Configuration keys must be non-empty strings.');
+            }
         }
 
-        file_put_contents($mainFile, Yaml::dump($data, 4, 2));
+        $this->load();
+        $this->assertHealthy();
+
+        $envFile = $this->projectDir.'/config/aggregate_'.$this->environment.'.yaml';
+        $configFile = is_file($envFile)
+            ? $envFile
+            : $this->projectDir.'/config/aggregate.yaml';
+        $configExists = is_file($configFile);
+        $configHandle = @fopen($configFile, $configExists ? 'r+b' : 'x+b');
+        if ($configHandle === false) {
+            throw new \RuntimeException('The application configuration file is not writable.');
+        }
+
+        try {
+            if (!flock($configHandle, LOCK_EX)) {
+                throw new \RuntimeException('The application configuration could not be locked.');
+            }
+
+            if (!rewind($configHandle)) {
+                throw new \RuntimeException('The application configuration could not be read.');
+            }
+            $originalYaml = stream_get_contents($configHandle);
+            if (!is_string($originalYaml)) {
+                throw new \RuntimeException('The application configuration could not be read.');
+            }
+
+            $data = $originalYaml !== '' ? (Yaml::parse($originalYaml) ?? []) : [];
+            if (!is_array($data)) {
+                throw new \RuntimeException('The application configuration root must be a mapping.');
+            }
+
+            if ($configFile === $envFile) {
+                foreach ($values as $key => $value) {
+                    $data[$key] = $value;
+                }
+                $effectiveConfig = $data;
+            } elseif (array_key_exists('environments', $data)) {
+                if (!is_array($data['environments'])) {
+                    throw new \RuntimeException('The application environments configuration must be a mapping.');
+                }
+
+                $environmentData = $data['environments'][$this->environment] ?? [];
+                if (!is_array($environmentData)) {
+                    throw new \RuntimeException('The active application environment configuration must be a mapping.');
+                }
+
+                foreach ($values as $key => $value) {
+                    $environmentData[$key] = $value;
+                }
+                $data['environments'][$this->environment] = $environmentData;
+
+                $effectiveConfig = $data;
+                unset($effectiveConfig['environments']);
+                $effectiveConfig = array_merge($effectiveConfig, $environmentData);
+            } else {
+                foreach ($values as $key => $value) {
+                    $data[$key] = $value;
+                }
+                $effectiveConfig = $data;
+            }
+
+            $yaml = Yaml::dump($data, 4, 2);
+            $writeFailure = null;
+            try {
+                $written = $this->replaceLockedContents($configHandle, $yaml);
+            } catch (\Throwable $e) {
+                $written = false;
+                $writeFailure = $e;
+            }
+            if (!$written) {
+                try {
+                    $restored = $this->replaceLockedContents($configHandle, $originalYaml);
+                } catch (\Throwable) {
+                    $restored = false;
+                }
+                throw new \RuntimeException($restored
+                    ? 'The application configuration could not be written.'
+                    : 'The application configuration write failed and its previous contents could not be restored.',
+                    previous: $writeFailure,
+                );
+            }
+
+            $this->config = $effectiveConfig;
+        } finally {
+            @flock($configHandle, LOCK_UN);
+            fclose($configHandle);
+        }
+    }
+
+    public function reset(): void
+    {
+        $this->config = [];
+        $this->loaded = false;
+        $this->loadFailed = false;
+    }
+
+    /** @param resource $handle */
+    private function replaceLockedContents($handle, string $contents): bool
+    {
+        if (!@rewind($handle) || !@ftruncate($handle, 0)) {
+            return false;
+        }
+
+        $length = strlen($contents);
+        $offset = 0;
+        while ($offset < $length) {
+            $written = @fwrite($handle, substr($contents, $offset));
+            if (!is_int($written) || $written < 1) {
+                return false;
+            }
+            $offset += $written;
+        }
+
+        if (!@fflush($handle)) {
+            return false;
+        }
+
+        return !function_exists('fsync') || @fsync($handle);
     }
 
     /**
      * Get a config value, checking both aggregate.yaml and environment variables.
      * Environment variables take precedence.
      */
-    public function getWithEnvFallback(string $key, mixed $default = null): mixed
+    public function getWithEnvFallback(string $key, mixed $default = null, bool $allowEmpty = false): mixed
     {
         $envKey = strtoupper($key);
         foreach ([$_ENV, $_SERVER] as $source) {
@@ -137,12 +278,29 @@ class AggregateConfigLoader
             }
 
             $envValue = $source[$envKey];
-            if ($envValue !== null && $envValue !== '') {
+            if ($envValue !== null && ($allowEmpty || $envValue !== '')) {
                 return $envValue;
             }
         }
 
         return $this->get($key, $default);
+    }
+
+    public function hasEnvironmentOverride(string $key, bool $allowEmpty = false): bool
+    {
+        $envKey = strtoupper($key);
+        foreach ([$_ENV, $_SERVER] as $source) {
+            if (!array_key_exists($envKey, $source)) {
+                continue;
+            }
+
+            $value = $source[$envKey];
+            if ($value !== null && ($allowEmpty || $value !== '')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function getBoolWithEnvFallback(string $key, bool $default = false): bool

@@ -35,9 +35,21 @@ services:
         tags: ['controller.service_arguments']
     App\Controller\HealthController:
         tags: ['controller.service_arguments']
+    App\Controller\BrandingLogoController:
+        tags: ['controller.service_arguments']
 
     App\Service\AggregateConfigLoader:
         public: true
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+            $environment: '%kernel.environment%'
+
+    App\Service\AppBranding:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+            $mainNavigation: '%app.main_navigation%'
+
+    App\Service\BrandingLogoManager:
         arguments:
             $projectDir: '%kernel.project_dir%'
             $environment: '%kernel.environment%'

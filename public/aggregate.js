@@ -260,7 +260,7 @@
           if (responseBody.warnings.indexOf('goal_not_allowed') !== -1) {
             try {
               if (typeof console !== 'undefined' && console && typeof console.warn === 'function') {
-                console.warn('[Aggregate] Goal was not recorded because it is not an approved goal type.');
+                console.warn('[' + namespace + '] Goal was not recorded because it is not an approved goal type.');
               }
             } catch(e) {}
           }

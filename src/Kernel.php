@@ -79,7 +79,7 @@ class Kernel extends BaseKernel
         }
 
         try {
-            $config = Yaml::parseFile($configPath);
+            $config = $this->parseLockedYamlFile($configPath);
         } catch (\Throwable) {
             return true;
         }
@@ -99,5 +99,29 @@ class Kernel extends BaseKernel
         }
 
         return (bool) $environmentConfig['dashboard_enabled'];
+    }
+
+    private function parseLockedYamlFile(string $path): mixed
+    {
+        $handle = @fopen($path, 'rb');
+        if ($handle === false) {
+            throw new \RuntimeException('The application configuration could not be opened.');
+        }
+
+        try {
+            if (!flock($handle, LOCK_SH)) {
+                throw new \RuntimeException('The application configuration could not be locked for reading.');
+            }
+
+            $yaml = stream_get_contents($handle);
+            if (!is_string($yaml)) {
+                throw new \RuntimeException('The application configuration could not be read.');
+            }
+
+            return $yaml !== '' ? Yaml::parse($yaml) : null;
+        } finally {
+            @flock($handle, LOCK_UN);
+            fclose($handle);
+        }
     }
 }

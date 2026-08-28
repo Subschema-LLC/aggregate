@@ -33,7 +33,7 @@ class HealthController
         if ($this->config->hasLoadError()) {
             $checks['configuration'] = [
                 'status' => 'error',
-                'message' => 'Aggregate configuration is invalid.',
+                'message' => 'Application configuration is invalid.',
             ];
             $allHealthy = false;
         } else {

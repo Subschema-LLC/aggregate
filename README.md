@@ -189,7 +189,7 @@ crontab -e
 Configuration is split between four places:
 
 - **`.env` or `.env.local`** (server-level, never committed to git): Symfony infrastructure — database connection, message queue, app secret, and explicit proxy trust.
-- **`config/aggregate.yaml`** (app-level, example committed): Analytics-specific settings — privacy measurement controls, rate limit, JS namespace, dashboard toggle.
+- **`config/aggregate.yaml`** (app-level, example committed): Analytics-specific settings — application branding, privacy measurement controls, rate limit, JS namespace, dashboard toggle.
 - **`config/goals.yaml`** (app-level, committed): Stable conversion-goal codes and whether each is enabled for anonymous collection.
 - **`config/navigation.yaml`** (app-level, committed): Main navigation labels, icons, and link targets.
 
@@ -240,6 +240,17 @@ cp config/aggregate.yaml.example config/aggregate.yaml
 **Settings:**
 - `rate_limit_per_minute`: API requests per IP per minute (default: `100`)
 - `app_host`: Public hostname, used in dashboard integration snippets
+- `brand_name`: Application name used in page titles, headings, and explanatory copy (default: `Aggregate Analytics`)
+- `brand_logo_text`: Visible text displayed beside the optional navigation logo; with a valid image, leave it empty for an image-only identity (default: `brand_name`)
+- `brand_logo_path`: Optional PNG, JPEG, or WebP logo path; use an absolute path or a path relative to the project root
+- `brand_primary_color`: Primary interactive and emphasis color (default: `#00D1B2`)
+- `brand_accent_color`: Secondary accent color (default: `#485FC7`)
+- `brand_navbar_color`: Navigation bar background color (default: `#14161A`)
+- `brand_background_color`: Application page background color (default: `#F5F5F5`)
+- `brand_surface_color`: Cards, panels, and other raised surface color (default: `#FFFFFF`)
+- `brand_text_color`: Main application text color (default: `#363636`)
+- `brand_font_family`: Safe comma-separated local/system font stack for application text (default: `system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif`)
+- `brand_heading_font_family`: Safe comma-separated local/system font stack for headings (default: `system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif`)
 - `js_namespace`: JavaScript global variable name (default: `Aggregate`)
 - `dashboard_enabled`: Enable/disable dashboard/login/install behavior (default: `true`)
 - `anonymous_tracking_enabled`: Administrative collection kill switch; `false` rejects anonymous and enhanced events (default: `true`)
@@ -250,6 +261,12 @@ cp config/aggregate.yaml.example config/aggregate.yaml
 - `DASHBOARD_ENABLED` (env var): Boot-time dashboard feature boundary for loading dashboard routes/services. Set `0` for API-only deploys.
 - After changing dashboard feature settings (`dashboard_enabled` or `DASHBOARD_ENABLED`) in production, run `php bin/console cache:clear`.
 - Malformed YAML or invalid collection-kill-switch/path settings fail closed: ingestion stops and `/api/health` reports a generic configuration error. Invalid optional GeoIP lookup settings instead produce no `geo_area`.
+
+Logo images may be at most 2 MiB, 4096 pixels per axis, and 16 megapixels in total. The settings UI validates and copies uploaded logos below `var/branding` in an environment-specific directory; keep `var/branding` on persistent storage shared by all application replicas, make it writable by the PHP process, and include it in backups. Replicas that use the settings UI must also share the active `aggregate.yaml` file (or otherwise coordinate and deploy each saved revision) so every replica switches logo references together. Uploaded bytes are served as supplied, so remove EXIF/XMP or other embedded metadata before uploading. A configured `brand_logo_path` is resolved from the project root when relative, while absolute local filesystem paths are also supported. Leave it empty for a text-only identity.
+
+Theme colors accept `#RGB` or `#RRGGBB` hex values; three-digit colors are normalized to six-digit form. Quote them in YAML so `#` is not parsed as a comment. Text must maintain at least 4.5:1 contrast against both page and surface colors; the UI rejects lower-contrast palettes and YAML/env palettes fall back to safe defaults. Filled primary, accent, and navigation elements automatically use a contrasting black or white foreground. Font settings accept safe comma-separated local/system font stacks and do not download or embed web fonts. The deployer remains responsible for checking overall legibility and focus visibility.
+
+Environment variables (`BRAND_NAME`, `BRAND_LOGO_TEXT`, `BRAND_LOGO_PATH`, `BRAND_PRIMARY_COLOR`, `BRAND_ACCENT_COLOR`, `BRAND_NAVBAR_COLOR`, `BRAND_BACKGROUND_COLOR`, `BRAND_SURFACE_COLOR`, `BRAND_TEXT_COLOR`, `BRAND_FONT_FAMILY`, and `BRAND_HEADING_FONT_FAMILY`) override the corresponding YAML values, including explicit empty logo-text/path values. A `BRAND_LOGO_PATH` override disables logo upload/removal in the UI. To save any dashboard-backed YAML setting, the active `aggregate.yaml` file (or its symlink target) must be writable by the PHP process; the surrounding `config/` directory can remain read-only. YAML-only deployments do not need to grant write access.
 
 The two BI disclosure thresholds are configured separately in the admin dashboard and stored directly in the singleton `analytics_privacy_settings` database row:
 
@@ -262,7 +279,7 @@ When upgrading from a version that mirrored these values, the existing database 
 
 ### Main Navigation (`config/navigation.yaml`)
 
-Edit the `brand`, `items`, and `account` entries to manage the authenticated navbar. Each link defines exactly one Symfony `route` name (for example, `app_how_it_works`) or literal `url`; `icon` and `route_parameters` are optional. The `items` list may be empty. After changing navigation in production, clear the production cache so the container and Twig globals are rebuilt.
+The `brand` entry controls where the branded identity links. Its `label` remains a backward-compatible name/wordmark fallback for existing deployments. Runtime identity, logo, theme-color, and font settings live in `config/aggregate.yaml` (or their environment overrides), so UI changes do not require rebuilding navigation configuration. Edit `items` and `account` to manage the remaining authenticated-navbar links. Each link defines exactly one Symfony `route` name (for example, `app_how_it_works`) or literal `url`; `label` is required for navigation links, while `icon` and `route_parameters` are optional. The `items` list may be empty. After changing navigation in production, clear the production cache so the container and Twig globals are rebuilt.
 
 ### Conversion Goals (`config/goals.yaml`)
 
@@ -293,7 +310,7 @@ This is an allowlist warning, not a sensitive-data detector. Review every config
 
 #### Optional coarse geography
 
-Install or regularly update a GeoLite2 Country (or compatible country-level) MMDB yourself, mount it read-only on the local filesystem, and point `anonymous_geo_database_path` at its absolute path. Direct UNC/network-share and Windows device paths are rejected. The ingestion process must be able to read the file. Aggregate never downloads the database and never calls a GeoIP web service. No MMDB is bundled; follow the provider's license, attribution, and update terms.
+Install or regularly update a GeoLite2 Country (or compatible country-level) MMDB yourself, mount it read-only on the local filesystem, and point `anonymous_geo_database_path` at its absolute path. Direct UNC/network-share and Windows device paths are rejected. The ingestion process must be able to read the file. The application never downloads the database and never calls a GeoIP web service. No MMDB is bundled; follow the provider's license, attribution, and update terms.
 
 ```yaml
 anonymous_geo_enabled: true
@@ -333,6 +350,17 @@ App-specific settings from `aggregate.yaml` can be overridden with environment v
 
 ```bash
 export JS_NAMESPACE="MyCustomAnalytics"
+export BRAND_NAME="Company Analytics"
+export BRAND_LOGO_TEXT="Company Analytics"
+export BRAND_LOGO_PATH="/var/lib/company/analytics-logo.webp"
+export BRAND_PRIMARY_COLOR="#0F766E"
+export BRAND_ACCENT_COLOR="#4338CA"
+export BRAND_NAVBAR_COLOR="#111827"
+export BRAND_BACKGROUND_COLOR="#F8FAFC"
+export BRAND_SURFACE_COLOR="#FFFFFF"
+export BRAND_TEXT_COLOR="#1F2937"
+export BRAND_FONT_FAMILY="system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
+export BRAND_HEADING_FONT_FAMILY="system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
 export DASHBOARD_ENABLED="0"
 export ANONYMOUS_TRACKING_ENABLED="0"
 export ANONYMOUS_GEO_ENABLED="0"

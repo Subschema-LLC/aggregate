@@ -46,7 +46,7 @@ final class HealthControllerConfigTest extends TestCase
         self::assertSame('unhealthy', $payload['status']);
         self::assertSame([
             'status' => 'error',
-            'message' => 'Aggregate configuration is invalid.',
+            'message' => 'Application configuration is invalid.',
         ], $payload['checks']['configuration']);
         self::assertStringNotContainsString($this->projectDir, (string) $response->getContent());
         self::assertStringNotContainsString('ParseException', (string) $response->getContent());
