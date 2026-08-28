@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=../vendor/symfony/dependency-injection/Loader/schema/services.schema.json
+# Approved goal-event taxonomy. Keys are the stable values stored in events.
+# Clear the production cache after changing this file.
+parameters:
+    app.goal_events:
+        purchase:
+            label: 'Purchase'
+            enabled: true
+            anonymous: true
+
+        lead:
+            label: 'Lead'
+            enabled: true
+            anonymous: true
+
+        signup:
+            label: 'Signup'
+            enabled: true
+            anonymous: true
+
+        subscription:
+            label: 'Subscription'
+            enabled: true
+            anonymous: true
+
+        booking:
+            label: 'Booking'
+            enabled: true
+            anonymous: true
+
+        contact:
+            label: 'Contact request'
+            enabled: true
+            anonymous: true
+
+        download:
+            label: 'Download'
+            enabled: true
+            anonymous: true

@@ -46,6 +46,7 @@ final class EventPrivacyInvariantTest extends TestCase
             'url' => $event->setUrl($value),
             'referrer' => $event->setReferrer($value),
             'eventName' => $event->setEventName($value),
+            'goalEvent' => $event->setGoalEvent($value),
         };
 
         $this->expectException(\LogicException::class);
@@ -62,6 +63,7 @@ final class EventPrivacyInvariantTest extends TestCase
         yield 'numeric ID event name' => ['eventName', 'order_123456', 'safe event-name format'];
         yield 'UUID event name' => ['eventName', 'event_550e8400-e29b-41d4-a716-446655440000', 'safe event-name format'];
         yield 'opaque event name' => ['eventName', 'event_abcdefghijklmnop1234567890', 'safe event-name format'];
+        yield 'identifier-like goal name' => ['goalEvent', 'person@example.com', 'safe event-name format'];
     }
 
     public function testEnhancedLifecycleRequiresConsentAndPreservesExactOccurrenceTime(): void
@@ -141,7 +143,7 @@ final class EventPrivacyInvariantTest extends TestCase
         self::assertNull($event->getSessionId());
         self::assertNull($event->getConsentState());
         self::assertNull($event->getCustomData());
-        self::assertNull($event->getGoalEvent());
+        self::assertSame('purchase', $event->getGoalEvent());
         self::assertSame('country:US', $event->getGeoArea());
     }
 }

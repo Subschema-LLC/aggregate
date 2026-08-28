@@ -357,13 +357,14 @@ Ensure the domain in your website record (`config/websites.yaml` or dashboard we
 - [ ] HTTPS (SSL certificate installed)
 - [ ] Strong `APP_SECRET` in `.env` (`openssl rand -hex 32`)
 - [ ] Sensitive routes listed in `anonymous_excluded_paths`
+- [ ] Every `config/goals.yaml` code is fixed and non-identifying; enhanced-only goals use `anonymous: false`
 - [ ] Database-backed `anonymous_min_cell_count` reviewed in the admin dashboard for your traffic volume (default `5`, range `2`–`1000`)
 - [ ] If coarse geography is enabled: local MMDB is current/read-only, macro-region is preferred, and the processing purpose/legal basis/notice are documented
 - [ ] Database-backed `anonymous_geo_min_cell_count` reviewed in the admin dashboard for geography traffic volume (default `25`, range `10`–`1000`; counts events, not people)
 - [ ] `APP_DEBUG=0` in `.env`
 - [ ] `.env` is not publicly accessible (it's outside `public/`, so this is automatic)
 - [ ] Database user has minimal required privileges
-- [ ] Routine BI users can query only approved `bi_anonymous_events_v1` / `bi_anonymous_geo_events_v1` views, not raw `events`
+- [ ] Routine BI users can query only approved `bi_anonymous_events_v1` / `bi_anonymous_goals_v1` / `bi_anonymous_geo_events_v1` views, not raw `events`
 - [ ] File permissions correct (`775` on `var/`, not `777`)
 - [ ] Worker running as non-root user
 - [ ] Regular database backups configured

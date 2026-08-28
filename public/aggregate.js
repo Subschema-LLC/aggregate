@@ -249,6 +249,21 @@
           keepalive: true,
           referrerPolicy: 'no-referrer',
           credentials: 'omit'
+        }).then(function(response){
+          // Tracking remains fire-and-forget, but successful ingestion
+          // responses may contain safe, machine-readable advisory codes.
+          if (!response || !response.ok || typeof response.json !== 'function') return null;
+          return response.json();
+        }).then(function(responseBody){
+          if (!responseBody || !Array.isArray(responseBody.warnings)) return;
+
+          if (responseBody.warnings.indexOf('goal_not_allowed') !== -1) {
+            try {
+              if (typeof console !== 'undefined' && console && typeof console.warn === 'function') {
+                console.warn('[Aggregate] Goal was not recorded because it is not an approved goal type.');
+              }
+            } catch(e) {}
+          }
         }).catch(function(){});
       } catch(e) {}
     },
@@ -283,13 +298,14 @@
         eventName: safeEventName
       };
 
-      // Anonymous events retain only the safe name and coarse dimensions
-      // above. Properties, goals, exact dimensions and browser identifiers
-      // are enhanced analytics and require affirmative consent.
+      // Goals are server-validated against the configured allowlist in both
+      // privacy modes. Properties, exact dimensions and browser identifiers
+      // remain enhanced analytics and require affirmative consent.
+      payload.goalEvent = goalEvent || null;
+
       if (this.consent) {
         payload.screenWidth = (screen && screen.width) || null;
         payload.eventData = eventData || null;
-        payload.goalEvent = goalEvent || null;
       }
 
       this.send(payload);

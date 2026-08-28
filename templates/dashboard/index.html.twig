@@ -108,25 +108,26 @@
 
                     <div class="notification is-light">
                         <p class="mb-2">An anonymous <code>view</code> event is measured automatically when <code>{{ js_namespace }}.js</code> loads.</p>
-                        <p class="mb-3">Use <code>emit(...)</code> at any time for named interactions. Without enhanced consent, only the safe event name and coarse context are retained; properties and goals are omitted.</p>
-                        <p class="mb-3">Keep names fixed and non-identifying: start with a letter; use at most 100 characters from letters, numbers, <code>_ . : -</code>; and never insert user-entered values.</p>
+                        <p class="mb-3">Use <code>emit(...)</code> at any time for named interactions. Without enhanced consent, the safe event name and coarse context are retained, custom properties are omitted, and a goal is retained only when its enabled definition in <code>config/goals.yaml</code> permits anonymous use.</p>
+                        <p class="mb-3">Keep event and goal codes fixed and non-identifying: start with a letter; use at most 100 characters from letters, numbers, <code>_ . : -</code>; and never insert user-entered values.</p>
                         <pre><code>// Track a button click
 window.{{ js_namespace }}.emit('button_click', {
   button_id: 'signup',
   button_text: 'Sign Up Now'
-}, 'signup_goal');
+}, 'signup');
 
 // Track form submission
 window.{{ js_namespace }}.emit('form_submit', {
   form_name: 'contact',
   form_fields: 3
-}, 'lead_submit');
+}, 'lead');
 
 // Track video play
 window.{{ js_namespace }}.emit('video_play', {
   video_id: 'intro-video',
   video_duration: 120
-}, 'video_engagement');</code></pre>
+});</code></pre>
+                        <p class="mt-3">A disallowed goal is dropped while the event remains recorded. The SDK logs a generic console warning without echoing the submitted value.</p>
                     </div>
 
                     <h5 class="title is-6 mt-5">
@@ -139,7 +140,7 @@ window.{{ js_namespace }}.emit('video_play', {
                     </h5>
 
                     <div class="notification is-light">
-                        <p class="mb-3">Enable identifiers, event properties, goals, and exact dimensions only after the visitor accepts enhanced analytics:</p>
+                        <p class="mb-3">Enable identifiers, event properties, and exact dimensions only after the visitor accepts enhanced analytics. Goal codes remain server-allowlisted in both modes:</p>
                         <pre><code>// Accept enhanced analytics
 window.{{ js_namespace }}.setConsent(true);
 
@@ -305,8 +306,8 @@ window.{{ js_namespace }}.setConsent(false);</code></pre>
                                 <p>What rejection means</p>
                             </div>
                             <div class="message-body content">
-                                <p><strong>Reject</strong> disables enhanced analytics: no visitor ID, session ID, cookie, event properties, goals, or exact dimensions.</p>
-                                <p>Anonymous rows retain a safe event name, UTC hour bucket, sanitized path, coarse referrer/device/viewport buckets, and optional coarse geography. They may still be personal data in context; the BI views group them and suppress low-volume cells.</p>
+                                <p><strong>Reject</strong> disables enhanced analytics: no visitor ID, session ID, cookie, event properties, or exact dimensions.</p>
+                                <p>Anonymous rows retain a safe event name, UTC hour bucket, sanitized path, coarse referrer/device/viewport buckets, optional coarse geography, and—when configured—an allowlisted goal. They may still be personal data in context; the BI views group them and suppress low-volume cells.</p>
                                 <p>IP geolocation is itself processing of personal data in many jurisdictions, even though the analytics event does not retain the IP. Enable it only after documenting a legal basis and notice appropriate to the deployment.</p>
                             </div>
                         </div>
@@ -329,7 +330,7 @@ window.{{ js_namespace }}.setConsent(false);</code></pre>
                                     <div class="control">
                                         <input class="input" type="number" id="anonymous-min-cell-count" name="anonymous_min_cell_count" value="{{ anonymous_min_cell_count }}" min="2" max="1000" required>
                                     </div>
-                                    <p class="help">Default: 5; allowed range: 2–1000. <code>bi_anonymous_events_v1</code> exposes only completed UTC-hour cells meeting this count.</p>
+                                    <p class="help">Default: 5; allowed range: 2–1000. <code>bi_anonymous_events_v1</code> exposes completed UTC-hour cells and <code>bi_anonymous_goals_v1</code> exposes completed UTC-day goal cells meeting this count.</p>
                                 </div>
 
                                 <div class="field">

@@ -12,10 +12,12 @@ use App\Service\AggregateConfigLoader;
 use App\Service\AnonymousEventRecorder;
 use App\Service\GeoIp\GeoArea;
 use App\Service\GeoIp\GeoIpResolverInterface;
+use App\Service\GoalEventRegistry;
 use App\Service\PrivacyPolicy;
 use App\Service\PrivacySanitizer;
 use App\Service\WebsiteConfigManager;
 use Doctrine\ORM\EntityManagerInterface;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
@@ -84,7 +86,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
         self::assertNull($persisted->getVisitorId());
         self::assertNull($persisted->getSessionId());
         self::assertNull($persisted->getConsentState());
-        self::assertNull($persisted->getGoalEvent());
+        self::assertSame('purchase', $persisted->getGoalEvent());
         self::assertNull($persisted->getCustomData());
     }
 
@@ -144,7 +146,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
                 'geoArea' => 'country:RU',
                 'deviceClass' => 'desktop',
                 'viewportBucket' => 'large',
-                'goalEvent' => 'checkout',
+                'goalEvent' => 'purchase',
                 'screenWidth' => 1440,
                 'eventData' => ['plan' => "pro\0", 'nested' => ['ignored']],
                 'consentState' => 'granted',
@@ -169,6 +171,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
         self::assertSame('session_abc', $queued->sessionId);
         self::assertSame('country:US', $queued->geoArea);
         self::assertSame('Chrome / desktop', $queued->generalizedUserAgent);
+        self::assertSame('purchase', $queued->goalEvent);
         self::assertGreaterThanOrEqual($before, $queued->occurredAt);
         self::assertLessThanOrEqual($after, $queued->occurredAt);
         self::assertNotSame('00:00.000000', $queued->occurredAt->format('i:s.u'));
@@ -200,6 +203,132 @@ final class ReceiveControllerPrivacyTest extends TestCase
 
         self::assertSame(400, $response->getStatusCode());
         self::assertSame(['error' => 'eventName is invalid'], json_decode((string) $response->getContent(), true));
+    }
+
+    #[DataProvider('rejectedAnonymousGoals')]
+    public function testRejectedAnonymousGoalDoesNotRejectTheUnderlyingEventOrEchoTheCandidate(string $candidate): void
+    {
+        $persisted = null;
+        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager->expects(self::once())
+            ->method('persist')
+            ->willReturnCallback(static function (object $event) use (&$persisted): void {
+                $persisted = $event;
+            });
+        $entityManager->expects(self::once())->method('flush');
+        $bus = $this->createMock(MessageBusInterface::class);
+        $bus->expects(self::never())->method('dispatch');
+        $response = $this->invoke(
+            payload: [
+                'websiteToken' => 'public-site-token',
+                'pagePath' => '/contact',
+                'eventName' => 'form_submit',
+                'goalEvent' => $candidate,
+                'consentState' => 'denied',
+            ],
+            bus: $bus,
+            recorder: new AnonymousEventRecorder($entityManager),
+        );
+
+        self::assertSame(202, $response->getStatusCode());
+        self::assertSame(
+            ['status' => 'recorded', 'mode' => 'anonymous', 'warnings' => ['goal_not_allowed']],
+            json_decode((string) $response->getContent(), true, flags: JSON_THROW_ON_ERROR),
+        );
+        self::assertStringNotContainsString($candidate, (string) $response->getContent());
+        self::assertInstanceOf(Event::class, $persisted);
+        self::assertNull($persisted->getGoalEvent());
+    }
+
+    public static function rejectedAnonymousGoals(): iterable
+    {
+        yield 'unknown' => ['unconfigured_goal'];
+        yield 'disabled' => ['download'];
+        yield 'anonymous disallowed' => ['subscription'];
+        yield 'unsafe identifier-like value' => ['private@example.com'];
+        yield 'case mismatch' => ['Purchase'];
+        yield 'whitespace mismatch' => [' purchase '];
+    }
+
+    #[DataProvider('absentAnonymousGoals')]
+    public function testMissingAndBlankAnonymousGoalsDoNotProduceWarnings(bool $includeGoal, mixed $candidate): void
+    {
+        $persisted = null;
+        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager->expects(self::once())
+            ->method('persist')
+            ->willReturnCallback(static function (object $event) use (&$persisted): void {
+                $persisted = $event;
+            });
+        $entityManager->expects(self::once())->method('flush');
+        $bus = $this->createMock(MessageBusInterface::class);
+        $bus->expects(self::never())->method('dispatch');
+        $payload = [
+            'websiteToken' => 'public-site-token',
+            'pagePath' => '/contact',
+            'eventName' => 'form_submit',
+            'consentState' => 'denied',
+        ];
+        if ($includeGoal) {
+            $payload['goalEvent'] = $candidate;
+        }
+
+        $response = $this->invoke(
+            payload: $payload,
+            bus: $bus,
+            recorder: new AnonymousEventRecorder($entityManager),
+        );
+
+        self::assertSame(202, $response->getStatusCode());
+        self::assertSame(
+            ['status' => 'recorded', 'mode' => 'anonymous'],
+            json_decode((string) $response->getContent(), true, flags: JSON_THROW_ON_ERROR),
+        );
+        self::assertInstanceOf(Event::class, $persisted);
+        self::assertNull($persisted->getGoalEvent());
+    }
+
+    public static function absentAnonymousGoals(): iterable
+    {
+        yield 'missing' => [false, null];
+        yield 'explicit null' => [true, null];
+        yield 'empty string' => [true, ''];
+        yield 'blank string' => [true, " \t\n"];
+    }
+
+    public function testRejectedEnhancedGoalIsOmittedWhileTheEventIsQueued(): void
+    {
+        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager->expects(self::never())->method('persist');
+        $queued = null;
+        $bus = $this->createMock(MessageBusInterface::class);
+        $bus->expects(self::once())
+            ->method('dispatch')
+            ->willReturnCallback(function (object $message) use (&$queued): Envelope {
+                $queued = $message;
+
+                return new Envelope($message);
+            });
+
+        $response = $this->invoke(
+            payload: [
+                'websiteToken' => 'public-site-token',
+                'pagePath' => '/checkout',
+                'eventName' => 'purchase.completed',
+                'goalEvent' => 'unconfigured_goal',
+                'consentState' => 'granted',
+            ],
+            bus: $bus,
+            recorder: new AnonymousEventRecorder($entityManager),
+        );
+
+        self::assertSame(202, $response->getStatusCode());
+        self::assertSame(
+            ['status' => 'accepted', 'mode' => 'enhanced', 'warnings' => ['goal_not_allowed']],
+            json_decode((string) $response->getContent(), true, flags: JSON_THROW_ON_ERROR),
+        );
+        self::assertInstanceOf(TrackEventMessage::class, $queued);
+        self::assertNull($queued->goalEvent);
     }
 
     public function testDeploymentKillSwitchBlocksEvenGrantedEvents(): void
@@ -305,11 +434,13 @@ final class ReceiveControllerPrivacyTest extends TestCase
         ?LoggerInterface $logger = null,
         ?IpRateLimiter $rateLimiter = null,
         ?GeoIpResolverInterface $geoResolver = null,
+        ?GoalEventRegistry $goalEvents = null,
     ): \Symfony\Component\HttpFoundation\Response {
         $config ??= $this->privacyConfig();
         $logger ??= new NullLogger();
         $rateLimiter ??= $this->rateLimiter();
         $geoResolver ??= $this->geoResolver();
+        $goalEvents ??= $this->goalEvents();
 
         return (new ReceiveController())(
             $this->request($payload),
@@ -317,6 +448,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
             $bus,
             $rateLimiter,
             new PrivacySanitizer(),
+            $goalEvents,
             new PrivacyPolicy($config),
             $geoResolver,
             $recorder,
@@ -374,5 +506,26 @@ final class ReceiveControllerPrivacyTest extends TestCase
         $resolver->method('resolve')->willReturn($area);
 
         return $resolver;
+    }
+
+    private function goalEvents(): GoalEventRegistry
+    {
+        return new GoalEventRegistry(new PrivacySanitizer(), [
+            'purchase' => [
+                'label' => 'Purchase',
+                'enabled' => true,
+                'anonymous' => true,
+            ],
+            'subscription' => [
+                'label' => 'Subscription',
+                'enabled' => true,
+                'anonymous' => false,
+            ],
+            'download' => [
+                'label' => 'Download',
+                'enabled' => false,
+                'anonymous' => true,
+            ],
+        ]);
     }
 }
