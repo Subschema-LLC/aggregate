@@ -47,7 +47,8 @@
                         <p>
                             Paste the generated snippet into your site. The script sends a
                             <code>view</code> event when a page loads. Use <code>emit(...)</code> with fixed,
-                            non-identifying names to measure important interactions.
+                            non-identifying event names and an optional goal code from
+                            <code>config/goals.yaml</code> to measure important interactions and conversions.
                         </p>
                     </div>
                 </div>
@@ -108,7 +109,9 @@
                         <ul>
                             <li>Sanitizes the page path and keeps a safe event name.</li>
                             <li>Uses coarse referrer, device, and viewport categories.</li>
-                            <li>Omits cookies, identifiers, custom properties, goals, and exact dimensions.</li>
+                            <li>Omits cookies, identifiers, custom properties, and exact dimensions.</li>
+                            <li>Retains a goal only when its enabled definition permits anonymous use.</li>
+                            <li>Drops a disallowed goal without dropping the event and returns a generic SDK warning.</li>
                             <li>Stores the event in a server-generated UTC hour bucket.</li>
                         </ul>
                     </div>
@@ -118,7 +121,8 @@
                         <h3 class="title is-5">Enhanced analytics</h3>
                         <ul>
                             <li>Your consent manager calls <code>setConsent(true)</code> only after the visitor grants enhanced analytics consent.</li>
-                            <li>May include visitor and session IDs, properties, goals, and exact dimensions.</li>
+                            <li>May include visitor and session IDs, properties, and exact dimensions.</li>
+                            <li>Goal codes remain restricted to enabled definitions in <code>config/goals.yaml</code>.</li>
                             <li>Uses a sliding 30-minute session cookie and records an exact server timestamp.</li>
                             <li>Your integration calls <code>setConsent(false)</code> on rejection or withdrawal.</li>
                         </ul>
@@ -127,8 +131,9 @@
             </div>
             <div class="notification is-info is-light mb-0">
                 After <code>setConsent(false)</code>, Aggregate clears its browser identifiers and returns to
-                anonymous mode. Privacy-minimized events continue unless collection is disabled or the path
-                is excluded. Consent withdrawal does not delete data already stored by the server.
+                anonymous mode. Privacy-minimized events and configured anonymous goals continue unless
+                collection is disabled or the path is excluded. Consent withdrawal does not delete data
+                already stored by the server.
             </div>
         </div>
 
@@ -140,6 +145,7 @@
                         <ul>
                             <li>Registered domains and website tokens</li>
                             <li>A global collection switch and sensitive-path exclusions</li>
+                            <li>Enabled goal codes and whether each may be retained anonymously</li>
                             <li>Optional local, coarse geography</li>
                             <li>Low-volume disclosure thresholds for approved BI views</li>
                             <li>The JavaScript namespace and ingestion rate limit</li>
@@ -156,8 +162,10 @@
                         and rights requests.
                     </p>
                     <p class="mt-3">
-                        Keep event names fixed and non-identifying. Do not send emails, account IDs, form
-                        contents, search terms, or other free text as enhanced properties.
+                        Keep event and goal names fixed and non-identifying. The goal allowlist cannot detect
+                        sensitive meaning: a broad goal can still be sensitive when combined with a path or
+                        small audience. Do not send emails, account IDs, form contents, search terms, or other
+                        free text as enhanced properties.
                     </p>
                 </div>
             </div>

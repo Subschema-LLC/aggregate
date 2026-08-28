@@ -18,6 +18,8 @@ final class HowItWorksControllerTest extends WebTestCase
         self::assertSelectorTextContains('h1', 'How Aggregate Analytics Works');
         self::assertSelectorTextContains('body', 'Anonymous mode');
         self::assertSelectorTextContains('body', 'Enhanced analytics');
+        self::assertSelectorTextContains('body', 'config/goals.yaml');
+        self::assertSelectorTextContains('body', 'Drops a disallowed goal without dropping the event');
         self::assertSelectorExists('a[href="/how-it-works/data-visualization"]');
         self::assertSelectorExists('a[href="/"]');
     }
@@ -31,10 +33,15 @@ final class HowItWorksControllerTest extends WebTestCase
         self::assertResponseIsSuccessful();
         self::assertSelectorTextContains('h1', 'Data Structure for Visualization');
         self::assertSelectorTextContains('body', 'bi_anonymous_events_v1');
+        self::assertSelectorTextContains('body', 'bi_anonymous_goals_v1');
         self::assertSelectorTextContains('body', 'bi_anonymous_geo_events_v1');
         self::assertSelectorExists('#anonymous-events-view table');
         self::assertSelectorTextContains('#anonymous-events-view table', 'event_hour');
         self::assertSelectorTextContains('#anonymous-events-view table', 'event_count');
+        self::assertSelectorExists('#anonymous-goals-view table');
+        self::assertSelectorTextContains('#anonymous-goals-view table', 'event_day');
+        self::assertSelectorTextContains('#anonymous-goals-view table', 'goal_event');
+        self::assertSelectorTextContains('#anonymous-goals-view', 'not distinct people or unique converters');
         self::assertSelectorExists('#anonymous-geography-view table');
         self::assertSelectorTextContains('#anonymous-geography-view table', 'event_day');
         self::assertSelectorExists('#private-source-tables table');

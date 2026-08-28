@@ -432,16 +432,20 @@ Current migrations:
 - `migrations/Version20260724001000.php` (hourly grouped and threshold-filtered anonymous BI view)
 - `migrations/Version20260724001500.php` (optional coarse `events.geo_area` and geographic suppression setting)
 - `migrations/Version20260724002000.php` (daily, threshold-filtered anonymous geography BI view)
+- `migrations/Version20260828000000.php` (completed-day, threshold-filtered anonymous goal BI view)
 
 The current schema contains:
-- `events` (private individual rows for both `anonymous` and `enhanced` privacy modes, with optional coarse `geo_area`)
-- `analytics_privacy_settings` (database source of truth for hourly and geographic BI suppression thresholds)
+- `events` (private individual rows for both `anonymous` and `enhanced` privacy modes, with optional coarse `geo_area` and allowlisted `goal_event`)
+- `analytics_privacy_settings` (database source of truth for hourly event, daily goal, and geographic BI suppression thresholds)
 - `bi_anonymous_events_v1` (supported grouped anonymous-mode BI contract)
+- `bi_anonymous_goals_v1` (supported completed-day anonymous goal-count BI contract)
 - `bi_anonymous_geo_events_v1` (supported daily, lower-dimensional anonymous geography BI contract)
 - `users` (dashboard auth, optional in API-only mode)
 - `messenger_messages` (used only in async queue mode)
 
-For `privacy_mode = 'anonymous'`, `created_at` is a server-generated UTC hour boundary, not an exact event time. These are still individual rows and may be personal data in context, so keep `events` private. Routine BI users should query `bi_anonymous_events_v1`, which groups hourly cells and suppresses counts below `anonymous_min_cell_count`.
+For `privacy_mode = 'anonymous'`, `created_at` is a server-generated UTC hour boundary, not an exact event time. Identifiers, custom properties, exact dimensions, and generalized User-Agent values are null. `goal_event` may contain only an enabled code from `config/goals.yaml` whose definition permits anonymous use; rejected goals are stored as null without rejecting the underlying event. These are still individual rows and may be personal data in context, so keep `events` private. Routine BI users should query `bi_anonymous_events_v1`, which groups hourly cells and suppresses counts below `anonymous_min_cell_count`.
+
+Routine anonymous conversion reporting should use `bi_anonymous_goals_v1`: `website_token`, UTC `event_day`, `goal_event`, and `event_count`. It includes only anonymous rows with a retained goal, excludes the current UTC day, and reuses `anonymous_min_cell_count` (default `5`, range `2`–`1000`). It deliberately omits event name, path, referrer, device, viewport, geography, and identifiers. `event_count` counts goal occurrences rather than unique people or unique converters, and goal labels remain presentation metadata in `config/goals.yaml`. Do not join this completed-day view to the hourly or geography views to recover more detail.
 
 When optional coarse geography is enabled, `events.geo_area` contains a normalized `continent:XX` or `country:XX` value for accepted anonymous and enhanced events. It never contains city, subdivision, postcode, or coordinates. Null means geography was disabled or unavailable. The source IP and full local-MMDB result are not stored or queued.
 
@@ -458,6 +462,7 @@ $events->addColumn('viewport_bucket', 'string', ['length' => 20, 'default' => 'u
 $events->addColumn('geo_area', 'string', ['length' => 16, 'notnull' => false]);
 $events->addColumn('consent_state', 'string', ['length' => 20, 'notnull' => false]);
 $events->addColumn('custom_data', 'json', ['notnull' => false]);
+$events->addColumn('goal_event', 'string', ['length' => 191, 'notnull' => false]);
 // ... works across supported databases
 ```
 

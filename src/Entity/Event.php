@@ -187,6 +187,10 @@ class Event
             );
         }
 
+        if ($this->goalEvent !== null && !PrivacySanitizer::isSafeEventName($this->goalEvent)) {
+            throw new \LogicException('Goal event names must use the safe event-name format.');
+        }
+
         if ($this->privacyMode === 'enhanced') {
             if ($this->consentState !== 'granted') {
                 throw new \LogicException('Enhanced events require granted consent.');
@@ -224,7 +228,6 @@ class Event
         $this->sessionId = null;
         $this->consentState = null;
         $this->customData = null;
-        $this->goalEvent = null;
     }
 
     private static function isValidGeoArea(?string $geoArea): bool

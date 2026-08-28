@@ -33,7 +33,7 @@ final class TrackEventHandlerPrivacyTest extends TestCase
             deviceClass: 'desktop',
             viewportBucket: 'large',
             screenWidth: 1440,
-            goalEvent: 'checkout',
+            goalEvent: 'purchase',
             eventData: ['plan' => 'pro'],
             generalizedUserAgent: 'Chrome / desktop',
             visitorId: 'visitor_abc',
@@ -55,7 +55,7 @@ final class TrackEventHandlerPrivacyTest extends TestCase
         self::assertSame('visitor_abc', $persisted->getVisitorId());
         self::assertSame('session_abc', $persisted->getSessionId());
         self::assertSame(['plan' => 'pro'], $persisted->getCustomData());
-        self::assertSame('checkout', $persisted->getGoalEvent());
+        self::assertSame('purchase', $persisted->getGoalEvent());
         self::assertSame($occurredAt, $persisted->getCreatedAt());
 
         // Doctrine invokes this on persist. Enhanced events keep exact time.

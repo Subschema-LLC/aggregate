@@ -8,9 +8,12 @@ parameters:
             route: 'app_home'
 
         items:
-            - label: 'How It Works'
+            - label: 'Documentation'
               route: 'app_how_it_works'
               icon: 'fas fa-circle-info'
+            - label: 'Reporting'
+              route: 'app_how_it_works_data_visualization'
+              icon: 'fas fa-bar-chart'
 
         account:
             user_icon: 'fas fa-user'

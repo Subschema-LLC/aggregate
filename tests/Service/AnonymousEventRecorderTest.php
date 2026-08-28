@@ -32,6 +32,7 @@ final class AnonymousEventRecorderTest extends TestCase
             viewportBucket: 'large',
             occurredAt: $occurredAt,
             geoArea: 'country:US',
+            goalEvent: 'purchase',
         );
 
         self::assertInstanceOf(Event::class, $persisted);
@@ -49,7 +50,7 @@ final class AnonymousEventRecorderTest extends TestCase
         self::assertNull($persisted->getVisitorId());
         self::assertNull($persisted->getSessionId());
         self::assertNull($persisted->getConsentState());
-        self::assertNull($persisted->getGoalEvent());
+        self::assertSame('purchase', $persisted->getGoalEvent());
         self::assertNull($persisted->getCustomData());
     }
 
