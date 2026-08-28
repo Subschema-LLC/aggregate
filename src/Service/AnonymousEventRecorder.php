@@ -23,6 +23,7 @@ final class AnonymousEventRecorder
         string $viewportBucket,
         ?\DateTimeImmutable $occurredAt = null,
         ?string $geoArea = null,
+        ?string $goalEvent = null,
     ): void {
         $occurredAt = ($occurredAt ?? new \DateTimeImmutable('now', new \DateTimeZone('UTC')))
             ->setTimezone(new \DateTimeZone('UTC'));
@@ -42,7 +43,7 @@ final class AnonymousEventRecorder
             ->setVisitorId(null)
             ->setSessionId(null)
             ->setConsentState(null)
-            ->setGoalEvent(null)
+            ->setGoalEvent($goalEvent)
             ->setCustomData(null)
             ->setCreatedAt($hourBucket);
 

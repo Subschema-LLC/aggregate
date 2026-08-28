@@ -5,7 +5,8 @@ An open-source, self-hosted analytics system with privacy-minimized, hour-bucket
 ## Key Features
 
 - **Privacy-minimized events by default**: individual page views and safe named interactions with UTC hour buckets, sanitized paths, coarse dimensions, and no visitor/session identifiers
-- **Consent-based enhanced analytics**: visitor/session IDs, custom properties, goals, and exact dimensions only after consent is granted
+- **YAML-managed conversion goals**: fixed, allowlisted goal codes can be retained in anonymous mode without accepting arbitrary values
+- **Consent-based enhanced analytics**: visitor/session IDs, custom properties, and exact dimensions only after consent is granted
 - **Short-lived session cookies**: Only set with enhanced consent, 30-minute expiry, SameSite=Lax, Secure on HTTPS
 - **Privacy controls**: administrative kill switch, sensitive-path exclusions, and low-volume BI cell suppression
 - **Deployment guidance** for consent, disclosure, retention, and data-subject workflows (see [docs/PRIVACY-COMPLIANCE.md](docs/PRIVACY-COMPLIANCE.md))
@@ -185,10 +186,11 @@ crontab -e
 
 ## Configuration
 
-Configuration is split between three places:
+Configuration is split between four places:
 
 - **`.env` or `.env.local`** (server-level, never committed to git): Symfony infrastructure — database connection, message queue, app secret, and explicit proxy trust.
 - **`config/aggregate.yaml`** (app-level, example committed): Analytics-specific settings — privacy measurement controls, rate limit, JS namespace, dashboard toggle.
+- **`config/goals.yaml`** (app-level, committed): Stable conversion-goal codes and whether each is enabled for anonymous collection.
 - **`config/navigation.yaml`** (app-level, committed): Main navigation labels, icons, and link targets.
 
 The web installer at `/install` is optional and only needed when you want dashboard-based setup.
@@ -251,16 +253,43 @@ cp config/aggregate.yaml.example config/aggregate.yaml
 
 The two BI disclosure thresholds are configured separately in the admin dashboard and stored directly in the singleton `analytics_privacy_settings` database row:
 
-- `anonymous_min_cell_count`: completed hourly cells in `bi_anonymous_events_v1` (default `5`, range `2`–`1000`)
+- `anonymous_min_cell_count`: completed hourly cells in `bi_anonymous_events_v1` and completed daily goal cells in `bi_anonymous_goals_v1` (default `5`, range `2`–`1000`)
 - `anonymous_geo_min_cell_count`: completed daily cells in `bi_anonymous_geo_events_v1` (default `25`, range `10`–`1000`)
 
-Dashboard changes take effect immediately because both BI views read this row directly. The migrations create it with safe defaults; there is no YAML copy or synchronization command. For an API-only deployment, update the singleton row through controlled database administration and keep routine BI roles read-only.
+Dashboard changes take effect immediately because all three BI views read this row directly. The migrations create it with safe defaults; there is no YAML copy or synchronization command. For an API-only deployment, update the singleton row through controlled database administration and keep routine BI roles read-only.
 
 When upgrading from a version that mirrored these values, the existing database row keeps the last applied thresholds. Remove stale `anonymous_min_cell_count` and `anonymous_geo_min_cell_count` YAML/environment settings after every application instance is upgraded; the new code ignores them.
 
 ### Main Navigation (`config/navigation.yaml`)
 
 Edit the `brand`, `items`, and `account` entries to manage the authenticated navbar. Each link defines exactly one Symfony `route` name (for example, `app_how_it_works`) or literal `url`; `icon` and `route_parameters` are optional. The `items` list may be empty. After changing navigation in production, clear the production cache so the container and Twig globals are rebuilt.
+
+### Conversion Goals (`config/goals.yaml`)
+
+Goal codes are a server-enforced allowlist. The YAML key is the stable value stored in `events.goal_event`; `label` is presentation text, `enabled` controls future collection, and `anonymous` controls whether the goal may be retained without enhanced consent.
+
+```yaml
+parameters:
+    app.goal_events:
+        purchase:
+            label: 'Purchase'
+            anonymous: true
+            enabled: true
+        signup:
+            label: 'Signup'
+            anonymous: true
+            enabled: true
+```
+
+The default codes are `purchase`, `lead`, `signup`, `subscription`, `booking`, `contact`, and `download`. Codes must match `[A-Za-z][A-Za-z0-9_.:-]{0,99}` and must never contain an email, order number, account ID, form value, or other user-derived text. Payload matching is exact and case-sensitive; surrounding whitespace and case variants are rejected. Set `anonymous: false` when a goal is appropriate only for enhanced analytics. Prefer `enabled: false` over deleting a historical definition.
+
+An unknown, invalid, disabled, or anonymous-disallowed goal is omitted while the underlying event is still accepted. The API adds `warnings: ["goal_not_allowed"]`, and the SDK writes this generic warning without echoing the submitted value:
+
+```text
+[Aggregate] Goal was not recorded because it is not an approved goal type.
+```
+
+This is an allowlist warning, not a sensitive-data detector. Review every configured code and its use in context. After changing `config/goals.yaml` in production, clear the production cache so the service container is rebuilt.
 
 #### Optional coarse geography
 
@@ -343,7 +372,7 @@ Add to your website:
 </script>
 <script src="https://your-host/aggregate.js" async referrerpolicy="no-referrer"></script>
 ```
-An anonymous-mode page-view row is recorded automatically when the script loads. Queries, fragments, raw referrers, cookies, visitor IDs, and session IDs are not sent in anonymous mode. You may also call `emit(...)`: before enhanced consent, each safe event name and its coarse context are retained, while properties and goals are omitted.
+An anonymous-mode page-view row is recorded automatically when the script loads. Queries, fragments, raw referrers, cookies, visitor IDs, and session IDs are not sent in anonymous mode. You may also call `emit(...)`: before enhanced consent, each safe event name and its coarse context are retained, configured goals marked `anonymous: true` may be retained, and custom properties are omitted.
 
 ### Custom Event Tracking
 
@@ -351,15 +380,16 @@ Use a fixed event taxonomy. Names must match `[A-Za-z][A-Za-z0-9_.:-]{0,99}` and
 Even with enhanced consent, keep event properties purpose-limited and avoid emails, account IDs, form contents, search terms, or other free text.
 
 ```javascript
-// Anonymous mode records this safe event name with coarse context. The property
-// and goal arguments are omitted until enhanced analytics consent is granted.
-window.Aggregate.emit('signup_click', { plan_type: 'pro' }, 'trial_signup');
+// Anonymous mode records the safe event name, coarse context, and the allowlisted
+// `signup` goal. The custom property is omitted.
+window.Aggregate.emit('signup_click', { plan_type: 'pro' }, 'signup');
 
-// Accept enhanced analytics to include properties, goals and identifiers.
+// Accept enhanced analytics to include properties, identifiers, and exact dimensions.
 window.Aggregate.setConsent(true);
-window.Aggregate.emit('signup_click', { plan_type: 'pro' }, 'trial_signup');
+window.Aggregate.emit('signup_click', { plan_type: 'pro' }, 'signup');
 
-// Reject or withdraw enhanced analytics. Coarse named-event rows continue.
+// Reject or withdraw enhanced analytics. Coarse named-event rows and configured
+// anonymous goals continue.
 window.Aggregate.setConsent(false);
 ```
 
@@ -386,7 +416,7 @@ curl -i -X POST http://localhost/api/receive \
   }'
 ```
 
-The server stores this as an individual `privacy_mode = 'anonymous'` row with a UTC-hour timestamp and no properties, goal, identifier, or exact dimension.
+Because this request supplies no `goalEvent`, the server stores it as an individual `privacy_mode = 'anonymous'` row with a UTC-hour timestamp and no property, identifier, or exact dimension.
 
 ## Make Commands
 
@@ -427,14 +457,14 @@ Serve the public file at `/aggregate.js` and embed it on your site:
 <script src="https://your-host/aggregate.js" async referrerpolicy="no-referrer"></script>
 ```
 - It auto-sends a privacy-minimized `view` event on load (no `emit(...)` call needed for page views).
-- Named `emit(...)` events are retained as individual anonymous-mode rows before consent; their properties and goals are omitted.
-- To enable identifiers, event properties, goals, and exact dimensions after consent, call:
+- Named `emit(...)` events are retained as individual anonymous-mode rows before consent. Allowlisted goals marked `anonymous: true` may also be retained; custom properties are omitted.
+- To enable identifiers, event properties, exact dimensions, and configured goals marked `anonymous: false`, call:
 ```js
 window.Aggregate.setConsent(true);
 ```
 - Emit custom events:
 ```js
-window.Aggregate.emit('signup-click', { plan_type: 'pro' }, 'trial_signup');
+window.Aggregate.emit('signup-click', { plan_type: 'pro' }, 'signup');
 ```
 - To reject or withdraw enhanced tracking, call `window.Aggregate.setConsent(false)`. This clears browser identifiers and returns to coarse, hour-bucketed anonymous-mode event rows; it does not delete previously collected server data.
 
@@ -491,7 +521,7 @@ Complete setup guide for integrating with Google Tag Manager for both pixel trac
 
 #### Step 2: Track Custom Events from GTM
 
-Named custom events may be stored in anonymous mode. Before `setConsent(true)`, the SDK sends only a syntax-restricted event name and coarse context; GTM variables supplied as event properties or goals are omitted.
+Named custom events may be stored in anonymous mode. Before `setConsent(true)`, custom properties are omitted, while a goal may be retained only when its fixed code is enabled and marked `anonymous: true` in `config/goals.yaml`.
 
 **Method A: Using GTM's Custom HTML Tag for Specific Events**
 
@@ -504,7 +534,7 @@ Named custom events may be stored in anonymous mode. Before `setConsent(true)`, 
        window.Aggregate.emit('cta_click', {
          button_text: 'Get Started',
          location: 'homepage_hero'
-       }, 'signup_goal');
+       }, 'signup');
      }
    </script>
    ```
@@ -536,7 +566,7 @@ Named custom events may be stored in anonymous mode. Before `setConsent(true)`, 
    - `Event Category`, `Event Label`, `Event Value`
    - `Goal Event Variable` (optional; e.g., Data Layer Variable: `goalEvent`)
 
-   Map `Event Name Variable` to an approved fixed taxonomy; never populate it from click text, URLs, form fields, or other user-provided values.
+   Map `Event Name Variable` to an approved fixed taxonomy and `Goal Event Variable` to a key from `config/goals.yaml`. Never populate either one from click text, URLs, form fields, or other user-provided values.
 
 5. Trigger this tag using **Custom Events** or **Click Triggers**
 
@@ -579,7 +609,7 @@ Use your consent manager to control enhanced analytics. Coarse page-view and nam
      }
    </script>
    ```
-   This removes the SDK's visitor/session identifiers and stops sending custom properties, goals, and exact dimensions. Safe event names continue as individual anonymous-mode rows. It does not erase data already held by the server; handle deletion requests through your documented data-subject process.
+   This removes the SDK's visitor/session identifiers and stops sending custom properties and exact dimensions. Safe event names and configured goals marked `anonymous: true` continue as individual anonymous-mode rows. It does not erase data already held by the server; handle deletion requests through your documented data-subject process.
 
 #### Step 4: Common Event Tracking Examples
 
@@ -589,7 +619,7 @@ Use your consent manager to control enhanced analytics. Coarse page-view and nam
   window.Aggregate.emit('form_submit', {
     form_name: {{Form Name}},
     form_id: {{Form ID}}
-  }, 'lead_submit');
+  }, 'lead');
 </script>
 ```
 - **Trigger**: Form Submission trigger for your target form
@@ -630,18 +660,18 @@ window.Aggregate.emit('scroll_depth', {
 ```
 - **Trigger**: YouTube Video or Video trigger in GTM
 
-**Track E-commerce Events**
+**Track a Purchase**
 ```html
 <script>
-  window.Aggregate.emit('add_to_cart', {
+  window.Aggregate.emit('purchase_completed', {
     product_id: {{Product ID}},
     product_name: {{Product Name}},
     product_price: {{Product Price}},
     quantity: {{Product Quantity}}
-  }, 'add_to_cart_goal');
+  }, 'purchase');
 </script>
 ```
-- **Trigger**: Custom Event `addToCart` from Data Layer
+- **Trigger**: Your completed-purchase Custom Event from the Data Layer
 
 #### Step 5: Testing Your GTM Setup
 
@@ -695,7 +725,7 @@ window.dataLayer = window.dataLayer || [];
 dataLayer.push({
   'event': 'customAnalyticsEvent',
   'eventName': 'signup_click',
-  'goalEvent': 'trial_signup',
+  'goalEvent': 'signup',
   'eventData': {
     'plan': 'pro',
     'source': 'pricing_page'
@@ -738,7 +768,7 @@ Simple per-IP rate limiting (default: 100 requests/minute) prevents abuse. It st
 - Page views use the event name `view`; `emit(...)` accepts fixed names matching `[A-Za-z][A-Za-z0-9_.:-]{0,99}`, such as `button_click`, `form_submit`, or `ui:menu_open`. Identifier-like names are rejected.
 - Obvious email addresses, UUIDs, numeric route IDs, and opaque tokens are redacted from path segments.
 - Referrers become a coarse channel such as `direct`, `internal`, `search`, `social`, `email`, or `referral`; the raw referrer is not sent.
-- Device and viewport values are coarse buckets. No visitor ID, session ID, cookie, custom properties, goal, exact screen width, raw IP, or full User-Agent is retained in an anonymous-mode row.
+- Device and viewport values are coarse buckets. No visitor ID, session ID, cookie, custom properties, exact screen width, raw IP, or full User-Agent is retained in an anonymous-mode row. An enabled goal code is retained only when its definition permits anonymous use.
 - Optional local geolocation retains only a continent-level or country code in `geo_area`; the request IP and detailed lookup result are not put in analytics storage or the queue.
 - Each event is stored as an individual row using a server-generated UTC hour bucket rather than an exact timestamp. The BI view groups these rows and suppresses cells below `anonymous_min_cell_count`.
 - Hour bucketing and removal of identifiers reduce risk but do not guarantee that a row is legally anonymous; paths, event names, small populations, and outside information can still make data personal in context.
@@ -746,8 +776,8 @@ Simple per-IP rate limiting (default: 100 requests/minute) prevents abuse. It st
 
 **Enhanced analytics (requires consent):**
 
-- `window.Aggregate.setConsent(true)` enables the visitor ID, session ID, session cookie, exact screen width, custom properties, and goals.
-- `window.Aggregate.setConsent(false)` means reject or withdraw **enhanced analytics**. It removes SDK identifiers and strips enhanced event details, while coarse anonymous-mode page-view and named-event rows continue.
+- `window.Aggregate.setConsent(true)` enables the visitor ID, session ID, session cookie, exact screen width, custom properties, and configured goals that are not allowed anonymously.
+- `window.Aggregate.setConsent(false)` means reject or withdraw **enhanced analytics**. It removes SDK identifiers and strips enhanced event details, while coarse anonymous-mode page-view and named-event rows—and configured anonymous goals—continue.
 - Consent withdrawal is prospective. It does not claim to delete previously collected server data; operators must provide and follow an appropriate data-subject request workflow.
 
 These controls help reduce privacy risk but do not make a deployment automatically compliant with any law. The operator remains responsible for its legal basis, notices, consent-manager behavior, retention, access controls, vendor relationships, and rights-request procedures.
@@ -758,8 +788,8 @@ These controls help reduce privacy risk but do not make a deployment automatical
 
 **`events`** is the unified private storage table. `privacy_mode` separates `anonymous` and `enhanced` rows; page views use `event_name = 'view'`.
 
-- Shared dimensions include `website_token`, `event_name`, sanitized path in `url`, coarse channel in `referrer`, `device_class`, `viewport_bucket`, optional `geo_area`, `privacy_mode`, and `created_at`.
-- Anonymous-mode rows are individual events whose server-generated `created_at` is truncated to a UTC hour. Enhanced-only identifier, property, goal, exact-dimension, and generalized User-Agent columns remain null.
+- Shared dimensions include `website_token`, `event_name`, sanitized path in `url`, coarse channel in `referrer`, `device_class`, `viewport_bucket`, optional `geo_area`, optional allowlisted `goal_event`, `privacy_mode`, and `created_at`.
+- Anonymous-mode rows are individual events whose server-generated `created_at` is truncated to a UTC hour. An enabled `goal_event` may be present only when its definition permits anonymous use; identifier, property, exact-dimension, and generalized User-Agent columns remain null.
 - Enhanced rows may include `screen_width`, `visitor_id`, `session_id`, `consent_state`, `custom_data`, `goal_event`, `generalized_user_agent`, and an exact server timestamp.
 
 Do not grant routine BI users access to raw `events`. Hour bucketing and missing IDs reduce risk, but anonymous-mode rows can still be personal data in context.
@@ -769,6 +799,12 @@ Do not grant routine BI users access to raw `events`. Hour bucketing and missing
 - `website_token`, `event_hour`, `event_name`, `page_path`, `referrer_channel`, `device_class`, `viewport_bucket`, `event_count`
 - It groups anonymous rows into hourly cells, withholds the current UTC hour, and exposes a completed cell only when `event_count` reaches `anonymous_min_cell_count` (default `5`, allowed range `2`–`1000`).
 
+**`bi_anonymous_goals_v1`** is the dedicated anonymous conversion contract:
+
+- `website_token`, `event_day`, `goal_event`, `event_count`
+- It includes only anonymous rows with a retained goal, groups them by completed UTC day, and exposes a cell only when `event_count` reaches `anonymous_min_cell_count`.
+- `event_count` measures goal occurrences, not unique people or unique converters. Goal labels remain presentation metadata in `config/goals.yaml`; the stable goal code is the reporting value.
+
 **`bi_anonymous_geo_events_v1`** is the separate, lower-dimensional geography contract:
 
 - `website_token`, `event_day`, `event_name`, `geo_area`, `event_count`
@@ -776,9 +812,9 @@ Do not grant routine BI users access to raw `events`. Hour bucketing and missing
 - It intentionally omits page path, referrer, device, viewport, and identifiers. Geography is not joined into `bi_anonymous_events_v1`.
 - Low-volume areas are pooled into `country:other` or `continent:other` only when the pool itself meets the threshold. When exactly one area is below the threshold, the smallest otherwise-visible area is also pooled as secondary suppression to make direct subtraction harder.
 
-`analytics_privacy_settings` is the database source of truth for the two thresholds used directly by the BI views. Administrators configure them in the dashboard; they are not copied from YAML or environment variables.
+`analytics_privacy_settings` is the database source of truth for the two thresholds used directly by the BI views. `anonymous_min_cell_count` is shared by the hourly event view and daily goal view. Administrators configure the thresholds in the dashboard; they are not copied from YAML or environment variables.
 
-Suppression counts events, not distinct people: anonymous rows deliberately have no stable person identifier. One person can therefore contribute several events to a released cell. Secondary suppression reduces simple differencing but cannot prevent inference across every extract, time period, or outside data source. Neither view establishes k-anonymity or guarantees that its output is legally anonymous; use higher thresholds, access controls, retention limits, and disclosure review where warranted.
+Suppression counts events, not distinct people: anonymous rows deliberately have no stable person identifier. One person can therefore contribute several events or goals to a released cell. Secondary suppression reduces simple differencing but cannot prevent inference across every extract, time period, or outside data source. None of the views establishes k-anonymity or guarantees that its output is legally anonymous; use higher thresholds, access controls, retention limits, and disclosure review where warranted.
 
 Website registry is stored in `config/websites.yaml` (name/domain/token), not in relational tables.
 
@@ -786,6 +822,9 @@ Query examples for BI tools (Power BI, Looker, Tableau):
 ```sql
 -- Grouped anonymous page views and named events, with low-volume cells suppressed
 SELECT * FROM bi_anonymous_events_v1;
+
+-- Daily configured goals, with low-volume cells suppressed
+SELECT * FROM bi_anonymous_goals_v1;
 
 -- Daily coarse geography with a higher threshold and fewer dimensions
 SELECT * FROM bi_anonymous_geo_events_v1;

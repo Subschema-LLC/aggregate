@@ -7,6 +7,7 @@ use App\Service\WebsiteConfigManager;
 use App\Security\IpRateLimiter;
 use App\Service\AnonymousEventRecorder;
 use App\Service\GeoIp\GeoIpResolverInterface;
+use App\Service\GoalEventRegistry;
 use App\Service\PrivacyPolicy;
 use App\Service\PrivacySanitizer;
 use Psr\Log\LoggerInterface;
@@ -25,6 +26,7 @@ class ReceiveController
         MessageBusInterface $bus,
         IpRateLimiter $rateLimiter,
         PrivacySanitizer $sanitizer,
+        GoalEventRegistry $goalEvents,
         PrivacyPolicy $privacyPolicy,
         GeoIpResolverInterface $geoIpResolver,
         AnonymousEventRecorder $anonymousRecorder,
@@ -101,6 +103,11 @@ class ReceiveController
             if ($eventName === null) {
                 return $this->jsonWithCors($request, ['error' => 'eventName is invalid'], Response::HTTP_BAD_REQUEST);
             }
+            $enhancedConsent = $privacyPolicy->hasEnhancedConsent($payload['consentState'] ?? null);
+            $submittedGoal = $payload['goalEvent'] ?? null;
+            $goalEvent = $goalEvents->resolve($submittedGoal, anonymousMode: !$enhancedConsent);
+            $goalWasRejected = $goalEvents->wasSubmitted($submittedGoal) && $goalEvent === null;
+            unset($submittedGoal);
             $deviceClass = $sanitizer->sanitizeDeviceClass($payload['deviceClass'] ?? null, $userAgent);
             $viewportBucket = $sanitizer->sanitizeViewportBucket(
                 $payload['viewportBucket'] ?? null,
@@ -113,9 +120,10 @@ class ReceiveController
             $geoArea = $geoIpResolver->resolve($ip)?->value();
             unset($ip);
 
-            if (!$privacyPolicy->hasEnhancedConsent($payload['consentState'] ?? null)) {
+            if (!$enhancedConsent) {
                 // Every safe named event is accepted anonymously, but attached
-                // identifiers, custom properties and goals are never copied.
+                // identifiers and custom properties are never copied. Goals
+                // must be explicitly approved for anonymous collection.
                 $anonymousRecorder->record(
                     websiteToken: $websiteToken,
                     eventName: $eventName,
@@ -125,12 +133,18 @@ class ReceiveController
                     viewportBucket: $viewportBucket,
                     geoArea: $geoArea,
                     occurredAt: $occurredAt,
+                    goalEvent: $goalEvent,
                 );
 
-                return $this->jsonWithCors($request, [
+                $responsePayload = [
                     'status' => 'recorded',
                     'mode' => 'anonymous',
-                ], Response::HTTP_ACCEPTED);
+                ];
+                if ($goalWasRejected) {
+                    $responsePayload['warnings'] = ['goal_not_allowed'];
+                }
+
+                return $this->jsonWithCors($request, $responsePayload, Response::HTTP_ACCEPTED);
             }
 
             $bus->dispatch(new TrackEventMessage(
@@ -141,7 +155,7 @@ class ReceiveController
                 deviceClass: $deviceClass,
                 viewportBucket: $viewportBucket,
                 screenWidth: $sanitizer->sanitizeScreenWidth($payload['screenWidth'] ?? null),
-                goalEvent: $sanitizer->sanitizeGoalEvent($payload['goalEvent'] ?? null),
+                goalEvent: $goalEvent,
                 eventData: $sanitizer->sanitizeEventData($payload['eventData'] ?? null),
                 generalizedUserAgent: $sanitizer->generalizeUserAgent($userAgent),
                 visitorId: $sanitizer->sanitizeIdentifier($payload['visitorId'] ?? null),
@@ -150,10 +164,15 @@ class ReceiveController
                 geoArea: $geoArea,
             ));
 
-            return $this->jsonWithCors($request, [
+            $responsePayload = [
                 'status' => 'accepted',
                 'mode' => 'enhanced',
-            ], Response::HTTP_ACCEPTED);
+            ];
+            if ($goalWasRejected) {
+                $responsePayload['warnings'] = ['goal_not_allowed'];
+            }
+
+            return $this->jsonWithCors($request, $responsePayload, Response::HTTP_ACCEPTED);
         } catch (\Throwable $e) {
             $logger->error('Failed to ingest analytics event', [
                 // Do not hand the exception or request metadata to a logger:

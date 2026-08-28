@@ -87,6 +87,29 @@ GROUP BY
     `privacy`.`anonymous_min_cell_count`
 HAVING COUNT(*) >= `privacy`.`anonymous_min_cell_count`;
 
+-- Approved anonymous goals are exposed only as completed-day, thresholded
+-- counts. The raw events table remains restricted from routine BI consumers.
+DROP VIEW IF EXISTS `bi_anonymous_goals_v1`;
+CREATE VIEW `bi_anonymous_goals_v1` AS
+SELECT
+    `events`.`website_token`,
+    CAST(`events`.`created_at` AS DATE) AS `event_day`,
+    `events`.`goal_event`,
+    COUNT(*) AS `event_count`
+FROM `events`
+CROSS JOIN `analytics_privacy_settings` AS `privacy`
+WHERE `privacy`.`id` = 1
+  AND `privacy`.`anonymous_min_cell_count` BETWEEN 2 AND 1000
+  AND `events`.`privacy_mode` = 'anonymous'
+  AND `events`.`goal_event` IS NOT NULL
+  AND `events`.`created_at` < UTC_DATE()
+GROUP BY
+    `events`.`website_token`,
+    CAST(`events`.`created_at` AS DATE),
+    `events`.`goal_event`,
+    `privacy`.`anonymous_min_cell_count`
+HAVING COUNT(*) >= `privacy`.`anonymous_min_cell_count`;
+
 -- Geography is deliberately exposed through a separate completed-day view
 -- with fewer dimensions, a higher threshold, and complementary suppression.
 DROP VIEW IF EXISTS `bi_anonymous_geo_events_v1`;
@@ -241,13 +264,14 @@ INSERT IGNORE INTO `doctrine_migration_versions` (`version`, `executed_at`, `exe
     ('DoctrineMigrations\\Version20260724000500', NOW(), 0),
     ('DoctrineMigrations\\Version20260724001000', NOW(), 0),
     ('DoctrineMigrations\\Version20260724001500', NOW(), 0),
-    ('DoctrineMigrations\\Version20260724002000', NOW(), 0);
+    ('DoctrineMigrations\\Version20260724002000', NOW(), 0),
+    ('DoctrineMigrations\\Version20260828000000', NOW(), 0);
 
 -- =============================================================================
 -- Done.
 -- Next steps:
 --   1) configure .env/.env.local (DATABASE_URL, APP_SECRET, MESSENGER_TRANSPORT_DSN)
---   2) configure config/aggregate.yaml (js_namespace, dashboard_enabled, collection settings)
+--   2) configure config/aggregate.yaml and review config/goals.yaml
 --   3) configure BI disclosure thresholds in the admin dashboard if defaults are unsuitable
 --   4) create website token(s): php bin/console app:create-website
 -- =============================================================================

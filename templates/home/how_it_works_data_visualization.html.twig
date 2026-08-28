@@ -33,7 +33,7 @@
             <h2 class="title is-5">Use the supported views as the reporting boundary</h2>
             <p>
                 Routine BI credentials should receive <strong>SELECT access only</strong> to
-                <code>bi_anonymous_events_v1</code> and, when needed,
+                <code>bi_anonymous_events_v1</code>, <code>bi_anonymous_goals_v1</code>, and, when needed,
                 <code>bi_anonymous_geo_events_v1</code>. Do not grant routine reporting users access
                 to <code>events</code> or the other application tables.
             </p>
@@ -41,6 +41,7 @@
 
         <nav class="buttons is-centered mb-6" aria-label="Page sections">
             <a class="button is-small is-light" href="#anonymous-events-view">Hourly event view</a>
+            <a class="button is-small is-light" href="#anonymous-goals-view">Daily goal view</a>
             <a class="button is-small is-light" href="#anonymous-geography-view">Daily geography view</a>
             <a class="button is-small is-light" href="#private-source-tables">Private source tables</a>
             <a class="button is-small is-light" href="#query-examples">Query examples</a>
@@ -131,6 +132,74 @@
                 <code>event_count</code> with <code>SUM(...)</code> when removing dimensions from a report.
                 This totals already-released cells; it does not re-run suppression at the broader grain or
                 recover hidden cells.
+            </div>
+        </section>
+
+        <section id="anonymous-goals-view" class="box mt-6">
+            <div class="level mb-4">
+                <div class="level-left">
+                    <div>
+                        <p class="heading">Conversion BI contract</p>
+                        <h2 id="anonymous-goals-view-heading" class="title is-3"><code>bi_<wbr>anonymous_<wbr>goals_<wbr>v1</code></h2>
+                    </div>
+                </div>
+                <div class="level-right">
+                    <div class="tags">
+                        <span class="tag is-primary is-light">Anonymous only</span>
+                        <span class="tag is-light">Daily grain</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="content">
+                <p>
+                    Each row is one released daily goal cell. The view includes only anonymous events with
+                    an allowlisted goal retained in <code>goal_event</code>. The current UTC day and cells below
+                    <code>anonymous_min_cell_count</code> are absent. The default threshold is 5 goal occurrences
+                    and the allowed range is 2–1000.
+                </p>
+            </div>
+
+            <div class="table-container" role="region" aria-labelledby="anonymous-goals-view-heading" tabindex="0">
+                <table class="table is-fullwidth is-striped is-hoverable data-structure-table">
+                    <caption class="is-sr-only">Columns exposed by bi_anonymous_goals_v1</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">Column</th>
+                            <th scope="col">Logical type</th>
+                            <th scope="col">Meaning</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <th scope="row"><code>website_token</code></th>
+                            <td>String</td>
+                            <td>Site key used to partition goal occurrences.</td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><code>event_day</code></th>
+                            <td>UTC date</td>
+                            <td>A completed UTC calendar day.</td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><code>goal_event</code></th>
+                            <td>String</td>
+                            <td>Stable allowlisted code from <code>config/goals.yaml</code>; labels are presentation metadata and are not stored in this view.</td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><code>event_count</code></th>
+                            <td>Integer</td>
+                            <td>Number of goal occurrences in the released cell, not distinct people or unique converters.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="notification is-warning is-light mb-0">
+                This view deliberately excludes event name, path, referrer, device, viewport, geography,
+                and identifiers. Do not join it to the hourly or geography views: they have different grains
+                and independent suppression. A configured goal can still be sensitive in context, and a
+                generic rejection warning is an allowlist result—not sensitive-data detection.
             </div>
         </section>
 
@@ -252,7 +321,7 @@
                             <tr><th scope="row"><code>session_id</code></th><td>Nullable string (191)</td><td>Enhanced only; forced to null in anonymous mode.</td></tr>
                             <tr><th scope="row"><code>consent_state</code></th><td>Nullable string (20)</td><td><code>granted</code> for enhanced rows; null in anonymous mode.</td></tr>
                             <tr><th scope="row"><code>custom_data</code></th><td>Nullable JSON</td><td>Enhanced properties; forced to null in anonymous mode.</td></tr>
-                            <tr><th scope="row"><code>goal_event</code></th><td>Nullable string (191)</td><td>Enhanced goal name; forced to null in anonymous mode.</td></tr>
+                            <tr><th scope="row"><code>goal_event</code></th><td>Nullable string (191)</td><td>Enabled allowlisted goal code; present in anonymous mode only when its definition permits anonymous use.</td></tr>
                             <tr><th scope="row"><code>created_at</code></th><td>UTC datetime</td><td>UTC hour boundary for anonymous rows; exact server event time for enhanced rows.</td></tr>
                         </tbody>
                     </table>
@@ -263,7 +332,7 @@
                 <h3 id="privacy-settings-table-heading" class="title is-4"><code>analytics_privacy_settings</code></h3>
                 <p class="mb-4">
                     A singleton row with <code>id = 1</code> supplies the live disclosure thresholds used by
-                    the two BI views.
+                    the three BI views.
                 </p>
 
                 <div class="table-container" role="region" aria-labelledby="privacy-settings-table-heading" tabindex="0">
@@ -278,7 +347,7 @@
                         </thead>
                         <tbody>
                             <tr><th scope="row"><code>id</code></th><td>Integer</td><td>Primary key; the views read the singleton row whose value is 1.</td></tr>
-                            <tr><th scope="row"><code>anonymous_min_cell_count</code></th><td>Integer</td><td>Hourly threshold; default 5, allowed range 2–1000.</td></tr>
+                            <tr><th scope="row"><code>anonymous_min_cell_count</code></th><td>Integer</td><td>Hourly event and daily goal threshold; default 5, allowed range 2–1000.</td></tr>
                             <tr><th scope="row"><code>anonymous_geo_min_cell_count</code></th><td>Integer</td><td>Daily geography threshold; default 25, allowed range 10–1000.</td></tr>
                             <tr><th scope="row"><code>updated_at</code></th><td>UTC datetime</td><td>Time the settings row was last changed.</td></tr>
                         </tbody>
@@ -304,11 +373,12 @@
             <p class="mb-5">
                 Replace the example token with a parameter supplied by your BI tool. These queries select
                 explicit columns and label results as released counts because enhanced events and unreleased
-                counts are absent. Geography counts may instead contribute to a released <code>other</code> pool.
+                counts are absent. Goal results are occurrence counts rather than unique converters, and
+                geography counts may instead contribute to a released <code>other</code> pool.
             </p>
 
-            <div class="columns">
-                <div class="column">
+            <div class="columns is-multiline">
+                <div class="column is-half">
                     <h3 class="title is-5">Released page views by hour</h3>
                     <pre><code>SELECT
     event_hour,
@@ -320,7 +390,17 @@ WHERE website_token = 'replace-with-site-token'
 GROUP BY event_hour, page_path
 ORDER BY event_hour, page_path;</code></pre>
                 </div>
-                <div class="column">
+                <div class="column is-half">
+                    <h3 class="title is-5">Released goals by day</h3>
+                    <pre><code>SELECT
+    event_day,
+    goal_event,
+    event_count AS released_goal_occurrence_count
+FROM bi_anonymous_goals_v1
+WHERE website_token = 'replace-with-site-token'
+ORDER BY event_day, goal_event;</code></pre>
+                </div>
+                <div class="column is-half">
                     <h3 class="title is-5">Released page views by area</h3>
                     <pre><code>SELECT
     event_day,
@@ -376,9 +456,9 @@ ORDER BY event_day, geo_area;</code></pre>
                 <ul>
                     <li>Configure <code>event_hour</code> as UTC; the physical timestamp may not carry a timezone marker.</li>
                     <li>Connector-specific physical types vary; model <code>event_day</code> as a date and <code>event_count</code> as a whole number.</li>
-                    <li>Expect new hourly data only after an hour completes and geography data after a UTC day completes.</li>
+                    <li>Expect new hourly event data only after an hour completes, and goal and geography data only after a UTC day completes.</li>
                     <li>Treat missing cells as withheld or unavailable, not as confirmed zero traffic.</li>
-                    <li>Remember that <code>event_count</code> counts events, not visitors or unique people.</li>
+                    <li>Remember that <code>event_count</code> counts event or goal occurrences, not visitors, unique people, or unique converters.</li>
                     <li>Review stored BI extracts separately; later threshold changes do not remove earlier exports.</li>
                 </ul>
             </div>

@@ -327,13 +327,14 @@ sudo certbot --nginx -d analytics.example.com
 - `config/aggregate.yaml` should not contain production secrets if committed; use the `environments:` structure and keep the example file committed only
 - Use a unique, strong `APP_SECRET` in the server environment
 - Review anonymous path exclusions and configure both database-backed BI minimum-cell thresholds in the admin dashboard before collection (`5` hourly; `25` daily geography defaults)
+- Review every code in `config/goals.yaml`; keep values fixed and non-identifying, and set `anonymous: false` where enhanced consent is appropriate
 - Leave coarse geography disabled unless its purpose, legal basis, notice, traffic volume, and local MMDB lifecycle have been reviewed
 - Rotate secrets periodically
 
 **3. Database access:**
 - Use strong database passwords
 - Restrict database access to localhost if possible
-- On PostgreSQL/MySQL/MariaDB/SQL Server, grant routine BI users access only to `bi_anonymous_events_v1` and, when needed, `bi_anonymous_geo_events_v1`, not the private raw `events` table
+- On PostgreSQL/MySQL/MariaDB/SQL Server, grant routine BI users access only to the approved `bi_anonymous_events_v1`, `bi_anonymous_goals_v1`, and, when needed, `bi_anonymous_geo_events_v1` views—not the private raw `events` table
 - SQLite cannot enforce view-only grants; never distribute its database file to routine BI users—export approved view results or use a server database for direct BI access
 - Regular backups
 
@@ -425,6 +426,9 @@ tail -f /var/log/nginx/aggregate_error.log
 -- Use the grouped/suppressed BI contract for anonymous-mode monitoring
 SELECT * FROM bi_anonymous_events_v1 ORDER BY event_hour DESC;
 
+-- Use the completed-day, suppressed conversion contract
+SELECT * FROM bi_anonymous_goals_v1 ORDER BY event_day DESC, goal_event;
+
 -- Use the lower-dimensional, daily suppressed geography contract
 SELECT * FROM bi_anonymous_geo_events_v1 ORDER BY event_day DESC;
 
@@ -448,8 +452,8 @@ mysqldump -u dbuser -p dbname > backup_$(date +%Y%m%d).sql
 
 **2. Application backups:**
 ```bash
-# Backup config (include .env and aggregate.yaml — keep secure!)
-tar -czf config_backup_$(date +%Y%m%d).tar.gz .env config/aggregate.yaml
+# Backup config (include deployment-specific settings — keep secure!)
+tar -czf config_backup_$(date +%Y%m%d).tar.gz .env config/aggregate.yaml config/goals.yaml
 
 # Full backup (exclude vendor and cache)
 tar -czf app_backup_$(date +%Y%m%d).tar.gz \
