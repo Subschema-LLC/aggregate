@@ -1,0 +1,174 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}How It Works | Aggregate Analytics{% endblock %}
+
+{% block body %}
+<div class="columns is-centered">
+    <div class="column is-10">
+        <div class="has-text-centered mb-6">
+            <span class="tag is-primary is-light mb-4">Product overview</span>
+            <h1 class="title is-2">How Aggregate Analytics Works</h1>
+            <p class="subtitle is-4">
+                Add the tracking script to your site, collect privacy-minimized events,
+                and analyze approved data from infrastructure you control.
+            </p>
+        </div>
+
+        <div class="columns is-multiline">
+            <div class="column is-half is-flex">
+                <div class="box is-flex-grow-1">
+                    <p class="heading">Step 1</p>
+                    <h2 class="title is-4">
+                        <span class="icon-text">
+                            <span class="icon has-text-primary"><i class="fas fa-globe"></i></span>
+                            <span>Register your website</span>
+                        </span>
+                    </h2>
+                    <div class="content">
+                        <p>
+                            Add a name and domain in the dashboard. Aggregate creates a website token and
+                            checks each browser request's <code>Origin</code> or <code>Referer</code> against
+                            the registered domain, allowing matching subdomains.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="column is-half is-flex">
+                <div class="box is-flex-grow-1">
+                    <p class="heading">Step 2</p>
+                    <h2 class="title is-4">
+                        <span class="icon-text">
+                            <span class="icon has-text-primary"><i class="fas fa-code"></i></span>
+                            <span>Install the tracking script</span>
+                        </span>
+                    </h2>
+                    <div class="content">
+                        <p>
+                            Paste the generated snippet into your site. The script sends a
+                            <code>view</code> event when a page loads. Use <code>emit(...)</code> with fixed,
+                            non-identifying names to measure important interactions.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="column is-half is-flex">
+                <div class="box is-flex-grow-1">
+                    <p class="heading">Step 3</p>
+                    <h2 class="title is-4">
+                        <span class="icon-text">
+                            <span class="icon has-text-primary"><i class="fas fa-shield-halved"></i></span>
+                            <span>Measure at the right level</span>
+                        </span>
+                    </h2>
+                    <div class="content">
+                        <p>
+                            Events use anonymous mode with a sanitized path, coarse dimensions, and no
+                            visitor or session identifiers unless your consent integration enables enhanced
+                            analytics after consent is granted.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="column is-half is-flex">
+                <div class="box is-flex-grow-1">
+                    <p class="heading">Step 4</p>
+                    <h2 class="title is-4">
+                        <span class="icon-text">
+                            <span class="icon has-text-primary"><i class="fas fa-chart-column"></i></span>
+                            <span>Connect your BI tools</span>
+                        </span>
+                    </h2>
+                    <div class="content">
+                        <p>
+                            Events are stored in your database. On a server database, connect BI tools with
+                            a read-only account limited to approved views. For SQLite, export approved view
+                            results instead of sharing the database file. Completed periods with low volume
+                            remain suppressed.
+                        </p>
+                        <p>
+                            <a class="button is-link is-light" href="{{ path('app_how_it_works_data_visualization') }}">
+                                <span class="icon" aria-hidden="true"><i class="fas fa-table-columns"></i></span>
+                                <span>View table and BI view structure</span>
+                            </a>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="box mt-5">
+            <h2 class="title is-3">What happens when an event arrives?</h2>
+            <div class="columns">
+                <div class="column">
+                    <div class="content">
+                        <h3 class="title is-5">Anonymous mode</h3>
+                        <ul>
+                            <li>Sanitizes the page path and keeps a safe event name.</li>
+                            <li>Uses coarse referrer, device, and viewport categories.</li>
+                            <li>Omits cookies, identifiers, custom properties, goals, and exact dimensions.</li>
+                            <li>Stores the event in a server-generated UTC hour bucket.</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="column">
+                    <div class="content">
+                        <h3 class="title is-5">Enhanced analytics</h3>
+                        <ul>
+                            <li>Your consent manager calls <code>setConsent(true)</code> only after the visitor grants enhanced analytics consent.</li>
+                            <li>May include visitor and session IDs, properties, goals, and exact dimensions.</li>
+                            <li>Uses a sliding 30-minute session cookie and records an exact server timestamp.</li>
+                            <li>Your integration calls <code>setConsent(false)</code> on rejection or withdrawal.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="notification is-info is-light mb-0">
+                After <code>setConsent(false)</code>, Aggregate clears its browser identifiers and returns to
+                anonymous mode. Privacy-minimized events continue unless collection is disabled or the path
+                is excluded. Consent withdrawal does not delete data already stored by the server.
+            </div>
+        </div>
+
+        <div class="columns mt-5">
+            <div class="column is-two-thirds is-flex">
+                <div class="box is-flex-grow-1">
+                    <h2 class="title is-3">Controls you manage</h2>
+                    <div class="content">
+                        <ul>
+                            <li>Registered domains and website tokens</li>
+                            <li>A global collection switch and sensitive-path exclusions</li>
+                            <li>Optional local, coarse geography</li>
+                            <li>Low-volume disclosure thresholds for approved BI views</li>
+                            <li>The JavaScript namespace and ingestion rate limit</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="column is-flex">
+                <div class="notification is-warning is-light is-flex-grow-1">
+                    <h2 class="title is-5">Privacy is an ongoing responsibility</h2>
+                    <p>
+                        Privacy-minimized data is not guaranteed to be legally anonymous. Operators remain
+                        responsible for legal basis, notices, consent behavior, retention, access controls,
+                        and rights requests.
+                    </p>
+                    <p class="mt-3">
+                        Keep event names fixed and non-identifying. Do not send emails, account IDs, form
+                        contents, search terms, or other free text as enhanced properties.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="has-text-centered mt-6">
+            <a class="button is-primary is-medium" href="{{ path('app_home') }}">
+                <span class="icon"><i class="fas fa-arrow-right"></i></span>
+                <span>{% if app.user %}Return to Dashboard{% else %}Get Started{% endif %}</span>
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

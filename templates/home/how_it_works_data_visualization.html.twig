@@ -1,0 +1,405 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Data Visualization Structure | Aggregate Analytics{% endblock %}
+
+{% block stylesheets %}
+<style>
+    .data-structure-table {
+        min-width: 760px;
+    }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="columns is-centered">
+    <div class="column is-10">
+        <nav class="breadcrumb" aria-label="breadcrumbs">
+            <ul>
+                <li><a href="{{ path('app_how_it_works') }}">How It Works</a></li>
+                <li class="is-active"><a href="{{ path('app_how_it_works_data_visualization') }}" aria-current="page">Data visualization</a></li>
+            </ul>
+        </nav>
+
+        <div class="has-text-centered mb-6">
+            <span class="tag is-link is-light mb-4">Technical reference</span>
+            <h1 class="title is-2">Data Structure for Visualization</h1>
+            <p class="subtitle is-4">
+                Connect Tableau, Power BI, Looker, or another reporting tool to Aggregate's
+                versioned BI views without exposing private event rows.
+            </p>
+        </div>
+
+        <div class="notification is-info is-light">
+            <h2 class="title is-5">Use the supported views as the reporting boundary</h2>
+            <p>
+                Routine BI credentials should receive <strong>SELECT access only</strong> to
+                <code>bi_anonymous_events_v1</code> and, when needed,
+                <code>bi_anonymous_geo_events_v1</code>. Do not grant routine reporting users access
+                to <code>events</code> or the other application tables.
+            </p>
+        </div>
+
+        <nav class="buttons is-centered mb-6" aria-label="Page sections">
+            <a class="button is-small is-light" href="#anonymous-events-view">Hourly event view</a>
+            <a class="button is-small is-light" href="#anonymous-geography-view">Daily geography view</a>
+            <a class="button is-small is-light" href="#private-source-tables">Private source tables</a>
+            <a class="button is-small is-light" href="#query-examples">Query examples</a>
+            <a class="button is-small is-light" href="#connection-checklist">Connection checklist</a>
+        </nav>
+
+        <section id="anonymous-events-view" class="box">
+            <div class="level mb-4">
+                <div class="level-left">
+                    <div>
+                        <p class="heading">Supported BI contract</p>
+                        <h2 id="anonymous-events-view-heading" class="title is-3"><code>bi_<wbr>anonymous_<wbr>events_<wbr>v1</code></h2>
+                    </div>
+                </div>
+                <div class="level-right">
+                    <div class="tags">
+                        <span class="tag is-primary is-light">Anonymous only</span>
+                        <span class="tag is-light">Hourly grain</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="content">
+                <p>
+                    Each row is one released hourly cell, grouped by every dimension listed below.
+                    The current UTC hour and cells below <code>anonymous_min_cell_count</code> are absent.
+                    The default threshold is 5 events and the allowed range is 2–1000.
+                </p>
+            </div>
+
+            <div class="table-container" role="region" aria-labelledby="anonymous-events-view-heading" tabindex="0">
+                <table class="table is-fullwidth is-striped is-hoverable data-structure-table">
+                    <caption class="is-sr-only">Columns exposed by bi_anonymous_events_v1</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">Column</th>
+                            <th scope="col">Logical type</th>
+                            <th scope="col">Meaning</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <th scope="row"><code>website_token</code></th>
+                            <td>String</td>
+                            <td>Site key used to partition events. Website names and domains are stored outside the database.</td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><code>event_hour</code></th>
+                            <td>UTC datetime</td>
+                            <td>Start of a completed UTC hour; anonymous event times are bucketed to this boundary.</td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><code>event_name</code></th>
+                            <td>String</td>
+                            <td><code>view</code> for page views, or a fixed safe name for a measured interaction.</td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><code>page_path</code></th>
+                            <td>Text</td>
+                            <td>Sanitized path with query strings and fragments removed and identifier-like segments redacted.</td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><code>referrer_channel</code></th>
+                            <td>Category</td>
+                            <td><code>direct</code>, <code>internal</code>, <code>search</code>, <code>social</code>, <code>email</code>, <code>referral</code>, or <code>unknown</code>.</td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><code>device_class</code></th>
+                            <td>Category</td>
+                            <td><code>mobile</code>, <code>tablet</code>, <code>desktop</code>, <code>bot</code>, or <code>unknown</code>.</td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><code>viewport_bucket</code></th>
+                            <td>Category</td>
+                            <td><code>small</code>, <code>medium</code>, <code>large</code>, or <code>unknown</code>.</td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><code>event_count</code></th>
+                            <td>Integer</td>
+                            <td>Number of event rows in the released cell. This is not a count of distinct people.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="notification is-light mb-0">
+                The row grain is the combination of the first seven columns. Aggregate
+                <code>event_count</code> with <code>SUM(...)</code> when removing dimensions from a report.
+                This totals already-released cells; it does not re-run suppression at the broader grain or
+                recover hidden cells.
+            </div>
+        </section>
+
+        <section id="anonymous-geography-view" class="box mt-6">
+            <div class="level mb-4">
+                <div class="level-left">
+                    <div>
+                        <p class="heading">Optional BI contract</p>
+                        <h2 id="anonymous-geography-view-heading" class="title is-3"><code>bi_<wbr>anonymous_<wbr>geo_<wbr>events_<wbr>v1</code></h2>
+                    </div>
+                </div>
+                <div class="level-right">
+                    <div class="tags">
+                        <span class="tag is-primary is-light">Anonymous only</span>
+                        <span class="tag is-light">Daily grain</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="content">
+                <p>
+                    Each row is one released daily geography cell. The current UTC day and cells below
+                    <code>anonymous_geo_min_cell_count</code> are not shown individually; their counts may
+                    be released only in a qualifying <code>other</code> pool. The default threshold is 25
+                    events and the allowed range is 10–1000.
+                </p>
+            </div>
+
+            <div class="table-container" role="region" aria-labelledby="anonymous-geography-view-heading" tabindex="0">
+                <table class="table is-fullwidth is-striped is-hoverable data-structure-table">
+                    <caption class="is-sr-only">Columns exposed by bi_anonymous_geo_events_v1</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">Column</th>
+                            <th scope="col">Logical type</th>
+                            <th scope="col">Meaning</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <th scope="row"><code>website_token</code></th>
+                            <td>String</td>
+                            <td>Site key used to partition events.</td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><code>event_day</code></th>
+                            <td>UTC date</td>
+                            <td>A completed UTC calendar day.</td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><code>event_name</code></th>
+                            <td>String</td>
+                            <td><code>view</code> for page views, or a fixed safe interaction name.</td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><code>geo_area</code></th>
+                            <td>Category</td>
+                            <td>
+                                <code>continent:XX</code>, <code>country:XX</code>, or a suppressed pool such as
+                                <code>continent:other</code> or <code>country:other</code>.
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><code>event_count</code></th>
+                            <td>Integer</td>
+                            <td>Number of event rows in the released geography cell, not distinct people.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="notification is-warning is-light mb-0">
+                This view deliberately excludes path, referrer, device, viewport, and identifiers. Do not
+                join it to the hourly view: the views have different grains and independent suppression.
+                Low-volume areas may be combined into an <code>other</code> pool, including one otherwise-visible
+                area when secondary suppression is needed. Events without a retained geography value are
+                excluded, so geography totals will not match the hourly view.
+            </div>
+        </section>
+
+        <section id="private-source-tables" class="mt-6">
+            <h2 class="title is-3">Private source tables</h2>
+            <div class="notification is-danger is-light">
+                These tables explain how the views are built; they are not the routine BI contract.
+                The private <code>events</code> table contains individual rows and may contain enhanced
+                identifiers or properties. Even anonymous-mode rows can remain personal data in context.
+            </div>
+
+            <div class="box">
+                <h3 id="events-table-heading" class="title is-4"><code>events</code></h3>
+                <p class="mb-4">
+                    This is the unified event store. Logical types are shown because the exact physical SQL
+                    type varies across PostgreSQL, MySQL, MariaDB, SQL Server, and SQLite.
+                </p>
+
+                <div class="table-container" role="region" aria-labelledby="events-table-heading" tabindex="0">
+                    <table class="table is-fullwidth is-striped is-hoverable data-structure-table">
+                        <caption class="is-sr-only">Logical columns in the private events table</caption>
+                        <thead>
+                            <tr>
+                                <th scope="col">Column</th>
+                                <th scope="col">Logical type</th>
+                                <th scope="col">Mode and purpose</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><th scope="row"><code>id</code></th><td>Integer</td><td>Generated primary key for an individual event row.</td></tr>
+                            <tr><th scope="row"><code>website_token</code></th><td>String (191)</td><td>Required site key for both modes.</td></tr>
+                            <tr><th scope="row"><code>event_name</code></th><td>String (191)</td><td>Required event name; defaults to <code>view</code>.</td></tr>
+                            <tr><th scope="row"><code>url</code></th><td>Text</td><td>Required stored page path. Exposed as <code>page_path</code> by the hourly view.</td></tr>
+                            <tr><th scope="row"><code>referrer</code></th><td>Nullable text</td><td>Stored referrer channel; exposed as <code>referrer_channel</code>.</td></tr>
+                            <tr><th scope="row"><code>privacy_mode</code></th><td>String (20)</td><td>Aggregate writes <code>anonymous</code> or <code>enhanced</code>; defaults to anonymous.</td></tr>
+                            <tr><th scope="row"><code>device_class</code></th><td>String (20)</td><td>Coarse device category for both modes.</td></tr>
+                            <tr><th scope="row"><code>viewport_bucket</code></th><td>String (20)</td><td>Coarse viewport category for both modes.</td></tr>
+                            <tr><th scope="row"><code>geo_area</code></th><td>Nullable string (16)</td><td>Aggregate writes only canonical <code>continent:XX</code> or <code>country:XX</code> values; synthetic <code>other</code> values exist only in the geography view.</td></tr>
+                            <tr><th scope="row"><code>generalized_user_agent</code></th><td>Nullable string (191)</td><td>Enhanced only; forced to null in anonymous mode.</td></tr>
+                            <tr><th scope="row"><code>screen_width</code></th><td>Nullable integer</td><td>Enhanced only; forced to null in anonymous mode.</td></tr>
+                            <tr><th scope="row"><code>visitor_id</code></th><td>Nullable string (191)</td><td>Enhanced only; forced to null in anonymous mode.</td></tr>
+                            <tr><th scope="row"><code>session_id</code></th><td>Nullable string (191)</td><td>Enhanced only; forced to null in anonymous mode.</td></tr>
+                            <tr><th scope="row"><code>consent_state</code></th><td>Nullable string (20)</td><td><code>granted</code> for enhanced rows; null in anonymous mode.</td></tr>
+                            <tr><th scope="row"><code>custom_data</code></th><td>Nullable JSON</td><td>Enhanced properties; forced to null in anonymous mode.</td></tr>
+                            <tr><th scope="row"><code>goal_event</code></th><td>Nullable string (191)</td><td>Enhanced goal name; forced to null in anonymous mode.</td></tr>
+                            <tr><th scope="row"><code>created_at</code></th><td>UTC datetime</td><td>UTC hour boundary for anonymous rows; exact server event time for enhanced rows.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="box">
+                <h3 id="privacy-settings-table-heading" class="title is-4"><code>analytics_privacy_settings</code></h3>
+                <p class="mb-4">
+                    A singleton row with <code>id = 1</code> supplies the live disclosure thresholds used by
+                    the two BI views.
+                </p>
+
+                <div class="table-container" role="region" aria-labelledby="privacy-settings-table-heading" tabindex="0">
+                    <table class="table is-fullwidth is-striped data-structure-table">
+                        <caption class="is-sr-only">Columns in the analytics privacy settings table</caption>
+                        <thead>
+                            <tr>
+                                <th scope="col">Column</th>
+                                <th scope="col">Logical type</th>
+                                <th scope="col">Meaning</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><th scope="row"><code>id</code></th><td>Integer</td><td>Primary key; the views read the singleton row whose value is 1.</td></tr>
+                            <tr><th scope="row"><code>anonymous_min_cell_count</code></th><td>Integer</td><td>Hourly threshold; default 5, allowed range 2–1000.</td></tr>
+                            <tr><th scope="row"><code>anonymous_geo_min_cell_count</code></th><td>Integer</td><td>Daily geography threshold; default 25, allowed range 10–1000.</td></tr>
+                            <tr><th scope="row"><code>updated_at</code></th><td>UTC datetime</td><td>Time the settings row was last changed.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <p class="help">
+                    If row 1 is missing or a threshold is outside its allowed range, the affected view
+                    returns no rows. BI accounts should not receive access to this table.
+                </p>
+            </div>
+
+            <div class="notification is-light">
+                <strong>There is no relational <code>websites</code> table.</strong>
+                Website names, domains, and tokens live in <code>config/websites.yaml</code>. If reports need
+                friendly names, maintain a controlled token-to-name mapping in the visualization layer or
+                in a separately governed reporting dataset.
+            </div>
+        </section>
+
+        <section id="query-examples" class="box mt-6">
+            <h2 class="title is-3">Safe query patterns</h2>
+            <p class="mb-5">
+                Replace the example token with a parameter supplied by your BI tool. These queries select
+                explicit columns and label results as released counts because enhanced events and unreleased
+                counts are absent. Geography counts may instead contribute to a released <code>other</code> pool.
+            </p>
+
+            <div class="columns">
+                <div class="column">
+                    <h3 class="title is-5">Released page views by hour</h3>
+                    <pre><code>SELECT
+    event_hour,
+    page_path,
+    SUM(event_count) AS released_page_view_count
+FROM bi_anonymous_events_v1
+WHERE website_token = 'replace-with-site-token'
+  AND event_name = 'view'
+GROUP BY event_hour, page_path
+ORDER BY event_hour, page_path;</code></pre>
+                </div>
+                <div class="column">
+                    <h3 class="title is-5">Released page views by area</h3>
+                    <pre><code>SELECT
+    event_day,
+    geo_area,
+    SUM(event_count) AS released_page_view_count
+FROM bi_anonymous_geo_events_v1
+WHERE website_token = 'replace-with-site-token'
+  AND event_name = 'view'
+GROUP BY event_day, geo_area
+ORDER BY event_day, geo_area;</code></pre>
+                </div>
+            </div>
+
+            <div class="notification is-warning is-light mb-0">
+                Use <code>SUM(event_count)</code>, not <code>COUNT(*)</code>. Counting rows counts released
+                grouped cells rather than the events represented by those cells.
+            </div>
+        </section>
+
+        <section id="connection-checklist" class="box mt-6">
+            <h2 class="title is-3">Connection checklist</h2>
+
+            <div class="columns">
+                <div class="column">
+                    <h3 class="title is-5">PostgreSQL, MySQL, MariaDB, or SQL Server</h3>
+                    <div class="content">
+                        <ul>
+                            <li>Create a dedicated database principal; never reuse the application's credentials.</li>
+                            <li>Grant only the minimal connection/schema access required plus SELECT on the approved view or views needed; do not grant source-table SELECT.</li>
+                            <li>Use TLS and restrict the principal to the BI service's expected network location.</li>
+                            <li>Review and reapply view grants after upgrades because migrations may recreate the views.</li>
+                            <li>A shared view exposes every website token in it; BI filters are not tenant isolation.</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="column">
+                    <h3 class="title is-5">SQLite</h3>
+                    <div class="content">
+                        <ul>
+                            <li>SQLite has no database users or object-level view grants.</li>
+                            <li>A read-only database file still allows access to the private <code>events</code> table.</li>
+                            <li>Have a trusted process export explicit columns from the approved views.</li>
+                            <li>Protect exported files and use a server database when direct BI access is required.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <hr>
+
+            <h3 class="title is-5">Model and refresh settings</h3>
+            <div class="content">
+                <ul>
+                    <li>Configure <code>event_hour</code> as UTC; the physical timestamp may not carry a timezone marker.</li>
+                    <li>Connector-specific physical types vary; model <code>event_day</code> as a date and <code>event_count</code> as a whole number.</li>
+                    <li>Expect new hourly data only after an hour completes and geography data after a UTC day completes.</li>
+                    <li>Treat missing cells as withheld or unavailable, not as confirmed zero traffic.</li>
+                    <li>Remember that <code>event_count</code> counts events, not visitors or unique people.</li>
+                    <li>Review stored BI extracts separately; later threshold changes do not remove earlier exports.</li>
+                </ul>
+            </div>
+
+            <div class="notification is-warning is-light mb-0">
+                Suppression reduces disclosure risk but does not establish k-anonymity or guarantee that
+                released data is legally anonymous. Apply appropriate retention, access controls, and review
+                to the visualization tool and its extracts.
+            </div>
+        </section>
+
+        <div class="buttons is-centered mt-6">
+            <a class="button is-light" href="{{ path('app_how_it_works') }}">
+                <span class="icon" aria-hidden="true"><i class="fas fa-arrow-left"></i></span>
+                <span>Back to How It Works</span>
+            </a>
+            <a class="button is-primary" href="{{ path('app_home') }}">
+                <span class="icon" aria-hidden="true"><i class="fas fa-arrow-right"></i></span>
+                <span>{% if app.user %}Return to Dashboard{% else %}Get Started{% endif %}</span>
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
