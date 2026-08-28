@@ -5,6 +5,7 @@ namespace App\Command;
 use App\Entity\User;
 use App\Repository\UserRepository;
 use App\Service\AggregateConfigLoader;
+use App\Service\AppBranding;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -26,6 +27,7 @@ class InstallCommand extends Command
         private readonly UserRepository $userRepository,
         private readonly UserPasswordHasherInterface $passwordHasher,
         private readonly AggregateConfigLoader $config,
+        private readonly AppBranding $branding,
     ) {
         parent::__construct();
     }
@@ -47,7 +49,7 @@ class InstallCommand extends Command
             return Command::FAILURE;
         }
 
-        $io->title('Aggregate Analytics Installation');
+        $io->title($this->branding->getName().' Installation');
 
         $adminUsername = $input->getOption('username') ?: $this->config->getWithEnvFallback('admin_username', null);
         $adminPassword = $input->getOption('password') ?: $this->config->getWithEnvFallback('admin_password', null);

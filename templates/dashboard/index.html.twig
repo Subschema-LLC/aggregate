@@ -1,6 +1,6 @@
 {% extends 'base.html.twig' %}
 
-{% block title %}Dashboard{% endblock %}
+{% block title %}Dashboard | {{ app_branding.name }}{% endblock %}
 
 {% block body %}
 <h1 class="title">Dashboard</h1>
@@ -232,6 +232,104 @@ window.{{ js_namespace }}.setConsent(false);</code></pre>
             </div>
 
             {% if is_granted('ROLE_ADMIN') %}
+                <hr>
+                <div class="columns">
+                    <div class="column is-6">
+                        <h4 class="title is-5">White-label Branding</h4>
+                        <p class="subtitle is-6">Customize the identity shown throughout the application.</p>
+
+                        <form action="{{ path('app_branding_settings_save') }}" method="post" enctype="multipart/form-data">
+                            <input type="hidden" name="_csrf_token" value="{{ csrf_token('branding_settings') }}">
+
+                            <div class="field">
+                                <label class="label" for="brand-name">Brand name</label>
+                                <div class="control has-icons-left">
+                                    <input class="input" type="text" id="brand-name" name="brand_name" value="{{ app_branding.name }}" maxlength="100" required{% if app_branding.name_overridden %} disabled aria-describedby="brand-name-help"{% endif %}>
+                                    <span class="icon is-small is-left"><i class="fas fa-signature"></i></span>
+                                </div>
+                                <p class="help" id="brand-name-help">
+                                    {% if app_branding.name_overridden %}
+                                        Controlled by the <code>BRAND_NAME</code> environment variable.
+                                    {% else %}
+                                        Replaces the product name in page titles, headings, and application help text.
+                                    {% endif %}
+                                </p>
+                            </div>
+
+                            <div class="field">
+                                <label class="label" for="brand-logo-text">Logo text</label>
+                                <div class="control has-icons-left">
+                                    <input class="input" type="text" id="brand-logo-text" name="brand_logo_text" value="{{ app_branding.logo_text }}" maxlength="100" placeholder="{{ app_branding.name }}"{% if app_branding.logo_text_overridden %} disabled aria-describedby="brand-logo-text-help"{% endif %}>
+                                    <span class="icon is-small is-left"><i class="fas fa-font"></i></span>
+                                </div>
+                                <p class="help" id="brand-logo-text-help">
+                                    {% if app_branding.logo_text_overridden %}
+                                        Controlled by the <code>BRAND_LOGO_TEXT</code> environment variable.
+                                    {% else %}
+                                        The wordmark beside the image. Leave it empty for an image-only logo; without a valid image, the brand name is used for accessibility.
+                                    {% endif %}
+                                </p>
+                            </div>
+
+                            {% if app_branding.has_logo %}
+                                <div class="field">
+                                    <p class="label">Current logo</p>
+                                    <div class="control">
+                                        <img src="{{ path('app_branding_logo', {v: app_branding.logo_version}) }}" alt="{{ app_branding.name }} logo" style="display:block; max-width:320px; max-height:120px; object-fit:contain;">
+                                    </div>
+                                </div>
+                            {% endif %}
+
+                            {% if app_branding.logo_path_overridden %}
+                                <div class="notification is-info is-light">
+                                    The logo path is controlled by the <code>BRAND_LOGO_PATH</code> environment variable. Change or remove that override to upload or remove a logo here.
+                                </div>
+                            {% endif %}
+
+                            <div class="field">
+                                <label class="label" for="brand-logo">Upload logo</label>
+                                <div class="control">
+                                    <input class="input" type="file" id="brand-logo" name="brand_logo" accept="image/png,image/jpeg,image/webp" {% if app_branding.logo_path_overridden %}disabled{% endif %}>
+                                </div>
+                                <p class="help">PNG, JPEG, or WebP; maximum 2 MiB, 4096 × 4096 pixels, and 16 megapixels. SVG is not accepted. Remove embedded metadata before uploading; image bytes are served as supplied.</p>
+                            </div>
+
+                            {% if app_branding.has_logo and not app_branding.logo_path_overridden %}
+                                <div class="field">
+                                    <label class="checkbox">
+                                        <input type="checkbox" name="remove_brand_logo" value="1">
+                                        Remove the current logo
+                                    </label>
+                                </div>
+                            {% endif %}
+
+                            <div class="field">
+                                <div class="control">
+                                    <button type="submit" class="button is-link"{% if app_branding.name_overridden and app_branding.logo_text_overridden and app_branding.logo_path_overridden %} disabled{% endif %}>
+                                        <span class="icon"><i class="fas fa-palette"></i></span>
+                                        <span>Save Branding</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div class="column is-5 is-offset-1">
+                        <div class="message is-info">
+                            <div class="message-header"><p>YAML configuration</p></div>
+                            <div class="message-body content">
+                                <p>Non-UI deployments can configure the same identity in <code>config/aggregate.yaml</code>:</p>
+                                <pre><code>environments:
+  prod:
+    brand_name: "Example Analytics"
+    brand_logo_text: "Example"
+    brand_logo_path: "/srv/branding/logo.png"</code></pre>
+                                <p>Use the active environment when the file has an <code>environments</code> section; flat files may use the three keys at their root. The logo path may be absolute or relative to the project root, and the PHP process must be able to read it.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <hr>
                 <div class="columns">
                     <div class="column is-6">

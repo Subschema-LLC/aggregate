@@ -48,4 +48,47 @@ final class HowItWorksControllerTest extends WebTestCase
         self::assertSelectorTextContains('#private-source-tables', 'not the routine BI contract');
         self::assertSelectorExists('a[href="/how-it-works"]');
     }
+
+    public function testYamlEnvironmentBrandingIsEscapedAndShownOnPublicPages(): void
+    {
+        $savedName = $_ENV['BRAND_NAME'] ?? null;
+        $hadName = array_key_exists('BRAND_NAME', $_ENV);
+        $savedLogoText = $_ENV['BRAND_LOGO_TEXT'] ?? null;
+        $hadLogoText = array_key_exists('BRAND_LOGO_TEXT', $_ENV);
+        $_ENV['BRAND_NAME'] = '<Example & Company>';
+        $_ENV['BRAND_LOGO_TEXT'] = 'Example <Insights>';
+
+        try {
+            $client = self::createClient();
+
+            $client->request('GET', '/how-it-works');
+
+            self::assertResponseIsSuccessful();
+            self::assertSelectorTextContains('h1', 'How <Example & Company> Works');
+            self::assertSelectorTextSame(
+                'nav[aria-label="public navigation"] strong',
+                'Example <Insights>',
+            );
+            self::assertStringContainsString(
+                '&lt;Example &amp; Company&gt;',
+                (string) $client->getResponse()->getContent(),
+            );
+            self::assertStringNotContainsString(
+                '<Example & Company>',
+                (string) $client->getResponse()->getContent(),
+            );
+        } finally {
+            self::ensureKernelShutdown();
+            if ($hadName) {
+                $_ENV['BRAND_NAME'] = $savedName;
+            } else {
+                unset($_ENV['BRAND_NAME']);
+            }
+            if ($hadLogoText) {
+                $_ENV['BRAND_LOGO_TEXT'] = $savedLogoText;
+            } else {
+                unset($_ENV['BRAND_LOGO_TEXT']);
+            }
+        }
+    }
 }

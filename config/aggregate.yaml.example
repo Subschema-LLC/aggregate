@@ -9,6 +9,9 @@ environments:
   dev:
     rate_limit_per_minute: 1000
     app_host: "http://localhost"
+    brand_name: "Aggregate Analytics"
+    brand_logo_text: "Aggregate Analytics"
+    brand_logo_path: ""
     js_namespace: "Aggregate"
     dashboard_enabled: true
     anonymous_tracking_enabled: true
@@ -20,6 +23,9 @@ environments:
   prod:
     rate_limit_per_minute: 100
     app_host: "https://analytics.example.com"
+    brand_name: "Aggregate Analytics"
+    brand_logo_text: "Aggregate Analytics"
+    brand_logo_path: ""
     js_namespace: "Aggregate"
     dashboard_enabled: true
     anonymous_tracking_enabled: true
@@ -30,6 +36,9 @@ environments:
 
   test:
     rate_limit_per_minute: 1000
+    brand_name: "Aggregate Analytics"
+    brand_logo_text: "Aggregate Analytics"
+    brand_logo_path: ""
     js_namespace: "Aggregate"
     dashboard_enabled: true
     anonymous_tracking_enabled: true
@@ -46,6 +55,21 @@ environments:
 # app_host (optional)
 #   Public hostname used in dashboard integration snippets.
 #   Example: https://analytics.example.com
+#
+# brand_name (optional, default: Aggregate Analytics)
+#   Application name used in page titles, headings, and explanatory copy.
+#
+# brand_logo_text (optional, default: brand_name)
+#   Text shown beside the optional logo image in application navigation.
+#   With a valid image, use an empty value for an image-only identity.
+#
+# brand_logo_path (optional, default: "")
+#   PNG, JPEG, or WebP logo image, at most 2 MiB, 4096 pixels per axis,
+#   and 16 megapixels in total.
+#   Remove embedded metadata before use; the image bytes are served as supplied.
+#   Use an absolute path or a path relative to the project root. An empty value
+#   displays only brand_logo_text. UI uploads are copied below var/branding,
+#   which must be persisted across deployments and writable by the PHP process.
 #
 # js_namespace (optional, default: Aggregate)
 #   JavaScript global variable name: window.{js_namespace}

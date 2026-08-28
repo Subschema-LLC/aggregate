@@ -42,6 +42,7 @@ security:
         - { path: ^/how-it-works(?:/|$), roles: PUBLIC_ACCESS }
         - { path: ^/login, roles: PUBLIC_ACCESS }
         - { path: ^/install, roles: PUBLIC_ACCESS }
+        - { path: ^/branding/logo$, roles: PUBLIC_ACCESS }
         - { path: ^/dashboard, roles: ROLE_USER }
 
 when@test:

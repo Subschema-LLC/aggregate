@@ -14,7 +14,7 @@
 <nav class="navbar is-dark" role="navigation" aria-label="main navigation">
     <div class="navbar-brand">
         <a class="navbar-item" href="{{ brand_url }}">
-            <strong>{{ brand.label }}</strong>
+            {% include 'branding/identity.html.twig' %}
         </a>
 
         {% for item in main_navigation.items %}

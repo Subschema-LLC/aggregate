@@ -13,3 +13,7 @@ script_controller:
 health_controller:
     resource: ../src/Controller/HealthController.php
     type: attribute
+
+branding_logo_controller:
+    resource: ../src/Controller/BrandingLogoController.php
+    type: attribute

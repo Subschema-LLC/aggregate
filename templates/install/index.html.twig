@@ -1,6 +1,6 @@
 {% extends 'base.html.twig' %}
 
-{% block title %}Install Aggregate Analytics{% endblock %}
+{% block title %}Install {{ app_branding.name }}{% endblock %}
 
 {% block body %}
 <div class="columns is-centered">
@@ -11,7 +11,7 @@
                     <span class="icon">
                         <i class="fas fa-download"></i>
                     </span>
-                    <span>Install Aggregate Analytics</span>
+                    <span>Install {{ app_branding.name }}</span>
                 </span>
             </h1>
 
@@ -71,7 +71,7 @@
         </div>
 
         <div class="has-text-centered mt-4">
-            <a href="{{ path('app_how_it_works') }}">Learn how Aggregate Analytics works</a>
+            <a href="{{ path('app_how_it_works') }}">Learn how {{ app_branding.name }} works</a>
         </div>
     </div>
 </div>

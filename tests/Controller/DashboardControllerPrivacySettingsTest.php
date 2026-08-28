@@ -8,6 +8,7 @@ use App\Controller\DashboardController;
 use App\Repository\UserRepository;
 use App\Service\AggregateConfigLoader;
 use App\Service\AnalyticsPrivacySettings;
+use App\Service\BrandingLogoManager;
 use App\Service\WebsiteConfigManager;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
@@ -169,6 +170,7 @@ final class DashboardControllerPrivacySettingsTest extends TestCase
             $this->createStub(UserPasswordHasherInterface::class),
             $this->createStub(EntityManagerInterface::class),
             $logger,
+            new BrandingLogoManager(sys_get_temp_dir(), 'test'),
         );
         $authorizationChecker = $this->createStub(AuthorizationCheckerInterface::class);
         $authorizationChecker->method('isGranted')->willReturn(true);
@@ -212,6 +214,7 @@ final class DashboardControllerPrivacySettingsTest extends TestCase
             $this->createStub(UserPasswordHasherInterface::class),
             $this->createStub(EntityManagerInterface::class),
             $this->createStub(LoggerInterface::class),
+            new BrandingLogoManager(sys_get_temp_dir(), 'test'),
         );
 
         $authorizationChecker = $this->createStub(AuthorizationCheckerInterface::class);

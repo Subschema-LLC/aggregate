@@ -48,12 +48,12 @@ function loadSdk(options) {
     }
   });
 
-  const window = {
-    Aggregate: Object.assign({
-      endpoint: 'https://analytics.example/api/receive',
-      websiteToken: 'site-token'
-    }, options.inline || {})
-  };
+  const configuredNamespace = (options.dataset && options.dataset.namespace) || 'Aggregate';
+  const window = {};
+  window[configuredNamespace] = Object.assign({
+    endpoint: 'https://analytics.example/api/receive',
+    websiteToken: 'site-token'
+  }, options.inline || {});
   const context = {
     URL,
     console: {
@@ -191,6 +191,24 @@ test('an anonymously submitted rejected goal produces only the generic SDK warni
   await flushPromises();
   assert.deepEqual(runtime.consoleWarnings, [expectedWarning]);
   assert.equal(runtime.consoleWarnings.join(' ').includes(submittedGoal), false);
+});
+
+test('the generic SDK warning uses the configured namespace', async () => {
+  const runtime = loadSdk({
+    dataset: {namespace: 'CompanyAnalytics'},
+    fetchResponse: {
+      ok: true,
+      json: () => Promise.resolve({warnings: ['goal_not_allowed']})
+    }
+  });
+
+  runtime.window.CompanyAnalytics.emit('button_click', null, 'purchase');
+  await flushPromises();
+  await flushPromises();
+
+  assert.deepEqual(runtime.consoleWarnings, [
+    '[CompanyAnalytics] Goal was not recorded because it is not an approved goal type.'
+  ]);
 });
 
 test('unknown server warning codes are not written to the console', async () => {

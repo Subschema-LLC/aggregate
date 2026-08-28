@@ -6,11 +6,13 @@ use App\Entity\User;
 use App\Repository\UserRepository;
 use App\Service\AggregateConfigLoader;
 use App\Service\AnalyticsPrivacySettings;
+use App\Service\BrandingLogoManager;
 use App\Service\WebsiteConfigManager;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
@@ -26,6 +28,7 @@ class DashboardController extends AbstractController
         private readonly UserPasswordHasherInterface $passwordHasher,
         private readonly EntityManagerInterface $em,
         private readonly LoggerInterface $logger,
+        private readonly BrandingLogoManager $brandingLogoManager,
     ) {}
 
     #[Route('/dashboard', name: 'app_dashboard')]
@@ -174,14 +177,137 @@ class DashboardController extends AbstractController
         }
 
         try {
-            $this->config->set('app_host', $appHost);
-            $this->config->set('js_namespace', $jsNamespace);
-            $this->config->set('rate_limit_per_minute', $rateLimit);
+            $this->config->setMany([
+                'app_host' => $appHost,
+                'js_namespace' => $jsNamespace,
+                'rate_limit_per_minute' => $rateLimit,
+            ]);
 
             $this->addFlash('success', 'Settings updated successfully in config/aggregate.yaml!');
         } catch (\Exception $e) {
             $this->addFlash('error', 'Failed to save settings: ' . $e->getMessage());
         }
+
+        return $this->redirectToRoute('app_dashboard');
+    }
+
+    #[Route('/dashboard/settings/branding', name: 'app_branding_settings_save', methods: ['POST'])]
+    public function saveBrandingSettings(Request $request): Response
+    {
+        $this->denyIfDashboardDisabled();
+        $this->denyIfNotAdmin();
+
+        $csrfToken = (string) $request->request->get('_csrf_token', '');
+        if (!$this->isCsrfTokenValid('branding_settings', $csrfToken)) {
+            $this->addFlash('error', 'Invalid security token. Please try again.');
+            return $this->redirectToRoute('app_dashboard');
+        }
+
+        $brandName = trim((string) $request->request->get('brand_name', ''));
+        $logoText = trim((string) $request->request->get('brand_logo_text', ''));
+        $removeLogo = $request->request->getBoolean('remove_brand_logo');
+        $uploadedLogo = $request->files->get('brand_logo');
+        $brandNameOverridden = $this->config->hasEnvironmentOverride('brand_name', allowEmpty: true);
+        $logoTextOverridden = $this->config->hasEnvironmentOverride('brand_logo_text', allowEmpty: true);
+
+        if (!$brandNameOverridden && $brandName === '') {
+            $this->addFlash('error', 'Brand name is required.');
+            return $this->redirectToRoute('app_dashboard');
+        }
+
+        if (!$brandNameOverridden && (preg_match('//u', $brandName) !== 1
+            || mb_strlen($brandName) > 100
+            || preg_match('/[\x00-\x1F\x7F]/u', $brandName) === 1)) {
+            $this->addFlash('error', 'Brand name must be at most 100 characters and cannot contain control characters.');
+            return $this->redirectToRoute('app_dashboard');
+        }
+
+        if (!$logoTextOverridden && (preg_match('//u', $logoText) !== 1
+            || mb_strlen($logoText) > 100
+            || preg_match('/[\x00-\x1F\x7F]/u', $logoText) === 1)) {
+            $this->addFlash('error', 'Logo text must be at most 100 characters and cannot contain control characters.');
+            return $this->redirectToRoute('app_dashboard');
+        }
+
+        if ($uploadedLogo !== null && !$uploadedLogo instanceof UploadedFile) {
+            $this->addFlash('error', 'The submitted logo upload is invalid.');
+            return $this->redirectToRoute('app_dashboard');
+        }
+
+        if ($uploadedLogo instanceof UploadedFile && $removeLogo) {
+            $this->addFlash('error', 'Choose either a new logo or remove the current logo, not both.');
+            return $this->redirectToRoute('app_dashboard');
+        }
+
+        $hasLogoMutation = $uploadedLogo instanceof UploadedFile || $removeLogo;
+        if ($hasLogoMutation && $this->config->hasEnvironmentOverride('brand_logo_path', allowEmpty: true)) {
+            $this->addFlash('error', 'The logo path is controlled by BRAND_LOGO_PATH. Change or remove that environment override before using logo upload controls.');
+            return $this->redirectToRoute('app_dashboard');
+        }
+
+        $oldLogoPath = '';
+        $newLogoPath = '';
+        if ($hasLogoMutation) {
+            $configuredPath = $this->config->get('brand_logo_path', '');
+            $oldLogoPath = is_string($configuredPath) ? trim($configuredPath) : '';
+            $newLogoPath = $removeLogo ? '' : $oldLogoPath;
+        }
+        $storedLogoPath = null;
+
+        if ($uploadedLogo instanceof UploadedFile) {
+            try {
+                $storedLogoPath = $this->brandingLogoManager->store($uploadedLogo);
+                $newLogoPath = $storedLogoPath;
+            } catch (\InvalidArgumentException $e) {
+                $this->addFlash('error', $e->getMessage());
+                return $this->redirectToRoute('app_dashboard');
+            } catch (\Throwable $e) {
+                $this->logger->error('Failed to store a branding logo.', ['exception' => $e]);
+                $this->addFlash('error', 'The logo could not be stored. Check the application logs and var/branding permissions.');
+                return $this->redirectToRoute('app_dashboard');
+            }
+        }
+
+        try {
+            $settings = [];
+            if (!$brandNameOverridden) {
+                $settings['brand_name'] = $brandName;
+            }
+            if (!$logoTextOverridden) {
+                $settings['brand_logo_text'] = $logoText;
+            }
+            if ($hasLogoMutation) {
+                $settings['brand_logo_path'] = $newLogoPath;
+            }
+            if ($settings === []) {
+                $this->addFlash('warning', 'Branding is controlled by environment variables; no YAML values were changed.');
+                return $this->redirectToRoute('app_dashboard');
+            }
+            $this->config->setMany($settings);
+        } catch (\Throwable $e) {
+            if ($storedLogoPath !== null) {
+                try {
+                    $this->brandingLogoManager->removeManaged($storedLogoPath);
+                } catch (\Throwable $cleanupError) {
+                    $this->logger->warning('Failed to remove an uncommitted branding logo.', ['exception' => $cleanupError]);
+                }
+            }
+
+            $this->logger->error('Failed to save branding settings.', ['exception' => $e]);
+            $this->addFlash('error', 'Branding settings could not be saved. Check the application logs.');
+            return $this->redirectToRoute('app_dashboard');
+        }
+
+        if ($hasLogoMutation && $oldLogoPath !== '' && $oldLogoPath !== $newLogoPath) {
+            try {
+                $this->brandingLogoManager->removeManaged($oldLogoPath);
+            } catch (\Throwable $e) {
+                $this->logger->warning('Failed to remove the previous managed branding logo.', ['exception' => $e]);
+                $this->addFlash('warning', 'Branding was saved, but the previous managed logo could not be removed.');
+            }
+        }
+
+        $this->addFlash('success', 'Branding updated successfully.');
 
         return $this->redirectToRoute('app_dashboard');
     }
@@ -251,11 +377,13 @@ class DashboardController extends AbstractController
         }
 
         try {
-            $this->config->set('anonymous_tracking_enabled', $enabled);
-            $this->config->set('anonymous_excluded_paths', $paths);
-            $this->config->set('anonymous_geo_enabled', $geoEnabled);
-            $this->config->set('anonymous_geo_level', $geoLevel);
-            $this->config->set('anonymous_geo_database_path', $geoDatabasePath);
+            $this->config->setMany([
+                'anonymous_tracking_enabled' => $enabled,
+                'anonymous_excluded_paths' => $paths,
+                'anonymous_geo_enabled' => $geoEnabled,
+                'anonymous_geo_level' => $geoLevel,
+                'anonymous_geo_database_path' => $geoDatabasePath,
+            ]);
             $effectiveGeoEnabled = $this->config->getBoolWithEnvFallback('anonymous_geo_enabled', false);
             $effectiveGeoPath = $this->config->getWithEnvFallback('anonymous_geo_database_path', '');
             if ($effectiveGeoEnabled && (!is_string($effectiveGeoPath) || trim($effectiveGeoPath) === '')) {

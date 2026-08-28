@@ -99,6 +99,110 @@ final class AggregateConfigLoaderTest extends TestCase
         self::assertSame(250, $loader->get('rate_limit_per_minute'));
     }
 
+    public function testSetManyPersistsRelatedValuesInOneLockedUpdate(): void
+    {
+        $this->writeConfig([
+            'brand_name' => 'Global name',
+            'environments' => [
+                'prod' => ['rate_limit_per_minute' => 100],
+                'test' => ['rate_limit_per_minute' => 1000],
+            ],
+        ]);
+        $loader = new AggregateConfigLoader($this->projectDir, 'prod');
+
+        $loader->setMany([
+            'brand_name' => 'Example Analytics',
+            'brand_logo_text' => 'Example',
+            'brand_logo_path' => 'var/branding/prod/logo-0123456789abcdef0123456789abcdef.png',
+        ]);
+
+        self::assertSame('Example Analytics', $loader->get('brand_name'));
+        self::assertSame('Example', $loader->get('brand_logo_text'));
+
+        $written = Yaml::parseFile($this->projectDir.'/config/aggregate.yaml');
+        self::assertSame('Global name', $written['brand_name']);
+        self::assertSame('Example Analytics', $written['environments']['prod']['brand_name']);
+        self::assertSame('Example', $written['environments']['prod']['brand_logo_text']);
+        self::assertSame(
+            'var/branding/prod/logo-0123456789abcdef0123456789abcdef.png',
+            $written['environments']['prod']['brand_logo_path'],
+        );
+        self::assertSame(['rate_limit_per_minute' => 1000], $written['environments']['test']);
+    }
+
+    public function testSetManyWritesToTheEnvironmentSpecificSourceFile(): void
+    {
+        $this->writeConfig(['brand_name' => 'Main']);
+        file_put_contents(
+            $this->projectDir.'/config/aggregate_prod.yaml',
+            Yaml::dump(['brand_name' => 'Production']),
+        );
+        $loader = new AggregateConfigLoader($this->projectDir, 'prod');
+
+        $loader->setMany([
+            'brand_name' => 'Production White Label',
+            'brand_logo_text' => 'PWL',
+        ]);
+
+        self::assertSame(
+            ['brand_name' => 'Production White Label', 'brand_logo_text' => 'PWL'],
+            Yaml::parseFile($this->projectDir.'/config/aggregate_prod.yaml'),
+        );
+        self::assertSame(['brand_name' => 'Main'], Yaml::parseFile($this->projectDir.'/config/aggregate.yaml'));
+    }
+
+    public function testSetManyPreservesASymlinkAndDoesNotRequireTheConfigDirectoryToBeWritable(): void
+    {
+        $this->writeConfig(['brand_name' => 'Before']);
+        $sharedConfig = $this->projectDir.'/shared.yaml';
+        self::assertTrue(rename($this->projectDir.'/config/aggregate.yaml', $sharedConfig));
+        self::assertTrue(symlink('../shared.yaml', $this->projectDir.'/config/aggregate.yaml'));
+        self::assertTrue(chmod($this->projectDir.'/config', 0500));
+
+        try {
+            $loader = new AggregateConfigLoader($this->projectDir, 'prod');
+            $loader->setMany([
+                'brand_name' => 'After',
+                'brand_logo_text' => 'Wordmark',
+            ]);
+        } finally {
+            chmod($this->projectDir.'/config', 0700);
+        }
+
+        self::assertTrue(is_link($this->projectDir.'/config/aggregate.yaml'));
+        self::assertSame([
+            'brand_name' => 'After',
+            'brand_logo_text' => 'Wordmark',
+        ], Yaml::parseFile($sharedConfig));
+
+        unlink($this->projectDir.'/config/aggregate.yaml');
+        unlink($sharedConfig);
+    }
+
+    public function testResetReloadsConfigurationForLongRunningWorkers(): void
+    {
+        $this->writeConfig(['brand_name' => 'Before']);
+        $loader = new AggregateConfigLoader($this->projectDir, 'prod');
+        self::assertSame('Before', $loader->get('brand_name'));
+        $this->writeConfig(['brand_name' => 'After']);
+
+        $loader->reset();
+
+        self::assertSame('After', $loader->get('brand_name'));
+    }
+
+    public function testEmptyEnvironmentOverrideCanBeMeaningfulWhenRequested(): void
+    {
+        $this->writeConfig(['brand_logo_text' => 'YAML wordmark']);
+        $this->setEnvironment('BRAND_LOGO_TEXT', '');
+        $loader = new AggregateConfigLoader($this->projectDir, 'prod');
+
+        self::assertSame('YAML wordmark', $loader->getWithEnvFallback('brand_logo_text'));
+        self::assertSame('', $loader->getWithEnvFallback('brand_logo_text', null, allowEmpty: true));
+        self::assertTrue($loader->hasEnvironmentOverride('brand_logo_text', allowEmpty: true));
+        self::assertFalse($loader->hasEnvironmentOverride('brand_logo_text'));
+    }
+
     private function writeConfig(array $config): void
     {
         file_put_contents(
