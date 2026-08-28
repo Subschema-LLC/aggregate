@@ -49,6 +49,12 @@ services:
             $projectDir: '%kernel.project_dir%'
             $mainNavigation: '%app.main_navigation%'
 
+    # Keep this explicit: without the extension, Twig silently renders every
+    # app_branding value as empty when strict variables are disabled in prod.
+    App\Twig\AppBrandingExtension:
+        autoconfigure: false
+        tags: ['twig.extension']
+
     App\Service\BrandingLogoManager:
         arguments:
             $projectDir: '%kernel.project_dir%'

@@ -1,3 +1,49 @@
+{#
+    Keep the UI usable if a deployment serves freshly compiled templates before
+    its container has registered AppBrandingExtension. The explicit global test
+    still makes that deployment error fail CI instead of masking it.
+#}
+{% set app_branding_defaults = {
+    name: 'Aggregate Analytics',
+    logo_text: 'Aggregate Analytics',
+    has_logo: false,
+    logo_version: null,
+    name_overridden: false,
+    logo_text_overridden: false,
+    logo_path_overridden: false,
+    theme: {
+        primary_color: '#00D1B2',
+        primary_contrast_color: '#000000',
+        primary_text_color: '#363636',
+        accent_color: '#485FC7',
+        accent_contrast_color: '#FFFFFF',
+        accent_text_color: '#485FC7',
+        focus_color: '#485FC7',
+        navbar_color: '#14161A',
+        navbar_contrast_color: '#FFFFFF',
+        background_color: '#F5F5F5',
+        surface_color: '#FFFFFF',
+        text_color: '#363636',
+        font_family: 'system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif',
+        heading_font_family: 'system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif',
+        font_family_css: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+        heading_font_family_css: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+        contrast_fallback: false,
+        primary_color_overridden: false,
+        accent_color_overridden: false,
+        navbar_color_overridden: false,
+        background_color_overridden: false,
+        surface_color_overridden: false,
+        text_color_overridden: false,
+        font_family_overridden: false,
+        heading_font_family_overridden: false,
+        all_overridden: false
+    }
+} %}
+{% set app_branding = app_branding_defaults|merge(app_branding|default({})) %}
+{% set app_branding = app_branding|merge({
+    theme: app_branding_defaults.theme|merge(app_branding.theme|default({}))
+}) %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
