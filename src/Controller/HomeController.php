@@ -36,4 +36,16 @@ class HomeController extends AbstractController
 
         return $this->redirectToRoute('app_login');
     }
+
+    #[Route('/how-it-works', name: 'app_how_it_works', methods: ['GET'])]
+    public function howItWorks(): Response
+    {
+        return $this->render('home/how_it_works.html.twig');
+    }
+
+    #[Route('/how-it-works/data-visualization', name: 'app_how_it_works_data_visualization', methods: ['GET'])]
+    public function dataVisualization(): Response
+    {
+        return $this->render('home/how_it_works_data_visualization.html.twig');
+    }
 }
