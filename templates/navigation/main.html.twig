@@ -1,0 +1,63 @@
+{% set brand = main_navigation.brand %}
+{% set account = main_navigation.account %}
+{% set brand_url = brand.url|default(null) %}
+{% set logout_url = account.logout.url|default(null) %}
+
+{% if brand.route is defined %}
+    {% set brand_url = path(brand.route, brand.route_parameters|default({})) %}
+{% endif %}
+
+{% if account.logout.route is defined %}
+    {% set logout_url = path(account.logout.route, account.logout.route_parameters|default({})) %}
+{% endif %}
+
+<nav class="navbar is-dark" role="navigation" aria-label="main navigation">
+    <div class="navbar-brand">
+        <a class="navbar-item" href="{{ brand_url }}">
+            <strong>{{ brand.label }}</strong>
+        </a>
+
+        {% for item in main_navigation.items %}
+            {% set item_url = item.url|default(null) %}
+            {% if item.route is defined %}
+                {% set item_url = path(item.route, item.route_parameters|default({})) %}
+            {% endif %}
+
+            <a class="navbar-item" href="{{ item_url }}">
+                <span class="icon-text">
+                    {% if item.icon|default(null) %}
+                        <span class="icon">
+                            <i class="{{ item.icon }}"></i>
+                        </span>
+                    {% endif %}
+                    <span>{{ item.label }}</span>
+                </span>
+            </a>
+        {% endfor %}
+    </div>
+
+    <div class="navbar-menu">
+        <div class="navbar-end">
+            <div class="navbar-item">
+                <span class="icon-text">
+                    {% if account.user_icon|default(null) %}
+                        <span class="icon">
+                            <i class="{{ account.user_icon }}"></i>
+                        </span>
+                    {% endif %}
+                    <span>{{ app.user.username }}</span>
+                </span>
+            </div>
+            <div class="navbar-item">
+                <a href="{{ logout_url }}" class="button is-light">
+                    {% if account.logout.icon|default(null) %}
+                        <span class="icon">
+                            <i class="{{ account.logout.icon }}"></i>
+                        </span>
+                    {% endif %}
+                    <span>{{ account.logout.label }}</span>
+                </a>
+            </div>
+        </div>
+    </div>
+</nav>

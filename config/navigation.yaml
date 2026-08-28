@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=../vendor/symfony/dependency-injection/Loader/schema/services.schema.json
+# Main navigation content. Each link defines exactly one Symfony route or URL.
+# Clear the production cache after changing this file.
+parameters:
+    app.main_navigation:
+        brand:
+            label: 'Aggregate Analytics'
+            route: 'app_home'
+
+        items:
+            - label: 'How It Works'
+              route: 'app_how_it_works'
+              icon: 'fas fa-circle-info'
+
+        account:
+            user_icon: 'fas fa-user'
+            logout:
+                label: 'Logout'
+                url: '/logout'
+                icon: 'fas fa-sign-out-alt'

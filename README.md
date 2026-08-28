@@ -185,10 +185,11 @@ crontab -e
 
 ## Configuration
 
-Configuration is split between two places:
+Configuration is split between three places:
 
 - **`.env` or `.env.local`** (server-level, never committed to git): Symfony infrastructure — database connection, message queue, app secret, and explicit proxy trust.
 - **`config/aggregate.yaml`** (app-level, example committed): Analytics-specific settings — privacy measurement controls, rate limit, JS namespace, dashboard toggle.
+- **`config/navigation.yaml`** (app-level, committed): Main navigation labels, icons, and link targets.
 
 The web installer at `/install` is optional and only needed when you want dashboard-based setup.
 
@@ -256,6 +257,10 @@ The two BI disclosure thresholds are configured separately in the admin dashboar
 Dashboard changes take effect immediately because both BI views read this row directly. The migrations create it with safe defaults; there is no YAML copy or synchronization command. For an API-only deployment, update the singleton row through controlled database administration and keep routine BI roles read-only.
 
 When upgrading from a version that mirrored these values, the existing database row keeps the last applied thresholds. Remove stale `anonymous_min_cell_count` and `anonymous_geo_min_cell_count` YAML/environment settings after every application instance is upgraded; the new code ignores them.
+
+### Main Navigation (`config/navigation.yaml`)
+
+Edit the `brand`, `items`, and `account` entries to manage the authenticated navbar. Each link defines exactly one Symfony `route` name (for example, `app_how_it_works`) or literal `url`; `icon` and `route_parameters` are optional. The `items` list may be empty. After changing navigation in production, clear the production cache so the container and Twig globals are rebuilt.
 
 #### Optional coarse geography
 
