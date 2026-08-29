@@ -43,6 +43,72 @@ final class HowItWorksControllerTest extends WebTestCase
         );
     }
 
+    public function testThemeCssPreservesHeadingAndCodeContrastAcrossBulmaContexts(): void
+    {
+        $client = self::createClient();
+
+        $client->request('GET', '/how-it-works');
+
+        self::assertResponseIsSuccessful();
+        $content = (string) $client->getResponse()->getContent();
+
+        self::assertStringContainsString(
+            '--bulma-text-strong: var(--app-brand-text);',
+            $content,
+        );
+        self::assertMatchesRegularExpression(
+            '/\.content h1,\s*'
+            .'\.content h2,\s*'
+            .'\.content h3,\s*'
+            .'\.content h4,\s*'
+            .'\.content h5,\s*'
+            .'\.content h6\s*'
+            .'\{[^}]*color:\s*var\(--app-brand-text\);[^}]*\}/s',
+            $content,
+        );
+        self::assertMatchesRegularExpression(
+            '/\ncode\s*'
+            .'\{'
+            .'(?=[^}]*background-color:\s*#000000;)'
+            .'(?=[^}]*color:\s*#FFFFFF;)'
+            .'[^}]*\}/s',
+            $content,
+        );
+        self::assertMatchesRegularExpression(
+            '/pre,\s*'
+            .'\.content pre,\s*'
+            .'\.notification pre,\s*'
+            .'\.message-body pre\s*'
+            .'\{'
+            .'(?=[^}]*background(?:-color)?:\s*#000000;)'
+            .'(?=[^}]*color:\s*#FFFFFF;)'
+            .'[^}]*\}/s',
+            $content,
+        );
+        self::assertMatchesRegularExpression(
+            '/pre code,\s*'
+            .'\.content pre code,\s*'
+            .'\.notification pre code,\s*'
+            .'\.message-body pre code\s*'
+            .'\{'
+            .'(?=[^}]*background(?:-color)?:\s*transparent;)'
+            .'(?=[^}]*border-radius:\s*0;)'
+            .'(?=[^}]*color:\s*inherit;)'
+            .'(?=[^}]*padding:\s*0;)'
+            .'[^}]*\}/s',
+            $content,
+        );
+        self::assertMatchesRegularExpression(
+            '/\.notification code,\s*'
+            .'\.message code\s*'
+            .'\{'
+            .'(?=[^}]*background-color:\s*#000000;)'
+            .'(?=[^}]*color:\s*#FFFFFF;)'
+            .'[^}]*\}/s',
+            $content,
+        );
+    }
+
     public function testDataVisualizationStructurePageIsPubliclyAvailable(): void
     {
         $client = self::createClient();

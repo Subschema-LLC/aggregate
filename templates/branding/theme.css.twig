@@ -21,6 +21,7 @@
     --bulma-link-text: var(--app-brand-accent-text);
     --bulma-strong-color: var(--app-brand-text);
     --bulma-text: var(--app-brand-text);
+    --bulma-text-strong: var(--app-brand-text);
 }
 
 html,
@@ -73,6 +74,19 @@ h6,
 .subtitle,
 .help,
 .heading {
+    color: var(--app-brand-text);
+}
+
+.content {
+    --bulma-content-heading-color: var(--app-brand-text);
+}
+
+.content h1,
+.content h2,
+.content h3,
+.content h4,
+.content h5,
+.content h6 {
     color: var(--app-brand-text);
 }
 
@@ -137,10 +151,27 @@ fieldset[disabled] .select select {
     background-color: var(--app-brand-background);
 }
 
-pre,
 code {
-    background-color: var(--app-brand-background);
-    color: var(--app-brand-text);
+    background-color: #000000;
+    color: #FFFFFF;
+}
+
+pre,
+.content pre,
+.notification pre,
+.message-body pre {
+    background: #000000;
+    color: #FFFFFF;
+}
+
+pre code,
+.content pre code,
+.notification pre code,
+.message-body pre code {
+    background: transparent;
+    border-radius: 0;
+    color: inherit;
+    padding: 0;
 }
 
 hr {
@@ -171,8 +202,8 @@ a:not(.button):not(.navbar-item):focus-visible {
 
 .notification code,
 .message code {
-    background-color: transparent;
-    color: inherit;
+    background-color: #000000;
+    color: #FFFFFF;
 }
 
 .notification.is-light:not(.is-primary):not(.is-link):not(.is-info):not(.is-success):not(.is-warning):not(.is-danger),
