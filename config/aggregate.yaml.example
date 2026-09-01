@@ -27,6 +27,13 @@ environments:
     anonymous_geo_enabled: false
     anonymous_geo_level: "macro_region"
     anonymous_geo_database_path: ""
+    analytics_archiving_enabled: false
+    analytics_archive_after_days: 90
+    analytics_retention_enabled: false
+    analytics_anonymous_retention_days: 365
+    analytics_enhanced_retention_days: 90
+    analytics_archive_retention_days: 730
+    analytics_maintenance_batch_size: 1000
 
   prod:
     rate_limit_per_minute: 100
@@ -49,6 +56,13 @@ environments:
     anonymous_geo_enabled: false
     anonymous_geo_level: "macro_region"
     anonymous_geo_database_path: ""
+    analytics_archiving_enabled: false
+    analytics_archive_after_days: 90
+    analytics_retention_enabled: false
+    analytics_anonymous_retention_days: 365
+    analytics_enhanced_retention_days: 90
+    analytics_archive_retention_days: 730
+    analytics_maintenance_batch_size: 1000
 
   test:
     rate_limit_per_minute: 1000
@@ -70,6 +84,13 @@ environments:
     anonymous_geo_enabled: false
     anonymous_geo_level: "macro_region"
     anonymous_geo_database_path: ""
+    analytics_archiving_enabled: false
+    analytics_archive_after_days: 90
+    analytics_retention_enabled: false
+    analytics_anonymous_retention_days: 365
+    analytics_enhanced_retention_days: 90
+    analytics_archive_retention_days: 730
+    analytics_maintenance_batch_size: 1000
 
 # Configuration options:
 #
@@ -159,3 +180,32 @@ environments:
 #   and make it readable by the ingestion process. URI schemes and relative
 #   project-root escapes are rejected, as are UNC/network-share and Windows
 #   device paths. The app never downloads or sends lookups to a GeoIP service.
+#
+# analytics_archiving_enabled (optional, default: false)
+#   Aggregate eligible raw events into private hourly event/pageview, daily
+#   goal, and daily geography cells. Archiving does not itself delete raw rows.
+#
+# analytics_archive_after_days (optional, default: 90; range: 1..36500)
+#   Archive completed raw data older than this many days.
+#
+# analytics_retention_enabled (optional, default: false)
+#   Irreversibly delete raw rows and archived cells after the periods below.
+#   Dry-run and verify backups/reporting before enabling this setting.
+#
+# analytics_anonymous_retention_days (optional, default: 365; range: 1..36500)
+#   Retention period for anonymous raw event rows.
+#
+# analytics_enhanced_retention_days (optional, default: 90; range: 1..36500)
+#   Retention period for enhanced raw event rows.
+#
+# analytics_archive_retention_days (optional, default: 730; range: 1..36500)
+#   Retention period for private archived aggregate cells.
+#
+# analytics_maintenance_batch_size (optional, default: 1000; range: 100..10000)
+#   Maximum raw rows processed in each maintenance batch.
+#
+# When archiving and retention are both enabled, both raw retention periods
+# must be at least analytics_archive_after_days. Whenever retention is enabled,
+# archive retention must be at least the longer raw retention period. Schedule the maintenance command
+# externally (normally daily): php bin/console app:analytics:maintain
+# Uppercase environment variables with the same names override these values.

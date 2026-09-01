@@ -11,6 +11,7 @@ Aggregate Analytics supports **PostgreSQL**, **MySQL**, **MariaDB**, **Microsoft
 - [Microsoft SQL Server](#microsoft-sql-server)
 - [SQLite](#sqlite)
 - [Migration and Compatibility](#migration-and-compatibility)
+- [Analytics Archive and Maintenance](#analytics-archive-and-maintenance)
 
 ---
 
@@ -513,6 +514,32 @@ php bin/console doctrine:migrations:migrate -n
 # Rollback if needed
 php bin/console doctrine:migrations:migrate prev
 ```
+
+---
+
+## Analytics Archive and Maintenance
+
+Lifecycle migrations add an `archived_at` marker to `events` and three private aggregate tables:
+
+- `analytics_archive_events`: hourly event/pageview cells by privacy mode and reporting dimensions;
+- `analytics_archive_goals`: daily goal cells by privacy mode; and
+- `analytics_archive_geo_events`: daily event/geography cells by privacy mode.
+
+`analytics_archived_events_v1`, `analytics_archived_pageviews_v1`, and `analytics_archived_goals_v1` are operational, unsuppressed archive views. Treat both the tables and these views as private data. The disclosure-controlled `bi_anonymous_events_v1`, `bi_anonymous_goals_v1`, and `bi_anonymous_geo_events_v1` views transparently union eligible live and archived anonymous counts and are the supported routine-BI surface.
+
+Enhanced archive cells drop visitor/session identifiers and custom properties, but preserve reporting dimensions including the sanitized page path and coarse referrer channel. They can remain personal or identifying in context and no longer provide the source identifiers needed for person-level lookup; assess this transformation explicitly in the deployment's rights-handling process.
+
+Do not update archive tables or `events.archived_at` manually. The application maintenance service aggregates and marks each source batch atomically, so retries do not double-count completed rows. Retention deletion runs in bounded batches and is disabled by default. Configure it in `config/aggregate.yaml` or the admin Data lifecycle page, then schedule and monitor:
+
+```bash
+# Inspect counts and cutoffs without changing data
+php bin/console app:analytics:maintain --dry-run
+
+# Archive and/or delete according to the active policy
+php bin/console app:analytics:maintain
+```
+
+Run maintenance at least daily when either feature is enabled. Include the archive tables and lifecycle lease state in backups, and enforce separate expiration for database backups, replicas, BI extracts, and exports. On SQLite, file access still bypasses view permissions; use controlled exports or a server database for separate BI access.
 
 ---
 

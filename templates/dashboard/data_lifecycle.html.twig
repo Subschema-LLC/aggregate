@@ -1,0 +1,211 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Data lifecycle - {{ app_branding.name }}{% endblock %}
+
+{% block body %}
+    {% set settings = lifecycle_settings %}
+    {% set overrides = lifecycle_environment_overrides %}
+
+    <div class="level">
+        <div class="level-left">
+            <div>
+                <h1 class="title">Analytics data lifecycle</h1>
+                <p class="subtitle">Archive older events into aggregate reporting cells and enforce deletion periods.</p>
+            </div>
+        </div>
+        <div class="level-right">
+            <a class="button" href="{{ path('app_dashboard') }}">
+                <span class="icon"><i class="fas fa-arrow-left"></i></span>
+                <span>Dashboard</span>
+            </a>
+        </div>
+    </div>
+
+    {% if lifecycle_configuration_error %}
+        <div class="notification is-danger is-light" role="alert">
+            {{ lifecycle_configuration_error }}
+        </div>
+    {% endif %}
+
+    <div class="notification is-info is-light">
+        <p class="has-text-weight-semibold">The application does not run lifecycle maintenance from a web request.</p>
+        <p>Schedule this command externally at least once a day:</p>
+        <p class="mt-2"><code>php bin/console app:analytics:maintain</code></p>
+        <p class="mt-2">Before first enabling deletion, inspect <code>php bin/console app:analytics:maintain --dry-run</code>, then monitor the scheduled job for failures.</p>
+    </div>
+
+    <form method="post" action="{{ path('app_data_lifecycle_save') }}">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token('data_lifecycle_settings') }}">
+
+        <div class="columns is-multiline">
+            <div class="column is-half">
+                <div class="box">
+                    <h2 class="title is-4">Archiving</h2>
+                    <p class="mb-4">
+                        Archiving rolls eligible raw events into hourly event/pageview, daily goal, and daily geography counts.
+                        It is disabled by default.
+                    </p>
+
+                    <div class="field">
+                        <label class="label" for="analytics-archiving-enabled">Enable archiving</label>
+                        <div class="control">
+                            <div class="select is-fullwidth">
+                                <select id="analytics-archiving-enabled" name="analytics_archiving_enabled"{% if overrides.analytics_archiving_enabled %} disabled aria-describedby="analytics-archiving-enabled-help"{% endif %}>
+                                    <option value="0"{% if not settings.analytics_archiving_enabled %} selected{% endif %}>Disabled</option>
+                                    <option value="1"{% if settings.analytics_archiving_enabled %} selected{% endif %}>Enabled</option>
+                                </select>
+                            </div>
+                        </div>
+                        <p class="help" id="analytics-archiving-enabled-help">
+                            {% if overrides.analytics_archiving_enabled %}
+                                Controlled by <code>ANALYTICS_ARCHIVING_ENABLED</code>.
+                            {% else %}
+                                Creates or updates aggregate cells; it does not by itself delete raw rows.
+                            {% endif %}
+                        </p>
+                    </div>
+
+                    <div class="field">
+                        <label class="label" for="analytics-archive-after-days">Archive after</label>
+                        <div class="field has-addons">
+                            <div class="control is-expanded">
+                                <input class="input" id="analytics-archive-after-days" name="analytics_archive_after_days" type="number" min="1" max="36500" step="1" required value="{{ settings.analytics_archive_after_days }}"{% if overrides.analytics_archive_after_days %} disabled aria-describedby="analytics-archive-after-days-help"{% endif %}>
+                            </div>
+                            <div class="control"><span class="button is-static">days</span></div>
+                        </div>
+                        <p class="help" id="analytics-archive-after-days-help">
+                            {% if overrides.analytics_archive_after_days %}
+                                Controlled by <code>ANALYTICS_ARCHIVE_AFTER_DAYS</code>.
+                            {% else %}
+                                Only completed data older than this age is aggregated (1–36,500 days).
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="column is-half">
+                <div class="box">
+                    <h2 class="title is-4">Retention and deletion</h2>
+                    <div class="notification is-danger is-light">
+                        <strong>Deletion is irreversible.</strong> Test with a dry run, verify backups and archive reporting, then enable retention. Backups, BI extracts, queues, and logs have separate retention policies.
+                    </div>
+
+                    <div class="field">
+                        <label class="label" for="analytics-retention-enabled">Enable deletion</label>
+                        <div class="control">
+                            <div class="select is-fullwidth">
+                                <select id="analytics-retention-enabled" name="analytics_retention_enabled"{% if overrides.analytics_retention_enabled %} disabled aria-describedby="analytics-retention-enabled-help"{% endif %}>
+                                    <option value="0"{% if not settings.analytics_retention_enabled %} selected{% endif %}>Disabled</option>
+                                    <option value="1"{% if settings.analytics_retention_enabled %} selected{% endif %}>Enabled</option>
+                                </select>
+                            </div>
+                        </div>
+                        <p class="help" id="analytics-retention-enabled-help">
+                            {% if overrides.analytics_retention_enabled %}
+                                Controlled by <code>ANALYTICS_RETENTION_ENABLED</code>.
+                            {% else %}
+                                Applies the raw and archive periods below during maintenance.
+                            {% endif %}
+                        </p>
+                    </div>
+
+                    <p class="help mb-4">If deletion is enabled while archiving is disabled, eligible raw rows are permanently deleted without first preserving aggregate history.</p>
+
+                    {% set retention_fields = [
+                        {
+                            key: 'analytics_anonymous_retention_days',
+                            id: 'analytics-anonymous-retention-days',
+                            label: 'Anonymous raw events',
+                            env: 'ANALYTICS_ANONYMOUS_RETENTION_DAYS'
+                        },
+                        {
+                            key: 'analytics_enhanced_retention_days',
+                            id: 'analytics-enhanced-retention-days',
+                            label: 'Enhanced raw events',
+                            env: 'ANALYTICS_ENHANCED_RETENTION_DAYS'
+                        },
+                        {
+                            key: 'analytics_archive_retention_days',
+                            id: 'analytics-archive-retention-days',
+                            label: 'Archived aggregate cells',
+                            env: 'ANALYTICS_ARCHIVE_RETENTION_DAYS'
+                        }
+                    ] %}
+
+                    {% for field in retention_fields %}
+                        <div class="field">
+                            <label class="label" for="{{ field.id }}">{{ field.label }}</label>
+                            <div class="field has-addons">
+                                <div class="control is-expanded">
+                                    <input class="input" id="{{ field.id }}" name="{{ field.key }}" type="number" min="1" max="36500" step="1" required value="{{ attribute(settings, field.key) }}"{% if attribute(overrides, field.key) %} disabled aria-describedby="{{ field.id }}-help"{% endif %}>
+                                </div>
+                                <div class="control"><span class="button is-static">days</span></div>
+                            </div>
+                            <p class="help" id="{{ field.id }}-help">
+                                {% if attribute(overrides, field.key) %}
+                                    Controlled by <code>{{ field.env }}</code>.
+                                {% else %}
+                                    Allowed range: 1–36,500 days.
+                                {% endif %}
+                            </p>
+                        </div>
+                    {% endfor %}
+
+                    <p class="help">
+                        When archiving and deletion are both enabled, each raw-data period must be at least the archive-after period. Whenever deletion is enabled, archive retention must be at least the longer raw-data period so marked source rows cannot disappear from reporting early.
+                    </p>
+                </div>
+            </div>
+
+            <div class="column is-full">
+                <div class="box">
+                    <h2 class="title is-4">Maintenance batches</h2>
+                    <div class="field">
+                        <label class="label" for="analytics-maintenance-batch-size">Rows per batch</label>
+                        <div class="control">
+                            <input class="input" id="analytics-maintenance-batch-size" name="analytics_maintenance_batch_size" type="number" min="100" max="10000" step="1" required value="{{ settings.analytics_maintenance_batch_size }}"{% if overrides.analytics_maintenance_batch_size %} disabled aria-describedby="analytics-maintenance-batch-size-help"{% endif %}>
+                        </div>
+                        <p class="help" id="analytics-maintenance-batch-size-help">
+                            {% if overrides.analytics_maintenance_batch_size %}
+                                Controlled by <code>ANALYTICS_MAINTENANCE_BATCH_SIZE</code>.
+                            {% else %}
+                                Trade transaction size for job overhead; allowed range: 100–10,000.
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="field is-grouped">
+            <div class="control">
+                <button class="button is-primary" type="submit"{% if lifecycle_configuration_error %} disabled{% endif %}>
+                    <span class="icon"><i class="fas fa-save"></i></span>
+                    <span>Save lifecycle settings</span>
+                </button>
+            </div>
+        </div>
+    </form>
+
+    <div class="content mt-6">
+        <h2 class="title is-4">Reporting and configuration boundaries</h2>
+        <p>
+            <code>analytics_archive_events</code>, <code>analytics_archive_goals</code>, and <code>analytics_archive_geo_events</code>
+            are private, unsuppressed aggregate tables. Their operational views—<code>analytics_archived_events_v1</code>,
+            <code>analytics_archived_pageviews_v1</code>, and <code>analytics_archived_goals_v1</code>—are also private and
+            unsuppressed. Do not grant routine BI users access merely because the rows are aggregated.
+        </p>
+        <p>
+            Enhanced archive cells omit visitor/session identifiers and custom properties but retain reporting dimensions such as the sanitized page path and coarse referrer channel. Review how that transformation affects privacy-rights lookup and deletion before enabling it.
+        </p>
+        <p>
+            The existing thresholded <code>bi_anonymous_*</code> views transparently combine eligible live and archived anonymous data and remain the supported disclosure-controlled surface for routine anonymous reporting.
+        </p>
+        <p>
+            This page writes the active environment in <code>config/aggregate.yaml</code> (or its environment-specific file).
+            The same seven settings can be managed directly in YAML. Uppercase environment variables take precedence;
+            controls with an active override are disabled here and omitted from the YAML update.
+        </p>
+    </div>
+{% endblock %}

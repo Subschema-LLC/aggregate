@@ -14,11 +14,18 @@ SET time_zone = '+00:00';
 SET FOREIGN_KEY_CHECKS = 0;
 
 -- Drop current/legacy app tables if present
+DROP VIEW IF EXISTS `analytics_archived_pageviews_v1`;
+DROP VIEW IF EXISTS `analytics_archived_events_v1`;
+DROP VIEW IF EXISTS `analytics_archived_goals_v1`;
 DROP VIEW IF EXISTS `bi_anonymous_goals_v1`;
 DROP VIEW IF EXISTS `bi_anonymous_geo_events_v1`;
 DROP VIEW IF EXISTS `bi_anonymous_events_v1`;
 DROP VIEW IF EXISTS `bi_anonymous_pageviews_v1`;
 DROP TABLE IF EXISTS `messenger_messages`;
+DROP TABLE IF EXISTS `analytics_archive_geo_events`;
+DROP TABLE IF EXISTS `analytics_archive_goals`;
+DROP TABLE IF EXISTS `analytics_archive_events`;
+DROP TABLE IF EXISTS `analytics_maintenance_lock`;
 DROP TABLE IF EXISTS `analytics_privacy_settings`;
 DROP TABLE IF EXISTS `anonymous_pageview_aggregates`;
 DROP TABLE IF EXISTS `events`;
@@ -285,10 +292,11 @@ INSERT IGNORE INTO `doctrine_migration_versions` (`version`, `executed_at`, `exe
 -- Done.
 -- Next steps:
 --   1) configure .env/.env.local (DATABASE_URL, APP_SECRET, MESSENGER_TRANSPORT_DSN)
---   2) configure config/aggregate.yaml and review config/goals.yaml
---   3) configure BI disclosure thresholds in the admin dashboard if defaults are unsuitable
---   4) create admin user:
+--   2) apply newer migrations: php bin/console doctrine:migrations:migrate -n
+--   3) configure config/aggregate.yaml and review config/goals.yaml
+--   4) configure BI disclosure thresholds in the admin dashboard if defaults are unsuitable
+--   5) create admin user:
 --        - web: /install
 --        - CLI: php bin/console app:install
---   5) create website token(s): php bin/console app:create-website
+--   6) create website token(s): php bin/console app:create-website
 -- =============================================================================

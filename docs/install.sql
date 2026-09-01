@@ -271,7 +271,8 @@ INSERT IGNORE INTO `doctrine_migration_versions` (`version`, `executed_at`, `exe
 -- Done.
 -- Next steps:
 --   1) configure .env/.env.local (DATABASE_URL, APP_SECRET, MESSENGER_TRANSPORT_DSN)
---   2) configure config/aggregate.yaml and review config/goals.yaml
---   3) configure BI disclosure thresholds in the admin dashboard if defaults are unsuitable
---   4) create website token(s): php bin/console app:create-website
+--   2) apply newer migrations: php bin/console doctrine:migrations:migrate -n
+--   3) configure config/aggregate.yaml and review config/goals.yaml
+--   4) configure BI disclosure thresholds in the admin dashboard if defaults are unsuitable
+--   5) create website token(s): php bin/console app:create-website
 -- =============================================================================
