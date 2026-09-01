@@ -15,6 +15,7 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Index(name: 'IDX_EVENTS_VISITOR_ID', columns: ['visitor_id'])]
 #[ORM\Index(name: 'IDX_EVENTS_CONSENT_STATE', columns: ['consent_state'])]
 #[ORM\Index(name: 'IDX_EVENTS_PRIVACY_SITE_CREATED', columns: ['privacy_mode', 'website_token', 'created_at'])]
+#[ORM\Index(name: 'IDX_EVENTS_ARCHIVED_CREATED_ID', columns: ['archived_at', 'created_at', 'id'])]
 class Event
 {
     #[ORM\Id]
@@ -69,6 +70,9 @@ class Event
 
     #[ORM\Column(type: 'datetime_immutable')]
     private \DateTimeImmutable $createdAt;
+
+    #[ORM\Column(type: 'datetime_immutable', nullable: true)]
+    private ?\DateTimeImmutable $archivedAt = null;
 
     public function __construct()
     {
@@ -173,6 +177,14 @@ class Event
     public function setCreatedAt(\DateTimeImmutable $createdAt): self
     {
         $this->createdAt = $createdAt;
+
+        return $this;
+    }
+
+    public function getArchivedAt(): ?\DateTimeImmutable { return $this->archivedAt; }
+    public function setArchivedAt(?\DateTimeImmutable $archivedAt): self
+    {
+        $this->archivedAt = $archivedAt;
 
         return $this;
     }

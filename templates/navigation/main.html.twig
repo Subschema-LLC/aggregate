@@ -18,21 +18,23 @@
         </a>
 
         {% for item in main_navigation.items %}
-            {% set item_url = item.url|default(null) %}
-            {% if item.route is defined %}
-                {% set item_url = path(item.route, item.route_parameters|default({})) %}
-            {% endif %}
+            {% if item.role is not defined or is_granted(item.role) %}
+                {% set item_url = item.url|default(null) %}
+                {% if item.route is defined %}
+                    {% set item_url = path(item.route, item.route_parameters|default({})) %}
+                {% endif %}
 
-            <a class="navbar-item" href="{{ item_url }}">
-                <span class="icon-text">
-                    {% if item.icon|default(null) %}
-                        <span class="icon">
-                            <i class="{{ item.icon }}"></i>
-                        </span>
-                    {% endif %}
-                    <span>{{ item.label }}</span>
-                </span>
-            </a>
+                <a class="navbar-item" href="{{ item_url }}">
+                    <span class="icon-text">
+                        {% if item.icon|default(null) %}
+                            <span class="icon">
+                                <i class="{{ item.icon }}"></i>
+                            </span>
+                        {% endif %}
+                        <span>{{ item.label }}</span>
+                    </span>
+                </a>
+            {% endif %}
         {% endfor %}
     </div>
 

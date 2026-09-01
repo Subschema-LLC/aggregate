@@ -2,6 +2,10 @@ dashboard_controller:
     resource: ../src/Controller/DashboardController.php
     type: attribute
 
+data_lifecycle_controller:
+    resource: ../src/Controller/DataLifecycleController.php
+    type: attribute
+
 install_controller:
     resource: ../src/Controller/InstallController.php
     type: attribute
