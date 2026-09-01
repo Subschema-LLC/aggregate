@@ -198,6 +198,31 @@ final class AnalyticsArchiveMigrationTest extends TestCase
         }
     }
 
+    public function testMariaDbServerConfiguredAsMySqlIsRejectedBeforeAnySqlIsScheduled(): void
+    {
+        $connection = $this->createStub(Connection::class);
+        $connection->method('getDatabasePlatform')->willReturn(new MySQL80Platform());
+        $connection->method('fetchOne')
+            ->with('SELECT VERSION()')
+            ->willReturn('10.11.14-MariaDB-0+deb12u2');
+        $migration = new Version20260901000000(
+            $connection,
+            $this->createStub(LoggerInterface::class),
+        );
+
+        try {
+            $migration->up(new Schema());
+            self::fail('MariaDB must not be migrated through Doctrine\'s MySQL platform.');
+        } catch (AbortMigration $e) {
+            self::assertStringContainsString(
+                'does not match Doctrine platform Doctrine\\DBAL\\Platforms\\MySQL80Platform',
+                $e->getMessage(),
+            );
+            self::assertStringContainsString('serverVersion=10.11.14-MariaDB', $e->getMessage());
+            self::assertSame([], $migration->getSql());
+        }
+    }
+
     private function sqlFor(AbstractPlatform $platform): string
     {
         $migration = $this->migrationFor($platform);
