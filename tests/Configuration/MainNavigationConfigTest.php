@@ -65,4 +65,33 @@ final class MainNavigationConfigTest extends KernelTestCase
             self::assertNotSame('', trim($link['url']));
         }
     }
+
+    public function testDataLifecycleSettingsHaveADedicatedNavigationDestination(): void
+    {
+        self::bootKernel();
+
+        $container = self::getContainer();
+        $navigation = $container->getParameter('app.main_navigation');
+        self::assertIsArray($navigation);
+        self::assertIsArray($navigation['items'] ?? null);
+
+        $lifecycleLinks = array_values(array_filter(
+            $navigation['items'],
+            static fn (mixed $item): bool => is_array($item)
+                && ($item['route'] ?? null) === 'app_data_lifecycle',
+        ));
+        self::assertCount(1, $lifecycleLinks);
+        self::assertNotSame('', trim((string) ($lifecycleLinks[0]['label'] ?? '')));
+        self::assertSame('ROLE_ADMIN', $lifecycleLinks[0]['role'] ?? null);
+
+        $router = $container->get('router');
+        self::assertInstanceOf(RouterInterface::class, $router);
+
+        $indexRoute = $router->getRouteCollection()->get('app_data_lifecycle');
+        $saveRoute = $router->getRouteCollection()->get('app_data_lifecycle_save');
+        self::assertNotNull($indexRoute);
+        self::assertNotNull($saveRoute);
+        self::assertSame(['GET'], $indexRoute->getMethods());
+        self::assertSame(['POST'], $saveRoute->getMethods());
+    }
 }

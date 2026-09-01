@@ -113,6 +113,8 @@ Areas below the threshold are pooled as `country:other` or `continent:other`, an
 
 Both thresholds count occurrences, not distinct people, because anonymous-mode events intentionally have no stable person identifier. A single person can generate enough events or goals to meet a threshold. Secondary suppression cannot prevent inference across every extract, time period, or outside data source. Suppression therefore does not establish k-anonymity. Use the minimum necessary BI access, consider a threshold above the default, review extracts for small populations, and do not present any view as guaranteed anonymous data.
 
+Archiving does not weaken this routine-BI contract: the thresholded `bi_anonymous_*` views transparently combine eligible live and archived anonymous counts. The underlying `analytics_archive_events`, `analytics_archive_goals`, and `analytics_archive_geo_events` tables are private and unsuppressed. The operational `analytics_archived_events_v1`, `analytics_archived_pageviews_v1`, and `analytics_archived_goals_v1` views are also private and unsuppressed. Aggregation can reduce exposure, but a rare cell may still identify or single out a person in context; never grant these tables or operational views to routine BI roles by default.
+
 ## Administrative controls
 
 ```yaml
@@ -150,6 +152,8 @@ The BI disclosure thresholds are stored directly in the singleton `analytics_pri
 - `anonymous_geo_min_cell_count` controls completed daily cells in `bi_anonymous_geo_events_v1` (default `25`, range `10`–`1000`).
 
 All three views read the database row directly, so dashboard changes take effect immediately without a YAML mirror or synchronization command. The migrations create the row with safe defaults. API-only operators must use controlled database administration to change it, and routine BI roles must remain read-only.
+
+Archiving and deletion policy is separate and can be managed by administrators at `/dashboard/data-lifecycle`, in `config/aggregate.yaml`, or with uppercase environment-variable overrides. Environment-controlled values are read-only in the UI. Both actions are disabled by default, settings are strictly range-checked, and unsafe archive/retention ordering is rejected. Schedule `php bin/console app:analytics:maintain` externally; a saved policy does not run maintenance from a web request.
 
 Malformed YAML or invalid ingestion-control types fail closed: ingestion is disabled and the health endpoint reports a generic configuration error. Out-of-range database thresholds also fail closed because the views require values within their documented ranges.
 
@@ -259,14 +263,21 @@ Define retention separately for:
 
 - anonymous-mode event rows;
 - enhanced event rows;
+- private archived event, pageview, goal, and geography cells;
 - BI extracts and caches;
 - queues and failed messages;
 - logs and traces; and
 - backups.
 
+The built-in lifecycle policy provides separate raw anonymous, raw enhanced, and archive periods. Archiving first rolls older raw rows into private aggregate cells; it does not itself delete raw data. Retention then irreversibly removes eligible raw rows and archived cells when enabled. If both features are enabled, the validator requires each raw retention period to be at least the archive-after period, preserving a window in which rows can be archived before deletion. Whenever retention is enabled, archive retention must be at least the longer raw period so an aggregate cell cannot expire while its marked source row is still excluded from reporting.
+
+Retention can be enabled without archiving when the intended policy is complete deletion rather than historical aggregation. In that mode, eligible unarchived raw rows are removed without preserving their counts.
+
+Before enabling retention, back up the database, run `php bin/console app:analytics:maintain --dry-run`, confirm that the supported reporting views return expected counts, and document approval of the periods. Run and monitor the real maintenance command at least daily. Database backups, replicas, exports, BI caches, queues, failed messages, application/proxy logs, and downstream systems are outside this deletion job and need independently enforced periods. A backup-restoration procedure must avoid silently reintroducing data past its approved lifetime.
+
 Anonymous-mode rows intentionally contain no visitor lookup key, so the system cannot reliably find them by visitor ID. That does not automatically remove them from privacy-law scope. Document the limitation and establish a rights-request approach appropriate to the deployment.
 
-Enhanced rows may be linkable through visitor or session IDs. Operators should provide authenticated procedures for applicable access, deletion, correction, portability, restriction, objection, and opt-out requests. `setConsent(false)` is a prospective consent control, not that server-side workflow.
+Enhanced rows may be linkable through visitor or session IDs. Enhanced archive cells intentionally omit those identifiers and custom properties, but retain reporting dimensions such as the sanitized page path and coarse referrer channel. This can make person-level lookup or deletion impossible while a potentially identifying rare cell remains, so document archiving as a separate transformation and rights-handling decision. Operators should provide authenticated procedures for applicable access, deletion, correction, portability, restriction, objection, and opt-out requests. `setConsent(false)` is a prospective consent control, not that server-side workflow.
 
 ## Operator checklist
 
@@ -280,6 +291,7 @@ Enhanced rows may be linkable through visitor or session IDs. Operators should p
 - [ ] Make acceptance and rejection of enhanced analytics equally clear.
 - [ ] Do not enable enhanced analytics before affirmative consent where consent is required.
 - [ ] Publish retention periods and implement their enforcement.
+- [ ] Dry-run, schedule, and monitor `app:analytics:maintain`; verify backup and downstream deletion separately.
 - [ ] Provide a server-side rights-request process for enhanced data.
 - [ ] Restrict routine BI users to the approved `bi_anonymous_events_v1` and `bi_anonymous_goals_v1` views they need; keep raw `events` private.
 - [ ] Validate `anonymous_min_cell_count` against event and goal volumes and re-identification risk.

@@ -9,6 +9,7 @@ An open-source, self-hosted analytics system with privacy-minimized, hour-bucket
 - **Consent-based enhanced analytics**: visitor/session IDs, custom properties, and exact dimensions only after consent is granted
 - **Short-lived session cookies**: Only set with enhanced consent, 30-minute expiry, SameSite=Lax, Secure on HTTPS
 - **Privacy controls**: administrative kill switch, sensitive-path exclusions, and low-volume BI cell suppression
+- **Configurable data lifecycle**: scheduled aggregation of older events plus independently disabled-by-default raw and archive retention
 - **Deployment guidance** for consent, disclosure, retention, and data-subject workflows (see [docs/PRIVACY-COMPLIANCE.md](docs/PRIVACY-COMPLIANCE.md))
 - **Fast ingestion** via Symfony Messenger (`sync://` quick mode or async queue mode)
 - **Domain whitelisting** and per-IP rate limiting
@@ -189,7 +190,7 @@ crontab -e
 Configuration is split between four places:
 
 - **`.env` or `.env.local`** (server-level, never committed to git): Symfony infrastructure — database connection, message queue, app secret, and explicit proxy trust.
-- **`config/aggregate.yaml`** (app-level, example committed): Analytics-specific settings — application branding, privacy measurement controls, rate limit, JS namespace, dashboard toggle.
+- **`config/aggregate.yaml`** (app-level, example committed): Analytics-specific settings — application branding, privacy measurement controls, lifecycle policy, rate limit, JS namespace, dashboard toggle.
 - **`config/goals.yaml`** (app-level, committed): Stable conversion-goal codes and whether each is enabled for anonymous collection.
 - **`config/navigation.yaml`** (app-level, committed): Main navigation labels, icons, and link targets.
 
@@ -258,6 +259,13 @@ cp config/aggregate.yaml.example config/aggregate.yaml
 - `anonymous_geo_enabled`: Enable transient, local-IP-to-area lookup for accepted events (default: `false`)
 - `anonymous_geo_level`: Store `macro_region` (continent-level, recommended) or `country` (default: `macro_region`)
 - `anonymous_geo_database_path`: Local GeoLite2-Country-compatible `.mmdb` path (absolute recommended, or contained by the project root); URI/UNC/network-share/device paths are rejected and no database is downloaded automatically
+- `analytics_archiving_enabled`: Aggregate older raw rows into private event/pageview, goal, and geography cells (default: `false`)
+- `analytics_archive_after_days`: Age at which completed raw data becomes eligible for archiving (default: `90`, range: `1`–`36500`)
+- `analytics_retention_enabled`: Enable irreversible raw-row and archive-cell deletion (default: `false`)
+- `analytics_anonymous_retention_days`: Anonymous raw-event retention (default: `365`, range: `1`–`36500`)
+- `analytics_enhanced_retention_days`: Enhanced raw-event retention (default: `90`, range: `1`–`36500`)
+- `analytics_archive_retention_days`: Archived aggregate-cell retention (default: `730`, range: `1`–`36500`)
+- `analytics_maintenance_batch_size`: Raw rows processed per maintenance batch (default: `1000`, range: `100`–`10000`)
 - `DASHBOARD_ENABLED` (env var): Boot-time dashboard feature boundary for loading dashboard routes/services. Set `0` for API-only deploys.
 - After changing dashboard feature settings (`dashboard_enabled` or `DASHBOARD_ENABLED`) in production, run `php bin/console cache:clear`.
 - Malformed YAML or invalid collection-kill-switch/path settings fail closed: ingestion stops and `/api/health` reports a generic configuration error. Invalid optional GeoIP lookup settings instead produce no `geo_area`.
@@ -279,9 +287,24 @@ Dashboard changes take effect immediately because all three BI views read this r
 
 When upgrading from a version that mirrored these values, the existing database row keeps the last applied thresholds. Remove stale `anonymous_min_cell_count` and `anonymous_geo_min_cell_count` YAML/environment settings after every application instance is upgraded; the new code ignores them.
 
+### Archiving and retention
+
+Administrators can edit the seven `analytics_*` lifecycle settings at `/dashboard/data-lifecycle`; API-only deployments can manage the same keys in `config/aggregate.yaml`. Uppercase environment variables (for example, `ANALYTICS_RETENTION_ENABLED`) take precedence and lock the corresponding UI controls. Values are validated strictly. When archiving and retention are both enabled, each raw retention period must be at least `analytics_archive_after_days`. Whenever retention is enabled, archive retention must be at least the longer raw retention period so marked source rows cannot disappear from reporting early.
+
+Run maintenance outside the web process, normally once per day. Both features are disabled by default; inspect a dry run before enabling irreversible deletion:
+
+When retention is enabled without archiving, eligible raw rows are deleted without first preserving aggregate history.
+
+```bash
+php bin/console app:analytics:maintain --dry-run
+php bin/console app:analytics:maintain
+```
+
+Archiving creates private, unsuppressed aggregate cells and marks the source rows as archived; it does not itself delete raw rows. Retention deletes raw anonymous, raw enhanced, and archived aggregate data only after their configured periods. Backups, BI extracts, queues, failed messages, logs, and replicas need separate retention controls.
+
 ### Main Navigation (`config/navigation.yaml`)
 
-The `brand` entry controls where the branded identity links. Its `label` remains a backward-compatible name/wordmark fallback for existing deployments. Runtime identity, logo, theme-color, and font settings live in `config/aggregate.yaml` (or their environment overrides), so UI changes do not require rebuilding navigation configuration. Edit `items` and `account` to manage the remaining authenticated-navbar links. Each link defines exactly one Symfony `route` name (for example, `app_how_it_works`) or literal `url`; `label` is required for navigation links, while `icon` and `route_parameters` are optional. The `items` list may be empty. After changing navigation in production, clear the production cache so the container and Twig globals are rebuilt.
+The `brand` entry controls where the branded identity links. Its `label` remains a backward-compatible name/wordmark fallback for existing deployments. Runtime identity, logo, theme-color, and font settings live in `config/aggregate.yaml` (or their environment overrides), so UI changes do not require rebuilding navigation configuration. Edit `items` and `account` to manage the remaining authenticated-navbar links. Each link defines exactly one Symfony `route` name (for example, `app_how_it_works`) or literal `url`; `label` is required, while `icon`, `route_parameters`, and an optional security `role` are supported. The `items` list may be empty. After changing navigation in production, clear the production cache so the container and Twig globals are rebuilt.
 
 ### Conversion Goals (`config/goals.yaml`)
 
@@ -366,6 +389,13 @@ export BRAND_HEADING_FONT_FAMILY="system-ui, -apple-system, BlinkMacSystemFont, 
 export DASHBOARD_ENABLED="0"
 export ANONYMOUS_TRACKING_ENABLED="0"
 export ANONYMOUS_GEO_ENABLED="0"
+export ANALYTICS_ARCHIVING_ENABLED="1"
+export ANALYTICS_ARCHIVE_AFTER_DAYS="90"
+export ANALYTICS_RETENTION_ENABLED="0"
+export ANALYTICS_ANONYMOUS_RETENTION_DAYS="365"
+export ANALYTICS_ENHANCED_RETENTION_DAYS="90"
+export ANALYTICS_ARCHIVE_RETENTION_DAYS="730"
+export ANALYTICS_MAINTENANCE_BATCH_SIZE="1000"
 ```
 
 ## Architecture
@@ -824,6 +854,8 @@ These controls help reduce privacy risk but do not make a deployment automatical
 
 Do not grant routine BI users access to raw `events`. Hour bucketing and missing IDs reduce risk, but anonymous-mode rows can still be personal data in context.
 
+Older rows can be rolled into the private, unsuppressed `analytics_archive_events`, `analytics_archive_goals`, and `analytics_archive_geo_events` tables. The operational `analytics_archived_events_v1`, `analytics_archived_pageviews_v1`, and `analytics_archived_goals_v1` views are likewise private and unsuppressed; aggregation alone does not make their cells anonymous. The thresholded `bi_anonymous_*` views transparently combine eligible live and archived anonymous counts and remain the supported routine-BI surface.
+
 **`bi_anonymous_events_v1`** is the supported Tableau/Power BI contract for anonymous-mode measurement:
 
 - `website_token`, `event_hour`, `event_name`, `page_path`, `referrer_channel`, `device_class`, `viewport_bucket`, `event_count`
@@ -873,6 +905,7 @@ On PostgreSQL, MySQL, MariaDB, or SQL Server, use a SELECT-only BI database role
 - Replace the file-based rate limiter with Redis-backed solution for multi-server deployments
 - Use RabbitMQ or Redis instead of `doctrine://default` for high-volume message queues
 - Configure proper database backups
+- Schedule and monitor `php bin/console app:analytics:maintain` daily when archiving or retention is enabled
 - Set up monitoring and alerting
 - Use HTTPS in production (configured via Caddy/FrankenPHP)
 - Disable or redact IP addresses, User-Agent strings, request bodies, and referrers in proxy/CDN/application access logs for the collection endpoint
