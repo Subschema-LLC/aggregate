@@ -36,6 +36,7 @@ final class Version20260901000000 extends AbstractMigration
 
     public function up(Schema $schema): void
     {
+        $this->assertMySqlFamilyPlatformMatchesServer();
         $this->assertGeoViewPlatformSupport();
 
         // These changes are queued explicitly so the tables and marker column
@@ -64,6 +65,7 @@ SQL);
 
     public function down(Schema $schema): void
     {
+        $this->assertMySqlFamilyPlatformMatchesServer();
         $this->assertGeoViewPlatformSupport();
 
         foreach ($this->allViewNames() as $viewName) {
@@ -835,6 +837,46 @@ SQL, $this->eventDayExpression('events.created_at'), $this->completedDayPredicat
                 && !($platform instanceof MySQL80Platform)
                 && !($platform instanceof MariaDBPlatform),
             'The geographic BI view requires MySQL 8.0+ or MariaDB 10.6+. Configure the DATABASE_URL serverVersion so Doctrine can verify support.',
+        );
+    }
+
+    private function assertMySqlFamilyPlatformMatchesServer(): void
+    {
+        $platform = $this->connection->getDatabasePlatform();
+        if (!$platform instanceof AbstractMySQLPlatform) {
+            return;
+        }
+
+        $reportedVersion = $this->connection->fetchOne('SELECT VERSION()');
+        if (!is_string($reportedVersion) || $reportedVersion === '') {
+            // Keeps generated-SQL tests and other connections without a
+            // reported server version deterministic.
+            return;
+        }
+
+        $serverIsMariaDb = stripos($reportedVersion, 'mariadb') !== false;
+        $platformIsMariaDb = $platform instanceof MariaDBPlatform;
+        if ($serverIsMariaDb === $platformIsMariaDb) {
+            return;
+        }
+
+        $versionHint = $reportedVersion;
+        if ($serverIsMariaDb
+            && preg_match('/^(?:5\.5\.5-)?(\d+\.\d+\.\d+)-MariaDB/i', $reportedVersion, $matches) === 1
+        ) {
+            $versionHint = $matches[1].'-MariaDB';
+        } elseif (preg_match('/^(\d+\.\d+(?:\.\d+)?)/', $reportedVersion, $matches) === 1) {
+            $versionHint = $matches[1];
+        }
+
+        $this->abortIf(
+            true,
+            sprintf(
+                'Database server "%s" does not match Doctrine platform %s. Set DATABASE_URL serverVersion=%s, clear the application cache, and rerun this migration.',
+                $reportedVersion,
+                $platform::class,
+                $versionHint,
+            ),
         );
     }
 }
