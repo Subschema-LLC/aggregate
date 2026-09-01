@@ -29,7 +29,7 @@ DATABASE_URL="DATABASE_CONNECTION_STRING_HERE"
 |----------|------------------|
 | **PostgreSQL** | `postgresql://user:pass@host:5432/dbname?serverVersion=16` |
 | **MySQL** | `mysql://user:pass@host:3306/dbname?serverVersion=8.0` |
-| **MariaDB** | `mysql://user:pass@host:3306/dbname?serverVersion=mariadb-11.4` |
+| **MariaDB** | `mysql://user:pass@host:3306/dbname?serverVersion=11.4.0-MariaDB` |
 | **SQL Server** | `sqlsrv://user:pass@host:1433/dbname?serverVersion=2022` |
 | **SQLite** | `sqlite:///%kernel.project_dir%/var/data.db` |
 
@@ -222,10 +222,12 @@ FLUSH PRIVILEGES;
 
 **2. Configure connection in `.env`:**
 
-**Important:** Use `mariadb-` prefix in serverVersion!
+**Important:** The `serverVersion` must identify MariaDB rather than MySQL.
+Prefer the version format reported by `SELECT VERSION()`, retaining the
+`MariaDB` marker. Do not use a MySQL value such as `8.0` for a MariaDB server.
 
 ```dotenv
-DATABASE_URL="mysql://analytics_user:your_secure_password@localhost:3306/analytics?serverVersion=mariadb-11.4"
+DATABASE_URL="mysql://analytics_user:your_secure_password@localhost:3306/analytics?serverVersion=11.4.0-MariaDB"
 ```
 
 **3. Run migrations:**
@@ -237,10 +239,19 @@ php bin/console doctrine:migrations:migrate -n
 
 | MariaDB Version | serverVersion Parameter |
 |----------------|------------------------|
-| MariaDB 11.4 | `?serverVersion=mariadb-11.4` |
-| MariaDB 11.0 | `?serverVersion=mariadb-11.0` |
-| MariaDB 10.11 | `?serverVersion=mariadb-10.11` |
-| MariaDB 10.6 | `?serverVersion=mariadb-10.6` |
+| MariaDB 11.4 | `?serverVersion=11.4.0-MariaDB` |
+| MariaDB 11.0 | `?serverVersion=11.0.0-MariaDB` |
+| MariaDB 10.11 | `?serverVersion=10.11.0-MariaDB` |
+| MariaDB 10.6 | `?serverVersion=10.6.0-MariaDB` |
+
+Use the installed patch version when known. For example, a server reporting
+`10.11.14-MariaDB-0+deb12u2` should use
+`?serverVersion=10.11.14-MariaDB`.
+
+If a migration fails near `CHARACTER SET utf8mb4 DEFAULT 'NULL' COLLATE
+utf8mb4_bin`, Doctrine has usually selected its MySQL platform for a MariaDB
+server. Correct `DATABASE_URL`, clear the production cache, and rerun the
+migration. The failed migration is not recorded as complete.
 
 ### Differences from MySQL
 
