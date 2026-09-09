@@ -7,6 +7,15 @@ This module provides a vanilla JavaScript drop-in solution for cookie consent ma
 * gtm-consent-mode.js initializes Google Consent Mode v2 default states and listens for the custom privacy_update event
 * consent-ui.js injects the consent banner, settings modal, and Formspree submission logic into the DOM
 
+## Formspree Setup
+
+* Create an account at formspree.io and create a new form for your privacy requests
+* Locate your form endpoint URL or form ID in the Formspree integration settings
+* Open consent-ui.js and replace the YOUR_FORM_ID placeholder in the form action attribute with your specific ID
+* Submit a test request through the UI to trigger Formspree's initial activation email
+* Verify your email address through the Formspree notification to begin receiving user requests
+* Adjust the form settings in Formspree to disable form archive storage if you want to minimize third-party data retention for privacy requests
+
 ## Implementation
 
 The load order in your HTML document is critical. The consent defaults must fire before the Google Tag Manager container loads. The UI can load asynchronously or at the end of the document body.
