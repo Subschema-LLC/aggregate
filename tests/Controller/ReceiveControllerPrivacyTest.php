@@ -13,6 +13,7 @@ use App\Service\AnonymousEventRecorder;
 use App\Service\GeoIp\GeoArea;
 use App\Service\GeoIp\GeoIpResolverInterface;
 use App\Service\GoalEventRegistry;
+use App\Service\InternalTrafficSettings;
 use App\Service\PrivacyPolicy;
 use App\Service\PrivacySanitizer;
 use App\Service\WebsiteConfigManager;
@@ -27,6 +28,83 @@ use Symfony\Component\Messenger\MessageBusInterface;
 
 final class ReceiveControllerPrivacyTest extends TestCase
 {
+    #[DataProvider('internalTrafficInputs')]
+    public function testOnlyStrictTrueMarksTrafficAndCustomDataCannotOverrideIt(
+        string $consentState,
+        mixed $submitted,
+        bool $includeFlag,
+        bool $expected,
+        string $markerName = 'orgInternalTraffic',
+    ): void {
+        $persisted = null;
+        $queued = null;
+        $enhanced = $consentState === 'granted';
+        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager->expects($enhanced ? self::never() : self::once())
+            ->method('persist')
+            ->willReturnCallback(static function (object $event) use (&$persisted): void {
+                $persisted = $event;
+            });
+        $bus = $this->createMock(MessageBusInterface::class);
+        $bus->expects($enhanced ? self::once() : self::never())
+            ->method('dispatch')
+            ->willReturnCallback(static function (object $message) use (&$queued): Envelope {
+                $queued = $message;
+
+                return new Envelope($message);
+            });
+        $payload = [
+            'websiteToken' => 'public-site-token',
+            'pagePath' => '/pricing',
+            'eventName' => 'button_click',
+            'consentState' => $consentState,
+            'internalTrafficName' => 'raw-marker-name-must-not-be-retained',
+            'internalTrafficValue' => 'raw-marker-value-must-not-be-retained',
+            'visitorId' => 'enhanced-visitor',
+            'sessionId' => 'enhanced-session',
+            'eventData' => [$markerName => !$expected, 'plan' => 'pro'],
+        ];
+        if ($includeFlag) {
+            $payload['internalTraffic'] = $submitted;
+        }
+
+        $response = $this->invoke(
+            payload: $payload,
+            bus: $bus,
+            recorder: new AnonymousEventRecorder($entityManager),
+            config: $this->privacyConfig(internalTrafficName: $markerName),
+        );
+
+        self::assertSame(202, $response->getStatusCode());
+        if ($enhanced) {
+            self::assertInstanceOf(TrackEventMessage::class, $queued);
+            self::assertSame($expected, $queued->internalTraffic);
+            self::assertSame($markerName, $queued->internalTrafficName);
+            self::assertSame(['plan' => 'pro'], $queued->eventData);
+            self::assertStringNotContainsString('raw-marker-', serialize($queued));
+        } else {
+            self::assertInstanceOf(Event::class, $persisted);
+            self::assertSame($expected ? [$markerName => true] : null, $persisted->getCustomData());
+            self::assertNull($persisted->getVisitorId());
+            self::assertNull($persisted->getSessionId());
+            self::assertNull($persisted->getConsentState());
+            self::assertSame('00:00.000000', $persisted->getCreatedAt()->format('i:s.u'));
+            self::assertStringNotContainsString('raw-marker-', serialize($persisted));
+        }
+    }
+
+    public static function internalTrafficInputs(): iterable
+    {
+        foreach (['unknown', 'denied', 'granted'] as $consentState) {
+            yield $consentState.' configured organization marker' => [$consentState, true, true, true, 'companyStaff'];
+            yield $consentState.' unmarked configured organization marker' => [$consentState, false, true, false, 'companyStaff'];
+            yield $consentState.' missing' => [$consentState, null, false, false];
+            foreach ([true, false, 'true', 'false', 1, 0, null, ['name' => 'orgInternalTraffic', 'value' => 'true']] as $index => $value) {
+                yield $consentState.' value '.$index => [$consentState, $value, true, $value === true];
+            }
+        }
+    }
+
     public function testDeniedNamedClickIsRecordedAnonymouslyWithoutQueueingEnhancedFields(): void
     {
         $persisted = null;
@@ -453,15 +531,19 @@ final class ReceiveControllerPrivacyTest extends TestCase
             $geoResolver,
             $recorder,
             $logger,
+            new InternalTrafficSettings($config),
         );
     }
 
-    private function privacyConfig(bool $enabled = true, array $excludedPaths = []): AggregateConfigLoader
+    private function privacyConfig(bool $enabled = true, array $excludedPaths = [], string $internalTrafficName = 'orgInternalTraffic'): AggregateConfigLoader
     {
         $config = $this->createStub(AggregateConfigLoader::class);
         $config->method('getBoolWithEnvFallback')->willReturn($enabled);
         $config->method('getWithEnvFallback')
-            ->willReturnCallback(static function (string $key, mixed $default = null) use ($excludedPaths): mixed {
+            ->willReturnCallback(static function (string $key, mixed $default = null) use ($excludedPaths, $internalTrafficName): mixed {
+                if ($key === 'internal_traffic_name') {
+                    return $internalTrafficName;
+                }
                 return $key === 'anonymous_excluded_paths' ? $excludedPaths : $default;
             });
 

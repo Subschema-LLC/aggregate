@@ -1,6 +1,8 @@
 (function(){
   // Configurable namespace - defaults to 'Aggregate' but can be overridden via data-namespace attribute
   var namespace = 'Aggregate';
+  // ScriptController replaces these defaults with browser-safe YAML settings.
+  var internalTrafficDefaults = {storage: 'cookie', name: 'orgInternalTraffic', value: 'true', cookieDomain: ''};
   try {
     var s = document.currentScript || (function(){var ss=document.getElementsByTagName('script'); return ss[ss.length-1];})();
     if (s && s.dataset && s.dataset.namespace) {
@@ -11,10 +13,54 @@
   var Analytics = {
     config: {
       endpoint: (window[namespace] && window[namespace].endpoint) || '/api/receive',
-      websiteToken: (window[namespace] && window[namespace].websiteToken) || null
+      websiteToken: (window[namespace] && window[namespace].websiteToken) || null,
+      internalTraffic: internalTrafficDefaults
     },
     consent: false,
     consentKnown: false,
+
+    configureInternalTraffic: function(options){
+      if (!options || typeof options !== 'object') return;
+
+      var fields = ['storage', 'name', 'value', 'cookieDomain'];
+      for (var i = 0; i < fields.length; i++) {
+        var field = fields[i];
+        if (typeof options[field] !== 'undefined') {
+          this.config.internalTraffic[field] = options[field];
+        }
+      }
+    },
+
+    isInternalTraffic: function(){
+      // This shared marker classifies traffic without identifying a visitor.
+      // Read it independently of analytics consent, but never create it here.
+      try {
+        var marker = this.config.internalTraffic;
+        if (!marker || typeof marker.name !== 'string' || !marker.name || typeof marker.value !== 'string') return false;
+        if (['aggregate_session', 'aggregate_visitor_id', 'aggregate_session_id'].indexOf(marker.name) !== -1) return false;
+
+        if (marker.storage === 'local_storage') {
+          return localStorage.getItem(marker.name) === marker.value;
+        }
+        if (marker.storage !== 'cookie') return false;
+
+        var cookies = document.cookie.split(';');
+        var prefix = marker.name + '=';
+        for (var i = 0; i < cookies.length; i++) {
+          // Strip separator whitespace without normalizing the marker value.
+          var cookie = cookies[i].replace(/^[\t ]+/, '');
+          if (cookie.indexOf(prefix) === 0) {
+            // Host-only and parent-domain cookies can coexist after changing
+            // scope. Any exact marker match opts this browser into the flag.
+            try {
+              if (decodeURIComponent(cookie.substring(prefix.length)) === marker.value) return true;
+            } catch(e) {}
+          }
+        }
+      } catch(e) {}
+
+      return false;
+    },
 
     clearIdentifiers: function(){
       try {
@@ -236,6 +282,7 @@
       if (!this.config.websiteToken) return;
       payload.consentState = this.getConsentState();
       payload.websiteToken = this.config.websiteToken;
+      payload.internalTraffic = this.isInternalTraffic();
       var ids = this.ensureIds();
       if (ids.visitorId) payload.visitorId = ids.visitorId;
       if (ids.sessionId) payload.sessionId = ids.sessionId;
@@ -332,6 +379,7 @@
   window[namespace].configure = function(opts){
     Analytics.config.endpoint = opts && opts.endpoint || Analytics.config.endpoint;
     Analytics.config.websiteToken = opts && opts.websiteToken || Analytics.config.websiteToken;
+    Analytics.configureInternalTraffic(opts && opts.internalTraffic);
     if (opts && typeof opts.consent !== 'undefined') {
       Analytics.setConsent(opts.consent);
     }
@@ -344,6 +392,11 @@
       if (s.dataset) {
         if (s.dataset.endpoint) Analytics.config.endpoint = s.dataset.endpoint;
         if (s.dataset.websiteToken) Analytics.config.websiteToken = s.dataset.websiteToken;
+        Analytics.configureInternalTraffic({
+          storage: s.dataset.internalTrafficStorage,
+          name: s.dataset.internalTrafficName,
+          value: s.dataset.internalTrafficValue
+        });
         if (typeof s.dataset.consent !== 'undefined') {
           Analytics.setConsent(s.dataset.consent);
         }
@@ -367,6 +420,7 @@
   // if configured inline, copy values
   if (window[namespace].endpoint) Analytics.config.endpoint = window[namespace].endpoint;
   if (window[namespace].websiteToken) Analytics.config.websiteToken = window[namespace].websiteToken;
+  Analytics.configureInternalTraffic(window[namespace].internalTraffic);
   if (typeof window[namespace].consent !== 'undefined') {
     Analytics.setConsent(window[namespace].consent);
   }

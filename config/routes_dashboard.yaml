@@ -6,6 +6,10 @@ data_lifecycle_controller:
     resource: ../src/Controller/DataLifecycleController.php
     type: attribute
 
+internal_traffic_controller:
+    resource: ../src/Controller/InternalTrafficController.php
+    type: attribute
+
 install_controller:
     resource: ../src/Controller/InstallController.php
     type: attribute
