@@ -26,6 +26,11 @@ security:
             pattern: ^/health
             security: false
 
+        internal_traffic:
+            pattern: ^/internal-traffic(?:/|$)
+            stateless: true
+            security: false
+
         main:
             lazy: true
             provider: app_user_provider
@@ -43,6 +48,7 @@ security:
         - { path: ^/login, roles: PUBLIC_ACCESS }
         - { path: ^/install, roles: PUBLIC_ACCESS }
         - { path: ^/branding/logo$, roles: PUBLIC_ACCESS }
+        - { path: ^/internal-traffic(?:/|$), roles: PUBLIC_ACCESS }
         - { path: ^/dashboard, roles: ROLE_USER }
 
 when@test:

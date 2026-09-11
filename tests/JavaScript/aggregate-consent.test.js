@@ -11,14 +11,20 @@ const sdkSource = fs.readFileSync(
   'utf8'
 );
 
-function createStorage(initialValues) {
+function createStorage(initialValues, unavailable) {
   const values = new Map(Object.entries(initialValues || {}));
+  const reads = [];
 
   return {
-    getItem: (key) => values.has(key) ? values.get(key) : null,
+    getItem: (key) => {
+      reads.push(key);
+      if (unavailable) throw new Error('Storage access blocked');
+      return values.has(key) ? values.get(key) : null;
+    },
     setItem: (key, value) => values.set(key, String(value)),
     removeItem: (key) => values.delete(key),
-    has: (key) => values.has(key)
+    has: (key) => values.has(key),
+    reads
   };
 }
 
@@ -26,25 +32,43 @@ function loadSdk(options) {
   const requests = [];
   const cookieWrites = [];
   const consoleWarnings = [];
-  const localStorage = createStorage({aggregate_visitor_id: 'legacy-visitor'});
+  const localStorage = createStorage(
+    Object.assign({aggregate_visitor_id: 'legacy-visitor'}, options.localStorage || {}),
+    options.localStorageUnavailable
+  );
   const sessionStorage = createStorage({aggregate_session_id: 'legacy-session'});
   const script = {
     dataset: Object.assign({websiteToken: 'site-token'}, options.dataset || {}),
     src: options.src || ''
   };
+  const listeners = {};
   const document = {
     currentScript: script,
     readyState: 'loading',
     referrer: '',
-    addEventListener: () => {},
+    addEventListener: (name, listener) => { listeners[name] = listener; },
     getElementsByTagName: () => [script]
   };
-  let cookieValue = 'aggregate_session=legacy-cookie';
+  const cookies = new Map(Object.entries(Object.assign(
+    {aggregate_session: 'legacy-cookie'}, options.cookies || {}
+  )));
   Object.defineProperty(document, 'cookie', {
-    get: () => cookieValue,
+    get: () => {
+      if (options.cookieUnavailable) throw new Error('Cookie access blocked');
+      return Array.from(cookies, ([name, value]) => name + '=' + value).join('; ')
+        + (options.cookieSuffix ? '; ' + options.cookieSuffix : '');
+    },
     set: (value) => {
+      if (options.cookieUnavailable) throw new Error('Cookie access blocked');
       cookieWrites.push(value);
-      cookieValue = value;
+      const pair = value.split(';')[0];
+      const separator = pair.indexOf('=');
+      const name = pair.slice(0, separator);
+      if (/max-age=0(?:;|$)/i.test(value)) {
+        cookies.delete(name);
+      } else {
+        cookies.set(name, pair.slice(separator + 1));
+      }
     }
   });
 
@@ -82,7 +106,10 @@ function loadSdk(options) {
 
   vm.runInNewContext(sdkSource, context, {filename: 'aggregate.js'});
 
-  return {window, requests, cookieWrites, consoleWarnings, localStorage, sessionStorage};
+  return {
+    window, requests, cookieWrites, cookies, consoleWarnings, localStorage, sessionStorage,
+    triggerPageView: () => listeners.DOMContentLoaded()
+  };
 }
 
 function flushPromises() {
@@ -102,6 +129,198 @@ function assertLastRequestIsAnonymous(runtime) {
   assert.equal(runtime.localStorage.has('aggregate_visitor_id'), false);
   assert.equal(runtime.sessionStorage.has('aggregate_session_id'), false);
   assert.equal(runtime.cookieWrites.some((value) => /max-age=1800/i.test(value)), false);
+}
+
+test('unmarked anonymous traffic emits false and never creates the marker', () => {
+  const runtime = loadSdk({});
+
+  runtime.triggerPageView();
+
+  assert.equal(runtime.requests.at(-1).internalTraffic, false);
+  assert.equal(runtime.requests.at(-1).visitorId, undefined);
+  assert.equal(runtime.cookies.has('orgInternalTraffic'), false);
+  assert.equal(runtime.localStorage.has('orgInternalTraffic'), false);
+  assert.equal(runtime.cookieWrites.every((value) => value.startsWith('aggregate_session=')), true);
+});
+
+test('the default cookie marks page views and events without exposing its raw name or value', () => {
+  const runtime = loadSdk({cookies: {orgInternalTraffic: 'true'}});
+
+  runtime.triggerPageView();
+  runtime.window.Aggregate.emit('button_click', {private: 'ignored'});
+
+  for (const payload of runtime.requests) {
+    assert.equal(payload.internalTraffic, true);
+    assert.equal(payload.consentState, 'unknown');
+    assert.equal(payload.eventData, undefined);
+    assert.equal(payload.visitorId, undefined);
+    assert.equal(payload.sessionId, undefined);
+    assert.equal(JSON.stringify(payload).includes('orgInternalTraffic'), false);
+  }
+  assert.equal(runtime.cookies.get('orgInternalTraffic'), 'true');
+  assert.deepEqual(runtime.localStorage.reads, []);
+});
+
+for (const value of ['false', '1', 'TRUE', ' true', 'true ', 'true-other', '']) {
+  test(`cookie value ${JSON.stringify(value)} does not match the configured marker`, () => {
+    const runtime = loadSdk({cookies: {orgInternalTraffic: value}});
+
+    runtime.window.Aggregate.emit('button_click');
+
+    assert.equal(runtime.requests.at(-1).internalTraffic, false);
+  });
+}
+
+test('cookie names match exactly and configured values are decoded', () => {
+  const value = 'staff=yes & region=North';
+  const runtime = loadSdk({
+    inline: {internalTraffic: {name: 'companyStaff', value}},
+    cookies: {notcompanyStaff: encodeURIComponent(value), companyStaff: encodeURIComponent(value)}
+  });
+
+  runtime.window.Aggregate.emit('button_click');
+  assert.equal(runtime.requests.at(-1).internalTraffic, true);
+  runtime.cookies.delete('companyStaff');
+  runtime.window.Aggregate.emit('button_click');
+  assert.equal(runtime.requests.at(-1).internalTraffic, false);
+});
+
+test('a matching parent-domain cookie works alongside an older or malformed host-only cookie', () => {
+  for (const oldValue of ['old-staff-value', '%invalid']) {
+    const runtime = loadSdk({
+      cookies: {orgInternalTraffic: oldValue},
+      cookieSuffix: 'orgInternalTraffic=true'
+    });
+
+    runtime.window.Aggregate.emit('button_click');
+
+    assert.equal(runtime.requests.at(-1).internalTraffic, true);
+  }
+});
+
+test('the local storage marker survives consent changes and ignores a cookie with the same name', () => {
+  const runtime = loadSdk({
+    inline: {internalTraffic: {storage: 'local_storage', name: 'teamFlag', value: 'staff'}},
+    localStorage: {teamFlag: 'staff'},
+    cookies: {teamFlag: 'different'}
+  });
+
+  runtime.window.Aggregate.emit('button_click');
+  assert.equal(runtime.requests.at(-1).internalTraffic, true);
+  assert.equal(runtime.requests.at(-1).visitorId, undefined);
+  assert.deepEqual(runtime.localStorage.reads, ['teamFlag']);
+
+  runtime.window.Aggregate.setConsent(true);
+  runtime.window.Aggregate.emit('button_click', {plan: 'pro'});
+  assert.equal(runtime.requests.at(-1).internalTraffic, true);
+  assert.ok(runtime.requests.at(-1).visitorId);
+
+  runtime.window.Aggregate.setConsent(false);
+  runtime.window.Aggregate.emit('button_click');
+  assert.equal(runtime.requests.at(-1).internalTraffic, true);
+  assert.equal(runtime.requests.at(-1).visitorId, undefined);
+  assert.equal(runtime.localStorage.getItem('teamFlag'), 'staff');
+  assert.equal(runtime.localStorage.has('aggregate_visitor_id'), false);
+});
+
+test('a cookie marker survives enhanced identifier creation and withdrawal', () => {
+  const runtime = loadSdk({cookies: {orgInternalTraffic: 'true'}});
+
+  runtime.window.Aggregate.setConsent(true);
+  runtime.window.Aggregate.emit('button_click');
+  runtime.window.Aggregate.setConsent(false);
+  runtime.window.Aggregate.emit('button_click');
+
+  assert.equal(runtime.requests.every((payload) => payload.internalTraffic === true), true);
+  assert.equal(runtime.cookies.get('orgInternalTraffic'), 'true');
+  assert.equal(runtime.cookies.has('aggregate_session'), false);
+});
+
+test('only the selected storage is checked, including after configure changes', () => {
+  const runtime = loadSdk({
+    cookies: {orgInternalTraffic: 'true'},
+    localStorage: {orgInternalTraffic: 'false'}
+  });
+
+  runtime.window.Aggregate.emit('button_click');
+  assert.equal(runtime.requests.at(-1).internalTraffic, true);
+  assert.deepEqual(runtime.localStorage.reads, []);
+
+  runtime.window.Aggregate.configure({internalTraffic: {storage: 'local_storage'}});
+  runtime.window.Aggregate.emit('button_click');
+  assert.equal(runtime.requests.at(-1).internalTraffic, false);
+  runtime.localStorage.setItem('orgInternalTraffic', 'true');
+  runtime.window.Aggregate.emit('button_click');
+  assert.equal(runtime.requests.at(-1).internalTraffic, true);
+  runtime.localStorage.removeItem('orgInternalTraffic');
+  runtime.window.Aggregate.emit('button_click');
+  assert.equal(runtime.requests.at(-1).internalTraffic, false);
+});
+
+test('data attributes configure local storage markers under a custom namespace', () => {
+  const runtime = loadSdk({
+    dataset: {
+      namespace: 'CompanyAnalytics',
+      internalTrafficStorage: 'local_storage',
+      internalTrafficName: 'staffFlag',
+      internalTrafficValue: 'enabled'
+    },
+    localStorage: {staffFlag: 'enabled'}
+  });
+
+  runtime.window.CompanyAnalytics.emit('button_click');
+
+  assert.equal(runtime.requests.at(-1).internalTraffic, true);
+});
+
+test('inline marker settings take precedence over script data attributes', () => {
+  const runtime = loadSdk({
+    dataset: {internalTrafficValue: 'other'},
+    inline: {internalTraffic: {value: 'staff'}},
+    cookies: {orgInternalTraffic: 'staff'}
+  });
+
+  runtime.window.Aggregate.emit('button_click');
+
+  assert.equal(runtime.requests.at(-1).internalTraffic, true);
+});
+
+test('unavailable storage and malformed cookie encodings leave tracking unmarked', () => {
+  const runtimes = [
+    loadSdk({cookieUnavailable: true}),
+    loadSdk({cookies: {orgInternalTraffic: '%invalid'}}),
+    loadSdk({
+      localStorageUnavailable: true,
+      inline: {internalTraffic: {storage: 'local_storage'}},
+      cookies: {orgInternalTraffic: 'true'}
+    })
+  ];
+
+  for (const runtime of runtimes) {
+    assert.equal(runtime.window.Aggregate.emit('button_click'), true);
+    assert.equal(runtime.requests.at(-1).internalTraffic, false);
+    assert.equal(runtime.requests.at(-1).visitorId, undefined);
+  }
+});
+
+for (const config of [
+  {storage: 'unsupported'},
+  {value: true},
+  {name: ''},
+  {name: 'aggregate_session', value: 'legacy-cookie'},
+  {storage: 'local_storage', name: 'aggregate_visitor_id', value: 'legacy-visitor'},
+  {storage: 'local_storage', name: 'aggregate_session_id', value: 'legacy-session'}
+]) {
+  test(`invalid or reserved marker settings fail closed: ${JSON.stringify(config)}`, () => {
+    const runtime = loadSdk({
+      inline: {internalTraffic: config},
+      cookies: {orgInternalTraffic: 'true'}
+    });
+
+    runtime.window.Aggregate.emit('button_click');
+
+    assert.equal(runtime.requests.at(-1).internalTraffic, false);
+  });
 }
 
 test('anonymous events transmit goal candidates but omit enhanced fields', () => {

@@ -16,6 +16,10 @@
 
     # A route block is mandatory to order the request handlers.
     route {
+        # The tracking script includes runtime YAML settings from Symfony.
+        @tracker path /aggregate.js
+        rewrite @tracker /index.php
+
         # This single directive is the most robust way to handle
         # a front-controller pattern like Symfony's. It will:
         # 1. Look for a static file matching the path (e.g., /style.css).

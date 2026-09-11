@@ -52,6 +52,37 @@ final class AnonymousEventRecorderTest extends TestCase
         self::assertNull($persisted->getConsentState());
         self::assertSame('purchase', $persisted->getGoalEvent());
         self::assertNull($persisted->getCustomData());
+        self::assertFalse($persisted->isInternalTraffic());
+    }
+
+    public function testRecorderPersistsInternalTrafficAsReservedJsonMetadata(): void
+    {
+        $persisted = null;
+        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager->expects(self::once())
+            ->method('persist')
+            ->willReturnCallback(static function (object $event) use (&$persisted): void {
+                $persisted = $event;
+            });
+        $entityManager->expects(self::once())->method('flush');
+
+        (new AnonymousEventRecorder($entityManager))->record(
+            websiteToken: 'site-token',
+            eventName: 'view',
+            pagePath: '/pricing',
+            referrerChannel: 'direct',
+            deviceClass: 'desktop',
+            viewportBucket: 'large',
+            internalTraffic: true,
+            internalTrafficName: 'companyStaff',
+        );
+
+        self::assertInstanceOf(Event::class, $persisted);
+        $persisted->enforcePrivacyInvariants();
+        self::assertTrue($persisted->isInternalTraffic());
+        self::assertSame(['companyStaff' => true], $persisted->getCustomData());
+        self::assertNull($persisted->getVisitorId());
+        self::assertNull($persisted->getSessionId());
     }
 
     public function testRecorderPersistsEveryAnonymousEventAsItsOwnRowEvenWithinOneHour(): void

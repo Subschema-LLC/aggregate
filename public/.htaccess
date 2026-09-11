@@ -48,6 +48,9 @@ DirectoryIndex index.php
     RewriteCond %{ENV:REDIRECT_STATUS} =""
     RewriteRule ^index\.php(?:/(.*)|$) %{ENV:BASE}/$1 [R=301,L]
 
+    # The tracker includes runtime YAML settings even though its source is a file.
+    RewriteRule ^aggregate\.js$ %{ENV:BASE}/index.php [L]
+
     # If the requested filename exists, simply serve it.
     # We only want to let Apache serve files and not directories.
     # Rewrite all other queries to the front controller.

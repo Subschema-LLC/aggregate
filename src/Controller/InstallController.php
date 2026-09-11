@@ -5,6 +5,7 @@ namespace App\Controller;
 use App\Entity\User;
 use App\Service\AggregateConfigLoader;
 use App\Service\InstallationChecker;
+use App\Service\InternalTrafficSettings;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -24,6 +25,7 @@ class InstallController extends AbstractController
         private readonly EntityManagerInterface $em,
         private readonly UserPasswordHasherInterface $passwordHasher,
         private readonly KernelInterface $kernel,
+        private readonly InternalTrafficSettings $internalTrafficSettings,
     ) {}
 
     #[Route('/install', name: 'app_install')]
@@ -94,6 +96,8 @@ class InstallController extends AbstractController
                 $this->addFlash('error', 'Migration failed: ' . $output->fetch());
                 return $this->redirectToRoute('app_install');
             }
+
+            $this->internalTrafficSettings->ensureShareToken();
 
             // Create admin user
             $user = new User();

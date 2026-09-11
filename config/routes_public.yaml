@@ -17,3 +17,7 @@ health_controller:
 branding_logo_controller:
     resource: ../src/Controller/BrandingLogoController.php
     type: attribute
+
+internal_traffic_public_controller:
+    resource: ../src/Controller/InternalTrafficPublicController.php
+    type: attribute

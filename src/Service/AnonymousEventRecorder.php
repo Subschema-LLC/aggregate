@@ -24,6 +24,8 @@ final class AnonymousEventRecorder
         ?\DateTimeImmutable $occurredAt = null,
         ?string $geoArea = null,
         ?string $goalEvent = null,
+        bool $internalTraffic = false,
+        string $internalTrafficName = 'orgInternalTraffic',
     ): void {
         $occurredAt = ($occurredAt ?? new \DateTimeImmutable('now', new \DateTimeZone('UTC')))
             ->setTimezone(new \DateTimeZone('UTC'));
@@ -45,6 +47,7 @@ final class AnonymousEventRecorder
             ->setConsentState(null)
             ->setGoalEvent($goalEvent)
             ->setCustomData(null)
+            ->setInternalTraffic($internalTraffic, $internalTrafficName)
             ->setCreatedAt($hourBucket);
 
         $this->entityManager->persist($event);

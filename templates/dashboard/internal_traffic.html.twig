@@ -1,0 +1,99 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Organization traffic - {{ app_branding.name }}{% endblock %}
+
+{% block body %}
+    <h1 class="title">Organization traffic</h1>
+    <p class="subtitle">Give team members a shared browser marker so their visits can be filtered in Power BI or Tableau.</p>
+
+    {% if configuration_error %}<div class="notification is-danger" role="alert">{{ configuration_error }}</div>{% endif %}
+
+    <form action="{{ path('app_internal_traffic_save') }}" method="post" class="box">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token('internal_traffic_settings') }}">
+        <input type="hidden" name="action" value="save">
+        <h2 class="title is-4">Marker settings</h2>
+        <div class="field">
+            <label class="label" for="internal-traffic-storage">Storage</label>
+            <div class="control select">
+                <select id="internal-traffic-storage" name="internal_traffic_storage"{% if overrides.internal_traffic_storage %} disabled{% endif %}>
+                    <option value="cookie"{% if settings.internal_traffic_storage == 'cookie' %} selected{% endif %}>Cookie</option>
+                    <option value="local_storage"{% if settings.internal_traffic_storage == 'local_storage' %} selected{% endif %}>Local storage</option>
+                </select>
+            </div>
+            {% if overrides.internal_traffic_storage %}<p class="help">Controlled by <code>INTERNAL_TRAFFIC_STORAGE</code>.</p>{% endif %}
+        </div>
+        {% for field in [
+            { key: 'internal_traffic_name', label: 'Cookie or local storage name', maximum: 128, help: 'Default: orgInternalTraffic. Use letters, digits, underscores or hyphens.' },
+            { key: 'internal_traffic_value', label: 'Marker value', maximum: 256, help: 'Default: true. This value is shared by team members; it is not a personal identifier.' },
+            { key: 'internal_traffic_cookie_domain', label: 'Cookie domain (optional)', maximum: 253, help: 'Leave empty for this hostname, or use example.com to include its subdomains. Ignored for local storage.' }
+        ] %}
+            <div class="field">
+                <label class="label" for="{{ field.key }}">{{ field.label }}</label>
+                <div class="control"><input class="input" id="{{ field.key }}" name="{{ field.key }}" type="text" maxlength="{{ field.maximum }}" value="{{ attribute(settings, field.key) }}"{% if field.key != 'internal_traffic_cookie_domain' %} required{% endif %}{% if attribute(overrides, field.key) %} disabled{% endif %}></div>
+                <p class="help">{% if attribute(overrides, field.key) %}Controlled by <code>{{ field.key|upper }}</code>.{% else %}{{ field.help }}{% endif %}</p>
+            </div>
+        {% endfor %}
+        <button class="button is-primary" type="submit"{% if configuration_error %} disabled{% endif %}>Save marker settings</button>
+        <p class="help mt-3">Saves to the active environment in <code>config/aggregate.yaml</code> or its environment-specific file. Uppercase environment variables take precedence. After changing the name, value or storage, team members must apply the new marker; old markers are not automatically removed.</p>
+    </form>
+
+    {% if browser_config %}
+        <section class="box">
+            <h2 class="title is-4">This browser</h2>
+            {% include 'internal_traffic/marker.html.twig' %}
+            <p>These buttons use the saved settings. Cookies last up to one year and use <code>Path=/</code>, <code>SameSite=Lax</code> and <code>Secure</code> on HTTPS. Local storage lasts until removed or cleared.</p>
+            <p class="mt-3">An analytics host cannot mark unrelated domains. For sibling subdomains, set their shared parent cookie domain. Local storage requires the exact origin (scheme, hostname and port). For other tracked sites, <a href="{{ path('app_internal_traffic_download') }}" download="internal-traffic.html">download the HTML marker page</a>, host it on each site, and open its URL there. Opening the downloaded file directly cannot mark those sites.</p>
+        </section>
+    {% endif %}
+
+    <section class="box">
+        <h2 class="title is-4">Share with team members</h2>
+        <p>The public page requires this link’s token and does not require a dashboard account. It asks each visitor to click before saving the marker, and sends noindex, nofollow and no-store instructions.</p>
+        {% if share_url %}
+            <div class="field mt-4">
+                <label class="label" for="internal-traffic-share-url">Share link</label>
+                <input class="input" type="url" id="internal-traffic-share-url" value="{{ share_url }}" readonly>
+            </div>
+            <div class="buttons"><button type="button" class="button" id="copy-internal-traffic-link">Copy link</button><a class="button" href="{{ share_url }}" rel="nofollow noreferrer">Open public page</a></div>
+            <p id="share-copy-status" role="status" aria-live="polite"></p>
+        {% else %}
+            <p class="mt-3">No share link is active.</p>
+        {% endif %}
+        {% if overrides.internal_traffic_share_token %}
+            <p class="help">The link is controlled by <code>INTERNAL_TRAFFIC_SHARE_TOKEN</code>. Rotate or revoke it in the environment.</p>
+        {% else %}
+            <form action="{{ path('app_internal_traffic_save') }}" method="post" class="buttons mt-4">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token('internal_traffic_settings') }}">
+                <button type="submit" class="button is-primary" name="action" value="rotate">{{ share_url ? 'Rotate share link' : 'Create share link' }}</button>
+                {% if share_url %}<button type="submit" class="button is-danger is-light" name="action" value="revoke">Revoke share link</button>{% endif %}
+            </form>
+        {% endif %}
+        <p class="help">The token is stored in YAML as <code>internal_traffic_share_token</code>. Rotation or revocation stops old links; it does not remove existing markers or downloaded pages. A downloaded page contains no token and must be protected separately wherever it is hosted.</p>
+    </section>
+    <div class="content">
+        <p>Matching markers set <code>{{ { (settings.internal_traffic_name): true }|json_encode }}</code> in each event’s existing <code>custom_data</code> JSON. The JSON property name matches the saved cookie or local storage name. In raw-event BI reports, filter out rows where <code>custom_data[{{ settings.internal_traffic_name|json_encode }}] = true</code>. A missing key means unmarked traffic. Existing grouped BI views and archives do not retain this JSON field.</p>
+        <p>This flag identifies your organization’s traffic. The <code>internal</code> referrer category describes navigation within the website and is independent of this marker. If you rename the marker, historical events keep their original JSON key; update report filters for both names.</p>
+        <p>Use a shared team value, such as <code>orgInternalTraffic=true</code>, on every browser and device you want to mark. The marker is a reporting hint and does not change tracking consent or grant account access.</p>
+    </div>
+{% endblock %}
+
+{% block javascripts %}
+    {{ parent() }}
+    <script>
+        (function () {
+            var button = document.getElementById('copy-internal-traffic-link');
+            if (!button) return;
+            button.addEventListener('click', async function () {
+                var field = document.getElementById('internal-traffic-share-url');
+                var status = document.getElementById('share-copy-status');
+                try {
+                    await navigator.clipboard.writeText(field.value);
+                    status.textContent = 'Share link copied.';
+                } catch (error) {
+                    field.select();
+                    status.textContent = 'Copy the selected link using your browser’s copy command.';
+                }
+            });
+        }());
+    </script>
+{% endblock %}

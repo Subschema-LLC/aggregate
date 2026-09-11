@@ -1,0 +1,92 @@
+(function () {
+    'use strict';
+    var root = document.querySelector('[data-internal-traffic-marker]');
+    var config = JSON.parse(document.getElementById('internal-traffic-config').textContent);
+    var status = root.querySelector('[data-marker-status]');
+
+    function canWrite() {
+        if (location.protocol !== 'https:' && location.protocol !== 'http:') {
+            throw new Error('Host this HTML page on the tracked website and open its HTTP or HTTPS URL. Opening a downloaded file cannot mark that website.');
+        }
+        if (config.storage === 'cookie') {
+            var domain = config.cookieDomain.replace(/^\./, '').toLowerCase();
+            var host = location.hostname.toLowerCase();
+            if (domain && host !== domain && !host.endsWith('.' + domain)) {
+                throw new Error('This page is outside the configured cookie domain. Host it on that domain or one of its subdomains.');
+            }
+            if (/^__(?:Host|Secure)-/.test(config.name) && location.protocol !== 'https:') {
+                throw new Error('This cookie name requires HTTPS.');
+            }
+        }
+    }
+
+    function marked() {
+        if (config.storage === 'local_storage') {
+            return localStorage.getItem(config.name) === config.value;
+        }
+        return document.cookie.split(';').some(function (entry) {
+            var part = entry.replace(/^[\t ]+/, '');
+            var separator = part.indexOf('=');
+            if (separator === -1 || part.slice(0, separator) !== config.name) return false;
+            try {
+                return decodeURIComponent(part.slice(separator + 1)) === config.value;
+            } catch (error) {
+                return false;
+            }
+        });
+    }
+
+    function refresh(message) {
+        var isMarked = marked();
+        status.textContent = (message ? message + ' ' : '') + (isMarked
+            ? 'This browser is marked as organization traffic for the configured scope.'
+            : 'This browser is not marked as organization traffic for the configured scope.');
+        return isMarked;
+    }
+
+    function cookie(value, lifetime) {
+        return config.name + '=' + encodeURIComponent(value)
+            + '; Path=/; Max-Age=' + lifetime
+            + '; Expires=' + new Date(Date.now() + lifetime * 1000).toUTCString()
+            + '; SameSite=Lax'
+            + (config.cookieDomain ? '; Domain=' + config.cookieDomain : '')
+            + (location.protocol === 'https:' ? '; Secure' : '');
+    }
+
+    root.querySelector('[data-marker-set]').addEventListener('click', function () {
+        try {
+            canWrite();
+            if (config.storage === 'local_storage') {
+                localStorage.setItem(config.name, config.value);
+            } else {
+                document.cookie = cookie(config.value, 31536000);
+            }
+            if (!marked()) throw new Error('The browser did not retain the marker. Check its storage settings and the configured cookie domain.');
+            refresh('Marker saved. Reload any tracked pages already open.');
+        } catch (error) {
+            status.textContent = 'Could not mark this browser. ' + error.message;
+        }
+    });
+
+    root.querySelector('[data-marker-remove]').addEventListener('click', function () {
+        try {
+            canWrite();
+            if (config.storage === 'local_storage') {
+                localStorage.removeItem(config.name);
+            } else {
+                document.cookie = cookie('', -1);
+            }
+            if (marked()) throw new Error('A matching marker still exists. Remove it on the origin and cookie domain where it was created.');
+            refresh('Marker removed. Reload any tracked pages already open.');
+        } catch (error) {
+            status.textContent = 'Could not remove this browser’s marker. ' + error.message;
+        }
+    });
+
+    try {
+        canWrite();
+        refresh();
+    } catch (error) {
+        status.textContent = 'This page cannot access the marker. ' + error.message;
+    }
+}());

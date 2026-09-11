@@ -8,6 +8,7 @@ An open-source, self-hosted analytics system with privacy-minimized, hour-bucket
 - **YAML-managed conversion goals**: fixed, allowlisted goal codes can be retained in anonymous mode without accepting arbitrary values
 - **Consent-based enhanced analytics**: visitor/session IDs, custom properties, and exact dimensions only after consent is granted
 - **Short-lived session cookies**: Only set with enhanced consent, 30-minute expiry, SameSite=Lax, Secure on HTTPS
+- **Internal traffic markers**: Optional team cookie or local storage flag, configurable in YAML or the admin UI and saved in existing event JSON
 - **Privacy controls**: administrative kill switch, sensitive-path exclusions, and low-volume BI cell suppression
 - **Configurable data lifecycle**: scheduled aggregation of older events plus independently disabled-by-default raw and archive retention
 - **Deployment guidance** for consent, disclosure, retention, and data-subject workflows (see [docs/PRIVACY-COMPLIANCE.md](docs/PRIVACY-COMPLIANCE.md))
@@ -190,7 +191,7 @@ crontab -e
 Configuration is split between four places:
 
 - **`.env` or `.env.local`** (server-level, never committed to git): Symfony infrastructure — database connection, message queue, app secret, and explicit proxy trust.
-- **`config/aggregate.yaml`** (app-level, example committed): Analytics-specific settings — application branding, privacy measurement controls, lifecycle policy, rate limit, JS namespace, dashboard toggle.
+- **`config/aggregate.yaml`** (app-level, example committed): Analytics-specific settings — application branding, privacy measurement controls, internal traffic markers and sharing token, lifecycle policy, rate limit, JS namespace, dashboard toggle.
 - **`config/goals.yaml`** (app-level, committed): Stable conversion-goal codes and whether each is enabled for anonymous collection.
 - **`config/navigation.yaml`** (app-level, committed): Main navigation labels, icons, and link targets.
 
@@ -253,6 +254,7 @@ cp config/aggregate.yaml.example config/aggregate.yaml
 - `brand_font_family`: Safe comma-separated local/system font stack for application text (default: `system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif`)
 - `brand_heading_font_family`: Safe comma-separated local/system font stack for headings (default: `system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif`)
 - `js_namespace`: JavaScript global variable name (default: `Aggregate`)
+- `internal_traffic_storage`, `internal_traffic_name`, `internal_traffic_value`, `internal_traffic_cookie_domain`, `internal_traffic_share_token`: Browser marker and team sharing settings; see [Internal traffic](#internal-traffic)
 - `dashboard_enabled`: Enable/disable dashboard/login/install behavior (default: `true`)
 - `anonymous_tracking_enabled`: Administrative collection kill switch; `false` rejects anonymous and enhanced events (default: `true`)
 - `anonymous_excluded_paths`: Paths/globs excluded from anonymous and enhanced collection (default: `[]`)
@@ -286,6 +288,65 @@ The two BI disclosure thresholds are configured separately in the admin dashboar
 Dashboard changes take effect immediately because all three BI views read this row directly. The migrations create it with safe defaults; there is no YAML copy or synchronization command. For an API-only deployment, update the singleton row through controlled database administration and keep routine BI roles read-only.
 
 When upgrading from a version that mirrored these values, the existing database row keeps the last applied thresholds. Remove stale `anonymous_min_cell_count` and `anonymous_geo_min_cell_count` YAML/environment settings after every application instance is upgraded; the new code ignores them.
+
+### Internal traffic (Similar to Traffic Exclusions in Google Analytics)
+
+Instead of suppressing or removing traffic originating from the organization, you can mark your browser with a cookie or local storage entry that denotes your traffic as organization/internal traffic so filters can be added in your BI tool to exclude or treat this as you see fit for your analysis.
+
+The default browser marker is **`orgInternalTraffic=true`**. Administrators can open **Organization traffic** at `/dashboard/internal-traffic` to configure its name and value, choose a cookie or local storage, and click a button to mark or unmark their own browser. The tracker reads an existing marker; it never creates one automatically. A match adds `{"orgInternalTraffic": true}` to the existing `events.custom_data` JSON in both anonymous and enhanced modes. The JSON property name always follows the configured marker name: `internal_traffic_name: companyStaff` produces `{"companyStaff": true}`. Unmarked events omit that key. No database migration is required.
+
+This flag denotes your organization's traffic. The separate `internal` referrer category means navigation within the website and is unaffected by the marker.
+
+Set these keys in the active environment in `config/aggregate.yaml` (or its environment-specific file):
+
+```yaml
+internal_traffic_storage: cookie       # cookie or local_storage
+internal_traffic_name: orgInternalTraffic
+internal_traffic_value: "true"          # Quote this string in YAML.
+internal_traffic_cookie_domain: ""      # Host-only; e.g. example.com for sibling subdomains.
+internal_traffic_share_token: ""        # Generated during installation; empty disables sharing.
+```
+
+The web installer and `php bin/console app:install` generate a random 64-character sharing token and save it in YAML, preserving any existing token. `install.sh` generates separate random tokens for each environment when creating initial YAML, including headless installs. Existing installations can generate one from the Organization traffic page. Copy the resulting `/internal-traffic/<token>` link to teammates; they can open it without signing in and click **Mark this browser**. The admin UI can rotate or revoke the link. Revocation disables the link; it does not remove markers already installed. Uppercase environment variables override these YAML settings and lock the corresponding UI controls, including an explicit empty sharing token.
+
+Sharing pages and downloads carry `noindex, nofollow`, `no-store`, and a no-referrer policy; the page loads no third-party assets. The token is never included in the tracking script or event JSON. Keep the link within your team; anyone holding it can open the page. Cookies last one year, use `Path=/` and `SameSite=Lax`, and set `Secure` on HTTPS. Local storage lasts until removed or cleared. Changing the configured marker name/value requires teammates to mark their browsers again. Remove an old marker before changing its settings if you want to clear it too. Rejecting enhanced analytics clears visitor/session identifiers but preserves this independently chosen team marker.
+
+**Browser scope:** a page on `analytics.example.com` can set a cookie for `example.com`, which the tracker on `www.example.com` can read. With an empty cookie domain, the cookie only applies to `analytics.example.com`. Local storage only applies to the exact origin, including scheme and port. An analytics page cannot set storage for an unrelated website. For those sites, use **Download marker page**, host the downloaded HTML on the tracked site's origin, and share that site's page with teammates. Opening the downloaded file locally does not mark a website. The download contains marker settings but no sharing token; restrict its hosted URL separately if needed.
+
+The supplied Apache, nginx, and FrankenPHP configurations route `/aggregate.js` through Symfony so YAML/UI changes are included. Apply the updated server configuration when upgrading, clear the production Symfony cache for the new routes/services, and refresh any older cached tracker. If you serve `public/aggregate.js` directly from a static host/CDN, configure matching values in the site's snippet:
+
+```html
+<script>
+  window.Aggregate = {
+    endpoint: 'https://analytics.example.com/api/receive',
+    websiteToken: 'your-website-token',
+    internalTraffic: { storage: 'cookie', name: 'orgInternalTraffic', value: 'true' }
+  };
+</script>
+<script src="https://analytics.example.com/aggregate.js" async referrerpolicy="no-referrer"></script>
+```
+
+Use the same name and value across your team's browser setup and tracker snippets. Per-script `data-internal-traffic-storage`, `data-internal-traffic-name`, and `data-internal-traffic-value` attributes also override the defaults.
+
+**Power BI / Tableau:** extract the `custom_data.orgInternalTraffic` boolean as a calculated column and filter out `true`; a missing key or null JSON means unmarked traffic. Replace `orgInternalTraffic` in your report with the configured cookie/local storage name. The server uses the YAML/UI name for the JSON key, so static tracker overrides must use that same name. Changing the marker name changes the key on future events; historical and queued events keep their original key. Include both keys when reporting across a rename. Changing only the browser value leaves the JSON key unchanged. For the default name, these SQL expressions identify organization traffic:
+
+| Database | Internal-traffic expression |
+| --- | --- |
+| PostgreSQL | `COALESCE(custom_data::jsonb ->> 'orgInternalTraffic', 'false') = 'true'` |
+| MySQL / MariaDB | `COALESCE(JSON_UNQUOTE(JSON_EXTRACT(custom_data, '$.orgInternalTraffic')), 'false') = 'true'` |
+| SQL Server | `COALESCE(JSON_VALUE(custom_data, '$.orgInternalTraffic'), 'false') = 'true'` |
+| SQLite | `COALESCE(json_extract(custom_data, '$.orgInternalTraffic'), 0) = 1` |
+
+For example, an approved PostgreSQL extract can derive a field for the report filter:
+
+```sql
+SELECT website_token, created_at, event_name,
+       COALESCE(custom_data::jsonb ->> 'orgInternalTraffic', 'false') = 'true'
+           AS is_internal_traffic
+FROM events;
+```
+
+Keep raw-event access within your existing reporting policy. For anonymous reporting, apply the internal-traffic filter before aggregation and disclosure thresholds in a controlled export. Existing `bi_anonymous_*` views and archive tables do not expose `custom_data` and cannot distinguish internal traffic. Archives continue to combine both traffic types; once raw rows are deleted, this flag cannot be recovered from archives. Prepare filtered reporting datasets while the raw JSON is retained. This browser-supplied label is for reporting, not authorization.
 
 ### Archiving and retention
 
@@ -829,6 +890,7 @@ Simple per-IP rate limiting (default: 100 requests/minute) prevents abuse. It st
 - Obvious email addresses, UUIDs, numeric route IDs, and opaque tokens are redacted from path segments.
 - Referrers become a coarse channel such as `direct`, `internal`, `search`, `social`, `email`, or `referral`; the raw referrer is not sent.
 - Device and viewport values are coarse buckets. No visitor ID, session ID, cookie, custom properties, exact screen width, raw IP, or full User-Agent is retained in an anonymous-mode row. An enabled goal code is retained only when its definition permits anonymous use.
+- An explicitly installed team marker may be read before enhanced consent. Only the boolean `orgInternalTraffic: true` is retained in `custom_data`; the cookie/local storage name, value, and sharing token are never sent as event properties.
 - Optional local geolocation retains only a continent-level or country code in `geo_area`; the request IP and detailed lookup result are not put in analytics storage or the queue.
 - Each event is stored as an individual row using a server-generated UTC hour bucket rather than an exact timestamp. The BI view groups these rows and suppresses cells below `anonymous_min_cell_count`.
 - Hour bucketing and removal of identifiers reduce risk but do not guarantee that a row is legally anonymous; paths, event names, small populations, and outside information can still make data personal in context.
@@ -849,7 +911,7 @@ These controls help reduce privacy risk but do not make a deployment automatical
 **`events`** is the unified private storage table. `privacy_mode` separates `anonymous` and `enhanced` rows; page views use `event_name = 'view'`.
 
 - Shared dimensions include `website_token`, `event_name`, sanitized path in `url`, coarse channel in `referrer`, `device_class`, `viewport_bucket`, optional `geo_area`, optional allowlisted `goal_event`, `privacy_mode`, and `created_at`.
-- Anonymous-mode rows are individual events whose server-generated `created_at` is truncated to a UTC hour. An enabled `goal_event` may be present only when its definition permits anonymous use; identifier, property, exact-dimension, and generalized User-Agent columns remain null.
+- Anonymous-mode rows are individual events whose server-generated `created_at` is truncated to a UTC hour. An enabled `goal_event` may be present only when its definition permits anonymous use; identifier, exact-dimension, and generalized User-Agent columns remain null. `custom_data` is null except for the reserved `{"orgInternalTraffic": true}` marker; arbitrary event properties are still omitted.
 - Enhanced rows may include `screen_width`, `visitor_id`, `session_id`, `consent_state`, `custom_data`, `goal_event`, `generalized_user_agent`, and an exact server timestamp.
 
 Do not grant routine BI users access to raw `events`. Hour bucketing and missing IDs reduce risk, but anonymous-mode rows can still be personal data in context.
