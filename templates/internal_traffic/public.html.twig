@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow,noarchive">
+    <meta name="referrer" content="no-referrer">
+    <title>Mark organization traffic</title>
+    <style>
+        body { font: 1rem/1.6 system-ui, sans-serif; color: #202b36; background: #f5f7fa; margin: 0; padding: 2rem 1rem; }
+        main { max-width: 46rem; margin: auto; padding: 2rem; background: white; border: 1px solid #d5dce4; border-radius: .75rem; }
+        h1 { line-height: 1.2; } code { overflow-wrap: anywhere; } .buttons { display: flex; flex-wrap: wrap; gap: .75rem; margin: 1rem 0; }
+        button, .download { font: inherit; cursor: pointer; border: 1px solid #38556f; border-radius: .35rem; padding: .65rem 1rem; background: white; color: #193b58; }
+        .is-primary { background: #193b58; color: white; } [data-marker-status] { padding: .75rem; background: #edf3f8; }
+        a { color: #193b58; } :focus-visible { outline: 3px solid #3d77ce; outline-offset: 3px; }
+    </style>
+</head>
+<body>
+<main>
+    <h1>Mark organization traffic</h1>
+    <p>Use this page to identify your browser as a team member’s browser in analytics reports. Nothing is written until you click the button.</p>
+    {% include 'internal_traffic/marker.html.twig' %}
+    <p>Reports store <code>{{ { (browser_config.name): true }|json_encode }}</code> for this marker. It identifies traffic from your organization, independently of navigation within a website.</p>
+    <p>{% if browser_config.storage == 'cookie' %}The cookie lasts up to one year and applies to {{ browser_config.cookieDomain ? 'the domain ' ~ browser_config.cookieDomain ~ ' and its subdomains' : 'this hostname' }}. Browsers may clear it earlier.{% else %}Local storage applies only to this page’s exact origin (scheme, hostname and port), until it is removed or cleared.{% endif %}</p>
+    <p>A page on the analytics host cannot mark an unrelated website. To mark another website, host this HTML page on that website and open it there. For sibling subdomains, a cookie with their shared parent domain can cover them together. Opening an HTML file directly from your downloads folder cannot mark a website.</p>
+    {% if download_url %}
+        <p><a class="download" href="{{ download_url }}" download="internal-traffic.html" rel="nofollow noreferrer">Download an HTML marker page</a></p>
+        <p>The download contains the marker settings and no share token. Host it on each tracked site’s origin before sharing that site’s URL.</p>
+    {% endif %}
+    <p>This marker affects reporting only. It does not grant access to any account. Use each browser and device you want to mark.</p>
+</main>
+</body>
+</html>

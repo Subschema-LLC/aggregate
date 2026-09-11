@@ -22,6 +22,11 @@ environments:
     brand_heading_font_family: "system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
     js_namespace: "Aggregate"
     dashboard_enabled: true
+    internal_traffic_storage: cookie
+    internal_traffic_name: orgInternalTraffic
+    internal_traffic_value: 'true'
+    internal_traffic_cookie_domain: ''
+    internal_traffic_share_token: ''
     anonymous_tracking_enabled: true
     anonymous_excluded_paths: []
     anonymous_geo_enabled: false
@@ -51,6 +56,11 @@ environments:
     brand_heading_font_family: "system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
     js_namespace: "Aggregate"
     dashboard_enabled: true
+    internal_traffic_storage: cookie
+    internal_traffic_name: orgInternalTraffic
+    internal_traffic_value: 'true'
+    internal_traffic_cookie_domain: ''
+    internal_traffic_share_token: ''
     anonymous_tracking_enabled: true
     anonymous_excluded_paths: []
     anonymous_geo_enabled: false
@@ -79,6 +89,11 @@ environments:
     brand_heading_font_family: "system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
     js_namespace: "Aggregate"
     dashboard_enabled: true
+    internal_traffic_storage: cookie
+    internal_traffic_name: orgInternalTraffic
+    internal_traffic_value: 'true'
+    internal_traffic_cookie_domain: ''
+    internal_traffic_share_token: ''
     anonymous_tracking_enabled: true
     anonymous_excluded_paths: []
     anonymous_geo_enabled: false
@@ -154,6 +169,33 @@ environments:
 # dashboard_enabled (optional, default: true)
 #   Enable dashboard/install/login UI routes.
 #   Set to false for API-only headless deployments managed via CLI/YAML.
+#
+# internal_traffic_storage (optional, default: cookie)
+#   cookie or local_storage. Matching markers add a boolean under the configured
+#   name to each raw event's custom_data JSON (default: orgInternalTraffic: true).
+#   Grouped BI/archive views omit this flag. No migration is needed.
+#
+# internal_traffic_name / internal_traffic_value (defaults: orgInternalTraffic / 'true')
+#   Shared marker name and value. The admin UI can save these settings and mark
+#   the current browser. Names use 1–128 letters, digits, underscores or hyphens;
+#   numeric keys and Aggregate identifier names are reserved. The JSON property
+#   name matches this browser marker name; historical rows keep their old key
+#   after a rename. Values are non-empty strings up to
+#   256 bytes; quote YAML values. Uppercase environment variables take precedence.
+#
+# internal_traffic_cookie_domain (optional, default: '')
+#   Empty means this hostname. example.com covers its subdomains; ignored for
+#   local storage, which applies only to its exact origin. Cookies last up to one
+#   year. Unrelated domains must host the downloaded HTML marker page themselves.
+#
+# internal_traffic_share_token (optional, default: '')
+#   Initial installation generates a random token and persists it to YAML.
+#   Empty disables /internal-traffic/{token}. The page also works in headless mode.
+#   Generate/rotate/revoke via the admin UI, or generate: openssl rand -hex 32
+#   Manual tokens must contain 32–128 URL-safe letters, digits, underscores or hyphens.
+#   The page has noindex/nofollow/no-store headers. Share tokens are never included
+#   in aggregate.js or downloaded HTML pages. Revocation does not remove markers
+#   already applied or downloaded pages hosted elsewhere.
 #
 # anonymous_tracking_enabled (optional, default: true)
 #   Administrative collection kill switch. Set to false to reject both anonymous

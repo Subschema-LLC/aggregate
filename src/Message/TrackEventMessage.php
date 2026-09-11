@@ -19,5 +19,7 @@ class TrackEventMessage
         public ?string $sessionId,
         public \DateTimeImmutable $occurredAt,
         public ?string $geoArea = null,
+        public bool $internalTraffic = false,
+        public string $internalTrafficName = 'orgInternalTraffic',
     ) {}
 }

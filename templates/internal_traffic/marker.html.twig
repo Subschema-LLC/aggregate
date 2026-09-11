@@ -1,0 +1,11 @@
+<div data-internal-traffic-marker>
+    <p>The saved marker is <code>{{ browser_config.name }}={{ browser_config.value }}</code>, using {{ browser_config.storage == 'cookie' ? 'a cookie' : 'local storage' }}.</p>
+    <p data-marker-status role="status" aria-live="polite">Checking this browser…</p>
+    <div class="buttons">
+        <button type="button" class="button is-primary" data-marker-set>Mark this browser as organization traffic</button>
+        <button type="button" class="button" data-marker-remove>Remove this browser’s marker</button>
+    </div>
+    <noscript>JavaScript is required to mark this browser.</noscript>
+</div>
+<script type="application/json" id="internal-traffic-config">{{ browser_config|json_encode(15)|raw }}</script>
+<script>{% include 'internal_traffic/marker.js.twig' %}</script>

@@ -65,6 +65,10 @@ class Event
     #[ORM\Column(type: 'json', nullable: true)]
     private ?array $customData = null;
 
+    // Captured at ingestion, not mapped to a new database column. Anonymous
+    // rows retain the name in their single reporting-property JSON object.
+    private string $internalTrafficName = 'orgInternalTraffic';
+
     #[ORM\Column(type: 'string', length: 191, nullable: true)]
     private ?string $goalEvent = null;
 
@@ -170,6 +174,50 @@ class Event
     public function getCustomData(): ?array { return $this->customData; }
     public function setCustomData(?array $data): self { $this->customData = $data; return $this; }
 
+    /** Supply the historical marker name when reading enhanced rows from storage. */
+    public function isInternalTraffic(?string $name = null): bool
+    {
+        return ($this->customData[$name ?? $this->internalTrafficName] ?? false) === true;
+    }
+
+    public function setInternalTraffic(bool $internalTraffic, string $name = 'orgInternalTraffic'): self
+    {
+        if (!self::isValidInternalTrafficName($name)) {
+            throw new \InvalidArgumentException('The organization traffic marker must have a valid nonnumeric JSON property name.');
+        }
+        $this->internalTrafficName = $name;
+        if ($internalTraffic) {
+            $this->customData[$name] = true;
+        } else {
+            unset($this->customData[$name]);
+            if ($this->customData === []) {
+                $this->customData = null;
+            }
+        }
+
+        return $this;
+    }
+
+    #[ORM\PostLoad]
+    public function restoreAnonymousTrafficMarkerName(): void
+    {
+        // Retain the original key on updates even after the deployment renames
+        // its marker. Only hydrate the already-persisted single-boolean shape;
+        // arbitrary properties supplied to a new anonymous event stay stripped.
+        if ($this->privacyMode === 'anonymous' && $this->customData !== null && count($this->customData) === 1) {
+            $name = array_key_first($this->customData);
+            if (is_string($name) && self::isValidInternalTrafficName($name) && $this->customData[$name] === true) {
+                $this->internalTrafficName = $name;
+            }
+        }
+    }
+
+    private static function isValidInternalTrafficName(string $name): bool
+    {
+        return preg_match('/^[A-Za-z0-9_-]{1,128}$/D', $name) === 1
+            && preg_match('/^-?[0-9]+$/D', $name) !== 1;
+    }
+
     public function getGoalEvent(): ?string { return $this->goalEvent; }
     public function setGoalEvent(?string $goalEvent): self { $this->goalEvent = $goalEvent; return $this; }
 
@@ -239,7 +287,8 @@ class Event
         $this->visitorId = null;
         $this->sessionId = null;
         $this->consentState = null;
-        $this->customData = null;
+        // Anonymous traffic retains only this shared, reserved reporting marker.
+        $this->customData = $this->isInternalTraffic() ? [$this->internalTrafficName => true] : null;
     }
 
     private static function isValidGeoArea(?string $geoArea): bool

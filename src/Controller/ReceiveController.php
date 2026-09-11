@@ -8,6 +8,7 @@ use App\Security\IpRateLimiter;
 use App\Service\AnonymousEventRecorder;
 use App\Service\GeoIp\GeoIpResolverInterface;
 use App\Service\GoalEventRegistry;
+use App\Service\InternalTrafficSettings;
 use App\Service\PrivacyPolicy;
 use App\Service\PrivacySanitizer;
 use Psr\Log\LoggerInterface;
@@ -31,6 +32,7 @@ class ReceiveController
         GeoIpResolverInterface $geoIpResolver,
         AnonymousEventRecorder $anonymousRecorder,
         LoggerInterface $logger,
+        InternalTrafficSettings $internalTrafficSettings,
     ): Response
     {
         try {
@@ -104,6 +106,12 @@ class ReceiveController
                 return $this->jsonWithCors($request, ['error' => 'eventName is invalid'], Response::HTTP_BAD_REQUEST);
             }
             $enhancedConsent = $privacyPolicy->hasEnhancedConsent($payload['consentState'] ?? null);
+            // Accept only the coarse boolean, never a client-supplied marker
+            // name/value or truthy strings that could misclassify traffic.
+            $internalTraffic = ($payload['internalTraffic'] ?? false) === true;
+            // The deployment chooses the JSON key, and queued events keep this
+            // name even if settings change before the worker handles them.
+            $internalTrafficName = $internalTrafficSettings->toBrowserConfig()['name'];
             $submittedGoal = $payload['goalEvent'] ?? null;
             $goalEvent = $goalEvents->resolve($submittedGoal, anonymousMode: !$enhancedConsent);
             $goalWasRejected = $goalEvents->wasSubmitted($submittedGoal) && $goalEvent === null;
@@ -134,6 +142,8 @@ class ReceiveController
                     geoArea: $geoArea,
                     occurredAt: $occurredAt,
                     goalEvent: $goalEvent,
+                    internalTraffic: $internalTraffic,
+                    internalTrafficName: $internalTrafficName,
                 );
 
                 $responsePayload = [
@@ -147,6 +157,11 @@ class ReceiveController
                 return $this->jsonWithCors($request, $responsePayload, Response::HTTP_ACCEPTED);
             }
 
+            $eventData = $sanitizer->sanitizeEventData($payload['eventData'] ?? null);
+            // The reserved reporting key is derived only from the top-level
+            // boolean, including before enhanced events enter the queue.
+            unset($eventData[$internalTrafficName]);
+
             $bus->dispatch(new TrackEventMessage(
                 websiteToken: $websiteToken,
                 eventName: $eventName,
@@ -156,12 +171,14 @@ class ReceiveController
                 viewportBucket: $viewportBucket,
                 screenWidth: $sanitizer->sanitizeScreenWidth($payload['screenWidth'] ?? null),
                 goalEvent: $goalEvent,
-                eventData: $sanitizer->sanitizeEventData($payload['eventData'] ?? null),
+                eventData: $eventData ?: null,
                 generalizedUserAgent: $sanitizer->generalizeUserAgent($userAgent),
                 visitorId: $sanitizer->sanitizeIdentifier($payload['visitorId'] ?? null),
                 sessionId: $sanitizer->sanitizeIdentifier($payload['sessionId'] ?? null),
                 occurredAt: $occurredAt,
                 geoArea: $geoArea,
+                internalTraffic: $internalTraffic,
+                internalTrafficName: $internalTrafficName,
             ));
 
             $responsePayload = [

@@ -38,6 +38,101 @@ final class EventPrivacyInvariantTest extends TestCase
         $this->assertAnonymousFieldsWereScrubbed($event, '2026-07-25T01:00:00.000000+00:00');
     }
 
+    public function testAnonymousLifecyclePreservesOnlyReservedInternalTrafficMarker(): void
+    {
+        $event = $this->anonymousEvent()
+            ->setCustomData(['email' => 'person@example.com', 'orgInternalTraffic' => true])
+            ->setVisitorId('visitor-1')
+            ->setSessionId('session-1')
+            ->setCreatedAt(new \DateTimeImmutable('2026-07-24 12:34:56-05:00'));
+
+        $event->enforcePrivacyInvariants();
+
+        self::assertTrue($event->isInternalTraffic());
+        self::assertSame(['orgInternalTraffic' => true], $event->getCustomData());
+        self::assertNull($event->getVisitorId());
+        self::assertNull($event->getSessionId());
+        self::assertSame('2026-07-24T17:00:00+00:00', $event->getCreatedAt()->format(\DateTimeInterface::ATOM));
+
+        $event->setCustomData([...$event->getCustomData(), 'plan' => 'private']);
+        $event->enforcePrivacyInvariants();
+        self::assertSame(['orgInternalTraffic' => true], $event->getCustomData());
+    }
+
+    #[DataProvider('nonBooleanInternalTrafficMarkers')]
+    public function testAnonymousLifecycleNeverRetainsArbitraryInternalTrafficValues(mixed $marker): void
+    {
+        $event = $this->anonymousEvent()->setCustomData(['orgInternalTraffic' => $marker]);
+
+        self::assertFalse($event->isInternalTraffic());
+        $event->enforcePrivacyInvariants();
+        self::assertNull($event->getCustomData());
+    }
+
+    public static function nonBooleanInternalTrafficMarkers(): iterable
+    {
+        yield 'false' => [false];
+        yield 'null' => [null];
+        yield 'string true' => ['true'];
+        yield 'numeric true' => [1];
+        yield 'arbitrary string' => ['person@example.com'];
+        yield 'object-like data' => [['email' => 'person@example.com']];
+    }
+
+    public function testConfiguredOrganizationMarkerSurvivesAnonymousLifecycleAndHydration(): void
+    {
+        $event = $this->anonymousEvent()
+            ->setCustomData(['email' => 'person@example.com'])
+            ->setInternalTraffic(true, 'companyStaff');
+        $event->enforcePrivacyInvariants();
+        self::assertSame(['companyStaff' => true], $event->getCustomData());
+
+        // Doctrine hydrates JSON and invokes PostLoad on a new entity instance.
+        $loaded = $this->anonymousEvent()->setCustomData($event->getCustomData());
+        $callback = new \ReflectionMethod(Event::class, 'restoreAnonymousTrafficMarkerName');
+        self::assertCount(1, $callback->getAttributes(\Doctrine\ORM\Mapping\PostLoad::class));
+        $loaded->restoreAnonymousTrafficMarkerName();
+        self::assertTrue($loaded->isInternalTraffic());
+        $loaded->setCustomData([...$loaded->getCustomData(), 'email' => 'must-be-stripped']);
+        $loaded->enforcePrivacyInvariants();
+        self::assertSame(['companyStaff' => true], $loaded->getCustomData());
+        $loaded->setInternalTraffic(false, 'companyStaff');
+        self::assertNull($loaded->getCustomData());
+    }
+
+    public function testNewAnonymousEventsDoNotTreatArbitraryBooleanPropertiesAsConfiguredMarkers(): void
+    {
+        $event = $this->anonymousEvent()->setCustomData(['arbitraryProperty' => true]);
+        $event->enforcePrivacyInvariants();
+        self::assertNull($event->getCustomData());
+    }
+
+    public function testNumericNamesCannotTurnMarkerJsonIntoAnArray(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        (new Event())->setInternalTraffic(true, '0');
+    }
+
+    public function testInternalTrafficDefaultsToFalseAndSetterPreservesOtherCustomProperties(): void
+    {
+        $event = new Event();
+
+        self::assertFalse($event->isInternalTraffic());
+        $event->setInternalTraffic(false);
+        self::assertNull($event->getCustomData());
+
+        $event->setCustomData(['plan' => 'pro', 'orgInternalTraffic' => 'untrusted']);
+        $event->setInternalTraffic(true);
+        self::assertSame(['plan' => 'pro', 'orgInternalTraffic' => true], $event->getCustomData());
+
+        $event->setInternalTraffic(false);
+        self::assertSame(['plan' => 'pro'], $event->getCustomData());
+        self::assertFalse($event->isInternalTraffic());
+
+        $event->setCustomData(['orgInternalTraffic' => true])->setInternalTraffic(false);
+        self::assertNull($event->getCustomData());
+    }
+
     #[DataProvider('invalidAnonymousDimensions')]
     public function testAnonymousLifecycleRejectsUnsafeDimensions(string $field, string $value, string $message): void
     {

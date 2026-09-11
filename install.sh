@@ -225,9 +225,19 @@ if [ ! -f config/aggregate.yaml ]; then
         DASHBOARD_ENABLED=true
     fi
 
+    # Generate independent sharing links even when no dashboard admin is created.
+    install_internal_traffic_prod_token=$(php -r 'echo bin2hex(random_bytes(32));')
+    install_internal_traffic_dev_token=$(php -r 'echo bin2hex(random_bytes(32));')
+    install_internal_traffic_test_token=$(php -r 'echo bin2hex(random_bytes(32));')
+
     cat > config/aggregate.yaml <<EOF
 # Aggregate Analytics Configuration
 # App-specific settings only.
+
+internal_traffic_storage: cookie
+internal_traffic_name: orgInternalTraffic
+internal_traffic_value: "true"
+internal_traffic_cookie_domain: ""
 
 environments:
   prod:
@@ -237,6 +247,7 @@ environments:
     dashboard_enabled: $DASHBOARD_ENABLED
     anonymous_tracking_enabled: true
     anonymous_excluded_paths: []
+    internal_traffic_share_token: "$install_internal_traffic_prod_token"
 
   dev:
     rate_limit_per_minute: 1000
@@ -245,6 +256,7 @@ environments:
     dashboard_enabled: true
     anonymous_tracking_enabled: true
     anonymous_excluded_paths: []
+    internal_traffic_share_token: "$install_internal_traffic_dev_token"
 
   test:
     rate_limit_per_minute: 1000
@@ -252,6 +264,7 @@ environments:
     dashboard_enabled: true
     anonymous_tracking_enabled: true
     anonymous_excluded_paths: []
+    internal_traffic_share_token: "$install_internal_traffic_test_token"
 EOF
 
     echo -e "${GREEN}✓ config/aggregate.yaml created${NC}"

@@ -29,6 +29,7 @@ Before an anonymous-mode event leaves the browser, the SDK:
 - converts the referrer to a coarse channel: `direct`, `internal`, `search`, `social`, `email`, `referral`, or `unknown`;
 - sends only coarse device and viewport buckets;
 - may send one requested fixed goal code for server-side allowlist validation;
+- reads the configured team marker, when present, and sends only an `internalTraffic` boolean; it never installs that marker automatically;
 - sends no visitor ID, session ID, cookie value, custom property, raw referrer, or exact screen width; and
 - requests the collection endpoint with a `no-referrer` policy so the browser does not attach the page URL as an HTTP `Referer`.
 
@@ -37,6 +38,14 @@ The server enforces the event-name rules and configured goal allowlist again. Cl
 Each accepted event is stored as an individual `events` row with `privacy_mode = 'anonymous'`. The server sets `created_at` to the start of the current UTC hour; the client cannot supply it. Exact event timestamps are not used for anonymous-mode rows. The row retains the safe event name, sanitized path, coarse referrer channel, device class, viewport bucket, an optional allowlisted goal permitted for anonymous use, and—only when the operator enables it—coarse `geo_area`. Identifiers, custom properties, exact dimensions, and generalized User-Agent values remain null.
 
 The word `anonymous` describes the product mode, not a guaranteed legal classification. An hour-bucketed row can still be personal data in context—for example, because a path is unique, an event is rare, a population is small, or the operator can combine it with outside information. Treat the raw `events` table as private and assess the deployment before describing its data as anonymous.
+
+### Optional organization traffic marker
+
+An administrator or teammate can explicitly install the configured cookie or local storage marker (default `orgInternalTraffic=true`) using the admin UI or a token-protected sharing page. The SDK reads it in both measurement modes. Only a boolean under the configured marker name is retained in the existing `custom_data` JSON (default `{"orgInternalTraffic": true}`); arbitrary anonymous event properties are still discarded. Unmarked traffic omits the key. The browser marker value and sharing token are not collected. Historical rows retain their original property name after configuration changes. This is a shared organization reporting label, not a visitor identifier or access-control check, but team membership may add context to otherwise coarse events. It is independent of the `internal` referrer category for navigation within a website.
+
+The cookie lasts one year; local storage remains until removed or cleared. The marker has its own **Unmark this browser** control and is not removed by `setConsent(false)`, which clears analytics identifiers. Reflect this separate browser-storage choice in deployment notices. Cookie domains can cover sibling subdomains; local storage remains scoped to one origin.
+
+The existing BI views and archived aggregates omit this JSON flag. To filter internal traffic, prepare controlled extracts from retained raw rows and apply the filter before aggregation and suppression. Do not grant routine BI users raw-table access to work around the view boundary. The [README](../README.md#organization-traffic) documents setup, sharing, and filtering.
 
 ### Event-name and path limitations
 

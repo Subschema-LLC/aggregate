@@ -6,6 +6,7 @@ use App\Entity\User;
 use App\Repository\UserRepository;
 use App\Service\AggregateConfigLoader;
 use App\Service\AppBranding;
+use App\Service\InternalTrafficSettings;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -28,6 +29,7 @@ class InstallCommand extends Command
         private readonly UserPasswordHasherInterface $passwordHasher,
         private readonly AggregateConfigLoader $config,
         private readonly AppBranding $branding,
+        private readonly InternalTrafficSettings $internalTrafficSettings,
     ) {
         parent::__construct();
     }
@@ -89,6 +91,8 @@ class InstallCommand extends Command
             $io->error('Admin password must be at least 8 characters.');
             return Command::FAILURE;
         }
+
+        $this->internalTrafficSettings->ensureShareToken();
 
         // Create admin user
         $user = new User();
