@@ -2,6 +2,24 @@
 
 An open-source, self-hosted analytics system with privacy-minimized, hour-bucketed anonymous-mode events, consent-based enhanced analytics, and a queue-backed ingestion API.
 
+## Contributing
+
+This is open source and we welcome contributions. Create a new branch, make your changes, and submit a pull request. 
+
+We are keeping a few things in mind:
+1. Simplicity, especially with the database (we want fewer, more meaningful tables and columns)
+2. Easy installation and cross-database technology portability
+3. Data model flexibility and extensibility
+4. Headlessness: Everything in the UI should be also abe to be done in YAML and/or CLI
+5. Security
+6. Test coverage
+7. Scalability
+8. Maintainability
+9. Extensibility
+10. Ease of use
+
+You can utilize AI agents for your conributions as long as you are following the principles above and being intentional with architectural approaches.
+
 ## Key Features
 
 - **Privacy-minimized events by default**: individual page views and safe named interactions with UTC hour buckets, sanitized paths, coarse dimensions, and no visitor/session identifiers
