@@ -16,8 +16,6 @@ When you need more, enhanced mode adds identifiers, properties and exact dimensi
 
 Once you start collecting data, just point Power BI, Tableau, or Looker at the reporting views and go.
 
-By default, Aggregate Analytics records events without visitor IDs, session IDs, or IP-derived fingerprints. Anonymous rows contain sanitized paths, coarse dimensions, and server-generated UTC hour buckets. Enhanced mode adds identifiers and detailed properties only after an affirmative consent choice.
-
 ![Dashboard screenshot](docs/images/dashboard.png)
 
 ## What you get
@@ -50,6 +48,7 @@ A 2 GB VPS or shared hosting is enough. No ClickHouse, no Kafka, no warehouse.
 storage flag and filter them out in your BI tool, without dropping the data or trusting an
 IP range.
 
+Details:
 - **Privacy-minimized collection:** page views and safe named events, with optional allowlisted goals and coarse local geography.
 - **Reporting views with suppression:** completed hourly or daily aggregates with configurable minimum event counts.
 - **Consent-based enhanced detail:** visitor/session IDs, properties, and exact dimensions when enabled by your consent manager.
@@ -80,12 +79,6 @@ Withdrawing consent is prospective — it stops future enhanced detail, it does 
 what the server already holds. The
 [compliance guide](docs/PRIVACY-COMPLIANCE.md) is specific about where the line sits and
 what remains your responsibility.
-
-Anonymous mode counts **events, not unique people**. It cannot provide identifier-based sessions, unique visitors, or bounce rates. One person can contribute enough events to pass a reporting threshold.
-
-Low-volume cells are withheld. Event reports exclude the current UTC hour; goal and geography reports exclude the current UTC day. Combining already-suppressed results into a larger time window does not recover hidden cells.
-
-“Anonymous” names the product mode, not a legal guarantee. Rare paths, event names, small populations, and outside information can still make data personal in context. Rejecting enhanced analytics removes browser identifiers and stops future enhanced details; coarse measurement continues and past server data is not erased. See the [privacy and compliance guide](docs/PRIVACY-COMPLIANCE.md) before deployment.
 
 This project suits teams that want self-hosted event measurement feeding their existing BI tools. It does not provide session replay, heatmaps, or a built-in marketing attribution suite.
 
