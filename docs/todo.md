@@ -13,3 +13,5 @@ Filtering uses retained raw-event JSON. Existing grouped BI views and archives d
 - [ ] Add a UI and CLI command to add custom_data JSON key value pairs as columns in existing relevant views
     - [ ] There should be a UI section where users can regenerate views to add new custom data columns based on what properties are showing up in the events table.
     - [ ] If there is a better way like to have a data model section where users can define their data model and share it with analytics implementation devs and this is used for view regeneration, then let's explore that.
+
+- [ ] Add a new feature to be able to pull updates from GitHub and show that an update is available
