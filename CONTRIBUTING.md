@@ -1,0 +1,272 @@
+# Contributing
+
+Contributions to Aggregate Analytics are welcome. Start a branch from `development`
+and target `development` when opening a pull request. See the [README](README.md)
+for product setup and the [privacy and compliance guide](docs/PRIVACY-COMPLIANCE.md)
+for the limits and responsibilities of a deployment.
+
+## Design principles
+
+- Keep the database simple: prefer fewer, meaningful tables and columns, with a
+  clear purpose for every retained field.
+- Preserve easy installation and portability across PostgreSQL, MySQL, MariaDB,
+  SQL Server, and SQLite. Consider the supported versions and SQL differences in
+  the [database guide](docs/DATABASE.md).
+- Keep features usable without the dashboard. New UI settings should have a YAML
+  and/or CLI equivalent, and changes should work with the dashboard disabled.
+- Design for security, useful test coverage, scalability, maintainability,
+  extensibility, and ease of use. Avoid dependencies and abstraction layers that
+  add more maintenance than value.
+
+AI-assisted contributions are welcome. The author remains responsible for
+understanding and reviewing the complete change, checking its architectural and
+licensing implications, and verifying the behavior they describe in the PR.
+
+## Privacy invariants
+
+Treat these as constraints on implementation and documentation:
+
+- **Anonymous mode has no person or session identifier.** Do not introduce visitor
+  IDs, session IDs, fingerprints, or hashes derived from IP addresses and browser
+  details. Anonymous rows omit arbitrary custom properties, raw IPs, User-Agent
+  strings, exact screen dimensions, and exact timestamps. Keep path sanitization
+  and the fixed event-name rules effective on the server as well as in the SDK.
+- **The existing exceptions are narrow.** A goal code may survive anonymous
+  ingestion only when its enabled definition in `config/goals.yaml` permits
+  anonymous use. The explicitly installed organization marker is a boolean in
+  `custom_data`, under the configured cookie/local storage name:
+  `{"orgInternalTraffic": true}` by default. Its configured value and sharing
+  token are not event properties. Do not turn either exception into a channel
+  for arbitrary client-supplied keys, values, or identities.
+- **Reporting releases completed, thresholded buckets.** Anonymous event rows use
+  server-generated UTC hour buckets. The supported `bi_anonymous_*` views exclude
+  the current hour for events and the current day for goals and geography. Preserve
+  threshold checks, geography pooling and secondary suppression, and the same
+  behavior when live and archived counts are combined.
+- **Thresholds count events, not people.** A single person can contribute multiple
+  events to a cell. Do not describe suppression as a unique-visitor minimum,
+  k-anonymity, or proof that data is legally anonymous. Raw events, archive tables,
+  and unsuppressed operational views remain private reporting inputs.
+- **Ingestion controls apply to both modes.** The collection kill switch and
+  sensitive-path exclusions must also block enhanced events. Configuration load
+  failures must fail closed. Disabled or excluded requests must not create local
+  rate-limit buckets, geographic lookups, queue messages, or stored events.
+- **Optional geography stays local and coarse.** Resolve only configured
+  country/continent codes from a local MMDB. Do not send IPs to an external lookup
+  service or copy addresses or detailed lookup records into events, queues, or
+  application logs.
+- **Enhanced collection needs explicit consent.** Parse consent explicitly;
+  truthy values such as the string `"false"` must never grant consent.
+  `setConsent(false)` removes SDK identifiers and
+  stops future enhanced details; coarse anonymous collection can continue.
+  Withdrawal is prospective and does not erase server history. Documentation
+  must distinguish this behavior from stopping all collection or fulfilling an
+  erasure request.
+
+Add regression coverage at the boundary where a privacy change could fail. A
+browser check alone does not protect ingestion from a direct HTTP request.
+
+## Set up a development checkout
+
+Use PHP 8.2 or newer, Composer, the PHP extensions required by the dependencies,
+and the PDO driver for your chosen database. Node.js 18 or newer runs the browser
+regression tests using its built-in test runner; there is no npm install step.
+Docker Compose and Make are optional.
+
+After cloning, create your branch:
+
+```bash
+git switch development
+git switch -c your-change
+```
+
+For a fresh checkout, create local configuration before installing dependencies:
+
+```bash
+cp .env.dev .env
+cp config/aggregate.yaml.example config/aggregate.yaml
+composer install
+```
+
+Keep Composer development dependencies installed: PHPUnit is a `require-dev`
+dependency. The production install script uses `--no-dev` and is not the
+contributor setup. If the configuration files already exist, edit them instead of
+copying over them. The example development secret is for local use only.
+
+### Native development
+
+Set `DATABASE_URL` in `.env.dev.local` for a disposable development database; this
+file takes precedence over the checked-in `.env.dev` defaults. For example,
+with `pdo_sqlite` available:
+
+```dotenv
+DATABASE_URL="sqlite:///%kernel.project_dir%/var/aggregate-dev.db"
+```
+
+See [database connection examples](docs/DATABASE.md#quick-reference) for server
+databases, then initialize the schema:
+
+```bash
+php bin/console doctrine:migrations:migrate -n
+php bin/console app:create-website
+```
+
+Point your development web server at `public/`, with requests handled by Symfony's
+front controller. `/aggregate.js` must also reach Symfony so it receives runtime
+configuration; the checked-in [Nginx](docs/nginx/aggregate-analytics.conf),
+[Apache](docs/apache/aggregate-analytics.conf), and
+[Caddy](frankenphp/Caddyfile) configurations show the routing. Set `app_host` in the
+active YAML environment to your local URL. Open `/install` if you need a dashboard
+administrator, or use `php bin/console app:install`.
+
+`MESSENGER_TRANSPORT_DSN=sync://` is suitable for local work and needs no worker.
+When exercising asynchronous enhanced ingestion with `doctrine://default`, run:
+
+```bash
+php bin/console messenger:consume async -vv
+```
+
+### Docker development
+
+Complete the configuration and `composer install` steps above first. Compose
+mounts the checkout and runs asset compilation on startup; it does not install
+Composer dependencies. The PHP runtime in the container also needs the driver
+for the selected database.
+
+```bash
+make start-mysql
+make migrate-mysql
+docker compose exec php php bin/console app:create-website
+```
+
+The checked-in Compose/Caddy configuration serves the application at
+`http://localhost:9001`; use that URL for `app_host` and open
+`http://localhost:9001/install` for dashboard setup. The profile helpers select
+the database connection string as well as the service profile. Substitute
+`start-postgres` / `migrate-postgres` or `start-mariadb` / `migrate-mariadb` to work
+with those databases. Run one database profile at a time.
+
+The services are `php` (FrankenPHP/Symfony), `asset-compile` (dashboard assets),
+`worker` (asynchronous enhanced events), and the selected database service. The
+worker is only needed when testing an asynchronous transport.
+
+## Tests and checks
+
+Run these from the repository root after installing development dependencies:
+
+```bash
+php vendor/bin/phpunit
+node --test tests/JavaScript/*.test.js
+```
+
+For PHP inside a running container, replace the first command with:
+
+```bash
+docker compose exec php php vendor/bin/phpunit
+```
+
+The Node command runs on the host in either setup. `make test` currently runs the
+PHP suite and `aggregate-consent.test.js`; use the wildcard command above to also
+run `internal-traffic-marker.test.js`. Make automatically selects Docker when it
+finds Docker and `compose.yaml`; `make test USE_DOCKER=0` selects native PHP.
+
+PHPUnit reads [phpunit.dist.xml](phpunit.dist.xml) and
+[tests/bootstrap.php](tests/bootstrap.php), using `APP_ENV=test`. Most existing
+PHP tests use doubles or temporary files rather than a live database. The
+migration tests inspect SQL for supported platforms; passing them is not evidence
+that a migration has executed successfully on every database engine. Use a
+disposable database for real migration and query checks, and identify the engines
+you actually exercised in the PR.
+
+Choose checks that cover the behavior you changed:
+
+| Change | Relevant checks |
+| --- | --- |
+| SDK payloads, consent, or browser storage | `node --test tests/JavaScript/*.test.js`; relevant ingestion and entity tests |
+| Server ingestion or privacy policy | `php vendor/bin/phpunit tests/Controller/ReceiveControllerPrivacyTest.php`; `tests/Service`, `tests/Entity`, and `tests/MessageHandler` cases affected by the change |
+| SQL, migrations, archiving, or retention | `php vendor/bin/phpunit tests/Migration`; relevant lifecycle service tests; migration/query checks on disposable databases |
+| YAML settings, installation, or headless behavior | Relevant `tests/Configuration`, `tests/Command`, and controller/service tests; YAML and container checks |
+| Dashboard templates or branding | Relevant controller/service tests; Twig lint; inspect the changed UI and keyboard interactions |
+| Documentation only | Verify commands against the repository and check relative links, anchors, and examples; application tests are usually unnecessary |
+
+Useful syntax and configuration checks are:
+
+```bash
+php -l src/Path/ChangedFile.php
+php bin/console lint:yaml config
+php bin/console lint:twig templates
+php bin/console lint:container
+composer validate --no-check-publish
+git diff --check
+```
+
+Replace the PHP file placeholder with a file you changed. To check dependency
+injection without the dashboard, also run
+`DASHBOARD_ENABLED=0 php bin/console lint:container`. Clear the application cache
+when switching dashboard mode. Compile dashboard assets after relevant asset
+changes with `php bin/console asset-map:compile`.
+
+## Architecture and file map
+
+| Location | Responsibility |
+| --- | --- |
+| [public/aggregate.js](public/aggregate.js) | Browser tracker and its source; no separate tracker build |
+| [ScriptController](src/Controller/ScriptController.php) | Serves the tracker with public runtime settings; preserves its license header and keeps sharing tokens private |
+| [ReceiveController](src/Controller/ReceiveController.php) | Validates requests, website origin/token, collection controls, consent, and sanitized inputs |
+| [AnonymousEventRecorder](src/Service/AnonymousEventRecorder.php) | Writes anonymous events synchronously using UTC hour buckets |
+| [TrackEventMessage](src/Message/TrackEventMessage.php) and [TrackEventHandler](src/MessageHandler/TrackEventHandler.php) | Carry and persist enhanced events through Symfony Messenger |
+| [src/Service](src/Service) | Configuration, privacy policy, sanitization, goals, organization markers, branding, and data lifecycle services |
+| [src/Service/GeoIp](src/Service/GeoIp) | Local MMDB lookup and coarse geographic codes |
+| [src/Entity](src/Entity), [src/Repository](src/Repository), [migrations](migrations) | Doctrine model, database access, schema, and versioned reporting views |
+| [config](config) | YAML application/website/goal settings, Symfony services, routes, and package configuration |
+| [src/Command](src/Command) | CLI installation, website creation, and analytics maintenance |
+| [templates](templates) and [assets](assets) | Twig dashboard/public pages and AssetMapper dashboard assets |
+| [tests](tests) | PHP regressions by component and Node browser/storage regressions |
+
+BI thresholds are currently stored in `analytics_privacy_settings` and managed in
+the dashboard. They are not YAML settings. Other application configuration is
+loaded by `AggregateConfigLoader`; website registrations live in an untracked
+`config/websites.yaml` file. Preserve environment override behavior and avoid
+overwriting unrelated configuration when adding settings.
+
+## Make shortcuts
+
+Run `make help` for the complete list and inspect [Makefile](Makefile) for the
+current commands.
+
+| Command | Purpose |
+| --- | --- |
+| `make start`, `make stop`, `make restart` | Manage Compose services; the default profile is MySQL |
+| `make start-mysql`, `make start-postgres`, `make start-mariadb` | Start with the corresponding profile and database URL |
+| `make migrate-mysql`, `make migrate-postgres`, `make migrate-mariadb` | Apply migrations for that profile |
+| `make logs`, `make logs-worker` | Follow application or worker logs |
+| `make create-website`, `make worker` | Create a website or run a worker interactively |
+| `make cache-clear`, `make assets-compile` | Clear Symfony cache or compile dashboard assets |
+| `make db-shell`, `make php-shell` | Open a database client or PHP container shell |
+| `make test-tracking` | Send a real sample event; edit/use a manual request if your local URL differs from `http://localhost` |
+| `make clean` | Remove Compose volumes, including development database data, and clear local cache/logs |
+
+For a simple health check against the checked-in Docker setup, use
+`curl http://localhost:9001/api/health`. `make status` assumes port 80 for its HTTP
+health check.
+
+## Preparing a pull request
+
+Keep the change focused and follow the conventions of the surrounding code.
+Explain the concrete problem, the resulting behavior, and any configuration,
+migration, deployment, or reporting implications. Include the checks you ran and
+their results; name any relevant checks you could not run. For UI changes,
+describe the interaction and how you verified it.
+
+Before submitting, review the complete diff for unintended changes, secrets,
+personal data in examples, and generated artifacts. Update the relevant guide or
+configuration example when behavior changes. Privacy-sensitive PRs should explain
+which fields reach the browser payload, queue, event row, and reporting views,
+including the anonymous and withdrawn-consent cases.
+
+The project defaults to **AGPL-3.0-only** under [LICENSE](LICENSE), including
+documentation, server code, dashboard assets, and tests. The browser tracker
+[public/aggregate.js](public/aggregate.js) is **BSD-3-Clause** under its header and
+[js/LICENSE.txt](js/LICENSE.txt); it is also the tracker source, with no separate
+build source. Preserve this split and the tracker notice. Third-party dependencies
+and vendored assets retain their own licenses.
