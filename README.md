@@ -4,7 +4,7 @@ An open-source, self-hosted analytics system with privacy-minimized, hour-bucket
 
 ## Contributing
 
-This is open source and we welcome contributions. Create a new branch, make your changes, and submit a pull request. 
+This is open source and we welcome contributions. Create a new branch, make your changes, and submit a pull request to merge into the `development` branch. 
 
 We are keeping a few things in mind:
 1. Simplicity, especially with the database (we want fewer, more meaningful tables and columns)
