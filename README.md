@@ -1,16 +1,54 @@
 # Headless Privacy Analytics
 
+Analytics with nothing to anonymize.
+
 Self-hosted web analytics with privacy-minimized anonymous-mode events, optional consent-based enhanced analytics, and reporting views for Power BI, Tableau, and other BI tools.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![Tracker: BSD-3](https://img.shields.io/badge/tracker-BSD--3--Clause-green.svg)](js/LICENSE.txt)
 [![PHP 8.2+](https://img.shields.io/badge/PHP-8.2%2B-777BB4.svg)](https://php.net)
 
+Most privacy-first analytics tools still build a pseudonymous identity for every visitor — typically a rotating hash of IP address, user agent and domain. Better than a cookie. Still an identifier.
+
+Aggregate never creates one. An anonymous-mode row holds a sanitized path, a coarse referrer channel, device and viewport buckets, and a UTC hour. No visitor ID, no session ID, no cookie, no IP, no user agent, no exact timestamp. There is no de-identification step because nothing identifying is collected in the first place.
+
+When you need more, enhanced mode adds identifiers, properties and exact dimensions — but only for visitors who have made an affirmative choice, and it stops the moment they withdraw it.
+
+Once you start collecting data, just point Power BI, Tableau, or Looker at the reporting views and go.
+
 By default, Aggregate Analytics records events without visitor IDs, session IDs, or IP-derived fingerprints. Anonymous rows contain sanitized paths, coarse dimensions, and server-generated UTC hour buckets. Enhanced mode adds identifiers and detailed properties only after an affirmative consent choice.
 
 ![Dashboard screenshot](docs/images/dashboard.png)
 
 ## What you get
+
+**Rows you could hand to a stranger.** Page views and named events, stored with sanitized
+paths, coarse dimensions and hour buckets. Emails, UUIDs and numeric route IDs are stripped
+out of paths before storage. Optional allowlisted conversion goals and continent- or
+country-level geography.
+
+**Suppression in the view, not the dashboard.** `bi_anonymous_events_v1` and its siblings
+withhold the current bucket and hide any cell below your configured minimum. The threshold
+lives in the database and applies to every consumer — nobody gets a thin cell by connecting
+a different tool.
+
+**Consent that actually toggles something.** `setConsent(true)` turns on visitor and session
+IDs, custom properties and exact dimensions. `setConsent(false)` drops the identifiers and
+returns to coarse rows. Wire it to your CMP and the behavior matches what the banner
+promised.
+
+**No UI lock-in.** Everything the dashboard does, YAML and the CLI do. Set
+`DASHBOARD_ENABLED=0` and you have a pure ingestion API with no login surface at all.
+
+**Rebrandable without a fork.** Name, logo, colors and fonts are configuration. Contrast
+ratios are validated, so an unreadable palette gets rejected rather than shipped.
+
+**Boring infrastructure.** PHP 8.2+ on PostgreSQL, MySQL, MariaDB, SQL Server or SQLite.
+A 2 GB VPS or shared hosting is enough. No ClickHouse, no Kafka, no warehouse.
+
+**A way to exclude your own team.** Mark staff browsers with a configurable cookie or local
+storage flag and filter them out in your BI tool, without dropping the data or trusting an
+IP range.
 
 - **Privacy-minimized collection:** page views and safe named events, with optional allowlisted goals and coarse local geography.
 - **Reporting views with suppression:** completed hourly or daily aggregates with configurable minimum event counts.
@@ -21,6 +59,27 @@ By default, Aggregate Analytics records events without visitor IDs, session IDs,
 - **Database choice:** PostgreSQL, MySQL, MariaDB, SQL Server, or SQLite. Enhanced ingestion uses Symfony Messenger with synchronous or asynchronous delivery.
 
 ## What you give up
+
+This matters more than the feature list, so it's up front.
+
+**No unique visitors, sessions or bounce rate in anonymous mode.** Not because they haven't
+been built yet, but because computing them requires exactly the identifier this project
+refuses to create. Anonymous mode counts events. One person can contribute several of them
+to the same cell.
+
+**Small numbers disappear.** A cell below your threshold is withheld, and widening the time
+window in your BI tool won't recover it. Low-traffic sites will see gaps until they adjust
+the threshold or report over longer periods.
+
+**Reports lag one bucket.** The current UTC hour is never released for events; the current
+UTC day is never released for goals and geography. There is no real-time view.
+
+**"Anonymous" is the name of a mode, not a legal conclusion.** Rare paths, unusual event
+names, small populations and outside information can still make a row personal in context.
+Withdrawing consent is prospective — it stops future enhanced detail, it does not erase
+what the server already holds. The
+[compliance guide](docs/PRIVACY-COMPLIANCE.md) is specific about where the line sits and
+what remains your responsibility.
 
 Anonymous mode counts **events, not unique people**. It cannot provide identifier-based sessions, unique visitors, or bounce rates. One person can contribute enough events to pass a reporting threshold.
 
