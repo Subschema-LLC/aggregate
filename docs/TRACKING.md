@@ -1,0 +1,350 @@
+# Tracking and Google Tag Manager
+
+[README](../README.md) · [Configuration](CONFIGURATION.md) · [Privacy and compliance](PRIVACY-COMPLIANCE.md)
+
+This guide covers the browser SDK, custom events, and GTM setup. Register a website in the dashboard or with `php bin/console app:create-website` first, and replace the example host and public website token with your values. The sharing token used for organization marker pages is a different token and must never be placed in a tracking snippet.
+
+- [JavaScript integration](#javascript-integration)
+- [Custom event tracking](#custom-event-tracking)
+- [Health and ingestion checks](#health-and-ingestion-checks)
+- [Google Tag Manager](#google-tag-manager-gtm-integration)
+- [Troubleshooting](#troubleshooting)
+
+## JavaScript integration
+
+Add to your website:
+
+```html
+<script>
+  window.Aggregate = {
+    endpoint: 'https://your-host/api/receive',
+    websiteToken: 'your-website-token'
+  };
+</script>
+<script src="https://your-host/aggregate.js" async referrerpolicy="no-referrer"></script>
+```
+
+An anonymous-mode page-view row is recorded automatically when the script loads. Queries, fragments, raw referrers, cookies, visitor IDs, and session IDs are not sent in anonymous mode. You may also call `emit(...)`: before enhanced consent, each safe event name and its coarse context are retained, configured goals marked `anonymous: true` may be retained, and custom properties are omitted.
+
+## Custom event tracking
+
+Use a fixed event taxonomy. Names must match `[A-Za-z][A-Za-z0-9_.:-]{0,99}` and must not contain user-entered or identifier-like values.
+Even with enhanced consent, keep event properties purpose-limited and avoid emails, account IDs, form contents, search terms, or other free text.
+
+Call SDK methods after the script has loaded. The following sequence illustrates the API; connect the consent calls to actual consent-manager choices rather than running the whole sequence on page load. The SDK does not queue calls made before it exists.
+
+```javascript
+// Anonymous mode records the safe event name, coarse context, and the allowlisted
+// `signup` goal. The custom property is omitted.
+window.Aggregate.emit('signup_click', { plan_type: 'pro' }, 'signup');
+
+// Accept enhanced analytics to include properties, identifiers, and exact dimensions.
+window.Aggregate.setConsent(true);
+window.Aggregate.emit('signup_click', { plan_type: 'pro' }, 'signup');
+
+// Reject or withdraw enhanced analytics. Coarse named-event rows and configured
+// anonymous goals continue.
+window.Aggregate.setConsent(false);
+```
+
+The tracker is authored directly in [public/aggregate.js](../public/aggregate.js), with no separate build step. The configured `/aggregate.js` response uses the same BSD-3-Clause license and retains its notice. Use the supplied server routing so YAML marker settings and the JavaScript namespace reach the browser. [Namespace overrides](CONFIGURATION.md#customizing-the-javascript-namespace) and [organization marker setup](PRIVACY-COMPLIANCE.md#organization-traffic) are documented separately.
+
+## Health and ingestion checks
+
+For the checked-in Docker setup:
+
+```bash
+curl http://localhost:9001/api/health
+```
+
+In browser DevTools, look for `/api/receive` requests and inspect the response body as well as its HTTP status. HTTP 202 can indicate a recorded anonymous event, an accepted enhanced event, or intentionally ignored collection on a disabled/excluded route. An enhanced event uses the configured Messenger transport; a worker is needed for asynchronous delivery. See [worker setup](../DEPLOYMENT.md#worker-process-setup).
+
+## Google Tag Manager (GTM) integration
+
+Complete setup guide for integrating with Google Tag Manager for both pixel tracking and custom event tracking.
+
+### Step 1: Install the Tracking Pixel in GTM
+
+1. **Create a Custom HTML Tag**
+   - In GTM, go to **Tags** → **New**
+   - Click **Tag Configuration** → **Custom HTML**
+   - Name it: "Analytics Tracking Pixel"
+
+2. **Add the Tracking Script**
+
+   Choose one of these configuration methods:
+
+   **Option A: Inline Configuration (Recommended)**
+   ```html
+   <script>
+     window.Aggregate = {
+       endpoint: 'https://your-analytics-host.com/api/receive',
+       websiteToken: 'your-website-token-here'
+     };
+   </script>
+   <script src="https://your-analytics-host.com/aggregate.js" async referrerpolicy="no-referrer"></script>
+   ```
+
+   **Option B: Data Attributes (No inline JS)**
+   ```html
+   <script
+     src="https://your-analytics-host.com/aggregate.js"
+     data-endpoint="https://your-analytics-host.com/api/receive"
+     data-website-token="your-website-token-here"
+     referrerpolicy="no-referrer"
+     async>
+   </script>
+   ```
+
+   **Option C: URL Parameters**
+   ```html
+   <script src="https://your-analytics-host.com/aggregate.js?endpoint=https%3A%2F%2Fyour-analytics-host.com%2Fapi%2Freceive&token=your-website-token-here" async referrerpolicy="no-referrer"></script>
+   ```
+
+3. **Set the Trigger**
+   - Click **Triggering** → **Choose a trigger**
+   - Select **All Pages** (for view tracking on every page)
+   - Or create a custom trigger for specific pages
+
+4. **Save and Publish**
+   - Click **Save**
+   - Submit changes and publish your GTM container
+
+### Step 2: Track Custom Events from GTM
+
+Named custom events may be stored in anonymous mode. Before `setConsent(true)`, custom properties are omitted, while a goal may be retained only when its fixed code is enabled and marked `anonymous: true` in `config/goals.yaml`.
+
+**Method A: Using GTM's Custom HTML Tag for Specific Events**
+
+1. Create a new **Custom HTML Tag**
+2. Name it based on the event (e.g., "Track Button Click - CTA")
+3. Add this code:
+   ```html
+   <script>
+     if (window.Aggregate && window.Aggregate.emit) {
+       window.Aggregate.emit('cta_click', {
+         button_text: 'Get Started',
+         location: 'homepage_hero'
+       }, 'signup');
+     }
+   </script>
+   ```
+4. Set a trigger (e.g., click on specific button/element)
+
+**Method B: Using GTM Variables for Dynamic Event Tracking**
+
+1. Create a **Custom HTML Tag**
+2. Name it: "Analytics Custom Event - Generic"
+3. Add this code:
+   ```html
+   <script>
+     (function() {
+       if (window.Aggregate && window.Aggregate.emit) {
+         var eventName = {{Event Name Variable}};
+         var eventData = {
+           category: {{Event Category}},
+           label: {{Event Label}},
+           value: {{Event Value}}
+         };
+         var goalEvent = {{Goal Event Variable}};
+         window.Aggregate.emit(eventName, eventData, goalEvent);
+       }
+     })();
+   </script>
+   ```
+4. Create corresponding **User-Defined Variables** in GTM:
+   - `Event Name Variable` (e.g., Data Layer Variable: `eventName`)
+   - `Event Category`, `Event Label`, `Event Value`
+   - `Goal Event Variable` (optional; e.g., Data Layer Variable: `goalEvent`)
+
+   Map `Event Name Variable` to an approved fixed taxonomy and `Goal Event Variable` to a key from `config/goals.yaml`. Never populate either one from click text, URLs, form fields, or other user-provided values.
+
+5. Trigger this tag using **Custom Events** or **Click Triggers**
+
+### Step 3: Consent Management Integration
+
+Use your consent manager to control enhanced analytics. Coarse page-view and named-event rows continue after rejection unless an administrator disables collection or excludes the current path.
+
+Initialize a previously recorded choice before loading the tracker when possible, so its first page view uses that choice. Later consent tags must run after the SDK is available; a guard such as `if (window.Aggregate)` otherwise skips the call. GTM finishing a Custom HTML tag that injects an `async` script is not proof that the downloaded SDK has loaded. See the [consent-manager integration example](PRIVACY-COMPLIANCE.md#consent-manager-integration) for the intended lifecycle.
+
+1. **Create a Tag for Consent Opt-in**
+   - Tag Type: **Custom HTML**
+   - Name: "Analytics Accept Enhanced Consent"
+   - Code:
+     ```html
+     <script>
+       if (window.Aggregate && window.Aggregate.setConsent) {
+         window.Aggregate.setConsent(true);
+       }
+     </script>
+     ```
+   - **Trigger**: Fire when user accepts cookies/consent
+     - Example: `consentGranted` Custom Event
+     - Or use your CMP's (Consent Management Platform) built-in triggers
+
+2. **If consent was already granted, initialize it via a data attribute**
+   ```html
+   <script
+     src="https://your-analytics-host.com/aggregate.js"
+     data-endpoint="https://your-analytics-host.com/api/receive"
+     data-website-token="your-website-token-here"
+     data-consent="1"
+     referrerpolicy="no-referrer"
+     async>
+   </script>
+   ```
+
+3. **Handle rejection or withdrawal**
+   ```html
+   <script>
+     if (window.Aggregate && window.Aggregate.setConsent) {
+       window.Aggregate.setConsent(false);
+     }
+   </script>
+   ```
+   This removes the SDK's visitor/session identifiers and stops sending custom properties and exact dimensions. Safe event names and configured goals marked `anonymous: true` continue as individual anonymous-mode rows. It does not erase data already held by the server; handle deletion requests through your documented data-subject process.
+
+### Step 4: Common Event Tracking Examples
+
+The `{{...}}` placeholders below are GTM variables, not JavaScript or Twig placeholders to use on a normal page. Map names, labels, IDs, and page categories to reviewed values; do not forward form contents, personalized click text, or URLs containing identifiers. Properties are stored only in enhanced mode, while valid event names and permitted goals can be retained anonymously.
+
+**Track Form Submissions**
+```html
+<script>
+  window.Aggregate.emit('form_submit', {
+    form_name: {{Form Name}},
+    form_id: {{Form ID}}
+  }, 'lead');
+</script>
+```
+- **Trigger**: Form Submission trigger for your target form
+
+**Track Button Clicks**
+```html
+<script>
+window.Aggregate.emit('button_click', {
+  button_code: {{Approved Button Code}},
+  page_category: {{Approved Page Category}}
+});
+</script>
+```
+- **Trigger**: Click - All Elements, filter by Click Classes/IDs
+
+**Track Scroll Depth**
+```html
+<script>
+window.Aggregate.emit('scroll_depth', {
+  depth_percentage: {{Scroll Depth Threshold}},
+  page_category: {{Approved Page Category}}
+});
+</script>
+```
+- **Trigger**: Scroll Depth (e.g., 25%, 50%, 75%, 100%)
+
+**Track Video Views**
+```html
+<script>
+  window.Aggregate.emit('video_interaction', {
+    video_title: {{Video Title}},
+    video_action: {{Video Status}},  // 'start', 'pause', 'complete'
+    video_duration: {{Video Duration}},
+    video_percent: {{Video Percent}}
+  });
+</script>
+```
+- **Trigger**: YouTube Video or Video trigger in GTM
+
+**Track a Purchase**
+```html
+<script>
+  window.Aggregate.emit('purchase_completed', {
+    product_id: {{Product ID}},
+    product_name: {{Product Name}},
+    product_price: {{Product Price}},
+    quantity: {{Product Quantity}}
+  }, 'purchase');
+</script>
+```
+- **Trigger**: Your completed-purchase Custom Event from the Data Layer
+
+### Step 5: Testing Your GTM Setup
+
+1. **Enable GTM Preview Mode**
+   - In GTM, click **Preview**
+   - Enter your website URL
+
+2. **Check Tag Firing**
+   - Verify "Analytics Tracking Pixel" fires on page load
+   - Verify custom event tags fire when triggered
+
+3. **Monitor Network Requests**
+   - Open browser DevTools → Network tab
+   - Look for POST requests to `/api/receive`
+   - Verify the response status and body; HTTP 202 can also mean intentionally ignored collection
+
+4. **Check Analytics Backend**
+
+   For asynchronous enhanced events, inspect worker output:
+
+   ```bash
+   make logs-worker
+   ```
+
+   Anonymous events are written synchronously. Verify accepted rows through authorized database access; approved BI views show only completed buckets that meet their reporting thresholds.
+
+### Troubleshooting
+
+**Pixel not loading:**
+- Check GTM Preview mode to see if tag fires
+- Verify `https://your-analytics-host.com/aggregate.js` is accessible
+- Check browser console for errors
+
+**Events not tracking:**
+- Verify `window.Aggregate.emit` is available in browser console
+- Ensure tracking pixel loaded before custom event tags fire
+- Ensure the downloaded SDK has finished loading before custom event or consent tags call it
+
+**403 Forbidden errors:**
+- Verify your domain is correctly set in `config/websites.yaml`
+- Check `Origin` header is being sent (subdomains are auto-allowed)
+
+**429 Too Many Requests:**
+- Increase `rate_limit_per_minute` in `config/aggregate.yaml` (or via dashboard settings)
+- Check for infinite loops in your event tracking code
+
+### Advanced: Using dataLayer for Event Tracking
+
+Push events to GTM's dataLayer, then capture with a single generic tag:
+
+```javascript
+// On your website
+window.dataLayer = window.dataLayer || [];
+dataLayer.push({
+  'event': 'customAnalyticsEvent',
+  'eventName': 'signup_click',
+  'goalEvent': 'signup',
+  'eventData': {
+    'plan': 'pro',
+    'source': 'pricing_page'
+  }
+});
+```
+
+**GTM Tag Configuration:**
+1. Create trigger: Custom Event = `customAnalyticsEvent`
+2. Create tag:
+   ```html
+   <script>
+     if (window.Aggregate && window.Aggregate.emit) {
+       window.Aggregate.emit(
+         {{DLV - eventName}},
+         {{DLV - eventData}},
+         {{DLV - goalEvent}}
+       );
+     }
+   </script>
+   ```
+3. Create Data Layer Variables:
+   - `DLV - eventName` → Data Layer Variable Name: `eventName`
+   - `DLV - eventData` → Data Layer Variable Name: `eventData`
+   - `DLV - goalEvent` → Data Layer Variable Name: `goalEvent` (optional)

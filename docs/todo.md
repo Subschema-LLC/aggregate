@@ -8,7 +8,7 @@
   - [x] Distinguish organization traffic from the site's `internal` referrer category in the UI.
   - [x] Generate a random default sharing token during web, CLI, and shell installation, preserving an existing token.
 
-Filtering uses retained raw-event JSON. Existing grouped BI views and archives do not retain this flag; see [README](../README.md#organization-traffic).
+Filtering uses retained raw-event JSON. Existing grouped BI views and archives do not retain this flag; see the [compliance guide](PRIVACY-COMPLIANCE.md#organization-traffic).
 
 - [ ] Add a UI and CLI command to add custom_data JSON key value pairs as columns in existing relevant views
     - [ ] There should be a UI section where users can regenerate views to add new custom data columns based on what properties are showing up in the events table.
