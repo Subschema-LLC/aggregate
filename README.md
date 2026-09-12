@@ -993,8 +993,9 @@ On PostgreSQL, MySQL, MariaDB, or SQL Server, use a SELECT-only BI database role
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+The license split is:
 
-## Contributing
+- **Browser tracker:** [public/aggregate.js](public/aggregate.js) is licensed under **BSD-3-Clause**, with the full text in its header and [js/LICENSE.txt](js/LICENSE.txt). This file is also the tracker source; there is no separate build source. The configured script served at `/aggregate.js` carries the same BSD license.
+- **Everything else in this project's first-party code and documentation:** **GNU AGPL version 3 only (AGPL-3.0-only)**, under [LICENSE](LICENSE). This includes the server, dashboard, and other JavaScript; the tracker exception does not change their license.
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Third-party dependencies and vendored assets retain their own licenses.
