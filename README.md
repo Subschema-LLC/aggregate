@@ -89,6 +89,16 @@ Low-volume cells are withheld. Event reports exclude the current UTC hour; goal 
 
 This project suits teams that want self-hosted event measurement feeding their existing BI tools. It does not provide session replay, heatmaps, or a built-in marketing attribution suite.
 
+## Is this for you?
+
+**Likely yes** if you answer to a privacy office or DPO, you run a public-sector, health,
+education or legal site, you already own a BI stack and want measurement to feed it rather
+than compete with it, or you want to be able to explain your whole data model on one page.
+
+**Likely no** if you need unique-visitor counts, funnels, session replay, heatmaps or
+marketing attribution. [Plausible](https://plausible.io) and [Matomo](https://matomo.org)
+are good software and will serve you better. This isn't trying to win that comparison.
+
 ## Quick start
 
 For this development setup, install PHP 8.2+, Composer, the required PHP extensions and database driver, Docker Compose, and Make. The [deployment guide](DEPLOYMENT.md) covers native and production installation; [CONTRIBUTING.md](CONTRIBUTING.md#set-up-a-development-checkout) covers development prerequisites in detail.
