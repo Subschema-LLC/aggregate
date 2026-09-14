@@ -99,7 +99,7 @@ For this development setup, install PHP 8.2+, Composer, the required PHP extensi
 From a fresh checkout:
 
 ```bash
-git clone https://github.com/degagius/aggregate
+git clone https://github.com/Subschema-LLC/aggregate.git
 cd aggregate
 cp .env.dev .env
 cp config/aggregate.yaml.example config/aggregate.yaml
@@ -116,6 +116,8 @@ curl http://localhost:9001/api/health
 ```
 
 Use `start-postgres` / `migrate-postgres` or `start-mariadb` / `migrate-mariadb` for another Docker profile. The sample environment is for development; use your own secrets and connection settings in production. Existing installations should follow the [upgrade guidance](docs/PRIVACY-COMPLIANCE.md#upgrading-older-installations) before applying historical privacy migrations.
+
+Admins can check for new commits in **Updates**, or run `php bin/console app:updates:check --refresh` in a Git checkout. The deployment user can pull a clean, fast-forward update with `php bin/console app:updates:pull`, then complete the [deployment steps](DEPLOYMENT.md#updates).
 
 ## Add tracking to a website
 

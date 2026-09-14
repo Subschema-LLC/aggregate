@@ -10,6 +10,10 @@ internal_traffic_controller:
     resource: ../src/Controller/InternalTrafficController.php
     type: attribute
 
+updates_controller:
+    resource: ../src/Controller/UpdatesController.php
+    type: attribute
+
 install_controller:
     resource: ../src/Controller/InstallController.php
     type: attribute

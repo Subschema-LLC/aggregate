@@ -26,6 +26,7 @@ class Kernel extends BaseKernel
             'App\\Controller\\DashboardController',
             'App\\Controller\\DataLifecycleController',
             'App\\Controller\\InternalTrafficController',
+            'App\\Controller\\UpdatesController',
             'App\\Controller\\InstallController',
             'App\\Controller\\SecurityController',
         ] as $serviceId) {
