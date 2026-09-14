@@ -14,4 +14,10 @@ Filtering uses retained raw-event JSON. Existing grouped BI views and archives d
     - [ ] There should be a UI section where users can regenerate views to add new custom data columns based on what properties are showing up in the events table.
     - [ ] If there is a better way like to have a data model section where users can define their data model and share it with analytics implementation devs and this is used for view regeneration, then let's explore that.
 
-- [ ] Add a new feature to be able to pull updates from GitHub and show that an update is available
+- [x] Add a new feature to be able to pull updates from GitHub and show that an update is available
+    - [x] Use [Subschema-LLC/aggregate](https://github.com/Subschema-LLC/aggregate) as the official source, checking the installed branch.
+    - [x] Add an admin Updates page with cached status and a manual refresh, plus `app:updates:check` for headless use.
+    - [x] Add `app:updates:pull` for clean, fast-forward source updates, preserving local configuration and reporting the remaining [deployment steps](../DEPLOYMENT.md#updates).
+
+- [ ] Add UTM code handling and a YAML + UI setting to define additional parameters that are stored in the custom data JSON, the YAML should map param to JSON key with a 1:1 or many params to one key
+- [ ] Make a YAML config and UI config for some custom_data properties to not require consent

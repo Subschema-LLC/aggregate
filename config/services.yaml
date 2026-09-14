@@ -11,6 +11,7 @@ parameters:
     # Empty by default. Deployments behind a reverse proxy may set exact proxy
     # addresses/CIDRs through TRUSTED_PROXIES; never trust arbitrary clients.
     env(TRUSTED_PROXIES): ''
+    env(AGGREGATE_GITHUB_TOKEN): ''
 
 services:
     # default configuration for services in *this* file
@@ -50,6 +51,12 @@ services:
         arguments:
             $projectDir: '%kernel.project_dir%'
             $mainNavigation: '%app.main_navigation%'
+
+    App\Service\ApplicationUpdateService:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+            $cache: '@cache.app'
+            $githubToken: '%env(AGGREGATE_GITHUB_TOKEN)%'
 
     # Keep this explicit: without the extension, Twig silently renders every
     # app_branding value as empty when strict variables are disabled in prod.
