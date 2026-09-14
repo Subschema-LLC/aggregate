@@ -27,6 +27,10 @@ parameters:
               route: 'app_internal_traffic'
               icon: 'fas fa-users'
               role: 'ROLE_ADMIN'
+            - label: 'Updates'
+              route: 'app_updates'
+              icon: 'fas fa-rotate'
+              role: 'ROLE_ADMIN'
 
         account:
             user_icon: 'fas fa-user'

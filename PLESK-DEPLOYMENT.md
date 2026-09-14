@@ -48,7 +48,7 @@ Clone or upload the application to your Plesk domain directory:
 
 ```bash
 cd /var/www/vhosts/your-domain.com
-git clone <repo-url> analytics
+git clone https://github.com/Subschema-LLC/aggregate.git analytics
 cd analytics
 ```
 
@@ -265,6 +265,18 @@ sudo supervisorctl start analytics-worker
 
 ## Updating the Application
 
+Admins can check **Updates** in the dashboard. From the domain's deployment account:
+
+```bash
+/opt/plesk/php/8.3/bin/php bin/console app:updates:check --refresh
+```
+
+See [update behavior and prerequisites](DEPLOYMENT.md#updates) for Git credentials,
+private-repository checks, the one-time remote URL change, and upgrading versions
+that predate these commands. Back up the database and local configuration first.
+The pull command updates a clean Git checkout on its current branch; complete the
+remaining deployment steps below after it succeeds.
+
 For upgrades that include the `Version20260724*` privacy migrations, pause `/api/receive` and stop all async workers first. The migrations permanently remove daily IP hashes, legacy non-granted event rows, and matching Doctrine-queue tracker envelopes. Inspect failed, external, and encoded/base64 queue transports separately before resuming ingestion.
 
 ```bash
@@ -273,8 +285,8 @@ cd /var/www/vhosts/your-domain.com/analytics
 # Stop the async worker (skip this command when using sync://) and pause the collection endpoint at the proxy
 sudo systemctl stop analytics-worker
 
-# Pull latest code
-git pull
+# Pull source code with a clean, fast-forward update
+/opt/plesk/php/8.3/bin/php bin/console app:updates:pull
 
 # Install dependencies (no-dev for production)
 /opt/plesk/php/8.3/bin/php \
