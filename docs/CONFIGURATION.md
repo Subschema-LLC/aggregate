@@ -220,6 +220,18 @@ window.Company1Analytics.emit('signup', {plan: 'pro'});
 
 ## Environment Variable Override
 
+### GitHub update checks
+
+The admin **Updates** page and `app:updates:check` compare the installed Git branch
+with `Subschema-LLC/aggregate`. No YAML setting is required. Optionally set
+`AGGREGATE_GITHUB_TOKEN` in the server environment or untracked `.env.local` for
+private-repository API access or higher rate limits. Keep this credential out of
+tracked YAML and browser configuration. Git pulls use the deployment user's
+Git credentials separately. See the [deployment guide](../DEPLOYMENT.md#updates)
+for checking and applying updates, including headless use.
+
+### Application settings
+
 App-specific settings from `aggregate.yaml` can be overridden with environment variables:
 
 ```bash

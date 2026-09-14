@@ -18,7 +18,7 @@ This guide covers both Docker and native (non-Docker) deployment methods for Agg
 
 ```bash
 # Clone repository
-git clone <repo-url>
+git clone https://github.com/Subschema-LLC/aggregate.git aggregate-sy
 cd aggregate-sy
 
 # Copy app configuration (privacy controls, rate limit, JS namespace)
@@ -86,7 +86,7 @@ Native deployment runs directly on your server without Docker. Ideal for shared 
 
 ```bash
 # Clone repository
-git clone <repo-url>
+git clone https://github.com/Subschema-LLC/aggregate.git aggregate-sy
 cd aggregate-sy
 
 # Run interactive installer
@@ -472,6 +472,57 @@ Add to crontab:
 
 ### Updates
 
+The official repository is [Subschema-LLC/aggregate](https://github.com/Subschema-LLC/aggregate).
+For existing checkouts, update the remote once:
+
+```bash
+git remote set-url origin https://github.com/Subschema-LLC/aggregate.git
+```
+
+Open **Updates** in the admin dashboard or check from the CLI, including headless installations:
+
+```bash
+php bin/console app:updates:check
+php bin/console app:updates:check --refresh
+php bin/console app:updates:check --refresh --json
+```
+
+Checks compare the installed Git commit with the **same branch** in the official
+repository. They do not switch branches or choose a release channel. Successful GitHub results
+are cached for one hour; failed requests are retried after one minute. **Check now**
+and `--refresh` bypass the cache. Checks run
+when requested through this page or command, and contact GitHub with branch and
+commit metadata. They do not send event data. The page shows updates, local commits
+ahead of upstream, diverged histories, and checks that could not be completed.
+CLI checks exit `0` for a known comparison (including updates or divergence) and
+`1` when the status cannot be determined; use the JSON `state` for automation.
+
+Git 2.30 or newer must be installed and the checkout's `.git` metadata readable. If the deployment
+user owns the checkout and PHP runs as a different user, Git may require that exact
+checkout path in the PHP user's `safe.directory` configuration. Keep source files
+read-only and scope Git trust to this checkout; do not use a wildcard. ZIP uploads,
+partial clones, detached checkouts, unpublished branches/commits, and missing GitHub access may
+prevent comparison. For a private repository or higher API rate limits, configure
+`AGGREGATE_GITHUB_TOKEN` in the server environment or untracked `.env.local` with
+repository read access. This token is used only for API checks. Pulling uses the
+deployment user's existing Git HTTPS credentials; configure a credential helper
+for private repository access. Credentials are never entered in the dashboard.
+
+Run `app:updates:pull` as the deployment user with write access to the checkout.
+It fetches the current branch directly from the official repository and applies
+only a fast-forward. Local modifications, untracked files, detached HEADs,
+in-progress Git operations, and divergent or ahead histories stop the update.
+Ignored local configuration is preserved; a conflicting incoming tracked file
+also stops the update. Resolve custom code changes through your normal Git
+workflow. The dashboard only checks status and does not need permission to write
+application code.
+
+The pull command updates **source code only**. Back up the database and local
+configuration, review the changes, and complete all steps below before resuming
+collection. If the installed version predates these commands, use `git pull --ff-only`
+after updating `origin` and verifying its tracking branch for that first upgrade.
+For image-based deployments, rebuild and redeploy the image using your usual pipeline.
+
 For upgrades that include the `Version20260724*` privacy migrations, pause `/api/receive` and stop all async workers before the steps below. The migrations permanently remove daily IP hashes, legacy non-granted event rows, and matching Doctrine-queue tracker envelopes. Inspect failed, external, and encoded/base64 queue transports separately before resuming ingestion.
 
 ```bash
@@ -480,8 +531,8 @@ For upgrades that include the `Version20260724*` privacy migrations, pause `/api
 # 2. Stop async workers (skip this command when using sync://) and pause the collection endpoint at the proxy
 sudo systemctl stop aggregate-worker
 
-# 3. Pull latest code
-git pull
+# 3. Pull source code with a clean, fast-forward update
+php bin/console app:updates:pull
 
 # 4. Install dependencies
 composer install --no-dev --optimize-autoloader
@@ -495,9 +546,14 @@ php bin/console cache:clear --env=prod
 # 7. Compile assets
 php bin/console asset-map:compile
 
-# 8. Restart the worker when using async mode, then resume the collection endpoint
+# 8. Restart the worker when using async mode
 sudo systemctl restart aggregate-worker
 ```
+
+Reload PHP/OPcache as required by your host, verify `/api/health`, then resume
+the collection endpoint. In Docker, run PHP/Composer commands in the application
+container and Git commands as the owner of the mounted checkout; use the
+equivalent Compose worker restart.
 
 ---
 
