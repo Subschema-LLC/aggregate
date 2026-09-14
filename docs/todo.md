@@ -15,3 +15,5 @@ Filtering uses retained raw-event JSON. Existing grouped BI views and archives d
     - [ ] If there is a better way like to have a data model section where users can define their data model and share it with analytics implementation devs and this is used for view regeneration, then let's explore that.
 
 - [ ] Add a new feature to be able to pull updates from GitHub and show that an update is available
+- [ ] Add UTM code handling and a YAML + UI setting to define additional parameters that are stored in the custom data JSON, the YAML should map param to JSON key with a 1:1 or many params to one key
+- [ ] Make a YAML config and UI config for some custom_data properties to not require consent
