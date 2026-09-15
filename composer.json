@@ -1,6 +1,19 @@
 {
+    "name": "subschema/aggregate",
+    "description": "Self-hosted privacy-minimized analytics with consent-based enhanced collection and BI reporting views.",
     "type": "project",
     "license": "AGPL-3.0-only",
+    "homepage": "https://github.com/Subschema-LLC/aggregate",
+    "authors": [
+        {
+            "name": "Subschema LLC",
+            "homepage": "https://github.com/Subschema-LLC"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/Subschema-LLC/aggregate/issues",
+        "source": "https://github.com/Subschema-LLC/aggregate"
+    },
     "minimum-stability": "stable",
     "prefer-stable": true,
     "require": {

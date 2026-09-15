@@ -1,4 +1,10 @@
 
+###> IDE ###
+/.idea/
+/.vscode/
+*.iml
+###< IDE ###
+
 ###> symfony/framework-bundle ###
 /.env
 /.env.local
