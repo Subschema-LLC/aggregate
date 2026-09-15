@@ -45,3 +45,12 @@ window.consentWatchers.push(function(consentState) {
     window.Aggregate.setConsent(isGranted);
   }
 });
+```
+
+## Contributing
+
+This module follows the repository's [branching strategy](../CONTRIBUTING.md#branching-strategy).
+Create a `feature/...`, `issue/...`, or other descriptive working branch from
+`development` and open a PR back to `development`. Maintainers then promote changes
+through PRs from `development` to `uat` for user acceptance testing, then from
+`uat` to `master` for production release.
