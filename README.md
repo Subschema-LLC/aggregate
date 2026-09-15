@@ -104,7 +104,7 @@ For this development setup, install PHP 8.2+, Composer, the required PHP extensi
 From a fresh checkout:
 
 ```bash
-git clone https://github.com/Subschema-LLC/aggregate.git
+git clone --branch development https://github.com/Subschema-LLC/aggregate.git
 cd aggregate
 cp .env.dev .env
 cp config/aggregate.yaml.example config/aggregate.yaml
@@ -174,7 +174,7 @@ Use the optional [JavaScript build](docs/JS-BUILD.md) for minified tracker and d
 
 | Guide | Contents |
 | --- | --- |
-| [Contributing](CONTRIBUTING.md) | Development setup, architecture, privacy invariants, tests, Make commands, and pull requests |
+| [Contributing](CONTRIBUTING.md) | Branching strategy, development setup, architecture, privacy invariants, tests, Make commands, and pull requests |
 | [Agent guide](AGENTS.md) | Product ethos, architecture boundaries, privacy rules, and development expectations for coding agents |
 | [Roadmap](ROADMAP.md) | Planned work, available foundations, and current update limitations |
 | [Security policy](SECURITY.md) | Private vulnerability reporting and disclosure guidance |
@@ -192,7 +192,21 @@ Use the optional [JavaScript build](docs/JS-BUILD.md) for minified tracker and d
 
 ## Contributing
 
-Create a branch from `development` and target `development` in your pull request. Contributions should preserve the privacy invariants and favor simple, portable, secure, maintainable designs. Start with [CONTRIBUTING.md](CONTRIBUTING.md).
+Create a working branch from the latest `development`, using a descriptive name
+such as `feature/add-goal-validation`, `issue/123-fix-consent`, `docs/update-setup`,
+or `chore/update-dependencies`. Changes move through pull requests in this order:
+
+1. **Working branch → `development`:** contributors submit changes for review and integration.
+2. **`development` → `uat`:** maintainers promote changes for user acceptance testing (UAT).
+3. **`uat` → `master`:** maintainers promote accepted changes for production release.
+
+Keep contributor PRs targeted at `development`; `uat` and `master` receive the
+promotion PRs above. See the [branching strategy](CONTRIBUTING.md#branching-strategy)
+for branch roles and PR targets, and the [release guide](docs/RELEASES.md#publish-a-release)
+for tagging and publishing from `master`.
+
+Contributions should preserve the privacy invariants and favor simple, portable,
+secure, maintainable designs. Start with [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Contributions developed with AI coding agents are welcome. Bring your own expertise and judgment to the collaboration: provide project context, guide the agent's decisions, and review and test the result. Please submit changes you understand and can explain, including how they fit Aggregate's architecture and privacy goals. The contributor remains responsible for the work they submit.
 

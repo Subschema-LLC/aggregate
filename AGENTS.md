@@ -108,7 +108,11 @@ passing mocked tests does not establish database compatibility.
 
 ## Releases and operation
 
-Contributions currently branch from and target `development`. Production
+Create `feature/...`, `issue/...`, and other working branches from `development`
+and target `development` with contributor PRs. Maintainers promote changes by PR
+from `development` to `uat` for user acceptance testing, then from `uat` to
+`master` for production release. Follow the
+[branching strategy](CONTRIBUTING.md#branching-strategy). Production
 publishing defaults to `master`, configured in `config/release.yaml`; installations
 select updates with YAML `updates_branch`, also defaulting to `master`. Preserve
 both settings rather than assuming the checked-out branch is the release channel.

@@ -1,6 +1,8 @@
 <!--
-Read CONTRIBUTING.md before opening a PR. Use synthetic examples and redact
-credentials, tokens, raw analytics events, personal data, and screenshots.
+Read CONTRIBUTING.md before opening a PR. Create working branches from development
+and target development. Maintainer promotion PRs go development -> uat -> master.
+Use synthetic examples and redact credentials, tokens, raw analytics events,
+personal data, and screenshots.
 For suspected vulnerabilities, follow SECURITY.md before opening a public PR.
 -->
 
