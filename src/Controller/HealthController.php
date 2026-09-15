@@ -3,6 +3,7 @@
 namespace App\Controller;
 
 use App\Service\AggregateConfigLoader;
+use App\Service\CustomDataSettings;
 use Doctrine\DBAL\Connection;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
@@ -30,14 +31,17 @@ class HealthController
             $allHealthy = false;
         }
 
-        if ($this->config->hasLoadError()) {
+        try {
+            // The tracker and ingestion also depend on a valid custom-data
+            // model, even when an event submits no custom properties.
+            (new CustomDataSettings($this->config))->toArray();
+            $checks['configuration'] = ['status' => 'ok'];
+        } catch (\Throwable) {
             $checks['configuration'] = [
                 'status' => 'error',
                 'message' => 'Application configuration is invalid.',
             ];
             $allHealthy = false;
-        } else {
-            $checks['configuration'] = ['status' => 'ok'];
         }
 
         // Check messenger transport configuration

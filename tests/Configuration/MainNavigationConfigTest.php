@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Configuration;
 
 use App\Service\ApplicationUpdateService;
+use App\Service\ReportingViewManager;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Routing\RouterInterface;
@@ -12,6 +13,58 @@ use Twig\Environment;
 
 final class MainNavigationConfigTest extends KernelTestCase
 {
+    public function testDataModelNavigationAndRoutesExposeOnlyAdministratorPagesAndPostMutations(): void
+    {
+        self::bootKernel();
+
+        $container = self::getContainer();
+        $navigation = $container->getParameter('app.main_navigation');
+        $links = array_values(array_filter(
+            $navigation['items'],
+            static fn (mixed $item): bool => is_array($item) && ($item['route'] ?? null) === 'app_data_model',
+        ));
+        self::assertCount(1, $links);
+        self::assertSame('Data model', $links[0]['label']);
+        self::assertSame('ROLE_ADMIN', $links[0]['role']);
+
+        $routes = $container->get('router')->getRouteCollection();
+        foreach ([
+            'app_data_model' => ['/dashboard/data-model', 'GET'],
+            'app_data_model_download' => ['/dashboard/data-model/download', 'GET'],
+            'app_data_model_save' => ['/dashboard/data-model/save', 'POST'],
+            'app_data_model_regenerate' => ['/dashboard/data-model/regenerate', 'POST'],
+        ] as $name => [$path, $method]) {
+            $route = $routes->get($name);
+            self::assertNotNull($route);
+            self::assertSame($path, $route->getPath());
+            self::assertSame([$method], $route->getMethods());
+        }
+    }
+
+    public function testDataModelRoutesRequireAuthenticationBeforeReadingOrMutatingReportingViews(): void
+    {
+        self::bootKernel();
+
+        $views = $this->createMock(ReportingViewManager::class);
+        $views->expects(self::never())->method('previewSql');
+        $views->expects(self::never())->method('discoverProperties');
+        $views->expects(self::never())->method('regenerate');
+        self::getContainer()->set(ReportingViewManager::class, $views);
+        $browser = new KernelBrowser(self::$kernel);
+        $browser->disableReboot();
+        foreach ([
+            '/dashboard/data-model?discover=1' => 'GET',
+            '/dashboard/data-model/download' => 'GET',
+            '/dashboard/data-model/save' => 'POST',
+            '/dashboard/data-model/regenerate' => 'POST',
+        ] as $path => $method) {
+            $browser->request($method, $path);
+
+            self::assertSame(302, $browser->getResponse()->getStatusCode());
+            self::assertSame('/login', parse_url((string) $browser->getResponse()->headers->get('Location'), PHP_URL_PATH));
+        }
+    }
+
     public function testNavigationIsAvailableToTwigAndReferencesExistingRoutes(): void
     {
         self::bootKernel();

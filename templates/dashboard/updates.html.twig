@@ -3,14 +3,19 @@
 {% block title %}Updates - {{ app_branding.name }}{% endblock %}
 
 {% block body %}
+    {% set is_release = update_status.installation_type|default('git') == 'release' %}
+    {% set installed_branch = update_status.installed_branch ?? null %}
+    {% set branch_matches = update_status.branch is not null and installed_branch == update_status.branch %}
+    {% set can_pull = not is_release and branch_matches and update_status.state in ['available', 'up_to_date'] %}
     {% set statuses = {
         up_to_date: {label: 'Up to date', color: 'success'},
         available: {label: 'Update available', color: 'info'},
-        ahead: {label: 'Local checkout is ahead', color: 'warning'},
+        ahead: {label: is_release ? 'Installed version is ahead' : 'Local checkout is ahead', color: 'warning'},
         diverged: {label: 'Local and remote history have diverged', color: 'warning'},
         unknown: {label: 'Update status unknown', color: 'warning'},
         error: {label: 'Update check failed', color: 'danger'},
-        unavailable: {label: 'Update checking unavailable', color: 'warning'}
+        unavailable: {label: 'Update checking unavailable', color: 'warning'},
+        incompatible: {label: 'Release requirements are not met', color: 'warning'}
     } %}
     {% set status = statuses[update_status.state]|default(statuses.unknown) %}
 
@@ -18,7 +23,7 @@
         <div class="level-left">
             <div>
                 <h1 class="title">Application updates</h1>
-                <p class="subtitle">Check this installation against the same branch on GitHub.</p>
+                <p class="subtitle">Check this installation against the configured update branch on GitHub.</p>
             </div>
         </div>
         <div class="level-right">
@@ -37,8 +42,14 @@
         {% endif %}
     </div>
 
+    {% if not is_release and update_status.current_commit and not branch_matches %}
+        <div class="notification is-warning is-light">
+            <p>The installed branch does not match <code>updates_branch</code>. Switch branches manually or correct <code>config/aggregate.yaml</code> before pulling an update.</p>
+        </div>
+    {% endif %}
+
     <div class="box">
-        <h2 class="title is-4">Installed source</h2>
+        <h2 class="title is-4">Installed application</h2>
         <div class="table-container">
             <table class="table is-fullwidth">
                 <tbody>
@@ -47,9 +58,28 @@
                         <td><a href="{{ update_repository_url }}">{{ update_repository }}</a></td>
                     </tr>
                     <tr>
-                        <th scope="row">Branch</th>
+                        <th scope="row">Installation</th>
+                        <td>{{ is_release ? 'Release package' : 'Git checkout' }}</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Configured branch</th>
                         <td>{{ update_status.branch ?? 'Unavailable' }}</td>
                     </tr>
+                    {% if is_release %}
+                        <tr>
+                            <th scope="row">Installed version</th>
+                            <td>{{ update_status.current_version ?? 'Unavailable' }}</td>
+                        </tr>
+                        <tr>
+                            <th scope="row">Latest release version</th>
+                            <td>{{ update_status.latest_version ?? 'Unavailable' }}</td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <th scope="row">Installed branch</th>
+                            <td>{{ installed_branch ?? (update_status.current_commit ? 'Detached HEAD' : 'Unavailable') }}</td>
+                        </tr>
+                    {% endif %}
                     <tr>
                         <th scope="row">Installed revision</th>
                         <td>{% if update_status.current_commit %}<code>{{ update_status.current_commit }}</code>{% else %}Unavailable{% endif %}</td>
@@ -82,16 +112,38 @@
         </form>
     </div>
 
+    {% if is_release and update_status.release_url|default(null) %}
+        <div class="content box">
+            <h2 class="title is-4">GitHub release</h2>
+            <p><a href="{{ update_status.release_url }}">Read the release notes</a></p>
+            {% if update_status.package_url|default(null) %}
+                <ul>
+                    <li><a href="{{ update_status.package_url }}">Download release package</a></li>
+                    {% if update_status.manifest_url|default(null) %}<li><a href="{{ update_status.manifest_url }}">Download release manifest</a></li>{% endif %}
+                    {% if update_status.signature_url|default(null) %}<li><a href="{{ update_status.signature_url }}">Download manifest signature</a></li>{% endif %}
+                </ul>
+                <p>The release signature has not been verified by this check. Download all three files, then verify the manifest signature and package checksum:</p>
+                <pre><code>php bin/console app:updates:verify-package PACKAGE MANIFEST SIGNATURE</code></pre>
+                <p>Verification checks the downloaded files. Follow the deployment guide to install a verified package.</p>
+            {% endif %}
+        </div>
+    {% endif %}
+
     <div class="content box">
         <h2 class="title is-4">Deploy an update</h2>
-        <p>Run these commands from the application checkout on the server as your deployment user. They also work with the dashboard disabled.</p>
-        <p>Check the current branch for changes:</p>
+        <p>Check for updates from the application directory on the server. This command also works with the dashboard disabled:</p>
         <pre><code>php bin/console app:updates:check --refresh</code></pre>
-        <p>Before pulling, review the changes, back up the database and configuration, and prepare any required maintenance window. Follow the <a href="{{ update_repository_url }}{% if update_status.branch %}/blob/{{ update_status.branch|url_encode }}/DEPLOYMENT.md#updates{% endif %}">deployment guide</a>, including pausing collection and workers before privacy migrations.</p>
-        <p>Pull the available source update:</p>
-        <pre><code>php bin/console app:updates:pull</code></pre>
-        <p>The dashboard checks update status; source updates run through the CLI so the web process does not need permission to change application files.</p>
-        <p>Complete your deployment after pulling: install Composer dependencies, apply database migrations, clear and warm the production cache, compile dashboard assets, and restart long-running workers.</p>
-        <p>If this is a private repository, configure <code>AGGREGATE_GITHUB_TOKEN</code> in the server environment for update checks. Source pulls use the deployment user's Git credentials.</p>
+        <p>Before updating, review the changes, back up the database and configuration, and prepare any required maintenance window. Follow the <a href="{{ update_repository_url }}{% if update_status.branch %}/blob/{{ update_status.branch|url_encode }}/DEPLOYMENT.md#updates{% endif %}">deployment guide</a>, including pausing collection and workers before privacy migrations.</p>
+        {% if is_release %}
+            <p>Release packages include production dependencies and compiled assets. Preserve the installation's configuration and data, apply database migrations, rebuild the production cache, restart workers and check application health as described in the deployment guide.</p>
+            <p>The dashboard lists release packages. Automatic installation is not available yet.</p>
+        {% elseif can_pull %}
+            <p>Pull the available source update as your deployment user:</p>
+            <pre><code>php bin/console app:updates:pull</code></pre>
+            <p>The dashboard checks update status; source updates run through the CLI so the web process does not need permission to change application files.</p>
+            <p>Complete your deployment after pulling: install Composer dependencies, apply database migrations, clear and warm the production cache, compile dashboard assets, and restart long-running workers.</p>
+        {% endif %}
+        <p>Set <code>updates_branch</code> in <code>config/aggregate.yaml</code> to choose the update branch. The default is <code>master</code>.</p>
+        <p>The public GitHub repository normally needs no token. An optional <code>AGGREGATE_GITHUB_TOKEN</code> in the server environment can increase the API rate limit.</p>
     </div>
 {% endblock %}

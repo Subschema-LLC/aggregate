@@ -11,6 +11,7 @@ Aggregate Analytics supports **PostgreSQL**, **MySQL**, **MariaDB**, **Microsoft
 - [Microsoft SQL Server](#microsoft-sql-server)
 - [SQLite](#sqlite)
 - [Migration and Compatibility](#migration-and-compatibility)
+- [Custom data reporting views](#custom-data-reporting-views)
 - [Analytics Archive and Maintenance](#analytics-archive-and-maintenance)
 
 ---
@@ -452,12 +453,13 @@ The current schema contains:
 - `bi_anonymous_events_v1` (supported grouped anonymous-mode BI contract)
 - `bi_anonymous_goals_v1` (supported completed-day anonymous goal-count BI contract)
 - `bi_anonymous_geo_events_v1` (supported daily, lower-dimensional anonymous geography BI contract)
+- `analytics_custom_events_v1`, `analytics_custom_pageviews_v1`, and `analytics_custom_goals_v1` (optional, generated private views over retained raw rows)
 - `users` (dashboard auth, optional in API-only mode)
 - `messenger_messages` (used only in async queue mode)
 
-For `privacy_mode = 'anonymous'`, `created_at` is a server-generated UTC hour boundary, not an exact event time. Identifiers, arbitrary custom properties, exact dimensions, and generalized User-Agent values are null. The existing `custom_data` JSON may contain only the organization marker under its configured cookie/local storage name (default `{"orgInternalTraffic": true}`); missing/null means unmarked traffic. Enhanced rows may retain this marker alongside their other properties. This feature requires no schema migration. `goal_event` may contain only an enabled code from `config/goals.yaml` whose definition permits anonymous use; rejected goals are stored as null without rejecting the underlying event. These are still individual rows and may be personal data in context, so keep `events` private. Routine BI users should query `bi_anonymous_events_v1`, which groups hourly cells and suppresses counts below `anonymous_min_cell_count`.
+For `privacy_mode = 'anonymous'`, `created_at` is a server-generated UTC hour boundary, not an exact event time. Identifiers, exact dimensions, and generalized User-Agent values are null. The existing `custom_data` JSON may contain properties explicitly configured with `consent_required: false` and the organization marker under its configured cookie/local storage name (default `{"orgInternalTraffic": true}`); a missing marker key means unmarked traffic. Enhanced rows may retain other scalar properties alongside this marker. Collection requires no schema migration. `goal_event` may contain only an enabled code from `config/goals.yaml` whose definition permits anonymous use; rejected goals are stored as null without rejecting the underlying event. These are still individual rows and may be personal data in context, so keep `events` private. Routine BI users should query `bi_anonymous_events_v1`, which groups hourly cells and suppresses counts below `anonymous_min_cell_count`.
 
-Existing BI views and archive tables omit `custom_data`, combine internal and unmarked traffic, and cannot filter this flag. For internal-traffic filtering, prepare an approved export from retained raw JSON before aggregation and disclosure checks. The flag is lost once raw rows are deleted. See [organization traffic in the compliance guide](PRIVACY-COMPLIANCE.md#organization-traffic) for browser setup and SQL expressions for each database.
+Existing `bi_anonymous_*` views and archive tables omit `custom_data`, combine internal and unmarked traffic, and cannot filter this flag. For internal-traffic filtering, model the marker as a column in the separate custom reporting views or prepare an approved export from retained raw JSON before aggregation and disclosure checks. The flag and other custom properties are lost once raw rows are deleted. See [organization traffic in the compliance guide](PRIVACY-COMPLIANCE.md#organization-traffic) for browser setup and SQL expressions for each database.
 
 Routine anonymous conversion reporting should use `bi_anonymous_goals_v1`: `website_token`, UTC `event_day`, `goal_event`, and `event_count`. It includes only anonymous rows with a retained goal, excludes the current UTC day, and reuses `anonymous_min_cell_count` (default `5`, range `2`–`1000`). It deliberately omits event name, path, referrer, device, viewport, geography, and identifiers. `event_count` counts goal occurrences rather than unique people or unique converters, and goal labels remain presentation metadata in `config/goals.yaml`. Do not join this completed-day view to the hourly or geography views to recover more detail.
 
@@ -479,6 +481,27 @@ $events->addColumn('custom_data', 'json', ['notnull' => false]);
 $events->addColumn('goal_event', 'string', ['length' => 191, 'notnull' => false]);
 // ... works across supported databases
 ```
+
+### Custom data reporting views
+
+Define custom properties, query parameter mappings, per-property consent, and SQL column names through the admin **Data model** page or YAML. The standard six UTM properties require consent by default. Each may be permitted separately; the recommendation for anonymous reporting is no more detail than `utm_medium`, with fixed channel values such as `email`, `social`, or `cpc`. This is advisory. Review actual values before permitting more detailed source, campaign, term, content, or ID values, which may reveal search text or identifiers. See [Data model](DATA-MODEL.md) for the configuration and shareable implementation contract.
+
+Regenerate the views from the dashboard or CLI:
+
+```bash
+php bin/console app:analytics:views:regenerate --dry-run
+php bin/console app:analytics:views:regenerate
+```
+
+| View | Retained raw rows included |
+| --- | --- |
+| `analytics_custom_events_v1` | All event names in both privacy modes |
+| `analytics_custom_pageviews_v1` | Rows with `event_name = 'view'` |
+| `analytics_custom_goals_v1` | Rows with a non-null `goal_event` |
+
+Each view exposes `id`, `website_token`, `event_name`, `page_path`, `referrer_channel`, `privacy_mode`, `device_class`, `viewport_bucket`, `geo_area`, `goal_event`, `created_at`, and `archived_at`, followed by configured custom columns. Scalar JSON values become text; booleans become `true` or `false`; missing keys, JSON null, arrays, and objects become SQL `NULL`. Dotted and hyphenated keys are literal top-level JSON keys. Regeneration preserves existing column names and order, appending new columns.
+
+These views expose individual rows without suppression and need separately approved raw-data access. They include retained rows already marked `archived_at`, but never archive aggregate cells. Deleting raw rows removes them from these views even when archived counts remain elsewhere. Existing `bi_anonymous_*` reporting contracts and archives retain their dimensions and do not gain custom properties.
 
 ### Switching Databases
 
