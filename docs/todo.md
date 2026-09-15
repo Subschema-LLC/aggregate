@@ -30,3 +30,4 @@ Filtering uses retained raw-event JSON. Existing grouped BI views and archives d
     - [x] Generate Ed25519 signing keys, sign manifests, and verify package signatures/checksums/compatibility through `app:updates:verify-package`.
     - [x] Discover stable release updates for ZIP installations in the dashboard and CLI. See [release setup and publishing](RELEASES.md).
 - [ ] Add automatic package application: resumable update job, maintenance/worker coordination, configuration/data preservation, migrations, activation, health checks, and separate file/database recovery. Release packaging and verification are ready as its foundation.
+- [ ] Add website-specific configuration and data model settings
