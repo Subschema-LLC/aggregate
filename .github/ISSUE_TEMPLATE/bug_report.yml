@@ -1,0 +1,67 @@
+name: Bug report
+description: Report a reproducible problem with Aggregate Analytics.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For suspected vulnerabilities, follow the [security policy](https://github.com/Subschema-LLC/aggregate/blob/master/SECURITY.md) instead of opening a public issue.
+
+        Use synthetic examples. Do not include raw analytics events, database dumps, credentials, website or sharing tokens, IP addresses, or other personal data. Redact logs, URLs, configuration, and screenshots before sharing them.
+  - type: input
+    id: version
+    attributes:
+      label: Aggregate version or commit
+      description: For a ZIP installation, use the installed version on the Updates page or in release.json. For a Git checkout, use git rev-parse HEAD. Write unknown if unavailable.
+      placeholder: "1.2.3 or commit hash"
+    validations:
+      required: true
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Installation method
+      options:
+        - Git checkout
+        - GitHub Release ZIP
+        - Docker Compose
+        - Other or unsure
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include PHP version, database engine/version, hosting or operating system, and whether the dashboard is enabled. For browser issues, include browser/version. Do not paste connection strings.
+      placeholder: |
+        PHP:
+        Database engine/version:
+        Hosting or OS:
+        Dashboard enabled:
+        Browser, if relevant:
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Give the smallest reproducible example, including relevant settings and commands. For tracking issues, state whether consent was granted, denied, or withdrawn. Use synthetic data and remove secrets.
+      placeholder: |
+        1. Configure ...
+        2. Run or open ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior
+      placeholder: |
+        Expected:
+
+        Actual:
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Redacted diagnostics or screenshots
+      description: Optional. Share only the relevant error and context. Review stack traces, paths, URLs, and screenshots for secrets and personal data before posting.

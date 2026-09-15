@@ -9,7 +9,7 @@ The readable JavaScript files remain the source of truth. An optional Node build
 Use Node.js 18 or newer. Install the development dependency and build:
 
 ```bash
-npm install --ignore-scripts
+npm ci --ignore-scripts
 npm run build:js
 ```
 
