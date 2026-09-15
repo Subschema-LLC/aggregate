@@ -15,12 +15,16 @@ settings or establish that a reporting inbox is monitored.
   and enable secret scanning and push protection where available. Review findings
   before changing visibility.
 - Run [CI](../.github/workflows/ci.yml) on GitHub, then require its final **CI** check
-  on `master` and `development`. Protect the branches against accidental force
-  pushes and deletion. CI covers PHP 8.2/8.3, browser assets, and release tooling;
-  it uses disposable fixtures and does not prove every supported database engine.
+  on `development`, `uat`, and `master`, and require pull requests for changes.
+  Protect the branches against accidental force pushes and deletion. CI covers
+  PHP 8.2/8.3, browser assets, and release tooling; it uses disposable fixtures
+  and does not prove every supported database engine.
 - Verify the issue forms, PR template, repository description, license notices,
   and funding link once the public interface is available. Contributions target
-  `development`; tagged production releases come from `master` by default.
+  `development`; maintainer promotion PRs go from `development` to `uat` for user
+  acceptance testing, then from `uat` to `master`. See the
+  [branching strategy](../CONTRIBUTING.md#branching-strategy). Tagged production
+  releases come from `master` by default.
 
 ## Current files and Git history
 

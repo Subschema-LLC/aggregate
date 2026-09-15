@@ -13,6 +13,33 @@ using the [security policy](SECURITY.md); ordinary bugs and proposals belong in
 Coding agents should also read [AGENTS.md](AGENTS.md) for the product ethos,
 architectural boundaries, and expectations for delivering changes.
 
+## Branching strategy
+
+Create each working branch from the latest `development`. Use a descriptive
+prefix, for example `feature/add-goal-validation`, `issue/123-fix-consent`,
+`fix/tracker-config`, `docs/update-setup`, or `chore/update-dependencies`.
+These branches are for individual changes; `development`, `uat`, and `master`
+are the shared integration, acceptance-testing, and production branches.
+
+Changes move through these pull requests in order. On GitHub, **compare** is the
+source branch and **base** is the target branch:
+
+| Source (compare) | Target (base) | Purpose |
+| --- | --- | --- |
+| `feature/...`, `issue/...`, or another working branch | `development` | Review and integrate a contributor's change |
+| `development` | `uat` | Promote integrated changes for user acceptance testing (UAT) |
+| `uat` | `master` | Promote accepted changes for production release |
+
+Contributors open PRs against `development`, including when contributing from a
+fork. Maintainers open the promotion PRs from `development` to `uat`, then from
+`uat` to `master` after acceptance testing. Follow the same path for fixes found
+during UAT: branch from `development`, submit the fix to `development`, and
+promote it to `uat` for another check before promotion to `master`.
+
+Each stage uses a PR and the relevant review and checks; keep individual changes
+on working branches and preserve the promotion order. Production tagging and
+package publication follow the [release guide](docs/RELEASES.md#publish-a-release).
+
 ## Design principles
 
 - Keep the database simple: prefer fewer, meaningful tables and columns, with a
@@ -93,12 +120,18 @@ regression tests using its built-in test runner; install the pinned npm dependen
 for the JavaScript build and its tests. Python 3.11 or newer is needed for
 release-tooling tests. Docker Compose and Make are optional.
 
-After cloning, create your branch:
+After cloning, update `development` from its tracked upstream and create your
+working branch (replace the example name):
 
 ```bash
 git switch development
-git switch -c your-change
+git pull --ff-only
+git switch -c feature/your-change
 ```
+
+If you cloned a fork, first sync its `development` with the main repository's
+`development`. Set the PR's base repository to `Subschema-LLC/aggregate` and its
+base branch to `development`.
 
 For a fresh checkout, create local configuration before installing dependencies:
 
@@ -282,6 +315,10 @@ For a simple health check against the checked-in Docker setup, use
 health check.
 
 ## Preparing a pull request
+
+For an individual contribution, select `development` as the base branch and your
+working branch as the compare branch. Maintainer promotion PRs use the targets
+in the [branching strategy](#branching-strategy).
 
 Keep the change focused and follow the conventions of the surrounding code.
 Explain the concrete problem, the resulting behavior, and any configuration,
