@@ -5,6 +5,9 @@
 *.iml
 ###< IDE ###
 
+# Superseded internal architecture draft; current documentation is in docs/.
+/Subschema_ Aggregate.pdf
+
 ###> symfony/framework-bundle ###
 /.env
 /.env.local

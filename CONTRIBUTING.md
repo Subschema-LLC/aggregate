@@ -5,6 +5,14 @@ and target `development` when opening a pull request. See the [README](README.md
 for product setup and the [privacy and compliance guide](docs/PRIVACY-COMPLIANCE.md)
 for the limits and responsibilities of a deployment.
 
+Follow the [code of conduct](CODE_OF_CONDUCT.md). Report vulnerabilities privately
+using the [security policy](SECURITY.md); ordinary bugs and proposals belong in
+[GitHub issues](https://github.com/Subschema-LLC/aggregate/issues). Review the
+[roadmap](ROADMAP.md) before proposing substantial work.
+
+Coding agents should also read [AGENTS.md](AGENTS.md) for the product ethos,
+architectural boundaries, and expectations for delivering changes.
+
 ## Design principles
 
 - Keep the database simple: prefer fewer, meaningful tables and columns, with a
@@ -18,9 +26,12 @@ for the limits and responsibilities of a deployment.
   extensibility, and ease of use. Avoid dependencies and abstraction layers that
   add more maintenance than value.
 
-AI-assisted contributions are welcome. The author remains responsible for
-understanding and reviewing the complete change, checking its architectural and
-licensing implications, and verifying the behavior they describe in the PR.
+Contributions developed with AI coding agents are welcome. Apply your own
+expertise and judgment: provide the project's context, guide the agent's
+decisions, and review and test the complete change. Submit work you understand
+and can explain, including its architectural, privacy, and licensing implications.
+The author remains responsible for the contribution and for verifying the
+behavior described in the PR.
 
 ## Privacy invariants
 
@@ -78,8 +89,9 @@ browser check alone does not protect ingestion from a direct HTTP request.
 
 Use PHP 8.2 or newer, Composer, the PHP extensions required by the dependencies,
 and the PDO driver for your chosen database. Node.js 18 or newer runs the browser
-regression tests using its built-in test runner; there is no npm install step.
-Docker Compose and Make are optional.
+regression tests using its built-in test runner; install the pinned npm dependencies
+for the JavaScript build and its tests. Python 3.11 or newer is needed for
+release-tooling tests. Docker Compose and Make are optional.
 
 After cloning, create your branch:
 
@@ -160,23 +172,30 @@ worker is only needed when testing an asynchronous transport.
 
 ## Tests and checks
 
+The [CI workflow](.github/workflows/ci.yml) runs PHP tests and syntax/configuration
+checks, the JavaScript build and browser tests, and release-tooling tests on pushes
+and pull requests. Its final `CI` check requires all jobs to pass. The separate
+[release workflow](.github/workflows/release.yml) builds and verifies production
+packages; see the [release guide](docs/RELEASES.md) for maintainer setup.
+
 Run these from the repository root after installing development dependencies:
 
 ```bash
-npm install --ignore-scripts
+npm ci --ignore-scripts
 php vendor/bin/phpunit
 node --test tests/JavaScript/*.test.js
+python3 -m unittest discover -s tests/Release -p 'test_*.py' -v
 ```
 
-For PHP inside a running container, replace the first command with:
+For PHP inside a running container, replace the PHPUnit command with:
 
 ```bash
 docker compose exec php php vendor/bin/phpunit
 ```
 
-The Node command runs on the host in either setup. `make test` currently runs the
-PHP suite and `aggregate-consent.test.js`; use the wildcard command above to also
-run the marker and optional JavaScript-build tests. The build test requires
+The Node and Python commands run on the host in either setup. `make test` currently
+runs the PHP suite and `aggregate-consent.test.js`; use the wildcard command above
+to also run the marker and optional JavaScript-build tests. The build test requires
 the pinned Terser dependency (or its matching global installation); see
 [JavaScript build](docs/JS-BUILD.md). Make automatically selects Docker when it
 finds Docker and `compose.yaml`; `make test USE_DOCKER=0` selects native PHP.
@@ -198,6 +217,7 @@ Choose checks that cover the behavior you changed:
 | SQL, migrations, archiving, or retention | `php vendor/bin/phpunit tests/Migration`; relevant lifecycle service tests; migration/query checks on disposable databases |
 | YAML settings, installation, or headless behavior | Relevant `tests/Configuration`, `tests/Command`, and controller/service tests; YAML and container checks |
 | Dashboard templates or branding | Relevant controller/service tests; Twig lint; inspect the changed UI and keyboard interactions |
+| Release packaging or signing | `python3 -m unittest discover -s tests/Release -p 'test_*.py' -v`; relevant PHP update and verification tests; extracted-package checks in the [release guide](docs/RELEASES.md) |
 | Documentation only | Verify commands against the repository and check relative links, anchors, and examples; application tests are usually unnecessary |
 
 Useful syntax and configuration checks are:
@@ -279,5 +299,6 @@ The project defaults to **AGPL-3.0-only** under [LICENSE](LICENSE), including
 documentation, server code, dashboard assets, and tests. The browser tracker
 [public/aggregate.js](public/aggregate.js) is **BSD-3-Clause** under its header and
 [js/LICENSE.txt](js/LICENSE.txt); it is also the tracker source, with no separate
-build source. Preserve this split and the tracker notice. Third-party dependencies
-and vendored assets retain their own licenses.
+build source. The [Code of Conduct](CODE_OF_CONDUCT.md) adapts Contributor Covenant
+2.1 under **CC BY 4.0**, with attribution in that file. Preserve these license
+notices. Third-party dependencies and vendored assets retain their own licenses.
