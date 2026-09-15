@@ -28,6 +28,7 @@ final class ConfiguredGeoIpResolver implements GeoIpResolverInterface
         '64:ff9b:1::/48',
         '100::/64',
         '2001:2::/48',
+        '2001:db8::/32',
         '2001:10::/28',
         '2001:20::/28',
         '3fff::/20',
