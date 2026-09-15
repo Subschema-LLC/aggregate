@@ -52,6 +52,7 @@ package publication follow the [release guide](docs/RELEASES.md#publish-a-releas
 - Design for security, useful test coverage, scalability, maintainability,
   extensibility, and ease of use. Avoid dependencies and abstraction layers that
   add more maintenance than value.
+- Since this is a headless, UI-minimal tool, complex frontend build processes are not necessary, unless a very compelling case can be made. We bias ease of install and leveraging Bulma and Turbo/Stimulus over heavily investing in UI overkill. 
 
 Contributions developed with AI coding agents are welcome. Apply your own
 expertise and judgment: provide the project's context, guide the agent's
