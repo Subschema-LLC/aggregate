@@ -45,7 +45,7 @@ final class UpdatesCommandTest extends TestCase
         foreach (['available', 'up_to_date', 'ahead', 'diverged'] as $state) {
             yield $state => [$state, Command::SUCCESS];
         }
-        foreach (['unknown', 'error', 'unavailable'] as $state) {
+        foreach (['unknown', 'error', 'unavailable', 'incompatible'] as $state) {
             yield $state => [$state, Command::FAILURE];
         }
     }
@@ -58,6 +58,51 @@ final class UpdatesCommandTest extends TestCase
 
         self::assertSame(Command::FAILURE, $tester->execute([]));
         self::assertStringContainsString('[ERROR]', $tester->getDisplay());
+        self::assertStringNotContainsString('app:updates:pull', $tester->getDisplay());
+    }
+
+    public function testMismatchedBranchShowsConfiguredAndInstalledBranchesWithoutSuggestingPull(): void
+    {
+        $updates = $this->createMock(ApplicationUpdateService::class);
+        $updates->method('check')->willReturn(array_replace($this->updateStatus(), [
+            'branch' => 'master',
+            'installed_branch' => 'development',
+        ]));
+        $tester = new CommandTester(new CheckUpdatesCommand($updates));
+
+        self::assertSame(Command::SUCCESS, $tester->execute([]));
+        self::assertStringContainsString('Configured branch', $tester->getDisplay());
+        self::assertStringContainsString('Installed branch', $tester->getDisplay());
+        self::assertStringContainsString('master', $tester->getDisplay());
+        self::assertStringContainsString('development', $tester->getDisplay());
+        self::assertStringContainsString('does not match updates_branch', $tester->getDisplay());
+        self::assertStringNotContainsString('app:updates:pull', $tester->getDisplay());
+    }
+
+    public function testReleaseCheckReportsVersionsAndVerificationWithoutSuggestingGitPull(): void
+    {
+        $status = array_replace($this->updateStatus(), [
+            'installation_type' => 'release',
+            'current_version' => '1.0.0',
+            'latest_version' => '1.1.0',
+            'release_url' => 'https://github.com/Subschema-LLC/aggregate/releases/tag/v1.1.0',
+            'package_url' => 'https://github.com/Subschema-LLC/aggregate/releases/download/v1.1.0/aggregate-1.1.0.zip',
+            'manifest_url' => 'https://github.com/Subschema-LLC/aggregate/releases/download/v1.1.0/release-manifest.json',
+            'signature_url' => 'https://github.com/Subschema-LLC/aggregate/releases/download/v1.1.0/release-manifest.sig',
+        ]);
+        $updates = $this->createMock(ApplicationUpdateService::class);
+        $updates->method('check')->willReturn($status);
+        $tester = new CommandTester(new CheckUpdatesCommand($updates));
+
+        self::assertSame(Command::SUCCESS, $tester->execute([]));
+        self::assertStringContainsString('Installed version', $tester->getDisplay());
+        self::assertStringContainsString('1.0.0', $tester->getDisplay());
+        self::assertStringContainsString('1.1.0', $tester->getDisplay());
+        foreach (['release_url', 'package_url', 'manifest_url', 'signature_url'] as $key) {
+            self::assertStringContainsString($status[$key], $tester->getDisplay());
+        }
+        self::assertStringContainsString('signature has not been verified', $tester->getDisplay());
+        self::assertStringContainsString('app:updates:verify-package', $tester->getDisplay());
         self::assertStringNotContainsString('app:updates:pull', $tester->getDisplay());
     }
 
@@ -110,7 +155,9 @@ final class UpdatesCommandTest extends TestCase
     {
         return [
             'state' => $state,
+            'installation_type' => 'git',
             'branch' => 'development',
+            'installed_branch' => 'development',
             'current_commit' => str_repeat('a', 40),
             'latest_commit' => str_repeat('b', 40),
             'checked_at' => 1789426800,

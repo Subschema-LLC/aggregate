@@ -6,6 +6,7 @@ This guide covers the browser SDK, custom events, and GTM setup. Register a webs
 
 - [JavaScript integration](#javascript-integration)
 - [Custom event tracking](#custom-event-tracking)
+- [UTM and custom data collection](#utm-and-custom-data-collection)
 - [Health and ingestion checks](#health-and-ingestion-checks)
 - [Google Tag Manager](#google-tag-manager-gtm-integration)
 - [Troubleshooting](#troubleshooting)
@@ -24,7 +25,7 @@ Add to your website:
 <script src="https://your-host/aggregate.js" async referrerpolicy="no-referrer"></script>
 ```
 
-An anonymous-mode page-view row is recorded automatically when the script loads. Queries, fragments, raw referrers, cookies, visitor IDs, and session IDs are not sent in anonymous mode. You may also call `emit(...)`: before enhanced consent, each safe event name and its coarse context are retained, configured goals marked `anonymous: true` may be retained, and custom properties are omitted.
+An anonymous-mode page-view row is recorded automatically when the script loads. Full query strings, fragments, raw referrers, cookie values, visitor IDs, and session IDs are not sent. You may also call `emit(...)`: before enhanced consent, each safe event name and its coarse context are retained, configured goals marked `anonymous: true` may be retained, and only custom properties explicitly configured with `consent_required: false` may be sent.
 
 ## Custom event tracking
 
@@ -35,7 +36,7 @@ Call SDK methods after the script has loaded. The following sequence illustrates
 
 ```javascript
 // Anonymous mode records the safe event name, coarse context, and the allowlisted
-// `signup` goal. The custom property is omitted.
+// `signup` goal. The custom property is omitted unless configured consent-free.
 window.Aggregate.emit('signup_click', { plan_type: 'pro' }, 'signup');
 
 // Accept enhanced analytics to include properties, identifiers, and exact dimensions.
@@ -43,11 +44,35 @@ window.Aggregate.setConsent(true);
 window.Aggregate.emit('signup_click', { plan_type: 'pro' }, 'signup');
 
 // Reject or withdraw enhanced analytics. Coarse named-event rows and configured
-// anonymous goals continue.
+// anonymous goals and consent-free properties continue.
 window.Aggregate.setConsent(false);
 ```
 
-The tracker is authored directly in [public/aggregate.js](../public/aggregate.js), with no separate build step. The configured `/aggregate.js` response uses the same BSD-3-Clause license and retains its notice. Use the supplied server routing so YAML marker settings and the JavaScript namespace reach the browser. [Namespace overrides](CONFIGURATION.md#customizing-the-javascript-namespace) and [organization marker setup](PRIVACY-COMPLIANCE.md#organization-traffic) are documented separately.
+The tracker is authored directly in [public/aggregate.js](../public/aggregate.js), with no required build step. The configured `/aggregate.js` response uses the same BSD-3-Clause license and retains its notice. [Optional minification](JS-BUILD.md) provides `/aggregate.js?min=1` with the same configuration. Use the supplied server routing so YAML collection settings, marker settings, and the JavaScript namespace reach the browser. [Namespace overrides](CONFIGURATION.md#customizing-the-javascript-namespace) and [organization marker setup](PRIVACY-COMPLIANCE.md#organization-traffic) are documented separately.
+
+## UTM and custom data collection
+
+The tracker reads `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`, and `utm_id` from the current page URL and maps them to matching `custom_data` keys. All six require enhanced consent by default. Administrators can define additional query parameter mappings and configure consent for each property in **Data model** or the active YAML configuration; see the [data model guide](DATA-MODEL.md).
+
+`query_parameter_mappings` maps each source parameter to a defined JSON property. Multiple parameters may target the same property. Configuration order determines priority: the first source with a nonblank value wins; repeated occurrences use the first nonblank value. Names match exactly, including case. Explicit scalar values passed to `emit()` take precedence, including `false`, `0`, an empty string, and `null`.
+
+Mapped values accompany page views and named events when consent permits. The tracker reads the current page query for each event, never the tracker script URL or the referrer, and does not persist attribution in cookies or browser storage. A subsequent page without the parameter has no carried-forward campaign value. Unmapped parameters and URL fragments are omitted.
+
+Set a property's `consent_required` to `false` to permit it before a choice, after rejection, and after withdrawal. The server independently enforces this property allowlist for API clients as well as the SDK. For anonymous UTM collection, the recommendation is **no more detail than `utm_medium`**, using reviewed channel codes such as `email`, `social`, or `cpc`. This is advisory: each UTM property can be enabled separately. Enabling source, campaign, term, content, or ID can expose campaign details, search text, or identifiers. Review actual values before overriding the recommendation; permitting a key does not restrict its values to a fixed vocabulary.
+
+For a static/CDN copy of the tracker, supply the matching public settings before loading it:
+
+```javascript
+window.Aggregate = {
+  endpoint: 'https://analytics.example.com/api/receive',
+  websiteToken: 'your-website-token',
+  customData: {consentFreeProperties: ['utm_medium']}
+};
+```
+
+After loading, `Aggregate.configure({customData: {...}})` accepts the same settings. `consentFreeProperties` is a list of JSON keys; `queryParameters` is a source-to-key mapping. Supplying either field replaces it; `{queryParameters: {}}` disables URL collection. Omitted fields retain their current settings. Browser overrides cannot permit server-side collection of properties requiring consent.
+
+Properties are flat scalars: strings, finite numbers, booleans, or null. At most 50 properties are sent, strings are bounded to 500 UTF-8 bytes, and nested arrays/objects are omitted. Property keys use `[A-Za-z][A-Za-z0-9_.-]{0,63}`; reserved prototype names and the configured organization marker cannot be supplied as custom properties. Dots in keys are literal, not nesting.
 
 ## Health and ingestion checks
 
@@ -112,7 +137,7 @@ Complete setup guide for integrating with Google Tag Manager for both pixel trac
 
 ### Step 2: Track Custom Events from GTM
 
-Named custom events may be stored in anonymous mode. Before `setConsent(true)`, custom properties are omitted, while a goal may be retained only when its fixed code is enabled and marked `anonymous: true` in `config/goals.yaml`.
+Named custom events may be stored in anonymous mode. Before `setConsent(true)`, only custom properties configured with `consent_required: false` may be retained, while a goal may be retained only when its fixed code is enabled and marked `anonymous: true` in `config/goals.yaml`.
 
 **Method A: Using GTM's Custom HTML Tag for Specific Events**
 
@@ -202,11 +227,11 @@ Initialize a previously recorded choice before loading the tracker when possible
      }
    </script>
    ```
-   This removes the SDK's visitor/session identifiers and stops sending custom properties and exact dimensions. Safe event names and configured goals marked `anonymous: true` continue as individual anonymous-mode rows. It does not erase data already held by the server; handle deletion requests through your documented data-subject process.
+   This removes the SDK's visitor/session identifiers and stops sending properties requiring consent and exact dimensions. Safe event names, configured consent-free properties, and goals marked `anonymous: true` continue as individual anonymous-mode rows. It does not erase data already held by the server; handle deletion requests through your documented data-subject process.
 
 ### Step 4: Common Event Tracking Examples
 
-The `{{...}}` placeholders below are GTM variables, not JavaScript or Twig placeholders to use on a normal page. Map names, labels, IDs, and page categories to reviewed values; do not forward form contents, personalized click text, or URLs containing identifiers. Properties are stored only in enhanced mode, while valid event names and permitted goals can be retained anonymously.
+The `{{...}}` placeholders below are GTM variables, not JavaScript or Twig placeholders to use on a normal page. Map names, labels, IDs, and page categories to reviewed values; do not forward form contents, personalized click text, or URLs containing identifiers. Properties require enhanced consent unless their definition explicitly sets `consent_required: false`; valid event names and permitted goals can be retained anonymously.
 
 **Track Form Submissions**
 ```html

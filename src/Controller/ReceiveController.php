@@ -6,6 +6,7 @@ use App\Message\TrackEventMessage;
 use App\Service\WebsiteConfigManager;
 use App\Security\IpRateLimiter;
 use App\Service\AnonymousEventRecorder;
+use App\Service\CustomDataSettings;
 use App\Service\GeoIp\GeoIpResolverInterface;
 use App\Service\GoalEventRegistry;
 use App\Service\InternalTrafficSettings;
@@ -33,6 +34,7 @@ class ReceiveController
         AnonymousEventRecorder $anonymousRecorder,
         LoggerInterface $logger,
         InternalTrafficSettings $internalTrafficSettings,
+        CustomDataSettings $customDataSettings,
     ): Response
     {
         try {
@@ -112,6 +114,10 @@ class ReceiveController
             // The deployment chooses the JSON key, and queued events keep this
             // name even if settings change before the worker handles them.
             $internalTrafficName = $internalTrafficSettings->toBrowserConfig()['name'];
+            // Resolve the deployment's property policy before either storage
+            // path. Client-side consent flags never authorize custom keys.
+            $eventData = $customDataSettings->filterEventData($payload['eventData'] ?? null, $enhancedConsent);
+            unset($eventData[$internalTrafficName]);
             $submittedGoal = $payload['goalEvent'] ?? null;
             $goalEvent = $goalEvents->resolve($submittedGoal, anonymousMode: !$enhancedConsent);
             $goalWasRejected = $goalEvents->wasSubmitted($submittedGoal) && $goalEvent === null;
@@ -130,8 +136,8 @@ class ReceiveController
 
             if (!$enhancedConsent) {
                 // Every safe named event is accepted anonymously, but attached
-                // identifiers and custom properties are never copied. Goals
-                // must be explicitly approved for anonymous collection.
+                // identifiers are never copied. Properties and goals must be
+                // explicitly approved for collection without consent.
                 $anonymousRecorder->record(
                     websiteToken: $websiteToken,
                     eventName: $eventName,
@@ -144,6 +150,7 @@ class ReceiveController
                     goalEvent: $goalEvent,
                     internalTraffic: $internalTraffic,
                     internalTrafficName: $internalTrafficName,
+                    approvedCustomData: $eventData,
                 );
 
                 $responsePayload = [
@@ -156,11 +163,6 @@ class ReceiveController
 
                 return $this->jsonWithCors($request, $responsePayload, Response::HTTP_ACCEPTED);
             }
-
-            $eventData = $sanitizer->sanitizeEventData($payload['eventData'] ?? null);
-            // The reserved reporting key is derived only from the top-level
-            // boolean, including before enhanced events enter the queue.
-            unset($eventData[$internalTrafficName]);
 
             $bus->dispatch(new TrackEventMessage(
                 websiteToken: $websiteToken,

@@ -14,7 +14,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 
 #[AsCommand(
     name: 'app:updates:pull',
-    description: 'Fast-forward a clean checkout from the same branch of Subschema-LLC/aggregate',
+    description: 'Fast-forward a clean checkout from the configured branch of Subschema-LLC/aggregate',
 )]
 final class PullUpdatesCommand extends Command
 {
@@ -27,7 +27,8 @@ final class PullUpdatesCommand extends Command
     {
         $this->setHelp(<<<'HELP'
 Run as the deployment user after reviewing changes and preparing backups and maintenance.
-Fetches the current branch from the official repository and fast-forwards a clean checkout.
+Fetches updates_branch from config/aggregate.yaml (default: master) in the official repository.
+The installed branch must match that setting; the command never switches branches.
 Local edits, untracked files, detached HEADs and divergent history prevent the update.
 This updates source code only. Complete dependencies, migrations, cache, assets and worker/PHP
 restarts using DEPLOYMENT.md#updates before resuming service. No deployment steps run automatically.

@@ -1,0 +1,159 @@
+name: Build release package
+
+on:
+  push:
+    tags: ['v[0-9]*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing stable version tag to package (for example v1.2.3)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: ctype, iconv, pdo_sqlite, pdo_mysql, mbstring, xml, curl, intl, sodium, zip
+          coverage: none
+          tools: composer:v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install test dependencies
+        run: |
+          echo "RELEASE_OUTPUT=$RUNNER_TEMP/aggregate-release" >> "$GITHUB_ENV"
+          cp .env.prod.example .env
+          composer validate --no-check-publish --no-interaction
+          composer install --no-interaction --prefer-dist --no-scripts
+          npm install --ignore-scripts --no-audit --no-fund
+      - name: Verify release tag and publishing branch
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})$ ]] || { echo 'Use a stable vX.Y.Z release tag (maximum nine digits per component).' >&2; exit 1; }
+          branch="$(php scripts/release-branch.php)"
+          commit="$(git rev-parse HEAD)"
+          tagged_commit="$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
+          test "$commit" = "$tagged_commit"
+          git merge-base --is-ancestor "$commit" "refs/remotes/origin/$branch" || { echo "Release tag must belong to publishing branch $branch." >&2; exit 1; }
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+      - name: Test application and release tooling
+        run: |
+          php bin/phpunit
+          npm run test:js
+          python3 -m unittest discover -s tests/Release -p 'test_*.py' -v
+      - name: Prepare production dependencies and browser assets
+        env:
+          APP_ENV: prod
+          APP_DEBUG: '0'
+          APP_SECRET: release-build-only-not-a-deployment-secret
+        run: |
+          # Fresh vendor directory prevents development packages surviving a build.
+          rm -rf vendor src/DataFixtures
+          composer install --no-dev --no-interaction --prefer-dist --no-scripts --optimize-autoloader
+          composer check-platform-reqs --no-dev
+          php bin/console importmap:install
+          php bin/console assets:install public
+          php bin/console asset-map:compile
+          npm run build:js
+          npm run check:js
+      - name: Build installable ZIP and manifest
+        env:
+          RELEASE_BRANCH: ${{ steps.release.outputs.branch }}
+          RELEASE_COMMIT: ${{ steps.release.outputs.commit }}
+        run: |
+          python3 scripts/build-release.py --output-dir "$RELEASE_OUTPUT" --version "$RELEASE_TAG" --branch "$RELEASE_BRANCH" --commit "$RELEASE_COMMIT"
+      - name: Sign release manifest
+        env:
+          RELEASE_SIGNING_PRIVATE_KEY: ${{ secrets.RELEASE_SIGNING_PRIVATE_KEY }}
+        run: php scripts/sign-release.php "$RELEASE_OUTPUT/aggregate-release.json"
+      - name: Verify signed package using the application verifier
+        env:
+          APP_ENV: prod
+          APP_DEBUG: '0'
+          APP_SECRET: release-verification-only-not-a-deployment-secret
+          DATABASE_URL: 'mysql://build:build@127.0.0.1:3306/aggregate?serverVersion=8.0'
+          RELEASE_BRANCH: ${{ steps.release.outputs.branch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # This temporary channel selection is created after packaging. The
+          # verifier trusts the checkout's configured public key, not the ZIP.
+          php <<'PHP'
+          <?php
+          require 'vendor/autoload.php';
+          $branch = App\Service\UpdateSettings::validateBranch(getenv('RELEASE_BRANCH'));
+          $yaml = Symfony\Component\Yaml\Yaml::dump(['updates_branch' => $branch]);
+          $handle = @fopen('config/aggregate_prod.yaml', 'xb');
+          if ($handle === false || fwrite($handle, $yaml) !== strlen($yaml)) {
+              throw new RuntimeException('Cannot create temporary verification configuration.');
+          }
+          fclose($handle);
+          PHP
+          trap 'rm -f config/aggregate_prod.yaml' EXIT
+          php bin/console app:updates:verify-package "$RELEASE_OUTPUT/aggregate-${RELEASE_TAG#v}.zip" "$RELEASE_OUTPUT/aggregate-release.json" "$RELEASE_OUTPUT/aggregate-release.json.sig"
+      - name: Smoke test packaged application without Git or build tools
+        env:
+          APP_ENV: prod
+          APP_DEBUG: '0'
+          APP_SECRET: release-smoke-test-only-not-a-deployment-secret
+          DATABASE_URL: 'mysql://build:build@127.0.0.1:3306/aggregate?serverVersion=8.0'
+        shell: bash
+        run: |
+          package="$RELEASE_OUTPUT/aggregate-${RELEASE_TAG#v}.zip"
+          smoke="$RUNNER_TEMP/aggregate-release-smoke"
+          python3 -m zipfile -e "$package" "$smoke"
+          cd "$smoke"
+          php bin/console about
+          php bin/console cache:clear
+          php bin/console lint:container
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signed-release-package
+          path: ${{ runner.temp }}/aggregate-release/*
+          if-no-files-found: error
+          retention-days: 7
+
+  draft-release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: signed-release-package
+          path: release
+      - name: Create a draft GitHub Release for review
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.build.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Never replace assets on an existing release; tags/packages are immutable.
+          gh release create "$RELEASE_TAG" --verify-tag --draft --title "Aggregate $RELEASE_TAG" --generate-notes release/aggregate-*.zip release/aggregate-release.json release/aggregate-release.json.sig

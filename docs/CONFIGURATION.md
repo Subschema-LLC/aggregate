@@ -7,6 +7,7 @@ Use this guide for application settings and runtime overrides. Run commands from
 - [Environment files](#environment-files)
 - [Application settings](#application-settings)
 - [Organization traffic](#organization-traffic)
+- [Custom data and UTM parameters](#custom-data-and-utm-parameters)
 - [Archiving and retention](#archiving-and-retention)
 - [Main navigation](#main-navigation)
 - [Conversion goals](#conversion-goals)
@@ -95,7 +96,10 @@ environments:
 - `brand_font_family`: Safe comma-separated local/system font stack for application text (default: `system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif`)
 - `brand_heading_font_family`: Safe comma-separated local/system font stack for headings (default: `system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif`)
 - `js_namespace`: JavaScript global variable name (default: `Aggregate`)
+- `updates_branch`: Official GitHub branch used by source and packaged-release checks (default: `master`); YAML only, with active-environment precedence
+- `updates_signing_public_key`: Optional base64 Ed25519 public key overriding the packaged `config/release-signing.pub` for offline package verification; never a private key
 - `internal_traffic_storage`, `internal_traffic_name`, `internal_traffic_value`, `internal_traffic_cookie_domain`, `internal_traffic_share_token`: Browser marker and team sharing settings; see [Organization traffic](#organization-traffic)
+- `custom_data_properties`, `query_parameter_mappings`: Shareable property model, per-property consent settings, UTM/query capture, and reporting aliases; see [Custom data and UTM parameters](#custom-data-and-utm-parameters)
 - `dashboard_enabled`: Enable/disable dashboard/login/install behavior (default: `true`)
 - `anonymous_tracking_enabled`: Administrative collection kill switch; `false` rejects anonymous and enhanced events (default: `true`)
 - `anonymous_excluded_paths`: Paths/globs excluded from anonymous and enhanced collection (default: `[]`)
@@ -135,6 +139,16 @@ When upgrading from a version that mirrored these values, the existing database 
 The default browser marker is `orgInternalTraffic=true`. Configure `internal_traffic_storage`, `internal_traffic_name`, `internal_traffic_value`, `internal_traffic_cookie_domain`, and `internal_traffic_share_token` in the active YAML environment, or use the Organization traffic admin page. A match stores a boolean in the existing event JSON under the configured marker name; no migration is needed.
 
 See [organization traffic](PRIVACY-COMPLIANCE.md#organization-traffic) for YAML examples, browser scope, installation-generated sharing tokens, downloadable marker pages, and Power BI/Tableau filtering. Existing grouped views and archives omit this JSON flag.
+
+## Custom data and UTM parameters
+
+Use **Data model** at `/dashboard/data-model` to define properties, whitelist selected keys for anonymous collection, configure URL-parameter aliases, discover observed keys, download YAML, and regenerate private reporting views. These mappings use active-environment precedence; uppercase environment-variable overrides are not supported for the model.
+
+Standard `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`, and `utm_id` map to properties with the same names and require enhanced consent by default. For anonymous attribution, prefer only `utm_medium` with broad channel values. This advice is overridable: select **Allow without consent** or set `consent_required: false` for any property. Detailed campaign data may contain search text or identifiers, and even medium values require review; the UI and [data model guide](DATA-MODEL.md) document this warning.
+
+The guide includes complete YAML examples, many-to-one mappings, precedence, validation, and `app:analytics:views:regenerate`. Saving changes future collection; explicit regeneration applies reporting columns to `analytics_custom_*` views over retained raw events. Existing grouped BI views and archives retain their contracts.
+
+An optional [JavaScript minification build](JS-BUILD.md) produces the tracker and drop-in artifacts. Request `/aggregate.js?min=1` to use the built tracker with current public configuration; missing or stale builds fall back to configured source.
 
 ## Archiving and retention
 
@@ -222,13 +236,25 @@ window.Company1Analytics.emit('signup', {plan: 'pro'});
 
 ### GitHub update checks
 
-The admin **Updates** page and `app:updates:check` compare the installed Git branch
-with `Subschema-LLC/aggregate`. No YAML setting is required. Optionally set
+The admin **Updates** page and `app:updates:check` use the public
+`Subschema-LLC/aggregate` repository. Set `updates_branch: master` in the active
+YAML environment to select the upstream branch; `master` is also the default.
+This setting has no uppercase environment-variable override. Git installations
+compare commits against that branch, and source pulls require the checkout to
+already be on it. Official ZIP installations use their embedded `release.json`
+and stable GitHub Releases without requiring Git. Neither check switches branches
+or installs packages. Optionally set
 `AGGREGATE_GITHUB_TOKEN` in the server environment or untracked `.env.local` for
 private-repository API access or higher rate limits. Keep this credential out of
 tracked YAML and browser configuration. Git pulls use the deployment user's
 Git credentials separately. See the [deployment guide](../DEPLOYMENT.md#updates)
 for checking and applying updates, including headless use.
+
+Offline package verification uses the shipped `config/release-signing.pub` or a
+YAML `updates_signing_public_key` override. Both contain only a base64 Ed25519
+public key obtained independently of the package being verified. Publishing keys
+and the maintainer-only `config/release.yaml` branch are described in the
+[release guide](RELEASES.md).
 
 ### Application settings
 

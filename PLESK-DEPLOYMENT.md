@@ -274,8 +274,14 @@ Admins can check **Updates** in the dashboard. From the domain's deployment acco
 See [update behavior and prerequisites](DEPLOYMENT.md#updates) for Git credentials,
 private-repository checks, the one-time remote URL change, and upgrading versions
 that predate these commands. Back up the database and local configuration first.
-The pull command updates a clean Git checkout on its current branch; complete the
+Set `updates_branch` in the active aggregate YAML configuration (default `master`).
+The pull command requires a clean Git checkout on that configured branch; complete the
 remaining deployment steps below after it succeeds.
+
+Official [release ZIPs](docs/RELEASES.md) include production dependencies and built
+assets and can check versions without Git. The dashboard links to packages;
+signed-package verification and manual deployment are available while automatic
+package replacement remains a separate implementation step.
 
 For upgrades that include the `Version20260724*` privacy migrations, pause `/api/receive` and stop all async workers first. The migrations permanently remove daily IP hashes, legacy non-granted event rows, and matching Doctrine-queue tracker envelopes. Inspect failed, external, and encoded/base64 queue transports separately before resuming ingestion.
 

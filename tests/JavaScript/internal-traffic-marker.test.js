@@ -7,7 +7,9 @@ const test = require('node:test');
 const vm = require('node:vm');
 
 const markerSource = fs.readFileSync(
-  path.join(__dirname, '..', '..', 'templates', 'internal_traffic', 'marker.js.twig'),
+  process.env.AGGREGATE_MARKER_SOURCE
+    ? path.resolve(process.env.AGGREGATE_MARKER_SOURCE)
+    : path.join(__dirname, '..', '..', 'templates', 'internal_traffic', 'marker.js.twig'),
   'utf8'
 );
 

@@ -1,4 +1,4 @@
-.PHONY: help install setup start stop restart logs migrate worker test clean \
+.PHONY: help install setup start stop restart logs migrate worker test clean build-js check-js \
 	start-mysql start-postgres start-mariadb \
 	migrate-mysql migrate-postgres migrate-mariadb \
 	install-mysql install-postgres install-mariadb
@@ -138,6 +138,12 @@ migrate: ## Run database migrations
 test: ## Run PHP and JavaScript privacy regression tests
 	$(PHP_CMD) vendor/bin/phpunit
 	node tests/JavaScript/aggregate-consent.test.js
+
+build-js: ## Build optional minified tracker, marker, and consent drop-in scripts
+	node scripts/build-js.cjs
+
+check-js: ## Check that optional generated JavaScript matches current source
+	node scripts/build-js.cjs --check
 
 worker: ## Manually start worker (for debugging)
 	$(PHP_CMD) -d variables_order=EGPCS bin/console messenger:consume async -vv

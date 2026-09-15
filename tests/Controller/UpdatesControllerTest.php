@@ -54,6 +54,75 @@ final class UpdatesControllerTest extends TestCase
         self::assertStringContainsString('php bin/console app:updates:pull', $html);
         self::assertStringContainsString('apply database migrations', $html);
         self::assertStringContainsString('restart long-running workers', $html);
+        self::assertStringContainsString('Configured branch', $html);
+        self::assertStringContainsString('Installed branch', $html);
+        self::assertStringContainsString('normally needs no token', $html);
+    }
+
+    public function testMismatchedBranchExplainsConfigurationWithoutSuggestingPull(): void
+    {
+        $updates = $this->createMock(ApplicationUpdateService::class);
+        $updates->method('check')->willReturn(array_replace($this->availableStatus(), [
+            'branch' => 'master',
+            'installed_branch' => 'development',
+        ]));
+
+        $html = (string) $this->controller($updates)->index()->getContent();
+
+        self::assertStringContainsString('installed branch does not match', $html);
+        self::assertStringContainsString('updates_branch', $html);
+        self::assertStringContainsString('development', $html);
+        self::assertStringContainsString('master', $html);
+        self::assertStringNotContainsString('app:updates:pull', $html);
+    }
+
+    public function testPackagedReleaseShowsVersionsAndVerificationLinksWithoutGitPullInstructions(): void
+    {
+        $status = array_replace($this->availableStatus(), [
+            'installation_type' => 'release',
+            'branch' => 'master',
+            'installed_branch' => 'master',
+            'current_version' => '1.0.0',
+            'latest_version' => '1.1.0',
+            'release_url' => 'https://github.com/Subschema-LLC/aggregate/releases/tag/v1.1.0',
+            'package_url' => 'https://github.com/Subschema-LLC/aggregate/releases/download/v1.1.0/aggregate-1.1.0.zip',
+            'manifest_url' => 'https://github.com/Subschema-LLC/aggregate/releases/download/v1.1.0/release-manifest.json',
+            'signature_url' => 'https://github.com/Subschema-LLC/aggregate/releases/download/v1.1.0/release-manifest.sig',
+            'signature_verified' => false,
+        ]);
+        $updates = $this->createMock(ApplicationUpdateService::class);
+        $updates->method('check')->willReturn($status);
+
+        $html = (string) $this->controller($updates)->index()->getContent();
+
+        self::assertStringContainsString('Release package', $html);
+        self::assertStringContainsString('Installed version', $html);
+        self::assertStringContainsString('1.0.0', $html);
+        self::assertStringContainsString('1.1.0', $html);
+        foreach (['release_url', 'package_url', 'manifest_url', 'signature_url'] as $key) {
+            self::assertStringContainsString('href="'.$status[$key].'"', $html);
+        }
+        self::assertStringContainsString('signature has not been verified', $html);
+        self::assertStringContainsString('app:updates:verify-package', $html);
+        self::assertStringContainsString('Automatic installation is not available yet', $html);
+        self::assertStringNotContainsString('app:updates:pull', $html);
+        self::assertStringNotContainsString('Installed branch', $html);
+    }
+
+    public function testIncompatibleReleaseCannotBeReportedAsAvailable(): void
+    {
+        $updates = $this->createMock(ApplicationUpdateService::class);
+        $updates->method('check')->willReturn(array_replace($this->availableStatus(), [
+            'state' => 'incompatible',
+            'installation_type' => 'release',
+            'message' => 'Requires PHP >=8.4.',
+        ]));
+
+        $html = (string) $this->controller($updates)->index()->getContent();
+
+        self::assertStringContainsString('Release requirements are not met', $html);
+        self::assertStringNotContainsString('Update available', $html);
+        self::assertStringNotContainsString('app:updates:pull', $html);
     }
 
     public function testUnavailableStatusDoesNotDisplayMissingRevisionsOrTimeAsCurrent(): void
@@ -243,7 +312,9 @@ final class UpdatesControllerTest extends TestCase
     {
         return [
             'state' => 'available',
+            'installation_type' => 'git',
             'branch' => 'development',
+            'installed_branch' => 'development',
             'current_commit' => str_repeat('a', 40),
             'latest_commit' => str_repeat('b', 40),
             'checked_at' => 1789387200,
