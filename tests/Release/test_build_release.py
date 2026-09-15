@@ -1,0 +1,183 @@
+"""Release archives must not leak deployment state or depend on a Git checkout."""
+
+import hashlib
+import importlib.util
+import json
+from pathlib import Path
+import stat
+import tempfile
+import unittest
+import zipfile
+
+
+SCRIPT = Path(__file__).resolve().parents[2] / "scripts/build-release.py"
+SPEC = importlib.util.spec_from_file_location("build_release", SCRIPT)
+BUILDER = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(BUILDER)
+
+
+class ReleaseBuildTest(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix="aggregate-release-test-")
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.source = self.root / "source"
+        for relative in BUILDER.REQUIRED_FILES:
+            self.write(relative, "prepared input\n")
+        self.write("composer.json", json.dumps({"require": {"php": ">=8.2"}}))
+        self.write("composer.lock", json.dumps({"packages": [{"name": "symfony/runtime"}], "packages-dev": [{"name": "phpunit/phpunit"}]}))
+        self.write("vendor/composer/installed.json", json.dumps({"dev": False, "packages": [{"name": "symfony/runtime"}]}))
+        self.write("vendor/composer/platform_check.php", '<?php if (!(PHP_VERSION_ID >= 80200)) { throw new RuntimeException("PHP 8.2 is required."); }')
+        self.write("public/assets/manifest.json", json.dumps({"app.js": "/assets/app-123.js"}))
+        self.write("public/assets/app-123.js", "console.log('app');\n")
+        self.write("var/browser/manifest.json", json.dumps({
+            "format": 1,
+            "sourceSha256": self.digest("public/aggregate.js"),
+            "templateSha256": self.digest("var/browser/aggregate.template.min.js"),
+        }))
+
+    def write(self, relative, content):
+        path = self.source / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+
+    def digest(self, relative):
+        return hashlib.sha256((self.source / relative).read_bytes()).hexdigest()
+
+    def build(self, output="release", **overrides):
+        arguments = dict(source=self.source, output=self.root / output, version="v1.2.3", branch="master", commit="a" * 40, built_at="2026-09-14T12:00:00Z")
+        arguments.update(overrides)
+        return BUILDER.build_release(**arguments)
+
+    def test_installable_archive_excludes_operator_data_and_contains_matching_metadata(self):
+        for relative in (
+            ".env", ".env.local", ".env.local.php", ".env.prod", ".env.test", ".git/config",
+            "config/aggregate.yaml", "config/aggregate_prod.yaml", "config/websites.yaml", "config/reference.php",
+            "config/secrets/prod/prod.decrypt.private.php", "config/release-signing.key",
+            "public/index_test.php", "public/uploads/private.txt", "var/data.db",
+            "var/log/prod.log", "var/cache/prod/container.php", "var/branding/logo.png",
+            "var/browser/unrelated-secret.json", "tests/private.txt", "node_modules/private.txt",
+            "src/DataFixtures/AppFixtures.php", "docs/install_fresh.sql",
+        ):
+            self.write(relative, "deployment-only-secret")
+        self.write("config/release-signing.pub", "public verification key")
+        package, manifest_path = self.build()
+        manifest = json.loads(manifest_path.read_bytes())
+        self.assertEqual(package.name, "aggregate-1.2.3.zip")
+        self.assertEqual(hashlib.sha256(package.read_bytes()).hexdigest(), manifest["package"]["sha256"])
+        self.assertEqual(package.stat().st_size, manifest["package"]["size"])
+        with zipfile.ZipFile(package) as archive:
+            names = archive.namelist()
+            self.assertIn("vendor/autoload.php", names)
+            self.assertIn("config/release-signing.pub", names)
+            self.assertIn("public/assets/app-123.js", names)
+            self.assertIn("var/browser/aggregate.template.min.js", names)
+            self.assertIn("LICENSE", names)
+            for name in names:
+                self.assertNotIn(b"deployment-only-secret", archive.read(name), name)
+                self.assertFalse(name.startswith("aggregate/"))
+            self.assertIn(b"APP_ENV=prod\n", archive.read(".env"))
+            self.assertIn(b"APP_SECRET=\n", archive.read(".env"))
+            embedded = json.loads(archive.read("release.json"))
+            self.assertEqual({key: value for key, value in manifest.items() if key != "package"}, embedded)
+            self.assertEqual(stat.S_IFREG | 0o755, archive.getinfo("bin/console").external_attr >> 16)
+
+    def test_builds_are_reproducible_with_fixed_timestamp_and_refuse_overwrite(self):
+        first, first_manifest = self.build("one")
+        second, second_manifest = self.build("two")
+        self.assertEqual(first.read_bytes(), second.read_bytes())
+        self.assertEqual(first_manifest.read_bytes(), second_manifest.read_bytes())
+        with self.assertRaisesRegex(ValueError, "already exist"):
+            self.build("one")
+
+    def test_refuses_development_vendor_directory(self):
+        self.write("vendor/composer/installed.json", '{"dev": true, "packages": []}')
+        with self.assertRaisesRegex(ValueError, "Production vendor"):
+            self.build()
+
+    def test_refuses_leftover_development_dependency_in_metadata(self):
+        self.write("vendor/composer/installed.json", json.dumps({"dev": False, "packages": [{"name": "symfony/runtime"}, {"name": "phpunit/phpunit"}]}))
+        with self.assertRaisesRegex(ValueError, "development dependencies"):
+            self.build()
+
+    def test_refuses_leftover_development_package_directory(self):
+        self.write("vendor/phpunit/phpunit/phpunit", "leftover development binary")
+        with self.assertRaisesRegex(ValueError, "leftover development"):
+            self.build()
+
+    def test_refuses_stale_production_dependency_version(self):
+        self.write("composer.lock", json.dumps({"packages": [{"name": "symfony/runtime", "version": "v7.4.2"}]}))
+        self.write("vendor/composer/installed.json", json.dumps({"dev": False, "packages": [{"name": "symfony/runtime", "version": "v7.4.1"}]}))
+        with self.assertRaisesRegex(ValueError, "versions do not match"):
+            self.build()
+
+    def test_manifest_reflects_composer_runtime_minimum_and_production_extensions(self):
+        self.write("vendor/composer/platform_check.php", '<?php if (!(PHP_VERSION_ID >= 80302)) { throw new RuntimeException("PHP 8.3.2 is required."); }')
+        self.write("composer.json", json.dumps({"require": {"php": ">=8.2", "ext-gd": "*"}, "require-dev": {"ext-pcov": "*"}}))
+        self.write("composer.lock", json.dumps({"packages": [{"name": "symfony/runtime", "require": {"ext-filter": "*"}}]}))
+        _, manifest_path = self.build()
+        requirements = json.loads(manifest_path.read_text())["requirements"]
+        self.assertEqual(requirements["php"], ">=8.3.2")
+        self.assertIn("gd", requirements["extensions"])
+        self.assertIn("filter", requirements["extensions"])
+        self.assertIn("sodium", requirements["extensions"])
+        self.assertNotIn("pcov", requirements["extensions"])
+
+    def test_retains_application_php_baseline_even_if_dependencies_allow_older_php(self):
+        self.write("vendor/composer/platform_check.php", '<?php if (!(PHP_VERSION_ID >= 80100)) { exit(1); }')
+        _, manifest_path = self.build()
+        self.assertEqual(json.loads(manifest_path.read_text())["requirements"]["php"], ">=8.2")
+
+    def test_refuses_missing_or_unsupported_platform_check(self):
+        (self.source / "vendor/composer/platform_check.php").unlink()
+        with self.assertRaisesRegex(ValueError, "Missing required"):
+            self.build()
+        for checker in ('<?php /* disabled */', '<?php if (PHP_VERSION_ID < 80400) {}'):
+            with self.subTest(checker=checker):
+                self.write("vendor/composer/platform_check.php", checker)
+                with self.assertRaisesRegex(ValueError, "simple minimum"):
+                    self.build()
+
+    def test_refuses_missing_or_stale_built_assets(self):
+        self.write("public/aggregate.js", "updated source")
+        with self.assertRaisesRegex(ValueError, "stale"):
+            self.build()
+
+    def test_refuses_missing_compiled_asset_and_manifest_traversal(self):
+        (self.source / "public/assets/app-123.js").unlink()
+        with self.assertRaisesRegex(ValueError, "Missing required"):
+            self.build()
+        self.write("public/assets/manifest.json", '{"app.js":"/assets/../../.env"}')
+        with self.assertRaisesRegex(ValueError, "Invalid compiled asset"):
+            self.build()
+
+    def test_refuses_symlink_to_secret(self):
+        secret = self.root / "outside-secret"
+        secret.write_text("private-key")
+        (self.source / "src/link.php").symlink_to(secret)
+        with self.assertRaisesRegex(ValueError, "Symlinks"):
+            self.build()
+
+    def test_refuses_symlinked_input_directory(self):
+        secret = self.root / "outside-directory"
+        secret.mkdir()
+        (self.source / "vendor/private").symlink_to(secret, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, "Symlinks"):
+            self.build()
+
+    def test_refuses_unsafe_metadata(self):
+        for values in ({"version": "../../bad"}, {"version": "1.2.3-beta.1"}, {"version": "1234567890.1.2"}, {"branch": "../bad"}, {"branch": "master\nevil"}, {"branch": "a" * 256}, {"branch": "HEAD"}, {"commit": "short"}, {"built_at": "2026-09-14T12:00:00"}):
+            with self.subTest(values=values), self.assertRaises(ValueError):
+                self.build(**values)
+
+    def test_branch_rules_allow_same_literal_names_as_application_settings(self):
+        for branch in ("master", "releases/stable", "_release", "release+production", "équipe/stable", "a" * 255):
+            with self.subTest(branch=branch):
+                self.assertEqual(BUILDER.validate_branch(branch), branch)
+        for branch in ("é" * 128, "name@{1}", "ref/", "ref//name", "ref.lock", "-name"):
+            with self.subTest(branch=branch), self.assertRaises(ValueError):
+                BUILDER.validate_branch(branch)
+
+
+if __name__ == "__main__":
+    unittest.main()
