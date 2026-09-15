@@ -4,6 +4,8 @@
 
 GitHub Releases on the public `Subschema-LLC/aggregate` repository host installable ZIPs. A separate artifact repository is unnecessary. The foundation includes production packaging, signed manifests, version checks without Git, and offline package verification. Automatic replacement of an existing installation is a follow-up: the dashboard currently checks versions and links to packages.
 
+Before the first public release, complete the [repository and reporting setup](PUBLIC-RELEASE.md).
+
 ## Branch settings
 
 Deployments select their update channel in the active aggregate YAML configuration:

@@ -1,0 +1,33 @@
+name: Feature request
+description: Describe a use case or improvement for Aggregate Analytics.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check the [roadmap](https://github.com/Subschema-LLC/aggregate/blob/master/ROADMAP.md) and existing issues for related work.
+
+        Use synthetic examples and omit personal data, raw analytics events, and secrets. Report suspected vulnerabilities through the [security policy](https://github.com/Subschema-LLC/aggregate/blob/master/SECURITY.md).
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: Describe what you need to accomplish and the limitation you encounter today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the result you want. Include a small example if useful.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or current workaround
+      description: Optional. Describe other approaches you considered.
+  - type: textarea
+    id: impact
+    attributes:
+      label: Privacy, configuration, and deployment considerations
+      description: Optional. Note any data the feature would collect or expose, behavior with and without consent, headless/YAML needs, or database requirements. It is fine to leave implementation details open.

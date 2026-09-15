@@ -21,6 +21,7 @@ import zipfile
 REPOSITORY = "Subschema-LLC/aggregate"
 ROOT_FILES = (
     "LICENSE", "README.md", "DEPLOYMENT.md", "PLESK-DEPLOYMENT.md",
+    "AGENTS.md", "CONTRIBUTING.md", "ROADMAP.md", "SECURITY.md", "CODE_OF_CONDUCT.md",
     "composer.json", "composer.lock", "symfony.lock", "importmap.php", "js/LICENSE.txt",
     "install.sh", "plesk-setup.sh",
     "package.json", "package-lock.json", ".env.local.example", ".env.prod.example",
@@ -179,7 +180,7 @@ def payload_paths(source):
     for relative in (*SOURCE_TREES, "config/packages", "config/routes", "public/assets", "public/bundles", "vendor"):
         paths.update(tree_files(source, relative))
     # Documentation only, excluding local images, DB exports, and development SQL.
-    paths.update(path.relative_to(source).as_posix() for path in (source / "docs").glob("*.md") if path.name != "todo.md")
+    paths.update(path.relative_to(source).as_posix() for path in (source / "docs").glob("*.md") if path.name.lower() != "todo.md")
     return sorted(paths)
 
 

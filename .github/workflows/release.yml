@@ -39,13 +39,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: npm
       - name: Install test dependencies
         run: |
           echo "RELEASE_OUTPUT=$RUNNER_TEMP/aggregate-release" >> "$GITHUB_ENV"
           cp .env.prod.example .env
           composer validate --no-check-publish --no-interaction
           composer install --no-interaction --prefer-dist --no-scripts
-          npm install --ignore-scripts --no-audit --no-fund
+          npm ci --ignore-scripts --no-audit --no-fund
       - name: Verify release tag and publishing branch
         id: release
         shell: bash
