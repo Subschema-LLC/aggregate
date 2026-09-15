@@ -117,7 +117,7 @@ curl http://localhost:9001/api/health
 
 Use `start-postgres` / `migrate-postgres` or `start-mariadb` / `migrate-mariadb` for another Docker profile. The sample environment is for development; use your own secrets and connection settings in production. Existing installations should follow the [upgrade guidance](docs/PRIVACY-COMPLIANCE.md#upgrading-older-installations) before applying historical privacy migrations.
 
-Admins can check for new commits in **Updates**, or run `php bin/console app:updates:check --refresh` in a Git checkout. The deployment user can pull a clean, fast-forward update with `php bin/console app:updates:pull`, then complete the [deployment steps](DEPLOYMENT.md#updates).
+Admins can check **Updates**, or run `php bin/console app:updates:check --refresh`. The YAML setting `updates_branch` defaults to `master`. Git installations support clean fast-forward source pulls with `app:updates:pull`, followed by the [deployment steps](DEPLOYMENT.md#updates). Official ZIP installations use version metadata to check public GitHub Releases without Git; see [signed release packages](docs/RELEASES.md).
 
 ## Add tracking to a website
 
@@ -143,6 +143,7 @@ Connect your consent manager to `window.Aggregate.setConsent(true)` only after a
 | --- | --- |
 | Database, transport, app secret, proxy trust | Symfony environment files or server environment variables |
 | Branding, collection controls, organization markers, lifecycle, dashboard toggle | `config/aggregate.yaml` and supported environment overrides |
+| Custom property model, UTM/query mappings, consent requirements, reporting columns | `config/aggregate.yaml`, managed through the Data model admin page or YAML |
 | Website domains and public ingestion tokens | `config/websites.yaml`, managed through the dashboard or CLI |
 | Conversion-goal definitions | `config/goals.yaml` |
 | Navigation labels and links | `config/navigation.yaml` |
@@ -160,6 +161,10 @@ Routine BI connections should use approved views:
 
 Keep raw `events`, archive tables, and unsuppressed operational views private. Organization markers are stored under their configured name in raw event JSON; the grouped views and archives omit that flag. See the [compliance guide](docs/PRIVACY-COMPLIANCE.md#bi-exposure-and-suppression) for access and disclosure rules, [organization traffic](docs/PRIVACY-COMPLIANCE.md#organization-traffic) for filtering, and the [database guide](docs/DATABASE.md) for connections and schema details.
 
+The [Data model](docs/DATA-MODEL.md) page provides UTM/query mappings, configurable anonymous property whitelists, downloadable YAML, and UI/CLI regeneration of private custom reporting views. All UTMs require consent by default. Anonymous attribution should use at most a broad `utm_medium`; administrators can override this recommendation with the documented warning about more detailed values.
+
+Use the optional [JavaScript build](docs/JS-BUILD.md) for minified tracker and drop-in scripts.
+
 ## Documentation
 
 | Guide | Contents |
@@ -167,6 +172,9 @@ Keep raw `events`, archive tables, and unsuppressed operational views private. O
 | [Contributing](CONTRIBUTING.md) | Development setup, architecture, privacy invariants, tests, Make commands, and pull requests |
 | [Privacy and compliance](docs/PRIVACY-COMPLIANCE.md) | Measurement limits, consent, organization traffic, BI suppression, logging, retention, and operator checks |
 | [Configuration](docs/CONFIGURATION.md) | YAML settings, environment overrides, branding, goals, and lifecycle policy |
+| [Data model](docs/DATA-MODEL.md) | UTM/query mappings, anonymous property whitelists, model sharing, and custom reporting columns |
+| [JavaScript build](docs/JS-BUILD.md) | Optional minification, dynamic tracker configuration, and build verification |
+| [Release packages](docs/RELEASES.md) | Publishing from master, signing keys, installable ZIPs, verification, and update groundwork |
 | [Tracking and GTM](docs/TRACKING.md) | Browser integration, custom events, tag-manager examples, and troubleshooting |
 | [Deployment](DEPLOYMENT.md) | Docker/native setup, web servers, workers, production operations, and upgrades |
 | [Plesk deployment](PLESK-DEPLOYMENT.md) | Shared-hosting setup and worker options |

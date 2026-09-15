@@ -43,6 +43,7 @@
             <a class="button is-small is-light" href="#anonymous-events-view">Hourly event view</a>
             <a class="button is-small is-light" href="#anonymous-goals-view">Daily goal view</a>
             <a class="button is-small is-light" href="#anonymous-geography-view">Daily geography view</a>
+            <a class="button is-small is-light" href="#custom-reporting-views">Custom reporting views</a>
             <a class="button is-small is-light" href="#private-source-tables">Private source tables</a>
             <a class="button is-small is-light" href="#query-examples">Query examples</a>
             <a class="button is-small is-light" href="#connection-checklist">Connection checklist</a>
@@ -280,6 +281,20 @@
             </div>
         </section>
 
+        <section id="custom-reporting-views" class="box mt-6">
+            <h2 class="title is-3">Custom reporting views</h2>
+            <div class="content">
+                <p>Administrators can define JSON properties and SQL column names in Data model, then regenerate these views for reporting on retained raw events:</p>
+                <ul>
+                    <li><code>analytics_custom_events_v1</code>: all event names in both privacy modes.</li>
+                    <li><code>analytics_custom_pageviews_v1</code>: page views only.</li>
+                    <li><code>analytics_custom_goals_v1</code>: events with a retained goal.</li>
+                </ul>
+                <p>Modeled scalar properties become text columns. Missing values, JSON null, arrays, and objects produce SQL null. These views expose individual rows without suppression and need separately approved raw-data access. They include raw rows already marked as archived while those rows remain retained; archive aggregate cells do not contain the custom properties.</p>
+                <p>The <code>bi_anonymous_*</code> views keep their existing dimensions and disclosure thresholds. Deleting raw events removes their custom properties from reporting, even when archived counts remain available.</p>
+            </div>
+        </section>
+
         <section id="private-source-tables" class="mt-6">
             <h2 class="title is-3">Private source tables</h2>
             <div class="notification is-danger is-light">
@@ -320,7 +335,7 @@
                             <tr><th scope="row"><code>visitor_id</code></th><td>Nullable string (191)</td><td>Enhanced only; forced to null in anonymous mode.</td></tr>
                             <tr><th scope="row"><code>session_id</code></th><td>Nullable string (191)</td><td>Enhanced only; forced to null in anonymous mode.</td></tr>
                             <tr><th scope="row"><code>consent_state</code></th><td>Nullable string (20)</td><td><code>granted</code> for enhanced rows; null in anonymous mode.</td></tr>
-                            <tr><th scope="row"><code>custom_data</code></th><td>Nullable JSON</td><td>Enhanced properties and the reserved <code>orgInternalTraffic: true</code> (or the configured marker name) marker. Anonymous mode retains only that marker, otherwise null. Existing BI views and archives omit this JSON.</td></tr>
+                            <tr><th scope="row"><code>custom_data</code></th><td>Nullable JSON</td><td>Scalar event properties and the reserved <code>orgInternalTraffic: true</code> (or configured-name) marker. Anonymous mode retains only explicitly configured consent-free properties and the marker. The <code>bi_anonymous_*</code> views and archives omit this JSON.</td></tr>
                             <tr><th scope="row"><code>goal_event</code></th><td>Nullable string (191)</td><td>Enabled allowlisted goal code; present in anonymous mode only when its definition permits anonymous use.</td></tr>
                             <tr><th scope="row"><code>created_at</code></th><td>UTC datetime</td><td>UTC hour boundary for anonymous rows; exact server event time for enhanced rows.</td></tr>
                         </tbody>

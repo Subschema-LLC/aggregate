@@ -15,7 +15,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 
 #[AsCommand(
     name: 'app:updates:check',
-    description: 'Check the current Git branch for updates from Subschema-LLC/aggregate',
+    description: 'Check the configured branch for source or release updates from Subschema-LLC/aggregate',
 )]
 final class CheckUpdatesCommand extends Command
 {
@@ -29,13 +29,13 @@ final class CheckUpdatesCommand extends Command
         $this
             ->addOption('refresh', null, InputOption::VALUE_NONE, 'Check GitHub now instead of using cached results')
             ->addOption('json', null, InputOption::VALUE_NONE, 'Output the update status as JSON')
-            ->setHelp('Checks the same branch in the official repository. This command does not change application code. Results are cached for one hour.');
+            ->setHelp('Checks updates_branch in config/aggregate.yaml (default: master) in the official repository. Supports Git checkouts and packaged releases. This command does not change application code. Results are cached for one hour.');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $status = $this->updates->check((bool) $input->getOption('refresh'));
-        $failed = in_array($status['state'], ['unknown', 'error', 'unavailable'], true);
+        $failed = in_array($status['state'], ['unknown', 'error', 'unavailable', 'incompatible'], true);
 
         if ($input->getOption('json')) {
             $output->writeln(
@@ -47,13 +47,22 @@ final class CheckUpdatesCommand extends Command
         }
 
         $io = new SymfonyStyle($input, $output);
-        $io->definitionList(
+        $isRelease = ($status['installation_type'] ?? 'git') === 'release';
+        $installedBranch = $status['installed_branch'] ?? null;
+        $io->definitionList(...[
             ['Repository' => ApplicationUpdateService::REPOSITORY],
-            ['Branch' => OutputFormatter::escape($status['branch'] ?? 'Unavailable')],
+            ['Installation' => $isRelease ? 'Release package' : 'Git checkout'],
+            ['Configured branch' => OutputFormatter::escape($status['branch'] ?? 'Unavailable')],
+            ...($isRelease ? [
+                ['Installed version' => OutputFormatter::escape($status['current_version'] ?? 'Unavailable')],
+                ['Latest release version' => OutputFormatter::escape($status['latest_version'] ?? 'Unavailable')],
+            ] : [
+                ['Installed branch' => OutputFormatter::escape($installedBranch ?? ($status['current_commit'] !== null ? 'Detached HEAD' : 'Unavailable'))],
+            ]),
             ['Installed commit' => $status['current_commit'] ?? 'Unavailable'],
             ['GitHub commit' => $status['latest_commit'] ?? 'Unavailable'],
             ['Checked at (UTC)' => $status['checked_at'] === null ? 'Not checked' : gmdate('Y-m-d H:i:s', $status['checked_at'])],
-        );
+        ]);
 
         $message = OutputFormatter::escape($status['message']);
         if ($failed) {
@@ -67,7 +76,20 @@ final class CheckUpdatesCommand extends Command
         if ($status['compare_url'] !== null) {
             $io->text('Review changes: '.OutputFormatter::escape($status['compare_url']));
         }
-        if ($status['state'] === 'available') {
+        if ($isRelease) {
+            foreach (['release_url' => 'Release notes', 'package_url' => 'Package', 'manifest_url' => 'Manifest', 'signature_url' => 'Manifest signature'] as $key => $label) {
+                if (($status[$key] ?? null) !== null) {
+                    $io->text($label.': '.OutputFormatter::escape($status[$key]));
+                }
+            }
+            if (($status['package_url'] ?? null) !== null) {
+                $io->note('The release signature has not been verified by this check. Download the package, manifest and signature, then run:');
+                $io->text('php bin/console app:updates:verify-package PACKAGE MANIFEST SIGNATURE');
+                $io->text('See DEPLOYMENT.md#updates to install a verified package. Updates are not applied automatically.');
+            }
+        } elseif ($status['current_commit'] !== null && $installedBranch !== $status['branch']) {
+            $io->warning('The installed branch does not match updates_branch. Switch branches manually or correct config/aggregate.yaml before pulling.');
+        } elseif ($status['state'] === 'available') {
             $io->text('After preparing your deployment, run: php bin/console app:updates:pull');
             $io->text('See DEPLOYMENT.md#updates for backups, dependencies, migrations, assets, and worker restarts.');
         }

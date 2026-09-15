@@ -36,13 +36,21 @@ Treat these as constraints on implementation and documentation:
   anonymous use. The explicitly installed organization marker is a boolean in
   `custom_data`, under the configured cookie/local storage name:
   `{"orgInternalTraffic": true}` by default. Its configured value and sharing
-  token are not event properties. Do not turn either exception into a channel
-  for arbitrary client-supplied keys, values, or identities.
+  token are not event properties. Custom properties may also survive when the
+  deployment model explicitly sets `consent_required: false`; enforce that
+  whitelist in the SDK and on the server, and preserve only approved scalar
+  values through entity lifecycle callbacks. All UTMs require consent by default.
+  Recommend at most broad `utm_medium` values for anonymous attribution, while
+  allowing per-property overrides with the documented warning about detailed
+  values. See [Data model](docs/DATA-MODEL.md). Browser overrides never authorize
+  additional server-side collection.
 - **Reporting releases completed, thresholded buckets.** Anonymous event rows use
   server-generated UTC hour buckets. The supported `bi_anonymous_*` views exclude
   the current hour for events and the current day for goals and geography. Preserve
   threshold checks, geography pooling and secondary suppression, and the same
   behavior when live and archived counts are combined.
+  The separate `analytics_custom_*` views project unsuppressed retained events;
+  treat them as private raw-data access and preserve the existing BI contracts.
 - **Thresholds count events, not people.** A single person can contribute multiple
   events to a cell. Do not describe suppression as a unique-visitor minimum,
   k-anonymity, or proof that data is legally anonymous. Raw events, archive tables,
@@ -155,6 +163,7 @@ worker is only needed when testing an asynchronous transport.
 Run these from the repository root after installing development dependencies:
 
 ```bash
+npm install --ignore-scripts
 php vendor/bin/phpunit
 node --test tests/JavaScript/*.test.js
 ```
@@ -167,7 +176,9 @@ docker compose exec php php vendor/bin/phpunit
 
 The Node command runs on the host in either setup. `make test` currently runs the
 PHP suite and `aggregate-consent.test.js`; use the wildcard command above to also
-run `internal-traffic-marker.test.js`. Make automatically selects Docker when it
+run the marker and optional JavaScript-build tests. The build test requires
+the pinned Terser dependency (or its matching global installation); see
+[JavaScript build](docs/JS-BUILD.md). Make automatically selects Docker when it
 finds Docker and `compose.yaml`; `make test USE_DOCKER=0` selects native PHP.
 
 PHPUnit reads [phpunit.dist.xml](phpunit.dist.xml) and

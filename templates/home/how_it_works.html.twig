@@ -109,7 +109,8 @@
                         <ul>
                             <li>Sanitizes the page path and keeps a safe event name.</li>
                             <li>Uses coarse referrer, device, and viewport categories.</li>
-                            <li>Omits cookies, identifiers, custom properties, and exact dimensions.</li>
+                            <li>Omits analytics identifiers, cookie values, and exact dimensions.</li>
+                            <li>Includes custom properties only when explicitly configured for collection without enhanced consent.</li>
                             <li>Retains a goal only when its enabled definition permits anonymous use.</li>
                             <li>Drops a disallowed goal without dropping the event and returns a generic SDK warning.</li>
                             <li>Stores the event in a server-generated UTC hour bucket.</li>
@@ -131,7 +132,7 @@
             </div>
             <div class="notification is-info is-light mb-0">
                 After <code>setConsent(false)</code>, {{ app_branding.name }} clears its browser identifiers and returns to
-                anonymous mode. Privacy-minimized events and configured anonymous goals continue unless
+                anonymous mode. Privacy-minimized events, configured consent-free properties, and anonymous goals continue unless
                 collection is disabled or the path is excluded. Consent withdrawal does not delete data
                 already stored by the server.
             </div>
@@ -146,10 +147,12 @@
                             <li>Registered domains and website tokens</li>
                             <li>A global collection switch and sensitive-path exclusions</li>
                             <li>Enabled goal codes and whether each may be retained anonymously</li>
+                            <li>UTM and query parameter mappings, per-property consent, and custom reporting columns</li>
                             <li>Optional local, coarse geography</li>
                             <li>Low-volume disclosure thresholds for approved BI views</li>
                             <li>The JavaScript namespace and ingestion rate limit</li>
                         </ul>
+                        <p>All six standard UTM properties require consent by default. For anonymous attribution, we recommend no more detail than <code>utm_medium</code>, using channel codes such as <code>email</code>, <code>social</code>, or <code>cpc</code>. Each property can be allowed separately; more detailed UTMs may reveal campaign information, search text, or identifiers, so review their values before overriding this recommendation.</p>
                     </div>
                 </div>
             </div>
