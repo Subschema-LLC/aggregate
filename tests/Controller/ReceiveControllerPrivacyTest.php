@@ -10,6 +10,7 @@ use App\Message\TrackEventMessage;
 use App\Security\IpRateLimiter;
 use App\Service\AggregateConfigLoader;
 use App\Service\AnonymousEventRecorder;
+use App\Service\CustomDataSettings;
 use App\Service\GeoIp\GeoArea;
 use App\Service\GeoIp\GeoIpResolverInterface;
 use App\Service\GoalEventRegistry;
@@ -28,6 +29,109 @@ use Symfony\Component\Messenger\MessageBusInterface;
 
 final class ReceiveControllerPrivacyTest extends TestCase
 {
+    #[DataProvider('anonymousConsentStates')]
+    public function testAnonymousEventsRetainOnlyExplicitlyApprovedSanitizedProperties(string $consentState): void
+    {
+        $persisted = null;
+        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager->expects(self::once())
+            ->method('persist')
+            ->willReturnCallback(static function (object $event) use (&$persisted): void {
+                $persisted = $event;
+            });
+        $entityManager->expects(self::once())->method('flush');
+        $bus = $this->createMock(MessageBusInterface::class);
+        $bus->expects(self::never())->method('dispatch');
+
+        $response = $this->invoke(
+            payload: [
+                'websiteToken' => 'public-site-token',
+                'pagePath' => '/pricing?utm_campaign=private#fragment',
+                'eventName' => 'plan_selected',
+                'consentState' => $consentState,
+                'visitorId' => 'private-visitor',
+                'sessionId' => 'private-session',
+                'internalTraffic' => true,
+                'eventData' => [
+                    'plan' => "pro\0",
+                    'zero' => 0,
+                    'flag' => false,
+                    'optional' => null,
+                    'nested' => ['private' => 'nested-value'],
+                    'email' => 'private@example.com',
+                    'unconfigured' => 'private-unconfigured-value',
+                    'companyStaff' => 'private-marker-value',
+                ],
+            ],
+            bus: $bus,
+            recorder: new AnonymousEventRecorder($entityManager),
+            config: $this->privacyConfig(
+                internalTrafficName: 'companyStaff',
+                customDataProperties: [
+                    'plan' => ['consent_required' => false],
+                    'zero' => ['consent_required' => false],
+                    'flag' => ['consent_required' => false],
+                    'optional' => ['consent_required' => false],
+                    'nested' => ['consent_required' => false],
+                    'email' => ['consent_required' => true],
+                ],
+            ),
+        );
+
+        self::assertSame(202, $response->getStatusCode());
+        self::assertInstanceOf(Event::class, $persisted);
+        $persisted->enforcePrivacyInvariants();
+        self::assertSame([
+            'plan' => 'pro',
+            'zero' => 0,
+            'flag' => false,
+            'optional' => null,
+            'companyStaff' => true,
+        ], $persisted->getCustomData());
+        self::assertSame('/pricing', $persisted->getUrl());
+        self::assertSame('anonymous', $persisted->getPrivacyMode());
+        self::assertNull($persisted->getConsentState());
+        self::assertNull($persisted->getVisitorId());
+        self::assertNull($persisted->getSessionId());
+        self::assertNull($persisted->getGeneralizedUserAgent());
+        self::assertNull($persisted->getScreenWidth());
+        self::assertSame('00:00.000000', $persisted->getCreatedAt()->format('i:s.u'));
+        self::assertStringNotContainsString('private', serialize($persisted));
+    }
+
+    public static function anonymousConsentStates(): iterable
+    {
+        yield 'denied' => ['denied'];
+        yield 'unknown' => ['unknown'];
+        yield 'empty' => [''];
+    }
+
+    public function testInvalidCustomPropertyPolicyPreventsRecordingInsteadOfGrantingConsent(): void
+    {
+        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager->expects(self::never())->method('persist');
+        $entityManager->expects(self::never())->method('flush');
+        $bus = $this->createMock(MessageBusInterface::class);
+        $bus->expects(self::never())->method('dispatch');
+
+        $response = $this->invoke(
+            payload: [
+                'websiteToken' => 'public-site-token',
+                'pagePath' => '/pricing',
+                'consentState' => 'denied',
+                'eventData' => ['email' => 'private@example.com'],
+            ],
+            bus: $bus,
+            recorder: new AnonymousEventRecorder($entityManager),
+            config: $this->privacyConfig(customDataProperties: [
+                'email' => ['consent_required' => 'false'],
+            ]),
+        );
+
+        self::assertSame(500, $response->getStatusCode());
+        self::assertSame(['error' => 'Ingestion failed'], json_decode((string) $response->getContent(), true));
+    }
+
     #[DataProvider('internalTrafficInputs')]
     public function testOnlyStrictTrueMarksTrafficAndCustomDataCannotOverrideIt(
         string $consentState,
@@ -532,17 +636,30 @@ final class ReceiveControllerPrivacyTest extends TestCase
             $recorder,
             $logger,
             new InternalTrafficSettings($config),
+            new CustomDataSettings($config),
         );
     }
 
-    private function privacyConfig(bool $enabled = true, array $excludedPaths = [], string $internalTrafficName = 'orgInternalTraffic'): AggregateConfigLoader
+    private function privacyConfig(
+        bool $enabled = true,
+        array $excludedPaths = [],
+        string $internalTrafficName = 'orgInternalTraffic',
+        array $customDataProperties = [],
+    ): AggregateConfigLoader
     {
         $config = $this->createStub(AggregateConfigLoader::class);
+        $config->method('all')->willReturn([
+            'custom_data_properties' => $customDataProperties,
+            'query_parameter_mappings' => [],
+        ]);
         $config->method('getBoolWithEnvFallback')->willReturn($enabled);
         $config->method('getWithEnvFallback')
-            ->willReturnCallback(static function (string $key, mixed $default = null) use ($excludedPaths, $internalTrafficName): mixed {
+            ->willReturnCallback(static function (string $key, mixed $default = null) use ($excludedPaths, $internalTrafficName, $customDataProperties): mixed {
                 if ($key === 'internal_traffic_name') {
                     return $internalTrafficName;
+                }
+                if ($key === 'custom_data_properties') {
+                    return $customDataProperties;
                 }
                 return $key === 'anonymous_excluded_paths' ? $excludedPaths : $default;
             });

@@ -26,6 +26,7 @@ final class AnonymousEventRecorder
         ?string $goalEvent = null,
         bool $internalTraffic = false,
         string $internalTrafficName = 'orgInternalTraffic',
+        ?array $approvedCustomData = null,
     ): void {
         $occurredAt = ($occurredAt ?? new \DateTimeImmutable('now', new \DateTimeZone('UTC')))
             ->setTimezone(new \DateTimeZone('UTC'));
@@ -46,7 +47,7 @@ final class AnonymousEventRecorder
             ->setSessionId(null)
             ->setConsentState(null)
             ->setGoalEvent($goalEvent)
-            ->setCustomData(null)
+            ->setApprovedAnonymousCustomData($approvedCustomData)
             ->setInternalTraffic($internalTraffic, $internalTrafficName)
             ->setCreatedAt($hourBucket);
 

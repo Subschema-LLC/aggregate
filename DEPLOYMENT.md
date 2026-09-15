@@ -487,30 +487,38 @@ php bin/console app:updates:check --refresh
 php bin/console app:updates:check --refresh --json
 ```
 
-Checks compare the installed Git commit with the **same branch** in the official
-repository. They do not switch branches or choose a release channel. Successful GitHub results
+Set `updates_branch` in the active `config/aggregate.yaml` environment to choose
+the upstream branch; it defaults to **`master`**. Git checks compare the installed
+commit with that branch and show the installed branch separately. Official ZIP
+installations use their embedded `release.json` to check stable packaged releases
+for that branch without Git. Checks never switch branches or apply packages. Successful GitHub results
 are cached for one hour; failed requests are retried after one minute. **Check now**
 and `--refresh` bypass the cache. Checks run
 when requested through this page or command, and contact GitHub with branch and
 commit metadata. They do not send event data. The page shows updates, local commits
 ahead of upstream, diverged histories, and checks that could not be completed.
-CLI checks exit `0` for a known comparison (including updates or divergence) and
-`1` when the status cannot be determined; use the JSON `state` for automation.
+CLI checks exit `0` for a known compatible comparison (including updates or divergence)
+and `1` when status is unavailable, invalid, or incompatible; use the JSON `state`
+and `installation_type` for automation. Packaged checks label signatures as
+unverified until the downloaded package is independently verified. See the
+[release guide](docs/RELEASES.md) for signed ZIPs, verification, and manual deployment.
 
-Git 2.30 or newer must be installed and the checkout's `.git` metadata readable. If the deployment
+For source installations, Git 2.30 or newer must be installed and the checkout's `.git` metadata readable. If the deployment
 user owns the checkout and PHP runs as a different user, Git may require that exact
 checkout path in the PHP user's `safe.directory` configuration. Keep source files
-read-only and scope Git trust to this checkout; do not use a wildcard. ZIP uploads,
-partial clones, detached checkouts, unpublished branches/commits, and missing GitHub access may
-prevent comparison. For a private repository or higher API rate limits, configure
+read-only and scope Git trust to this checkout; do not use a wildcard. Source ZIPs
+without official `release.json`, partial clones, unpublished branches/commits,
+and missing GitHub access may prevent comparison. Detached Git checkouts can be
+checked but cannot be pulled. Public checks need no token. For a private repository or higher API rate limits, configure
 `AGGREGATE_GITHUB_TOKEN` in the server environment or untracked `.env.local` with
 repository read access. This token is used only for API checks. Pulling uses the
 deployment user's existing Git HTTPS credentials; configure a credential helper
 for private repository access. Credentials are never entered in the dashboard.
 
 Run `app:updates:pull` as the deployment user with write access to the checkout.
-It fetches the current branch directly from the official repository and applies
-only a fast-forward. Local modifications, untracked files, detached HEADs,
+It fetches the configured branch directly from the official repository and applies
+only a fast-forward. The local branch must match `updates_branch`; the command
+does not switch or cross-merge branches. Local modifications, untracked files, detached HEADs,
 in-progress Git operations, and divergent or ahead histories stop the update.
 Ignored local configuration is preserved; a conflicting incoming tracked file
 also stops the update. Resolve custom code changes through your normal Git

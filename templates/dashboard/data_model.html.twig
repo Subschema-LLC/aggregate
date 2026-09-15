@@ -1,0 +1,153 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Data model - {{ app_branding.name }}{% endblock %}
+
+{% block body %}
+    <h1 class="title">Data model</h1>
+    <p class="subtitle">Define custom properties, campaign capture, consent requirements, and reporting columns. Download the saved model to share with your analytics implementation developers.</p>
+
+    {% if configuration_error %}<div class="notification is-danger" role="alert">{{ configuration_error }}</div>{% endif %}
+    {% if reporting_error %}<div class="notification is-warning" role="alert">{{ reporting_error }}</div>{% endif %}
+
+    <div class="notification is-info">
+        <strong>Anonymous UTM recommendation:</strong> use at most <code>utm_medium</code>, with broad values such as <code>email</code>, <code>social</code>, or <code>cpc</code>. All UTM properties require enhanced consent by default.
+        You can override this recommendation by selecting “Allow without consent” for any property. More detailed source, campaign, term, content, or ID values can reveal specific campaigns, searches, or identifiers. Review the actual values and privacy implications before enabling them for anonymous collection. Free-text identifiers can appear even in <code>utm_medium</code>; the setting does not make supplied values anonymous.
+    </div>
+    {% if detailed_anonymous_utms %}
+        <div class="notification is-warning" role="alert"><strong>Anonymous UTM recommendation overridden.</strong> The saved model permits detailed UTM data without consent in: <code>{{ detailed_anonymous_utms|join(', ') }}</code>. Review campaign tagging and disclosures for this additional detail.</div>
+    {% endif %}
+
+    <form action="{{ path('app_data_model_save') }}" method="post" id="data-model-form">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token('data_model_settings') }}">
+        <section class="box">
+            <h2 class="title is-4">Custom properties</h2>
+            <p>Property names are literal top-level JSON keys. Leave the reporting column empty to collect a property without exposing it in custom reporting views. Explicitly allowing a property without consent adds it to the server-enforced anonymous whitelist.</p>
+            <p class="help mb-3">Descriptions belong to the shared implementation model. Values must be flat strings, numbers, booleans, or null; nested data is discarded. Unlisted custom properties still require enhanced consent. The organization marker <code>{{ marker_name|default('orgInternalTraffic') }}</code> remains controlled by the browser marker and is always allowed in anonymous mode.</p>
+            <div class="table-container">
+                <table class="table is-fullwidth">
+                    <thead><tr><th>JSON key</th><th>Description</th><th>Collection</th><th>Reporting column</th><th><span class="is-sr-only">Actions</span></th></tr></thead>
+                    <tbody id="property-rows">
+                        {% for key, property in model.custom_data_properties %}
+                            <tr>
+                                <td><input class="input" aria-label="JSON key" name="properties[{{ loop.index0 }}][key]" value="{{ key }}" maxlength="128" required></td>
+                                <td><input class="input" aria-label="Property description" name="properties[{{ loop.index0 }}][description]" value="{{ property.description }}" maxlength="1000"></td>
+                                <td><div class="select"><select aria-label="Consent requirement" name="properties[{{ loop.index0 }}][consent_required]"><option value="1"{% if property.consent_required %} selected{% endif %}>Require enhanced consent</option><option value="0"{% if not property.consent_required %} selected{% endif %}>Allow without consent</option></select></div></td>
+                                <td><input class="input" aria-label="Reporting column" name="properties[{{ loop.index0 }}][column]" value="{{ property.column }}" maxlength="63" pattern="[a-z][a-z0-9_]{0,62}"></td>
+                                <td><button class="button is-light" type="button" data-remove-row>Remove</button></td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <button class="button" type="button" id="add-property">Add property</button>
+            <p class="help">Up to 50 properties. Reporting columns use unique lowercase letters, digits, and underscores, starting with a letter. After views are deployed, keep their aliases and order; append new columns at the end.</p>
+        </section>
+        <section class="box">
+            <h2 class="title is-4">UTM and query parameters</h2>
+            <p>Map selected parameters from the current page URL to defined properties. For aliases sharing a destination, the first configured parameter with a nonblank value wins. Explicit properties passed to <code>emit()</code> take precedence.</p>
+            <p class="help mb-3">Matching is case-sensitive. The tracker does not save attribution to cookies or local storage, carry it across pages, or capture the full query string. Removing a mapping stops automatic capture of that parameter.</p>
+            <div class="table-container">
+                <table class="table is-fullwidth">
+                    <thead><tr><th>URL parameter</th><th>Destination JSON key</th><th><span class="is-sr-only">Actions</span></th></tr></thead>
+                    <tbody id="mapping-rows">
+                        {% for parameter, property in model.query_parameter_mappings %}
+                            <tr>
+                                <td><input class="input" aria-label="URL parameter" name="mappings[{{ loop.index0 }}][parameter]" value="{{ parameter }}" maxlength="64" required></td>
+                                <td><input class="input" aria-label="Destination JSON key" name="mappings[{{ loop.index0 }}][property]" value="{{ property }}" maxlength="64" required></td>
+                                <td><button class="button is-light" type="button" data-remove-row>Remove</button></td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <button class="button" type="button" id="add-mapping">Add parameter mapping</button>
+            <p class="help">Up to 100 mappings. Names begin with a letter and may contain letters, digits, underscores, dots, or hyphens (64 characters maximum). The organization marker cannot be set through a query parameter.</p>
+        </section>
+        <div class="buttons">
+            <button class="button is-primary" type="submit"{% if configuration_error %} disabled{% endif %}>Save model</button>
+            {% if not configuration_error %}<a class="button" href="{{ path('app_data_model_download') }}">Download saved YAML</a>{% endif %}
+        </div>
+        <p class="help mb-5">Saves only these model settings to the active environment in <code>config/aggregate.yaml</code> or its environment-specific file. Collection changes affect future requests; they do not erase existing data. Reporting changes require regeneration below.</p>
+    </form>
+
+    <section class="box">
+        <h2 class="title is-4">Observed properties</h2>
+        <p>Discover key names, types, and occurrence counts from up to 1,000 latest retained events with custom data. Discovery does not enable collection or add columns automatically.</p>
+        <a class="button mt-3 mb-3" href="{{ path('app_data_model', {discover: '1'}) }}">Refresh observed properties</a>
+        {% if observed_properties %}
+            <div class="table-container"><table class="table is-fullwidth">
+                <thead><tr><th>JSON key</th><th>Observed types</th><th>Events in sample</th><th><span class="is-sr-only">Actions</span></th></tr></thead>
+                <tbody>{% for property in observed_properties %}
+                    <tr><td><code>{{ property.key }}</code></td><td>{{ property.types|join(', ') }}</td><td>{{ property.event_count }}</td><td>
+                        {% if property.key in model.custom_data_properties|keys %}In saved model
+                        {% elseif property.can_add %}<button type="button" class="button is-small" data-add-observed="{{ property.key }}">Add to form</button>
+                        {% else %}Unsupported property name{% endif %}
+                    </td></tr>
+                {% endfor %}</tbody>
+            </table></div>
+        {% elseif discovery_requested and not reporting_error %}<p>No properties were found in the sample.</p>{% endif %}
+    </section>
+
+    <section class="box">
+        <h2 class="title is-4">Reporting views</h2>
+        <p>Regenerate <code>analytics_custom_events_v1</code>, <code>analytics_custom_pageviews_v1</code>, and <code>analytics_custom_goals_v1</code> from the saved model. Scalar custom values appear as text; missing, null, or structured values become SQL <code>NULL</code>.</p>
+        <p class="mt-3">These views contain individual retained events in both privacy modes, without suppression. Restrict access as you would the raw events table. Existing <code>bi_anonymous_*</code> views keep their aggregation and suppression rules. Archives discard custom properties; this reporting detail is lost when raw events are deleted.</p>
+        {% if view_sql %}
+            <details class="mt-4 mb-4"><summary>Preview SQL for the saved model</summary>{% for name, sql in view_sql %}<h3 class="title is-6 mt-4">{{ name }}</h3><pre>{{ sql }}</pre>{% endfor %}</details>
+            <form action="{{ path('app_data_model_regenerate') }}" method="post">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token('data_model_settings') }}">
+                <button class="button is-primary" type="submit">Regenerate views from saved model</button>
+            </form>
+        {% endif %}
+        <p class="help mt-3">For headless use: <code>php bin/console app:analytics:views:regenerate --dry-run</code>, then run without <code>--dry-run</code> to apply. The database account needs view-creation privileges. MySQL/MariaDB apply each view separately; if an operation fails, correct the issue and rerun it.</p>
+    </section>
+
+    <template id="property-row-template"><tr>
+        <td><input class="input" aria-label="JSON key" data-field="key" maxlength="128" required></td>
+        <td><input class="input" aria-label="Property description" data-field="description" maxlength="1000"></td>
+        <td><div class="select"><select aria-label="Consent requirement" data-field="consent_required"><option value="1">Require enhanced consent</option><option value="0">Allow without consent</option></select></div></td>
+        <td><input class="input" aria-label="Reporting column" data-field="column" maxlength="63" pattern="[a-z][a-z0-9_]{0,62}"></td>
+        <td><button class="button is-light" type="button" data-remove-row>Remove</button></td>
+    </tr></template>
+    <template id="mapping-row-template"><tr>
+        <td><input class="input" aria-label="URL parameter" data-field="parameter" maxlength="64" required></td>
+        <td><input class="input" aria-label="Destination JSON key" data-field="property" maxlength="64" required></td>
+        <td><button class="button is-light" type="button" data-remove-row>Remove</button></td>
+    </tr></template>
+{% endblock %}
+
+{% block javascripts %}
+    {{ parent() }}
+    <script>
+        (function () {
+            var propertyIndex = {{ model.custom_data_properties|length }};
+            var mappingIndex = {{ model.query_parameter_mappings|length }};
+            function addRow(kind, key) {
+                var isProperty = kind === 'property';
+                var container = document.getElementById(kind + '-rows');
+                if (container.children.length >= (isProperty ? 50 : 100)) return;
+                var row = document.getElementById(kind + '-row-template').content.firstElementChild.cloneNode(true);
+                var index = isProperty ? propertyIndex++ : mappingIndex++;
+                row.querySelectorAll('[data-field]').forEach(function (field) {
+                    field.name = (isProperty ? 'properties' : 'mappings') + '[' + index + '][' + field.dataset.field + ']';
+                });
+                if (key) row.querySelector('[data-field="key"]').value = key;
+                container.appendChild(row);
+                row.querySelector('input').focus();
+            }
+            document.getElementById('add-property').addEventListener('click', function () { addRow('property'); });
+            document.getElementById('add-mapping').addEventListener('click', function () { addRow('mapping'); });
+            document.getElementById('data-model-form').addEventListener('click', function (event) {
+                if (event.target.closest('[data-remove-row]')) event.target.closest('tr').remove();
+            });
+            document.querySelectorAll('[data-add-observed]').forEach(function (button) {
+                button.addEventListener('click', function () {
+                    var key = button.dataset.addObserved;
+                    var existing = Array.from(document.querySelectorAll('#property-rows input[name$="[key]"]')).find(function (field) { return field.value === key; });
+                    if (existing) existing.focus();
+                    else addRow('property', key);
+                });
+            });
+        }());
+    </script>
+{% endblock %}

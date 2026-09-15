@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=../vendor/symfony/dependency-injection/Loader/schema/services.schema.json
 # This file is the entry point to configure your own services.
 # Files in the packages/ subdirectory configure your dependencies.
 
@@ -57,6 +58,19 @@ services:
             $projectDir: '%kernel.project_dir%'
             $cache: '@cache.app'
             $githubToken: '%env(AGGREGATE_GITHUB_TOKEN)%'
+
+    App\Service\InstalledRelease:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
+    App\Service\ReleaseUpdateService:
+        arguments:
+            $cache: '@cache.app'
+            $githubToken: '%env(AGGREGATE_GITHUB_TOKEN)%'
+
+    App\Service\ReleasePackageVerifier:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
 
     # Keep this explicit: without the extension, Twig silently renders every
     # app_branding value as empty when strict variables are disabled in prod.

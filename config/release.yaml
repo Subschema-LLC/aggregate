@@ -1,0 +1,3 @@
+# Branch from which maintainers publish tagged release packages.
+# Deployment update settings belong in config/aggregate.yaml instead.
+branch: master

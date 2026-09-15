@@ -10,6 +10,44 @@ use PHPUnit\Framework\TestCase;
 
 final class EventPrivacyInvariantTest extends TestCase
 {
+    public function testAnonymousLifecycleRetainsApprovedValuesAndRejectsLaterEnrichment(): void
+    {
+        $event = $this->anonymousEvent()
+            ->setApprovedAnonymousCustomData(['plan' => "pro\0", 'active' => false, 'optional' => null, 'nested' => ['ignored']])
+            ->setInternalTraffic(true, 'companyStaff')
+            ->setVisitorId('private-visitor')
+            ->setSessionId('private-session');
+
+        $expected = ['plan' => 'pro', 'active' => false, 'optional' => null, 'companyStaff' => true];
+        $event->enforcePrivacyInvariants();
+        self::assertSame($expected, $event->getCustomData());
+        self::assertNull($event->getVisitorId());
+        self::assertNull($event->getSessionId());
+
+        $event->setCustomData([...$expected, 'plan' => 'private@example.com', 'email' => 'private@example.com']);
+        $event->enforcePrivacyInvariants();
+        self::assertSame($expected, $event->getCustomData());
+        self::assertStringNotContainsString('private', serialize($event));
+    }
+
+    public function testHydrationPreservesHistoricalPropertiesAndRenamedTrafficMarkerOnUpdate(): void
+    {
+        $persistedData = ['plan' => 'pro', 'optional' => null, 'companyStaff' => true];
+        $loaded = $this->anonymousEvent()->setCustomData($persistedData);
+        $loaded->restoreAnonymousTrafficMarkerName();
+        $loaded->setCustomData([...$persistedData, 'email' => 'private@example.com']);
+        $loaded->setArchivedAt(new \DateTimeImmutable('2026-08-01T00:00:00Z'));
+        $loaded->enforcePrivacyInvariants();
+
+        self::assertSame($persistedData, $loaded->getCustomData());
+        self::assertTrue($loaded->isInternalTraffic('companyStaff'));
+        self::assertStringNotContainsString('private', serialize($loaded));
+
+        $loaded->setInternalTraffic(false, 'companyStaff');
+        $loaded->enforcePrivacyInvariants();
+        self::assertSame(['plan' => 'pro', 'optional' => null], $loaded->getCustomData());
+    }
+
     public function testAnonymousPrePersistAndPreUpdateScrubEnhancedFieldsAndBucketTime(): void
     {
         $event = $this->anonymousEvent()

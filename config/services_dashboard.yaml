@@ -1,3 +1,7 @@
+# yaml-language-server: $schema=../vendor/symfony/dependency-injection/Loader/schema/services.schema.json
+# Distinguish Symfony services from Docker Compose during IDE autodetection.
+parameters: {}
+
 services:
     _defaults:
         autowire: true
@@ -5,6 +9,7 @@ services:
 
     App\Controller\DashboardController: ~
     App\Controller\DataLifecycleController: ~
+    App\Controller\DataModelController: ~
     App\Controller\InternalTrafficController: ~
     App\Controller\UpdatesController: ~
     App\Controller\InstallController: ~

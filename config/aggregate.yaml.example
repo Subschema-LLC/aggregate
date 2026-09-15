@@ -5,6 +5,41 @@
 # Set them in your .env file (see .env.dev for local dev, your server's .env for prod).
 # They do NOT belong here.
 
+# Public GitHub update channel. Both Git checks and packaged-release checks use
+# this branch. Source pulls require the local checkout to be on this branch.
+updates_branch: master
+# Normally packages ship config/release-signing.pub. To use a separately trusted
+# public key instead, set this base64 Ed25519 public key in the active environment:
+# updates_signing_public_key: 'BASE64_PUBLIC_KEY'
+# Never put the private release signing key in application configuration.
+
+# Shared custom data model; active environments can replace either mapping.
+# All UTMs require enhanced consent by default. For anonymous attribution,
+# prefer only utm_medium with broad channel values (email/social/cpc).
+# You MAY override this advice with consent_required: false on any property.
+# WARNING: finer source/campaign/term/content/id data can reveal campaigns,
+# searches, or identifiers. Review values and disclosures. Even utm_medium
+# can contain identifiers; whitelisting a key does not anonymize its values.
+# Edit via the Data model UI or YAML; see docs/DATA-MODEL.md.
+custom_data_properties:
+  utm_source: { description: 'Campaign source.', consent_required: true, column: utm_source }
+  utm_medium: { description: 'Broad marketing channel, such as email, social, or cpc.', consent_required: true, column: utm_medium }
+  utm_campaign: { description: 'Campaign name.', consent_required: true, column: utm_campaign }
+  utm_term: { description: 'Campaign search term.', consent_required: true, column: utm_term }
+  utm_content: { description: 'Campaign creative or content variant.', consent_required: true, column: utm_content }
+  utm_id: { description: 'Campaign identifier.', consent_required: true, column: utm_id }
+  # orgInternalTraffic: { description: 'Shared organization marker.', consent_required: true, column: organization_traffic }
+query_parameter_mappings:
+  utm_source: utm_source
+  utm_medium: utm_medium
+  utm_campaign: utm_campaign
+  utm_term: utm_term
+  utm_content: utm_content
+  utm_id: utm_id
+  # campaign: utm_campaign # Alias: first nonblank value in mapping order wins.
+# Use query_parameter_mappings: {} to disable automatic query capture.
+# Apply reporting aliases with UI/CLI view regeneration after saving.
+
 environments:
   dev:
     rate_limit_per_minute: 1000

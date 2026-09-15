@@ -26,3 +26,16 @@
 /config/aggregate.yaml
 /.env.prod
 ###< aggregate-analytics ###
+
+###> optional JavaScript build ###
+/node_modules/
+/public/aggregate.min.js
+/public/internal-traffic-marker.min.js
+/micro-consent-dropins/js/*.min.js
+###< optional JavaScript build ###
+
+###> release build ###
+/dist/
+/release.json
+__pycache__/
+###< release build ###

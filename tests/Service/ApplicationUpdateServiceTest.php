@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 namespace App\Tests\Service;
 
+use App\Service\AggregateConfigLoader;
 use App\Service\ApplicationUpdateService;
+use App\Service\InstalledRelease;
+use App\Service\ReleaseUpdateService;
+use App\Service\UpdateSettings;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
@@ -65,6 +69,7 @@ final class ApplicationUpdateServiceTest extends TestCase
 
         self::assertSame('up_to_date', $first['state']);
         self::assertSame('deployment/stable', $first['branch']);
+        self::assertSame('deployment/stable', $first['installed_branch']);
         self::assertSame($this->initial, $first['current_commit']);
         self::assertSame($this->initial, $first['latest_commit']);
         self::assertSame($this->clock->now()->getTimestamp(), $first['checked_at']);
@@ -214,18 +219,64 @@ final class ApplicationUpdateServiceTest extends TestCase
         self::assertStringNotContainsString('secret-test-token', json_encode($result, JSON_THROW_ON_ERROR));
     }
 
-    public function testDetachedCheckoutIsUnavailableAndCannotBePulled(): void
+    public function testDetachedCheckoutCanCompareAgainstConfiguredBranchButCannotBePulled(): void
     {
         $this->git(['checkout', '--detach', '--quiet']);
-        $client = new MockHttpClient([]);
+        $client = new MockHttpClient([$this->json(['sha' => $this->initial])]);
         $service = $this->service($client);
         $result = $service->check();
 
-        self::assertSame('unavailable', $result['state']);
-        self::assertNull($result['branch']);
+        self::assertSame('up_to_date', $result['state']);
+        self::assertSame('deployment/stable', $result['branch']);
+        self::assertNull($result['installed_branch']);
         self::assertSame($this->initial, $result['current_commit']);
-        self::assertSame(0, $client->getRequestsCount());
+        self::assertSame(1, $client->getRequestsCount());
         $this->assertPullFails($service, 'detached HEAD');
+    }
+
+    public function testDefaultMasterIsCheckedWithoutChangingAnInstalledDifferentBranch(): void
+    {
+        $client = new MockHttpClient(function (string $method, string $url): MockResponse {
+            self::assertSame('https://api.github.com/repos/Subschema-LLC/aggregate/commits/master', $url);
+
+            return $this->json(['sha' => $this->initial]);
+        });
+        $service = new ApplicationUpdateService($this->project, $client, $this->cache, $this->clock);
+        $result = $service->check();
+
+        self::assertSame('up_to_date', $result['state']);
+        self::assertSame('master', $result['branch']);
+        self::assertSame('deployment/stable', $result['installed_branch']);
+        $this->assertPullFails($service, 'installed branch differs');
+        self::assertSame('deployment/stable', $this->git(['branch', '--show-current']));
+        self::assertSame($this->initial, $this->git(['rev-parse', 'HEAD']));
+        self::assertSame('', $this->git(['for-each-ref', '--format=%(refname)', 'refs/aggregate-updates/']));
+    }
+
+    public function testConfiguredBranchSeparatesCachedResults(): void
+    {
+        $client = new MockHttpClient([
+            $this->json([], 404),
+            $this->json(['sha' => $this->initial]),
+        ]);
+
+        self::assertSame('error', $this->service($client, branch: 'missing')->check()['state']);
+        self::assertSame('up_to_date', $this->service($client)->check()['state']);
+        self::assertSame(2, $client->getRequestsCount());
+    }
+
+    public function testInvalidExplicitBranchFailsBeforeCheckingOrPulling(): void
+    {
+        $client = new MockHttpClient([]);
+        $service = $this->service($client, branch: null);
+        $result = $service->check();
+
+        self::assertSame('error', $result['state']);
+        self::assertStringContainsString('updates_branch', $result['message']);
+        self::assertNull($result['current_commit']);
+        self::assertSame(0, $client->getRequestsCount());
+        $this->assertPullFails($service, 'updates_branch');
+        self::assertFileDoesNotExist($this->project.'/.git/aggregate-update.lock');
     }
 
     public function testNonGitInstallationAndDirectoryInsideAnotherRepositoryAreUnavailable(): void
@@ -237,6 +288,84 @@ final class ApplicationUpdateServiceTest extends TestCase
         $nested = new ApplicationUpdateService($this->project.'/subdirectory', $client, $this->cache, $this->clock);
         self::assertSame('unavailable', $nested->check()['state']);
         self::assertSame(0, $client->getRequestsCount());
+    }
+
+    public function testArchiveInsideAnotherCheckoutDelegatesToReleaseChecksWithoutUsingParentGit(): void
+    {
+        $archive = $this->project.'/archive';
+        mkdir($archive);
+        file_put_contents($archive.'/release.json', json_encode([
+            'schema' => 1,
+            'version' => '1.0.0',
+            'repository' => ApplicationUpdateService::REPOSITORY,
+            'branch' => 'master',
+            'commit' => str_repeat('c', 40),
+            'built_at' => '2026-09-14T12:00:00Z',
+            'requirements' => ['php' => '>=8.2', 'extensions' => []],
+        ], JSON_THROW_ON_ERROR));
+        $client = new MockHttpClient(function (string $method, string $url): MockResponse {
+            self::assertSame('https://api.github.com/repos/Subschema-LLC/aggregate/releases?per_page=20&page=1', $url);
+
+            return $this->json([]);
+        });
+        $service = $this->archiveService($archive, $client);
+
+        $result = $service->check();
+
+        self::assertSame('release', $result['installation_type']);
+        self::assertSame('1.0.0', $result['current_version']);
+        self::assertSame('master', $result['branch']);
+        self::assertSame(str_repeat('c', 40), $result['current_commit']);
+        self::assertSame(1, $client->getRequestsCount());
+        $service->check(true);
+        self::assertSame(2, $client->getRequestsCount());
+        $this->assertPullFails($service, 'installation uses a release package');
+        self::assertSame($this->initial, $this->git(['rev-parse', 'HEAD']));
+        self::assertFileDoesNotExist($this->project.'/.git/aggregate-update.lock');
+    }
+
+    public function testMalformedArchiveMetadataIsReportedByReleaseCheckerWithoutGitFallback(): void
+    {
+        $archive = $this->project.'/archive';
+        mkdir($archive);
+        file_put_contents($archive.'/release.json', '{invalid-json');
+        $client = new MockHttpClient([]);
+
+        $result = $this->archiveService($archive, $client)->check();
+
+        self::assertSame('release', $result['installation_type']);
+        self::assertSame('error', $result['state']);
+        self::assertStringContainsString('release.json is invalid', $result['message']);
+        self::assertNull($result['current_commit']);
+        self::assertSame(0, $client->getRequestsCount());
+    }
+
+    #[DataProvider('gitRootKinds')]
+    public function testRootGitMetadataTakesPrecedenceOverStaleReleaseMetadata(bool $linkedWorktree): void
+    {
+        $checkout = $this->project;
+        if ($linkedWorktree) {
+            $checkout = $this->directory.'/worktree';
+            $this->git(['worktree', 'add', '--quiet', '--detach', $checkout], $this->source);
+            self::assertFileExists($checkout.'/.git');
+        } else {
+            self::assertDirectoryExists($checkout.'/.git');
+        }
+        file_put_contents($checkout.'/release.json', '{stale-invalid-release');
+        $client = new MockHttpClient([$this->json(['sha' => $this->initial])]);
+
+        $result = $this->service($client, project: $checkout)->check();
+
+        self::assertSame('git', $result['installation_type']);
+        self::assertSame('up_to_date', $result['state']);
+        self::assertSame($this->initial, $result['current_commit']);
+        self::assertSame(1, $client->getRequestsCount());
+    }
+
+    public static function gitRootKinds(): iterable
+    {
+        yield 'own .git directory' => [false];
+        yield 'own .git file for a linked worktree' => [true];
     }
 
     public function testPromisorClonesAreRefusedBeforeObjectInspectionCanFetch(): void
@@ -255,7 +384,7 @@ final class ApplicationUpdateServiceTest extends TestCase
         self::assertFileDoesNotExist($this->project.'/.git/FETCH_HEAD');
     }
 
-    public function testPullUsesCanonicalRepositoryAndCurrentBranchPreservingLocalConfigurationAndTags(): void
+    public function testPullUsesCanonicalRepositoryAndConfiguredBranchPreservingLocalConfigurationAndTags(): void
     {
         $latest = $this->commit($this->source, 'application.txt', 'updated application');
         mkdir($this->project.'/config');
@@ -415,15 +544,28 @@ final class ApplicationUpdateServiceTest extends TestCase
     {
         $this->git(['switch', '--quiet', '-c', 'local-only']);
 
-        $this->assertPullFails($this->service(), 'current branch on GitHub');
+        $this->assertPullFails($this->service(branch: 'local-only'), 'configured updates_branch on GitHub');
 
         self::assertSame($this->initial, $this->git(['rev-parse', 'HEAD']));
         self::assertSame('local-only', $this->git(['branch', '--show-current']));
     }
 
-    private function service(?MockHttpClient $client = null, string $token = ''): ApplicationUpdateService
+    private function service(?MockHttpClient $client = null, string $token = '', mixed $branch = 'deployment/stable', ?string $project = null): ApplicationUpdateService
     {
-        return new ApplicationUpdateService($this->project, $client ?? new MockHttpClient([]), $this->cache, $this->clock, $token);
+        $config = $this->createMock(AggregateConfigLoader::class);
+        $config->method('all')->willReturn(['updates_branch' => $branch]);
+
+        return new ApplicationUpdateService($project ?? $this->project, $client ?? new MockHttpClient([]), $this->cache, $this->clock, $token, new UpdateSettings($config));
+    }
+
+    private function archiveService(string $project, MockHttpClient $client): ApplicationUpdateService
+    {
+        $config = $this->createMock(AggregateConfigLoader::class);
+        $config->method('all')->willReturn([]);
+        $settings = new UpdateSettings($config);
+        $releases = new ReleaseUpdateService(new InstalledRelease($project), $client, $this->cache, $this->clock, $settings);
+
+        return new ApplicationUpdateService($project, $client, $this->cache, $this->clock, '', $settings, $releases);
     }
 
     /** @param array<string, mixed> $data */

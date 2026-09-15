@@ -10,7 +10,7 @@ use Symfony\Contracts\Cache\CacheInterface;
 use Symfony\Contracts\Cache\ItemInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
-/** Checks the installed branch and permits explicit, fast-forward-only code updates. */
+/** Checks the configured upstream branch and permits explicit, fast-forward-only code updates. */
 class ApplicationUpdateService
 {
     public const REPOSITORY = 'Subschema-LLC/aggregate';
@@ -25,18 +25,21 @@ class ApplicationUpdateService
         private readonly CacheInterface $cache,
         private readonly ClockInterface $clock,
         private readonly string $githubToken = '',
+        private readonly ?UpdateSettings $settings = null,
+        private readonly ?ReleaseUpdateService $releases = null,
     ) {
     }
 
     /**
-     * @return array{state: string, branch: ?string, current_commit: ?string, latest_commit: ?string,
-     *     checked_at: ?int, message: string, compare_url: ?string}
+     * @return array<string, mixed> Git or packaged-release update status.
      */
     public function check(bool $refresh = false): array
     {
         $result = [
             'state' => 'unavailable',
+            'installation_type' => 'git',
             'branch' => null,
+            'installed_branch' => null,
             'current_commit' => null,
             'latest_commit' => null,
             'checked_at' => null,
@@ -44,10 +47,30 @@ class ApplicationUpdateService
             'compare_url' => null,
         ];
 
+        // Archive installations can live inside an unrelated parent repository.
+        // Their own metadata takes precedence unless this root has its own .git.
+        if ($this->isReleaseInstallation()) {
+            return $this->releases?->check($refresh) ?? array_replace($result, [
+                'state' => 'error',
+                'installation_type' => 'release',
+                'message' => 'Release update checking is unavailable. Rebuild the application cache and verify the release update service configuration.',
+            ]);
+        }
+
+        try {
+            $result['branch'] = $this->configuredBranch();
+        } catch (\RuntimeException $e) {
+            $result['state'] = 'error';
+            $result['message'] = $e->getMessage();
+
+            return $result;
+        }
+        $branch = $result['branch'];
+
         try {
             // Local state is never cached: another deployment may have changed HEAD.
             $local = $this->repository();
-            $result['branch'] = $local['branch'];
+            $result['installed_branch'] = $local['branch'];
             $result['current_commit'] = $local['commit'];
         } catch (\RuntimeException $e) {
             $result['message'] = $e->getMessage();
@@ -55,17 +78,11 @@ class ApplicationUpdateService
             return $result;
         }
 
-        if ($local['branch'] === null) {
-            $result['message'] = 'This checkout has a detached HEAD. Switch to the deployment branch to check for updates.';
-
-            return $result;
-        }
-
         try {
             $remote = $this->cache->get(
-                $this->cacheKey('branch', $local['branch']),
-                function (ItemInterface $item) use ($local): array {
-                    $response = $this->github('/commits/'.rawurlencode($local['branch']));
+                $this->cacheKey('branch', $branch),
+                function (ItemInterface $item) use ($branch): array {
+                    $response = $this->github('/commits/'.rawurlencode($branch));
                     $sha = $response['data']['sha'] ?? null;
                     $error = $response['error'];
                     if ($error === null && !$this->isCommit($sha)) {
@@ -114,10 +131,10 @@ class ApplicationUpdateService
 
             if ($result['message'] === '') {
                 $result['message'] = match ($result['state']) {
-                    'up_to_date' => 'This checkout matches the latest commit on its GitHub branch.',
-                    'available' => 'An update is available on this GitHub branch.',
-                    'ahead' => 'This checkout contains commits ahead of the GitHub branch. Review local commits before updating.',
-                    'diverged' => 'This checkout and the GitHub branch have diverged. Resolve the branch history manually before updating.',
+                    'up_to_date' => 'This checkout matches the latest commit on the configured GitHub branch.',
+                    'available' => 'An update is available on the configured GitHub branch.',
+                    'ahead' => 'This checkout contains commits ahead of the configured GitHub branch. Review local commits before updating.',
+                    'diverged' => 'This checkout and the configured GitHub branch have diverged. Resolve the branch history manually before updating.',
                     default => 'The available history is insufficient to determine whether an update is available.',
                 };
             }
@@ -137,6 +154,10 @@ class ApplicationUpdateService
      */
     public function pull(): array
     {
+        if ($this->isReleaseInstallation()) {
+            throw new \RuntimeException('This installation uses a release package. Download and verify a newer package and follow DEPLOYMENT.md#updates; Git source pulls are unavailable for packaged installations.');
+        }
+        $branch = $this->configuredBranch();
         $local = $this->repository();
         $lock = @fopen($local['git_dir'].'/aggregate-update.lock', 'c');
         if ($lock === false) {
@@ -152,13 +173,13 @@ class ApplicationUpdateService
             }
 
             $local = $this->repository();
-            $this->assertReadyToPull($local);
+            $this->assertReadyToPull($local, $branch);
             $temporaryRef = 'refs/aggregate-updates/'.bin2hex(random_bytes(16));
             $this->git([
                 'fetch', '--no-tags', '--no-prune', '--no-prune-tags', '--no-recurse-submodules', '--no-auto-maintenance',
                 '--no-write-fetch-head', '--', self::REPOSITORY_URL.'.git',
-                'refs/heads/'.$local['branch'].':'.$temporaryRef,
-            ], 'GitHub could not be fetched. Verify network access, the current branch on GitHub, and the deployment user\'s Git credentials for private repositories.', 120);
+                'refs/heads/'.$branch.':'.$temporaryRef,
+            ], 'GitHub could not be fetched. Verify network access and the configured updates_branch on GitHub.', 120);
 
             // A private temporary ref pins this fetch even if another Git client fetches concurrently.
             $latest = trim($this->git(
@@ -173,7 +194,7 @@ class ApplicationUpdateService
             if ($beforeMerge['branch'] !== $local['branch'] || $beforeMerge['commit'] !== $local['commit']) {
                 throw new \RuntimeException('The local branch changed while the update was being fetched. Review the checkout before retrying.');
             }
-            $this->assertReadyToPull($beforeMerge);
+            $this->assertReadyToPull($beforeMerge, $branch);
 
             if ($latest !== $local['commit']) {
                 if (!$this->isAncestor($local['commit'], $latest)) {
@@ -192,7 +213,7 @@ class ApplicationUpdateService
 
             // Cache failures must not turn a successful code update into a reported failure.
             try {
-                $this->cache->delete($this->cacheKey('branch', $local['branch']));
+                $this->cache->delete($this->cacheKey('branch', $branch));
             } catch (\Throwable) {
             }
 
@@ -263,10 +284,13 @@ class ApplicationUpdateService
     }
 
     /** @param array{branch: ?string, commit: string, git_dir: string} $local */
-    private function assertReadyToPull(array $local): void
+    private function assertReadyToPull(array $local, string $branch): void
     {
         if ($local['branch'] === null) {
-            throw new \RuntimeException('A detached HEAD cannot be updated. Switch to the deployment branch before pulling.');
+            throw new \RuntimeException('A detached HEAD cannot be updated. Switch to the configured updates_branch before pulling.');
+        }
+        if ($local['branch'] !== $branch) {
+            throw new \RuntimeException('The installed branch differs from the configured updates_branch ('.$branch.'). Switch branches manually or correct config/aggregate.yaml before pulling.');
         }
         foreach (['MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'rebase-merge', 'rebase-apply', 'sequencer', 'BISECT_START'] as $operation) {
             if (file_exists($local['git_dir'].'/'.$operation)) {
@@ -376,7 +400,7 @@ class ApplicationUpdateService
                 $status === 200 => null,
                 $status === 401 => 'GitHub could not authenticate the update check. Configure AGGREGATE_GITHUB_TOKEN with repository read access.',
                 $status === 403 || $status === 429 => 'GitHub denied or rate-limited the update check. Check AGGREGATE_GITHUB_TOKEN and try again later.',
-                $status === 404 => 'The current branch or repository could not be found on GitHub. Verify the branch and configure AGGREGATE_GITHUB_TOKEN for private repository access.',
+                $status === 404 => 'The configured updates_branch or repository could not be found on GitHub. Verify updates_branch in config/aggregate.yaml and repository availability.',
                 default => 'GitHub could not complete the update check. Try again later.',
             };
 
@@ -389,6 +413,21 @@ class ApplicationUpdateService
     private function isCommit(mixed $sha): bool
     {
         return is_string($sha) && preg_match('/^[0-9a-f]{40}$/D', $sha) === 1;
+    }
+
+    private function configuredBranch(): string
+    {
+        try {
+            return $this->settings?->branch() ?? UpdateSettings::DEFAULT_BRANCH;
+        } catch (\InvalidArgumentException $e) {
+            throw new \RuntimeException($e->getMessage(), previous: $e);
+        }
+    }
+
+    private function isReleaseInstallation(): bool
+    {
+        return (file_exists($this->projectDir.'/release.json') || is_link($this->projectDir.'/release.json'))
+            && !file_exists($this->projectDir.'/.git') && !is_link($this->projectDir.'/.git');
     }
 
     private function cacheKey(string $kind, string $value): string

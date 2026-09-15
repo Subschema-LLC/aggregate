@@ -38,6 +38,7 @@
   var namespace = 'Aggregate';
   // ScriptController replaces these defaults with browser-safe YAML settings.
   var internalTrafficDefaults = {storage: 'cookie', name: 'orgInternalTraffic', value: 'true', cookieDomain: ''};
+  var customDataDefaults = {queryParameters: {utm_source: 'utm_source', utm_medium: 'utm_medium', utm_campaign: 'utm_campaign', utm_term: 'utm_term', utm_content: 'utm_content', utm_id: 'utm_id'}, consentFreeProperties: []};
   try {
     var s = document.currentScript || (function(){var ss=document.getElementsByTagName('script'); return ss[ss.length-1];})();
     if (s && s.dataset && s.dataset.namespace) {
@@ -49,7 +50,8 @@
     config: {
       endpoint: (window[namespace] && window[namespace].endpoint) || '/api/receive',
       websiteToken: (window[namespace] && window[namespace].websiteToken) || null,
-      internalTraffic: internalTrafficDefaults
+      internalTraffic: internalTrafficDefaults,
+      customData: customDataDefaults
     },
     consent: false,
     consentKnown: false,
@@ -64,6 +66,103 @@
           this.config.internalTraffic[field] = options[field];
         }
       }
+    },
+
+    isCustomDataKey: function(key){
+      return typeof key === 'string' && /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(key)
+        && ['__proto__', 'constructor', 'prototype'].indexOf(key) === -1;
+    },
+
+    configureCustomData: function(options){
+      if (!options || typeof options !== 'object' || Array.isArray(options)) return;
+
+      if (Object.prototype.hasOwnProperty.call(options, 'queryParameters')) {
+        var mappings = Object.create(null);
+        if (options.queryParameters && typeof options.queryParameters === 'object' && !Array.isArray(options.queryParameters)) {
+          var sources = Object.keys(options.queryParameters);
+          for (var i = 0; i < sources.length; i++) {
+            var source = sources[i];
+            var destination = options.queryParameters[source];
+            if (this.isCustomDataKey(source) && this.isCustomDataKey(destination)) {
+              mappings[source] = destination;
+            }
+          }
+        }
+        this.config.customData.queryParameters = mappings;
+      }
+
+      if (Object.prototype.hasOwnProperty.call(options, 'consentFreeProperties')) {
+        this.config.customData.consentFreeProperties = Array.isArray(options.consentFreeProperties)
+          ? options.consentFreeProperties.filter(this.isCustomDataKey.bind(this))
+          : [];
+      }
+    },
+
+    customDataForEvent: function(eventData){
+      var clean = Object.create(null);
+      var count = 0;
+      var settings = this.config.customData;
+      var self = this;
+      var canInclude = function(key){
+        return self.isCustomDataKey(key) && key !== self.config.internalTraffic.name
+          && (self.consent || settings.consentFreeProperties.indexOf(key) !== -1);
+      };
+      var cleanValue = function(value){
+        // Match the server's flat, bounded scalar property model. Keep at
+        // most 500 UTF-8 bytes without splitting a character.
+        if (typeof value === 'string') {
+          var characters = Array.from(value.replace(/[\u0000-\u001f\u007f]/g, ''));
+          var result = '';
+          var bytes = 0;
+          for (var i = 0; i < characters.length; i++) {
+            var point = characters[i].codePointAt(0);
+            if (point >= 0xd800 && point <= 0xdfff) continue;
+            var size = point < 0x80 ? 1 : (point < 0x800 ? 2 : (point < 0x10000 ? 3 : 4));
+            if (bytes + size > 500) break;
+            result += characters[i];
+            bytes += size;
+          }
+          return result;
+        }
+        if (value === null || typeof value === 'boolean' || (typeof value === 'number' && isFinite(value))) return value;
+        return undefined;
+      };
+
+      // Explicit event properties take precedence over URL mappings, including
+      // false, zero and null. Never copy inherited or nested properties.
+      if (eventData && typeof eventData === 'object' && !Array.isArray(eventData)) {
+        var keys = Object.keys(eventData);
+        for (var i = 0; i < keys.length && count < 50; i++) {
+          var key = keys[i].trim();
+          if (!canInclude(key)) continue;
+          var value = cleanValue(eventData[keys[i]]);
+          if (typeof value === 'undefined') continue;
+          if (!Object.prototype.hasOwnProperty.call(clean, key)) count++;
+          clean[key] = value;
+        }
+      }
+
+      // Read only explicitly mapped parameters from this page's current URL.
+      // Attribution is never persisted in cookies or browser storage.
+      try {
+        var pageUrl = new URL(location.origin);
+        pageUrl.search = location.search || '';
+        var sources = Object.keys(settings.queryParameters);
+        for (var j = 0; j < sources.length && count < 50; j++) {
+          var destination = settings.queryParameters[sources[j]];
+          if (!canInclude(destination) || Object.prototype.hasOwnProperty.call(clean, destination)) continue;
+          var values = pageUrl.searchParams.getAll(sources[j]);
+          for (var k = 0; k < values.length; k++) {
+            var queryValue = cleanValue(values[k]).trim();
+            if (!queryValue) continue;
+            clean[destination] = queryValue;
+            count++;
+            break;
+          }
+        }
+      } catch(e) {}
+
+      return count ? clean : null;
     },
 
     isInternalTraffic: function(){
@@ -364,6 +463,8 @@
       if (this.consent) {
         payload.screenWidth = (screen && screen.width) || null;
       }
+      var customData = this.customDataForEvent(null);
+      if (customData) payload.eventData = customData;
 
       this.send(payload);
     },
@@ -381,14 +482,15 @@
       };
 
       // Goals are server-validated against the configured allowlist in both
-      // privacy modes. Properties, exact dimensions and browser identifiers
-      // remain enhanced analytics and require affirmative consent.
+      // privacy modes. Only configured consent-free properties can accompany
+      // anonymous events; exact dimensions and IDs require enhanced consent.
       payload.goalEvent = goalEvent || null;
 
       if (this.consent) {
         payload.screenWidth = (screen && screen.width) || null;
-        payload.eventData = eventData || null;
       }
+      var customData = this.customDataForEvent(eventData);
+      if (customData || this.consent) payload.eventData = customData;
 
       this.send(payload);
 
@@ -415,6 +517,7 @@
     Analytics.config.endpoint = opts && opts.endpoint || Analytics.config.endpoint;
     Analytics.config.websiteToken = opts && opts.websiteToken || Analytics.config.websiteToken;
     Analytics.configureInternalTraffic(opts && opts.internalTraffic);
+    Analytics.configureCustomData(opts && opts.customData);
     if (opts && typeof opts.consent !== 'undefined') {
       Analytics.setConsent(opts.consent);
     }
@@ -456,6 +559,7 @@
   if (window[namespace].endpoint) Analytics.config.endpoint = window[namespace].endpoint;
   if (window[namespace].websiteToken) Analytics.config.websiteToken = window[namespace].websiteToken;
   Analytics.configureInternalTraffic(window[namespace].internalTraffic);
+  Analytics.configureCustomData(window[namespace].customData);
   if (typeof window[namespace].consent !== 'undefined') {
     Analytics.setConsent(window[namespace].consent);
   }

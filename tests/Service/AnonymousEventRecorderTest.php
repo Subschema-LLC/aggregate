@@ -7,10 +7,50 @@ namespace App\Tests\Service;
 use App\Entity\Event;
 use App\Service\AnonymousEventRecorder;
 use Doctrine\ORM\EntityManagerInterface;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class AnonymousEventRecorderTest extends TestCase
 {
+    #[DataProvider('organizationTrafficFlags')]
+    public function testRecorderCombinesApprovedPropertiesWithAuthoritativeTrafficFlag(bool $internalTraffic): void
+    {
+        $persisted = null;
+        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager->expects(self::once())
+            ->method('persist')
+            ->willReturnCallback(static function (object $event) use (&$persisted): void {
+                $persisted = $event;
+            });
+        $entityManager->expects(self::once())->method('flush');
+
+        (new AnonymousEventRecorder($entityManager))->record(
+            websiteToken: 'site-token',
+            eventName: 'view',
+            pagePath: '/pricing',
+            referrerChannel: 'direct',
+            deviceClass: 'desktop',
+            viewportBucket: 'large',
+            internalTraffic: $internalTraffic,
+            internalTrafficName: 'companyStaff',
+            approvedCustomData: ['plan' => 'pro', 'companyStaff' => !$internalTraffic],
+        );
+
+        self::assertInstanceOf(Event::class, $persisted);
+        $persisted->enforcePrivacyInvariants();
+        self::assertSame(
+            $internalTraffic ? ['plan' => 'pro', 'companyStaff' => true] : ['plan' => 'pro'],
+            $persisted->getCustomData(),
+        );
+        self::assertSame($internalTraffic, $persisted->isInternalTraffic());
+    }
+
+    public static function organizationTrafficFlags(): iterable
+    {
+        yield 'marked' => [true];
+        yield 'unmarked' => [false];
+    }
+
     public function testRecorderPersistsOneIdentifierFreeUtcHourEventSynchronously(): void
     {
         $persisted = null;

@@ -8,6 +8,7 @@ This document is engineering guidance, not legal advice.
 
 - [Measurement model](#measurement-model)
 - [Anonymous-mode events](#anonymous-mode-events)
+- [Custom properties and UTM consent](#custom-properties-and-utm-consent)
 - [Organization traffic](#organization-traffic)
 - [Optional coarse geography](#optional-coarse-geography)
 - [Stored data and reporting queries](#stored-data-and-reporting-queries)
@@ -27,11 +28,11 @@ All measurements use the `events` table and are separated explicitly by `privacy
 
 | Consent state | Stored mode | Page views, named events, and configured goals | IDs and enhanced details |
 | --- | --- | --- | --- |
-| Unknown | `anonymous` | One coarse, UTC-hour-bucketed row per event; an allowlisted goal may be retained when its definition permits anonymous use | IDs, custom properties, and exact dimensions are omitted |
+| Unknown | `anonymous` | One coarse, UTC-hour-bucketed row per event; permitted goals and explicitly configured consent-free properties may be retained | IDs, properties requiring consent, and exact dimensions are omitted |
 | Enhanced analytics rejected | `anonymous` | Same anonymous event and goal behavior | Enhanced fields are omitted; existing SDK IDs are removed |
 | Enhanced analytics granted | `enhanced` | One detailed row per event; enabled allowlisted goals may be retained | Visitor/session IDs, custom properties, and exact dimensions may be stored |
 
-There is no visitor-facing "off" mode in the SDK. Coarse page-view and named-event rows, including configured goals permitted anonymously, continue after enhanced analytics is rejected or withdrawn. An administrator can disable collection globally or exclude sensitive paths.
+There is no visitor-facing "off" mode in the SDK. Coarse page-view and named-event rows, including configured goals and properties permitted anonymously, continue after enhanced analytics is rejected or withdrawn. An administrator can disable collection globally or exclude sensitive paths.
 
 Use consent language that matches this behavior. A button may say **Reject enhanced analytics** or **Use privacy-minimized analytics**. Do not claim that a generic **Reject analytics** button stops all measurement if anonymous-mode events will continue.
 
@@ -40,19 +41,20 @@ Use consent language that matches this behavior. A button may say **Reject enhan
 Before an anonymous-mode event leaves the browser, the SDK:
 
 - accepts only fixed event names matching `[A-Za-z][A-Za-z0-9_.:-]{0,99}`, such as `view`, `button_click`, or `ui:menu_open`, and rejects identifier-like names;
-- uses `location.pathname`, never the full URL;
-- omits query strings and fragments;
+- uses `location.pathname` for the page path;
+- omits full query strings and fragments, extracting only configured query parameters whose destination properties permit anonymous collection;
 - redacts path segments resembling email addresses, UUIDs, numeric route IDs, hex IDs, or opaque tokens;
 - converts the referrer to a coarse channel: `direct`, `internal`, `search`, `social`, `email`, `referral`, or `unknown`;
 - sends only coarse device and viewport buckets;
 - may send one requested fixed goal code for server-side allowlist validation;
 - reads the configured team marker, when present, and sends only an `internalTraffic` boolean; it never installs that marker automatically;
-- sends no visitor ID, session ID, cookie value, custom property, raw referrer, or exact screen width; and
+- includes custom properties only when their model definition has `consent_required: false`;
+- sends no visitor ID, session ID, cookie value, raw referrer, or exact screen width; and
 - requests the collection endpoint with a `no-referrer` policy so the browser does not attach the page URL as an HTTP `Referer`.
 
-The server enforces the event-name rules and configured goal allowlist again. Client behavior is not a security boundary because callers can construct requests without using the SDK.
+The server enforces the event-name rules, configured goal allowlist, and per-property consent rules again. Client behavior is not a security boundary because callers can construct requests without using the SDK.
 
-Each accepted event is stored as an individual `events` row with `privacy_mode = 'anonymous'`. The server sets `created_at` to the start of the current UTC hour; the client cannot supply it. Exact event timestamps are not used for anonymous-mode rows. The row retains the safe event name, sanitized path, coarse referrer channel, device class, viewport bucket, an optional allowlisted goal permitted for anonymous use, and—only when the operator enables it—coarse `geo_area`. Identifiers, custom properties, exact dimensions, and generalized User-Agent values remain null.
+Each accepted event is stored as an individual `events` row with `privacy_mode = 'anonymous'`. The server sets `created_at` to the start of the current UTC hour; the client cannot supply it. Exact event timestamps are not used for anonymous-mode rows. The row retains the safe event name, sanitized path, coarse referrer channel, device class, viewport bucket, an optional allowlisted goal permitted for anonymous use, and—only when the operator enables it—coarse `geo_area`. Its `custom_data` may contain explicitly permitted properties and the organization marker. Identifiers, exact dimensions, and generalized User-Agent values remain null.
 
 The word `anonymous` describes the product mode, not a guaranteed legal classification. An hour-bucketed row can still be personal data in context—for example, because a path is unique, an event is rare, a population is small, or the operator can combine it with outside information. Treat the raw `events` table as private and assess the deployment before describing its data as anonymous.
 
@@ -75,6 +77,14 @@ anonymous_excluded_paths:
 ```
 
 Review application routes before enabling measurement. Exclusions are enforced by the server for both privacy modes, including callers that bypass the SDK.
+
+## Custom properties and UTM consent
+
+Administrators configure the custom data model in YAML or **Data model**. A property's `consent_required` defaults to `true`; setting it to `false` permits that key in anonymous-mode events, including after rejection or withdrawal. The rule applies both to `emit()` properties and to mapped URL parameters. The SDK filters before transmission and the server independently filters before persistence. Collection changes affect future events; changing a definition does not erase historical values.
+
+The six standard UTM properties—`utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`, and `utm_id`—all require consent by default. For anonymous attribution, the recommendation is **no more granular than `utm_medium`**, using reviewed channel codes such as `email`, `social`, or `cpc`. This recommendation is advisory: each property can be allowed separately. More detailed UTMs can reveal campaign membership, search text, identifiers, or sensitive context. Review those values and their purpose before overriding the recommendation. The setting allows a key, not a fixed list of values; even `utm_medium` can contain unexpected or personal text if an implementation puts it there.
+
+Properties use bounded scalar values; nested objects and arrays are discarded. Only configured query parameters are extracted from the current page URL, with no attribution cookie or session storage. The reserved organization marker is derived separately and cannot be set through a query parameter or event property. See the [data model guide](DATA-MODEL.md) for configuration and [tracking guide](TRACKING.md#utm-and-custom-data-collection) for precedence and SDK overrides.
 
 ## Organization traffic
 
@@ -133,7 +143,7 @@ SELECT website_token, created_at, event_name,
 FROM events;
 ```
 
-Keep raw-event access within your existing reporting policy. For anonymous reporting, apply the internal-traffic filter before aggregation and disclosure thresholds in a controlled export. Existing `bi_anonymous_*` views and archive tables do not expose `custom_data` and cannot distinguish internal traffic. Archives continue to combine both traffic types; once raw rows are deleted, this flag cannot be recovered from archives. Prepare filtered reporting datasets while the raw JSON is retained. This browser-supplied label is for reporting, not authorization.
+Keep raw-event access within your existing reporting policy. To expose the marker as a column, add its configured key to the data model and regenerate the private `analytics_custom_*_v1` views. For anonymous reporting, apply the internal-traffic filter before aggregation and disclosure thresholds in a controlled export. Existing `bi_anonymous_*` views and archive tables do not expose `custom_data` and cannot distinguish internal traffic. Archives continue to combine both traffic types; once raw rows are deleted, this flag cannot be recovered from archives. Prepare filtered reporting datasets while the raw JSON is retained. This browser-supplied label is for reporting, not authorization.
 
 ## Optional coarse geography
 
@@ -155,12 +165,14 @@ This design minimizes retained data; it does not make the lookup legally invisib
 **`events`** is the unified private storage table. `privacy_mode` separates `anonymous` and `enhanced` rows; page views use `event_name = 'view'`.
 
 - Shared dimensions include `website_token`, `event_name`, sanitized path in `url`, coarse channel in `referrer`, `device_class`, `viewport_bucket`, optional `geo_area`, optional allowlisted `goal_event`, `privacy_mode`, and `created_at`.
-- Anonymous-mode rows are individual events whose server-generated `created_at` is truncated to a UTC hour. An enabled `goal_event` may be present only when its definition permits anonymous use; identifier, exact-dimension, and generalized User-Agent columns remain null. `custom_data` is null except for the organization marker under its configured name (default `{"orgInternalTraffic": true}`); arbitrary event properties are still omitted.
+- Anonymous-mode rows are individual events whose server-generated `created_at` is truncated to a UTC hour. An enabled `goal_event` may be present only when its definition permits anonymous use; identifier, exact-dimension, and generalized User-Agent columns remain null. `custom_data` may contain properties explicitly configured with `consent_required: false` and the organization marker under its configured name (default `{"orgInternalTraffic": true}`); other event properties are omitted.
 - Enhanced rows may include `screen_width`, `visitor_id`, `session_id`, `consent_state`, `custom_data`, `goal_event`, `generalized_user_agent`, and an exact server timestamp.
 
 Do not grant routine BI users access to raw `events`. Hour bucketing and missing IDs reduce risk, but anonymous-mode rows can still be personal data in context.
 
 Older rows can be rolled into the private, unsuppressed `analytics_archive_events`, `analytics_archive_goals`, and `analytics_archive_geo_events` tables. The operational `analytics_archived_events_v1`, `analytics_archived_pageviews_v1`, and `analytics_archived_goals_v1` views are likewise private and unsuppressed; aggregation alone does not make their cells anonymous. The thresholded `bi_anonymous_*` views transparently combine eligible live and archived anonymous counts and remain the supported routine-BI surface.
+
+Custom-property reporting uses separate `analytics_custom_events_v1`, `analytics_custom_pageviews_v1`, and `analytics_custom_goals_v1` views generated from the data model. They expose individual retained raw rows in both privacy modes, with modeled scalar JSON properties as text columns. They apply no suppression, omit archive aggregate cells, and lose coverage when raw rows are deleted. Restrict grants to explicitly approved raw-data reporting workflows. Generating these views does not add custom dimensions to `bi_anonymous_*` or preserve them in archives.
 
 Routine anonymous reporting should query approved views:
 
@@ -239,6 +251,8 @@ anonymous_geo_database_path: ""
 
 Only administrators can change these runtime controls through the CSRF-protected dashboard form. For API-only deployments, manage them in `config/aggregate.yaml` and restrict write access to that file.
 
+The admin **Data model** page manages `custom_data_properties` and `query_parameter_mappings`, including each property's consent rule and reporting column. These settings are also available in the active YAML configuration. Review consent-free properties separately from the SQL columns needed for reporting; exposing a column does not authorize its collection.
+
 Goal definitions are deploy-time controls in `config/goals.yaml`:
 
 ```yaml
@@ -271,7 +285,7 @@ Enhanced analytics may use:
 - a visitor ID in `localStorage`;
 - a session ID in `sessionStorage` and the session cookie;
 - exact screen width;
-- custom properties;
+- custom properties whose definitions require consent, including all six UTMs by default;
 - configured goals whose definitions do not permit anonymous use;
 - generalized browser/device information; and
 - an exact server event timestamp.
@@ -290,7 +304,7 @@ Reject or withdraw enhanced analytics with:
 window.Aggregate.setConsent(false);
 ```
 
-That call immediately removes the Aggregate visitor ID, session ID, and session cookie from the browser. Later `emit(...)` calls continue to create coarse, hour-bucketed anonymous-mode rows. Their custom properties and exact dimensions are omitted, while configured goals marked `anonymous: true` may continue. It does **not** delete data previously collected by the server. Do not describe it as a deletion request or promise that it erases all data.
+That call immediately removes the Aggregate visitor ID, session ID, and session cookie from the browser. Later `emit(...)` calls continue to create coarse, hour-bucketed anonymous-mode rows. Properties requiring consent and exact dimensions are omitted; configured consent-free properties and goals marked `anonymous: true` may continue. It does **not** delete data previously collected by the server. Do not describe it as a deletion request or promise that it erases all data.
 
 The SDK does not persist the consent choice itself. Your consent-management platform should remember and communicate the visitor's current choice.
 
@@ -323,12 +337,12 @@ Initialize enhanced consent only from a recorded affirmative choice:
 
 Adapt the API calls to your consent manager. Test these cases in a new browser profile:
 
-1. Before a choice, a page view and `emit('button_click', {...}, 'signup')` create anonymous-mode rows with no IDs or properties; the goal is retained only when its enabled definition permits anonymous use.
+1. Before a choice, a page view and `emit('button_click', {...}, 'signup')` create anonymous-mode rows with no IDs and only explicitly permitted custom properties; the goal is retained only when its enabled definition permits anonymous use.
 2. Anonymous `created_at` values are UTC hour boundaries rather than exact event times.
 3. Rejecting creates no Aggregate cookie, `localStorage` value, or `sessionStorage` value.
-4. Named events continue after rejection without properties; configured anonymous goals may continue.
+4. Named events continue after rejection; properties requiring consent are absent, while configured consent-free properties and anonymous goals may remain.
 5. Accepting creates IDs and permits enhanced event details.
-6. Withdrawing removes all three browser-side identifiers and strips details from later events.
+6. Withdrawing removes all three browser-side identifiers and strips consent-required details from later events; only explicitly permitted custom properties remain.
 7. Globally disabling collection or visiting an excluded route produces no event row.
 8. An unknown, disabled, or disallowed goal leaves the underlying event intact, returns `goal_not_allowed`, and produces a generic console warning that does not contain the submitted value.
 
@@ -336,7 +350,7 @@ Adapt the API calls to your consent manager. Test these cases in a new browser p
 
 Adapt this text to the deployment and have counsel review it:
 
-> We use self-hosted analytics to understand page usage, named interactions such as button clicks, and [configured goal categories such as signup or purchase]. Unless you accept enhanced analytics, each event is limited to a fixed event name, [an allowlisted goal category, when applicable], sanitized page path, coarse traffic-source and device categories, [a country/continent category derived locally from the request IP, if enabled], and a server-generated UTC hour bucket. The analytics event does not retain the source IP, use an analytics cookie or visitor/session identifier, or include custom event properties. This privacy-minimized measurement continues when enhanced analytics is rejected, except on routes we exclude from measurement.
+> We use self-hosted analytics to understand page usage, named interactions such as button clicks, and [configured goal categories such as signup or purchase]. Unless you accept enhanced analytics, each event is limited to a fixed event name, [an allowlisted goal category, when applicable], sanitized page path, coarse traffic-source and device categories, [specifically listed custom properties collected without enhanced consent, such as campaign medium], [a country/continent category derived locally from the request IP, if enabled], and a server-generated UTC hour bucket. The analytics event does not retain the source IP or use an analytics cookie or visitor/session identifier. This privacy-minimized measurement continues when enhanced analytics is rejected, except on routes we exclude from measurement.
 >
 > If you accept enhanced analytics, we also use short-lived session information, a returning-visitor identifier, custom interaction details, and exact server timestamps. You can withdraw that consent at any time. Withdrawal stops future enhanced collection and removes analytics identifiers from this browser; it does not automatically erase records already collected. Contact us at [privacy contact] to exercise applicable privacy rights.
 
@@ -402,6 +416,7 @@ See [deployment updates](../DEPLOYMENT.md#updates) and the [database migration g
 - [ ] Inventory every anonymous and enhanced field actually collected.
 - [ ] Use a fixed, reviewed event-name taxonomy with no user-derived values.
 - [ ] Review every `config/goals.yaml` definition; keep codes fixed, use `anonymous: false` where appropriate, and never treat rejection warnings as sensitive-data detection.
+- [ ] Review each consent-free custom property's actual values; prefer no more UTM detail than medium and document any override.
 - [ ] Review paths for personal or sensitive data and configure exclusions.
 - [ ] Decide whether anonymous-mode measurement is appropriate in each jurisdiction and context.
 - [ ] Document the legal basis for each processing purpose.
@@ -425,11 +440,11 @@ See [deployment updates](../DEPLOYMENT.md#updates) and the [database migration g
 
 ### Does anonymous-mode measurement require consent?
 
-There is no universal answer. The design removes browser IDs, properties, raw URLs/referrers, and exact analytics timestamps, but it still stores individual hour-bucketed event rows and may retain configured goal categories. The operator must assess applicable law, regulator guidance, purpose, context, infrastructure metadata, and promises made to visitors. Consult qualified counsel.
+There is no universal answer. The design removes browser IDs, unapproved custom properties, full URLs/raw referrers, and exact analytics timestamps, but it still stores individual hour-bucketed event rows and may retain configured goal categories and consent-free properties. The operator must assess applicable law, regulator guidance, purpose, context, infrastructure metadata, and promises made to visitors. Consult qualified counsel.
 
 ### What does Reject mean?
 
-It must mean **reject enhanced analytics**. The SDK removes browser identifiers and omits properties, exact dimensions, and exact analytics timestamps, while coarse hour-bucketed event rows and configured goals allowed anonymously continue. An interface promising to reject all analytics is incompatible with this model unless the site declines to load the SDK for that visitor or the operator disables collection.
+It must mean **reject enhanced analytics**. The SDK removes browser identifiers and omits properties requiring consent, exact dimensions, and exact analytics timestamps, while coarse hour-bucketed event rows and configured goals and properties allowed anonymously continue. An interface promising to reject all analytics is incompatible with this model unless the site declines to load the SDK for that visitor or the operator disables collection.
 
 ### Can an anonymous-mode event be personal data?
 

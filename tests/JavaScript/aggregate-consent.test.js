@@ -7,7 +7,9 @@ const test = require('node:test');
 const vm = require('node:vm');
 
 const sdkSource = fs.readFileSync(
-  path.join(__dirname, '..', '..', 'public', 'aggregate.js'),
+  process.env.AGGREGATE_SDK_SOURCE
+    ? path.resolve(process.env.AGGREGATE_SDK_SOURCE)
+    : path.join(__dirname, '..', '..', 'public', 'aggregate.js'),
   'utf8'
 );
 
@@ -91,11 +93,12 @@ function loadSdk(options) {
         : Promise.resolve(options.fetchResponse || {ok: true});
     },
     localStorage,
-    location: {
+    location: Object.assign({
       origin: 'https://www.example.com',
       pathname: '/pricing',
-      protocol: 'https:'
-    },
+      protocol: 'https:',
+      search: ''
+    }, options.location || {}),
     screen: {width: 1440},
     self: {crypto: {randomUUID: () => '00000000-0000-4000-8000-000000000001'}},
     sessionStorage,
@@ -463,4 +466,212 @@ test('network and non-JSON response failures remain fire-and-forget', async () =
   for (const runtime of runtimes) {
     assert.deepEqual(runtime.consoleWarnings, []);
   }
+});
+
+test('standard UTM parameters accompany enhanced page views and custom events', () => {
+  const runtime = loadSdk({
+    inline: {consent: true},
+    location: {search: '?utm_source=newsletter&utm_medium=email&utm_campaign=summer+sale&utm_term=red%20shoes&utm_content=hero&utm_id=launch&email=private%40example.com'}
+  });
+
+  runtime.triggerPageView();
+  runtime.window.Aggregate.emit('button_click', {plan: 'pro'});
+
+  const utms = {
+    utm_source: 'newsletter', utm_medium: 'email', utm_campaign: 'summer sale',
+    utm_term: 'red shoes', utm_content: 'hero', utm_id: 'launch'
+  };
+  assert.deepEqual(runtime.requests[0].eventData, utms);
+  assert.deepEqual(runtime.requests[1].eventData, Object.assign({plan: 'pro'}, utms));
+  for (const payload of runtime.requests) {
+    assert.equal(payload.pagePath, '/pricing');
+    assert.equal(JSON.stringify(payload).includes('private@example.com'), false);
+  }
+});
+
+test('UTMs require consent by default and never create anonymous identifiers', () => {
+  const runtime = loadSdk({location: {search: '?utm_source=newsletter'}});
+
+  runtime.triggerPageView();
+  runtime.window.Aggregate.emit('button_click');
+  runtime.window.Aggregate.setConsent(false);
+  runtime.window.Aggregate.emit('button_click');
+
+  for (const payload of runtime.requests) {
+    assert.equal(payload.eventData, undefined);
+    assert.equal(payload.visitorId, undefined);
+    assert.equal(payload.sessionId, undefined);
+  }
+  assert.deepEqual(runtime.localStorage.reads, []);
+});
+
+test('anonymous views and events include only operator-approved custom properties', () => {
+  const runtime = loadSdk({
+    inline: {customData: {consentFreeProperties: ['utm_source', 'plan', 'active', 'quantity', 'nullable']}},
+    location: {search: '?utm_source=newsletter&utm_term=private-search'}
+  });
+
+  runtime.triggerPageView();
+  runtime.window.Aggregate.emit('button_click', {
+    plan: 'pro', active: false, quantity: 0, nullable: null, email: 'private@example.com'
+  });
+
+  assert.deepEqual(runtime.requests[0].eventData, {utm_source: 'newsletter'});
+  assert.deepEqual(runtime.requests[1].eventData, {
+    plan: 'pro', active: false, quantity: 0, nullable: null, utm_source: 'newsletter'
+  });
+  assert.equal(runtime.requests[1].consentState, 'unknown');
+  assert.equal(runtime.requests[1].visitorId, undefined);
+  assert.equal(runtime.requests[1].sessionId, undefined);
+  assert.equal(runtime.requests[1].screenWidth, undefined);
+});
+
+test('many query parameters mapping to one property use configuration order and first nonblank value', () => {
+  const runtime = loadSdk({
+    inline: {customData: {
+      queryParameters: {campaign: 'campaignName', legacy_campaign: 'campaignName'},
+      consentFreeProperties: ['campaignName']
+    }},
+    location: {search: '?legacy_campaign=fallback&campaign=&campaign=%20%00&campaign=preferred&campaign=later'}
+  });
+
+  runtime.triggerPageView();
+  assert.deepEqual(runtime.requests[0].eventData, {campaignName: 'preferred'});
+
+  runtime.window.location.search = '?legacy_campaign=fallback&campaign=%20';
+  runtime.window.Aggregate.emit('button_click');
+  assert.deepEqual(runtime.requests.at(-1).eventData, {campaignName: 'fallback'});
+});
+
+test('explicit scalar event values override query values, including false, zero, empty string and null', () => {
+  const runtime = loadSdk({
+    inline: {customData: {queryParameters: {campaign: 'campaignName'}, consentFreeProperties: ['campaignName']}},
+    location: {search: '?campaign=query-value'}
+  });
+
+  for (const value of ['explicit', false, 0, '', null]) {
+    runtime.window.Aggregate.emit('button_click', {campaignName: value});
+    assert.deepEqual(runtime.requests.at(-1).eventData, {campaignName: value});
+  }
+});
+
+test('query collection uses the current page only and never persists attribution', () => {
+  const runtime = loadSdk({
+    inline: {customData: {consentFreeProperties: ['utm_source']}},
+    src: 'https://analytics.example/aggregate.js?utm_source=tracker-source',
+    location: {search: '?utm_source=first-page', hash: '#utm_source=fragment'}
+  });
+
+  runtime.triggerPageView();
+  runtime.window.location.search = '';
+  runtime.window.Aggregate.emit('button_click');
+
+  assert.deepEqual(runtime.requests[0].eventData, {utm_source: 'first-page'});
+  assert.equal(runtime.requests[1].eventData, undefined);
+  assert.equal(runtime.localStorage.has('utm_source'), false);
+  assert.equal(runtime.sessionStorage.has('utm_source'), false);
+  assert.equal(runtime.cookieWrites.every((value) => value.startsWith('aggregate_session=')), true);
+});
+
+test('query names match case exactly and malformed query encoding does not break tracking', () => {
+  const runtime = loadSdk({
+    inline: {customData: {consentFreeProperties: ['utm_source']}},
+    location: {search: '?UTM_SOURCE=ignored&utm_source=%broken'}
+  });
+
+  assert.equal(runtime.window.Aggregate.emit('button_click'), true);
+  assert.deepEqual(runtime.requests.at(-1).eventData, {utm_source: '%broken'});
+});
+
+test('custom property processing rejects inherited, nested, unsafe and organization-marker values', () => {
+  const runtime = loadSdk({inline: {consent: true}});
+  const eventData = Object.assign(Object.create({inherited: 'ignored'}), {
+    nested: {private: 'ignored'}, list: ['ignored'], constructor: 'ignored', prototype: 'ignored',
+    'unsafe key': 'ignored', orgInternalTraffic: true, nan: NaN, infinity: Infinity,
+    ' plan ': 'pro\u0000', safe: true
+  });
+
+  runtime.window.Aggregate.emit('button_click', eventData);
+
+  assert.deepEqual(runtime.requests.at(-1).eventData, {plan: 'pro', safe: true});
+  assert.equal(runtime.requests.at(-1).internalTraffic, false);
+});
+
+test('custom properties and query values have the server scalar count and UTF-8 bounds', () => {
+  const runtime = loadSdk({inline: {consent: true}});
+  const eventData = {unicode: '😀'.repeat(130), malformed: 'valid\ud800text'};
+  for (let i = 0; i < 60; i++) eventData['property' + i] = i;
+
+  runtime.window.Aggregate.emit('button_click', eventData);
+
+  const sent = runtime.requests.at(-1).eventData;
+  assert.equal(Object.keys(sent).length, 50);
+  assert.equal(sent.unicode, '😀'.repeat(125));
+  assert.equal(sent.malformed, 'validtext');
+  assert.equal(sent.property48, undefined);
+
+  runtime.window.location.search = '?utm_source=' + encodeURIComponent('é'.repeat(300));
+  runtime.window.Aggregate.emit('button_click');
+  assert.equal(runtime.requests.at(-1).eventData.utm_source, 'é'.repeat(250));
+});
+
+test('custom-data configuration can replace mappings, disable them and revoke consent-free properties', () => {
+  const runtime = loadSdk({
+    dataset: {namespace: 'CompanyAnalytics'},
+    inline: {customData: {consentFreeProperties: ['utm_source']}},
+    location: {search: '?utm_source=newsletter&campaign=launch'}
+  });
+  const sdk = runtime.window.CompanyAnalytics;
+
+  sdk.emit('button_click');
+  assert.deepEqual(runtime.requests.at(-1).eventData, {utm_source: 'newsletter'});
+
+  sdk.configure({customData: {queryParameters: {campaign: 'campaignName'}, consentFreeProperties: ['campaignName']}});
+  sdk.emit('button_click');
+  assert.deepEqual(runtime.requests.at(-1).eventData, {campaignName: 'launch'});
+
+  sdk.configure({customData: {queryParameters: {}}});
+  sdk.emit('button_click');
+  assert.equal(runtime.requests.at(-1).eventData, undefined);
+
+  sdk.emit('button_click', {campaignName: 'explicit'});
+  assert.deepEqual(runtime.requests.at(-1).eventData, {campaignName: 'explicit'});
+  sdk.configure({customData: {consentFreeProperties: []}});
+  sdk.emit('button_click', {campaignName: 'explicit'});
+  assert.equal(runtime.requests.at(-1).eventData, undefined);
+});
+
+test('malformed browser collection settings fail closed and cannot map the organization marker', () => {
+  const runtime = loadSdk({
+    inline: {customData: {
+      queryParameters: {campaign: 'orgInternalTraffic', constructor: 'plan', valid: 'prototype', 'invalid source': 'plan'},
+      consentFreeProperties: ['orgInternalTraffic', 'plan', 'prototype']
+    }},
+    location: {search: '?campaign=true&constructor=private&valid=private&invalid+source=private'}
+  });
+
+  runtime.window.Aggregate.emit('button_click');
+  assert.equal(runtime.requests.at(-1).eventData, undefined);
+  assert.equal(runtime.requests.at(-1).internalTraffic, false);
+
+  runtime.window.Aggregate.configure({customData: {queryParameters: null, consentFreeProperties: 'plan'}});
+  runtime.window.Aggregate.emit('button_click', {plan: 'private'});
+  assert.equal(runtime.requests.at(-1).eventData, undefined);
+});
+
+test('consent withdrawal immediately filters event properties back to the approved subset', () => {
+  const runtime = loadSdk({
+    inline: {customData: {consentFreeProperties: ['plan']}},
+    location: {search: '?utm_source=newsletter'}
+  });
+
+  runtime.window.Aggregate.setConsent(true);
+  runtime.window.Aggregate.emit('button_click', {plan: 'pro', private: 'enhanced-only'});
+  assert.deepEqual(runtime.requests.at(-1).eventData, {plan: 'pro', private: 'enhanced-only', utm_source: 'newsletter'});
+
+  runtime.window.Aggregate.setConsent(false);
+  runtime.window.Aggregate.emit('button_click', {plan: 'pro', private: 'enhanced-only'});
+  assert.deepEqual(runtime.requests.at(-1).eventData, {plan: 'pro'});
+  assert.equal(runtime.requests.at(-1).visitorId, undefined);
+  assert.equal(runtime.requests.at(-1).sessionId, undefined);
 });
