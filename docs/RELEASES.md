@@ -41,10 +41,14 @@ The public key and Actions secret are intentionally not generated or populated b
 
 ## Publish a release
 
-1. Merge the tested release changes into `master`, or the branch configured in `config/release.yaml`.
-2. Create and push an immutable stable tag such as `v1.0.0` on a commit from that branch. An existing stable tag can also be supplied to the workflow's manual dispatch.
-3. The **Build release package** workflow tests PHP, JavaScript, and release tooling; prepares clean production dependencies; compiles dashboard and minified browser assets; creates and signs the ZIP; and boots the extracted package.
-4. After success, review and publish the **draft GitHub Release**. Drafts and prereleases are ignored by installation checks. An existing release's assets are not overwritten; use a new version for corrections.
+Follow the [branching strategy](../CONTRIBUTING.md#branching-strategy): working
+branches start from `development` and merge back into it through contributor PRs.
+
+1. Open and merge a promotion PR from `development` to `uat`, then complete user acceptance testing. Submit any fixes through working-branch PRs to `development` and promote them to `uat` for testing too.
+2. After acceptance testing passes, open and merge a promotion PR from `uat` to `master`. Production publishing defaults to `master`; maintainers using a different publishing branch must keep `config/release.yaml` aligned with their production target.
+3. Create and push an immutable stable tag such as `v1.0.0` on a commit from the configured publishing branch. An existing stable tag can also be supplied to the workflow's manual dispatch.
+4. The **Build release package** workflow tests PHP, JavaScript, and release tooling; prepares clean production dependencies; compiles dashboard and minified browser assets; creates and signs the ZIP; and boots the extracted package.
+5. After success, review and publish the **draft GitHub Release**. Drafts and prereleases are ignored by installation checks. An existing release's assets are not overwritten; use a new version for corrections.
 
 Each release includes:
 
