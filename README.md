@@ -1,29 +1,31 @@
 # Headless Privacy Analytics
 
-Analytics with nothing to anonymize.
+Measure events without assigning every visitor an identity.
 
 Self-hosted web analytics with privacy-minimized anonymous-mode events, optional consent-based enhanced analytics, and reporting views for Power BI, Tableau, and other BI tools.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![Tracker: BSD-3](https://img.shields.io/badge/tracker-BSD--3--Clause-green.svg)](js/LICENSE.txt)
 [![PHP 8.2+](https://img.shields.io/badge/PHP-8.2%2B-777BB4.svg)](https://php.net)
+[![CI](https://github.com/Subschema-LLC/aggregate/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/Subschema-LLC/aggregate/actions/workflows/ci.yml)
 
 Most privacy-first analytics tools still build a pseudonymous identity for every visitor — typically a rotating hash of IP address, user agent and domain. Better than a cookie. Still an identifier.
 
-Aggregate never creates one. An anonymous-mode row holds a sanitized path, a coarse referrer channel, device and viewport buckets, and a UTC hour. No visitor ID, no session ID, no cookie, no IP, no user agent, no exact timestamp. There is no de-identification step because nothing identifying is collected in the first place.
+Aggregate's anonymous mode creates no visitor identifier. By default, an anonymous event holds a sanitized path, a coarse referrer channel, device and viewport buckets, and a UTC hour. It stores no visitor or session ID, IP address, User-Agent string, or exact event timestamp. Optional goals, coarse geography, organization markers, and explicitly allowlisted properties can add context; their values still need review for identifying detail.
 
 When you need more, enhanced mode adds identifiers, properties and exact dimensions — but only for visitors who have made an affirmative choice, and it stops the moment they withdraw it.
 
-Once you start collecting data, just point Power BI, Tableau, or Looker at the reporting views and go.
+Once you start collecting data, connect Power BI, Tableau, or Looker to the approved aggregate reporting views.
 
 ![Dashboard screenshot](docs/images/dashboard.png)
 
 ## What you get
 
-**Rows you could hand to a stranger.** Page views and named events, stored with sanitized
+**Privacy-minimized event collection.** Page views and named events, stored with sanitized
 paths, coarse dimensions and hour buckets. Emails, UUIDs and numeric route IDs are stripped
 out of paths before storage. Optional allowlisted conversion goals and continent- or
-country-level geography.
+country-level geography. Keep raw events private and use the thresholded reporting views
+for routine BI access.
 
 **Suppression in the view, not the dashboard.** `bi_anonymous_events_v1` and its siblings
 withhold the current bucket and hide any cell below your configured minimum. The threshold
@@ -35,8 +37,11 @@ IDs, custom properties and exact dimensions. `setConsent(false)` drops the ident
 returns to coarse rows. Wire it to your CMP and the behavior matches what the banner
 promised.
 
-**No UI lock-in.** Everything the dashboard does, YAML and the CLI do. Set
-`DASHBOARD_ENABLED=0` and you have a pure ingestion API with no login surface at all.
+**Optional administration UI.** Operate collection, setup, and maintenance through
+YAML and CLI commands; set `DASHBOARD_ENABLED=0` to disable dashboard/login routes.
+BI disclosure thresholds currently require the admin UI or controlled database
+administration; see [configuration sources](docs/CONFIGURATION.md). Visualize
+analytics in your BI tool; the application UI manages the installation and its data contracts.
 
 **Rebrandable without a fork.** Name, logo, colors and fonts are configuration. Contrast
 ratios are validated, so an unreadable palette gets rejected rather than shipped.
@@ -170,6 +175,11 @@ Use the optional [JavaScript build](docs/JS-BUILD.md) for minified tracker and d
 | Guide | Contents |
 | --- | --- |
 | [Contributing](CONTRIBUTING.md) | Development setup, architecture, privacy invariants, tests, Make commands, and pull requests |
+| [Agent guide](AGENTS.md) | Product ethos, architecture boundaries, privacy rules, and development expectations for coding agents |
+| [Roadmap](ROADMAP.md) | Planned work, available foundations, and current update limitations |
+| [Security policy](SECURITY.md) | Private vulnerability reporting and disclosure guidance |
+| [Code of conduct](CODE_OF_CONDUCT.md) | Community expectations and reporting concerns |
+| [Public release preparation](docs/PUBLIC-RELEASE.md) | Maintainer reporting setup, Git history review, GitHub checks, and launch steps |
 | [Privacy and compliance](docs/PRIVACY-COMPLIANCE.md) | Measurement limits, consent, organization traffic, BI suppression, logging, retention, and operator checks |
 | [Configuration](docs/CONFIGURATION.md) | YAML settings, environment overrides, branding, goals, and lifecycle policy |
 | [Data model](docs/DATA-MODEL.md) | UTM/query mappings, anonymous property whitelists, model sharing, and custom reporting columns |
@@ -182,13 +192,18 @@ Use the optional [JavaScript build](docs/JS-BUILD.md) for minified tracker and d
 
 ## Contributing
 
-Create a branch from `development` and target `development` in your pull request. Contributions should preserve the privacy invariants and favor simple, portable, secure, maintainable designs. AI-assisted contributions are welcome when the author reviews and verifies the work. Start with [CONTRIBUTING.md](CONTRIBUTING.md).
+Create a branch from `development` and target `development` in your pull request. Contributions should preserve the privacy invariants and favor simple, portable, secure, maintainable designs. Start with [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Contributions developed with AI coding agents are welcome. Bring your own expertise and judgment to the collaboration: provide project context, guide the agent's decisions, and review and test the result. Please submit changes you understand and can explain, including how they fit Aggregate's architecture and privacy goals. The contributor remains responsible for the work they submit.
+
+Follow the [code of conduct](CODE_OF_CONDUCT.md), review the [roadmap](ROADMAP.md) before proposing substantial work, and use the [security policy](SECURITY.md) for private vulnerability reports.
 
 ## License
 
 The license split is:
 
 - **Browser tracker:** [public/aggregate.js](public/aggregate.js) is licensed under **BSD-3-Clause**, with the full text in its header and [js/LICENSE.txt](js/LICENSE.txt). This file is also the tracker source; there is no separate build source. The configured script served at `/aggregate.js` carries the same BSD license.
+- **Code of Conduct:** [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) adapts Contributor Covenant 2.1 under **CC BY 4.0**, with source attribution and license links in that file.
 - **Everything else in this project's first-party code and documentation:** **GNU AGPL version 3 only (AGPL-3.0-only)**, under [LICENSE](LICENSE). This includes the server, dashboard, and other JavaScript; the tracker exception does not change their license.
 
-Third-party dependencies and vendored assets retain their own licenses.
+Third-party dependencies and vendored assets retain their own licenses, including the vendored [Bulma MIT notice](assets/styles/vendor/bulma/LICENSE).
