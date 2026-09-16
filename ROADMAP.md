@@ -9,6 +9,8 @@ This roadmap describes the current direction of Aggregate. Scope and priorities 
 - **UI Enhancements** We need to improve the user interface for better usability and accessibility. This also includes organization and content in addition to look and feel.
 - **Generate example JSON structures for events based on the data model.** This will help users understand the structure of events and how to format them correctly when implementing.
 - **Headless for AI Ready Data** Consider documentation and features that make the views AI ready for MCPs and data analysis and charts without a BI tool.
+- **MCP Spec / Server** Add easy configuration for MCPs to use the data model and views without a BI tool.
+- **Sample Python Notebooks for AI Ready Data** Provide sample Python notebooks that demonstrate how to use the data model and views for AI-ready data analysis and charts without a BI tool.
 
 ## Available foundations
 
