@@ -96,18 +96,47 @@
           ? options.consentFreeProperties.filter(this.isCustomDataKey.bind(this))
           : [];
       }
+
+      if (Object.prototype.hasOwnProperty.call(options, 'propertyTypes')) {
+        var types = null;
+        if (options.propertyTypes && typeof options.propertyTypes === 'object' && !Array.isArray(options.propertyTypes)) {
+          types = Object.create(null);
+          var properties = Object.keys(options.propertyTypes);
+          for (var j = 0; j < properties.length; j++) {
+            var property = properties[j];
+            if (this.isCustomDataKey(property)) {
+              var type = options.propertyTypes[property];
+              // Keep an invalid declared type blocked rather than silently
+              // reverting that property's collection to unrestricted scalars.
+              types[property] = ['scalar', 'string', 'integer', 'float', 'double', 'boolean'].indexOf(type) !== -1 ? type : 'invalid';
+            }
+          }
+        }
+        this.config.customData.propertyTypes = types;
+      }
     },
 
     customDataForEvent: function(eventData){
       var clean = Object.create(null);
       var count = 0;
       var settings = this.config.customData;
+      if (Object.prototype.hasOwnProperty.call(settings, 'propertyTypes')
+        && (!settings.propertyTypes || typeof settings.propertyTypes !== 'object' || Array.isArray(settings.propertyTypes))) return null;
       var self = this;
       var canInclude = function(key){
         return self.isCustomDataKey(key) && key !== self.config.internalTraffic.name
           && (self.consent || settings.consentFreeProperties.indexOf(key) !== -1);
       };
-      var cleanValue = function(value){
+      var cleanValue = function(key, value){
+        var type = settings.propertyTypes && Object.prototype.hasOwnProperty.call(settings.propertyTypes, key)
+          ? settings.propertyTypes[key] : 'scalar';
+        if (['scalar', 'string', 'integer', 'float', 'double', 'boolean'].indexOf(type) === -1) return undefined;
+        if (value !== null) {
+          if (type === 'string' && typeof value !== 'string') return undefined;
+          if (type === 'boolean' && typeof value !== 'boolean') return undefined;
+          if (['integer', 'float', 'double'].indexOf(type) !== -1 && (typeof value !== 'number' || !isFinite(value))) return undefined;
+          if (type === 'integer' && (Math.floor(value) !== value || Math.abs(value) > 9007199254740991)) return undefined;
+        }
         // Match the server's flat, bounded scalar property model. Keep at
         // most 500 UTF-8 bytes without splitting a character.
         if (typeof value === 'string') {
@@ -135,7 +164,7 @@
         for (var i = 0; i < keys.length && count < 50; i++) {
           var key = keys[i].trim();
           if (!canInclude(key)) continue;
-          var value = cleanValue(eventData[keys[i]]);
+          var value = cleanValue(key, eventData[keys[i]]);
           if (typeof value === 'undefined') continue;
           if (!Object.prototype.hasOwnProperty.call(clean, key)) count++;
           clean[key] = value;
@@ -153,7 +182,11 @@
           if (!canInclude(destination) || Object.prototype.hasOwnProperty.call(clean, destination)) continue;
           var values = pageUrl.searchParams.getAll(sources[j]);
           for (var k = 0; k < values.length; k++) {
-            var queryValue = cleanValue(values[k]).trim();
+            var queryValue = cleanValue(destination, values[k]);
+            // Query values are strings. Numeric/boolean types must be sent as
+            // JSON values through emit(); never guess or coerce URL values.
+            if (typeof queryValue !== 'string') continue;
+            queryValue = queryValue.trim();
             if (!queryValue) continue;
             clean[destination] = queryValue;
             count++;

@@ -56,7 +56,7 @@ final class DashboardControllerPrivacySettingsTest extends TestCase
             ],
         ));
 
-        self::assertSame('/dashboard', $response->getTargetUrl());
+        self::assertSame('/dashboard/privacy', $response->getTargetUrl());
         self::assertSame(
             ['BI disclosure thresholds updated successfully.'],
             $session->getFlashBag()->peek('success'),
@@ -83,7 +83,7 @@ final class DashboardControllerPrivacySettingsTest extends TestCase
             ],
         ));
 
-        self::assertSame('/dashboard', $response->getTargetUrl());
+        self::assertSame('/dashboard/privacy', $response->getTargetUrl());
         self::assertNotSame([], $session->getFlashBag()->peek('error'));
     }
 
@@ -115,7 +115,7 @@ final class DashboardControllerPrivacySettingsTest extends TestCase
             ],
         ));
 
-        self::assertSame('/dashboard', $response->getTargetUrl());
+        self::assertSame('/dashboard/privacy', $response->getTargetUrl());
         self::assertSame(
             ['Invalid security token. Please try again.'],
             $session->getFlashBag()->peek('error'),
@@ -145,7 +145,7 @@ final class DashboardControllerPrivacySettingsTest extends TestCase
         ));
     }
 
-    public function testDashboardRendersAnExplicitRepairStateWhenTheSingletonCannotBeRead(): void
+    public function testDisclosurePageRendersAnExplicitRepairStateWhenTheSingletonCannotBeRead(): void
     {
         $connection = $this->createStub(Connection::class);
         $connection->method('fetchAssociative')->willReturn(false);
@@ -178,7 +178,7 @@ final class DashboardControllerPrivacySettingsTest extends TestCase
         $twig->expects(self::once())
             ->method('render')
             ->with(
-                'dashboard/index.html.twig',
+                'dashboard/privacy_settings.html.twig',
                 self::callback(static fn (array $context): bool =>
                     $context['analytics_privacy_settings_error'] === true
                     && $context['anonymous_min_cell_count'] === 5
@@ -191,7 +191,7 @@ final class DashboardControllerPrivacySettingsTest extends TestCase
         $container->set('twig', $twig);
         $controller->setContainer($container);
 
-        $response = $controller->index();
+        $response = $controller->privacySettings();
 
         self::assertSame(200, $response->getStatusCode());
         self::assertSame('dashboard', $response->getContent());
@@ -226,7 +226,7 @@ final class DashboardControllerPrivacySettingsTest extends TestCase
                 $token->getId() === 'analytics_privacy_settings'))
             ->willReturn($csrfValid);
         $router = $this->createStub(UrlGeneratorInterface::class);
-        $router->method('generate')->willReturn('/dashboard');
+        $router->method('generate')->with('app_privacy_settings')->willReturn('/dashboard/privacy');
 
         $request = Request::create('/dashboard/settings/analytics-privacy', 'POST');
         $request->setSession($session);

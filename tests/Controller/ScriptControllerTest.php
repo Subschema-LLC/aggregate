@@ -109,6 +109,29 @@ final class ScriptControllerTest extends TestCase
         ], $this->customDataBrowserConfig((string) $this->response([])->getContent()));
     }
 
+    public function testSourceAndOptionalMinifiedScriptsPublishOnlyCollectionTypes(): void
+    {
+        $settings = [
+            'custom_data_properties' => [
+                'quantity' => ['type' => 'integer', 'consent_required' => false, 'description' => 'private typed model notes', 'column' => 'quantity_text', 'numeric_column' => 'quantity_value'],
+                'revenue' => ['type' => 'double', 'numeric_column' => 'revenue_value'],
+                'orgInternalTraffic' => ['type' => 'boolean', 'column' => 'staff_reporting'],
+            ],
+            'query_parameter_mappings' => [],
+        ];
+        $expected = ['queryParameters' => [], 'consentFreeProperties' => ['quantity'], 'propertyTypes' => ['quantity' => 'integer', 'revenue' => 'double']];
+        $source = (string) $this->response($settings)->getContent();
+        self::assertSame($expected, $this->customDataBrowserConfig($source));
+        $minified = (string) $this->response($settings, Request::create('/aggregate.js?min=1'), $this->buildFixture())->getContent();
+        self::assertSame(1, preg_match('/window\.fixture=(.*);/', $minified, $matches));
+        self::assertSame($expected, json_decode($matches[1], true, flags: JSON_THROW_ON_ERROR)[2]);
+        foreach ([$source, $minified] as $script) {
+            foreach (['private typed model notes', 'quantity_text', 'quantity_value', 'revenue_value', 'staff_reporting'] as $private) {
+                self::assertStringNotContainsString($private, $script);
+            }
+        }
+    }
+
     public function testInvalidCollectionPolicyPreventsServingTheTracker(): void
     {
         $this->expectException(\InvalidArgumentException::class);

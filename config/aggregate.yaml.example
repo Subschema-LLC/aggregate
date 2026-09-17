@@ -40,6 +40,16 @@ custom_data_properties:
   utm_content: { description: 'Campaign creative or content variant.', consent_required: true, column: utm_content }
   utm_id: { description: 'Campaign identifier.', consent_required: true, column: utm_id }
   # orgInternalTraffic: { description: 'Shared organization marker.', consent_required: true, column: organization_traffic }
+  # Optional typed properties: omit type (or use scalar) to keep existing behavior.
+  # Types: scalar, string, integer, float, double, boolean; null is always allowed.
+  # column stays text. A separate numeric_column requires integer/float/double.
+  # Use distinct aliases and review/regenerate views; never repurpose a text alias.
+  # currency: { type: string, consent_required: true, column: currency }
+  # total_minor: { type: integer, consent_required: true, column: total_minor_text, numeric_column: total_minor_number }
+  # discount_rate: { type: double, consent_required: true, numeric_column: discount_rate_number }
+  # Money: use integer minor units plus currency. float/double are approximate.
+  # Send numeric/boolean values through emit(); query strings are not coerced.
+  # See docs/EVENT-EXAMPLES.md for a flat ecommerce recipe and headless export.
 query_parameter_mappings:
   utm_source: utm_source
   utm_medium: utm_medium
@@ -50,6 +60,8 @@ query_parameter_mappings:
   # campaign: utm_campaign # Alias: first nonblank value in mapping order wins.
 # Use query_parameter_mappings: {} to disable automatic query capture.
 # Apply reporting aliases with UI/CLI view regeneration after saving.
+# Numeric aliases follow text aliases. Later text additions can require an
+# explicit reporting migration when numeric aliases have already been deployed.
 
 environments:
   dev:

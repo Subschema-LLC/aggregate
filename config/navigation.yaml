@@ -2,9 +2,12 @@
 # Main navigation content. The brand entry controls its link destination and
 # retains a legacy label fallback; identity and theme branding come from
 # config/aggregate.yaml.
-# Each link defines exactly one Symfony route or URL; items may also require a
-# Symfony security role and a registered feature name. Feature visibility is
-# controlled by feature_flags in the active aggregate YAML configuration.
+# Links define exactly one Symfony route or URL. Top-level items may instead
+# define a label and children (one submenu level, no parent route/URL).
+# Links and groups may require a security role and a registered feature name.
+# Hidden/inaccessible children are filtered before empty groups are removed;
+# disabling a group makes every remaining child unclickable.
+# Navigation does not grant access: destination routes enforce authorization.
 # Clear the production cache after changing this file.
 parameters:
     app.main_navigation:
@@ -14,33 +17,76 @@ parameters:
             route: 'app_home'
 
         items:
+            - label: 'Websites'
+              route: 'app_dashboard'
+              icon: 'fas fa-globe'
+              role: 'ROLE_USER'
+            - label: 'Collection'
+              icon: 'fas fa-code'
+              role: 'ROLE_ADMIN'
+              children:
+                  - label: 'Collection controls'
+                    route: 'app_collection_settings'
+                    icon: 'fas fa-sliders'
+                    role: 'ROLE_ADMIN'
+                  - label: 'Data model'
+                    route: 'app_data_model'
+                    icon: 'fas fa-table-columns'
+                    role: 'ROLE_ADMIN'
+                  - label: 'Event examples'
+                    route: 'app_event_examples'
+                    icon: 'fas fa-file-code'
+                    role: 'ROLE_ADMIN'
+                  - label: 'Organization traffic'
+                    route: 'app_internal_traffic'
+                    icon: 'fas fa-users'
+                    role: 'ROLE_ADMIN'
+            - label: 'Reporting'
+              icon: 'fas fa-database'
+              children:
+                  - label: 'Reporting views'
+                    route: 'app_data_model_reporting'
+                    icon: 'fas fa-table'
+                    role: 'ROLE_ADMIN'
+                  - label: 'BI disclosure'
+                    route: 'app_privacy_settings'
+                    icon: 'fas fa-shield-halved'
+                    role: 'ROLE_ADMIN'
+                  - label: 'BI connection guide'
+                    route: 'app_how_it_works_data_visualization'
+                    icon: 'fas fa-book-open'
+            - label: 'Administration'
+              icon: 'fas fa-gear'
+              role: 'ROLE_ADMIN'
+              children:
+                  - label: 'General settings'
+                    route: 'app_application_settings'
+                    icon: 'fas fa-sliders'
+                    role: 'ROLE_ADMIN'
+                  - label: 'Branding'
+                    route: 'app_branding_settings'
+                    icon: 'fas fa-palette'
+                    role: 'ROLE_ADMIN'
+                  - label: 'Users'
+                    route: 'app_users'
+                    icon: 'fas fa-user-gear'
+                    role: 'ROLE_ADMIN'
+                  - label: 'Data lifecycle'
+                    route: 'app_data_lifecycle'
+                    icon: 'fas fa-box-archive'
+                    role: 'ROLE_ADMIN'
+                  - label: 'Updates'
+                    route: 'app_updates'
+                    icon: 'fas fa-rotate'
+                    role: 'ROLE_ADMIN'
+                    feature: 'updates'
+                  - label: 'Feature flags'
+                    route: 'app_feature_flags'
+                    icon: 'fas fa-toggle-on'
+                    role: 'ROLE_ADMIN'
             - label: 'Documentation'
               route: 'app_how_it_works'
               icon: 'fas fa-circle-info'
-            - label: 'Data model'
-              route: 'app_data_model'
-              icon: 'fas fa-table-columns'
-              role: 'ROLE_ADMIN'
-            - label: 'Data lifecycle'
-              route: 'app_data_lifecycle'
-              icon: 'fas fa-box-archive'
-              role: 'ROLE_ADMIN'
-            - label: 'Organization traffic'
-              route: 'app_internal_traffic'
-              icon: 'fas fa-users'
-              role: 'ROLE_ADMIN'
-            - label: 'Reporting'
-              route: 'app_how_it_works_data_visualization'
-              icon: 'fas fa-bar-chart'
-            - label: 'Updates'
-              route: 'app_updates'
-              icon: 'fas fa-rotate'
-              role: 'ROLE_ADMIN'
-              feature: 'updates'
-            - label: 'Feature flags'
-              route: 'app_feature_flags'
-              icon: 'fas fa-toggle-on'
-              role: 'ROLE_ADMIN'
 
         account:
             user_icon: 'fas fa-user'

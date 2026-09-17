@@ -60,7 +60,7 @@ final class ReportingViewManagerTest extends TestCase
 
     public static function platforms(): iterable
     {
-        yield 'PostgreSQL' => [new PostgreSQLPlatform(), 'CREATE OR REPLACE', 'jsonb_typeof'];
+        yield 'PostgreSQL' => [new PostgreSQLPlatform(), 'CREATE OR REPLACE', 'json_typeof'];
         yield 'MySQL' => [new MySQL80Platform(), 'CREATE OR REPLACE', 'JSON_TYPE'];
         yield 'MariaDB' => [new MariaDBPlatform(), 'CREATE OR REPLACE', 'JSON_TYPE'];
         yield 'SQL Server' => [new SQLServerPlatform(), 'CREATE OR ALTER', 'JSON_VALUE'];
@@ -180,6 +180,8 @@ final class ReportingViewManagerTest extends TestCase
         $connection = $this->createMock(Connection::class);
         $connection->method('getDatabasePlatform')->willReturn($platform);
         $connection->expects(self::exactly(3))->method('fetchFirstColumn')->willReturn([...ReportingViewManager::BUILTIN_COLUMNS, 'old_property']);
+        $connection->method('fetchAllAssociative')->willReturn([['column_name' => 'old_property', 'data_type' => 'text', 'numeric_precision' => null]]);
+        $connection->method('fetchOne')->willReturn('CREATE VIEW example AS SELECT old AS "old_property" FROM events');
         $connection->method('transactional')->willReturnCallback(static fn (\Closure $callback): array => $callback());
         $connection->method('executeQuery')->willReturn($this->createStub(Result::class));
         $connection->expects(self::exactly($platform instanceof SqlitePlatform ? 6 : 3))->method('executeStatement');
@@ -307,10 +309,188 @@ PY]);
         self::assertStringContainsString('SQLite reporting views verified', $process->getOutput());
     }
 
-    private function manager(Connection $connection, array $columns = ['campaign' => 'utm_campaign']): ReportingViewManager
+    #[DataProvider('platforms')]
+    public function testNumericAliasesAreExplicitAndFollowExistingTextAliases(AbstractPlatform $platform): void
+    {
+        $connection = $this->createMock(Connection::class);
+        $connection->method('getDatabasePlatform')->willReturn($platform);
+        $connection->expects(self::never())->method('executeStatement');
+        $sql = $this->manager($connection, ['amount_text' => 'amount'], [
+            'amount_number' => ['property' => 'amount', 'type' => 'double'],
+            'quantity_number' => ['property' => 'quantity', 'type' => 'integer'],
+            'ratio_number' => ['property' => 'campaign.ratio', 'type' => 'float'],
+        ])->previewSql();
+
+        foreach ($sql as $definition) {
+            self::assertLessThan(strpos($definition, ' AS '.$platform->quoteIdentifier('amount_number')), strpos($definition, ' AS '.$platform->quoteIdentifier('amount_text')));
+            self::assertStringContainsString('9007199254740991', $definition);
+            self::assertStringNotContainsString('bi_anonymous_', $definition);
+        }
+        $definition = reset($sql);
+        if ($platform instanceof PostgreSQLPlatform) {
+            self::assertStringContainsString('DOUBLE PRECISION', $definition);
+            self::assertStringContainsString('trunc(', $definition);
+            self::assertStringContainsString('[0-9]{1,3}', $definition);
+        } elseif ($platform instanceof SQLServerPlatform) {
+            self::assertStringContainsString('TRY_CONVERT(float(53)', $definition);
+            self::assertStringContainsString('entry.[type] = 2', $definition);
+            self::assertStringContainsString('Latin1_General_100_BIN2', $definition);
+        } elseif ($platform instanceof AbstractMySQLPlatform) {
+            self::assertStringContainsString('JSON_VALID', $definition);
+            self::assertStringContainsString('FLOOR(', $definition);
+        } else {
+            self::assertStringContainsString('AS REAL)', $definition);
+            self::assertStringContainsString('AS INTEGER)', $definition);
+        }
+    }
+
+    #[DataProvider('platforms')]
+    public function testDeployedNumericTypeCannotSilentlyChange(AbstractPlatform $platform): void
+    {
+        $connection = $this->createMock(Connection::class);
+        $connection->method('getDatabasePlatform')->willReturn($platform);
+        $connection->method('fetchFirstColumn')->willReturn([...ReportingViewManager::BUILTIN_COLUMNS, 'amount_number']);
+        $connection->method('fetchAllAssociative')->willReturn([['column_name' => 'amount_number', 'data_type' => 'double precision', 'numeric_precision' => 53]]);
+        $connection->method('fetchOne')->willReturn('CREATE VIEW example AS SELECT CAST((CASE WHEN 1 THEN 12.5 END) AS REAL) AS "amount_number" FROM events');
+        $connection->method('transactional')->willReturnCallback(static fn (\Closure $callback): array => $callback());
+        $connection->expects(self::never())->method('executeQuery');
+        $connection->expects(self::never())->method('executeStatement');
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('column types cannot change');
+        $this->manager($connection, [], ['amount_number' => ['property' => 'amount', 'type' => 'integer']])->regenerate();
+    }
+
+    #[DataProvider('platforms')]
+    public function testExistingTextAliasCannotBeRepurposedAsNumeric(AbstractPlatform $platform): void
+    {
+        $connection = $this->createMock(Connection::class);
+        $connection->method('getDatabasePlatform')->willReturn($platform);
+        $connection->method('fetchFirstColumn')->willReturn([...ReportingViewManager::BUILTIN_COLUMNS, 'amount']);
+        $connection->method('fetchAllAssociative')->willReturn([['column_name' => 'amount', 'data_type' => 'text', 'numeric_precision' => null]]);
+        $connection->method('fetchOne')->willReturn('CREATE VIEW example AS SELECT value AS "amount" FROM events');
+        $connection->method('transactional')->willReturnCallback(static fn (\Closure $callback): array => $callback());
+        $connection->expects(self::never())->method('executeStatement');
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('column types cannot change');
+        $this->manager($connection, [], ['amount' => ['property' => 'amount', 'type' => 'double']])->regenerate();
+    }
+
+    public function testNewTextAliasAfterDeployedNumericAliasesNeedsExplicitMigration(): void
+    {
+        $connection = $this->createMock(Connection::class);
+        $connection->method('getDatabasePlatform')->willReturn(new MySQL80Platform());
+        $connection->method('fetchFirstColumn')->willReturn([...ReportingViewManager::BUILTIN_COLUMNS, 'amount_number']);
+        $connection->expects(self::never())->method('executeStatement');
+        $connection->expects(self::never())->method('executeQuery');
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('adding text aliases after numeric aliases');
+        $this->manager($connection, ['currency' => 'currency'], ['amount_number' => ['property' => 'amount', 'type' => 'double']])->regenerate();
+    }
+
+    public function testSqliteNumericViewsExecuteWithoutCoercingStringsOrTruncatingFractions(): void
+    {
+        $python = (new ExecutableFinder())->find('python3');
+        if ($python === null) {
+            self::markTestSkipped('Python SQLite is required for SQL execution checks.');
+        }
+        $connection = $this->createStub(Connection::class);
+        $connection->method('getDatabasePlatform')->willReturn(new SqlitePlatform());
+        $sql = $this->manager($connection, ['amount_text' => 'amount'], [
+            'amount_number' => ['property' => 'amount', 'type' => 'double'],
+            'quantity_number' => ['property' => 'quantity', 'type' => 'integer'],
+            'ratio_number' => ['property' => 'ratio.value', 'type' => 'float'],
+        ])->previewSql();
+        $process = new Process([$python, '-c', <<<'PY'
+import json, sqlite3, sys
+db = sqlite3.connect(':memory:')
+db.execute('CREATE TABLE events (id INTEGER PRIMARY KEY, website_token TEXT, event_name TEXT, url TEXT, referrer TEXT, privacy_mode TEXT, device_class TEXT, viewport_bucket TEXT, geo_area TEXT, goal_event TEXT, created_at TEXT, archived_at TEXT, custom_data TEXT)')
+values = [
+    '{"amount":12.5,"quantity":2,"ratio.value":0.1}',
+    '{"amount":"12.5","quantity":"2","ratio.value":true}',
+    '{"amount":0,"quantity":-2.0,"ratio.value":-0.25}',
+    '{"amount":1e999,"quantity":2.5}',
+    '{"amount":null,"quantity":9007199254740992}',
+    '{"amount":{},"quantity":false}',
+    '{invalid',
+]
+for i, value in enumerate(values, 1):
+    db.execute('INSERT INTO events(id,event_name,custom_data) VALUES (?, ?, ?)', (i, 'view', value))
+for sql in json.load(sys.stdin).values():
+    db.executescript(sql)
+rows = db.execute('SELECT amount_text, amount_number, quantity_number, ratio_number FROM analytics_custom_events_v1 ORDER BY id').fetchall()
+assert rows[0] == ('12.5',12.5,2,0.1), rows
+assert rows[1] == ('12.5',None,None,None), rows
+assert rows[2] == ('0',0.0,-2,-0.25), rows
+assert all(value is None for row in rows[3:] for value in row[1:]), rows
+assert db.execute('SELECT SUM(amount_number), SUM(quantity_number) FROM analytics_custom_events_v1').fetchone() == (12.5,0)
+assert db.execute('SELECT typeof(amount_number),typeof(quantity_number) FROM analytics_custom_events_v1 WHERE id=1').fetchone() == ('real','integer')
+print('SQLite numeric reporting views verified')
+PY]);
+        $process->setInput(json_encode($sql, JSON_THROW_ON_ERROR));
+        $process->run();
+
+        self::assertSame(0, $process->getExitCode(), $process->getErrorOutput());
+        self::assertStringContainsString('SQLite numeric reporting views verified', $process->getOutput());
+    }
+
+    public function testPostgresExecutionPreservesHistoricalNumericTextNormalization(): void
+    {
+        // Explicit opt-in uses a disposable, network-isolated container and
+        // never an operator DATABASE_URL. No images are downloaded by tests.
+        if (getenv('AGGREGATE_TEST_POSTGRES') !== '1') {
+            self::markTestSkipped('Set AGGREGATE_TEST_POSTGRES=1 with cached postgres:16-alpine and Docker to execute this isolated integration test.');
+        }
+        $docker = (new ExecutableFinder())->find('docker');
+        self::assertNotNull($docker, 'Docker is required for the explicitly requested PostgreSQL integration test.');
+        $name = 'aggregate-reporting-test-'.bin2hex(random_bytes(6));
+        $start = new Process([$docker, 'run', '--detach', '--rm', '--pull=never', '--name', $name, '--network', 'none', '--env', 'POSTGRES_HOST_AUTH_METHOD=trust', 'postgres:16-alpine']);
+        $start->mustRun();
+        try {
+            $ready = false;
+            for ($attempt = 0; $attempt < 50; ++$attempt) {
+                $probe = new Process([$docker, 'exec', $name, 'pg_isready', '-U', 'postgres']);
+                if ($probe->run() === 0) {
+                    $ready = true;
+                    break;
+                }
+                usleep(200000);
+            }
+            self::assertTrue($ready, 'Disposable PostgreSQL did not become ready.');
+            $connection = $this->createStub(Connection::class);
+            $connection->method('getDatabasePlatform')->willReturn(new PostgreSQLPlatform());
+            $views = implode("\n", $this->manager($connection, ['amount_text' => 'amount'], ['amount_number' => ['property' => 'amount', 'type' => 'double']])->previewSql());
+            $sql = <<<'SQL'
+CREATE TABLE events (id INTEGER PRIMARY KEY, website_token TEXT, event_name TEXT, url TEXT, referrer TEXT, privacy_mode TEXT, device_class TEXT, viewport_bucket TEXT, geo_area TEXT, goal_event TEXT, created_at TEXT, archived_at TEXT, custom_data JSON);
+INSERT INTO events (id,custom_data) VALUES (1,'{"amount":1e2}'),(2,'{"amount":2.50}'),(3,'{"amount":1e999999}'),(4,'{"amount":true}'),(5,'{"amount":"12.5"}'),(6,'{"amount":1e0000002}');
+SQL;
+            $sql .= "\n".$views."\nCREATE ROLE fixture_bi;\nGRANT SELECT(amount_number) ON analytics_custom_events_v1 TO fixture_bi;\n".$views;
+            $sql .= "\nSELECT json_agg(row_to_json(projected)) FROM (SELECT amount_text, amount_number FROM analytics_custom_events_v1 ORDER BY id) AS projected;\nSELECT has_column_privilege('fixture_bi','analytics_custom_events_v1','amount_number','SELECT');\n";
+            $query = new Process([$docker, 'exec', '-i', $name, 'psql', '-U', 'postgres', '-v', 'ON_ERROR_STOP=1', '-Atq']);
+            $query->setInput($sql);
+            $query->mustRun();
+            $lines = explode("\n", trim($query->getOutput()));
+            self::assertSame([
+                ['amount_text' => '100', 'amount_number' => 100],
+                ['amount_text' => '2.50', 'amount_number' => 2.5],
+                ['amount_text' => '1e999999', 'amount_number' => null],
+                ['amount_text' => 'true', 'amount_number' => null],
+                ['amount_text' => '12.5', 'amount_number' => null],
+                ['amount_text' => '100', 'amount_number' => null],
+            ], json_decode($lines[0], true, flags: JSON_THROW_ON_ERROR));
+            self::assertSame('t', $lines[1], 'Regeneration must retain the column grant.');
+        } finally {
+            (new Process([$docker, 'rm', '--force', $name]))->run();
+        }
+    }
+
+    private function manager(Connection $connection, array $columns = ['campaign' => 'utm_campaign'], array $numericColumns = []): ReportingViewManager
     {
         $settings = $this->createStub(CustomDataSettings::class);
         $settings->method('reportingColumns')->willReturn($columns);
+        $settings->method('numericReportingColumns')->willReturn($numericColumns);
 
         return new ReportingViewManager($connection, $settings);
     }

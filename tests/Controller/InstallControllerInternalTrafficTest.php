@@ -14,6 +14,8 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\CommandLoader\FactoryCommandLoader;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\DependencyInjection\Container;
 use Symfony\Component\EventDispatcher\EventDispatcher;
 use Symfony\Component\HttpFoundation\Request;
@@ -23,6 +25,9 @@ use Symfony\Component\HttpFoundation\Session\Storage\MockArraySessionStorage;
 use Symfony\Component\HttpKernel\KernelInterface;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
+use Symfony\Component\Security\Csrf\CsrfToken;
+use Symfony\Component\Security\Csrf\CsrfTokenManagerInterface;
 use Symfony\Component\Yaml\Yaml;
 use Twig\Environment;
 
@@ -31,6 +36,7 @@ final class InstallControllerInternalTrafficTest extends TestCase
     private string $projectDir;
     private array $savedEnvironment;
     private array $savedServer;
+    private Session $session;
 
     protected function setUp(): void
     {
@@ -113,6 +119,46 @@ final class InstallControllerInternalTrafficTest extends TestCase
         $persisted = Yaml::parseFile($this->projectDir.'/config/aggregate.yaml');
         self::assertFalse($persisted['installed']);
         self::assertSame('', $persisted[InternalTrafficSettings::TOKEN_KEY]);
+        self::assertSame(
+            ['Migration failed. Run php bin/console doctrine:migrations:migrate on the server for diagnostics.'],
+            $this->session->getFlashBag()->get('error'),
+        );
+    }
+
+    public function testInstallerDoesNotExposeExceptionDetailsToTheBrowser(): void
+    {
+        $controller = $this->controller($this->writeConfig(''), hashFails: true);
+
+        self::assertSame('/app_install', $controller->executeInstall($this->installRequest())->headers->get('Location'));
+        self::assertSame(
+            ['Installation failed. Run php bin/console app:install on the server for diagnostics.'],
+            $this->session->getFlashBag()->get('error'),
+        );
+    }
+
+    #[DataProvider('invalidCsrfTokens')]
+    public function testInvalidCsrfDoesNotChangeConfigurationRunMigrationsOrCreateAdmin(mixed $token): void
+    {
+        $config = $this->writeConfig('');
+        $original = file_get_contents($this->projectDir.'/config/aggregate.yaml');
+        $controller = $this->controller($config, runsMigrations: false);
+        $request = $this->installRequest();
+        $request->request->set('_csrf_token', $token);
+
+        try {
+            $controller->executeInstall($request);
+            self::fail('The installer must reject an invalid CSRF token.');
+        } catch (AccessDeniedHttpException) {
+            self::assertSame($original, file_get_contents($this->projectDir.'/config/aggregate.yaml'));
+        }
+    }
+
+    public static function invalidCsrfTokens(): iterable
+    {
+        yield 'missing' => [null];
+        yield 'empty' => [''];
+        yield 'forged' => ['forged'];
+        yield 'array' => [['valid-install-token']];
     }
 
     private function writeConfig(string $token): AggregateConfigLoader
@@ -128,6 +174,7 @@ final class InstallControllerInternalTrafficTest extends TestCase
     private function installRequest(): Request
     {
         return Request::create('/install/execute', 'POST', [
+            '_csrf_token' => 'valid-install-token',
             'admin_username' => 'admin',
             'admin_password' => 'correct-password',
             'js_namespace' => 'Aggregate',
@@ -140,11 +187,12 @@ final class InstallControllerInternalTrafficTest extends TestCase
         bool $runsMigrations = true,
         int $migrationResult = Command::SUCCESS,
         bool $rendersInstaller = false,
+        bool $hashFails = false,
     ): InstallController {
         $checker = $this->createStub(InstallationChecker::class);
         $checker->method('isInstalled')->willReturn($alreadyInstalled);
         $checker->method('isConfigValid')->willReturn(true);
-        $createsUser = !$alreadyInstalled && $runsMigrations && $migrationResult === Command::SUCCESS;
+        $createsUser = !$alreadyInstalled && $runsMigrations && $migrationResult === Command::SUCCESS && !$hashFails;
         $entityManager = $this->createMock(EntityManagerInterface::class);
         $entityManager->expects($createsUser ? self::once() : self::never())
             ->method('persist')
@@ -152,13 +200,20 @@ final class InstallControllerInternalTrafficTest extends TestCase
                 $user->getUsername() === 'admin' && in_array('ROLE_ADMIN', $user->getRoles(), true)));
         $entityManager->expects($createsUser ? self::once() : self::never())->method('flush');
         $passwordHasher = $this->createStub(UserPasswordHasherInterface::class);
-        $passwordHasher->method('hashPassword')->willReturn('hashed-password');
+        if ($hashFails) {
+            $passwordHasher->method('hashPassword')->willThrowException(new \RuntimeException('Synthetic private connection detail'));
+        } else {
+            $passwordHasher->method('hashPassword')->willReturn('hashed-password');
+        }
 
         $kernelContainer = new Container();
         $kernelContainer->set('event_dispatcher', new EventDispatcher());
         $kernelContainer->set('console.command_loader', new FactoryCommandLoader([
             'doctrine:migrations:migrate' => static fn (): Command =>
-                (new Command('doctrine:migrations:migrate'))->setCode(static fn (): int => $migrationResult),
+                (new Command('doctrine:migrations:migrate'))->setCode(static function (InputInterface $input, OutputInterface $output) use ($migrationResult): int {
+                    $output->writeln('Synthetic private migration diagnostic');
+                    return $migrationResult;
+                }),
         ]));
         $kernel = $this->createMock(KernelInterface::class);
         $kernel->expects($runsMigrations ? self::once() : self::never())->method('boot');
@@ -177,12 +232,17 @@ final class InstallControllerInternalTrafficTest extends TestCase
         $router = $this->createStub(UrlGeneratorInterface::class);
         $router->method('generate')->willReturnCallback(static fn (string $route): string => '/'.$route);
         $request = Request::create('/install');
-        $request->setSession(new Session(new MockArraySessionStorage()));
+        $this->session = new Session(new MockArraySessionStorage());
+        $request->setSession($this->session);
         $requestStack = new RequestStack();
         $requestStack->push($request);
         $container = new Container();
         $container->set('router', $router);
         $container->set('request_stack', $requestStack);
+        $csrf = $this->createStub(CsrfTokenManagerInterface::class);
+        $csrf->method('isTokenValid')->willReturnCallback(static fn (CsrfToken $token): bool =>
+            $token->getId() === 'install' && $token->getValue() === 'valid-install-token');
+        $container->set('security.csrf.token_manager', $csrf);
         if ($rendersInstaller) {
             $twig = $this->createMock(Environment::class);
             $twig->expects(self::once())->method('render')->with('install/index.html.twig', [])->willReturn('installer');

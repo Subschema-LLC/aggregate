@@ -33,6 +33,7 @@
             </div>
 
             <form action="{{ path('app_install_execute') }}" method="post">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token('install') }}">
                 <div class="field">
                     <label class="label">Admin Username</label>
                     <div class="control has-icons-left">

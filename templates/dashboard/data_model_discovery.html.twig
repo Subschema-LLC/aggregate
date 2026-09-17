@@ -1,0 +1,35 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Observed properties - {{ app_branding.name }}{% endblock %}
+
+{% block stylesheets %}
+    {{ parent() }}
+    {% include 'dashboard/_settings_styles.html.twig' %}
+{% endblock %}
+
+{% block body %}
+<div class="settings-page">
+    <h1 class="title">Observed properties</h1>
+    {% include 'dashboard/_model_navigation.html.twig' with {current_model_page: 'app_data_model_discovery'} %}
+    {% if configuration_error %}<div class="notification is-danger" role="alert">{{ configuration_error }}</div>{% endif %}
+    {% if reporting_error %}<div class="notification is-warning" role="alert">{{ reporting_error }}</div>{% endif %}
+    <section class="box">
+        <p>Discover key names, types, and occurrence counts from up to 1,000 latest retained events with custom data. Discovery does not enable collection or add columns automatically.</p>
+        <a class="button mt-3 mb-3" href="{{ path('app_data_model_discovery', {discover: '1'}) }}">Refresh observed properties</a>
+        {% if observed_properties %}
+            <div class="table-container" tabindex="0" role="region" aria-label="Observed property names, types, and event counts"><table class="table is-fullwidth">
+                <thead><tr><th>JSON key</th><th>Observed types</th><th>Events in sample</th><th><span class="is-sr-only">Actions</span></th></tr></thead>
+                <tbody>{% for property in observed_properties %}
+                    <tr><td><code>{{ property.key }}</code></td><td>{{ property.types|join(', ') }}</td><td>{{ property.event_count }}</td><td>
+                        {% if property.key in model.custom_data_properties|keys %}In saved model
+                        {% elseif property.can_add %}<a class="button is-small" href="{{ path('app_data_model', {add_property: property.key}) }}">Review in model editor</a>
+                        {% else %}Unsupported property name{% endif %}
+                    </td></tr>
+                {% endfor %}</tbody>
+            </table></div>
+        {% elseif discovery_requested and not reporting_error %}<p>No properties were found in the sample.</p>{% endif %}
+    </section>
+
+    <p class="help">Reviewing a key opens an unsaved model row with enhanced consent required. Save the model explicitly to apply it. Discovery never exports observed values.</p>
+</div>
+{% endblock %}

@@ -132,6 +132,13 @@ final class DataModelControllerTest extends TestCase
         yield 'array field' => [array_replace($base, ['properties' => [array_replace($row, ['key' => ['plan']])]])];
         yield 'invalid consent' => [array_replace($base, ['properties' => [array_replace($row, ['consent_required' => 'false'])]])];
         yield 'unsafe column' => [array_replace($base, ['properties' => [array_replace($row, ['column' => 'visitor_id'])]])];
+        yield 'array type' => [array_replace($base, ['properties' => [$row + ['type' => ['double']]]])];
+        yield 'null type' => [array_replace($base, ['properties' => [$row + ['type' => null]]])];
+        yield 'unknown type' => [array_replace($base, ['properties' => [$row + ['type' => 'object']]])];
+        yield 'array numeric column' => [array_replace($base, ['properties' => [$row + ['numeric_column' => ['total']]]])];
+        yield 'numeric projection on scalar' => [array_replace($base, ['properties' => [$row + ['numeric_column' => 'total']]])];
+        yield 'numeric alias duplicates text alias' => [array_replace($base, ['properties' => [$row + ['type' => 'double', 'numeric_column' => 'plan']]])];
+        yield 'reserved numeric alias' => [array_replace($base, ['properties' => [$row + ['type' => 'double', 'numeric_column' => 'visitor_id']]])];
         yield 'unknown property field' => [array_replace($base, ['properties' => [$row + ['unknown' => 'private']]])];
         yield 'malformed mapping collection' => [array_replace($base, ['mappings' => 'source'])];
         yield 'null mapping collection' => [array_replace($base, ['mappings' => null])];
@@ -191,7 +198,7 @@ final class DataModelControllerTest extends TestCase
 
     public static function adminActions(): iterable
     {
-        foreach (['index', 'save', 'regenerate', 'download'] as $action) {
+        foreach (['index', 'discovery', 'reporting', 'save', 'regenerate', 'download'] as $action) {
             yield $action => [$action];
         }
     }
@@ -210,6 +217,8 @@ final class DataModelControllerTest extends TestCase
         $response = $this->controller($request)->regenerate($request);
 
         self::assertSame(302, $response->getStatusCode());
+        self::assertSame('/dashboard/data-model/reporting', $response->headers->get('Location'));
+        self::assertTrue($response->headers->hasCacheControlDirective('no-store'));
         self::assertSame($before, file_get_contents($this->projectDir.'/config/aggregate.yaml'));
         self::assertSame(['Regenerated '.implode(', ', ReportingViewManager::VIEW_NAMES).'.'], $request->getSession()->getFlashBag()->peek('success'));
     }
@@ -237,7 +246,7 @@ final class DataModelControllerTest extends TestCase
     public function testTemplateWarnsAboutDetailedAnonymousUtmPropertiesAndAliases(array $model, array $warnedProperties): void
     {
         $this->settings->save($model);
-        $this->views->expects(self::once())->method('previewSql')->willReturn(['analytics_custom_events_v1' => 'CREATE VIEW analytics_custom_events_v1 AS SELECT 1;']);
+        $this->views->expects(self::never())->method('previewSql');
         $this->views->expects(self::never())->method('discoverProperties');
         $this->views->expects(self::never())->method('regenerate');
         $request = $this->request([], 'GET');
@@ -247,9 +256,9 @@ final class DataModelControllerTest extends TestCase
         self::assertSame(200, $response->getStatusCode());
         self::assertTrue($response->headers->hasCacheControlDirective('no-store'));
         $crawler = new Crawler((string) $response->getContent());
-        self::assertCount(2, $crawler->filter('form input[name="_csrf_token"][value="valid-token"]'));
+        self::assertCount(1, $crawler->filter('form input[name="_csrf_token"][value="valid-token"]'));
         self::assertCount(1, $crawler->filter('form[action="/dashboard/data-model/save"][method="post"]'));
-        self::assertCount(1, $crawler->filter('form[action="/dashboard/data-model/regenerate"][method="post"]'));
+        self::assertCount(0, $crawler->filter('form[action="/dashboard/data-model/regenerate"]'));
         self::assertStringContainsString('utm_medium', $crawler->filter('.notification.is-info')->text());
         $warning = $crawler->filter('.notification.is-warning[role="alert"]');
         if ($warnedProperties === []) {
@@ -270,10 +279,10 @@ final class DataModelControllerTest extends TestCase
         yield 'detailed UTM mapped to medium' => [['custom_data_properties' => ['utm_medium' => ['consent_required' => false]], 'query_parameter_mappings' => ['utm_source' => 'utm_medium']], ['utm_medium']];
     }
 
-    public function testDiscoveryIsExplicitAndTemplateEscapesUnsupportedPropertyNames(): void
+    public function testDiscoveryProvidesExplicitReviewLinksAndEscapesUnsupportedPropertyNames(): void
     {
         $this->settings->save(['custom_data_properties' => [], 'query_parameter_mappings' => []]);
-        $this->views->expects(self::once())->method('previewSql')->willReturn([]);
+        $this->views->expects(self::never())->method('previewSql');
         $this->views->expects(self::once())->method('discoverProperties')->willReturn([
             ['key' => 'plan', 'types' => ['string'], 'event_count' => 9],
             ['key' => '<img src=x onerror=alert(1)>', 'types' => ['string'], 'event_count' => 1],
@@ -283,30 +292,200 @@ final class DataModelControllerTest extends TestCase
         $request = $this->request([], 'GET');
         $request->query->set('discover', '1');
 
-        $response = $this->controller($request)->index($request);
+        $before = file_get_contents($this->projectDir.'/config/aggregate.yaml');
+        $response = $this->controller($request)->discovery($request);
+
+        self::assertSame($before, file_get_contents($this->projectDir.'/config/aggregate.yaml'));
+        self::assertTrue($response->headers->hasCacheControlDirective('no-store'));
 
         $crawler = new Crawler((string) $response->getContent());
-        self::assertCount(1, $crawler->filter('button[data-add-observed="plan"]'));
-        self::assertCount(1, $crawler->filter('[data-add-observed]'));
+        self::assertCount(1, $crawler->filter('a[href="/dashboard/data-model?add_property=plan"]'));
+        self::assertCount(1, $crawler->filter('a[href*="add_property="]'));
+        self::assertCount(0, $crawler->filter('form'));
+        self::assertStringContainsString('Review in model editor', $crawler->text());
         self::assertCount(0, $crawler->filter('img'));
         self::assertStringContainsString('&lt;img src=x onerror=alert(1)&gt;', (string) $response->getContent());
     }
 
-    public function testReportingFailuresRenderAnEditableModelAndDoNotExposeExceptionDetails(): void
+    public function testReportingFailuresLinkToTheIndependentEditorWithoutExposingExceptionDetails(): void
     {
         $this->views->expects(self::once())->method('previewSql')->willThrowException(new \RuntimeException('private-database-password'));
         $logger = $this->createMock(LoggerInterface::class);
         $logger->expects(self::once())->method('error')->with('Custom data model operation failed.', ['operation' => 'preview', 'exception_class' => \RuntimeException::class]);
         $request = $this->request([], 'GET');
 
-        $response = $this->controller($request, logger: $logger)->index($request);
+        $response = $this->controller($request, logger: $logger)->reporting();
 
         self::assertSame(200, $response->getStatusCode());
         self::assertStringNotContainsString('private-database-password', (string) $response->getContent());
         $crawler = new Crawler((string) $response->getContent());
-        self::assertStringContainsString('The model can still be edited.', $crawler->filter('.notification.is-warning')->text());
-        self::assertCount(1, $crawler->filter('#data-model-form button[type="submit"]:not([disabled])'));
+        self::assertStringContainsString('The model can still be edited on its own page.', $crawler->filter('.notification.is-warning')->text());
+        self::assertCount(1, $crawler->filter('a[href="/dashboard/data-model"]'));
+        self::assertCount(0, $crawler->filter('#data-model-form'));
         self::assertCount(0, $crawler->filter('form[action="/dashboard/data-model/regenerate"]'));
+    }
+
+    public function testEditorKeepsFalseConsentSelectedAndDoesNotReadReportingData(): void
+    {
+        $this->settings->save([
+            'custom_data_properties' => [
+                'category' => ['consent_required' => false],
+                'revenue' => ['consent_required' => true, 'type' => 'double', 'column' => 'revenue_text', 'numeric_column' => 'revenue_number'],
+            ],
+            'query_parameter_mappings' => [],
+        ]);
+        $this->views->expects(self::never())->method('previewSql');
+        $this->views->expects(self::never())->method('discoverProperties');
+        $this->views->expects(self::never())->method('regenerate');
+        $request = $this->request([], 'GET');
+        $response = $this->controller($request)->index($request);
+        $crawler = new Crawler((string) $response->getContent());
+
+        self::assertSame('0', $crawler->filter('#property-0-consent option[selected]')->attr('value'));
+        self::assertSame('1', $crawler->filter('#property-1-consent option[selected]')->attr('value'));
+        self::assertSame('double', $crawler->filter('#property-1-type option[selected]')->attr('value'));
+        self::assertSame('revenue_number', $crawler->filter('#property-1-numeric_column')->attr('value'));
+        self::assertCount(1, $crawler->filter('#data-model-form'));
+        self::assertCount(0, $crawler->filter('form[action="/dashboard/data-model/regenerate"]'));
+        self::assertCount(1, $crawler->filter('a[href="/dashboard/data-model/reporting"]'));
+    }
+
+    public function testSavingTypedAndLegacyRowsPreservesTheirSharedValidationAndReportingAliases(): void
+    {
+        $this->views->expects(self::never())->method('regenerate');
+        $row = ['description' => '', 'column' => '', 'consent_required' => '1'];
+        $request = $this->request(['properties' => [
+            ['key' => 'total', 'column' => 'total_text', 'type' => 'double', 'numeric_column' => ' total_number '] + $row,
+            ['key' => 'quantity', 'type' => 'integer', 'numeric_column' => 'quantity_number'] + $row,
+            ['key' => 'discount', 'type' => 'float', 'numeric_column' => 'discount_number'] + $row,
+            ['key' => 'legacy', 'type' => 'scalar', 'numeric_column' => ''] + $row,
+        ], 'mappings' => []]);
+        $response = $this->controller($request)->save($request);
+
+        self::assertSame('/dashboard/data-model', $response->headers->get('Location'));
+        self::assertSame([], $request->getSession()->getFlashBag()->peek('error'));
+        $saved = Yaml::parseFile($this->projectDir.'/config/aggregate.yaml')['environments']['test']['custom_data_properties'];
+        self::assertSame('double', $saved['total']['type']);
+        self::assertSame('total_text', $saved['total']['column']);
+        self::assertSame('total_number', $saved['total']['numeric_column']);
+        self::assertSame('integer', $saved['quantity']['type']);
+        self::assertSame('float', $saved['discount']['type']);
+        self::assertArrayNotHasKey('type', $saved['legacy']);
+        self::assertArrayNotHasKey('numeric_column', $saved['legacy']);
+        self::assertSame(['total' => 42.5, 'quantity' => 3, 'discount' => 1.25], $this->settings->filterEventData([
+            'total' => 42.5, 'quantity' => 3, 'discount' => 1.25,
+        ], true));
+    }
+
+    public function testLegacyDiscoveryLinkRedirectsToItsOwnPageWithoutQueryingTheDatabase(): void
+    {
+        $this->views->expects(self::never())->method('previewSql');
+        $this->views->expects(self::never())->method('discoverProperties');
+        $request = $this->request(['discover' => '1'], 'GET');
+        $response = $this->controller($request)->index($request);
+
+        self::assertSame(302, $response->getStatusCode());
+        self::assertSame('/dashboard/data-model/discovery?discover=1', $response->headers->get('Location'));
+        self::assertTrue($response->headers->hasCacheControlDirective('no-store'));
+    }
+
+    #[DataProvider('nonDiscoveryQueries')]
+    public function testDiscoveryRequiresItsExactExplicitQueryBeforeReadingEvents(mixed $discover): void
+    {
+        $this->views->expects(self::never())->method('discoverProperties');
+        $this->views->expects(self::never())->method('previewSql');
+        $request = $this->request(['discover' => $discover], 'GET');
+        $response = $this->controller($request)->discovery($request);
+
+        self::assertSame(200, $response->getStatusCode());
+        $crawler = new Crawler((string) $response->getContent());
+        self::assertCount(1, $crawler->filter('a[href="/dashboard/data-model/discovery?discover=1"]'));
+        self::assertCount(0, $crawler->filter('table, form'));
+    }
+
+    public static function nonDiscoveryQueries(): iterable
+    {
+        foreach ([null, '', '0', 'true', ['1']] as $index => $value) {
+            yield 'value '.$index => [$value];
+        }
+    }
+
+    public function testReviewingAPropertyCreatesOnlyAnUnsavedConsentRequiredEditorRow(): void
+    {
+        $this->settings->save(['custom_data_properties' => [], 'query_parameter_mappings' => []]);
+        $this->views->expects(self::never())->method('discoverProperties');
+        $this->views->expects(self::never())->method('previewSql');
+        $this->views->expects(self::never())->method('regenerate');
+        $before = file_get_contents($this->projectDir.'/config/aggregate.yaml');
+        $request = $this->request(['add_property' => 'product.category'], 'GET');
+        $response = $this->controller($request)->index($request);
+        $crawler = new Crawler((string) $response->getContent());
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertSame($before, file_get_contents($this->projectDir.'/config/aggregate.yaml'));
+        self::assertSame([], $this->settings->toArray()['custom_data_properties']);
+        self::assertSame('product.category', $crawler->filter('#property-0-key')->attr('value'));
+        self::assertSame('1', $crawler->filter('#property-0-consent option[selected]')->attr('value'));
+        self::assertSame('', $crawler->filter('#property-0-column')->attr('value'));
+        self::assertCount(1, $crawler->filter('#property-rows details[open]'));
+        self::assertStringContainsString('save to apply the change', $crawler->text());
+    }
+
+    #[DataProvider('invalidReviewKeys')]
+    public function testUnsafeOrMalformedReviewKeysCannotCreateModelRows(mixed $key): void
+    {
+        $this->settings->save(['custom_data_properties' => [], 'query_parameter_mappings' => []]);
+        $before = file_get_contents($this->projectDir.'/config/aggregate.yaml');
+        $request = $this->request(['add_property' => $key], 'GET');
+        $response = $this->controller($request)->index($request);
+        $crawler = new Crawler((string) $response->getContent());
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertSame($before, file_get_contents($this->projectDir.'/config/aggregate.yaml'));
+        self::assertCount(0, $crawler->filter('#property-rows input, img'));
+        self::assertStringContainsString('This property name cannot be added', $crawler->text());
+    }
+
+    public static function invalidReviewKeys(): iterable
+    {
+        foreach (['constructor', '<img src=x onerror=alert(1)>', ['plan'], str_repeat('a', 129)] as $index => $key) {
+            yield 'key '.$index => [$key];
+        }
+    }
+
+    public function testReportingPageOnlyPreviewsTheSavedModelAndProvidesAProtectedRegenerationForm(): void
+    {
+        $this->views->expects(self::once())->method('previewSql')->willReturn([
+            'analytics_custom_events_v1' => 'SELECT 1 AS "<script>";',
+        ]);
+        $this->views->expects(self::never())->method('discoverProperties');
+        $this->views->expects(self::never())->method('regenerate');
+        $request = $this->request([], 'GET');
+        $response = $this->controller($request)->reporting();
+        $crawler = new Crawler((string) $response->getContent());
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertTrue($response->headers->hasCacheControlDirective('no-store'));
+        self::assertCount(1, $crawler->filter('form[action="/dashboard/data-model/regenerate"][method="post"] input[name="_csrf_token"][value="valid-token"]'));
+        self::assertCount(0, $crawler->filter('#data-model-form, script'));
+        self::assertStringContainsString('&lt;script&gt;', (string) $response->getContent());
+    }
+
+    public function testDiscoveryFailureIsPrivateAndLogsOnlyOperationAndExceptionClass(): void
+    {
+        $this->views->expects(self::once())->method('discoverProperties')->willThrowException(new \RuntimeException('private-password'));
+        $this->views->expects(self::never())->method('previewSql');
+        $logger = $this->createMock(LoggerInterface::class);
+        $logger->expects(self::once())->method('error')->with('Custom data model operation failed.', [
+            'operation' => 'discover', 'exception_class' => \RuntimeException::class,
+        ]);
+        $request = $this->request(['discover' => '1'], 'GET');
+        $response = $this->controller($request, logger: $logger)->discovery($request);
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertTrue($response->headers->hasCacheControlDirective('no-store'));
+        self::assertStringNotContainsString('private-password', (string) $response->getContent());
+        self::assertStringContainsString('Observed properties could not be loaded', (string) $response->getContent());
     }
 
     private function request(array $values, string $method = 'POST'): Request
@@ -319,7 +498,7 @@ final class DataModelControllerTest extends TestCase
 
     private function invokeAction(DataModelController $controller, string $action, Request $request): Response
     {
-        return $action === 'download' ? $controller->download() : $controller->$action($request);
+        return in_array($action, ['download', 'reporting'], true) ? $controller->$action() : $controller->$action($request);
     }
 
     private function controller(Request $request, bool $admin = true, ?LoggerInterface $logger = null): DataModelController
@@ -331,7 +510,7 @@ final class DataModelControllerTest extends TestCase
         $csrf->method('isTokenValid')->willReturnCallback(static fn (CsrfToken $token): bool =>
             $token->getId() === DataModelController::CSRF_TOKEN_ID && $token->getValue() === 'valid-token');
         $router = $this->createStub(UrlGeneratorInterface::class);
-        $router->method('generate')->willReturn('/dashboard/data-model');
+        $router->method('generate')->willReturnCallback(self::url(...));
         $stack = new RequestStack();
         $stack->push($request);
         $container = new Container();
@@ -352,14 +531,24 @@ final class DataModelControllerTest extends TestCase
             new FilesystemLoader(dirname(__DIR__, 2).'/templates'),
         ]), ['strict_variables' => true]);
         $twig->addGlobal('app_branding', ['name' => 'Aggregate']);
-        $twig->addFunction(new TwigFunction('path', static fn (string $name): string => match ($name) {
-            'app_data_model' => '/dashboard/data-model',
-            'app_data_model_save' => '/dashboard/data-model/save',
-            'app_data_model_regenerate' => '/dashboard/data-model/regenerate',
-            'app_data_model_download' => '/dashboard/data-model/download',
-        }));
+        $twig->addFunction(new TwigFunction('path', self::url(...)));
         $twig->addFunction(new TwigFunction('csrf_token', static fn (string $id): string => $id === DataModelController::CSRF_TOKEN_ID ? 'valid-token' : 'wrong-token'));
 
         return $twig;
     }
+    private static function url(string $name, array $parameters = []): string
+    {
+        $path = match ($name) {
+            'app_data_model' => '/dashboard/data-model',
+            'app_data_model_save' => '/dashboard/data-model/save',
+            'app_data_model_regenerate' => '/dashboard/data-model/regenerate',
+            'app_data_model_download' => '/dashboard/data-model/download',
+            'app_data_model_discovery' => '/dashboard/data-model/discovery',
+            'app_data_model_reporting' => '/dashboard/data-model/reporting',
+            'app_event_examples' => '/dashboard/data-model/examples',
+        };
+
+        return $path.($parameters === [] ? '' : '?'.http_build_query($parameters));
+    }
+
 }

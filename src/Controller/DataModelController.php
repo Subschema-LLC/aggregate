@@ -30,58 +30,124 @@ final class DataModelController extends AbstractController
     public function index(Request $request): Response
     {
         $this->denyUnlessAvailableToAdmin();
-        $model = CustomDataSettings::defaults();
-        $configurationError = null;
-        $reportingError = null;
-        $properties = [];
-        $sql = [];
-        $markerName = null;
-        try {
-            $model = $this->settings->toArray();
-            $markerName = (new InternalTrafficSettings($this->config))->toBrowserConfig()['name'];
-        } catch (\Throwable $e) {
-            $configurationError = 'The custom data configuration is invalid. Correct its YAML before saving or regenerating views.';
-            $this->logFailure('load', $e);
+        if (($request->query->all()['discover'] ?? null) === '1') {
+            return $this->privateResponse($this->redirectToRoute('app_data_model_discovery', ['discover' => '1']));
         }
-        if ($configurationError === null) {
-            try {
-                $sql = $this->views->previewSql();
-                if ($request->query->get('discover') === '1') {
-                    $properties = $this->views->discoverProperties();
-                    foreach ($properties as &$property) {
-                        $property['can_add'] = CustomDataSettings::isValidPropertyKey($property['key']) || $property['key'] === $markerName;
-                    }
-                    unset($property);
+        $context = $this->loadModel();
+        $model = $context['model'];
+        $unsavedProperty = null;
+        $additionError = null;
+        $key = $request->query->all()['add_property'] ?? null;
+        if ($key !== null && $context['configuration_error'] === null) {
+            if (!is_string($key) || (!CustomDataSettings::isValidPropertyKey($key) && $key !== $context['marker_name'])) {
+                $additionError = 'This property name cannot be added to the model.';
+            } elseif (!array_key_exists($key, $model[CustomDataSettings::PROPERTIES_KEY])) {
+                if (count($model[CustomDataSettings::PROPERTIES_KEY]) >= 50) {
+                    $additionError = 'The model already contains the maximum of 50 properties.';
+                } else {
+                    $model[CustomDataSettings::PROPERTIES_KEY][$key] = ['description' => '', 'consent_required' => true, 'column' => ''];
+                    $model = $this->settings->validate($model);
+                    $unsavedProperty = $key;
                 }
-            } catch (\Throwable $e) {
-                $reportingError = 'Reporting metadata could not be loaded. Check database connectivity, migrations, and permissions. The model can still be edited.';
-                $this->logFailure('preview', $e);
             }
         }
 
-        $detailedAnonymousUtms = [];
+        return $this->privateResponse($this->render('dashboard/data_model.html.twig', [
+            ...$context,
+            'model' => $model,
+            'unsaved_property' => $unsavedProperty,
+            'addition_error' => $additionError,
+            'detailed_anonymous_utms' => $this->detailedAnonymousUtms($model),
+        ]));
+    }
+
+    #[Route('/dashboard/data-model/discovery', name: 'app_data_model_discovery', methods: ['GET'])]
+    public function discovery(Request $request): Response
+    {
+        $this->denyUnlessAvailableToAdmin();
+        $context = $this->loadModel();
+        $requested = ($request->query->all()['discover'] ?? null) === '1';
+        $properties = [];
+        $reportingError = null;
+        if ($requested && $context['configuration_error'] === null) {
+            try {
+                $properties = $this->views->discoverProperties();
+                foreach ($properties as &$property) {
+                    $property['can_add'] = CustomDataSettings::isValidPropertyKey($property['key']) || $property['key'] === $context['marker_name'];
+                }
+                unset($property);
+            } catch (\Throwable $error) {
+                $reportingError = 'Observed properties could not be loaded. Check database connectivity, migrations, and permissions.';
+                $this->logFailure('discover', $error);
+            }
+        }
+
+        return $this->privateResponse($this->render('dashboard/data_model_discovery.html.twig', [
+            ...$context,
+            'observed_properties' => $properties,
+            'discovery_requested' => $requested,
+            'reporting_error' => $reportingError,
+        ]));
+    }
+
+    #[Route('/dashboard/data-model/reporting', name: 'app_data_model_reporting', methods: ['GET'])]
+    public function reporting(): Response
+    {
+        $this->denyUnlessAvailableToAdmin();
+        $context = $this->loadModel();
+        $sql = [];
+        $reportingError = null;
+        if ($context['configuration_error'] === null) {
+            try {
+                $sql = $this->views->previewSql();
+            } catch (\Throwable $error) {
+                $reportingError = 'Reporting metadata could not be loaded. Check database connectivity, migrations, and permissions. The model can still be edited on its own page.';
+                $this->logFailure('preview', $error);
+            }
+        }
+
+        return $this->privateResponse($this->render('dashboard/data_model_reporting.html.twig', [
+            ...$context,
+            'view_sql' => $sql,
+            'reporting_error' => $reportingError,
+        ]));
+    }
+
+    private function loadModel(): array
+    {
+        try {
+            return [
+                'model' => $this->settings->toArray(),
+                'marker_name' => (new InternalTrafficSettings($this->config))->toBrowserConfig()['name'],
+                'configuration_error' => null,
+            ];
+        } catch (\Throwable $error) {
+            $this->logFailure('load', $error);
+
+            return [
+                'model' => CustomDataSettings::defaults(),
+                'marker_name' => null,
+                'configuration_error' => 'The custom data configuration is invalid. Correct its YAML before saving or regenerating views.',
+            ];
+        }
+    }
+
+    private function detailedAnonymousUtms(array $model): array
+    {
+        $properties = [];
         foreach ($model[CustomDataSettings::PROPERTIES_KEY] as $key => $definition) {
             if (!$definition['consent_required'] && in_array($key, CustomDataSettings::UTM_KEYS, true) && $key !== 'utm_medium') {
-                $detailedAnonymousUtms[$key] = true;
+                $properties[$key] = true;
             }
         }
         foreach ($model[CustomDataSettings::MAPPINGS_KEY] as $source => $key) {
             if (in_array($source, CustomDataSettings::UTM_KEYS, true) && $source !== 'utm_medium'
                 && !$model[CustomDataSettings::PROPERTIES_KEY][$key]['consent_required']) {
-                $detailedAnonymousUtms[$key] = true;
+                $properties[$key] = true;
             }
         }
 
-        return $this->privateResponse($this->render('dashboard/data_model.html.twig', [
-            'model' => $model,
-            'configuration_error' => $configurationError,
-            'reporting_error' => $reportingError,
-            'observed_properties' => $properties,
-            'discovery_requested' => $request->query->get('discover') === '1',
-            'view_sql' => $sql,
-            'marker_name' => $markerName,
-            'detailed_anonymous_utms' => array_keys($detailedAnonymousUtms),
-        ]));
+        return array_keys($properties);
     }
 
     #[Route('/dashboard/data-model/save', name: 'app_data_model_save', methods: ['POST'])]
@@ -93,7 +159,7 @@ final class DataModelController extends AbstractController
         }
         try {
             $this->settings->save($this->modelFromForm($request->request->all()));
-            $this->addFlash('success', 'Data model saved. Collection settings apply to future events. Regenerate views below to apply reporting-column changes.');
+            $this->addFlash('success', 'Data model saved. Collection settings apply to future events. Use the Reporting views page to apply reporting-column changes.');
         } catch (\InvalidArgumentException $e) {
             $this->addFlash('error', $e->getMessage());
         } catch (\Throwable $e) {
@@ -109,7 +175,7 @@ final class DataModelController extends AbstractController
     {
         $this->denyUnlessAvailableToAdmin();
         if (!$this->validToken($request)) {
-            return $this->back();
+            return $this->back('app_data_model_reporting');
         }
         try {
             $names = $this->views->regenerate();
@@ -121,7 +187,7 @@ final class DataModelController extends AbstractController
             $this->addFlash('error', 'Views could not be regenerated. Check database privileges, migrations, and JSON support. On MySQL/MariaDB, some view replacements may already have committed; correct the issue and retry.');
         }
 
-        return $this->back();
+        return $this->back('app_data_model_reporting');
     }
 
     #[Route('/dashboard/data-model/download', name: 'app_data_model_download', methods: ['GET'])]
@@ -148,7 +214,7 @@ final class DataModelController extends AbstractController
         }
         $properties = [];
         foreach ($propertyRows as $row) {
-            if (!is_array($row) || array_diff(array_keys($row), ['key', 'description', 'column', 'consent_required']) !== []) {
+            if (!is_array($row) || array_diff(array_keys($row), ['key', 'description', 'column', 'consent_required', 'type', 'numeric_column']) !== []) {
                 throw new \InvalidArgumentException('Invalid property row. Nothing was saved.');
             }
             foreach (['key', 'description', 'column', 'consent_required'] as $field) {
@@ -156,8 +222,13 @@ final class DataModelController extends AbstractController
                     throw new \InvalidArgumentException('Each property row must include its key, description, reporting column, and consent setting.');
                 }
             }
+            foreach (['type', 'numeric_column'] as $field) {
+                if (array_key_exists($field, $row) && !is_string($row[$field])) {
+                    throw new \InvalidArgumentException('Property types and numeric reporting columns must be strings.');
+                }
+            }
             $key = trim($row['key']);
-            if ($key === '' && trim($row['description']) === '' && trim($row['column']) === '') {
+            if ($key === '' && trim($row['description']) === '' && trim($row['column']) === '' && trim($row['numeric_column'] ?? '') === '') {
                 continue;
             }
             if (array_key_exists($key, $properties) || !in_array($row['consent_required'], ['0', '1'], true)) {
@@ -168,6 +239,12 @@ final class DataModelController extends AbstractController
                 'column' => trim($row['column']),
                 'consent_required' => $row['consent_required'] === '1',
             ];
+            if (($row['type'] ?? 'scalar') !== 'scalar') {
+                $properties[$key]['type'] = $row['type'];
+            }
+            if (trim($row['numeric_column'] ?? '') !== '') {
+                $properties[$key]['numeric_column'] = trim($row['numeric_column']);
+            }
         }
         $mappings = [];
         foreach ($mappingRows as $row) {
@@ -201,9 +278,9 @@ final class DataModelController extends AbstractController
         return true;
     }
 
-    private function back(): Response
+    private function back(string $route = 'app_data_model'): Response
     {
-        return $this->privateResponse($this->redirectToRoute('app_data_model'));
+        return $this->privateResponse($this->redirectToRoute($route));
     }
 
     private function privateResponse(Response $response): Response

@@ -484,9 +484,9 @@ $events->addColumn('goal_event', 'string', ['length' => 191, 'notnull' => false]
 
 ### Custom data reporting views
 
-Define custom properties, query parameter mappings, per-property consent, and SQL column names through the admin **Data model** page or YAML. The standard six UTM properties require consent by default. Each may be permitted separately; the recommendation for anonymous reporting is no more detail than `utm_medium`, with fixed channel values such as `email`, `social`, or `cpc`. This is advisory. Review actual values before permitting more detailed source, campaign, term, content, or ID values, which may reveal search text or identifiers. See [Data model](DATA-MODEL.md) for the configuration and shareable implementation contract.
+Define custom properties, query parameter mappings, per-property consent, JSON value types, and SQL column names through **Collection → Data model** or YAML. The standard six UTM properties require consent by default. Each may be permitted separately; the recommendation for anonymous reporting is no more detail than `utm_medium`, with fixed channel values such as `email`, `social`, or `cpc`. This is advisory. Review actual values before permitting more detailed source, campaign, term, content, or ID values, which may reveal search text or identifiers. See [Data model](DATA-MODEL.md) for the configuration and shareable implementation contract.
 
-Regenerate the views from the dashboard or CLI:
+Regenerate the views from **Reporting → Reporting views** or the CLI:
 
 ```bash
 php bin/console app:analytics:views:regenerate --dry-run
@@ -499,7 +499,23 @@ php bin/console app:analytics:views:regenerate
 | `analytics_custom_pageviews_v1` | Rows with `event_name = 'view'` |
 | `analytics_custom_goals_v1` | Rows with a non-null `goal_event` |
 
-Each view exposes `id`, `website_token`, `event_name`, `page_path`, `referrer_channel`, `privacy_mode`, `device_class`, `viewport_bucket`, `geo_area`, `goal_event`, `created_at`, and `archived_at`, followed by configured custom columns. Scalar JSON values become text; booleans become `true` or `false`; missing keys, JSON null, arrays, and objects become SQL `NULL`. Dotted and hyphenated keys are literal top-level JSON keys. Regeneration preserves existing column names and order, appending new columns.
+Each view exposes `id`, `website_token`, `event_name`, `page_path`, `referrer_channel`, `privacy_mode`, `device_class`, `viewport_bucket`, `geo_area`, `goal_event`, `created_at`, and `archived_at`, followed by configured text aliases and then optional numeric aliases. Dotted and hyphenated keys are literal top-level JSON keys.
+
+An existing property's `column` retains its text contract: scalar JSON values become text, booleans become `true` or `false`, and missing keys, JSON null, arrays, and objects become SQL `NULL`. Declaring a collection `type` does not change an existing text alias into a numeric column.
+
+Add a separate `numeric_column` alias to an explicitly declared `integer`, `float`, or `double` property for arithmetic in external BI tools:
+
+```yaml
+custom_data_properties:
+  total_minor: { type: integer, consent_required: true, column: total_minor_text, numeric_column: total_minor_number }
+  discount_rate: { type: double, consent_required: true, numeric_column: discount_rate_number }
+```
+
+Merge these definitions into the existing model. Numeric projections accept actual JSON numbers; numeric strings, booleans, structured data, null, and unsupported values produce SQL `NULL`. Integer values must be integral and within ±9,007,199,254,740,991; fractions are never truncated. Both `float` and `double` projections use approximate double precision and preserve fractions, subject to the database's numeric range and rounding. They do not provide exact decimal-money arithmetic. Prefer integer minor units plus a currency code for monetary amounts; see the [ecommerce examples](EVENT-EXAMPLES.md#numeric-views-for-external-calculations). Historical numeric strings are not converted, and changing collection types does not rewrite retained events.
+
+Historical JSON is interpreted through each engine's JSON functions. Native parsing can already round a very precise fraction or underflow a very small number before the view sees it, particularly with SQLite. Projections cannot restore precision already lost; test historical edge cases on the database you use.
+
+Regeneration guards deployed aliases, order, and SQL types. Text and numeric aliases must be unique across the model; keep existing aliases and append compatible columns. Because generated numeric aliases follow text aliases, adding a text alias after numeric aliases have been deployed can move existing columns and requires a separately planned database/reporting migration. Removing, renaming, reordering, or changing a deployed column's SQL type is also rejected. Preview SQL and test regeneration on the actual database/version with the intended view owner and reporting grants; generated SQL and mocked tests alone do not establish execution compatibility.
 
 These views expose individual rows without suppression and need separately approved raw-data access. They include retained rows already marked `archived_at`, but never archive aggregate cells. Deleting raw rows removes them from these views even when archived counts remain elsewhere. Existing `bi_anonymous_*` reporting contracts and archives retain their dimensions and do not gain custom properties.
 

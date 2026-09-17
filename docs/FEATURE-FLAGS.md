@@ -103,6 +103,11 @@ to manage flags; enabled update commands remain available headlessly.
    URLs are also recognized for older navigation configurations. Absolute URLs,
    custom URL prefixes, and all new features must use explicit `feature` metadata.
 
+   Grouped `children` entries support the same metadata on both the group and
+   each child. Hidden/inaccessible children are filtered before empty groups
+   disappear. The shared `navigation_menu(main_navigation)` helper normalizes
+   and filters the complete menu; see [submenu configuration](CONFIGURATION.md#main-navigation).
+
    Custom navigation templates should call `navigation_feature_state(item)` and
    check its `hidden` / `enabled` values before generating links. Twig also
    provides `feature_enabled(name)` and `feature_hidden_from_navigation(name)`.
