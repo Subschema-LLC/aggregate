@@ -86,15 +86,24 @@ final class RegenerateReportingViewsCommandTest extends TestCase
         }
     }
 
-    public function testFailureDoesNotReportRegenerationSuccess(): void
+    #[DataProvider('failureModes')]
+    public function testFailureDoesNotReportRegenerationSuccess(\Throwable $error, int $exitCode, bool $decorated): void
     {
         $views = $this->createMock(ReportingViewManager::class);
-        $views->method('regenerate')->willThrowException(new \RuntimeException('View privileges are missing.'));
+        $views->method('regenerate')->willThrowException($error);
         $tester = $this->tester($views);
 
-        self::assertSame(Command::FAILURE, $tester->execute([]));
-        self::assertStringContainsString('View privileges are missing.', $tester->getDisplay());
+        self::assertSame($exitCode, $tester->execute([], ['decorated' => $decorated]));
+        self::assertStringContainsString($error->getMessage(), $tester->getDisplay());
         self::assertStringNotContainsString('[OK]', $tester->getDisplay());
+    }
+
+    public static function failureModes(): iterable
+    {
+        foreach ([false, true] as $decorated) {
+            yield [new \RuntimeException('Missing privileges for <info>view</info>.'), Command::FAILURE, $decorated];
+            yield [new \InvalidArgumentException('Invalid <error>view</error>.'), Command::INVALID, $decorated];
+        }
     }
 
     private function tester(ReportingViewManager $views, ?CustomDataSettings $settings = null): CommandTester
