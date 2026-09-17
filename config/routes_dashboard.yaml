@@ -10,6 +10,10 @@ data_model_controller:
     resource: ../src/Controller/DataModelController.php
     type: attribute
 
+event_examples_controller:
+    resource: ../src/Controller/EventExamplesController.php
+    type: attribute
+
 feature_flags_controller:
     resource: ../src/Controller/FeatureFlagsController.php
     type: attribute

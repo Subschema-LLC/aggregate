@@ -33,6 +33,7 @@
 ###> aggregate-analytics ###
 /config/websites.yaml
 /config/aggregate.yaml
+/config/aggregate_*.yaml
 /.env.prod
 ###< aggregate-analytics ###
 

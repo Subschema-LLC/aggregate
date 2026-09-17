@@ -1,0 +1,221 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Branding | {{ app_branding.name }}{% endblock %}
+
+{% block stylesheets %}
+    {{ parent() }}
+    {% include 'dashboard/_settings_styles.html.twig' %}
+{% endblock %}
+
+{% block body %}
+<div class="settings-page">
+<h1 class="title">Branding</h1>
+<p class="subtitle">Set the application identity, colors, and fonts.</p>
+<div class="box">
+<div class="columns">
+    <div class="column is-8-desktop">
+        <h2 class="title is-5">Identity</h2>
+        <p class="subtitle is-6">Customize the identity shown throughout the application.</p>
+
+        <form id="branding-settings-form" action="{{ path('app_branding_settings_save') }}" method="post" enctype="multipart/form-data">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token('branding_settings') }}">
+            {% if not app_branding.name_overridden %}
+                <input type="hidden" name="_original_brand_name" value="{{ app_branding.name }}">
+            {% endif %}
+            {% if not app_branding.logo_text_overridden %}
+                <input type="hidden" name="_original_brand_logo_text" value="{{ app_branding.logo_text }}">
+            {% endif %}
+
+            <div class="field">
+                <label class="label" for="brand-name">Brand name</label>
+                <div class="control has-icons-left">
+                    <input class="input" type="text" id="brand-name" name="brand_name" value="{{ app_branding.name }}" maxlength="100" required{% if app_branding.name_overridden %} disabled aria-describedby="brand-name-help"{% endif %}>
+                    <span class="icon is-small is-left"><i class="fas fa-signature"></i></span>
+                </div>
+                <p class="help" id="brand-name-help">
+                    {% if app_branding.name_overridden %}
+                        Controlled by the <code>BRAND_NAME</code> environment variable.
+                    {% else %}
+                        Replaces the product name in page titles, headings, and application help text.
+                    {% endif %}
+                </p>
+            </div>
+
+            <div class="field">
+                <label class="label" for="brand-logo-text">Logo text</label>
+                <div class="control has-icons-left">
+                    <input class="input" type="text" id="brand-logo-text" name="brand_logo_text" value="{{ app_branding.logo_text }}" maxlength="100" placeholder="{{ app_branding.name }}"{% if app_branding.logo_text_overridden %} disabled aria-describedby="brand-logo-text-help"{% endif %}>
+                    <span class="icon is-small is-left"><i class="fas fa-font"></i></span>
+                </div>
+                <p class="help" id="brand-logo-text-help">
+                    {% if app_branding.logo_text_overridden %}
+                        Controlled by the <code>BRAND_LOGO_TEXT</code> environment variable.
+                    {% else %}
+                        The wordmark beside the image. Leave it empty for an image-only logo; without a valid image, the brand name is used for accessibility.
+                    {% endif %}
+                </p>
+            </div>
+
+            {% if app_branding.has_logo %}
+                <div class="field">
+                    <p class="label">Current logo</p>
+                    <div class="control">
+                        <img src="{{ path('app_branding_logo', {v: app_branding.logo_version}) }}" alt="{{ app_branding.name }} logo" style="display:block; max-width:min(320px, 100%); max-height:120px; object-fit:contain;">
+                    </div>
+                </div>
+            {% endif %}
+
+            {% if app_branding.logo_path_overridden %}
+                <div class="notification is-info is-light">
+                    The logo path is controlled by the <code>BRAND_LOGO_PATH</code> environment variable. Change or remove that override to upload or remove a logo here.
+                </div>
+            {% endif %}
+
+            <div class="field">
+                <label class="label" for="brand-logo">Upload logo</label>
+                <div class="control">
+                    <input class="input" type="file" id="brand-logo" name="brand_logo" accept="image/png,image/jpeg,image/webp" {% if app_branding.logo_path_overridden %}disabled{% endif %}>
+                </div>
+                <p class="help">PNG, JPEG, or WebP; maximum 2 MiB, 4096 × 4096 pixels, and 16 megapixels. SVG is not accepted. Remove embedded metadata before uploading; image bytes are served as supplied.</p>
+            </div>
+
+            {% if app_branding.has_logo and not app_branding.logo_path_overridden %}
+                <div class="field">
+                    <label class="checkbox">
+                        <input type="checkbox" name="remove_brand_logo" value="1">
+                        Remove the current logo
+                    </label>
+                </div>
+            {% endif %}
+
+            <details class="mt-5 mb-5"{% if app_branding.theme.contrast_fallback %} open{% endif %}>
+            <summary class="has-text-weight-semibold mb-3">Theme colors</summary>
+            <p class="help mb-3">Use hexadecimal colors. Three-digit values in YAML are expanded to six digits.</p>
+            {% if app_branding.theme.contrast_fallback %}
+                <div class="notification is-warning is-light" role="alert">
+                    The configured text, background, and surface colors do not meet the minimum 4.5:1 text contrast. Safe defaults are active until that palette is corrected.
+                </div>
+            {% endif %}
+            {% set theme_colors = [
+                {key: 'primary_color', config: 'brand_primary_color', label: 'Primary', help: 'Primary actions and highlights.'},
+                {key: 'accent_color', config: 'brand_accent_color', label: 'Accent', help: 'Links, secondary actions, and active tabs.'},
+                {key: 'navbar_color', config: 'brand_navbar_color', label: 'Navigation', help: 'Navigation bar background.'},
+                {key: 'background_color', config: 'brand_background_color', label: 'Page background', help: 'Application page background.'},
+                {key: 'surface_color', config: 'brand_surface_color', label: 'Surface', help: 'Cards, boxes, tables, and dialogs.'},
+                {key: 'text_color', config: 'brand_text_color', label: 'Text', help: 'Primary interface text.'}
+            ] %}
+            <div class="columns is-multiline">
+                {% for color in theme_colors %}
+                    {% set color_id = color.config|replace({'_': '-'}) %}
+                    {% set color_overridden = app_branding.theme[color.key ~ '_overridden'] %}
+                    <div class="column is-half">
+                        <div class="field">
+                            <label class="label" for="{{ color_id }}">{{ color.label }}</label>
+                            <div class="control">
+                                <input class="input" type="color" id="{{ color_id }}" name="{{ color.config }}" value="{{ app_branding.theme[color.key] }}"{% if color_overridden %} disabled aria-describedby="{{ color_id }}-help"{% endif %}>
+                                {% if not color_overridden %}
+                                    <input type="hidden" name="_original_{{ color.config }}" value="{{ app_branding.theme[color.key] }}">
+                                {% endif %}
+                            </div>
+                            <p class="help" id="{{ color_id }}-help">
+                                {% if color_overridden %}
+                                    Controlled by <code>{{ color.config|upper }}</code>.
+                                {% else %}
+                                    {{ color.help }} <code>{{ app_branding.theme[color.key] }}</code>
+                                {% endif %}
+                            </p>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+
+            </details>
+            <details class="mb-5">
+            <summary class="has-text-weight-semibold mb-3">Fonts</summary>
+            <div class="field">
+                <label class="label" for="brand-font-family">Interface font stack</label>
+                <div class="control has-icons-left">
+                    <input class="input" type="text" id="brand-font-family" name="brand_font_family" value="{{ app_branding.theme.font_family }}" maxlength="200" required{% if app_branding.theme.font_family_overridden %} disabled aria-describedby="brand-font-family-help"{% endif %}>
+                    {% if not app_branding.theme.font_family_overridden %}
+                        <input type="hidden" name="_original_brand_font_family" value="{{ app_branding.theme.font_family }}">
+                    {% endif %}
+                    <span class="icon is-small is-left"><i class="fas fa-font"></i></span>
+                </div>
+                <p class="help" id="brand-font-family-help">
+                    {% if app_branding.theme.font_family_overridden %}
+                        Controlled by <code>BRAND_FONT_FAMILY</code>.
+                    {% else %}
+                        Comma-separated local or system families, for example <code>Inter, Arial, sans-serif</code>. Remote fonts are not downloaded.
+                    {% endif %}
+                </p>
+            </div>
+
+            <div class="field">
+                <label class="label" for="brand-heading-font-family">Heading and wordmark font stack</label>
+                <div class="control has-icons-left">
+                    <input class="input" type="text" id="brand-heading-font-family" name="brand_heading_font_family" value="{{ app_branding.theme.heading_font_family }}" maxlength="200" required{% if app_branding.theme.heading_font_family_overridden %} disabled aria-describedby="brand-heading-font-family-help"{% endif %}>
+                    {% if not app_branding.theme.heading_font_family_overridden %}
+                        <input type="hidden" name="_original_brand_heading_font_family" value="{{ app_branding.theme.heading_font_family }}">
+                    {% endif %}
+                    <span class="icon is-small is-left"><i class="fas fa-font"></i></span>
+                </div>
+                <p class="help" id="brand-heading-font-family-help">
+                    {% if app_branding.theme.heading_font_family_overridden %}
+                        Controlled by <code>BRAND_HEADING_FONT_FAMILY</code>.
+                    {% else %}
+                        Applied to headings and the navigation wordmark. Use fonts already available in visitors' browsers.
+                    {% endif %}
+                </p>
+            </div>
+
+            </details>
+            <div class="field">
+                <div class="control">
+                    <button type="submit" class="button is-link"{% if app_branding.name_overridden and app_branding.logo_text_overridden and app_branding.logo_path_overridden and app_branding.theme.all_overridden %} disabled{% endif %}>
+                        <span class="icon"><i class="fas fa-palette"></i></span>
+                        <span>Save Branding</span>
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <div class="column is-4-desktop">
+        <details class="message is-info">
+            <summary class="message-header">YAML configuration</summary>
+            <div class="message-body content">
+                <p>Non-UI deployments can configure the same identity and theme in <code>config/aggregate.yaml</code>:</p>
+                <pre><code>environments:
+  prod:
+    brand_name: "Example Analytics"
+    brand_logo_text: "Example"
+    brand_logo_path: "/srv/branding/logo.png"
+    brand_primary_color: "#00D1B2"
+    brand_accent_color: "#485FC7"
+    brand_navbar_color: "#14161A"
+    brand_background_color: "#F5F5F5"
+    brand_surface_color: "#FFFFFF"
+    brand_text_color: "#363636"
+    brand_font_family: "Inter, Arial, sans-serif"
+    brand_heading_font_family: "Georgia, serif"</code></pre>
+                <p>Use the active environment when the file has an <code>environments</code> section; flat files may place these branding keys at their root. The logo path may be absolute or relative to the project root, and the PHP process must be able to read it.</p>
+            </div>
+        </details>
+    </div>
+</div>
+</div>
+</div>
+{% endblock %}
+
+{% block javascripts %}
+    {{ parent() }}
+    <script>
+        document.getElementById('branding-settings-form').addEventListener('invalid', function (event) {
+            var section = event.target.closest('details');
+            while (section) {
+                section.open = true;
+                section = section.parentElement.closest('details');
+            }
+        }, true);
+    </script>
+{% endblock %}

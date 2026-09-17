@@ -7,6 +7,7 @@ namespace App\Tests\Configuration;
 use App\Service\ApplicationUpdateService;
 use App\Service\ReportingViewManager;
 use App\Twig\FeatureFlagsExtension;
+use App\Twig\NavigationExtension;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Routing\RouterInterface;
@@ -21,7 +22,7 @@ final class MainNavigationConfigTest extends KernelTestCase
         $container = self::getContainer();
         $navigation = $container->getParameter('app.main_navigation');
         $links = array_values(array_filter(
-            $navigation['items'],
+            $this->links($navigation['items']),
             static fn (mixed $item): bool => is_array($item) && ($item['route'] ?? null) === 'app_data_model',
         ));
         self::assertCount(1, $links);
@@ -86,7 +87,8 @@ final class MainNavigationConfigTest extends KernelTestCase
         self::assertInstanceOf(Environment::class, $twig);
         self::assertSame($navigation, $twig->getGlobals()['main_navigation'] ?? null);
         self::assertTrue($twig->hasExtension(FeatureFlagsExtension::class));
-        foreach (['feature_enabled', 'feature_hidden_from_navigation', 'navigation_feature_state'] as $function) {
+        self::assertTrue($twig->hasExtension(NavigationExtension::class));
+        foreach (['feature_enabled', 'feature_hidden_from_navigation', 'navigation_feature_state', 'navigation_menu'] as $function) {
             self::assertNotNull($twig->getFunction($function));
         }
 
@@ -95,7 +97,7 @@ final class MainNavigationConfigTest extends KernelTestCase
 
         $links = [
             $navigation['brand'],
-            ...$navigation['items'],
+            ...$this->links($navigation['items']),
             $navigation['account']['logout'],
         ];
 
@@ -136,7 +138,7 @@ final class MainNavigationConfigTest extends KernelTestCase
         self::assertIsArray($navigation['items'] ?? null);
 
         $lifecycleLinks = array_values(array_filter(
-            $navigation['items'],
+            $this->links($navigation['items']),
             static fn (mixed $item): bool => is_array($item)
                 && ($item['route'] ?? null) === 'app_data_lifecycle',
         ));
@@ -162,7 +164,7 @@ final class MainNavigationConfigTest extends KernelTestCase
         $container = self::getContainer();
         $navigation = $container->getParameter('app.main_navigation');
         $updateLinks = array_values(array_filter(
-            $navigation['items'],
+            $this->links($navigation['items']),
             static fn (mixed $item): bool => is_array($item)
                 && ($item['route'] ?? null) === 'app_updates',
         ));
@@ -188,7 +190,7 @@ final class MainNavigationConfigTest extends KernelTestCase
 
         $container = self::getContainer();
         $links = array_values(array_filter(
-            $container->getParameter('app.main_navigation')['items'],
+            $this->links($container->getParameter('app.main_navigation')['items']),
             static fn (mixed $item): bool => is_array($item)
                 && ($item['route'] ?? null) === 'app_feature_flags',
         ));
@@ -221,4 +223,30 @@ final class MainNavigationConfigTest extends KernelTestCase
             ));
         }
     }
+    /** @return list<array> */
+    private function links(array $items): array
+    {
+        $links = [];
+        foreach ($items as $item) {
+            self::assertIsArray($item);
+            if (array_key_exists('children', $item)) {
+                self::assertIsString($item['label'] ?? null);
+                self::assertNotSame('', trim($item['label']));
+                self::assertArrayNotHasKey('route', $item);
+                self::assertArrayNotHasKey('url', $item);
+                self::assertIsArray($item['children']);
+                self::assertNotEmpty($item['children']);
+                foreach ($item['children'] as $child) {
+                    self::assertIsArray($child);
+                    self::assertArrayNotHasKey('children', $child, 'Navigation supports one submenu level.');
+                    $links[] = $child;
+                }
+            } else {
+                $links[] = $item;
+            }
+        }
+
+        return $links;
+    }
+
 }

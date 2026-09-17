@@ -1,58 +1,63 @@
-{% macro link(item, classes, is_brand = false) %}
-    {% if item.role is not defined or is_granted(item.role) %}
-        {% set state = navigation_feature_state(item) %}
-        {% if not state.hidden %}
-            {% set tag = state.enabled ? 'a' : 'span' %}
-            {% if state.enabled %}
-                {% set url = item.route is defined ? path(item.route, item.route_parameters|default({})) : item.url|default(null) %}
-            {% endif %}
-            <{{ tag }} class="{{ classes }}" {% if state.enabled %}href="{{ url }}"{% else %}role="link" aria-disabled="true"{% endif %}>
-                {% if is_brand %}
-                    {% include 'branding/identity.html.twig' %}
-                {% else %}
-                    <span class="icon-text">
-                        {% if item.icon|default(null) %}
-                            <span class="icon">
-                                <i class="{{ item.icon }}" aria-hidden="true"></i>
-                            </span>
-                        {% endif %}
-                        <span>{{ item.label }}</span>
-                    </span>
-                {% endif %}
-                {% if not state.enabled %}
-                    <span class="ml-1" aria-hidden="true">(disabled)</span>
-                {% endif %}
-            </{{ tag }}>
+{% macro label(item) %}
+    <span class="icon-text">
+        {% if item.icon %}
+            <span class="icon"><i class="{{ item.icon }}" aria-hidden="true"></i></span>
         {% endif %}
+        <span>{{ item.label }}</span>
+    </span>
+{% endmacro %}
+
+{% macro link(item, classes, is_brand = false) %}
+    {% if item %}
+        {% set tag = item.enabled ? 'a' : 'span' %}
+        <{{ tag }} class="{{ classes }}" {% if item.enabled %}href="{{ item.logout ? logout_path('main') : item.url }}"{% else %}role="link" aria-disabled="true"{% endif %}>
+            {% if is_brand %}
+                {% include 'branding/identity.html.twig' %}
+            {% else %}
+                {{ _self.label(item) }}
+            {% endif %}
+            {% if not item.enabled %}
+                <span class="ml-1" aria-hidden="true">(disabled)</span>
+            {% endif %}
+        </{{ tag }}>
     {% endif %}
 {% endmacro %}
 
-{% set account = main_navigation.account %}
+{% set navigation = navigation_menu(main_navigation) %}
 
-<nav class="navbar is-dark" role="navigation" aria-label="main navigation">
+<nav class="navbar is-dark app-navigation" aria-label="main navigation">
     <div class="navbar-brand">
-        {{ _self.link(main_navigation.brand, 'navbar-item', true) }}
+        {{ _self.link(navigation.brand, 'navbar-item', true) }}
+    </div>
 
-        {% for item in main_navigation.items %}
-            {{ _self.link(item, 'navbar-item') }}
+    <div class="app-navigation-items">
+        {% for item in navigation.items %}
+            {% if item.children is defined %}
+                <details class="app-navigation-group" name="main-navigation-group">
+                    <summary class="navbar-item">{{ _self.label(item) }}</summary>
+                    <div class="app-navigation-children">
+                        {% for child in item.children %}
+                            {{ _self.link(child, 'navbar-item') }}
+                        {% endfor %}
+                    </div>
+                </details>
+            {% else %}
+                {{ _self.link(item, 'navbar-item') }}
+            {% endif %}
         {% endfor %}
     </div>
 
-    <div class="navbar-menu">
-        <div class="navbar-end">
-            <div class="navbar-item">
-                <span class="icon-text">
-                    {% if account.user_icon|default(null) %}
-                        <span class="icon">
-                            <i class="{{ account.user_icon }}" aria-hidden="true"></i>
-                        </span>
-                    {% endif %}
-                    <span>{{ app.user.username }}</span>
-                </span>
-            </div>
-            <div class="navbar-item">
-                {{ _self.link(account.logout, 'button is-light') }}
-            </div>
+    <div class="app-navigation-account">
+        <div class="navbar-item">
+            <span class="icon-text">
+                {% if navigation.account.user_icon %}
+                    <span class="icon"><i class="{{ navigation.account.user_icon }}" aria-hidden="true"></i></span>
+                {% endif %}
+                <span>{{ app.user.username }}</span>
+            </span>
+        </div>
+        <div class="navbar-item">
+            {{ _self.link(navigation.account.logout, 'button is-light') }}
         </div>
     </div>
 </nav>

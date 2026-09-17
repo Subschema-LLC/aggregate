@@ -2,7 +2,7 @@
 
 [Configuration](CONFIGURATION.md) · [Tracking](TRACKING.md) · [Privacy](PRIVACY-COMPLIANCE.md)
 
-The **Data model** admin page at `/dashboard/data-model` defines custom properties, their consent requirements, query-parameter mappings, and reporting columns. Download the saved YAML to share the contract with analytics implementation developers. These settings use the active `config/aggregate.yaml` environment or `config/aggregate_<environment>.yaml`; they have no uppercase environment-variable overrides.
+The **Collection → Data model** admin page at `/dashboard/data-model` defines custom properties, their consent requirements, query-parameter mappings, and reporting columns. Expand one property to edit its fields. Model editing, event examples, observed-property discovery, and reporting SQL have separate pages linked from the editor. Download the saved YAML to share the contract with analytics implementation developers. These settings use the active `config/aggregate.yaml` environment or `config/aggregate_<environment>.yaml`; they have no uppercase environment-variable overrides.
 
 ## Configure collection
 
@@ -42,7 +42,7 @@ The organization marker is collected separately as a coarse boolean in either mo
 Rules:
 
 - Each top-level YAML mapping replaces its previous value. A supplied `custom_data_properties` model replaces the built-in model. When `query_parameter_mappings` is absent, only UTM keys present in that model receive default mappings. Set `query_parameter_mappings: {}` to disable automatic query capture; set both mappings to `{}` for no modeled properties or query capture.
-- Definitions support `description` (default empty, at most 1,000 bytes), `consent_required` (a YAML boolean, default `true`), and `column` (default empty). An empty column collects the property without projecting it in custom reporting views.
+- Definitions support `description` (default empty, at most 1,000 bytes), `consent_required` (a YAML boolean, default `true`), `column` (optional text reporting alias), `type` (optional collection type), and `numeric_column` (optional numeric reporting alias). Empty reporting aliases collect the property without projecting it in custom reporting views.
 - Property keys and parameter names are case-sensitive, start with a letter, and contain up to 64 letters, digits, underscores, dots, or hyphens. Prototype-related names are rejected. Dots are literal top-level keys, not nested paths.
 - Up to 50 properties and 100 parameter mappings are supported. Each source maps to one defined property; multiple sources can share a destination. Configuration order determines priority: the first nonblank parameter value wins, including repeated occurrences of one parameter. Explicit scalar `emit()` properties override URL values, including `false`, `0`, and `null`.
 - The SDK reads the current page URL for each event. Attribution is not persisted, carried to later pages, or derived from the referrer. Selected values go into `eventData` and are stored in `events.custom_data`; full query strings and fragments are still discarded.
@@ -52,12 +52,73 @@ Rules:
 
 Static/CDN copies need matching public `customData` settings as described in the [tracking guide](TRACKING.md). Browser overrides cannot expand the server whitelist.
 
+## Property types and numeric calculations
+
+Missing `type`, or `type: scalar`, preserves existing flat-scalar collection.
+Explicit types apply in the SDK and on the server. A mismatched property is
+omitted; the underlying event can still be accepted. Null remains allowed for
+each type, and existing consent and scalar bounds still apply.
+
+| YAML type | Accepted JSON values | Example |
+| --- | --- | --- |
+| `scalar` | String, finite number, boolean, or null | `"email"`, `12.5`, `true` |
+| `string` | String or null, without converting other values | `"USD"` |
+| `integer` | Whole number within ±9,007,199,254,740,991, or null | `4999` |
+| `float` / `double` | Finite number or null | `12.5`, `0.1` |
+| `boolean` | Boolean or null | `true` |
+
+JSON has one number type; it does not carry a float32/double64 distinction.
+Both `float` and `double` use approximate double precision in the portable
+numeric projections. They do not provide exact decimal-money arithmetic.
+Integers use JavaScript's safe-integer range, and fractional values are never
+truncated to integers. Numeric strings such as `"12.5"`, and truthy strings such
+as `"false"`, do not satisfy numeric or boolean declarations.
+Checks operate on decoded numbers: digits already lost through floating-point
+rounding or underflow during JSON parsing cannot be recovered. Supply exact
+money amounts as integer minor units at the source.
+
+URL parameters are strings. A parameter mapped to a numeric or boolean typed
+property is therefore omitted unless an explicit correctly typed `emit()` value
+overrides it. Supply numbers/booleans through `emit()` or direct JSON requests;
+use a separate text property when you need the original URL value. The active
+organization marker remains a controlled boolean regardless of model settings.
+
+```yaml
+custom_data_properties:
+  currency: { type: string, consent_required: true, column: currency }
+  total_minor: { type: integer, consent_required: true, column: total_minor_text, numeric_column: total_minor_number }
+  discount_rate: { type: double, consent_required: true, numeric_column: discount_rate_number }
+query_parameter_mappings: {}
+```
+
+Merge these definitions into your existing model; do not overwrite unrelated
+properties or mappings. `column` retains its existing text semantics.
+`numeric_column` adds a separate numeric alias for an explicitly declared
+`integer`, `float`, or `double` property. Aliases must be unique across both
+kinds of columns. Numeric aliases follow the existing text aliases in generated
+views. Regeneration preserves deployed column order and rejects incompatible
+type changes; plan a database/reporting migration when a deployed contract must
+change. Do not change an existing text alias into a numeric alias in place.
+Because generated text aliases precede numeric aliases, adding a text alias
+after numeric aliases are already deployed also requires a planned migration;
+regeneration rejects the resulting reorder.
+
+Numeric projections return SQL `NULL` for missing/null values, strings,
+booleans, structured data, and numbers outside their supported range. Integer
+projections also return `NULL` for fractional values. They do not reinterpret
+old numeric strings. Existing retained rows are not rewritten when a model type
+changes. Keep all `analytics_custom_*` access private; typed columns do not
+expand the approved anonymous BI contract.
+
+See [event examples and ecommerce](EVENT-EXAMPLES.md) for copyable JSON, headless
+exports, and the recommended integer-minor-unit money representation.
+
 ## Discover and regenerate
 
-1. Open **Data model → Refresh observed properties** to sample up to 1,000 latest retained events with custom data. The page shows keys, types, and occurrence counts without sample values; this is not a complete historical inventory.
-2. Add selected properties, choose their consent policy and reporting alias, then save. Discovery never enables collection or publishes columns automatically.
-3. Review the saved SQL preview and click **Regenerate views from saved model**. Saving and view replacement are separate operations.
-4. Download YAML for developers. It contains only the model and query mappings, without website tokens, sharing tokens, or application secrets.
+1. Open **Data model → Observed properties → Refresh observed properties** to sample up to 1,000 latest retained events with custom data. The page shows keys, types, and occurrence counts without sample values; this is not a complete historical inventory. Opening the model editor does not query observed events or reporting SQL.
+2. Select **Review in model editor**, choose the new row's consent/type/reporting policy, then save. The review link only opens an unsaved row with enhanced consent required; it never saves automatically.
+3. Open **Reporting → Reporting views**, review the saved SQL preview, and click **Regenerate views from saved model**. Saving and view replacement are separate operations.
+4. Download YAML or open **Event examples** for synthetic JSON. Exports omit website tokens, sharing tokens, and application secrets.
 
 Headless commands:
 
@@ -78,7 +139,7 @@ php bin/console app:analytics:views:regenerate
 | `analytics_custom_pageviews_v1` | Events named `view` |
 | `analytics_custom_goals_v1` | Events with a non-null approved goal |
 
-Each view contains built-in context plus configured scalar columns. Strings, numbers, and booleans are projected as text; booleans use `true`/`false`. Missing keys, JSON null, arrays, and objects produce SQL `NULL`.
+Each view contains built-in context plus configured text columns followed by optional numeric columns. Existing `column` aliases project strings, numbers, and booleans as text; booleans use `true`/`false`. Missing keys, JSON null, arrays, and objects produce SQL `NULL`. The additive `numeric_column` behavior is described above.
 
 **These are private, unsuppressed views of individual retained events.** Apply raw-table access restrictions and appropriate aggregation/disclosure controls before sharing results. Existing `bi_anonymous_*` views retain their grouped and suppressed contracts. Custom columns are separate because archives discard JSON and geographic BI views deliberately restrict dimensions.
 

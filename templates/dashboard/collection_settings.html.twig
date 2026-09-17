@@ -1,0 +1,92 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Collection controls | {{ app_branding.name }}{% endblock %}
+
+{% block stylesheets %}
+    {{ parent() }}
+    {% include 'dashboard/_settings_styles.html.twig' %}
+{% endblock %}
+
+{% block body %}
+<div class="settings-page">
+<h1 class="title">Collection controls</h1>
+<p class="subtitle">Manage collection and local geography for this deployment.</p>
+<div class="columns is-centered">
+<div class="column is-9-desktop">
+<div class="box">
+<p class="mb-4">Save collection controls in <code>config/aggregate.yaml</code>, or edit the active YAML configuration directly. Server environment variables take precedence.</p>
+    <form action="{{ path('app_anonymous_settings_save') }}" method="post">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token('anonymous_settings') }}">
+
+        <div class="field">
+            <label class="checkbox">
+                <input type="checkbox" name="anonymous_tracking_enabled" value="1" {% if anonymous_tracking_enabled %}checked{% endif %}>
+                Enable analytics collection
+            </label>
+            <p class="help">When disabled, the server rejects anonymous and consented enhanced events.</p>
+        </div>
+
+        <div class="field">
+            <label class="label" for="anonymous-excluded-paths">Excluded paths</label>
+            <div class="control">
+                <textarea class="textarea is-family-monospace" id="anonymous-excluded-paths" name="anonymous_excluded_paths" rows="6" placeholder="/account/*&#10;/checkout/**&#10;/health">{{ anonymous_excluded_paths|join('\n') }}</textarea>
+            </div>
+            <p class="help">One path or glob per line. Query strings and fragments are never accepted. Matching paths are excluded from anonymous and enhanced collection.</p>
+        </div>
+
+        <hr>
+        <h2 class="title is-5">Coarse geography (optional)</h2>
+
+        <div class="field">
+            <label class="checkbox">
+                <input type="checkbox" name="anonymous_geo_enabled" value="1" {% if anonymous_geo_enabled %}checked{% endif %}>
+                Derive coarse geography from the request IP
+            </label>
+            <p class="help">Off by default. The lookup uses only a local MMDB file; the IP and detailed lookup record are not added to the event or queue. Failed lookups leave geography empty without rejecting the event.</p>
+        </div>
+
+        <div class="field">
+            <label class="label" for="anonymous-geo-level">Stored geography level</label>
+            <div class="control">
+                <div class="select is-fullwidth">
+                    <select id="anonymous-geo-level" name="anonymous_geo_level" required>
+                        <option value="macro_region" {% if anonymous_geo_level == 'macro_region' %}selected{% endif %}>Macro-region</option>
+                        <option value="country" {% if anonymous_geo_level == 'country' %}selected{% endif %}>Country</option>
+                    </select>
+                </div>
+            </div>
+            <p class="help">Macro-region is recommended and stores a continent-level code such as <code>continent:NA</code>. Country stores an ISO country code such as <code>country:US</code>. This is approximate network-exit geography—not a visitor's precise physical location. City, subdivision, postcode, and coordinates are never retained.</p>
+        </div>
+
+        <div class="field">
+            <label class="label" for="anonymous-geo-database-path">Local GeoIP database path</label>
+            <div class="control">
+                <input class="input is-family-monospace" type="text" id="anonymous-geo-database-path" name="anonymous_geo_database_path" value="{{ anonymous_geo_database_path }}" maxlength="4096" placeholder="/var/lib/GeoIP/GeoLite2-Country.mmdb">
+            </div>
+            <p class="help">Use a local absolute path (recommended) or a path inside the project root to a read-only GeoLite2-Country-compatible <code>.mmdb</code>. URI schemes, project-directory escapes, UNC/network shares, and Windows device paths are rejected. The application does not download a database or call a GeoIP web service.</p>
+        </div>
+
+        <div class="field">
+            <div class="control">
+                <button type="submit" class="button is-link">
+                    <span class="icon"><i class="fas fa-shield-alt"></i></span>
+                    <span>Save Collection Settings</span>
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+    <div class="message is-warning is-light">
+        <div class="message-header">
+            <p>What rejection means</p>
+        </div>
+        <div class="message-body content">
+            <p><strong>Reject</strong> disables enhanced analytics: no visitor ID, session ID, analytics session cookie, properties requiring consent, or exact dimensions.</p>
+            <p>Anonymous rows retain a safe event name, UTC hour bucket, sanitized path, coarse referrer/device/viewport buckets, optional coarse geography, and configured anonymous goals and consent-free properties. They may still be personal data in context; the <code>bi_anonymous_*</code> views group them and suppress low-volume cells.</p>
+            <p>IP geolocation is itself processing of personal data in many jurisdictions, even though the analytics event does not retain the IP. Enable it only after documenting a legal basis and notice appropriate to the deployment.</p>
+        </div>
+    </div>
+</div>
+</div>
+</div>
+{% endblock %}

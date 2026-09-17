@@ -3,6 +3,7 @@
 namespace App\Service;
 
 use App\Repository\UserRepository;
+use Doctrine\DBAL\Exception\TableNotFoundException;
 
 class InstallationChecker
 {
@@ -13,13 +14,18 @@ class InstallationChecker
 
     public function isInstalled(): bool
     {
+        // A broken configuration must not reopen the public setup flow.
+        $this->config->assertHealthy();
+
         if ($this->config->get('installed') === true) {
             return true;
         }
 
         try {
             return $this->userRepository->count([]) > 0;
-        } catch (\Throwable) {
+        } catch (TableNotFoundException) {
+            // A fresh database has no users table until migrations run. Other
+            // failures (connectivity, permissions, etc.) must stop setup.
             return false;
         }
     }

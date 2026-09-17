@@ -74,7 +74,7 @@ final class DashboardControllerBrandingTest extends TestCase
 
         $response = $controller->saveBrandingSettings($request);
 
-        self::assertSame('/dashboard', $response->getTargetUrl());
+        self::assertSame('/dashboard/branding', $response->getTargetUrl());
         self::assertSame(['Branding updated successfully.'], $request->getSession()->getFlashBag()->peek('success'));
     }
 
@@ -508,7 +508,7 @@ final class DashboardControllerBrandingTest extends TestCase
         $csrfTokenManager = $this->createStub(CsrfTokenManagerInterface::class);
         $csrfTokenManager->method('isTokenValid')->willReturn($csrfValid);
         $router = $this->createStub(UrlGeneratorInterface::class);
-        $router->method('generate')->willReturn('/dashboard');
+        $router->method('generate')->with('app_branding_settings')->willReturn('/dashboard/branding');
         $requestStack = new RequestStack();
         $requestStack->push($request);
 

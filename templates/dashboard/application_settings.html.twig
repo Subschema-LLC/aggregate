@@ -1,0 +1,90 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}General settings | {{ app_branding.name }}{% endblock %}
+
+{% block stylesheets %}
+    {{ parent() }}
+    {% include 'dashboard/_settings_styles.html.twig' %}
+{% endblock %}
+
+{% block body %}
+<div class="settings-page">
+<h1 class="title">General settings</h1>
+<p class="subtitle">Configure the public endpoint, tracker namespace, and request budget.</p>
+<div class="box">
+<div class="columns">
+    <div class="column is-7-desktop">
+        <form action="{{ path('app_settings_save') }}" method="post">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token('app_settings') }}">
+            <h2 class="title is-5">Application configuration</h2>
+            <p class="subtitle is-6">Stored in <code>config/aggregate.yaml</code></p>
+
+            <div class="field">
+                <label class="label" for="app-host">App Host</label>
+                <div class="control has-icons-left">
+                    <input class="input" type="url" id="app-host" name="app_host" value="{{ app_host }}" required placeholder="https://analytics.example.com">
+                    <span class="icon is-small is-left">
+                        <i class="fas fa-link"></i>
+                    </span>
+                </div>
+                <p class="help">Public URL where this app is hosted. Used for JS generation and documentation.</p>
+            </div>
+
+            <div class="field">
+                <label class="label" for="js-namespace">JavaScript Namespace</label>
+                <div class="control has-icons-left">
+                    <input class="input" type="text" id="js-namespace" name="js_namespace" value="{{ js_namespace }}" required placeholder="Aggregate">
+                    <span class="icon is-small is-left">
+                        <i class="fas fa-terminal"></i>
+                    </span>
+                </div>
+                <p class="help">The global JS variable name (e.g., <code>window.{{ js_namespace }}</code>).</p>
+            </div>
+
+            <div class="field">
+                <label class="label" for="rate-limit">Rate Limit (per minute)</label>
+                <div class="control has-icons-left">
+                    <input class="input" type="number" id="rate-limit" name="rate_limit" value="{{ rate_limit }}" required min="1">
+                    <span class="icon is-small is-left">
+                        <i class="fas fa-tachometer-alt"></i>
+                    </span>
+                </div>
+                <p class="help">Maximum number of events allowed per IP per minute.</p>
+            </div>
+
+            <div class="field">
+                <div class="control">
+                    <button type="submit" class="button is-link">
+                        <span class="icon"><i class="fas fa-save"></i></span>
+                        <span>Save Settings</span>
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <div class="column is-5-desktop">
+        <div class="message is-info">
+            <div class="message-header">
+                <p>YAML Fallback</p>
+            </div>
+            <div class="message-body content">
+                <p>You can always edit these settings directly in:</p>
+                <pre><code>config/aggregate.yaml</code></pre>
+                <p>Manual changes in the YAML file will be reflected in this UI after a page refresh.</p>
+                <p>Settings supplied as server environment variables take precedence over values saved here.</p>
+            </div>
+        </div>
+    </div>
+</div>
+</div>
+<details class="box">
+    <summary class="has-text-weight-semibold">Worker operation</summary>
+    <div class="notification is-light">
+        <p>The worker runs outside the dashboard and should be managed by Docker, systemd, or Supervisor.</p>
+        <p class="mt-2"><strong>Command:</strong> <code>php bin/console messenger:consume async --time-limit=3600 --memory-limit=128M</code></p>
+        <p class="help mt-2">See <code>docs/systemd/aggregate-worker.service</code> or <code>docs/supervisor/aggregate-worker.conf</code> for production examples.</p>
+    </div>
+</details>
+</div>
+{% endblock %}

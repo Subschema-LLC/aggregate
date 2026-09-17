@@ -38,9 +38,14 @@ security:
                 login_path: /login
                 check_path: /login
                 default_target_path: /dashboard
+                enable_csrf: true
+            login_throttling:
+                max_attempts: 5
+                interval: '1 minute'
             logout:
                 path: /logout
                 target: /
+                enable_csrf: true
 
     access_control:
         - { path: ^/$, roles: PUBLIC_ACCESS }
