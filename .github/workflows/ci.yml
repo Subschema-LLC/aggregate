@@ -2,9 +2,12 @@ name: CI
 
 on:
   push:
-    branches: [master, development]
+    branches: [master, uat, development]
   pull_request:
   workflow_dispatch:
+  # Recheck for newly disclosed advisories even when the source has not changed.
+  schedule:
+    - cron: '37 7 * * 1'
 
 permissions:
   contents: read
@@ -30,16 +33,16 @@ jobs:
       # The current suite uses doubles and disposable fixtures, not a DB server.
       DATABASE_URL: 'mysql://ci:ci@127.0.0.1:1/aggregate_test?serverVersion=8.0'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
-      - uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@b604ade2a87db23f8871b7182e69ec5e75effb45 # v2
         with:
           php-version: ${{ matrix.php }}
           extensions: ctype, iconv, pdo_sqlite, pdo_mysql, mbstring, xml, curl, intl, sodium, zip
           coverage: none
           tools: composer:v2
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.12'
       - name: Install PHP dependencies
@@ -48,6 +51,9 @@ jobs:
           composer validate --strict --no-check-publish --no-interaction
           composer install --no-interaction --prefer-dist --no-scripts
           composer check-platform-reqs
+      - name: Audit locked PHP dependencies
+        if: matrix.php == '8.2'
+        run: composer audit --locked --no-interaction
       - name: Check PHP syntax and Symfony configuration
         run: |
           git ls-files -z -- '*.php' | xargs -0 -n 1 php -l
@@ -77,15 +83,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
           cache: npm
       - name: Install locked JavaScript dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Audit locked JavaScript dependencies
+        run: npm audit
       - name: Build and check browser assets
         run: |
           npm run build:js
@@ -98,16 +106,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
-      - uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@b604ade2a87db23f8871b7182e69ec5e75effb45 # v2
         with:
           php-version: '8.3'
           extensions: ctype, iconv, mbstring, xml, sodium, zip
           coverage: none
           tools: composer:v2
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.12'
       - name: Install PHP dependencies for the branch and signing checks

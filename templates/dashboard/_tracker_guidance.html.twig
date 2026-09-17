@@ -1,0 +1,16 @@
+<details class="box">
+    <summary class="has-text-weight-semibold">Custom events and consent</summary>
+    <div class="content mt-4">
+        <p>The tracker automatically sends an anonymous <code>view</code> event. Named interactions use <code>emit(...)</code>. Keep event codes fixed and non-identifying: start with a letter and use at most 100 characters from letters, numbers, <code>_ . : -</code>. Never insert user-entered text into a code.</p>
+        <pre><code>window[{{ js_namespace|json_encode(15) }}].emit('button_click');</code></pre>
+        <p>Custom properties require an explicit consent-free setting in the saved data model or enhanced analytics consent. Goals require an enabled definition in <code>config/goals.yaml</code>; anonymous goals must also permit anonymous use. A disallowed goal is dropped while the event remains recorded.</p>
+        <h2 class="title is-5">Enhanced analytics consent</h2>
+        <p>Enable identifiers, properties requiring consent, and exact dimensions only after the visitor accepts enhanced analytics.</p>
+        <pre><code>// Accept enhanced analytics after explicit consent
+window[{{ js_namespace|json_encode(15) }}].setConsent(true);
+
+// Reject or withdraw enhanced analytics
+window[{{ js_namespace|json_encode(15) }}].setConsent(false);</code></pre>
+        <p>Withdrawal removes browser identifiers and stops future enhanced detail. Previously stored history remains. Coarse anonymous collection, including permitted consent-free properties, may continue unless the administrator disables collection or excludes the path.</p>
+    </div>
+</details>

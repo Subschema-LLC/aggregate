@@ -52,7 +52,7 @@ The tracker is authored directly in [public/aggregate.js](../public/aggregate.js
 
 ## UTM and custom data collection
 
-The tracker reads `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`, and `utm_id` from the current page URL and maps them to matching `custom_data` keys. All six require enhanced consent by default. Administrators can define additional query parameter mappings and configure consent for each property in **Data model** or the active YAML configuration; see the [data model guide](DATA-MODEL.md).
+The tracker reads `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`, and `utm_id` from the current page URL and maps them to matching `custom_data` keys. All six require enhanced consent by default. Administrators can define additional query parameter mappings, consent requirements, and optional JSON value types in **Collection → Data model** or the active YAML configuration; see the [data model guide](DATA-MODEL.md).
 
 `query_parameter_mappings` maps each source parameter to a defined JSON property. Multiple parameters may target the same property. Configuration order determines priority: the first source with a nonblank value wins; repeated occurrences use the first nonblank value. Names match exactly, including case. Explicit scalar values passed to `emit()` take precedence, including `false`, `0`, an empty string, and `null`.
 
@@ -60,19 +60,26 @@ Mapped values accompany page views and named events when consent permits. The tr
 
 Set a property's `consent_required` to `false` to permit it before a choice, after rejection, and after withdrawal. The server independently enforces this property allowlist for API clients as well as the SDK. For anonymous UTM collection, the recommendation is **no more detail than `utm_medium`**, using reviewed channel codes such as `email`, `social`, or `cpc`. This is advisory: each UTM property can be enabled separately. Enabling source, campaign, term, content, or ID can expose campaign details, search text, or identifiers. Review actual values before overriding the recommendation; permitting a key does not restrict its values to a fixed vocabulary.
 
-For a static/CDN copy of the tracker, supply the matching public settings before loading it:
+The server's `/aggregate.js` and `/aggregate.js?min=1` responses include the saved model's public collection settings, including declared types. For a static/CDN copy of the tracker, supply the matching public settings before loading it. This example assumes the saved model allows anonymous `utm_medium` and declares the shown types; the ecommerce properties still require enhanced consent:
 
 ```javascript
 window.Aggregate = {
   endpoint: 'https://analytics.example.com/api/receive',
   websiteToken: 'your-website-token',
-  customData: {consentFreeProperties: ['utm_medium']}
+  customData: {
+    consentFreeProperties: ['utm_medium'],
+    propertyTypes: {currency: 'string', total_minor: 'integer', discount_rate: 'double'}
+  }
 };
 ```
 
-After loading, `Aggregate.configure({customData: {...}})` accepts the same settings. `consentFreeProperties` is a list of JSON keys; `queryParameters` is a source-to-key mapping. Supplying either field replaces it; `{queryParameters: {}}` disables URL collection. Omitted fields retain their current settings. Browser overrides cannot permit server-side collection of properties requiring consent.
+After loading, `Aggregate.configure({customData: {...}})` accepts the same settings. `consentFreeProperties` is a list of JSON keys, `queryParameters` is a source-to-key mapping, and optional `propertyTypes` maps JSON keys to `scalar`, `string`, `integer`, `float`, `double`, or `boolean`. Supplying a field replaces that field; `{queryParameters: {}}` disables URL collection. Omitted fields retain their current settings. Browser overrides cannot weaken server-side consent or type checks. Descriptions and reporting aliases are not needed in browser configuration.
 
 Properties are flat scalars: strings, finite numbers, booleans, or null. At most 50 properties are sent, strings are bounded to 500 UTF-8 bytes, and nested arrays/objects are omitted. Property keys use `[A-Za-z][A-Za-z0-9_.-]{0,63}`; reserved prototype names and the configured organization marker cannot be supplied as custom properties. Dots in keys are literal, not nesting.
+
+Without a declared type, existing scalar behavior is preserved. Declared types omit mismatched values in both the SDK and server; null remains allowed. Integers must be whole numbers within JavaScript's safe-integer range, without fractional truncation. `float` and `double` both accept finite JSON numbers; they do not imply distinct JSON encodings or exact decimal arithmetic. Numeric and boolean strings are not converted. URL parameters are strings, so numeric/boolean typed properties need correctly typed `emit()` values instead of URL capture. Keep a separate text property if the original query value is needed. See the [complete type rules](DATA-MODEL.md#property-types-and-numeric-calculations).
+
+Use **Collection → Event examples** or `php bin/console app:analytics:examples` for synthetic anonymous/enhanced JSON from the saved model. The [ecommerce recipe](EVENT-EXAMPLES.md#a-flat-ecommerce-starting-point) recommends a flat purchase payload with integer minor units for money; generating or copying examples does not save a model or obtain visitor consent.
 
 ## Health and ingestion checks
 
@@ -283,14 +290,16 @@ window.Aggregate.emit('scroll_depth', {
 ```html
 <script>
   window.Aggregate.emit('purchase_completed', {
-    product_id: {{Product ID}},
-    product_name: {{Product Name}},
-    product_price: {{Product Price}},
-    quantity: {{Product Quantity}}
+    currency: {{Currency Code}},
+    total_minor: {{Order Total in Minor Units}},
+    item_count: {{Item Count}},
+    product_category: {{Broad Product Category}}
   }, 'purchase');
 </script>
 ```
 - **Trigger**: Your completed-purchase Custom Event from the Data Layer
+
+Use numeric Data Layer values for `total_minor` and `item_count`, with matching `integer` declarations in the saved model. Do not pass formatted prices or numeric strings. `total_minor` is the final charged total in the currency's minor unit, including tax and shipping; for USD, `4999` means $49.99. Emit once per completed checkout and avoid order/customer identifiers. The [full ecommerce example](EVENT-EXAMPLES.md) explains consent, duplicate-event limits, and separate numeric reporting aliases.
 
 ### Step 5: Testing Your GTM Setup
 

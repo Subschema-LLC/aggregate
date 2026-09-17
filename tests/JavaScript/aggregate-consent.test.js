@@ -675,3 +675,77 @@ test('consent withdrawal immediately filters event properties back to the approv
   assert.equal(runtime.requests.at(-1).visitorId, undefined);
   assert.equal(runtime.requests.at(-1).sessionId, undefined);
 });
+
+for (const enhanced of [false, true]) {
+  test(`explicit JSON property types validate scalars with enhanced consent ${enhanced}`, () => {
+    const runtime = loadSdk({inline: {consent: enhanced, customData: {
+      queryParameters: {},
+      consentFreeProperties: ['title', 'quantity', 'amount', 'revenue', 'active', 'optional', 'legacy'],
+      propertyTypes: {title: 'string', quantity: 'integer', amount: 'float', revenue: 'double', active: 'boolean', optional: 'integer'}
+    }}});
+    const sdk = runtime.window.Aggregate;
+    sdk.emit('purchase_completed', {title: 'Demo\u0000', quantity: 2, amount: 12.5, revenue: 25, active: false, optional: null, legacy: '12.5'});
+    assert.deepEqual(runtime.requests.at(-1).eventData, {title: 'Demo', quantity: 2, amount: 12.5, revenue: 25, active: false, optional: null, legacy: '12.5'});
+
+    sdk.emit('purchase_completed', {title: 2, quantity: 2.5, amount: '12.5', revenue: Infinity, active: 'false', optional: true});
+    assert.equal(runtime.requests.at(-1).eventData, enhanced ? null : undefined);
+
+    for (const quantity of [0, -2, 9007199254740991, -9007199254740991]) {
+      sdk.emit('purchase_completed', {quantity});
+      assert.deepEqual(runtime.requests.at(-1).eventData, {quantity});
+    }
+    for (const quantity of [9007199254740992, -9007199254740992, NaN, Infinity, '2', true]) {
+      sdk.emit('purchase_completed', {quantity});
+      assert.equal(runtime.requests.at(-1).eventData, enhanced ? null : undefined);
+    }
+  });
+}
+
+test('typed numeric and boolean query mappings never coerce URL strings or block later valid mappings', () => {
+  const runtime = loadSdk({
+    inline: {customData: {
+      queryParameters: {qty: 'quantity', total: 'revenue', active: 'active', name: 'title'},
+      consentFreeProperties: ['quantity', 'revenue', 'active', 'title'],
+      propertyTypes: {quantity: 'integer', revenue: 'double', active: 'boolean', title: 'string'}
+    }},
+    location: {search: '?qty=2&total=12.5&active=true&name=Demo'}
+  });
+  runtime.triggerPageView();
+  assert.deepEqual(runtime.requests.at(-1).eventData, {title: 'Demo'});
+  runtime.window.Aggregate.emit('purchase_completed', {quantity: 2, revenue: 12.5, active: true});
+  assert.deepEqual(runtime.requests.at(-1).eventData, {quantity: 2, revenue: 12.5, active: true, title: 'Demo'});
+});
+
+test('declaring a type cannot grant consent and withdrawal restores the permitted subset', () => {
+  const runtime = loadSdk({inline: {customData: {
+    queryParameters: {}, consentFreeProperties: ['quantity'],
+    propertyTypes: {quantity: 'integer', revenue: 'double', orgInternalTraffic: 'boolean'}
+  }}});
+  const sdk = runtime.window.Aggregate;
+  sdk.emit('purchase_completed', {quantity: 2, revenue: 12.5, orgInternalTraffic: true});
+  assert.deepEqual(runtime.requests.at(-1).eventData, {quantity: 2});
+  sdk.setConsent(true);
+  sdk.emit('purchase_completed', {quantity: 2, revenue: 12.5, orgInternalTraffic: true});
+  assert.deepEqual(runtime.requests.at(-1).eventData, {quantity: 2, revenue: 12.5});
+  sdk.setConsent(false);
+  sdk.emit('purchase_completed', {quantity: 2, revenue: 12.5});
+  assert.deepEqual(runtime.requests.at(-1).eventData, {quantity: 2});
+  assert.equal(runtime.requests.at(-1).visitorId, undefined);
+});
+
+test('malformed declared types block affected properties and malformed maps block all custom properties', () => {
+  const runtime = loadSdk({inline: {consent: true, customData: {
+    queryParameters: {}, propertyTypes: {valid: 'integer', invalid: 'number', invalidNull: null}
+  }}});
+  const sdk = runtime.window.Aggregate;
+  sdk.emit('purchase_completed', {valid: 2, invalid: 12.5, invalidNull: null});
+  assert.deepEqual(runtime.requests.at(-1).eventData, {valid: 2});
+  for (const propertyTypes of [null, false, 'integer', ['integer']]) {
+    sdk.configure({customData: {propertyTypes}});
+    sdk.emit('purchase_completed', {valid: 2, legacy: 'text'});
+    assert.equal(runtime.requests.at(-1).eventData, null);
+  }
+  sdk.configure({customData: {propertyTypes: {valid: 'integer'}}});
+  sdk.emit('purchase_completed', {valid: 2, legacy: 'text'});
+  assert.deepEqual(runtime.requests.at(-1).eventData, {valid: 2, legacy: 'text'});
+});

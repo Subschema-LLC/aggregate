@@ -10,6 +10,7 @@ services:
     App\Controller\DashboardController: ~
     App\Controller\DataLifecycleController: ~
     App\Controller\DataModelController: ~
+    App\Controller\EventExamplesController: ~
     App\Controller\FeatureFlagsController: ~
     App\Controller\InternalTrafficController: ~
     App\Controller\UpdatesController: ~

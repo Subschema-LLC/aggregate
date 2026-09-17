@@ -2,6 +2,15 @@
 
 This guide covers both Docker and native (non-Docker) deployment methods for Aggregate Analytics.
 
+Complete first-time setup behind a local connection, VPN, or web-server access
+restriction before exposing the application publicly. Prefer
+`php bin/console app:install` to create the initial administrator. The web
+installer is a first-run bootstrap flow: its CSRF protection prevents forged
+browser submissions, but anyone who can reach an uninitialized installation can
+open the form and create the first account. Keep `/install` and `/install/execute`
+restricted until setup completes. Headless deployments should disable the
+dashboard as described in the [configuration guide](docs/CONFIGURATION.md).
+
 ## Table of Contents
 
 - [Docker Deployment](#docker-deployment)
@@ -32,7 +41,7 @@ make start-mysql
 make migrate-mysql
 ```
 
-Optional dashboard setup: open `http://localhost/install` to create an admin user. After install, admins can add users and reset passwords from Dashboard Settings.
+Optional dashboard setup: open `http://localhost/install` to create an admin user. After install, admins can add users and reset passwords from **Administration → Users**.
 
 If you use generic profile commands (`make start DOCKER_PROFILE=...`), set `DOCKER_DATABASE_URL` to a matching DSN.
 Wrapper targets (`make start-postgres`, `make start-mariadb`) set sensible defaults automatically.
@@ -136,13 +145,15 @@ php bin/console doctrine:migrations:migrate -n
 # 5. Compile assets
 php bin/console asset-map:compile
 
-# 6. Set permissions
+# 6. Give the PHP process access to runtime data, not application code
 chmod -R 775 var/
-chown -R www-data:www-data var/ public/
+chown -R www-data:www-data var/
+# Keep public/ and application code owned by the deployment user.
+# See Production Considerations for writable admin configuration and uploads.
 
 # 7. Optional: open https://your-domain.com/install to create
 #    a dashboard admin user and update dashboard settings.
-#    After install, manage additional users/passwords in Dashboard Settings.
+#    After install, manage additional users/passwords in Administration -> Users.
 #    CLI alternative: php bin/console app:install
 ```
 
@@ -324,7 +335,7 @@ sudo certbot --nginx -d analytics.example.com
 
 **2. Secure secrets:**
 - Never commit `.env` (server-specific env file) to version control — it is gitignored by default
-- `config/aggregate.yaml` should not contain production secrets if committed; use the `environments:` structure and keep the example file committed only
+- Keep `config/aggregate.yaml`, environment-specific `config/aggregate_*.yaml`, and `config/websites.yaml` private; commit only sanitized example files
 - Use a unique, strong `APP_SECRET` in the server environment
 - Review anonymous path exclusions and configure both database-backed BI minimum-cell thresholds in the admin dashboard before collection (`5` hourly; `25` daily geography defaults)
 - Review every code in `config/goals.yaml`; keep values fixed and non-identifying, and set `anonymous: false` where enhanced consent is appropriate
@@ -339,15 +350,37 @@ sudo certbot --nginx -d analytics.example.com
 - Regular backups
 
 **4. File permissions:**
-```bash
-# Application files: read-only for web server
-find . -type f -exec chmod 644 {} \;
-find . -type d -exec chmod 755 {} \;
+Keep application code, `vendor/`, and `public/` owned by the deployment user and
+read-only to PHP. Give PHP write access to `var/` for cache, logs, sessions, and
+other runtime state. Do not recursively make `public/` writable: it contains the
+executable front controller and browser assets. Preserve executable permissions
+on CLI scripts rather than applying one mode to every file in the checkout.
 
-# Writable directories
-chmod -R 775 var/
-chown -R www-data:www-data var/ public/
-```
+Admin settings also require narrowly scoped write access to the active aggregate
+YAML file and `config/websites.yaml`. Pre-create these files as the deployment
+user, grant the PHP group only the access the enabled admin actions need, and
+keep secrets readable only by the operator and necessary processes. Custom logo
+uploads are stored under `var/branding/`, outside the web root. Headless operators
+can maintain configuration through YAML/CLI without granting PHP write access to
+the configuration directory. Do not change ownership of the whole checkout.
+
+**5. Protect administrator access:**
+
+Login and logout enforce CSRF protection. Login throttling allows five failed
+attempts per username/IP pair per minute and an additional limit of 25 attempts
+per IP per minute. These limits use Symfony's local rate-limiter cache by default;
+they reset when it is cleared and are not a shared limit across multiple app
+instances. Configure shared limiter storage for a multi-instance deployment and
+apply web-server or proxy rate limits for broader abuse protection. Trust only
+the actual proxy addresses so clients cannot choose the IP used by these limits.
+
+Keep the admin interface on HTTPS, use unique administrator passwords, and limit
+access through the network where practical. A missing users table permits fresh
+setup; database connectivity/permission errors and malformed application
+configuration now stop the installation check rather than reopening setup.
+Browser setup errors omit internal diagnostics. For migration failures, run
+`php bin/console doctrine:migrations:migrate` from the server; after successful
+migrations, use `php bin/console app:install` to create the administrator.
 
 ### Performance
 
