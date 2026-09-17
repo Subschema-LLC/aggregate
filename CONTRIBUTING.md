@@ -311,7 +311,7 @@ changes with `php bin/console asset-map:compile`.
 | [src/Entity](src/Entity), [src/Repository](src/Repository), [migrations](migrations) | Doctrine model, database access, schema, and versioned reporting views |
 | [config](config) | YAML application/website/goal settings, Symfony services, routes, and package configuration |
 | [src/Command](src/Command) | CLI installation, website creation, and analytics maintenance |
-| [templates](templates) and [assets](assets) | Twig dashboard/public pages and AssetMapper dashboard assets |
+| [templates](templates/README.md) and [assets](assets) | Twig pages and partials grouped by feature; AssetMapper dashboard assets |
 | [tests](tests) | PHP regressions by component and Node browser/storage regressions |
 
 BI thresholds are currently stored in `analytics_privacy_settings` and managed in

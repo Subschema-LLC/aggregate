@@ -162,7 +162,7 @@ Connect your consent manager to `window.Aggregate.setConsent(true)` only after a
 | Database, transport, app secret, proxy trust | Symfony environment files or server environment variables |
 | Branding, collection controls, organization markers, lifecycle, dashboard toggle | `config/aggregate.yaml` and supported environment overrides |
 | Custom property model, UTM/query mappings, consent requirements, reporting columns | `config/aggregate.yaml`, managed through the Data model admin page or YAML |
-| Website domains and public ingestion tokens | `config/websites.yaml`, managed through the dashboard or CLI |
+| Website domains, [allowed event sources](docs/CONFIGURATION.md#website-domains), and public ingestion tokens | `config/websites.yaml`, managed through the dashboard, YAML, or CLI creation options |
 | Conversion-goal definitions | `config/goals.yaml` |
 | Navigation labels and links | `config/navigation.yaml` |
 | BI disclosure thresholds | `analytics_privacy_settings` in the database; dashboard or controlled database administration |

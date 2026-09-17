@@ -366,7 +366,11 @@ chmod -R 775 var/
 
 ### CORS / 403 Forbidden
 
-Ensure the domain in your website record (`config/websites.yaml` or dashboard website manager) exactly matches the domain sending requests. Subdomains are automatically allowed.
+Check the website's [domain rules](docs/CONFIGURATION.md#website-domains) on the
+Websites page or in `config/websites.yaml`. Exact hostname entries allow only that
+host; use `'*.example.com'` for its subdomains and list `example.com` separately
+for the root. Only existing registrations without `domain_policy` automatically
+allow their primary domain and all subdomains. Invalid explicit rules reject events.
 
 ---
 
