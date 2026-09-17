@@ -22,6 +22,9 @@ For UI changes, describe how you checked the interaction and keyboard use. -->
 - Collection/reporting: what reaches the browser payload, queue, event row, and
   reporting views, including anonymous mode and withdrawn consent.
 - Configuration/data model: YAML/headless support and changed defaults.
+- Optional/beta capabilities: consider a feature flag; describe its default,
+  navigation visibility, server enforcement, and disabling/recovery behavior.
+  See docs/FEATURE-FLAGS.md for registration and testing guidance.
 - Deployment: migrations, compatibility, or operator action required.
 - Documentation: updated guides or examples.
 -->

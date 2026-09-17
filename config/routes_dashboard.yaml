@@ -10,6 +10,10 @@ data_model_controller:
     resource: ../src/Controller/DataModelController.php
     type: attribute
 
+feature_flags_controller:
+    resource: ../src/Controller/FeatureFlagsController.php
+    type: attribute
+
 internal_traffic_controller:
     resource: ../src/Controller/InternalTrafficController.php
     type: attribute

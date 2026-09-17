@@ -6,6 +6,7 @@ namespace App\Controller;
 
 use App\Service\AggregateConfigLoader;
 use App\Service\ApplicationUpdateService;
+use App\Service\FeatureFlags;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -18,6 +19,7 @@ final class UpdatesController extends AbstractController
     public function __construct(
         private readonly AggregateConfigLoader $config,
         private readonly ApplicationUpdateService $updates,
+        private readonly FeatureFlags $features,
     ) {
     }
 
@@ -58,5 +60,9 @@ final class UpdatesController extends AbstractController
         }
 
         $this->denyAccessUnlessGranted('ROLE_ADMIN');
+
+        if (!$this->features->isEnabled('updates')) {
+            throw $this->createNotFoundException('Updates are disabled.');
+        }
     }
 }

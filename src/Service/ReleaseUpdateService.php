@@ -23,6 +23,7 @@ final class ReleaseUpdateService
         private readonly CacheInterface $cache,
         private readonly ClockInterface $clock,
         private readonly UpdateSettings $settings,
+        private readonly FeatureFlags $features,
         private readonly string $githubToken = '',
     ) {
     }
@@ -39,6 +40,14 @@ final class ReleaseUpdateService
             'signature_verified' => false, 'package_sha256' => null, 'package_size' => null,
             'compatibility_errors' => [], 'search_limited' => false,
         ];
+
+        if (!$this->features->isEnabled('updates')) {
+            return array_replace($result, [
+                'state' => 'disabled',
+                'message' => 'Updates are disabled by feature_flags.updates.enabled or the feature flag configuration is invalid.',
+            ]);
+        }
+
         try {
             $result['branch'] = $this->settings->branch();
             $local = $this->installed->read();

@@ -35,7 +35,7 @@ final class CheckUpdatesCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $status = $this->updates->check((bool) $input->getOption('refresh'));
-        $failed = in_array($status['state'], ['unknown', 'error', 'unavailable', 'incompatible'], true);
+        $failed = in_array($status['state'], ['unknown', 'error', 'unavailable', 'incompatible', 'disabled'], true);
 
         if ($input->getOption('json')) {
             $output->writeln(

@@ -6,6 +6,7 @@ namespace App\Tests\Service;
 
 use App\Service\AggregateConfigLoader;
 use App\Service\ApplicationUpdateService;
+use App\Service\FeatureFlags;
 use App\Service\InstalledRelease;
 use App\Service\ReleaseUpdateService;
 use App\Service\UpdateSettings;
@@ -241,7 +242,7 @@ final class ApplicationUpdateServiceTest extends TestCase
 
             return $this->json(['sha' => $this->initial]);
         });
-        $service = new ApplicationUpdateService($this->project, $client, $this->cache, $this->clock);
+        $service = new ApplicationUpdateService($this->project, $client, $this->cache, $this->clock, $this->defaultFlags());
         $result = $service->check();
 
         self::assertSame('up_to_date', $result['state']);
@@ -282,10 +283,10 @@ final class ApplicationUpdateServiceTest extends TestCase
     public function testNonGitInstallationAndDirectoryInsideAnotherRepositoryAreUnavailable(): void
     {
         $client = new MockHttpClient([]);
-        $service = new ApplicationUpdateService($this->directory, $client, $this->cache, $this->clock);
+        $service = new ApplicationUpdateService($this->directory, $client, $this->cache, $this->clock, $this->defaultFlags());
         self::assertSame('unavailable', $service->check()['state']);
         mkdir($this->project.'/subdirectory');
-        $nested = new ApplicationUpdateService($this->project.'/subdirectory', $client, $this->cache, $this->clock);
+        $nested = new ApplicationUpdateService($this->project.'/subdirectory', $client, $this->cache, $this->clock, $this->defaultFlags());
         self::assertSame('unavailable', $nested->check()['state']);
         self::assertSame(0, $client->getRequestsCount());
     }
@@ -555,7 +556,7 @@ final class ApplicationUpdateServiceTest extends TestCase
         $config = $this->createMock(AggregateConfigLoader::class);
         $config->method('all')->willReturn(['updates_branch' => $branch]);
 
-        return new ApplicationUpdateService($project ?? $this->project, $client ?? new MockHttpClient([]), $this->cache, $this->clock, $token, new UpdateSettings($config));
+        return new ApplicationUpdateService($project ?? $this->project, $client ?? new MockHttpClient([]), $this->cache, $this->clock, new FeatureFlags($config), $token, new UpdateSettings($config));
     }
 
     private function archiveService(string $project, MockHttpClient $client): ApplicationUpdateService
@@ -563,9 +564,17 @@ final class ApplicationUpdateServiceTest extends TestCase
         $config = $this->createMock(AggregateConfigLoader::class);
         $config->method('all')->willReturn([]);
         $settings = new UpdateSettings($config);
-        $releases = new ReleaseUpdateService(new InstalledRelease($project), $client, $this->cache, $this->clock, $settings);
+        $releases = new ReleaseUpdateService(new InstalledRelease($project), $client, $this->cache, $this->clock, $settings, new FeatureFlags($config));
 
-        return new ApplicationUpdateService($project, $client, $this->cache, $this->clock, '', $settings, $releases);
+        return new ApplicationUpdateService($project, $client, $this->cache, $this->clock, new FeatureFlags($config), '', $settings, $releases);
+    }
+
+    private function defaultFlags(): FeatureFlags
+    {
+        $config = $this->createStub(AggregateConfigLoader::class);
+        $config->method('all')->willReturn([]);
+
+        return new FeatureFlags($config);
     }
 
     /** @param array<string, mixed> $data */

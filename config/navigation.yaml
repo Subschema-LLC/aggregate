@@ -3,7 +3,8 @@
 # retains a legacy label fallback; identity and theme branding come from
 # config/aggregate.yaml.
 # Each link defines exactly one Symfony route or URL; items may also require a
-# Symfony security role.
+# Symfony security role and a registered feature name. Feature visibility is
+# controlled by feature_flags in the active aggregate YAML configuration.
 # Clear the production cache after changing this file.
 parameters:
     app.main_navigation:
@@ -34,6 +35,11 @@ parameters:
             - label: 'Updates'
               route: 'app_updates'
               icon: 'fas fa-rotate'
+              role: 'ROLE_ADMIN'
+              feature: 'updates'
+            - label: 'Feature flags'
+              route: 'app_feature_flags'
+              icon: 'fas fa-toggle-on'
               role: 'ROLE_ADMIN'
 
         account:

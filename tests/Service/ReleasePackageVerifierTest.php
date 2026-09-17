@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Service;
 
 use App\Service\AggregateConfigLoader;
+use App\Service\FeatureFlags;
 use App\Service\ApplicationUpdateService;
 use App\Service\ReleasePackageVerifier;
 use App\Service\UpdateSettings;
@@ -77,7 +78,7 @@ final class ReleasePackageVerifierTest extends TestCase
         $this->package();
         $config = $this->createMock(AggregateConfigLoader::class);
         $config->method('all')->willReturn([]);
-        $verifier = new ReleasePackageVerifier($config, new UpdateSettings($config), $this->directory);
+        $verifier = new ReleasePackageVerifier($config, new UpdateSettings($config), $this->directory, new FeatureFlags($config));
         $paths = [
             $this->directory.'/aggregate-1.2.3.zip',
             $this->directory.'/aggregate-release.json',
@@ -333,7 +334,7 @@ final class ReleasePackageVerifierTest extends TestCase
     {
         $config = $this->createMock(AggregateConfigLoader::class);
         $config->method('all')->willReturn($configuration);
-        $verifier = new ReleasePackageVerifier($config, new UpdateSettings($config), $this->directory);
+        $verifier = new ReleasePackageVerifier($config, new UpdateSettings($config), $this->directory, new FeatureFlags($config));
 
         return $verifier->verify(
             $this->directory.'/aggregate-1.2.3.zip',
