@@ -90,11 +90,11 @@ final class RegenerateReportingViewsCommand extends Command
 
             return Command::SUCCESS;
         } catch (\InvalidArgumentException $e) {
-            $io->error(OutputFormatter::escape($e->getMessage()));
+            $io->error($e->getMessage());
 
             return Command::INVALID;
         } catch (\Throwable $e) {
-            $io->error(OutputFormatter::escape($e->getMessage()));
+            $io->error($e->getMessage());
 
             return Command::FAILURE;
         }

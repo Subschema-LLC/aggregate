@@ -61,6 +61,27 @@ final class UpdatesCommandTest extends TestCase
         self::assertStringNotContainsString('app:updates:pull', $tester->getDisplay());
     }
 
+    #[DataProvider('messageBlockStates')]
+    public function testCheckPreservesLiteralMessageInEveryBlockStyle(string $state, int $exitCode, bool $decorated): void
+    {
+        $message = 'Update <info>state</info>.';
+        $updates = $this->createMock(ApplicationUpdateService::class);
+        $updates->method('check')->willReturn(array_replace($this->updateStatus($state), ['message' => $message]));
+        $tester = new CommandTester(new CheckUpdatesCommand($updates));
+
+        self::assertSame($exitCode, $tester->execute([], ['decorated' => $decorated]));
+        self::assertStringContainsString($message, $tester->getDisplay());
+    }
+
+    public static function messageBlockStates(): iterable
+    {
+        foreach ([false, true] as $decorated) {
+            yield ['error', Command::FAILURE, $decorated];
+            yield ['up_to_date', Command::SUCCESS, $decorated];
+            yield ['available', Command::SUCCESS, $decorated];
+        }
+    }
+
     public function testMismatchedBranchShowsConfiguredAndInstalledBranchesWithoutSuggestingPull(): void
     {
         $updates = $this->createMock(ApplicationUpdateService::class);
@@ -140,15 +161,23 @@ final class UpdatesCommandTest extends TestCase
         self::assertStringNotContainsString('source code was updated', $tester->getDisplay());
     }
 
-    public function testRejectedPullReturnsFailureAndDoesNotClaimSuccess(): void
+    #[DataProvider('outputModes')]
+    public function testRejectedPullReturnsFailureAndDoesNotClaimSuccess(bool $decorated): void
     {
+        $message = 'Local changes in <info>checkout</info>.';
         $updates = $this->createMock(ApplicationUpdateService::class);
-        $updates->method('pull')->willThrowException(new \RuntimeException('The checkout contains local changes.'));
+        $updates->method('pull')->willThrowException(new \RuntimeException($message));
         $tester = new CommandTester(new PullUpdatesCommand($updates));
 
-        self::assertSame(Command::FAILURE, $tester->execute([]));
-        self::assertStringContainsString('local changes', $tester->getDisplay());
+        self::assertSame(Command::FAILURE, $tester->execute([], ['decorated' => $decorated]));
+        self::assertStringContainsString($message, $tester->getDisplay());
         self::assertStringNotContainsString('[OK]', $tester->getDisplay());
+    }
+
+    public static function outputModes(): iterable
+    {
+        yield 'plain' => [false];
+        yield 'ANSI' => [true];
     }
 
     private function updateStatus(string $state = 'available'): array
