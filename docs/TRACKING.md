@@ -4,6 +4,12 @@
 
 This guide covers the browser SDK, custom events, and GTM setup. Register a website in the dashboard or with `php bin/console app:create-website` first, and replace the example host and public website token with your values. The sharing token used for organization marker pages is a different token and must never be placed in a tracking snippet.
 
+Configure [allowed event-source domains](CONFIGURATION.md#website-domains) on the
+Websites page or in `config/websites.yaml`. New registrations default to the exact
+primary hostname. Add explicit hosts or wildcard subdomains to share one token
+across approved hosts, or choose **Allow all domains**. No tracker changes are
+needed when a registration's domain rules change.
+
 - [JavaScript integration](#javascript-integration)
 - [Custom event tracking](#custom-event-tracking)
 - [UTM and custom data collection](#utm-and-custom-data-collection)
@@ -340,7 +346,7 @@ Use numeric Data Layer values for `total_minor` and `item_count`, with matching 
 
 **403 Forbidden errors:**
 - Verify your domain is correctly set in `config/websites.yaml`
-- Check `Origin` header is being sent (subdomains are auto-allowed)
+- Check that `Origin` (or `Referer` when `Origin` is absent) matches the website's [domain rules](CONFIGURATION.md#website-domains). Explicit rules require listing subdomains or a wildcard; only legacy registrations without a policy auto-allow all subdomains.
 
 **429 Too Many Requests:**
 - Increase `rate_limit_per_minute` in `config/aggregate.yaml` (or via dashboard settings)

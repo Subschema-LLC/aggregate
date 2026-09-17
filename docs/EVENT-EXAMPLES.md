@@ -43,10 +43,14 @@ allowlist and are omitted. Kill switches and path exclusions still apply.
 ## A flat ecommerce starting point
 
 The UI's **Ecommerce recipe** and `--example=ecommerce` provide a proposed model
-and synthetic purchase payloads. This is a recommendation, not your saved model;
-generation never installs it. Review and merge the proposed definitions into
-your existing model, then regenerate saved-model examples and any new reporting
-columns. All proposed ecommerce properties require enhanced consent by default.
+and synthetic purchase payloads. **Ecommerce purchase JSON** opens first, with
+copy and download controls; **Anonymous collection JSON** shows the request
+without consent-dependent properties. **Recommended ecommerce model (YAML)**
+contains the matching property configuration. This is a recommendation, not your
+saved model; generation never installs it. Review and merge the proposed
+definitions into your existing model, then regenerate saved-model examples and
+any new reporting columns. All proposed ecommerce properties require enhanced
+consent by default.
 
 Keep event properties flat. For a purchase, use a total, currency, item count,
 and broad product category. Avoid customer/order/cart identifiers, email
@@ -54,18 +58,37 @@ addresses, delivery information, payment details, and arrays of purchased items.
 Do not place identifying data in event names or page paths. A fixed `purchase`
 event name does not automatically record the separately configured purchase goal.
 
-An enhanced purchase can use this flat `eventData` object:
+The [complete ecommerce purchase JSON](examples/ecommerce-purchase.json) is a
+synthetic request body for `POST /api/receive`, separate from the model YAML.
+Replace the public website-token placeholder and connect enhanced tracking to
+explicit analytics consent. The visitor/session identifiers below are fixed
+examples, not identifiers to reuse for actual visitors. Copying `"granted"` does
+not obtain consent. Anonymous requests omit these identifiers and all proposed
+ecommerce properties by default.
 
 ```json
 {
-  "currency": "USD",
-  "total_minor": 4999,
-  "tax_minor": 400,
-  "shipping_minor": 500,
-  "item_count": 2,
-  "discount_rate": 0.1,
-  "product_category": "accessories",
-  "checkout_step": "complete"
+  "websiteToken": "REPLACE_WITH_PUBLIC_WEBSITE_TOKEN",
+  "eventName": "purchase",
+  "pagePath": "/checkout/complete",
+  "referrerChannel": "direct",
+  "deviceClass": "desktop",
+  "viewportBucket": "large",
+  "internalTraffic": false,
+  "consentState": "granted",
+  "visitorId": "synthetic-visitor",
+  "sessionId": "synthetic-session",
+  "screenWidth": 1440,
+  "eventData": {
+    "currency": "USD",
+    "total_minor": 4999,
+    "tax_minor": 400,
+    "shipping_minor": 500,
+    "item_count": 2,
+    "discount_rate": 0.1,
+    "product_category": "accessories",
+    "checkout_step": "complete"
+  }
 }
 ```
 

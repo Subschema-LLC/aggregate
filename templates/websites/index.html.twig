@@ -8,6 +8,9 @@
     #add-website-modal { border: 0; margin: auto; max-height: calc(100vh - 3rem); max-width: 36rem; overflow: auto; width: calc(100% - 3rem); }
     #add-website-modal:not([open]) { display: none; }
     #add-website-modal::backdrop { background: rgba(0, 0, 0, 0.6); }
+    .website-domain-fields { min-width: 0; }
+    .website-domain-fields .select, .website-domain-fields select { max-width: 100%; }
+    .website-domain-fields .help { overflow-wrap: anywhere; }
 </style>
 {% endblock %}
 
@@ -16,7 +19,7 @@
     <div class="level-left">
         <div>
             <h1 class="title">Websites</h1>
-            <p class="subtitle">Manage website tokens and tracker installation.</p>
+            <p class="subtitle">Manage website tokens, allowed domains, and tracker installation.</p>
         </div>
     </div>
     <div class="level-right">
@@ -38,6 +41,17 @@
         <summary class="has-text-weight-semibold" style="overflow-wrap: anywhere;">{{ website.name }} <span class="has-text-weight-normal">— {{ website.domain }}</span></summary>
         <div class="content mt-4">
             <p><strong>Website token:</strong> <code style="overflow-wrap: anywhere;">{{ website.token }}</code></p>
+            <h2 class="title is-5">Allowed domains</h2>
+            {% if website.domain_settings_invalid %}
+                <div class="notification is-warning">This website's domain rules are invalid. Events are rejected until valid rules are saved.</div>
+            {% elseif website.domain_policy is not defined %}
+                <p class="help mb-3">This existing registration permits its primary domain and its subdomains. The list below preserves that behavior; save to make the rules explicit.</p>
+            {% endif %}
+            <form action="{{ path('app_website_domains', {token: website.token}) }}" method="post" class="mb-5">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token('website_domains_' ~ website.token) }}">
+                {% include 'websites/_domain_fields.html.twig' with {field_prefix: 'website-domains-' ~ loop.index, domain_settings: website.domain_settings} only %}
+                <button type="submit" class="button is-primary mt-3">Save domain rules</button>
+            </form>
             <h2 class="title is-5">Integration code</h2>
             <p>Add this code to your website's <code>&lt;head&gt;</code> section.</p>
             {% set integration_code = '<script>\n  window[' ~ (js_namespace|json_encode(15)) ~ '] = {\n    endpoint: ' ~ ((app_host|trim('/') ~ '/api/receive')|json_encode(15)) ~ ',\n    websiteToken: ' ~ (website.token|json_encode(15)) ~ '\n  };\n</script>\n<script src="' ~ ((app_host|trim('/') ~ '/aggregate.js')|escape('html')) ~ '" defer referrerpolicy="no-referrer"></script>' %}
@@ -52,7 +66,7 @@
     </details>
 {% endfor %}
 
-{% include 'dashboard/_tracker_guidance.html.twig' %}
+{% include 'websites/_tracker_guidance.html.twig' %}
 
 <dialog id="add-website-modal" class="box" aria-labelledby="add-website-title">
     <h2 class="title is-4" id="add-website-title">Add website</h2>
@@ -65,12 +79,13 @@
             </div>
         </div>
         <div class="field">
-            <label class="label" for="website-domain">Domain</label>
+            <label class="label" for="website-domain">Primary domain</label>
             <div class="control">
                 <input class="input" type="text" id="website-domain" name="domain" placeholder="example.com" required>
             </div>
-            <p class="help">The domain where analytics will be collected, without a protocol or path.</p>
+            <p class="help">The website's main hostname, without a protocol or path. It also identifies internal referrers; allowed event sources are configured below.</p>
         </div>
+        {% include 'websites/_domain_fields.html.twig' with {field_prefix: 'new-website-domains', domain_settings: {mode: 'restricted', domains: []}, new_website: true} only %}
         <div class="buttons mt-5">
             <button type="submit" class="button is-primary">Create Website</button>
             <button type="button" class="button" id="cancel-add-website">Cancel</button>

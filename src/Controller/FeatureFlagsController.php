@@ -36,7 +36,7 @@ final class FeatureFlagsController extends AbstractController
             $this->logFailure('load', $e);
         }
 
-        return $this->privateResponse($this->render('dashboard/feature_flags.html.twig', [
+        return $this->privateResponse($this->render('feature_flags/index.html.twig', [
             'definitions' => $this->flags->definitions(),
             'settings' => $settings,
             'configuration_error' => $configurationError,

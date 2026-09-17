@@ -123,6 +123,15 @@ final class EventExamplesRoutesTest extends TestCase
             self::assertCount($buttons, $crawler->filter('.container [data-copy-example]'));
             self::assertCount(1, $crawler->filter('.container #example-anonymous'));
             self::assertCount(1, $crawler->filter('.container #example-enhanced'));
+            $ecommerce = $path === self::EXAMPLE_ROUTES['app_event_examples_ecommerce'];
+            $firstMode = $ecommerce ? 'enhanced' : 'anonymous';
+            self::assertCount(1, $crawler->filter('.container details[open] #example-'.$firstMode));
+            self::assertSame('example-'.$firstMode, $crawler->filter('.container pre code[id^="example-"]')->first()->attr('id'));
+            $expected = json_decode($this->container()->get(EventExampleGenerator::class)->exportJson('all', $ecommerce ? 'ecommerce' : 'model'), true, flags: JSON_THROW_ON_ERROR);
+            foreach (['anonymous', 'enhanced'] as $mode) {
+                $payload = json_decode($crawler->filter('#example-'.$mode)->text(), true, flags: JSON_THROW_ON_ERROR);
+                self::assertSame($expected['examples'][$mode]['payload'], $payload);
+            }
             self::assertCount(0, $crawler->filter('.container form'));
             $this->assertNoSecrets((string) $browser->getResponse()->getContent());
         }

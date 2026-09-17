@@ -4,13 +4,13 @@
 
 {% block stylesheets %}
     {{ parent() }}
-    {% include 'dashboard/_settings_styles.html.twig' %}
+    {% include 'shared/_settings_styles.html.twig' %}
 {% endblock %}
 
 {% block body %}
 <div class="settings-page">
     <h1 class="title">Observed properties</h1>
-    {% include 'dashboard/_model_navigation.html.twig' with {current_model_page: 'app_data_model_discovery'} %}
+    {% include 'data_model/_navigation.html.twig' with {current_model_page: 'app_data_model_discovery'} %}
     {% if configuration_error %}<div class="notification is-danger" role="alert">{{ configuration_error }}</div>{% endif %}
     {% if reporting_error %}<div class="notification is-warning" role="alert">{{ reporting_error }}</div>{% endif %}
     <section class="box">
