@@ -8,7 +8,7 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
-use Doctrine\DBAL\Platforms\SqlitePlatform;
+use Doctrine\DBAL\Platforms\SQLitePlatform;
 use Doctrine\DBAL\Platforms\SQLServerPlatform;
 
 /** Private projections of retained raw events, separate from the thresholded BI views. */
@@ -166,7 +166,7 @@ class ReportingViewManager
         $platform = $this->connection->getDatabasePlatform();
         if (!$platform instanceof AbstractMySQLPlatform
             && !$platform instanceof PostgreSQLPlatform
-            && !$platform instanceof SqlitePlatform
+            && !$platform instanceof SQLitePlatform
             && !$platform instanceof SQLServerPlatform) {
             throw new \RuntimeException('Custom reporting views support PostgreSQL, MySQL, MariaDB, SQL Server, and SQLite with JSON functions.');
         }
@@ -316,7 +316,7 @@ class ReportingViewManager
     /** @return list<string> */
     private function viewStatements(AbstractPlatform $platform, string $name, string $select): array
     {
-        if ($platform instanceof SqlitePlatform) {
+        if ($platform instanceof SQLitePlatform) {
             $name = $platform->quoteIdentifier('main.'.$name);
 
             return ['DROP VIEW IF EXISTS '.$name, 'CREATE VIEW '.$name." AS\n".$select];
@@ -339,7 +339,7 @@ class ReportingViewManager
         $query = match (true) {
             $platform instanceof PostgreSQLPlatform => 'SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = :view_name ORDER BY ordinal_position',
             $platform instanceof SQLServerPlatform => 'SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = SCHEMA_NAME() AND TABLE_NAME = :view_name ORDER BY ORDINAL_POSITION',
-            $platform instanceof SqlitePlatform => "SELECT name FROM pragma_table_info(:view_name, 'main') ORDER BY cid",
+            $platform instanceof SQLitePlatform => "SELECT name FROM pragma_table_info(:view_name, 'main') ORDER BY cid",
             default => 'SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :view_name ORDER BY ORDINAL_POSITION',
         };
         foreach (self::VIEW_NAMES as $name) {
@@ -356,7 +356,7 @@ class ReportingViewManager
     private function assertColumnTypesCanBeReplaced(AbstractPlatform $platform, string $viewName, array $existing, array $textColumns, array $numericColumns): void
     {
         $types = [];
-        if ($platform instanceof SqlitePlatform) {
+        if ($platform instanceof SQLitePlatform) {
             $sql = $this->connection->fetchOne("SELECT sql FROM main.sqlite_master WHERE type = 'view' AND name = :view_name", ['view_name' => $viewName]);
             if (!is_string($sql) || $sql === '') {
                 throw new \RuntimeException('The existing reporting view definition could not be verified.');

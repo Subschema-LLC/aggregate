@@ -6,10 +6,10 @@ namespace App\Tests\Migration;
 
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
-use Doctrine\DBAL\Platforms\MariaDb1060Platform;
+use Doctrine\DBAL\Platforms\MariaDB1060Platform;
 use Doctrine\DBAL\Platforms\MySQL80Platform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
-use Doctrine\DBAL\Platforms\SqlitePlatform;
+use Doctrine\DBAL\Platforms\SQLitePlatform;
 use Doctrine\DBAL\Platforms\SQLServerPlatform;
 use Doctrine\DBAL\Schema\Schema;
 use DoctrineMigrations\Version20260724001000;
@@ -57,7 +57,7 @@ final class AnonymousBiViewMigrationTest extends TestCase
         $mysqlPredicate = "events.created_at < DATE_FORMAT(UTC_TIMESTAMP(), '%Y-%m-%d %H:00:00')";
 
         yield 'MySQL' => [new MySQL80Platform(), $mysqlPredicate];
-        yield 'MariaDB' => [new MariaDb1060Platform(), $mysqlPredicate];
+        yield 'MariaDB' => [new MariaDB1060Platform(), $mysqlPredicate];
         yield 'PostgreSQL' => [
             new PostgreSQLPlatform(),
             "events.created_at < date_trunc('hour', CURRENT_TIMESTAMP AT TIME ZONE 'UTC')",
@@ -67,7 +67,7 @@ final class AnonymousBiViewMigrationTest extends TestCase
             'events.created_at < DATEADD(hour, DATEDIFF(hour, 0, SYSUTCDATETIME()), 0)',
         ];
         yield 'SQLite' => [
-            new SqlitePlatform(),
+            new SQLitePlatform(),
             "events.created_at < strftime('%Y-%m-%d %H:00:00', 'now')",
         ];
     }

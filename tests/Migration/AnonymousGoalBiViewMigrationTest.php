@@ -6,11 +6,11 @@ namespace App\Tests\Migration;
 
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
-use Doctrine\DBAL\Platforms\MariaDb1060Platform;
+use Doctrine\DBAL\Platforms\MariaDB1060Platform;
 use Doctrine\DBAL\Platforms\MySQL80Platform;
 use Doctrine\DBAL\Platforms\OraclePlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
-use Doctrine\DBAL\Platforms\SqlitePlatform;
+use Doctrine\DBAL\Platforms\SQLitePlatform;
 use Doctrine\DBAL\Platforms\SQLServerPlatform;
 use Doctrine\DBAL\Schema\Schema;
 use DoctrineMigrations\Version20260828000000;
@@ -68,7 +68,7 @@ final class AnonymousGoalBiViewMigrationTest extends TestCase
             'events.created_at < UTC_DATE()',
         ];
         yield 'MariaDB' => [
-            new MariaDb1060Platform(),
+            new MariaDB1060Platform(),
             'CAST(events.created_at AS date) AS event_day',
             'events.created_at < UTC_DATE()',
         ];
@@ -83,7 +83,7 @@ final class AnonymousGoalBiViewMigrationTest extends TestCase
             'events.created_at < CAST(SYSUTCDATETIME() AS date)',
         ];
         yield 'SQLite' => [
-            new SqlitePlatform(),
+            new SQLitePlatform(),
             'date(events.created_at) AS event_day',
             "events.created_at < date('now')",
         ];
