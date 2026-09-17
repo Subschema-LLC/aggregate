@@ -28,7 +28,7 @@ final class UpdatesController extends AbstractController
     {
         $this->denyUnlessAvailableToAdmin();
 
-        return $this->render('dashboard/updates.html.twig', [
+        return $this->render('updates/index.html.twig', [
             'update_status' => $this->updates->check(),
             'update_repository' => ApplicationUpdateService::REPOSITORY,
             'update_repository_url' => ApplicationUpdateService::REPOSITORY_URL,

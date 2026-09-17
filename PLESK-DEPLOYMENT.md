@@ -54,6 +54,10 @@ cd analytics
 
 ### 3. Install Composer Dependencies
 
+Before a Doctrine DBAL 4 upgrade, update short MySQL/MariaDB version hints in
+the active `DATABASE_URL` as described in the
+[database upgrade guide](docs/DATABASE.md#upgrade-to-doctrine-dbal-4).
+
 ```bash
 cd /var/www/vhosts/your-domain.com/analytics
 
@@ -77,7 +81,7 @@ Create `.env` in the project root for infrastructure settings (or use `.env.loca
 APP_ENV=prod
 APP_DEBUG=0
 APP_SECRET=generate-with-openssl-rand-hex-32
-DATABASE_URL="mysql://db_user:db_pass@localhost:3306/db_name?serverVersion=8.0"
+DATABASE_URL="mysql://db_user:db_pass@localhost:3306/db_name?serverVersion=8.0.0"
 MESSENGER_TRANSPORT_DSN=sync://   # default quick mode (no worker required)
 ```
 
@@ -366,7 +370,11 @@ chmod -R 775 var/
 
 ### CORS / 403 Forbidden
 
-Ensure the domain in your website record (`config/websites.yaml` or dashboard website manager) exactly matches the domain sending requests. Subdomains are automatically allowed.
+Check the website's [domain rules](docs/CONFIGURATION.md#website-domains) on the
+Websites page or in `config/websites.yaml`. Exact hostname entries allow only that
+host; use `'*.example.com'` for its subdomains and list `example.com` separately
+for the root. Only existing registrations without `domain_policy` automatically
+allow their primary domain and all subdomains. Invalid explicit rules reject events.
 
 ---
 

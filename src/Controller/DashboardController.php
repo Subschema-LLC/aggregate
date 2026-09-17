@@ -9,6 +9,7 @@ use App\Service\AnalyticsPrivacySettings;
 use App\Service\BrandingLogoManager;
 use App\Service\BrandingTheme;
 use App\Service\WebsiteConfigManager;
+use App\Service\WebsiteDomainPolicy;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
@@ -30,6 +31,7 @@ class DashboardController extends AbstractController
         private readonly EntityManagerInterface $em,
         private readonly LoggerInterface $logger,
         private readonly BrandingLogoManager $brandingLogoManager,
+        private readonly WebsiteDomainPolicy $websiteDomainPolicy = new WebsiteDomainPolicy(),
     ) {}
 
     #[Route('/dashboard', name: 'app_dashboard', methods: ['GET'])]
@@ -37,8 +39,18 @@ class DashboardController extends AbstractController
     {
         $this->denyIfDashboardDisabled();
 
-        return $this->renderDashboardPage('dashboard/index.html.twig', [
-            'websites' => $this->websiteManager->getWebsites(),
+        return $this->renderDashboardPage('websites/index.html.twig', [
+            'websites' => array_map(function (array $website): array {
+                try {
+                    $website['domain_settings'] = $this->websiteDomainPolicy->resolve($website);
+                    $website['domain_settings_invalid'] = false;
+                } catch (\InvalidArgumentException) {
+                    $website['domain_settings'] = ['mode' => 'restricted', 'domains' => []];
+                    $website['domain_settings_invalid'] = true;
+                }
+
+                return $website;
+            }, $this->websiteManager->getWebsites()),
             'app_host' => $this->config->getWithEnvFallback('app_host', 'http://localhost:8000'),
             'js_namespace' => $this->config->getWithEnvFallback('js_namespace', 'Aggregate'),
         ]);
@@ -50,7 +62,7 @@ class DashboardController extends AbstractController
         $this->denyIfDashboardDisabled();
         $this->denyIfNotAdmin();
 
-        return $this->renderDashboardPage('dashboard/application_settings.html.twig', [
+        return $this->renderDashboardPage('settings/application.html.twig', [
             'app_host' => $this->config->getWithEnvFallback('app_host', 'http://localhost:8000'),
             'js_namespace' => $this->config->getWithEnvFallback('js_namespace', 'Aggregate'),
             'rate_limit' => $this->config->getWithEnvFallback('rate_limit_per_minute', 100),
@@ -63,7 +75,7 @@ class DashboardController extends AbstractController
         $this->denyIfDashboardDisabled();
         $this->denyIfNotAdmin();
 
-        return $this->renderDashboardPage('dashboard/branding_settings.html.twig');
+        return $this->renderDashboardPage('settings/branding.html.twig');
     }
 
     #[Route('/dashboard/collection', name: 'app_collection_settings', methods: ['GET'])]
@@ -86,7 +98,7 @@ class DashboardController extends AbstractController
         }
         $geoDatabasePath = $this->config->getWithEnvFallback('anonymous_geo_database_path', '');
 
-        return $this->renderDashboardPage('dashboard/collection_settings.html.twig', [
+        return $this->renderDashboardPage('settings/collection.html.twig', [
             'anonymous_tracking_enabled' => $this->config->getBoolWithEnvFallback('anonymous_tracking_enabled', true),
             'anonymous_excluded_paths' => array_values(array_filter($excludedPaths, 'is_string')),
             'anonymous_geo_enabled' => $this->config->getBoolWithEnvFallback('anonymous_geo_enabled', false),
@@ -113,7 +125,7 @@ class DashboardController extends AbstractController
             $privacySettingsError = true;
         }
 
-        return $this->renderDashboardPage('dashboard/privacy_settings.html.twig', [
+        return $this->renderDashboardPage('settings/privacy.html.twig', [
             'anonymous_min_cell_count' => $minimumCellCounts['anonymous'],
             'anonymous_geo_min_cell_count' => $minimumCellCounts['geo'],
             'analytics_privacy_settings_error' => $privacySettingsError,
@@ -126,7 +138,7 @@ class DashboardController extends AbstractController
         $this->denyIfDashboardDisabled();
         $this->denyIfNotAdmin();
 
-        return $this->renderDashboardPage('dashboard/users.html.twig', [
+        return $this->renderDashboardPage('users/index.html.twig', [
             'users' => $this->userRepository->findBy([], ['createdAt' => 'ASC']),
         ]);
     }
@@ -149,8 +161,9 @@ class DashboardController extends AbstractController
             return $this->redirectToRoute('app_dashboard');
         }
 
-        $name = trim($request->request->get('name', ''));
-        $domain = trim($request->request->get('domain', ''));
+        $values = $request->request->all();
+        $name = is_string($values['name'] ?? null) ? trim($values['name']) : '';
+        $domain = is_string($values['domain'] ?? null) ? trim($values['domain']) : '';
 
         // Validate
         if (empty($name)) {
@@ -163,12 +176,10 @@ class DashboardController extends AbstractController
             return $this->redirectToRoute('app_dashboard');
         }
 
-        // Normalize domain (remove protocol, trailing slash)
-        $domain = preg_replace('#^https?://#', '', $domain);
-        $domain = rtrim($domain, '/');
-
         try {
-            $success = $this->websiteManager->addWebsite($name, $domain);
+            $domain = $this->websiteDomainPolicy->normalizePrimaryDomain($domain);
+            $policy = $this->submittedDomainPolicy($request, $domain);
+            $success = $this->websiteManager->addWebsite($name, $domain, domainPolicy: $policy);
 
             if ($success) {
                 $this->addFlash('success', "Website '{$name}' created successfully!");
@@ -180,6 +191,58 @@ class DashboardController extends AbstractController
         }
 
         return $this->redirectToRoute('app_dashboard');
+    }
+
+    #[Route('/dashboard/website/{token}/domains', name: 'app_website_domains', methods: ['POST'])]
+    public function saveWebsiteDomains(string $token, Request $request): Response
+    {
+        $this->denyIfDashboardDisabled();
+
+        if (!$this->isCsrfTokenValid('website_domains_'.$token, (string) $request->request->get('_csrf_token', ''))) {
+            $this->addFlash('error', 'Invalid security token. Please try again.');
+            return $this->redirectToRoute('app_dashboard');
+        }
+
+        try {
+            $policy = $this->submittedDomainPolicy($request);
+            if ($policy === null) {
+                throw new \InvalidArgumentException('Choose a domain restriction mode.');
+            }
+            if ($this->websiteManager->updateDomainPolicy($token, $policy)) {
+                $this->addFlash('success', 'Website domain rules saved. The existing website token is unchanged.');
+            } else {
+                $this->addFlash('error', 'Website not found or config/websites.yaml could not be saved.');
+            }
+        } catch (\InvalidArgumentException $e) {
+            $this->addFlash('error', $e->getMessage());
+        } catch (\Exception) {
+            $this->addFlash('error', 'Could not save website domain rules. Check config/websites.yaml and its permissions.');
+        }
+
+        return $this->redirectToRoute('app_dashboard');
+    }
+
+    private function submittedDomainPolicy(Request $request, ?string $newWebsiteDomain = null): ?array
+    {
+        $values = $request->request->all();
+        // Preserve old clients that create registrations without the new fields.
+        if (!array_key_exists('domain_mode', $values) && !array_key_exists('allowed_domains', $values)) {
+            return null;
+        }
+        $mode = $values['domain_mode'] ?? null;
+        $text = $values['allowed_domains'] ?? '';
+        if (!is_string($mode) || !is_string($text) || strlen($text) > 16_384) {
+            throw new \InvalidArgumentException('Choose a domain restriction mode and enter at most 32 domains, one per line.');
+        }
+        $domains = array_values(array_filter(
+            array_map('trim', preg_split('/\r\n|\r|\n/', $text) ?: []),
+            static fn (string $domain): bool => $domain !== '',
+        ));
+        if ($mode === 'restricted' && $domains === [] && $newWebsiteDomain !== null) {
+            $domains = [$newWebsiteDomain];
+        }
+
+        return $this->websiteDomainPolicy->normalize(['mode' => $mode, 'domains' => $domains]);
     }
 
     #[Route('/dashboard/website/delete/{token}', name: 'app_website_delete', methods: ['POST'])]

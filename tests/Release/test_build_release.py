@@ -58,9 +58,12 @@ class ReleaseBuildTest(unittest.TestCase):
             "var/log/prod.log", "var/cache/prod/container.php", "var/branding/logo.png",
             "var/browser/unrelated-secret.json", "tests/private.txt", "node_modules/private.txt",
             "src/DataFixtures/AppFixtures.php", "docs/install_fresh.sql",
+            "docs/examples/private.json", "docs/examples/nested/private.json", "docs/local/private.md",
         ):
             self.write(relative, "deployment-only-secret")
         self.write("config/release-signing.pub", "public verification key")
+        ecommerce_example = (SCRIPT.parent.parent / "docs/examples/ecommerce-purchase.json").read_text(encoding="utf-8")
+        self.write("docs/examples/ecommerce-purchase.json", ecommerce_example)
         package, manifest_path = self.build()
         manifest = json.loads(manifest_path.read_bytes())
         self.assertEqual(package.name, "aggregate-1.2.3.zip")
@@ -73,6 +76,7 @@ class ReleaseBuildTest(unittest.TestCase):
             self.assertIn("public/assets/app-123.js", names)
             self.assertIn("var/browser/aggregate.template.min.js", names)
             self.assertIn("LICENSE", names)
+            self.assertEqual(ecommerce_example.encode("utf-8"), archive.read("docs/examples/ecommerce-purchase.json"))
             for name in names:
                 self.assertNotIn(b"deployment-only-secret", archive.read(name), name)
                 self.assertFalse(name.startswith("aggregate/"))

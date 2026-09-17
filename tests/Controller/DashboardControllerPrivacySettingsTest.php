@@ -178,7 +178,7 @@ final class DashboardControllerPrivacySettingsTest extends TestCase
         $twig->expects(self::once())
             ->method('render')
             ->with(
-                'dashboard/privacy_settings.html.twig',
+                'settings/privacy.html.twig',
                 self::callback(static fn (array $context): bool =>
                     $context['analytics_privacy_settings_error'] === true
                     && $context['anonymous_min_cell_count'] === 5

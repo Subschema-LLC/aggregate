@@ -52,7 +52,7 @@ final class DataModelController extends AbstractController
             }
         }
 
-        return $this->privateResponse($this->render('dashboard/data_model.html.twig', [
+        return $this->privateResponse($this->render('data_model/index.html.twig', [
             ...$context,
             'model' => $model,
             'unsaved_property' => $unsavedProperty,
@@ -82,7 +82,7 @@ final class DataModelController extends AbstractController
             }
         }
 
-        return $this->privateResponse($this->render('dashboard/data_model_discovery.html.twig', [
+        return $this->privateResponse($this->render('data_model/discovery.html.twig', [
             ...$context,
             'observed_properties' => $properties,
             'discovery_requested' => $requested,
@@ -106,7 +106,7 @@ final class DataModelController extends AbstractController
             }
         }
 
-        return $this->privateResponse($this->render('dashboard/data_model_reporting.html.twig', [
+        return $this->privateResponse($this->render('data_model/reporting.html.twig', [
             ...$context,
             'view_sql' => $sql,
             'reporting_error' => $reportingError,

@@ -218,6 +218,11 @@ The services are `php` (FrankenPHP/Symfony), `asset-compile` (dashboard assets),
 `worker` (asynchronous enhanced events), and the selected database service. The
 worker is only needed when testing an asynchronous transport.
 
+Compose uses `MYSQL_VERSION` for the image tag and `MYSQL_SERVER_VERSION` for
+the full Doctrine version hint. When overriding a database image, also update
+the full version in the selected Makefile DSN or Compose environment; see
+[database version configuration](docs/DATABASE.md#upgrade-to-doctrine-dbal-4).
+
 ## Tests and checks
 
 The [CI workflow](.github/workflows/ci.yml) runs PHP tests and syntax/configuration
@@ -311,7 +316,7 @@ changes with `php bin/console asset-map:compile`.
 | [src/Entity](src/Entity), [src/Repository](src/Repository), [migrations](migrations) | Doctrine model, database access, schema, and versioned reporting views |
 | [config](config) | YAML application/website/goal settings, Symfony services, routes, and package configuration |
 | [src/Command](src/Command) | CLI installation, website creation, and analytics maintenance |
-| [templates](templates) and [assets](assets) | Twig dashboard/public pages and AssetMapper dashboard assets |
+| [templates](templates/README.md) and [assets](assets) | Twig pages and partials grouped by feature; AssetMapper dashboard assets |
 | [tests](tests) | PHP regressions by component and Node browser/storage regressions |
 
 BI thresholds are currently stored in `analytics_privacy_settings` and managed in

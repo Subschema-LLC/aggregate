@@ -6,6 +6,7 @@ Use this guide for application settings and runtime overrides. Run commands from
 
 - [Environment files](#environment-files)
 - [Application settings](#application-settings)
+- [Website domains](#website-domains)
 - [Administration pages](#administration-pages)
 - [Feature flags](#feature-flags)
 - [Organization traffic](#organization-traffic)
@@ -23,7 +24,7 @@ Configuration has separate sources of truth:
 - **`config/aggregate.yaml`** (app-level, example committed): Analytics-specific settings — application branding, privacy measurement controls, internal traffic markers and sharing token, lifecycle policy, rate limit, JS namespace, dashboard toggle, and deployment-wide feature flags.
 - **`config/goals.yaml`** (app-level, committed): Stable conversion-goal codes and whether each is enabled for anonymous collection.
 - **`config/navigation.yaml`** (app-level, committed): Main navigation labels, icons, and link targets.
-- **`config/websites.yaml`** (untracked): Website names, registered domains, and public ingestion tokens, managed through the dashboard or `app:create-website`.
+- **`config/websites.yaml`** (untracked): Website names, primary domains, allowed event-source domains, and public ingestion tokens, managed through the Websites page, YAML, or `app:create-website`.
 - **`analytics_privacy_settings`** (database): BI disclosure thresholds, managed through the dashboard or controlled database administration; these are not mirrored in YAML.
 
 The web installer at `/install` is optional and only needed when you want dashboard-based setup.
@@ -41,7 +42,7 @@ APP_ENV=prod
 APP_DEBUG=0
 APP_SECRET=generate-with-openssl-rand-hex-32
 TRUSTED_PROXIES=""
-DATABASE_URL="mysql://user:pass@localhost:3306/dbname?serverVersion=8.0"
+DATABASE_URL="mysql://user:pass@localhost:3306/dbname?serverVersion=8.0.0"
 MESSENGER_TRANSPORT_DSN=sync://
 MAILER_DSN=null://null
 ```
@@ -57,10 +58,101 @@ MESSENGER_TRANSPORT_DSN=doctrine://default
 Connection string formats for `DATABASE_URL` (see [Database Guide](DATABASE.md)):
 
 - PostgreSQL: `postgresql://user:pass@host:5432/dbname?serverVersion=16`
-- MySQL: `mysql://user:pass@host:3306/dbname?serverVersion=8.0`
+- MySQL: `mysql://user:pass@host:3306/dbname?serverVersion=8.0.0`
 - MariaDB: `mysql://user:pass@host:3306/dbname?serverVersion=11.4.0-MariaDB`
 - SQL Server: `sqlsrv://user:pass@host:1433/dbname?serverVersion=2022`
 - SQLite: `sqlite:///%kernel.project_dir%/var/data.db`
+
+MySQL and MariaDB version hints must include the patch component. See the
+[DBAL 4 upgrade notes](DATABASE.md#upgrade-to-doctrine-dbal-4) before updating an
+existing installation that uses a short version hint.
+
+## Website domains
+
+Each website token has its own event-source rules in `config/websites.yaml`.
+Open **Websites** (`/dashboard`), expand a registration, choose **Listed domains only**
+or **Allow all domains**, and save. The same choices are available when
+adding a website. These controls follow the existing website-management access:
+signed-in users can manage registrations. Rules also work with the dashboard
+disabled through YAML. There are no environment-variable overrides for this file.
+
+For example, add a `domain_policy` to an existing registration while keeping its
+token unchanged:
+
+```yaml
+websites:
+  - name: Example website
+    domain: example.com
+    token: KEEP_THE_EXISTING_PUBLIC_WEBSITE_TOKEN
+    domain_policy:
+      mode: restricted
+      domains:
+        - example.com
+        - '*.example.com'
+        - shop.other-example.com
+```
+
+| Rule | Accepted hosts |
+| --- | --- |
+| `example.com` | Only `example.com` |
+| `shop.example.com` | Only `shop.example.com` |
+| `'*.example.com'` | `shop.example.com`, `a.b.example.com`, and other descendants; excludes `example.com` itself |
+
+List both the root hostname and its wildcard to allow both. Quote wildcard values
+in YAML. Lists accept up to 32 entries. Hostnames are case-insensitive; trailing
+DNS dots are normalized. Use ASCII hostnames (punycode for international names),
+without a protocol, port, path, query, or fragment. Exact IP literals and
+`localhost` are supported; wildcard IPs, bare `*`, partial wildcards, and regex
+patterns are rejected. Matching uses the hostname, so HTTP/HTTPS and different
+ports do not create separate rules.
+
+To accept events from any source for that token, use:
+
+```yaml
+domain_policy:
+  mode: all
+```
+
+`all` skips the origin restriction, including for clients without `Origin` or
+`Referer`. A valid website token is still required, and consent, collection
+switches, sensitive-path exclusions, and other ingestion checks still apply.
+An optional valid `domains` list can remain saved while `mode: all` is active;
+it takes effect again when switching to `restricted`.
+
+In restricted mode, the server checks a valid HTTP(S) `Origin`, using `Referer`
+only if `Origin` is absent. Missing, malformed, or nonmatching headers are
+rejected before geographic lookup, queueing, or recording in either privacy
+mode. An invalid explicit policy rejects events; it never falls back to allowing
+all sources. Direct clients can forge these headers, so domain rules do not
+authenticate clients. Website tokens are public ingestion identifiers.
+
+Existing registrations with no `domain_policy` retain the original behavior:
+their primary `domain` and all its subdomains are allowed. The UI shows these
+effective rules and makes them explicit when saved. New UI/CLI registrations
+default to only the primary hostname; an empty list in the **Add website** form
+uses that hostname. An existing restricted registration must have a nonempty
+list. Older creation clients that omit both policy form fields retain the legacy
+creation behavior.
+
+For headless creation, the CLI still asks for the website name and primary domain:
+
+```bash
+# Default: only the primary hostname
+php bin/console app:create-website
+# Several exact/wildcard hosts under one newly generated token
+php bin/console app:create-website --allowed-domain=example.com --allowed-domain='*.example.com'
+# Any source with the newly generated token
+php bin/console app:create-website --allow-all-domains
+```
+
+Use YAML or the Websites page to edit existing rules. Saving rules preserves the
+website token, primary domain, other registrations, and unrelated YAML values.
+Changes apply to subsequent requests without clearing the application cache.
+Each token must uniquely identify one registration; duplicate tokens are rejected.
+The primary `domain` remains the reference for classifying internal referrers;
+adding other allowed hosts does not change that classification or store their
+hostnames in events. Data models and other collection settings remain scoped to
+the deployment's active aggregate configuration.
 
 ## Application settings
 

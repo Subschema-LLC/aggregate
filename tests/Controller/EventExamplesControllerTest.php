@@ -81,6 +81,9 @@ final class EventExamplesControllerTest extends TestCase
         self::assertSame('granted', $enhanced['consentState']);
         self::assertArrayHasKey('plan', $enhanced['eventData']);
         self::assertSame('REPLACE_WITH_PUBLIC_WEBSITE_TOKEN', $enhanced['websiteToken']);
+        self::assertCount(1, $crawler->filter('details[open] #example-anonymous'));
+        self::assertCount(0, $crawler->filter('details[open] #example-enhanced'));
+        self::assertSame('example-anonymous', $crawler->filter('pre code[id^="example-"]')->first()->attr('id'));
         foreach (['anonymous', 'enhanced'] as $mode) {
             self::assertCount(1, $crawler->filter('button[type="button"][data-copy-example="example-'.$mode.'"]'));
             self::assertCount(1, $crawler->filter('a[href="/dashboard/data-model/examples/download?mode='.$mode.'&example=model"]'));
@@ -92,7 +95,7 @@ final class EventExamplesControllerTest extends TestCase
         $this->assertNoSecrets((string) $response->getContent());
     }
 
-    public function testEcommerceRecipeOffersCopyableRecommendedYamlWithoutSavingTheModel(): void
+    public function testEcommerceRecipeShowsPurchaseJsonAndCopyableYamlWithoutSavingTheModel(): void
     {
         $before = file_get_contents($this->projectDir.'/config/aggregate.yaml');
         $response = $this->controller()->ecommerce();
@@ -103,6 +106,23 @@ final class EventExamplesControllerTest extends TestCase
         self::assertSame($before, file_get_contents($this->projectDir.'/config/aggregate.yaml'));
         self::assertSame('Ecommerce examples', $crawler->filter('h1')->text());
         self::assertCount(1, $crawler->filter('button[data-copy-example="ecommerce-model-yaml"][data-copy-format="YAML"]'));
+        self::assertCount(1, $crawler->filter('details[open] #example-enhanced'));
+        self::assertCount(0, $crawler->filter('details[open] #example-anonymous'));
+        self::assertSame('example-enhanced', $crawler->filter('pre code[id^="example-"]')->first()->attr('id'));
+        self::assertSame('Ecommerce purchase JSON', $crawler->filter('details[open] summary')->text());
+        self::assertStringContainsString('explicit analytics consent', $crawler->filter('details[open]')->text());
+        $generated = json_decode((new EventExampleGenerator($this->settings))->exportJson('all', 'ecommerce'), true, flags: JSON_THROW_ON_ERROR);
+        foreach (['anonymous', 'enhanced'] as $mode) {
+            $payload = json_decode($crawler->filter('#example-'.$mode)->text(), true, flags: JSON_THROW_ON_ERROR);
+            self::assertSame($generated['examples'][$mode]['payload'], $payload);
+            self::assertCount(1, $crawler->filter('button[data-copy-example="example-'.$mode.'"]'));
+            self::assertCount(1, $crawler->filter('a[href="/dashboard/data-model/examples/download?mode='.$mode.'&example=ecommerce"]'));
+        }
+        $anonymous = json_decode($crawler->filter('#example-anonymous')->text(), flags: JSON_THROW_ON_ERROR);
+        self::assertInstanceOf(\stdClass::class, $anonymous->eventData);
+        self::assertSame([], get_object_vars($anonymous->eventData));
+        self::assertObjectNotHasProperty('visitorId', $anonymous);
+        self::assertObjectNotHasProperty('sessionId', $anonymous);
         $recommended = Yaml::parse($crawler->filter('#ecommerce-model-yaml')->text(null, false));
         $validated = $this->settings->validate($recommended);
         self::assertNotEmpty($validated['custom_data_properties']);

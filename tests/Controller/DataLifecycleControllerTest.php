@@ -84,7 +84,7 @@ final class DataLifecycleControllerTest extends TestCase
         $twig->expects(self::once())
             ->method('render')
             ->with(
-                'dashboard/data_lifecycle.html.twig',
+                'data_lifecycle/index.html.twig',
                 self::callback(static fn (array $context): bool =>
                     $context['lifecycle_settings'][AnalyticsDataLifecyclePolicy::KEY_ARCHIVE_AFTER_DAYS] === 90
                     && $context['lifecycle_environment_overrides'] === array_fill_keys(self::KEYS, false)
@@ -110,7 +110,7 @@ final class DataLifecycleControllerTest extends TestCase
         $twig->expects(self::once())
             ->method('render')
             ->with(
-                'dashboard/data_lifecycle.html.twig',
+                'data_lifecycle/index.html.twig',
                 self::callback(static fn (array $context): bool =>
                     $context['lifecycle_settings'][AnalyticsDataLifecyclePolicy::KEY_ARCHIVE_AFTER_DAYS] === 90
                     && is_string($context['lifecycle_configuration_error'])

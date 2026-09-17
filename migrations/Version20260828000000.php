@@ -6,7 +6,7 @@ namespace DoctrineMigrations;
 
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
-use Doctrine\DBAL\Platforms\SqlitePlatform;
+use Doctrine\DBAL\Platforms\SQLitePlatform;
 use Doctrine\DBAL\Platforms\SQLServerPlatform;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\Migrations\AbstractMigration;
@@ -76,7 +76,7 @@ SQL, $this->eventDayExpression(), $this->completedDayPredicate()));
             $platform instanceof AbstractMySQLPlatform,
             $platform instanceof PostgreSQLPlatform,
             $platform instanceof SQLServerPlatform => 'CAST(events.created_at AS date)',
-            $platform instanceof SqlitePlatform => 'date(events.created_at)',
+            $platform instanceof SQLitePlatform => 'date(events.created_at)',
             default => 'NULL',
         };
     }
@@ -92,7 +92,7 @@ SQL, $this->eventDayExpression(), $this->completedDayPredicate()));
                 "events.created_at < CAST(CURRENT_TIMESTAMP AT TIME ZONE 'UTC' AS date)",
             $platform instanceof SQLServerPlatform =>
                 'events.created_at < CAST(SYSUTCDATETIME() AS date)',
-            $platform instanceof SqlitePlatform =>
+            $platform instanceof SQLitePlatform =>
                 "events.created_at < date('now')",
             default => '1 = 0',
         };

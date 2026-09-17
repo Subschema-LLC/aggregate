@@ -7,7 +7,6 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const {createRequire} = require('node:module');
 
-const TERSER_VERSION = '5.31.0';
 const PLACEHOLDERS = {
   namespace: '__AGGREGATE_NAMESPACE__',
   internalTrafficDefaults: '__AGGREGATE_INTERNAL_TRAFFIC__',
@@ -20,7 +19,12 @@ function digest(content) {
 }
 
 function minifier(projectDir) {
-  const requireFromProject = createRequire(path.join(projectDir, 'package.json'));
+  const projectPackagePath = path.join(projectDir, 'package.json');
+  const version = JSON.parse(fs.readFileSync(projectPackagePath, 'utf8')).devDependencies?.terser;
+  if (typeof version !== 'string' || !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version)) {
+    throw new Error('Pin devDependencies.terser to an exact x.y.z version in package.json.');
+  }
+  const requireFromProject = createRequire(projectPackagePath);
   let packagePath;
   try {
     packagePath = requireFromProject.resolve('terser/package.json');
@@ -38,24 +42,27 @@ function minifier(projectDir) {
       } catch (error) {}
     }
   }
-  if (!packagePath || JSON.parse(fs.readFileSync(packagePath, 'utf8')).version !== TERSER_VERSION) {
-    throw new Error('Terser ' + TERSER_VERSION + ' is required. Run npm install --ignore-scripts, or install that version on PATH.');
+  if (!packagePath || JSON.parse(fs.readFileSync(packagePath, 'utf8')).version !== version) {
+    throw new Error('Terser ' + version + ' is required. Run npm ci --ignore-scripts, or install that version on PATH.');
   }
   const terser = require(path.dirname(packagePath));
 
-  return async function (source) {
-    const result = await terser.minify(source, {
-      compress: true,
-      mangle: true,
-      ecma: 2018,
-      format: {comments: /^!|@preserve|@license|@cc_on/, inline_script: true}
-    });
-    return result.code.trimEnd() + '\n';
+  return {
+    version,
+    minify: async function (source) {
+      const result = await terser.minify(source, {
+        compress: true,
+        mangle: true,
+        ecma: 2018,
+        format: {comments: /^!|@preserve|@license|@cc_on/, inline_script: true}
+      });
+      return result.code.trimEnd() + '\n';
+    }
   };
 }
 
 async function build({projectDir = path.resolve(__dirname, '..'), outputDir = projectDir, check = false, report = console.log} = {}) {
-  const minify = minifier(projectDir);
+  const {version, minify} = minifier(projectDir);
   const tracker = fs.readFileSync(path.join(projectDir, 'public', 'aggregate.js'), 'utf8');
   let template = tracker;
   for (const [variable, placeholder] of Object.entries(PLACEHOLDERS)) {
@@ -86,7 +93,7 @@ async function build({projectDir = path.resolve(__dirname, '..'), outputDir = pr
     format: 1,
     sourceSha256: digest(tracker),
     templateSha256: digest(minifiedTemplate),
-    minifier: 'terser ' + TERSER_VERSION
+    minifier: 'terser ' + version
   }, null, 2) + '\n');
 
   for (const [relative, content] of outputs) {

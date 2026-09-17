@@ -15,7 +15,7 @@
 <div class="event-examples-page">
     <h1 class="title">{{ example_source == 'ecommerce' ? 'Ecommerce examples' : 'Event examples' }}</h1>
     <p class="subtitle">{% if example_source == 'ecommerce' %}A flat ecommerce starting point with typed properties and money in minor units. This recipe does not change your saved model.{% else %}Synthetic request JSON from the saved data model. No events are read or sent.{% endif %}</p>
-    {% include 'dashboard/_model_navigation.html.twig' with {current_model_page: 'app_event_examples'} %}
+    {% include 'data_model/_navigation.html.twig' with {current_model_page: 'app_event_examples'} %}
     <div class="buttons">
         <a class="button" href="{{ path('app_event_examples') }}"{% if example_source == 'model' %} aria-current="page"{% endif %}>Saved model examples</a>
         <a class="button" href="{{ path('app_event_examples_ecommerce') }}"{% if example_source == 'ecommerce' %} aria-current="page"{% endif %}>Ecommerce recipe</a>
@@ -30,26 +30,46 @@
         <p class="mb-4"><a class="button is-primary" href="{{ path('app_event_examples_download', {example: example_source}) }}">Download examples and consent rules</a></p>
         {% if recommended_model_yaml %}
             <div class="notification is-warning">Review and merge the recommended property definitions into your existing model before using this recipe. Do not replace unrelated model settings. Ecommerce properties require enhanced consent by default.</div>
+        {% endif %}
+
+        {% set example_modes = example_source == 'ecommerce' ? ['enhanced', 'anonymous'] : ['anonymous', 'enhanced'] %}
+        {% for mode in example_modes %}
+            {% set purchase_example = example_source == 'ecommerce' and mode == 'enhanced' %}
+            <details class="box"{% if loop.first %} open{% endif %}>
+                <summary class="title is-4">{% if purchase_example %}Ecommerce purchase JSON{% else %}{{ mode == 'anonymous' ? 'Anonymous collection JSON' : 'Enhanced collection JSON' }}{% endif %}</summary>
+                <p class="mb-3">
+                    {% if purchase_example %}
+                        A complete purchase request body for <code>POST /api/receive</code>, to submit only after explicit analytics consent.
+                        Visitor and session identifiers are fixed synthetic examples; copying <code>"granted"</code> does not obtain consent.
+                    {% elseif mode == 'anonymous' %}
+                        {% if example_source == 'ecommerce' %}
+                            This recipe's ecommerce properties require enhanced consent, so <code>eventData</code> is empty without consent.
+                        {% else %}
+                            Includes only modeled properties allowed without enhanced consent.
+                        {% endif %}
+                        The server generates the UTC hour; there are no visitor or session identifiers.
+                    {% else %}
+                        Includes modeled properties that can be submitted after explicit consent.
+                        Visitor and session identifiers shown here are fixed synthetic examples.
+                    {% endif %}
+                </p>
+                <pre tabindex="0" aria-label="{{ purchase_example ? 'Ecommerce purchase request JSON' : mode|capitalize ~ ' request JSON' }}"><code id="example-{{ mode }}">{{ payloads[mode] }}</code></pre>
+                <div class="buttons mt-3">
+                    <button type="button" class="button" data-copy-example="example-{{ mode }}">Copy {{ purchase_example ? 'purchase' : mode }} JSON</button>
+                    <a class="button is-light" href="{{ path('app_event_examples_download', {mode: mode, example: example_source}) }}">Download {{ purchase_example ? 'purchase' : mode }} example and rules</a>
+                </div>
+            </details>
+        {% endfor %}
+        <p id="example-copy-status" class="help mb-4" role="status" aria-live="polite"></p>
+
+        {% if recommended_model_yaml %}
             <details class="box">
-                <summary class="title is-4">Recommended ecommerce model</summary>
+                <summary class="title is-4">Recommended ecommerce model (YAML)</summary>
                 <p class="mb-3">Money is stored in integer minor units. For USD, <code>4999</code> means $49.99. The currency determines its minor unit. Keep currencies separate in calculations; Float and Double are approximate numbers.</p>
                 <pre tabindex="0" aria-label="Recommended ecommerce YAML"><code id="ecommerce-model-yaml">{{ recommended_model_yaml }}</code></pre>
                 <button type="button" class="button mt-3" data-copy-example="ecommerce-model-yaml" data-copy-format="YAML">Copy recommended YAML</button>
             </details>
         {% endif %}
-
-        {% for mode, json in payloads %}
-            <details class="box"{% if mode == 'anonymous' %} open{% endif %}>
-                <summary class="title is-4">{{ mode == 'anonymous' ? 'Anonymous collection' : 'Enhanced collection' }}</summary>
-                <p class="mb-3">{% if mode == 'anonymous' %}Includes only modeled properties allowed without enhanced consent. The server generates the UTC hour; there are no visitor or session identifiers.{% else %}Includes modeled properties that can be submitted after explicit consent. Visitor and session identifiers shown here are fixed synthetic examples.{% endif %}</p>
-                <pre tabindex="0" aria-label="{{ mode|capitalize }} request JSON"><code id="example-{{ mode }}">{{ json }}</code></pre>
-                <div class="buttons mt-3">
-                    <button type="button" class="button" data-copy-example="example-{{ mode }}">Copy {{ mode }} JSON</button>
-                    <a class="button is-light" href="{{ path('app_event_examples_download', {mode: mode, example: example_source}) }}">Download {{ mode }} example and rules</a>
-                </div>
-            </details>
-        {% endfor %}
-        <p id="example-copy-status" class="help mb-4" role="status" aria-live="polite"></p>
 
         <details class="box">
             <summary class="title is-4">{{ example_source == 'ecommerce' ? 'Recommended property rules' : 'Saved property rules' }} ({{ bundle.properties|length }})</summary>
@@ -79,5 +99,5 @@
 
 {% block javascripts %}
     {{ parent() }}
-    <script>{% include 'dashboard/_copy_examples.js.twig' %}</script>
+    <script>{% include 'event_examples/_copy.js.twig' %}</script>
 {% endblock %}

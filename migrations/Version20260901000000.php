@@ -9,7 +9,7 @@ use Doctrine\DBAL\Platforms\MariaDBPlatform;
 use Doctrine\DBAL\Platforms\MySQL80Platform;
 use Doctrine\DBAL\Platforms\MySQLPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
-use Doctrine\DBAL\Platforms\SqlitePlatform;
+use Doctrine\DBAL\Platforms\SQLitePlatform;
 use Doctrine\DBAL\Platforms\SQLServerPlatform;
 use Doctrine\DBAL\Schema\Comparator;
 use Doctrine\DBAL\Schema\Index;
@@ -592,7 +592,7 @@ SQL, $this->eventDayExpression('events.created_at'), $this->completedDayPredicat
             );
         }
 
-        if ($this->connection->getDatabasePlatform() instanceof SqlitePlatform) {
+        if ($this->connection->getDatabasePlatform() instanceof SQLitePlatform) {
             if ($addColumn) {
                 $columnOptions = $to->getColumn('archived_at')->toArray();
                 $columnOptions['comment'] = '(DC2Type:datetime_immutable)';
@@ -790,7 +790,7 @@ SQL, $this->eventDayExpression('events.created_at'), $this->completedDayPredicat
             $platform instanceof AbstractMySQLPlatform,
             $platform instanceof PostgreSQLPlatform,
             $platform instanceof SQLServerPlatform => sprintf('CAST(%s AS date)', $column),
-            $platform instanceof SqlitePlatform => sprintf('date(%s)', $column),
+            $platform instanceof SQLitePlatform => sprintf('date(%s)', $column),
             default => 'NULL',
         };
     }
@@ -806,7 +806,7 @@ SQL, $this->eventDayExpression('events.created_at'), $this->completedDayPredicat
                 sprintf("%s < date_trunc('hour', CURRENT_TIMESTAMP AT TIME ZONE 'UTC')", $column),
             $platform instanceof SQLServerPlatform =>
                 sprintf('%s < DATEADD(hour, DATEDIFF(hour, 0, SYSUTCDATETIME()), 0)', $column),
-            $platform instanceof SqlitePlatform =>
+            $platform instanceof SQLitePlatform =>
                 sprintf("%s < strftime('%%Y-%%m-%%d %%H:00:00', 'now')", $column),
             default => '1 = 0',
         };
@@ -823,7 +823,7 @@ SQL, $this->eventDayExpression('events.created_at'), $this->completedDayPredicat
                 sprintf("%s < CAST(CURRENT_TIMESTAMP AT TIME ZONE 'UTC' AS date)", $column),
             $platform instanceof SQLServerPlatform =>
                 sprintf('%s < CAST(SYSUTCDATETIME() AS date)', $column),
-            $platform instanceof SqlitePlatform =>
+            $platform instanceof SQLitePlatform =>
                 sprintf("%s < date('now')", $column),
             default => '1 = 0',
         };

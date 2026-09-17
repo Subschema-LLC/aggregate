@@ -13,7 +13,7 @@ services:
     environment:
       - APP_ENV=${APP_ENV:-dev}
       - APP_DEBUG=${APP_DEBUG:-1}
-      - DATABASE_URL=${DOCKER_DATABASE_URL:-mysql://${MYSQL_USER:-app}:${MYSQL_PASSWORD:-!ChangeMe!}@database:3306/${MYSQL_DATABASE:-aggregate_analytics}?serverVersion=${MYSQL_VERSION:-8.0}}
+      - DATABASE_URL=${DOCKER_DATABASE_URL:-mysql://${MYSQL_USER:-app}:${MYSQL_PASSWORD:-!ChangeMe!}@database:3306/${MYSQL_DATABASE:-aggregate_analytics}?serverVersion=${MYSQL_SERVER_VERSION:-8.0.0}}
     depends_on:
       asset-compile:
         condition: service_completed_successfully
@@ -36,7 +36,7 @@ services:
     environment:
       - APP_ENV=${APP_ENV:-dev}
       - APP_DEBUG=${APP_DEBUG:-1}
-      - DATABASE_URL=${DOCKER_DATABASE_URL:-mysql://${MYSQL_USER:-app}:${MYSQL_PASSWORD:-!ChangeMe!}@database:3306/${MYSQL_DATABASE:-aggregate_analytics}?serverVersion=${MYSQL_VERSION:-8.0}}
+      - DATABASE_URL=${DOCKER_DATABASE_URL:-mysql://${MYSQL_USER:-app}:${MYSQL_PASSWORD:-!ChangeMe!}@database:3306/${MYSQL_DATABASE:-aggregate_analytics}?serverVersion=${MYSQL_SERVER_VERSION:-8.0.0}}
     command: php -d variables_order=EGPCS bin/console messenger:consume async -vv
     restart: unless-stopped
 
