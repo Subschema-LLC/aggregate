@@ -42,7 +42,7 @@ APP_ENV=prod
 APP_DEBUG=0
 APP_SECRET=generate-with-openssl-rand-hex-32
 TRUSTED_PROXIES=""
-DATABASE_URL="mysql://user:pass@localhost:3306/dbname?serverVersion=8.0"
+DATABASE_URL="mysql://user:pass@localhost:3306/dbname?serverVersion=8.0.0"
 MESSENGER_TRANSPORT_DSN=sync://
 MAILER_DSN=null://null
 ```
@@ -58,10 +58,14 @@ MESSENGER_TRANSPORT_DSN=doctrine://default
 Connection string formats for `DATABASE_URL` (see [Database Guide](DATABASE.md)):
 
 - PostgreSQL: `postgresql://user:pass@host:5432/dbname?serverVersion=16`
-- MySQL: `mysql://user:pass@host:3306/dbname?serverVersion=8.0`
+- MySQL: `mysql://user:pass@host:3306/dbname?serverVersion=8.0.0`
 - MariaDB: `mysql://user:pass@host:3306/dbname?serverVersion=11.4.0-MariaDB`
 - SQL Server: `sqlsrv://user:pass@host:1433/dbname?serverVersion=2022`
 - SQLite: `sqlite:///%kernel.project_dir%/var/data.db`
+
+MySQL and MariaDB version hints must include the patch component. See the
+[DBAL 4 upgrade notes](DATABASE.md#upgrade-to-doctrine-dbal-4) before updating an
+existing installation that uses a short version hint.
 
 ## Website domains
 

@@ -145,8 +145,8 @@ case $DB_CHOICE in
         read -p "MySQL username: " MY_USER
         read -sp "MySQL password: " MY_PASS
         echo ""
-        read -p "MySQL version [8.0]: " MY_VER
-        MY_VER=${MY_VER:-8.0}
+        read -p "MySQL full version (major.minor.patch) [8.0.0]: " MY_VER
+        MY_VER=${MY_VER:-8.0.0}
         DB_URL="mysql://$MY_USER:$MY_PASS@$MY_HOST:$MY_PORT/$MY_DB?serverVersion=$MY_VER"
         ;;
     4)
@@ -158,9 +158,9 @@ case $DB_CHOICE in
         read -p "MariaDB username: " MA_USER
         read -sp "MariaDB password: " MA_PASS
         echo ""
-        read -p "MariaDB version [11.4]: " MA_VER
-        MA_VER=${MA_VER:-11.4}
-        DB_URL="mysql://$MA_USER:$MA_PASS@$MA_HOST:$MA_PORT/$MA_DB?serverVersion=mariadb-$MA_VER"
+        read -p "MariaDB numeric version (major.minor.patch) [11.4.0]: " MA_VER
+        MA_VER=${MA_VER:-11.4.0}
+        DB_URL="mysql://$MA_USER:$MA_PASS@$MA_HOST:$MA_PORT/$MA_DB?serverVersion=$MA_VER-MariaDB"
         ;;
     5)
         read -p "SQL Server host [localhost]: " MS_HOST

@@ -35,12 +35,13 @@ final class ReportingViewManagerTest extends TestCase
 
         self::assertSame(ReportingViewManager::VIEW_NAMES, array_keys($sql));
         foreach ($sql as $name => $definition) {
-            $qualifiedName = $platform instanceof SQLitePlatform ? 'main.'.$name : $name;
-            self::assertStringContainsString($verb.' VIEW '.$platform->quoteIdentifier($qualifiedName), $definition);
+            $qualifiedName = $platform instanceof SQLitePlatform
+                ? '"main"."'.$name.'"' : $platform->quoteSingleIdentifier($name);
+            self::assertStringContainsString($verb.' VIEW '.$qualifiedName, $definition);
             self::assertStringContainsString($function, $definition);
             self::assertStringContainsString('events.url AS page_path', $definition);
             self::assertStringContainsString('events.archived_at', $definition);
-            self::assertStringContainsString(' AS '.$platform->quoteIdentifier('campaign'), $definition);
+            self::assertStringContainsString(' AS '.$platform->quoteSingleIdentifier('campaign'), $definition);
             self::assertStringNotContainsString('events.visitor_id', $definition);
             self::assertStringNotContainsString('events.session_id', $definition);
             self::assertStringNotContainsString('analytics_archive_', $definition);
@@ -322,7 +323,7 @@ PY]);
         ])->previewSql();
 
         foreach ($sql as $definition) {
-            self::assertLessThan(strpos($definition, ' AS '.$platform->quoteIdentifier('amount_number')), strpos($definition, ' AS '.$platform->quoteIdentifier('amount_text')));
+            self::assertLessThan(strpos($definition, ' AS '.$platform->quoteSingleIdentifier('amount_number')), strpos($definition, ' AS '.$platform->quoteSingleIdentifier('amount_text')));
             self::assertStringContainsString('9007199254740991', $definition);
             self::assertStringNotContainsString('bi_anonymous_', $definition);
         }

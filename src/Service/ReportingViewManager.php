@@ -192,10 +192,10 @@ class ReportingViewManager
             'events.archived_at',
         ];
         foreach ($this->settings->reportingColumns() as $column => $key) {
-            $fields[] = $this->scalarExpression($platform, $key).' AS '.$platform->quoteIdentifier($column);
+            $fields[] = $this->scalarExpression($platform, $key).' AS '.$platform->quoteSingleIdentifier($column);
         }
         foreach ($this->settings->numericReportingColumns() as $column => $definition) {
-            $fields[] = $this->numericExpression($platform, $definition['property'], $definition['type']).' AS '.$platform->quoteIdentifier($column);
+            $fields[] = $this->numericExpression($platform, $definition['property'], $definition['type']).' AS '.$platform->quoteSingleIdentifier($column);
         }
         $select = "SELECT\n    ".implode(",\n    ", $fields)."\nFROM events\nWHERE ";
 
@@ -317,12 +317,12 @@ class ReportingViewManager
     private function viewStatements(AbstractPlatform $platform, string $name, string $select): array
     {
         if ($platform instanceof SQLitePlatform) {
-            $name = $platform->quoteIdentifier('main.'.$name);
+            $name = $platform->quoteSingleIdentifier('main').'.'.$platform->quoteSingleIdentifier($name);
 
             return ['DROP VIEW IF EXISTS '.$name, 'CREATE VIEW '.$name." AS\n".$select];
         }
 
-        $name = $platform->quoteIdentifier($name);
+        $name = $platform->quoteSingleIdentifier($name);
         $verb = $platform instanceof SQLServerPlatform ? 'CREATE OR ALTER' : 'CREATE OR REPLACE';
 
         return [$verb.' VIEW '.$name." AS\n".$select];
@@ -362,7 +362,7 @@ class ReportingViewManager
                 throw new \RuntimeException('The existing reporting view definition could not be verified.');
             }
             foreach ($existing as $column) {
-                $pattern = '/\\bAS\\s+(INTEGER|REAL)\\)\\s+AS\\s+'.preg_quote($platform->quoteIdentifier($column), '/').'(?=[,\\s]|$)/i';
+                $pattern = '/\\bAS\\s+(INTEGER|REAL)\\)\\s+AS\\s+'.preg_quote($platform->quoteSingleIdentifier($column), '/').'(?=[,\\s]|$)/i';
                 $types[$column] = preg_match($pattern, $sql, $matches) === 1
                     ? (strtoupper($matches[1]) === 'INTEGER' ? 'integer' : 'double') : 'text';
             }
