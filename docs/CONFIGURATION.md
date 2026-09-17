@@ -6,6 +6,7 @@ Use this guide for application settings and runtime overrides. Run commands from
 
 - [Environment files](#environment-files)
 - [Application settings](#application-settings)
+- [Feature flags](#feature-flags)
 - [Organization traffic](#organization-traffic)
 - [Custom data and UTM parameters](#custom-data-and-utm-parameters)
 - [Archiving and retention](#archiving-and-retention)
@@ -18,7 +19,7 @@ Use this guide for application settings and runtime overrides. Run commands from
 Configuration has separate sources of truth:
 
 - **Environment files and server variables:** Symfony infrastructure — database connection, message queue, app secret, and explicit proxy trust. Keep deployment values in untracked local files or server configuration.
-- **`config/aggregate.yaml`** (app-level, example committed): Analytics-specific settings — application branding, privacy measurement controls, internal traffic markers and sharing token, lifecycle policy, rate limit, JS namespace, dashboard toggle.
+- **`config/aggregate.yaml`** (app-level, example committed): Analytics-specific settings — application branding, privacy measurement controls, internal traffic markers and sharing token, lifecycle policy, rate limit, JS namespace, dashboard toggle, and deployment-wide feature flags.
 - **`config/goals.yaml`** (app-level, committed): Stable conversion-goal codes and whether each is enabled for anonymous collection.
 - **`config/navigation.yaml`** (app-level, committed): Main navigation labels, icons, and link targets.
 - **`config/websites.yaml`** (untracked): Website names, registered domains, and public ingestion tokens, managed through the dashboard or `app:create-website`.
@@ -134,6 +135,27 @@ Dashboard changes take effect immediately because all three BI views read this r
 
 When upgrading from a version that mirrored these values, the existing database row keeps the last applied thresholds. Remove stale `anonymous_min_cell_count` and `anonymous_geo_min_cell_count` YAML/environment settings after every application instance is upgraded; the new code ignores them.
 
+## Feature flags
+
+Administrators use **Feature flags** at `/dashboard/feature-flags`, or operators
+edit the active YAML:
+
+```yaml
+feature_flags:
+  updates:
+    enabled: true
+    hide_from_navigation: false
+```
+
+Updates is enabled and visible by default. Disabling it blocks update routes and
+commands; hiding removes navigation entries independently of availability.
+Disabled, visible features appear without a clickable link. These settings have
+no uppercase environment-variable overrides. Use YAML booleans; malformed or
+unregistered flag settings make flagged features unavailable. An active
+environment's entire flag mapping replaces the shared mapping. See the
+[feature flag guide](FEATURE-FLAGS.md) for precedence, headless operation, and
+developer/contributor instructions.
+
 ## Organization traffic
 
 The default browser marker is `orgInternalTraffic=true`. Configure `internal_traffic_storage`, `internal_traffic_name`, `internal_traffic_value`, `internal_traffic_cookie_domain`, and `internal_traffic_share_token` in the active YAML environment, or use the Organization traffic admin page. A match stores a boolean in the existing event JSON under the configured marker name; no migration is needed.
@@ -166,6 +188,11 @@ php bin/console app:analytics:maintain
 Archiving creates private, unsuppressed aggregate cells and marks the source rows as archived; it does not itself delete raw rows. Retention deletes raw anonymous, raw enhanced, and archived aggregate data only after their configured periods. Backups, BI extracts, queues, failed messages, logs, and replicas need separate retention controls.
 
 ## Main navigation
+
+Associate links with a registered flag using `feature: updates` (or another
+registered key). The shared template honors its availability and
+`hide_from_navigation` setting for each reference. See
+[feature navigation integration](FEATURE-FLAGS.md#add-a-feature-as-a-developer).
 
 The `brand` entry controls where the branded identity links. Its `label` remains a backward-compatible name/wordmark fallback for existing deployments. Runtime identity, logo, theme-color, and font settings live in `config/aggregate.yaml` (or their environment overrides), so UI changes do not require rebuilding navigation configuration. Edit `items` and `account` to manage the remaining authenticated-navbar links. Each link defines exactly one Symfony `route` name (for example, `app_how_it_works`) or literal `url`; `label` is required, while `icon`, `route_parameters`, and an optional security `role` are supported. The `items` list may be empty. After changing navigation in production, clear the production cache so the container and Twig globals are rebuilt.
 
@@ -236,7 +263,7 @@ window.Company1Analytics.emit('signup', {plan: 'pro'});
 
 ### GitHub update checks
 
-The admin **Updates** page and `app:updates:check` use the public
+When the `updates` feature flag is enabled, the admin **Updates** page and `app:updates:check` use the public
 `Subschema-LLC/aggregate` repository. Set `updates_branch: master` in the active
 YAML environment to select the upstream branch; `master` is also the default.
 This setting has no uppercase environment-variable override. Git installations

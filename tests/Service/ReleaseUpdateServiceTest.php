@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Service;
 
 use App\Service\AggregateConfigLoader;
+use App\Service\FeatureFlags;
 use App\Service\ApplicationUpdateService;
 use App\Service\InstalledRelease;
 use App\Service\ReleaseMetadata;
@@ -247,8 +248,9 @@ final class ReleaseUpdateServiceTest extends TestCase
         self::assertSame('error', $this->service($client, branch: '../master')->check()['state']);
         $config = $this->createMock(AggregateConfigLoader::class);
         $config->method('assertHealthy')->willThrowException(new \RuntimeException('Aggregate configuration YAML is invalid.'));
-        $service = new ReleaseUpdateService(new InstalledRelease($this->directory), $client, $this->cache, $this->clock, new UpdateSettings($config));
-        self::assertSame('Aggregate configuration YAML is invalid.', $service->check()['message']);
+        $service = new ReleaseUpdateService(new InstalledRelease($this->directory), $client, $this->cache, $this->clock, new UpdateSettings($config), new FeatureFlags($config));
+        self::assertSame('disabled', $service->check()['state']);
+        self::assertStringContainsString('configuration is invalid', $service->check()['message']);
         self::assertSame(0, $client->getRequestsCount());
     }
 
@@ -426,7 +428,7 @@ final class ReleaseUpdateServiceTest extends TestCase
         $config = $this->createMock(AggregateConfigLoader::class);
         $config->method('all')->willReturn(['updates_branch' => $branch]);
 
-        return new ReleaseUpdateService(new InstalledRelease($this->directory), $client, $this->cache, $this->clock, new UpdateSettings($config), $token);
+        return new ReleaseUpdateService(new InstalledRelease($this->directory), $client, $this->cache, $this->clock, new UpdateSettings($config), new FeatureFlags($config), $token);
     }
 
     private function writeInstalled(string $version = '1.0.0', ?string $commit = null): void

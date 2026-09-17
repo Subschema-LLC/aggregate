@@ -139,12 +139,22 @@ class AggregateConfigLoader implements ResetInterface
             return;
         }
 
-        foreach (array_keys($values) as $key) {
-            if (!is_string($key) || $key === '') {
-                throw new \InvalidArgumentException('Configuration keys must be non-empty strings.');
-            }
-        }
+        $this->validateUpdateKeys($values);
+        $this->updateMany(static fn (array $current): array => $values);
+    }
 
+    /**
+     * Derive top-level replacements from the current effective configuration.
+     *
+     * The callback runs after rereading the file under its exclusive lock, so
+     * partial updates to a nested mapping preserve other writers' changes.
+     * Return an empty array to leave the file unchanged. The callback must not
+     * write configuration or try to acquire this file's lock again.
+     *
+     * @param callable(array<string, mixed>): array<string, mixed> $updater
+     */
+    public function updateMany(callable $updater): void
+    {
         $this->load();
         $this->assertHealthy();
 
@@ -176,12 +186,8 @@ class AggregateConfigLoader implements ResetInterface
                 throw new \RuntimeException('The application configuration root must be a mapping.');
             }
 
-            if ($configFile === $envFile) {
-                foreach ($values as $key => $value) {
-                    $data[$key] = $value;
-                }
-                $effectiveConfig = $data;
-            } elseif (array_key_exists('environments', $data)) {
+            $nestedEnvironment = $configFile !== $envFile && array_key_exists('environments', $data);
+            if ($nestedEnvironment) {
                 if (!is_array($data['environments'])) {
                     throw new \RuntimeException('The application environments configuration must be a mapping.');
                 }
@@ -191,20 +197,31 @@ class AggregateConfigLoader implements ResetInterface
                     throw new \RuntimeException('The active application environment configuration must be a mapping.');
                 }
 
-                foreach ($values as $key => $value) {
-                    $environmentData[$key] = $value;
-                }
-                $data['environments'][$this->environment] = $environmentData;
-
                 $effectiveConfig = $data;
                 unset($effectiveConfig['environments']);
                 $effectiveConfig = array_merge($effectiveConfig, $environmentData);
             } else {
-                foreach ($values as $key => $value) {
-                    $data[$key] = $value;
-                }
                 $effectiveConfig = $data;
             }
+
+            if (!$this->hasValidIngestionPrivacySettings($effectiveConfig)) {
+                throw new \RuntimeException('Application configuration is invalid.');
+            }
+            $values = $updater($effectiveConfig);
+            if (!is_array($values)) {
+                throw new \InvalidArgumentException('Configuration updates must return a mapping.');
+            }
+            $this->validateUpdateKeys($values);
+            if ($values === []) {
+                return;
+            }
+
+            if ($nestedEnvironment) {
+                $data['environments'][$this->environment] = array_replace($environmentData, $values);
+            } else {
+                $data = array_replace($data, $values);
+            }
+            $effectiveConfig = array_replace($effectiveConfig, $values);
 
             $yaml = Yaml::dump($data, 4, 2);
             $writeFailure = null;
@@ -231,6 +248,15 @@ class AggregateConfigLoader implements ResetInterface
         } finally {
             @flock($configHandle, LOCK_UN);
             fclose($configHandle);
+        }
+    }
+
+    private function validateUpdateKeys(array $values): void
+    {
+        foreach (array_keys($values) as $key) {
+            if (!is_string($key) || $key === '') {
+                throw new \InvalidArgumentException('Configuration keys must be non-empty strings.');
+            }
         }
     }
 
@@ -334,14 +360,19 @@ class AggregateConfigLoader implements ResetInterface
         return $this->getBoolWithEnvFallback('dashboard_enabled', true);
     }
 
-    private function hasValidIngestionPrivacySettings(): bool
+    private function hasValidIngestionPrivacySettings(?array $config = null): bool
     {
-        $enabled = $this->getWithEnvFallback('anonymous_tracking_enabled', true);
+        $config ??= $this->all();
+        $enabled = $this->hasEnvironmentOverride('anonymous_tracking_enabled')
+            ? $this->getWithEnvFallback('anonymous_tracking_enabled', true)
+            : ($config['anonymous_tracking_enabled'] ?? true);
         if (!$this->isBooleanLike($enabled)) {
             return false;
         }
 
-        $excludedPaths = $this->getWithEnvFallback('anonymous_excluded_paths', []);
+        $excludedPaths = $this->hasEnvironmentOverride('anonymous_excluded_paths')
+            ? $this->getWithEnvFallback('anonymous_excluded_paths', [])
+            : ($config['anonymous_excluded_paths'] ?? []);
         if (is_string($excludedPaths)) {
             $excludedPaths = $excludedPaths === '' ? [] : explode(',', $excludedPaths);
         }

@@ -4,6 +4,7 @@ This roadmap describes the current direction of Aggregate. Scope and priorities 
 
 ## Planned work
 
+- **Targeted beta feature rollout.** Extend the available [deployment-wide feature flags](docs/FEATURE-FLAGS.md) to selected websites or administrators. Targeting must preserve authorization and privacy enforcement; anonymous visitors must not acquire experiment identifiers.
 - **Apply verified release packages automatically.** Signed production ZIPs, release discovery, and offline package verification are available. Applying an update still requires the [manual deployment steps](docs/RELEASES.md#install-or-deploy-a-verified-package). The next phase needs a resumable update job, maintenance and worker coordination, preservation of configuration and data, migrations, activation, health checks, and separate recovery procedures for application files and the database.
 - **Website-specific configuration and data models.** Allow collection settings and custom-property models to vary by registered website. These settings currently use the deployment's active aggregate YAML configuration; website registration already manages domains and ingestion tokens separately. See the [configuration reference](docs/CONFIGURATION.md) and [data model guide](docs/DATA-MODEL.md) for current behavior.
 - **UI Enhancements** We need to improve the user interface for better usability and accessibility. This also includes organization and content in addition to look and feel.
@@ -12,9 +13,11 @@ This roadmap describes the current direction of Aggregate. Scope and priorities 
 - **MCP Spec / Server** Add easy configuration for MCPs to use the data model and views without a BI tool.
 - **Sample Python Notebooks for AI Ready Data** Provide sample Python notebooks that demonstrate how to use the data model and views for AI-ready data analysis and charts without a BI tool.
 - **Better Default Logo** Better logo for aggregate.
+- **Email Client Integration** Develop an email client integration that allows users to easily send emails with embedded data from the platform. Support Postmark and Sendgrid to start.
 
 ## Available foundations
 
+- [Feature flags](docs/FEATURE-FLAGS.md), with shared YAML/admin UI settings, server and CLI enforcement, and independent navigation visibility. Updates is the first registered capability; developer and contributor guidance explains how to add more.
 - [Organization traffic markers](docs/PRIVACY-COMPLIANCE.md#organization-traffic), with YAML/UI settings and shareable browser setup. Filtering uses retained event JSON; grouped BI views and archives do not retain the marker.
 - [Custom data models](docs/DATA-MODEL.md), including UTM/query mappings, per-property consent settings, downloadable YAML, and private reporting columns. All UTMs require consent by default; anonymous attribution should use at most broad `utm_medium` values, with documented warnings for overrides.
 - [Optional JavaScript minification](docs/JS-BUILD.md) for tracker, organization-marker, and drop-in scripts.

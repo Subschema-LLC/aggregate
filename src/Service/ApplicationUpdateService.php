@@ -24,6 +24,7 @@ class ApplicationUpdateService
         private readonly HttpClientInterface $httpClient,
         private readonly CacheInterface $cache,
         private readonly ClockInterface $clock,
+        private readonly FeatureFlags $features,
         private readonly string $githubToken = '',
         private readonly ?UpdateSettings $settings = null,
         private readonly ?ReleaseUpdateService $releases = null,
@@ -46,6 +47,13 @@ class ApplicationUpdateService
             'message' => '',
             'compare_url' => null,
         ];
+
+        if (!$this->features->isEnabled('updates')) {
+            return array_replace($result, [
+                'state' => 'disabled',
+                'message' => 'Updates are disabled by feature_flags.updates.enabled or the feature flag configuration is invalid.',
+            ]);
+        }
 
         // Archive installations can live inside an unrelated parent repository.
         // Their own metadata takes precedence unless this root has its own .git.
@@ -154,6 +162,8 @@ class ApplicationUpdateService
      */
     public function pull(): array
     {
+        $this->features->assertEnabled('updates');
+
         if ($this->isReleaseInstallation()) {
             throw new \RuntimeException('This installation uses a release package. Download and verify a newer package and follow DEPLOYMENT.md#updates; Git source pulls are unavailable for packaged installations.');
         }
