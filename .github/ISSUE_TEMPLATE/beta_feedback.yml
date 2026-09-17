@@ -1,0 +1,68 @@
+name: Beta feedback
+description: Share a beta evaluation, installation result, or usability feedback.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for trying Aggregate. Successful test reports are useful too. Follow the [beta testing guide](https://github.com/Subschema-LLC/aggregate/blob/development/docs/BETA-TESTING.md) and identify the commit you tested.
+
+        Report suspected vulnerabilities privately using [SECURITY.md](https://github.com/Subschema-LLC/aggregate/blob/master/SECURITY.md). Use synthetic examples; do not post production events, database dumps, credentials, tokens, connection strings, identifying URLs, or other personal data.
+  - type: input
+    id: version
+    attributes:
+      label: Aggregate version or full commit
+      description: Use git rev-parse HEAD for a source checkout, or the installed version from release.json for an official ZIP. Link the beta candidate or promotion PR if applicable.
+    validations:
+      required: true
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Installation method
+      options:
+        - Native source checkout
+        - Docker Compose
+        - GitHub Release ZIP
+        - Other or unsure
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment tested
+      description: Give versions and settings, not connection strings or private configuration.
+      placeholder: |
+        PHP and PDO driver:
+        Database engine/version:
+        Operating system or hosting:
+        Browser/version, if relevant:
+        Dashboard enabled or disabled:
+        Sync or async transport:
+    validations:
+      required: true
+  - type: textarea
+    id: scenarios
+    attributes:
+      label: Scenarios and results
+      description: Mark each scenario you attempted pass, fail, or not tested. Include successes as well as failures; you do not need to complete the whole checklist.
+      placeholder: |
+        Fresh installation:
+        Consent unknown/rejected/granted/withdrawn:
+        Collection disabled or excluded paths:
+        Reporting views:
+        Headless operation:
+        Administration and accessibility:
+        Updates or recovery, if tested:
+    validations:
+      required: true
+  - type: textarea
+    id: feedback
+    attributes:
+      label: What worked or needs improvement?
+      description: Describe confusing instructions, missing context, usability problems, or a successful workflow. For failures, include expected versus actual behavior and a small synthetic reproduction. Open separate bug reports for unrelated defects.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Redacted diagnostics or screenshots
+      description: Optional. Remove credentials, tokens, personal data, identifying URLs, and private paths before posting.

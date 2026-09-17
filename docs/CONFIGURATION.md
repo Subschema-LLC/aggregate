@@ -6,6 +6,7 @@ Use this guide for application settings and runtime overrides. Run commands from
 
 - [Environment files](#environment-files)
 - [Application settings](#application-settings)
+- [Administration pages](#administration-pages)
 - [Feature flags](#feature-flags)
 - [Organization traffic](#organization-traffic)
 - [Custom data and UTM parameters](#custom-data-and-utm-parameters)
@@ -164,11 +165,11 @@ See [organization traffic](PRIVACY-COMPLIANCE.md#organization-traffic) for YAML 
 
 ## Custom data and UTM parameters
 
-Use **Data model** at `/dashboard/data-model` to define properties, whitelist selected keys for anonymous collection, configure URL-parameter aliases, discover observed keys, download YAML, and regenerate private reporting views. These mappings use active-environment precedence; uppercase environment-variable overrides are not supported for the model.
+Use **Collection → Data model** at `/dashboard/data-model` to define properties, opt into scalar types, whitelist selected keys for anonymous collection, and configure URL-parameter aliases. Separate linked pages provide observed-key discovery, saved-model examples with copy/download, and private reporting view regeneration. These mappings use active-environment precedence; uppercase environment-variable overrides are not supported for the model.
 
 Standard `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`, and `utm_id` map to properties with the same names and require enhanced consent by default. For anonymous attribution, prefer only `utm_medium` with broad channel values. This advice is overridable: select **Allow without consent** or set `consent_required: false` for any property. Detailed campaign data may contain search text or identifiers, and even medium values require review; the UI and [data model guide](DATA-MODEL.md) document this warning.
 
-The guide includes complete YAML examples, many-to-one mappings, precedence, validation, and `app:analytics:views:regenerate`. Saving changes future collection; explicit regeneration applies reporting columns to `analytics_custom_*` views over retained raw events. Existing grouped BI views and archives retain their contracts.
+The guide includes complete YAML examples, many-to-one mappings, strict optional value types, additive numeric columns, and `app:analytics:views:regenerate`. Saving changes future collection; explicit regeneration applies reporting columns to `analytics_custom_*` views over retained raw events. Existing grouped BI views and archives retain their contracts. Generate synthetic JSON through the UI or `app:analytics:examples`; the [event examples guide](EVENT-EXAMPLES.md) includes the flat ecommerce recipe and numeric calculations.
 
 An optional [JavaScript minification build](JS-BUILD.md) produces the tracker and drop-in artifacts. Request `/aggregate.js?min=1` to use the built tracker with current public configuration; missing or stale builds fall back to configured source.
 
@@ -194,7 +195,61 @@ registered key). The shared template honors its availability and
 `hide_from_navigation` setting for each reference. See
 [feature navigation integration](FEATURE-FLAGS.md#add-a-feature-as-a-developer).
 
-The `brand` entry controls where the branded identity links. Its `label` remains a backward-compatible name/wordmark fallback for existing deployments. Runtime identity, logo, theme-color, and font settings live in `config/aggregate.yaml` (or their environment overrides), so UI changes do not require rebuilding navigation configuration. Edit `items` and `account` to manage the remaining authenticated-navbar links. Each link defines exactly one Symfony `route` name (for example, `app_how_it_works`) or literal `url`; `label` is required, while `icon`, `route_parameters`, and an optional security `role` are supported. The `items` list may be empty. After changing navigation in production, clear the production cache so the container and Twig globals are rebuilt.
+The `brand` entry controls where the branded identity links. Its `label` remains a backward-compatible name/wordmark fallback for existing deployments. Runtime identity, logo, theme-color, and font settings live in `config/aggregate.yaml` (or their environment overrides), so UI changes do not require rebuilding navigation configuration. Edit `items` and `account` to manage the remaining authenticated-navbar links. Each link defines exactly one Symfony `route` name (for example, `app_how_it_works`) or literal `url`; `label` is required, while `icon`, `route_parameters`, and an optional security `role` are supported. Existing flat configurations and an empty `items` list remain supported.
+
+Top-level items can instead group links under `children`. A group has a label
+and optional icon/role/feature, with no route or URL of its own:
+
+```yaml
+parameters:
+  app.main_navigation:
+    brand: { label: 'Analytics', route: app_home }
+    items:
+      - label: Collection
+        role: ROLE_ADMIN
+        children:
+          - { label: 'Data model', route: app_data_model, role: ROLE_ADMIN }
+          - { label: 'Event examples', route: app_event_examples, role: ROLE_ADMIN }
+      - { label: Documentation, route: app_how_it_works }
+    account:
+      user_icon: 'fas fa-user'
+      logout: { label: Logout, route: app_logout }
+```
+
+One submenu level is supported, with at most 32 top-level entries and 32 children
+per group. Parent and child role/feature restrictions both apply. Hidden or
+inaccessible children are removed before empty groups disappear; a disabled
+visible group makes its children unavailable. Invalid entries, executable URLs,
+and missing enabled routes are omitted. Local/relative/fragment and HTTP(S)
+destinations are supported. Application logout links retain CSRF protection.
+
+Submenus use native disclosures that work with keyboard, touch, and without
+JavaScript. Navigation is presentation only: it cannot grant access to routes.
+After changing navigation in production, clear the production cache so the
+container and Twig globals are rebuilt.
+
+## Administration pages
+
+The default navigation separates collection, reporting configuration, and
+administration. Each settings page loads the data needed for its own task.
+
+| Page | Route | Purpose |
+| --- | --- | --- |
+| Websites | `/dashboard` | Website registrations and expandable integration snippets |
+| General settings | `/dashboard/settings` | Application host, tracker namespace, ingestion rate limit |
+| Branding | `/dashboard/branding` | Identity, logos, colors, typography |
+| Collection controls | `/dashboard/collection` | Collection switch, exclusions, optional local geography |
+| BI disclosure | `/dashboard/privacy` | Database-backed event and geography thresholds |
+| Users | `/dashboard/users` | User creation and password administration |
+| Data model | `/dashboard/data-model` | Properties, types, consent, query mappings |
+| Event examples | `/dashboard/data-model/examples` | Synthetic JSON generation, copy, download, and ecommerce recipe |
+| Observed properties | `/dashboard/data-model/discovery` | Explicit bounded metadata discovery |
+| Reporting views | `/dashboard/data-model/reporting` | Saved SQL preview and explicit regeneration |
+
+Settings, users, and model pages require an administrator. Existing POST paths
+remain available and return to the page that owns the form. The general-settings
+save endpoint now also requires an administrator. Dashboard-disabled deployments
+omit these UI routes while keeping shared YAML services and CLI commands.
 
 ## Conversion goals
 

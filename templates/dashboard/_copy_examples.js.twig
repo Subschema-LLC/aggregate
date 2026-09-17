@@ -1,0 +1,32 @@
+(function () {
+    var status = document.getElementById('example-copy-status');
+    document.querySelectorAll('[data-copy-example]').forEach(function (button) {
+        button.addEventListener('click', async function () {
+            var source = document.getElementById(button.dataset.copyExample);
+            if (!source || !status) return;
+            var text = source.textContent;
+            var format = button.dataset.copyFormat || 'JSON';
+            button.disabled = true;
+            try {
+                if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error('Clipboard unavailable');
+                await navigator.clipboard.writeText(text);
+                status.textContent = format + ' copied.';
+            } catch (_) {
+                // Keep a usable selection when browser permissions or a non-HTTPS
+                // deployment prevent clipboard access. Never copy rendered HTML.
+                var selection = window.getSelection();
+                var range = document.createRange();
+                range.selectNodeContents(source);
+                if (selection) {
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                }
+                status.textContent = selection
+                    ? 'Automatic copying is unavailable. The ' + format + ' is selected; use your browser’s Copy command.'
+                    : 'Automatic copying is unavailable. Select the ' + format + ' and use your browser’s Copy command.';
+            } finally {
+                button.disabled = false;
+            }
+        });
+    });
+}());

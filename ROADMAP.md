@@ -1,22 +1,74 @@
 # Roadmap
 
-This roadmap describes the current direction of Aggregate. Scope and priorities may change; these items have no promised release dates. Discuss proposals in [GitHub issues](https://github.com/Subschema-LLC/aggregate/issues) before starting a substantial contribution, and follow the [contribution guide](CONTRIBUTING.md).
+Aggregate's next milestone is a public beta that people can install, evaluate,
+and contribute to with clear expectations. Prioritize trustworthy collection,
+repeatable operation, and useful documentation over adding features. These
+items have no promised release dates; scope and priorities may change with
+[beta feedback](docs/BETA-TESTING.md).
 
-## Planned work
+Discuss substantial proposals in
+[GitHub issues](https://github.com/Subschema-LLC/aggregate/issues) before starting,
+and follow the [contribution guide](CONTRIBUTING.md). Maintainers track completion
+and evidence in issues and promotion PRs. A roadmap entry is planned work, not
+an assertion that a release gate has passed.
 
-- **Targeted beta feature rollout.** Extend the available [deployment-wide feature flags](docs/FEATURE-FLAGS.md) to selected websites or administrators. Targeting must preserve authorization and privacy enforcement; anonymous visitors must not acquire experiment identifiers.
-- **Apply verified release packages automatically.** Signed production ZIPs, release discovery, and offline package verification are available. Applying an update still requires the [manual deployment steps](docs/RELEASES.md#install-or-deploy-a-verified-package). The next phase needs a resumable update job, maintenance and worker coordination, preservation of configuration and data, migrations, activation, health checks, and separate recovery procedures for application files and the database.
-- **Website-specific configuration and data models.** Allow collection settings and custom-property models to vary by registered website. These settings currently use the deployment's active aggregate YAML configuration; website registration already manages domains and ingestion tokens separately. See the [configuration reference](docs/CONFIGURATION.md) and [data model guide](docs/DATA-MODEL.md) for current behavior.
-- **UI Enhancements** We need to improve the user interface for better usability and accessibility. This also includes organization and content in addition to look and feel.
-- **Generate example JSON structures for events based on the data model.** This will help users understand the structure of events and how to format them correctly when implementing.
-- **Headless for AI Ready Data** Consider documentation and features that make the views AI ready for MCPs and data analysis and charts without a BI tool.
-- **MCP Spec / Server** Add easy configuration for MCPs to use the data model and views without a BI tool.
-- **Sample Python Notebooks for AI Ready Data** Provide sample Python notebooks that demonstrate how to use the data model and views for AI-ready data analysis and charts without a BI tool.
-- **Better Default Logo** Better logo for aggregate.
-- **Email Client Integration** Develop an email client integration that allows users to easily send emails with embedded data from the platform. Support Postmark and Sendgrid to start.
+## Public beta priorities
+
+| Priority | Work | Completion evidence |
+| --- | --- | --- |
+| Before making the repository public | Review all published Git history and refs for secrets and private material; verify private security/conduct contacts; configure GitHub protections and contribution settings. | Maintainer sign-off against [public release preparation](docs/PUBLIC-RELEASE.md#before-changing-repository-visibility), with any real exposed credentials rotated. |
+| Before inviting adopters to a beta candidate | Exercise a fresh install, anonymous/enhanced consent boundaries, headless operation, and routine BI access on a named commit. Resolve known authorization, disclosure, and data-loss blockers. | A promotion PR or test record identifies the commit, runtime/database versions, scenarios, failures, and remaining limitations using the [beta checklist](docs/BETA-TESTING.md#test-checklist). |
+| During beta | Execute migrations, reporting views, and lifecycle operations against disposable PostgreSQL, MySQL, MariaDB, SQL Server, and SQLite databases at documented versions. Add repeatable integration coverage. | Record which versions actually passed; SQL-string assertions and mocked tests do not establish engine compatibility. |
+| During beta | Rehearse upgrades, worker restart, and backup restoration; test extracted signed packages on a server without build tools. Extend runtime coverage as newer PHP versions are verified. | Reproducible install/upgrade reports, package verification with an independently trusted key, and separate file/database recovery results. |
+| During beta | Improve administrator usability, keyboard access, narrow-screen layouts, error messages, and white labeling from real adopter reports. | Focused fixes with screenshots or reproduction steps, relevant validation, and preserved headless workflows. |
+| Before a stable release | Review beta blockers, publish the verified environment matrix and known limitations, and document operator actions for migrations and configuration changes. | Maintainer acceptance on the `uat` → `master` promotion PR and reviewed release notes. A stable version is not a claim of legal anonymity or an independent audit. |
+
+Useful first contributions include a reproducible installation report, a database
+integration fixture, a confusing documentation step corrected against a fresh
+checkout, or a small accessibility fix. Keep each PR focused and target
+`development`.
+
+## After beta feedback
+
+- **Complete headless BI-threshold administration.** Provide a supported CLI path
+  for the existing `analytics_privacy_settings` database source, sharing UI
+  validation. These thresholds are currently managed by the UI or controlled
+  database operations; do not introduce competing YAML synchronization.
+- **Website-specific configuration and data models.** Allow collection settings
+  and models to vary by registered website. They currently use the deployment's
+  active aggregate YAML configuration; registration already manages domains and
+  ingestion tokens separately. Preserve existing deployments and reporting
+  contracts through an explicit migration design.
+- **Targeted feature rollout.** Extend
+  [deployment-wide feature flags](docs/FEATURE-FLAGS.md) to selected websites or
+  administrators where there is a concrete need. Preserve authorization and
+  privacy enforcement; anonymous visitors must not acquire experiment identifiers.
+- **Apply verified release packages automatically.** Signed production ZIP
+  tooling, discovery, and offline verification are available. Application still
+  requires the [manual deployment steps](docs/RELEASES.md#install-or-deploy-a-verified-package).
+  A future resumable updater must coordinate maintenance and workers, preserve
+  configuration/data, run migrations and health checks, prevent concurrent
+  updates, and provide separate application-file and database recovery procedures.
+
+## Proposals to explore
+
+- **External analysis examples and an MCP integration.** Start with read-only
+  connections to approved `bi_anonymous_*` views and synthetic sample Python
+  notebooks. Any MCP server needs explicit credential scope and authorization;
+  it must not expose private raw inputs or let consumers undo suppression.
+  Charts and analysis remain in external tools.
+- **Branding polish.** Improve the default logo and administration presentation
+  while preserving configured white labels, accessibility, and license notices.
+- **Operational email integrations.** Explore Postmark/SendGrid support for a
+  concrete administration or maintenance notification need. Keep secrets in
+  deployment configuration and avoid embedding private analytics data in email.
+  Analytics report delivery belongs in external reporting tools.
+- **Tag Management Integrations.** Explore Google Tag Manager and Matomo Tag Manager support or templates. ANother option or addition would be to explore a very simple, lightweight tag manager scoped specifically to stats collection and privacy as a drop-in like the drop-in cookie banner.
 
 ## Available foundations
 
+- [Synthetic event examples](docs/EVENT-EXAMPLES.md), with saved-model anonymous/enhanced JSON, UI copy/download, a headless export, and a proposed flat ecommerce model. Optional value types enforce scalar input types, while additive numeric reporting columns preserve existing text aliases.
+- [Focused administration pages and grouped navigation](docs/CONFIGURATION.md#administration-pages), with keyboard/touch submenus configured in YAML and role/feature checks at each level. Model editing, discovery, examples, and reporting SQL have separate pages.
 - [Feature flags](docs/FEATURE-FLAGS.md), with shared YAML/admin UI settings, server and CLI enforcement, and independent navigation visibility. Updates is the first registered capability; developer and contributor guidance explains how to add more.
 - [Organization traffic markers](docs/PRIVACY-COMPLIANCE.md#organization-traffic), with YAML/UI settings and shareable browser setup. Filtering uses retained event JSON; grouped BI views and archives do not retain the marker.
 - [Custom data models](docs/DATA-MODEL.md), including UTM/query mappings, per-property consent settings, downloadable YAML, and private reporting columns. All UTMs require consent by default; anonymous attribution should use at most broad `utm_medium` values, with documented warnings for overrides.

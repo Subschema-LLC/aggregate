@@ -32,17 +32,75 @@ class DashboardController extends AbstractController
         private readonly BrandingLogoManager $brandingLogoManager,
     ) {}
 
-    #[Route('/dashboard', name: 'app_dashboard')]
+    #[Route('/dashboard', name: 'app_dashboard', methods: ['GET'])]
     public function index(): Response
     {
         $this->denyIfDashboardDisabled();
 
-        $websites = $this->websiteManager->getWebsites();
-        $appHost = $this->config->getWithEnvFallback('app_host', 'http://localhost:8000');
-        $jsNamespace = $this->config->getWithEnvFallback('js_namespace', 'Aggregate');
-        $rateLimit = $this->config->getWithEnvFallback('rate_limit_per_minute', 100);
-        $anonymousTrackingEnabled = $this->config->getBoolWithEnvFallback('anonymous_tracking_enabled', true);
-        $anonymousExcludedPaths = $this->config->getWithEnvFallback('anonymous_excluded_paths', []);
+        return $this->renderDashboardPage('dashboard/index.html.twig', [
+            'websites' => $this->websiteManager->getWebsites(),
+            'app_host' => $this->config->getWithEnvFallback('app_host', 'http://localhost:8000'),
+            'js_namespace' => $this->config->getWithEnvFallback('js_namespace', 'Aggregate'),
+        ]);
+    }
+
+    #[Route('/dashboard/settings', name: 'app_application_settings', methods: ['GET'])]
+    public function applicationSettings(): Response
+    {
+        $this->denyIfDashboardDisabled();
+        $this->denyIfNotAdmin();
+
+        return $this->renderDashboardPage('dashboard/application_settings.html.twig', [
+            'app_host' => $this->config->getWithEnvFallback('app_host', 'http://localhost:8000'),
+            'js_namespace' => $this->config->getWithEnvFallback('js_namespace', 'Aggregate'),
+            'rate_limit' => $this->config->getWithEnvFallback('rate_limit_per_minute', 100),
+        ]);
+    }
+
+    #[Route('/dashboard/branding', name: 'app_branding_settings', methods: ['GET'])]
+    public function brandingSettings(): Response
+    {
+        $this->denyIfDashboardDisabled();
+        $this->denyIfNotAdmin();
+
+        return $this->renderDashboardPage('dashboard/branding_settings.html.twig');
+    }
+
+    #[Route('/dashboard/collection', name: 'app_collection_settings', methods: ['GET'])]
+    public function collectionSettings(): Response
+    {
+        $this->denyIfDashboardDisabled();
+        $this->denyIfNotAdmin();
+
+        $excludedPaths = $this->config->getWithEnvFallback('anonymous_excluded_paths', []);
+        if (is_string($excludedPaths)) {
+            $excludedPaths = preg_split('/[\r\n,]+/', $excludedPaths) ?: [];
+        }
+        if (!is_array($excludedPaths)) {
+            $excludedPaths = [];
+        }
+        $geoLevel = $this->config->getWithEnvFallback('anonymous_geo_level', 'macro_region');
+        $geoLevel = is_string($geoLevel) ? strtolower(trim($geoLevel)) : 'macro_region';
+        if (!in_array($geoLevel, ['macro_region', 'country'], true)) {
+            $geoLevel = 'macro_region';
+        }
+        $geoDatabasePath = $this->config->getWithEnvFallback('anonymous_geo_database_path', '');
+
+        return $this->renderDashboardPage('dashboard/collection_settings.html.twig', [
+            'anonymous_tracking_enabled' => $this->config->getBoolWithEnvFallback('anonymous_tracking_enabled', true),
+            'anonymous_excluded_paths' => array_values(array_filter($excludedPaths, 'is_string')),
+            'anonymous_geo_enabled' => $this->config->getBoolWithEnvFallback('anonymous_geo_enabled', false),
+            'anonymous_geo_level' => $geoLevel,
+            'anonymous_geo_database_path' => is_string($geoDatabasePath) ? trim($geoDatabasePath) : '',
+        ]);
+    }
+
+    #[Route('/dashboard/privacy', name: 'app_privacy_settings', methods: ['GET'])]
+    public function privacySettings(): Response
+    {
+        $this->denyIfDashboardDisabled();
+        $this->denyIfNotAdmin();
+
         $privacySettingsError = false;
         try {
             $minimumCellCounts = $this->analyticsPrivacySettings->getMinimumCellCounts();
@@ -54,40 +112,31 @@ class DashboardController extends AbstractController
             ];
             $privacySettingsError = true;
         }
-        $anonymousGeoEnabled = $this->config->getBoolWithEnvFallback('anonymous_geo_enabled', false);
-        $anonymousGeoLevel = strtolower(trim((string) $this->config->getWithEnvFallback('anonymous_geo_level', 'macro_region')));
-        if (!in_array($anonymousGeoLevel, ['macro_region', 'country'], true)) {
-            $anonymousGeoLevel = 'macro_region';
-        }
-        $anonymousGeoDatabasePath = $this->config->getWithEnvFallback('anonymous_geo_database_path', '');
-        if (!is_string($anonymousGeoDatabasePath)) {
-            $anonymousGeoDatabasePath = '';
-        } else {
-            $anonymousGeoDatabasePath = trim($anonymousGeoDatabasePath);
-        }
-        if (is_string($anonymousExcludedPaths)) {
-            $anonymousExcludedPaths = preg_split('/[\r\n,]+/', $anonymousExcludedPaths) ?: [];
-        }
-        if (!is_array($anonymousExcludedPaths)) {
-            $anonymousExcludedPaths = [];
-        }
-        $users = $this->isGranted('ROLE_ADMIN') ? $this->userRepository->findBy([], ['createdAt' => 'ASC']) : [];
 
-        return $this->render('dashboard/index.html.twig', [
-            'websites' => $websites,
-            'app_host' => $appHost,
-            'js_namespace' => $jsNamespace,
-            'rate_limit' => $rateLimit,
-            'anonymous_tracking_enabled' => $anonymousTrackingEnabled,
-            'anonymous_excluded_paths' => array_values(array_filter(array_map('strval', $anonymousExcludedPaths))),
+        return $this->renderDashboardPage('dashboard/privacy_settings.html.twig', [
             'anonymous_min_cell_count' => $minimumCellCounts['anonymous'],
-            'anonymous_geo_enabled' => $anonymousGeoEnabled,
-            'anonymous_geo_level' => $anonymousGeoLevel,
-            'anonymous_geo_database_path' => $anonymousGeoDatabasePath,
             'anonymous_geo_min_cell_count' => $minimumCellCounts['geo'],
             'analytics_privacy_settings_error' => $privacySettingsError,
-            'users' => $users,
         ]);
+    }
+
+    #[Route('/dashboard/users', name: 'app_users', methods: ['GET'])]
+    public function users(): Response
+    {
+        $this->denyIfDashboardDisabled();
+        $this->denyIfNotAdmin();
+
+        return $this->renderDashboardPage('dashboard/users.html.twig', [
+            'users' => $this->userRepository->findBy([], ['createdAt' => 'ASC']),
+        ]);
+    }
+
+    /** @param array<string, mixed> $parameters */
+    private function renderDashboardPage(string $template, array $parameters = []): Response
+    {
+        return $this->render($template, $parameters, new Response(headers: [
+            'Cache-Control' => 'private, no-store, max-age=0',
+        ]));
     }
 
     #[Route('/dashboard/website/create', name: 'app_website_create', methods: ['POST'])]
@@ -162,10 +211,11 @@ class DashboardController extends AbstractController
     public function saveSettings(Request $request): Response
     {
         $this->denyIfDashboardDisabled();
+        $this->denyIfNotAdmin();
 
         if (!$this->isCsrfTokenValid('app_settings', (string) $request->request->get('_csrf_token', ''))) {
             $this->addFlash('error', 'Invalid security token. Please try again.');
-            return $this->redirectToRoute('app_dashboard');
+            return $this->redirectToRoute('app_application_settings');
         }
 
         $appHost = trim($request->request->get('app_host', ''));
@@ -174,7 +224,7 @@ class DashboardController extends AbstractController
 
         if (empty($appHost)) {
             $this->addFlash('error', 'App Host is required.');
-            return $this->redirectToRoute('app_dashboard');
+            return $this->redirectToRoute('app_application_settings');
         }
 
         try {
@@ -189,7 +239,7 @@ class DashboardController extends AbstractController
             $this->addFlash('error', 'Failed to save settings: ' . $e->getMessage());
         }
 
-        return $this->redirectToRoute('app_dashboard');
+        return $this->redirectToRoute('app_application_settings');
     }
 
     #[Route('/dashboard/settings/branding', name: 'app_branding_settings_save', methods: ['POST'])]
@@ -201,7 +251,7 @@ class DashboardController extends AbstractController
         $csrfToken = (string) $request->request->get('_csrf_token', '');
         if (!$this->isCsrfTokenValid('branding_settings', $csrfToken)) {
             $this->addFlash('error', 'Invalid security token. Please try again.');
-            return $this->redirectToRoute('app_dashboard');
+            return $this->redirectToRoute('app_branding_settings');
         }
 
         $brandName = trim((string) $request->request->get('brand_name', ''));
@@ -218,21 +268,21 @@ class DashboardController extends AbstractController
 
         if (!$brandNameOverridden && $brandName === '') {
             $this->addFlash('error', 'Brand name is required.');
-            return $this->redirectToRoute('app_dashboard');
+            return $this->redirectToRoute('app_branding_settings');
         }
 
         if (!$brandNameOverridden && (preg_match('//u', $brandName) !== 1
             || mb_strlen($brandName) > 100
             || preg_match('/[\x00-\x1F\x7F]/u', $brandName) === 1)) {
             $this->addFlash('error', 'Brand name must be at most 100 characters and cannot contain control characters.');
-            return $this->redirectToRoute('app_dashboard');
+            return $this->redirectToRoute('app_branding_settings');
         }
 
         if (!$logoTextOverridden && (preg_match('//u', $logoText) !== 1
             || mb_strlen($logoText) > 100
             || preg_match('/[\x00-\x1F\x7F]/u', $logoText) === 1)) {
             $this->addFlash('error', 'Logo text must be at most 100 characters and cannot contain control characters.');
-            return $this->redirectToRoute('app_dashboard');
+            return $this->redirectToRoute('app_branding_settings');
         }
 
         $themeColors = [
@@ -252,7 +302,7 @@ class DashboardController extends AbstractController
             $color = BrandingTheme::normalizeHexColor($request->request->get($key));
             if ($color === null) {
                 $this->addFlash('error', $label.' must use #RGB or #RRGGBB hexadecimal notation.');
-                return $this->redirectToRoute('app_dashboard');
+                return $this->redirectToRoute('app_branding_settings');
             }
 
             $originalColor = BrandingTheme::normalizeHexColor(
@@ -277,7 +327,7 @@ class DashboardController extends AbstractController
             $font = BrandingTheme::normalizeFontFamily($request->request->get($key));
             if ($font === null) {
                 $this->addFlash('error', $label.' must contain one to eight comma-separated local/system font family names using only letters, numbers, spaces, underscores, or hyphens.');
-                return $this->redirectToRoute('app_dashboard');
+                return $this->redirectToRoute('app_branding_settings');
             }
 
             $originalFont = BrandingTheme::normalizeFontFamily(
@@ -308,24 +358,24 @@ class DashboardController extends AbstractController
                 $proposedContrastColors['surface_color'],
             )) {
                 $this->addFlash('error', 'Text color must have at least 4.5:1 contrast against both the page background and surface colors.');
-                return $this->redirectToRoute('app_dashboard');
+                return $this->redirectToRoute('app_branding_settings');
             }
         }
 
         if ($uploadedLogo !== null && !$uploadedLogo instanceof UploadedFile) {
             $this->addFlash('error', 'The submitted logo upload is invalid.');
-            return $this->redirectToRoute('app_dashboard');
+            return $this->redirectToRoute('app_branding_settings');
         }
 
         if ($uploadedLogo instanceof UploadedFile && $removeLogo) {
             $this->addFlash('error', 'Choose either a new logo or remove the current logo, not both.');
-            return $this->redirectToRoute('app_dashboard');
+            return $this->redirectToRoute('app_branding_settings');
         }
 
         $hasLogoMutation = $uploadedLogo instanceof UploadedFile || $removeLogo;
         if ($hasLogoMutation && $this->config->hasEnvironmentOverride('brand_logo_path', allowEmpty: true)) {
             $this->addFlash('error', 'The logo path is controlled by BRAND_LOGO_PATH. Change or remove that environment override before using logo upload controls.');
-            return $this->redirectToRoute('app_dashboard');
+            return $this->redirectToRoute('app_branding_settings');
         }
 
         $oldLogoPath = '';
@@ -343,11 +393,11 @@ class DashboardController extends AbstractController
                 $newLogoPath = $storedLogoPath;
             } catch (\InvalidArgumentException $e) {
                 $this->addFlash('error', $e->getMessage());
-                return $this->redirectToRoute('app_dashboard');
+                return $this->redirectToRoute('app_branding_settings');
             } catch (\Throwable $e) {
                 $this->logger->error('Failed to store a branding logo.', ['exception' => $e]);
                 $this->addFlash('error', 'The logo could not be stored. Check the application logs and var/branding permissions.');
-                return $this->redirectToRoute('app_dashboard');
+                return $this->redirectToRoute('app_branding_settings');
             }
         }
 
@@ -364,7 +414,7 @@ class DashboardController extends AbstractController
             }
             if ($settings === []) {
                 $this->addFlash('warning', 'No branding changes were submitted; environment-controlled values were left unchanged.');
-                return $this->redirectToRoute('app_dashboard');
+                return $this->redirectToRoute('app_branding_settings');
             }
             $this->config->setMany($settings);
         } catch (\Throwable $e) {
@@ -378,7 +428,7 @@ class DashboardController extends AbstractController
 
             $this->logger->error('Failed to save branding settings.', ['exception' => $e]);
             $this->addFlash('error', 'Branding settings could not be saved. Check the application logs.');
-            return $this->redirectToRoute('app_dashboard');
+            return $this->redirectToRoute('app_branding_settings');
         }
 
         if ($hasLogoMutation && $oldLogoPath !== '' && $oldLogoPath !== $newLogoPath) {
@@ -392,7 +442,7 @@ class DashboardController extends AbstractController
 
         $this->addFlash('success', 'Branding updated successfully.');
 
-        return $this->redirectToRoute('app_dashboard');
+        return $this->redirectToRoute('app_branding_settings');
     }
 
     private function submittedBrandingValueChanged(Request $request, string $key, string $value): bool
@@ -414,7 +464,7 @@ class DashboardController extends AbstractController
         $csrfToken = (string) $request->request->get('_csrf_token', '');
         if (!$this->isCsrfTokenValid('anonymous_settings', $csrfToken)) {
             $this->addFlash('error', 'Invalid security token. Please try again.');
-            return $this->redirectToRoute('app_dashboard');
+            return $this->redirectToRoute('app_collection_settings');
         }
 
         $enabled = $request->request->getBoolean('anonymous_tracking_enabled');
@@ -425,12 +475,12 @@ class DashboardController extends AbstractController
 
         if (!in_array($geoLevel, ['macro_region', 'country'], true)) {
             $this->addFlash('error', 'Geography level must be macro-region or country.');
-            return $this->redirectToRoute('app_dashboard');
+            return $this->redirectToRoute('app_collection_settings');
         }
 
         if (strlen($geoDatabasePath) > 4096 || preg_match('/[\x00-\x1F\x7F]/', $geoDatabasePath) === 1) {
             $this->addFlash('error', 'The GeoIP database path is invalid or too long.');
-            return $this->redirectToRoute('app_dashboard');
+            return $this->redirectToRoute('app_collection_settings');
         }
 
         if ($geoDatabasePath !== '') {
@@ -445,13 +495,13 @@ class DashboardController extends AbstractController
                 || !str_ends_with(strtolower($geoDatabasePath), '.mmdb')
                 || (!$isAbsolutePath && in_array('..', $pathSegments, true))) {
                 $this->addFlash('error', 'Use a local filesystem path ending in .mmdb; URI, stream-wrapper, UNC/network, and project-root escape paths are not allowed.');
-                return $this->redirectToRoute('app_dashboard');
+                return $this->redirectToRoute('app_collection_settings');
             }
         }
 
         if (strlen($rawPaths) > 25_600) {
             $this->addFlash('error', 'Excluded paths are too long.');
-            return $this->redirectToRoute('app_dashboard');
+            return $this->redirectToRoute('app_collection_settings');
         }
 
         $paths = preg_split('/\R/', $rawPaths) ?: [];
@@ -459,13 +509,13 @@ class DashboardController extends AbstractController
 
         if (count($paths) > 100) {
             $this->addFlash('error', 'Use no more than 100 anonymous tracking exclusions.');
-            return $this->redirectToRoute('app_dashboard');
+            return $this->redirectToRoute('app_collection_settings');
         }
 
         foreach ($paths as $path) {
             if (strlen($path) > 512 || !str_starts_with($path, '/') || str_contains($path, '?') || str_contains($path, '#')) {
                 $this->addFlash('error', sprintf('Invalid excluded path "%s". Use a path beginning with /, omit query strings/fragments, and keep it at most 512 characters.', $path));
-                return $this->redirectToRoute('app_dashboard');
+                return $this->redirectToRoute('app_collection_settings');
             }
         }
 
@@ -487,7 +537,7 @@ class DashboardController extends AbstractController
             $this->addFlash('error', 'Failed to save analytics privacy settings: ' . $e->getMessage());
         }
 
-        return $this->redirectToRoute('app_dashboard');
+        return $this->redirectToRoute('app_collection_settings');
     }
 
     #[Route('/dashboard/settings/analytics-privacy', name: 'app_analytics_privacy_settings_save', methods: ['POST'])]
@@ -499,7 +549,7 @@ class DashboardController extends AbstractController
         $csrfToken = (string) $request->request->get('_csrf_token', '');
         if (!$this->isCsrfTokenValid('analytics_privacy_settings', $csrfToken)) {
             $this->addFlash('error', 'Invalid security token. Please try again.');
-            return $this->redirectToRoute('app_dashboard');
+            return $this->redirectToRoute('app_privacy_settings');
         }
 
         $submittedSettings = $request->request->all();
@@ -512,19 +562,19 @@ class DashboardController extends AbstractController
 
         if ($minimumCellCount === null || $geoMinimumCellCount === null) {
             $this->addFlash('error', 'Both BI disclosure thresholds must be whole numbers.');
-            return $this->redirectToRoute('app_dashboard');
+            return $this->redirectToRoute('app_privacy_settings');
         }
 
         if ($minimumCellCount < AnalyticsPrivacySettings::MINIMUM_CELL_COUNT
             || $minimumCellCount > AnalyticsPrivacySettings::MAXIMUM_CELL_COUNT) {
             $this->addFlash('error', 'Minimum BI cell count must be between 2 and 1000.');
-            return $this->redirectToRoute('app_dashboard');
+            return $this->redirectToRoute('app_privacy_settings');
         }
 
         if ($geoMinimumCellCount < AnalyticsPrivacySettings::GEO_MINIMUM_CELL_COUNT
             || $geoMinimumCellCount > AnalyticsPrivacySettings::MAXIMUM_CELL_COUNT) {
             $this->addFlash('error', 'Geography minimum BI cell count must be between 10 and 1000.');
-            return $this->redirectToRoute('app_dashboard');
+            return $this->redirectToRoute('app_privacy_settings');
         }
 
         try {
@@ -538,7 +588,7 @@ class DashboardController extends AbstractController
             $this->addFlash('error', 'Failed to save BI disclosure thresholds. Check the application logs.');
         }
 
-        return $this->redirectToRoute('app_dashboard');
+        return $this->redirectToRoute('app_privacy_settings');
     }
 
     #[Route('/dashboard/users/create', name: 'app_user_create', methods: ['POST'])]
@@ -550,7 +600,7 @@ class DashboardController extends AbstractController
         $csrfToken = (string) $request->request->get('_csrf_token', '');
         if (!$this->isCsrfTokenValid('create_user', $csrfToken)) {
             $this->addFlash('error', 'Invalid security token. Please try again.');
-            return $this->redirectToRoute('app_dashboard');
+            return $this->redirectToRoute('app_users');
         }
 
         $username = trim((string) $request->request->get('username', ''));
@@ -559,22 +609,22 @@ class DashboardController extends AbstractController
 
         if ($username === '' || $password === '') {
             $this->addFlash('error', 'Username and password are required.');
-            return $this->redirectToRoute('app_dashboard');
+            return $this->redirectToRoute('app_users');
         }
 
         if (strlen($username) > 180) {
             $this->addFlash('error', 'Username must be 180 characters or fewer.');
-            return $this->redirectToRoute('app_dashboard');
+            return $this->redirectToRoute('app_users');
         }
 
         if (strlen($password) < 8) {
             $this->addFlash('error', 'Password must be at least 8 characters.');
-            return $this->redirectToRoute('app_dashboard');
+            return $this->redirectToRoute('app_users');
         }
 
         if ($this->userRepository->findOneBy(['username' => $username]) instanceof User) {
             $this->addFlash('error', sprintf('User "%s" already exists.', $username));
-            return $this->redirectToRoute('app_dashboard');
+            return $this->redirectToRoute('app_users');
         }
 
         try {
@@ -593,7 +643,7 @@ class DashboardController extends AbstractController
             $this->addFlash('error', 'Failed to create user: ' . $e->getMessage());
         }
 
-        return $this->redirectToRoute('app_dashboard');
+        return $this->redirectToRoute('app_users');
     }
 
     #[Route('/dashboard/users/{id}/password', name: 'app_user_password_update', methods: ['POST'], requirements: ['id' => '\d+'])]
@@ -605,24 +655,24 @@ class DashboardController extends AbstractController
         $csrfToken = (string) $request->request->get('_csrf_token', '');
         if (!$this->isCsrfTokenValid('update_user_password_' . $id, $csrfToken)) {
             $this->addFlash('error', 'Invalid security token. Please try again.');
-            return $this->redirectToRoute('app_dashboard');
+            return $this->redirectToRoute('app_users');
         }
 
         $newPassword = (string) $request->request->get('new_password', '');
         if ($newPassword === '') {
             $this->addFlash('error', 'New password is required.');
-            return $this->redirectToRoute('app_dashboard');
+            return $this->redirectToRoute('app_users');
         }
 
         if (strlen($newPassword) < 8) {
             $this->addFlash('error', 'New password must be at least 8 characters.');
-            return $this->redirectToRoute('app_dashboard');
+            return $this->redirectToRoute('app_users');
         }
 
         $user = $this->userRepository->find($id);
         if (!$user instanceof User) {
             $this->addFlash('error', 'User not found.');
-            return $this->redirectToRoute('app_dashboard');
+            return $this->redirectToRoute('app_users');
         }
 
         try {
@@ -634,7 +684,7 @@ class DashboardController extends AbstractController
             $this->addFlash('error', 'Failed to update password: ' . $e->getMessage());
         }
 
-        return $this->redirectToRoute('app_dashboard');
+        return $this->redirectToRoute('app_users');
     }
 
     private function denyIfDashboardDisabled(): void

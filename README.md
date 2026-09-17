@@ -9,9 +9,14 @@ Self-hosted web analytics with privacy-minimized anonymous-mode events, optional
 [![PHP 8.2+](https://img.shields.io/badge/PHP-8.2%2B-777BB4.svg)](https://php.net)
 [![CI](https://github.com/Subschema-LLC/aggregate/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/Subschema-LLC/aggregate/actions/workflows/ci.yml)
 
-![Dashboard screenshot](docs/images/aggregate_logo_alt4.png)
+**Beta software: contributors and early adopters are welcome.** Start with a
+disposable installation and synthetic events. Help test installation, consent,
+headless administration, and database reporting through the
+[beta testing guide](docs/BETA-TESTING.md). Review its known limitations before
+using the platform with live traffic; no independent security or privacy audit
+is claimed.
 
-Most privacy-first analytics tools still build a pseudonymous identity for every visitor — typically a rotating hash of IP address, user agent and domain. Better than a cookie. Still an identifier.
+![Aggregate logo](docs/images/aggregate_logo_alt4.png)
 
 Aggregate's anonymous mode creates no visitor identifier. By default, an anonymous event holds a sanitized path, a coarse referrer channel, device and viewport buckets, and a UTC hour. It stores no visitor or session ID, IP address, User-Agent string, or exact event timestamp. Optional goals, coarse geography, organization markers, and explicitly allowlisted properties can add context; their values still need review for identifying detail.
 
@@ -31,8 +36,8 @@ for routine BI access.
 
 **Suppression in the view, not the dashboard.** `bi_anonymous_events_v1` and its siblings
 withhold the current bucket and hide any cell below your configured minimum. The threshold
-lives in the database and applies to every consumer — nobody gets a thin cell by connecting
-a different tool.
+lives in the database and applies to every consumer of these views. Keep raw input
+tables private when granting a BI connection access.
 
 **Consent that actually toggles something.** `setConsent(true)` turns on visitor and session
 IDs, custom properties and exact dimensions. `setConsent(false)` drops the identifiers and
@@ -48,14 +53,16 @@ analytics in your BI tool; the application UI manages the installation and its d
 **Rebrandable without a fork.** Name, logo, colors and fonts are configuration. Contrast
 ratios are validated, so an unreadable palette gets rejected rather than shipped.
 
-**Boring infrastructure.** PHP 8.2+ on PostgreSQL, MySQL, MariaDB, SQL Server or SQLite.
-A 2 GB VPS or shared hosting is enough. No ClickHouse, no Kafka, no warehouse.
+**Portable infrastructure.** PHP 8.2+ on PostgreSQL, MySQL, MariaDB, SQL Server or
+SQLite, with native and Docker deployment options. Size the host for your traffic,
+retention policy, and database; beta reports should include the workload tested.
 
 **A way to exclude your own team.** Mark staff browsers with a configurable cookie or local
 storage flag and filter them out in your BI tool, without dropping the data or trusting an
 IP range.
 
 Details:
+
 - **Privacy-minimized collection:** page views and safe named events, with optional allowlisted goals and coarse local geography.
 - **Reporting views with suppression:** completed hourly or daily aggregates with configurable minimum event counts.
 - **Consent-based enhanced detail:** visitor/session IDs, properties, and exact dimensions when enabled by your consent manager.
@@ -74,8 +81,8 @@ refuses to create. Anonymous mode counts events. One person can contribute sever
 to the same cell.
 
 **Small numbers disappear.** A cell below your threshold is withheld, and widening the time
-window in your BI tool won't recover it. Low-traffic sites will see gaps until they adjust
-the threshold or report over longer periods.
+window in your BI tool won't recover it. Low-traffic sites can have persistent gaps;
+combining periods only combines cells already released by the views.
 
 **Reports lag one bucket.** The current UTC hour is never released for events; the current
 UTC day is never released for goals and geography. There is no real-time view.
@@ -174,6 +181,13 @@ Keep raw `events`, archive tables, and unsuppressed operational views private. O
 
 The [Data model](docs/DATA-MODEL.md) page provides UTM/query mappings, configurable anonymous property whitelists, downloadable YAML, and UI/CLI regeneration of private custom reporting views. All UTMs require consent by default. Anonymous attribution should use at most a broad `utm_medium`; administrators can override this recommendation with the documented warning about more detailed values.
 
+Generate and copy [synthetic event examples](docs/EVENT-EXAMPLES.md) from the
+saved model, or export them with `php bin/console app:analytics:examples`.
+Optional value types and separate numeric reporting columns support external
+calculations without changing existing text columns. The ecommerce recipe uses
+flat properties and integer minor units for money. Administration pages and
+[configurable submenus](docs/CONFIGURATION.md#main-navigation) keep each task focused.
+
 Use the optional [JavaScript build](docs/JS-BUILD.md) for minified tracker and drop-in scripts.
 
 ## Documentation
@@ -181,6 +195,7 @@ Use the optional [JavaScript build](docs/JS-BUILD.md) for minified tracker and d
 | Guide | Contents |
 | --- | --- |
 | [Contributing](CONTRIBUTING.md) | Branching strategy, development setup, architecture, privacy invariants, tests, Make commands, and pull requests |
+| [Beta testing](docs/BETA-TESTING.md) | First test session, expected privacy/reporting behavior, known limitations, and feedback |
 | [Agent guide](AGENTS.md) | Product ethos, architecture boundaries, privacy rules, and development expectations for coding agents |
 | [Roadmap](ROADMAP.md) | Planned work, available foundations, and current update limitations |
 | [Security policy](SECURITY.md) | Private vulnerability reporting and disclosure guidance |
@@ -190,6 +205,7 @@ Use the optional [JavaScript build](docs/JS-BUILD.md) for minified tracker and d
 | [Configuration](docs/CONFIGURATION.md) | YAML settings, environment overrides, branding, goals, and lifecycle policy |
 | [Feature flags](docs/FEATURE-FLAGS.md) | YAML/admin controls, navigation visibility, and developer/contributor guidance |
 | [Data model](docs/DATA-MODEL.md) | UTM/query mappings, anonymous property whitelists, model sharing, and custom reporting columns |
+| [Event examples](docs/EVENT-EXAMPLES.md) | UI copy/download, headless JSON exports, typed properties, and a flat ecommerce recipe |
 | [JavaScript build](docs/JS-BUILD.md) | Optional minification, dynamic tracker configuration, and build verification |
 | [Release packages](docs/RELEASES.md) | Publishing from master, signing keys, installable ZIPs, verification, and update groundwork |
 | [Tracking and GTM](docs/TRACKING.md) | Browser integration, custom events, tag-manager examples, and troubleshooting |
@@ -214,6 +230,13 @@ for tagging and publishing from `master`.
 
 Contributions should preserve the privacy invariants and favor simple, portable,
 secure, maintainable designs. Start with [CONTRIBUTING.md](CONTRIBUTING.md).
+
+You can also contribute without writing application code: try a fresh install,
+exercise your database engine, reproduce a reported bug with synthetic data,
+review keyboard access and mobile administration, or improve a confusing setup
+step. The [roadmap](ROADMAP.md#public-beta-priorities) lists the highest-priority
+work; the [beta testing guide](docs/BETA-TESTING.md) explains what makes a useful
+test report.
 
 Contributions developed with AI coding agents are welcome. Bring your own expertise and judgment to the collaboration: provide project context, guide the agent's decisions, and review and test the result. Please submit changes you understand and can explain, including how they fit Aggregate's architecture and privacy goals. The contributor remains responsible for the work they submit.
 

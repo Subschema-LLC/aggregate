@@ -1,0 +1,57 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}BI disclosure | {{ app_branding.name }}{% endblock %}
+
+{% block stylesheets %}
+    {{ parent() }}
+    {% include 'dashboard/_settings_styles.html.twig' %}
+{% endblock %}
+
+{% block body %}
+<div class="settings-page">
+<h1 class="title">BI disclosure</h1>
+<p class="subtitle">Control the event-count thresholds for approved anonymous BI views.</p>
+<div class="columns is-centered">
+<div class="column is-8-desktop">
+<div class="box">
+<p class="mb-4">Thresholds are stored directly in <code>analytics_privacy_settings</code> and used immediately by the BI views. Headless operators manage this database row through controlled database administration; these values are not synchronized with YAML.</p>
+    {% if analytics_privacy_settings_error %}
+        <div class="notification is-danger is-light">
+            The stored thresholds could not be loaded, so safe defaults are shown below. Saving valid values will repair a missing or invalid singleton row. If the table or columns are missing, run the database migrations first.
+        </div>
+    {% endif %}
+
+    <form action="{{ path('app_analytics_privacy_settings_save') }}" method="post">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token('analytics_privacy_settings') }}">
+
+        <div class="field">
+            <label class="label" for="anonymous-min-cell-count">Minimum BI cell count</label>
+            <div class="control">
+                <input class="input" type="number" id="anonymous-min-cell-count" name="anonymous_min_cell_count" value="{{ anonymous_min_cell_count }}" min="2" max="1000" required>
+            </div>
+            <p class="help">Default: 5; allowed range: 2–1000. <code>bi_anonymous_events_v1</code> exposes completed UTC-hour cells and <code>bi_anonymous_goals_v1</code> exposes completed UTC-day goal cells meeting this count.</p>
+        </div>
+
+        <div class="field">
+            <label class="label" for="anonymous-geo-min-cell-count">Minimum geography BI cell count</label>
+            <div class="control">
+                <input class="input" type="number" id="anonymous-geo-min-cell-count" name="anonymous_geo_min_cell_count" value="{{ anonymous_geo_min_cell_count }}" min="10" max="1000" required>
+            </div>
+            <p class="help">Default: 25; allowed range: 10–1000. <code>bi_anonymous_geo_events_v1</code> exposes completed UTC-day cells with primary and secondary suppression.</p>
+        </div>
+
+        <div class="field">
+            <div class="control">
+                <button type="submit" class="button is-link">
+                    <span class="icon"><i class="fas fa-database"></i></span>
+                    <span>Save BI Thresholds</span>
+                </button>
+            </div>
+        </div>
+    </form>
+<p class="help mt-4">Thresholds count events, not people, and do not guarantee legal anonymity. Raw events and custom-property projections remain private inputs.</p>
+</div>
+</div>
+</div>
+</div>
+{% endblock %}

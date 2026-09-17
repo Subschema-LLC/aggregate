@@ -256,6 +256,18 @@ that a migration has executed successfully on every database engine. Use a
 disposable database for real migration and query checks, and identify the engines
 you actually exercised in the PR.
 
+The reporting-view suite includes an optional PostgreSQL execution test. With
+Docker running and `postgres:16-alpine` already cached locally, run:
+
+```bash
+AGGREGATE_TEST_POSTGRES=1 php vendor/bin/phpunit tests/Service/ReportingViewManagerTest.php
+```
+
+It creates and removes a disposable container with networking disabled, uses no
+operator database connection, and never downloads an image. It checks numeric
+projections, existing text normalization, and grant preservation. The ordinary
+suite skips this opt-in case and still executes its SQLite projection tests.
+
 Choose checks that cover the behavior you changed:
 
 | Change | Relevant checks |

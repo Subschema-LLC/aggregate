@@ -18,34 +18,36 @@
             <input type="hidden" name="_csrf_token" value="{{ csrf_token('feature_flags_settings') }}">
 
             {% for name, definition in definitions %}
-                <fieldset class="box" aria-describedby="feature-{{ name }}-description">
-                    <legend class="title is-4">{{ definition.label }}</legend>
-                    <p id="feature-{{ name }}-description" class="mb-4">{{ definition.description }}</p>
+                <div class="box">
+                    <fieldset aria-describedby="feature-{{ name }}-description">
+                        <legend class="title is-4">{{ definition.label }}</legend>
+                        <p id="feature-{{ name }}-description" class="mb-4">{{ definition.description }}</p>
 
-                    <div class="field">
-                        <label class="label" for="feature-{{ name }}-enabled">Availability</label>
-                        <div class="control">
-                            <div class="select">
-                                <select id="feature-{{ name }}-enabled" name="feature_flags[{{ name }}][enabled]" required>
-                                    <option value="1"{% if settings[name].enabled %} selected{% endif %}>Enabled</option>
-                                    <option value="0"{% if not settings[name].enabled %} selected{% endif %}>Disabled</option>
-                                </select>
+                        <div class="field">
+                            <label class="label" for="feature-{{ name }}-enabled">Availability</label>
+                            <div class="control">
+                                <div class="select">
+                                    <select id="feature-{{ name }}-enabled" name="feature_flags[{{ name }}][enabled]" required>
+                                        <option value="1"{% if settings[name].enabled %} selected{% endif %}>Enabled</option>
+                                        <option value="0"{% if not settings[name].enabled %} selected{% endif %}>Disabled</option>
+                                    </select>
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    <div class="field">
-                        <label class="label" for="feature-{{ name }}-navigation">Navigation</label>
-                        <div class="control">
-                            <div class="select">
-                                <select id="feature-{{ name }}-navigation" name="feature_flags[{{ name }}][hide_from_navigation]" required>
-                                    <option value="0"{% if not settings[name].hide_from_navigation %} selected{% endif %}>Show in navigation</option>
-                                    <option value="1"{% if settings[name].hide_from_navigation %} selected{% endif %}>Hide from navigation</option>
-                                </select>
+                        <div class="field">
+                            <label class="label" for="feature-{{ name }}-navigation">Navigation</label>
+                            <div class="control">
+                                <div class="select">
+                                    <select id="feature-{{ name }}-navigation" name="feature_flags[{{ name }}][hide_from_navigation]" required>
+                                        <option value="0"{% if not settings[name].hide_from_navigation %} selected{% endif %}>Show in navigation</option>
+                                        <option value="1"{% if settings[name].hide_from_navigation %} selected{% endif %}>Hide from navigation</option>
+                                    </select>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                </fieldset>
+                    </fieldset>
+                </div>
             {% endfor %}
 
             <button class="button is-primary" type="submit">Save feature flags</button>

@@ -115,6 +115,127 @@ final class CustomDataSettingsTest extends TestCase
         self::assertSame([], $settings->toBrowserConfig()['queryParameters']);
     }
 
+    public function testOptionalTypesKeepLegacyModelsAndTextAliasesUnchanged(): void
+    {
+        $settings = $this->settings([
+            'custom_data_properties' => [
+                'legacy' => ['column' => 'legacy_text'],
+                'quantity' => ['type' => 'integer', 'column' => 'quantity_text', 'numeric_column' => 'quantity_value', 'consent_required' => false],
+                'revenue' => ['type' => 'double', 'numeric_column' => 'revenue_value'],
+                'orgInternalTraffic' => ['type' => 'boolean', 'column' => 'staff'],
+                '__Host-formerStaff' => ['type' => 'boolean', 'column' => 'former_staff'],
+            ],
+            'query_parameter_mappings' => ['qty' => 'quantity'],
+        ]);
+
+        self::assertSame(['description' => '', 'consent_required' => true, 'column' => 'legacy_text'], $settings->properties()['legacy']);
+        self::assertSame(['legacy_text' => 'legacy', 'quantity_text' => 'quantity', 'staff' => 'orgInternalTraffic', 'former_staff' => '__Host-formerStaff'], $settings->reportingColumns());
+        self::assertSame([
+            'quantity_value' => ['property' => 'quantity', 'type' => 'integer'],
+            'revenue_value' => ['property' => 'revenue', 'type' => 'double'],
+        ], $settings->numericReportingColumns());
+        self::assertSame([
+            'queryParameters' => ['qty' => 'quantity'],
+            'consentFreeProperties' => ['quantity'],
+            'propertyTypes' => ['quantity' => 'integer', 'revenue' => 'double'],
+        ], $settings->toBrowserConfig());
+        self::assertSame($settings->toArray(), Yaml::parse($settings->exportYaml()));
+        self::assertArrayNotHasKey('propertyTypes', $this->settings([])->toBrowserConfig());
+    }
+
+    #[DataProvider('typedValues')]
+    public function testExplicitTypesAcceptOnlyMatchingJsonScalars(string $type, mixed $input, mixed $expected, bool $accepted): void
+    {
+        $settings = $this->settings([
+            'custom_data_properties' => ['typed' => ['type' => $type, 'consent_required' => false]],
+            'query_parameter_mappings' => [],
+        ]);
+        foreach ([false, true] as $consented) {
+            self::assertSame($accepted ? ['typed' => $expected] : null, $settings->filterEventData(['typed' => $input], $consented));
+        }
+    }
+
+    public static function typedValues(): iterable
+    {
+        foreach (CustomDataSettings::TYPES as $type) {
+            yield $type.' accepts null' => [$type, null, null, true];
+            yield $type.' rejects arrays' => [$type, [1], null, false];
+            yield $type.' rejects nonfinite' => [$type, INF, null, false];
+        }
+        yield 'untyped scalar keeps numeric text' => ['scalar', '12.5', '12.5', true];
+        yield 'string stays bounded' => ['string', str_repeat('é', 251)."\0", str_repeat('é', 250), true];
+        yield 'string rejects number' => ['string', 12, null, false];
+        yield 'string rejects boolean' => ['string', true, null, false];
+        yield 'boolean false' => ['boolean', false, false, true];
+        yield 'boolean true' => ['boolean', true, true, true];
+        yield 'boolean rejects truthy strings' => ['boolean', 'false', null, false];
+        yield 'boolean rejects integer flags' => ['boolean', 1, null, false];
+        yield 'integer zero' => ['integer', 0, 0, true];
+        yield 'integer negative' => ['integer', -42, -42, true];
+        yield 'integer integral float' => ['integer', 42.0, 42, true];
+        yield 'integer maximum safe' => ['integer', CustomDataSettings::MAXIMUM_SAFE_INTEGER, CustomDataSettings::MAXIMUM_SAFE_INTEGER, true];
+        yield 'integer minimum safe' => ['integer', -CustomDataSettings::MAXIMUM_SAFE_INTEGER, -CustomDataSettings::MAXIMUM_SAFE_INTEGER, true];
+        yield 'integer rejects unsafe positive' => ['integer', 9_007_199_254_740_992, null, false];
+        yield 'integer rejects unsafe negative' => ['integer', -9_007_199_254_740_992, null, false];
+        yield 'integer rejects fraction' => ['integer', 12.5, null, false];
+        yield 'integer rejects query text' => ['integer', '12', null, false];
+        yield 'integer rejects boolean' => ['integer', true, null, false];
+        foreach (['float', 'double'] as $type) {
+            yield $type.' fraction' => [$type, -12.5, -12.5, true];
+            yield $type.' integer' => [$type, 12, 12, true];
+            yield $type.' exponent' => [$type, 1.25e12, 1.25e12, true];
+            yield $type.' rejects numeric text' => [$type, '12.5', null, false];
+            yield $type.' rejects boolean' => [$type, false, null, false];
+            yield $type.' rejects nan' => [$type, NAN, null, false];
+        }
+    }
+
+    public function testPropertyTypesNeverGrantConsentOrAuthorizeTheOrganizationMarker(): void
+    {
+        $settings = $this->settings([
+            'custom_data_properties' => [
+                'quantity' => ['type' => 'integer', 'consent_required' => false],
+                'revenue' => ['type' => 'double'],
+                'orgInternalTraffic' => ['type' => 'boolean', 'consent_required' => false],
+            ],
+            'query_parameter_mappings' => [],
+        ]);
+        $submitted = ['quantity' => 2, 'revenue' => 12.5, 'orgInternalTraffic' => true, 'unknown' => 12];
+
+        self::assertSame(['quantity' => 2], $settings->filterEventData($submitted, false));
+        self::assertSame(['quantity' => 2, 'revenue' => 12.5, 'unknown' => 12], $settings->filterEventData($submitted, true));
+        self::assertSame(['quantity' => 'integer', 'revenue' => 'double', 'orgInternalTraffic' => 'boolean'], $settings->propertyTypes());
+    }
+
+    public function testPreviewModelUsesSharedConsentTypeAndActiveMarkerRulesWithoutSaving(): void
+    {
+        $settings = $this->settings([
+            'internal_traffic_name' => 'companyStaff',
+            'custom_data_properties' => ['saved_only' => ['consent_required' => false]],
+            'query_parameter_mappings' => [],
+        ]);
+        $before = file_get_contents($this->projectDir.'/config/aggregate.yaml');
+        $model = [
+            'custom_data_properties' => [
+                'quantity' => ['type' => 'integer', 'consent_required' => false],
+                'revenue' => ['type' => 'double'],
+                'companyStaff' => ['type' => 'boolean', 'consent_required' => false],
+            ],
+            'query_parameter_mappings' => [],
+        ];
+        $data = ['quantity' => 2.0, 'revenue' => 12.5, 'companyStaff' => true, 'saved_only' => 'private'];
+
+        self::assertSame(['quantity' => 2], $settings->filterEventDataForModel($data, false, $model));
+        self::assertSame(['quantity' => 2, 'revenue' => 12.5, 'saved_only' => 'private'], $settings->filterEventDataForModel($data, true, $model));
+        self::assertNull($settings->filterEventDataForModel(['quantity' => '2'], true, $model));
+        self::assertSame($before, file_get_contents($this->projectDir.'/config/aggregate.yaml'));
+        self::assertSame(['saved_only'], array_keys($settings->properties()));
+
+        $model['custom_data_properties']['quantity']['type'] = 'number';
+        $this->expectException(\InvalidArgumentException::class);
+        $settings->filterEventDataForModel(null, false, $model);
+    }
+
     #[DataProvider('markerNames')]
     public function testConfiguredMarkerCanHaveAReportingColumnButCannotBeSubmittedAsCustomData(string $markerName): void
     {
@@ -308,6 +429,22 @@ final class CustomDataSettingsTest extends TestCase
         foreach ([null, false, 'plan', ['unknown' => true], ['consent_required' => 'false'], ['consent_required' => 0], ['consent_required' => null], ['description' => null], ['description' => []], ['description' => str_repeat('x', 1001)], ['column' => null]] as $index => $definition) {
             yield 'invalid definition '.$index => [array_replace($base, ['custom_data_properties' => ['plan' => $definition]])];
         }
+        foreach ([null, false, 1, [], '', 'number', 'Integer', 'decimal'] as $index => $type) {
+            yield 'invalid property type '.$index => [array_replace($base, ['custom_data_properties' => ['plan' => ['type' => $type]]])];
+        }
+        foreach ([null, 1, [], 'created_at', 'UpperCase', 'unsafe-column', str_repeat('a', 64)] as $index => $column) {
+            yield 'invalid numeric column '.$index => [array_replace($base, ['custom_data_properties' => ['plan' => ['type' => 'double', 'numeric_column' => $column]]])];
+        }
+        foreach (['scalar', 'string', 'boolean'] as $type) {
+            yield 'numeric alias requires numeric type '.$type => [array_replace($base, ['custom_data_properties' => ['plan' => ['type' => $type, 'numeric_column' => 'numeric_value']]])];
+        }
+        yield 'numeric alias requires explicit type' => [array_replace($base, ['custom_data_properties' => ['plan' => ['numeric_column' => 'numeric_value']]])];
+        yield 'text and numeric alias collide' => [array_replace($base, ['custom_data_properties' => ['plan' => ['type' => 'double', 'column' => 'plan_value', 'numeric_column' => 'plan_value']]])];
+        yield 'numeric alias collides across properties' => [array_replace($base, ['custom_data_properties' => ['plan' => ['type' => 'integer', 'numeric_column' => 'metric'], 'revenue' => ['column' => 'metric']]])];
+        yield 'numeric aliases must be unique' => [array_replace($base, ['custom_data_properties' => ['plan' => ['type' => 'integer', 'numeric_column' => 'metric'], 'revenue' => ['type' => 'float', 'numeric_column' => 'metric']]])];
+        yield 'marker cannot acquire string type' => [array_replace($base, ['custom_data_properties' => ['orgInternalTraffic' => ['type' => 'string']]])];
+        yield 'marker cannot acquire numeric alias' => [array_replace($base, ['custom_data_properties' => ['orgInternalTraffic' => ['type' => 'integer', 'numeric_column' => 'metric']]])];
+        yield 'legacy marker cannot acquire numeric alias' => [array_replace($base, ['custom_data_properties' => ['__Host-formerStaff' => ['type' => 'integer', 'column' => 'old_staff', 'numeric_column' => 'metric']]])];
         foreach (['id', 'event_hour', 'event_count', 'visitor_id', 'custom_data', 'Plan', 'a.b', 'select;drop', str_repeat('a', 64)] as $column) {
             yield 'invalid SQL column '.$column => [array_replace($base, ['custom_data_properties' => ['plan' => ['column' => $column]]])];
         }
@@ -348,6 +485,8 @@ final class CustomDataSettingsTest extends TestCase
         yield 'string properties' => [['custom_data_properties' => 'plan']];
         yield 'null consent rule' => [['custom_data_properties' => ['plan' => ['consent_required' => null]]]];
         yield 'string consent rule' => [['custom_data_properties' => ['plan' => ['consent_required' => 'false']]]];
+        yield 'invalid saved type' => [['custom_data_properties' => ['plan' => ['type' => 'number']]]];
+        yield 'missing type for numeric alias' => [['custom_data_properties' => ['plan' => ['numeric_column' => 'metric']]]];
     }
 
     public function testBrokenYamlFailsClosed(): void

@@ -10,15 +10,18 @@ use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\Console\Input\ArrayInput;
-use Symfony\Component\Console\Output\BufferedOutput;
+use Symfony\Component\Console\Output\NullOutput;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\KernelInterface;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 use Symfony\Component\Routing\Annotation\Route;
 
 class InstallController extends AbstractController
 {
+    private const CSRF_TOKEN_ID = 'install';
+
     public function __construct(
         private readonly InstallationChecker $installationChecker,
         private readonly AggregateConfigLoader $config,
@@ -28,7 +31,7 @@ class InstallController extends AbstractController
         private readonly InternalTrafficSettings $internalTrafficSettings,
     ) {}
 
-    #[Route('/install', name: 'app_install')]
+    #[Route('/install', name: 'app_install', methods: ['GET'])]
     public function install(): Response
     {
         if (!$this->config->isDashboardEnabled()) {
@@ -59,6 +62,11 @@ class InstallController extends AbstractController
             return $this->redirectToRoute('app_home');
         }
 
+        $csrfToken = $request->request->all()['_csrf_token'] ?? null;
+        if (!is_string($csrfToken) || !$this->isCsrfTokenValid(self::CSRF_TOKEN_ID, $csrfToken)) {
+            throw new AccessDeniedHttpException('Invalid installation CSRF token.');
+        }
+
         if (!$this->installationChecker->isConfigValid()) {
             $this->addFlash('error', 'Configuration is invalid. Please fix your .env/.env.local values.');
             return $this->redirectToRoute('app_install');
@@ -86,14 +94,13 @@ class InstallController extends AbstractController
             $application = new Application($this->kernel);
             $application->setAutoExit(false);
 
-            $output = new BufferedOutput();
             $result = $application->run(new ArrayInput([
                 'command' => 'doctrine:migrations:migrate',
                 '--no-interaction' => true,
-            ]), $output);
+            ]), new NullOutput());
 
             if ($result !== 0) {
-                $this->addFlash('error', 'Migration failed: ' . $output->fetch());
+                $this->addFlash('error', 'Migration failed. Run php bin/console doctrine:migrations:migrate on the server for diagnostics.');
                 return $this->redirectToRoute('app_install');
             }
 
@@ -113,8 +120,8 @@ class InstallController extends AbstractController
 
             $this->addFlash('success', 'Installation completed. Log in now. Configure a worker later only if you switch to async ingestion mode.');
             return $this->redirectToRoute('app_login');
-        } catch (\Exception $e) {
-            $this->addFlash('error', 'Installation failed: ' . $e->getMessage());
+        } catch (\Exception) {
+            $this->addFlash('error', 'Installation failed. Run php bin/console app:install on the server for diagnostics.');
             return $this->redirectToRoute('app_install');
         }
     }

@@ -20,33 +20,41 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     outputs:
       tag: ${{ steps.release.outputs.tag }}
     env:
       RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.tag || github.ref_name }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@b604ade2a87db23f8871b7182e69ec5e75effb45 # v2
         with:
           php-version: '8.2'
           extensions: ctype, iconv, pdo_sqlite, pdo_mysql, mbstring, xml, curl, intl, sodium, zip
           coverage: none
           tools: composer:v2
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
           cache: npm
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
       - name: Install test dependencies
         run: |
           echo "RELEASE_OUTPUT=$RUNNER_TEMP/aggregate-release" >> "$GITHUB_ENV"
           cp .env.prod.example .env
-          composer validate --no-check-publish --no-interaction
+          composer validate --strict --no-check-publish --no-interaction
           composer install --no-interaction --prefer-dist --no-scripts
           npm ci --ignore-scripts --no-audit --no-fund
+      - name: Audit locked build and runtime dependencies
+        run: |
+          composer audit --locked --no-interaction
+          npm audit
       - name: Verify release tag and publishing branch
         id: release
         shell: bash
@@ -131,7 +139,7 @@ jobs:
           php bin/console about
           php bin/console cache:clear
           php bin/console lint:container
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: signed-release-package
           path: ${{ runner.temp }}/aggregate-release/*
@@ -141,10 +149,11 @@ jobs:
   draft-release:
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: signed-release-package
           path: release
