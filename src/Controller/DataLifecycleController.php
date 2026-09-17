@@ -37,7 +37,7 @@ final class DataLifecycleController extends AbstractController
             $configurationError = 'The active lifecycle configuration is invalid. Correct its YAML or environment values before maintenance is run.';
         }
 
-        return $this->render('dashboard/data_lifecycle.html.twig', [
+        return $this->render('data_lifecycle/index.html.twig', [
             'lifecycle_settings' => $settings,
             'lifecycle_environment_overrides' => $this->policy->getEnvironmentOverrides(),
             'lifecycle_configuration_error' => $configurationError,

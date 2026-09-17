@@ -12,6 +12,7 @@ use App\Service\GoalEventRegistry;
 use App\Service\InternalTrafficSettings;
 use App\Service\PrivacyPolicy;
 use App\Service\PrivacySanitizer;
+use App\Service\WebsiteDomainPolicy;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -21,6 +22,10 @@ use Symfony\Component\Routing\Annotation\Route;
 
 class ReceiveController
 {
+    public function __construct(private readonly WebsiteDomainPolicy $domainPolicy = new WebsiteDomainPolicy())
+    {
+    }
+
     #[Route('/api/receive', name: 'api_receive', methods: ['POST'])]
     public function __invoke(
         Request $request,
@@ -87,9 +92,16 @@ class ReceiveController
                 return $this->jsonWithCors($request, ['error' => 'Invalid websiteToken'], Response::HTTP_BAD_REQUEST);
             }
 
-            // Domain whitelisting using Origin or Referer
-            $origin = $request->headers->get('Origin') ?: $request->headers->get('Referer');
-            if (!$this->isOriginAllowed($origin, $website['domain'])) {
+            // Use the saved policy for both privacy modes. Only a missing
+            // Origin permits Referer fallback; payload fields cannot grant access.
+            // Repeated headers are invalid instead of selecting their first value.
+            $origins = $request->headers->all('Origin');
+            $referers = $request->headers->all('Referer');
+            if (!$this->domainPolicy->allows(
+                $website,
+                count($origins) > 1 ? '' : ($origins[0] ?? null),
+                count($referers) > 1 ? '' : ($referers[0] ?? null),
+            )) {
                 return $this->jsonWithCors($request, ['error' => 'Forbidden origin'], Response::HTTP_FORBIDDEN);
             }
 
@@ -250,23 +262,5 @@ class ReceiveController
         }
 
         return $payload;
-    }
-
-    private function isOriginAllowed(?string $originHeader, string $expectedDomain): bool
-    {
-        if (!$originHeader) { return false; }
-        $domain = $this->extractDomain($originHeader);
-        if (!$domain) { return false; }
-        $expectedDomain = strtolower(trim($expectedDomain, " \t\n\r\0\x0B."));
-        if ($expectedDomain === '') { return false; }
-        // Allow subdomains of expectedDomain
-        return $domain === $expectedDomain || str_ends_with($domain, '.' . $expectedDomain);
-    }
-
-    private function extractDomain(string $url): ?string
-    {
-        $host = parse_url($url, PHP_URL_HOST);
-        if (!$host) { return null; }
-        return strtolower($host);
     }
 }

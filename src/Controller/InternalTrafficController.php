@@ -46,7 +46,7 @@ final class InternalTrafficController extends AbstractController
             $browserConfig = null;
         }
 
-        return InternalTrafficResponseSubscriber::protect($this->render('dashboard/internal_traffic.html.twig', [
+        return InternalTrafficResponseSubscriber::protect($this->render('internal_traffic/index.html.twig', [
             'settings' => $marker,
             'browser_config' => $browserConfig,
             'overrides' => $this->settings->getEnvironmentOverrides(),

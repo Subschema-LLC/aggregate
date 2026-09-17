@@ -36,8 +36,8 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   database operations; do not introduce competing YAML synchronization.
 - **Website-specific configuration and data models.** Allow collection settings
   and models to vary by registered website. They currently use the deployment's
-  active aggregate YAML configuration; registration already manages domains and
-  ingestion tokens separately. Preserve existing deployments and reporting
+  active aggregate YAML configuration; registration already manages primary domains,
+  per-token source-domain rules, and ingestion tokens separately. Preserve existing deployments and reporting
   contracts through an explicit migration design.
 - **Targeted feature rollout.** Extend
   [deployment-wide feature flags](docs/FEATURE-FLAGS.md) to selected websites or
@@ -49,6 +49,7 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   A future resumable updater must coordinate maintenance and workers, preserve
   configuration/data, run migrations and health checks, prevent concurrent
   updates, and provide separate application-file and database recovery procedures.
+- **Wizard and step walkthrough.** Since the UI is somewhat technical, having a setup wizard and an annotation callout-style walkthrough that points ot buttons will be ideal for adoption.
 
 ## Proposals to explore
 
@@ -67,6 +68,7 @@ checkout, or a small accessibility fix. Keep each PR focused and target
 
 ## Available foundations
 
+- [Website domain rules](docs/CONFIGURATION.md#website-domains), with YAML/UI allow-all or restricted exact-host and wildcard-subdomain policies, CLI creation options, and server enforcement in both privacy modes. Existing registrations preserve their domain-plus-subdomains behavior until rules are explicitly saved.
 - [Synthetic event examples](docs/EVENT-EXAMPLES.md), with saved-model anonymous/enhanced JSON, UI copy/download, a headless export, and a proposed flat ecommerce model. Optional value types enforce scalar input types, while additive numeric reporting columns preserve existing text aliases.
 - [Focused administration pages and grouped navigation](docs/CONFIGURATION.md#administration-pages), with keyboard/touch submenus configured in YAML and role/feature checks at each level. Model editing, discovery, examples, and reporting SQL have separate pages.
 - [Feature flags](docs/FEATURE-FLAGS.md), with shared YAML/admin UI settings, server and CLI enforcement, and independent navigation visibility. Updates is the first registered capability; developer and contributor guidance explains how to add more.

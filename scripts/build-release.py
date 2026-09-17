@@ -35,6 +35,7 @@ CONFIG_FILES = (
     "navigation.yaml", "goals.yaml", "release.yaml", "release-signing.pub",
 )
 SOURCE_TREES = ("src", "templates", "translations", "migrations", "assets", "micro-consent-dropins", "scripts")
+DOCUMENTATION_EXAMPLES = ("docs/examples/ecommerce-purchase.json",)
 REQUIRED_FILES = (
     "LICENSE", "composer.json", "composer.lock", "bin/console", "public/index.php",
     "vendor/autoload.php", "vendor/autoload_runtime.php", "vendor/composer/installed.json",
@@ -181,6 +182,7 @@ def payload_paths(source):
         paths.update(tree_files(source, relative))
     # Documentation only, excluding local images, DB exports, and development SQL.
     paths.update(path.relative_to(source).as_posix() for path in (source / "docs").glob("*.md") if path.name.lower() != "todo.md")
+    paths.update(path for path in DOCUMENTATION_EXAMPLES if (source / path).exists())
     return sorted(paths)
 
 
