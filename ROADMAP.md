@@ -49,6 +49,7 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   A future resumable updater must coordinate maintenance and workers, preserve
   configuration/data, run migrations and health checks, prevent concurrent
   updates, and provide separate application-file and database recovery procedures.
+- **Download dropin scripts from UI.** We need CMP and Tag Manager (if created) drop in scripts or copy them.
 - **Wizard and step walkthrough.** Since the UI is somewhat technical, having a setup wizard and an annotation callout-style walkthrough that points ot buttons will be ideal for adoption.
 
 ## Proposals to explore
