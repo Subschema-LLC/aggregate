@@ -6,6 +6,7 @@ namespace App\Tests\Configuration;
 
 use App\Service\ApplicationUpdateService;
 use App\Service\ReportingViewManager;
+use App\Twig\FeatureFlagsExtension;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Routing\RouterInterface;
@@ -84,6 +85,10 @@ final class MainNavigationConfigTest extends KernelTestCase
         $twig = $container->get('twig');
         self::assertInstanceOf(Environment::class, $twig);
         self::assertSame($navigation, $twig->getGlobals()['main_navigation'] ?? null);
+        self::assertTrue($twig->hasExtension(FeatureFlagsExtension::class));
+        foreach (['feature_enabled', 'feature_hidden_from_navigation', 'navigation_feature_state'] as $function) {
+            self::assertNotNull($twig->getFunction($function));
+        }
 
         $router = $container->get('router');
         self::assertInstanceOf(RouterInterface::class, $router);
@@ -164,6 +169,7 @@ final class MainNavigationConfigTest extends KernelTestCase
         self::assertCount(1, $updateLinks);
         self::assertSame('Updates', $updateLinks[0]['label']);
         self::assertSame('ROLE_ADMIN', $updateLinks[0]['role']);
+        self::assertSame('updates', $updateLinks[0]['feature']);
 
         $router = $container->get('router');
         self::assertInstanceOf(RouterInterface::class, $router);
@@ -174,6 +180,25 @@ final class MainNavigationConfigTest extends KernelTestCase
         self::assertSame('/dashboard/updates', $indexRoute->getPath());
         self::assertSame(['GET'], $indexRoute->getMethods());
         self::assertSame(['POST'], $refreshRoute->getMethods());
+    }
+
+    public function testFeatureFlagsHaveAnAdministratorNavigationDestination(): void
+    {
+        self::bootKernel();
+
+        $container = self::getContainer();
+        $links = array_values(array_filter(
+            $container->getParameter('app.main_navigation')['items'],
+            static fn (mixed $item): bool => is_array($item)
+                && ($item['route'] ?? null) === 'app_feature_flags',
+        ));
+        self::assertCount(1, $links);
+        self::assertSame('ROLE_ADMIN', $links[0]['role']);
+        self::assertArrayNotHasKey('feature', $links[0], 'Feature management must remain accessible when other features are disabled.');
+        $route = $container->get('router')->getRouteCollection()->get('app_feature_flags');
+        self::assertNotNull($route);
+        self::assertSame('/dashboard/feature-flags', $route->getPath());
+        self::assertSame(['GET'], $route->getMethods());
     }
 
     public function testUpdateRoutesRequireAuthenticationBeforeCheckingGithub(): void

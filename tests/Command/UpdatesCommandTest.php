@@ -45,7 +45,7 @@ final class UpdatesCommandTest extends TestCase
         foreach (['available', 'up_to_date', 'ahead', 'diverged'] as $state) {
             yield $state => [$state, Command::SUCCESS];
         }
-        foreach (['unknown', 'error', 'unavailable', 'incompatible'] as $state) {
+        foreach (['unknown', 'error', 'unavailable', 'incompatible', 'disabled'] as $state) {
             yield $state => [$state, Command::FAILURE];
         }
     }

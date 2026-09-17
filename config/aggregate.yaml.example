@@ -13,6 +13,17 @@ updates_branch: master
 # updates_signing_public_key: 'BASE64_PUBLIC_KEY'
 # Never put the private release signing key in application configuration.
 
+# Deployment-wide feature flags, managed through the Feature flags admin page
+# or this YAML. No uppercase environment-variable overrides. See docs/FEATURE-FLAGS.md.
+# An active environment's entire feature_flags mapping replaces this shared one.
+feature_flags:
+  updates:
+    enabled: true
+    hide_from_navigation: false
+# enabled: false blocks update routes/services/commands. Independently, true
+# hide_from_navigation removes their navigation entries. A disabled visible
+# feature appears as an inactive item without a link. Use YAML booleans only.
+
 # Shared custom data model; active environments can replace either mapping.
 # All UTMs require enhanced consent by default. For anonymous attribution,
 # prefer only utm_medium with broad channel values (email/social/cpc).

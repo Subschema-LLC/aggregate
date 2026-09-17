@@ -9,6 +9,8 @@ Self-hosted web analytics with privacy-minimized anonymous-mode events, optional
 [![PHP 8.2+](https://img.shields.io/badge/PHP-8.2%2B-777BB4.svg)](https://php.net)
 [![CI](https://github.com/Subschema-LLC/aggregate/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/Subschema-LLC/aggregate/actions/workflows/ci.yml)
 
+![Dashboard screenshot](docs/images/aggregate_logo_alt4.png)
+
 Most privacy-first analytics tools still build a pseudonymous identity for every visitor — typically a rotating hash of IP address, user agent and domain. Better than a cookie. Still an identifier.
 
 Aggregate's anonymous mode creates no visitor identifier. By default, an anonymous event holds a sanitized path, a coarse referrer channel, device and viewport buckets, and a UTC hour. It stores no visitor or session ID, IP address, User-Agent string, or exact event timestamp. Optional goals, coarse geography, organization markers, and explicitly allowlisted properties can add context; their values still need review for identifying detail.
@@ -124,6 +126,10 @@ Use `start-postgres` / `migrate-postgres` or `start-mariadb` / `migrate-mariadb`
 
 Admins can check **Updates**, or run `php bin/console app:updates:check --refresh`. The YAML setting `updates_branch` defaults to `master`. Git installations support clean fast-forward source pulls with `app:updates:pull`, followed by the [deployment steps](DEPLOYMENT.md#updates). Official ZIP installations use version metadata to check public GitHub Releases without Git; see [signed release packages](docs/RELEASES.md).
 
+The **Feature flags** admin page and YAML can disable Updates or hide its
+navigation entries. Updates stays enabled by default. See the
+[feature flag guide](docs/FEATURE-FLAGS.md) for configuration and contributor examples.
+
 ## Add tracking to a website
 
 Use the website token from your registration and your analytics host:
@@ -182,6 +188,7 @@ Use the optional [JavaScript build](docs/JS-BUILD.md) for minified tracker and d
 | [Public release preparation](docs/PUBLIC-RELEASE.md) | Maintainer reporting setup, Git history review, GitHub checks, and launch steps |
 | [Privacy and compliance](docs/PRIVACY-COMPLIANCE.md) | Measurement limits, consent, organization traffic, BI suppression, logging, retention, and operator checks |
 | [Configuration](docs/CONFIGURATION.md) | YAML settings, environment overrides, branding, goals, and lifecycle policy |
+| [Feature flags](docs/FEATURE-FLAGS.md) | YAML/admin controls, navigation visibility, and developer/contributor guidance |
 | [Data model](docs/DATA-MODEL.md) | UTM/query mappings, anonymous property whitelists, model sharing, and custom reporting columns |
 | [JavaScript build](docs/JS-BUILD.md) | Optional minification, dynamic tracker configuration, and build verification |
 | [Release packages](docs/RELEASES.md) | Publishing from master, signing keys, installable ZIPs, verification, and update groundwork |

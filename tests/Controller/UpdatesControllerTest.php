@@ -7,6 +7,7 @@ namespace App\Tests\Controller;
 use App\Controller\UpdatesController;
 use App\Service\AggregateConfigLoader;
 use App\Service\ApplicationUpdateService;
+use App\Service\FeatureFlags;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\DependencyInjection\Container;
@@ -246,16 +247,34 @@ final class UpdatesControllerTest extends TestCase
         yield 'refresh status' => ['POST'];
     }
 
+    #[DataProvider('requestMethods')]
+    public function testDisabledFeatureBlocksDirectRequestsBeforeCheckingUpdates(string $method): void
+    {
+        $request = $this->request($method, ['_csrf_token' => 'valid-token']);
+        $updates = $this->createMock(ApplicationUpdateService::class);
+        $updates->expects(self::never())->method('check');
+        $controller = $this->controller($updates, $request, featureEnabled: false);
+
+        $this->expectException(NotFoundHttpException::class);
+        if ($method === 'POST') {
+            $controller->refresh($request);
+        } else {
+            $controller->index();
+        }
+    }
+
     private function controller(
         ApplicationUpdateService $updates,
         ?Request $request = null,
         bool $admin = true,
         bool $dashboardEnabled = true,
         bool $csrfValid = true,
+        bool $featureEnabled = true,
     ): UpdatesController {
         $config = $this->createStub(AggregateConfigLoader::class);
         $config->method('isDashboardEnabled')->willReturn($dashboardEnabled);
-        $controller = new UpdatesController($config, $updates);
+        $config->method('all')->willReturn(['feature_flags' => ['updates' => ['enabled' => $featureEnabled]]]);
+        $controller = new UpdatesController($config, $updates, new FeatureFlags($config));
 
         $authorization = $this->createMock(AuthorizationCheckerInterface::class);
         $authorization->expects($dashboardEnabled ? self::once() : self::never())
@@ -265,7 +284,7 @@ final class UpdatesControllerTest extends TestCase
         $stack = new RequestStack();
         $stack->push($request);
         $submitted = $request->request->all();
-        $expectCsrfCheck = $request->isMethod('POST') && $admin && $dashboardEnabled
+        $expectCsrfCheck = $request->isMethod('POST') && $admin && $dashboardEnabled && $featureEnabled
             && is_string($submitted['_csrf_token'] ?? null);
         $csrf = $this->createMock(CsrfTokenManagerInterface::class);
         $csrf->expects($expectCsrfCheck ? self::once() : self::never())
