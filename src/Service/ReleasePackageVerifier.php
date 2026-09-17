@@ -16,12 +16,15 @@ class ReleasePackageVerifier
         private readonly AggregateConfigLoader $config,
         private readonly UpdateSettings $settings,
         private readonly string $projectDir,
+        private readonly FeatureFlags $features,
     ) {
     }
 
     /** @return array<string, mixed> The authenticated release manifest. */
     public function verify(string $archivePath, string $manifestPath, string $signaturePath): array
     {
+        $this->features->assertEnabled('updates');
+
         $this->assertLocalPath($archivePath);
         $manifestBytes = $this->readBoundedFile($manifestPath, ReleaseMetadata::MAX_BYTES, 'release manifest');
         $signature = $this->readBoundedFile($signaturePath, 256, 'release signature');
@@ -52,6 +55,8 @@ class ReleasePackageVerifier
     /** Signature validation deliberately precedes parsing or trusting any manifest fields. */
     public function verifyManifest(string $manifestBytes, string $signatureBase64): array
     {
+        $this->features->assertEnabled('updates');
+
         if (!function_exists('sodium_crypto_sign_verify_detached')) {
             throw new \RuntimeException('The PHP sodium extension is required to verify release signatures.');
         }

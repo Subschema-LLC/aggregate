@@ -179,6 +179,102 @@ final class AggregateConfigLoaderTest extends TestCase
         unlink($sharedConfig);
     }
 
+    public function testUpdateManyReadsTheLatestEffectiveConfigurationUnderTheFileLock(): void
+    {
+        $this->writeConfig([
+            'brand_name' => 'Shared',
+            'environments' => [
+                'prod' => ['settings' => ['first' => 1, 'second' => 2]],
+                'test' => ['settings' => ['first' => 10]],
+            ],
+        ]);
+        $loader = new AggregateConfigLoader($this->projectDir, 'prod');
+        self::assertSame(['first' => 1, 'second' => 2], $loader->get('settings'));
+        (new AggregateConfigLoader($this->projectDir, 'prod'))->set('settings', ['first' => 3, 'second' => 2]);
+
+        $loader->updateMany(function (array $current): array {
+            self::assertSame('Shared', $current['brand_name']);
+            self::assertArrayNotHasKey('environments', $current);
+            self::assertSame(['first' => 3, 'second' => 2], $current['settings']);
+            $handle = fopen($this->projectDir.'/config/aggregate.yaml', 'rb');
+            try {
+                self::assertFalse(flock($handle, LOCK_EX | LOCK_NB), 'The callback must run while the file is exclusively locked.');
+            } finally {
+                fclose($handle);
+            }
+
+            return ['settings' => array_replace($current['settings'], ['second' => 4])];
+        });
+
+        self::assertSame(['first' => 3, 'second' => 4], $loader->get('settings'));
+        self::assertSame([
+            'brand_name' => 'Shared',
+            'environments' => [
+                'prod' => ['settings' => ['first' => 3, 'second' => 4]],
+                'test' => ['settings' => ['first' => 10]],
+            ],
+        ], Yaml::parseFile($this->projectDir.'/config/aggregate.yaml'));
+    }
+
+    public function testRejectedUpdateLeavesDiskAndCachedConfigurationUnchangedAndReleasesTheLock(): void
+    {
+        $this->writeConfig(['brand_name' => 'Before']);
+        $loader = new AggregateConfigLoader($this->projectDir, 'prod');
+        self::assertSame('Before', $loader->get('brand_name'));
+        $before = file_get_contents($this->projectDir.'/config/aggregate.yaml');
+
+        try {
+            $loader->updateMany(static function (array $current): array {
+                throw new \InvalidArgumentException('Rejected settings.');
+            });
+            self::fail('The update callback should reject these settings.');
+        } catch (\InvalidArgumentException) {
+            self::assertSame($before, file_get_contents($this->projectDir.'/config/aggregate.yaml'));
+            self::assertSame('Before', $loader->get('brand_name'));
+        }
+
+        $loader->set('brand_name', 'After');
+        self::assertSame('After', $loader->get('brand_name'));
+    }
+
+    public function testInvalidCallbackResultsDoNotWriteAnyConfiguration(): void
+    {
+        $this->writeConfig(['brand_name' => 'Before']);
+        $loader = new AggregateConfigLoader($this->projectDir, 'prod');
+        $before = file_get_contents($this->projectDir.'/config/aggregate.yaml');
+
+        foreach ([null, 'invalid', ['' => true], [0 => true]] as $result) {
+            try {
+                $loader->updateMany(static fn (array $current) => $result);
+                self::fail('An invalid callback result was accepted.');
+            } catch (\InvalidArgumentException) {
+                self::assertSame($before, file_get_contents($this->projectDir.'/config/aggregate.yaml'));
+            }
+        }
+    }
+
+    public function testUpdateManyRechecksCurrentPrivacySettingsBeforeCallingTheUpdater(): void
+    {
+        $this->writeConfig(['anonymous_tracking_enabled' => true]);
+        $loader = new AggregateConfigLoader($this->projectDir, 'prod');
+        $loader->assertHealthy();
+        $this->writeConfig(['anonymous_tracking_enabled' => 'invalid']);
+        $before = file_get_contents($this->projectDir.'/config/aggregate.yaml');
+        $called = false;
+
+        try {
+            $loader->updateMany(static function (array $current) use (&$called): array {
+                $called = true;
+
+                return ['brand_name' => 'Changed'];
+            });
+            self::fail('A stale healthy snapshot authorized an update to invalid configuration.');
+        } catch (\RuntimeException) {
+            self::assertFalse($called);
+            self::assertSame($before, file_get_contents($this->projectDir.'/config/aggregate.yaml'));
+        }
+    }
+
     public function testResetReloadsConfigurationForLongRunningWorkers(): void
     {
         $this->writeConfig(['brand_name' => 'Before']);

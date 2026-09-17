@@ -1,0 +1,54 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Feature flags - {{ app_branding.name }}{% endblock %}
+
+{% block body %}
+    <h1 class="title">Feature flags</h1>
+    <p class="subtitle">Control optional features for this deployment. These settings apply to the active configuration across all websites.</p>
+
+    <div class="content">
+        <p>Disabling a feature blocks its actions. A disabled feature stays visible in navigation as an unavailable item until you hide it.</p>
+        <p>Hiding a feature removes its navigation entries independently of whether it is enabled. An enabled, hidden feature can still be accessed directly by authorized users.</p>
+    </div>
+
+    {% if configuration_error %}
+        <div class="notification is-danger" role="alert">{{ configuration_error }}</div>
+    {% else %}
+        <form action="{{ path('app_feature_flags_save') }}" method="post">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token('feature_flags_settings') }}">
+
+            {% for name, definition in definitions %}
+                <fieldset class="box" aria-describedby="feature-{{ name }}-description">
+                    <legend class="title is-4">{{ definition.label }}</legend>
+                    <p id="feature-{{ name }}-description" class="mb-4">{{ definition.description }}</p>
+
+                    <div class="field">
+                        <label class="label" for="feature-{{ name }}-enabled">Availability</label>
+                        <div class="control">
+                            <div class="select">
+                                <select id="feature-{{ name }}-enabled" name="feature_flags[{{ name }}][enabled]" required>
+                                    <option value="1"{% if settings[name].enabled %} selected{% endif %}>Enabled</option>
+                                    <option value="0"{% if not settings[name].enabled %} selected{% endif %}>Disabled</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label class="label" for="feature-{{ name }}-navigation">Navigation</label>
+                        <div class="control">
+                            <div class="select">
+                                <select id="feature-{{ name }}-navigation" name="feature_flags[{{ name }}][hide_from_navigation]" required>
+                                    <option value="0"{% if not settings[name].hide_from_navigation %} selected{% endif %}>Show in navigation</option>
+                                    <option value="1"{% if settings[name].hide_from_navigation %} selected{% endif %}>Hide from navigation</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </fieldset>
+            {% endfor %}
+
+            <button class="button is-primary" type="submit">Save feature flags</button>
+        </form>
+    {% endif %}
+{% endblock %}

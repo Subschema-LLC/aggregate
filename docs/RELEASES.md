@@ -64,6 +64,11 @@ PHP requirements come from Composer's generated platform check with a baseline o
 
 ## Check and verify on an installation
 
+The deployment-wide `updates` [feature flag](FEATURE-FLAGS.md) must be enabled
+(the default) for these commands and the Updates page. Its navigation visibility
+is independent of availability. Disabling it also blocks Git source pulls;
+re-enable it through active YAML or the Feature flags admin page when needed.
+
 ```bash
 php bin/console app:updates:check --refresh --json
 php bin/console app:updates:verify-package \

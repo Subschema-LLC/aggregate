@@ -61,6 +61,20 @@ and can explain, including its architectural, privacy, and licensing implication
 The author remains responsible for the contribution and for verifying the
 behavior described in the PR.
 
+## Feature flags for optional capabilities
+
+Consider proposing a feature flag for beta functionality, optional integrations,
+or operational actions that benefit from a staged rollout. Explain the default,
+navigation visibility, affected UI/CLI/service entry points, disabling/recovery
+behavior, and graduation or retirement criteria in the issue or PR.
+
+Follow the [feature flag developer guide](docs/FEATURE-FLAGS.md#add-a-feature-as-a-developer)
+to register a flag, add shared server enforcement, associate navigation links,
+and cover configuration and disabled paths with regression tests. Registered
+flags appear in the administrator UI and use active YAML configuration. Current
+flags are deployment-wide; website/user targeting remains planned. Mandatory
+privacy and security protections must always apply.
+
 ## Privacy invariants
 
 Treat these as constraints on implementation and documentation:
