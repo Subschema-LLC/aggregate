@@ -13,7 +13,7 @@ npm ci --ignore-scripts
 npm run build:js
 ```
 
-Terser is pinned to `5.31.0`. The builder also accepts that exact version installed globally on `PATH`, so an existing installation can run `node scripts/build-js.cjs` without a local dependency install. `make build-js` runs the same builder.
+Terser is pinned to an exact version in [`package.json`](../package.json), with resolved dependencies in [`package-lock.json`](../package-lock.json). The builder reads that pin and rejects a different installed version, so dependency updates do not require a separate version change in the build script. It also accepts the pinned version installed globally on `PATH`, so an existing installation can run `node scripts/build-js.cjs` without a local dependency install. `make build-js` runs the same builder.
 
 Generated files are ignored by Git. Rebuild after editing source or pulling updates, and copy the generated assets into your deployment if builds run elsewhere:
 
