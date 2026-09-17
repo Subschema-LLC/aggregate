@@ -42,7 +42,7 @@ HELP);
         try {
             $result = $this->updates->pull();
         } catch (\RuntimeException $e) {
-            $io->error(OutputFormatter::escape($e->getMessage()));
+            $io->error($e->getMessage());
 
             return Command::FAILURE;
         }
