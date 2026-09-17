@@ -114,6 +114,10 @@ The installer will:
 
 ### Manual Installation
 
+When upgrading to Doctrine DBAL 4, first review the
+[database version hint changes](docs/DATABASE.md#upgrade-to-doctrine-dbal-4).
+MySQL and MariaDB need full version hints in the active `DATABASE_URL`.
+
 ```bash
 # 1. Install dependencies
 composer install --no-dev --optimize-autoloader
@@ -124,7 +128,7 @@ cat > .env <<'EOF'
 APP_ENV=prod
 APP_DEBUG=0
 APP_SECRET=change-me-use-openssl-rand-hex-32
-DATABASE_URL="mysql://user:pass@localhost:3306/dbname?serverVersion=8.0"
+DATABASE_URL="mysql://user:pass@localhost:3306/dbname?serverVersion=8.0.0"
 MESSENGER_TRANSPORT_DSN=sync://   # default quick mode (no worker required)
 MAILER_DSN=null://null
 EOF

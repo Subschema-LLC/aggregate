@@ -31,7 +31,7 @@ jobs:
       APP_SECRET: ci-tests-only-not-a-deployment-secret
       # Explicit platform avoids connecting to a database during container boot.
       # The current suite uses doubles and disposable fixtures, not a DB server.
-      DATABASE_URL: 'mysql://ci:ci@127.0.0.1:1/aggregate_test?serverVersion=8.0'
+      DATABASE_URL: 'mysql://ci:ci@127.0.0.1:1/aggregate_test?serverVersion=8.0.0'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

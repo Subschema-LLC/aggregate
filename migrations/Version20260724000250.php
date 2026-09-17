@@ -22,7 +22,7 @@ final class Version20260724000250 extends AbstractMigration
 
     public function up(Schema $schema): void
     {
-        $schema->getTable('events')->changeColumn('privacy_mode', ['default' => 'anonymous']);
+        $schema->getTable('events')->modifyColumn('privacy_mode', ['default' => 'anonymous']);
     }
 
     public function down(Schema $schema): void

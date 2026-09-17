@@ -11,6 +11,7 @@ Aggregate Analytics supports **PostgreSQL**, **MySQL**, **MariaDB**, **Microsoft
 - [Microsoft SQL Server](#microsoft-sql-server)
 - [SQLite](#sqlite)
 - [Migration and Compatibility](#migration-and-compatibility)
+- [Upgrade to Doctrine DBAL 4](#upgrade-to-doctrine-dbal-4)
 - [Custom data reporting views](#custom-data-reporting-views)
 - [Analytics Archive and Maintenance](#analytics-archive-and-maintenance)
 
@@ -29,7 +30,7 @@ DATABASE_URL="DATABASE_CONNECTION_STRING_HERE"
 | Database | Connection String |
 |----------|------------------|
 | **PostgreSQL** | `postgresql://user:pass@host:5432/dbname?serverVersion=16` |
-| **MySQL** | `mysql://user:pass@host:3306/dbname?serverVersion=8.0` |
+| **MySQL** | `mysql://user:pass@host:3306/dbname?serverVersion=8.0.0` |
 | **MariaDB** | `mysql://user:pass@host:3306/dbname?serverVersion=11.4.0-MariaDB` |
 | **SQL Server** | `sqlsrv://user:pass@host:1433/dbname?serverVersion=2022` |
 | **SQLite** | `sqlite:///%kernel.project_dir%/var/data.db` |
@@ -164,7 +165,7 @@ FLUSH PRIVILEGES;
 
 **2. Configure connection in `.env`:**
 ```dotenv
-DATABASE_URL="mysql://analytics_user:your_secure_password@localhost:3306/analytics?serverVersion=8.0"
+DATABASE_URL="mysql://analytics_user:your_secure_password@localhost:3306/analytics?serverVersion=8.0.0"
 ```
 
 **3. Run migrations:**
@@ -176,8 +177,12 @@ php bin/console doctrine:migrations:migrate -n
 
 | MySQL Version | serverVersion Parameter |
 |--------------|------------------------|
-| MySQL 8.4 | `?serverVersion=8.4` |
-| MySQL 8.0 | `?serverVersion=8.0` |
+| MySQL 8.4 | `?serverVersion=8.4.0` |
+| MySQL 8.0 | `?serverVersion=8.0.0` |
+
+Include the patch component, preferably the installed version returned by
+`SELECT VERSION()`. For example, use `8.0.43` rather than `8.0`; Doctrine DBAL 4
+compares the complete version when selecting MySQL's SQL platform.
 
 ### Important Notes
 
@@ -429,6 +434,40 @@ The database file will be created automatically at `var/data.db`.
 ---
 
 ## Migration and Compatibility
+
+### Upgrade to Doctrine DBAL 4
+
+Before installing a release that uses Doctrine DBAL 4, check the `serverVersion`
+in your active `DATABASE_URL`, including server environment variables and local
+environment overrides. Preserve the connection's credentials, host, database,
+and other options; update only the version hint when needed:
+
+| Existing hint | Replacement example |
+| --- | --- |
+| MySQL `8.0` | `8.0.0`, or the installed full patch version |
+| MySQL `8.4` | `8.4.0`, or the installed full patch version |
+| MariaDB `mariadb-11.4` | `11.4.0-MariaDB`, or the installed full version with its `MariaDB` marker |
+
+Read the actual server version with `SELECT VERSION()` when possible. Do not
+label a MariaDB connection as MySQL. A short MySQL version can select the wrong
+platform and cause the geographic/archive migrations to reject the connection;
+a MariaDB version without its patch component cannot be parsed. PostgreSQL,
+SQL Server, and SQLite connection examples above continue to apply.
+
+After updating the active environment configuration, clear the application
+cache before running migrations:
+
+```bash
+php bin/console cache:clear --env=prod
+php bin/console doctrine:migrations:migrate --env=prod -n
+```
+
+For Compose, `MYSQL_VERSION` selects the image tag (default `8.0`), while
+`MYSQL_SERVER_VERSION` supplies the full Doctrine version hint (default
+`8.0.0`). Set both when changing the MySQL version, or provide the complete
+`DOCKER_DATABASE_URL`. The Makefile profile helpers use their own
+`MYSQL_DOCKER_DSN` / `MARIADB_DOCKER_DSN` overrides; keep their full version hints
+aligned with the selected server image.
 
 ### Cross-Database Migrations
 

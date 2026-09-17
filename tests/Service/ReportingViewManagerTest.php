@@ -13,7 +13,7 @@ use Doctrine\DBAL\Platforms\MariaDBPlatform;
 use Doctrine\DBAL\Platforms\MySQL80Platform;
 use Doctrine\DBAL\Platforms\OraclePlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
-use Doctrine\DBAL\Platforms\SqlitePlatform;
+use Doctrine\DBAL\Platforms\SQLitePlatform;
 use Doctrine\DBAL\Platforms\SQLServerPlatform;
 use Doctrine\DBAL\Query\QueryBuilder;
 use Doctrine\DBAL\Result;
@@ -35,12 +35,13 @@ final class ReportingViewManagerTest extends TestCase
 
         self::assertSame(ReportingViewManager::VIEW_NAMES, array_keys($sql));
         foreach ($sql as $name => $definition) {
-            $qualifiedName = $platform instanceof SqlitePlatform ? 'main.'.$name : $name;
-            self::assertStringContainsString($verb.' VIEW '.$platform->quoteIdentifier($qualifiedName), $definition);
+            $qualifiedName = $platform instanceof SQLitePlatform
+                ? '"main"."'.$name.'"' : $platform->quoteSingleIdentifier($name);
+            self::assertStringContainsString($verb.' VIEW '.$qualifiedName, $definition);
             self::assertStringContainsString($function, $definition);
             self::assertStringContainsString('events.url AS page_path', $definition);
             self::assertStringContainsString('events.archived_at', $definition);
-            self::assertStringContainsString(' AS '.$platform->quoteIdentifier('campaign'), $definition);
+            self::assertStringContainsString(' AS '.$platform->quoteSingleIdentifier('campaign'), $definition);
             self::assertStringNotContainsString('events.visitor_id', $definition);
             self::assertStringNotContainsString('events.session_id', $definition);
             self::assertStringNotContainsString('analytics_archive_', $definition);
@@ -64,7 +65,7 @@ final class ReportingViewManagerTest extends TestCase
         yield 'MySQL' => [new MySQL80Platform(), 'CREATE OR REPLACE', 'JSON_TYPE'];
         yield 'MariaDB' => [new MariaDBPlatform(), 'CREATE OR REPLACE', 'JSON_TYPE'];
         yield 'SQL Server' => [new SQLServerPlatform(), 'CREATE OR ALTER', 'JSON_VALUE'];
-        yield 'SQLite' => [new SqlitePlatform(), 'CREATE', 'json_type'];
+        yield 'SQLite' => [new SQLitePlatform(), 'CREATE', 'json_type'];
     }
 
     public function testUnsupportedPlatformFailsBeforeAnyDatabaseMutation(): void
@@ -131,7 +132,7 @@ final class ReportingViewManagerTest extends TestCase
         $schemaPredicate = match (true) {
             $platform instanceof PostgreSQLPlatform => 'table_schema = current_schema()',
             $platform instanceof SQLServerPlatform => 'TABLE_SCHEMA = SCHEMA_NAME()',
-            $platform instanceof SqlitePlatform => "pragma_table_info(:view_name, 'main')",
+            $platform instanceof SQLitePlatform => "pragma_table_info(:view_name, 'main')",
             default => 'TABLE_SCHEMA = DATABASE()',
         };
         $metadataNames = [];
@@ -157,11 +158,11 @@ final class ReportingViewManagerTest extends TestCase
 
                 return $result;
             });
-        $connection->expects(self::exactly($platform instanceof SqlitePlatform ? 6 : 3))->method('executeStatement')
+        $connection->expects(self::exactly($platform instanceof SQLitePlatform ? 6 : 3))->method('executeStatement')
             ->willReturnCallback(static function (string $sql) use (&$operations, $platform): int {
                 self::assertStringContainsString('analytics_custom_', $sql);
                 self::assertStringNotContainsString('bi_anonymous_', $sql);
-                if (!$platform instanceof SqlitePlatform) {
+                if (!$platform instanceof SQLitePlatform) {
                     self::assertStringNotContainsString('DROP VIEW', $sql);
                 }
                 $operations[] = 'replace';
@@ -184,7 +185,7 @@ final class ReportingViewManagerTest extends TestCase
         $connection->method('fetchOne')->willReturn('CREATE VIEW example AS SELECT old AS "old_property" FROM events');
         $connection->method('transactional')->willReturnCallback(static fn (\Closure $callback): array => $callback());
         $connection->method('executeQuery')->willReturn($this->createStub(Result::class));
-        $connection->expects(self::exactly($platform instanceof SqlitePlatform ? 6 : 3))->method('executeStatement');
+        $connection->expects(self::exactly($platform instanceof SQLitePlatform ? 6 : 3))->method('executeStatement');
 
         self::assertCount(3, $this->manager($connection, ['old_property' => 'old', 'new_property' => 'new'])->regenerate());
     }
@@ -259,7 +260,7 @@ final class ReportingViewManagerTest extends TestCase
             self::markTestSkipped('Python 3 with SQLite is required for this portable SQL execution check.');
         }
         $connection = $this->createStub(Connection::class);
-        $connection->method('getDatabasePlatform')->willReturn(new SqlitePlatform());
+        $connection->method('getDatabasePlatform')->willReturn(new SQLitePlatform());
         $sql = $this->manager($connection, [
             'campaign' => 'campaign.name', 'staff' => 'org-internal', 'number_value' => 'number',
             'object_value' => 'object', 'array_value' => 'array', 'null_value' => 'null', 'missing_value' => 'missing',
@@ -322,7 +323,7 @@ PY]);
         ])->previewSql();
 
         foreach ($sql as $definition) {
-            self::assertLessThan(strpos($definition, ' AS '.$platform->quoteIdentifier('amount_number')), strpos($definition, ' AS '.$platform->quoteIdentifier('amount_text')));
+            self::assertLessThan(strpos($definition, ' AS '.$platform->quoteSingleIdentifier('amount_number')), strpos($definition, ' AS '.$platform->quoteSingleIdentifier('amount_text')));
             self::assertStringContainsString('9007199254740991', $definition);
             self::assertStringNotContainsString('bi_anonymous_', $definition);
         }
@@ -397,7 +398,7 @@ PY]);
             self::markTestSkipped('Python SQLite is required for SQL execution checks.');
         }
         $connection = $this->createStub(Connection::class);
-        $connection->method('getDatabasePlatform')->willReturn(new SqlitePlatform());
+        $connection->method('getDatabasePlatform')->willReturn(new SQLitePlatform());
         $sql = $this->manager($connection, ['amount_text' => 'amount'], [
             'amount_number' => ['property' => 'amount', 'type' => 'double'],
             'quantity_number' => ['property' => 'quantity', 'type' => 'integer'],

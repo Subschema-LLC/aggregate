@@ -104,7 +104,7 @@ jobs:
           APP_ENV: prod
           APP_DEBUG: '0'
           APP_SECRET: release-verification-only-not-a-deployment-secret
-          DATABASE_URL: 'mysql://build:build@127.0.0.1:3306/aggregate?serverVersion=8.0'
+          DATABASE_URL: 'mysql://build:build@127.0.0.1:3306/aggregate?serverVersion=8.0.0'
           RELEASE_BRANCH: ${{ steps.release.outputs.branch }}
         shell: bash
         run: |
@@ -129,7 +129,7 @@ jobs:
           APP_ENV: prod
           APP_DEBUG: '0'
           APP_SECRET: release-smoke-test-only-not-a-deployment-secret
-          DATABASE_URL: 'mysql://build:build@127.0.0.1:3306/aggregate?serverVersion=8.0'
+          DATABASE_URL: 'mysql://build:build@127.0.0.1:3306/aggregate?serverVersion=8.0.0'
         shell: bash
         run: |
           package="$RELEASE_OUTPUT/aggregate-${RELEASE_TAG#v}.zip"

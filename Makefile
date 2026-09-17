@@ -6,9 +6,9 @@
 # Detect if Docker is available and being used
 USE_DOCKER := $(shell command -v docker >/dev/null 2>&1 && [ -f compose.yaml ] && echo 1 || echo 0)
 DOCKER_PROFILE ?= mysql
-MYSQL_DOCKER_DSN ?= mysql://app:!ChangeMe!@database:3306/aggregate_analytics?serverVersion=8.0
+MYSQL_DOCKER_DSN ?= mysql://app:!ChangeMe!@database:3306/aggregate_analytics?serverVersion=8.0.0
 POSTGRES_DOCKER_DSN ?= postgresql://app:!ChangeMe!@database:5432/aggregate_analytics?serverVersion=16
-MARIADB_DOCKER_DSN ?= mysql://app:!ChangeMe!@database:3306/aggregate_analytics?serverVersion=mariadb-11.4
+MARIADB_DOCKER_DSN ?= mysql://app:!ChangeMe!@database:3306/aggregate_analytics?serverVersion=11.4.0-MariaDB
 
 ifeq ($(USE_DOCKER),1)
     COMPOSE = docker compose --profile $(DOCKER_PROFILE)

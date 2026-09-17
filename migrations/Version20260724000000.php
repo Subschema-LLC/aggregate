@@ -58,8 +58,8 @@ final class Version20260724000000 extends AbstractMigration
             ]);
         }
 
-        $events->changeColumn('generalized_user_agent', ['notnull' => false]);
-        $events->changeColumn('consent_state', [
+        $events->modifyColumn('generalized_user_agent', ['notnull' => false]);
+        $events->modifyColumn('consent_state', [
             'notnull' => false,
             'default' => null,
         ]);

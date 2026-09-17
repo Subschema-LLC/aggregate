@@ -6,11 +6,11 @@ namespace App\Tests\Migration;
 
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
-use Doctrine\DBAL\Platforms\MariaDb1060Platform;
-use Doctrine\DBAL\Platforms\MySQL57Platform;
+use Doctrine\DBAL\Platforms\MariaDB1060Platform;
 use Doctrine\DBAL\Platforms\MySQL80Platform;
+use Doctrine\DBAL\Platforms\MySQLPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
-use Doctrine\DBAL\Platforms\SqlitePlatform;
+use Doctrine\DBAL\Platforms\SQLitePlatform;
 use Doctrine\DBAL\Platforms\SQLServerPlatform;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\Migrations\Exception\AbortMigration;
@@ -94,7 +94,7 @@ final class AnalyticsArchiveMigrationTest extends TestCase
 
     public function testSqliteAddsTheArchiveMarkerWithoutRebuildingTheEventsTable(): void
     {
-        $sql = $this->sqlFor(new SqlitePlatform());
+        $sql = $this->sqlFor(new SQLitePlatform());
 
         self::assertStringContainsString('ALTER TABLE events ADD COLUMN archived_at DATETIME DEFAULT NULL', $sql);
         self::assertStringContainsString('(DC2Type:datetime_immutable)', $sql);
@@ -105,10 +105,10 @@ final class AnalyticsArchiveMigrationTest extends TestCase
     public function testOnlyMySqlFamilyMigrationDdlIsNonTransactional(): void
     {
         self::assertFalse($this->migrationFor(new MySQL80Platform())->isTransactional());
-        self::assertFalse($this->migrationFor(new MariaDb1060Platform())->isTransactional());
+        self::assertFalse($this->migrationFor(new MariaDB1060Platform())->isTransactional());
         self::assertTrue($this->migrationFor(new PostgreSQLPlatform())->isTransactional());
         self::assertTrue($this->migrationFor(new SQLServerPlatform())->isTransactional());
-        self::assertTrue($this->migrationFor(new SqlitePlatform())->isTransactional());
+        self::assertTrue($this->migrationFor(new SQLitePlatform())->isTransactional());
     }
 
     public function testFreshResetScriptRemovesPrivateArchiveDataBeforeReinstalling(): void
@@ -159,7 +159,7 @@ final class AnalyticsArchiveMigrationTest extends TestCase
             'events.created_at < UTC_DATE()',
         ];
         yield 'MariaDB' => [
-            new MariaDb1060Platform(),
+            new MariaDB1060Platform(),
             "events.created_at < DATE_FORMAT(UTC_TIMESTAMP(), '%Y-%m-%d %H:00:00')",
             'events.created_at < UTC_DATE()',
         ];
@@ -174,16 +174,16 @@ final class AnalyticsArchiveMigrationTest extends TestCase
             'events.created_at < CAST(SYSUTCDATETIME() AS date)',
         ];
         yield 'SQLite' => [
-            new SqlitePlatform(),
+            new SQLitePlatform(),
             "events.created_at < strftime('%Y-%m-%d %H:00:00', 'now')",
             "events.created_at < date('now')",
         ];
     }
 
-    public function testMySql57IsRejectedBeforeAnySqlIsScheduled(): void
+    public function testLegacyOrGenericMySqlIsRejectedBeforeAnySqlIsScheduled(): void
     {
         $connection = $this->createStub(Connection::class);
-        $connection->method('getDatabasePlatform')->willReturn(new MySQL57Platform());
+        $connection->method('getDatabasePlatform')->willReturn(new MySQLPlatform());
         $migration = new Version20260901000000(
             $connection,
             $this->createStub(LoggerInterface::class),
