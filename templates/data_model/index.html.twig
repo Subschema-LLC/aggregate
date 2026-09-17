@@ -21,7 +21,7 @@
     <p class="subtitle">Define custom properties, campaign capture, consent requirements, and reporting columns. Download the saved model to share with your analytics implementation developers.</p>
 
     {% if configuration_error %}<div class="notification is-danger" role="alert">{{ configuration_error }}</div>{% endif %}
-    {% include 'dashboard/_model_navigation.html.twig' with {current_model_page: 'app_data_model'} %}
+    {% include 'data_model/_navigation.html.twig' with {current_model_page: 'app_data_model'} %}
     {% if unsaved_property %}<div class="notification is-info" role="status"><code>{{ unsaved_property }}</code> has been added to this form. Review its settings and save to apply the change.</div>{% endif %}
     {% if addition_error %}<div class="notification is-warning" role="alert">{{ addition_error }}</div>{% endif %}
 
@@ -36,14 +36,14 @@
     <form action="{{ path('app_data_model_save') }}" method="post" id="data-model-form">
         <input type="hidden" name="_csrf_token" value="{{ csrf_token('data_model_settings') }}">
         <section class="box">
-            <h2 class="title is-4">Custom properties</h2>
-            <p>Expand a property to edit its type, consent, and optional reporting columns. Property names are literal top-level JSON keys. Leave both reporting columns empty to collect a property without exposing it in custom reporting views. Explicitly allowing a property without consent adds it to the server-enforced anonymous whitelist.</p>
+            <h2 class="title is-4">Custom data configurations</h2>
+            <p>Expand a custom data JSON property to edit its type, consent, and optional reporting columns. Property names are literal top-level JSON keys. Leave both reporting columns empty to collect a property without exposing it in custom reporting views. Explicitly allowing a property without consent adds it to the server-enforced anonymous whitelist.</p>
             <p class="help mb-3">Descriptions belong to the shared implementation model. Values must be flat strings, numbers, booleans, or null; nested data is discarded. Unlisted custom properties still require enhanced consent. The organization marker <code>{{ marker_name|default('orgInternalTraffic') }}</code> remains controlled by the browser marker and is always allowed in anonymous mode.</p>
             <div id="property-rows">
                 {% for key, property in model.custom_data_properties %}
                     <details class="box" data-property-row{% if key == unsaved_property %} open{% endif %}>
                         <summary><strong data-property-label>{{ key }}</strong></summary>
-                        {% include 'dashboard/_model_property_fields.html.twig' with {index: loop.index0, key: key, property: property} %}
+                        {% include 'data_model/_property_fields.html.twig' with {index: loop.index0, key: key, property: property} %}
                     </details>
                 {% endfor %}
             </div>
@@ -80,7 +80,7 @@
 
     <template id="property-row-template"><details class="box" data-property-row open>
         <summary><strong data-property-label>New property</strong></summary>
-        {% include 'dashboard/_model_property_fields.html.twig' with {index: 'new', key: '', property: {}} %}
+        {% include 'data_model/_property_fields.html.twig' with {index: 'new', key: '', property: {}} %}
     </details></template>
     <template id="mapping-row-template"><tr>
         <td data-label="URL parameter"><input class="input" aria-label="URL parameter" data-field="parameter" maxlength="64" required></td>

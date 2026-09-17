@@ -281,6 +281,23 @@ final class EventExampleGeneratorTest extends TestCase
         self::assertStringContainsString('retries can record duplicate purchases', implode(' ', $bundle['notes']));
     }
 
+    public function testDocumentedEcommercePurchaseJsonMatchesTheGeneratedRequestIncludingValueTypes(): void
+    {
+        $generated = json_decode($this->generator([])->exportJson('enhanced', 'ecommerce'), true, flags: JSON_THROW_ON_ERROR);
+        $documented = json_decode(file_get_contents(dirname(__DIR__, 2).'/docs/examples/ecommerce-purchase.json'), true, flags: JSON_THROW_ON_ERROR);
+
+        self::assertSame($generated['examples']['enhanced']['payload'], $documented);
+        self::assertSame('purchase', $documented['eventName']);
+        self::assertSame('granted', $documented['consentState']);
+        self::assertSame(4999, $documented['eventData']['total_minor']);
+        self::assertSame(0.1, $documented['eventData']['discount_rate']);
+        self::assertFalse($documented['internalTraffic']);
+
+        $guide = file_get_contents(dirname(__DIR__, 2).'/docs/EVENT-EXAMPLES.md');
+        self::assertSame(1, preg_match('/```json\n(.*?)\n```/s', $guide, $matches));
+        self::assertSame($documented, json_decode($matches[1], true, flags: JSON_THROW_ON_ERROR));
+    }
+
     private function generator(array $values): EventExampleGenerator
     {
         file_put_contents($this->projectDir.'/config/aggregate.yaml', Yaml::dump($values, 6, 2));

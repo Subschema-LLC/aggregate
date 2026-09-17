@@ -120,7 +120,7 @@ final class InternalTrafficPublicControllerTest extends WebTestCase
         $request = Request::create('/dashboard/internal-traffic');
         $request->setSession(new Session(new MockArraySessionStorage()));
         self::getContainer()->get('request_stack')->push($request);
-        $html = self::getContainer()->get('twig')->render('dashboard/internal_traffic.html.twig', [
+        $html = self::getContainer()->get('twig')->render('internal_traffic/index.html.twig', [
             'settings' => $settings->markerSettings(),
             'browser_config' => $settings->toBrowserConfig(),
             'overrides' => $settings->getEnvironmentOverrides(),

@@ -54,7 +54,7 @@ final class EventExamplesController extends AbstractController
             $payloads = [];
         }
 
-        return $this->privateResponse($this->render('dashboard/event_examples.html.twig', [
+        return $this->privateResponse($this->render('event_examples/index.html.twig', [
             'bundle' => $bundle,
             'payloads' => $payloads,
             'example_source' => $example,

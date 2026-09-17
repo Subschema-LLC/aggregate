@@ -1,0 +1,23 @@
+{
+  "websiteToken": "REPLACE_WITH_PUBLIC_WEBSITE_TOKEN",
+  "eventName": "purchase",
+  "pagePath": "/checkout/complete",
+  "referrerChannel": "direct",
+  "deviceClass": "desktop",
+  "viewportBucket": "large",
+  "internalTraffic": false,
+  "consentState": "granted",
+  "visitorId": "synthetic-visitor",
+  "sessionId": "synthetic-session",
+  "screenWidth": 1440,
+  "eventData": {
+    "currency": "USD",
+    "total_minor": 4999,
+    "tax_minor": 400,
+    "shipping_minor": 500,
+    "item_count": 2,
+    "discount_rate": 0.1,
+    "product_category": "accessories",
+    "checkout_step": "complete"
+  }
+}
