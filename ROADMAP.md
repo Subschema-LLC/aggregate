@@ -36,8 +36,9 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   database operations; do not introduce competing YAML synchronization.
 - **Website-specific configuration and data models.** Allow collection settings
   and models to vary by registered website. They currently use the deployment's
-  active aggregate YAML configuration; registration already manages primary domains,
-  per-token source-domain rules, and ingestion tokens separately. Preserve existing deployments and reporting
+  active aggregate YAML configuration. Tags and CMP already have per-website YAML;
+  registration manages primary domains, per-token source-domain rules, and ingestion
+  tokens separately. Preserve existing deployments and reporting
   contracts through an explicit migration design.
 - **Targeted feature rollout.** Extend
   [deployment-wide feature flags](docs/FEATURE-FLAGS.md) to selected websites or
@@ -49,8 +50,6 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   A future resumable updater must coordinate maintenance and workers, preserve
   configuration/data, run migrations and health checks, prevent concurrent
   updates, and provide separate application-file and database recovery procedures.
-- **Download dropin scripts from UI.** We need CMP and Tag Manager (if created) drop in scripts or copy them.
-- **Wizard and step walkthrough.** Since the UI is somewhat technical, having a setup wizard and an annotation callout-style walkthrough that points ot buttons will be ideal for adoption.
 
 ## Proposals to explore
 
@@ -65,10 +64,21 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   concrete administration or maintenance notification need. Keep secrets in
   deployment configuration and avoid embedding private analytics data in email.
   Analytics report delivery belongs in external reporting tools.
-- **Tag Management Integrations.** Explore Google Tag Manager and Matomo Tag Manager support or templates. ANother option or addition would be to explore a very simple, lightweight tag manager scoped specifically to stats collection and privacy as a drop-in like the drop-in cookie banner.
+- **Extend Tag Manager Lte.** Still keep things simple but look for gaps and improvements.
+- **External tag-manager integrations.** Explore Google Tag Manager and Matomo
+  Tag Manager templates where adopters need them. The built-in simple tag loader
+  does not implement those platforms' consent modes or container formats.
 
 ## Available foundations
 
+- [Guided setup and script downloads](docs/SETUP.md), with a four-step administrator
+  wizard, button callouts, website-specific installation snippets, a self-contained
+  consent UI, and copy/download controls. Setup guides operators to existing settings;
+  it does not certify a deployment or replace beta acceptance testing.
+- [Simple YAML-backed tag management](docs/TAG-MANAGER.md), disabled by default,
+  with per-website YAML, CMP controls, remote script URLs, script and method actions,
+  per-tag consent categories, browser/data-layer triggers, named variables, and a
+  headless public loader. Optional builds run from Setup or `app:assets:build-js`.
 - [Website domain rules](docs/CONFIGURATION.md#website-domains), with YAML/UI allow-all or restricted exact-host and wildcard-subdomain policies, CLI creation options, and server enforcement in both privacy modes. Existing registrations preserve their domain-plus-subdomains behavior until rules are explicitly saved.
 - [Synthetic event examples](docs/EVENT-EXAMPLES.md), with saved-model anonymous/enhanced JSON, UI copy/download, a headless export, and a proposed flat ecommerce model. Optional value types enforce scalar input types, while additive numeric reporting columns preserve existing text aliases.
 - [Focused administration pages and grouped navigation](docs/CONFIGURATION.md#administration-pages), with keyboard/touch submenus configured in YAML and role/feature checks at each level. Model editing, discovery, examples, and reporting SQL have separate pages.

@@ -40,6 +40,9 @@
 ###> optional JavaScript build ###
 /node_modules/
 /public/aggregate.min.js
+/public/consent.min.js
+/public/tag-manager.min.js
+/config/tag-manager/sites/
 /public/internal-traffic-marker.min.js
 /micro-consent-dropins/js/*.min.js
 ###< optional JavaScript build ###

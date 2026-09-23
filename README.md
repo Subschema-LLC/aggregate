@@ -163,6 +163,7 @@ Connect your consent manager to `window.Aggregate.setConsent(true)` only after a
 | Branding, collection controls, organization markers, lifecycle, dashboard toggle | `config/aggregate.yaml` and supported environment overrides |
 | Custom property model, UTM/query mappings, consent requirements, reporting columns | `config/aggregate.yaml`, managed through the Data model admin page or YAML |
 | Website domains, [allowed event sources](docs/CONFIGURATION.md#website-domains), and public ingestion tokens | `config/websites.yaml`, managed through the dashboard, YAML, or CLI creation options |
+| Per-website CMP, tags, triggers, and variables | `config/tag-manager/sites/<site-id>.yaml`, managed through the Tag manager admin page or YAML |
 | Conversion-goal definitions | `config/goals.yaml` |
 | Navigation labels and links | `config/navigation.yaml` |
 | BI disclosure thresholds | `analytics_privacy_settings` in the database; dashboard or controlled database administration |
@@ -189,6 +190,13 @@ flat properties and integer minor units for money. Administration pages and
 [configurable submenus](docs/CONFIGURATION.md#main-navigation) keep each task focused.
 
 Use the optional [JavaScript build](docs/JS-BUILD.md) for minified tracker and drop-in scripts.
+The [Setup wizard](docs/SETUP.md) provides installation steps, button callouts,
+and per-website CMP/script copy or download. The optional [simple tag manager](docs/TAG-MANAGER.md)
+stores each site's settings in YAML, serves its scripts remotely from the Aggregate
+installation, and maps each tag to a consent category or an explicit option to
+run without consent.
+Tags can load scripts or call an existing library method, triggered by page
+readiness, browser events, or data-layer events with named variable references.
 
 ## Documentation
 

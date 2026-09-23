@@ -2,6 +2,18 @@ dashboard_controller:
     resource: ../src/Controller/DashboardController.php
     type: attribute
 
+setup_controller:
+    resource: ../src/Controller/SetupController.php
+    type: attribute
+
+tag_manager_controller:
+    resource: ../src/Controller/TagManagerController.php
+    type: attribute
+
+browser_assets_controller:
+    resource: ../src/Controller/BrowserAssetsController.php
+    type: attribute
+
 data_lifecycle_controller:
     resource: ../src/Controller/DataLifecycleController.php
     type: attribute

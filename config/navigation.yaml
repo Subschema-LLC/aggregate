@@ -17,6 +17,10 @@ parameters:
             route: 'app_home'
 
         items:
+            - label: 'Setup'
+              route: 'app_setup'
+              icon: 'fas fa-list-check'
+              role: 'ROLE_ADMIN'
             - label: 'Websites'
               route: 'app_dashboard'
               icon: 'fas fa-globe'
@@ -25,6 +29,10 @@ parameters:
               icon: 'fas fa-code'
               role: 'ROLE_ADMIN'
               children:
+                  - label: 'Tag manager'
+                    route: 'app_tag_manager'
+                    icon: 'fas fa-tags'
+                    role: 'ROLE_ADMIN'
                   - label: 'Collection controls'
                     route: 'app_collection_settings'
                     icon: 'fas fa-sliders'

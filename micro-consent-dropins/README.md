@@ -1,10 +1,16 @@
-# Privacy Consent Module
+# Experimental privacy consent prototype
 
-This module provides a vanilla JavaScript drop-in solution for cookie consent management and data subject access requests via Formspree, integrated directly with Google Consent Mode v2.
+This directory contains an older, incomplete consent UI experiment. It is not
+the drop-in offered by **Setup**. Use the [current self-hosted consent manager](../docs/SETUP.md#consent-manager-behavior)
+for working category controls and tracker/tag integration without external
+submissions. The prototype below uses Formspree, and `gtm-consent-mode.js` is
+empty: the proposed Google Consent Mode integration and watcher behavior
+described below are not implemented. These notes describe the intended prototype,
+not a production integration or compliance assurance.
 
 ## File Structure
 
-* gtm-consent-mode.js initializes Google Consent Mode v2 default states and listens for the custom privacy_update event
+* gtm-consent-mode.js is an empty placeholder for proposed Google Consent Mode v2 default states and privacy_update integration
 * consent-ui.js injects the consent banner, settings modal, and Formspree submission logic into the DOM
 
 ## Formspree Setup
@@ -26,11 +32,15 @@ The load order in your HTML document is critical. The consent defaults must fire
 
 ## DataLayer Events
 
-When a user saves their preferences, the UI script dispatches a privacy_update CustomEvent. The integration script catches this and pushes a standard consent_updated event to the dataLayer alongside the current consent state. You can use consent_updated as a Custom Event trigger in Google Tag Manager for tags that require consent resolution before firing.
+The UI script dispatches a privacy_update CustomEvent. The empty integration
+script does not catch it or push consent_updated into the dataLayer; that behavior
+was proposed but is not implemented.
 
 ## Custom Library Integration
 
-You can integrate third-party scripts or custom analytics libraries directly without routing them through Google Tag Manager. The module exposes a global watcher array that executes callback functions whenever a user updates their consent settings.
+The proposed direct integration with third-party scripts requires a global
+watcher array that executes callbacks when consent changes; the empty
+integration script does not provide one.
 
 To register a custom library, push a callback function to the window.consentWatchers array.
 

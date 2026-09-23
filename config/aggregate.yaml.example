@@ -24,6 +24,29 @@ feature_flags:
 # hide_from_navigation removes their navigation entries. A disabled visible
 # feature appears as an inactive item without a link. Use YAML booleans only.
 
+# Optional shared tag configuration, selected as Shared configuration in
+# Collection → Tag manager. Per-website tags/CMP use separate files at
+# config/tag-manager/sites/<site-id>.yaml; run app:tag-manager:sites to list IDs.
+# New website instances do not inherit this mapping. No database storage or
+# uppercase environment override. An active environment replaces this whole
+# mapping. Tags default to analytics consent; explicitly use none for an action
+# that needs no consent. See docs/TAG-MANAGER.md.
+tag_manager:
+  enabled: false
+  variables: {}
+  # variables: { order_total: ecommerce.total_minor, first_sku: 'ecommerce.items[0].sku' }
+  tags: []
+  # tags:
+  #   - { id: metrics, src: 'https://stats.example.com/client.js', enabled: true, consent: analytics }
+  #   - { id: preferences, src: 'https://static.example.com/preferences.js', enabled: true, consent: functional }
+  #   - { id: essential, src: 'https://static.example.com/essential.js', enabled: true, consent: none }
+  #   - id: purchase
+  #     type: call
+  #     method: Aggregate.emit
+  #     args: [purchase, {total_minor: {$var: order_total}}]
+  #     consent: analytics
+  #     trigger: {type: data_layer, event: purchase}
+
 # Shared custom data model; active environments can replace either mapping.
 # All UTMs require enhanced consent by default. For anonymous attribution,
 # prefer only utm_medium with broad channel values (email/social/cpc).

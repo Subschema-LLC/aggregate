@@ -95,9 +95,9 @@ The ZIP contains its files at the archive root. Extract it into a fresh applicat
 
 For an existing installation, stage the new directory and retain deployment data deliberately:
 
-- Preserve `.env.local` and other actual environment overrides, the active `config/aggregate.yaml` or environment-specific files, and `config/websites.yaml`.
+- Preserve `.env.local` and other actual environment overrides, the active `config/aggregate.yaml` or environment-specific files, `config/websites.yaml`, and `config/tag-manager/sites/` with each website's tag/CMP settings and environment overrides.
 - Merge customized `config/goals.yaml` and `config/navigation.yaml` as needed. Do not carry forward the entire old `config/` directory, which would hide new routes and service definitions.
-- Preserve `var/branding`, any SQLite database, and separately configured logo/MMDB paths. Do not share the whole `var/` directory: `var/cache` belongs to the new release and `var/browser` contains that release's compiled tracker template.
+- Preserve `var/branding`, any SQLite database, and separately configured logo/MMDB paths. Do not share the whole `var/` directory: `var/cache` belongs to the new release and `var/browser` contains that release's compiled tracker, CMP, and tag-manager templates.
 - Back up the database and configuration, pause collection/async workers as required, run migrations and rebuild production caches against the preserved configuration, activate the new release, restart workers/reload PHP, and verify `/api/health` before resuming collection.
 
 Replacing application files does not reverse database migrations. File recovery and database restoration need separate procedures. The future automatic updater must coordinate these operations, report progress, resume after interruptions, and prevent concurrent updates; the current verifier intentionally leaves the installation untouched.
