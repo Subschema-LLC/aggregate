@@ -31,6 +31,7 @@ final class DropInScriptsTest extends TestCase
         $this->directory = sys_get_temp_dir().'/aggregate-drop-ins-'.bin2hex(random_bytes(8));
         (new Filesystem())->mkdir([$this->directory.'/config', $this->directory.'/public', $this->directory.'/var/browser']);
         copy(dirname(__DIR__, 2).'/public/consent.js', $this->directory.'/public/consent.js');
+        copy(dirname(__DIR__, 2).'/public/consent.css', $this->directory.'/public/consent.css');
         file_put_contents($this->directory.'/config/websites.yaml', Yaml::dump(['websites' => [
             ['name' => 'Example', 'domain' => 'example.test', 'token' => 'public-website-token'],
         ]]));
@@ -42,7 +43,7 @@ final class DropInScriptsTest extends TestCase
         (new Filesystem())->remove($this->directory);
     }
 
-    public function testSnippetSelectsOnlyRegisteredTokenAndLoadsConsentBeforeTrackerAndOptionalTags(): void
+    public function testSnippetUsesConsentWithEitherDirectTrackerOrTagManager(): void
     {
         $scripts = $this->scripts(['admin_token' => 'private-secret', 'internal_traffic_share_token' => 'private-sharing-secret']);
         $plain = $scripts->snippet('public-website-token');
@@ -56,12 +57,52 @@ final class DropInScriptsTest extends TestCase
         self::assertStringContainsString('https://analytics.example.test/cmp-lite/sites/'.$siteId.'/consent.js?min=1', $plain);
         self::assertStringNotContainsString('/lib.js', $plain);
         self::assertStringContainsString('https://analytics.example.test/tms-lite/sites/'.$siteId.'/lib.js?min=1', $withTags);
-        self::assertLessThan(strpos($withTags, '/aggregate.js'), strpos($withTags, '/consent.js'));
-        self::assertLessThan(strpos($withTags, '/lib.js'), strpos($withTags, '/aggregate.js'));
-        self::assertSame(3, substr_count($withTags, 'defer referrerpolicy="no-referrer"'));
+        self::assertLessThan(strpos($plain, '/aggregate.js'), strpos($plain, '/consent.js'));
+        self::assertLessThan(strpos($withTags, '/lib.js'), strpos($withTags, '/consent.js'));
+        self::assertSame(2, substr_count($withTags, 'defer referrerpolicy="no-referrer"'));
+        self::assertStringNotContainsString('/aggregate.js', $withTags);
+        self::assertStringNotContainsString('window[', $withTags);
+        self::assertStringNotContainsString('public-website-token', $withTags);
+        self::assertSame($withTags, $scripts->snippet('public-website-token', true, 'query'));
         self::assertStringNotContainsString('private-', $withTags);
         $this->expectException(\InvalidArgumentException::class);
         $scripts->snippet('unregistered-token');
+    }
+
+    public function testQuerySnippetEncodesPublicParametersAndNeedsNoInlineConfiguration(): void
+    {
+        $token = 'public &+"</script> token';
+        file_put_contents($this->directory.'/config/websites.yaml', Yaml::dump(['websites' => [
+            ['name' => 'Example', 'domain' => 'example.test', 'token' => $token],
+        ]]));
+        $scripts = $this->scripts(['app_host' => 'https://analytics.example.test/subdirectory/', 'admin_token' => 'private-secret']);
+        $snippet = $scripts->snippet($token, false, 'query');
+        self::assertStringNotContainsString('window[', $snippet);
+        self::assertStringNotContainsString('<script>', $snippet);
+        self::assertStringNotContainsString('private-secret', $snippet);
+        self::assertSame(2, preg_match_all('/<script src="([^"]+)"/', $snippet, $matches));
+        self::assertStringContainsString('/subdirectory/cmp-lite/sites/', $matches[1][0]);
+        $url = html_entity_decode($matches[1][1], ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        self::assertSame($scripts->trackerUrl($token), $url);
+        self::assertStringContainsString('&amp;', $matches[1][1]);
+        self::assertSame('/subdirectory/aggregate.js', parse_url($url, PHP_URL_PATH));
+        parse_str(parse_url($url, PHP_URL_QUERY), $query);
+        self::assertSame([
+            'min' => '1', 'endpoint' => 'https://analytics.example.test/subdirectory/api/receive',
+            'token' => $token, 'consent' => '0',
+        ], $query);
+    }
+
+    public function testUnsupportedSnippetFormatIsRejected(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->scripts()->snippet('public-website-token', false, 'invalid');
+    }
+
+    public function testTrackerUrlRequiresARegisteredWebsite(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->scripts()->trackerUrl('unregistered-token');
     }
 
     public function testConfiguredConsentScriptAndLoaderExposeOnlyPublicSettings(): void
@@ -78,6 +119,8 @@ final class DropInScriptsTest extends TestCase
         self::assertStringNotContainsString('private-', $script);
         self::assertSame(1, preg_match('/var consentConfig = (.*);/', $script, $matches));
         self::assertSame(['namespace' => "Company'</script>", 'name' => 'Company </script> name', 'categories' => ['analytics']], json_decode($matches[1], true, flags: JSON_THROW_ON_ERROR));
+        self::assertSame(1, preg_match('/var consentStyles = (.*);/', $script, $styles));
+        self::assertSame(file_get_contents($this->directory.'/public/consent.css'), json_decode($styles[1], true, flags: JSON_THROW_ON_ERROR));
         self::assertStringContainsString('https://analytics.example.test/lib.js?min=1', $scripts->tagLoader());
         self::assertStringContainsString('script.nonce = current.nonce', $scripts->tagLoader());
         self::assertStringNotContainsString('public-website-token', $scripts->tagLoader());
@@ -122,20 +165,63 @@ final class DropInScriptsTest extends TestCase
     {
         $scripts = $this->scripts();
         $source = file_get_contents($this->directory.'/public/consent.js');
-        $template = '/*! SPDX-License-Identifier: AGPL-3.0-only */ var testConfig=__AGGREGATE_CONSENT_CONFIG__;';
+        $styles = file_get_contents($this->directory.'/public/consent.css');
+        $template = '/*! SPDX-License-Identifier: AGPL-3.0-only */ var testConfig=__AGGREGATE_CONSENT_CONFIG__,testStyles=__AGGREGATE_CONSENT_STYLES__;';
         file_put_contents($this->directory.'/var/browser/consent.template.min.js', $template);
         file_put_contents($this->directory.'/var/browser/consent-manifest.json', json_encode([
             'format' => 1, 'sourceSha256' => hash('sha256', $source), 'templateSha256' => hash('sha256', $template),
+            'stylesheetSha256' => hash('sha256', $styles),
         ]));
         $built = $scripts->consentScript(true);
         self::assertTrue($built['minified']);
         self::assertStringContainsString('"namespace":"ExampleAnalytics"', $built['content']);
         self::assertStringNotContainsString('__AGGREGATE_CONSENT_CONFIG__', $built['content']);
+        self::assertStringNotContainsString('__AGGREGATE_CONSENT_STYLES__', $built['content']);
+        self::assertStringContainsString('ac-consent-category', $built['content']);
         file_put_contents($this->directory.'/var/browser/consent.template.min.js', $template.'corrupt');
         self::assertFalse($scripts->consentScript(true)['minified']);
         file_put_contents($this->directory.'/public/consent.js', $source."\n// source updated\n");
         file_put_contents($this->directory.'/var/browser/consent.template.min.js', $template);
         self::assertFalse($scripts->consentScript(true)['minified']);
+        file_put_contents($this->directory.'/public/consent.js', $source);
+        file_put_contents($this->directory.'/public/consent.css', $styles."\n.ac-consent { border-width: 3px; }\n");
+        $fallback = $scripts->consentScript(true);
+        self::assertFalse($fallback['minified']);
+        self::assertStringContainsString('border-width: 3px', $fallback['content']);
+        file_put_contents($this->directory.'/public/consent.css', $styles);
+        $manifest = json_decode(file_get_contents($this->directory.'/var/browser/consent-manifest.json'), true, flags: JSON_THROW_ON_ERROR);
+        unset($manifest['stylesheetSha256']);
+        file_put_contents($this->directory.'/var/browser/consent-manifest.json', json_encode($manifest));
+        self::assertFalse($scripts->consentScript(true)['minified'], 'Older builds without a stylesheet hash fall back to current source.');
+    }
+
+    public function testStylesheetTextIsSafelyEmbeddedInReadableDownload(): void
+    {
+        $scripts = $this->scripts();
+        $styles = '/* </script><script>alert("escaped")</script> */ .ac-consent { color: #202124; }';
+        file_put_contents($this->directory.'/public/consent.css', $styles);
+        $content = $scripts->consentScript()['content'];
+        self::assertStringNotContainsString('</script>', $content);
+        self::assertSame(1, preg_match('/var consentStyles = (.*);/', $content, $matches));
+        self::assertSame($styles, json_decode($matches[1], true, flags: JSON_THROW_ON_ERROR));
+    }
+
+    public function testMissingOrEmptyStylesheetCannotProduceAPartialConfiguredScript(): void
+    {
+        $scripts = $this->scripts();
+        foreach ([null, '', " \n\t"] as $styles) {
+            if ($styles === null) {
+                unlink($this->directory.'/public/consent.css');
+            } else {
+                file_put_contents($this->directory.'/public/consent.css', $styles);
+            }
+            foreach (['/consent-manager.js', '/consent-manager.js?min=1'] as $url) {
+                $response = (new ConsentScriptController($scripts))(Request::create($url));
+                self::assertSame(503, $response->getStatusCode());
+                self::assertTrue($response->headers->hasCacheControlDirective('no-store'));
+                self::assertStringNotContainsString('ExampleAnalytics', $response->getContent());
+            }
+        }
     }
 
     #[DataProvider('invalidSources')]
@@ -153,6 +239,8 @@ final class DropInScriptsTest extends TestCase
     {
         yield ['var consentConfig = {};'];
         yield [str_repeat("var consentConfig = {namespace: 'Aggregate', name: 'Analytics'};", 2)];
+        yield ["var consentConfig = {namespace: 'Aggregate', name: 'Analytics'};"];
+        yield ["var consentConfig = {namespace: 'Aggregate', name: 'Analytics'};".str_repeat('var consentStyles = null;', 2)];
     }
 
     public function testBrokenConfigurationCannotEmitDefaults(): void

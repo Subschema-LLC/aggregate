@@ -161,6 +161,13 @@ dependency. The production install script uses `--no-dev` and is not the
 contributor setup. If the configuration files already exist, edit them instead of
 copying over them. The example development secret is for local use only.
 
+If you install Composer dependencies with `--no-scripts`, run
+`php bin/console importmap:install --env=test --no-debug --no-interaction`
+before PHPUnit. This installs the pinned browser packages from `importmap.php`
+into the ignored `assets/vendor/` directory. UI rendering tests need them even
+though PHPUnit does not execute browser JavaScript. Normal `composer install`
+runs this command through its automatic scripts; `npm ci` does not replace it.
+
 ### Native development
 
 Set `DATABASE_URL` in `.env.dev.local` for a disposable development database; this
@@ -303,6 +310,16 @@ when switching dashboard mode. Compile dashboard assets after relevant asset
 changes with `php bin/console asset-map:compile`.
 
 ## Architecture and file map
+
+UI pages follow the [Twig and Stimulus conventions](templates/README.md). Route
+templates own their page markup under `templates/<feature>/<page>.html.twig`;
+page JavaScript and CSS use matching paths under `assets/controllers/pages/`
+and `assets/styles/pages/`. Reusable Twig Components keep PascalCase names under
+`templates/components/`, with snake_case asset paths under the corresponding
+`assets/controllers/components/` and `assets/styles/components/` directories.
+Use ordinary Symfony discovery and AssetMapper imports, and create assets only
+where behavior or styles are needed. Standalone tracker, CMP, tag-manager, and
+organization-marker artifacts keep their separate browser delivery paths.
 
 | Location | Responsibility |
 | --- | --- |

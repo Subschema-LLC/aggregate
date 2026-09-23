@@ -1,0 +1,9 @@
+{% props id = 'setup-callout' %}
+
+<aside {{ attributes.defaults({id: id}) }} data-pages--setup--index-target="callout" class="setup-callout" role="dialog" aria-labelledby="setup-callout-title" aria-describedby="setup-callout-text" hidden>
+    <span class="setup-callout-arrow" aria-hidden="true"></span>
+    <p id="setup-callout-position" data-pages--setup--index-target="position" class="is-size-7"></p>
+    <h2 id="setup-callout-title" data-pages--setup--index-target="title" class="title is-5" tabindex="-1"></h2>
+    <p id="setup-callout-text" data-pages--setup--index-target="description" class="mb-3"></p>
+    <div class="buttons"><button class="button is-small" id="setup-tour-previous" data-action="pages--setup--index#previous" data-pages--setup--index-target="previous" type="button">Back</button><button class="button is-primary is-small" id="setup-tour-next" data-action="pages--setup--index#next" data-pages--setup--index-target="next" type="button">Next tip</button><button class="button is-small" id="setup-tour-close" data-action="pages--setup--index#close" type="button">Close walkthrough</button></div>
+</aside>

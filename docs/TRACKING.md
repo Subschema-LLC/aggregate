@@ -19,17 +19,42 @@ needed when a registration's domain rules change.
 
 ## JavaScript integration
 
-Add to your website:
+**Websites** and the **Setup** wizard offer window configuration (the default),
+query parameters, or tag-manager installation. The
+[setup guide](SETUP.md#headless-installation) includes complete headless examples
+with the website's optional CMP. For a direct tracker installation with your own
+consent wiring, add this once to your website:
 
 ```html
 <script>
   window.Aggregate = {
     endpoint: 'https://your-host/api/receive',
-    websiteToken: 'your-website-token'
+    websiteToken: 'your-website-token',
+    consent: false
   };
 </script>
-<script src="https://your-host/aggregate.js" async referrerpolicy="no-referrer"></script>
+<script src="https://your-host/aggregate.js?min=1" defer referrerpolicy="no-referrer"></script>
 ```
+
+Alternatively, supply the public configuration in the SDK URL:
+
+```html
+<script src="https://your-host/aggregate.js?min=1&amp;endpoint=https%3A%2F%2Fyour-host%2Fapi%2Freceive&amp;token=your-website-token&amp;consent=0" defer referrerpolicy="no-referrer"></script>
+```
+
+URL-encode parameter values. `consent=0` supplies a denied default; an explicit
+analytics choice initialized by the CMP in the configured `window` namespace
+before the SDK loads takes precedence, and later choices use `setConsent`.
+Load the configured CMP before the tracker when using the built-in chooser.
+
+The **Tag manager** choice loads the website's CMP when enabled and its tag
+container only. It offers the tracker URL separately for a script action;
+you must add that action and enable the container yourself. See
+[loading the tracker through Aggregate Tag Manager Lite](TAG-MANAGER.md#load-the-tracker-through-the-manager).
+Use one tracker installation per page: direct, through that manager, or through
+GTM. Loading it twice can send duplicate page views. Managed scripts load
+asynchronously; listing method calls after a script tag does not make them wait
+for that library.
 
 An anonymous-mode page-view row is recorded automatically when the script loads. Full query strings, fragments, raw referrers, cookie values, visitor IDs, and session IDs are not sent. You may also call `emit(...)`: before enhanced consent, each safe event name and its coarse context are retained, configured goals marked `anonymous: true` may be retained, and only custom properties explicitly configured with `consent_required: false` may be sent.
 
@@ -124,7 +149,8 @@ in [Step 3](#step-3-consent-management-integration).
    <script>
      window.Aggregate = {
        endpoint: 'https://your-analytics-host.com/api/receive',
-       websiteToken: 'your-website-token-here'
+       websiteToken: 'your-website-token-here',
+       consent: false
      };
    </script>
    <script src="https://your-analytics-host.com/aggregate.js" async referrerpolicy="no-referrer"></script>
@@ -136,6 +162,7 @@ in [Step 3](#step-3-consent-management-integration).
      src="https://your-analytics-host.com/aggregate.js"
      data-endpoint="https://your-analytics-host.com/api/receive"
      data-website-token="your-website-token-here"
+     data-consent="0"
      referrerpolicy="no-referrer"
      async>
    </script>
@@ -143,7 +170,7 @@ in [Step 3](#step-3-consent-management-integration).
 
    **Option C: URL Parameters**
    ```html
-   <script src="https://your-analytics-host.com/aggregate.js?endpoint=https%3A%2F%2Fyour-analytics-host.com%2Fapi%2Freceive&token=your-website-token-here" async referrerpolicy="no-referrer"></script>
+   <script src="https://your-analytics-host.com/aggregate.js?min=1&amp;endpoint=https%3A%2F%2Fyour-analytics-host.com%2Fapi%2Freceive&amp;token=your-website-token-here&amp;consent=0" async referrerpolicy="no-referrer"></script>
    ```
 
 3. **Set the Trigger**

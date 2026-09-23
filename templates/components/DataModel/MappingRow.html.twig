@@ -1,0 +1,7 @@
+{% props index, parameter = '', property = '' %}
+
+<tr>
+    <td data-label="URL parameter"><input class="input" aria-label="URL parameter" data-field="parameter" name="mappings[{{ index }}][parameter]" value="{{ parameter }}" maxlength="64" required></td>
+    <td data-label="Destination JSON key"><input class="input" aria-label="Destination JSON key" data-field="property" name="mappings[{{ index }}][property]" value="{{ property }}" maxlength="64" required></td>
+    <td><button class="button is-light" type="button" data-remove-row data-action="pages--data-model--index#removeRow">Remove</button></td>
+</tr>

@@ -1,0 +1,9 @@
+.setup-steps ol { display: flex; flex-wrap: wrap; gap: .75rem; list-style: none; margin: 0; padding: 0; }
+.setup-steps a { display: block; padding: .65rem 1rem; border: 1px solid var(--app-brand-border); border-radius: .35rem; }
+#setup-wizard .setup-steps a[aria-current="step"], #setup-wizard .setup-steps a[aria-current="step"]:hover, #setup-wizard .setup-steps a[aria-current="step"]:focus { background: var(--app-brand-primary); color: var(--app-brand-primary-contrast); font-weight: 700; }
+.setup-code { max-height: 24rem; overflow: auto; white-space: pre; }
+.setup-step-navigation { justify-content: space-between; }
+#setup-wizard .select, #setup-wizard select { max-width: 100%; }
+
+.setup-installation-options { border: 0; min-width: 0; padding: 0; }
+.setup-installation-options .radio { display: block; margin: .5rem 0; }

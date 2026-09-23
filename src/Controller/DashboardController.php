@@ -8,6 +8,7 @@ use App\Service\AggregateConfigLoader;
 use App\Service\AnalyticsPrivacySettings;
 use App\Service\BrandingLogoManager;
 use App\Service\BrandingTheme;
+use App\Service\DropInScripts;
 use App\Service\WebsiteConfigManager;
 use App\Service\WebsiteDomainPolicy;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
@@ -35,12 +36,15 @@ class DashboardController extends AbstractController
     ) {}
 
     #[Route('/dashboard', name: 'app_dashboard', methods: ['GET'])]
-    public function index(): Response
+    public function index(Request $request, DropInScripts $scripts): Response
     {
         $this->denyIfDashboardDisabled();
+        $query = $request->query->all();
+        $format = ($query['format'] ?? null) === 'query' ? 'query' : 'window';
+        $withTags = ($query['tags'] ?? null) === '1';
 
         return $this->renderDashboardPage('websites/index.html.twig', [
-            'websites' => array_map(function (array $website): array {
+            'websites' => array_map(function (array $website) use ($scripts, $format, $withTags): array {
                 try {
                     $website['domain_settings'] = $this->websiteDomainPolicy->resolve($website);
                     $website['domain_settings_invalid'] = false;
@@ -48,10 +52,23 @@ class DashboardController extends AbstractController
                     $website['domain_settings'] = ['mode' => 'restricted', 'domains' => []];
                     $website['domain_settings_invalid'] = true;
                 }
+                $website['integration_code'] = null;
+                $website['tracker_url'] = null;
+                try {
+                    $website['integration_code'] = $scripts->snippet($website['token'], $withTags, $format);
+                    if ($withTags) {
+                        $website['tracker_url'] = $scripts->trackerUrl($website['token']);
+                    }
+                } catch (\Throwable) {
+                    // A broken site's script settings must not hide other sites
+                    // or prevent the operator from repairing its domain rules.
+                    $website['integration_code'] = null;
+                }
 
                 return $website;
             }, $this->websiteManager->getWebsites()),
-            'app_host' => $this->config->getWithEnvFallback('app_host', 'http://localhost:8000'),
+            'snippet_format' => $format,
+            'include_tags' => $withTags,
             'js_namespace' => $this->config->getWithEnvFallback('js_namespace', 'Aggregate'),
         ]);
     }

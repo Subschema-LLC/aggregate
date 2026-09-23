@@ -11,6 +11,7 @@ use App\Repository\UserRepository;
 use App\Service\AggregateConfigLoader;
 use App\Service\AnalyticsPrivacySettings;
 use App\Service\BrandingLogoManager;
+use App\Service\SiteScriptConfig;
 use App\Service\WebsiteConfigManager;
 use Doctrine\DBAL\Connection;
 use PHPUnit\Framework\TestCase;
@@ -18,6 +19,7 @@ use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Definition;
+use Symfony\Component\DomCrawler\Crawler;
 use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\Security\Core\Exception\UnsupportedUserException;
 use Symfony\Component\Security\Core\User\UserInterface;
@@ -53,6 +55,9 @@ final class DashboardSectionsRoutesTest extends TestCase
     protected function setUp(): void
     {
         $this->environment = [$_ENV, $_SERVER];
+        foreach (['APP_HOST', 'JS_NAMESPACE'] as $key) {
+            unset($_ENV[$key], $_SERVER[$key]);
+        }
         $this->temporaryDirectory = sys_get_temp_dir().'/aggregate-dashboard-sections-'.bin2hex(random_bytes(8));
         (new Filesystem())->mkdir($this->temporaryDirectory.'/config', 0700);
         file_put_contents($this->temporaryDirectory.'/config/aggregate.yaml', Yaml::dump([
@@ -134,8 +139,67 @@ final class DashboardSectionsRoutesTest extends TestCase
         self::assertCount(1, $crawler->filter('dialog[aria-labelledby="add-website-title"] form[action="/dashboard/website/create"]'));
         self::assertStringContainsString('Example <site>', $crawler->filter('.container details summary')->first()->text());
         self::assertStringContainsString('window["ExampleAnalytics"]', $crawler->filter('#code-1')->text());
-        self::assertStringContainsString('websiteToken: "example-token"', $crawler->filter('#code-1')->text());
-        self::assertCount(0, $crawler->filter('script[src$="/aggregate.js"]'));
+        self::assertStringContainsString('"websiteToken":"example-token"', $crawler->filter('#code-1')->text());
+        self::assertStringContainsString('"consent":false', $crawler->filter('#code-1')->text());
+        self::assertCount(0, $crawler->filter('script[src*="/aggregate.js"], script[src*="/cmp-lite/"]'));
+        $this->assertNoDatabaseConnection();
+    }
+
+    public function testInstallationChoicesRenderOnGetAndSetupKeepsTheSelectedMethod(): void
+    {
+        $browser = $this->browser('ROLE_ADMIN');
+        $this->preventDatabaseReadsAndWrites();
+        $websitesBefore = file_get_contents($this->temporaryDirectory.'/config/websites.yaml');
+        $configBefore = file_get_contents($this->temporaryDirectory.'/config/aggregate.yaml');
+        $site = SiteScriptConfig::idForToken('example-token');
+        $crawler = $browser->request('GET', '/dashboard');
+        self::assertSame('Window configuration', $crawler->filter('nav[aria-labelledby="website-installation-method"] [aria-current="true"]')->text());
+        self::assertCount(3, $crawler->filter('nav[aria-labelledby="website-installation-method"] a'));
+        $crawler = $browser->click($crawler->selectLink('URL query parameters')->link());
+        self::assertSame(200, $browser->getResponse()->getStatusCode());
+        self::assertSame('URL query parameters', $crawler->filter('nav[aria-labelledby="website-installation-method"] [aria-current="true"]')->text());
+        $snippet = $crawler->filter('#code-1')->text();
+        self::assertStringNotContainsString('window[', $snippet);
+        $scripts = new Crawler($snippet);
+        self::assertCount(2, $scripts->filter('script'));
+        self::assertStringContainsString('/cmp-lite/sites/'.$site.'/consent.js', $scripts->filter('script')->eq(0)->attr('src'));
+        parse_str((string) parse_url($scripts->filter('script')->eq(1)->attr('src'), PHP_URL_QUERY), $tracker);
+        self::assertSame(['min' => '1', 'endpoint' => 'https://analytics.example.test/api/receive', 'token' => 'example-token', 'consent' => '0'], $tracker);
+        parse_str((string) parse_url($crawler->selectLink('Open setup and downloads for this website')->link()->getUri(), PHP_URL_QUERY), $setup);
+        self::assertSame(['website' => 'example-token', 'step' => '3', 'format' => 'query', 'tags' => '0'], $setup);
+
+        $crawler = $browser->click($crawler->selectLink('Tag manager')->last()->link());
+        self::assertSame(200, $browser->getResponse()->getStatusCode());
+        self::assertSame('Tag manager', $crawler->filter('nav[aria-labelledby="website-installation-method"] [aria-current="true"]')->text());
+        $snippet = $crawler->filter('#code-1')->text();
+        self::assertStringNotContainsString('window[', $snippet);
+        self::assertStringNotContainsString('/aggregate.js', $snippet);
+        $scripts = new Crawler($snippet);
+        self::assertCount(2, $scripts->filter('script'));
+        self::assertStringContainsString('/cmp-lite/sites/'.$site.'/consent.js', $scripts->filter('script')->eq(0)->attr('src'));
+        self::assertStringContainsString('/tms-lite/sites/'.$site.'/lib.js', $scripts->filter('script')->eq(1)->attr('src'));
+        parse_str((string) parse_url($crawler->filter('#tracker-url-1')->text(), PHP_URL_QUERY), $tracker);
+        self::assertSame('example-token', $tracker['token']);
+        self::assertSame('0', $tracker['consent']);
+        self::assertCount(1, $crawler->filter('button[data-controller~="components--ui--copy-button"][data-components--ui--copy-button-source-value="tracker-url-1"]'));
+        parse_str((string) parse_url($crawler->selectLink('Open setup and downloads for this website')->link()->getUri(), PHP_URL_QUERY), $setup);
+        self::assertSame(['website' => 'example-token', 'step' => '3', 'format' => 'window', 'tags' => '1'], $setup);
+        self::assertSame($websitesBefore, file_get_contents($this->temporaryDirectory.'/config/websites.yaml'));
+        self::assertSame($configBefore, file_get_contents($this->temporaryDirectory.'/config/aggregate.yaml'));
+        self::assertDirectoryDoesNotExist($this->temporaryDirectory.'/config/tag-manager');
+        $this->assertPrivate($browser);
+        $this->assertNoDatabaseConnection();
+    }
+
+    public function testMalformedInstallationOptionsFallBackToTheDefaultSnippet(): void
+    {
+        $browser = $this->browser('ROLE_USER');
+        foreach ([['format' => ['query'], 'tags' => ['1']], ['format' => 'unexpected', 'tags' => 'false']] as $query) {
+            $crawler = $browser->request('GET', '/dashboard', $query);
+            self::assertSame(200, $browser->getResponse()->getStatusCode());
+            self::assertStringContainsString('window["ExampleAnalytics"]', $crawler->filter('#code-1')->text());
+            self::assertStringNotContainsString('/tms-lite/', $crawler->filter('#code-1')->text());
+        }
         $this->assertNoDatabaseConnection();
     }
 
@@ -147,6 +211,13 @@ final class DashboardSectionsRoutesTest extends TestCase
         self::assertSame(200, $browser->getResponse()->getStatusCode());
         self::assertCount(1, $crawler->filter('form[action="/dashboard/website/create"]'));
         self::assertCount(0, $crawler->filter('form[action^="/dashboard/settings/"]'));
+        self::assertCount(0, $crawler->selectLink('Open setup and downloads for this website'));
+        self::assertCount(1, $crawler->filter('#code-1'));
+        $crawler = $browser->request('GET', '/dashboard', ['tags' => '1', 'format' => 'query']);
+        self::assertSame(200, $browser->getResponse()->getStatusCode());
+        self::assertStringNotContainsString('/aggregate.js', $crawler->filter('#code-1')->text());
+        self::assertCount(1, $crawler->filter('#tracker-url-1'));
+        self::assertCount(0, $crawler->selectLink('Open setup and downloads for this website'));
         $this->assertPrivate($browser);
         $this->assertNoDatabaseConnection();
     }
@@ -323,7 +394,7 @@ final class DashboardSectionsRoutesTestKernel extends Kernel implements Compiler
     public function process(ContainerBuilder $container): void
     {
         $container->setDefinition('security.user.provider.concrete.app_user_provider', new Definition(DashboardSectionsTestUserProvider::class));
-        foreach ([AggregateConfigLoader::class, WebsiteConfigManager::class, BrandingLogoManager::class] as $service) {
+        foreach ([AggregateConfigLoader::class, WebsiteConfigManager::class, BrandingLogoManager::class, SiteScriptConfig::class] as $service) {
             $container->getDefinition($service)->setArgument('$projectDir', $this->temporaryDirectory);
         }
     }

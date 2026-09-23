@@ -1,0 +1,9 @@
+{% props message %}
+<form {{ attributes.defaults({
+    method: 'post',
+    'data-controller': 'components--ui--confirm',
+    'data-action': 'submit->components--ui--confirm#confirm',
+    'data-components--ui--confirm-message-value': message
+}) }}>
+    {% block content %}{% endblock %}
+</form>

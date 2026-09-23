@@ -2,21 +2,16 @@
 
 {% block title %}Setup | {{ app_branding.name }}{% endblock %}
 
-{% block stylesheets %}
-{{ parent() }}
-<style>{% include 'setup/style.css.twig' %}</style>
-{% endblock %}
-
 {% block body %}
-<div id="setup-wizard">
+<div id="setup-wizard" data-controller="pages--setup--index" data-action="keydown.esc@document->pages--setup--index#escape resize@window->pages--setup--index#place scroll@window->pages--setup--index#place:passive turbo:before-cache@document->pages--setup--index#reset">
     <div class="level">
         <div class="level-left"><div>
             <h1 class="title">Setup</h1>
             <p class="subtitle">Connect a website, review collection, and install your scripts.</p>
         </div></div>
-        <div class="level-right"><button type="button" class="button" id="setup-tour-start" hidden>Show me this step</button></div>
+        <div class="level-right"><button type="button" class="button" id="setup-tour-start" data-pages--setup--index-target="start" data-action="pages--setup--index#start" hidden>Show me this step</button></div>
     </div>
-    {% set query = {website: selected_website, tags: include_tags ? '1' : '0'} %}
+    {% set query = {website: selected_website, tags: include_tags ? '1' : '0', format: snippet_format} %}
     {% set steps = ['Website', 'Collection', 'Install scripts', 'Verify'] %}
     <nav class="setup-steps mb-5" aria-label="Setup steps">
         <ol>
@@ -32,8 +27,8 @@
         <h2 class="title is-4" id="setup-step-title">Choose your website</h2>
         <div class="content"><p>Register the website that will send events. Check its allowed domains and your installation's public URL before copying code.</p></div>
         <div class="buttons">
-            <a class="button is-primary" href="{{ path('app_dashboard') }}" data-tour-title="Register a website" data-tour-text="Open Websites and choose Add Website. Enter its name and primary domain, then save its allowed event sources. Return here to select it.">Manage websites</a>
-            <a class="button" href="{{ path('app_application_settings') }}" data-tour-title="Check your public URL" data-tour-text="General settings contains the application host URL and tracker namespace. Your generated scripts use these saved values.">General settings</a>
+            <a class="button is-primary" href="{{ path('app_dashboard') }}" data-pages--setup--index-target="tip" data-tour-title="Register a website" data-tour-text="Open Websites and choose Add Website. Enter its name and primary domain, then save its allowed event sources. Return here to select it.">Manage websites</a>
+            <a class="button" href="{{ path('app_application_settings') }}" data-pages--setup--index-target="tip" data-tour-title="Check your public URL" data-tour-text="General settings contains the application host URL and tracker namespace. Your generated scripts use these saved values.">General settings</a>
         </div>
         {% if websites is empty %}
             <p class="notification is-info is-light">Add a website to generate an installation snippet.</p>
@@ -41,10 +36,11 @@
             <form method="get" action="{{ path('app_setup') }}">
                 <input type="hidden" name="step" value="1">
                 <input type="hidden" name="tags" value="{{ include_tags ? '1' : '0' }}">
+                <input type="hidden" name="format" value="{{ snippet_format }}">
                 <div class="field"><label class="label" for="setup-website">Website</label><div class="control"><div class="select"><select id="setup-website" name="website">
                     {% for website in websites %}<option value="{{ website.token }}"{% if website.token == selected_website %} selected{% endif %}>{{ website.name }} ({{ website.domain }})</option>{% endfor %}
                 </select></div></div></div>
-                <button type="submit" class="button" data-tour-title="Select your installation" data-tour-text="Use the registered website whose pages will send events. This chooses its public website token for the script shown in step 3.">Use this website</button>
+                <button type="submit" class="button" data-pages--setup--index-target="tip" data-tour-title="Select your installation" data-tour-text="Use the registered website whose pages will send events. This chooses its public website token for the script shown in step 3.">Use this website</button>
             </form>
         {% endif %}
     {% elseif step == 2 %}
@@ -54,30 +50,48 @@
             <p>The optional consent manager offers enhanced analytics and the consent categories used by your enabled tags. Publish a privacy notice explaining your actual data, purposes, and tag providers. Tags explicitly configured with no consent requirement can run immediately.</p>
         </div>
         <div class="buttons">
-            <a class="button is-primary" href="{{ path('app_collection_settings') }}" data-tour-title="Control collection" data-tour-text="Review the collection switch, excluded paths, and optional coarse geography. Excluded paths and the collection switch apply to both privacy modes.">Collection controls</a>
-            <a class="button" href="{{ path('app_data_model') }}" data-tour-title="Review event properties" data-tour-text="Keep optional properties small and purposeful. All UTM properties require consent by default; allowing a property without consent needs a separate review of its possible values.">Data model</a>
-            <a class="button" href="{{ path('app_tag_manager', site_id ? {site: site_id} : {}) }}" data-tour-title="Optional tags" data-tour-text="Configure a reviewed script URL or named library method, a trigger, and a consent category for each tag. You can explicitly select no consent requirement. Settings also live in YAML.">Tag manager</a>
+            <a class="button is-primary" href="{{ path('app_collection_settings') }}" data-pages--setup--index-target="tip" data-tour-title="Control collection" data-tour-text="Review the collection switch, excluded paths, and optional coarse geography. Excluded paths and the collection switch apply to both privacy modes.">Collection controls</a>
+            <a class="button" href="{{ path('app_data_model') }}" data-pages--setup--index-target="tip" data-tour-title="Review event properties" data-tour-text="Keep optional properties small and purposeful. All UTM properties require consent by default; allowing a property without consent needs a separate review of its possible values.">Data model</a>
+            <a class="button" href="{{ path('app_tag_manager', site_id ? {site: site_id} : {}) }}" data-pages--setup--index-target="tip" data-tour-title="Optional tags" data-tour-text="Configure a reviewed script URL or named library method, a trigger, and a consent category for each tag. You can explicitly select no consent requirement. Settings also live in YAML.">Tag manager</a>
             <a class="button" href="{{ path('app_data_lifecycle') }}">Retention and archives</a>
         </div>
     {% elseif step == 3 %}
         <h2 class="title is-4" id="setup-step-title">Copy or download your drop-ins</h2>
-        <div class="content"><p>Add the installation snippet once in your website's <code>&lt;head&gt;</code>. It loads consent controls before the tracker. Keep the script order and <code>defer</code> attributes. Remove any previous duplicate tracker installation.</p></div>
+        <div class="content"><p>Add the installation snippet once in your website's <code>&lt;head&gt;</code>. Keep the script order and <code>defer</code> attributes. The website's built-in consent controls are included when enabled.</p></div>
         {% if websites is not empty %}
             <form method="get" action="{{ path('app_setup') }}" class="mb-5">
                 <input type="hidden" name="step" value="3">
                 <div class="field"><label class="label" for="setup-website">Website</label><div class="control"><div class="select"><select id="setup-website" name="website">
                     {% for website in websites %}<option value="{{ website.token }}"{% if website.token == selected_website %} selected{% endif %}>{{ website.name }} ({{ website.domain }})</option>{% endfor %}
                 </select></div></div></div>
-                <div class="field"><label class="checkbox"><input type="checkbox" name="tags" value="1"{% if include_tags %} checked{% endif %}> Include the optional tag manager</label></div>
-                <button type="submit" class="button" data-tour-title="Choose what to install" data-tour-text="Select your website and optionally include the tag manager. Updating the snippet does not enable tags; manage that switch on the Tag manager page.">Update snippet</button>
+                <fieldset class="field setup-installation-options">
+                    <legend class="label">Installation method</legend>
+                    <label class="radio"><input type="radio" name="installation" value="window"{% if not include_tags and snippet_format == 'window' %} checked{% endif %}> Tracker with window configuration</label>
+                    <label class="radio"><input type="radio" name="installation" value="query"{% if not include_tags and snippet_format == 'query' %} checked{% endif %}> Tracker with query parameters</label>
+                    <label class="radio"><input type="radio" name="installation" value="tags"{% if include_tags %} checked{% endif %}> Tag manager</label>
+                </fieldset>
+                <button type="submit" class="button" data-pages--setup--index-target="tip" data-tour-title="Choose what to install" data-tour-text="Select window configuration, URL query parameters, or the tag manager. Tag-manager installation loads only the manager and enabled consent controls; configure the scripts it should load on the Tag manager page.">Update snippet</button>
             </form>
         {% endif %}
         {% if snippet %}
+            {% if include_tags %}
+                <p class="mb-3">This installs the tag manager. It loads the tags you enable for this website. To collect analytics through it, configure the tracker as a tag using the URL below.</p>
+            {% elseif snippet_format == 'query' %}
+                <p class="mb-3">The URL supplies the public website token, collection endpoint, and denied consent default. Consent controls can apply a remembered choice and later updates. The configured tracker namespace comes from this installation.</p>
+            {% endif %}
             <pre class="setup-code"><code id="setup-installation">{{ snippet }}</code></pre>
             <div class="buttons mt-3">
-                <button type="button" class="button is-primary" data-copy-setup="setup-installation" data-tour-title="Copy the installation" data-tour-text="Copy this code into the website's head. It contains its public website token and configured URLs. It never includes an administrator or sharing token.">Copy installation snippet</button>
+                {{ component('Ui:CopyButton', {'target': 'setup-installation', 'status': 'setup-copy-status', 'label': 'Copy installation snippet', 'class': 'button is-primary', 'data-pages--setup--index-target': 'tip', 'data-tour-title': 'Copy the installation', 'data-tour-text': 'Copy this code into the website\'s head. It contains the configured script URLs' ~ (include_tags ? '' : ' and public website token') ~ '. It never includes an administrator or sharing token.'}) }}
                 <a class="button" href="{{ path('app_setup_download', query|merge({kind: 'snippet'})) }}">Download snippet</a>
             </div>
+            {% if include_tags and tracker_url %}
+                <details class="mt-4">
+                    <summary class="has-text-weight-semibold">Load the analytics tracker as a tag</summary>
+                    <p class="mt-3">Enable the tag manager, add a <strong>Load an HTTPS script</strong> action, and paste this URL. Use <strong>Document ready</strong> as its trigger. Choose <code>none</code> to allow the tracker's anonymous mode, or <code>analytics</code> to wait for analytics consent. Enhanced detail always requires an affirmative analytics choice. Remove any separate tracker installation to avoid duplicate page views.</p>
+                    <pre class="setup-code"><code id="setup-tracker-url">{{ tracker_url }}</code></pre>
+                    <div class="buttons mt-3">{{ component('Ui:CopyButton', {'target': 'setup-tracker-url', 'status': 'setup-copy-status', 'label': 'Copy tracker URL', 'class': 'button'}) }}<a class="button" href="{{ path('app_tag_manager', {site: site_id}) }}">Configure this website's tags</a></div>
+                </details>
+            {% endif %}
         {% else %}
             <p class="notification is-info is-light">Register and select a website in step 1 to get its installation snippet.</p>
         {% endif %}
@@ -86,7 +100,7 @@
             <div class="content mt-3"><p>The website-specific hosted consent URL in your snippet stays current. To host this script on your website instead, download it and replace the consent URL in your snippet. Download it again after changing the tracker namespace, branding, or tag consent categories.</p><p>This small consent manager stores boolean category choices in local storage. It makes no external submissions. Category names come from this website’s enabled tags in YAML. It does not implement legal consent records, a provider registry, or Google Consent Mode.</p></div>
             {% if consent_script %}
                 <pre class="setup-code"><code id="setup-consent">{{ consent_script }}</code></pre>
-                <div class="buttons mt-3"><button type="button" class="button" data-copy-setup="setup-consent">Copy CMP script</button><a class="button" href="{{ path('app_setup_download', query|merge({kind: 'consent'})) }}">Download CMP script</a><a class="button" href="{{ path('app_setup_download', query|merge({kind: 'consent', min: '1'})) }}">Download compact CMP script</a></div>
+                <div class="buttons mt-3">{{ component('Ui:CopyButton', {'target': 'setup-consent', 'status': 'setup-copy-status', 'label': 'Copy CMP script', 'class': 'button'}) }}<a class="button" href="{{ path('app_setup_download', query|merge({kind: 'consent'})) }}">Download CMP script</a><a class="button" href="{{ path('app_setup_download', query|merge({kind: 'consent', min: '1'})) }}">Download compact CMP script</a></div>
                 <p class="help">The compact download uses the current build when available and falls back to readable source.</p>
             {% endif %}
         </details>
@@ -95,7 +109,7 @@
             <div class="content mt-3"><p>This loader retrieves the selected website’s current tag configuration from this installation. Host it on your website if you prefer a local drop-in file. Each tag runs when its trigger and consent requirement match. Tags marked as requiring no consent can run without a visitor choice. Event triggers skipped before consent are not replayed. Collection controls apply to the analytics tracker and do not stop independent third-party scripts.</p><p>Withdrawing prevents new tag loads. Scripts already running may continue until the visitor reloads the page; their own cookies and stored data are not automatically removed.</p></div>
             {% if tag_loader %}
                 <pre class="setup-code"><code id="setup-tags">{{ tag_loader }}</code></pre>
-                <div class="buttons mt-3"><button type="button" class="button" data-copy-setup="setup-tags">Copy tag loader</button><a class="button" href="{{ path('app_setup_download', query|merge({kind: 'tags'})) }}">Download tag loader</a><a class="button" href="{{ path('app_tag_manager', site_id ? {site: site_id} : {}) }}">Configure tags</a></div>
+                <div class="buttons mt-3">{{ component('Ui:CopyButton', {'target': 'setup-tags', 'status': 'setup-copy-status', 'label': 'Copy tag loader', 'class': 'button'}) }}<a class="button" href="{{ path('app_setup_download', query|merge({kind: 'tags'})) }}">Download tag loader</a><a class="button" href="{{ path('app_tag_manager', site_id ? {site: site_id} : {}) }}">Configure tags</a></div>
             {% endif %}
         </details>
         <div class="mt-5">
@@ -103,7 +117,7 @@
             <p class="mb-3">Build smaller browser scripts after editing their source. Current YAML settings are applied when hosted scripts are requested. The CLI equivalent is <code>php bin/console app:assets:build-js</code>. Building needs Node and the pinned Terser dependency; readable scripts work without a build.</p>
             <form method="post" action="{{ path('app_setup_build_scripts') }}">
                 <input type="hidden" name="_token" value="{{ csrf_token('build_browser_scripts') }}">
-                <button type="submit" class="button" data-tour-title="Build smaller scripts" data-tour-text="Run the same optional minifier offered by the CLI. If build tools are unavailable, the hosted URLs continue using current readable source.">Build browser scripts</button>
+                <button type="submit" class="button" data-pages--setup--index-target="tip" data-tour-title="Build smaller scripts" data-tour-text="Run the same optional minifier offered by the CLI. If build tools are unavailable, the hosted URLs continue using current readable source.">Build browser scripts</button>
             </form>
         </div>
         <p id="setup-copy-status" role="status" aria-live="polite" class="mt-3"></p>
@@ -120,8 +134,8 @@
             <p>This walkthrough does not verify these checks automatically. Withdrawal does not erase previously stored history. Review backup, restore, retention, and privacy procedures before collecting real traffic.</p>
         </div>
         <div class="buttons">
-            <a class="button is-primary" href="{{ path('api_health') }}" data-tour-title="Check service health" data-tour-text="Inspect the health endpoint for basic installation readiness. A successful response alone does not verify website integration, consent, database permissions, or backup recovery.">Open health check</a>
-            <a class="button" href="{{ path('app_privacy_settings') }}" data-tour-title="Review BI disclosure" data-tour-text="Review disclosure thresholds before granting routine BI access to approved anonymous views. Counts represent events, not people. Keep raw event tables and custom projections private.">BI privacy settings</a>
+            <a class="button is-primary" href="{{ path('api_health') }}" data-pages--setup--index-target="tip" data-tour-title="Check service health" data-tour-text="Inspect the health endpoint for basic installation readiness. A successful response alone does not verify website integration, consent, database permissions, or backup recovery.">Open health check</a>
+            <a class="button" href="{{ path('app_privacy_settings') }}" data-pages--setup--index-target="tip" data-tour-title="Review BI disclosure" data-tour-text="Review disclosure thresholds before granting routine BI access to approved anonymous views. Counts represent events, not people. Keep raw event tables and custom projections private.">BI privacy settings</a>
             <a class="button" href="{{ path('app_event_examples') }}">Synthetic event examples</a>
         </div>
     {% endif %}
@@ -130,17 +144,6 @@
         {% if step > 1 %}<a class="button" href="{{ path('app_setup', query|merge({step: step - 1})) }}">Previous step</a>{% endif %}
         {% if step < 4 %}<a class="button is-primary" href="{{ path('app_setup', query|merge({step: step + 1})) }}">Next: {{ steps[step] }}</a>{% else %}<a class="button is-primary" href="{{ path('app_dashboard') }}">Return to websites</a>{% endif %}
     </div>
-    <aside id="setup-callout" class="setup-callout" role="dialog" aria-labelledby="setup-callout-title" aria-describedby="setup-callout-text" hidden>
-        <span class="setup-callout-arrow" aria-hidden="true"></span>
-        <p id="setup-callout-position" class="is-size-7"></p>
-        <h2 id="setup-callout-title" class="title is-5" tabindex="-1"></h2>
-        <p id="setup-callout-text" class="mb-3"></p>
-        <div class="buttons"><button class="button is-small" id="setup-tour-previous" type="button">Back</button><button class="button is-primary is-small" id="setup-tour-next" type="button">Next tip</button><button class="button is-small" id="setup-tour-close" type="button">Close walkthrough</button></div>
-    </aside>
+    {{ component('Setup:Walkthrough') }}
 </div>
-{% endblock %}
-
-{% block javascripts %}
-{{ parent() }}
-<script>{% include 'setup/walkthrough.js.twig' %}</script>
 {% endblock %}

@@ -24,31 +24,54 @@ final class DropInScripts
             && is_string($site['name'] ?? null) && is_string($site['domain'] ?? null)));
     }
 
-    public function snippet(string $token, bool $withTags = false): string
+    public function snippet(string $token, bool $withTags = false, string $format = 'window'): string
+    {
+        $this->assertWebsite($token);
+        if (!in_array($format, ['window', 'query'], true)) {
+            throw new \InvalidArgumentException('Choose window configuration or query parameters.');
+        }
+        $host = $this->host();
+        $script = '';
+        if (!$withTags && $format === 'window') {
+            $namespace = $this->json($this->namespace());
+            $configuration = $this->json(['endpoint' => $host.'/api/receive', 'websiteToken' => $token, 'consent' => false]);
+            $script = "<script>\n  window[".$namespace."] = ".$configuration.";\n</script>\n";
+        }
+        $siteId = SiteScriptConfig::idForToken($token);
+        $urls = [];
+        if ($this->sites === null || $this->sites->consent($siteId)['enabled']) {
+            $urls[] = $host.'/cmp-lite/sites/'.$siteId.'/consent.js?min=1';
+        }
+        if ($withTags) {
+            $urls[] = $host.'/tms-lite/sites/'.$siteId.'/lib.js?min=1';
+        } else {
+            $urls[] = $format === 'query' ? $this->trackerUrl($token) : $host.'/aggregate.js?min=1';
+        }
+        foreach ($urls as $url) {
+            $url = htmlspecialchars($url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $script .= '<script src="'.$url.'" defer referrerpolicy="no-referrer"></script>'."\n";
+        }
+
+        return $script;
+    }
+
+    /** Configured SDK URL, also usable as a script tag's src in tag-manager YAML. */
+    public function trackerUrl(string $token): string
+    {
+        $this->assertWebsite($token);
+        $host = $this->host();
+
+        return $host.'/aggregate.js?'.http_build_query([
+            'min' => '1', 'endpoint' => $host.'/api/receive', 'token' => $token, 'consent' => '0',
+        ], '', '&', PHP_QUERY_RFC3986);
+    }
+
+    private function assertWebsite(string $token): void
     {
         $this->config->assertHealthy();
         if ($this->websites->findOneByToken($token) === null) {
             throw new \InvalidArgumentException('Choose a registered website.');
         }
-        $namespace = $this->json($this->namespace());
-        $host = $this->host();
-        $configuration = $this->json(['endpoint' => $host.'/api/receive', 'websiteToken' => $token, 'consent' => false]);
-        $script = "<script>\n  window[".$namespace."] = ".$configuration.";\n</script>\n";
-        $siteId = SiteScriptConfig::idForToken($token);
-        $paths = [];
-        if ($this->sites === null || $this->sites->consent($siteId)['enabled']) {
-            $paths[] = '/cmp-lite/sites/'.$siteId.'/consent.js';
-        }
-        $paths[] = '/aggregate.js';
-        if ($withTags) {
-            $paths[] = '/tms-lite/sites/'.$siteId.'/lib.js';
-        }
-        foreach ($paths as $path) {
-            $url = htmlspecialchars($host.$path.'?min=1', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-            $script .= '<script src="'.$url.'" defer referrerpolicy="no-referrer"></script>'."\n";
-        }
-
-        return $script;
     }
 
     /** A loader keeps centrally edited tags current when the installer is hosted elsewhere. */
@@ -76,11 +99,13 @@ final class DropInScripts
             return ['content' => '/* Built-in consent controls are disabled for this website. */', 'minified' => false];
         }
         $source = @file_get_contents($this->projectDir.'/public/consent.js');
-        if (!is_string($source)) {
+        $styles = @file_get_contents($this->projectDir.'/public/consent.css');
+        if (!is_string($source) || !is_string($styles) || trim($styles) === '') {
             throw new \RuntimeException('Consent script source is unavailable.');
         }
         $declaration = "var consentConfig = {namespace: 'Aggregate', name: 'Analytics'};";
-        if (substr_count($source, $declaration) !== 1) {
+        $stylesDeclaration = 'var consentStyles = null;';
+        if (substr_count($source, $declaration) !== 1 || substr_count($source, $stylesDeclaration) !== 1) {
             throw new \RuntimeException('Consent script configuration declaration is invalid.');
         }
         $configuration = $this->json([
@@ -94,16 +119,24 @@ final class DropInScripts
                 $template = @file_get_contents($directory.'/consent.template.min.js');
                 if (is_array($manifest) && ($manifest['format'] ?? null) === 1 && is_string($template)
                     && ($manifest['sourceSha256'] ?? null) === hash('sha256', $source)
+                    && ($manifest['stylesheetSha256'] ?? null) === hash('sha256', $styles)
                     && ($manifest['templateSha256'] ?? null) === hash('sha256', $template)
-                    && str_contains($template, '__AGGREGATE_CONSENT_CONFIG__')) {
-                    return ['content' => str_replace('__AGGREGATE_CONSENT_CONFIG__', $configuration, $template), 'minified' => true];
+                    && str_contains($template, '__AGGREGATE_CONSENT_CONFIG__')
+                    && str_contains($template, '__AGGREGATE_CONSENT_STYLES__')) {
+                    return ['content' => strtr($template, [
+                        '__AGGREGATE_CONSENT_CONFIG__' => $configuration,
+                        '__AGGREGATE_CONSENT_STYLES__' => $this->json($styles),
+                    ]), 'minified' => true];
                 }
             } catch (\Throwable) {
                 // Optional builds fall back to the current configured source.
             }
         }
 
-        return ['content' => str_replace($declaration, 'var consentConfig = '.$configuration.';', $source), 'minified' => false];
+        return ['content' => strtr($source, [
+            $declaration => 'var consentConfig = '.$configuration.';',
+            $stylesDeclaration => 'var consentStyles = '.$this->json($styles).';',
+        ]), 'minified' => false];
     }
 
     private function namespace(): string
