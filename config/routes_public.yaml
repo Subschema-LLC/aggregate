@@ -10,6 +10,14 @@ script_controller:
     resource: ../src/Controller/ScriptController.php
     type: attribute
 
+consent_script_controller:
+    resource: ../src/Controller/ConsentScriptController.php
+    type: attribute
+
+tag_script_controller:
+    resource: ../src/Controller/TagScriptController.php
+    type: attribute
+
 health_controller:
     resource: ../src/Controller/HealthController.php
     type: attribute

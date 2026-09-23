@@ -139,6 +139,8 @@ jobs:
           php bin/console about
           php bin/console cache:clear
           php bin/console lint:container
+          DASHBOARD_ENABLED=0 php bin/console cache:clear
+          DASHBOARD_ENABLED=0 php bin/console lint:container
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: signed-release-package

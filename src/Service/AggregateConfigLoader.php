@@ -13,8 +13,13 @@ class AggregateConfigLoader implements ResetInterface
 
     public function __construct(
         private readonly string $projectDir,
-        private readonly string $environment
-    ) {}
+        private readonly string $environment,
+        private readonly string $configurationName = 'aggregate',
+    ) {
+        if (preg_match('~^(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_-]+$~D', $configurationName) !== 1) {
+            throw new \InvalidArgumentException('Configuration names must use safe relative path components.');
+        }
+    }
 
     private function load(): void
     {
@@ -26,22 +31,32 @@ class AggregateConfigLoader implements ResetInterface
 
         try {
             // Try environment-specific file first (e.g., aggregate_prod.yaml)
-            $envFile = $this->projectDir . '/config/aggregate_' . $this->environment . '.yaml';
+            $envFile = $this->projectDir . '/config/'.$this->configurationName.'_' . $this->environment . '.yaml';
             if (file_exists($envFile)) {
-                $this->config = $this->parseLockedFile($envFile) ?? [];
+                $this->config = $this->parseLockedFile($envFile);
                 return;
             }
 
             // Try main aggregate.yaml
-            $mainFile = $this->projectDir . '/config/aggregate.yaml';
+            $mainFile = $this->projectDir . '/config/'.$this->configurationName.'.yaml';
             if (!file_exists($mainFile)) {
                 return;
             }
 
-            $data = $this->parseLockedFile($mainFile) ?? [];
+            $data = $this->parseLockedFile($mainFile);
 
             // Check if using environment-specific structure
-            if (isset($data['environments'][$this->environment])) {
+            if (array_key_exists('environments', $data)) {
+                if (!is_array($data['environments']) || ($data['environments'] !== [] && array_is_list($data['environments']))) {
+                    throw new \RuntimeException('Application environments must be a mapping.');
+                }
+                if (array_key_exists($this->environment, $data['environments'])
+                    && (!is_array($data['environments'][$this->environment])
+                        || ($data['environments'][$this->environment] !== [] && array_is_list($data['environments'][$this->environment])))) {
+                    throw new \RuntimeException('The active application environment must be a mapping.');
+                }
+            }
+            if (array_key_exists($this->environment, $data['environments'] ?? [])) {
                 $envConfig = $data['environments'][$this->environment];
                 unset($data['environments']);
                 $this->config = array_merge($data, $envConfig);
@@ -60,7 +75,7 @@ class AggregateConfigLoader implements ResetInterface
         }
     }
 
-    private function parseLockedFile(string $path): mixed
+    private function parseLockedFile(string $path): array
     {
         $handle = @fopen($path, 'rb');
         if ($handle === false) {
@@ -76,11 +91,28 @@ class AggregateConfigLoader implements ResetInterface
                 throw new \RuntimeException('The application configuration could not be read.');
             }
 
-            return $yaml !== '' ? Yaml::parse($yaml) : null;
+            return $this->parseDocument($yaml);
         } finally {
             @flock($handle, LOCK_UN);
             fclose($handle);
         }
+    }
+
+    private function parseDocument(string $yaml): array
+    {
+        // A missing/blank/comments-only document has defaults; an explicit
+        // null or malformed collection must never silently enable defaults.
+        $content = preg_replace('/^\s*(?:#.*|---|\.\.\.)\s*$/m', '', $yaml);
+        if (trim((string) $content) === '') {
+            return [];
+        }
+        $data = Yaml::parse($yaml);
+        if (!is_array($data) || ($data !== [] && array_is_list($data))
+            || ($data === [] && !(Yaml::parse($yaml, Yaml::PARSE_OBJECT_FOR_MAP) instanceof \stdClass))) {
+            throw new \RuntimeException('The application configuration root must be a mapping.');
+        }
+
+        return $data;
     }
 
     public function hasLoadError(): bool
@@ -158,10 +190,10 @@ class AggregateConfigLoader implements ResetInterface
         $this->load();
         $this->assertHealthy();
 
-        $envFile = $this->projectDir.'/config/aggregate_'.$this->environment.'.yaml';
+        $envFile = $this->projectDir.'/config/'.$this->configurationName.'_'.$this->environment.'.yaml';
         $configFile = is_file($envFile)
             ? $envFile
-            : $this->projectDir.'/config/aggregate.yaml';
+            : $this->projectDir.'/config/'.$this->configurationName.'.yaml';
         $configExists = is_file($configFile);
         $configHandle = @fopen($configFile, $configExists ? 'r+b' : 'x+b');
         if ($configHandle === false) {
@@ -181,19 +213,16 @@ class AggregateConfigLoader implements ResetInterface
                 throw new \RuntimeException('The application configuration could not be read.');
             }
 
-            $data = $originalYaml !== '' ? (Yaml::parse($originalYaml) ?? []) : [];
-            if (!is_array($data)) {
-                throw new \RuntimeException('The application configuration root must be a mapping.');
-            }
+            $data = $this->parseDocument($originalYaml);
 
             $nestedEnvironment = $configFile !== $envFile && array_key_exists('environments', $data);
             if ($nestedEnvironment) {
-                if (!is_array($data['environments'])) {
+                if (!is_array($data['environments']) || ($data['environments'] !== [] && array_is_list($data['environments']))) {
                     throw new \RuntimeException('The application environments configuration must be a mapping.');
                 }
 
-                $environmentData = $data['environments'][$this->environment] ?? [];
-                if (!is_array($environmentData)) {
+                $environmentData = array_key_exists($this->environment, $data['environments']) ? $data['environments'][$this->environment] : [];
+                if (!is_array($environmentData) || ($environmentData !== [] && array_is_list($environmentData))) {
                     throw new \RuntimeException('The active application environment configuration must be a mapping.');
                 }
 

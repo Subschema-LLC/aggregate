@@ -12,6 +12,10 @@ const PLACEHOLDERS = {
   internalTrafficDefaults: '__AGGREGATE_INTERNAL_TRAFFIC__',
   customDataDefaults: '__AGGREGATE_CUSTOM_DATA__'
 };
+const DROP_INS = [
+  {name: 'consent', variable: 'consentConfig', placeholder: '__AGGREGATE_CONSENT_CONFIG__'},
+  {name: 'tag-manager', variable: 'tagManagerConfig', placeholder: '__AGGREGATE_TAG_MANAGER__'}
+];
 const AGPL_NOTICE = '/*! Aggregate Analytics — SPDX-License-Identifier: AGPL-3.0-only; see LICENSE in the source repository. */\n';
 
 function digest(content) {
@@ -30,7 +34,7 @@ function minifier(projectDir) {
     packagePath = requireFromProject.resolve('terser/package.json');
   } catch (error) {
     // A matching global CLI is an optional offline build fallback. Load its
-    // package directly; production PHP never launches Node or the minifier.
+    // package directly; serving scripts never launches Node or the minifier.
     for (const directory of (process.env.PATH || '').split(path.delimiter)) {
       try {
         const executable = fs.realpathSync(path.join(directory, 'terser'));
@@ -81,6 +85,21 @@ async function build({projectDir = path.resolve(__dirname, '..'), outputDir = pr
     ['var/browser/aggregate.template.min.js', minifiedTemplate],
     ['public/internal-traffic-marker.min.js', await minify(AGPL_NOTICE + marker)]
   ]);
+  for (const {name, variable, placeholder} of DROP_INS) {
+    const source = fs.readFileSync(path.join(projectDir, 'public', name + '.js'), 'utf8');
+    const declaration = new RegExp('^  var ' + variable + ' = .+;$', 'm');
+    if (!declaration.test(source)) throw new Error('Drop-in configuration declaration not found: ' + variable);
+    const template = await minify(source.replace(declaration, '  var ' + variable + ' = ' + placeholder + ';'));
+    if (!template.includes(placeholder)) throw new Error('Minifier removed a dynamic drop-in placeholder: ' + placeholder);
+    outputs.set('public/' + name + '.min.js', await minify(source));
+    outputs.set('var/browser/' + name + '.template.min.js', template);
+    outputs.set('var/browser/' + name + '-manifest.json', JSON.stringify({
+      format: 1,
+      sourceSha256: digest(source),
+      templateSha256: digest(template),
+      minifier: 'terser ' + version
+    }, null, 2) + '\n');
+  }
   for (const entry of fs.readdirSync(path.join(projectDir, 'micro-consent-dropins', 'js')).sort()) {
     if (!entry.endsWith('.js') || entry.endsWith('.min.js')) continue;
     const source = fs.readFileSync(path.join(projectDir, 'micro-consent-dropins', 'js', entry), 'utf8');
@@ -126,4 +145,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = {build, PLACEHOLDERS};
+module.exports = {build, PLACEHOLDERS, DROP_INS};

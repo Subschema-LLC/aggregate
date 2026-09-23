@@ -30,11 +30,12 @@ class ReleaseBuildTest(unittest.TestCase):
         self.write("vendor/composer/platform_check.php", '<?php if (!(PHP_VERSION_ID >= 80200)) { throw new RuntimeException("PHP 8.2 is required."); }')
         self.write("public/assets/manifest.json", json.dumps({"app.js": "/assets/app-123.js"}))
         self.write("public/assets/app-123.js", "console.log('app');\n")
-        self.write("var/browser/manifest.json", json.dumps({
-            "format": 1,
-            "sourceSha256": self.digest("public/aggregate.js"),
-            "templateSha256": self.digest("var/browser/aggregate.template.min.js"),
-        }))
+        for name, manifest in (("aggregate", "manifest.json"), ("consent", "consent-manifest.json"), ("tag-manager", "tag-manager-manifest.json")):
+            self.write("var/browser/" + manifest, json.dumps({
+                "format": 1,
+                "sourceSha256": self.digest("public/" + name + ".js"),
+                "templateSha256": self.digest("var/browser/" + name + ".template.min.js"),
+            }))
 
     def write(self, relative, content):
         path = self.source / relative
@@ -76,6 +77,12 @@ class ReleaseBuildTest(unittest.TestCase):
             self.assertIn("public/assets/app-123.js", names)
             self.assertIn("var/browser/aggregate.template.min.js", names)
             self.assertIn("LICENSE", names)
+            self.assertIn("js/LICENSE.txt", names)
+            for name in ("consent", "tag-manager"):
+                self.assertIn("public/" + name + ".js", names)
+                self.assertIn("public/" + name + ".min.js", names)
+                self.assertIn("var/browser/" + name + ".template.min.js", names)
+                self.assertIn("var/browser/" + name + "-manifest.json", names)
             self.assertEqual(ecommerce_example.encode("utf-8"), archive.read("docs/examples/ecommerce-purchase.json"))
             for name in names:
                 self.assertNotIn(b"deployment-only-secret", archive.read(name), name)
@@ -85,6 +92,26 @@ class ReleaseBuildTest(unittest.TestCase):
             embedded = json.loads(archive.read("release.json"))
             self.assertEqual({key: value for key, value in manifest.items() if key != "package"}, embedded)
             self.assertEqual(stat.S_IFREG | 0o755, archive.getinfo("bin/console").external_attr >> 16)
+
+    def test_archive_excludes_all_site_tag_and_consent_configuration(self):
+        private_configuration = "site-specific-operator-configuration-do-not-package"
+        for site_id in ("a" * 24, "b" * 24):
+            for suffix in ("", "_prod", "_test"):
+                self.write(
+                    f"config/tag-manager/sites/{site_id}{suffix}.yaml",
+                    "consent_manager:\n  enabled: true\n  name: " + private_configuration
+                    + "\ntag_manager:\n  enabled: true\n  tags: []\n",
+                )
+        self.write("config/tag-manager/sites/private/backup.yaml", private_configuration)
+        self.write("config/tag-manager/sites/.operator-notes", private_configuration)
+
+        package, _ = self.build()
+        with zipfile.ZipFile(package) as archive:
+            self.assertIn("public/tag-manager.js", archive.namelist())
+            self.assertIn("public/consent.js", archive.namelist())
+            for name in archive.namelist():
+                self.assertFalse(name.startswith("config/tag-manager/sites/"), name)
+                self.assertNotIn(private_configuration.encode("utf-8"), archive.read(name), name)
 
     def test_builds_are_reproducible_with_fixed_timestamp_and_refuse_overwrite(self):
         first, first_manifest = self.build("one")
@@ -145,6 +172,21 @@ class ReleaseBuildTest(unittest.TestCase):
     def test_refuses_missing_or_stale_built_assets(self):
         self.write("public/aggregate.js", "updated source")
         with self.assertRaisesRegex(ValueError, "stale"):
+            self.build()
+
+    def test_refuses_stale_drop_in_sources_and_templates(self):
+        for name in ("consent", "tag-manager"):
+            for relative in ("public/" + name + ".js", "var/browser/" + name + ".template.min.js"):
+                with self.subTest(relative=relative):
+                    original = (self.source / relative).read_text()
+                    self.write(relative, "updated drop-in")
+                    with self.assertRaisesRegex(ValueError, "stale"):
+                        self.build()
+                    self.write(relative, original)
+
+    def test_refuses_missing_tracker_license(self):
+        (self.source / "js/LICENSE.txt").unlink()
+        with self.assertRaisesRegex(ValueError, "Missing required"):
             self.build()
 
     def test_refuses_missing_compiled_asset_and_manifest_traversal(self):

@@ -24,6 +24,9 @@ class Kernel extends BaseKernel
 
         foreach ([
             'App\\Controller\\DashboardController',
+            'App\\Controller\\SetupController',
+            'App\\Controller\\TagManagerController',
+            'App\\Controller\\BrowserAssetsController',
             'App\\Controller\\DataLifecycleController',
             'App\\Controller\\DataModelController',
             'App\\Controller\\EventExamplesController',
