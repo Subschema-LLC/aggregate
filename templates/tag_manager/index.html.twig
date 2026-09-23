@@ -1,0 +1,166 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Tag manager - {{ app_branding.name }}{% endblock %}
+
+{% block stylesheets %}
+{{ parent() }}
+<style>
+    .tag-settings .select, .tag-settings select { max-width: 100%; }
+    .tag-settings code, .tag-settings .help { overflow-wrap: anywhere; }
+    .tag-settings textarea { font-family: monospace; }
+    .tag-settings [hidden] { display: none !important; }
+    .tag-settings .table-container { max-width: 100%; }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="tag-settings" data-site-id="{{ selected_site }}">
+    <h1 class="title">Tag manager</h1>
+    <p class="subtitle">Choose a website, configure its tags and consent controls, and download its YAML.</p>
+    <form method="get" action="{{ path('app_tag_manager') }}" class="box">
+        <div class="field">
+            <label class="label" for="tag-manager-site">Website</label>
+            <div class="control select"><select id="tag-manager-site" name="site">
+                {% for website in sites %}<option value="{{ website.id }}"{% if selected_site == website.id %} selected{% endif %}>{{ website.name }} ({{ website.domain }})</option>{% endfor %}
+                <option value=""{% if selected_site == '' %} selected{% endif %}>Shared configuration</option>
+            </select></div>
+        </div>
+        <button type="submit" class="button">Open website settings</button>
+    </form>
+    <h2 class="title is-4" id="tag-manager-scope">{{ site ? site.name : 'Shared configuration' }}</h2>
+    <div class="content">
+        {% if site %}
+            <p>These settings belong to <strong>{{ site.domain }}</strong>. They are saved separately from other websites and shared configuration. New websites start with tags disabled.</p>
+            <p>Headless configuration: <code>config/tag-manager/sites/{{ selected_site }}.yaml</code>. The same validation applies to UI and YAML changes.</p>
+        {% else %}
+            <p>These shared settings are used by the unscoped tag script. Website-specific scripts use their own files and do not inherit these tags.</p>
+        {% endif %}
+        <p>A tag loads an HTTPS script or calls a named method in an existing library when its trigger and consent requirement match. Tags marked <strong>No consent required</strong> may run without a visitor choice. Consent-gated event triggers skipped before consent are not replayed.</p>
+        <p>Tag definitions, literal arguments and variable paths are public. Use trusted libraries and avoid secrets or personal data. Variables read the current page only when an eligible tag runs.</p>
+        <p>Withdrawal prevents later actions requiring that category; it cannot undo a method call, remove an already loaded script, or erase provider cookies or data. Use the provider's withdrawal controls and reload the page.</p>
+        <p><a href="{{ path('app_setup', site ? {website: site.token, step: 3, tags: '1'} : {step: 3, tags: '1'}) }}">Open setup to copy or download scripts, or build compact versions.</a></p>
+    </div>
+
+    {% if configuration_error %}
+        <div class="notification is-danger" role="alert">{{ configuration_error }}</div>
+    {% else %}
+        <p class="mb-4"><a class="button" href="{{ path('app_tag_manager_download', {site: selected_site}) }}">Download settings YAML</a></p>
+        <form action="{{ path('app_tag_manager_save') }}" method="post" id="tag-manager-form" aria-labelledby="tag-manager-scope">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token('tag_manager_settings') }}">
+            <input type="hidden" name="site" value="{{ selected_site }}">
+            {% if consent_settings %}
+                <fieldset class="box">
+                    <legend class="title is-5">Consent controls for this website</legend>
+                    <div class="field">
+                        <label class="label" for="site-consent-enabled">Built-in consent manager</label>
+                        <div class="control select"><select id="site-consent-enabled" name="consent_manager[enabled]" required>
+                            <option value="1"{% if consent_settings.enabled %} selected{% endif %}>Enabled</option>
+                            <option value="0"{% if not consent_settings.enabled %} selected{% endif %}>Disabled — use your existing CMP</option>
+                        </select></div>
+                        <p class="help">Disabling these controls does not grant consent. Connect another CMP to communicate explicit choices if needed.</p>
+                    </div>
+                    <div class="field"><label class="label" for="site-consent-name">Name shown in the consent prompt</label><div class="control"><input class="input" id="site-consent-name" name="consent_manager[name]" value="{{ consent_settings.name }}" maxlength="120" required></div></div>
+                    <p class="help">Categories come from this website's enabled tags, plus enhanced analytics. Tag and consent settings are saved together. A downloaded CMP file must be downloaded again after changing the name or categories.</p>
+                </fieldset>
+            {% endif %}
+            <div class="field">
+                <label class="label" for="tag-manager-enabled">Tag manager</label>
+                <div class="control select"><select id="tag-manager-enabled" name="enabled" required aria-describedby="tag-manager-enabled-help">
+                    <option value="0"{% if not settings.enabled %} selected{% endif %}>Disabled</option>
+                    <option value="1"{% if settings.enabled %} selected{% endif %}>Enabled</option>
+                </select></div>
+                <p class="help" id="tag-manager-enabled-help">Disabling preserves definitions and prevents new page loads from receiving these tags.</p>
+            </div>
+
+            <details class="box">
+                <summary class="has-text-weight-semibold">Variables — read values from this page</summary>
+                <div class="content mt-3"><p>Give each value an alias and a path, such as <code>plan</code> → <code>window.siteData.plan</code> or <code>category</code> → <code>dataLayer[0].ecommerce.items[0].category</code>. Paths read own data properties; they do not run JavaScript or getters.</p><p>Use <code>{% verbatim %}{{plan}}{% endverbatim %}</code> in a script URL's path or query, or <code>{"$var":"plan"}</code> in method arguments. URL substitutions are encoded; the host stays fixed. Missing or invalid values skip that tag.</p></div>
+                {% set variable_rows = [] %}
+                {% for alias, data_path in settings.variables %}{% set variable_rows = variable_rows|merge([{alias: alias, path: data_path}]) %}{% endfor %}
+                {% if variable_rows|length < max_variables %}{% set variable_rows = variable_rows|merge([{alias: '', path: ''}]) %}{% endif %}
+                {% for variable in variable_rows %}
+                    <fieldset class="box">
+                        <legend class="has-text-weight-semibold">{{ variable.alias ? 'Variable ' ~ loop.index : 'Add a variable' }}</legend>
+                        <div class="field"><label class="label" for="variable-{{ loop.index0 }}-alias">Alias</label><div class="control"><input class="input" id="variable-{{ loop.index0 }}-alias" name="variables[{{ loop.index0 }}][alias]" value="{{ variable.alias }}" maxlength="64" pattern="[A-Za-z][A-Za-z0-9_]{0,63}" placeholder="plan" autocomplete="off"></div></div>
+                        <div class="field"><label class="label" for="variable-{{ loop.index0 }}-path">Data path</label><div class="control"><input class="input" id="variable-{{ loop.index0 }}-path" name="variables[{{ loop.index0 }}][path]" value="{{ variable.path }}" maxlength="256" placeholder="window.siteData.plan" autocomplete="off"></div></div>
+                        {% if variable.alias %}<label class="checkbox"><input type="checkbox" name="variables[{{ loop.index0 }}][remove]" value="1"> Remove this variable when saving</label>{% endif %}
+                    </fieldset>
+                {% endfor %}
+                <p class="help">Up to {{ max_variables }} variables. Save to add another row. Leave both fields empty to keep the current list.</p>
+            </details>
+
+            {% set rows = settings.tags %}
+            {% if rows|length < max_tags %}{% set rows = rows|merge([{id: '', src: '', type: 'script', enabled: true, consent: 'analytics', trigger: {type: 'dom_ready'}}]) %}{% endif %}
+            {% for tag in rows %}
+                <fieldset class="box" data-tag-row aria-describedby="tag-{{ loop.index0 }}-help">
+                    <legend class="title is-5">{% if tag.id %}Tag {{ loop.index }}: {{ tag.id }}{% else %}Add a tag{% endif %}</legend>
+                    <p class="help mb-3" id="tag-{{ loop.index0 }}-help">Choose one action and a trigger. Leave a new row's ID, URL and method empty to keep the current list.</p>
+                    <div class="field"><label class="label" for="tag-{{ loop.index0 }}-id">ID</label><div class="control"><input class="input" id="tag-{{ loop.index0 }}-id" name="tags[{{ loop.index0 }}][id]" value="{{ tag.id }}" maxlength="64" pattern="[A-Za-z][A-Za-z0-9_-]{0,63}" autocomplete="off" placeholder="purchase-event"></div></div>
+                    <div class="field">
+                        <label class="label" for="tag-{{ loop.index0 }}-type">Action</label>
+                        <div class="control select"><select id="tag-{{ loop.index0 }}-type" name="tags[{{ loop.index0 }}][type]" data-tag-type required>
+                            <option value="script"{% if tag.type == 'script' %} selected{% endif %}>Load an HTTPS script</option>
+                            <option value="call"{% if tag.type == 'call' %} selected{% endif %}>Call a library method</option>
+                        </select></div>
+                    </div>
+                    <div data-action-fields="script">
+                        <div class="field"><label class="label" for="tag-{{ loop.index0 }}-src">HTTPS script URL</label><div class="control"><input class="input" type="text" id="tag-{{ loop.index0 }}-src" name="tags[{{ loop.index0 }}][src]" value="{{ tag.src|default('') }}" maxlength="2048" autocomplete="off" placeholder="https://scripts.example.com/helper.js"></div><p class="help">Use a fixed HTTPS host; optional variable placeholders belong in the path or query.</p></div>
+                    </div>
+                    <div data-action-fields="call">
+                        <div class="field"><label class="label" for="tag-{{ loop.index0 }}-method">Library method</label><div class="control"><input class="input" id="tag-{{ loop.index0 }}-method" name="tags[{{ loop.index0 }}][method]" value="{{ tag.method|default('') }}" maxlength="128" autocomplete="off" placeholder="Aggregate.emit"></div><p class="help">Use a named method such as <code>Aggregate.emit</code> or <code>Acme.track</code>. Its library must already be loaded. Expressions, constructors and JavaScript code are not accepted.</p></div>
+                        <div class="field"><label class="label" for="tag-{{ loop.index0 }}-args">Arguments (JSON array)</label><div class="control"><textarea class="textarea" id="tag-{{ loop.index0 }}-args" name="tags[{{ loop.index0 }}][args_json]" rows="4" spellcheck="false">{{ tag.args|default([])|json_encode(448) }}</textarea></div><p class="help">Example: <code>["purchase", {"total_minor": 1299, "plan": {"$var": "plan"}}]</code>. Arguments are bounded JSON data; they are never evaluated as code. Leave the URL empty for a method action.</p></div>
+                    </div>
+                    <div class="field"><label class="label" for="tag-{{ loop.index0 }}-consent">Consent category</label><div class="control"><input class="input" id="tag-{{ loop.index0 }}-consent" name="tags[{{ loop.index0 }}][consent]" value="{{ tag.consent }}" list="tag-consent-categories" maxlength="32" pattern="[a-z][a-z0-9_-]{0,31}" required></div><p class="help">Use analytics, functional, marketing, or another lowercase category. Enter none for <strong>No consent required</strong>; that action may run before a choice and after rejection.</p></div>
+                    <div class="field"><label class="label" for="tag-{{ loop.index0 }}-enabled">Availability</label><div class="control select"><select id="tag-{{ loop.index0 }}-enabled" name="tags[{{ loop.index0 }}][enabled]" required><option value="1"{% if tag.enabled %} selected{% endif %}>Enabled</option><option value="0"{% if not tag.enabled %} selected{% endif %}>Disabled</option></select></div></div>
+                    <div class="field"><label class="label" for="tag-{{ loop.index0 }}-trigger">Trigger</label><div class="control select"><select id="tag-{{ loop.index0 }}-trigger" name="tags[{{ loop.index0 }}][trigger][type]" data-tag-trigger required>
+                        {% for type, label in {dom_ready: 'Document ready', window_load: 'Window finished loading', document_event: 'Document event', window_event: 'Window event', data_layer: 'dataLayer event'} %}<option value="{{ type }}"{% if tag.trigger.type == type %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                    </select></div></div>
+                    <div class="field" data-event-field><label class="label" for="tag-{{ loop.index0 }}-event">Event name</label><div class="control"><input class="input" id="tag-{{ loop.index0 }}-event" name="tags[{{ loop.index0 }}][trigger][event]" value="{{ tag.trigger.event|default('') }}" maxlength="100" pattern="[A-Za-z][A-Za-z0-9_.:-]{0,99}" list="tag-event-examples" placeholder="purchase"></div><p class="help">Enter the exact name for a document, window or dataLayer event. Leave empty for document ready or window load. The event is a trigger; its payload is not copied into arguments automatically.</p></div>
+                    {% if tag.id %}<label class="checkbox"><input type="checkbox" name="tags[{{ loop.index0 }}][remove]" value="1"> Remove this tag when saving</label>{% endif %}
+                </fieldset>
+            {% endfor %}
+            <datalist id="tag-consent-categories"><option value="analytics">Analytics</option><option value="functional">Functional</option><option value="marketing">Marketing</option><option value="none">No consent required</option></datalist>
+            <datalist id="tag-event-examples"><option value="click"></option><option value="submit"></option><option value="change"></option><option value="cart:updated"></option><option value="purchase"></option><option value="checkout_complete"></option></datalist>
+            <details class="box"><summary class="has-text-weight-semibold">Trigger and event reference</summary><div class="table-container mt-3"><table class="table is-fullwidth"><thead><tr><th>Trigger</th><th>When it runs</th><th>Example</th></tr></thead><tbody>
+                <tr><td>Document ready</td><td>Once the HTML is ready and consent permits</td><td>No event name</td></tr>
+                <tr><td>Window finished loading</td><td>Once the page finishes loading and consent permits</td><td>No event name</td></tr>
+                <tr><td>Document event</td><td>A named event on the document, including events that bubble to it</td><td><code>click</code>, <code>submit</code>, <code>cart:updated</code></td></tr>
+                <tr><td>Window event</td><td>A named event dispatched on the window</td><td><code>account:updated</code></td></tr>
+                <tr><td>dataLayer event</td><td>A new <code>dataLayer.push({event: 'purchase'})</code> entry</td><td><code>purchase</code></td></tr>
+            </tbody></table></div><p class="help">Custom names must be emitted by your website. Document/window events and dataLayer entries received before consent are not replayed. Script actions load once per page; method actions can run for each eligible event.</p></details>
+            <p class="help mb-3">Up to {{ max_tags }} tags. Save a new tag to add another row. Hosted scripts and downloaded tag loaders receive saved changes on the next page load.</p>
+            <button class="button is-primary" type="submit">Save script settings</button>
+        </form>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block javascripts %}
+{{ parent() }}
+<script>
+(function () {
+    function initialize() {
+        document.querySelectorAll('[data-tag-row]').forEach(function (row) {
+            var action = row.querySelector('[data-tag-type]');
+            var trigger = row.querySelector('[data-tag-trigger]');
+            function update() {
+                row.querySelectorAll('[data-action-fields]').forEach(function (fields) {
+                    var selected = fields.dataset.actionFields === action.value;
+                    fields.hidden = !selected;
+                    fields.querySelectorAll('input, textarea').forEach(function (input) { input.disabled = !selected; });
+                });
+                var event = row.querySelector('[data-event-field]');
+                var eventNeeded = ['document_event', 'window_event', 'data_layer'].indexOf(trigger.value) !== -1;
+                event.hidden = !eventNeeded;
+                event.querySelector('input').disabled = !eventNeeded;
+            }
+            action.addEventListener('change', update);
+            trigger.addEventListener('change', update);
+            update();
+        });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initialize);
+    else initialize();
+})();
+</script>
+{% endblock %}

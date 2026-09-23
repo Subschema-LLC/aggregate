@@ -6,13 +6,12 @@ namespace App\Tests\Migration;
 
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
-use Doctrine\DBAL\Platforms\MariaDb1060Platform;
-use Doctrine\DBAL\Platforms\MySQL57Platform;
+use Doctrine\DBAL\Platforms\MariaDB1060Platform;
 use Doctrine\DBAL\Platforms\MySQL80Platform;
 use Doctrine\DBAL\Platforms\MySQLPlatform;
 use Doctrine\DBAL\Platforms\OraclePlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
-use Doctrine\DBAL\Platforms\SqlitePlatform;
+use Doctrine\DBAL\Platforms\SQLitePlatform;
 use Doctrine\DBAL\Platforms\SQLServerPlatform;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\Migrations\Exception\AbortMigration;
@@ -105,7 +104,7 @@ SQL, $viewSql);
             'events.created_at < UTC_DATE()',
         ];
         yield 'MariaDB' => [
-            new MariaDb1060Platform(),
+            new MariaDB1060Platform(),
             'CAST(events.created_at AS date) AS event_day',
             'events.created_at < UTC_DATE()',
         ];
@@ -120,7 +119,7 @@ SQL, $viewSql);
             'events.created_at < CAST(SYSUTCDATETIME() AS date)',
         ];
         yield 'SQLite' => [
-            new SqlitePlatform(),
+            new SQLitePlatform(),
             'date(events.created_at) AS event_day',
             "events.created_at < date('now')",
         ];
@@ -158,8 +157,7 @@ SQL, $viewSql);
 
     public static function unsupportedMySqlPlatforms(): iterable
     {
-        yield 'MySQL 5.7' => [new MySQL57Platform()];
-        yield 'generic or legacy MySQL' => [new MySQLPlatform()];
+        yield 'legacy or generic MySQL' => [new MySQLPlatform()];
     }
 
     private function viewSqlFor(AbstractPlatform $platform): string

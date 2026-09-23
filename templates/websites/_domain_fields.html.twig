@@ -14,7 +14,7 @@
     <div class="field">
         <label class="label" for="{{ field_prefix }}-domains">Allowed domains</label>
         <div class="control">
-            <textarea class="textarea" id="{{ field_prefix }}-domains" name="allowed_domains" rows="3" maxlength="16384" placeholder="example.com&#10;*.example.com" aria-describedby="{{ field_prefix }}-help">{{ domain_settings.domains|join('\n') }}</textarea>
+            <textarea class="textarea" id="{{ field_prefix }}-domains" name="allowed_domains" rows="3" maxlength="16384" placeholder="example.com&#10;*.example.com" aria-describedby="{{ field_prefix }}-help">{{ domain_settings.domains|join("\n") }}</textarea>
         </div>
         <p class="help" id="{{ field_prefix }}-help">Enter up to 32 hostnames, one per line, without a protocol, port, or path. <code>example.com</code> permits only that host. <code>*.example.com</code> permits subdomains at any depth, but excludes <code>example.com</code>; list both to allow both. Regex and other wildcard forms are unsupported.</p>
         {% if new_website|default(false) %}

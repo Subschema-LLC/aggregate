@@ -32,8 +32,10 @@ final class PrivacyCleanupMigrationTest extends TestCase
 
         self::assertTrue($schema->hasTable('events'));
         self::assertTrue($schema->hasTable('messenger_messages'));
-        self::assertSame(['id'], array_keys($schema->getTable('events')->getColumns()));
-        self::assertSame(['id'], array_keys($schema->getTable('messenger_messages')->getColumns()));
+        self::assertCount(1, $schema->getTable('events')->getColumns());
+        self::assertTrue($schema->getTable('events')->hasColumn('id'));
+        self::assertCount(1, $schema->getTable('messenger_messages')->getColumns());
+        self::assertTrue($schema->getTable('messenger_messages')->hasColumn('id'));
 
         $statements = array_map(
             static fn ($query): string => $query->getStatement(),
