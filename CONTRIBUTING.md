@@ -304,6 +304,16 @@ changes with `php bin/console asset-map:compile`.
 
 ## Architecture and file map
 
+UI pages follow the [Twig and Stimulus conventions](templates/README.md). Route
+templates own their page markup under `templates/<feature>/<page>.html.twig`;
+page JavaScript and CSS use matching paths under `assets/controllers/pages/`
+and `assets/styles/pages/`. Reusable Twig Components keep PascalCase names under
+`templates/components/`, with snake_case asset paths under the corresponding
+`assets/controllers/components/` and `assets/styles/components/` directories.
+Use ordinary Symfony discovery and AssetMapper imports, and create assets only
+where behavior or styles are needed. Standalone tracker, CMP, tag-manager, and
+organization-marker artifacts keep their separate browser delivery paths.
+
 | Location | Responsibility |
 | --- | --- |
 | [public/aggregate.js](public/aggregate.js) | Browser tracker and its source; no separate tracker build |

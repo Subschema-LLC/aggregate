@@ -54,7 +54,15 @@
                 <label class="label" for="internal-traffic-share-url">Share link</label>
                 <input class="input" type="url" id="internal-traffic-share-url" value="{{ share_url }}" readonly>
             </div>
-            <div class="buttons"><button type="button" class="button" id="copy-internal-traffic-link">Copy link</button><a class="button" href="{{ share_url }}" rel="nofollow noreferrer">Open public page</a></div>
+            <div class="buttons">{{ component('Ui:CopyButton', {
+                target: 'internal-traffic-share-url',
+                status: 'share-copy-status',
+                label: 'Copy link',
+                success: 'Share link copied.',
+                fallback: 'Copy the selected link using your browser’s copy command.',
+                class: 'button',
+                id: 'copy-internal-traffic-link'
+            }) }}<a class="button" href="{{ share_url }}" rel="nofollow noreferrer">Open public page</a></div>
             <p id="share-copy-status" role="status" aria-live="polite"></p>
         {% else %}
             <p class="mt-3">No share link is active.</p>
@@ -76,25 +84,4 @@
         <p>This flag identifies your organization’s traffic. The <code>internal</code> referrer category describes navigation within the website and is independent of this marker. If you rename the marker, historical events keep their original JSON key; update report filters for both names.</p>
         <p>Use a shared team value, such as <code>orgInternalTraffic=true</code>, on every browser and device you want to mark. The marker is a reporting hint and does not change tracking consent or grant account access.</p>
     </div>
-{% endblock %}
-
-{% block javascripts %}
-    {{ parent() }}
-    <script>
-        (function () {
-            var button = document.getElementById('copy-internal-traffic-link');
-            if (!button) return;
-            button.addEventListener('click', async function () {
-                var field = document.getElementById('internal-traffic-share-url');
-                var status = document.getElementById('share-copy-status');
-                try {
-                    await navigator.clipboard.writeText(field.value);
-                    status.textContent = 'Share link copied.';
-                } catch (error) {
-                    field.select();
-                    status.textContent = 'Copy the selected link using your browser’s copy command.';
-                }
-            });
-        }());
-    </script>
 {% endblock %}

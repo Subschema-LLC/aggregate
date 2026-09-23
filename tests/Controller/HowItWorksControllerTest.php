@@ -47,10 +47,19 @@ final class HowItWorksControllerTest extends WebTestCase
     {
         $client = self::createClient();
 
-        $client->request('GET', '/how-it-works');
+        $crawler = $client->request('GET', '/how-it-works');
 
         self::assertResponseIsSuccessful();
-        $content = (string) $client->getResponse()->getContent();
+        self::assertSelectorNotExists('style, [style]');
+        self::assertSelectorExists('link[rel="stylesheet"][href="/branding/theme.css"]');
+        $themePath = self::getContainer()->get('asset_mapper')->getPublicPath('styles/base.css');
+        $client->request('GET', $crawler->filter('link[rel="stylesheet"][href*="/styles/app-"]')->attr('href'));
+        self::assertResponseIsSuccessful();
+        self::assertStringContainsString(basename($themePath), $client->getInternalResponse()->getContent());
+        $client->request('GET', $themePath);
+        self::assertResponseIsSuccessful();
+        self::assertStringContainsString('text/css', $client->getResponse()->headers->get('Content-Type'));
+        $content = $client->getInternalResponse()->getContent();
 
         self::assertStringContainsString(
             '--bulma-text-strong: var(--app-brand-text);',
@@ -174,6 +183,9 @@ final class HowItWorksControllerTest extends WebTestCase
                 '<Example & Company>',
                 (string) $client->getResponse()->getContent(),
             );
+            self::assertSelectorExists('link[rel="stylesheet"][href="/branding/theme.css"]');
+            $client->request('GET', '/branding/theme.css');
+            self::assertResponseIsSuccessful();
             self::assertStringContainsString(
                 '--app-brand-primary: #AABBCC;',
                 (string) $client->getResponse()->getContent(),

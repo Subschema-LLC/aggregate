@@ -1,0 +1,2 @@
+.settings-page .account-password-form { max-width: 32rem; }
+.settings-page .account-card + .account-card { border-top: 1px solid var(--app-brand-border); margin-top: 1.5rem; padding-top: 1.5rem; }

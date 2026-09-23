@@ -9,6 +9,7 @@ use App\Entity\User;
 use App\Kernel;
 use App\Service\AggregateConfigLoader;
 use App\Service\BrandingLogoManager;
+use App\Service\SiteScriptConfig;
 use App\Service\WebsiteConfigManager;
 use PHPUnit\Framework\TestCase;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
@@ -34,6 +35,9 @@ final class WebsiteDomainRulesRoutesTest extends TestCase
     protected function setUp(): void
     {
         $this->environment = [$_ENV, $_SERVER];
+        foreach (['APP_HOST', 'JS_NAMESPACE'] as $key) {
+            unset($_ENV[$key], $_SERVER[$key]);
+        }
         $this->temporaryDirectory = sys_get_temp_dir().'/aggregate-domain-routes-'.bin2hex(random_bytes(8));
         (new Filesystem())->mkdir($this->temporaryDirectory.'/config', 0700);
         file_put_contents($this->temporaryDirectory.'/config/aggregate.yaml', Yaml::dump([
@@ -128,6 +132,43 @@ final class WebsiteDomainRulesRoutesTest extends TestCase
         self::assertSame($expected, $this->readWebsites());
         self::assertSame($aggregateBefore, file_get_contents($this->temporaryDirectory.'/config/aggregate.yaml'));
         self::assertSame("shop.example.test\n*.campaign.example.test", trim($this->domainForm($browser)['allowed_domains']->getValue()));
+        $this->assertNoDatabaseConnection();
+    }
+
+    public function testBrokenScriptSettingsOnlyHideTheAffectedWebsitesInstallationCode(): void
+    {
+        $directory = $this->temporaryDirectory.'/config/tag-manager/sites';
+        (new Filesystem())->mkdir($directory);
+        $siteFile = $directory.'/'.SiteScriptConfig::idForToken('example-token').'.yaml';
+        file_put_contents($siteFile, "consent_manager: [broken\n");
+        $browser = $this->browser();
+        $before = $this->websitesContents();
+        foreach ([[], ['format' => 'query'], ['tags' => '1']] as $query) {
+            $crawler = $browser->request('GET', '/dashboard', $query);
+            self::assertSame(200, $browser->getResponse()->getStatusCode());
+            self::assertCount(0, $crawler->filter('#code-1'));
+            self::assertCount(1, $crawler->filter('#code-2'));
+            self::assertStringContainsString('Installation code is unavailable for this website.', $crawler->text());
+            self::assertCount(1, $crawler->filter('form[action="'.self::SAVE_PATH.'"]'));
+            self::assertCount(1, $crawler->filter('form[action="/dashboard/website/other-token/domains"]'));
+            self::assertSame($before, $this->websitesContents());
+            self::assertSame("consent_manager: [broken\n", file_get_contents($siteFile));
+        }
+        $this->assertNoDatabaseConnection();
+    }
+
+    public function testInstallationCodeRespectsEachWebsitesConsentSetting(): void
+    {
+        $directory = $this->temporaryDirectory.'/config/tag-manager/sites';
+        (new Filesystem())->mkdir($directory);
+        file_put_contents($directory.'/'.SiteScriptConfig::idForToken('example-token').'.yaml', "consent_manager:\n  enabled: false\n");
+        $browser = $this->browser();
+        foreach ([[], ['format' => 'query'], ['tags' => '1']] as $query) {
+            $crawler = $browser->request('GET', '/dashboard', $query);
+            self::assertSame(200, $browser->getResponse()->getStatusCode());
+            self::assertStringNotContainsString('/cmp-lite/', $crawler->filter('#code-1')->text());
+            self::assertStringContainsString('/cmp-lite/sites/'.SiteScriptConfig::idForToken('other-token').'/consent.js', $crawler->filter('#code-2')->text());
+        }
         $this->assertNoDatabaseConnection();
     }
 
@@ -397,7 +438,7 @@ final class WebsiteDomainRulesRoutesTestKernel extends Kernel implements Compile
     public function process(ContainerBuilder $container): void
     {
         $container->setDefinition('security.user.provider.concrete.app_user_provider', new Definition(WebsiteDomainRulesTestUserProvider::class));
-        foreach ([AggregateConfigLoader::class, WebsiteConfigManager::class, BrandingLogoManager::class] as $service) {
+        foreach ([AggregateConfigLoader::class, WebsiteConfigManager::class, BrandingLogoManager::class, SiteScriptConfig::class] as $service) {
             $container->getDefinition($service)->setArgument('$projectDir', $this->temporaryDirectory);
         }
     }

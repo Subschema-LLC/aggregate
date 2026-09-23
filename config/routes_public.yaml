@@ -26,6 +26,10 @@ branding_logo_controller:
     resource: ../src/Controller/BrandingLogoController.php
     type: attribute
 
+branding_theme_controller:
+    resource: ../src/Controller/BrandingThemeController.php
+    type: attribute
+
 internal_traffic_public_controller:
     resource: ../src/Controller/InternalTrafficPublicController.php
     type: attribute

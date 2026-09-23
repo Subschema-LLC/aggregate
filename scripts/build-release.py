@@ -28,7 +28,7 @@ ROOT_FILES = (
     "bin/console", "public/.htaccess", "public/index.php", "public/robots.txt",
     "public/aggregate.js", "public/aggregate.min.js", "public/internal-traffic-marker.min.js",
     "var/browser/aggregate.template.min.js", "var/browser/manifest.json",
-    "public/consent.js", "public/consent.min.js", "public/tag-manager.js", "public/tag-manager.min.js",
+    "public/consent.js", "public/consent.min.js", "public/consent.css", "public/tag-manager.js", "public/tag-manager.min.js",
     "var/browser/consent.template.min.js", "var/browser/consent-manifest.json",
     "var/browser/tag-manager.template.min.js", "var/browser/tag-manager-manifest.json",
 )
@@ -46,7 +46,7 @@ REQUIRED_FILES = (
     "public/assets/manifest.json", "public/assets/importmap.json", "public/assets/entrypoint.app.json",
     "public/aggregate.js", "public/aggregate.min.js", "public/internal-traffic-marker.min.js",
     "var/browser/aggregate.template.min.js", "var/browser/manifest.json",
-    "public/consent.js", "public/consent.min.js", "public/tag-manager.js", "public/tag-manager.min.js",
+    "public/consent.js", "public/consent.min.js", "public/consent.css", "public/tag-manager.js", "public/tag-manager.min.js",
     "var/browser/consent.template.min.js", "var/browser/consent-manifest.json",
     "var/browser/tag-manager.template.min.js", "var/browser/tag-manager-manifest.json",
     "config/aggregate.yaml.example", "config/websites.yaml.example", "config/services.yaml",
@@ -149,10 +149,13 @@ def validate_prepared_source(source):
         ("tag-manager", "tag-manager-manifest.json"),
     ):
         browser = read_json(source, "var/browser/" + manifest)
-        for relative, field in (
+        inputs = [
             ("public/" + name + ".js", "sourceSha256"),
             ("var/browser/" + name + ".template.min.js", "templateSha256"),
-        ):
+        ]
+        if name == "consent":
+            inputs.append(("public/consent.css", "stylesheetSha256"))
+        for relative, field in inputs:
             if hashlib.sha256(source_file(source, relative).read_bytes()).hexdigest() != browser.get(field):
                 raise ValueError("Browser assets are stale; run npm run build:js before packaging.")
     asset_manifest = read_json(source, "public/assets/manifest.json")

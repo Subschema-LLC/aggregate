@@ -1,0 +1,6 @@
+body { font: 1rem/1.6 system-ui, sans-serif; color: #202b36; background: #f5f7fa; margin: 0; padding: 2rem 1rem; }
+main { max-width: 46rem; margin: auto; padding: 2rem; background: white; border: 1px solid #d5dce4; border-radius: .75rem; }
+h1 { line-height: 1.2; } code { overflow-wrap: anywhere; } .buttons { display: flex; flex-wrap: wrap; gap: .75rem; margin: 1rem 0; }
+button, .download { font: inherit; cursor: pointer; border: 1px solid #38556f; border-radius: .35rem; padding: .65rem 1rem; background: white; color: #193b58; }
+.is-primary { background: #193b58; color: white; } [data-marker-status] { padding: .75rem; background: #edf3f8; }
+a { color: #193b58; } :focus-visible { outline: 3px solid #3d77ce; outline-offset: 3px; }

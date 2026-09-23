@@ -1,0 +1,7 @@
+<form {{ attributes.defaults({
+    method: 'post',
+    'data-controller': 'components--ui--validation',
+    'data-action': 'invalid->components--ui--validation#reveal:capture'
+}) }}>
+    {% block content %}{% endblock %}
+</form>

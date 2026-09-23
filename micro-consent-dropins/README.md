@@ -12,6 +12,7 @@ not a production integration or compliance assurance.
 
 * gtm-consent-mode.js is an empty placeholder for proposed Google Consent Mode v2 default states and privacy_update integration
 * consent-ui.js injects the consent banner, settings modal, and Formspree submission logic into the DOM
+* css/consent-ui.css contains the prototype's presentation styles
 
 ## Formspree Setup
 
@@ -29,6 +30,16 @@ The load order in your HTML document is critical. The consent defaults must fire
 1. Place the contents of gtm-consent-mode.js in the head of your document above the GTM container snippet
 2. Replace the YOUR_FORM_ID placeholder in consent-ui.js with your actual Formspree endpoint ID
 3. Load consent-ui.js just before the closing body tag to prevent render blocking
+
+Host both `js/consent-ui.js` (or its generated `consent-ui.min.js`) and
+`css/consent-ui.css`, preserving those relative directories. The script loads
+the stylesheet automatically from `../css/consent-ui.css` relative to its own
+URL, carries its nonce, and sends no page referrer with that request. If you copy
+the JavaScript into an inline script instead, include the stylesheet explicitly:
+
+```html
+<link rel="stylesheet" href="/micro-consent-dropins/css/consent-ui.css">
+```
 
 ## DataLayer Events
 

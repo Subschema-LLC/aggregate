@@ -1,0 +1,10 @@
+{% props index, variable %}
+
+<div class="box">
+    <fieldset class="tag-settings-fieldset">
+        <legend class="has-text-weight-semibold">{{ variable.alias ? 'Variable ' ~ (index + 1) : 'Add a variable' }}</legend>
+        <div class="field"><label class="label" for="variable-{{ index }}-alias">Alias</label><div class="control"><input class="input" id="variable-{{ index }}-alias" name="variables[{{ index }}][alias]" value="{{ variable.alias }}" maxlength="64" pattern="[A-Za-z][A-Za-z0-9_]{0,63}" placeholder="plan" autocomplete="off"></div></div>
+        <div class="field"><label class="label" for="variable-{{ index }}-path">Data path</label><div class="control"><input class="input" id="variable-{{ index }}-path" name="variables[{{ index }}][path]" value="{{ variable.path }}" maxlength="256" placeholder="window.siteData.plan" autocomplete="off"></div></div>
+        {% if variable.alias %}<label class="checkbox"><input type="checkbox" name="variables[{{ index }}][remove]" value="1"> Remove this variable when saving</label>{% endif %}
+    </fieldset>
+</div>

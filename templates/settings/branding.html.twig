@@ -2,11 +2,6 @@
 
 {% block title %}Branding | {{ app_branding.name }}{% endblock %}
 
-{% block stylesheets %}
-    {{ parent() }}
-    {% include 'shared/_settings_styles.html.twig' %}
-{% endblock %}
-
 {% block body %}
 <div class="settings-page">
 <h1 class="title">Branding</h1>
@@ -17,7 +12,13 @@
         <h2 class="title is-5">Identity</h2>
         <p class="subtitle is-6">Customize the identity shown throughout the application.</p>
 
-        <form id="branding-settings-form" action="{{ path('app_branding_settings_save') }}" method="post" enctype="multipart/form-data">
+        {% component 'Ui:Validation' with {
+            id: 'branding-settings-form',
+            action: path('app_branding_settings_save'),
+            method: 'post',
+            enctype: 'multipart/form-data'
+        } %}
+        {% block content %}
             <input type="hidden" name="_csrf_token" value="{{ csrf_token('branding_settings') }}">
             {% if not app_branding.name_overridden %}
                 <input type="hidden" name="_original_brand_name" value="{{ app_branding.name }}">
@@ -60,7 +61,7 @@
                 <div class="field">
                     <p class="label">Current logo</p>
                     <div class="control">
-                        <img src="{{ path('app_branding_logo', {v: app_branding.logo_version}) }}" alt="{{ app_branding.name }} logo" style="display:block; max-width:min(320px, 100%); max-height:120px; object-fit:contain;">
+                        <img src="{{ path('app_branding_logo', {v: app_branding.logo_version}) }}" alt="{{ app_branding.name }} logo" class="branding-logo-preview">
                     </div>
                 </div>
             {% endif %}
@@ -177,7 +178,8 @@
                     </button>
                 </div>
             </div>
-        </form>
+        {% endblock %}
+        {% endcomponent %}
     </div>
 
     <div class="column is-4-desktop">
@@ -205,17 +207,4 @@
 </div>
 </div>
 </div>
-{% endblock %}
-
-{% block javascripts %}
-    {{ parent() }}
-    <script>
-        document.getElementById('branding-settings-form').addEventListener('invalid', function (event) {
-            var section = event.target.closest('details');
-            while (section) {
-                section.open = true;
-                section = section.parentElement.closest('details');
-            }
-        }, true);
-    </script>
 {% endblock %}

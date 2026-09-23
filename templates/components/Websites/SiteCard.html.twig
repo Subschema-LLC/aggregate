@@ -1,0 +1,44 @@
+{% props website, index, include_tags = false, snippet_format = 'window', is_admin = false %}
+
+<details class="box"{% if index == 1 %} open{% endif %}>
+        <summary class="website-summary has-text-weight-semibold">{{ website.name }} <span class="has-text-weight-normal">— {{ website.domain }}</span></summary>
+        <div class="content mt-4">
+            <p><strong>Website token:</strong> <code class="website-token">{{ website.token }}</code></p>
+            <h2 class="title is-5">Allowed domains</h2>
+            {% if website.domain_settings_invalid %}
+                <div class="notification is-warning">This website's domain rules are invalid. Events are rejected until valid rules are saved.</div>
+            {% elseif website.domain_policy is not defined %}
+                <p class="help mb-3">This existing registration permits its primary domain and its subdomains. The list below preserves that behavior; save to make the rules explicit.</p>
+            {% endif %}
+            <form action="{{ path('app_website_domains', {token: website.token}) }}" method="post" class="mb-5">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token('website_domains_' ~ website.token) }}">
+                {{ component('Websites:DomainFields', {field_prefix: 'website-domains-' ~ index, domain_settings: website.domain_settings}) }}
+                <button type="submit" class="button is-primary mt-3">Save domain rules</button>
+            </form>
+            <h2 class="title is-5">Integration code</h2>
+            {% if website.integration_code is not null %}
+                <p>Add this code to your website's <code>&lt;head&gt;</code> section.</p>
+                <pre><code id="code-{{ index }}">{{ website.integration_code }}</code></pre>
+                {{ component('Ui:CopyButton', {target: 'code-' ~ index, status: 'website-code-status-' ~ index, label: 'Copy to Clipboard', class: 'button is-small is-info copy-btn'}) }}
+                <span id="website-code-status-{{ index }}" class="copy-status is-size-7 ml-2" role="status" aria-live="polite"></span>
+                {% if include_tags %}
+                    <h3 class="title is-6 mt-4">Tracker URL for this website</h3>
+                    <p>Add this URL as a script action in the website's Tag manager settings and enable the tag container. Choose the consent category that permits the tracker to load.</p>
+                    <pre><code id="tracker-url-{{ index }}">{{ website.tracker_url }}</code></pre>
+                    {{ component('Ui:CopyButton', {target: 'tracker-url-' ~ index, status: 'website-tracker-status-' ~ index, label: 'Copy tracker URL', class: 'button is-small is-info copy-btn'}) }}
+                    <span id="website-tracker-status-{{ index }}" class="copy-status is-size-7 ml-2" role="status" aria-live="polite"></span>
+                {% endif %}
+            {% else %}
+                <div class="notification is-warning" role="status">Installation code is unavailable for this website. Check its script settings.</div>
+            {% endif %}
+            {% if is_admin %}
+                <p class="mt-3"><a href="{{ path('app_setup', {website: website.token, step: 3, format: snippet_format, tags: include_tags ? '1' : '0'}) }}">Open setup and downloads for this website</a></p>
+            {% endif %}
+            {% component 'Ui:Confirm' with {message: 'Delete this website token? Existing tracker installations using it will stop collecting.', action: path('app_website_delete', {token: website.token}), method: 'post', class: 'mt-5'} %}
+                {% block content %}
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token('delete_website_' ~ website.token) }}">
+                <button type="submit" class="button is-danger is-outlined is-small">Delete Website</button>
+                {% endblock %}
+            {% endcomponent %}
+        </div>
+    </details>

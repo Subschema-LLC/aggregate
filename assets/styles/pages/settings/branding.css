@@ -1,0 +1,6 @@
+.branding-logo-preview {
+    display: block;
+    max-width: min(320px, 100%);
+    max-height: 120px;
+    object-fit: contain;
+}
