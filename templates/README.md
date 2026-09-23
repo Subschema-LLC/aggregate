@@ -106,11 +106,13 @@ and live feedback when clipboard permission is unavailable.
 
 ## Asset loading
 
-`base.html.twig` calls `importmap('app')`. `assets/app.js` starts the standard
-Stimulus loader and imports `assets/styles/app.css`. That stylesheet imports
+`base.html.twig` links the local Bulma stylesheet and `assets/styles/app.css`
+directly, then calls `importmap('app')` to start the standard Stimulus loader.
+The application stylesheet imports
 page, component, and shared stylesheets; add a matching CSS import when creating one.
 AssetMapper resolves and fingerprints those imports in development and compiled
-releases. The page loads CSS even when JavaScript is disabled. There is no custom
+releases. The page loads CSS even when JavaScript is disabled or a page replaces
+the JavaScript block. There is no custom
 compiler or controller registration map. Turbo Drive is disabled in
 `assets/controllers.json`; forms and links use normal full-page navigation.
 
@@ -119,6 +121,10 @@ Base layout rules live in `assets/styles/base.css`, shared settings rules in
 `assets/styles/components/layout/navigation.css`. The public
 `/branding/theme.css` response renders only validated branding variables from
 `branding/theme.css.twig`, so branding changes do not require recompilation.
+The configured palette sets an explicit light/dark mode. A small synchronous
+`theme-preference.js` script restores the browser preference before the first
+paint; `Layout:ThemeToggle` owns interactions and storage synchronization through
+its Stimulus controller. This preference does not change deployment settings.
 The setup walkthrough computes only callout and arrow coordinates in JavaScript;
 its presentation rules live in its component stylesheet.
 

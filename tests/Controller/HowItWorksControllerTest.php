@@ -74,6 +74,16 @@ final class HowItWorksControllerTest extends WebTestCase
         self::assertResponseIsSuccessful();
         self::assertSelectorNotExists('style, [style]');
         self::assertSelectorExists('link[rel="stylesheet"][href="/branding/theme.css"]');
+        self::assertSelectorExists('html[data-theme="light"][data-theme-default="light"]');
+        self::assertCount(1, $crawler->filter('link[rel="stylesheet"][href*="/styles/app-"]'));
+        self::assertSelectorExists('link[rel="stylesheet"][href*="/styles/vendor/bulma/bulma.min-"]');
+        self::assertSelectorExists('.app-theme-toggle[hidden] button[aria-pressed="false"]');
+        $preferenceScript = $crawler->filter('script[src*="/theme-preference-"]');
+        self::assertCount(1, $preferenceScript);
+        self::assertNull($preferenceScript->attr('async'));
+        self::assertNull($preferenceScript->attr('defer'));
+        $client->request('GET', $preferenceScript->attr('src'));
+        self::assertResponseIsSuccessful();
         $themePath = self::getContainer()->get('asset_mapper')->getPublicPath('styles/base.css');
         $client->request('GET', $crawler->filter('link[rel="stylesheet"][href*="/styles/app-"]')->attr('href'));
         self::assertResponseIsSuccessful();

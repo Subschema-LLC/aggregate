@@ -216,9 +216,28 @@ Logo images may be at most 2 MiB, 4096 pixels per axis, and 16 megapixels in tot
 
 Theme colors accept `#RGB` or `#RRGGBB` hex values; three-digit colors are normalized to six-digit form. Quote them in YAML so `#` is not parsed as a comment. Text must maintain at least 4.5:1 contrast against both page and surface colors; the UI rejects lower-contrast palettes and YAML/env palettes fall back to safe defaults. Filled primary, accent, and navigation elements automatically use a contrasting black or white foreground. Font settings accept safe comma-separated local/system font stacks and do not download or embed web fonts. The deployer remains responsible for checking overall legibility and focus visibility.
 
+The navigation's light/dark control starts with the site's configured palette.
+That palette is preserved in its matching light or dark mode. Switching to the
+opposite mode uses neutral page, surface, and text colors while retaining the
+configured primary and accent colors, navigation color, and fonts; contrasting
+link and foreground colors are recalculated for readability. Choosing the site
+default restores the configured palette.
+
+The mode choice is a preference saved in this browser's local storage. It does
+not change deployment YAML, environment settings, or another browser's choice.
+If browser storage is unavailable, switching modes still works for the current
+page. Operator colors and fonts continue to come from the shared branding
+settings below; there is no separate YAML mode setting.
+
 Environment variables (`BRAND_NAME`, `BRAND_LOGO_TEXT`, `BRAND_LOGO_PATH`, `BRAND_PRIMARY_COLOR`, `BRAND_ACCENT_COLOR`, `BRAND_NAVBAR_COLOR`, `BRAND_BACKGROUND_COLOR`, `BRAND_SURFACE_COLOR`, `BRAND_TEXT_COLOR`, `BRAND_FONT_FAMILY`, and `BRAND_HEADING_FONT_FAMILY`) override the corresponding YAML values, including explicit empty logo-text/path values. A `BRAND_LOGO_PATH` override disables logo upload/removal in the UI. To save any dashboard-backed YAML setting, the active `aggregate.yaml` file (or its symlink target) must be writable by the PHP process; the surrounding `config/` directory can remain read-only. YAML-only deployments do not need to grant write access.
 
 After deploying a release that adds or changes branding services, rebuild the production container and Twig cache with `APP_ENV=prod APP_DEBUG=0 php bin/console cache:clear --env=prod --no-debug`. Reload long-running PHP workers when OPcache timestamp validation is disabled. A deployment verification can run `php bin/console debug:twig --filter=app_branding --format=json --env=prod --no-debug`; the result must contain a non-empty `app_branding` global.
+
+Source deployments must also run `php bin/console importmap:install --env=prod --no-debug`
+and `php bin/console asset-map:compile --env=prod --no-debug` after dashboard asset
+changes. Cache clearing alone does not rebuild those assets. Prepared release
+ZIPs include them; see the [Plesk deployment actions](../PLESK-DEPLOYMENT.md#plesk-git-deployment-actions).
+Saving existing branding settings takes effect without an asset build.
 
 The two BI disclosure thresholds are configured separately in the admin dashboard and stored directly in the singleton `analytics_privacy_settings` database row:
 

@@ -20,7 +20,10 @@ final class BrandingThemeController
     #[Route('/branding/theme.css', name: 'app_branding_theme', methods: ['GET'], stateless: true)]
     public function __invoke(Request $request): Response
     {
-        $css = $this->twig->render('branding/theme.css.twig', ['theme' => $this->theme->toArray()]);
+        $css = $this->twig->render('branding/theme.css.twig', [
+            'theme' => $this->theme->toArray(),
+            'mode_palettes' => $this->theme->toModePalettes(),
+        ]);
         $response = new Response($css, Response::HTTP_OK, [
             // Revalidate on every page load so saved YAML and environment changes
             // take effect without rebuilding the static application stylesheets.

@@ -49,7 +49,7 @@
     </div>
 
     <div class="app-navigation-account">
-        <div class="navbar-item">
+        <div class="navbar-item app-navigation-user">
             <span class="icon-text">
                 {% if navigation.account.user_icon %}
                     <span class="icon"><i class="{{ navigation.account.user_icon }}" aria-hidden="true"></i></span>
@@ -57,6 +57,7 @@
                 <span>{{ username }}</span>
             </span>
         </div>
+        {{ component('Layout:ThemeToggle') }}
         <div class="navbar-item">
             {{ _self.link(navigation.account.logout, 'button is-light') }}
         </div>

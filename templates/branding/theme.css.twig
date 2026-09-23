@@ -1,5 +1,6 @@
 {# Every value is canonicalized by BrandingTheme before CSS serialization. #}
-:root {
+{% macro palette(theme) %}
+    color-scheme: {{ theme.color_scheme|raw }};
     --app-brand-primary: {{ theme.primary_color|raw }};
     --app-brand-primary-contrast: {{ theme.primary_contrast_color|raw }};
     --app-brand-primary-text: {{ theme.primary_text_color|raw }};
@@ -14,4 +15,12 @@
     --app-brand-text: {{ theme.text_color|raw }};
     --app-brand-font-family: {{ theme.font_family_css|raw }};
     --app-brand-heading-font-family: {{ theme.heading_font_family_css|raw }};
+{% endmacro %}
+:root {
+{{ _self.palette(theme) }}
 }
+{% for scheme, palette in mode_palettes %}
+html[data-theme="{{ scheme }}"] {
+{{ _self.palette(palette) }}
+}
+{% endfor %}

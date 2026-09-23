@@ -1,4 +1,5 @@
-:root {
+:root,
+html[data-theme] {
     --app-brand-border: var(--app-brand-text);
     --bulma-body-background-color: var(--app-brand-background);
     --bulma-body-color: var(--app-brand-text);
@@ -7,6 +8,10 @@
     --bulma-strong-color: var(--app-brand-text);
     --bulma-text: var(--app-brand-text);
     --bulma-text-strong: var(--app-brand-text);
+    --bulma-scheme-main: var(--app-brand-surface);
+    --bulma-scheme-main-bis: var(--app-brand-background);
+    --bulma-scheme-main-ter: var(--app-brand-background);
+    --bulma-background: var(--app-brand-background);
 }
 
 html,
@@ -22,6 +27,12 @@ input,
 select,
 textarea {
     font-family: inherit;
+}
+
+.button {
+    height: auto;
+    min-height: var(--bulma-control-height);
+    white-space: normal;
 }
 
 h1,
