@@ -28,6 +28,9 @@ ROOT_FILES = (
     "bin/console", "public/.htaccess", "public/index.php", "public/robots.txt",
     "public/aggregate.js", "public/aggregate.min.js", "public/internal-traffic-marker.min.js",
     "var/browser/aggregate.template.min.js", "var/browser/manifest.json",
+    "public/consent.js", "public/consent.min.js", "public/tag-manager.js", "public/tag-manager.min.js",
+    "var/browser/consent.template.min.js", "var/browser/consent-manifest.json",
+    "var/browser/tag-manager.template.min.js", "var/browser/tag-manager-manifest.json",
 )
 CONFIG_FILES = (
     "aggregate.yaml.example", "websites.yaml.example", "bundles.php", "preload.php",
@@ -37,12 +40,15 @@ CONFIG_FILES = (
 SOURCE_TREES = ("src", "templates", "translations", "migrations", "assets", "micro-consent-dropins", "scripts")
 DOCUMENTATION_EXAMPLES = ("docs/examples/ecommerce-purchase.json",)
 REQUIRED_FILES = (
-    "LICENSE", "composer.json", "composer.lock", "bin/console", "public/index.php",
+    "LICENSE", "js/LICENSE.txt", "composer.json", "composer.lock", "bin/console", "public/index.php",
     "vendor/autoload.php", "vendor/autoload_runtime.php", "vendor/composer/installed.json",
     "vendor/composer/platform_check.php",
     "public/assets/manifest.json", "public/assets/importmap.json", "public/assets/entrypoint.app.json",
     "public/aggregate.js", "public/aggregate.min.js", "public/internal-traffic-marker.min.js",
     "var/browser/aggregate.template.min.js", "var/browser/manifest.json",
+    "public/consent.js", "public/consent.min.js", "public/tag-manager.js", "public/tag-manager.min.js",
+    "var/browser/consent.template.min.js", "var/browser/consent-manifest.json",
+    "var/browser/tag-manager.template.min.js", "var/browser/tag-manager-manifest.json",
     "config/aggregate.yaml.example", "config/websites.yaml.example", "config/services.yaml",
     "config/bundles.php", "src/Kernel.php", "importmap.php",
 )
@@ -137,13 +143,18 @@ def validate_prepared_source(source):
             raise ValueError("Production vendor/ versions do not match composer.lock.")
     if any((source / "vendor" / name).exists() for name in dev_names):
         raise ValueError("Production vendor/ contains leftover development package directories; use a clean staging directory.")
-    browser = read_json(source, "var/browser/manifest.json")
-    for relative, field in (
-        ("public/aggregate.js", "sourceSha256"),
-        ("var/browser/aggregate.template.min.js", "templateSha256"),
+    for name, manifest in (
+        ("aggregate", "manifest.json"),
+        ("consent", "consent-manifest.json"),
+        ("tag-manager", "tag-manager-manifest.json"),
     ):
-        if hashlib.sha256(source_file(source, relative).read_bytes()).hexdigest() != browser.get(field):
-            raise ValueError("Browser assets are stale; run npm run build:js before packaging.")
+        browser = read_json(source, "var/browser/" + manifest)
+        for relative, field in (
+            ("public/" + name + ".js", "sourceSha256"),
+            ("var/browser/" + name + ".template.min.js", "templateSha256"),
+        ):
+            if hashlib.sha256(source_file(source, relative).read_bytes()).hexdigest() != browser.get(field):
+                raise ValueError("Browser assets are stale; run npm run build:js before packaging.")
     asset_manifest = read_json(source, "public/assets/manifest.json")
     if not isinstance(asset_manifest, dict) or not asset_manifest:
         raise ValueError("Compiled Symfony assets are missing.")

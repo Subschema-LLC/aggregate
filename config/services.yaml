@@ -35,6 +35,10 @@ services:
         tags: ['controller.service_arguments']
     App\Controller\ScriptController:
         tags: ['controller.service_arguments']
+    App\Controller\ConsentScriptController:
+        tags: ['controller.service_arguments']
+    App\Controller\TagScriptController:
+        tags: ['controller.service_arguments']
     App\Controller\HealthController:
         tags: ['controller.service_arguments']
     App\Controller\BrandingLogoController:
@@ -86,6 +90,11 @@ services:
     App\Service\WebsiteConfigManager:
         arguments:
             $projectDir: '%kernel.project_dir%'
+
+    App\Service\SiteScriptConfig:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+            $environment: '%kernel.environment%'
 
     App\Service\GoalEventRegistry:
         arguments:

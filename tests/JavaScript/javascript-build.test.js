@@ -6,7 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
-const {build, PLACEHOLDERS} = require('../../scripts/build-js.cjs');
+const {build, PLACEHOLDERS, DROP_INS} = require('../../scripts/build-js.cjs');
 const projectDir = path.resolve(__dirname, '../..');
 const pinnedVersion = require('../../package.json').devDependencies.terser;
 
@@ -36,6 +36,18 @@ test('optional build preserves licensing, dynamic config and script syntax, and 
       template = template.split(placeholder).join(JSON.stringify(values[index]));
     }
     new vm.Script(template, {filename: 'configured-aggregate.min.js'});
+    for (const {name, placeholder} of DROP_INS) {
+      const standalone = outputs.get('public/' + name + '.min.js');
+      assert.match(standalone, /SPDX-License-Identifier: AGPL-3\.0-only/);
+      assert.doesNotMatch(standalone, /__AGGREGATE_/);
+      const compiled = outputs.get('var/browser/' + name + '.template.min.js');
+      assert.ok(compiled.includes(placeholder));
+      const manifest = JSON.parse(outputs.get('var/browser/' + name + '-manifest.json'));
+      const digest = (content) => require('node:crypto').createHash('sha256').update(content).digest('hex');
+      assert.equal(manifest.sourceSha256, digest(fs.readFileSync(path.join(projectDir, 'public', name + '.js'))));
+      assert.equal(manifest.templateSha256, digest(compiled));
+      new vm.Script(compiled.split(placeholder).join(JSON.stringify({enabled: false, tags: [], namespace: "Company'</script>\n", name: 'Company'})));
+    }
     for (const [filename, content] of outputs) {
       if (filename.endsWith('.js') && !filename.endsWith('.template.min.js')) new vm.Script(content, {filename});
     }

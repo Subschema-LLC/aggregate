@@ -339,7 +339,7 @@ sudo certbot --nginx -d analytics.example.com
 
 **2. Secure secrets:**
 - Never commit `.env` (server-specific env file) to version control — it is gitignored by default
-- Keep `config/aggregate.yaml`, environment-specific `config/aggregate_*.yaml`, and `config/websites.yaml` private; commit only sanitized example files
+- Keep `config/aggregate.yaml`, environment-specific `config/aggregate_*.yaml`, `config/websites.yaml`, and `config/tag-manager/sites/` private; commit only sanitized example files
 - Use a unique, strong `APP_SECRET` in the server environment
 - Review anonymous path exclusions and configure both database-backed BI minimum-cell thresholds in the admin dashboard before collection (`5` hourly; `25` daily geography defaults)
 - Review every code in `config/goals.yaml`; keep values fixed and non-identifying, and set `anonymous: false` where enhanced consent is appropriate
@@ -361,8 +361,9 @@ executable front controller and browser assets. Preserve executable permissions
 on CLI scripts rather than applying one mode to every file in the checkout.
 
 Admin settings also require narrowly scoped write access to the active aggregate
-YAML file and `config/websites.yaml`. Pre-create these files as the deployment
-user, grant the PHP group only the access the enabled admin actions need, and
+YAML file, `config/websites.yaml`, and `config/tag-manager/sites/` when per-site
+tag/CMP editing is enabled. Pre-create these paths as the deployment user, grant
+the PHP group only the access the enabled admin actions need, and
 keep secrets readable only by the operator and necessary processes. Custom logo
 uploads are stored under `var/branding/`, outside the web root. Headless operators
 can maintain configuration through YAML/CLI without granting PHP write access to
@@ -488,6 +489,10 @@ mysqldump -u dbuser -p dbname > backup_$(date +%Y%m%d).sql
 ```
 
 **2. Application backups:**
+Include all active environment files, website registrations, per-site tag/CMP
+YAML under `config/tag-manager/sites/`, and branding uploads. Preserve these
+operator files when replacing application code or deploying a release ZIP.
+
 ```bash
 # Backup config (include deployment-specific settings — keep secure!)
 tar -czf config_backup_$(date +%Y%m%d).tar.gz .env config/aggregate.yaml config/goals.yaml

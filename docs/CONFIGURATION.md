@@ -25,6 +25,7 @@ Configuration has separate sources of truth:
 - **`config/goals.yaml`** (app-level, committed): Stable conversion-goal codes and whether each is enabled for anonymous collection.
 - **`config/navigation.yaml`** (app-level, committed): Main navigation labels, icons, and link targets.
 - **`config/websites.yaml`** (untracked): Website names, primary domains, allowed event-source domains, and public ingestion tokens, managed through the Websites page, YAML, or `app:create-website`.
+- **`config/tag-manager/sites/<site-id>.yaml`** (untracked): Per-website CMP settings, tags, triggers, and variables, managed through the Tag manager page or YAML. Run `app:tag-manager:sites` to list IDs and paths; see [Tag manager](TAG-MANAGER.md). Analytics collection settings and data models remain deployment-wide.
 - **`analytics_privacy_settings`** (database): BI disclosure thresholds, managed through the dashboard or controlled database administration; these are not mirrored in YAML.
 
 The web installer at `/install` is optional and only needed when you want dashboard-based setup.
@@ -331,6 +332,8 @@ administration. Each settings page loads the data needed for its own task.
 | General settings | `/dashboard/settings` | Application host, tracker namespace, ingestion rate limit |
 | Branding | `/dashboard/branding` | Identity, logos, colors, typography |
 | Collection controls | `/dashboard/collection` | Collection switch, exclusions, optional local geography |
+| Setup | `/dashboard/setup` | Guided installation, button walkthrough, script copy/download, optional minification |
+| Tag manager | `/dashboard/tag-manager` | Per-website CMP, script/method actions, consent, event triggers, variables, and YAML downloads |
 | BI disclosure | `/dashboard/privacy` | Database-backed event and geography thresholds |
 | Users | `/dashboard/users` | User creation and password administration |
 | Data model | `/dashboard/data-model` | Properties, types, consent, query mappings |
