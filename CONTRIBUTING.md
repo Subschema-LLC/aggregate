@@ -161,6 +161,13 @@ dependency. The production install script uses `--no-dev` and is not the
 contributor setup. If the configuration files already exist, edit them instead of
 copying over them. The example development secret is for local use only.
 
+If you install Composer dependencies with `--no-scripts`, run
+`php bin/console importmap:install --env=test --no-debug --no-interaction`
+before PHPUnit. This installs the pinned browser packages from `importmap.php`
+into the ignored `assets/vendor/` directory. UI rendering tests need them even
+though PHPUnit does not execute browser JavaScript. Normal `composer install`
+runs this command through its automatic scripts; `npm ci` does not replace it.
+
 ### Native development
 
 Set `DATABASE_URL` in `.env.dev.local` for a disposable development database; this

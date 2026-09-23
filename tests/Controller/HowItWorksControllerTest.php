@@ -43,9 +43,31 @@ final class HowItWorksControllerTest extends WebTestCase
         );
     }
 
+    public function testUiImportMapServesItsRuntimeDependencies(): void
+    {
+        // Source assets use Symfony's debug responder; BrowserKit has no static-file web server.
+        $client = self::createClient(['debug' => true]);
+        $crawler = $client->request('GET', '/how-it-works');
+
+        self::assertResponseIsSuccessful();
+        $importMap = json_decode($crawler->filter('script[type="importmap"]')->text(), true, flags: JSON_THROW_ON_ERROR);
+        foreach (['app', '@symfony/stimulus-bundle', '@hotwired/stimulus'] as $module) {
+            self::assertArrayHasKey($module, $importMap['imports']);
+            $url = $importMap['imports'][$module];
+            self::assertStringStartsWith('/assets/', $url);
+
+            $client->request('GET', $url);
+
+            self::assertResponseIsSuccessful();
+            self::assertStringContainsString('javascript', (string) $client->getResponse()->headers->get('Content-Type'));
+            self::assertNotEmpty($client->getInternalResponse()->getContent());
+        }
+    }
+
     public function testThemeCssPreservesHeadingAndCodeContrastAcrossBulmaContexts(): void
     {
-        $client = self::createClient();
+        // Exercise source CSS serving explicitly even when CI sets APP_DEBUG=0.
+        $client = self::createClient(['debug' => true]);
 
         $crawler = $client->request('GET', '/how-it-works');
 
