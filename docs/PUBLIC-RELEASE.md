@@ -9,6 +9,45 @@ checklist or promotion PR; keep security findings and credentials private.
 Repository files cannot enable GitHub account settings or establish that a
 reporting inbox is monitored.
 
+## Local readiness review: 2026-09-22
+
+The source baseline was `647f62f86a00409287b78fe2ee4e8513daa9c51b`, with the
+release-preparation changes accompanying this review. This is local evidence;
+the publication gates below remain open until their maintainer checks are done.
+
+| Check | Evidence and limits |
+| --- | --- |
+| Current tracked files | The 327-file baseline excludes operator `.env`/YAML, IDE metadata, runtime data, installed dependencies, and the obsolete architecture PDF. Exclusion from the current tree does not remove history. |
+| History scanner | Gitleaks **8.30.1**, downloaded from its official release with the published archive SHA-256 checked, ran with `git --log-opts="--all --full-history -m" --redact=100`. The non-shallow local repository has 224 reachable commits; the scanner processed 217 commit patches, including merge diffs. It reported **11 findings**. Current tracked-file scanning reported **2 findings**, both explicitly labeled website-token examples. Reports stay outside the repository; no secret values are reproduced here. |
+| History disposition | Historical secret-setting findings still need owner review and rotation if used operationally; other findings are website-token examples. Historical IDE command metadata contains machine-local paths. The five-page PDF contains architecture text; automated inspection detected no author/creator metadata, email addresses, local paths, or credential-bearing URLs. These checks do not replace the owner's content/publication review. Nothing was rewritten or rotated. |
+| Dependency advisories | `composer audit --locked --no-interaction` and `npm audit --json` both completed against their public registries with **zero reported advisories**. `composer validate --strict --no-check-publish --no-interaction` passed. Rerun the audits for the selected candidate; advisory results are time-dependent. |
+| Release tooling | **23 tests passed** with Python 3.12.3 and PHP 8.3.6. Packaging includes the consent/tag-manager sources, minified assets, private runtime templates and manifests; it rejects stale templates and missing tracker license text. A real ZIP regression confirms that per-site tag/CMP YAML, including environment overrides and nested operator files under `config/tag-manager/sites/`, is excluded. The release workflow now checks the extracted package's container with the dashboard enabled and disabled. These tests do not establish a signed production package or database compatibility. |
+| Community files | Policies, attributed Contributor Covenant text, beta guidance, issue/PR templates, funding configuration, and AGPL/BSD notices are present. Inbox delivery and funding availability remain unverified. |
+| GitHub branches | The repository is private with default branch `development`. Effective rules on `development`, `uat`, and `master` require PRs with two approvals and prevent deletion/force pushes. **None requires the final `CI` check**; add that requirement to each ruleset. Latest CI runs for the remote tips below succeeded. |
+| GitHub security | Dependabot alerts are enabled; Dependabot security updates, secret scanning, and push protection are disabled. The private-vulnerability-reporting endpoint returned 404; verify availability and enable it when the repository becomes public. These settings were read, not changed. |
+| Actions and access | Actions default to read permission and cannot approve PR reviews. All Actions are permitted and repository-wide SHA pinning is not enforced, although the checked-in workflows pin third-party Actions. Two collaborators are visible, with admin/write roles; a maintainer must review their continued access and ruleset bypasses. |
+| Signing prerequisites | `config/release-signing.pub` is absent, and no repository Actions secrets were listed; inherited organization secrets were not reviewed. Production signing needs the public key, matching secret, and independent trust instructions. Existing tags `v0.1` and `v0.2` do not satisfy the stable `vX.Y.Z` packaging format. |
+
+The scan covered all locally available refs: local `development`, `master`,
+`docs/roadmap-2`, `feature/setup-dropins-tag-manager`, and the
+`fix/dependabot-102-ci`, `-103-ci`, `-104-ci`, and `-107-ci` branches;
+cached `origin/development`, `origin/uat`, `origin/master`, and `origin/HEAD`;
+and tags `v0.1` and `v0.2`. Read-only GitHub queries confirmed that all advertised
+branches and tags match the scanned local tips. No fetch changed local refs;
+pull-request, fork, and cached GitHub refs were not inspected.
+
+| Ref | Commit | Latest CI |
+| --- | --- | --- |
+| `origin/development` | `647f62f86a00409287b78fe2ee4e8513daa9c51b` | [Passed](https://github.com/Subschema-LLC/aggregate/actions/runs/35612714921) |
+| `origin/uat` | `1571ceb36d01d35300dee8c92e9cd2b00bc6ffcd` | [Passed](https://github.com/Subschema-LLC/aggregate/actions/runs/35240921347) |
+| `origin/master` | `42014956bbac2f4e6cee223ca07986947e420e2d` | [Passed](https://github.com/Subschema-LLC/aggregate/actions/runs/35241083092) |
+
+Before publication, repeat the scan on the complete intended ref set and resolve
+the private findings. Require `CI`, enable the outstanding security settings,
+verify the reporting inbox/access list, complete candidate UAT and recovery
+rehearsals, and establish signing trust before publishing a reviewed package.
+No candidate was selected or published and no repository settings were changed.
+
 ## Before changing repository visibility
 
 - [ ] Review current tracked files and every branch/tag to be published, following

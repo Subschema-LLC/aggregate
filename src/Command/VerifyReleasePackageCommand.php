@@ -7,7 +7,6 @@ namespace App\Command;
 use App\Service\ReleasePackageVerifier;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
-use Symfony\Component\Console\Formatter\OutputFormatter;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -39,13 +38,14 @@ final class VerifyReleasePackageCommand extends Command
                 (string) $input->getArgument('manifest'),
                 (string) $input->getArgument('signature'),
             );
-            $io->success('Verified Aggregate '.$release['version'].' from '.OutputFormatter::escape($release['branch']).'.');
+            $io->success('Verified Aggregate '.$release['version'].' from '.$release['branch'].'.');
             $io->text('SHA-256: '.$release['package']['sha256']);
             $io->note('Verification is complete. The installation has not been changed. Follow the release deployment instructions for backups, configuration, migrations, and runtime restarts.');
 
             return Command::SUCCESS;
         } catch (\Throwable $e) {
-            $io->error(OutputFormatter::escape($e->getMessage()));
+            // SymfonyStyle escapes block messages; escaping again adds literal backslashes.
+            $io->error($e->getMessage());
 
             return Command::FAILURE;
         }

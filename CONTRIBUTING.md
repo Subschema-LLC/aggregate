@@ -218,6 +218,11 @@ The services are `php` (FrankenPHP/Symfony), `asset-compile` (dashboard assets),
 `worker` (asynchronous enhanced events), and the selected database service. The
 worker is only needed when testing an asynchronous transport.
 
+Compose uses `MYSQL_VERSION` for the image tag and `MYSQL_SERVER_VERSION` for
+the full Doctrine version hint. When overriding a database image, also update
+the full version in the selected Makefile DSN or Compose environment; see
+[database version configuration](docs/DATABASE.md#upgrade-to-doctrine-dbal-4).
+
 ## Tests and checks
 
 The [CI workflow](.github/workflows/ci.yml) runs PHP tests and syntax/configuration

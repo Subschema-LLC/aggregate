@@ -6,7 +6,7 @@ namespace DoctrineMigrations;
 
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
-use Doctrine\DBAL\Platforms\SqlitePlatform;
+use Doctrine\DBAL\Platforms\SQLitePlatform;
 use Doctrine\DBAL\Platforms\SQLServerPlatform;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\Migrations\AbstractMigration;
@@ -92,7 +92,7 @@ SQL, $this->completedHourPredicate()));
                 "events.created_at < date_trunc('hour', CURRENT_TIMESTAMP AT TIME ZONE 'UTC')",
             $platform instanceof SQLServerPlatform =>
                 'events.created_at < DATEADD(hour, DATEDIFF(hour, 0, SYSUTCDATETIME()), 0)',
-            $platform instanceof SqlitePlatform =>
+            $platform instanceof SQLitePlatform =>
                 "events.created_at < strftime('%Y-%m-%d %H:00:00', 'now')",
             default => '1 = 0',
         };

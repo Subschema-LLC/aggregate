@@ -64,7 +64,7 @@ final class CheckUpdatesCommand extends Command
             ['Checked at (UTC)' => $status['checked_at'] === null ? 'Not checked' : gmdate('Y-m-d H:i:s', $status['checked_at'])],
         ]);
 
-        $message = OutputFormatter::escape($status['message']);
+        $message = $status['message'];
         if ($failed) {
             $io->error($message);
         } elseif ($status['state'] === 'up_to_date') {
