@@ -4,6 +4,15 @@
 
 The readable JavaScript files remain the source of truth. An optional Node build produces smaller tracker, organization-marker, consent, and tag-manager scripts. PHP serves prebuilt files; Node and Terser are needed only where you explicitly run a build.
 
+UI pages and reusable components use Symfony's standard Stimulus and AssetMapper
+integration, described in the [template guide](../templates/README.md). Page
+controllers live under `assets/controllers/pages/` and component controllers
+under `assets/controllers/components/`, with CSS in the matching
+`assets/styles/pages/` and `assets/styles/components/` directories. Their
+JavaScript and CSS are loaded through `importmap('app')` and compiled with
+`asset-map:compile`; this optional browser-script minifier does not process UI
+controllers. Turbo Drive remains disabled; UI forms use normal page navigation.
+
 ## Build
 
 Use Node.js 18 or newer. Install the development dependency and build:
@@ -13,7 +22,7 @@ npm ci --ignore-scripts
 npm run build:js
 ```
 
-Administrators can also select **Setup → Install scripts → Build minified scripts**
+Administrators can also select **Setup → Install scripts → Build browser scripts**
 or run `php bin/console app:assets:build-js`, including with the dashboard disabled.
 These use the same builder, require Node and the pinned dependency on that host,
 and never install dependencies themselves. The web action requires administrator
@@ -27,14 +36,14 @@ build elsewhere. Keep application source and the front controller read-only.
 
 Terser is pinned to an exact version in [`package.json`](../package.json), with resolved dependencies in [`package-lock.json`](../package-lock.json). The builder reads that pin and rejects a different installed version, so dependency updates do not require a separate version change in the build script. It also accepts the pinned version installed globally on `PATH`, so an existing installation can run `node scripts/build-js.cjs` without a local dependency install. `make build-js` runs the same builder.
 
-Generated files are ignored by Git. Rebuild after editing source or pulling updates, and copy the generated assets into your deployment if builds run elsewhere:
+Rebuild generated files after editing source or pulling updates, and copy them into your deployment if builds run elsewhere:
 
 | Source | Generated output |
 | --- | --- |
 | `public/aggregate.js` | `public/aggregate.min.js` with static defaults |
 | `public/aggregate.js` | `var/browser/aggregate.template.min.js` and `var/browser/manifest.json` for configured responses |
 | `templates/internal_traffic/marker.js.twig` | `public/internal-traffic-marker.min.js` |
-| `public/consent.js` | `public/consent.min.js`, `var/browser/consent.template.min.js`, `var/browser/consent-manifest.json` |
+| `public/consent.js` and `public/consent.css` | `public/consent.min.js`, `var/browser/consent.template.min.js`, `var/browser/consent-manifest.json` |
 | `public/tag-manager.js` | `public/tag-manager.min.js`, `var/browser/tag-manager.template.min.js`, `var/browser/tag-manager-manifest.json` |
 | `micro-consent-dropins/js/*.js` | Matching `*.min.js` files alongside each source |
 
@@ -68,11 +77,26 @@ Saving YAML does not require rebuilding. Static `consent.min.js` and
 `tag-manager.min.js` use source defaults; prefer the configured endpoints or the
 UI downloads. See [setup](SETUP.md) and [tag manager](TAG-MANAGER.md).
 
+Consent styles are maintained in [`public/consent.css`](../public/consent.css).
+Configured CMP responses and downloads bundle this CSS into the script so a
+single-file installation remains portable. Static `consent.js` and
+`consent.min.js` load the adjacent `consent.css`; copy that stylesheet alongside
+either script when hosting it elsewhere. The consent build manifest hashes the
+stylesheet as well as the JavaScript. A CSS change makes an old build fall back
+to current source and styles until the next build.
+
 The optional shared configuration uses `/consent-manager.js?min=1` and
 `/lib.js?min=1`. A single build supplies templates for every website; saving
 per-site YAML does not require generating separate static files.
 
 The marker source is the plain JavaScript in `templates/internal_traffic/marker.js.twig`. The generated `public/internal-traffic-marker.min.js` can replace that script in a custom hosted marker page containing the existing marker controls and `internal-traffic-config` JSON element. It must run after that markup is available. Built-in marker pages and downloaded HTML continue to embed the current source, keeping downloads self-contained and avoiding stale compiled code.
+
+Marker page styles live in
+[`assets/styles/internal-traffic.css`](../assets/styles/internal-traffic.css).
+Hosted marker pages link the AssetMapper stylesheet; downloaded HTML bundles the
+same CSS source. Dashboard styles also live under `assets/styles/`. Run
+`php bin/console asset-map:compile` when preparing production assets after CSS
+changes; prepared release ZIPs already include compiled assets.
 
 The older experimental files in `micro-consent-dropins/` remain separate from the
 new self-contained CMP. Customize those sources before building as described in

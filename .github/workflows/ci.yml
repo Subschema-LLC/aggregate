@@ -51,6 +51,8 @@ jobs:
           composer validate --strict --no-check-publish --no-interaction
           composer install --no-interaction --prefer-dist --no-scripts
           composer check-platform-reqs
+      - name: Install UI JavaScript dependencies
+        run: php bin/console importmap:install --env=test --no-debug --no-interaction
       - name: Audit locked PHP dependencies
         if: matrix.php == '8.2'
         run: composer audit --locked --no-interaction
@@ -64,12 +66,13 @@ jobs:
           php bin/console lint:container
       - name: Run PHPUnit
         run: php bin/phpunit
-      - name: Check the production container
+      - name: Check the production container and compile UI assets
         env:
           APP_ENV: prod
         run: |
           php bin/console cache:clear
           php bin/console lint:container
+          php bin/console asset-map:compile
       - name: Check the production container without the dashboard
         env:
           APP_ENV: prod

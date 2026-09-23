@@ -291,6 +291,7 @@ final class FeatureFlagsControllerTest extends TestCase
         $container->set('security.csrf.token_manager', $csrf);
         $container->set('router', $router);
         $container->set('request_stack', $stack);
+        \App\Tests\Support\TwigComponents::register($twig);
         $container->set('twig', $twig);
         $controller->setContainer($container);
 

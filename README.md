@@ -139,19 +139,27 @@ navigation entries. Updates stays enabled by default. See the
 
 ## Add tracking to a website
 
-Use the website token from your registration and your analytics host:
+**Websites** and the [Setup wizard](docs/SETUP.md) generate window configuration,
+query-parameter, or tag-manager installation snippets. For a direct tracker
+installation, use the website token from your registration and your analytics host:
 
 ```html
 <script>
   window.Aggregate = {
     endpoint: 'https://analytics.example.com/api/receive',
-    websiteToken: 'your-website-token'
+    websiteToken: 'your-website-token',
+    consent: false
   };
 </script>
-<script src="https://analytics.example.com/aggregate.js" async referrerpolicy="no-referrer"></script>
+<script src="https://analytics.example.com/aggregate.js?min=1" defer referrerpolicy="no-referrer"></script>
 ```
 
 The tracker sends a page view automatically. Once it has loaded, record a named event with `window.Aggregate.emit('button_click')`. Configure goals and review event properties before using them.
+
+Tag-manager snippets install the container and enabled CMP. To load analytics
+through it, explicitly enable the manager and add the supplied tracker URL as a
+[script action](docs/TAG-MANAGER.md#load-the-tracker-through-the-manager). Remove
+any separate tracker installation to avoid duplicate page views.
 
 Connect your consent manager to `window.Aggregate.setConsent(true)` only after an affirmative choice, and call `setConsent(false)` for rejection or withdrawal. The [tracking and GTM guide](docs/TRACKING.md) covers custom events, tag setup, consent wiring, and troubleshooting.
 

@@ -2,20 +2,11 @@
 
 {% block title %}{{ example_source == 'ecommerce' ? 'Ecommerce examples' : 'Event examples' }} - {{ app_branding.name }}{% endblock %}
 
-{% block stylesheets %}
-    {{ parent() }}
-    <style>
-        .event-examples-page { overflow-wrap: anywhere; }
-        .event-examples-page .button { height: auto; min-height: 2.5em; max-width: 100%; white-space: normal; }
-        .event-examples-page pre { overflow-wrap: normal; }
-    </style>
-{% endblock %}
-
 {% block body %}
 <div class="event-examples-page">
     <h1 class="title">{{ example_source == 'ecommerce' ? 'Ecommerce examples' : 'Event examples' }}</h1>
     <p class="subtitle">{% if example_source == 'ecommerce' %}A flat ecommerce starting point with typed properties and money in minor units. This recipe does not change your saved model.{% else %}Synthetic request JSON from the saved data model. No events are read or sent.{% endif %}</p>
-    {% include 'data_model/_navigation.html.twig' with {current_model_page: 'app_event_examples'} %}
+    {{ component('DataModel:Navigation', {current_model_page: 'app_event_examples'}) }}
     <div class="buttons">
         <a class="button" href="{{ path('app_event_examples') }}"{% if example_source == 'model' %} aria-current="page"{% endif %}>Saved model examples</a>
         <a class="button" href="{{ path('app_event_examples_ecommerce') }}"{% if example_source == 'ecommerce' %} aria-current="page"{% endif %}>Ecommerce recipe</a>
@@ -55,7 +46,15 @@
                 </p>
                 <pre tabindex="0" aria-label="{{ purchase_example ? 'Ecommerce purchase request JSON' : mode|capitalize ~ ' request JSON' }}"><code id="example-{{ mode }}">{{ payloads[mode] }}</code></pre>
                 <div class="buttons mt-3">
-                    <button type="button" class="button" data-copy-example="example-{{ mode }}">Copy {{ purchase_example ? 'purchase' : mode }} JSON</button>
+                    {{ component('Ui:CopyButton', {
+                        target: 'example-' ~ mode,
+                        status: 'example-copy-status',
+                        label: 'Copy ' ~ (purchase_example ? 'purchase' : mode) ~ ' JSON',
+                        success: 'JSON copied.',
+                        fallback: 'Automatic copying is unavailable. Use your browser’s Copy command to copy the selected JSON.',
+                        class: 'button',
+                        'data-copy-example': 'example-' ~ mode
+                    }) }}
                     <a class="button is-light" href="{{ path('app_event_examples_download', {mode: mode, example: example_source}) }}">Download {{ purchase_example ? 'purchase' : mode }} example and rules</a>
                 </div>
             </details>
@@ -67,7 +66,16 @@
                 <summary class="title is-4">Recommended ecommerce model (YAML)</summary>
                 <p class="mb-3">Money is stored in integer minor units. For USD, <code>4999</code> means $49.99. The currency determines its minor unit. Keep currencies separate in calculations; Float and Double are approximate numbers.</p>
                 <pre tabindex="0" aria-label="Recommended ecommerce YAML"><code id="ecommerce-model-yaml">{{ recommended_model_yaml }}</code></pre>
-                <button type="button" class="button mt-3" data-copy-example="ecommerce-model-yaml" data-copy-format="YAML">Copy recommended YAML</button>
+                {{ component('Ui:CopyButton', {
+                    target: 'ecommerce-model-yaml',
+                    status: 'example-copy-status',
+                    label: 'Copy recommended YAML',
+                    success: 'YAML copied.',
+                    fallback: 'Automatic copying is unavailable. Use your browser’s Copy command to copy the selected YAML.',
+                    class: 'button mt-3',
+                    'data-copy-example': 'ecommerce-model-yaml',
+                    'data-copy-format': 'YAML'
+                }) }}
             </details>
         {% endif %}
 
@@ -95,9 +103,4 @@
         </details>
     {% endif %}
 </div>
-{% endblock %}
-
-{% block javascripts %}
-    {{ parent() }}
-    <script>{% include 'event_examples/_copy.js.twig' %}</script>
 {% endblock %}

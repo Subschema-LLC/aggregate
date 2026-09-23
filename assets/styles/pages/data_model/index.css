@@ -1,0 +1,15 @@
+.data-model-editor [data-property-row] summary { overflow-wrap: anywhere; }
+.data-model-editor .column,
+.data-model-editor .input,
+.data-model-editor .select,
+.data-model-editor select { box-sizing: border-box; }
+.data-model-editor .column { min-width: 0; }
+.data-model-editor .select,
+.data-model-editor select { max-width: 100%; min-width: 0; }
+@media (max-width: 768px) {
+    .model-mappings thead { display: none; }
+    .model-mappings tbody, .model-mappings tr, .model-mappings td { display: block; }
+    .model-mappings tr { border-bottom: 1px solid currentColor; padding: 0.75rem 0; }
+    .model-mappings td { border: 0; padding: 0.5rem 0; }
+    .model-mappings td[data-label]::before { content: attr(data-label); display: block; font-weight: 600; margin-bottom: 0.5rem; }
+}

@@ -32,6 +32,7 @@ final class InternalTrafficPublicController extends AbstractController
         $download = $request->query->get('download') === '1';
         $response = $this->render('internal_traffic/public.html.twig', [
             'browser_config' => $browserConfig,
+            'standalone' => $download,
             'download_url' => $download ? null : $this->generateUrl('app_internal_traffic_public', ['token' => $token, 'download' => '1']),
         ]);
         if ($download) {

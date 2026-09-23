@@ -29,7 +29,7 @@ parameters:
               icon: 'fas fa-code'
               role: 'ROLE_ADMIN'
               children:
-                  - label: 'Tag manager'
+                  - label: 'Tag manager lite'
                     route: 'app_tag_manager'
                     icon: 'fas fa-tags'
                     role: 'ROLE_ADMIN'

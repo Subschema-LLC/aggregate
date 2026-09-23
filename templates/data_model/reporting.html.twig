@@ -2,19 +2,10 @@
 
 {% block title %}Reporting views - {{ app_branding.name }}{% endblock %}
 
-{% block stylesheets %}
-    {{ parent() }}
-    <style>
-        .model-reporting-page { overflow-wrap: anywhere; }
-        .model-reporting-page .button { height: auto; min-height: 2.5em; max-width: 100%; white-space: normal; }
-        .model-reporting-page pre { overflow-wrap: normal; }
-    </style>
-{% endblock %}
-
 {% block body %}
 <div class="model-reporting-page">
     <h1 class="title">Reporting views</h1>
-    {% include 'data_model/_navigation.html.twig' with {current_model_page: 'app_data_model_reporting'} %}
+    {{ component('DataModel:Navigation', {current_model_page: 'app_data_model_reporting'}) }}
     {% if configuration_error %}<div class="notification is-danger" role="alert">{{ configuration_error }}</div>{% endif %}
     {% if reporting_error %}<div class="notification is-warning" role="alert">{{ reporting_error }}</div>{% endif %}
     <section class="box">

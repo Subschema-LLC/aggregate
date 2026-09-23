@@ -98,6 +98,7 @@ final class InternalTrafficController extends AbstractController
         $this->denyUnlessAvailableToAdmin();
         $response = $this->render('internal_traffic/public.html.twig', [
             'browser_config' => $this->settings->toBrowserConfig(),
+            'standalone' => true,
             'download_url' => null,
         ]);
         $response->headers->set('Content-Disposition', 'attachment; filename="internal-traffic.html"');

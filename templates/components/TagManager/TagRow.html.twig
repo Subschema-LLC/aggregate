@@ -1,0 +1,30 @@
+{% props index, tag %}
+
+<div class="box">
+    <fieldset class="tag-settings-fieldset" data-tag-row data-controller="components--tag-manager--tag-row" aria-describedby="tag-{{ index }}-help">
+        <legend class="title is-5">{% if tag.id %}Tag {{ index + 1 }}: {{ tag.id }}{% else %}Add a tag{% endif %}</legend>
+        <p class="help mb-3" id="tag-{{ index }}-help">Choose one action and a trigger. Leave a new row's ID, URL and method empty to keep the current list.</p>
+        <div class="field"><label class="label" for="tag-{{ index }}-id">ID</label><div class="control"><input class="input" id="tag-{{ index }}-id" name="tags[{{ index }}][id]" value="{{ tag.id }}" maxlength="64" pattern="[A-Za-z][A-Za-z0-9_-]{0,63}" autocomplete="off" placeholder="purchase-event"></div></div>
+        <div class="field">
+            <label class="label" for="tag-{{ index }}-type">Action</label>
+            <div class="control select"><select id="tag-{{ index }}-type" name="tags[{{ index }}][type]" data-tag-type data-components--tag-manager--tag-row-target="actionType" data-action="change->components--tag-manager--tag-row#update" required>
+                <option value="script"{% if tag.type == 'script' %} selected{% endif %}>Load an HTTPS script</option>
+                <option value="call"{% if tag.type == 'call' %} selected{% endif %}>Call a library method</option>
+            </select></div>
+        </div>
+        <div data-components--tag-manager--tag-row-target="actionFields" data-action-fields="script">
+            <div class="field"><label class="label" for="tag-{{ index }}-src">HTTPS script URL</label><div class="control"><input class="input" type="text" id="tag-{{ index }}-src" name="tags[{{ index }}][src]" value="{{ tag.src|default('') }}" maxlength="2048" autocomplete="off" placeholder="https://scripts.example.com/helper.js"></div><p class="help">Use a fixed HTTPS host; optional variable placeholders belong in the path or query.</p></div>
+        </div>
+        <div data-components--tag-manager--tag-row-target="actionFields" data-action-fields="call">
+            <div class="field"><label class="label" for="tag-{{ index }}-method">Library method</label><div class="control"><input class="input" id="tag-{{ index }}-method" name="tags[{{ index }}][method]" value="{{ tag.method|default('') }}" maxlength="128" autocomplete="off" placeholder="Aggregate.emit"></div><p class="help">Use a named method such as <code>Aggregate.emit</code> or <code>Acme.track</code>. Its library must already be loaded. Expressions, constructors and JavaScript code are not accepted.</p></div>
+            <div class="field"><label class="label" for="tag-{{ index }}-args">Arguments (JSON array)</label><div class="control"><textarea class="textarea" id="tag-{{ index }}-args" name="tags[{{ index }}][args_json]" rows="4" spellcheck="false">{{ tag.args|default([])|json_encode(448) }}</textarea></div><p class="help">Example: <code>["purchase", {"total_minor": 1299, "plan": {"$var": "plan"}}]</code>. Arguments are bounded JSON data; they are never evaluated as code. Leave the URL empty for a method action.</p></div>
+        </div>
+        <div class="field"><label class="label" for="tag-{{ index }}-consent">Consent category</label><div class="control"><input class="input" id="tag-{{ index }}-consent" name="tags[{{ index }}][consent]" value="{{ tag.consent }}" list="tag-consent-categories" maxlength="32" pattern="[a-z][a-z0-9_-]{0,31}" required></div><p class="help">Use analytics, functional, marketing, or another lowercase category. Enter none for <strong>No consent required</strong>; that action may run before a choice and after rejection.</p></div>
+        <div class="field"><label class="label" for="tag-{{ index }}-enabled">Availability</label><div class="control select"><select id="tag-{{ index }}-enabled" name="tags[{{ index }}][enabled]" required><option value="1"{% if tag.enabled %} selected{% endif %}>Enabled</option><option value="0"{% if not tag.enabled %} selected{% endif %}>Disabled</option></select></div></div>
+        <div class="field"><label class="label" for="tag-{{ index }}-trigger">Trigger</label><div class="control select"><select id="tag-{{ index }}-trigger" name="tags[{{ index }}][trigger][type]" data-tag-trigger data-components--tag-manager--tag-row-target="trigger" data-action="change->components--tag-manager--tag-row#update" required>
+            {% for type, label in {dom_ready: 'Document ready', window_load: 'Window finished loading', document_event: 'Document event', window_event: 'Window event', data_layer: 'dataLayer event'} %}<option value="{{ type }}"{% if tag.trigger.type == type %} selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select></div></div>
+        <div class="field" data-event-field data-components--tag-manager--tag-row-target="eventField"><label class="label" for="tag-{{ index }}-event">Event name</label><div class="control"><input class="input" id="tag-{{ index }}-event" name="tags[{{ index }}][trigger][event]" value="{{ tag.trigger.event|default('') }}" maxlength="100" pattern="[A-Za-z][A-Za-z0-9_.:-]{0,99}" list="tag-event-examples" placeholder="purchase"></div><p class="help">Enter the exact name for a document, window or dataLayer event. Leave empty for document ready or window load. The event is a trigger; its payload is not copied into arguments automatically.</p></div>
+        {% if tag.id %}<label class="checkbox"><input type="checkbox" name="tags[{{ index }}][remove]" value="1"> Remove this tag when saving</label>{% endif %}
+    </fieldset>
+</div>

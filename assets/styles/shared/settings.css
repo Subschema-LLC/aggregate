@@ -1,0 +1,5 @@
+.settings-page { overflow-wrap: anywhere; }
+.settings-page .button { height: auto; min-height: 2.5em; max-width: 100%; white-space: normal; }
+.settings-page pre { overflow-wrap: normal; }
+.settings-page .table-container { max-width: 100%; overflow-x: auto; position: relative; }
+.settings-page .table { overflow-wrap: normal; }

@@ -37,17 +37,22 @@ final class InternalTrafficPublicControllerTest extends WebTestCase
         @rmdir($this->projectDir);
     }
 
-    public function testPublicPageUsesConfiguredOrganizationNameAndNoExternalAssetsOrSession(): void
+    public function testPublicPageUsesLocalStylesWithoutSharingItsTokenOrStartingASession(): void
     {
         $client = self::createClient();
         $this->configure();
-        $client->request('GET', '/internal-traffic/'.str_repeat('a', 64));
+        $crawler = $client->request('GET', '/internal-traffic/'.str_repeat('a', 64));
 
         self::assertResponseIsSuccessful();
         self::assertSelectorTextContains('h1', 'Mark organization traffic');
         self::assertSelectorExists('[data-marker-set]');
         self::assertSelectorTextContains('body', '{"companyStaff":true}');
-        self::assertSelectorNotExists('script[src], link[rel="stylesheet"], img');
+        self::assertSelectorNotExists('script[src], img, style, [style]');
+        $stylesheet = $crawler->filter('link[rel="stylesheet"]');
+        self::assertCount(1, $stylesheet);
+        self::assertStringStartsWith('/assets/styles/internal-traffic-', $stylesheet->attr('href'));
+        self::assertStringNotContainsString(str_repeat('a', 64), $stylesheet->attr('href'));
+        self::assertSame('no-referrer', $stylesheet->attr('referrerpolicy'));
         self::assertSelectorExists('meta[name="robots"][content="noindex,nofollow,noarchive"]');
         $this->assertProtectedResponse();
         self::assertSame([], $client->getResponse()->headers->getCookies());
@@ -64,6 +69,8 @@ final class InternalTrafficPublicControllerTest extends WebTestCase
         self::assertStringContainsString('companyStaff', (string) $client->getResponse()->getContent());
         self::assertStringNotContainsString(str_repeat('a', 64), (string) $client->getResponse()->getContent());
         self::assertSelectorNotExists('a[download]');
+        self::assertSelectorNotExists('link[rel="stylesheet"], script[src]');
+        self::assertSelectorTextContains('style', 'system-ui');
         $this->assertProtectedResponse();
     }
 

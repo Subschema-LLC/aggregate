@@ -107,7 +107,8 @@ final class SetupRoutesTest extends TestCase
             self::assertStringNotContainsString('private-setup-route-secret', (string) $browser->getResponse()->getContent());
         }
         self::assertStringContainsString('/cmp-lite/sites/'.SiteScriptConfig::idForToken('public-site-token').'/consent.js?min=1', (string) $browser->getResponse()->getContent());
-        self::assertStringContainsString('ExampleAnalytics', (string) $browser->getResponse()->getContent());
+        self::assertStringNotContainsString('/aggregate.js', (string) $browser->getResponse()->getContent());
+        self::assertStringNotContainsString('window[', (string) $browser->getResponse()->getContent());
         $browser->request('GET', '/dashboard/tag-manager');
         self::assertSame(200, $browser->getResponse()->getStatusCode());
         $this->assertNoDatabaseConnection();
@@ -131,6 +132,40 @@ final class SetupRoutesTest extends TestCase
         self::assertSame(303, $browser->getResponse()->getStatusCode());
         self::assertSame('/dashboard/setup?step=3', $browser->getResponse()->headers->get('Location'));
         $this->assertNoDatabaseConnection();
+    }
+
+    #[DataProvider('installationModes')]
+    public function testSelectedSnippetMatchesDownloadAndSurvivesStepNavigation(string $installation, bool $tags, string $format): void
+    {
+        $browser = $this->browser('ROLE_ADMIN');
+        $crawler = $browser->request('GET', '/dashboard/setup', [
+            'step' => '3', 'website' => 'second-site-token', 'installation' => $installation,
+        ]);
+        self::assertSame(200, $browser->getResponse()->getStatusCode());
+        self::assertSame($installation, $crawler->filter('input[name="installation"]:checked')->attr('value'));
+        $snippet = $crawler->filter('#setup-installation')->text('', false);
+        self::assertSame($tags, str_contains($snippet, '/lib.js'));
+        self::assertSame(!$tags, str_contains($snippet, '/aggregate.js'));
+        self::assertSame(!$tags && $format === 'window', str_contains($snippet, 'window['));
+        if (!$tags && $format === 'query') {
+            self::assertStringContainsString('token=second-site-token', $snippet);
+            self::assertStringContainsString('consent=0', $snippet);
+        }
+        parse_str(parse_url($crawler->selectLink('Next: Verify')->link()->getUri(), PHP_URL_QUERY), $next);
+        self::assertSame($tags ? '1' : '0', $next['tags']);
+        self::assertSame($format, $next['format']);
+        self::assertSame('second-site-token', $next['website']);
+        $browser->click($crawler->selectLink('Download snippet')->link());
+        self::assertSame($snippet, $browser->getResponse()->getContent());
+        self::assertStringNotContainsString('private-', $snippet);
+        $this->assertNoDatabaseConnection();
+    }
+
+    public static function installationModes(): iterable
+    {
+        yield 'window' => ['window', false, 'window'];
+        yield 'query parameters' => ['query', false, 'query'];
+        yield 'tag manager' => ['tags', true, 'window'];
     }
 
     public function testHeadlessSiteListingNeedsNoSiteYamlAndDoesNotExposeTokens(): void

@@ -1,0 +1,4 @@
+.website-domain-fields { min-width: 0; }
+.website-domain-fields .select,
+.website-domain-fields select { max-width: 100%; }
+.website-domain-fields .help { overflow-wrap: anywhere; }

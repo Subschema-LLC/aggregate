@@ -2,8 +2,11 @@
 (function () {
   'use strict';
   var consentConfig = {namespace: 'Aggregate', name: 'Analytics'};
+  var consentStyles = null;
   if (window.AggregateConsent) return;
-  var scriptNonce = document.currentScript && document.currentScript.nonce;
+  var currentScript = document.currentScript;
+  var scriptNonce = currentScript && currentScript.nonce;
+  var scriptSource = currentScript && currentScript.src;
 
   var storageKey = 'analytics_consent_v1:' + consentConfig.namespace + (consentConfig.siteId ? ':' + consentConfig.siteId : '');
   var categories = ['analytics'];
@@ -147,10 +150,19 @@
 
   function mount() {
     if (!document.body || panel) return;
-    var style = element('style');
+    // Configured scripts embed the shared CSS source. Static source files load
+    // their adjacent stylesheet, without needing PHP or a JavaScript build.
+    var style = element(typeof consentStyles === 'string' ? 'style' : 'link');
     if (scriptNonce) style.nonce = scriptNonce;
-    style.textContent = '.ac-consent{box-sizing:border-box;width:min(34rem,calc(100vw - 2rem));font:16px/1.5 system-ui,sans-serif;color:#202124;background:#fff;position:fixed;bottom:1rem;right:1rem;z-index:2147483000;max-width:min(34rem,calc(100vw - 2rem));padding:1rem;border:2px solid #202124;border-radius:.5rem;box-shadow:0 2px 12px #0003;max-height:calc(100vh - 2rem);overflow:auto}.ac-consent[hidden]{display:none}.ac-consent h2{font:700 1.15rem/1.4 system-ui,sans-serif;color:inherit;margin:0 0 .5rem}.ac-consent p{margin:.5rem 0}.ac-consent button,.ac-consent-open{font:inherit;color:#202124;background:#fff;border:2px solid #202124;border-radius:.25rem;padding:.5rem .75rem;cursor:pointer}.ac-consent button{margin:.25rem .5rem .25rem 0}.ac-consent button:focus-visible,.ac-consent-open:focus-visible,.ac-consent h2:focus-visible{outline:3px solid #2459b8;outline-offset:3px}.ac-consent-open{font:14px/1.5 system-ui,sans-serif;position:fixed;bottom:.5rem;left:.5rem;z-index:2147482999}.ac-consent-status{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}';
-    document.head.appendChild(style);
+    if (typeof consentStyles === 'string') {
+      style.textContent = consentStyles;
+      document.head.appendChild(style);
+    } else if (scriptSource) {
+      style.rel = 'stylesheet';
+      style.href = new URL('consent.css', scriptSource).href;
+      style.referrerPolicy = 'no-referrer';
+      document.head.appendChild(style);
+    }
     panel = element('section');
     panel.className = 'ac-consent';
     panel.id = 'ac-consent-panel';
@@ -170,8 +182,7 @@
     fieldset.appendChild(element('legend', 'Optional categories'));
     categories.forEach(function (category) {
       var label = element('label');
-      label.style.display = 'block';
-      label.style.margin = '.5rem 0';
+      label.className = 'ac-consent-category';
       var checkbox = element('input');
       checkbox.type = 'checkbox';
       checkbox.checked = choices[category];

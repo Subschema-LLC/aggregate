@@ -2,19 +2,10 @@
 
 {% block title %}Websites | {{ app_branding.name }}{% endblock %}
 
-{% block stylesheets %}
-{{ parent() }}
-<style>
-    #add-website-modal { border: 0; margin: auto; max-height: calc(100vh - 3rem); max-width: 36rem; overflow: auto; width: calc(100% - 3rem); }
-    #add-website-modal:not([open]) { display: none; }
-    #add-website-modal::backdrop { background: rgba(0, 0, 0, 0.6); }
-    .website-domain-fields { min-width: 0; }
-    .website-domain-fields .select, .website-domain-fields select { max-width: 100%; }
-    .website-domain-fields .help { overflow-wrap: anywhere; }
-</style>
-{% endblock %}
-
 {% block body %}
+{% set is_admin = is_granted('ROLE_ADMIN') %}
+
+<div class="websites-page" data-controller="pages--websites--index" data-action="turbo:before-cache@document->pages--websites--index#reset">
 <div class="level">
     <div class="level-left">
         <div>
@@ -23,7 +14,7 @@
         </div>
     </div>
     <div class="level-right">
-        <button type="button" class="button is-primary" id="add-website-trigger">
+        <button type="button" class="button is-primary" id="add-website-trigger" data-pages--websites--index-target="trigger" data-action="pages--websites--index#open">
             <span class="icon" aria-hidden="true"><i class="fas fa-plus"></i></span>
             <span>Add Website</span>
         </button>
@@ -36,83 +27,45 @@
     </div>
 {% endif %}
 
+{% if websites is not empty %}
+    <div class="box">
+        <h2 class="title is-5" id="website-installation-method">Installation method</h2>
+        <nav class="buttons" aria-labelledby="website-installation-method">
+            <a class="button{% if not include_tags and snippet_format == 'window' %} is-primary{% endif %}" href="{{ path('app_dashboard', {format: 'window'}) }}"{% if not include_tags and snippet_format == 'window' %} aria-current="true"{% endif %}>Window configuration</a>
+            <a class="button{% if not include_tags and snippet_format == 'query' %} is-primary{% endif %}" href="{{ path('app_dashboard', {format: 'query'}) }}"{% if not include_tags and snippet_format == 'query' %} aria-current="true"{% endif %}>URL query parameters</a>
+            <a class="button{% if include_tags %} is-primary{% endif %}" href="{{ path('app_dashboard', {format: 'window', tags: '1'}) }}"{% if include_tags %} aria-current="true"{% endif %}>Tag manager</a>
+        </nav>
+        {% if include_tags %}
+            <p>Install the website's tag container and enabled consent controls. Configure a script action in the Tag manager to load the tracker URL shown below.</p>
+        {% elseif snippet_format == 'query' %}
+            <p>Load the tracker with its public website token, endpoint, and initial denied consent in the script URL.</p>
+        {% else %}
+            <p>Configure the tracker through <code>window</code> before loading it. The website's enabled consent controls load first.</p>
+        {% endif %}
+    </div>
+{% endif %}
+
 {% for website in websites %}
-    <details class="box"{% if loop.first %} open{% endif %}>
-        <summary class="has-text-weight-semibold" style="overflow-wrap: anywhere;">{{ website.name }} <span class="has-text-weight-normal">— {{ website.domain }}</span></summary>
-        <div class="content mt-4">
-            <p><strong>Website token:</strong> <code style="overflow-wrap: anywhere;">{{ website.token }}</code></p>
-            <h2 class="title is-5">Allowed domains</h2>
-            {% if website.domain_settings_invalid %}
-                <div class="notification is-warning">This website's domain rules are invalid. Events are rejected until valid rules are saved.</div>
-            {% elseif website.domain_policy is not defined %}
-                <p class="help mb-3">This existing registration permits its primary domain and its subdomains. The list below preserves that behavior; save to make the rules explicit.</p>
-            {% endif %}
-            <form action="{{ path('app_website_domains', {token: website.token}) }}" method="post" class="mb-5">
-                <input type="hidden" name="_csrf_token" value="{{ csrf_token('website_domains_' ~ website.token) }}">
-                {% include 'websites/_domain_fields.html.twig' with {field_prefix: 'website-domains-' ~ loop.index, domain_settings: website.domain_settings} only %}
-                <button type="submit" class="button is-primary mt-3">Save domain rules</button>
-            </form>
-            <h2 class="title is-5">Integration code</h2>
-            <p>Add this code to your website's <code>&lt;head&gt;</code> section.</p>
-            {% set integration_code = '<script>\n  window[' ~ (js_namespace|json_encode(15)) ~ '] = {\n    endpoint: ' ~ ((app_host|trim('/') ~ '/api/receive')|json_encode(15)) ~ ',\n    websiteToken: ' ~ (website.token|json_encode(15)) ~ '\n  };\n</script>\n<script src="' ~ ((app_host|trim('/') ~ '/aggregate.js')|escape('html')) ~ '" defer referrerpolicy="no-referrer"></script>' %}
-            <pre><code id="code-{{ loop.index }}">{{ integration_code }}</code></pre>
-            <button type="button" class="button is-small is-info copy-btn" data-clipboard-target="code-{{ loop.index }}">Copy to Clipboard</button>
-            <span class="copy-status is-size-7 ml-2" role="status"></span>
-            <form class="mt-5" action="{{ path('app_website_delete', {token: website.token}) }}" method="post" onsubmit="return confirm('Delete this website token? Existing tracker installations using it will stop collecting.');">
-                <input type="hidden" name="_csrf_token" value="{{ csrf_token('delete_website_' ~ website.token) }}">
-                <button type="submit" class="button is-danger is-outlined is-small">Delete Website</button>
-            </form>
-        </div>
-    </details>
+    {{ component('Websites:SiteCard', {website: website, index: loop.index, include_tags: include_tags, snippet_format: snippet_format, is_admin: is_admin}) }}
 {% endfor %}
 
-{% include 'websites/_tracker_guidance.html.twig' %}
+<details class="box">
+    <summary class="has-text-weight-semibold">Custom events and consent</summary>
+    <div class="content mt-4">
+        <p>The tracker automatically sends an anonymous <code>view</code> event. Named interactions use <code>emit(...)</code>. Keep event codes fixed and non-identifying: start with a letter and use at most 100 characters from letters, numbers, <code>_ . : -</code>. Never insert user-entered text into a code.</p>
+        <pre><code>window[{{ js_namespace|json_encode(15) }}].emit('button_click');</code></pre>
+        <p>Custom properties require an explicit consent-free setting in the saved data model or enhanced analytics consent. Goals require an enabled definition in <code>config/goals.yaml</code>; anonymous goals must also permit anonymous use. A disallowed goal is dropped while the event remains recorded.</p>
+        <h2 class="title is-5">Enhanced analytics consent</h2>
+        <p>Enable identifiers, properties requiring consent, and exact dimensions only after the visitor accepts enhanced analytics.</p>
+        <pre><code>// Accept enhanced analytics after explicit consent
+window[{{ js_namespace|json_encode(15) }}].setConsent(true);
 
-<dialog id="add-website-modal" class="box" aria-labelledby="add-website-title">
-    <h2 class="title is-4" id="add-website-title">Add website</h2>
-    <form action="{{ path('app_website_create') }}" method="post">
-        <input type="hidden" name="_csrf_token" value="{{ csrf_token('create_website') }}">
-        <div class="field">
-            <label class="label" for="website-name">Website name</label>
-            <div class="control">
-                <input class="input" type="text" id="website-name" name="name" placeholder="Example website" required autofocus>
-            </div>
-        </div>
-        <div class="field">
-            <label class="label" for="website-domain">Primary domain</label>
-            <div class="control">
-                <input class="input" type="text" id="website-domain" name="domain" placeholder="example.com" required>
-            </div>
-            <p class="help">The website's main hostname, without a protocol or path. It also identifies internal referrers; allowed event sources are configured below.</p>
-        </div>
-        {% include 'websites/_domain_fields.html.twig' with {field_prefix: 'new-website-domains', domain_settings: {mode: 'restricted', domains: []}, new_website: true} only %}
-        <div class="buttons mt-5">
-            <button type="submit" class="button is-primary">Create Website</button>
-            <button type="button" class="button" id="cancel-add-website">Cancel</button>
-        </div>
-    </form>
-</dialog>
-{% endblock %}
+// Reject or withdraw enhanced analytics
+window[{{ js_namespace|json_encode(15) }}].setConsent(false);</code></pre>
+        <p>Withdrawal removes browser identifiers and stops future enhanced detail. Previously stored history remains. Coarse anonymous collection, including permitted consent-free properties, may continue unless the administrator disables collection or excludes the path.</p>
+    </div>
+</details>
 
-{% block javascripts %}
-{{ parent() }}
-<script>
-    document.addEventListener('DOMContentLoaded', () => {
-        const dialog = document.getElementById('add-website-modal');
-        document.getElementById('add-website-trigger').addEventListener('click', () => dialog.showModal());
-        document.getElementById('cancel-add-website').addEventListener('click', () => dialog.close());
-        document.querySelectorAll('.copy-btn').forEach(button => {
-            button.addEventListener('click', async () => {
-                const code = document.getElementById(button.dataset.clipboardTarget);
-                const status = button.nextElementSibling;
-                try {
-                    await navigator.clipboard.writeText(code.textContent);
-                    status.textContent = 'Copied.';
-                } catch (error) {
-                    status.textContent = 'Clipboard unavailable. Select and copy the code above.';
-                }
-            });
-        });
-    });
-</script>
+{{ component('Websites:CreateDialog') }}
+</div>
 {% endblock %}

@@ -1,0 +1,26 @@
+{% props id = 'add-website-modal' %}
+
+<dialog {{ attributes.defaults({id: id, class: 'box website-create-dialog'}) }} data-pages--websites--index-target="dialog" data-action="close->pages--websites--index#closed" aria-labelledby="add-website-title">
+    <h2 class="title is-4" id="add-website-title">Add website</h2>
+    <form action="{{ path('app_website_create') }}" method="post">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token('create_website') }}">
+        <div class="field">
+            <label class="label" for="website-name">Website name</label>
+            <div class="control">
+                <input class="input" type="text" id="website-name" name="name" placeholder="Example website" required autofocus>
+            </div>
+        </div>
+        <div class="field">
+            <label class="label" for="website-domain">Primary domain</label>
+            <div class="control">
+                <input class="input" type="text" id="website-domain" name="domain" placeholder="example.com" required>
+            </div>
+            <p class="help">The website's main hostname, without a protocol or path. It also identifies internal referrers; allowed event sources are configured below.</p>
+        </div>
+        {{ component('Websites:DomainFields', {field_prefix: 'new-website-domains', domain_settings: {mode: 'restricted', domains: []}, new_website: true}) }}
+        <div class="buttons mt-5">
+            <button type="submit" class="button is-primary">Create Website</button>
+            <button type="button" class="button" id="cancel-add-website" data-action="pages--websites--index#close">Cancel</button>
+        </div>
+    </form>
+</dialog>

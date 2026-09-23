@@ -51,6 +51,8 @@ jobs:
           composer validate --strict --no-check-publish --no-interaction
           composer install --no-interaction --prefer-dist --no-scripts
           npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install UI JavaScript test dependencies
+        run: php bin/console importmap:install --env=test --no-debug --no-interaction
       - name: Audit locked build and runtime dependencies
         run: |
           composer audit --locked --no-interaction
