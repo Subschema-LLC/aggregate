@@ -530,9 +530,12 @@ final class DataModelControllerTest extends TestCase
             new ArrayLoader(['base.html.twig' => '{% block body %}{% endblock %}{% block javascripts %}{% endblock %}']),
             new FilesystemLoader(dirname(__DIR__, 2).'/templates'),
         ]), ['strict_variables' => true]);
+        $twig->addFunction(new TwigFunction('asset', static fn (string $path): string => '/assets/'.$path));
         $twig->addGlobal('app_branding', ['name' => 'Aggregate']);
         $twig->addFunction(new TwigFunction('path', self::url(...)));
         $twig->addFunction(new TwigFunction('csrf_token', static fn (string $id): string => $id === DataModelController::CSRF_TOKEN_ID ? 'valid-token' : 'wrong-token'));
+
+        \App\Tests\Support\TwigComponents::register($twig);
 
         return $twig;
     }

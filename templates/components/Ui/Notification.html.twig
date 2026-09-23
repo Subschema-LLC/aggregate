@@ -1,0 +1,5 @@
+{% props message, type = 'success' %}
+<div {{ attributes.defaults({class: 'notification is-' ~ type ~ ' is-light', role: type == 'danger' ? 'alert' : 'status', 'data-controller': 'components--ui--notification'}) }}>
+    <button type="button" class="delete" aria-label="Dismiss notification" data-action="components--ui--notification#dismiss"></button>
+    {{ message }}
+</div>

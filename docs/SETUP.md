@@ -18,15 +18,30 @@ the code on a real website.
 
 The **Install scripts** step offers:
 
-- A complete HTML snippet for the selected website, with an optional tag manager.
+- An HTML snippet for the selected website and installation method.
 - A configured consent manager JavaScript file, readable or compact when a
   current build exists.
 - A small tag loader JavaScript file that retrieves the selected website's
   current `/tms-lite/sites/<site-id>/lib.js` from the installation.
 
+**Setup** and **Websites** offer the same three installation choices:
+
+| Method | Generated installation code |
+| --- | --- |
+| Window configuration (default) | Inline `window` settings, the website's enabled CMP, and the tracker. |
+| URL query parameters | The website's enabled CMP and a tracker URL containing its endpoint, public token, and `consent=0` default. |
+| Tag manager | The website's enabled CMP and its tag container. Configure the scripts that container should load separately. |
+
+Tag-manager mode includes no inline tracker configuration or direct tracker
+script. It offers a separate copyable tracker URL for adding the tracker as a
+tag. Choosing a snippet does not add tags or enable the container; see
+[loading the tracker through the manager](TAG-MANAGER.md#load-the-tracker-through-the-manager).
+The choices and generated code work without JavaScript; clipboard buttons need
+JavaScript, or you can select and copy the displayed code.
+
 Paste the snippet once into the website's `<head>`, retaining the script order
 and `defer` attributes. Remove duplicate tracker installations. The snippet
-contains a public website token and public URLs, never administrator credentials,
+contains only public website configuration and URLs, never administrator credentials,
 organization sharing tokens, or unrelated settings.
 
 The hosted `/cmp-lite/sites/<site-id>/consent.js` URL receives the saved namespace,
@@ -52,8 +67,10 @@ files and do not need Node to serve them. See [JavaScript builds](JS-BUILD.md).
 The wizard adds no mandatory UI dependency. Register a website with
 `php bin/console app:create-website`, then run `php bin/console app:tag-manager:sites`
 to list its script instance ID and YAML path. Configure its tags/CMP in that file
-and its allowed domains in `config/websites.yaml`. Install this example with your
-public URL, namespace, website token, and `SITE_ID` substituted:
+and its allowed domains in `config/websites.yaml`. Choose one installation method
+below, substituting your public URL, namespace, website token, and `SITE_ID`.
+
+### Direct tracker with window configuration
 
 ```html
 <script>
@@ -65,11 +82,42 @@ public URL, namespace, website token, and `SITE_ID` substituted:
 </script>
 <script src="https://analytics.example.com/cmp-lite/sites/SITE_ID/consent.js?min=1" defer referrerpolicy="no-referrer"></script>
 <script src="https://analytics.example.com/aggregate.js?min=1" defer referrerpolicy="no-referrer"></script>
+```
+
+### Direct tracker with query parameters
+
+The URL alternative supplies the same public endpoint and website token without
+an inline configuration block. URL-encode the parameter values and use `&amp;`
+between parameters in HTML:
+
+```html
+<script src="https://analytics.example.com/cmp-lite/sites/SITE_ID/consent.js?min=1" defer referrerpolicy="no-referrer"></script>
+<script src="https://analytics.example.com/aggregate.js?min=1&amp;endpoint=https%3A%2F%2Fanalytics.example.com%2Fapi%2Freceive&amp;token=REPLACE_WITH_PUBLIC_WEBSITE_TOKEN&amp;consent=0" defer referrerpolicy="no-referrer"></script>
+```
+
+The configured SDK response supplies the namespace. `consent=0` is a denied
+default: an affirmative choice placed in the configured `window` namespace by
+the CMP before the tracker loads takes precedence. Later choices use
+`setConsent`. The URL itself does not obtain consent.
+
+### Tag manager installation
+
+This installs the website's tag container and enabled CMP:
+
+```html
+<script src="https://analytics.example.com/cmp-lite/sites/SITE_ID/consent.js?min=1" defer referrerpolicy="no-referrer"></script>
 <script src="https://analytics.example.com/tms-lite/sites/SITE_ID/lib.js?min=1" defer referrerpolicy="no-referrer"></script>
 ```
 
-Omit the last line if you do not use tags. Both public manager routes work with
-the dashboard disabled. `public/consent.js` is the readable CMP source and has
+Set `tag_manager.enabled: true` in the site's YAML and add the scripts it should
+load. To collect analytics this way, add the
+[tracker script action](TAG-MANAGER.md#load-the-tracker-through-the-manager) and
+remove any separate tracker installation. Script actions load asynchronously;
+their order in YAML does not establish library dependencies.
+
+Omit the CMP line in these examples when that website's built-in CMP is disabled.
+Both public manager routes work with the dashboard disabled.
+`public/consent.js` is the readable CMP source and has
 generic standalone defaults; use the site's configured route or download.
 Install one CMP/tag-manager configuration per page. Analytics collection settings
 and data models still use the deployment-wide aggregate YAML.
@@ -145,8 +193,11 @@ unsubscribe();
 Initialization dispatches `aggregate:consent-ready` on `document`. The CMP sends
 only `choices.analytics` to the configured tracker and the full boolean map to
 `window.AggregateTags.setConsent`. The tag manager also discovers the CMP if
-either script loads first. The recommended ordered snippet establishes the
-tracker's initial state before its automatic page view.
+either script loads first. Loading the CMP before the direct tracker or tag
+container lets it establish the tracker's initial choice before the automatic
+page view. A tracker tag configured with `consent: analytics` waits for that
+category before loading; `consent: none` permits anonymous-mode collection while
+analytics consent is denied.
 
 Withdrawing analytics consent removes SDK identifiers and stops future enhanced
 details. Coarse anonymous events, explicitly permitted properties, and permitted

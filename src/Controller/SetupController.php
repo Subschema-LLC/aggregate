@@ -25,7 +25,7 @@ final class SetupController extends AbstractController
         $websites = $this->scripts->websites();
         $query = $request->query->all();
         $token = $query['website'] ?? ($websites[0]['token'] ?? '');
-        $tags = ($query['tags'] ?? null) === '1';
+        [$tags, $format] = $this->snippetOptions($query);
         $step = $query['step'] ?? '1';
         $step = is_string($step) && in_array($step, ['1', '2', '3', '4'], true) ? (int) $step : 1;
         $error = null;
@@ -33,12 +33,14 @@ final class SetupController extends AbstractController
         $consent = null;
         $loader = null;
         $siteId = null;
+        $trackerUrl = null;
         try {
             if (!is_string($token)) {
                 throw new \InvalidArgumentException('Choose a registered website.');
             }
             if ($token !== '') {
-                $snippet = $this->scripts->snippet($token, $tags);
+                $snippet = $this->scripts->snippet($token, $tags, $format);
+                $trackerUrl = $this->scripts->trackerUrl($token);
                 $siteId = SiteScriptConfig::idForToken($token);
             }
             if ($siteId !== null) {
@@ -52,7 +54,7 @@ final class SetupController extends AbstractController
         return $this->privateResponse($this->render('setup/index.html.twig', [
             'websites' => $websites, 'selected_website' => is_string($token) ? $token : '', 'include_tags' => $tags,
             'step' => $step, 'snippet' => $snippet, 'consent_script' => $consent, 'tag_loader' => $loader, 'setup_error' => $error,
-            'site_id' => $siteId,
+            'site_id' => $siteId, 'snippet_format' => $format, 'tracker_url' => $trackerUrl,
         ]));
     }
 
@@ -70,7 +72,8 @@ final class SetupController extends AbstractController
                 throw new \InvalidArgumentException('Choose a registered website.');
             }
             // Verify registration for every artifact, including a forged token.
-            $snippet = $this->scripts->snippet($token, ($query['tags'] ?? null) === '1');
+            [$tags, $format] = $this->snippetOptions($query);
+            $snippet = $this->scripts->snippet($token, $tags, $format);
             $siteId = SiteScriptConfig::idForToken($token);
             $content = match ($kind) {
                 'snippet' => $snippet,
@@ -88,6 +91,17 @@ final class SetupController extends AbstractController
             'Content-Type' => $kind === 'snippet' ? 'text/plain; charset=UTF-8' : 'application/javascript; charset=UTF-8',
             'Content-Disposition' => 'attachment; filename="'.$filename.'"',
         ]));
+    }
+
+    /** @return array{bool, string} */
+    private function snippetOptions(array $query): array
+    {
+        $installation = $query['installation'] ?? null;
+        if (in_array($installation, ['window', 'query', 'tags'], true)) {
+            return [$installation === 'tags', $installation === 'query' ? 'query' : 'window'];
+        }
+
+        return [($query['tags'] ?? null) === '1', ($query['format'] ?? null) === 'query' ? 'query' : 'window'];
     }
 
     private function authorize(): void

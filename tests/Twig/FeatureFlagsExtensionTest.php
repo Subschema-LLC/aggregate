@@ -450,15 +450,14 @@ final class FeatureFlagsExtensionTest extends TestCase
             'logo_version' => null,
         ]);
 
+        \App\Tests\Support\TwigComponents::register($twig);
+
         return $twig;
     }
 
     private function render(Environment $twig, array $navigation): Crawler
     {
-        return new Crawler($twig->render('navigation/main.html.twig', [
-            'main_navigation' => $navigation,
-            'app' => ['user' => ['username' => 'operator']],
-        ]));
+        return new Crawler($twig->createTemplate("{{ component('Layout:Navigation', {navigation: navigation_menu(main_navigation), username: 'operator'}) }}")->render(['main_navigation' => $navigation]));
     }
 
     private function navigation(): array

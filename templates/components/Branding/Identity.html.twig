@@ -1,0 +1,11 @@
+{% props branding %}
+<span class="app-branding-identity">
+    {% if branding.has_logo %}
+        <img
+            class="app-branding-logo"
+            src="{{ path('app_branding_logo', {v: branding.logo_version}) }}"
+            alt="{{ branding.logo_text is empty ? branding.name : '' }}"
+        >
+    {% endif %}
+    <strong>{{ branding.logo_text }}</strong>
+</span>

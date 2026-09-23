@@ -52,34 +52,18 @@
     <title>{% block title %}{{ app_branding.name }}{% endblock %}</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.2/css/bulma.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <style>
-        {% include 'branding/theme.css.twig' %}
-        {% include 'navigation/style.css.twig' %}
-
-        .app-branding-identity {
-            align-items: center;
-            display: inline-flex;
-            gap: 0.5rem;
-        }
-
-        .app-branding-logo {
-            height: auto;
-            max-height: 2rem;
-            max-width: 10rem;
-            object-fit: contain;
-            width: auto;
-        }
-    </style>
+    <link rel="stylesheet" href="{{ path('app_branding_theme') }}">
     {% block stylesheets %}{% endblock %}
+    {% block javascripts %}{{ importmap('app') }}{% endblock %}
 </head>
 <body>
     {% if app.user %}
-        {% include 'navigation/main.html.twig' %}
+        {{ component('Layout:Navigation', {navigation: navigation_menu(main_navigation), username: app.user.username}) }}
     {% else %}
         <nav class="navbar is-dark" role="navigation" aria-label="public navigation">
             <div class="navbar-brand">
                 <a class="navbar-item" href="{{ path('app_home') }}">
-                    {% include 'branding/identity.html.twig' %}
+                    {{ component('Branding:Identity', {branding: app_branding}) }}
                 </a>
             </div>
         </nav>
@@ -88,41 +72,19 @@
     <section class="section">
         <div class="container">
             {% for message in app.flashes('success') %}
-                <div class="notification is-success is-light" role="status">
-                    <button type="button" class="delete" aria-label="Dismiss notification"></button>
-                    {{ message }}
-                </div>
+                {{ component('Ui:Notification', {message: message, type: 'success'}) }}
             {% endfor %}
 
             {% for message in app.flashes('warning') %}
-                <div class="notification is-warning is-light" role="status">
-                    <button type="button" class="delete" aria-label="Dismiss notification"></button>
-                    {{ message }}
-                </div>
+                {{ component('Ui:Notification', {message: message, type: 'warning'}) }}
             {% endfor %}
 
             {% for message in app.flashes('error') %}
-                <div class="notification is-danger is-light" role="alert">
-                    <button type="button" class="delete" aria-label="Dismiss notification"></button>
-                    {{ message }}
-                </div>
+                {{ component('Ui:Notification', {message: message, type: 'danger'}) }}
             {% endfor %}
 
             {% block body %}{% endblock %}
         </div>
     </section>
-
-    {% block javascripts %}
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            (document.querySelectorAll('.notification .delete') || []).forEach(($delete) => {
-                const $notification = $delete.parentNode;
-                $delete.addEventListener('click', () => {
-                    $notification.parentNode.removeChild($notification);
-                });
-            });
-        });
-    </script>
-    {% endblock %}
 </body>
 </html>

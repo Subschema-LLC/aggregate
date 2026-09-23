@@ -1,0 +1,3 @@
+.model-reporting-page { overflow-wrap: anywhere; }
+.model-reporting-page .button { height: auto; min-height: 2.5em; max-width: 100%; white-space: normal; }
+.model-reporting-page pre { overflow-wrap: normal; }

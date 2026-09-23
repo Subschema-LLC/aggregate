@@ -46,6 +46,6 @@ class HomeController extends AbstractController
     #[Route('/how-it-works/data-visualization', name: 'app_how_it_works_data_visualization', methods: ['GET'])]
     public function dataVisualization(): Response
     {
-        return $this->render('home/how_it_works_data_visualization.html.twig');
+        return $this->render('home/data_structure.html.twig');
     }
 }

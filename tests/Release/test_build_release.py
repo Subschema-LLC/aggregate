@@ -35,6 +35,7 @@ class ReleaseBuildTest(unittest.TestCase):
                 "format": 1,
                 "sourceSha256": self.digest("public/" + name + ".js"),
                 "templateSha256": self.digest("var/browser/" + name + ".template.min.js"),
+                **({"stylesheetSha256": self.digest("public/consent.css")} if name == "consent" else {}),
             }))
 
     def write(self, relative, content):
@@ -78,6 +79,7 @@ class ReleaseBuildTest(unittest.TestCase):
             self.assertIn("var/browser/aggregate.template.min.js", names)
             self.assertIn("LICENSE", names)
             self.assertIn("js/LICENSE.txt", names)
+            self.assertIn("public/consent.css", names)
             for name in ("consent", "tag-manager"):
                 self.assertIn("public/" + name + ".js", names)
                 self.assertIn("public/" + name + ".min.js", names)
@@ -183,6 +185,14 @@ class ReleaseBuildTest(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, "stale"):
                         self.build()
                     self.write(relative, original)
+
+    def test_refuses_missing_or_stale_consent_stylesheet(self):
+        self.write("public/consent.css", "updated stylesheet")
+        with self.assertRaisesRegex(ValueError, "stale"):
+            self.build()
+        (self.source / "public/consent.css").unlink()
+        with self.assertRaisesRegex(ValueError, "Missing required"):
+            self.build()
 
     def test_refuses_missing_tracker_license(self):
         (self.source / "js/LICENSE.txt").unlink()

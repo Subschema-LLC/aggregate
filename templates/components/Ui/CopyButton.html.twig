@@ -1,0 +1,10 @@
+{% props target, status, label = 'Copy', success = 'Copied.', fallback = 'Automatic copying is unavailable. Use your browser’s Copy command.' %}
+<button type="button" {{ attributes.defaults({
+    class: 'button',
+    'data-controller': 'components--ui--copy-button',
+    'data-action': 'components--ui--copy-button#copy',
+    'data-components--ui--copy-button-source-value': target,
+    'data-components--ui--copy-button-status-value': status,
+    'data-components--ui--copy-button-success-value': success,
+    'data-components--ui--copy-button-fallback-value': fallback
+}) }}>{{ label }}</button>

@@ -16,6 +16,10 @@ Open **Collection → Tag manager**, choose a website, and edit its CMP, variabl
 actions, triggers, and consent categories. Save to add another row, disable tags
 without deleting them, or select **Remove this tag when saving**. **Setup** copies
 or downloads the selected website's installation snippet and drop-ins.
+**Websites** offers the same window, query-parameter, and tag-manager installation
+choices. Choosing **Tag manager** installs its container and enabled CMP;
+it does not add tracker configuration, load the tracker directly, create tags,
+or enable the container.
 
 ## Website instances and remote hosting
 
@@ -236,12 +240,18 @@ out and review any data sent to providers.
 
 ## Install and connect consent
 
-Use **Setup** for the selected website's ordered CMP, tracker and optional tag
-snippet. For only the tag library, substitute that site's public ID:
+Choose **Tag manager** in **Setup** or **Websites** for the selected website's
+ordered CMP and tag-container snippet. Substitute that site's public ID for a
+headless installation:
 
 ```html
+<script src="https://analytics.example.com/cmp-lite/sites/SITE_ID/consent.js?min=1" defer referrerpolicy="no-referrer"></script>
 <script src="https://analytics.example.com/tms-lite/sites/SITE_ID/lib.js?min=1" defer referrerpolicy="no-referrer"></script>
 ```
+
+Omit the CMP script when it is disabled or you use another CMP. This snippet
+contains neither inline tracker settings nor `/aggregate.js`. Enable the
+container and configure its tags in the site's YAML or Tag manager page.
 
 Categories contain 1–32 lowercase letters, digits, underscores or hyphens,
 beginning with a letter. Common names are `analytics`, `functional` and `marketing`.
@@ -280,6 +290,47 @@ have normal website-script privileges. Review providers and allow their script
 origins under your CSP. The loader forwards its script nonce to inserted scripts;
 provider requests use `referrerpolicy="no-referrer"`, but running providers may
 still read page and browser information.
+
+### Load the tracker through the manager
+
+Both installation pages offer a separate **Copy tracker URL** control in
+tag-manager mode. In the selected website's settings, enable the tag manager,
+add a **Load an HTTPS script** action with that URL, and select **Document ready**.
+Choose `none` to allow anonymous tracking before an analytics choice, or
+`analytics` to wait for analytics consent before loading any tracker code.
+
+The headless equivalent is below. Merge it into
+`config/tag-manager/sites/<site-id>.yaml`, preserving any existing settings and
+tags. Replace the public host, encoded endpoint, and website token. In YAML use
+literal `&` separators, not HTML's `&amp;`:
+
+```yaml
+tag_manager:
+  enabled: true
+  tags:
+    - id: aggregate-tracker
+      type: script
+      src: 'https://analytics.example.com/aggregate.js?min=1&endpoint=https%3A%2F%2Fanalytics.example.com%2Fapi%2Freceive&token=REPLACE_WITH_PUBLIC_WEBSITE_TOKEN&consent=0'
+      consent: none
+      trigger: {type: dom_ready}
+```
+
+Remove any separate tracker snippet when using this tag, including a tracker
+installed through GTM, so the automatic page view is not sent twice. If the
+tracker is already installed directly, keep that installation and leave this
+script action out. Window and query-parameter snippets for direct installation
+are documented in [Setup](SETUP.md#headless-installation).
+
+The tag's consent requirement controls when the script loads; it does not grant
+enhanced analytics. The URL starts with `consent=0`. A remembered affirmative
+analytics choice supplied by the CMP in the tracker's `window` configuration
+takes precedence, and later choices use `setConsent`. Rejection and withdrawal
+retain the tracker's existing privacy behavior.
+
+This script loads asynchronously. An `Aggregate.emit` method tag on the same
+`dom_ready` trigger cannot assume the tracker is ready, regardless of YAML list
+order. Emit application events after the API is available, or load the tracker
+directly before the manager when dependent calls require that order.
 
 ## Optional minification
 

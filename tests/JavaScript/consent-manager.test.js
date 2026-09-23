@@ -7,6 +7,7 @@ const test = require('node:test');
 const vm = require('node:vm');
 
 const source = fs.readFileSync(process.env.AGGREGATE_CONSENT_SOURCE || path.join(__dirname, '../../public/consent.js'), 'utf8');
+const stylesheet = fs.readFileSync(path.join(__dirname, '../../public/consent.css'), 'utf8');
 const tracker = fs.readFileSync(path.join(__dirname, '../../public/aggregate.js'), 'utf8');
 
 function eventTarget(object = {}) {
@@ -49,7 +50,7 @@ function runtime(options = {}) {
   };
   document.body = document.createElement('body');
   document.head = document.createElement('head');
-  document.currentScript = {dataset: {namespace}, src: '', nonce: options.nonce || ''};
+  document.currentScript = {dataset: {namespace}, src: options.scriptSource || 'https://analytics.example.test/consent.js', nonce: options.nonce || ''};
   document.getElementsByTagName = () => [document.currentScript];
   Object.defineProperty(document, 'cookie', {
     get: () => [...cookies].map(([key, value]) => key + '=' + value).join('; '),
@@ -74,8 +75,11 @@ function runtime(options = {}) {
   });
   window.location = context.location;
   const configuration = JSON.stringify({namespace, name: options.name || 'Example Analytics', categories: options.categories || ['analytics'], siteId: options.siteId});
+  const styles = JSON.stringify(options.staticStyles ? null : stylesheet);
   const configured = source.replace("var consentConfig = {namespace: 'Aggregate', name: 'Analytics'};", 'var consentConfig = ' + configuration + ';')
-    .replaceAll('__AGGREGATE_CONSENT_CONFIG__', configuration);
+    .replaceAll('__AGGREGATE_CONSENT_CONFIG__', configuration)
+    .replace('var consentStyles = null;', 'var consentStyles = ' + styles + ';')
+    .replaceAll('__AGGREGATE_CONSENT_STYLES__', styles);
   const load = () => vm.runInContext(configured, context);
   if (options.trackerFirst) vm.runInContext(tracker, context);
   let ready = 0;
@@ -347,5 +351,27 @@ test('the current script nonce is preserved on the CMP stylesheet after deferred
   const app = runtime({readyState: 'loading', nonce: 'nonce-example'});
   app.document.currentScript = null;
   app.document.dispatchEvent({type: 'DOMContentLoaded'});
-  assert.equal(app.allNodes.find((node) => node.tagName === 'STYLE').nonce, 'nonce-example');
+  const style = app.allNodes.find((node) => node.tagName === 'STYLE');
+  assert.equal(style.nonce, 'nonce-example');
+  assert.equal(style.textContent, stylesheet, 'configured downloads embed the entire shared CSS source');
+  assert.equal(app.allNodes.some((node) => node.tagName === 'LINK'), false, 'configured downloads need no separate CSS request');
+});
+
+test('static CMP sources load their adjacent stylesheet without copying query parameters or page referrers', () => {
+  for (const filename of ['consent.js', 'consent.min.js']) {
+    const app = runtime({staticStyles: true, readyState: 'loading', nonce: 'static-nonce',
+      scriptSource: 'https://static.example.test/assets/' + filename + '?private=discarded#fragment'});
+    app.document.currentScript = null;
+    app.document.dispatchEvent({type: 'DOMContentLoaded'});
+    const link = app.document.head.children.find((node) => node.tagName === 'LINK');
+    assert.equal(link.href, 'https://static.example.test/assets/consent.css');
+    assert.equal(link.rel, 'stylesheet');
+    assert.equal(link.nonce, 'static-nonce');
+    assert.equal(link.referrerPolicy, 'no-referrer');
+    assert.equal(app.allNodes.some((node) => node.tagName === 'STYLE'), false);
+    assert.equal(app.window.AggregateConsent.getState().analytics, false);
+    assert.equal(app.panel().hidden, false);
+    app.load();
+    assert.equal(app.document.head.children.length, 1, 'repeat loading does not duplicate the stylesheet');
+  }
 });

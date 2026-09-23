@@ -31,6 +31,11 @@ security:
             stateless: true
             security: false
 
+        branding_theme:
+            pattern: ^/branding/theme\.css$
+            stateless: true
+            security: false
+
         main:
             lazy: true
             provider: app_user_provider

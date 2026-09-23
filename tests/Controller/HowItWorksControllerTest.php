@@ -43,14 +43,45 @@ final class HowItWorksControllerTest extends WebTestCase
         );
     }
 
-    public function testThemeCssPreservesHeadingAndCodeContrastAcrossBulmaContexts(): void
+    public function testUiImportMapServesItsRuntimeDependencies(): void
     {
-        $client = self::createClient();
-
-        $client->request('GET', '/how-it-works');
+        // Source assets use Symfony's debug responder; BrowserKit has no static-file web server.
+        $client = self::createClient(['debug' => true]);
+        $crawler = $client->request('GET', '/how-it-works');
 
         self::assertResponseIsSuccessful();
-        $content = (string) $client->getResponse()->getContent();
+        $importMap = json_decode($crawler->filter('script[type="importmap"]')->text(), true, flags: JSON_THROW_ON_ERROR);
+        foreach (['app', '@symfony/stimulus-bundle', '@hotwired/stimulus'] as $module) {
+            self::assertArrayHasKey($module, $importMap['imports']);
+            $url = $importMap['imports'][$module];
+            self::assertStringStartsWith('/assets/', $url);
+
+            $client->request('GET', $url);
+
+            self::assertResponseIsSuccessful();
+            self::assertStringContainsString('javascript', (string) $client->getResponse()->headers->get('Content-Type'));
+            self::assertNotEmpty($client->getInternalResponse()->getContent());
+        }
+    }
+
+    public function testThemeCssPreservesHeadingAndCodeContrastAcrossBulmaContexts(): void
+    {
+        // Exercise source CSS serving explicitly even when CI sets APP_DEBUG=0.
+        $client = self::createClient(['debug' => true]);
+
+        $crawler = $client->request('GET', '/how-it-works');
+
+        self::assertResponseIsSuccessful();
+        self::assertSelectorNotExists('style, [style]');
+        self::assertSelectorExists('link[rel="stylesheet"][href="/branding/theme.css"]');
+        $themePath = self::getContainer()->get('asset_mapper')->getPublicPath('styles/base.css');
+        $client->request('GET', $crawler->filter('link[rel="stylesheet"][href*="/styles/app-"]')->attr('href'));
+        self::assertResponseIsSuccessful();
+        self::assertStringContainsString(basename($themePath), $client->getInternalResponse()->getContent());
+        $client->request('GET', $themePath);
+        self::assertResponseIsSuccessful();
+        self::assertStringContainsString('text/css', $client->getResponse()->headers->get('Content-Type'));
+        $content = $client->getInternalResponse()->getContent();
 
         self::assertStringContainsString(
             '--bulma-text-strong: var(--app-brand-text);',
@@ -174,6 +205,9 @@ final class HowItWorksControllerTest extends WebTestCase
                 '<Example & Company>',
                 (string) $client->getResponse()->getContent(),
             );
+            self::assertSelectorExists('link[rel="stylesheet"][href="/branding/theme.css"]');
+            $client->request('GET', '/branding/theme.css');
+            self::assertResponseIsSuccessful();
             self::assertStringContainsString(
                 '--app-brand-primary: #AABBCC;',
                 (string) $client->getResponse()->getContent(),

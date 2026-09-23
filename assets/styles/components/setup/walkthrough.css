@@ -1,0 +1,8 @@
+.setup-tour-target { outline: 4px solid var(--app-brand-focus) !important; outline-offset: 4px; }
+.setup-callout { background: var(--app-brand-surface); border: 2px solid var(--app-brand-focus); border-radius: .4rem; box-shadow: 0 3px 18px #0003; color: var(--app-brand-text); max-height: calc(100vh - 2rem); overflow: auto; padding: 1rem; position: fixed; width: min(26rem, calc(100vw - 2rem)); z-index: 100; }
+.setup-callout[hidden], #setup-tour-start[hidden] { display: none; }
+.setup-callout-arrow { background: var(--app-brand-focus); height: .6rem; left: var(--setup-arrow-left, 1rem); position: absolute; top: 0; transform: rotate(45deg); width: .6rem; }
+.setup-callout[data-side="above"] .setup-callout-arrow { bottom: 0; top: auto; }
+.setup-callout .title { margin: .4rem 0 .75rem; }
+.setup-callout .buttons { margin-bottom: 0; }
+.setup-callout .buttons .button { white-space: normal; height: auto; min-height: 2.5rem; }

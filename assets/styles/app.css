@@ -1,3 +1,16 @@
-body {
-    background-color: skyblue;
-}
+/* UI styles, resolved and fingerprinted by Symfony AssetMapper. */
+@import './base.css';
+@import './components/layout/navigation.css';
+@import './shared/settings.css';
+@import './pages/users/index.css';
+@import './pages/settings/branding.css';
+@import './pages/setup/index.css';
+@import './components/setup/walkthrough.css';
+@import './pages/websites/index.css';
+@import './components/websites/create_dialog.css';
+@import './components/websites/domain_fields.css';
+@import './pages/tag_manager/index.css';
+@import './pages/data_model/index.css';
+@import './pages/data_model/reporting.css';
+@import './pages/event_examples/index.css';
+@import './pages/home/data_structure.css';

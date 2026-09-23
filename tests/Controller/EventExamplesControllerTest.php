@@ -278,6 +278,7 @@ final class EventExamplesControllerTest extends TestCase
             new ArrayLoader(['base.html.twig' => '{% block body %}{% endblock %}{% block javascripts %}{% endblock %}']),
             new FilesystemLoader(dirname(__DIR__, 2).'/templates'),
         ]), ['strict_variables' => true]);
+        $twig->addFunction(new TwigFunction('asset', static fn (string $path): string => '/assets/'.$path));
         $twig->addGlobal('app_branding', ['name' => 'Example Analytics']);
         $twig->addFunction(new TwigFunction('path', static function (string $name, array $parameters = []): string {
             $path = match ($name) {
@@ -291,6 +292,8 @@ final class EventExamplesControllerTest extends TestCase
 
             return $path.($parameters === [] ? '' : '?'.http_build_query($parameters));
         }));
+
+        \App\Tests\Support\TwigComponents::register($twig);
 
         return $twig;
     }

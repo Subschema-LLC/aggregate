@@ -13,7 +13,8 @@ const PLACEHOLDERS = {
   customDataDefaults: '__AGGREGATE_CUSTOM_DATA__'
 };
 const DROP_INS = [
-  {name: 'consent', variable: 'consentConfig', placeholder: '__AGGREGATE_CONSENT_CONFIG__'},
+  {name: 'consent', variable: 'consentConfig', placeholder: '__AGGREGATE_CONSENT_CONFIG__',
+    stylesheet: {source: 'consent.css', variable: 'consentStyles', placeholder: '__AGGREGATE_CONSENT_STYLES__'}},
   {name: 'tag-manager', variable: 'tagManagerConfig', placeholder: '__AGGREGATE_TAG_MANAGER__'}
 ];
 const AGPL_NOTICE = '/*! Aggregate Analytics — SPDX-License-Identifier: AGPL-3.0-only; see LICENSE in the source repository. */\n';
@@ -85,17 +86,29 @@ async function build({projectDir = path.resolve(__dirname, '..'), outputDir = pr
     ['var/browser/aggregate.template.min.js', minifiedTemplate],
     ['public/internal-traffic-marker.min.js', await minify(AGPL_NOTICE + marker)]
   ]);
-  for (const {name, variable, placeholder} of DROP_INS) {
+  for (const {name, variable, placeholder, stylesheet} of DROP_INS) {
     const source = fs.readFileSync(path.join(projectDir, 'public', name + '.js'), 'utf8');
     const declaration = new RegExp('^  var ' + variable + ' = .+;$', 'm');
     if (!declaration.test(source)) throw new Error('Drop-in configuration declaration not found: ' + variable);
-    const template = await minify(source.replace(declaration, '  var ' + variable + ' = ' + placeholder + ';'));
+    let templateSource = source.replace(declaration, '  var ' + variable + ' = ' + placeholder + ';');
+    const stylesheetManifest = {};
+    if (stylesheet) {
+      const styles = fs.readFileSync(path.join(projectDir, 'public', stylesheet.source), 'utf8');
+      if (!styles.trim()) throw new Error('Drop-in stylesheet is empty: ' + stylesheet.source);
+      const stylesDeclaration = new RegExp('^  var ' + stylesheet.variable + ' = null;$', 'm');
+      if (!stylesDeclaration.test(templateSource)) throw new Error('Drop-in stylesheet declaration not found: ' + stylesheet.variable);
+      templateSource = templateSource.replace(stylesDeclaration, '  var ' + stylesheet.variable + ' = ' + stylesheet.placeholder + ';');
+      stylesheetManifest.stylesheetSha256 = digest(styles);
+    }
+    const template = await minify(templateSource);
     if (!template.includes(placeholder)) throw new Error('Minifier removed a dynamic drop-in placeholder: ' + placeholder);
+    if (stylesheet && !template.includes(stylesheet.placeholder)) throw new Error('Minifier removed a dynamic drop-in stylesheet: ' + stylesheet.placeholder);
     outputs.set('public/' + name + '.min.js', await minify(source));
     outputs.set('var/browser/' + name + '.template.min.js', template);
     outputs.set('var/browser/' + name + '-manifest.json', JSON.stringify({
       format: 1,
       sourceSha256: digest(source),
+      ...stylesheetManifest,
       templateSha256: digest(template),
       minifier: 'terser ' + version
     }, null, 2) + '\n');

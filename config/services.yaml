@@ -43,6 +43,8 @@ services:
         tags: ['controller.service_arguments']
     App\Controller\BrandingLogoController:
         tags: ['controller.service_arguments']
+    App\Controller\BrandingThemeController:
+        tags: ['controller.service_arguments']
     App\Controller\InternalTrafficPublicController:
         tags: ['controller.service_arguments']
 
