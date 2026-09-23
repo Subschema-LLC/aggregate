@@ -155,6 +155,10 @@ The tracker sends a page view automatically. Once it has loaded, record a named 
 
 Connect your consent manager to `window.Aggregate.setConsent(true)` only after an affirmative choice, and call `setConsent(false)` for rejection or withdrawal. The [tracking and GTM guide](docs/TRACKING.md) covers custom events, tag setup, consent wiring, and troubleshooting.
 
+A dedicated [Aggregate Google Tag Manager tag template](https://github.com/Subschema-LLC/aggregate-gtm-tag-template)
+is under development in a separate repository. Follow that repository for template
+progress and availability. The tracking guide includes GTM Custom HTML examples.
+
 ## Configuration and reporting
 
 | Setting | Source of truth |
@@ -217,6 +221,7 @@ readiness, browser events, or data-layer events with named variable references.
 | [JavaScript build](docs/JS-BUILD.md) | Optional minification, dynamic tracker configuration, and build verification |
 | [Release packages](docs/RELEASES.md) | Publishing from master, signing keys, installable ZIPs, verification, and update groundwork |
 | [Tracking and GTM](docs/TRACKING.md) | Browser integration, custom events, tag-manager examples, and troubleshooting |
+| [GTM tag template](https://github.com/Subschema-LLC/aggregate-gtm-tag-template) | Separate repository for the Google Tag Manager tag template, under development |
 | [Deployment](DEPLOYMENT.md) | Docker/native setup, web servers, workers, production operations, and upgrades |
 | [Plesk deployment](PLESK-DEPLOYMENT.md) | Shared-hosting setup and worker options |
 | [Database](docs/DATABASE.md) | Supported engines, connection strings, migrations, and reporting schema |

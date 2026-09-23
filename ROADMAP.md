@@ -64,10 +64,11 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   concrete administration or maintenance notification need. Keep secrets in
   deployment configuration and avoid embedding private analytics data in email.
   Analytics report delivery belongs in external reporting tools.
-- **Extend Tag Manager Lte.** Still keep things simple but look for gaps and improvements.
-- **External tag-manager integrations.** Explore Google Tag Manager and Matomo
-  Tag Manager templates where adopters need them. The built-in simple tag loader
-  does not implement those platforms' consent modes or container formats.
+- **Tag management integrations.** The
+  [Aggregate GTM tag template](https://github.com/Subschema-LLC/aggregate-gtm-tag-template)
+  is under development in its own repository; track template progress and
+  availability there. Explore Matomo Tag Manager support where adopters need it.
+- **Extend Tag Manager Lite.** Still keep things simple but look for gaps and improvements.
 
 ## Available foundations
 
