@@ -16,7 +16,9 @@ use App\Service\SiteScriptConfig;
 use App\Service\WebsiteConfigManager;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
+use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Definition;
@@ -128,6 +130,25 @@ final class SetupRoutesTest extends TestCase
         $browser->submit($form);
         self::assertSame(303, $browser->getResponse()->getStatusCode());
         self::assertSame('/dashboard/setup?step=3', $browser->getResponse()->headers->get('Location'));
+        $this->assertNoDatabaseConnection();
+    }
+
+    public function testHeadlessSiteListingNeedsNoSiteYamlAndDoesNotExposeTokens(): void
+    {
+        $this->browser(dashboard: false);
+        (new Filesystem())->remove($this->directory.'/config/tag-manager');
+        $application = new Application($this->kernel);
+        $command = new CommandTester($application->find('app:tag-manager:sites'));
+
+        self::assertSame(0, $command->execute([]));
+        $output = $command->getDisplay();
+        foreach (['public-site-token' => 'Example site', 'second-site-token' => 'Second site'] as $token => $name) {
+            self::assertStringContainsString($name, $output);
+            self::assertStringContainsString('config/tag-manager/sites/'.SiteScriptConfig::idForToken($token).'.yaml', $output);
+            self::assertStringNotContainsString($token, $output);
+        }
+        self::assertStringNotContainsString('private-setup-route-secret', $output);
+        self::assertDirectoryDoesNotExist($this->directory.'/config/tag-manager');
         $this->assertNoDatabaseConnection();
     }
 
