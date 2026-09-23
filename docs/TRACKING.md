@@ -99,7 +99,14 @@ In browser DevTools, look for `/api/receive` requests and inspect the response b
 
 ## Google Tag Manager (GTM) integration
 
-Complete setup guide for integrating with Google Tag Manager for both pixel tracking and custom event tracking.
+The [Aggregate GTM tag template](https://github.com/Subschema-LLC/aggregate-gtm-tag-template)
+is under development in a separate repository. Follow that repository for the
+template's progress, availability, and setup guidance as it becomes available.
+Repository access is currently required because it is private.
+
+The following steps cover page views and custom events using GTM Custom HTML
+tags. Connect enhanced analytics to an affirmative consent choice as described
+in [Step 3](#step-3-consent-management-integration).
 
 ### Step 1: Install the Tracking Pixel in GTM
 

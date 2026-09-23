@@ -65,7 +65,10 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   concrete administration or maintenance notification need. Keep secrets in
   deployment configuration and avoid embedding private analytics data in email.
   Analytics report delivery belongs in external reporting tools.
-- **Tag Management Integrations.** Explore Google Tag Manager and Matomo Tag Manager support or templates. ANother option or addition would be to explore a very simple, lightweight tag manager scoped specifically to stats collection and privacy as a drop-in like the drop-in cookie banner.
+- **Tag management integrations.** The
+  [Aggregate GTM tag template](https://github.com/Subschema-LLC/aggregate-gtm-tag-template)
+  is under development in its own repository; track template progress and
+  availability there. Explore Matomo Tag Manager support where adopters need it.
 
 ## Available foundations
 
