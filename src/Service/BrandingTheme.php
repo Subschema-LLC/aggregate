@@ -139,6 +139,7 @@ final class BrandingTheme
      *     background_color: string,
      *     surface_color: string,
      *     text_color: string,
+     *     color_scheme: string,
      *     font_family: string,
      *     heading_font_family: string,
      *     font_family_css: string,
@@ -194,6 +195,7 @@ final class BrandingTheme
             'background_color' => $backgroundColor,
             'surface_color' => $surfaceColor,
             'text_color' => $textColor,
+            'color_scheme' => self::relativeLuminance($backgroundColor) < 0.179 ? 'dark' : 'light',
             'font_family' => $fontFamily['value'],
             'heading_font_family' => $headingFontFamily['value'],
             'font_family_css' => $fontFamily['css'],
@@ -208,6 +210,40 @@ final class BrandingTheme
             ...$overrides,
             'all_overridden' => !in_array(false, $overrides, true),
         ];
+    }
+
+    /**
+     * Keep the deployment's validated palette in its matching mode and provide
+     * readable neutral surfaces for the opposite mode. Brand identity is shared.
+     *
+     * @return array{light: array<string, mixed>, dark: array<string, mixed>}
+     */
+    public function toModePalettes(): array
+    {
+        $configured = $this->toArray();
+        $oppositeScheme = $configured['color_scheme'] === 'light' ? 'dark' : 'light';
+        $backgroundColor = $oppositeScheme === 'dark' ? '#14161A' : self::DEFAULT_BACKGROUND_COLOR;
+        $surfaceColor = $oppositeScheme === 'dark' ? '#1F2229' : self::DEFAULT_SURFACE_COLOR;
+        $textColor = $oppositeScheme === 'dark' ? '#F5F5F5' : self::DEFAULT_TEXT_COLOR;
+        $opposite = array_replace($configured, [
+            'background_color' => $backgroundColor,
+            'surface_color' => $surfaceColor,
+            'text_color' => $textColor,
+            'color_scheme' => $oppositeScheme,
+            'primary_text_color' => self::readableBrandTextColor(
+                $configured['primary_color'], $textColor, $backgroundColor, $surfaceColor,
+            ),
+            'accent_text_color' => self::readableBrandTextColor(
+                $configured['accent_color'], $textColor, $backgroundColor, $surfaceColor,
+            ),
+            'focus_color' => self::readableBrandTextColor(
+                $configured['accent_color'], $textColor, $backgroundColor, $surfaceColor, 3.0,
+            ),
+        ]);
+
+        return $configured['color_scheme'] === 'light'
+            ? ['light' => $configured, 'dark' => $opposite]
+            : ['light' => $opposite, 'dark' => $configured];
     }
 
     /**

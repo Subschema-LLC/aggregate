@@ -91,6 +91,7 @@
 
             <details class="mt-5 mb-5"{% if app_branding.theme.contrast_fallback %} open{% endif %}>
             <summary class="has-text-weight-semibold mb-3">Theme colors</summary>
+            <p class="help mb-3">These colors define the site’s default appearance. The navigation’s Dark mode toggle remembers a preference in this browser. Your primary, accent, navigation colors, and fonts stay in both modes; the opposite mode uses a readable neutral page palette. Choose Site default to see your configured palette again.</p>
             <p class="help mb-3">Use hexadecimal colors. Three-digit values in YAML are expanded to six digits.</p>
             {% if app_branding.theme.contrast_fallback %}
                 <div class="notification is-warning is-light" role="alert">

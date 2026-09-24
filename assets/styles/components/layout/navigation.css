@@ -33,6 +33,25 @@
     margin-inline-start: auto;
 }
 
+.app-navigation-user {
+    max-width: 22rem;
+}
+
+.app-theme-toggle {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.app-theme-toggle[hidden],
+.app-theme-toggle [hidden] {
+    display: none !important;
+}
+
+.app-theme-toggle [aria-pressed='true'] {
+    box-shadow: inset 0 0 0 2px currentColor;
+}
+
 .app-navigation-group {
     position: relative;
 }
@@ -132,6 +151,11 @@
     .app-navigation-account {
         border-top: 1px solid var(--app-brand-navbar-contrast);
         justify-content: space-between;
+    }
+
+    .app-navigation-user {
+        flex-basis: 100%;
+        max-width: none;
     }
 }
 
