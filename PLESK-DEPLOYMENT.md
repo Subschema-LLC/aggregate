@@ -141,9 +141,19 @@ Alternative for Plesk SQL import workflow (fresh install/reset on MySQL/MariaDB)
 
 ### 7. Compile Frontend Assets
 
+The dashboard uses Symfony AssetMapper. Run these commands from the project
+root using the PHP version selected for the domain:
+
 ```bash
-/opt/plesk/php/8.3/bin/php bin/console asset-map:compile
+/opt/plesk/php/8.3/bin/php bin/console importmap:install --env=prod --no-debug --no-interaction
+/opt/plesk/php/8.3/bin/php bin/console asset-map:compile --env=prod --no-debug
 ```
+
+Repeat asset compilation after deploying dashboard CSS or JavaScript changes.
+Clearing Symfony's cache does not rebuild `public/assets/`. Node/npm is only
+needed for the separate [optional browser-script minifier](docs/JS-BUILD.md);
+it is not required to compile dashboard assets. Official release ZIPs already
+include compiled assets.
 
 ### 8. Set File Permissions
 
@@ -287,10 +297,39 @@ assets and can check versions without Git. The dashboard links to packages;
 signed-package verification and manual deployment are available while automatic
 package replacement remains a separate implementation step.
 
+### Plesk Git deployment actions
+
+Plesk's **Deploy** action copies the Git source into the deployment directory;
+it does not automatically compile Symfony's dashboard assets. For source
+deployments, add the following to the repository's **Additional deployment
+actions**, adjusting the directory and PHP version to match the domain. Run
+them as the domain's deployment user, who needs write access to `public/assets/`
+and the application cache:
+
+```bash
+set -eu
+cd /var/www/vhosts/your-domain.com/analytics
+export APP_ENV=prod APP_DEBUG=0
+
+/opt/plesk/php/8.3/bin/php bin/console cache:clear --env=prod --no-debug
+/opt/plesk/php/8.3/bin/php bin/console importmap:install --env=prod --no-debug --no-interaction
+/opt/plesk/php/8.3/bin/php bin/console asset-map:compile --env=prod --no-debug
+```
+
+This block rebuilds the cache and dashboard assets. Install the locked production
+Composer dependencies before it, as shown in the full upgrade sequence below;
+database migrations and worker coordination are also part of that sequence.
+Running `npm run build:js` does not replace AssetMapper compilation. After a
+successful deploy, hard refresh the browser. If the layout or saved colors
+remain wrong, check the [stylesheet troubleshooting steps](#navigation-layout-or-theme-colors-are-missing).
+
+### Full source upgrade
+
 For upgrades that include the `Version20260724*` privacy migrations, pause `/api/receive` and stop all async workers first. The migrations permanently remove daily IP hashes, legacy non-granted event rows, and matching Doctrine-queue tracker envelopes. Inspect failed, external, and encoded/base64 queue transports separately before resuming ingestion.
 
 ```bash
 cd /var/www/vhosts/your-domain.com/analytics
+export APP_ENV=prod APP_DEBUG=0
 
 # Stop the async worker (skip this command when using sync://) and pause the collection endpoint at the proxy
 sudo systemctl stop analytics-worker
@@ -307,10 +346,11 @@ sudo systemctl stop analytics-worker
 /opt/plesk/php/8.3/bin/php bin/console doctrine:migrations:migrate --no-interaction
 
 # Clear cache
-/opt/plesk/php/8.3/bin/php bin/console cache:clear
+/opt/plesk/php/8.3/bin/php bin/console cache:clear --env=prod --no-debug
 
-# Compile assets
-/opt/plesk/php/8.3/bin/php bin/console asset-map:compile
+# Install browser dependencies and compile dashboard assets
+/opt/plesk/php/8.3/bin/php bin/console importmap:install --env=prod --no-debug --no-interaction
+/opt/plesk/php/8.3/bin/php bin/console asset-map:compile --env=prod --no-debug
 
 # Fix permissions
 chown -R aggregate_admin:psacln var/
@@ -323,6 +363,27 @@ sudo systemctl restart analytics-worker
 ---
 
 ## Troubleshooting
+
+### Navigation layout or theme colors are missing
+
+Rebuild dashboard assets using the [deployment actions](#plesk-git-deployment-actions),
+then hard refresh. In the browser's Network panel, inspect the actual stylesheet
+URLs from the page: `/assets/styles/app-*.css`, its imported stylesheets, and
+`/branding/theme.css`. They should return successful responses with a `text/css`
+content type; a login page or an HTML error response cannot apply styles. The
+fingerprinted files must exist beneath the domain's `public/assets/` directory.
+If old HTML is cached by a proxy/CDN, refresh that cache too.
+
+`/branding/theme.css` is a Symfony route that supplies the current validated
+branding settings, not a physical CSS file. Plesk's **Serve static files directly
+by nginx** option can intercept `.css` requests and return 404 before Symfony
+runs. Route this URL through the site's existing front-controller handler. For
+nginx proxy mode with Apache, removing `css` from the directly served extension
+list lets Apache's normal fallback handle it. For nginx-only hosting, configure
+a front-controller fallback for this route using the domain's existing PHP
+handler. Keep real compiled files served from `public/assets/` and verify the
+theme response after changing the server configuration. Saving branding colors
+or fonts does not require rebuilding assets.
 
 ### Blank page or 500 error
 

@@ -6,6 +6,7 @@ namespace App\Tests\Service;
 
 use App\Service\AggregateConfigLoader;
 use App\Service\BrandingTheme;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Yaml\Yaml;
 
@@ -73,6 +74,7 @@ final class BrandingThemeTest extends TestCase
             'background_color' => '#F5F5F5',
             'surface_color' => '#FFFFFF',
             'text_color' => '#363636',
+            'color_scheme' => 'light',
             'font_family' => 'system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif',
             'heading_font_family' => 'system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif',
             'font_family_css' => 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
@@ -117,6 +119,7 @@ final class BrandingThemeTest extends TestCase
         self::assertSame('#012345', $theme['background_color']);
         self::assertSame('#123456', $theme['surface_color']);
         self::assertSame('#FFFFFF', $theme['text_color']);
+        self::assertSame('dark', $theme['color_scheme']);
         self::assertSame('Open Sans, serif, UI_Font-2', $theme['font_family']);
         self::assertSame('"Open Sans", serif, "UI_Font-2"', $theme['font_family_css']);
         self::assertSame('system-ui, BlinkMacSystemFont, Segoe UI', $theme['heading_font_family']);
@@ -149,6 +152,8 @@ final class BrandingThemeTest extends TestCase
         self::assertSame(BrandingTheme::DEFAULT_SURFACE_COLOR, $theme['surface_color']);
         self::assertSame(BrandingTheme::DEFAULT_TEXT_COLOR, $theme['text_color']);
         self::assertTrue($theme['contrast_fallback']);
+        self::assertSame('light', $theme['color_scheme']);
+        self::assertSame($theme, $brandingTheme->toModePalettes()['light']);
         self::assertFalse(BrandingTheme::hasReadableTextContrast('#F0F0F0', '#FFFFFF', '#EEEEEE'));
         self::assertTrue(BrandingTheme::hasReadableTextContrast('#FFFFFF', '#111827', '#1F2937'));
     }
@@ -188,6 +193,91 @@ final class BrandingThemeTest extends TestCase
         self::assertTrue($theme['font_family_overridden']);
         self::assertFalse($theme['accent_color_overridden']);
         self::assertFalse($theme['all_overridden']);
+        foreach ($this->createTheme()->toModePalettes() as $palette) {
+            self::assertSame('#112233', $palette['primary_color']);
+            self::assertSame(BrandingTheme::DEFAULT_FONT_FAMILY, $palette['font_family']);
+        }
+    }
+
+    #[DataProvider('customModePalettes')]
+    public function testModePalettesPreserveConfiguredColorsAndBrandIdentity(array $colors, string $scheme): void
+    {
+        $this->writeConfig($colors + [
+            'brand_navbar_color' => '#713F12',
+            'brand_font_family' => 'Georgia, serif',
+            'brand_heading_font_family' => 'Arial, sans-serif',
+        ]);
+        $theme = $this->createTheme();
+        $configured = $theme->toArray();
+        $palettes = $theme->toModePalettes();
+
+        self::assertSame($scheme, $configured['color_scheme']);
+        self::assertFalse($configured['contrast_fallback']);
+        self::assertSame($configured, $palettes[$scheme]);
+        self::assertNotSame($palettes['light']['background_color'], $palettes['dark']['background_color']);
+        foreach ($palettes as $mode => $palette) {
+            self::assertSame($mode, $palette['color_scheme']);
+            foreach (['primary_color', 'accent_color', 'navbar_color', 'primary_contrast_color', 'accent_contrast_color', 'navbar_contrast_color', 'font_family_css', 'heading_font_family_css'] as $key) {
+                self::assertSame($configured[$key], $palette[$key], $key.' must retain the configured brand identity.');
+            }
+            foreach (['text_color', 'primary_text_color', 'accent_text_color'] as $key) {
+                self::assertTrue(BrandingTheme::hasReadableTextContrast(
+                    $palette[$key], $palette['background_color'], $palette['surface_color'],
+                ), $key.' must be readable in '.$mode.' mode.');
+            }
+        }
+
+        if ($scheme === 'light') {
+            self::assertSame('#431407', $palettes['light']['primary_text_color']);
+            self::assertSame('#FDE047', $palettes['dark']['primary_text_color']);
+            self::assertSame('#111827', $palettes['light']['accent_text_color']);
+            self::assertSame('#F5F5F5', $palettes['dark']['accent_text_color']);
+            self::assertSame('#F5F5F5', $palettes['dark']['focus_color']);
+        } else {
+            self::assertSame('#E0F2FE', $palettes['dark']['primary_text_color']);
+            self::assertSame('#123456', $palettes['light']['primary_text_color']);
+            self::assertSame('#FACC15', $palettes['dark']['accent_text_color']);
+            self::assertSame('#363636', $palettes['light']['accent_text_color']);
+            self::assertSame('#363636', $palettes['light']['focus_color']);
+        }
+    }
+
+    public static function customModePalettes(): iterable
+    {
+        yield 'custom light theme' => [[
+            'brand_primary_color' => '#FDE047',
+            'brand_accent_color' => '#111827',
+            'brand_background_color' => '#FFEDD5',
+            'brand_surface_color' => '#FFF7ED',
+            'brand_text_color' => '#431407',
+        ], 'light'];
+        yield 'custom dark theme' => [[
+            'brand_primary_color' => '#123456',
+            'brand_accent_color' => '#FACC15',
+            'brand_background_color' => '#082F49',
+            'brand_surface_color' => '#0C4A6E',
+            'brand_text_color' => '#E0F2FE',
+        ], 'dark'];
+    }
+
+    public function testEnvironmentPaletteDeterminesDefaultModeWithoutChangingConfiguredValues(): void
+    {
+        $this->writeConfig([
+            'brand_background_color' => '#FFFFFF',
+            'brand_surface_color' => '#FFFFFF',
+            'brand_text_color' => '#111111',
+        ]);
+        $_ENV['BRAND_BACKGROUND_COLOR'] = '#012345';
+        $_ENV['BRAND_SURFACE_COLOR'] = '#123456';
+        $_ENV['BRAND_TEXT_COLOR'] = '#fff';
+
+        $theme = $this->createTheme();
+        self::assertSame('dark', $theme->toArray()['color_scheme']);
+        $palettes = $theme->toModePalettes();
+        self::assertSame('#012345', $palettes['dark']['background_color']);
+        self::assertSame('#123456', $palettes['dark']['surface_color']);
+        self::assertSame('#FFFFFF', $palettes['dark']['text_color']);
+        self::assertSame(BrandingTheme::DEFAULT_BACKGROUND_COLOR, $palettes['light']['background_color']);
     }
 
     public function testAllEnvironmentKeysAreReportedAsOverridesEvenWhenEmptyOrInvalid(): void

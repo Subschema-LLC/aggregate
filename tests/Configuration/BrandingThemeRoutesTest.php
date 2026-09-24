@@ -58,6 +58,9 @@ final class BrandingThemeRoutesTest extends TestCase
         $css = (string) $response->getContent();
         self::assertStringContainsString('--app-brand-primary: #AABBCC;', $css);
         self::assertStringContainsString('--app-brand-font-family: "Open Sans", serif;', $css);
+        self::assertStringContainsString('color-scheme: light;', $this->paletteCss($css, ':root'));
+        self::assertStringContainsString('color-scheme: light;', $this->paletteCss($css, 'html[data-theme="light"]'));
+        self::assertStringContainsString('color-scheme: dark;', $this->paletteCss($css, 'html[data-theme="dark"]'));
         self::assertStringNotContainsString('private-theme-test-secret', $css);
         self::assertStringNotContainsString('private/logo/path.png', $css);
         self::assertSame('"'.hash('sha256', $css).'"', $response->getEtag());
@@ -102,6 +105,47 @@ final class BrandingThemeRoutesTest extends TestCase
         self::assertStringNotContainsString('url(', $css);
         self::assertStringNotContainsString('<script', $css);
         self::assertStringNotContainsString('private-theme-test-secret', $css);
+        self::assertSame(3, substr_count($css, '--app-brand-primary: #112233;'));
+        self::assertSame(3, substr_count($css, '--app-brand-accent: #485FC7;'));
+        $this->assertNoDatabaseConnection();
+    }
+
+    #[DataProvider('dashboardModes')]
+    public function testStylesheetPreservesCustomDarkPaletteAndBrandIdentityInBothModes(bool $dashboard): void
+    {
+        $this->writeConfig([
+            'brand_background_color' => '#082F49',
+            'brand_surface_color' => '#0C4A6E',
+            'brand_text_color' => '#E0F2FE',
+            'brand_primary_color' => '#123456',
+            'brand_accent_color' => '#FACC15',
+            'brand_navbar_color' => '#713F12',
+            'brand_font_family' => 'Georgia, serif',
+        ]);
+        $browser = $this->browser($dashboard);
+        $browser->request('GET', '/branding/theme.css');
+        self::assertSame(200, $browser->getResponse()->getStatusCode());
+        $css = (string) $browser->getResponse()->getContent();
+        $default = $this->paletteCss($css, ':root');
+        $light = $this->paletteCss($css, 'html[data-theme="light"]');
+        $dark = $this->paletteCss($css, 'html[data-theme="dark"]');
+
+        self::assertSame($default, $dark);
+        self::assertStringContainsString('color-scheme: dark;', $default);
+        self::assertStringContainsString('--app-brand-background: #082F49;', $dark);
+        self::assertStringContainsString('--app-brand-surface: #0C4A6E;', $dark);
+        self::assertStringContainsString('--app-brand-text: #E0F2FE;', $dark);
+        self::assertStringContainsString('--app-brand-background: #F5F5F5;', $light);
+        self::assertStringContainsString('--app-brand-text: #363636;', $light);
+        self::assertStringContainsString('--app-brand-accent-text: #FACC15;', $dark);
+        self::assertStringContainsString('--app-brand-accent-text: #363636;', $light);
+        foreach ([$light, $dark] as $palette) {
+            self::assertStringContainsString('--app-brand-primary: #123456;', $palette);
+            self::assertStringContainsString('--app-brand-accent: #FACC15;', $palette);
+            self::assertStringContainsString('--app-brand-navbar: #713F12;', $palette);
+            self::assertStringContainsString('--app-brand-font-family: "Georgia", serif;', $palette);
+        }
+        self::assertFalse($browser->getResponse()->headers->has('Set-Cookie'));
         $this->assertNoDatabaseConnection();
     }
 
@@ -123,6 +167,13 @@ final class BrandingThemeRoutesTest extends TestCase
     {
         yield 'dashboard enabled' => [true];
         yield 'headless' => [false];
+    }
+
+    private function paletteCss(string $css, string $selector): string
+    {
+        self::assertSame(1, preg_match('~'.preg_quote($selector, '~').'\s*\{([^}]*)\}~', $css, $matches));
+
+        return trim($matches[1]);
     }
 
     private function writeConfig(array $branding): void
