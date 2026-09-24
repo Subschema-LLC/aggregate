@@ -12,6 +12,7 @@
     logo_text_overridden: false,
     logo_path_overridden: false,
     theme: {
+        color_scheme: 'light',
         primary_color: '#00D1B2',
         primary_contrast_color: '#000000',
         primary_text_color: '#363636',
@@ -45,29 +46,23 @@
     theme: app_branding_defaults.theme|merge(app_branding.theme|default({}))
 }) %}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="{{ app_branding.theme.color_scheme }}" data-theme-default="{{ app_branding.theme.color_scheme }}" data-theme-storage-key="aggregate.ui.theme">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}{{ app_branding.name }}{% endblock %}</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.2/css/bulma.min.css">
+    {# Apply a saved preference before styles paint; interaction belongs to ThemeToggle. #}
+    <script src="{{ asset('theme-preference.js') }}"></script>
+    <link rel="stylesheet" href="{{ asset('styles/vendor/bulma/bulma.min.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="{{ path('app_branding_theme') }}">
+    <link rel="stylesheet" href="{{ asset('styles/app.css') }}">
     {% block stylesheets %}{% endblock %}
     {% block javascripts %}{{ importmap('app') }}{% endblock %}
 </head>
 <body>
-    {% if app.user %}
-        {{ component('Layout:Navigation', {navigation: navigation_menu(main_navigation), username: app.user.username}) }}
-    {% else %}
-        <nav class="navbar is-dark" role="navigation" aria-label="public navigation">
-            <div class="navbar-brand">
-                <a class="navbar-item" href="{{ path('app_home') }}">
-                    {{ component('Branding:Identity', {branding: app_branding}) }}
-                </a>
-            </div>
-        </nav>
-    {% endif %}
+
+    {% include 'partials/navigation/navigation.html.twig' %}
 
     <section class="section">
         <div class="container">

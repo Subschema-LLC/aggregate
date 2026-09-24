@@ -83,6 +83,9 @@ checkout, or a small accessibility fix. Keep each PR focused and target
 - [Website domain rules](docs/CONFIGURATION.md#website-domains), with YAML/UI allow-all or restricted exact-host and wildcard-subdomain policies, CLI creation options, and server enforcement in both privacy modes. Existing registrations preserve their domain-plus-subdomains behavior until rules are explicitly saved.
 - [Synthetic event examples](docs/EVENT-EXAMPLES.md), with saved-model anonymous/enhanced JSON, UI copy/download, a headless export, and a proposed flat ecommerce model. Optional value types enforce scalar input types, while additive numeric reporting columns preserve existing text aliases.
 - [Focused administration pages and grouped navigation](docs/CONFIGURATION.md#administration-pages), with keyboard/touch submenus configured in YAML and role/feature checks at each level. Model editing, discovery, examples, and reporting SQL have separate pages.
+- [Configurable branding and light/dark appearance](docs/CONFIGURATION.md#application-settings),
+  with a browser preference, a return to the site's configured palette, and
+  preserved brand colors and fonts across modes.
 - [Feature flags](docs/FEATURE-FLAGS.md), with shared YAML/admin UI settings, server and CLI enforcement, and independent navigation visibility. Updates is the first registered capability; developer and contributor guidance explains how to add more.
 - [Organization traffic markers](docs/PRIVACY-COMPLIANCE.md#organization-traffic), with YAML/UI settings and shareable browser setup. Filtering uses retained event JSON; grouped BI views and archives do not retain the marker.
 - [Custom data models](docs/DATA-MODEL.md), including UTM/query mappings, per-property consent settings, downloadable YAML, and private reporting columns. All UTMs require consent by default; anonymous attribution should use at most broad `utm_medium` values, with documented warnings for overrides.
