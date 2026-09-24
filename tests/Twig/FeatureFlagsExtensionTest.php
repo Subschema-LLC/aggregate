@@ -388,7 +388,8 @@ final class FeatureFlagsExtensionTest extends TestCase
 
         self::assertCount(1, $crawler->filter('a[href="/logout?_csrf_token=logout-test-token"]'));
         self::assertCount(1, $crawler->filter('a[href]'));
-        self::assertCount(0, $crawler->filter('i'));
+        // Invalid configured user icons must not affect the independent theme control.
+        self::assertCount(0, $crawler->filter('.app-navigation-user i'));
     }
 
     public function testNavigationSizeIsBoundedAtBothSupportedLevels(): void
