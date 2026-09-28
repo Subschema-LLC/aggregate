@@ -8,6 +8,7 @@ use App\Controller\ScriptController;
 use App\Service\AggregateConfigLoader;
 use App\Service\CustomDataSettings;
 use App\Service\InternalTrafficSettings;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Request;
 
@@ -96,6 +97,7 @@ final class ScriptControllerTest extends TestCase
             'queryParameters' => ['utm_campaign' => 'campaign', 'campaign_name' => 'campaign'],
             'consentFreeProperties' => ['campaign'],
             'pageSequenceEnabled' => false,
+            'pageSequenceMethod' => 'session_storage',
         ], $this->customDataBrowserConfig($script));
         self::assertStringNotContainsString('private implementation instructions', $script);
         self::assertStringNotContainsString('organization_traffic', $script);
@@ -108,6 +110,7 @@ final class ScriptControllerTest extends TestCase
             'queryParameters' => array_combine(CustomDataSettings::UTM_KEYS, CustomDataSettings::UTM_KEYS),
             'consentFreeProperties' => [],
             'pageSequenceEnabled' => false,
+            'pageSequenceMethod' => 'session_storage',
         ], $this->customDataBrowserConfig((string) $this->response([])->getContent()));
     }
 
@@ -122,7 +125,8 @@ final class ScriptControllerTest extends TestCase
             'query_parameter_mappings' => [],
         ];
         $settings['page_sequence_enabled'] = true;
-        $expected = ['queryParameters' => [], 'consentFreeProperties' => ['quantity'], 'pageSequenceEnabled' => true, 'pageSequenceExcludedPaths' => [], 'propertyTypes' => ['quantity' => 'integer', 'revenue' => 'double']];
+        $settings['page_sequence_method'] = 'url_parameter';
+        $expected = ['queryParameters' => [], 'consentFreeProperties' => ['quantity'], 'pageSequenceEnabled' => true, 'pageSequenceMethod' => 'url_parameter', 'pageSequenceExcludedPaths' => [], 'propertyTypes' => ['quantity' => 'integer', 'revenue' => 'double']];
         $source = (string) $this->response($settings)->getContent();
         self::assertSame($expected, $this->customDataBrowserConfig($source));
         $minified = (string) $this->response($settings, Request::create('/aggregate.js?min=1'), $this->buildFixture())->getContent();
@@ -145,11 +149,20 @@ final class ScriptControllerTest extends TestCase
         ]);
     }
 
-    public function testInvalidPageSequencePolicyPreventsServingTheTracker(): void
+    #[DataProvider('invalidPageSequencePolicies')]
+    public function testInvalidPageSequencePolicyPreventsServingTheTracker(array $settings): void
     {
         $this->expectException(\InvalidArgumentException::class);
 
-        $this->response(['page_sequence_enabled' => 'false']);
+        $this->response($settings);
+    }
+
+    public static function invalidPageSequencePolicies(): iterable
+    {
+        yield 'string boolean' => [['page_sequence_enabled' => 'false']];
+        yield 'unsupported method while enabled' => [['page_sequence_enabled' => true, 'page_sequence_method' => 'cookie']];
+        yield 'unsupported method while disabled' => [['page_sequence_enabled' => false, 'page_sequence_method' => 'cookie']];
+        yield 'null method' => [['page_sequence_method' => null]];
     }
 
     public function testOptionalMinifiedTemplateReceivesCurrentPublicConfiguration(): void
@@ -176,7 +189,7 @@ final class ScriptControllerTest extends TestCase
         $public = json_decode($matches[1], true, flags: JSON_THROW_ON_ERROR);
         self::assertSame($settings['js_namespace'], $public[0]);
         self::assertSame($settings['internal_traffic_value'], $public[1]['value']);
-        self::assertSame(['queryParameters' => ['utm_medium' => 'medium'], 'consentFreeProperties' => ['medium'], 'pageSequenceEnabled' => false], $public[2]);
+        self::assertSame(['queryParameters' => ['utm_medium' => 'medium'], 'consentFreeProperties' => ['medium'], 'pageSequenceEnabled' => false, 'pageSequenceMethod' => 'session_storage'], $public[2]);
 
         $settings['internal_traffic_value'] = 'updated-without-rebuilding';
         self::assertStringContainsString('updated-without-rebuilding', (string) $this->response($settings, Request::create('/aggregate.js?min=1'), $directory)->getContent());

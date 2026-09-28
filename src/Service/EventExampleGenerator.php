@@ -24,6 +24,7 @@ final class EventExampleGenerator
             $model = $this->settings->validate([
                 ...$this->ecommerceModel(),
                 CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY => $model[CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY],
+                CustomDataSettings::PAGE_SEQUENCE_METHOD_KEY => $model[CustomDataSettings::PAGE_SEQUENCE_METHOD_KEY],
             ]);
         }
         $ecommerceValues = [
@@ -121,7 +122,10 @@ final class EventExampleGenerator
             ],
         ];
         if ($model[CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY]) {
-            $bundle['notes'][] = 'page_sequence: 2 means the second tracked page in this tab counter; asynchronous events reuse the current page number. The counter stops at '.CustomDataSettings::PAGE_SEQUENCE_MAXIMUM.' (meaning '.CustomDataSettings::PAGE_SEQUENCE_MAXIMUM.' or more). It is an unverified client-supplied page-depth value, not a visitor or session identifier, unique-page count, or reconstructed journey.';
+            $bundle['notes'][] = 'page_sequence: 2 represents page depth two in the configured counter; asynchronous events reuse the current page number. The counter stops at '.CustomDataSettings::PAGE_SEQUENCE_MAXIMUM.' (meaning '.CustomDataSettings::PAGE_SEQUENCE_MAXIMUM.' or more). It is an unverified client-supplied value, not a visitor or session identifier, unique-page count, or reconstructed journey.';
+            $bundle['notes'][] = $model[CustomDataSettings::PAGE_SEQUENCE_METHOD_KEY] === 'url_parameter'
+                ? 'The URL parameter method carries page depth through aggregate_page_sequence on eligible links. Copied, edited, or shared URLs can carry arbitrary counts; the number does not prove where navigation started.'
+                : 'The session storage method keeps a bounded counter for this website in the browser tab; storage restrictions and tab restoration can affect continuity.';
         }
         if ($ecommerce) {
             $bundle['recommended_model'] = $model;

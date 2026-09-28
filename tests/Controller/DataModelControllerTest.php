@@ -74,6 +74,7 @@ final class DataModelControllerTest extends TestCase
         $this->views->expects(self::never())->method('regenerate');
         $request = $this->request([
             'page_sequence_enabled' => '1',
+            'page_sequence_method' => 'url_parameter',
             'properties' => [
                 ['key' => ' utm_medium ', 'description' => ' Marketing channel ', 'column' => ' marketing_channel ', 'consent_required' => '0'],
                 ['key' => 'plan', 'description' => '', 'column' => '', 'consent_required' => '1'],
@@ -97,6 +98,7 @@ final class DataModelControllerTest extends TestCase
         self::assertSame(str_repeat('s', 64), $written['environments']['test']['internal_traffic_share_token']);
         self::assertSame('https://test.example', $written['environments']['test']['app_host']);
         self::assertTrue($written['environments']['test']['page_sequence_enabled']);
+        self::assertSame('url_parameter', $written['environments']['test']['page_sequence_method']);
         self::assertSame(['page_sequence' => 2], $this->settings->filterEventData(['page_sequence' => 2], false));
         self::assertSame([
             'utm_medium' => ['description' => 'Marketing channel', 'consent_required' => false, 'column' => 'marketing_channel'],
@@ -128,6 +130,9 @@ final class DataModelControllerTest extends TestCase
         yield 'unexpected setting' => [$base + ['admin_token' => 'cannot-change']];
         foreach ([null, true, false, 'false', 'true', '2', ['1']] as $index => $value) {
             yield 'invalid page depth toggle '.$index => [$base + ['page_sequence_enabled' => $value]];
+        }
+        foreach ([null, true, false, '', 'url', 'URL_PARAMETER', ['url_parameter']] as $index => $value) {
+            yield 'invalid page depth method '.$index => [$base + ['page_sequence_method' => $value]];
         }
         yield 'duplicate property' => [array_replace($base, ['properties' => [$row, array_replace($row, ['key' => ' plan '])]])];
         yield 'duplicate alias' => [array_replace($base, ['properties' => [$row, array_replace($row, ['key' => 'tier'])]])];
@@ -349,6 +354,7 @@ final class DataModelControllerTest extends TestCase
 
         self::assertSame('0', $crawler->filter('#property-0-consent option[selected]')->attr('value'));
         self::assertSame('0', $crawler->filter('#page-sequence-enabled option[selected]')->attr('value'));
+        self::assertSame('session_storage', $crawler->filter('#page-sequence-method option[selected]')->attr('value'));
         self::assertSame('1', $crawler->filter('#property-1-consent option[selected]')->attr('value'));
         self::assertSame('double', $crawler->filter('#property-1-type option[selected]')->attr('value'));
         self::assertSame('revenue_number', $crawler->filter('#property-1-numeric_column')->attr('value'));
@@ -360,13 +366,18 @@ final class DataModelControllerTest extends TestCase
     public function testPageDepthToggleUsesSavedYamlAndCanBeDisabledWithoutChangingOtherSettings(): void
     {
         $this->config->set('page_sequence_enabled', true);
+        $this->config->set('page_sequence_method', 'url_parameter');
         $request = $this->request([], 'GET');
         $response = $this->controller($request)->index($request);
         $crawler = new Crawler((string) $response->getContent());
 
         self::assertSame('1', $crawler->filter('#page-sequence-enabled option[selected]')->attr('value'));
         self::assertCount(1, $crawler->filter('label[for="page-sequence-enabled"]'));
-        self::assertStringContainsString('browser session storage', $crawler->filter('#page-depth-privacy')->text());
+        self::assertSame('url_parameter', $crawler->filter('#page-sequence-method option[selected]')->attr('value'));
+        self::assertCount(1, $crawler->filter('label[for="page-sequence-method"]'));
+        self::assertStringContainsString('browser session storage', $crawler->filter('#page-depth-storage')->text());
+        self::assertStringContainsString('no cookies or Web Storage', $crawler->filter('#page-depth-url')->text());
+        self::assertStringContainsString('copied or shared links', $crawler->filter('#page-depth-url')->text());
         self::assertStringContainsString('enhanced analytics is rejected', $crawler->filter('#page-depth-privacy')->text());
 
         $before = $this->settings->toArray();
