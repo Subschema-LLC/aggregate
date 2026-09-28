@@ -113,6 +113,23 @@ async function build({projectDir = path.resolve(__dirname, '..'), outputDir = pr
       minifier: 'terser ' + version
     }, null, 2) + '\n');
   }
+  const standalone = fs.readFileSync(path.join(projectDir, 'micro-consent-dropins/js/consent-ui.js'), 'utf8');
+  const adapter = fs.readFileSync(path.join(projectDir, 'micro-consent-dropins/js/aggregate-consent.js'), 'utf8');
+  const styles = fs.readFileSync(path.join(projectDir, 'micro-consent-dropins/css/consent-ui.css'), 'utf8');
+  const styleDeclaration = '  var microConsentStyles = null;';
+  if (standalone.split(styleDeclaration).length !== 2 || !styles.trim() || !adapter.trim()) {
+    throw new Error('Standalone consent sources or stylesheet declaration are invalid.');
+  }
+  const standaloneTemplate = await minify(AGPL_NOTICE + 'window.MicroConsentConfig = __MICRO_CONSENT_CONFIG__;\n'
+    + standalone.replace(styleDeclaration, '  var microConsentStyles = __MICRO_CONSENT_STYLES__;') + '\n' + adapter);
+  for (const placeholder of ['__MICRO_CONSENT_CONFIG__', '__MICRO_CONSENT_STYLES__']) {
+    if (!standaloneTemplate.includes(placeholder)) throw new Error('Minifier removed standalone placeholder: ' + placeholder);
+  }
+  outputs.set('var/browser/standalone-consent.template.min.js', standaloneTemplate);
+  outputs.set('var/browser/standalone-consent-manifest.json', JSON.stringify({
+    format: 1, sourceSha256: digest(standalone), adapterSha256: digest(adapter),
+    stylesheetSha256: digest(styles), templateSha256: digest(standaloneTemplate), minifier: 'terser ' + version
+  }, null, 2) + '\n');
   for (const entry of fs.readdirSync(path.join(projectDir, 'micro-consent-dropins', 'js')).sort()) {
     if (!entry.endsWith('.js') || entry.endsWith('.min.js')) continue;
     const source = fs.readFileSync(path.join(projectDir, 'micro-consent-dropins', 'js', entry), 'utf8');

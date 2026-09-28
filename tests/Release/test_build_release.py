@@ -38,6 +38,14 @@ class ReleaseBuildTest(unittest.TestCase):
                 **({"stylesheetSha256": self.digest("public/consent.css")} if name == "consent" else {}),
             }))
 
+        self.write("var/browser/standalone-consent-manifest.json", json.dumps({
+            "format": 1,
+            "sourceSha256": self.digest("micro-consent-dropins/js/consent-ui.js"),
+            "adapterSha256": self.digest("micro-consent-dropins/js/aggregate-consent.js"),
+            "stylesheetSha256": self.digest("micro-consent-dropins/css/consent-ui.css"),
+            "templateSha256": self.digest("var/browser/standalone-consent.template.min.js"),
+        }))
+
     def write(self, relative, content):
         path = self.source / relative
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -80,6 +88,9 @@ class ReleaseBuildTest(unittest.TestCase):
             self.assertIn("LICENSE", names)
             self.assertIn("js/LICENSE.txt", names)
             self.assertIn("public/consent.css", names)
+            self.assertIn("var/browser/standalone-consent.template.min.js", names)
+            self.assertIn("var/browser/standalone-consent-manifest.json", names)
+            self.assertIn("micro-consent-dropins/js/aggregate-consent.js", names)
             for name in ("consent", "tag-manager"):
                 self.assertIn("public/" + name + ".js", names)
                 self.assertIn("public/" + name + ".min.js", names)
@@ -122,6 +133,11 @@ class ReleaseBuildTest(unittest.TestCase):
         self.assertEqual(first_manifest.read_bytes(), second_manifest.read_bytes())
         with self.assertRaisesRegex(ValueError, "already exist"):
             self.build("one")
+
+    def test_refuses_stale_standalone_adapter(self):
+        self.write("micro-consent-dropins/js/aggregate-consent.js", "changed adapter")
+        with self.assertRaisesRegex(ValueError, "Standalone consent assets are stale"):
+            self.build()
 
     def test_refuses_development_vendor_directory(self):
         self.write("vendor/composer/installed.json", '{"dev": true, "packages": []}')

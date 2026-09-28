@@ -124,6 +124,12 @@ checkout, or a small accessibility fix. Keep each PR focused and target
 
 ## Available foundations
 
+- [Independent consent controls and regional examples](docs/CONSENT-REGIONS.md),
+  with a separate optional banner, per-site YAML/UI configuration, GPC handling,
+  optional Formspree request submission, and explicit tracker/Google signal
+  adapters. Conservative examples gate the initial tracker load; they are not
+  legal advice, region detection, a rights-processing system or provider enforcement.
+
 - [BI glossary](docs/BI-GLOSSARY.md), with declared value labels, column definitions,
   localized fallback, YAML/admin editing, and a headless sync command. Eight fixed
   metadata views join to existing BI columns without reading event data or

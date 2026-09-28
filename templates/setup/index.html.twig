@@ -11,7 +11,7 @@
         </div></div>
         <div class="level-right"><button type="button" class="button" id="setup-tour-start" data-pages--setup--index-target="start" data-action="pages--setup--index#start" hidden>Show me this step</button></div>
     </div>
-    {% set query = {website: selected_website, tags: include_tags ? '1' : '0', format: snippet_format} %}
+    {% set query = {website: selected_website, tags: include_tags ? '1' : '0', format: snippet_format, consent_option: consent_option} %}
     {% set steps = ['Website', 'Collection', 'Install scripts', 'Verify'] %}
     <nav class="setup-steps mb-5" aria-label="Setup steps">
         <ol>
@@ -37,6 +37,7 @@
                 <input type="hidden" name="step" value="1">
                 <input type="hidden" name="tags" value="{{ include_tags ? '1' : '0' }}">
                 <input type="hidden" name="format" value="{{ snippet_format }}">
+                <input type="hidden" name="consent_option" value="{{ consent_option }}">
                 <div class="field"><label class="label" for="setup-website">Website</label><div class="control"><div class="select"><select id="setup-website" name="website">
                     {% for website in websites %}<option value="{{ website.token }}"{% if website.token == selected_website %} selected{% endif %}>{{ website.name }} ({{ website.domain }})</option>{% endfor %}
                 </select></div></div></div>
@@ -57,7 +58,7 @@
         </div>
     {% elseif step == 3 %}
         <h2 class="title is-4" id="setup-step-title">Copy or download your drop-ins</h2>
-        <div class="content"><p>Add the installation snippet once in your website's <code>&lt;head&gt;</code>. Keep the script order and <code>defer</code> attributes. The website's built-in consent controls are included when enabled.</p></div>
+        <div class="content"><p>Add the installation snippet once in your website's <code>&lt;head&gt;</code>. Keep the script order and <code>defer</code> attributes. Choose one consent manager independently of your tracker installation.</p></div>
         {% if websites is not empty %}
             <form method="get" action="{{ path('app_setup') }}" class="mb-5">
                 <input type="hidden" name="step" value="3">
@@ -70,6 +71,13 @@
                     <label class="radio"><input type="radio" name="installation" value="query"{% if not include_tags and snippet_format == 'query' %} checked{% endif %}> Tracker with query parameters</label>
                     <label class="radio"><input type="radio" name="installation" value="tags"{% if include_tags %} checked{% endif %}> Tag manager</label>
                 </fieldset>
+                <div class="field"><label class="label" for="setup-consent-option">Consent controls</label>
+                    <div class="select"><select id="setup-consent-option" name="consent_option">
+                        <option value="builtin"{% if consent_option == 'builtin' %} selected{% endif %}>Simple built-in banner (when enabled)</option>
+                        <option value="standalone"{% if consent_option == 'standalone' %} selected{% endif %}>Standalone banner + optional Formspree requests</option>
+                        <option value="external"{% if consent_option == 'external' %} selected{% endif %}>My own consent manager</option>
+                    </select></div>
+                </div>
                 <button type="submit" class="button" data-pages--setup--index-target="tip" data-tour-title="Choose what to install" data-tour-text="Select window configuration, URL query parameters, or the tag manager. Tag-manager installation loads only the manager and enabled consent controls; configure the scripts it should load on the Tag manager page.">Update snippet</button>
             </form>
         {% endif %}
@@ -95,6 +103,20 @@
         {% else %}
             <p class="notification is-info is-light">Register and select a website in step 1 to get its installation snippet.</p>
         {% endif %}
+        {% if consent_option == 'standalone' and site_id %}
+        <div class="box mt-5">
+            <h3 class="title is-5">Standalone banner + optional Formspree requests</h3>
+            <p>This independent option stores category choices and supports Global Privacy Control. Requests are disabled until you configure your own Formspree endpoint. Formspree receives submitted contact details; sending a request does not delete data or fulfill it.</p>
+            <p class="mt-3">The hosted URL follows your saved settings. The download bundles the banner, styles, and {{ app_branding.name }} adapter; it is a snapshot to redeploy after changes. Install only one banner.</p>
+            <div class="buttons mt-3">
+                <a class="button is-primary" href="{{ path('app_standalone_consent', {siteId: site_id}) }}">Configure standalone option</a>
+                <a class="button" href="{{ path('app_setup_download', query|merge({kind: 'standalone-consent'})) }}">Download standalone script</a>
+                <a class="button" href="{{ path('app_setup_download', query|merge({kind: 'standalone-consent', min: '1'})) }}">Download compact script</a>
+                <a class="button" href="{{ path('app_setup_download', query|merge({kind: 'standalone-settings'})) }}">Download YAML</a>
+            </div>
+            <p class="help">Regional examples in micro-consent-dropins/examples/ and docs/CONSENT-REGIONS.md are engineering guidance, not legal advice. Use an analytics consent gate for the entire tracker when no measurement before consent is required.</p>
+        </div>
+        {% elseif consent_option == 'builtin' %}
         <details class="mt-5">
             <summary class="has-text-weight-semibold">Consent manager script (CMP)</summary>
             <div class="content mt-3"><p>The website-specific hosted consent URL in your snippet stays current. To host this script on your website instead, download it and replace the consent URL in your snippet. Download it again after changing the tracker namespace, branding, or tag consent categories.</p><p>This small consent manager stores boolean category choices in local storage. It makes no external submissions. Category names come from this website’s enabled tags in YAML. It does not implement legal consent records, a provider registry, or Google Consent Mode.</p></div>
@@ -104,6 +126,7 @@
                 <p class="help">The compact download uses the current build when available and falls back to readable source.</p>
             {% endif %}
         </details>
+        {% endif %}
         <details class="mt-5">
             <summary class="has-text-weight-semibold">Tag manager drop-in</summary>
             <div class="content mt-3"><p>This loader retrieves the selected website’s current tag configuration from this installation. Host it on your website if you prefer a local drop-in file. Each tag runs when its trigger and consent requirement match. Tags marked as requiring no consent can run without a visitor choice. Event triggers skipped before consent are not replayed. Collection controls apply to the analytics tracker and do not stop independent third-party scripts.</p><p>Withdrawing prevents new tag loads. Scripts already running may continue until the visitor reloads the page; their own cookies and stored data are not automatically removed.</p></div>

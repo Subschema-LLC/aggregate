@@ -9,6 +9,7 @@ use App\Service\AggregateConfigLoader;
 use App\Service\AppBranding;
 use App\Service\DropInScripts;
 use App\Service\SiteScriptConfig;
+use App\Service\StandaloneConsentSettings;
 use App\Service\TagManagerSettings;
 use App\Service\WebsiteConfigManager;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -268,6 +269,58 @@ final class DropInScriptsTest extends TestCase
         yield ['https://example.test?private=secret'];
         yield ['https://example.test/#fragment'];
         yield ["https://example.test/\n"];
+    }
+
+    public function testStandaloneArtifactsAreIndependentAndVerifyEveryBuildInput(): void
+    {
+        $this->scripts(['admin_token' => 'private-secret']);
+        $filesystem = new Filesystem();
+        $filesystem->mirror(dirname(__DIR__, 2).'/micro-consent-dropins', $this->directory.'/micro-consent-dropins');
+        $loader = new AggregateConfigLoader($this->directory, 'test');
+        $websites = new WebsiteConfigManager($this->directory);
+        $sites = new SiteScriptConfig($websites, $this->directory, 'test');
+        $settings = new StandaloneConsentSettings($sites);
+        $siteId = SiteScriptConfig::idForToken('public-website-token');
+        $settings->save($siteId, ['name' => 'Choices </script>']);
+        $scripts = new DropInScripts($loader, $websites, new AppBranding($loader, $this->directory), $this->directory, sites: $sites, standalone: $settings);
+        $snippet = $scripts->snippet('public-website-token', true, 'window', 'standalone');
+        self::assertStringContainsString('/standalone-cmp/sites/'.$siteId.'/consent.js', $snippet);
+        self::assertStringNotContainsString('/cmp-lite/', $snippet);
+        self::assertStringNotContainsString('/consent.js', $scripts->snippet('public-website-token', false, 'window', 'external'));
+        $plain = $scripts->standaloneConsentScript(false, $siteId);
+        self::assertFalse($plain['minified']);
+        self::assertStringNotContainsString('</script>', $plain['content']);
+        self::assertStringNotContainsString('private-secret', $plain['content']);
+        self::assertStringContainsString('"aggregateNamespace":"ExampleAnalytics"', $plain['content']);
+        self::assertStringNotContainsString('var microConsentStyles = null;', $plain['content']);
+        $inputs = [
+            'sourceSha256' => '/micro-consent-dropins/js/consent-ui.js',
+            'adapterSha256' => '/micro-consent-dropins/js/aggregate-consent.js',
+            'stylesheetSha256' => '/micro-consent-dropins/css/consent-ui.css',
+            'templateSha256' => '/var/browser/standalone-consent.template.min.js',
+        ];
+        file_put_contents($this->directory.$inputs['templateSha256'], 'window.MicroConsentConfig=__MICRO_CONSENT_CONFIG__; window.styles=__MICRO_CONSENT_STYLES__;');
+        $manifest = ['format' => 1];
+        foreach ($inputs as $field => $path) {
+            $manifest[$field] = hash_file('sha256', $this->directory.$path);
+        }
+        file_put_contents($this->directory.'/var/browser/standalone-consent-manifest.json', json_encode($manifest, JSON_THROW_ON_ERROR));
+        $compact = $scripts->standaloneConsentScript(true, $siteId);
+        self::assertTrue($compact['minified']);
+        self::assertStringContainsString('ExampleAnalytics', $compact['content']);
+        self::assertStringNotContainsString('__MICRO_CONSENT_', $compact['content']);
+        foreach ($inputs as $path) {
+            $original = file_get_contents($this->directory.$path);
+            file_put_contents($this->directory.$path, $original."\n/* updated */");
+            self::assertFalse($scripts->standaloneConsentScript(true, $siteId)['minified'], $path);
+            file_put_contents($this->directory.$path, $original);
+        }
+        // Invalid built-in controls cannot block the independent option.
+        $sites->configuration($siteId)->updateMany(static fn (): array => ['consent_manager' => ['enabled' => 'invalid']]);
+        self::assertSame($snippet, $scripts->snippet('public-website-token', true, 'window', 'standalone'));
+        self::assertSame($plain, $scripts->standaloneConsentScript(false, $siteId));
+        $this->expectException(\InvalidArgumentException::class);
+        $scripts->snippet('public-website-token', false, 'window', 'unsupported');
     }
 
     private function scripts(array $config = []): DropInScripts
