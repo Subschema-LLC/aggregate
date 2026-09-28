@@ -1,3 +1,4 @@
+{# Common Navigation - Configurable in config/navigation.yaml #}
 {% if app.user %}
     {{ component('Layout:Navigation', {navigation: navigation_menu(main_navigation), username: app.user.username}) }}
 {% else %}
