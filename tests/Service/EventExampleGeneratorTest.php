@@ -298,6 +298,53 @@ final class EventExampleGeneratorTest extends TestCase
         self::assertSame($documented, json_decode($matches[1], true, flags: JSON_THROW_ON_ERROR));
     }
 
+    public function testEnabledPageSequenceAppearsAsANumberInEveryExampleWithoutAModelDefinition(): void
+    {
+        $generator = $this->generator([
+            'page_sequence_enabled' => true,
+            'custom_data_properties' => ['utm_medium' => ['consent_required' => false]],
+        ]);
+        foreach (['model', 'ecommerce'] as $example) {
+            $bundle = json_decode($generator->exportJson('all', $example), true, flags: JSON_THROW_ON_ERROR);
+            foreach ($bundle['examples'] as $item) {
+                self::assertSame(2, $item['payload']['eventData']['page_sequence']);
+            }
+            $properties = array_column($bundle['properties'], null, 'key');
+            self::assertSame('integer', $properties['page_sequence']['type']);
+            self::assertSame('anonymous_and_enhanced', $properties['page_sequence']['collection']);
+            self::assertSame([], $properties['page_sequence']['query_parameters']);
+            self::assertStringContainsString('asynchronous events reuse', implode(' ', $bundle['notes']));
+        }
+        $payload = (array) $generator->generate()['examples']['anonymous']['payload']['eventData'];
+        self::assertSame(['utm_medium' => 'email', 'page_sequence' => 2], $payload);
+    }
+
+    public function testDisabledPageSequenceReportingDefinitionDoesNotEnableCollectionInExamples(): void
+    {
+        $bundle = $this->generator([
+            'custom_data_properties' => ['page_sequence' => ['type' => 'integer', 'consent_required' => false, 'numeric_column' => 'page_depth']],
+            'query_parameter_mappings' => [],
+        ])->generate();
+        foreach ($bundle['examples'] as $item) {
+            self::assertSame([], (array) $item['payload']['eventData']);
+        }
+        self::assertSame('not_submittable', $bundle['properties'][0]['collection']);
+    }
+
+    public function testEnabledPageSequenceReservesASlotInAnExampleWithFiftyModeledProperties(): void
+    {
+        $properties = [];
+        for ($index = 1; $index <= 50; ++$index) {
+            $properties['property_'.$index] = ['consent_required' => false];
+        }
+        $bundle = $this->generator(['page_sequence_enabled' => true, 'custom_data_properties' => $properties])->generate();
+        foreach ($bundle['examples'] as $example) {
+            $data = (array) $example['payload']['eventData'];
+            self::assertCount(50, $data);
+            self::assertSame(2, $data['page_sequence']);
+        }
+    }
+
     private function generator(array $values): EventExampleGenerator
     {
         file_put_contents($this->projectDir.'/config/aggregate.yaml', Yaml::dump($values, 6, 2));

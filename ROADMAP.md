@@ -30,6 +30,10 @@ checkout, or a small accessibility fix. Keep each PR focused and target
 
 ## After beta feedback
 
+- **Page-depth settings by event type.** The optional `page_sequence` counter
+  currently applies to all events through one UI/YAML setting. Explore per-event
+  inclusion where operators need it, keeping one page counter and shared server
+  enforcement. Preserve numeric bounds and anonymous collection controls.
 - **Complete headless BI-threshold administration.** Provide a supported CLI path
   for the existing `analytics_privacy_settings` database source, sharing UI
   validation. These thresholds are currently managed by the UI or controlled
@@ -53,6 +57,17 @@ checkout, or a small accessibility fix. Keep each PR focused and target
 
 ## Proposals to explore
 
+- **Useful insight without visit or session IDs.** Develop practical measurement
+  recipes and external Power BI/Tableau examples showing how broad medium,
+  channels, page-path activity, events and goals can together paint a picture of
+  what is working. Start with available channel/path/event counts and separate
+  goal trends. Explore safe reporting extensions for explicitly permitted medium
+  and aggregate pathing, with pathing defined as page activity and fixed navigation
+  events. Keep individual journey reconstruction and cross-page attribution out
+  of anonymous measurement. Any new reporting dimensions need disclosure review,
+  completed buckets, suppression and consistent live/archive behavior; preserve
+  existing BI contracts and keep private custom views restricted. See the
+  [current measurement boundaries](docs/PRIVACY-COMPLIANCE.md#insight-without-visit-or-session-ids).
 - **External analysis examples and an MCP integration.** Start with read-only
   connections to approved `bi_anonymous_*` views and synthetic sample Python
   notebooks. Any MCP server needs explicit credential scope and authorization;
@@ -72,6 +87,11 @@ checkout, or a small accessibility fix. Keep each PR focused and target
 
 ## Available foundations
 
+- [Optional page depth](docs/DATA-MODEL.md#optional-page-depth), configured in the
+  Data model UI or YAML. A bounded tab counter adds `page_sequence` to all event
+  types, including asynchronous events, without creating visitor/session IDs.
+  It is off by default, requires review of browser-storage consent obligations,
+  and remains outside the routine anonymous BI views.
 - [Guided setup and script downloads](docs/SETUP.md), with a four-step administrator
   wizard, button callouts, website-specific installation snippets, a self-contained
   consent UI, and copy/download controls. Setup guides operators to existing settings;

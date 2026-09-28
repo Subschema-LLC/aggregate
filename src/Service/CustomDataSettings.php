@@ -11,6 +11,9 @@ class CustomDataSettings
 {
     public const PROPERTIES_KEY = 'custom_data_properties';
     public const MAPPINGS_KEY = 'query_parameter_mappings';
+    public const PAGE_SEQUENCE_ENABLED_KEY = 'page_sequence_enabled';
+    public const PAGE_SEQUENCE_PROPERTY = 'page_sequence';
+    public const PAGE_SEQUENCE_MAXIMUM = 20;
     public const UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'utm_id'];
     public const TYPES = ['scalar', 'string', 'integer', 'float', 'double', 'boolean'];
     public const MAXIMUM_SAFE_INTEGER = 9_007_199_254_740_991;
@@ -43,7 +46,11 @@ class CustomDataSettings
             ];
         }
 
-        return [self::PROPERTIES_KEY => $properties, self::MAPPINGS_KEY => array_combine(self::UTM_KEYS, self::UTM_KEYS)];
+        return [
+            self::PROPERTIES_KEY => $properties,
+            self::MAPPINGS_KEY => array_combine(self::UTM_KEYS, self::UTM_KEYS),
+            self::PAGE_SEQUENCE_ENABLED_KEY => false,
+        ];
     }
 
     public function toArray(): array
@@ -62,12 +69,25 @@ class CustomDataSettings
         return $this->validate([
             self::PROPERTIES_KEY => $properties,
             self::MAPPINGS_KEY => array_key_exists(self::MAPPINGS_KEY, $raw) ? $raw[self::MAPPINGS_KEY] : $defaultMappings,
+            self::PAGE_SEQUENCE_ENABLED_KEY => array_key_exists(self::PAGE_SEQUENCE_ENABLED_KEY, $raw) ? $raw[self::PAGE_SEQUENCE_ENABLED_KEY] : false,
         ]);
     }
 
     public function save(array $settings): void
     {
-        $this->config->setMany($this->validate($settings));
+        $validated = $this->validate($settings);
+        $this->config->updateMany(function (array $current) use ($validated): array {
+            // Recheck the related marker setting under the same write lock;
+            // a concurrent marker edit must not create a JSON-key collision.
+            $markerName = $this->config->hasEnvironmentOverride('internal_traffic_name', true)
+                ? $this->config->getWithEnvFallback('internal_traffic_name', 'orgInternalTraffic', true)
+                : ($current['internal_traffic_name'] ?? 'orgInternalTraffic');
+            if ($validated[self::PAGE_SEQUENCE_ENABLED_KEY] && $markerName === self::PAGE_SEQUENCE_PROPERTY) {
+                throw new \InvalidArgumentException('The organization marker name cannot be page_sequence while page sequence collection is enabled.');
+            }
+
+            return $validated;
+        });
     }
 
     public function exportYaml(): string
@@ -122,7 +142,7 @@ class CustomDataSettings
         return $types;
     }
 
-    /** @return array{queryParameters: array<string, string>, consentFreeProperties: list<string>, propertyTypes?: array<string, string>} */
+    /** @return array{queryParameters: array<string, string>, consentFreeProperties: list<string>, pageSequenceEnabled: bool, pageSequenceExcludedPaths?: list<string>, propertyTypes?: array<string, string>} */
     public function toBrowserConfig(): array
     {
         $settings = $this->toArray();
@@ -130,6 +150,11 @@ class CustomDataSettings
         $consentFree = [];
         $types = [];
         foreach ($settings[self::PROPERTIES_KEY] as $key => $definition) {
+            // Generated page depth has its own opt-in and cannot become an
+            // ordinary property through browser allowlists or URL mappings.
+            if ($key === self::PAGE_SEQUENCE_PROPERTY) {
+                continue;
+            }
             if (!$definition['consent_required'] && $key !== $markerName) {
                 $consentFree[] = $key;
             }
@@ -138,7 +163,16 @@ class CustomDataSettings
             }
         }
 
-        $browserConfig = ['queryParameters' => $settings[self::MAPPINGS_KEY], 'consentFreeProperties' => $consentFree];
+        $privacyPolicy = new PrivacyPolicy($this->config);
+        $pageSequenceEnabled = $settings[self::PAGE_SEQUENCE_ENABLED_KEY] && $privacyPolicy->isAnonymousTrackingEnabled();
+        $browserConfig = [
+            'queryParameters' => $settings[self::MAPPINGS_KEY],
+            'consentFreeProperties' => $consentFree,
+            'pageSequenceEnabled' => $pageSequenceEnabled,
+        ];
+        if ($pageSequenceEnabled) {
+            $browserConfig['pageSequenceExcludedPaths'] = $privacyPolicy->excludedPaths();
+        }
         if ($types !== []) {
             $browserConfig['propertyTypes'] = $types;
         }
@@ -163,6 +197,15 @@ class CustomDataSettings
         $clean = (new PrivacySanitizer())->sanitizeEventData($value) ?? [];
         $markerName = $this->markerName();
         foreach ($clean as $key => $item) {
+            if ($key === self::PAGE_SEQUENCE_PROPERTY) {
+                $pageSequence = self::sanitizePageSequence($item);
+                if (!$settings[self::PAGE_SEQUENCE_ENABLED_KEY] || $pageSequence === null) {
+                    unset($clean[$key]);
+                } else {
+                    $clean[$key] = $pageSequence;
+                }
+                continue;
+            }
             $type = $settings[self::PROPERTIES_KEY][$key]['type'] ?? 'scalar';
             if ($key === $markerName || !self::isValidPropertyKey($key)
                 || (!$enhancedConsent && ($settings[self::PROPERTIES_KEY][$key]['consent_required'] ?? true))
@@ -176,6 +219,14 @@ class CustomDataSettings
         }
 
         return $clean ?: null;
+    }
+
+    /** Validate page depth at ingestion and when approving anonymous entity data. */
+    public static function sanitizePageSequence(mixed $value): ?int
+    {
+        return $value !== null && self::matchesType($value, 'integer') && $value >= 1 && $value <= self::PAGE_SEQUENCE_MAXIMUM
+            ? (int) $value
+            : null;
     }
 
     private static function matchesType(mixed $value, string $type): bool
@@ -207,10 +258,14 @@ class CustomDataSettings
 
     public function validate(array $settings): array
     {
-        if (array_diff(array_keys($settings), [self::PROPERTIES_KEY, self::MAPPINGS_KEY]) !== []
+        if (array_diff(array_keys($settings), [self::PROPERTIES_KEY, self::MAPPINGS_KEY, self::PAGE_SEQUENCE_ENABLED_KEY]) !== []
             || !array_key_exists(self::PROPERTIES_KEY, $settings)
             || !array_key_exists(self::MAPPINGS_KEY, $settings)) {
-            throw new \InvalidArgumentException('Provide custom_data_properties and query_parameter_mappings only.');
+            throw new \InvalidArgumentException('Provide custom_data_properties, query_parameter_mappings, and optional page_sequence_enabled only.');
+        }
+        $pageSequenceEnabled = array_key_exists(self::PAGE_SEQUENCE_ENABLED_KEY, $settings) ? $settings[self::PAGE_SEQUENCE_ENABLED_KEY] : false;
+        if (!is_bool($pageSequenceEnabled)) {
+            throw new \InvalidArgumentException('page_sequence_enabled must be a YAML boolean: true or false.');
         }
         $properties = $settings[self::PROPERTIES_KEY];
         $mappings = $settings[self::MAPPINGS_KEY];
@@ -219,6 +274,9 @@ class CustomDataSettings
         }
 
         $markerName = $this->markerName();
+        if ($pageSequenceEnabled && $markerName === self::PAGE_SEQUENCE_PROPERTY) {
+            throw new \InvalidArgumentException('The organization marker name cannot be page_sequence while page sequence collection is enabled.');
+        }
         $normalized = [];
         $columns = [];
         foreach ($properties as $key => $definition) {
@@ -235,6 +293,11 @@ class CustomDataSettings
             }
             if (!is_string($type) || !in_array($type, self::TYPES, true)) {
                 throw new \InvalidArgumentException('Property type must be scalar, string, integer, float, double, or boolean.');
+            }
+            // Preserve legacy definitions for historical reporting while the
+            // counter is off, including a renamed organization marker.
+            if ($pageSequenceEnabled && $key === self::PAGE_SEQUENCE_PROPERTY && $key !== $markerName && ($type !== 'integer' || $consentRequired)) {
+                throw new \InvalidArgumentException('page_sequence is generated for both consent modes; its optional reporting definition requires type: integer and consent_required: false. Use page_sequence_enabled to control collection.');
             }
             // Legacy marker keys can outlive a marker rename. Permit their
             // projection without making them eligible for event properties.
@@ -272,12 +335,12 @@ class CustomDataSettings
         }
 
         foreach ($mappings as $parameter => $property) {
-            if (!self::isValidPropertyKey($parameter) || !self::isValidPropertyKey($property) || !isset($normalized[$property]) || $property === $markerName) {
-                throw new \InvalidArgumentException('Each query parameter must map to a defined custom property. The organization marker cannot be set from URL parameters.');
+            if (!self::isValidPropertyKey($parameter) || !self::isValidPropertyKey($property) || !isset($normalized[$property]) || $property === $markerName || $property === self::PAGE_SEQUENCE_PROPERTY) {
+                throw new \InvalidArgumentException('Each query parameter must map to a defined custom property. The organization marker and page_sequence cannot be set from URL parameters.');
             }
         }
 
-        return [self::PROPERTIES_KEY => $normalized, self::MAPPINGS_KEY => $mappings];
+        return [self::PROPERTIES_KEY => $normalized, self::MAPPINGS_KEY => $mappings, self::PAGE_SEQUENCE_ENABLED_KEY => $pageSequenceEnabled];
     }
 
     private function markerName(): string

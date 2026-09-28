@@ -73,6 +73,7 @@ final class DataModelControllerTest extends TestCase
     {
         $this->views->expects(self::never())->method('regenerate');
         $request = $this->request([
+            'page_sequence_enabled' => '1',
             'properties' => [
                 ['key' => ' utm_medium ', 'description' => ' Marketing channel ', 'column' => ' marketing_channel ', 'consent_required' => '0'],
                 ['key' => 'plan', 'description' => '', 'column' => '', 'consent_required' => '1'],
@@ -95,6 +96,8 @@ final class DataModelControllerTest extends TestCase
         self::assertSame(['app_host' => 'https://prod.example', 'custom_data_properties' => ['production' => []]], $written['environments']['prod']);
         self::assertSame(str_repeat('s', 64), $written['environments']['test']['internal_traffic_share_token']);
         self::assertSame('https://test.example', $written['environments']['test']['app_host']);
+        self::assertTrue($written['environments']['test']['page_sequence_enabled']);
+        self::assertSame(['page_sequence' => 2], $this->settings->filterEventData(['page_sequence' => 2], false));
         self::assertSame([
             'utm_medium' => ['description' => 'Marketing channel', 'consent_required' => false, 'column' => 'marketing_channel'],
             'plan' => ['description' => '', 'consent_required' => true, 'column' => ''],
@@ -123,6 +126,9 @@ final class DataModelControllerTest extends TestCase
         $row = ['key' => 'plan', 'description' => '', 'column' => 'plan', 'consent_required' => '1'];
         $base = ['properties' => [$row], 'mappings' => []];
         yield 'unexpected setting' => [$base + ['admin_token' => 'cannot-change']];
+        foreach ([null, true, false, 'false', 'true', '2', ['1']] as $index => $value) {
+            yield 'invalid page depth toggle '.$index => [$base + ['page_sequence_enabled' => $value]];
+        }
         yield 'duplicate property' => [array_replace($base, ['properties' => [$row, array_replace($row, ['key' => ' plan '])]])];
         yield 'duplicate alias' => [array_replace($base, ['properties' => [$row, array_replace($row, ['key' => 'tier'])]])];
         yield 'malformed property collection' => [array_replace($base, ['properties' => 'plan'])];
@@ -342,12 +348,74 @@ final class DataModelControllerTest extends TestCase
         $crawler = new Crawler((string) $response->getContent());
 
         self::assertSame('0', $crawler->filter('#property-0-consent option[selected]')->attr('value'));
+        self::assertSame('0', $crawler->filter('#page-sequence-enabled option[selected]')->attr('value'));
         self::assertSame('1', $crawler->filter('#property-1-consent option[selected]')->attr('value'));
         self::assertSame('double', $crawler->filter('#property-1-type option[selected]')->attr('value'));
         self::assertSame('revenue_number', $crawler->filter('#property-1-numeric_column')->attr('value'));
         self::assertCount(1, $crawler->filter('#data-model-form'));
         self::assertCount(0, $crawler->filter('form[action="/dashboard/data-model/regenerate"]'));
         self::assertCount(1, $crawler->filter('a[href="/dashboard/data-model/reporting"]'));
+    }
+
+    public function testPageDepthToggleUsesSavedYamlAndCanBeDisabledWithoutChangingOtherSettings(): void
+    {
+        $this->config->set('page_sequence_enabled', true);
+        $request = $this->request([], 'GET');
+        $response = $this->controller($request)->index($request);
+        $crawler = new Crawler((string) $response->getContent());
+
+        self::assertSame('1', $crawler->filter('#page-sequence-enabled option[selected]')->attr('value'));
+        self::assertCount(1, $crawler->filter('label[for="page-sequence-enabled"]'));
+        self::assertStringContainsString('browser session storage', $crawler->filter('#page-depth-privacy')->text());
+        self::assertStringContainsString('enhanced analytics is rejected', $crawler->filter('#page-depth-privacy')->text());
+
+        $before = $this->settings->toArray();
+        $request = $this->request([
+            'page_sequence_enabled' => '0',
+            'properties' => array_map(static fn (string $key, array $property): array => [
+                'key' => $key,
+                'description' => $property['description'],
+                'column' => $property['column'],
+                'consent_required' => $property['consent_required'] ? '1' : '0',
+            ], array_keys($before['custom_data_properties']), array_values($before['custom_data_properties'])),
+            'mappings' => array_map(static fn (string $parameter, string $property): array => compact('parameter', 'property'),
+                array_keys($before['query_parameter_mappings']), array_values($before['query_parameter_mappings'])),
+        ]);
+        $this->controller($request)->save($request);
+
+        self::assertSame([], $request->getSession()->getFlashBag()->peek('error'));
+        self::assertSame(array_replace($before, ['page_sequence_enabled' => false]), $this->settings->toArray());
+        self::assertNull($this->settings->filterEventData(['page_sequence' => 2], true));
+        self::assertSame('https://test.example', $this->config->get('app_host'));
+    }
+
+    public function testReviewingPageSequenceUsesItsBuiltInIntegerDefinition(): void
+    {
+        $request = $this->request(['add_property' => 'page_sequence'], 'GET');
+        $response = $this->controller($request)->index($request);
+        $crawler = new Crawler((string) $response->getContent());
+
+        self::assertSame(200, $response->getStatusCode());
+        $row = $crawler->filter('#property-rows [data-property-row]')->last();
+        self::assertSame('integer', $row->filter('select[name$="[type]"] option[selected]')->attr('value'));
+        self::assertSame('0', $row->filter('select[name$="[consent_required]"] option[selected]')->attr('value'));
+        self::assertFalse($this->settings->toArray()['page_sequence_enabled']);
+        self::assertArrayNotHasKey('page_sequence', $this->settings->properties());
+    }
+
+    public function testLegacyPageSequenceMarkerCanBeReviewedWhilePageDepthIsDisabled(): void
+    {
+        $this->config->set('internal_traffic_name', 'page_sequence');
+        $request = $this->request(['add_property' => 'page_sequence'], 'GET');
+        $response = $this->controller($request)->index($request);
+        $crawler = new Crawler((string) $response->getContent());
+
+        self::assertSame(200, $response->getStatusCode());
+        $row = $crawler->filter('#property-rows [data-property-row]')->last();
+        self::assertSame('scalar', $row->filter('select[name$="[type]"] option[selected]')->attr('value'));
+        self::assertSame('1', $row->filter('select[name$="[consent_required]"] option[selected]')->attr('value'));
+        self::assertFalse($this->settings->toArray()['page_sequence_enabled']);
+        self::assertArrayNotHasKey('page_sequence', $this->settings->properties());
     }
 
     public function testSavingTypedAndLegacyRowsPreservesTheirSharedValidationAndReportingAliases(): void

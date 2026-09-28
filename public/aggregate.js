@@ -39,6 +39,12 @@
   // ScriptController replaces these defaults with browser-safe YAML settings.
   var internalTrafficDefaults = {storage: 'cookie', name: 'orgInternalTraffic', value: 'true', cookieDomain: ''};
   var customDataDefaults = {queryParameters: {utm_source: 'utm_source', utm_medium: 'utm_medium', utm_campaign: 'utm_campaign', utm_term: 'utm_term', utm_content: 'utm_content', utm_id: 'utm_id'}, consentFreeProperties: []};
+  // Served scripts retain server collection permissions when callers configure
+  // additional options. Standalone/static copies have no injected policy.
+  var pageSequenceAuthorized = !Object.prototype.hasOwnProperty.call(customDataDefaults, 'pageSequenceEnabled')
+    || customDataDefaults.pageSequenceEnabled === true;
+  var pageSequenceExcludedPaths = Object.prototype.hasOwnProperty.call(customDataDefaults, 'pageSequenceExcludedPaths')
+    ? customDataDefaults.pageSequenceExcludedPaths : [];
   try {
     var s = document.currentScript || (function(){var ss=document.getElementsByTagName('script'); return ss[ss.length-1];})();
     if (s && s.dataset && s.dataset.namespace) {
@@ -55,6 +61,7 @@
     },
     consent: false,
     consentKnown: false,
+    pageSequences: Object.create(null),
 
     configureInternalTraffic: function(options){
       if (!options || typeof options !== 'object') return;
@@ -75,6 +82,15 @@
 
     configureCustomData: function(options){
       if (!options || typeof options !== 'object' || Array.isArray(options)) return;
+
+      if (Object.prototype.hasOwnProperty.call(options, 'pageSequenceEnabled')) {
+        // Only a literal boolean enables this optional anonymous dimension.
+        this.config.customData.pageSequenceEnabled = options.pageSequenceEnabled === true && pageSequenceAuthorized;
+        if (!this.config.customData.pageSequenceEnabled) this.clearPageSequence();
+      }
+      if (Object.prototype.hasOwnProperty.call(options, 'pageSequenceExcludedPaths')) {
+        this.config.customData.pageSequenceExcludedPaths = options.pageSequenceExcludedPaths;
+      }
 
       if (Object.prototype.hasOwnProperty.call(options, 'queryParameters')) {
         var mappings = Object.create(null);
@@ -116,7 +132,125 @@
       }
     },
 
-    customDataForEvent: function(eventData){
+    pageSequenceStorageKey: function(){
+      var token = this.config.websiteToken;
+      try {
+        return typeof token === 'string' && token
+          ? 'aggregate_page_sequence:' + encodeURIComponent(token) : null;
+      } catch(e) {
+        return null;
+      }
+    },
+
+    clearPageSequence: function(){
+      var keys = Object.keys(this.pageSequences);
+      var currentKey = this.pageSequenceStorageKey();
+      if (currentKey && keys.indexOf(currentKey) === -1) keys.push(currentKey);
+      for (var i = 0; i < keys.length; i++) {
+        try { sessionStorage.removeItem(keys[i]); } catch(e) {}
+      }
+      this.pageSequences = Object.create(null);
+    },
+
+    pageSequenceCanonicalPath: function(path){
+      try {
+        // The server canonicalizes the submitted pagePath before exclusions.
+        // Keep this check separate from the existing SDK payload formatting.
+        if (path.slice(0, 2) === '//') return null;
+        path = path.split(/[?#]/)[0];
+        for (var pass = 0; pass < 2; pass++) {
+          var decoded = decodeURIComponent(path);
+          if (decoded === path) break;
+          path = decoded;
+        }
+        path = path.replace(/[\u0000-\u001f\u007f]/g, '').replace(/\\/g, '/');
+        var segments = path.split('/');
+        var canonical = [];
+        for (var i = 0; i < segments.length; i++) {
+          var segment = segments[i].split(';')[0];
+          if (!segment || segment === '.') continue;
+          if (segment === '..') {
+            canonical.pop();
+            continue;
+          }
+          var encoded = encodeURIComponent(segment).replace(/[!'()*]/g, function(character){
+            return '%' + character.charCodeAt(0).toString(16).toUpperCase();
+          });
+          var identifierCandidate = segment.replace(/^ +| +$/g, '');
+          var byteLength = encodeURIComponent(identifierCandidate).replace(/%[0-9A-F]{2}/g, 'x').length;
+          var identifier = this.sanitizePagePath('/' + identifierCandidate) === '/_redacted'
+            || (byteLength >= 24 && /[a-z]/i.test(identifierCandidate) && /[0-9]/.test(identifierCandidate));
+          canonical.push(/%[0-9a-f]{2}/i.test(segment) || identifier ? '_redacted' : encoded);
+        }
+        return ('/' + canonical.join('/')).slice(0, 512).replace(/%(?:[0-9A-F])?$/, '');
+      } catch(e) {
+        // Invalid encoding cannot safely establish that an exclusion is absent.
+        return null;
+      }
+    },
+
+    pageSequencePathAllowed: function(){
+      var configured = this.config.customData;
+      var browserPatterns = Object.prototype.hasOwnProperty.call(configured, 'pageSequenceExcludedPaths')
+        ? configured.pageSequenceExcludedPaths : [];
+      if (!Array.isArray(pageSequenceExcludedPaths) || !Array.isArray(browserPatterns)) return false;
+      var patterns = pageSequenceExcludedPaths.concat(browserPatterns);
+      if (!patterns.length) return true;
+      var rawPath = location.pathname || '/';
+      var safePath = this.sanitizePagePath();
+      var canonicalPath = this.pageSequenceCanonicalPath(safePath);
+      if (canonicalPath === null) return false;
+      for (var i = 0; i < patterns.length; i++) {
+        var pattern = patterns[i];
+        if (typeof pattern !== 'string' || pattern.charAt(0) !== '/' || pattern.length > 512) return false;
+        var directory = pattern.slice(-3) === '/**' ? pattern.slice(0, -3) : null;
+        if (directory !== null && (rawPath === directory || safePath === directory || canonicalPath === directory)) return false;
+        // Match the server: ** crosses slashes; * and ? stay within a segment.
+        var expression = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*|\*|\?/g, function(wildcard){
+          return wildcard === '**' ? '.*' : (wildcard === '*' ? '[^/]*' : '[^/]');
+        });
+        var matcher = new RegExp('^' + expression + '(?![\\s\\S])');
+        if (matcher.test(rawPath) || matcher.test(safePath) || matcher.test(canonicalPath)) return false;
+      }
+      return true;
+    },
+
+    pageSequenceForEvent: function(advance){
+      if (!pageSequenceAuthorized || this.config.customData.pageSequenceEnabled !== true) {
+        this.clearPageSequence();
+        return null;
+      }
+      // Excluded pages must not affect the count later sent by an allowed page.
+      // Evaluate before reading or writing the optional browser state.
+      if (!this.pageSequencePathAllowed()) return null;
+
+      var key = this.pageSequenceStorageKey();
+      if (!key) return null;
+      var sequence = this.pageSequences[key];
+      var changed = false;
+      if (typeof sequence === 'undefined') {
+        var previous = 0;
+        try {
+          var stored = sessionStorage.getItem(key);
+          // Store only the bounded count: no IDs, paths, history or timestamps.
+          // Malformed or out-of-range browser state starts again at page one.
+          if (typeof stored === 'string' && /^(?:[1-9]|1[0-9]|20)$/.test(stored)) previous = Number(stored);
+        } catch(e) {}
+        sequence = Math.min(previous + 1, 20);
+        changed = true;
+      } else if (advance && sequence < 20) {
+        sequence++;
+        changed = true;
+      }
+      this.pageSequences[key] = sequence;
+      if (changed) {
+        // When storage is blocked, the document's in-memory count still works.
+        try { sessionStorage.setItem(key, String(sequence)); } catch(e) {}
+      }
+      return sequence;
+    },
+
+    customDataForEvent: function(eventData, advancePage){
       var clean = Object.create(null);
       var count = 0;
       var settings = this.config.customData;
@@ -124,7 +258,7 @@
         && (!settings.propertyTypes || typeof settings.propertyTypes !== 'object' || Array.isArray(settings.propertyTypes))) return null;
       var self = this;
       var canInclude = function(key){
-        return self.isCustomDataKey(key) && key !== self.config.internalTraffic.name
+        return self.isCustomDataKey(key) && key !== self.config.internalTraffic.name && key !== 'page_sequence'
           && (self.consent || settings.consentFreeProperties.indexOf(key) !== -1);
       };
       var cleanValue = function(key, value){
@@ -156,6 +290,14 @@
         if (value === null || typeof value === 'boolean' || (typeof value === 'number' && isFinite(value))) return value;
         return undefined;
       };
+
+      // The sequence is generated independently of event properties and URL
+      // mappings, and uses one of the existing bounded custom-data slots.
+      var pageSequence = this.pageSequenceForEvent(advancePage);
+      if (pageSequence !== null) {
+        clean.page_sequence = pageSequence;
+        count++;
+      }
 
       // Explicit event properties take precedence over URL mappings, including
       // false, zero and null. Never copy inherited or nested properties.
@@ -348,8 +490,8 @@
         : null;
     },
 
-    sanitizePagePath: function(){
-      var path = location.pathname || '/';
+    sanitizePagePath: function(path){
+      path = typeof path === 'string' ? path : (location.pathname || '/');
 
       try {
         var segments = path.split('/');
@@ -482,7 +624,7 @@
       } catch(e) {}
     },
 
-    trackView: function(){
+    trackView: function(advancePage){
       var payload = {
         eventName: 'view',
         pagePath: this.sanitizePagePath(),
@@ -496,7 +638,7 @@
       if (this.consent) {
         payload.screenWidth = (screen && screen.width) || null;
       }
-      var customData = this.customDataForEvent(null);
+      var customData = this.customDataForEvent(null, advancePage);
       if (customData) payload.eventData = customData;
 
       this.send(payload);
@@ -522,7 +664,7 @@
       if (this.consent) {
         payload.screenWidth = (screen && screen.width) || null;
       }
-      var customData = this.customDataForEvent(eventData);
+      var customData = this.customDataForEvent(eventData, safeEventName === 'view');
       if (customData || this.consent) payload.eventData = customData;
 
       this.send(payload);
@@ -545,6 +687,7 @@
   // expose on configurable namespace
   window[namespace] = window[namespace] || {};
   window[namespace].emit = Analytics.emit.bind(Analytics);
+  window[namespace].trackView = function(){ Analytics.trackView(true); };
   window[namespace].setConsent = Analytics.setConsent.bind(Analytics);
   window[namespace].configure = function(opts){
     Analytics.config.endpoint = opts && opts.endpoint || Analytics.config.endpoint;
@@ -600,6 +743,9 @@
   // Do not leave identifiers from an earlier consented visit behind when this
   // load starts in anonymous mode. A CMP can opt in again with setConsent(true).
   if (!Analytics.consent) Analytics.clearIdentifiers();
+
+  // A server-side disable also removes the counter left by an earlier page.
+  if (Analytics.config.customData.pageSequenceEnabled !== true) Analytics.clearPageSequence();
 
   // auto pageview on load
   if (document.readyState === 'complete' || document.readyState === 'interactive') {

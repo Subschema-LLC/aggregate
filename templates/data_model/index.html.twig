@@ -25,6 +25,23 @@
     {% component 'Ui:Validation' with {action: path('app_data_model_save'), method: 'post', id: 'data-model-form'} %}
     {% block content %}
         <input type="hidden" name="_csrf_token" value="{{ csrf_token('data_model_settings') }}">
+        <section class="box" aria-labelledby="page-depth-heading">
+            <h2 class="title is-4" id="page-depth-heading">Page depth</h2>
+            <div class="field">
+                <label class="label" for="page-sequence-enabled">Include page depth on all events</label>
+                <div class="control">
+                    <div class="select">
+                        <select id="page-sequence-enabled" name="page_sequence_enabled" aria-describedby="page-depth-help page-depth-privacy">
+                            <option value="0"{% if not model.page_sequence_enabled %} selected{% endif %}>Off</option>
+                            <option value="1"{% if model.page_sequence_enabled %} selected{% endif %}>On — count up to 20+</option>
+                        </select>
+                    </div>
+                </div>
+                <p class="help" id="page-depth-help">Adds <code>eventData.page_sequence</code>: the first tracked page is 1, the next is 2, and 20 means 20 or more. Interactions and asynchronous events reuse the current page's count. Reloads count again. This setting applies to every event type.</p>
+                <p class="help" id="page-depth-privacy">When enabled, the tracker keeps only a number in this tab's browser session storage, including when enhanced analytics is rejected. It adds no visitor identifier or path history. Disclose this optional storage and assess whether your deployment requires consent; leave it off if it does. Counts do not establish individual journeys. Routine anonymous BI views do not expose page depth.</p>
+            </div>
+            <p class="help">For private reporting columns, add <code>page_sequence</code> as an Integer property with “Allow without consent”. Its collection is controlled by this switch; URL parameters and supplied event properties cannot override the tracker's count.</p>
+        </section>
         <section class="box">
             <h2 class="title is-4">Custom data configurations</h2>
             <p>Expand a custom data JSON property to edit its type, consent, and optional reporting columns. Property names are literal top-level JSON keys. Leave both reporting columns empty to collect a property without exposing it in custom reporting views. Explicitly allowing a property without consent adds it to the server-enforced anonymous whitelist.</p>
