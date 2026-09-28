@@ -24,11 +24,22 @@
         {% else %}
             <p>These shared settings are used by the unscoped tag script. Website-specific scripts use their own files and do not inherit these tags.</p>
         {% endif %}
-        <p>A tag loads an HTTPS script or calls a named method in an existing library when its trigger and consent requirement match. Tags marked <strong>No consent required</strong> may run without a visitor choice. Consent-gated event triggers skipped before consent are not replayed.</p>
-        <p>Tag definitions, literal arguments and variable paths are public. Use trusted libraries and avoid secrets or personal data. Variables read the current page only when an eligible tag runs.</p>
-        <p>Withdrawal prevents later actions requiring that category; it cannot undo a method call, remove an already loaded script, or erase provider cookies or data. Use the provider's withdrawal controls and reload the page.</p>
         <p><a href="{{ path('app_setup', site ? {website: site.token, step: 3, tags: '1'} : {step: 3, tags: '1'}) }}">Open setup to copy or download scripts, or build compact versions.</a></p>
     </div>
+
+    <details class="box mb-5">
+        <summary class="has-text-weight-semibold">
+            <span class="icon-text">
+                <span class="icon has-text-info"><i class="fas fa-circle-question" aria-hidden="true"></i></span>
+                <span>Tag execution, variables & consent rules</span>
+            </span>
+        </summary>
+        <div class="content mt-3">
+            <p>A tag loads an HTTPS script or calls a named method in an existing library when its trigger and consent requirement match. Tags marked <strong>No consent required</strong> may run without a visitor choice. Consent-gated event triggers skipped before consent are not replayed.</p>
+            <p>Tag definitions, literal arguments and variable paths are public. Use trusted libraries and avoid secrets or personal data. Variables read the current page only when an eligible tag runs.</p>
+            <p>Withdrawal prevents later actions requiring that category; it cannot undo a method call, remove an already loaded script, or erase provider cookies or data. Use the provider's withdrawal controls and reload the page.</p>
+        </div>
+    </details>
 
     {% if configuration_error %}
         <div class="notification is-danger" role="alert">{{ configuration_error }}</div>

@@ -20,6 +20,40 @@
         </div>
 
         <div class="website-card-section">
+            <div class="level is-mobile mb-2">
+                <div class="level-left">
+                    <h2 class="title is-5 mb-0">Integration code</h2>
+                </div>
+                <div class="level-right">
+                    <span class="tag is-success is-light is-rounded">
+                        <span class="icon is-small mr-1"><i class="fas fa-check" aria-hidden="true"></i></span>
+                        Ready to paste
+                    </span>
+                </div>
+            </div>
+
+            {% if website.integration_code is not null %}
+                <p class="help mb-2">Add this code to your website's <code>&lt;head&gt;</code> section.</p>
+                <pre><code id="code-{{ index }}">{{ website.integration_code }}</code></pre>
+                <div class="is-flex is-align-items-center mt-2">
+                    {{ component('Ui:CopyButton', {target: 'code-' ~ index, status: 'website-code-status-' ~ index, label: 'Copy to Clipboard', class: 'button is-small is-info copy-btn'}) }}
+                    <span id="website-code-status-{{ index }}" class="copy-status is-size-7 ml-2" role="status" aria-live="polite"></span>
+                </div>
+                {% if include_tags %}
+                    <h3 class="title is-6 mt-4 mb-2">Tracker URL for this website</h3>
+                    <p class="help mb-2">Add this URL as a script action in the website's Tag manager settings and enable the tag container. Choose the consent category that permits the tracker to load.</p>
+                    <pre><code id="tracker-url-{{ index }}">{{ website.tracker_url }}</code></pre>
+                    <div class="is-flex is-align-items-center mt-2">
+                        {{ component('Ui:CopyButton', {target: 'tracker-url-' ~ index, status: 'website-tracker-status-' ~ index, label: 'Copy tracker URL', class: 'button is-small is-info copy-btn'}) }}
+                        <span id="website-tracker-status-{{ index }}" class="copy-status is-size-7 ml-2" role="status" aria-live="polite"></span>
+                    </div>
+                {% endif %}
+            {% else %}
+                <div class="notification is-warning" role="status">Installation code is unavailable for this website. Check its script settings.</div>
+            {% endif %}
+        </div>
+
+        <div class="website-card-section">
             <h2 class="title is-5 mb-2">Allowed domains</h2>
             {% if website.domain_settings_invalid %}
                 <div class="notification is-warning is-light mb-3">This website's domain rules are invalid. Events are rejected until valid rules are saved.</div>
@@ -31,29 +65,6 @@
                 {{ component('Websites:DomainFields', {field_prefix: 'website-domains-' ~ index, domain_settings: website.domain_settings}) }}
                 <button type="submit" class="button is-primary mt-3">Save domain rules</button>
             </form>
-        </div>
-
-        <div class="website-card-section">
-            <h2 class="title is-5 mb-2">Integration code</h2>
-            {% if website.integration_code is not null %}
-                <p>Add this code to your website's <code>&lt;head&gt;</code> section.</p>
-                <pre><code id="code-{{ index }}">{{ website.integration_code }}</code></pre>
-                <div class="is-flex is-align-items-center mt-2">
-                    {{ component('Ui:CopyButton', {target: 'code-' ~ index, status: 'website-code-status-' ~ index, label: 'Copy to Clipboard', class: 'button is-small is-info copy-btn'}) }}
-                    <span id="website-code-status-{{ index }}" class="copy-status is-size-7 ml-2" role="status" aria-live="polite"></span>
-                </div>
-                {% if include_tags %}
-                    <h3 class="title is-6 mt-4 mb-2">Tracker URL for this website</h3>
-                    <p>Add this URL as a script action in the website's Tag manager settings and enable the tag container. Choose the consent category that permits the tracker to load.</p>
-                    <pre><code id="tracker-url-{{ index }}">{{ website.tracker_url }}</code></pre>
-                    <div class="is-flex is-align-items-center mt-2">
-                        {{ component('Ui:CopyButton', {target: 'tracker-url-' ~ index, status: 'website-tracker-status-' ~ index, label: 'Copy tracker URL', class: 'button is-small is-info copy-btn'}) }}
-                        <span id="website-tracker-status-{{ index }}" class="copy-status is-size-7 ml-2" role="status" aria-live="polite"></span>
-                    </div>
-                {% endif %}
-            {% else %}
-                <div class="notification is-warning" role="status">Installation code is unavailable for this website. Check its script settings.</div>
-            {% endif %}
         </div>
 
         {% if is_admin %}

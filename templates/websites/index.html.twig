@@ -22,9 +22,18 @@
 </div>
 
 {% if websites is empty %}
-    <div class="notification is-info is-light">
-        <span class="icon is-small mr-1"><i class="fas fa-circle-info" aria-hidden="true"></i></span>
-        Add your first website to get its token and installation code.
+    <div class="box has-text-centered py-6 mb-5">
+        <span class="icon is-large has-text-primary mb-3">
+            <i class="fas fa-globe fa-3x" aria-hidden="true"></i>
+        </span>
+        <h2 class="title is-4 mb-2">Welcome to {{ app_branding.name }}</h2>
+        <p class="subtitle is-6 mb-4">Add your first website to get its token and installation code.</p>
+        {% if is_admin %}
+            <button type="button" class="button is-primary" data-action="pages--websites--index#open">
+                <span class="icon" aria-hidden="true"><i class="fas fa-plus"></i></span>
+                <span>Add Your First Website</span>
+            </button>
+        {% endif %}
     </div>
 {% endif %}
 
@@ -45,6 +54,36 @@
                 Configure the tracker through <code>window</code> before loading it. The website's enabled consent controls load first.
             {% endif %}
         </p>
+    </div>
+{% endif %}
+
+{% if websites|length > 1 %}
+    <div class="level mb-4">
+        <div class="level-left">
+            <div class="field mb-0">
+                <div class="control has-icons-left">
+                    <input type="search" class="input is-small is-rounded" placeholder="Filter websites by name or domain..." aria-label="Filter websites" data-action="input->pages--websites--index#filter">
+                    <span class="icon is-small is-left">
+                        <i class="fas fa-search" aria-hidden="true"></i>
+                    </span>
+                </div>
+            </div>
+        </div>
+        <div class="level-right">
+            <div class="buttons are-small mb-0">
+                <button type="button" class="button is-light" data-action="pages--websites--index#expandAll">
+                    <span class="icon"><i class="fas fa-angles-down" aria-hidden="true"></i></span>
+                    <span>Expand all</span>
+                </button>
+                <button type="button" class="button is-light" data-action="pages--websites--index#collapseAll">
+                    <span class="icon"><i class="fas fa-angles-up" aria-hidden="true"></i></span>
+                    <span>Collapse all</span>
+                </button>
+            </div>
+        </div>
+    </div>
+    <div id="websites-filter-empty" class="notification is-light mb-4" hidden>
+        No websites match the current filter.
     </div>
 {% endif %}
 
