@@ -86,7 +86,7 @@ The tracker is authored directly in [public/aggregate.js](../public/aggregate.js
 
 The optional [page-depth setting](DATA-MODEL.md#optional-page-depth) adds
 `eventData.page_sequence` to all events. Enable it in Data model or YAML after
-reviewing its anonymous-mode browser-storage implications. It counts from `1`
+reviewing the selected method's storage or URL implications. It counts from `1`
 through `20` (`20+`), with interactions and asynchronous events sharing the current
 page's number. The counter does not create a visitor or session ID.
 
@@ -104,11 +104,27 @@ once per virtual page. Other event names do not advance it. An event emitted
 before the automatic initial page view can initialize the counter; the automatic
 view then reuses it. Calls still require the SDK to be loaded.
 
-Served tracker responses include `customData.pageSequenceEnabled` and, when
+For full-page navigation, `page_sequence_method` selects `session_storage`
+(the existing default) or `url_parameter`. URL mode reads
+`?aggregate_page_sequence=2`, captures numeric `page_sequence: 2` in memory,
+removes the parameter from the current address bar with `history.replaceState()`,
+and decorates ordinary same-origin links with the next bounded count before
+native navigation. Only its parameter is removed; other query parameters,
+fragments and existing history state are preserved. History API failure leaves
+tracking functional, and event `pagePath` still contains no query string.
+It uses no counter cookies or Web Storage. Reloading a cleaned URL starts at 1;
+the initial request and earlier scripts can still see the incoming parameter.
+It does not intercept forms, programmatic route changes, clicks already canceled
+by a router, modified/new-tab clicks or downloads. Read the
+[URL behavior and tradeoffs](DATA-MODEL.md#url-parameter-passing) before enabling it.
+
+Served tracker responses include `customData.pageSequenceEnabled`,
+`customData.pageSequenceMethod` and, when
 enabled, `customData.pageSequenceExcludedPaths` from the effective server
 configuration. The collection kill switch disables the counter, and excluded
-paths do not read, advance or expose it. Browser configuration can disable the
-feature or add exclusions, but cannot enable a server-disabled counter or remove
+paths do not read, advance or expose it; URL mode also checks link destinations.
+Browser configuration can disable the feature or add exclusions, but cannot
+enable a server-disabled counter, switch the server-selected method or remove
 server exclusions. Static/CDN copies must supply these same effective controls
 in `window.Aggregate.customData` before loading; keep them synchronized with
 server settings. The server independently enforces ingestion permissions.

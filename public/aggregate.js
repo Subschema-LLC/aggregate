@@ -45,6 +45,10 @@
     || customDataDefaults.pageSequenceEnabled === true;
   var pageSequenceExcludedPaths = Object.prototype.hasOwnProperty.call(customDataDefaults, 'pageSequenceExcludedPaths')
     ? customDataDefaults.pageSequenceExcludedPaths : [];
+  var pageSequenceMethodLocked = Object.prototype.hasOwnProperty.call(customDataDefaults, 'pageSequenceEnabled')
+    || Object.prototype.hasOwnProperty.call(customDataDefaults, 'pageSequenceMethod');
+  var pageSequenceMethodDefault = Object.prototype.hasOwnProperty.call(customDataDefaults, 'pageSequenceMethod')
+    ? customDataDefaults.pageSequenceMethod : 'session_storage';
   try {
     var s = document.currentScript || (function(){var ss=document.getElementsByTagName('script'); return ss[ss.length-1];})();
     if (s && s.dataset && s.dataset.namespace) {
@@ -62,6 +66,8 @@
     consent: false,
     consentKnown: false,
     pageSequences: Object.create(null),
+    pageSequenceUrlInitial: null,
+    pageSequenceUrlTrimAttempted: false,
 
     configureInternalTraffic: function(options){
       if (!options || typeof options !== 'object') return;
@@ -83,6 +89,15 @@
     configureCustomData: function(options){
       if (!options || typeof options !== 'object' || Array.isArray(options)) return;
 
+      if (Object.prototype.hasOwnProperty.call(options, 'pageSequenceMethod') && !pageSequenceMethodLocked) {
+        var previousMethod = this.pageSequenceMethod();
+        this.config.customData.pageSequenceMethod = options.pageSequenceMethod;
+        if (previousMethod !== this.pageSequenceMethod()) {
+          this.pageSequences = Object.create(null);
+          this.pageSequenceUrlInitial = null;
+          this.pageSequenceUrlTrimAttempted = false;
+        }
+      }
       if (Object.prototype.hasOwnProperty.call(options, 'pageSequenceEnabled')) {
         // Only a literal boolean enables this optional anonymous dimension.
         this.config.customData.pageSequenceEnabled = options.pageSequenceEnabled === true && pageSequenceAuthorized;
@@ -99,7 +114,7 @@
           for (var i = 0; i < sources.length; i++) {
             var source = sources[i];
             var destination = options.queryParameters[source];
-            if (this.isCustomDataKey(source) && this.isCustomDataKey(destination)) {
+            if (this.isCustomDataKey(source) && source !== 'aggregate_page_sequence' && this.isCustomDataKey(destination)) {
               mappings[source] = destination;
             }
           }
@@ -142,14 +157,27 @@
       }
     },
 
+    pageSequenceMethod: function(){
+      var method = pageSequenceMethodLocked ? pageSequenceMethodDefault
+        : (Object.prototype.hasOwnProperty.call(this.config.customData, 'pageSequenceMethod')
+          ? this.config.customData.pageSequenceMethod : 'session_storage');
+      return method === 'session_storage' || method === 'url_parameter' ? method : null;
+    },
+
     clearPageSequence: function(){
-      var keys = Object.keys(this.pageSequences);
-      var currentKey = this.pageSequenceStorageKey();
-      if (currentKey && keys.indexOf(currentKey) === -1) keys.push(currentKey);
-      for (var i = 0; i < keys.length; i++) {
-        try { sessionStorage.removeItem(keys[i]); } catch(e) {}
+      // URL mode never touches counter storage, even for cleanup. A counter
+      // from a previous storage-mode installation may remain until tab closure.
+      if (this.pageSequenceMethod() === 'session_storage') {
+        var keys = Object.keys(this.pageSequences);
+        var currentKey = this.pageSequenceStorageKey();
+        if (currentKey && keys.indexOf(currentKey) === -1) keys.push(currentKey);
+        for (var i = 0; i < keys.length; i++) {
+          try { sessionStorage.removeItem(keys[i]); } catch(e) {}
+        }
       }
       this.pageSequences = Object.create(null);
+      this.pageSequenceUrlInitial = null;
+      this.pageSequenceUrlTrimAttempted = false;
     },
 
     pageSequenceCanonicalPath: function(path){
@@ -189,15 +217,15 @@
       }
     },
 
-    pageSequencePathAllowed: function(){
+    pageSequencePathAllowed: function(path){
       var configured = this.config.customData;
       var browserPatterns = Object.prototype.hasOwnProperty.call(configured, 'pageSequenceExcludedPaths')
         ? configured.pageSequenceExcludedPaths : [];
       if (!Array.isArray(pageSequenceExcludedPaths) || !Array.isArray(browserPatterns)) return false;
       var patterns = pageSequenceExcludedPaths.concat(browserPatterns);
       if (!patterns.length) return true;
-      var rawPath = location.pathname || '/';
-      var safePath = this.sanitizePagePath();
+      var rawPath = typeof path === 'string' ? path : (location.pathname || '/');
+      var safePath = this.sanitizePagePath(rawPath);
       var canonicalPath = this.pageSequenceCanonicalPath(safePath);
       if (canonicalPath === null) return false;
       for (var i = 0; i < patterns.length; i++) {
@@ -220,6 +248,11 @@
         this.clearPageSequence();
         return null;
       }
+      var method = this.pageSequenceMethod();
+      if (method === null) return null;
+      if (Object.prototype.hasOwnProperty.call(this.config.customData, 'propertyTypes')
+        && (!this.config.customData.propertyTypes || typeof this.config.customData.propertyTypes !== 'object'
+          || Array.isArray(this.config.customData.propertyTypes))) return null;
       // Excluded pages must not affect the count later sent by an allowed page.
       // Evaluate before reading or writing the optional browser state.
       if (!this.pageSequencePathAllowed()) return null;
@@ -229,25 +262,112 @@
       var sequence = this.pageSequences[key];
       var changed = false;
       if (typeof sequence === 'undefined') {
-        var previous = 0;
-        try {
-          var stored = sessionStorage.getItem(key);
-          // Store only the bounded count: no IDs, paths, history or timestamps.
-          // Malformed or out-of-range browser state starts again at page one.
-          if (typeof stored === 'string' && /^(?:[1-9]|1[0-9]|20)$/.test(stored)) previous = Number(stored);
-        } catch(e) {}
-        sequence = Math.min(previous + 1, 20);
+        if (method === 'url_parameter') {
+          if (this.pageSequenceUrlInitial === null) {
+            this.pageSequenceUrlInitial = 1;
+            try {
+              var pageUrl = new URL(location.origin);
+              pageUrl.search = location.search || '';
+              var values = pageUrl.searchParams.getAll('aggregate_page_sequence');
+              if (values.length === 1 && /^(?:[1-9]|1[0-9]|20)$/.test(values[0])) this.pageSequenceUrlInitial = Number(values[0]);
+            } catch(e) {}
+          }
+          sequence = this.pageSequenceUrlInitial;
+        } else {
+          var previous = 0;
+          try {
+            var stored = sessionStorage.getItem(key);
+            // Store only the bounded count: no IDs, paths, history or timestamps.
+            // Malformed or out-of-range browser state starts again at page one.
+            if (typeof stored === 'string' && /^(?:[1-9]|1[0-9]|20)$/.test(stored)) previous = Number(stored);
+          } catch(e) {}
+          sequence = Math.min(previous + 1, 20);
+        }
         changed = true;
       } else if (advance && sequence < 20) {
         sequence++;
         changed = true;
       }
       this.pageSequences[key] = sequence;
-      if (changed) {
+      if (method === 'url_parameter') this.trimPageSequenceUrl();
+      if (changed && method === 'session_storage') {
         // When storage is blocked, the document's in-memory count still works.
         try { sessionStorage.setItem(key, String(sequence)); } catch(e) {}
       }
       return sequence;
+    },
+
+    pageSequenceQueryWithoutCounter: function(search){
+      return (search || '').replace(/^\?/, '').split('&').filter(function(part){
+        try {
+          return decodeURIComponent(part.split('=')[0].replace(/\+/g, ' ')) !== 'aggregate_page_sequence';
+        } catch(e) {
+          return true;
+        }
+      }).join('&');
+    },
+
+    trimPageSequenceUrl: function(){
+      if (this.pageSequenceUrlTrimAttempted) return;
+      var search = location.search || '';
+      var query = this.pageSequenceQueryWithoutCounter(search);
+      if (query === search.replace(/^\?/, '')) return;
+      // Capture the count and set this guard before invoking a potentially
+      // framework-wrapped History API. Reentrant events reuse memory, and a
+      // failed cleanup is not retried for every asynchronous event.
+      this.pageSequenceUrlTrimAttempted = true;
+      try {
+        var history = window.history;
+        if (!history || typeof history.replaceState !== 'function') return;
+        var cleanUrl = typeof location.href === 'string' ? new URL(location.href) : new URL(location.origin);
+        if (cleanUrl.origin !== location.origin) return;
+        if (typeof location.href !== 'string') {
+          cleanUrl.pathname = location.pathname || '/';
+          cleanUrl.hash = location.hash || '';
+        }
+        cleanUrl.search = query ? '?' + query : '';
+        history.replaceState(history.state, '', cleanUrl.href);
+      } catch(e) {}
+    },
+
+    decoratePageSequenceLink: function(event){
+      if (!pageSequenceAuthorized || this.config.customData.pageSequenceEnabled !== true
+        || this.pageSequenceMethod() !== 'url_parameter' || !event || event.defaultPrevented
+        || event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey
+        || !this.pageSequencePathAllowed()) return;
+      try {
+        var anchor = event.target;
+        while (anchor && (typeof anchor.tagName !== 'string' || anchor.tagName.toLowerCase() !== 'a')) {
+          anchor = anchor.parentElement || anchor.parentNode;
+        }
+        if (!anchor || typeof anchor.getAttribute !== 'function' || anchor.hasAttribute('download')) return;
+        var href = anchor.getAttribute('href');
+        if (typeof href !== 'string' || !href.trim() || href.trim().charAt(0) === '#') return;
+        var target = anchor.getAttribute('target');
+        if (!target && typeof document.querySelector === 'function') {
+          var base = document.querySelector('base[target]');
+          if (base) target = base.getAttribute('target');
+        }
+        if (target && target.toLowerCase() !== '_self') return;
+
+        var currentUrl = new URL(location.origin);
+        currentUrl.pathname = location.pathname || '/';
+        currentUrl.search = location.search || '';
+        currentUrl.hash = location.hash || '';
+        var destination = new URL(typeof anchor.href === 'string' ? anchor.href : href, document.baseURI || currentUrl.href);
+        if (['http:', 'https:'].indexOf(destination.protocol) === -1 || destination.origin !== location.origin
+          || destination.username || destination.password || !this.pageSequencePathAllowed(destination.pathname)) return;
+        var query = this.pageSequenceQueryWithoutCounter(destination.search);
+        if (destination.href.indexOf('#') !== -1 && destination.pathname === currentUrl.pathname
+          && query === this.pageSequenceQueryWithoutCounter(currentUrl.search)) return;
+
+        var sequence = this.pageSequenceForEvent(false);
+        if (sequence === null) return;
+        // Preserve unrelated query bytes (including signatures) and the hash.
+        // Replacing only our parameter also makes repeated clicks idempotent.
+        destination.search = '?' + query + (query ? '&' : '') + 'aggregate_page_sequence=' + Math.min(sequence + 1, 20);
+        anchor.setAttribute('href', destination.href);
+      } catch(e) {}
     },
 
     customDataForEvent: function(eventData, advancePage){
@@ -320,6 +440,7 @@
         pageUrl.search = location.search || '';
         var sources = Object.keys(settings.queryParameters);
         for (var j = 0; j < sources.length && count < 50; j++) {
+          if (sources[j] === 'aggregate_page_sequence') continue;
           var destination = settings.queryParameters[sources[j]];
           if (!canInclude(destination) || Object.prototype.hasOwnProperty.call(clean, destination)) continue;
           var values = pageUrl.searchParams.getAll(sources[j]);
@@ -697,6 +818,7 @@
     if (opts && typeof opts.consent !== 'undefined') {
       Analytics.setConsent(opts.consent);
     }
+    if (Analytics.pageSequenceMethod() === 'url_parameter') Analytics.pageSequenceForEvent(false);
   };
 
   // Try to read configuration from script tag (query params or data-attributes)
@@ -746,6 +868,13 @@
 
   // A server-side disable also removes the counter left by an earlier page.
   if (Analytics.config.customData.pageSequenceEnabled !== true) Analytics.clearPageSequence();
+
+  // Capture the incoming count and shorten its URL exposure as soon as all
+  // initial settings are known, without waiting for DOM readiness or a request.
+  if (Analytics.pageSequenceMethod() === 'url_parameter') Analytics.pageSequenceForEvent(false);
+
+  // Decorate only an activated eligible link; native navigation stays in charge.
+  document.addEventListener('click', function(event){ Analytics.decoratePageSequenceLink(event); });
 
   // auto pageview on load
   if (document.readyState === 'complete' || document.readyState === 'interactive') {

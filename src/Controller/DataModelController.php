@@ -206,7 +206,7 @@ final class DataModelController extends AbstractController
 
     private function modelFromForm(array $submitted): array
     {
-        if (array_diff(array_keys($submitted), ['_csrf_token', 'properties', 'mappings', CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY]) !== []) {
+        if (array_diff(array_keys($submitted), ['_csrf_token', 'properties', 'mappings', CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY, CustomDataSettings::PAGE_SEQUENCE_METHOD_KEY]) !== []) {
             throw new \InvalidArgumentException('The model form contained an unexpected setting. Nothing was saved.');
         }
         $pageSequenceEnabled = array_key_exists(CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY, $submitted)
@@ -270,11 +270,18 @@ final class DataModelController extends AbstractController
             $mappings[$parameter] = $property;
         }
 
-        return [
+        $model = [
             CustomDataSettings::PROPERTIES_KEY => $properties,
             CustomDataSettings::MAPPINGS_KEY => $mappings,
             CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY => $pageSequenceEnabled === '1',
         ];
+        // Older forms omit the method. Let the shared save service preserve
+        // the current choice under its write lock instead of enabling storage.
+        if (array_key_exists(CustomDataSettings::PAGE_SEQUENCE_METHOD_KEY, $submitted)) {
+            $model[CustomDataSettings::PAGE_SEQUENCE_METHOD_KEY] = $submitted[CustomDataSettings::PAGE_SEQUENCE_METHOD_KEY];
+        }
+
+        return $model;
     }
 
     private function validToken(Request $request): bool

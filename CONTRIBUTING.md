@@ -94,9 +94,12 @@ Treat these as constraints on implementation and documentation:
   whitelist in the SDK and on the server, and preserve only approved scalar
   values through entity lifecycle callbacks. The optional `page_sequence_enabled`
   setting separately permits only the generated page-depth number (1–20, with 20
-  meaning 20+), stored in tab session storage without IDs, paths or timestamps.
-  It defaults off, applies to all event types, and respects kill switches and
-  path exclusions before counter storage. Keep its consent/storage disclosure
+  meaning 20+), carried by `page_sequence_method`: tab session storage (default)
+  or the `aggregate_page_sequence` URL parameter, without IDs, path history or
+  timestamps. URL mode uses no counter Web Storage and only decorates eligible
+  same-origin links. It defaults off, applies to all event types, and respects
+  kill switches and path exclusions before counter storage or URL propagation.
+  Keep the chosen method's consent/storage/URL disclosure
   distinct from a claim of legal anonymity. All UTMs require consent by default.
   Recommend at most broad `utm_medium` values for anonymous attribution, while
   allowing per-property overrides with the documented warning about detailed

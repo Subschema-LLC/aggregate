@@ -12,6 +12,9 @@ class CustomDataSettings
     public const PROPERTIES_KEY = 'custom_data_properties';
     public const MAPPINGS_KEY = 'query_parameter_mappings';
     public const PAGE_SEQUENCE_ENABLED_KEY = 'page_sequence_enabled';
+    public const PAGE_SEQUENCE_METHOD_KEY = 'page_sequence_method';
+    public const PAGE_SEQUENCE_METHODS = ['session_storage', 'url_parameter'];
+    public const PAGE_SEQUENCE_QUERY_PARAMETER = 'aggregate_page_sequence';
     public const PAGE_SEQUENCE_PROPERTY = 'page_sequence';
     public const PAGE_SEQUENCE_MAXIMUM = 20;
     public const UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'utm_id'];
@@ -50,6 +53,7 @@ class CustomDataSettings
             self::PROPERTIES_KEY => $properties,
             self::MAPPINGS_KEY => array_combine(self::UTM_KEYS, self::UTM_KEYS),
             self::PAGE_SEQUENCE_ENABLED_KEY => false,
+            self::PAGE_SEQUENCE_METHOD_KEY => 'session_storage',
         ];
     }
 
@@ -70,13 +74,21 @@ class CustomDataSettings
             self::PROPERTIES_KEY => $properties,
             self::MAPPINGS_KEY => array_key_exists(self::MAPPINGS_KEY, $raw) ? $raw[self::MAPPINGS_KEY] : $defaultMappings,
             self::PAGE_SEQUENCE_ENABLED_KEY => array_key_exists(self::PAGE_SEQUENCE_ENABLED_KEY, $raw) ? $raw[self::PAGE_SEQUENCE_ENABLED_KEY] : false,
+            self::PAGE_SEQUENCE_METHOD_KEY => array_key_exists(self::PAGE_SEQUENCE_METHOD_KEY, $raw) ? $raw[self::PAGE_SEQUENCE_METHOD_KEY] : 'session_storage',
         ]);
     }
 
     public function save(array $settings): void
     {
-        $validated = $this->validate($settings);
-        $this->config->updateMany(function (array $current) use ($validated): array {
+        $this->config->updateMany(function (array $current) use ($settings): array {
+            // Older forms and API callers omit the method. Preserve the
+            // current value under the write lock rather than implicitly
+            // changing a URL counter into browser storage.
+            if (!array_key_exists(self::PAGE_SEQUENCE_METHOD_KEY, $settings)) {
+                $settings[self::PAGE_SEQUENCE_METHOD_KEY] = array_key_exists(self::PAGE_SEQUENCE_METHOD_KEY, $current)
+                    ? $current[self::PAGE_SEQUENCE_METHOD_KEY] : 'session_storage';
+            }
+            $validated = $this->validate($settings);
             // Recheck the related marker setting under the same write lock;
             // a concurrent marker edit must not create a JSON-key collision.
             $markerName = $this->config->hasEnvironmentOverride('internal_traffic_name', true)
@@ -142,7 +154,7 @@ class CustomDataSettings
         return $types;
     }
 
-    /** @return array{queryParameters: array<string, string>, consentFreeProperties: list<string>, pageSequenceEnabled: bool, pageSequenceExcludedPaths?: list<string>, propertyTypes?: array<string, string>} */
+    /** @return array{queryParameters: array<string, string>, consentFreeProperties: list<string>, pageSequenceEnabled: bool, pageSequenceMethod: string, pageSequenceExcludedPaths?: list<string>, propertyTypes?: array<string, string>} */
     public function toBrowserConfig(): array
     {
         $settings = $this->toArray();
@@ -169,6 +181,7 @@ class CustomDataSettings
             'queryParameters' => $settings[self::MAPPINGS_KEY],
             'consentFreeProperties' => $consentFree,
             'pageSequenceEnabled' => $pageSequenceEnabled,
+            'pageSequenceMethod' => $settings[self::PAGE_SEQUENCE_METHOD_KEY],
         ];
         if ($pageSequenceEnabled) {
             $browserConfig['pageSequenceExcludedPaths'] = $privacyPolicy->excludedPaths();
@@ -258,14 +271,18 @@ class CustomDataSettings
 
     public function validate(array $settings): array
     {
-        if (array_diff(array_keys($settings), [self::PROPERTIES_KEY, self::MAPPINGS_KEY, self::PAGE_SEQUENCE_ENABLED_KEY]) !== []
+        if (array_diff(array_keys($settings), [self::PROPERTIES_KEY, self::MAPPINGS_KEY, self::PAGE_SEQUENCE_ENABLED_KEY, self::PAGE_SEQUENCE_METHOD_KEY]) !== []
             || !array_key_exists(self::PROPERTIES_KEY, $settings)
             || !array_key_exists(self::MAPPINGS_KEY, $settings)) {
-            throw new \InvalidArgumentException('Provide custom_data_properties, query_parameter_mappings, and optional page_sequence_enabled only.');
+            throw new \InvalidArgumentException('Provide custom_data_properties, query_parameter_mappings, and optional page_sequence_enabled and page_sequence_method only.');
         }
         $pageSequenceEnabled = array_key_exists(self::PAGE_SEQUENCE_ENABLED_KEY, $settings) ? $settings[self::PAGE_SEQUENCE_ENABLED_KEY] : false;
         if (!is_bool($pageSequenceEnabled)) {
             throw new \InvalidArgumentException('page_sequence_enabled must be a YAML boolean: true or false.');
+        }
+        $pageSequenceMethod = array_key_exists(self::PAGE_SEQUENCE_METHOD_KEY, $settings) ? $settings[self::PAGE_SEQUENCE_METHOD_KEY] : 'session_storage';
+        if (!is_string($pageSequenceMethod) || !in_array($pageSequenceMethod, self::PAGE_SEQUENCE_METHODS, true)) {
+            throw new \InvalidArgumentException('page_sequence_method must be session_storage or url_parameter.');
         }
         $properties = $settings[self::PROPERTIES_KEY];
         $mappings = $settings[self::MAPPINGS_KEY];
@@ -335,12 +352,17 @@ class CustomDataSettings
         }
 
         foreach ($mappings as $parameter => $property) {
-            if (!self::isValidPropertyKey($parameter) || !self::isValidPropertyKey($property) || !isset($normalized[$property]) || $property === $markerName || $property === self::PAGE_SEQUENCE_PROPERTY) {
-                throw new \InvalidArgumentException('Each query parameter must map to a defined custom property. The organization marker and page_sequence cannot be set from URL parameters.');
+            if (!self::isValidPropertyKey($parameter) || !self::isValidPropertyKey($property) || !isset($normalized[$property]) || $property === $markerName || $property === self::PAGE_SEQUENCE_PROPERTY || $parameter === self::PAGE_SEQUENCE_QUERY_PARAMETER) {
+                throw new \InvalidArgumentException('Each query parameter must map to a defined custom property. The organization marker, page_sequence, and reserved aggregate_page_sequence parameter cannot use query mappings.');
             }
         }
 
-        return [self::PROPERTIES_KEY => $normalized, self::MAPPINGS_KEY => $mappings, self::PAGE_SEQUENCE_ENABLED_KEY => $pageSequenceEnabled];
+        return [
+            self::PROPERTIES_KEY => $normalized,
+            self::MAPPINGS_KEY => $mappings,
+            self::PAGE_SEQUENCE_ENABLED_KEY => $pageSequenceEnabled,
+            self::PAGE_SEQUENCE_METHOD_KEY => $pageSequenceMethod,
+        ];
     }
 
     private function markerName(): string

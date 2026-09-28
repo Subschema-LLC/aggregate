@@ -88,9 +88,10 @@ checkout, or a small accessibility fix. Keep each PR focused and target
 ## Available foundations
 
 - [Optional page depth](docs/DATA-MODEL.md#optional-page-depth), configured in the
-  Data model UI or YAML. A bounded tab counter adds `page_sequence` to all event
+  Data model UI or YAML. A bounded counter adds `page_sequence` to all event
   types, including asynchronous events, without creating visitor/session IDs.
-  It is off by default, requires review of browser-storage consent obligations,
+  Choose tab session storage or URL parameter passing. It is off by default,
+  requires review of the method's storage/URL disclosures and consent obligations,
   and remains outside the routine anonymous BI views.
 - [Guided setup and script downloads](docs/SETUP.md), with a four-step administrator
   wizard, button callouts, website-specific installation snippets, a self-contained

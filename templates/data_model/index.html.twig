@@ -37,10 +37,23 @@
                         </select>
                     </div>
                 </div>
-                <p class="help" id="page-depth-help">Adds <code>eventData.page_sequence</code>: the first tracked page is 1, the next is 2, and 20 means 20 or more. Interactions and asynchronous events reuse the current page's count. Reloads count again. This setting applies to every event type.</p>
-                <p class="help" id="page-depth-privacy">When enabled, the tracker keeps only a number in this tab's browser session storage, including when enhanced analytics is rejected. It adds no visitor identifier or path history. Disclose this optional storage and assess whether your deployment requires consent; leave it off if it does. Counts do not establish individual journeys. Routine anonymous BI views do not expose page depth.</p>
+                <p class="help" id="page-depth-help">Adds <code>eventData.page_sequence</code>: the first tracked page is 1, the next is 2, and 20 means 20 or more. Interactions and asynchronous events reuse the current page's count. This setting applies to every event type.</p>
+                <p class="help" id="page-depth-privacy">Page depth continues when enhanced analytics is rejected. It adds no visitor identifier or path history. Review the selected method's storage or URL disclosures and applicable consent requirements. Counts do not establish individual journeys. Routine anonymous BI views do not expose page depth.</p>
             </div>
-            <p class="help">For private reporting columns, add <code>page_sequence</code> as an Integer property with “Allow without consent”. Its collection is controlled by this switch; URL parameters and supplied event properties cannot override the tracker's count.</p>
+            <div class="field">
+                <label class="label" for="page-sequence-method">Carry page depth between pages</label>
+                <div class="control">
+                    <div class="select">
+                        <select id="page-sequence-method" name="page_sequence_method" aria-describedby="page-depth-storage page-depth-url">
+                            <option value="session_storage"{% if model.page_sequence_method == 'session_storage' %} selected{% endif %}>Tab session storage (default)</option>
+                            <option value="url_parameter"{% if model.page_sequence_method == 'url_parameter' %} selected{% endif %}>URL parameter passing</option>
+                        </select>
+                    </div>
+                </div>
+                <p class="help" id="page-depth-storage"><strong>Tab session storage:</strong> keeps only a bounded number in browser session storage. Reloads count again. Review storage consent requirements before enabling.</p>
+                <p class="help" id="page-depth-url"><strong>URL parameter passing:</strong> reads <code>aggregate_page_sequence</code>, removes it from the address bar after capture, and adds the next number to ordinary same-origin links when activated. The counter uses no cookies or Web Storage. Reloads of cleaned URLs restart at 1; copied or shared links can carry an inaccurate depth before cleanup. Initial requests, logs or earlier scripts may still see the parameter. Review canonical URLs, SEO, router integrations and whether destinations accept the extra parameter. Links to excluded pages are left alone. Event page information contains no query string even if address-bar cleanup fails.</p>
+            </div>
+            <p class="help">For private reporting columns, add <code>page_sequence</code> as an Integer property with “Allow without consent”. Its collection is controlled by this switch. Supplied event properties and ordinary query mappings cannot override it; only the URL method reads the reserved sequence parameter.</p>
         </section>
         <section class="box">
             <h2 class="title is-4">Custom data configurations</h2>

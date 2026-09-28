@@ -59,28 +59,36 @@ this setting into the active aggregate YAML configuration:
 
 ```yaml
 page_sequence_enabled: true
+page_sequence_method: session_storage
 ```
 
-The default is `false`. This deployment-wide setting has no environment-variable
-override and uses the same validation for UI and YAML. It automatically adds the
+Collection defaults to `false`, and the method defaults to `session_storage`.
+Choose **Carry page depth between pages** in the UI to use either tab session
+storage or URL parameter passing. These deployment-wide settings have no
+environment-variable overrides and use the same validation for UI and YAML.
+Unknown methods fail closed. Enabling page depth automatically adds the
 reserved numeric `eventData.page_sequence` property to page views, named events
 and goals in both privacy modes. No custom-property definition is needed to
 collect it. Per-event-type settings remain [planned work](../ROADMAP.md#after-beta-feedback).
 
-The first tracked page is `1`, the next is `2`, and the counter stops at `20`,
-meaning **20 or more**. Other events, including asynchronous callbacks, reuse the
+Both methods use numbers from `1` through `20`, with `20` meaning **20 or more**.
+Other events, including asynchronous callbacks, reuse the
 page depth at the time they are emitted. Queue processing preserves that number;
 it does not increment or recalculate it. This helps compare early-page activity
-with deeper engagement without a visitor or session ID. It counts tracked page
-views, including reloads, rather than distinct pages or people.
+with deeper engagement without a visitor or session ID. Page depth is an
+approximate client-supplied count, not a count of distinct pages or people.
 
-The tracker stores only this bounded number in tab-scoped `sessionStorage`,
+### Tab session storage
+
+The `session_storage` method stores only this bounded number in tab-scoped `sessionStorage`,
 separately for each public website token and origin. It stores no path history,
-timestamp or identifier for this feature. Tab storage usually ends when the tab
+timestamp or identifier for this feature. The first tracked page is `1`; each new
+page load, including a reload, advances it. Tab storage usually ends when the tab
 closes, but duplicated or restored tabs may inherit it. If storage is unavailable,
 counting continues in memory for the current document and starts over on a new
-page load. Disabling the feature removes its current token's stored counter when
-the tracker next runs with the updated configuration. Excluded paths do not
+page load. Disabling page depth while `session_storage` remains selected removes
+its current token's stored counter when the tracker next runs with the updated
+configuration. Excluded paths do not
 advance or expose the counter; the collection kill switch also disables it.
 
 **Anonymous-mode storage is still storage.** Enabling this option permits it
@@ -88,6 +96,73 @@ before a consent choice and after rejection or withdrawal of enhanced analytics.
 Review applicable browser-storage consent requirements and disclosures before
 enabling it; leave it disabled where separate consent would be required. A bounded
 count does not guarantee legal anonymity or establish a person's ordered journey.
+
+### URL parameter passing
+
+Select **URL parameter passing** in the UI, or use:
+
+```yaml
+page_sequence_enabled: true
+page_sequence_method: url_parameter
+```
+
+The tracker reads the fixed `aggregate_page_sequence` parameter from the current
+page URL. One integer written as `1` through `20` is accepted; missing, duplicate
+or malformed values start at `1`. A page opened as
+`/example?aggregate_page_sequence=2` sends `eventData.page_sequence: 2` on its
+initial view and subsequent asynchronous events.
+
+On an allowed page, the tracker captures this number in memory as soon as its
+configuration is initialized, then removes only `aggregate_page_sequence` from
+the address bar with `history.replaceState()`. It preserves the existing history
+state, other query parameters and the fragment, without reloading or adding a
+history entry. The count is not written into history state. Missing or failing
+History API support leaves the URL visible but does not stop event collection.
+Disabled or excluded pages are not rewritten.
+
+The event's `pagePath` contains only the sanitized pathname, even if URL cleanup
+fails. The server also strips queries and fragments from supplied page paths in
+both privacy modes. Only the intended numeric `eventData.page_sequence` is sent;
+the transport parameter is not included in event page information or ordinary
+query-property mappings.
+
+When an ordinary internal link is activated, the tracker adds or replaces that
+parameter with the next number, capped at `20`, before native navigation. For
+example, a link to `/pricing?plan=team#details` on page 2 becomes
+`/pricing?plan=team&aggregate_page_sequence=3#details`. Other query parameters and
+the fragment are preserved. Only same-origin HTTP(S) links are eligible, and both
+the source and destination must pass sensitive-path exclusions. The feature's
+enablement and the collection kill switch still apply.
+
+This applies to unmodified primary-button or keyboard activations targeting the
+current tab. Downloads, external links, fragment-only/same-document jumps,
+modified or new-tab clicks, forms, programmatic location/history changes and
+clicks already canceled by a router are not decorated. The tracker neither
+cancels navigation nor sets canonical tags. Explicit SPA page views still advance
+the in-memory counter; the SDK does not install route/history listeners or add
+the count to the current address bar.
+
+The URL method performs no cookie or Web Storage operations **for the counter**.
+It also leaves any old session-storage counter untouched. Other independent
+features, including consent-manager storage, organization markers and SDK
+identifier cleanup, retain their own behavior. A fresh reload or opening a copied
+clean URL starts over at `1`. Back/forward navigation may restore an existing
+document with its in-memory count or load a new one; continuity is not guaranteed.
+Links copied before cleanup, edited URLs or failed cleanup can still carry
+inaccurate depth. The initial numeric value is unverified.
+
+**URL tradeoffs:** cleanup happens after the page request and tracker startup.
+The initial server request, logs, earlier scripts or early resource referrers can
+still see the parameter. It may briefly appear in the address bar, and remains
+visible when JavaScript or history replacement is unavailable. Extra query
+variants can complicate SEO and caching; configure canonical URLs without this
+parameter where appropriate. Destinations must accept the extra parameter;
+signed URLs can become invalid. Test router integrations that wrap
+`replaceState()`. This is useful for ordinary link navigation, but less reliable
+than tab storage for reloads and history navigation. Avoiding counter Web Storage
+is not a legal anonymity or consent exemption guarantee.
+
+### Payload and reporting
 
 For example, with page depth enabled and `utm_medium` separately allowed without
 consent, a page view on the second tracked page can send:
@@ -112,13 +187,15 @@ consent, a page view on the second tracked page can send:
 For single-page applications, call `Aggregate.trackView()` after a virtual page
 change. It sends a page view and advances the counter. `emit('view')` also advances
 it; use one call per page change. Normal `emit()` calls reuse the current number.
-The SDK does not install automatic navigation listeners. See the
+The SDK does not install automatic SPA route/history listeners. See the
 [tracking guide](TRACKING.md#page-depth-and-single-page-apps) for an example.
 
-The SDK ignores supplied `page_sequence` event properties and URL mappings.
+The SDK ignores supplied `page_sequence` event properties and ordinary URL mappings.
+Only the URL method reads the reserved `aggregate_page_sequence` parameter.
 The server independently strips the property in both modes when disabled and
 accepts only JSON integers from `1` through `20` when enabled. Query mappings to
-it are invalid; an organization marker using this name must be renamed before
+it, or from `aggregate_page_sequence` to another property, are invalid; an
+organization marker using `page_sequence` must be renamed before
 enabling page depth. Direct API clients must supply their own bounded number;
 the server validates its shape and permission, not the claimed navigation history.
 
@@ -148,6 +225,8 @@ it for page depth; keep historical column meanings stable for consumers.
 Historical JSON is not rewritten, and older values do not become trustworthy
 page counts merely because the feature is enabled. The separate organization
 marker remains supported under its existing name while page depth is disabled.
+The `aggregate_page_sequence` query source is also reserved; remove any ordinary
+query mapping from that name before using this version.
 
 ## Property types and numeric calculations
 
@@ -179,6 +258,8 @@ property is therefore omitted unless an explicit correctly typed `emit()` value
 overrides it. Supply numbers/booleans through `emit()` or direct JSON requests;
 use a separate text property when you need the original URL value. The active
 organization marker remains a controlled boolean regardless of model settings.
+The reserved page-depth URL parameter uses its own bounded integer parser; it
+does not change these ordinary query-mapping rules.
 
 ```yaml
 custom_data_properties:
