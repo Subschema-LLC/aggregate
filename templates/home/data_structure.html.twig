@@ -26,8 +26,9 @@
             <p>
                 Routine BI credentials should receive <strong>SELECT access only</strong> to
                 <code>bi_anonymous_events_v1</code>, <code>bi_anonymous_goals_v1</code>, and, when needed,
-                <code>bi_anonymous_geo_events_v1</code>. Do not grant routine reporting users access
-                to <code>events</code> or the other application tables.
+                <code>bi_anonymous_geo_events_v1</code>, plus the declared <code>bi_dim_*</code> and
+                <code>bi_glossary_*</code> metadata views needed for labels. Do not grant routine reporting
+                users access to <code>events</code>, <code>analytics_glossary</code>, or other application tables.
             </p>
         </div>
 
@@ -35,6 +36,7 @@
             <a class="button is-small is-light" href="#anonymous-events-view">Hourly event view</a>
             <a class="button is-small is-light" href="#anonymous-goals-view">Daily goal view</a>
             <a class="button is-small is-light" href="#anonymous-geography-view">Daily geography view</a>
+            <a class="button is-small is-light" href="#bi-glossary">BI labels and definitions</a>
             <a class="button is-small is-light" href="#custom-reporting-views">Custom reporting views</a>
             <a class="button is-small is-light" href="#private-source-tables">Private source tables</a>
             <a class="button is-small is-light" href="#query-examples">Query examples</a>
@@ -270,6 +272,68 @@
                 Low-volume areas may be combined into an <code>other</code> pool, including one otherwise-visible
                 area when secondary suppression is needed. Events without a retained geography value are
                 excluded, so geography totals will not match the hourly view.
+            </div>
+        </section>
+
+        <section id="bi-glossary" class="box mt-6">
+            <h2 id="bi-glossary-heading" class="title is-3">BI labels and definitions</h2>
+            <div class="content">
+                <p>Join declared metadata to reporting codes to display labels such as Tablet or Germany.
+                    These views contain configuration and built-in definitions, never observed traffic or counts.
+                    Administrators publish them with <code>app:analytics:glossary:sync</code> after migrations
+                    or metadata changes, or save through Reporting → BI glossary.</p>
+            </div>
+            <div class="table-container" role="region" aria-labelledby="bi-glossary-heading" tabindex="0">
+                <table class="table is-fullwidth is-striped">
+                    <caption class="is-sr-only">Approved glossary view contracts</caption>
+                    <thead><tr><th scope="col">View</th><th scope="col">Join key and purpose</th></tr></thead>
+                    <tbody>
+                        <tr><th scope="row"><code>bi_dim_event_name_v1</code></th><td><code>event_name</code>; declared event labels.</td></tr>
+                        <tr><th scope="row"><code>bi_dim_goal_event_v1</code></th><td><code>goal_event</code>; configured goal labels.</td></tr>
+                        <tr><th scope="row"><code>bi_dim_referrer_channel_v1</code></th><td><code>referrer_channel</code>; all built-in channel codes.</td></tr>
+                        <tr><th scope="row"><code>bi_dim_device_class_v1</code></th><td><code>device_class</code>; all five device codes.</td></tr>
+                        <tr><th scope="row"><code>bi_dim_viewport_bucket_v1</code></th><td><code>viewport_bucket</code>; all viewport codes.</td></tr>
+                        <tr><th scope="row"><code>bi_dim_geo_area_v1</code></th><td><code>geo_area</code>; all continents and countries, plus <code>geo_level</code>.</td></tr>
+                        <tr><th scope="row"><code>bi_glossary_values_v1</code></th><td>Filter to one <code>dimension</code> and <code>locale</code>, then join <code>code</code> to the fact's code column.</td></tr>
+                        <tr><th scope="row"><code>bi_glossary_columns_v1</code></th><td>Filter by <code>object_name</code> and <code>locale</code> for column labels and definitions.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="content">
+                <p>The six dimension views have one row per code in the deployment's default locale.
+                    Each uses prefixed fields such as <code>device_class_label</code>,
+                    <code>device_class_group</code>, <code>device_class_description</code>, and
+                    <code>device_class_sort</code>. In Power BI, confirm the automatically detected
+                    many-to-one relationship from the hourly fact's <code>device_class</code> to the
+                    dimension's <code>device_class</code>, then sort the label by its sort field.
+                    In Tableau, relate those same fields and display the label.</p>
+                <p>For translated labels, filter the localized values view to exactly one dimension and
+                    one published locale before joining. Joining all locales multiplies fact rows.
+                    Use this query for a Power Query locale parameter's allowed values:</p>
+                <pre><code>SELECT DISTINCT locale FROM bi_glossary_values_v1 ORDER BY locale;</code></pre>
+                <p>An unpublished locale returns no rows. The default-locale dimension views need no
+                    locale parameter. Fallback is already resolved during sync: <code>label_locale</code>
+                    records its language and <code>is_fallback = 1</code> marks a fallback label.</p>
+                <p>Use a left join and keep the original code when a label is missing. Undeclared event
+                    names, deleted goals, and synthetic <code>country:other</code>/<code>continent:other</code>
+                    pools can have no dimension row. Prefer disabling old goals to deleting their definitions.</p>
+                <pre><code>SELECT f.event_day, f.goal_event,
+       COALESCE(d.goal_event_label, f.goal_event) AS goal_label,
+       f.event_count
+FROM bi_anonymous_goals_v1 f
+LEFT JOIN bi_dim_goal_event_v1 d ON d.goal_event = f.goal_event;</code></pre>
+                <p>Use that native SQL in Power Query, or a Left Outer merge with
+                    <code>if [goal_event_label] = null then [goal_event] else [goal_event_label]</code>.
+                    In Tableau use <code>IFNULL([label], [code])</code> for localized data, with
+                    <code>[code]</code> taken from the fact; for the goal dimension use
+                    <code>IFNULL([goal_event_label], [goal_event])</code>.</p>
+            </div>
+            <div class="notification is-warning is-light mb-0">
+                Labels, descriptions, and declared codes are published to routine BI readers; keep them
+                free of personal or identifying text. Declaring values for consent-gated properties publishes
+                those codes even when their event values remain private. Glossary joins do not restore
+                withheld cells: sums by group still undercount. Column descriptions for private custom views
+                do not grant access to those facts. Keep the hourly, goal, and geography facts separate.
             </div>
         </section>
 

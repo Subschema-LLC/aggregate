@@ -11,6 +11,7 @@ Use this guide for application settings and runtime overrides. Run commands from
 - [Feature flags](#feature-flags)
 - [Organization traffic](#organization-traffic)
 - [Custom data and UTM parameters](#custom-data-and-utm-parameters)
+- [BI glossary](#bi-glossary)
 - [Archiving and retention](#archiving-and-retention)
 - [Main navigation](#main-navigation)
 - [Conversion goals](#conversion-goals)
@@ -195,6 +196,7 @@ environments:
 - `updates_signing_public_key`: Optional base64 Ed25519 public key overriding the packaged `config/release-signing.pub` for offline package verification; never a private key
 - `internal_traffic_storage`, `internal_traffic_name`, `internal_traffic_value`, `internal_traffic_cookie_domain`, `internal_traffic_share_token`: Browser marker and team sharing settings; see [Organization traffic](#organization-traffic)
 - `custom_data_properties`, `query_parameter_mappings`: Shareable property model, per-property consent settings, UTM/query capture, and reporting aliases; see [Custom data and UTM parameters](#custom-data-and-utm-parameters)
+- `bi_glossary`: Declared value labels, column glossary, and published locales; see [BI glossary](#bi-glossary)
 - `page_sequence_enabled`: Optional page depth on all events in both modes (default: `false`, strict YAML boolean, no environment override). Configure in Data model or YAML; see [page depth](DATA-MODEL.md#optional-page-depth) for the `20+` cap and reporting limits.
 - `page_sequence_method`: `session_storage` (default) or `url_parameter`, with no environment override. Choose tab storage or the fixed `aggregate_page_sequence` URL parameter; review [storage and URL tradeoffs](DATA-MODEL.md#optional-page-depth) before enabling.
 - `dashboard_enabled`: Enable/disable dashboard/login/install behavior (default: `true`)
@@ -276,6 +278,25 @@ developer/contributor instructions.
 The default browser marker is `orgInternalTraffic=true`. Configure `internal_traffic_storage`, `internal_traffic_name`, `internal_traffic_value`, `internal_traffic_cookie_domain`, and `internal_traffic_share_token` in the active YAML environment, or use the Organization traffic admin page. A match stores a boolean in the existing event JSON under the configured marker name; no migration is needed.
 
 See [organization traffic](PRIVACY-COMPLIANCE.md#organization-traffic) for YAML examples, browser scope, installation-generated sharing tokens, downloadable marker pages, and Power BI/Tableau filtering. Existing grouped views and archives omit this JSON flag.
+
+## BI glossary
+
+`bi_glossary` in the active aggregate YAML controls published locales and declared
+value/column metadata. **Reporting → BI glossary** edits the same mapping; YAML
+plus `php bin/console app:analytics:glossary:sync` also work with the dashboard
+disabled. An environment file or `environments.<env>.bi_glossary` replaces the
+whole mapping, and there are no uppercase environment-variable overrides.
+Omitting the block publishes the built-in catalog, goal labels, and saved custom
+property descriptions in English after sync. Invalid glossary metadata makes its
+save/sync fail with field-level errors but does not affect tracker configuration,
+ingestion, or the health configuration check. See the
+[YAML reference and fallback rules](BI-GLOSSARY.md#yaml-reference).
+
+Treat all declared codes, labels, and descriptions as published text. Declaring
+values for consent-gated properties makes those codes visible to routine BI users
+without granting access to the underlying private events. Never include personal
+or identifying text. Goal default labels stay in `config/goals.yaml`; custom
+column descriptions stay in `custom_data_properties`.
 
 ## Custom data and UTM parameters
 
@@ -392,7 +413,7 @@ An unknown, invalid, disabled, or anonymous-disallowed goal is omitted while the
 [Aggregate] Goal was not recorded because it is not an approved goal type.
 ```
 
-This is an allowlist warning, not a sensitive-data detector. Review every configured code and its use in context. After changing `config/goals.yaml` in production, clear the production cache so the service container is rebuilt.
+This is an allowlist warning, not a sensitive-data detector. Review every configured code and its use in context. After changing `config/goals.yaml` in production, clear the production cache so the service container is rebuilt, then run `php bin/console app:analytics:glossary:sync --env=prod` to publish updated labels. Prefer disabling retired goals to deleting their definitions so historical codes keep their labels.
 
 ## Optional coarse geography
 

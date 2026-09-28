@@ -84,9 +84,13 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   is under development in its own repository; track template progress and
   availability there. Explore Matomo Tag Manager support where adopters need it.
 - **Extend Tag Manager Lite.** Still keep things simple but look for gaps and improvements.
-- **BI Translation Table** Add a new table called glossary or lookup where columns from certain tables or the values that are found in them can be translated. The UI and yaml will need fields for table, column, value, then translation, much like a lookup table.
 
 ## Available foundations
+
+- [BI glossary](docs/BI-GLOSSARY.md), with declared value labels, column definitions,
+  localized fallback, YAML/admin editing, and a headless sync command. Eight fixed
+  metadata views join to existing BI columns without reading event data or
+  changing suppression. Database and BI-tool acceptance checks remain part of beta validation.
 
 - [Optional page depth](docs/DATA-MODEL.md#optional-page-depth), configured in the
   Data model UI or YAML. A bounded counter adds `page_sequence` to all event

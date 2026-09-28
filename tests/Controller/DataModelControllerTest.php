@@ -7,6 +7,7 @@ namespace App\Tests\Controller;
 use App\Controller\DataModelController;
 use App\Service\AggregateConfigLoader;
 use App\Service\CustomDataSettings;
+use App\Service\Glossary\GlossarySync;
 use App\Service\InternalTrafficSettings;
 use App\Service\ReportingViewManager;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -39,6 +40,7 @@ final class DataModelControllerTest extends TestCase
     private AggregateConfigLoader $config;
     private CustomDataSettings $settings;
     private ReportingViewManager $views;
+    private GlossarySync $glossary;
     private array $environment;
 
     protected function setUp(): void
@@ -59,6 +61,7 @@ final class DataModelControllerTest extends TestCase
         $this->config = new AggregateConfigLoader($this->projectDir, 'test');
         $this->settings = new CustomDataSettings($this->config);
         $this->views = $this->createMock(ReportingViewManager::class);
+        $this->glossary = $this->createMock(GlossarySync::class);
     }
 
     protected function tearDown(): void
@@ -216,6 +219,7 @@ final class DataModelControllerTest extends TestCase
 
     public function testRegenerationUsesOnlyTheSavedModelAndIgnoresForgedFormDefinitions(): void
     {
+        $this->glossary->expects(self::once())->method('sync')->willReturn([]);
         $this->settings->save(['custom_data_properties' => ['plan' => ['column' => 'saved_plan']], 'query_parameter_mappings' => []]);
         $before = file_get_contents($this->projectDir.'/config/aggregate.yaml');
         $this->views->expects(self::once())->method('regenerate')->with()->willReturnCallback(function (): array {
@@ -232,6 +236,19 @@ final class DataModelControllerTest extends TestCase
         self::assertTrue($response->headers->hasCacheControlDirective('no-store'));
         self::assertSame($before, file_get_contents($this->projectDir.'/config/aggregate.yaml'));
         self::assertSame(['Regenerated '.implode(', ', ReportingViewManager::VIEW_NAMES).'.'], $request->getSession()->getFlashBag()->peek('success'));
+    }
+
+    public function testRegenerationKeepsItsSuccessAndWarnsIfGlossarySyncFails(): void
+    {
+        $this->views->expects(self::once())->method('regenerate')->willReturn(ReportingViewManager::VIEW_NAMES);
+        $this->glossary->expects(self::once())->method('sync')->willThrowException(new \RuntimeException('private connection string'));
+        $request = $this->request([]);
+        $this->controller($request)->regenerate($request);
+        self::assertNotEmpty($request->getSession()->getFlashBag()->peek('success'));
+        $warning = implode(' ', $request->getSession()->getFlashBag()->peek('warning'));
+        self::assertStringContainsString('Reporting views were regenerated, but the BI glossary was not synced', $warning);
+        self::assertStringContainsString('app:analytics:glossary:sync', $warning);
+        self::assertStringNotContainsString('private connection string', $warning);
     }
 
     public function testDownloadIsPrivateYamlContainingOnlyTheModel(): void
@@ -582,7 +599,7 @@ final class DataModelControllerTest extends TestCase
 
     private function controller(Request $request, bool $admin = true, ?LoggerInterface $logger = null): DataModelController
     {
-        $controller = new DataModelController($this->config, $this->settings, $this->views, $logger ?? new NullLogger());
+        $controller = new DataModelController($this->config, $this->settings, $this->views, $logger ?? new NullLogger(), $this->glossary);
         $authorization = $this->createStub(AuthorizationCheckerInterface::class);
         $authorization->method('isGranted')->willReturnCallback(static fn (string $role): bool => $admin && $role === 'ROLE_ADMIN');
         $csrf = $this->createStub(CsrfTokenManagerInterface::class);

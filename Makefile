@@ -50,12 +50,13 @@ ifeq ($(USE_DOCKER),1)
 	@sleep 5
 	@echo "Running database migrations..."
 	$(PHP_CMD) bin/console doctrine:migrations:migrate -n
+	$(PHP_CMD) bin/console app:analytics:glossary:sync
 	@echo ""
 	@echo "✅ Docker installation complete!"
 else
 	@echo "Using native installation..."
 	@echo "Run: ./install.sh for interactive setup"
-	@echo "Or run: composer install && php bin/console doctrine:migrations:migrate"
+	@echo "Or run: composer install && php bin/console doctrine:migrations:migrate && php bin/console app:analytics:glossary:sync"
 endif
 	@echo ""
 	@echo "Next steps:"
@@ -134,6 +135,7 @@ endif
 
 migrate: ## Run database migrations
 	$(PHP_CMD) bin/console doctrine:migrations:migrate
+	$(PHP_CMD) bin/console app:analytics:glossary:sync
 
 test: ## Run PHP and JavaScript privacy regression tests
 	$(PHP_CMD) vendor/bin/phpunit

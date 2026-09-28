@@ -12,6 +12,7 @@ Aggregate Analytics supports **PostgreSQL**, **MySQL**, **MariaDB**, **Microsoft
 - [SQLite](#sqlite)
 - [Migration and Compatibility](#migration-and-compatibility)
 - [Upgrade to Doctrine DBAL 4](#upgrade-to-doctrine-dbal-4)
+- [BI glossary metadata](#bi-glossary-metadata)
 - [Custom data reporting views](#custom-data-reporting-views)
 - [Analytics Archive and Maintenance](#analytics-archive-and-maintenance)
 
@@ -90,6 +91,7 @@ DATABASE_URL="postgresql://analytics_user:your_secure_password@localhost:5432/an
 **3. Run migrations:**
 ```bash
 php bin/console doctrine:migrations:migrate -n
+php bin/console app:analytics:glossary:sync
 ```
 
 ### Version Support
@@ -171,6 +173,7 @@ DATABASE_URL="mysql://analytics_user:your_secure_password@localhost:3306/analyti
 **3. Run migrations:**
 ```bash
 php bin/console doctrine:migrations:migrate -n
+php bin/console app:analytics:glossary:sync
 ```
 
 ### Version Support
@@ -239,6 +242,7 @@ DATABASE_URL="mysql://analytics_user:your_secure_password@localhost:3306/analyti
 **3. Run migrations:**
 ```bash
 php bin/console doctrine:migrations:migrate -n
+php bin/console app:analytics:glossary:sync
 ```
 
 ### Version Support
@@ -325,6 +329,7 @@ DATABASE_URL="sqlsrv://analytics_user:YourSecurePassword123!@localhost:1433/anal
 **3. Run migrations:**
 ```bash
 php bin/console doctrine:migrations:migrate -n
+php bin/console app:analytics:glossary:sync
 ```
 
 ### Version Support
@@ -399,6 +404,7 @@ DATABASE_URL="sqlite:///%kernel.project_dir%/var/data.db"
 **2. Run migrations:**
 ```bash
 php bin/console doctrine:migrations:migrate -n
+php bin/console app:analytics:glossary:sync
 ```
 
 The database file will be created automatically at `var/data.db`.
@@ -460,6 +466,7 @@ cache before running migrations:
 ```bash
 php bin/console cache:clear --env=prod
 php bin/console doctrine:migrations:migrate --env=prod -n
+php bin/console app:analytics:glossary:sync --env=prod
 ```
 
 For Compose, `MYSQL_VERSION` selects the image tag (default `8.0`), while
@@ -485,10 +492,14 @@ Current migrations:
 - `migrations/Version20260724001500.php` (optional coarse `events.geo_area` and geographic suppression setting)
 - `migrations/Version20260724002000.php` (daily, threshold-filtered anonymous geography BI view)
 - `migrations/Version20260828000000.php` (completed-day, threshold-filtered anonymous goal BI view)
+- `migrations/Version20260901000000.php` (private archives, lifecycle maintenance, and combined live/archive BI views)
+- `migrations/Version20260928000000.php` (declared BI glossary table and eight fixed metadata views)
 
 The current schema contains:
 - `events` (private individual rows for both `anonymous` and `enhanced` privacy modes, with optional coarse `geo_area` and allowlisted `goal_event`)
 - `analytics_privacy_settings` (database source of truth for hourly event, daily goal, and geographic BI suppression thresholds)
+- `analytics_glossary` (private synchronized metadata table; never granted to routine BI users)
+- `bi_dim_event_name_v1`, `bi_dim_goal_event_v1`, `bi_dim_referrer_channel_v1`, `bi_dim_device_class_v1`, `bi_dim_viewport_bucket_v1`, `bi_dim_geo_area_v1`, `bi_glossary_values_v1`, and `bi_glossary_columns_v1` (approved declared-metadata views)
 - `bi_anonymous_events_v1` (supported grouped anonymous-mode BI contract)
 - `bi_anonymous_goals_v1` (supported completed-day anonymous goal-count BI contract)
 - `bi_anonymous_geo_events_v1` (supported daily, lower-dimensional anonymous geography BI contract)
@@ -520,6 +531,29 @@ $events->addColumn('custom_data', 'json', ['notnull' => false]);
 $events->addColumn('goal_event', 'string', ['length' => 191, 'notnull' => false]);
 // ... works across supported databases
 ```
+
+### BI glossary metadata
+
+The [BI glossary](BI-GLOSSARY.md) supplies declared value labels and column
+explanations through eight fixed views. Migration `Version20260928000000` creates
+one backing table with a composite `(entry_type, subject, code, locale)` primary
+key and an `(entry_type, subject, is_default_locale)` index. Case-sensitive key
+collations preserve distinct declared codes on MySQL/MariaDB and SQL Server.
+Its remaining fields are `label`, `label_locale`, `group_label`, `description`,
+`description_locale`, `sort_order`, `source`, and `synced_at`.
+
+Run `php bin/console app:analytics:glossary:sync` after migrations and declared
+metadata changes. Sync resolves all published locales from YAML, configured
+goals, the saved custom model, and the built-in catalog. It never queries events,
+archives, or reporting facts. The initial migration leaves views empty. Changed
+rows are replaced in one DML transaction on all supported engines; unchanged
+syncs leave timestamps alone. Sync needs no view-creation privileges.
+
+The six `bi_dim_*_v1` views have one row per code in the default locale. The two
+`bi_glossary_*_v1` views expose localized value and column metadata. Grant those
+views, never `analytics_glossary`; see the complete
+[view-only grant examples](BI-GLOSSARY.md#view-only-grants). Labels do not expand
+the anonymous BI facts or make private custom views safe for routine access.
 
 ### Custom data reporting views
 
@@ -577,6 +611,7 @@ These views expose individual rows without suppression and need separately appro
    ```bash
    php bin/console doctrine:database:create
    php bin/console doctrine:migrations:migrate -n
+   php bin/console app:analytics:glossary:sync
    ```
 
 4. **Import data** (requires manual SQL adaptation or use a tool like [pgloader](https://github.com/dimitri/pgloader))
@@ -601,6 +636,7 @@ php bin/console doctrine:migrations:migrate --dry-run
 
 # Execute
 php bin/console doctrine:migrations:migrate -n
+php bin/console app:analytics:glossary:sync
 
 # Rollback if needed
 php bin/console doctrine:migrations:migrate prev

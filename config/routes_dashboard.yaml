@@ -22,6 +22,10 @@ data_model_controller:
     resource: ../src/Controller/DataModelController.php
     type: attribute
 
+bi_glossary_controller:
+    resource: ../src/Controller/BiGlossaryController.php
+    type: attribute
+
 event_examples_controller:
     resource: ../src/Controller/EventExamplesController.php
     type: attribute

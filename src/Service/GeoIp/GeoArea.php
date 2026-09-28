@@ -10,7 +10,7 @@ use Symfony\Component\Intl\Countries;
 final readonly class GeoArea
 {
     /** @var list<string> */
-    private const CONTINENT_CODES = ['AF', 'AN', 'AS', 'EU', 'NA', 'OC', 'SA'];
+    public const CONTINENT_CODES = ['AF', 'AN', 'AS', 'EU', 'NA', 'OC', 'SA'];
 
     private function __construct(private string $value)
     {

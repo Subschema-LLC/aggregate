@@ -1,0 +1,26 @@
+{% props entry, entry_type, subject, locale, default_locale, id, errors %}
+
+{% set prefix = 'bi_glossary.' ~ (entry_type == 'value' ? 'values' : 'columns') ~ '.' ~ subject ~ '.' ~ entry.code %}
+<details class="mt-3"{% if entry.open %} open{% endif %}>
+    <summary><code>{{ entry.code }}</code> — {{ entry.default.label }} <span class="tag">{{ entry.source }}</span>{% if entry.unsaved %} <span class="tag is-warning">Unsaved</span>{% endif %}</summary>
+    {% component 'Ui:Validation' with {action: path('app_bi_glossary_save'), method: 'post', class: 'box mt-2'} %}
+        {% block content %}
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token('bi_glossary') }}">
+            <input type="hidden" name="entry_type" value="{{ entry_type }}"><input type="hidden" name="subject" value="{{ subject }}"><input type="hidden" name="code" value="{{ entry.code }}"><input type="hidden" name="locale" value="{{ locale }}">
+            {% for field, message in errors %}{% if field == prefix or field starts with prefix ~ '.' %}<p class="help is-danger" role="alert"><code>{{ field }}</code>: {{ message }}</p>{% endif %}{% endfor %}
+            {% if entry.unsaved %}<p class="notification is-info">This code is not yet published. Save to apply the change.</p>{% endif %}
+            <div class="field"><label class="label" for="{{ id }}-label">Label ({{ locale }})</label><div class="control"><input class="input" id="{{ id }}-label" name="label" value="{{ entry.input.label }}" maxlength="191" placeholder="{{ entry.current.label }}{% if entry.current.label_locale != locale %} (falls back to {{ entry.current.label_locale ?? 'code' }}){% endif %}"></div></div>
+            {% if entry_type == 'value' %}
+                <div class="field"><label class="label" for="{{ id }}-group">Group ({{ locale }})</label><div class="control"><input class="input" id="{{ id }}-group" name="group" value="{{ entry.input.group }}" maxlength="191" placeholder="{{ entry.current.group_label ?? '' }}"></div></div>
+                <div class="field"><label class="label" for="{{ id }}-sort">Sort order (all locales)</label><div class="control"><input class="input" id="{{ id }}-sort" name="sort" type="number" min="0" max="100000" step="1" value="{{ entry.input.sort }}" placeholder="{{ entry.current.sort_order }}"></div></div>
+            {% endif %}
+            {% if entry.property and locale == default_locale %}
+                <div class="field"><p class="label">Description ({{ locale }})</p><p>{{ entry.property.description ?: 'No model description declared.' }}</p><p class="help">The default description comes from the <a href="{{ path('app_data_model') }}">Data model editor</a>. Choose another published locale to translate it here.</p></div>
+            {% else %}
+                <div class="field"><label class="label" for="{{ id }}-description">Description ({{ locale }})</label><div class="control"><textarea class="textarea" id="{{ id }}-description" name="description" maxlength="1000" rows="2" placeholder="{{ entry.current.description ?? '' }}">{{ entry.input.description }}</textarea></div></div>
+                {% if entry.property %}<p class="help mb-3">Default description: {{ entry.property.description }}. <a href="{{ path('app_data_model') }}">Edit the data model</a>.</p>{% endif %}
+            {% endif %}
+            <div class="buttons"><button class="button is-primary" name="action" value="entry" type="submit">Save {{ entry.code }} and sync</button>{% if entry.overridden %}<button class="button" name="action" value="reset" type="submit" formnovalidate>Reset {{ entry.code }} overrides</button>{% endif %}</div>
+        {% endblock %}
+    {% endcomponent %}
+</details>

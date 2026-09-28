@@ -133,6 +133,7 @@ Preferred (Symfony migrations):
 cd /var/www/vhosts/your-domain.com/analytics
 
 /opt/plesk/php/8.3/bin/php bin/console doctrine:migrations:migrate --no-interaction
+/opt/plesk/php/8.3/bin/php bin/console app:analytics:glossary:sync
 ```
 
 Alternative for Plesk SQL import workflow (fresh install/reset on MySQL/MariaDB):
@@ -344,6 +345,7 @@ sudo systemctl stop analytics-worker
 
 # Run migrations
 /opt/plesk/php/8.3/bin/php bin/console doctrine:migrations:migrate --no-interaction
+/opt/plesk/php/8.3/bin/php bin/console app:analytics:glossary:sync
 
 # Clear cache
 /opt/plesk/php/8.3/bin/php bin/console cache:clear --env=prod --no-debug
@@ -471,3 +473,12 @@ Before going live:
 - [ ] Test event successfully tracked (`curl /api/health`)
 - [ ] File permissions correct
 - [ ] Backups configured
+
+### BI glossary after deployment
+
+Run `app:analytics:glossary:sync` with the same PHP binary and environment after
+every migration run, as shown above. The initial migration creates empty views;
+sync publishes declared configuration without reading events. After editing goal
+labels, clear the production cache and run sync again. Review the
+[view-only grant examples](docs/BI-GLOSSARY.md#view-only-grants); the backing
+`analytics_glossary` table is not part of the routine BI grant.

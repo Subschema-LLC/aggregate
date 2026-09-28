@@ -6,6 +6,7 @@ namespace App\Tests\Command;
 
 use App\Command\RegenerateReportingViewsCommand;
 use App\Service\CustomDataSettings;
+use App\Service\Glossary\GlossarySync;
 use App\Service\ReportingViewManager;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -17,8 +18,19 @@ final class RegenerateReportingViewsCommandTest extends TestCase
     public function testDefaultModeRegeneratesViews(): void
     {
         $views = $this->createMock(ReportingViewManager::class);
-        $views->expects(self::once())->method('regenerate')->willReturn(ReportingViewManager::VIEW_NAMES);
-        $tester = $this->tester($views);
+        $regenerated = false;
+        $views->expects(self::once())->method('regenerate')->willReturnCallback(static function () use (&$regenerated): array {
+            $regenerated = true;
+
+            return ReportingViewManager::VIEW_NAMES;
+        });
+        $glossary = $this->createMock(GlossarySync::class);
+        $glossary->expects(self::once())->method('sync')->willReturnCallback(static function () use (&$regenerated): array {
+            self::assertTrue($regenerated, 'Glossary sync must follow successful regeneration.');
+
+            return [];
+        });
+        $tester = $this->tester($views, glossary: $glossary);
 
         self::assertSame(Command::SUCCESS, $tester->execute([]));
         self::assertStringContainsString('analytics_custom_events_v1', $tester->getDisplay());
@@ -106,8 +118,26 @@ final class RegenerateReportingViewsCommandTest extends TestCase
         }
     }
 
-    private function tester(ReportingViewManager $views, ?CustomDataSettings $settings = null): CommandTester
+    public function testSyncFailureReportsThatViewsAlreadyChangedAndExitsUnsuccessfully(): void
     {
-        return new CommandTester(new RegenerateReportingViewsCommand($views, $settings ?? $this->createStub(CustomDataSettings::class)));
+        $views = $this->createMock(ReportingViewManager::class);
+        $views->expects(self::once())->method('regenerate')->willReturn(ReportingViewManager::VIEW_NAMES);
+        $glossary = $this->createMock(GlossarySync::class);
+        $glossary->expects(self::once())->method('sync')->willThrowException(new \RuntimeException('Glossary table is missing.'));
+        $tester = $this->tester($views, glossary: $glossary);
+        self::assertSame(Command::FAILURE, $tester->execute([]));
+        self::assertStringContainsString('Reporting views were regenerated', $tester->getDisplay());
+        self::assertStringContainsString('app:analytics:glossary:sync', $tester->getDisplay());
+        self::assertStringNotContainsString('[OK]', $tester->getDisplay());
+    }
+
+    private function tester(ReportingViewManager $views, ?CustomDataSettings $settings = null, ?GlossarySync $glossary = null): CommandTester
+    {
+        if ($glossary === null) {
+            $glossary = $this->createMock(GlossarySync::class);
+            $glossary->expects(self::never())->method('sync');
+        }
+
+        return new CommandTester(new RegenerateReportingViewsCommand($views, $settings ?? $this->createStub(CustomDataSettings::class), $glossary));
     }
 }

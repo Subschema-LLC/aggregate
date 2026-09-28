@@ -13,7 +13,7 @@ namespace App\Service;
  */
 final class PrivacySanitizer
 {
-    private const REFERRER_CHANNELS = [
+    public const REFERRER_CHANNELS = [
         'direct',
         'internal',
         'search',
@@ -23,8 +23,8 @@ final class PrivacySanitizer
         'unknown',
     ];
 
-    private const DEVICE_CLASSES = ['mobile', 'tablet', 'desktop', 'bot', 'unknown'];
-    private const VIEWPORT_BUCKETS = ['small', 'medium', 'large', 'unknown'];
+    public const DEVICE_CLASSES = ['mobile', 'tablet', 'desktop', 'bot', 'unknown'];
+    public const VIEWPORT_BUCKETS = ['small', 'medium', 'large', 'unknown'];
 
     public function sanitizePagePath(mixed $value): ?string
     {
