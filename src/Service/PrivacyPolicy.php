@@ -24,6 +24,12 @@ final class PrivacyPolicy
         return $this->config->getBoolWithEnvFallback('anonymous_tracking_enabled', true);
     }
 
+    /** Whether the deployment-wide strict collection profile is in effect. */
+    public function isStrictCollection(): bool
+    {
+        return (new CollectionProfile($this->config))->isStrict();
+    }
+
     public function isExcludedPath(string $pagePath): bool
     {
         foreach ($this->excludedPaths() as $pattern) {

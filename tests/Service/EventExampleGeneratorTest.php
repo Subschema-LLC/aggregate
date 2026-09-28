@@ -363,6 +363,24 @@ final class EventExampleGeneratorTest extends TestCase
         }
     }
 
+    public function testStrictProfileLeadsWithTheOnlyPayloadTheServerWillKeep(): void
+    {
+        $generator = $this->generator([
+            'collection_profile' => 'strict',
+            'custom_data_properties' => ['utm_medium' => ['consent_required' => false]],
+            'page_sequence_enabled' => true,
+        ]);
+
+        foreach (['model', 'ecommerce'] as $example) {
+            $bundle = $generator->generate($example);
+            self::assertSame(['strict', 'anonymous', 'enhanced'], array_keys($bundle['examples']));
+            self::assertFalse($bundle['examples']['strict']['consent_required']);
+            self::assertSame(['websiteToken', 'eventName', 'pagePath'], array_keys($bundle['examples']['strict']['payload']));
+            self::assertStringContainsString('strict collection profile is active', $bundle['notes'][0]);
+        }
+        self::assertArrayNotHasKey('strict', $this->generator([])->generate()['examples']);
+    }
+
     private function generator(array $values): EventExampleGenerator
     {
         file_put_contents($this->projectDir.'/config/aggregate.yaml', Yaml::dump($values, 6, 2));

@@ -4,6 +4,8 @@
 
 The **Collection → Data model** admin page at `/dashboard/data-model` defines custom properties, their consent requirements, query-parameter mappings, and reporting columns. Expand one property to edit its fields. Model editing, event examples, observed-property discovery, and reporting SQL have separate pages linked from the editor. Download the saved YAML to share the contract with analytics implementation developers. These settings use the active `config/aggregate.yaml` environment or `config/aggregate_<environment>.yaml`; they have no uppercase environment-variable overrides.
 
+The [strict collection profile](PRIVACY-COMPLIANCE.md#strict-collection-profile) collects no custom properties or page depth. The saved model stays in place and applies again when the profile returns to standard.
+
 ## Configure collection
 
 The default model defines `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`, and `utm_id`. Each maps from the identically named page query parameter, has a reporting column with the same name, and **requires enhanced consent**. Views are created only when you explicitly regenerate them.

@@ -294,8 +294,36 @@ final class DashboardSectionsRoutesTest extends TestCase
         $saved = Yaml::parseFile($this->temporaryDirectory.'/config/aggregate.yaml');
         self::assertFalse($saved['anonymous_tracking_enabled']);
         self::assertSame(['/account/**', '/checkout/**'], $saved['anonymous_excluded_paths']);
+        self::assertSame('standard', $saved['collection_profile']);
         self::assertSame('NewAnalytics', $saved['js_namespace']);
         self::assertSame('preserve-me', $saved['unrelated_operator_setting']);
+        $this->assertNoDatabaseConnection();
+    }
+
+    public function testCollectionProfileIsSavedFromTheRenderedFormAndInvalidValuesAreRejected(): void
+    {
+        $browser = $this->browser('ROLE_ADMIN');
+        $this->preventDatabaseReadsAndWrites();
+        $crawler = $browser->request('GET', '/dashboard/collection');
+        self::assertCount(1, $crawler->filter('fieldset legend:contains("Collection profile")'));
+        self::assertCount(1, $crawler->filter('input[name="collection_profile"][value="standard"][checked]'));
+
+        $form = $crawler->selectButton('Save Collection Settings')->form(['collection_profile' => 'strict']);
+        $browser->submit($form);
+        $this->assertRedirect($browser, '/dashboard/collection');
+        $saved = Yaml::parseFile($this->temporaryDirectory.'/config/aggregate.yaml');
+        self::assertSame('strict', $saved['collection_profile']);
+        self::assertTrue($saved['anonymous_tracking_enabled']);
+        self::assertSame('preserve-me', $saved['unrelated_operator_setting']);
+        self::assertCount(1, $browser->request('GET', '/dashboard/collection')->filter('input[name="collection_profile"][value="strict"][checked]'));
+
+        $before = file_get_contents($this->temporaryDirectory.'/config/aggregate.yaml');
+        $values = $browser->request('GET', '/dashboard/collection')->selectButton('Save Collection Settings')->form()->getPhpValues();
+        $values['collection_profile'] = 'relaxed';
+        $browser->request('POST', '/dashboard/settings/anonymous', $values, [], ['HTTP_ORIGIN' => 'http://localhost']);
+        $this->assertRedirect($browser, '/dashboard/collection');
+        self::assertContains('Collection profile must be standard or strict.', $browser->getRequest()->getSession()->getFlashBag()->peek('error'));
+        self::assertSame($before, file_get_contents($this->temporaryDirectory.'/config/aggregate.yaml'));
         $this->assertNoDatabaseConnection();
     }
 

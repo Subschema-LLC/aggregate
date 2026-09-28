@@ -13,6 +13,30 @@
     <form action="{{ path('app_anonymous_settings_save') }}" method="post">
         <input type="hidden" name="_csrf_token" value="{{ csrf_token('anonymous_settings') }}">
 
+        <fieldset class="field" aria-describedby="collection-profile-help">
+            <legend class="label">Collection profile</legend>
+            <div class="control">
+                <label class="radio">
+                    <input type="radio" name="collection_profile" value="standard" {% if collection_profile == 'standard' %}checked{% endif %}>
+                    Standard
+                </label>
+                <label class="radio">
+                    <input type="radio" name="collection_profile" value="strict" {% if collection_profile == 'strict' %}checked{% endif %}>
+                    Strict
+                </label>
+            </div>
+            <div id="collection-profile-help" class="help content">
+                <p><strong>Standard</strong> uses the settings on this page and in the data model, including consented enhanced analytics.</p>
+                <p><strong>Strict</strong> records every event in anonymous mode with only the sanitized page path, event name and approved goal. The tracker reads no screen size or referrer, sends no consent state, organization marker or identifiers, and does not read, write or remove cookies or browser storage. The server ignores any other submitted dimension and performs no geographic lookup. Custom properties, page depth, coarse geography and enhanced analytics stay configured but are not used while strict is selected.</p>
+                <p>Strict limits what this tracker touches on a visitor's device; it does not by itself make collection exempt from consent in every jurisdiction. See the privacy guide before relying on it.</p>
+            </div>
+            {% if collection_profile_env_override %}
+                <p class="help is-warning">The <code>COLLECTION_PROFILE</code> environment variable is set, so the <strong>{{ collection_profile }}</strong> profile is in effect regardless of the value saved here.</p>
+            {% endif %}
+        </fieldset>
+
+        <hr>
+
         <div class="field">
             <label class="checkbox">
                 <input type="checkbox" name="anonymous_tracking_enabled" value="1" {% if anonymous_tracking_enabled %}checked{% endif %}>
@@ -78,6 +102,7 @@
         <div class="message-body content">
             <p><strong>Reject</strong> disables enhanced analytics: no visitor ID, session ID, analytics session cookie, properties requiring consent, or exact dimensions.</p>
             <p>Anonymous rows retain a safe event name, UTC hour bucket, sanitized path, coarse referrer/device/viewport buckets, optional coarse geography, and configured anonymous goals and consent-free properties. They may still be personal data in context; the <code>bi_anonymous_*</code> views group them and suppress low-volume cells.</p>
+            <p>With the strict collection profile, every event is anonymous and keeps only the sanitized path, safe event name, UTC hour bucket and approved goal. Referrer, device and viewport are stored as <code>unknown</code>.</p>
             <p>IP geolocation is itself processing of personal data in many jurisdictions, even though the analytics event does not retain the IP. Enable it only after documenting a legal basis and notice appropriate to the deployment.</p>
         </div>
     </div>

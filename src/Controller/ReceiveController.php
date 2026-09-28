@@ -109,41 +109,52 @@ class ReceiveController
                 return $this->jsonWithCors($request, ['error' => 'pagePath is required'], Response::HTTP_BAD_REQUEST);
             }
 
-            $referrerChannel = $sanitizer->sanitizeReferrerChannel(
-                $payload['referrerChannel'] ?? null,
-                $payload['referrer'] ?? null,
-                (string) $website['domain'],
-            );
-            $userAgent = (string) $request->headers->get('User-Agent', '');
             $eventName = $sanitizer->sanitizeEventName($payload['eventName'] ?? null);
             if ($eventName === null) {
                 return $this->jsonWithCors($request, ['error' => 'eventName is invalid'], Response::HTTP_BAD_REQUEST);
             }
-            $enhancedConsent = $privacyPolicy->hasEnhancedConsent($payload['consentState'] ?? null);
+            // The strict profile keeps only what reporting a page view or named
+            // event requires. Every other dimension a client submits is ignored,
+            // including values sent by stale scripts or direct API requests.
+            $strictCollection = $privacyPolicy->isStrictCollection();
+            $referrerChannel = $strictCollection ? 'unknown' : $sanitizer->sanitizeReferrerChannel(
+                $payload['referrerChannel'] ?? null,
+                $payload['referrer'] ?? null,
+                (string) $website['domain'],
+            );
+            $userAgent = $strictCollection ? '' : (string) $request->headers->get('User-Agent', '');
+            $enhancedConsent = !$strictCollection && $privacyPolicy->hasEnhancedConsent($payload['consentState'] ?? null);
             // Accept only the coarse boolean, never a client-supplied marker
             // name/value or truthy strings that could misclassify traffic.
-            $internalTraffic = ($payload['internalTraffic'] ?? false) === true;
+            $internalTraffic = !$strictCollection && ($payload['internalTraffic'] ?? false) === true;
             // The deployment chooses the JSON key, and queued events keep this
             // name even if settings change before the worker handles them.
             $internalTrafficName = $internalTrafficSettings->toBrowserConfig()['name'];
             // Resolve the deployment's property policy before either storage
             // path. Client-side consent flags never authorize custom keys.
-            $eventData = $customDataSettings->filterEventData($payload['eventData'] ?? null, $enhancedConsent);
-            unset($eventData[$internalTrafficName]);
+            $eventData = $strictCollection
+                ? null
+                : $customDataSettings->filterEventData($payload['eventData'] ?? null, $enhancedConsent);
+            if ($eventData !== null) {
+                unset($eventData[$internalTrafficName]);
+            }
             $submittedGoal = $payload['goalEvent'] ?? null;
             $goalEvent = $goalEvents->resolve($submittedGoal, anonymousMode: !$enhancedConsent);
             $goalWasRejected = $goalEvents->wasSubmitted($submittedGoal) && $goalEvent === null;
             unset($submittedGoal);
-            $deviceClass = $sanitizer->sanitizeDeviceClass($payload['deviceClass'] ?? null, $userAgent);
-            $viewportBucket = $sanitizer->sanitizeViewportBucket(
+            $deviceClass = $strictCollection
+                ? 'unknown'
+                : $sanitizer->sanitizeDeviceClass($payload['deviceClass'] ?? null, $userAgent);
+            $viewportBucket = $strictCollection ? 'unknown' : $sanitizer->sanitizeViewportBucket(
                 $payload['viewportBucket'] ?? null,
                 $payload['screenWidth'] ?? null,
             );
             $occurredAt = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
             // The resolver returns only a canonical country/continent code. It
             // performs no network calls and never exposes the source address or
-            // detailed MMDB record to events, Messenger or logs.
-            $geoArea = $geoIpResolver->resolve($ip)?->value();
+            // detailed MMDB record to events, Messenger or logs. The strict
+            // profile performs no lookup at all.
+            $geoArea = $strictCollection ? null : $geoIpResolver->resolve($ip)?->value();
             unset($ip);
 
             if (!$enhancedConsent) {
