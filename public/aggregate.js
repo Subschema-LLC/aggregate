@@ -39,6 +39,12 @@
   // ScriptController replaces these defaults with browser-safe YAML settings.
   var internalTrafficDefaults = {storage: 'cookie', name: 'orgInternalTraffic', value: 'true', cookieDomain: ''};
   var customDataDefaults = {queryParameters: {utm_source: 'utm_source', utm_medium: 'utm_medium', utm_campaign: 'utm_campaign', utm_term: 'utm_term', utm_content: 'utm_content', utm_id: 'utm_id'}, consentFreeProperties: []};
+  var collectionDefaults = {profile: 'standard'};
+  // The strict profile sends only the page path, event name and goal. It reads
+  // nothing else from the device and never reads, writes or removes cookies or
+  // Web Storage. Anything other than the literal standard profile is strict.
+  // Page configuration can opt into strict collection but never out of it.
+  var strictCollection = !collectionDefaults || collectionDefaults.profile !== 'standard';
   // Served scripts retain server collection permissions when callers configure
   // additional options. Standalone/static copies have no injected policy.
   var pageSequenceAuthorized = !Object.prototype.hasOwnProperty.call(customDataDefaults, 'pageSequenceEnabled')
@@ -68,6 +74,16 @@
     pageSequences: Object.create(null),
     pageSequenceUrlInitial: null,
     pageSequenceUrlTrimAttempted: false,
+
+    requireStrictCollection: function(profile){
+      if (profile !== 'strict') return;
+      strictCollection = true;
+      // Forget in-memory state only; strict collection never touches storage.
+      this.consent = false;
+      this.pageSequences = Object.create(null);
+      this.pageSequenceUrlInitial = null;
+      this.pageSequenceUrlTrimAttempted = false;
+    },
 
     configureInternalTraffic: function(options){
       if (!options || typeof options !== 'object') return;
@@ -167,7 +183,8 @@
     clearPageSequence: function(){
       // URL mode never touches counter storage, even for cleanup. A counter
       // from a previous storage-mode installation may remain until tab closure.
-      if (this.pageSequenceMethod() === 'session_storage') {
+      // Strict collection likewise leaves any earlier counter untouched.
+      if (!strictCollection && this.pageSequenceMethod() === 'session_storage') {
         var keys = Object.keys(this.pageSequences);
         var currentKey = this.pageSequenceStorageKey();
         if (currentKey && keys.indexOf(currentKey) === -1) keys.push(currentKey);
@@ -244,6 +261,7 @@
     },
 
     pageSequenceForEvent: function(advance){
+      if (strictCollection) return null;
       if (!pageSequenceAuthorized || this.config.customData.pageSequenceEnabled !== true) {
         this.clearPageSequence();
         return null;
@@ -331,6 +349,7 @@
     },
 
     decoratePageSequenceLink: function(event){
+      if (strictCollection) return;
       if (!pageSequenceAuthorized || this.config.customData.pageSequenceEnabled !== true
         || this.pageSequenceMethod() !== 'url_parameter' || !event || event.defaultPrevented
         || event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey
@@ -371,6 +390,7 @@
     },
 
     customDataForEvent: function(eventData, advancePage){
+      if (strictCollection) return null;
       var clean = Object.create(null);
       var count = 0;
       var settings = this.config.customData;
@@ -464,6 +484,8 @@
     isInternalTraffic: function(){
       // This shared marker classifies traffic without identifying a visitor.
       // Read it independently of analytics consent, but never create it here.
+      // Strict collection does not read the marker's cookie or storage.
+      if (strictCollection) return false;
       try {
         var marker = this.config.internalTraffic;
         if (!marker || typeof marker.name !== 'string' || !marker.name || typeof marker.value !== 'string') return false;
@@ -493,6 +515,9 @@
     },
 
     clearIdentifiers: function(){
+      // Strict collection never creates identifiers and does not touch storage,
+      // even to remove identifiers left by an earlier standard-profile visit.
+      if (strictCollection) return;
       try {
         localStorage.removeItem('aggregate_visitor_id');
       } catch(e) {}
@@ -546,7 +571,7 @@
     ensureIds: function(){
       try {
         // Anonymous measurement never uses browser identifiers.
-        if (!this.consent) return {visitorId: null, sessionId: null};
+        if (strictCollection || !this.consent) return {visitorId: null, sessionId: null};
 
         // Enhanced consent permits visitor and session identifiers.
         var vKey = 'aggregate_visitor_id';
@@ -651,6 +676,7 @@
     },
 
     getReferrerChannel: function(){
+      if (strictCollection) return 'unknown';
       if (!document.referrer) return 'direct';
 
       try {
@@ -689,6 +715,7 @@
     },
 
     getViewportBucket: function(){
+      if (strictCollection) return 'unknown';
       try {
         var width = window.innerWidth || (screen && screen.width) || 0;
         if (!width) return 'unknown';
@@ -701,6 +728,7 @@
     },
 
     getDeviceClass: function(){
+      if (strictCollection) return 'unknown';
       var viewportBucket = this.getViewportBucket();
       if (viewportBucket === 'small') return 'mobile';
       if (viewportBucket === 'medium') return 'tablet';
@@ -710,12 +738,15 @@
 
     send: function(payload){
       if (!this.config.websiteToken) return;
-      payload.consentState = this.getConsentState();
       payload.websiteToken = this.config.websiteToken;
-      payload.internalTraffic = this.isInternalTraffic();
-      var ids = this.ensureIds();
-      if (ids.visitorId) payload.visitorId = ids.visitorId;
-      if (ids.sessionId) payload.sessionId = ids.sessionId;
+      // Strict payloads carry no consent state, organization marker or IDs.
+      if (!strictCollection) {
+        payload.consentState = this.getConsentState();
+        payload.internalTraffic = this.isInternalTraffic();
+        var ids = this.ensureIds();
+        if (ids.visitorId) payload.visitorId = ids.visitorId;
+        if (ids.sessionId) payload.sessionId = ids.sessionId;
+      }
       try {
         var headers = {'Content-Type':'application/json'};
         // Include Origin automatically by browser
@@ -746,6 +777,11 @@
     },
 
     trackView: function(advancePage){
+      if (strictCollection) {
+        this.send({eventName: 'view', pagePath: this.sanitizePagePath()});
+        return;
+      }
+
       var payload = {
         eventName: 'view',
         pagePath: this.sanitizePagePath(),
@@ -768,6 +804,12 @@
     emit: function(eventName, eventData, goalEvent){
       var safeEventName = this.sanitizeEventName(eventName);
       if (!safeEventName) return false;
+
+      if (strictCollection) {
+        // Event properties are not sent. Goals remain server-validated.
+        this.send({pagePath: this.sanitizePagePath(), eventName: safeEventName, goalEvent: goalEvent || null});
+        return true;
+      }
 
       var payload = {
         pagePath: this.sanitizePagePath(),
@@ -794,8 +836,14 @@
     },
 
     setConsent: function(granted){
-      this.consent = this.parseConsent(granted);
       this.consentKnown = true;
+      // Strict collection never enables enhanced analytics, so a consent
+      // choice changes nothing and no identifier storage is created or cleared.
+      if (strictCollection) {
+        this.consent = false;
+        return;
+      }
+      this.consent = this.parseConsent(granted);
 
       // Withdrawing enhanced consent removes identifiers immediately. Coarse,
       // hour-bucketed anonymous-mode rows continue without those identifiers.
@@ -811,6 +859,7 @@
   window[namespace].trackView = function(){ Analytics.trackView(true); };
   window[namespace].setConsent = Analytics.setConsent.bind(Analytics);
   window[namespace].configure = function(opts){
+    Analytics.requireStrictCollection(opts && opts.collectionProfile);
     Analytics.config.endpoint = opts && opts.endpoint || Analytics.config.endpoint;
     Analytics.config.websiteToken = opts && opts.websiteToken || Analytics.config.websiteToken;
     Analytics.configureInternalTraffic(opts && opts.internalTraffic);
@@ -821,6 +870,10 @@
     if (Analytics.pageSequenceMethod() === 'url_parameter') Analytics.pageSequenceForEvent(false);
   };
 
+  // Apply an inline strict opt-in before any consent value is read, so a
+  // static copy never clears or creates storage on its way to strict mode.
+  Analytics.requireStrictCollection(window[namespace].collectionProfile);
+
   // Try to read configuration from script tag (query params or data-attributes)
   try {
     var s = document.currentScript || (function(){var ss=document.getElementsByTagName('script'); return ss[ss.length-1];})();
@@ -828,6 +881,7 @@
       if (s.dataset) {
         if (s.dataset.endpoint) Analytics.config.endpoint = s.dataset.endpoint;
         if (s.dataset.websiteToken) Analytics.config.websiteToken = s.dataset.websiteToken;
+        Analytics.requireStrictCollection(s.dataset.collectionProfile);
         Analytics.configureInternalTraffic({
           storage: s.dataset.internalTrafficStorage,
           name: s.dataset.internalTrafficName,
@@ -874,7 +928,9 @@
   if (Analytics.pageSequenceMethod() === 'url_parameter') Analytics.pageSequenceForEvent(false);
 
   // Decorate only an activated eligible link; native navigation stays in charge.
-  document.addEventListener('click', function(event){ Analytics.decoratePageSequenceLink(event); });
+  if (!strictCollection) {
+    document.addEventListener('click', function(event){ Analytics.decoratePageSequenceLink(event); });
+  }
 
   // auto pageview on load
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
