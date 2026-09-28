@@ -94,13 +94,13 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   exclusions do. The UK statistical-purposes exception added to PECR by the
   Data (Use and Access) Act 2025 requires a simple, free means of objecting.
   Any stored opt-out preference needs its own disclosure.
-- **A documented consent-exemption configuration.** Publish a configuration
-  profile and checklist for operators assessing an audience-measurement
+- **A documented consent-exemption configuration.** Build on the
+  [strict collection profile](docs/PRIVACY-COMPLIANCE.md#strict-collection-profile),
+  which already disables page depth, the organization marker and other device
+  reads, with a checklist for operators assessing an audience-measurement
   exemption, such as the CNIL's in France or the UK statistical-purposes
-  exception. Cover page depth disabled (tab storage writes to the device, and
-  the URL method is URL tracking under EDPB Guidelines 2/2023), raw and archive
-  retention of at most 25 months, organization-marker disclosure, and visitor
-  objection. "Cookieless" is not an exemption by itself: the EDPB treats scripts
+  exception. Cover raw and archive retention of at most 25 months, consent tools
+  and tags still loaded alongside the tracker, and visitor objection. "Cookieless" is not an exemption by itself: the EDPB treats scripts
   that make the browser send device information as within ePrivacy Article 5(3).
   Consider the CNIL's evaluation of audience-measurement tools once the profile
   exists, and revisit if the EU Digital Omnibus's proposed first-party
@@ -130,6 +130,12 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   adapters. Conservative examples gate the initial tracker load; they are not
   legal advice, region detection, a rights-processing system or provider enforcement.
 
+- [Strict collection profile](docs/PRIVACY-COMPLIANCE.md#strict-collection-profile),
+  set in Collection controls, YAML or `COLLECTION_PROFILE`. Every event is
+  anonymous with only the sanitized path, event name and approved goal; the
+  served tracker reads no screen size or referrer and does not touch cookies or
+  browser storage. It limits device access but is not by itself a consent
+  exemption.
 - [BI glossary](docs/BI-GLOSSARY.md), with declared value labels, column definitions,
   localized fallback, YAML/admin editing, and a headless sync command. Eight fixed
   metadata views join to existing BI columns without reading event data or

@@ -9,7 +9,7 @@ value.device_class.desktop.description: 'Viewport 1,024 px or wider, or another 
 value.device_class.bot.label: Bot
 value.device_class.bot.description: 'Server classification of a User-Agent naming a bot, crawler, spider or headless browser.'
 value.device_class.unknown.label: Unknown
-value.device_class.unknown.description: 'No usable width or User-Agent.'
+value.device_class.unknown.description: 'No usable width or User-Agent, or not collected because the strict collection profile was active.'
 value.viewport_bucket.small.label: Small
 value.viewport_bucket.small.description: 'Browser width under 640 px.'
 value.viewport_bucket.medium.label: Medium
@@ -17,7 +17,7 @@ value.viewport_bucket.medium.description: 'Browser width 640–1,023 px.'
 value.viewport_bucket.large.label: Large
 value.viewport_bucket.large.description: 'Browser width 1,024 px or more.'
 value.viewport_bucket.unknown.label: Unknown
-value.viewport_bucket.unknown.description: 'No width reported.'
+value.viewport_bucket.unknown.description: 'No width reported, or not collected because the strict collection profile was active.'
 value.referrer_channel.direct.label: Direct
 value.referrer_channel.direct.description: 'No referrer: typed, bookmarked, or removed by the browser or app.'
 value.referrer_channel.internal.label: Internal
@@ -31,7 +31,7 @@ value.referrer_channel.email.description: 'A host on the built-in list of webmai
 value.referrer_channel.referral.label: Referral
 value.referrer_channel.referral.description: 'Any other website.'
 value.referrer_channel.unknown.label: Unknown
-value.referrer_channel.unknown.description: 'Referrer missing from the row or not classifiable.'
+value.referrer_channel.unknown.description: 'Referrer missing from the row or not classifiable, or not collected because the strict collection profile was active.'
 value.geo_level.country.label: Country
 value.geo_level.country.description: 'Country granularity selected when collecting geography, or retained by geographic pooling. This is approximate network-exit geography, not residence.'
 value.geo_level.continent.label: Continent

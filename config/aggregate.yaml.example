@@ -141,6 +141,7 @@ environments:
     internal_traffic_value: 'true'
     internal_traffic_cookie_domain: ''
     internal_traffic_share_token: ''
+    collection_profile: standard
     anonymous_tracking_enabled: true
     anonymous_excluded_paths: []
     anonymous_geo_enabled: false
@@ -175,6 +176,7 @@ environments:
     internal_traffic_value: 'true'
     internal_traffic_cookie_domain: ''
     internal_traffic_share_token: ''
+    collection_profile: standard
     anonymous_tracking_enabled: true
     anonymous_excluded_paths: []
     anonymous_geo_enabled: false
@@ -208,6 +210,7 @@ environments:
     internal_traffic_value: 'true'
     internal_traffic_cookie_domain: ''
     internal_traffic_share_token: ''
+    collection_profile: standard
     anonymous_tracking_enabled: true
     anonymous_excluded_paths: []
     anonymous_geo_enabled: false
@@ -310,6 +313,15 @@ environments:
 #   The page has noindex/nofollow/no-store headers. Share tokens are never included
 #   in aggregate.js or downloaded HTML pages. Revocation does not remove markers
 #   already applied or downloaded pages hosted elsewhere.
+#
+# collection_profile (optional, default: standard)
+#   standard or strict. Strict records every event in anonymous mode with only
+#   the sanitized page path, event name and an approved goal. The served tracker
+#   then reads no screen size, referrer or query string and does not read, write
+#   or remove cookies or browser storage; the server discards other submitted
+#   dimensions and skips geography. Other settings stay saved but unused.
+#   Unrecognized values stop ingestion. This limits device access; it does not
+#   by itself make collection consent-exempt. See docs/PRIVACY-COMPLIANCE.md.
 #
 # anonymous_tracking_enabled (optional, default: true)
 #   Administrative collection kill switch. Set to false to reject both anonymous

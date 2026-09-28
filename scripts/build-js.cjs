@@ -10,7 +10,8 @@ const {createRequire} = require('node:module');
 const PLACEHOLDERS = {
   namespace: '__AGGREGATE_NAMESPACE__',
   internalTrafficDefaults: '__AGGREGATE_INTERNAL_TRAFFIC__',
-  customDataDefaults: '__AGGREGATE_CUSTOM_DATA__'
+  customDataDefaults: '__AGGREGATE_CUSTOM_DATA__',
+  collectionDefaults: '__AGGREGATE_COLLECTION__'
 };
 const DROP_INS = [
   {name: 'consent', variable: 'consentConfig', placeholder: '__AGGREGATE_CONSENT_CONFIG__',

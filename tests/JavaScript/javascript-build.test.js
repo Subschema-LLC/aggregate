@@ -30,7 +30,8 @@ test('optional build preserves licensing, dynamic config and script syntax, and 
     assert.match(outputs.get('micro-consent-dropins/js/consent-ui.min.js'), /SPDX-License-Identifier: AGPL-3\.0-only/);
 
     let template = outputs.get('var/browser/aggregate.template.min.js');
-    const values = ["Company'</script>\n", {storage: 'cookie', name: 'staff', value: 'true', cookieDomain: ''}, {queryParameters: {channel: 'medium'}, consentFreeProperties: ['medium']}];
+    const values = ["Company'</script>\n", {storage: 'cookie', name: 'staff', value: 'true', cookieDomain: ''}, {queryParameters: {channel: 'medium'}, consentFreeProperties: ['medium']}, {profile: 'strict'}];
+    assert.equal(Object.values(PLACEHOLDERS).length, values.length, 'every tracker placeholder needs a fixture value');
     for (const [index, placeholder] of Object.values(PLACEHOLDERS).entries()) {
       assert.ok(template.includes(placeholder));
       template = template.split(placeholder).join(JSON.stringify(values[index]));

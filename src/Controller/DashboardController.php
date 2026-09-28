@@ -8,6 +8,7 @@ use App\Service\AggregateConfigLoader;
 use App\Service\AnalyticsPrivacySettings;
 use App\Service\BrandingLogoManager;
 use App\Service\BrandingTheme;
+use App\Service\CollectionProfile;
 use App\Service\DropInScripts;
 use App\Service\WebsiteConfigManager;
 use App\Service\WebsiteDomainPolicy;
@@ -114,8 +115,11 @@ class DashboardController extends AbstractController
             $geoLevel = 'macro_region';
         }
         $geoDatabasePath = $this->config->getWithEnvFallback('anonymous_geo_database_path', '');
+        $collectionProfile = new CollectionProfile($this->config);
 
         return $this->renderDashboardPage('settings/collection.html.twig', [
+            'collection_profile' => $collectionProfile->name(),
+            'collection_profile_env_override' => $collectionProfile->hasEnvironmentOverride(),
             'anonymous_tracking_enabled' => $this->config->getBoolWithEnvFallback('anonymous_tracking_enabled', true),
             'anonymous_excluded_paths' => array_values(array_filter($excludedPaths, 'is_string')),
             'anonymous_geo_enabled' => $this->config->getBoolWithEnvFallback('anonymous_geo_enabled', false),
@@ -552,6 +556,12 @@ class DashboardController extends AbstractController
         $geoEnabled = $request->request->getBoolean('anonymous_geo_enabled');
         $geoLevel = trim((string) $request->request->get('anonymous_geo_level', 'macro_region'));
         $geoDatabasePath = trim((string) $request->request->get('anonymous_geo_database_path', ''));
+        $collectionProfile = CollectionProfile::normalize($request->request->get(CollectionProfile::KEY, CollectionProfile::STANDARD));
+
+        if ($collectionProfile === null) {
+            $this->addFlash('error', 'Collection profile must be standard or strict.');
+            return $this->redirectToRoute('app_collection_settings');
+        }
 
         if (!in_array($geoLevel, ['macro_region', 'country'], true)) {
             $this->addFlash('error', 'Geography level must be macro-region or country.');
@@ -601,6 +611,7 @@ class DashboardController extends AbstractController
 
         try {
             $this->config->setMany([
+                CollectionProfile::KEY => $collectionProfile,
                 'anonymous_tracking_enabled' => $enabled,
                 'anonymous_excluded_paths' => $paths,
                 'anonymous_geo_enabled' => $geoEnabled,
@@ -609,7 +620,11 @@ class DashboardController extends AbstractController
             ]);
             $effectiveGeoEnabled = $this->config->getBoolWithEnvFallback('anonymous_geo_enabled', false);
             $effectiveGeoPath = $this->config->getWithEnvFallback('anonymous_geo_database_path', '');
-            if ($effectiveGeoEnabled && (!is_string($effectiveGeoPath) || trim($effectiveGeoPath) === '')) {
+            $effectiveProfile = new CollectionProfile($this->config);
+            if ($effectiveProfile->hasEnvironmentOverride() && $effectiveProfile->name() !== $collectionProfile) {
+                $this->addFlash('warning', sprintf('The COLLECTION_PROFILE environment variable keeps the %s profile in effect. The saved YAML value applies only when that variable is removed.', $effectiveProfile->name()));
+            }
+            if ($effectiveGeoEnabled && !$effectiveProfile->isStrict() && (!is_string($effectiveGeoPath) || trim($effectiveGeoPath) === '')) {
                 $this->addFlash('warning', 'Coarse geography is enabled without a local GeoIP database path. Events will continue with no geography until one is configured.');
             }
             $this->addFlash('success', 'Analytics collection settings updated successfully.');

@@ -597,6 +597,105 @@ final class ReceiveControllerPrivacyTest extends TestCase
         self::assertSame(['status' => 'ignored'], json_decode((string) $response->getContent(), true));
     }
 
+    #[DataProvider('strictSubmissions')]
+    public function testStrictProfileStoresOnlyPathEventNameAndGoalFromAnyDirectRequest(array $payload, string $userAgent): void
+    {
+        $persisted = null;
+        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager->expects(self::once())
+            ->method('persist')
+            ->willReturnCallback(static function (object $event) use (&$persisted): void {
+                $persisted = $event;
+            });
+        $entityManager->expects(self::once())->method('flush');
+        $bus = $this->createMock(MessageBusInterface::class);
+        $bus->expects(self::never())->method('dispatch');
+        $geoResolver = $this->createMock(GeoIpResolverInterface::class);
+        $geoResolver->expects(self::never())->method('resolve');
+
+        $response = $this->invoke(
+            payload: $payload,
+            bus: $bus,
+            recorder: new AnonymousEventRecorder($entityManager),
+            config: $this->privacyConfig(
+                customDataProperties: [
+                    'utm_medium' => ['consent_required' => false],
+                    'page_sequence' => ['type' => 'integer', 'consent_required' => false],
+                ],
+                collectionProfile: 'strict',
+            ),
+            geoResolver: $geoResolver,
+            userAgent: $userAgent,
+        );
+
+        self::assertSame(202, $response->getStatusCode());
+        self::assertSame(['status' => 'recorded', 'mode' => 'anonymous'], json_decode((string) $response->getContent(), true));
+        self::assertInstanceOf(Event::class, $persisted);
+        $persisted->enforcePrivacyInvariants();
+        self::assertSame('anonymous', $persisted->getPrivacyMode());
+        self::assertSame('/pricing', $persisted->getUrl());
+        self::assertSame('plan_selected', $persisted->getEventName());
+        self::assertSame('purchase', $persisted->getGoalEvent());
+        self::assertSame('unknown', $persisted->getReferrer());
+        self::assertSame('unknown', $persisted->getDeviceClass());
+        self::assertSame('unknown', $persisted->getViewportBucket());
+        self::assertNull($persisted->getGeoArea());
+        self::assertNull($persisted->getCustomData());
+        self::assertNull($persisted->getConsentState());
+        self::assertNull($persisted->getVisitorId());
+        self::assertNull($persisted->getSessionId());
+        self::assertNull($persisted->getScreenWidth());
+        self::assertNull($persisted->getGeneralizedUserAgent());
+        self::assertStringNotContainsString('private', serialize($persisted));
+    }
+
+    public static function strictSubmissions(): iterable
+    {
+        $full = [
+            'websiteToken' => 'public-site-token',
+            'pagePath' => '/pricing?utm_medium=email',
+            'eventName' => 'plan_selected',
+            'goalEvent' => 'purchase',
+            'consentState' => 'granted',
+            'visitorId' => 'private-visitor',
+            'sessionId' => 'private-session',
+            'referrerChannel' => 'search',
+            'deviceClass' => 'mobile',
+            'viewportBucket' => 'small',
+            'screenWidth' => 390,
+            'internalTraffic' => true,
+            'eventData' => ['utm_medium' => 'private-medium', 'page_sequence' => 3, 'orgInternalTraffic' => true],
+        ];
+
+        yield 'standard tracker payload with enhanced consent' => [$full, 'Mozilla/5.0 (iPhone) Mobile Safari'];
+        yield 'legacy referrer URL and User-Agent fallback only' => [
+            ['websiteToken' => 'public-site-token', 'pagePath' => '/pricing', 'eventName' => 'plan_selected', 'goalEvent' => 'purchase', 'referrer' => 'https://private.example/search?q=private', 'screenWidth' => '390'],
+            'Googlebot/2.1 private crawler',
+        ];
+        yield 'strict tracker payload' => [
+            ['websiteToken' => 'public-site-token', 'pagePath' => '/pricing', 'eventName' => 'plan_selected', 'goalEvent' => 'purchase'],
+            '',
+        ];
+    }
+
+    public function testStrictProfileStillAppliesTheKillSwitchAndPathExclusions(): void
+    {
+        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager->expects(self::never())->method('persist');
+        $bus = $this->createMock(MessageBusInterface::class);
+        $bus->expects(self::never())->method('dispatch');
+        $payload = ['websiteToken' => 'public-site-token', 'pagePath' => '/account/settings', 'eventName' => 'view'];
+
+        foreach ([
+            $this->privacyConfig(enabled: false, collectionProfile: 'strict'),
+            $this->privacyConfig(excludedPaths: ['/account/**'], collectionProfile: 'strict'),
+        ] as $config) {
+            $response = $this->invoke(payload: $payload, bus: $bus, recorder: new AnonymousEventRecorder($entityManager), config: $config);
+
+            self::assertSame(['status' => 'ignored'], json_decode((string) $response->getContent(), true));
+        }
+    }
+
     public function testIngestionFailureLogsNoPayloadOrRequestMetadata(): void
     {
         $entityManager = $this->createMock(EntityManagerInterface::class);
@@ -643,6 +742,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
         ?IpRateLimiter $rateLimiter = null,
         ?GeoIpResolverInterface $geoResolver = null,
         ?GoalEventRegistry $goalEvents = null,
+        ?string $userAgent = null,
     ): \Symfony\Component\HttpFoundation\Response {
         $config ??= $this->privacyConfig();
         $logger ??= new NullLogger();
@@ -651,7 +751,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
         $goalEvents ??= $this->goalEvents();
 
         return (new ReceiveController())(
-            $this->request($payload),
+            $this->request($payload, $userAgent),
             $this->websiteManager(),
             $bus,
             $rateLimiter,
@@ -671,6 +771,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
         array $excludedPaths = [],
         string $internalTrafficName = 'orgInternalTraffic',
         array $customDataProperties = [],
+        string $collectionProfile = 'standard',
     ): AggregateConfigLoader
     {
         $config = $this->createStub(AggregateConfigLoader::class);
@@ -680,7 +781,10 @@ final class ReceiveControllerPrivacyTest extends TestCase
         ]);
         $config->method('getBoolWithEnvFallback')->willReturn($enabled);
         $config->method('getWithEnvFallback')
-            ->willReturnCallback(static function (string $key, mixed $default = null) use ($excludedPaths, $internalTrafficName, $customDataProperties): mixed {
+            ->willReturnCallback(static function (string $key, mixed $default = null) use ($excludedPaths, $internalTrafficName, $customDataProperties, $collectionProfile): mixed {
+                if ($key === 'collection_profile') {
+                    return $collectionProfile;
+                }
                 if ($key === 'internal_traffic_name') {
                     return $internalTrafficName;
                 }
@@ -693,7 +797,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
         return $config;
     }
 
-    private function request(array $payload): Request
+    private function request(array $payload, ?string $userAgent = null): Request
     {
         return Request::create(
             '/api/receive',
@@ -701,7 +805,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
             server: [
                 'CONTENT_TYPE' => 'application/json',
                 'HTTP_ORIGIN' => 'https://www.example.com',
-                'HTTP_USER_AGENT' => 'Mozilla/5.0 Chrome/126.0 Safari/537.36',
+                'HTTP_USER_AGENT' => $userAgent ?? 'Mozilla/5.0 Chrome/126.0 Safari/537.36',
                 'REMOTE_ADDR' => '203.0.113.42',
             ],
             content: json_encode($payload, JSON_THROW_ON_ERROR),

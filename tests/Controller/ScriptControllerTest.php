@@ -196,6 +196,43 @@ final class ScriptControllerTest extends TestCase
         self::assertSame('source', $this->response($settings, Request::create('/aggregate.js'), $directory)->headers->get('X-Aggregate-Script'));
     }
 
+    public function testTrackerDefaultsToTheStandardCollectionProfile(): void
+    {
+        $script = (string) $this->response([])->getContent();
+
+        self::assertSame(['profile' => 'standard'], $this->collectionBrowserConfig($script));
+    }
+
+    public function testStrictProfileIsServedAndWithholdsCustomDataSettingsInBothScriptVariants(): void
+    {
+        $settings = [
+            'collection_profile' => 'strict',
+            'custom_data_properties' => ['medium' => ['consent_required' => false, 'type' => 'string']],
+            'query_parameter_mappings' => ['utm_medium' => 'medium'],
+            'page_sequence_enabled' => true,
+            'page_sequence_method' => 'url_parameter',
+        ];
+        $withheld = ['queryParameters' => [], 'consentFreeProperties' => [], 'pageSequenceEnabled' => false, 'pageSequenceMethod' => 'url_parameter', 'propertyTypes' => ['medium' => 'string']];
+
+        $source = (string) $this->response($settings)->getContent();
+        self::assertSame(['profile' => 'strict'], $this->collectionBrowserConfig($source));
+        self::assertSame($withheld, $this->customDataBrowserConfig($source));
+
+        $response = $this->response($settings, Request::create('/aggregate.js?min=1'), $this->buildFixture());
+        self::assertSame('minified', $response->headers->get('X-Aggregate-Script'));
+        self::assertSame(1, preg_match('/window\.fixture=(.*);/', (string) $response->getContent(), $matches));
+        $public = json_decode($matches[1], true, flags: JSON_THROW_ON_ERROR);
+        self::assertSame($withheld, $public[2]);
+        self::assertSame(['profile' => 'strict'], $public[3]);
+    }
+
+    public function testInvalidServedProfileValueResolvesToStrict(): void
+    {
+        $script = (string) $this->response(['collection_profile' => 'relaxed'])->getContent();
+
+        self::assertSame(['profile' => 'strict'], $this->collectionBrowserConfig($script));
+    }
+
     public function testMissingStaleOrIncompleteBuildFallsBackToCurrentConfiguredSource(): void
     {
         foreach (['missing', 'stale-source', 'stale-template', 'malformed-manifest', 'missing-placeholder'] as $problem) {
@@ -241,7 +278,7 @@ final class ScriptControllerTest extends TestCase
         mkdir($directory.'/var/browser', 0777, true);
         $this->temporaryDirectories[] = $directory;
         copy(dirname(__DIR__, 2).'/public/aggregate.js', $directory.'/public/aggregate.js');
-        file_put_contents($directory.'/var/browser/aggregate.template.min.js', "/*! preserved license */\nwindow.fixture=[__AGGREGATE_NAMESPACE__,__AGGREGATE_INTERNAL_TRAFFIC__,__AGGREGATE_CUSTOM_DATA__];\n");
+        file_put_contents($directory.'/var/browser/aggregate.template.min.js', "/*! preserved license */\nwindow.fixture=[__AGGREGATE_NAMESPACE__,__AGGREGATE_INTERNAL_TRAFFIC__,__AGGREGATE_CUSTOM_DATA__,__AGGREGATE_COLLECTION__];\n");
         $this->writeManifest($directory);
 
         return $directory;
@@ -266,6 +303,13 @@ final class ScriptControllerTest extends TestCase
     private function customDataBrowserConfig(string $script): array
     {
         self::assertSame(1, preg_match('/var customDataDefaults = (.*);/', $script, $matches));
+
+        return json_decode($matches[1], true, flags: JSON_THROW_ON_ERROR);
+    }
+
+    private function collectionBrowserConfig(string $script): array
+    {
+        self::assertSame(1, preg_match('/var collectionDefaults = (.*);/', $script, $matches));
 
         return json_decode($matches[1], true, flags: JSON_THROW_ON_ERROR);
     }

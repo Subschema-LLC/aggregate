@@ -176,9 +176,15 @@ class CustomDataSettings
         }
 
         $privacyPolicy = new PrivacyPolicy($this->config);
-        $pageSequenceEnabled = $settings[self::PAGE_SEQUENCE_ENABLED_KEY] && $privacyPolicy->isAnonymousTrackingEnabled();
+        // The strict profile sends no custom data: no URL reads, page-depth
+        // state or consent-free properties. The saved model is left unchanged.
+        $strict = $privacyPolicy->isStrictCollection();
+        if ($strict) {
+            $consentFree = [];
+        }
+        $pageSequenceEnabled = !$strict && $settings[self::PAGE_SEQUENCE_ENABLED_KEY] && $privacyPolicy->isAnonymousTrackingEnabled();
         $browserConfig = [
-            'queryParameters' => $settings[self::MAPPINGS_KEY],
+            'queryParameters' => $strict ? [] : $settings[self::MAPPINGS_KEY],
             'consentFreeProperties' => $consentFree,
             'pageSequenceEnabled' => $pageSequenceEnabled,
             'pageSequenceMethod' => $settings[self::PAGE_SEQUENCE_METHOD_KEY],
@@ -191,6 +197,12 @@ class CustomDataSettings
         }
 
         return $browserConfig;
+    }
+
+    /** Whether the strict collection profile makes the server discard all custom data. */
+    public function isStrictCollection(): bool
+    {
+        return (new PrivacyPolicy($this->config))->isStrictCollection();
     }
 
     /** Server enforcement is independent of any browser-side override. */
