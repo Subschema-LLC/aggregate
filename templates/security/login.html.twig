@@ -3,74 +3,67 @@
 {% block title %}Login | {{ app_branding.name }}{% endblock %}
 
 {% block body %}
-<div class="columns is-centered">
-    <div class="column is-4">
-        <div class="box">
-            <h1 class="title has-text-centered">
-                <span class="icon-text">
-                    <span class="icon">
-                        <i class="fas fa-sign-in-alt"></i>
-                    </span>
-                    <span>Login</span>
-                </span>
-            </h1>
-
-            {% if error %}
-                <div class="notification is-danger is-light">
-                    {{ error.messageKey|trans(error.messageData, 'security') }}
-                </div>
-            {% endif %}
-
-            <form action="{{ path('app_login') }}" method="post">
-                <div class="field">
-                    <label class="label" for="username">Username</label>
-                    <div class="control has-icons-left">
-                        <input type="text"
-                               id="username"
-                               name="_username"
-                               value="{{ last_username }}"
-                               required
-                               autofocus
-                               class="input"
-                               placeholder="Enter your username">
-                        <span class="icon is-small is-left">
-                            <i class="fas fa-user"></i>
-                        </span>
+<div class="columns is-centered py-5">
+    <div class="column is-10-mobile is-6-tablet is-4-desktop">
+        <div class="card">
+            <div class="card-content p-5">
+                <div class="has-text-centered mb-4">
+                    <div class="mb-3">
+                        {{ component('Branding:Identity', {branding: app_branding}) }}
                     </div>
+                    <h1 class="title is-4 mb-1">Welcome back</h1>
+                    <p class="subtitle is-6">Sign in to your administration dashboard</p>
                 </div>
 
-                <div class="field">
-                    <label class="label" for="password">Password</label>
-                    <div class="control has-icons-left">
-                        <input type="password"
-                               id="password"
-                               name="_password"
-                               required
-                               class="input"
-                               placeholder="Enter your password">
-                        <span class="icon is-small is-left">
-                            <i class="fas fa-lock"></i>
-                        </span>
+                {% if error %}
+                    <div class="notification is-danger is-light mb-4" role="alert">
+                        <button class="delete" aria-label="Dismiss"></button>
+                        {{ error.messageKey|trans(error.messageData, 'security') }}
                     </div>
-                </div>
+                {% endif %}
 
-                <input type="hidden" name="_csrf_token" value="{{ csrf_token('authenticate') }}">
+                <form method="post" action="{{ path('app_login') }}">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token('authenticate') }}">
 
-                <div class="field mt-5">
-                    <div class="control">
-                        <button type="submit" class="button is-primary is-fullwidth">
-                            <span class="icon">
-                                <i class="fas fa-sign-in-alt"></i>
+                    <div class="field mb-4">
+                        <label class="label" for="username">Username</label>
+                        <div class="control has-icons-left">
+                            <input class="input" type="text" id="username" name="_username" value="{{ last_username }}" required autofocus autocomplete="username" placeholder="Username">
+                            <span class="icon is-small is-left">
+                                <i class="fas fa-user" aria-hidden="true"></i>
                             </span>
-                            <span>Sign in</span>
-                        </button>
+                        </div>
                     </div>
-                </div>
-            </form>
+
+                    <div class="field mb-5">
+                        <label class="label" for="password">Password</label>
+                        <div class="control has-icons-left">
+                            <input class="input" type="password" id="password" name="_password" required autocomplete="current-password" placeholder="Password">
+                            <span class="icon is-small is-left">
+                                <i class="fas fa-lock" aria-hidden="true"></i>
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <div class="control">
+                            <button type="submit" class="button is-primary is-fullwidth">
+                                <span class="icon is-small mr-1">
+                                    <i class="fas fa-arrow-right-to-bracket" aria-hidden="true"></i>
+                                </span>
+                                <span>Sign in</span>
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
         </div>
 
         <div class="has-text-centered mt-4">
-            <p><a href="{{ path('app_how_it_works') }}">Learn how {{ app_branding.name }} works</a></p>
+            <a class="is-size-7" href="{{ path('app_how_it_works') }}">
+                <span class="icon is-small"><i class="fas fa-circle-question" aria-hidden="true"></i></span>
+                <span>Learn how {{ app_branding.name }} works</span>
+            </a>
         </div>
     </div>
 </div>

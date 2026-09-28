@@ -1,6 +1,18 @@
+/* Branding Settings Styles */
 .branding-logo-preview {
+    background-color: var(--app-brand-background);
+    border: 1px dashed var(--app-brand-border);
+    border-radius: var(--bulma-radius-medium);
     display: block;
-    max-width: min(320px, 100%);
     max-height: 120px;
+    max-width: min(320px, 100%);
     object-fit: contain;
+    padding: 0.75rem;
+}
+
+.settings-page input[type="color"] {
+    cursor: pointer;
+    height: 2.75rem;
+    padding: 0.25rem 0.5rem;
+    width: 100%;
 }
