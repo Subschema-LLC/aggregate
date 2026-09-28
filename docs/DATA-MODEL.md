@@ -309,6 +309,26 @@ php bin/console app:analytics:views:regenerate
 
 `--discover`, `--export-model`, and `--dry-run` are mutually exclusive read-only modes. Edit YAML before using the CLI to regenerate.
 
+## BI labels and column definitions
+
+The [BI glossary](BI-GLOSSARY.md) uses each saved property's `description` as its
+column definition in the default locale; this editor and YAML remain the source
+for that text. Add translations and display labels under `bi_glossary.columns`,
+and declare value labels under the property's **text reporting alias** in
+`bi_glossary.values`. Numeric aliases receive column metadata but are not value
+dimensions. Declaring a value publishes its code to routine BI readers, including
+when the property's actual event values require consent and stay private.
+
+Successful view regeneration also synchronizes glossary metadata. A plain model
+save does not regenerate views or automatically publish their column changes;
+use the existing separate regeneration step. Manual glossary sync reads saved
+aliases without inspecting deployed SQL, so regenerate first after a model change
+to avoid publishing metadata for columns that are not yet deployed.
+If glossary synchronization fails
+after views are deployed, correct the metadata and run
+`php bin/console app:analytics:glossary:sync`. Generated custom views remain private,
+and the glossary never adds custom dimensions to the anonymous fact views.
+
 ## Reporting contract
 
 | View | Retained rows |

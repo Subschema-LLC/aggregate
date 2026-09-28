@@ -288,6 +288,7 @@ if [[ "$RUN_MIGRATIONS" =~ ^[Yy]$ ]]; then
 
     echo "Running migrations..."
     php bin/console doctrine:migrations:migrate -n
+    php bin/console app:analytics:glossary:sync
 
     echo -e "${GREEN}✓ Database setup complete${NC}"
 fi

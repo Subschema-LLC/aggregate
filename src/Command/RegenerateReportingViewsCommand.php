@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\Service\CustomDataSettings;
+use App\Service\Glossary\GlossarySync;
 use App\Service\ReportingViewManager;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -23,6 +24,7 @@ final class RegenerateReportingViewsCommand extends Command
     public function __construct(
         private readonly ReportingViewManager $views,
         private readonly CustomDataSettings $settings,
+        private readonly GlossarySync $glossary,
     ) {
         parent::__construct();
     }
@@ -85,6 +87,12 @@ final class RegenerateReportingViewsCommand extends Command
             }
 
             $names = $this->views->regenerate();
+            try {
+                $this->glossary->sync();
+            } catch (\Throwable $error) {
+                $io->warning('Reporting views were regenerated, but the BI glossary was not synced. Run app:analytics:glossary:sync after correcting the issue.');
+                throw $error;
+            }
             $io->success('Regenerated '.implode(', ', $names).'.');
             $io->note('These private views contain unsuppressed retained events. Grant access only to authorized reporting users. Custom properties are unavailable once raw rows are deleted.');
 

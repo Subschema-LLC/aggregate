@@ -1,0 +1,86 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}BI glossary - {{ app_branding.name }}{% endblock %}
+
+{% block body %}
+<div class="bi-glossary-page">
+    <h1 class="title">BI glossary</h1>
+    <p class="mb-4">Publish labels and definitions for your BI tools. Labels, descriptions, groups, and declared codes are visible to routine BI users. Do not include personal or identifying text.</p>
+    {% if errors %}
+        <div class="notification is-danger" role="alert">
+            <p>Nothing was saved. Correct these glossary fields:</p>
+            <ul>{% for field, message in errors %}<li><code>{{ field }}</code>: {{ message }}</li>{% endfor %}</ul>
+        </div>
+    {% endif %}
+    {% if status_error %}<div class="notification is-warning" role="status">{{ status_error }}</div>{% endif %}
+    {% if loaded %}
+        <section class="box" aria-labelledby="glossary-locales-title">
+            <h2 id="glossary-locales-title" class="title is-5">Published locales</h2>
+            {% component 'Ui:Validation' with {action: path('app_bi_glossary_save'), method: 'post'} %}
+                {% block content %}
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token('bi_glossary') }}">
+                    <input type="hidden" name="action" value="locales">
+                    <input type="hidden" name="locale" value="{{ locale }}">
+                    <div class="field"><label class="label" for="glossary-locales">Locales (comma separated)</label><div class="control"><input class="input" id="glossary-locales" name="locales" value="{{ locale_form.locales }}" required aria-describedby="glossary-locale-help"></div>{% for field, message in errors %}{% if field starts with 'bi_glossary.locales' %}<p class="help is-danger" role="alert">{{ field }}: {{ message }}</p>{% endif %}{% endfor %}</div>
+                    <div class="field"><label class="label" for="glossary-default-locale">Default locale</label><div class="control"><input class="input" id="glossary-default-locale" name="default_locale" value="{{ locale_form.default_locale }}" required maxlength="35" aria-describedby="glossary-locale-help"></div>{% if errors['bi_glossary.default_locale'] is defined %}<p class="help is-danger" role="alert">{{ errors['bi_glossary.default_locale'] }}</p>{% endif %}</div>
+                    <p id="glossary-locale-help" class="help mb-3">Publish up to 20 locales, including the default; for example en, es, fr-CA, zh-Hant, es-419. Remove translations for a locale before unpublishing it. Goal labels and model descriptions are text in the default locale.</p>
+                    <button class="button is-primary" type="submit">Save locales and sync</button>
+                {% endblock %}
+            {% endcomponent %}
+            <form action="{{ path('app_bi_glossary') }}" method="get" class="mt-4">
+                <label class="label" for="glossary-selected-locale">Edit translations in</label>
+                <div class="field is-grouped"><div class="control"><div class="select"><select id="glossary-selected-locale" name="locale">{% for published in settings.locales %}<option value="{{ published }}"{% if locale == published %} selected{% endif %}>{{ published }}</option>{% endfor %}</select></div></div><div class="control"><button class="button" type="submit">Choose locale</button></div></div>
+            </form>
+            {% if in_sync is not null %}<p class="mt-4" role="status">{{ in_sync ? 'In sync' : 'Database differs from configuration' }}</p>{% endif %}
+            <form action="{{ path('app_bi_glossary_sync') }}" method="post" class="mt-3">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token('bi_glossary') }}"><input type="hidden" name="locale" value="{{ locale }}">
+                <button class="button" type="submit">Sync now</button>
+            </form>
+            <div class="buttons mt-4"><a class="button" href="{{ path('app_bi_glossary_download') }}">Download YAML</a><a class="button" href="{{ path('app_bi_glossary_missing') }}">Download missing translations</a></div>
+            <p class="help">Each Save updates only this glossary section in the active YAML configuration and syncs the complete declared glossary. Blank translation fields use their displayed fallback. Reset removes all glossary overrides for that entry, in every locale.</p>
+        </section>
+        <h2 class="title is-4">Value labels</h2>
+        {% for dimension, rows in entries.values %}
+            <details class="box"{% if rows|filter(row => row.open)|length %} open{% endif %}>
+                <summary class="has-text-weight-semibold">{{ dimension }}</summary>
+                {% if consent_dimensions[dimension] is defined %}<div class="notification is-warning mt-3">This property requires consent for collection. Publishing its codes here makes them visible to every routine BI user, even though event values are available only in private views.</div>{% endif %}
+                {% for entry in rows %}
+                    {{ component('DataModel:GlossaryEntry', {entry: entry, entry_type: 'value', subject: dimension, locale: locale, default_locale: settings.default_locale, id: 'value-' ~ loop.parent.loop.index ~ '-' ~ loop.index, errors: errors}) }}
+                {% endfor %}
+                {% if dimension in editable_dimensions %}
+                    <form action="{{ path('app_bi_glossary') }}" method="get" class="mt-4">
+                        <input type="hidden" name="locale" value="{{ locale }}"><input type="hidden" name="add_dimension" value="{{ dimension }}">
+                        <label class="label" for="add-code-{{ loop.index }}">Add {{ dimension }} code</label>
+                        <div class="field is-grouped"><div class="control is-expanded"><input class="input" id="add-code-{{ loop.index }}" name="add_code" maxlength="191" required></div><div class="control"><button class="button" type="submit">Add code</button></div></div>
+                        <p class="help">Opens an unsaved row. Save the row to declare and publish the code.</p>
+                    </form>
+                {% endif %}
+                {% if dimension == 'event_name' %}
+                    <form action="{{ path('app_bi_glossary_suggestions') }}" method="post" class="mt-4">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token('bi_glossary') }}"><input type="hidden" name="locale" value="{{ locale }}">
+                        <button class="button" type="submit">Find unlabeled event names</button>
+                    </form>
+                    <p class="help">Explicitly samples the latest 1,000 retained events. Suggestions show names only and publish nothing until you save a code.</p>
+                {% endif %}
+            </details>
+        {% endfor %}
+        {% if suggestions is not null %}
+            <section class="box" aria-labelledby="glossary-suggestions-title">
+                <h3 class="title is-5" id="glossary-suggestions-title">Unlabeled event-name suggestions</h3>
+                {% if suggestions %}<ul>{% for name in suggestions %}<li class="mb-2"><code>{{ name }}</code> <a class="button is-small" href="{{ path('app_bi_glossary', {locale: locale, add_dimension: 'event_name', add_code: name}) }}">Add <span class="is-sr-only">{{ name }}</span></a></li>{% endfor %}</ul>{% else %}<p>No additional safe event names were found in this sample.</p>{% endif %}
+                <p class="help">No suggestion has been saved or published.</p>
+            </section>
+        {% endif %}
+        <h2 class="title is-4">Column glossary</h2>
+        {% for view, rows in entries.columns %}
+            <details class="box"{% if rows|filter(row => row.open)|length %} open{% endif %}>
+                <summary class="has-text-weight-semibold">{{ view }}</summary>
+                {% for entry in rows %}
+                    {{ component('DataModel:GlossaryEntry', {entry: entry, entry_type: 'column', subject: view, locale: locale, default_locale: settings.default_locale, id: 'column-' ~ loop.parent.loop.index ~ '-' ~ loop.index, errors: errors}) }}
+                {% endfor %}
+            </details>
+        {% endfor %}
+        <p class="help">Headless editing uses <code>bi_glossary</code> in the active YAML configuration and <code>php bin/console app:analytics:glossary:sync</code>. No glossary text comes from event data. BI group totals still undercount where anonymous cells are withheld.</p>
+    {% endif %}
+</div>
+{% endblock %}

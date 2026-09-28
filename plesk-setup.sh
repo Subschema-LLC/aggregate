@@ -102,10 +102,12 @@ read -p "Run database migrations now? (y/n) " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     php bin/console doctrine:migrations:migrate --no-interaction
+    php bin/console app:analytics:glossary:sync
     echo "Migrations completed"
 else
     echo "Skipped migrations. Run manually later with:"
     echo "  php bin/console doctrine:migrations:migrate"
+    echo "  php bin/console app:analytics:glossary:sync"
 fi
 
 echo ""

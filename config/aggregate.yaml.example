@@ -85,6 +85,27 @@ custom_data_properties:
   # Money: use integer minor units plus currency. float/double are approximate.
   # Send numeric/boolean values through emit(); query strings are not coerced.
   # See docs/EVENT-EXAMPLES.md for a flat ecommerce recipe and headless export.
+# Declared BI metadata only; publishes codes and text to routine BI users.
+# Do not include personal text. Consent-gated property codes become public to BI
+# users when declared here. Goals keep default labels in config/goals.yaml.
+# See docs/BI-GLOSSARY.md. No environment-variable override; an environment
+# mapping replaces this entire block. Run app:analytics:glossary:sync after edits.
+# bi_glossary:
+#   default_locale: en
+#   locales: [en, es, fr-CA]
+#   values:
+#     device_class:
+#       tablet:
+#         label: { es: 'Tableta' }
+#     event_name:
+#       newsletter_signup:
+#         label: 'Newsletter sign-up'
+#         description: 'Sent after double opt-in confirmation.'
+#     utm_medium:
+#       cpc: { label: 'Paid search', sort: 10 }
+#   columns:
+#     bi_anonymous_events_v1:
+#       event_count: { label: { es: 'Eventos' } }
 query_parameter_mappings:
   utm_source: utm_source
   utm_medium: utm_medium

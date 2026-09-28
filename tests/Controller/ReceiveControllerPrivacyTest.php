@@ -29,6 +29,32 @@ use Symfony\Component\Messenger\MessageBusInterface;
 
 final class ReceiveControllerPrivacyTest extends TestCase
 {
+    public function testInvalidReportingGlossaryDoesNotBlockDirectAnonymousRequests(): void
+    {
+        $directory = sys_get_temp_dir().'/aggregate-glossary-ingestion-'.bin2hex(random_bytes(8));
+        mkdir($directory.'/config', 0700, true);
+        file_put_contents($directory.'/config/aggregate.yaml', "bi_glossary:\n  locales: [invalid_LOCALE]\n  values: private-glossary-text\n");
+        try {
+            $config = new AggregateConfigLoader($directory, 'test');
+            $entityManager = $this->createMock(EntityManagerInterface::class);
+            $entityManager->expects(self::once())->method('persist');
+            $entityManager->expects(self::once())->method('flush');
+            $recorder = new AnonymousEventRecorder($entityManager);
+            $bus = $this->createMock(MessageBusInterface::class);
+            $bus->expects(self::never())->method('dispatch');
+            $response = $this->invoke(
+                ['websiteToken' => 'public-site-token', 'eventName' => 'view', 'pagePath' => '/pricing', 'consentState' => 'denied'],
+                $bus, $recorder, $config,
+            );
+            self::assertSame(202, $response->getStatusCode());
+            self::assertStringNotContainsString('glossary', (string) $response->getContent());
+        } finally {
+            unlink($directory.'/config/aggregate.yaml');
+            rmdir($directory.'/config');
+            rmdir($directory);
+        }
+    }
+
     #[DataProvider('anonymousConsentStates')]
     public function testAnonymousEventsRetainOnlyExplicitlyApprovedSanitizedProperties(string $consentState): void
     {

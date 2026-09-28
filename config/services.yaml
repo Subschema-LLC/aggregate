@@ -102,6 +102,14 @@ services:
         arguments:
             $definitions: '%app.goal_events%'
 
+    App\Service\Glossary\BiGlossarySettings:
+        arguments:
+            $goalDefinitions: '%app.goal_events%'
+
+    App\Service\Glossary\BuiltinGlossaryCatalog:
+        arguments:
+            $translator: '@translator'
+
     App\Service\GeoIp\GeoIpResolverInterface:
         alias: App\Service\GeoIp\ConfiguredGeoIpResolver
 

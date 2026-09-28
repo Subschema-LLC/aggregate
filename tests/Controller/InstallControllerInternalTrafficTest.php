@@ -37,6 +37,7 @@ final class InstallControllerInternalTrafficTest extends TestCase
     private array $savedEnvironment;
     private array $savedServer;
     private Session $session;
+    private array $commandsRun = [];
 
     protected function setUp(): void
     {
@@ -71,6 +72,8 @@ final class InstallControllerInternalTrafficTest extends TestCase
         $response = $controller->executeInstall($this->installRequest());
 
         self::assertSame('/app_login', $response->headers->get('Location'));
+        self::assertSame(['doctrine:migrations:migrate', 'app:analytics:glossary:sync'], $this->commandsRun);
+        self::assertSame([], $this->session->getFlashBag()->get('warning'));
         $persisted = Yaml::parseFile($this->projectDir.'/config/aggregate.yaml');
         self::assertTrue($persisted['installed']);
         $token = $persisted[InternalTrafficSettings::TOKEN_KEY];
@@ -118,11 +121,24 @@ final class InstallControllerInternalTrafficTest extends TestCase
         self::assertSame('/app_install', $controller->executeInstall($this->installRequest())->headers->get('Location'));
         $persisted = Yaml::parseFile($this->projectDir.'/config/aggregate.yaml');
         self::assertFalse($persisted['installed']);
+        self::assertSame(['doctrine:migrations:migrate'], $this->commandsRun);
         self::assertSame('', $persisted[InternalTrafficSettings::TOKEN_KEY]);
         self::assertSame(
             ['Migration failed. Run php bin/console doctrine:migrations:migrate on the server for diagnostics.'],
             $this->session->getFlashBag()->get('error'),
         );
+    }
+
+    public function testGlossaryFailureWarnsWithoutPreventingInstallation(): void
+    {
+        $controller = $this->controller($this->writeConfig(''), glossaryResult: Command::INVALID);
+
+        self::assertSame('/app_login', $controller->executeInstall($this->installRequest())->headers->get('Location'));
+        self::assertSame(['doctrine:migrations:migrate', 'app:analytics:glossary:sync'], $this->commandsRun);
+        self::assertTrue(Yaml::parseFile($this->projectDir.'/config/aggregate.yaml')['installed']);
+        self::assertSame([
+            'Database setup completed, but the BI glossary was not updated. Run php bin/console app:analytics:glossary:sync on the server for diagnostics.',
+        ], $this->session->getFlashBag()->get('warning'));
     }
 
     public function testInstallerDoesNotExposeExceptionDetailsToTheBrowser(): void
@@ -188,6 +204,7 @@ final class InstallControllerInternalTrafficTest extends TestCase
         int $migrationResult = Command::SUCCESS,
         bool $rendersInstaller = false,
         bool $hashFails = false,
+        int $glossaryResult = Command::SUCCESS,
     ): InstallController {
         $checker = $this->createStub(InstallationChecker::class);
         $checker->method('isInstalled')->willReturn($alreadyInstalled);
@@ -209,10 +226,16 @@ final class InstallControllerInternalTrafficTest extends TestCase
         $kernelContainer = new Container();
         $kernelContainer->set('event_dispatcher', new EventDispatcher());
         $kernelContainer->set('console.command_loader', new FactoryCommandLoader([
-            'doctrine:migrations:migrate' => static fn (): Command =>
-                (new Command('doctrine:migrations:migrate'))->setCode(static function (InputInterface $input, OutputInterface $output) use ($migrationResult): int {
+            'doctrine:migrations:migrate' => fn (): Command =>
+                (new Command('doctrine:migrations:migrate'))->setCode(function (InputInterface $input, OutputInterface $output) use ($migrationResult): int {
+                    $this->commandsRun[] = 'doctrine:migrations:migrate';
                     $output->writeln('Synthetic private migration diagnostic');
                     return $migrationResult;
+                }),
+            'app:analytics:glossary:sync' => fn (): Command =>
+                (new Command('app:analytics:glossary:sync'))->setCode(function () use ($glossaryResult): int {
+                    $this->commandsRun[] = 'app:analytics:glossary:sync';
+                    return $glossaryResult;
                 }),
         ]));
         $kernel = $this->createMock(KernelInterface::class);

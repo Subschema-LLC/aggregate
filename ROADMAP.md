@@ -124,6 +124,11 @@ checkout, or a small accessibility fix. Keep each PR focused and target
 
 ## Available foundations
 
+- [BI glossary](docs/BI-GLOSSARY.md), with declared value labels, column definitions,
+  localized fallback, YAML/admin editing, and a headless sync command. Eight fixed
+  metadata views join to existing BI columns without reading event data or
+  changing suppression. Database and BI-tool acceptance checks remain part of beta validation.
+
 - [Optional page depth](docs/DATA-MODEL.md#optional-page-depth), configured in the
   Data model UI or YAML. A bounded counter adds `page_sequence` to all event
   types, including asynchronous events, without creating visitor/session IDs.

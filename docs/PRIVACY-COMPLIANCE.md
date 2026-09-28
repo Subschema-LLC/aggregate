@@ -302,6 +302,30 @@ Both thresholds count occurrences, not distinct people, because anonymous-mode e
 
 Archiving does not weaken this routine-BI contract: the thresholded `bi_anonymous_*` views transparently combine eligible live and archived anonymous counts. The underlying `analytics_archive_events`, `analytics_archive_goals`, and `analytics_archive_geo_events` tables are private and unsuppressed. The operational `analytics_archived_events_v1`, `analytics_archived_pageviews_v1`, and `analytics_archived_goals_v1` views are also private and unsuppressed. Aggregation can reduce exposure, but a rare cell may still identify or single out a person in context; never grant these tables or operational views to routine BI roles by default.
 
+### Declared BI glossary
+
+Routine BI roles may also read the six `bi_dim_*_v1` views plus
+`bi_glossary_values_v1` and `bi_glossary_columns_v1`. These publish declared
+metadata, not event observations: the resolver and sync never read events,
+archives, or fact views, and all Intl countries and all continents are published
+regardless of traffic. Keep the backing `analytics_glossary` table private. See
+[the glossary contract and grants](BI-GLOSSARY.md#view-only-grants).
+
+Labels, groups, descriptions, and codes must not contain personal or identifying
+text. Declaring codes for a property with `consent_required: true` publishes
+those codes to routine BI users even when its event values live only in private
+views. Neither labels nor column definitions authorize collection or access to
+private facts. The optional administrator event-name finder samples only the
+latest 1,000 retained events, displays names without counts, and persists nothing
+until the administrator explicitly saves a declaration.
+
+Join one label row per code; filter localized metadata to one dimension and
+locale before joining. Keep a left join with a code fallback for undeclared names
+and deleted goal definitions. Summing visible cells by a glossary group still
+undercounts where suppression withheld cells; metadata cannot reconstruct hidden
+counts or establish legal anonymity. Invalid glossary configuration affects only
+metadata save/sync, not tracking, ingestion, or health checks.
+
 ## Administrative controls
 
 ```yaml
@@ -333,7 +357,7 @@ parameters:
             enabled: true
 ```
 
-Codes must match `[A-Za-z][A-Za-z0-9_.:-]{0,99}` and remain fixed and non-identifying. Set `anonymous: false` for an enhanced-only goal and `enabled: false` to stop future collection without erasing the definition's historical meaning. Restrict write access to this file and clear the production cache after a change.
+Codes must match `[A-Za-z][A-Za-z0-9_.:-]{0,99}` and remain fixed and non-identifying. Set `anonymous: false` for an enhanced-only goal and `enabled: false` to stop future collection without erasing the definition's historical meaning. Restrict write access to this file and clear the production cache after a change, then run `php bin/console app:analytics:glossary:sync --env=prod` to update published goal labels. Disable goals instead of deleting definitions when historical labels should remain available.
 
 The BI disclosure thresholds are stored directly in the singleton `analytics_privacy_settings` database row and have their own CSRF-protected admin form:
 
@@ -503,7 +527,8 @@ See [deployment updates](../DEPLOYMENT.md#updates) and the [database migration g
 - [ ] Publish retention periods and implement their enforcement.
 - [ ] Dry-run, schedule, and monitor `app:analytics:maintain`; verify backup and downstream deletion separately.
 - [ ] Provide a server-side rights-request process for enhanced data.
-- [ ] Restrict routine BI users to the approved `bi_anonymous_events_v1` and `bi_anonymous_goals_v1` views they need; keep raw `events` private.
+- [ ] Restrict routine BI users to the approved `bi_anonymous_*` fact views and `bi_dim_*`/`bi_glossary_*` metadata views they need; keep raw `events` and `analytics_glossary` private.
+- [ ] Review glossary codes and text for identifying information, especially declarations for consent-gated properties.
 - [ ] Validate `anonymous_min_cell_count` against event and goal volumes and re-identification risk.
 - [ ] If geography is enabled, document its legal basis and notice, prefer macro-region, and verify that only the local MMDB is used.
 - [ ] Restrict geography BI users to `bi_anonymous_geo_events_v1` and validate `anonymous_geo_min_cell_count`; remember that it counts events, not people.
