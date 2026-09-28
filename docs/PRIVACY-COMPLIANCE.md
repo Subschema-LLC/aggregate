@@ -123,18 +123,35 @@ run from `1` to `20`, where `20` means **20 or more**. All events emitted on a p
 share its depth; page views advance it. The server enforces opt-in and numeric
 bounds, but cannot verify a client's claimed page count.
 
-This feature keeps only a bounded number in tab-scoped `sessionStorage`, keyed
-by the public website token. It introduces no person/session identifier, path
-history, cookie or stored timestamp. Reloads count again; browser tab duplication
-or restoration may preserve the number. Blocked storage falls back to memory for
-the current document. The kill switch and path exclusions prevent the counter
-from collecting disabled/excluded activity. Disabling it clears the current
-token's counter when the tracker next runs with updated settings.
+`page_sequence_method` chooses how the number reaches the next page:
 
-Browser-storage rules can apply even without an identifier. Assess the applicable
-consent requirements and disclose this option before enabling it; leave it off
-where separate consent would be required. The cap reduces precision, but is not
-proof of legal anonymity or permission to reconstruct individual journeys.
+- `session_storage` (default) keeps a bounded number in tab-scoped `sessionStorage`,
+  keyed by the public website token. Reloads count again; duplicated or restored
+  tabs may preserve the number. Blocked storage falls back to memory for the
+  current document. Disabling page depth while this method remains selected clears
+  the current token's counter when the tracker next runs with updated settings.
+- `url_parameter` reads `aggregate_page_sequence` from the page URL and adds the
+  next capped number to ordinary same-origin links when activated. It performs
+  no cookie or Web Storage operations for the counter and leaves earlier stored
+  counters untouched. After capture, it removes the parameter with
+  `history.replaceState()` while preserving existing history state and other URL
+  parts. Reloading the cleaned URL starts at 1; back/forward restoration may
+  retain the in-memory number. Cleanup cannot hide the initial request from logs
+  or earlier scripts, and can fail if the History API is unavailable. Event page
+  information remains query-free even then. Review canonical URLs, SEO, caching,
+  router integrations and destinations that reject extra parameters, including
+  signed links.
+
+Neither method creates a person/session identifier, path history or stored
+timestamp. The kill switch and path exclusions prevent disabled/excluded counter
+collection; URL mode also checks link destinations. Independent consent-manager,
+organization-marker and SDK identifier-cleanup behavior still applies.
+
+Browser-storage rules can apply even without an identifier, and avoiding counter
+Web Storage does not itself establish a consent exemption. Assess requirements
+and disclose the selected method before enabling it; leave it off where separate
+consent would be required. The cap reduces precision, but is not proof of legal
+anonymity or permission to reconstruct individual journeys.
 It remains private `custom_data`: approved anonymous BI views and archive
 aggregates do not expose it. See [configuration and examples](DATA-MODEL.md#optional-page-depth).
 
@@ -391,7 +408,7 @@ Adapt the API calls to your consent manager. Test these cases in a new browser p
 
 1. Before a choice, a page view and `emit('button_click', {...}, 'signup')` create anonymous-mode rows with no IDs and only explicitly permitted custom properties; the goal is retained only when its enabled definition permits anonymous use.
 2. Anonymous `created_at` values are UTC hour boundaries rather than exact event times.
-3. With page depth disabled (the default), rejecting creates no Aggregate cookie, `localStorage` value, or `sessionStorage` value. If page depth is explicitly enabled, only its bounded numeric tab counter may be created; no visitor/session IDs are created. Review the separate organization marker and CMP storage according to their documented behavior.
+3. With page depth disabled (the default), rejecting creates no Aggregate cookie, `localStorage` value, or `sessionStorage` value. With page depth enabled, the session-storage method may create its bounded numeric tab counter; the URL method uses no counter Web Storage. Neither creates visitor/session IDs. Review the separate organization marker and CMP storage according to their documented behavior.
 4. Named events continue after rejection; properties requiring consent are absent, while configured consent-free properties and anonymous goals may remain.
 5. Accepting creates IDs and permits enhanced event details.
 6. Withdrawing removes all three browser-side identifiers and strips consent-required details from later events; only explicitly permitted custom properties remain.
@@ -404,9 +421,13 @@ Adapt this text to the deployment and have counsel review it:
 
 > We use self-hosted analytics to understand page usage, named interactions such as button clicks, and [configured goal categories such as signup or purchase]. Unless you accept enhanced analytics, each event is limited to a fixed event name, [an allowlisted goal category, when applicable], sanitized page path, coarse traffic-source and device categories, [specifically listed custom properties collected without enhanced consent, such as campaign medium], [a country/continent category derived locally from the request IP, if enabled], and a server-generated UTC hour bucket. The analytics event does not retain the source IP or use an analytics cookie or visitor/session identifier. This privacy-minimized measurement continues when enhanced analytics is rejected, except on routes we exclude from measurement.
 
-If page depth is enabled, also disclose its storage and meaning:
+If page depth is enabled with tab session storage, also disclose its storage and meaning:
 
 > We keep a page-depth number in this tab's session storage and include it with events, even when enhanced analytics is rejected. It counts tracked page views up to 20, with 20 meaning 20 or more. This counter contains no visitor identifier or page history. Browser-restored or duplicated tabs may retain it.
+
+For the URL method, use language matching that behavior instead:
+
+> We carry a page-depth number in the `aggregate_page_sequence` URL parameter on ordinary internal links and include it with events, even when enhanced analytics is rejected. It ranges from 1 to 20, with 20 meaning 20 or more, and uses no cookies or Web Storage for this counter. It contains no visitor identifier or page history. After reading it, we remove the parameter from the address bar when the browser allows this; it is not included in event page information. The initial request and earlier scripts may still expose it, including in server logs. Reloads after cleanup restart the count, and shared or edited URLs can make it inaccurate.
 >
 > If you accept enhanced analytics, we also use short-lived session information, a returning-visitor identifier, custom interaction details, and exact server timestamps. You can withdraw that consent at any time. Withdrawal stops future enhanced collection and removes analytics identifiers from this browser; it does not automatically erase records already collected. Contact us at [privacy contact] to exercise applicable privacy rights.
 

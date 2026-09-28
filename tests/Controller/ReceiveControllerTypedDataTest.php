@@ -176,7 +176,7 @@ final class ReceiveControllerTypedDataTest extends TestCase
     }
 
     #[DataProvider('pageSequenceRequests')]
-    public function testPageSequenceDirectRequestsEnforceOptInBoundsAndPreserveTheAcceptedSnapshot(bool $enabled, string $numberJson, ?int $accepted, bool $enhanced): void
+    public function testPageSequenceDirectRequestsEnforceOptInBoundsAndPreserveTheAcceptedSnapshot(bool $enabled, string $numberJson, ?int $accepted, bool $enhanced, string $method): void
     {
         $expected = ['utm_medium' => 'email', ...($accepted === null ? [] : ['page_sequence' => $accepted]), ...($enhanced ? ['private' => 'detail'] : [])];
         $entityManager = $this->createMock(EntityManagerInterface::class);
@@ -212,10 +212,10 @@ final class ReceiveControllerTypedDataTest extends TestCase
         }
         $consent = $enhanced ? 'granted' : 'denied';
         $rawJson = '{"websiteToken":"example-token","eventName":"button_click","pagePath":"/example","consentState":"'.$consent.'",'
-            .'"visitorId":"forged-id","sessionId":"forged-session","customData":{"pageSequenceEnabled":true,"consentFreeProperties":["page_sequence","private"]},'
+            .'"visitorId":"forged-id","sessionId":"forged-session","customData":{"pageSequenceEnabled":true,"pageSequenceMethod":"url_parameter","consentFreeProperties":["page_sequence","private"]},'
             .'"eventData":{"utm_medium":"email","page_sequence":'.$numberJson.',"private":"detail"}}';
 
-        $response = $this->ingest([], ['utm_medium' => ['consent_required' => false]], $entityManager, $bus, $rawJson, ['page_sequence_enabled' => $enabled]);
+        $response = $this->ingest([], ['utm_medium' => ['consent_required' => false]], $entityManager, $bus, $rawJson, ['page_sequence_enabled' => $enabled, 'page_sequence_method' => $method]);
 
         self::assertSame(202, $response->getStatusCode());
     }
@@ -225,13 +225,16 @@ final class ReceiveControllerTypedDataTest extends TestCase
         foreach ([false, true] as $enhanced) {
             foreach ([false, true] as $enabled) {
                 foreach (['2' => 2, '2e0' => 2, '20' => 20, '21' => null, '0' => null, '-2' => null, '2.5' => null, '1e309' => null, '"2"' => null, 'true' => null, 'null' => null, '{}' => null, '[]' => null] as $number => $accepted) {
-                    yield ($enhanced ? 'enhanced' : 'denied').' '.($enabled ? 'enabled' : 'disabled').' '.$number => [$enabled, (string) $number, $enabled ? $accepted : null, $enhanced];
+                    foreach (CustomDataSettings::PAGE_SEQUENCE_METHODS as $method) {
+                        yield ($enhanced ? 'enhanced' : 'denied').' '.($enabled ? 'enabled' : 'disabled').' '.$number.' '.$method => [$enabled, (string) $number, $enabled ? $accepted : null, $enhanced, $method];
+                    }
                 }
             }
         }
     }
 
-    public function testMalformedPageSequenceSettingStopsIngestion(): void
+    #[DataProvider('invalidPageSequenceSettings')]
+    public function testMalformedPageSequenceSettingStopsIngestion(array $settings): void
     {
         $entityManager = $this->createMock(EntityManagerInterface::class);
         $entityManager->expects(self::never())->method('persist');
@@ -241,10 +244,94 @@ final class ReceiveControllerTypedDataTest extends TestCase
         $response = $this->ingest([
             'websiteToken' => 'example-token', 'eventName' => 'view', 'pagePath' => '/example',
             'consentState' => 'denied', 'eventData' => ['page_sequence' => 2],
-        ], [], $entityManager, $bus, configValues: ['page_sequence_enabled' => 'false']);
+        ], [], $entityManager, $bus, configValues: $settings);
 
         self::assertSame(500, $response->getStatusCode());
         self::assertSame(['error' => 'Ingestion failed'], json_decode((string) $response->getContent(), true, flags: JSON_THROW_ON_ERROR));
+    }
+
+    public static function invalidPageSequenceSettings(): iterable
+    {
+        yield 'invalid boolean' => [['page_sequence_enabled' => 'false']];
+        yield 'invalid enabled method' => [['page_sequence_enabled' => true, 'page_sequence_method' => 'cookie']];
+        yield 'invalid disabled method' => [['page_sequence_enabled' => false, 'page_sequence_method' => 'cookie']];
+        yield 'null method' => [['page_sequence_method' => null]];
+    }
+
+    public function testUrlCounterParameterInAnHttpPayloadCannotSynthesizeAnEventProperty(): void
+    {
+        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager->expects(self::once())->method('persist')->willReturnCallback(static function (object $event): void {
+            self::assertInstanceOf(Event::class, $event);
+            $event->enforcePrivacyInvariants();
+            self::assertSame('/example', $event->getUrl());
+            self::assertNull($event->getCustomData());
+        });
+        $entityManager->expects(self::once())->method('flush');
+        $bus = $this->createMock(MessageBusInterface::class);
+        $bus->expects(self::never())->method('dispatch');
+
+        $response = $this->ingest([
+            'websiteToken' => 'example-token', 'eventName' => 'view',
+            'pagePath' => '/example?aggregate_page_sequence=2', 'consentState' => 'denied',
+            'aggregate_page_sequence' => 2,
+            'customData' => ['pageSequenceEnabled' => true, 'pageSequenceMethod' => 'url_parameter'],
+        ], [], $entityManager, $bus, configValues: ['page_sequence_enabled' => true, 'page_sequence_method' => 'url_parameter']);
+
+        self::assertSame(202, $response->getStatusCode());
+    }
+
+    #[DataProvider('urlCounterPageSources')]
+    public function testUrlCounterTransportIsRemovedFromPageInformationBeforeQueueingAndPersistence(string $field, string $page, bool $enhanced): void
+    {
+        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager->expects(self::once())->method('persist')->willReturnCallback(static function (object $event): void {
+            self::assertInstanceOf(Event::class, $event);
+            $event->enforcePrivacyInvariants();
+            self::assertSame('/example', $event->getUrl());
+            self::assertSame('internal', $event->getReferrer());
+            self::assertSame(['page_sequence' => 2], $event->getCustomData());
+            foreach (['aggregate_page_sequence', 'private-query', 'private-fragment'] as $private) {
+                self::assertStringNotContainsString($private, serialize($event));
+            }
+        });
+        $entityManager->expects(self::once())->method('flush');
+        $bus = $this->createMock(MessageBusInterface::class);
+        if ($enhanced) {
+            $bus->expects(self::once())->method('dispatch')->willReturnCallback(static function (object $message) use ($entityManager): Envelope {
+                self::assertInstanceOf(TrackEventMessage::class, $message);
+                self::assertSame('/example', $message->pagePath);
+                self::assertSame('internal', $message->referrerChannel);
+                self::assertSame(['page_sequence' => 2], $message->eventData);
+                foreach (['aggregate_page_sequence', 'private-query', 'private-fragment'] as $private) {
+                    self::assertStringNotContainsString($private, serialize($message));
+                }
+                (new TrackEventHandler($entityManager))(unserialize(serialize($message)));
+
+                return new Envelope($message);
+            });
+        } else {
+            $bus->expects(self::never())->method('dispatch');
+        }
+
+        $response = $this->ingest([
+            'websiteToken' => 'example-token', 'eventName' => 'button_click',
+            $field => $page,
+            'referrer' => 'https://example.test/previous?aggregate_page_sequence=1&private-query=value#private-fragment',
+            'consentState' => $enhanced ? 'granted' : 'denied',
+            'eventData' => ['page_sequence' => 2],
+        ], [], $entityManager, $bus, configValues: ['page_sequence_enabled' => true, 'page_sequence_method' => 'url_parameter']);
+
+        self::assertSame(202, $response->getStatusCode());
+    }
+
+    public static function urlCounterPageSources(): iterable
+    {
+        $path = '/example?aggregate_page_sequence=2&private-query=value#private-fragment';
+        foreach ([false, true] as $enhanced) {
+            yield 'pagePath '.($enhanced ? 'enhanced' : 'anonymous') => ['pagePath', $path, $enhanced];
+            yield 'legacy url '.($enhanced ? 'enhanced' : 'anonymous') => ['url', 'https://example.test'.$path, $enhanced];
+        }
     }
 
     private function ingest(array $payload, array $properties, EntityManagerInterface $entityManager, MessageBusInterface $bus, ?string $rawJson = null, array $configValues = []): Response

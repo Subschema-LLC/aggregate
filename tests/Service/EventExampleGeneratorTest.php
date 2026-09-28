@@ -345,6 +345,24 @@ final class EventExampleGeneratorTest extends TestCase
         }
     }
 
+    public function testUrlMethodExamplesPreserveTheMethodAndDescribeUnverifiedPageDepth(): void
+    {
+        $generator = $this->generator(['page_sequence_enabled' => true, 'page_sequence_method' => 'url_parameter']);
+        foreach (['model', 'ecommerce'] as $example) {
+            $bundle = $generator->generate($example);
+            $notes = implode(' ', $bundle['notes']);
+            self::assertStringContainsString('aggregate_page_sequence', $notes);
+            self::assertStringContainsString('Copied, edited, or shared URLs', $notes);
+            self::assertStringNotContainsString('in this tab counter', $notes);
+            foreach ($bundle['examples'] as $item) {
+                self::assertSame(2, $item['payload']['eventData']->page_sequence);
+            }
+            if ($example === 'ecommerce') {
+                self::assertSame('url_parameter', $bundle['recommended_model']['page_sequence_method']);
+            }
+        }
+    }
+
     private function generator(array $values): EventExampleGenerator
     {
         file_put_contents($this->projectDir.'/config/aggregate.yaml', Yaml::dump($values, 6, 2));

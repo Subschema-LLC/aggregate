@@ -17,6 +17,7 @@ function createStorage(initialValues, unavailable) {
   const values = new Map(Object.entries(initialValues || {}));
   const reads = [];
   const writes = [];
+  const removals = [];
 
   return {
     getItem: (key) => {
@@ -30,17 +31,21 @@ function createStorage(initialValues, unavailable) {
       values.set(key, String(value));
     },
     removeItem: (key) => {
+      removals.push(key);
       if (unavailable) throw new Error('Storage access blocked');
       values.delete(key);
     },
     has: (key) => values.has(key),
     reads,
-    writes
+    writes,
+    removals
   };
 }
 
 function loadSdk(options) {
   const requests = [];
+  const historyCalls = [];
+  const historyPushCalls = [];
   const cookieWrites = [];
   const consoleWarnings = [];
   const localStorage = createStorage(
@@ -59,9 +64,11 @@ function loadSdk(options) {
   const document = {
     currentScript: script,
     readyState: 'loading',
-    referrer: '',
+    referrer: options.referrer || '',
     addEventListener: (name, listener) => { listeners[name] = listener; },
-    getElementsByTagName: () => [script]
+    getElementsByTagName: () => [script],
+    querySelector: (selector) => selector === 'base[target]' && options.baseTarget
+      ? {getAttribute: () => options.baseTarget} : null
   };
   const cookies = new Map(Object.entries(Object.assign(
     {aggregate_session: 'legacy-cookie'}, options.cookies || {}
@@ -118,6 +125,32 @@ function loadSdk(options) {
     window
   };
   window.location = context.location;
+  if (typeof context.location.href === 'undefined') {
+    Object.defineProperty(context.location, 'href', {get: () => context.location.origin + context.location.pathname + (context.location.search || '') + (context.location.hash || '')});
+  }
+  const history = {
+    state: options.historyState,
+    length: 7,
+    replaceState: (state, title, url) => {
+      historyCalls.push({state, title, url});
+      if (options.historyThrows) throw new Error('History replacement blocked');
+      const destination = new URL(url, context.location.href);
+      assert.equal(destination.origin, context.location.origin, 'History replacement must remain same-origin');
+      context.location.pathname = destination.pathname;
+      context.location.search = destination.search;
+      context.location.hash = destination.hash || (destination.href.endsWith('#') ? '#' : '');
+      history.state = state;
+      if (options.onHistoryReplace) options.onHistoryReplace(window, history);
+    },
+    pushState: (...args) => historyPushCalls.push(args)
+  };
+  if (!options.historyUnavailable) {
+    Object.defineProperty(window, 'history', {get: () => {
+      if (options.historyGetterThrows) throw new Error('History access blocked');
+      return history;
+    }});
+  }
+  Object.defineProperty(document, 'baseURI', {get: () => options.baseURI || context.location.origin + context.location.pathname + (context.location.search || '') + (context.location.hash || '')});
 
   const source = options.serverCustomData
     ? sdkSource.replace(
@@ -129,8 +162,24 @@ function loadSdk(options) {
   vm.runInNewContext(source, context, {filename: 'aggregate.js'});
 
   return {
-    window, requests, cookieWrites, cookies, consoleWarnings, localStorage, sessionStorage,
-    triggerPageView: () => listeners.DOMContentLoaded()
+    window, requests, cookieWrites, cookies, consoleWarnings, localStorage, sessionStorage, historyCalls, historyPushCalls, history,
+    triggerPageView: () => listeners.DOMContentLoaded(),
+    createAnchor: (href, attributes) => {
+      const values = new Map(Object.entries(Object.assign({href}, attributes || {})));
+      const anchor = {
+        tagName: 'A',
+        getAttribute: (name) => values.has(name) ? values.get(name) : null,
+        hasAttribute: (name) => values.has(name),
+        setAttribute: (name, value) => values.set(name, String(value))
+      };
+      Object.defineProperty(anchor, 'href', {get: () => new URL(values.get('href'), document.baseURI).href});
+      return anchor;
+    },
+    click: (target, options) => {
+      const event = Object.assign({target, button: 0, defaultPrevented: false, preventDefault: () => { event.defaultPrevented = true; }}, options || {});
+      if (listeners.click) listeners.click(event);
+      return event;
+    }
   };
 }
 
@@ -1039,4 +1088,409 @@ test('browser exclusions can add restrictions but cannot remove served runtime e
   sdk.trackView();
   assert.equal(runtime.requests.at(-1).eventData, undefined);
   assert.deepEqual(runtime.sessionStorage.writes, [[pageSequenceKey, '1']]);
+});
+
+function assertNoPageCounterStorage(runtime) {
+  for (const storage of [runtime.localStorage, runtime.sessionStorage]) {
+    assert.equal(storage.reads.some((key) => key.startsWith('aggregate_page_sequence:')), false);
+    assert.equal(storage.writes.some(([key]) => key.startsWith('aggregate_page_sequence:')), false);
+    assert.equal(storage.removals.some((key) => key.startsWith('aggregate_page_sequence:')), false);
+  }
+  assert.equal(runtime.cookieWrites.some((value) => value.startsWith('aggregate_page_sequence')), false);
+}
+
+function urlSequenceOptions(options) {
+  return Object.assign({inline: {consent: false, customData: {pageSequenceEnabled: true, pageSequenceMethod: 'url_parameter'}}}, options || {});
+}
+
+test('URL sequence initializes the current page directly and preserves depth for asynchronous events without counter storage', async () => {
+  const runtime = loadSdk(urlSequenceOptions({
+    location: {search: '?aggregate_page_sequence=7'}, sessionStorage: {[pageSequenceKey]: '19'}
+  }));
+  runtime.window.Aggregate.emit('early_event');
+  runtime.triggerPageView();
+  await Promise.resolve().then(() => runtime.window.Aggregate.emit('async_complete'));
+  runtime.window.location.pathname = '/features';
+  runtime.window.Aggregate.trackView();
+  runtime.window.Aggregate.emit('async_complete');
+  runtime.window.Aggregate.emit('view');
+  assert.deepEqual(runtime.requests.map((payload) => payload.eventData.page_sequence), [7, 7, 7, 8, 8, 9]);
+  for (const payload of runtime.requests) {
+    assert.equal(payload.consentState, 'denied');
+    assert.equal(payload.visitorId, undefined);
+    assert.equal(payload.sessionId, undefined);
+  }
+  assert.equal(runtime.sessionStorage.has(pageSequenceKey), true);
+  assertNoPageCounterStorage(runtime);
+});
+
+test('URL sequence requires exactly one bounded canonical integer value', () => {
+  for (const [query, expected] of [
+    ['', 1], ['aggregate_page_sequence=1', 1], ['aggregate_page_sequence=2', 2], ['aggregate_page_sequence=20', 20],
+    ['aggregate_page_sequence=%32', 2], ['aggregate_page_sequence', 1], ['aggregate_page_sequence=', 1],
+    ['aggregate_page_sequence=0', 1], ['aggregate_page_sequence=21', 1], ['aggregate_page_sequence=01', 1],
+    ['aggregate_page_sequence=2.0', 1], ['aggregate_page_sequence=2e0', 1], ['aggregate_page_sequence=-2', 1],
+    ['aggregate_page_sequence=+2', 1], ['aggregate_page_sequence=2%20', 1], ['aggregate_page_sequence=%0A2', 1],
+    ['aggregate_page_sequence=NaN', 1], ['aggregate_page_sequence=Infinity', 1], ['aggregate_page_sequence=false', 1],
+    ['aggregate_page_sequence=2&aggregate_page_sequence=2', 1], ['aggregate_page_sequence=2&aggregate_page_sequence=3', 1],
+    ['aggregate_page_sequence=2&aggregate%5Fpage_sequence=3', 1], ['Aggregate_page_sequence=7', 1]
+  ]) {
+    const runtime = loadSdk(urlSequenceOptions({location: {search: query ? '?' + query : ''}}));
+    runtime.triggerPageView();
+    assert.equal(runtime.requests.at(-1).eventData.page_sequence, expected, query);
+    assertNoPageCounterStorage(runtime);
+  }
+});
+
+test('URL sequence decorates only the activated internal link and preserves native behavior and query bytes', () => {
+  const runtime = loadSdk(urlSequenceOptions({location: {search: '?aggregate_page_sequence=2'}}));
+  const anchor = runtime.createAnchor('/features?signature=a%20b&raw=~&plus=a+b&empty=&aggregate_page_sequence=19#details');
+  const untouched = runtime.createAnchor('/untouched');
+  assert.equal(anchor.getAttribute('href'), '/features?signature=a%20b&raw=~&plus=a+b&empty=&aggregate_page_sequence=19#details');
+  const event = runtime.click({tagName: 'SPAN', parentNode: {parentNode: anchor}});
+  const expected = 'https://www.example.com/features?signature=a%20b&raw=~&plus=a+b&empty=&aggregate_page_sequence=3#details';
+  assert.equal(anchor.getAttribute('href'), expected);
+  assert.equal(untouched.getAttribute('href'), '/untouched');
+  assert.equal(event.defaultPrevented, false);
+  assert.equal(runtime.window.location.pathname, '/pricing');
+  assert.deepEqual(runtime.requests, []);
+  runtime.click(anchor, {detail: 0});
+  assert.equal(anchor.getAttribute('href'), expected);
+  runtime.triggerPageView();
+  runtime.window.Aggregate.emit('async_complete');
+  assert.deepEqual(runtime.requests.map((payload) => payload.eventData.page_sequence), [2, 2]);
+  assertNoPageCounterStorage(runtime);
+});
+
+test('URL sequence follows decorated navigation, resets after a cleaned-URL reload, and caps propagation at twenty', () => {
+  const first = loadSdk(urlSequenceOptions());
+  const anchor = first.createAnchor('/next?preserved=yes#part');
+  first.triggerPageView();
+  first.click(anchor);
+  const destination = new URL(anchor.href);
+  const next = loadSdk(urlSequenceOptions({location: {pathname: destination.pathname, search: destination.search, hash: destination.hash}}));
+  next.triggerPageView();
+  assert.equal(next.requests.at(-1).eventData.page_sequence, 2);
+  const reload = loadSdk(urlSequenceOptions({location: {pathname: next.window.location.pathname, search: next.window.location.search}}));
+  reload.triggerPageView();
+  assert.equal(reload.requests.at(-1).eventData.page_sequence, 1);
+
+  const capped = loadSdk(urlSequenceOptions({location: {search: '?aggregate_page_sequence=20'}}));
+  const capLink = capped.createAnchor('/next?aggregate_page_sequence=1&aggregate%5Fpage_sequence=2');
+  capped.triggerPageView();
+  capped.window.Aggregate.trackView();
+  capped.click(capLink);
+  assert.equal(capLink.getAttribute('href'), 'https://www.example.com/next?aggregate_page_sequence=20');
+  assert.equal(capped.requests.every((payload) => payload.eventData.page_sequence === 20), true);
+  for (const runtime of [first, next, reload, capped]) assertNoPageCounterStorage(runtime);
+});
+
+test('URL decoration skips external, credentialed, download, fragment and new-context links', () => {
+  for (const [href, attributes] of [
+    ['https://other.example/features'], ['http://www.example.com/features'], ['//other.example/features'],
+    ['https://user:password@www.example.com/features'], ['mailto:person@example.com'], ['tel:+15551234567'],
+    ['javascript:alert(1)'], ['data:text/plain,hello'], ['#details'], ['#'], ['', {}],
+    ['/pricing#details'], ['/pricing#'], ['/pricing?aggregate_page_sequence=9#details'],
+    ['/features', {download: ''}], ['/features', {target: '_blank'}], ['/features', {target: 'named-frame'}]
+  ]) {
+    const runtime = loadSdk(urlSequenceOptions({location: {search: '?aggregate_page_sequence=2'}}));
+    const anchor = runtime.createAnchor(href, attributes);
+    const event = runtime.click(anchor);
+    assert.equal(anchor.getAttribute('href'), href, href);
+    assert.equal(event.defaultPrevented, false, href);
+    assertNoPageCounterStorage(runtime);
+  }
+  for (const eventOptions of [{button: 1}, {button: 2}, {ctrlKey: true}, {metaKey: true}, {shiftKey: true}, {altKey: true}, {defaultPrevented: true}]) {
+    const runtime = loadSdk(urlSequenceOptions());
+    const anchor = runtime.createAnchor('/features');
+    runtime.click(anchor, eventOptions);
+    assert.equal(anchor.getAttribute('href'), '/features');
+    assertNoPageCounterStorage(runtime);
+  }
+});
+
+test('URL decoration respects base URLs, inherited targets, and explicit same-tab overrides', () => {
+  const externalBase = loadSdk(urlSequenceOptions({baseURI: 'https://other.example/base/'}));
+  const external = externalBase.createAnchor('relative');
+  externalBase.click(external);
+  assert.equal(external.getAttribute('href'), 'relative');
+  const localBase = loadSdk(urlSequenceOptions({baseURI: 'https://www.example.com/base/'}));
+  const local = localBase.createAnchor('relative?signature=a%20b#part');
+  localBase.click(local);
+  assert.equal(local.getAttribute('href'), 'https://www.example.com/base/relative?signature=a%20b&aggregate_page_sequence=2#part');
+  const inheritedTarget = loadSdk(urlSequenceOptions({baseTarget: '_blank'}));
+  const inherited = inheritedTarget.createAnchor('/features');
+  inheritedTarget.click(inherited);
+  assert.equal(inherited.getAttribute('href'), '/features');
+  const sameTab = inheritedTarget.createAnchor('/features', {target: '_self'});
+  inheritedTarget.click(sameTab);
+  assert.equal(sameTab.getAttribute('href'), 'https://www.example.com/features?aggregate_page_sequence=2');
+});
+
+test('URL decoration preserves same-document hash navigation and permits explicit reload links', () => {
+  const runtime = loadSdk(urlSequenceOptions({location: {pathname: '//section/page', search: '?x=1&aggregate_page_sequence=2'}}));
+  const jump = runtime.createAnchor('https://www.example.com//section/page?x=1#');
+  runtime.click(jump);
+  assert.equal(jump.getAttribute('href'), 'https://www.example.com//section/page?x=1#');
+  const reload = runtime.createAnchor('https://www.example.com//section/page?x=1');
+  runtime.click(reload);
+  assert.equal(reload.getAttribute('href'), 'https://www.example.com//section/page?x=1&aggregate_page_sequence=3');
+});
+
+test('URL sequence neither collects nor propagates through excluded source and destination paths', () => {
+  const serverCustomData = {
+    queryParameters: {}, consentFreeProperties: [], pageSequenceEnabled: true,
+    pageSequenceMethod: 'url_parameter', pageSequenceExcludedPaths: ['/private/**', '/users/_redacted']
+  };
+  for (const pathname of ['/private', '/private/deep/path', '/%70rivate/x', '/private%252Frecords', '/users/%2531%2532%2533%2534']) {
+    const source = loadSdk({serverCustomData, location: {pathname, search: '?aggregate_page_sequence=7'}});
+    const sourceLink = source.createAnchor('/public');
+    source.click(sourceLink);
+    source.triggerPageView();
+    assert.equal(sourceLink.getAttribute('href'), '/public', pathname);
+    assert.equal(source.requests.at(-1).eventData, undefined, pathname);
+    assert.deepEqual(source.historyCalls, [], pathname);
+    assertNoPageCounterStorage(source);
+    const destination = loadSdk({serverCustomData});
+    const destinationLink = destination.createAnchor(pathname);
+    destination.click(destinationLink);
+    assert.equal(destinationLink.getAttribute('href'), pathname, pathname);
+    assertNoPageCounterStorage(destination);
+  }
+});
+
+test('disabled and malformed URL sequence settings fail closed without counter storage cleanup', () => {
+  for (const customData of [
+    {pageSequenceEnabled: false, pageSequenceMethod: 'url_parameter'},
+    {pageSequenceEnabled: 'true', pageSequenceMethod: 'url_parameter'},
+    {pageSequenceEnabled: true, pageSequenceMethod: null},
+    {pageSequenceEnabled: true, pageSequenceMethod: 'url'},
+    {pageSequenceEnabled: true, pageSequenceMethod: true},
+    {pageSequenceEnabled: true, pageSequenceMethod: []},
+    {pageSequenceEnabled: true, pageSequenceMethod: 'url_parameter', pageSequenceExcludedPaths: null},
+    {pageSequenceEnabled: true, pageSequenceMethod: 'url_parameter', propertyTypes: null}
+  ]) {
+    const runtime = loadSdk({inline: {customData}, location: {search: '?aggregate_page_sequence=7'}, sessionStorage: {[pageSequenceKey]: '12'}});
+    const anchor = runtime.createAnchor('/features');
+    runtime.triggerPageView();
+    runtime.click(anchor);
+    assert.equal(runtime.requests.at(-1).eventData, undefined);
+    assert.equal(anchor.getAttribute('href'), '/features');
+    assert.equal(runtime.sessionStorage.has(pageSequenceKey), true);
+    assert.deepEqual(runtime.historyCalls, []);
+    assertNoPageCounterStorage(runtime);
+  }
+});
+
+test('served URL method cannot be switched into storage by inline or configure overrides', () => {
+  const serverCustomData = {
+    queryParameters: {}, consentFreeProperties: [], pageSequenceEnabled: true, pageSequenceMethod: 'url_parameter'
+  };
+  const runtime = loadSdk({
+    serverCustomData, inline: {customData: {pageSequenceMethod: 'session_storage'}},
+    location: {search: '?aggregate_page_sequence=7'}, sessionStorage: {[pageSequenceKey]: '12'}
+  });
+  runtime.triggerPageView();
+  runtime.window.Aggregate.configure({customData: {pageSequenceMethod: 'session_storage'}});
+  runtime.window.Aggregate.emit('async_complete');
+  assert.deepEqual(runtime.requests.map((payload) => payload.eventData.page_sequence), [7, 7]);
+  runtime.window.Aggregate.configure({customData: {pageSequenceEnabled: false, pageSequenceMethod: 'session_storage'}});
+  runtime.window.Aggregate.emit('async_complete');
+  assert.equal(runtime.requests.at(-1).eventData, undefined);
+  assertNoPageCounterStorage(runtime);
+
+  const storage = loadSdk({
+    serverCustomData: Object.assign({}, serverCustomData, {pageSequenceMethod: 'session_storage'}),
+    inline: {customData: {pageSequenceMethod: 'url_parameter'}}, location: {search: '?aggregate_page_sequence=7'}
+  });
+  storage.triggerPageView();
+  storage.window.Aggregate.configure({customData: {pageSequenceMethod: 'url_parameter'}});
+  const anchor = storage.createAnchor('/features');
+  storage.click(anchor);
+  assert.equal(anchor.getAttribute('href'), '/features');
+  assert.equal(storage.requests.at(-1).eventData.page_sequence, 1);
+  assert.deepEqual(storage.sessionStorage.writes, [[pageSequenceKey, '1']]);
+});
+
+test('disabled or invalid served URL policy cannot be repaired by browser overrides', () => {
+  for (const serverSettings of [
+    {pageSequenceEnabled: false, pageSequenceMethod: 'url_parameter'},
+    {pageSequenceEnabled: true, pageSequenceMethod: null},
+    {pageSequenceEnabled: true, pageSequenceMethod: 'url'},
+    {pageSequenceEnabled: true, pageSequenceMethod: false}
+  ]) {
+    const runtime = loadSdk({
+      serverCustomData: Object.assign({queryParameters: {}, consentFreeProperties: []}, serverSettings),
+      inline: {customData: {pageSequenceEnabled: true, pageSequenceMethod: 'url_parameter'}},
+      location: {search: '?aggregate_page_sequence=7'}, sessionStorage: {[pageSequenceKey]: '12'}
+    });
+    runtime.window.Aggregate.configure({customData: {pageSequenceEnabled: true, pageSequenceMethod: 'url_parameter'}});
+    runtime.triggerPageView();
+    const anchor = runtime.createAnchor('/features');
+    runtime.click(anchor);
+    assert.equal(runtime.requests.at(-1).eventData, undefined);
+    assert.equal(anchor.getAttribute('href'), '/features');
+    assert.equal(runtime.sessionStorage.has(pageSequenceKey), true);
+    assertNoPageCounterStorage(runtime);
+  }
+});
+
+test('static storage-to-URL mode transitions leave old counter state untouched and clear only memory', () => {
+  const runtime = loadSdk({inline: {customData: {pageSequenceEnabled: true}}, location: {search: '?aggregate_page_sequence=7'}});
+  runtime.triggerPageView();
+  const before = {
+    reads: runtime.sessionStorage.reads.slice(), writes: runtime.sessionStorage.writes.slice(), removals: runtime.sessionStorage.removals.slice()
+  };
+  runtime.window.Aggregate.configure({customData: {pageSequenceMethod: 'url_parameter'}});
+  runtime.window.Aggregate.emit('async_complete');
+  assert.equal(runtime.requests.at(-1).eventData.page_sequence, 7);
+  runtime.window.Aggregate.configure({customData: {pageSequenceEnabled: false}});
+  runtime.window.Aggregate.emit('async_complete');
+  assert.equal(runtime.requests.at(-1).eventData, undefined);
+  assert.deepEqual(runtime.sessionStorage.reads, before.reads);
+  assert.deepEqual(runtime.sessionStorage.writes, before.writes);
+  assert.deepEqual(runtime.sessionStorage.removals, before.removals);
+  assert.equal(runtime.sessionStorage.has(pageSequenceKey), true);
+});
+
+test('the URL transport parameter cannot become an ordinary mapped custom property', () => {
+  const runtime = loadSdk(urlSequenceOptions({
+    inline: {consent: false, customData: {
+      pageSequenceEnabled: true, pageSequenceMethod: 'url_parameter',
+      queryParameters: {aggregate_page_sequence: 'aliased_count'}, consentFreeProperties: ['aliased_count', 'page_sequence']
+    }}, location: {search: '?aggregate_page_sequence=7'}
+  }));
+  runtime.window.Aggregate.emit('async_complete', {page_sequence: 19});
+  assert.deepEqual(runtime.requests.at(-1).eventData, {page_sequence: 7});
+  assertNoPageCounterStorage(runtime);
+});
+
+test('URL depth is captured before DOM readiness and cleanup preserves history state, query bytes, path and hash', () => {
+  const state = {router: {path: '/nested//path', revision: 2}, other: ['preserved']};
+  const snapshot = JSON.stringify(state);
+  const runtime = loadSdk(urlSequenceOptions({
+    historyState: state,
+    location: {pathname: '/nested//path', search: '?signature=a%20b&x=~&&aggregate_page_sequence=7&plus=a+b', hash: '#part%20one'}
+  }));
+  assert.deepEqual(runtime.requests, []);
+  assert.equal(runtime.historyCalls.length, 1);
+  assert.equal(runtime.historyCalls[0].state, state);
+  assert.equal(runtime.history.state, state);
+  assert.equal(JSON.stringify(state), snapshot);
+  assert.equal(runtime.historyCalls[0].url, 'https://www.example.com/nested//path?signature=a%20b&x=~&&plus=a+b#part%20one');
+  assert.equal(runtime.window.location.search, '?signature=a%20b&x=~&&plus=a+b');
+  assert.equal(runtime.history.length, 7);
+  assert.deepEqual(runtime.historyPushCalls, []);
+  runtime.window.Aggregate.emit('early_event');
+  runtime.triggerPageView();
+  runtime.window.Aggregate.emit('async_complete');
+  assert.deepEqual(runtime.requests.map((payload) => payload.eventData.page_sequence), [7, 7, 7]);
+  assert.equal(runtime.historyCalls.length, 1);
+  const anchor = runtime.createAnchor('/next');
+  runtime.click(anchor);
+  assert.equal(anchor.href, 'https://www.example.com/next?aggregate_page_sequence=8');
+  assertNoPageCounterStorage(runtime);
+});
+
+test('cleanup removes invalid and duplicate transport values and preserves empty fragments and double-slash paths', () => {
+  for (const search of [
+    '?aggregate_page_sequence=21', '?aggregate_page_sequence=invalid', '?aggregate_page_sequence=',
+    '?aggregate_page_sequence=2&aggregate_page_sequence=3', '?aggregate_page_sequence=2&aggregate%5Fpage_sequence=2'
+  ]) {
+    const runtime = loadSdk(urlSequenceOptions({location: {pathname: '//section/page', search: search + '&keep=a%20b', hash: '#'}}));
+    assert.equal(runtime.historyCalls[0].url, 'https://www.example.com//section/page?keep=a%20b#');
+    assert.equal(runtime.window.location.origin, 'https://www.example.com');
+    assert.equal(runtime.window.location.pathname, '//section/page');
+    runtime.triggerPageView();
+    assert.equal(runtime.requests.at(-1).eventData.page_sequence, 1);
+    assertNoPageCounterStorage(runtime);
+  }
+});
+
+test('deferred URL-mode configuration captures and trims once without resetting repeated configuration or token changes', () => {
+  const runtime = loadSdk({
+    inline: {customData: {pageSequenceEnabled: false, pageSequenceMethod: 'url_parameter'}},
+    location: {search: '?aggregate_page_sequence=7'}
+  });
+  assert.equal(runtime.window.location.search, '?aggregate_page_sequence=7');
+  assert.deepEqual(runtime.historyCalls, []);
+  const sdk = runtime.window.Aggregate;
+  sdk.configure({customData: {pageSequenceEnabled: true}});
+  assert.equal(runtime.window.location.search, '');
+  sdk.emit('early_event');
+  sdk.configure({endpoint: '/changed', customData: {pageSequenceEnabled: true}});
+  sdk.emit('async_complete');
+  sdk.configure({websiteToken: 'second-site'});
+  sdk.emit('async_complete');
+  sdk.configure({websiteToken: 'site-token'});
+  sdk.trackView();
+  runtime.triggerPageView();
+  assert.deepEqual(runtime.requests.map((payload) => payload.eventData.page_sequence), [7, 7, 7, 8, 8]);
+  assert.equal(runtime.historyCalls.length, 1);
+  assertNoPageCounterStorage(runtime);
+});
+
+test('unavailable or throwing History APIs leave URL depth usable without repeated cleanup attempts', () => {
+  for (const historyOptions of [{historyUnavailable: true}, {historyThrows: true}, {historyGetterThrows: true}]) {
+    const runtime = loadSdk(urlSequenceOptions(Object.assign({location: {search: '?aggregate_page_sequence=6&keep=yes'}}, historyOptions)));
+    runtime.triggerPageView();
+    runtime.window.Aggregate.emit('async_complete');
+    runtime.window.Aggregate.configure({endpoint: '/changed'});
+    runtime.window.Aggregate.emit('async_complete');
+    assert.equal(runtime.window.location.search, '?aggregate_page_sequence=6&keep=yes');
+    assert.deepEqual(runtime.requests.map((payload) => payload.eventData.page_sequence), [6, 6, 6]);
+    assert.equal(runtime.historyCalls.length, historyOptions.historyThrows ? 1 : 0);
+    const anchor = runtime.createAnchor('/next');
+    runtime.click(anchor);
+    assert.equal(anchor.href, 'https://www.example.com/next?aggregate_page_sequence=7');
+    assert.deepEqual(runtime.historyPushCalls, []);
+    assertNoPageCounterStorage(runtime);
+  }
+});
+
+test('framework-wrapped replaceState can reenter configuration and tracking without recursion or lost depth', () => {
+  const state = {framework: 'existing'};
+  const runtime = loadSdk(urlSequenceOptions({
+    historyState: state, location: {search: '?aggregate_page_sequence=9'},
+    onHistoryReplace: (window) => {
+      window.Aggregate.configure({endpoint: '/framework-receiver'});
+      window.Aggregate.emit('history_callback');
+    }
+  }));
+  runtime.triggerPageView();
+  runtime.window.Aggregate.emit('async_complete');
+  assert.deepEqual(runtime.requests.map((payload) => payload.eventData.page_sequence), [9, 9, 9]);
+  assert.equal(runtime.historyCalls.length, 1);
+  assert.equal(runtime.historyCalls[0].state, state);
+  assert.equal(runtime.window.location.search, '');
+  assertNoPageCounterStorage(runtime);
+});
+
+test('page information and network referrers omit full queries in both modes and consent states even when cleanup fails', () => {
+  for (const method of ['url_parameter', 'session_storage']) {
+    for (const consent of [false, true]) {
+      for (const historyThrows of [false, true]) {
+        const transports = [];
+        const runtime = loadSdk({
+          inline: {consent, customData: {pageSequenceEnabled: true, pageSequenceMethod: method}}, historyThrows,
+          location: {pathname: '/pricing', search: '?aggregate_page_sequence=7&ignored_private=page-secret', hash: '#private-fragment'},
+          referrer: 'https://other.example/from?aggregate_page_sequence=6&private=referrer-secret#source-fragment',
+          fetch: (_url, request) => { transports.push(request); return Promise.resolve({ok: true}); }
+        });
+        runtime.triggerPageView();
+        runtime.window.Aggregate.emit('async_complete');
+        for (const payload of runtime.requests) {
+          assert.equal(payload.pagePath, '/pricing');
+          assert.equal(payload.referrerChannel, 'referral');
+          assert.equal(payload.referrer, undefined);
+          assert.equal(payload.url, undefined);
+          assert.equal(/aggregate_page_sequence|page-secret|referrer-secret|private-fragment|source-fragment/.test(JSON.stringify(payload)), false);
+        }
+        for (const request of transports) {
+          assert.equal(request.referrerPolicy, 'no-referrer');
+          assert.equal(request.credentials, 'omit');
+        }
+      }
+    }
+  }
 });

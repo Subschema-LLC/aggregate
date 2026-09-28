@@ -73,6 +73,81 @@ final class CustomDataSettingsTest extends TestCase
         }
     }
 
+    public function testPageSequenceMethodDefaultsToSessionStorageAndIgnoresEnvironmentOverrides(): void
+    {
+        $_ENV['PAGE_SEQUENCE_METHOD'] = 'url_parameter';
+        $settings = $this->settings([]);
+        self::assertSame('session_storage', $settings->toArray()['page_sequence_method']);
+        self::assertSame('session_storage', $settings->toBrowserConfig()['pageSequenceMethod']);
+        self::assertSame('session_storage', Yaml::parse($settings->exportYaml())['page_sequence_method']);
+
+        $_ENV['PAGE_SEQUENCE_METHOD'] = 'session_storage';
+        $settings = $this->settings(['page_sequence_method' => 'url_parameter']);
+        self::assertSame('url_parameter', $settings->toArray()['page_sequence_method']);
+        self::assertSame('url_parameter', $settings->toBrowserConfig()['pageSequenceMethod']);
+        self::assertFalse($settings->toBrowserConfig()['pageSequenceEnabled']);
+    }
+
+    #[DataProvider('legacyMethodSaveModels')]
+    public function testLegacyModelSavePreservesTheCurrentUrlMethod(array $model): void
+    {
+        $settings = $this->settings(['page_sequence_method' => 'session_storage']);
+        $settings->toArray();
+        // Simulate another editor selecting URL mode after this instance
+        // loaded; the omitted field must use the latest saved policy.
+        file_put_contents($this->projectDir.'/config/aggregate.yaml', "page_sequence_method: url_parameter\nunrelated: preserve-me\n");
+
+        $settings->save($model);
+
+        $saved = Yaml::parseFile($this->projectDir.'/config/aggregate.yaml');
+        self::assertSame('url_parameter', $saved['page_sequence_method']);
+        self::assertSame('preserve-me', $saved['unrelated']);
+        self::assertSame('url_parameter', $settings->toBrowserConfig()['pageSequenceMethod']);
+    }
+
+    public static function legacyMethodSaveModels(): iterable
+    {
+        $model = ['custom_data_properties' => [], 'query_parameter_mappings' => []];
+        yield 'old property-only model' => [$model];
+        yield 'model with counter opt-in' => [[...$model, 'page_sequence_enabled' => true]];
+    }
+
+    public function testLegacyModelSaveCannotReplaceAMalformedCurrentMethodWithTheDefault(): void
+    {
+        $settings = $this->settings([]);
+        $settings->toArray();
+        file_put_contents($this->projectDir.'/config/aggregate.yaml', "page_sequence_method: null\nunrelated: preserve-me\n");
+        $before = file_get_contents($this->projectDir.'/config/aggregate.yaml');
+        try {
+            $settings->save(['custom_data_properties' => [], 'query_parameter_mappings' => []]);
+            self::fail('A malformed current counter method was silently replaced.');
+        } catch (\InvalidArgumentException) {
+            self::assertSame($before, file_get_contents($this->projectDir.'/config/aggregate.yaml'));
+        }
+    }
+
+    #[DataProvider('reservedPageSequenceQueryMappings')]
+    public function testReservedPageSequenceUrlParameterCannotBecomeAnOrdinaryProperty(string $method, bool $enabled): void
+    {
+        $settings = $this->settings([
+            'page_sequence_enabled' => $enabled,
+            'page_sequence_method' => $method,
+            'custom_data_properties' => ['depth_alias' => ['consent_required' => false]],
+            'query_parameter_mappings' => ['aggregate_page_sequence' => 'depth_alias'],
+        ]);
+        $this->expectException(\InvalidArgumentException::class);
+        $settings->toBrowserConfig();
+    }
+
+    public static function reservedPageSequenceQueryMappings(): iterable
+    {
+        foreach (CustomDataSettings::PAGE_SEQUENCE_METHODS as $method) {
+            foreach ([false, true] as $enabled) {
+                yield $method.' '.($enabled ? 'enabled' : 'disabled') => [$method, $enabled];
+            }
+        }
+    }
+
     #[DataProvider('pageSequenceValues')]
     public function testEnabledPageSequenceIsBoundedWithoutRequiringAModeledProperty(mixed $value, ?int $expected): void
     {
@@ -136,6 +211,11 @@ final class CustomDataSettingsTest extends TestCase
     {
         foreach ([null, 'true', 'false', 1, 0, []] as $index => $invalid) {
             yield 'strict boolean '.$index => [['page_sequence_enabled' => $invalid]];
+        }
+        foreach ([null, true, false, 1, [], '', 'cookie', 'sessionStorage', ' url_parameter', 'url_parameter '] as $index => $invalid) {
+            foreach ([false, true] as $enabled) {
+                yield 'invalid method '.$index.' '.($enabled ? 'enabled' : 'disabled') => [['page_sequence_enabled' => $enabled, 'page_sequence_method' => $invalid]];
+            }
         }
         yield 'marker collision' => [['page_sequence_enabled' => true, 'internal_traffic_name' => 'page_sequence']];
         yield 'property without integer declaration' => [['page_sequence_enabled' => true, 'custom_data_properties' => ['page_sequence' => ['consent_required' => false]]]];
@@ -293,6 +373,7 @@ final class CustomDataSettingsTest extends TestCase
             'queryParameters' => ['qty' => 'quantity'],
             'consentFreeProperties' => ['quantity'],
             'pageSequenceEnabled' => false,
+            'pageSequenceMethod' => 'session_storage',
             'propertyTypes' => ['quantity' => 'integer', 'revenue' => 'double'],
         ], $settings->toBrowserConfig());
         self::assertSame($settings->toArray(), Yaml::parse($settings->exportYaml()));
@@ -523,6 +604,7 @@ final class CustomDataSettingsTest extends TestCase
             ],
             'query_parameter_mappings' => ['utm_medium' => 'utm_medium', 'channel' => 'utm_medium'],
             'page_sequence_enabled' => true,
+            'page_sequence_method' => 'url_parameter',
         ];
 
         $settings->save($model);
