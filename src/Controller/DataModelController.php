@@ -45,7 +45,9 @@ final class DataModelController extends AbstractController
                 if (count($model[CustomDataSettings::PROPERTIES_KEY]) >= 50) {
                     $additionError = 'The model already contains the maximum of 50 properties.';
                 } else {
-                    $model[CustomDataSettings::PROPERTIES_KEY][$key] = ['description' => '', 'consent_required' => true, 'column' => ''];
+                    $model[CustomDataSettings::PROPERTIES_KEY][$key] = $key === CustomDataSettings::PAGE_SEQUENCE_PROPERTY && $key !== $context['marker_name']
+                        ? ['description' => 'Page depth; 20 means 20 or more.', 'consent_required' => false, 'type' => 'integer', 'column' => '']
+                        : ['description' => '', 'consent_required' => true, 'column' => ''];
                     $model = $this->settings->validate($model);
                     $unsavedProperty = $key;
                 }
@@ -204,8 +206,13 @@ final class DataModelController extends AbstractController
 
     private function modelFromForm(array $submitted): array
     {
-        if (array_diff(array_keys($submitted), ['_csrf_token', 'properties', 'mappings']) !== []) {
+        if (array_diff(array_keys($submitted), ['_csrf_token', 'properties', 'mappings', CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY]) !== []) {
             throw new \InvalidArgumentException('The model form contained an unexpected setting. Nothing was saved.');
+        }
+        $pageSequenceEnabled = array_key_exists(CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY, $submitted)
+            ? $submitted[CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY] : '0';
+        if (!in_array($pageSequenceEnabled, ['0', '1'], true)) {
+            throw new \InvalidArgumentException('Choose whether page depth is enabled. Nothing was saved.');
         }
         $propertyRows = array_key_exists('properties', $submitted) ? $submitted['properties'] : [];
         $mappingRows = array_key_exists('mappings', $submitted) ? $submitted['mappings'] : [];
@@ -263,7 +270,11 @@ final class DataModelController extends AbstractController
             $mappings[$parameter] = $property;
         }
 
-        return [CustomDataSettings::PROPERTIES_KEY => $properties, CustomDataSettings::MAPPINGS_KEY => $mappings];
+        return [
+            CustomDataSettings::PROPERTIES_KEY => $properties,
+            CustomDataSettings::MAPPINGS_KEY => $mappings,
+            CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY => $pageSequenceEnabled === '1',
+        ];
     }
 
     private function validToken(Request $request): bool

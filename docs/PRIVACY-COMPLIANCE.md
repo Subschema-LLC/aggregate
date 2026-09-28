@@ -9,6 +9,7 @@ This document is engineering guidance, not legal advice.
 - [Measurement model](#measurement-model)
 - [Anonymous-mode events](#anonymous-mode-events)
 - [Custom properties and UTM consent](#custom-properties-and-utm-consent)
+- [Optional page depth](#optional-page-depth)
 - [Organization traffic](#organization-traffic)
 - [Optional coarse geography](#optional-coarse-geography)
 - [Stored data and reporting queries](#stored-data-and-reporting-queries)
@@ -36,6 +37,33 @@ There is no visitor-facing "off" mode in the SDK. Coarse page-view and named-eve
 
 Use consent language that matches this behavior. A button may say **Reject enhanced analytics** or **Use privacy-minimized analytics**. Do not claim that a generic **Reject analytics** button stops all measurement if anonymous-mode events will continue.
 
+### Insight without visit or session IDs
+
+Coarse channels, sanitized page paths, named events and permitted goals support
+useful measurement without a visit, visitor or session ID. For example, compare
+channel activity on key pages, count interactions with calls to action, and track
+changes in daily goal totals. Reviewed broad `utm_medium` values can add context
+when explicitly allowed for anonymous collection; all UTMs require consent by default.
+
+Here, **pathing** means aggregate page activity and fixed navigation events an
+operator chooses to instrument. These aggregate counts do not establish a person's
+ordered journey or attribute a later goal to an earlier arrival. URL medium is
+read on the current page, with no automatic carry-over to later pages. Counts
+measure event occurrences; one person can contribute several.
+
+Optional [page depth](#optional-page-depth) adds a capped count of tracked pages
+to each event, helping distinguish early-page interactions from deeper activity
+without assigning a visitor or session ID.
+
+Today, approved `bi_anonymous_*` views provide completed, thresholded event counts
+by path and channel, and separate daily goal counts. Goals have no path/channel
+breakdown in these views. Medium remains in private retained-event/custom-property
+reporting and is absent from approved anonymous BI views and archive aggregates.
+The [roadmap](../ROADMAP.md#proposals-to-explore) proposes examples and reviewed
+reporting extensions for this approach. Preserve the
+[BI disclosure boundaries](#bi-exposure-and-suppression); do not join existing
+views to recover withheld detail.
+
 ## Anonymous-mode events
 
 Before an anonymous-mode event leaves the browser, the SDK:
@@ -48,7 +76,7 @@ Before an anonymous-mode event leaves the browser, the SDK:
 - sends only coarse device and viewport buckets;
 - may send one requested fixed goal code for server-side allowlist validation;
 - reads the configured team marker, when present, and sends only an `internalTraffic` boolean; it never installs that marker automatically;
-- includes custom properties only when their model definition has `consent_required: false`;
+- includes ordinary custom properties only when their model definition has `consent_required: false`, and generated page depth only when its separate setting is enabled;
 - sends no visitor ID, session ID, cookie value, raw referrer, or exact screen width; and
 - requests the collection endpoint with a `no-referrer` policy so the browser does not attach the page URL as an HTTP `Referer`.
 
@@ -85,6 +113,30 @@ Administrators configure the custom data model in YAML or **Data model**. A prop
 The six standard UTM properties—`utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`, and `utm_id`—all require consent by default. For anonymous attribution, the recommendation is **no more granular than `utm_medium`**, using reviewed channel codes such as `email`, `social`, or `cpc`. This recommendation is advisory: each property can be allowed separately. More detailed UTMs can reveal campaign membership, search text, identifiers, or sensitive context. Review those values and their purpose before overriding the recommendation. The setting allows a key, not a fixed list of values; even `utm_medium` can contain unexpected or personal text if an implementation puts it there.
 
 Properties use bounded scalar values; nested objects and arrays are discarded. Only configured query parameters are extracted from the current page URL, with no attribution cookie or session storage. The reserved organization marker is derived separately and cannot be set through a query parameter or event property. See the [data model guide](DATA-MODEL.md) for configuration and [tracking guide](TRACKING.md#utm-and-custom-data-collection) for precedence and SDK overrides.
+
+## Optional page depth
+
+`page_sequence_enabled` defaults to `false` and is managed through Data model or
+active YAML. Enabling it adds the reserved integer `page_sequence` to event JSON
+in both modes, including after enhanced consent is rejected or withdrawn. Values
+run from `1` to `20`, where `20` means **20 or more**. All events emitted on a page
+share its depth; page views advance it. The server enforces opt-in and numeric
+bounds, but cannot verify a client's claimed page count.
+
+This feature keeps only a bounded number in tab-scoped `sessionStorage`, keyed
+by the public website token. It introduces no person/session identifier, path
+history, cookie or stored timestamp. Reloads count again; browser tab duplication
+or restoration may preserve the number. Blocked storage falls back to memory for
+the current document. The kill switch and path exclusions prevent the counter
+from collecting disabled/excluded activity. Disabling it clears the current
+token's counter when the tracker next runs with updated settings.
+
+Browser-storage rules can apply even without an identifier. Assess the applicable
+consent requirements and disclose this option before enabling it; leave it off
+where separate consent would be required. The cap reduces precision, but is not
+proof of legal anonymity or permission to reconstruct individual journeys.
+It remains private `custom_data`: approved anonymous BI views and archive
+aggregates do not expose it. See [configuration and examples](DATA-MODEL.md#optional-page-depth).
 
 ## Organization traffic
 
@@ -165,7 +217,7 @@ This design minimizes retained data; it does not make the lookup legally invisib
 **`events`** is the unified private storage table. `privacy_mode` separates `anonymous` and `enhanced` rows; page views use `event_name = 'view'`.
 
 - Shared dimensions include `website_token`, `event_name`, sanitized path in `url`, coarse channel in `referrer`, `device_class`, `viewport_bucket`, optional `geo_area`, optional allowlisted `goal_event`, `privacy_mode`, and `created_at`.
-- Anonymous-mode rows are individual events whose server-generated `created_at` is truncated to a UTC hour. An enabled `goal_event` may be present only when its definition permits anonymous use; identifier, exact-dimension, and generalized User-Agent columns remain null. `custom_data` may contain properties explicitly configured with `consent_required: false` and the organization marker under its configured name (default `{"orgInternalTraffic": true}`); other event properties are omitted.
+- Anonymous-mode rows are individual events whose server-generated `created_at` is truncated to a UTC hour. An enabled `goal_event` may be present only when its definition permits anonymous use; identifier, exact-dimension, and generalized User-Agent columns remain null. `custom_data` may contain properties explicitly configured with `consent_required: false`, separately enabled `page_sequence`, and the organization marker under its configured name (default `{"orgInternalTraffic": true}`); other event properties are omitted.
 - Enhanced rows may include `screen_width`, `visitor_id`, `session_id`, `consent_state`, `custom_data`, `goal_event`, `generalized_user_agent`, and an exact server timestamp.
 
 Do not grant routine BI users access to raw `events`. Hour bucketing and missing IDs reduce risk, but anonymous-mode rows can still be personal data in context.
@@ -339,7 +391,7 @@ Adapt the API calls to your consent manager. Test these cases in a new browser p
 
 1. Before a choice, a page view and `emit('button_click', {...}, 'signup')` create anonymous-mode rows with no IDs and only explicitly permitted custom properties; the goal is retained only when its enabled definition permits anonymous use.
 2. Anonymous `created_at` values are UTC hour boundaries rather than exact event times.
-3. Rejecting creates no Aggregate cookie, `localStorage` value, or `sessionStorage` value.
+3. With page depth disabled (the default), rejecting creates no Aggregate cookie, `localStorage` value, or `sessionStorage` value. If page depth is explicitly enabled, only its bounded numeric tab counter may be created; no visitor/session IDs are created. Review the separate organization marker and CMP storage according to their documented behavior.
 4. Named events continue after rejection; properties requiring consent are absent, while configured consent-free properties and anonymous goals may remain.
 5. Accepting creates IDs and permits enhanced event details.
 6. Withdrawing removes all three browser-side identifiers and strips consent-required details from later events; only explicitly permitted custom properties remain.
@@ -351,6 +403,10 @@ Adapt the API calls to your consent manager. Test these cases in a new browser p
 Adapt this text to the deployment and have counsel review it:
 
 > We use self-hosted analytics to understand page usage, named interactions such as button clicks, and [configured goal categories such as signup or purchase]. Unless you accept enhanced analytics, each event is limited to a fixed event name, [an allowlisted goal category, when applicable], sanitized page path, coarse traffic-source and device categories, [specifically listed custom properties collected without enhanced consent, such as campaign medium], [a country/continent category derived locally from the request IP, if enabled], and a server-generated UTC hour bucket. The analytics event does not retain the source IP or use an analytics cookie or visitor/session identifier. This privacy-minimized measurement continues when enhanced analytics is rejected, except on routes we exclude from measurement.
+
+If page depth is enabled, also disclose its storage and meaning:
+
+> We keep a page-depth number in this tab's session storage and include it with events, even when enhanced analytics is rejected. It counts tracked page views up to 20, with 20 meaning 20 or more. This counter contains no visitor identifier or page history. Browser-restored or duplicated tabs may retain it.
 >
 > If you accept enhanced analytics, we also use short-lived session information, a returning-visitor identifier, custom interaction details, and exact server timestamps. You can withdraw that consent at any time. Withdrawal stops future enhanced collection and removes analytics identifiers from this browser; it does not automatically erase records already collected. Contact us at [privacy contact] to exercise applicable privacy rights.
 

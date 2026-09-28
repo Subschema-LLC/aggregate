@@ -75,11 +75,23 @@ final class InternalTrafficSettings
         }
 
         $validated = self::validateMarker($candidate);
-        $this->config->setMany(array_filter(
+        $updates = array_filter(
             $validated,
             static fn (string $key): bool => !$overrides[$key],
             ARRAY_FILTER_USE_KEY,
-        ));
+        );
+        $this->config->updateMany(static function (array $current) use ($validated, $updates): array {
+            $enabled = array_key_exists(CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY, $current)
+                ? $current[CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY] : false;
+            if (!is_bool($enabled)) {
+                throw new \InvalidArgumentException('page_sequence_enabled must be a YAML boolean: true or false. Nothing was saved.');
+            }
+            if ($enabled && $validated['internal_traffic_name'] === CustomDataSettings::PAGE_SEQUENCE_PROPERTY) {
+                throw new \InvalidArgumentException('The organization marker name cannot be page_sequence while page sequence collection is enabled. Nothing was saved.');
+            }
+
+            return $updates;
+        });
     }
 
     public function getShareToken(): string

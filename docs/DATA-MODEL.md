@@ -52,6 +52,103 @@ Rules:
 
 Static/CDN copies need matching public `customData` settings as described in the [tracking guide](TRACKING.md). Browser overrides cannot expand the server whitelist.
 
+## Optional page depth
+
+Enable **Data model → Page depth → Include page depth on all events**, or merge
+this setting into the active aggregate YAML configuration:
+
+```yaml
+page_sequence_enabled: true
+```
+
+The default is `false`. This deployment-wide setting has no environment-variable
+override and uses the same validation for UI and YAML. It automatically adds the
+reserved numeric `eventData.page_sequence` property to page views, named events
+and goals in both privacy modes. No custom-property definition is needed to
+collect it. Per-event-type settings remain [planned work](../ROADMAP.md#after-beta-feedback).
+
+The first tracked page is `1`, the next is `2`, and the counter stops at `20`,
+meaning **20 or more**. Other events, including asynchronous callbacks, reuse the
+page depth at the time they are emitted. Queue processing preserves that number;
+it does not increment or recalculate it. This helps compare early-page activity
+with deeper engagement without a visitor or session ID. It counts tracked page
+views, including reloads, rather than distinct pages or people.
+
+The tracker stores only this bounded number in tab-scoped `sessionStorage`,
+separately for each public website token and origin. It stores no path history,
+timestamp or identifier for this feature. Tab storage usually ends when the tab
+closes, but duplicated or restored tabs may inherit it. If storage is unavailable,
+counting continues in memory for the current document and starts over on a new
+page load. Disabling the feature removes its current token's stored counter when
+the tracker next runs with the updated configuration. Excluded paths do not
+advance or expose the counter; the collection kill switch also disables it.
+
+**Anonymous-mode storage is still storage.** Enabling this option permits it
+before a consent choice and after rejection or withdrawal of enhanced analytics.
+Review applicable browser-storage consent requirements and disclosures before
+enabling it; leave it disabled where separate consent would be required. A bounded
+count does not guarantee legal anonymity or establish a person's ordered journey.
+
+For example, with page depth enabled and `utm_medium` separately allowed without
+consent, a page view on the second tracked page can send:
+
+```json
+{
+  "websiteToken": "REPLACE_WITH_PUBLIC_WEBSITE_TOKEN",
+  "eventName": "view",
+  "pagePath": "/example",
+  "referrerChannel": "direct",
+  "deviceClass": "desktop",
+  "viewportBucket": "large",
+  "internalTraffic": false,
+  "consentState": "denied",
+  "eventData": {
+    "utm_medium": "email",
+    "page_sequence": 2
+  }
+}
+```
+
+For single-page applications, call `Aggregate.trackView()` after a virtual page
+change. It sends a page view and advances the counter. `emit('view')` also advances
+it; use one call per page change. Normal `emit()` calls reuse the current number.
+The SDK does not install automatic navigation listeners. See the
+[tracking guide](TRACKING.md#page-depth-and-single-page-apps) for an example.
+
+The SDK ignores supplied `page_sequence` event properties and URL mappings.
+The server independently strips the property in both modes when disabled and
+accepts only JSON integers from `1` through `20` when enabled. Query mappings to
+it are invalid; an organization marker using this name must be renamed before
+enabling page depth. Direct API clients must supply their own bounded number;
+the server validates its shape and permission, not the claimed navigation history.
+
+Page depth stays in the existing `custom_data` JSON. To add an optional private
+numeric reporting column, merge this definition into your existing
+`custom_data_properties` mapping:
+
+```yaml
+page_sequence:
+  description: 'Tracked page depth; 20 means 20 or more.'
+  type: integer
+  consent_required: false
+  numeric_column: page_sequence_number
+```
+
+Regenerate custom views using the existing UI/CLI workflow after reviewing column
+compatibility. Approved `bi_anonymous_*` views and archive aggregates do not gain
+this dimension. Custom views remain private and unsuppressed; raw-row deletion
+removes their page-depth detail.
+
+**Existing models:** `page_sequence` is now reserved for collection. Existing
+definitions can remain for historical reporting while the feature is disabled;
+incoming event properties under this key are stripped. Enabling the counter
+requires any definition to use `type: integer` and `consent_required: false`.
+If the old key meant something else, plan a data/reporting migration before using
+it for page depth; keep historical column meanings stable for consumers.
+Historical JSON is not rewritten, and older values do not become trustworthy
+page counts merely because the feature is enabled. The separate organization
+marker remains supported under its existing name while page depth is disabled.
+
 ## Property types and numeric calculations
 
 Missing `type`, or `type: scalar`, preserves existing flat-scalar collection.
@@ -116,7 +213,7 @@ exports, and the recommended integer-minor-unit money representation.
 ## Discover and regenerate
 
 1. Open **Data model → Observed properties → Refresh observed properties** to sample up to 1,000 latest retained events with custom data. The page shows keys, types, and occurrence counts without sample values; this is not a complete historical inventory. Opening the model editor does not query observed events or reporting SQL.
-2. Select **Review in model editor**, choose the new row's consent/type/reporting policy, then save. The review link only opens an unsaved row with enhanced consent required; it never saves automatically.
+2. Select **Review in model editor**, choose the new row's consent/type/reporting policy, then save. Ordinary new properties start with enhanced consent required. The reserved `page_sequence` row starts as an anonymous-permitted Integer; its separate switch still controls collection. The link only opens an unsaved row and never saves automatically.
 3. Open **Reporting → Reporting views**, review the saved SQL preview, and click **Regenerate views from saved model**. Saving and view replacement are separate operations.
 4. Download YAML or open **Event examples** for synthetic JSON. Exports omit website tokens, sharing tokens, and application secrets.
 

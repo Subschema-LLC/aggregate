@@ -16,6 +16,7 @@ const sdkSource = fs.readFileSync(
 function createStorage(initialValues, unavailable) {
   const values = new Map(Object.entries(initialValues || {}));
   const reads = [];
+  const writes = [];
 
   return {
     getItem: (key) => {
@@ -23,10 +24,18 @@ function createStorage(initialValues, unavailable) {
       if (unavailable) throw new Error('Storage access blocked');
       return values.has(key) ? values.get(key) : null;
     },
-    setItem: (key, value) => values.set(key, String(value)),
-    removeItem: (key) => values.delete(key),
+    setItem: (key, value) => {
+      if (unavailable) throw new Error('Storage access blocked');
+      writes.push([key, String(value)]);
+      values.set(key, String(value));
+    },
+    removeItem: (key) => {
+      if (unavailable) throw new Error('Storage access blocked');
+      values.delete(key);
+    },
     has: (key) => values.has(key),
-    reads
+    reads,
+    writes
   };
 }
 
@@ -38,7 +47,10 @@ function loadSdk(options) {
     Object.assign({aggregate_visitor_id: 'legacy-visitor'}, options.localStorage || {}),
     options.localStorageUnavailable
   );
-  const sessionStorage = createStorage({aggregate_session_id: 'legacy-session'});
+  const sessionStorage = options.sessionStorageInstance || createStorage(
+    Object.assign({aggregate_session_id: 'legacy-session'}, options.sessionStorage || {}),
+    options.sessionStorageUnavailable
+  );
   const script = {
     dataset: Object.assign({websiteToken: 'site-token'}, options.dataset || {}),
     src: options.src || ''
@@ -107,7 +119,14 @@ function loadSdk(options) {
   };
   window.location = context.location;
 
-  vm.runInNewContext(sdkSource, context, {filename: 'aggregate.js'});
+  const source = options.serverCustomData
+    ? sdkSource.replace(
+      /\{queryParameters:\s*\{utm_source:\s*['"]utm_source['"][^}]*\},\s*consentFreeProperties:\s*\[\]\}/,
+      JSON.stringify(options.serverCustomData)
+    )
+    : sdkSource;
+  if (options.serverCustomData) assert.notEqual(source, sdkSource, 'Runtime fixture must replace the public tracker defaults');
+  vm.runInNewContext(source, context, {filename: 'aggregate.js'});
 
   return {
     window, requests, cookieWrites, cookies, consoleWarnings, localStorage, sessionStorage,
@@ -748,4 +767,276 @@ test('malformed declared types block affected properties and malformed maps bloc
   sdk.configure({customData: {propertyTypes: {valid: 'integer'}}});
   sdk.emit('purchase_completed', {valid: 2, legacy: 'text'});
   assert.deepEqual(runtime.requests.at(-1).eventData, {valid: 2, legacy: 'text'});
+});
+
+const pageSequenceKey = 'aggregate_page_sequence:site-token';
+
+test('optional page sequence survives document navigation while asynchronous events reuse the page count', async () => {
+  const inline = {consent: false, customData: {pageSequenceEnabled: true}};
+  const first = loadSdk({inline});
+  first.window.Aggregate.emit('early_event');
+  first.triggerPageView();
+  await Promise.resolve().then(() => first.window.Aggregate.emit('async_complete', {}, 'purchase'));
+
+  for (const payload of first.requests) {
+    assert.equal(payload.eventData.page_sequence, 1);
+    assert.equal(payload.consentState, 'denied');
+    assert.equal(payload.visitorId, undefined);
+    assert.equal(payload.sessionId, undefined);
+    assert.equal(payload.screenWidth, undefined);
+  }
+  assert.deepEqual(first.sessionStorage.writes, [[pageSequenceKey, '1']]);
+  assert.deepEqual(first.localStorage.writes, []);
+  assert.equal(first.cookieWrites.some((value) => /max-age=1800/i.test(value)), false);
+
+  const second = loadSdk({inline, sessionStorageInstance: first.sessionStorage, location: {pathname: '/features'}});
+  second.triggerPageView();
+  second.window.Aggregate.emit('button_click');
+  assert.deepEqual(second.requests.map((payload) => payload.eventData.page_sequence), [2, 2]);
+  const reload = loadSdk({inline, sessionStorageInstance: first.sessionStorage, location: {pathname: '/features'}});
+  reload.triggerPageView();
+  assert.equal(reload.requests.at(-1).eventData.page_sequence, 3);
+  const separateTab = loadSdk({inline});
+  separateTab.triggerPageView();
+  assert.equal(separateTab.requests.at(-1).eventData.page_sequence, 1);
+});
+
+test('explicit SPA page views advance the count while consent transitions preserve coarse page depth', () => {
+  const runtime = loadSdk({inline: {customData: {pageSequenceEnabled: true}}});
+  const sdk = runtime.window.Aggregate;
+  runtime.triggerPageView();
+  runtime.window.location.pathname = '/features';
+  sdk.trackView();
+  sdk.emit('async_complete');
+  sdk.setConsent(true);
+  sdk.emit('view');
+  sdk.setConsent(false);
+  sdk.emit('button_click');
+  assert.deepEqual(runtime.requests.map((payload) => payload.eventData.page_sequence), [1, 2, 2, 3, 3]);
+  assert.deepEqual(runtime.requests.map((payload) => payload.pagePath), ['/pricing', '/features', '/features', '/features', '/features']);
+  const withdrawn = runtime.requests.at(-1);
+  assert.equal(withdrawn.consentState, 'denied');
+  assert.equal(withdrawn.visitorId, undefined);
+  assert.equal(withdrawn.sessionId, undefined);
+  assert.equal(runtime.localStorage.has('aggregate_visitor_id'), false);
+  assert.equal(runtime.sessionStorage.has('aggregate_session_id'), false);
+});
+
+test('page sequence is opt-in, clears old state when disabled, and rejects truthy enable values', () => {
+  for (const enabled of [undefined, false, 'true', 'false', 1, 0, null, [], {}]) {
+    const runtime = loadSdk({
+      inline: {consent: true, customData: {pageSequenceEnabled: enabled, consentFreeProperties: ['page_sequence']}},
+      sessionStorage: {[pageSequenceKey]: '7'}
+    });
+    runtime.triggerPageView();
+    runtime.window.Aggregate.emit('button_click', {page_sequence: 2});
+    for (const payload of runtime.requests) assert.equal(payload.eventData?.page_sequence, undefined);
+    assert.equal(runtime.sessionStorage.has(pageSequenceKey), false);
+    assert.equal(runtime.sessionStorage.reads.includes(pageSequenceKey), false);
+    assert.equal(runtime.sessionStorage.writes.some(([key]) => key === pageSequenceKey), false);
+  }
+  const runtime = loadSdk({inline: {customData: {pageSequenceEnabled: true}}});
+  const sdk = runtime.window.Aggregate;
+  runtime.triggerPageView();
+  sdk.configure({customData: {pageSequenceEnabled: false}});
+  assert.equal(runtime.sessionStorage.has(pageSequenceKey), false);
+  sdk.emit('button_click');
+  assert.equal(runtime.requests.at(-1).eventData, undefined);
+  sdk.configure({customData: {pageSequenceEnabled: true}});
+  sdk.emit('button_click');
+  assert.deepEqual(runtime.requests.at(-1).eventData, {page_sequence: 1});
+});
+
+test('reserved page sequence cannot be replaced by explicit properties, query mappings, types or a full property payload', () => {
+  const runtime = loadSdk({
+    inline: {consent: true, customData: {
+      pageSequenceEnabled: true, queryParameters: {sequence: 'page_sequence'},
+      consentFreeProperties: ['page_sequence'], propertyTypes: {page_sequence: 'string'}
+    }},
+    location: {search: '?sequence=999999'}
+  });
+  runtime.triggerPageView();
+  const data = Object.fromEntries(Array.from({length: 50}, (_, index) => ['property_' + index, index]));
+  data.page_sequence = 123456;
+  runtime.window.Aggregate.emit('button_click', data);
+  assert.equal(runtime.requests.at(-1).eventData.page_sequence, 1);
+  assert.equal(Object.keys(runtime.requests.at(-1).eventData).length, 50);
+  runtime.window.Aggregate.configure({customData: {pageSequenceEnabled: false}});
+  runtime.window.Aggregate.emit('button_click', {page_sequence: 'spoofed'});
+  assert.equal(runtime.requests.at(-1).eventData, null);
+});
+
+test('sequence state is scoped by public website token and does not advance on unrelated reconfiguration', () => {
+  const runtime = loadSdk({inline: {customData: {pageSequenceEnabled: true}}});
+  const sdk = runtime.window.Aggregate;
+  runtime.triggerPageView();
+  sdk.configure({endpoint: '/new-receiver', customData: {pageSequenceEnabled: true}});
+  sdk.emit('button_click');
+  sdk.configure({websiteToken: 'second/token'});
+  sdk.emit('button_click');
+  sdk.trackView();
+  sdk.configure({websiteToken: 'site-token'});
+  sdk.emit('button_click');
+  assert.deepEqual(runtime.requests.map((payload) => payload.eventData.page_sequence), [1, 1, 1, 2, 1]);
+  assert.deepEqual(runtime.sessionStorage.writes, [
+    [pageSequenceKey, '1'], ['aggregate_page_sequence:second%2Ftoken', '1'], ['aggregate_page_sequence:second%2Ftoken', '2']
+  ]);
+  sdk.configure({customData: {pageSequenceEnabled: false}});
+  assert.equal(runtime.sessionStorage.has(pageSequenceKey), false);
+  assert.equal(runtime.sessionStorage.has('aggregate_page_sequence:second%2Ftoken'), false);
+});
+
+test('page sequence does not allocate state for missing or malformed website tokens or invalid events', () => {
+  for (const websiteToken of [null, '\ud800', 12, {}]) {
+    const runtime = loadSdk({
+      dataset: {websiteToken: ''}, inline: {websiteToken, customData: {pageSequenceEnabled: true}}
+    });
+    runtime.triggerPageView();
+    assert.deepEqual(runtime.sessionStorage.writes, []);
+    for (const payload of runtime.requests) assert.equal(payload.eventData, undefined);
+  }
+  const runtime = loadSdk({inline: {customData: {pageSequenceEnabled: true}}});
+  assert.equal(runtime.window.Aggregate.emit('invalid event name'), false);
+  assert.deepEqual(runtime.sessionStorage.writes, []);
+});
+
+test('page counts stop at twenty and malformed stored counts restart at one', () => {
+  for (const stored of ['0', '-1', '2.5', '21', '99999999999999999999', '01', ' 2', '2 ', '1e1', 'NaN', 'Infinity', '{"count":2}', '2\n']) {
+    const runtime = loadSdk({inline: {customData: {pageSequenceEnabled: true}}, sessionStorage: {[pageSequenceKey]: stored}});
+    runtime.triggerPageView();
+    assert.equal(runtime.requests.at(-1).eventData.page_sequence, 1, stored);
+  }
+  const runtime = loadSdk({inline: {customData: {pageSequenceEnabled: true}}, sessionStorage: {[pageSequenceKey]: '19'}});
+  runtime.triggerPageView();
+  for (let page = 0; page < 25; page++) runtime.window.Aggregate.trackView();
+  assert.equal(runtime.requests.every((payload) => payload.eventData.page_sequence === 20), true);
+  assert.deepEqual(runtime.sessionStorage.writes, [[pageSequenceKey, '20']]);
+  const nextDocument = loadSdk({inline: {customData: {pageSequenceEnabled: true}}, sessionStorageInstance: runtime.sessionStorage});
+  nextDocument.triggerPageView();
+  assert.equal(nextDocument.requests.at(-1).eventData.page_sequence, 20);
+});
+
+test('blocked session storage uses memory only and a new document starts over', () => {
+  const options = {inline: {consent: false, customData: {pageSequenceEnabled: true}}, sessionStorageUnavailable: true};
+  const runtime = loadSdk(options);
+  runtime.triggerPageView();
+  runtime.window.Aggregate.trackView();
+  runtime.window.Aggregate.emit('async_complete');
+  assert.deepEqual(runtime.requests.map((payload) => payload.eventData.page_sequence), [1, 2, 2]);
+  assert.deepEqual(runtime.sessionStorage.writes, []);
+  const nextDocument = loadSdk(options);
+  nextDocument.triggerPageView();
+  assert.equal(nextDocument.requests.at(-1).eventData.page_sequence, 1);
+});
+
+test('excluded document and SPA paths do not read, store, disclose or advance page sequence', () => {
+  const inline = {customData: {pageSequenceEnabled: true, pageSequenceExcludedPaths: ['/private/**', '/users/_redacted']}};
+  const runtime = loadSdk({inline, location: {pathname: '/private'}, sessionStorage: {[pageSequenceKey]: '4'}});
+  runtime.triggerPageView();
+  runtime.window.Aggregate.emit('button_click');
+  assert.equal(runtime.requests.every((payload) => payload.eventData === undefined), true);
+  assert.equal(runtime.sessionStorage.reads.includes(pageSequenceKey), false);
+  assert.deepEqual(runtime.sessionStorage.writes, []);
+  runtime.window.location.pathname = '/public';
+  runtime.window.Aggregate.trackView();
+  assert.equal(runtime.requests.at(-1).eventData.page_sequence, 5);
+  runtime.window.location.pathname = '/users/1234';
+  runtime.window.Aggregate.trackView();
+  assert.equal(runtime.requests.at(-1).eventData, undefined);
+  runtime.window.location.pathname = '/private/nested/path';
+  runtime.window.Aggregate.emit('view');
+  assert.equal(runtime.requests.at(-1).eventData, undefined);
+  runtime.window.location.pathname = '/public';
+  runtime.window.Aggregate.trackView();
+  assert.equal(runtime.requests.at(-1).eventData.page_sequence, 6);
+  assert.deepEqual(runtime.sessionStorage.writes, [[pageSequenceKey, '5'], [pageSequenceKey, '6']]);
+});
+
+test('counter exclusions match single-segment and recursive server globs without regex injection', () => {
+  for (const [pattern, pathname, excluded] of [
+    ['/private/*', '/private/a', true], ['/private/*', '/private/a/b', false],
+    ['/private/**', '/private/a/b', true], ['/private/**', '/privateer', false],
+    ['/private/?', '/private/a', true], ['/private/?', '/private/ab', false],
+    ['/file.json', '/fileXjson', false], ['/file.json', '/file.json', true],
+    ['/a[bc]', '/ab', false], ['/a[bc]', '/a[bc]', true]
+  ]) {
+    const runtime = loadSdk({inline: {customData: {pageSequenceEnabled: true, pageSequenceExcludedPaths: [pattern]}}, location: {pathname}});
+    runtime.triggerPageView();
+    assert.equal(Boolean(runtime.requests.at(-1).eventData), !excluded, pattern + ': ' + pathname);
+  }
+  for (const patterns of [null, true, '/private/**', {}, [null], [7], ['private'], ['/' + 'a'.repeat(512)]]) {
+    const runtime = loadSdk({inline: {customData: {pageSequenceEnabled: true, pageSequenceExcludedPaths: patterns}}});
+    runtime.triggerPageView();
+    assert.equal(runtime.requests.at(-1).eventData, undefined);
+    assert.equal(runtime.sessionStorage.reads.includes(pageSequenceKey), false);
+    assert.deepEqual(runtime.sessionStorage.writes, []);
+  }
+});
+
+test('counter exclusions canonicalize encoded routes before touching sequence state', () => {
+  for (const pathname of [
+    '/private%2Frecords', '/%70rivate/x', '/%2570rivate/x', '/private%252Frecords',
+    '/public/../private/records', '/public/%2e%2e/private/records',
+    '/public/%252e%252e/private/records', '/private%5Crecords', '/private\\records',
+    '//private//records', '/private;ignored/records', '/private%3Bignored/records',
+    '/priva%00te/records', '/private/%invalid'
+  ]) {
+    const runtime = loadSdk({
+      inline: {customData: {pageSequenceEnabled: true, pageSequenceExcludedPaths: ['/private/**']}},
+      location: {pathname}, sessionStorage: {[pageSequenceKey]: '4'}
+    });
+    runtime.triggerPageView();
+    assert.equal(runtime.requests.at(-1).eventData, undefined, pathname);
+    assert.equal(runtime.sessionStorage.reads.includes(pageSequenceKey), false, pathname);
+    assert.deepEqual(runtime.sessionStorage.writes, [], pathname);
+  }
+  const runtime = loadSdk({
+    inline: {customData: {pageSequenceEnabled: true, pageSequenceExcludedPaths: ['/people/_redacted']}},
+    location: {pathname: '/people/%2531%2532%2533%2534'}
+  });
+  runtime.triggerPageView();
+  assert.equal(runtime.requests.at(-1).eventData, undefined);
+  assert.equal(runtime.sessionStorage.reads.includes(pageSequenceKey), false);
+});
+
+test('browser overrides cannot enable a counter disabled by the served runtime policy', () => {
+  for (const enabled of [false, 'true', 1, null]) {
+    const runtime = loadSdk({
+      serverCustomData: {queryParameters: {}, consentFreeProperties: [], pageSequenceEnabled: enabled},
+      inline: {customData: {pageSequenceEnabled: true}},
+      sessionStorage: {[pageSequenceKey]: '7'}
+    });
+    runtime.triggerPageView();
+    runtime.window.Aggregate.configure({customData: {pageSequenceEnabled: true}});
+    runtime.window.Aggregate.trackView();
+    assert.equal(runtime.requests.every((payload) => payload.eventData === undefined), true);
+    assert.equal(runtime.sessionStorage.has(pageSequenceKey), false);
+    assert.equal(runtime.sessionStorage.reads.includes(pageSequenceKey), false);
+    assert.deepEqual(runtime.sessionStorage.writes, []);
+  }
+});
+
+test('browser exclusions can add restrictions but cannot remove served runtime exclusions', () => {
+  const runtime = loadSdk({
+    serverCustomData: {
+      queryParameters: {}, consentFreeProperties: [], pageSequenceEnabled: true,
+      pageSequenceExcludedPaths: ['/private/**']
+    },
+    inline: {customData: {pageSequenceEnabled: true, pageSequenceExcludedPaths: []}},
+    location: {pathname: '/private/records'}
+  });
+  const sdk = runtime.window.Aggregate;
+  runtime.triggerPageView();
+  sdk.configure({customData: {pageSequenceExcludedPaths: []}});
+  sdk.emit('view');
+  assert.equal(runtime.requests.every((payload) => payload.eventData === undefined), true);
+  assert.equal(runtime.sessionStorage.reads.includes(pageSequenceKey), false);
+  assert.deepEqual(runtime.sessionStorage.writes, []);
+  runtime.window.location.pathname = '/public';
+  sdk.trackView();
+  assert.equal(runtime.requests.at(-1).eventData.page_sequence, 1);
+  sdk.configure({customData: {pageSequenceExcludedPaths: ['/public']}});
+  sdk.trackView();
+  assert.equal(runtime.requests.at(-1).eventData, undefined);
+  assert.deepEqual(runtime.sessionStorage.writes, [[pageSequenceKey, '1']]);
 });

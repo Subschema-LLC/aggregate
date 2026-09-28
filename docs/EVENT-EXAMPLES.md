@@ -33,12 +33,15 @@ use an Origin registered for that website. Do not use an administrator or
 organization sharing token. Copying `consentState: "granted"` does not obtain
 consent; wire enhanced collection to an actual affirmative choice.
 
-Anonymous examples contain only modeled properties explicitly allowed without
-consent. Enhanced examples illustrate permitted modeled properties; unlisted
-ordinary scalar properties still require enhanced consent. Reserved marker and
-legacy reporting-only keys are identified but omitted from `eventData`. The
-server supplies timestamps and optional geography. Goals have their own
-allowlist and are omitted. Kill switches and path exclusions still apply.
+Anonymous examples contain modeled properties explicitly allowed without
+consent and `page_sequence: 2` when the separate [page-depth setting](DATA-MODEL.md#optional-page-depth)
+is enabled. The same generated count appears in enhanced and ecommerce examples.
+Enhanced examples illustrate permitted modeled properties; unlisted ordinary
+scalar properties still require enhanced consent. Reserved marker and legacy
+reporting-only keys are identified but omitted from `eventData`; disabled page
+depth is also omitted. The server supplies timestamps and optional geography.
+Goals have their own allowlist and are omitted. Kill switches and path exclusions
+still apply.
 
 ## A flat ecommerce starting point
 

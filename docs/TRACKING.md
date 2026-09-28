@@ -12,6 +12,7 @@ needed when a registration's domain rules change.
 
 - [JavaScript integration](#javascript-integration)
 - [Custom event tracking](#custom-event-tracking)
+- [Page depth and single-page apps](#page-depth-and-single-page-apps)
 - [UTM and custom data collection](#utm-and-custom-data-collection)
 - [Health and ingestion checks](#health-and-ingestion-checks)
 - [Google Tag Manager](#google-tag-manager-gtm-integration)
@@ -56,7 +57,7 @@ GTM. Loading it twice can send duplicate page views. Managed scripts load
 asynchronously; listing method calls after a script tag does not make them wait
 for that library.
 
-An anonymous-mode page-view row is recorded automatically when the script loads. Full query strings, fragments, raw referrers, cookie values, visitor IDs, and session IDs are not sent. You may also call `emit(...)`: before enhanced consent, each safe event name and its coarse context are retained, configured goals marked `anonymous: true` may be retained, and only custom properties explicitly configured with `consent_required: false` may be sent.
+An anonymous-mode page-view row is recorded automatically when the script loads. Full query strings, fragments, raw referrers, cookie values, visitor IDs, and session IDs are not sent. You may also call `emit(...)`: before enhanced consent, each safe event name and its coarse context are retained, configured goals marked `anonymous: true` may be retained, and ordinary custom properties require `consent_required: false`. The separately enabled [page-depth counter](#page-depth-and-single-page-apps) may also be sent.
 
 ## Custom event tracking
 
@@ -80,6 +81,37 @@ window.Aggregate.setConsent(false);
 ```
 
 The tracker is authored directly in [public/aggregate.js](../public/aggregate.js), with no required build step. The configured `/aggregate.js` response uses the same BSD-3-Clause license and retains its notice. [Optional minification](JS-BUILD.md) provides `/aggregate.js?min=1` with the same configuration. Use the supplied server routing so YAML collection settings, marker settings, and the JavaScript namespace reach the browser. [Namespace overrides](CONFIGURATION.md#customizing-the-javascript-namespace) and [organization marker setup](PRIVACY-COMPLIANCE.md#organization-traffic) are documented separately.
+
+## Page depth and single-page apps
+
+The optional [page-depth setting](DATA-MODEL.md#optional-page-depth) adds
+`eventData.page_sequence` to all events. Enable it in Data model or YAML after
+reviewing its anonymous-mode browser-storage implications. It counts from `1`
+through `20` (`20+`), with interactions and asynchronous events sharing the current
+page's number. The counter does not create a visitor or session ID.
+
+The SDK sends the initial page view automatically. For a single-page app, call
+this after your router changes the current page URL:
+
+```javascript
+window.Aggregate.trackView();
+// Later interactions on this virtual page keep its page depth.
+window.Aggregate.emit('signup_click', null, 'signup');
+```
+
+`emit('view')` also advances the page depth; use either that call or `trackView()`
+once per virtual page. Other event names do not advance it. An event emitted
+before the automatic initial page view can initialize the counter; the automatic
+view then reuses it. Calls still require the SDK to be loaded.
+
+Served tracker responses include `customData.pageSequenceEnabled` and, when
+enabled, `customData.pageSequenceExcludedPaths` from the effective server
+configuration. The collection kill switch disables the counter, and excluded
+paths do not read, advance or expose it. Browser configuration can disable the
+feature or add exclusions, but cannot enable a server-disabled counter or remove
+server exclusions. Static/CDN copies must supply these same effective controls
+in `window.Aggregate.customData` before loading; keep them synchronized with
+server settings. The server independently enforces ingestion permissions.
 
 ## UTM and custom data collection
 
@@ -184,7 +216,7 @@ in [Step 3](#step-3-consent-management-integration).
 
 ### Step 2: Track Custom Events from GTM
 
-Named custom events may be stored in anonymous mode. Before `setConsent(true)`, only custom properties configured with `consent_required: false` may be retained, while a goal may be retained only when its fixed code is enabled and marked `anonymous: true` in `config/goals.yaml`.
+Named custom events may be stored in anonymous mode. Before `setConsent(true)`, ordinary custom properties require `consent_required: false`; the optional page-depth counter uses its separate enablement setting. A goal may be retained only when its fixed code is enabled and marked `anonymous: true` in `config/goals.yaml`.
 
 **Method A: Using GTM's Custom HTML Tag for Specific Events**
 
@@ -278,7 +310,7 @@ Initialize a previously recorded choice before loading the tracker when possible
 
 ### Step 4: Common Event Tracking Examples
 
-The `{{...}}` placeholders below are GTM variables, not JavaScript or Twig placeholders to use on a normal page. Map names, labels, IDs, and page categories to reviewed values; do not forward form contents, personalized click text, or URLs containing identifiers. Properties require enhanced consent unless their definition explicitly sets `consent_required: false`; valid event names and permitted goals can be retained anonymously.
+The `{{...}}` placeholders below are GTM variables, not JavaScript or Twig placeholders to use on a normal page. Map names, labels, IDs, and page categories to reviewed values; do not forward form contents, personalized click text, or URLs containing identifiers. These supplied properties require enhanced consent unless their definition explicitly sets `consent_required: false`; valid event names and permitted goals can be retained anonymously. Let the SDK generate `page_sequence` when enabled; do not supply it as a GTM event property.
 
 **Track Form Submissions**
 ```html
