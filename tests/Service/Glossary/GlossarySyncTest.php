@@ -166,11 +166,13 @@ final class GlossarySyncTest extends TestCase
     public function testSqliteSyncIsIdempotentAndMiddlewareProvesItNeverReadsEventData(): void
     {
         $logger = new class extends AbstractLogger {
+            /** @var list<string> */
             public array $statements = [];
 
             public function log($level, string|\Stringable $message, array $context = []): void
             {
                 if (isset($context['sql'])) {
+                    TestCase::assertIsString($context['sql']);
                     $this->statements[] = $context['sql'];
                 }
             }
@@ -196,7 +198,7 @@ final class GlossarySyncTest extends TestCase
         self::assertCount(1, $logger->statements);
         self::assertStringStartsWith('SELECT', $logger->statements[0]);
         self::assertSame('2000-01-01 00:00:00', $connection->fetchOne('SELECT synced_at FROM analytics_glossary'));
-        foreach ([...$firstStatements, ...$logger->statements] as $sql) {
+        foreach (array_merge($firstStatements, $logger->statements) as $sql) {
             self::assertDoesNotMatchRegularExpression('/\bevents\b|analytics_archive_|\b(?:bi_anonymous|analytics_custom)_/i', $sql);
             self::assertDoesNotMatchRegularExpression('/\b(?:CREATE|DROP|ALTER)\b/i', $sql);
         }
