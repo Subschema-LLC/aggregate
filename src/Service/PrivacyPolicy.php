@@ -36,7 +36,7 @@ final class PrivacyPolicy
     }
 
     /** @return list<string> */
-    private function excludedPaths(): array
+    public function excludedPaths(): array
     {
         $configured = $this->config->getWithEnvFallback('anonymous_excluded_paths', []);
         if (is_string($configured)) {

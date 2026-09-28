@@ -55,6 +55,10 @@ tag_manager:
 # searches, or identifiers. Review values and disclosures. Even utm_medium
 # can contain identifiers; whitelisting a key does not anonymize its values.
 # Edit via the Data model UI or YAML; see docs/DATA-MODEL.md.
+# Optional page depth on all events, including anonymous events. Default off.
+# Stores only a tab-local number (1..20, with 20 meaning 20+) in sessionStorage.
+# Review browser-storage consent requirements and disclosures before enabling.
+page_sequence_enabled: false
 custom_data_properties:
   utm_source: { description: 'Campaign source.', consent_required: true, column: utm_source }
   utm_medium: { description: 'Broad marketing channel, such as email, social, or cpc.', consent_required: true, column: utm_medium }
@@ -68,6 +72,9 @@ custom_data_properties:
   # column stays text. A separate numeric_column requires integer/float/double.
   # Use distinct aliases and review/regenerate views; never repurpose a text alias.
   # currency: { type: string, consent_required: true, column: currency }
+  # page_sequence: { type: integer, consent_required: false, numeric_column: page_sequence_number }
+  # The page_sequence definition only adds reporting metadata; the switch above
+  # controls collection. Never map URL parameters to this tracker-generated key.
   # total_minor: { type: integer, consent_required: true, column: total_minor_text, numeric_column: total_minor_number }
   # discount_rate: { type: double, consent_required: true, numeric_column: discount_rate_number }
   # Money: use integer minor units plus currency. float/double are approximate.

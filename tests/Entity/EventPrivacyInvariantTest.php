@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Entity;
 
 use App\Entity\Event;
+use App\Service\CustomDataSettings;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -46,6 +47,33 @@ final class EventPrivacyInvariantTest extends TestCase
         $loaded->setInternalTraffic(false, 'companyStaff');
         $loaded->enforcePrivacyInvariants();
         self::assertSame(['plan' => 'pro', 'optional' => null], $loaded->getCustomData());
+    }
+
+    #[DataProvider('approvedPageSequences')]
+    public function testNewApprovedAnonymousPageSequenceMustRemainABoundedInteger(mixed $value, ?int $expected): void
+    {
+        $event = $this->anonymousEvent()->setApprovedAnonymousCustomData(['page_sequence' => $value]);
+        $event->setCustomData(['page_sequence' => 'later-private-identifier']);
+        $event->enforcePrivacyInvariants();
+        self::assertSame($expected === null ? null : ['page_sequence' => $expected], $event->getCustomData());
+    }
+
+    public static function approvedPageSequences(): iterable
+    {
+        yield [2.0, 2];
+        yield [CustomDataSettings::PAGE_SEQUENCE_MAXIMUM, CustomDataSettings::PAGE_SEQUENCE_MAXIMUM];
+        foreach ([null, 'private', '2', 0, -1, 2.5, true, CustomDataSettings::PAGE_SEQUENCE_MAXIMUM + 1] as $invalid) {
+            yield [$invalid, null];
+        }
+    }
+
+    public function testHistoricalPageSequenceValuesAreNotRewrittenByLifecycleUpdates(): void
+    {
+        $event = $this->anonymousEvent()->setCustomData(['page_sequence' => 'legacy-value']);
+        $event->restoreAnonymousTrafficMarkerName();
+        $event->setArchivedAt(new \DateTimeImmutable('2026-09-01T00:00:00Z'));
+        $event->enforcePrivacyInvariants();
+        self::assertSame(['page_sequence' => 'legacy-value'], $event->getCustomData());
     }
 
     public function testAnonymousPrePersistAndPreUpdateScrubEnhancedFieldsAndBucketTime(): void

@@ -48,6 +48,161 @@ final class CustomDataSettingsTest extends TestCase
         self::assertSame(array_combine(array_keys($utm), array_keys($utm)), $settings->reportingColumns());
     }
 
+    public function testPageSequenceNeedsExplicitDeploymentOptInInBothModes(): void
+    {
+        $_ENV['PAGE_SEQUENCE_ENABLED'] = 'true';
+        $settings = $this->settings([
+            'custom_data_properties' => ['page_sequence' => ['type' => 'integer', 'consent_required' => false, 'numeric_column' => 'page_depth']],
+            'query_parameter_mappings' => [],
+        ]);
+
+        self::assertFalse($settings->toArray()['page_sequence_enabled']);
+        self::assertFalse($settings->toBrowserConfig()['pageSequenceEnabled']);
+        self::assertSame([], $settings->toBrowserConfig()['consentFreeProperties']);
+        self::assertSame(['page_depth' => ['property' => 'page_sequence', 'type' => 'integer']], $settings->numericReportingColumns());
+        foreach ([false, true] as $consent) {
+            self::assertNull($settings->filterEventData(['page_sequence' => 2], $consent));
+        }
+
+        $settings->save([...$settings->toArray(), 'page_sequence_enabled' => true]);
+        self::assertTrue($settings->toBrowserConfig()['pageSequenceEnabled']);
+        self::assertSame([], $settings->toBrowserConfig()['consentFreeProperties']);
+        self::assertArrayNotHasKey('propertyTypes', $settings->toBrowserConfig());
+        foreach ([false, true] as $consent) {
+            self::assertSame(['page_sequence' => 2], $settings->filterEventData(['page_sequence' => 2], $consent));
+        }
+    }
+
+    #[DataProvider('pageSequenceValues')]
+    public function testEnabledPageSequenceIsBoundedWithoutRequiringAModeledProperty(mixed $value, ?int $expected): void
+    {
+        $settings = $this->settings(['page_sequence_enabled' => true, 'custom_data_properties' => [], 'query_parameter_mappings' => []]);
+        foreach ([false, true] as $consent) {
+            self::assertSame($expected === null ? null : ['page_sequence' => $expected], $settings->filterEventData(['page_sequence' => $value], $consent));
+        }
+    }
+
+    public static function pageSequenceValues(): iterable
+    {
+        yield 'first page' => [1, 1];
+        yield 'second page decimal representation' => [2.0, 2];
+        yield 'overflow bucket' => [CustomDataSettings::PAGE_SEQUENCE_MAXIMUM, CustomDataSettings::PAGE_SEQUENCE_MAXIMUM];
+        foreach ([null, true, false, '2', 0, -1, 2.5, CustomDataSettings::PAGE_SEQUENCE_MAXIMUM + 1, 9_007_199_254_740_991, INF, NAN, [], ['private']] as $index => $invalid) {
+            yield 'invalid value '.$index => [$invalid, null];
+        }
+    }
+
+    public function testBrowserCounterUsesEffectiveCollectionControlsAndExclusions(): void
+    {
+        $settings = $this->settings([
+            'page_sequence_enabled' => true,
+            'anonymous_tracking_enabled' => true,
+            'anonymous_excluded_paths' => ['/saved/**'],
+        ]);
+        $_ENV['ANONYMOUS_EXCLUDED_PATHS'] = '/account/**,/patients/*';
+        self::assertTrue($settings->toBrowserConfig()['pageSequenceEnabled']);
+        self::assertSame(['/account/**', '/patients/*'], $settings->toBrowserConfig()['pageSequenceExcludedPaths']);
+
+        $_ENV['ANONYMOUS_TRACKING_ENABLED'] = 'false';
+        self::assertFalse($settings->toBrowserConfig()['pageSequenceEnabled']);
+        self::assertArrayNotHasKey('pageSequenceExcludedPaths', $settings->toBrowserConfig());
+        self::assertTrue($settings->toArray()['page_sequence_enabled']);
+    }
+
+    public function testConcurrentMarkerChangeCannotCreateAPageSequenceCollisionWhenSaving(): void
+    {
+        $settings = $this->settings([]);
+        $model = $settings->toArray();
+        $model['page_sequence_enabled'] = true;
+        file_put_contents($this->projectDir.'/config/aggregate.yaml', "internal_traffic_name: page_sequence\n");
+        $before = file_get_contents($this->projectDir.'/config/aggregate.yaml');
+        try {
+            $settings->save($model);
+            self::fail('A concurrently configured marker collision was accepted.');
+        } catch (\InvalidArgumentException) {
+            self::assertSame($before, file_get_contents($this->projectDir.'/config/aggregate.yaml'));
+        }
+    }
+
+    #[DataProvider('invalidPageSequenceConfiguration')]
+    public function testPageSequenceConfigurationFailsClosed(array $values): void
+    {
+        $settings = $this->settings($values);
+        $this->expectException(\InvalidArgumentException::class);
+        $settings->filterEventData(null, true);
+    }
+
+    public static function invalidPageSequenceConfiguration(): iterable
+    {
+        foreach ([null, 'true', 'false', 1, 0, []] as $index => $invalid) {
+            yield 'strict boolean '.$index => [['page_sequence_enabled' => $invalid]];
+        }
+        yield 'marker collision' => [['page_sequence_enabled' => true, 'internal_traffic_name' => 'page_sequence']];
+        yield 'property without integer declaration' => [['page_sequence_enabled' => true, 'custom_data_properties' => ['page_sequence' => ['consent_required' => false]]]];
+        yield 'property with conflicting consent policy' => [['page_sequence_enabled' => true, 'custom_data_properties' => ['page_sequence' => ['type' => 'integer', 'consent_required' => true]]]];
+        yield 'query mapping' => [[
+            'page_sequence_enabled' => true,
+            'custom_data_properties' => ['page_sequence' => ['type' => 'integer', 'consent_required' => false]],
+            'query_parameter_mappings' => ['depth' => 'page_sequence'],
+        ]];
+    }
+
+    #[DataProvider('legacyPageSequenceDefinitions')]
+    public function testLegacyPageSequenceDefinitionsRemainReportingOnlyUntilEnabled(array $definition): void
+    {
+        $settings = $this->settings([
+            'custom_data_properties' => ['page_sequence' => [...$definition, 'column' => 'historical_depth']],
+            'query_parameter_mappings' => [],
+        ]);
+        $model = $settings->toArray();
+        $settings->save($model);
+        self::assertSame(['historical_depth' => 'page_sequence'], $settings->reportingColumns());
+        self::assertFalse($settings->toBrowserConfig()['pageSequenceEnabled']);
+        self::assertSame([], $settings->toBrowserConfig()['consentFreeProperties']);
+        self::assertArrayNotHasKey('propertyTypes', $settings->toBrowserConfig());
+        foreach ([false, true] as $consent) {
+            self::assertNull($settings->filterEventData(['page_sequence' => 2], $consent));
+            self::assertNull($settings->filterEventData(['page_sequence' => 'historical-value'], $consent));
+        }
+        $before = file_get_contents($this->projectDir.'/config/aggregate.yaml');
+        try {
+            $settings->save([...$model, 'page_sequence_enabled' => true]);
+            self::fail('An incompatible historical definition enabled the counter.');
+        } catch (\InvalidArgumentException) {
+            self::assertSame($before, file_get_contents($this->projectDir.'/config/aggregate.yaml'));
+        }
+    }
+
+    public static function legacyPageSequenceDefinitions(): iterable
+    {
+        yield 'unspecified scalar' => [[]];
+        yield 'string' => [['type' => 'string', 'consent_required' => false]];
+        yield 'boolean' => [['type' => 'boolean', 'consent_required' => false]];
+        yield 'scalar' => [['type' => 'scalar', 'consent_required' => false]];
+        yield 'integer requiring consent' => [['type' => 'integer', 'consent_required' => true]];
+    }
+
+    public function testRenamingALegacyPageSequenceMarkerPreservesItsHistoricalReportingDefinition(): void
+    {
+        $this->settings([
+            'internal_traffic_name' => 'page_sequence',
+            'page_sequence_enabled' => false,
+            'custom_data_properties' => ['page_sequence' => ['type' => 'boolean', 'consent_required' => true, 'column' => 'historical_staff']],
+            'query_parameter_mappings' => [],
+        ]);
+        $config = new AggregateConfigLoader($this->projectDir, 'test');
+        $settings = new CustomDataSettings($config);
+        self::assertSame(['historical_staff' => 'page_sequence'], $settings->reportingColumns());
+
+        (new InternalTrafficSettings($config))->saveMarker([...InternalTrafficSettings::DEFAULTS, 'internal_traffic_name' => 'companyStaff']);
+
+        self::assertSame(['historical_staff' => 'page_sequence'], $settings->reportingColumns());
+        self::assertSame('boolean', $settings->properties()['page_sequence']['type']);
+        self::assertFalse($settings->toBrowserConfig()['pageSequenceEnabled']);
+        self::assertSame([], $settings->toBrowserConfig()['consentFreeProperties']);
+        self::assertNull($settings->filterEventData(['page_sequence' => true], true));
+    }
+
     public function testExplicitMediumWhitelistAppliesIndependentlyToBrowserAndServer(): void
     {
         $settings = $this->settings([
@@ -137,6 +292,7 @@ final class CustomDataSettingsTest extends TestCase
         self::assertSame([
             'queryParameters' => ['qty' => 'quantity'],
             'consentFreeProperties' => ['quantity'],
+            'pageSequenceEnabled' => false,
             'propertyTypes' => ['quantity' => 'integer', 'revenue' => 'double'],
         ], $settings->toBrowserConfig());
         self::assertSame($settings->toArray(), Yaml::parse($settings->exportYaml()));
@@ -366,6 +522,7 @@ final class CustomDataSettingsTest extends TestCase
                 'managedStaff' => ['description' => 'Organization traffic', 'consent_required' => false, 'column' => 'staff_traffic'],
             ],
             'query_parameter_mappings' => ['utm_medium' => 'utm_medium', 'channel' => 'utm_medium'],
+            'page_sequence_enabled' => true,
         ];
 
         $settings->save($model);

@@ -95,6 +95,7 @@ final class ScriptControllerTest extends TestCase
         self::assertSame([
             'queryParameters' => ['utm_campaign' => 'campaign', 'campaign_name' => 'campaign'],
             'consentFreeProperties' => ['campaign'],
+            'pageSequenceEnabled' => false,
         ], $this->customDataBrowserConfig($script));
         self::assertStringNotContainsString('private implementation instructions', $script);
         self::assertStringNotContainsString('organization_traffic', $script);
@@ -106,6 +107,7 @@ final class ScriptControllerTest extends TestCase
         self::assertSame([
             'queryParameters' => array_combine(CustomDataSettings::UTM_KEYS, CustomDataSettings::UTM_KEYS),
             'consentFreeProperties' => [],
+            'pageSequenceEnabled' => false,
         ], $this->customDataBrowserConfig((string) $this->response([])->getContent()));
     }
 
@@ -119,7 +121,8 @@ final class ScriptControllerTest extends TestCase
             ],
             'query_parameter_mappings' => [],
         ];
-        $expected = ['queryParameters' => [], 'consentFreeProperties' => ['quantity'], 'propertyTypes' => ['quantity' => 'integer', 'revenue' => 'double']];
+        $settings['page_sequence_enabled'] = true;
+        $expected = ['queryParameters' => [], 'consentFreeProperties' => ['quantity'], 'pageSequenceEnabled' => true, 'pageSequenceExcludedPaths' => [], 'propertyTypes' => ['quantity' => 'integer', 'revenue' => 'double']];
         $source = (string) $this->response($settings)->getContent();
         self::assertSame($expected, $this->customDataBrowserConfig($source));
         $minified = (string) $this->response($settings, Request::create('/aggregate.js?min=1'), $this->buildFixture())->getContent();
@@ -140,6 +143,13 @@ final class ScriptControllerTest extends TestCase
             'custom_data_properties' => ['plan' => ['consent_required' => 'false']],
             'query_parameter_mappings' => [],
         ]);
+    }
+
+    public function testInvalidPageSequencePolicyPreventsServingTheTracker(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->response(['page_sequence_enabled' => 'false']);
     }
 
     public function testOptionalMinifiedTemplateReceivesCurrentPublicConfiguration(): void
@@ -166,7 +176,7 @@ final class ScriptControllerTest extends TestCase
         $public = json_decode($matches[1], true, flags: JSON_THROW_ON_ERROR);
         self::assertSame($settings['js_namespace'], $public[0]);
         self::assertSame($settings['internal_traffic_value'], $public[1]['value']);
-        self::assertSame(['queryParameters' => ['utm_medium' => 'medium'], 'consentFreeProperties' => ['medium']], $public[2]);
+        self::assertSame(['queryParameters' => ['utm_medium' => 'medium'], 'consentFreeProperties' => ['medium'], 'pageSequenceEnabled' => false], $public[2]);
 
         $settings['internal_traffic_value'] = 'updated-without-rebuilding';
         self::assertStringContainsString('updated-without-rebuilding', (string) $this->response($settings, Request::create('/aggregate.js?min=1'), $directory)->getContent());
@@ -198,6 +208,9 @@ final class ScriptControllerTest extends TestCase
     {
         $config = $this->createStub(AggregateConfigLoader::class);
         $config->method('all')->willReturn($settings);
+        $config->method('getBoolWithEnvFallback')->willReturnCallback(
+            static fn (string $key, bool $default = false): bool => $settings[$key] ?? $default,
+        );
         $config->method('getWithEnvFallback')->willReturnCallback(
             static fn (string $key, mixed $default = null): mixed => $settings[$key] ?? $default,
         );

@@ -78,6 +78,11 @@ to the deployment's active aggregate configuration.
 - Keep anonymous goal codes explicitly permitted and the organization-traffic
   marker a boolean under its configured key. Marker values and sharing tokens
   are not event properties. Do not let query parameters spoof the reserved marker.
+- Optional `page_sequence` is a bounded page-depth number, enabled only by the
+  UI/YAML `page_sequence_enabled` setting. Keep it off by default, capped at 20
+  (20+), and free of IDs, path history and timestamps. Kill switches and path
+  exclusions apply before counter storage. Disclose its tab session storage;
+  a bounded count does not establish legal anonymity or consent exemption.
 - Optional geography must stay coarse and use local MMDB lookups. Never send
   visitor IP addresses to an external geolocation service or copy them into
   event payloads, queues, or application logs.

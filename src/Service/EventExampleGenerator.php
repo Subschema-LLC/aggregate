@@ -21,16 +21,23 @@ final class EventExampleGenerator
         $model = $this->settings->toArray();
         $ecommerce = $example === 'ecommerce';
         if ($ecommerce) {
-            $model = $this->settings->validate($this->ecommerceModel());
+            $model = $this->settings->validate([
+                ...$this->ecommerceModel(),
+                CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY => $model[CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY],
+            ]);
         }
         $ecommerceValues = [
             'currency' => 'USD', 'total_minor' => 4999, 'tax_minor' => 400,
             'shipping_minor' => 500, 'item_count' => 2, 'discount_rate' => 0.1,
             'product_category' => 'accessories', 'checkout_step' => 'complete',
         ];
+        $exampleProperties = $model[CustomDataSettings::PROPERTIES_KEY];
+        if ($model[CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY]) {
+            $exampleProperties[CustomDataSettings::PAGE_SEQUENCE_PROPERTY] ??= ['type' => 'integer', 'consent_required' => false];
+        }
         $candidates = [];
-        foreach ($model[CustomDataSettings::PROPERTIES_KEY] as $key => $definition) {
-            $candidates[$key] = $ecommerce ? $ecommerceValues[$key] : match ($definition['type'] ?? 'scalar') {
+        foreach ($exampleProperties as $key => $definition) {
+            $candidates[$key] = $key === CustomDataSettings::PAGE_SEQUENCE_PROPERTY ? 2 : ($ecommerce ? $ecommerceValues[$key] : match ($definition['type'] ?? 'scalar') {
                 'integer' => 2,
                 'float', 'double' => 12.5,
                 'boolean' => true,
@@ -43,14 +50,18 @@ final class EventExampleGenerator
                     'utm_id' => 'example-campaign-id',
                     default => 'example',
                 },
-            };
+            });
+        }
+        if ($model[CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY] && count($candidates) > 50) {
+            // The generated property uses one of the bounded payload's slots.
+            $candidates = [CustomDataSettings::PAGE_SEQUENCE_PROPERTY => 2, ...$candidates];
         }
         $anonymous = ($ecommerce ? $this->settings->filterEventDataForModel($candidates, false, $model)
             : $this->settings->filterEventData($candidates, false)) ?? [];
         $enhanced = ($ecommerce ? $this->settings->filterEventDataForModel($candidates, true, $model)
             : $this->settings->filterEventData($candidates, true)) ?? [];
         $properties = [];
-        foreach ($model[CustomDataSettings::PROPERTIES_KEY] as $key => $definition) {
+        foreach ($exampleProperties as $key => $definition) {
             $properties[] = [
                 'key' => $key,
                 'type' => $definition['type'] ?? 'scalar',
@@ -83,11 +94,11 @@ final class EventExampleGenerator
                 'Send only an example payload as the JSON request body. Replace the public website token placeholder and use an Origin allowed for that website. Never substitute an administrator or sharing token.',
                 'Declared types determine the synthetic values. Properties without a type use illustrative strings. Types do not define a permitted-value vocabulary; review actual bounded scalar values before collection.',
                 'Integer properties use whole numbers within the JavaScript safe-integer range. Float and double accept finite JSON numbers and project approximate double precision; numeric strings are not automatically converted.',
-                'Anonymous examples contain only modeled properties explicitly allowed without consent. Unlisted ordinary properties require enhanced consent and are not included in these examples.',
+                'Anonymous examples contain modeled properties explicitly allowed without consent and page_sequence when enabled. Unlisted ordinary properties require enhanced consent and are not included in these examples.',
                 'The enhanced example requires an actual explicit analytics consent choice. consentState: granted illustrates that choice; copying it does not obtain consent. Visitor and session identifiers are synthetic placeholders.',
                 'Rejecting or withdrawing enhanced consent removes SDK identifiers and stops future enhanced detail; permitted coarse anonymous collection may continue. Withdrawal does not erase stored history.',
                 'For anonymous attribution, prefer broad utm_medium values. Detailed UTM properties and aliases remain permitted when explicitly allowed, but even an allowed medium can contain identifying text.',
-                'Properties marked not_submittable are reserved organization-marker or legacy reporting-only keys. The tracker supplies internalTraffic separately as a boolean; marker values and sharing tokens are never event properties.',
+                'Properties marked not_submittable are omitted from this example: reserved organization-marker or legacy reporting-only keys, page_sequence while disabled, or properties beyond the 50-value payload limit. The tracker supplies internalTraffic separately as a boolean; marker values and sharing tokens are never event properties.',
                 'The collection kill switch, sensitive-path exclusions, website validation, and server privacy rules still apply. The server sets timestamps and optional coarse geography; those fields are not supplied by the client.',
                 'Goals are omitted because they have a separate allowlist and anonymous-consent policy in config/goals.yaml.',
             ],
@@ -109,6 +120,9 @@ final class EventExampleGenerator
                 ],
             ],
         ];
+        if ($model[CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY]) {
+            $bundle['notes'][] = 'page_sequence: 2 means the second tracked page in this tab counter; asynchronous events reuse the current page number. The counter stops at '.CustomDataSettings::PAGE_SEQUENCE_MAXIMUM.' (meaning '.CustomDataSettings::PAGE_SEQUENCE_MAXIMUM.' or more). It is an unverified client-supplied page-depth value, not a visitor or session identifier, unique-page count, or reconstructed journey.';
+        }
         if ($ecommerce) {
             $bundle['recommended_model'] = $model;
             $bundle['notes'][] = 'Use integer minor-unit amounts with an explicit currency for money. The example total_minor of 4999 means USD 49.99; tax_minor and shipping_minor describe parts of that total, not amounts to add again. discount_rate is an approximate ratio from 0 to 1. Keep purchase JSON flat; omit order, cart, customer and payment identifiers, personal text, and item arrays.';

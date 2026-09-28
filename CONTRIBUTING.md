@@ -92,7 +92,12 @@ Treat these as constraints on implementation and documentation:
   token are not event properties. Custom properties may also survive when the
   deployment model explicitly sets `consent_required: false`; enforce that
   whitelist in the SDK and on the server, and preserve only approved scalar
-  values through entity lifecycle callbacks. All UTMs require consent by default.
+  values through entity lifecycle callbacks. The optional `page_sequence_enabled`
+  setting separately permits only the generated page-depth number (1–20, with 20
+  meaning 20+), stored in tab session storage without IDs, paths or timestamps.
+  It defaults off, applies to all event types, and respects kill switches and
+  path exclusions before counter storage. Keep its consent/storage disclosure
+  distinct from a claim of legal anonymity. All UTMs require consent by default.
   Recommend at most broad `utm_medium` values for anonymous attribution, while
   allowing per-property overrides with the documented warning about detailed
   values. See [Data model](docs/DATA-MODEL.md). Browser overrides never authorize
