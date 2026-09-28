@@ -45,7 +45,8 @@ Rebuild generated files after editing source or pulling updates, and copy them i
 | `templates/internal_traffic/marker.js.twig` | `public/internal-traffic-marker.min.js` |
 | `public/consent.js` and `public/consent.css` | `public/consent.min.js`, `var/browser/consent.template.min.js`, `var/browser/consent-manifest.json` |
 | `public/tag-manager.js` | `public/tag-manager.min.js`, `var/browser/tag-manager.template.min.js`, `var/browser/tag-manager-manifest.json` |
-| `micro-consent-dropins/js/*.js` | Matching `*.min.js` files alongside each source |
+| `micro-consent-dropins/js/consent-ui.js`, `micro-consent-dropins/js/aggregate-consent.js`, and `micro-consent-dropins/css/consent-ui.css` | `var/browser/standalone-consent.template.min.js`, `var/browser/standalone-consent-manifest.json` for configured standalone responses/downloads |
+| `micro-consent-dropins/js/*.js` | Matching `*.min.js` files alongside each source; independent core and optional adapters |
 
 The tracker retains its full BSD-3-Clause license notice. Other generated first-party scripts include an AGPL-3.0-only notice; existing license and preservation comments are retained. Keep the corresponding source and license files when distributing these assets.
 
@@ -98,11 +99,24 @@ same CSS source. Dashboard styles also live under `assets/styles/`. Run
 `php bin/console asset-map:compile` when preparing production assets after CSS
 changes; prepared release ZIPs already include compiled assets.
 
-The older experimental files in `micro-consent-dropins/` remain separate from the
-new self-contained CMP. Customize those sources before building as described in
-[their guide](../micro-consent-dropins/README.md). In particular, replace
-`YOUR_FORM_ID` in `consent-ui.js`. `gtm-consent-mode.js` is empty; its generated
-file contains only a license banner and provides no consent integration behavior.
+The maintained independent option in `micro-consent-dropins/` has its own UI,
+stylesheet and optional adapters. Configure it with `window.MicroConsentConfig`;
+there is no source-code Formspree placeholder to replace. Its static
+`consent-ui.js` / `.min.js` loads `../css/consent-ui.css`; preserve that relative
+layout when hosting it elsewhere. The optional `aggregate-consent.js` connects
+the tracker/tag manager, while `gtm-consent-mode.js` only sends Google consent
+signals and never loads Google. Load that signal adapter synchronously before
+any separately installed Google/GTM loader.
+
+The configured `/standalone-cmp/sites/<site-id>/consent.js?min=1` response and
+Setup download bundle the independent UI, CSS and Aggregate adapter. Their
+separate manifest hashes the core, adapter, stylesheet and compiled template.
+Missing, stale or corrupt builds fall back to current configured source; a
+per-site YAML edit does not require rebuilding. Deploy both private build files
+together, retain the readable sources, and download static snapshots again after
+changing site settings. The original built-in CMP keeps its separate files and
+behavior. See the [standalone guide](../micro-consent-dropins/README.md) and
+[regional examples](CONSENT-REGIONS.md).
 
 ## Verify generated assets
 

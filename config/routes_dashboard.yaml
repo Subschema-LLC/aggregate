@@ -6,6 +6,10 @@ setup_controller:
     resource: ../src/Controller/SetupController.php
     type: attribute
 
+standalone_consent_controller:
+    resource: ../src/Controller/StandaloneConsentController.php
+    type: attribute
+
 tag_manager_controller:
     resource: ../src/Controller/TagManagerController.php
     type: attribute

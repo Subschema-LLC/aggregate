@@ -21,6 +21,13 @@ choices. Choosing **Tag manager** installs its container and enabled CMP;
 it does not add tracker configuration, load the tracker directly, create tags,
 or enable the container.
 
+The [standalone consent option](../micro-consent-dropins/README.md) is a separate
+banner selected in **Setup**. Its `standalone_consent` YAML and API are independent
+of the built-in CMP. The optional Aggregate bridge supplies its category choices
+to this manager. Install only one banner; select external controls when using an
+existing CMP. See the [regional consent examples](CONSENT-REGIONS.md) for complete
+conservative configurations and their limits.
+
 ## Website instances and remote hosting
 
 The UI shows each website's public script instance ID. Headless operators can
@@ -41,6 +48,7 @@ The Aggregate server hosts each site's scripts at:
 ```text
 https://analytics.example.com/tms-lite/sites/<site-id>/lib.js
 https://analytics.example.com/cmp-lite/sites/<site-id>/consent.js
+https://analytics.example.com/standalone-cmp/sites/<site-id>/consent.js
 ```
 
 These are generated responses under separate URL directories, not copies of
@@ -70,7 +78,7 @@ unrelated keys, and neighboring site files. Tag/CMP settings have no uppercase
 environment overrides. New instances start with disabled tags and do not inherit
 shared configuration.
 
-The supplied CMP defaults to enabled, using the registered website's name. Its
+The built-in CMP defaults to enabled, using the registered website's name. Its
 optional categories come from that site's enabled tags, plus analytics for the
 tracker. Disable it when integrating another CMP; disabling grants no consent.
 Names contain 1–120 UTF-8 bytes without control characters.
@@ -121,6 +129,15 @@ The optional **Shared configuration** selection uses `tag_manager` in the active
 It is a separate instance; website instances never inherit its tags. Generated
 website snippets always use the website-specific paths above. Tracker collection
 settings and data models still use their existing deployment-wide configuration.
+
+For the independent alternative, keep its settings in a separate
+`standalone_consent` mapping and load its configured bundle rather than the
+built-in CMP URL. Its categories are explicit; include every category required by
+your enabled tags. GPC forces its `marketing` category off but does not know the
+purpose of arbitrarily named categories or enforce behavior in a loaded provider.
+The [settings reference](CONFIGURATION.md#standalone-consent-settings) and
+[complete regional YAML examples](CONSENT-REGIONS.md) cover this option. Saving
+standalone settings does not rewrite the built-in CMP or tags.
 
 ## Actions and arguments
 
@@ -325,7 +342,12 @@ The tag's consent requirement controls when the script loads; it does not grant
 enhanced analytics. The URL starts with `consent=0`. A remembered affirmative
 analytics choice supplied by the CMP in the tracker's `window` configuration
 takes precedence, and later choices use `setConsent`. Rejection and withdrawal
-retain the tracker's existing privacy behavior.
+retain the tracker's existing privacy behavior. After the tracker has loaded,
+`setConsent(false)` removes identifiers but can continue anonymous events. Reload
+after withdrawal when relying on `consent: analytics` to keep the tracker fully
+unloaded; a load gate cannot undo executed code or erase history. For a
+conservative no-measurement-before-choice setup, use the
+[regional examples](CONSENT-REGIONS.md) instead of this `consent: none` example.
 
 This script loads asynchronously. An `Aggregate.emit` method tag on the same
 `dom_ready` trigger cannot assume the tracker is ready, regardless of YAML list

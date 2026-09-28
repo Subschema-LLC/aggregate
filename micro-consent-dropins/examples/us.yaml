@@ -1,0 +1,40 @@
+# United States — example per-site configuration
+# Conservative opt-in example; coverage and duties vary by state and use.
+# GPC denies marketing and signals do-not-sell; it never grants analytics.
+# Connect every relevant provider separately to honor applicable opt-out rights.
+# Read docs/CONSENT-REGIONS.md and micro-consent-dropins/README.md before use.
+# Merge deliberately into config/tag-manager/sites/<site-id>.yaml.
+# Preserve unrelated keys and existing tags; replace the example public URL/token.
+# Load the separate MicroConsent core and Aggregate bridge, not both banners.
+# This file does not select, detect or geolocate any visitor region.
+
+consent_manager:
+  enabled: false
+  name: Example website
+
+standalone_consent:
+  name: Example website
+  privacy_policy_url: 'https://www.example.com/privacy'
+  formspree_endpoint: '' # Optional: exact https://formspree.io/f/ID; blank hides request forms.
+  categories: [analytics, functional, marketing]
+  respect_gpc: true
+  consent_lifetime_days: 180 # Operational review interval, not a statutory consent lifetime.
+  revision: '1' # Change when purposes or the notice change; visitors review their choices again.
+
+tag_manager:
+  enabled: true
+  variables: {}
+  tags:
+    - id: aggregate-tracker
+      type: script
+      enabled: true
+      src: 'https://analytics.example.com/aggregate.js?min=1&endpoint=https%3A%2F%2Fanalytics.example.com%2Fapi%2Freceive&token=REPLACE_WITH_PUBLIC_WEBSITE_TOKEN&consent=0'
+      consent: analytics # Gates the whole tracker before its first load.
+      trigger: {type: dom_ready}
+
+# In the deployment's separate active aggregate.yaml, retain geography and page
+# depth off by default; keep every UTM consent_required: true. Never copy those
+# deployment-wide settings into this per-site file expecting collection changes.
+# Remove any duplicate direct/GTM tracker installation. Withdrawal on a page
+# that already loaded the SDK returns it to anonymous mode; reload so this gate
+# keeps it unloaded. Already loaded providers need their own stop/cleanup hooks.

@@ -58,6 +58,14 @@ test('optional build preserves licensing, dynamic config and script syntax, and 
       assert.doesNotMatch(configured, /__AGGREGATE_/);
       new vm.Script(configured);
     }
+    const standaloneTemplate = outputs.get('var/browser/standalone-consent.template.min.js');
+    const standaloneManifest = JSON.parse(outputs.get('var/browser/standalone-consent-manifest.json'));
+    const digest = (content) => require('node:crypto').createHash('sha256').update(content).digest('hex');
+    assert.equal(standaloneManifest.adapterSha256, digest(fs.readFileSync(path.join(projectDir, 'micro-consent-dropins/js/aggregate-consent.js'))));
+    assert.equal(standaloneManifest.templateSha256, digest(standaloneTemplate));
+    const configuredStandalone = standaloneTemplate.replace('__MICRO_CONSENT_CONFIG__', '{}').replace('__MICRO_CONSENT_STYLES__', '"body {}"');
+    assert.doesNotMatch(configuredStandalone, /__MICRO_CONSENT_/);
+    new vm.Script(configuredStandalone);
     for (const [filename, content] of outputs) {
       if (filename.endsWith('.js') && !filename.endsWith('.template.min.js')) new vm.Script(content, {filename});
     }

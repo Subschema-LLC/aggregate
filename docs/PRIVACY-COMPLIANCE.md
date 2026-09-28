@@ -2,7 +2,9 @@
 
 Aggregate Analytics provides technical privacy controls. Installing it does not, by itself, make a website compliant with GDPR, CCPA/CPRA, ePrivacy, PECR, COPPA, or any other law. The operator must determine the appropriate legal basis, disclosures, retention rules, consent behavior, and rights-request process for each deployment.
 
-This document is engineering guidance, not legal advice.
+This document is engineering guidance, not legal advice. For conservative
+per-region example configurations and their limits, see
+[Regional consent examples](CONSENT-REGIONS.md).
 
 [README](../README.md) · [Configuration](CONFIGURATION.md) · [Tracking and GTM](TRACKING.md) · [Contributing](../CONTRIBUTING.md)
 
@@ -17,6 +19,7 @@ This document is engineering guidance, not legal advice.
 - [BI exposure and suppression](#bi-exposure-and-suppression)
 - [Administrative controls](#administrative-controls)
 - [Consent and consent-manager integration](#enhanced-analytics-consent)
+- [Independent consent controls and regional examples](#independent-consent-controls-and-regional-examples)
 - [Suggested notice language](#suggested-notice-language)
 - [Infrastructure and logging](#infrastructure-and-logging)
 - [Retention and privacy rights](#retention-and-privacy-rights)
@@ -457,7 +460,10 @@ Initialize enhanced consent only from a recorded affirmative choice:
 </script>
 ```
 
-Adapt the API calls to your consent manager. Test these cases in a new browser profile:
+This direct-loading example permits anonymous measurement before consent.
+Use the [separate script gate](CONSENT-REGIONS.md#what-denial-and-withdrawal-actually-do)
+when all measurement must wait for permission. Adapt the API calls to your consent
+manager. For a direct installation, test these cases in a new browser profile:
 
 1. Before a choice, a page view and `emit('button_click', {...}, 'signup')` create anonymous-mode rows with no IDs and only explicitly permitted custom properties; the goal is retained only when its enabled definition permits anonymous use.
 2. Anonymous `created_at` values are UTC hour boundaries rather than exact event times.
@@ -467,6 +473,45 @@ Adapt the API calls to your consent manager. Test these cases in a new browser p
 6. Withdrawing removes all three browser-side identifiers and strips consent-required details from later events; only explicitly permitted custom properties remain.
 7. Globally disabling collection or visiting an excluded route produces no event row.
 8. An unknown, disabled, or disallowed goal leaves the underlying event intact, returns `goal_not_allowed`, and produces a generic console warning that does not contain the submitted value.
+
+## Independent consent controls and regional examples
+
+The optional [MicroConsent banner](../micro-consent-dropins/README.md) is separate
+from the built-in CMP. It can run without this application or connect through
+optional adapters. Its settings live in each site's `standalone_consent` YAML;
+**Setup** offers it as a distinct installation choice. Optional categories start
+denied. A respected active GPC signal denies marketing and signals a do-not-sell
+choice; it never grants enhanced analytics, identifies applicable law, or controls
+an unconnected provider. The optional Google Consent Mode adapter sends signals
+only and never downloads Google; signals do not guarantee that denied providers
+send no network requests.
+
+The [global, EU/EEA, UK, Canada and US examples](CONSENT-REGIONS.md) use a
+conservative tracker tag with `consent: analytics`. Before the first grant, the
+tracker stays unloaded, including its anonymous mode. Remove direct tracker
+installations and duplicates for this gate to work. After a tracker has loaded,
+withdrawal still invokes the existing `setConsent(false)` behavior described
+above; reload after withdrawal so the denied tag stays unloaded. Already loaded
+providers need their own cleanup. No browser banner can erase past server events.
+
+Region names are documentation choices, not automatic legal policies. No visitor
+IP lookup or browser-language inference selects them. The UK's current PECR
+statistical exception has explicit limits; retaining raw individual events is a
+material consideration. National ePrivacy rules, Canadian consent/Quebec
+activation duties, and US state/purpose rules differ. The examples do not certify
+an exemption or legal anonymity. Keep geography and page depth off and UTMs
+consent-gated unless separately assessed.
+
+MicroConsent stores a preference record with a revision and configurable review
+lifetime; the default 180 days is not a statutory consent period or authenticated
+server-side consent receipt. An optional Formspree endpoint enables explicit
+user-submitted requests containing email, request type and message, without
+automatically attaching page URLs, tracking IDs, website tokens or event data.
+Formspree is a third-party recipient and also handles ordinary connection
+metadata. Disclose and review its processing, account retention and security.
+Submission does not verify identity, process a right, or delete data; the operator
+must manage and respond to requests separately. Browser consent choices do not
+require a Formspree submission.
 
 ## Suggested notice language
 

@@ -124,6 +124,12 @@ checkout, or a small accessibility fix. Keep each PR focused and target
 
 ## Available foundations
 
+- [Independent consent controls and regional examples](docs/CONSENT-REGIONS.md),
+  with a separate optional banner, per-site YAML/UI configuration, GPC handling,
+  optional Formspree request submission, and explicit tracker/Google signal
+  adapters. Conservative examples gate the initial tracker load; they are not
+  legal advice, region detection, a rights-processing system or provider enforcement.
+
 - [Strict collection profile](docs/PRIVACY-COMPLIANCE.md#strict-collection-profile),
   set in Collection controls, YAML or `COLLECTION_PROFILE`. Every event is
   anonymous with only the sanitized path, event name and approved goal; the

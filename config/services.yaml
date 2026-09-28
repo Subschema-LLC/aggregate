@@ -37,6 +37,8 @@ services:
         tags: ['controller.service_arguments']
     App\Controller\ConsentScriptController:
         tags: ['controller.service_arguments']
+    App\Controller\StandaloneConsentScriptController:
+        tags: ['controller.service_arguments']
     App\Controller\TagScriptController:
         tags: ['controller.service_arguments']
     App\Controller\HealthController:

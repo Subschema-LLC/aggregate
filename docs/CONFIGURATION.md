@@ -11,6 +11,7 @@ Use this guide for application settings and runtime overrides. Run commands from
 - [Feature flags](#feature-flags)
 - [Organization traffic](#organization-traffic)
 - [Custom data and UTM parameters](#custom-data-and-utm-parameters)
+- [Standalone consent settings](#standalone-consent-settings)
 - [BI glossary](#bi-glossary)
 - [Archiving and retention](#archiving-and-retention)
 - [Main navigation](#main-navigation)
@@ -364,6 +365,57 @@ JavaScript. Navigation is presentation only: it cannot grant access to routes.
 After changing navigation in production, clear the production cache so the
 container and Twig globals are rebuilt.
 
+## Standalone consent settings
+
+The optional independent banner uses `standalone_consent` in
+`config/tag-manager/sites/<site-id>.yaml`. Find instance IDs with
+`php bin/console app:tag-manager:sites`. In **Setup → Install scripts**, select
+**Standalone banner + optional Formspree requests**, then **Configure standalone
+option** to edit that mapping. Downloads include configured JavaScript and YAML.
+This source is separate from `consent_manager` and `tag_manager`; its save preserves
+those mappings and unrelated settings. It has no uppercase environment-variable
+overrides. The site's environment-specific file takes precedence, or the active
+`environments.<env>.standalone_consent` replaces the whole mapping.
+
+```yaml
+standalone_consent:
+  name: Example website
+  privacy_policy_url: 'https://www.example.com/privacy'
+  formspree_endpoint: ''
+  categories: [analytics, functional, marketing]
+  respect_gpc: true
+  consent_lifetime_days: 180
+  revision: '1'
+```
+
+| Key | Validation and default |
+| --- | --- |
+| `name` | Defaults to the registered website's name; nonempty, at most 120 UTF-8 bytes |
+| `privacy_policy_url` | Empty or an absolute HTTPS URL without credentials; default empty |
+| `formspree_endpoint` | Empty or exactly `https://formspree.io/f/` plus an alphanumeric ID; empty disables the request form |
+| `categories` | 1–10 unique category names including `analytics`; 1–32 lowercase letters, digits, underscores or hyphens, beginning with a letter; `none` and prototype keys reserved |
+| `respect_gpc` | YAML boolean; default `true`; active GPC denies marketing and sets do-not-sell, never grants analytics |
+| `consent_lifetime_days` | Integer 1–365; default 180; an operational review interval, not a legal consent lifetime |
+| `revision` | Nonempty string up to 64 UTF-8 bytes; default `'1'`; change when purposes/notice change |
+
+Text is trimmed and rejects control characters. The browser receives camelCase
+keys through `window.MicroConsentConfig`; its site-specific storage key is
+`micro_consent_v2:<site-id>`. The configured script uses the deployment's tracker
+namespace in its optional adapter. No application secret or sharing token is
+included. Downloaded scripts are configuration snapshots.
+
+The hosted bundle at `/standalone-cmp/sites/<site-id>/consent.js` contains UI, CSS
+and the tracker/tag-manager bridge. It works with the dashboard disabled. The
+independent static core needs no server and can omit both optional adapters; see
+[the standalone guide](../micro-consent-dropins/README.md).
+
+These controls are not a region detector or legal certification. The
+[regional examples](CONSENT-REGIONS.md) all use a conservative initial script gate.
+Enhanced denial alone leaves anonymous SDK measurement possible, and already
+loaded scripts need withdrawal/cleanup handling. Enabling Formspree makes it a
+recipient of submitted request information; a successful submission does not
+complete the operator's rights-request duties.
+
 ## Administration pages
 
 The default navigation separates collection, reporting configuration, and
@@ -375,7 +427,8 @@ administration. Each settings page loads the data needed for its own task.
 | General settings | `/dashboard/settings` | Application host, tracker namespace, ingestion rate limit |
 | Branding | `/dashboard/branding` | Identity, logos, colors, typography |
 | Collection controls | `/dashboard/collection` | Collection switch, exclusions, optional local geography |
-| Setup | `/dashboard/setup` | Guided installation, button walkthrough, script copy/download, optional minification |
+| Setup | `/dashboard/setup` | Guided installation, separate built-in/standalone/external consent choice, script copy/download, optional minification |
+| Standalone consent settings | `/dashboard/setup/standalone/<site-id>` | Independent per-site banner settings and optional Formspree request endpoint |
 | Tag manager | `/dashboard/tag-manager` | Per-website CMP, script/method actions, consent, event triggers, variables, and YAML downloads |
 | BI disclosure | `/dashboard/privacy` | Database-backed event and geography thresholds |
 | Users | `/dashboard/users` | User creation and password administration |
