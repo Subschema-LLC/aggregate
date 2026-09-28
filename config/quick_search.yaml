@@ -1,0 +1,189 @@
+# yaml-language-server: =../vendor/symfony/dependency-injection/Loader/schema/services.schema.json
+# Quick search configuration: synonyms and descriptions for dashboard navigation items.
+parameters:
+  app.quick_search_synonyms:
+    Websites:
+      description: 'Manage website tokens, allowed domains, and snippets'
+      synonyms:
+        - sites
+        - domains
+        - tokens
+        - script
+        - install
+        - origins
+        - cors
+        - embed
+    Setup:
+      description: 'Step-by-step installation wizard and drop-in downloads'
+      synonyms:
+        - wizard
+        - snippet
+        - guide
+        - download
+        - consent
+        - banner
+        - getting started
+    'Tag manager lite':
+      description: 'Configure tags, triggers, variables, and CMP controls'
+      synonyms:
+        - tags
+        - scripts
+        - triggers
+        - variables
+        - cmp
+        - analytics
+        - tms
+        - gtm
+        - pixels
+    'Collection controls':
+      description: 'Standard/strict collection profiles, excluded paths, and GeoIP'
+      synonyms:
+        - profile
+        - strict
+        - standard
+        - exclude
+        - paths
+        - geoip
+        - geography
+        - anonymity
+        - ip
+    'Data model':
+      description: 'Custom properties, UTM parameter mappings, and page depth'
+      synonyms:
+        - properties
+        - parameters
+        - utm
+        - campaign
+        - sequence
+        - depth
+        - custom data
+        - schema
+    'Event examples':
+      description: 'Synthetic anonymous and enhanced request JSON'
+      synonyms:
+        - examples
+        - json
+        - payload
+        - ecommerce
+        - curl
+        - test
+        - sample
+    'Organization traffic':
+      description: 'Shared browser marker to filter internal team traffic'
+      synonyms:
+        - internal traffic
+        - marker
+        - team
+        - filter
+        - cookie
+        - exclude staff
+    'Reporting views':
+      description: 'Regenerate custom analytics SQL reporting views'
+      synonyms:
+        - sql
+        - views
+        - database
+        - reporting
+        - custom schema
+        - bi queries
+    'BI glossary':
+      description: 'Labels, descriptions, and translations for BI tools'
+      synonyms:
+        - glossary
+        - labels
+        - translations
+        - locales
+        - columns
+        - dimensions
+        - lookups
+    'BI disclosure':
+      description: 'Minimum cell count thresholds for anonymous reporting views'
+      synonyms:
+        - disclosure
+        - threshold
+        - cell
+        - privacy suppression
+        - minimum
+        - k-anonymity
+    'BI connection guide':
+      description: 'Database schema, view specifications, and query examples'
+      synonyms:
+        - views
+        - tables
+        - sql
+        - tableau
+        - powerbi
+        - connection
+        - bi schema
+        - looker
+        - metabase
+    'General settings':
+      description: 'Application host URL, JS namespace, and rate limits'
+      synonyms:
+        - host
+        - namespace
+        - rate limit
+        - url
+        - config
+        - throttling
+    'Branding':
+      description: 'Brand name, logo upload, color palette, and fonts'
+      synonyms:
+        - logo
+        - identity
+        - colors
+        - theme
+        - appearance
+        - font
+        - dark mode
+        - light mode
+        - palette
+        - white label
+    'Users':
+      description: 'Manage user accounts, passwords, and admin privileges'
+      synonyms:
+        - users
+        - accounts
+        - password
+        - admin
+        - security
+        - credentials
+        - roles
+    'Data lifecycle':
+      description: 'Archiving, retention schedules, and deletion policies'
+      synonyms:
+        - lifecycle
+        - archive
+        - retention
+        - deletion
+        - maintain
+        - cleanup
+        - purge
+    'Updates':
+      description: 'Version status, git updates, and signed release packages'
+      synonyms:
+        - updates
+        - version
+        - git
+        - release
+        - upgrade
+        - pull
+    'Feature flags':
+      description: 'Enable or disable optional system capabilities'
+      synonyms:
+        - flags
+        - features
+        - experimental
+        - toggle
+        - capabilities
+    'Documentation':
+      description: 'Architecture, privacy mode vs enhanced analytics'
+      synonyms:
+        - how it works
+        - docs
+        - documentation
+        - privacy guide
+        - architecture
+        - overview
+
+  app.quick_search_extra_items: []

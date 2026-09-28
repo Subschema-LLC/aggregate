@@ -41,6 +41,57 @@
     --bulma-scheme-main-bis: var(--app-brand-background);
     --bulma-scheme-main-ter: var(--app-brand-background);
     --bulma-background: var(--app-brand-background);
+
+    /* Standardized semantic message tokens (deliberately non-brandable status feedback) */
+    --app-status-info: #2563eb;
+    --app-status-info-bg: #eff6ff;
+    --app-status-info-border: #bfdbfe;
+    --app-status-info-text: #1e40af;
+    --app-status-info-accent: #3b82f6;
+
+    --app-status-warning: #d97706;
+    --app-status-warning-bg: #fffbeb;
+    --app-status-warning-border: #fde68a;
+    --app-status-warning-text: #92400e;
+    --app-status-warning-accent: #f59e0b;
+
+    --app-status-danger: #dc2626;
+    --app-status-danger-bg: #fef2f2;
+    --app-status-danger-border: #fecaca;
+    --app-status-danger-text: #991b1b;
+    --app-status-danger-accent: #ef4444;
+
+    --app-status-success: #16a34a;
+    --app-status-success-bg: #f0fdf4;
+    --app-status-success-border: #bbf7d0;
+    --app-status-success-text: #166534;
+    --app-status-success-accent: #22c55e;
+}
+
+html[data-theme="dark"] {
+    --app-status-info: #60a5fa;
+    --app-status-info-bg: rgba(37, 99, 235, 0.16);
+    --app-status-info-border: rgba(96, 165, 250, 0.35);
+    --app-status-info-text: #dbeafe;
+    --app-status-info-accent: #60a5fa;
+
+    --app-status-warning: #fbbf24;
+    --app-status-warning-bg: rgba(217, 119, 6, 0.16);
+    --app-status-warning-border: rgba(251, 191, 36, 0.35);
+    --app-status-warning-text: #fef3c7;
+    --app-status-warning-accent: #fbbf24;
+
+    --app-status-danger: #f87171;
+    --app-status-danger-bg: rgba(220, 38, 38, 0.16);
+    --app-status-danger-border: rgba(248, 113, 113, 0.35);
+    --app-status-danger-text: #fee2e2;
+    --app-status-danger-accent: #f87171;
+
+    --app-status-success: #4ade80;
+    --app-status-success-bg: rgba(22, 163, 74, 0.16);
+    --app-status-success-border: rgba(74, 222, 128, 0.35);
+    --app-status-success-text: #dcfce7;
+    --app-status-success-accent: #4ade80;
 }
 
 html,
@@ -312,17 +363,203 @@ a:not(.button):not(.navbar-item):focus-visible {
 .message a:not(.button) {
     color: inherit;
     text-decoration: underline;
+    text-underline-offset: 2px;
+    font-weight: 600;
 }
 
 .notification code,
 .message code {
     background-color: #000000;
     color: #FFFFFF;
+    border-radius: 4px;
+    padding: 0.15em 0.4em;
+    font-size: 0.875em;
+    font-weight: 500;
 }
 
 .notification {
     border-radius: var(--bulma-radius-medium);
     border: 1px solid transparent;
+    font-size: 0.9375rem;
+    line-height: 1.55;
+    position: relative;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04);
+}
+
+.notification > .delete {
+    position: absolute;
+    right: 0.75rem;
+    top: 0.75rem;
+    opacity: 0.65;
+    transition: opacity 0.15s ease, transform 0.1s ease;
+}
+
+.notification > .delete:hover,
+.notification > .delete:focus {
+    opacity: 1;
+    transform: scale(1.08);
+}
+
+/* Base icon setup for semantic notifications */
+.notification.is-info,
+.notification.is-warning,
+.notification.is-danger,
+.notification.is-success {
+    padding-left: 3.25rem !important;
+}
+
+.notification.is-info::before,
+.notification.is-warning::before,
+.notification.is-danger::before,
+.notification.is-success::before {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Font Awesome 6 Free';
+    font-weight: 900;
+    font-size: 1.1875rem;
+    position: absolute;
+    left: 1.125rem;
+    top: 1.15rem;
+    line-height: 1;
+    pointer-events: none;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Semantic icons */
+.notification.is-info::before {
+    content: "\f05a"; /* fa-circle-info */
+    color: var(--app-status-info);
+}
+
+.notification.is-warning::before {
+    content: "\f071"; /* fa-triangle-exclamation */
+    color: var(--app-status-warning);
+}
+
+.notification.is-danger::before {
+    content: "\f06a"; /* fa-circle-exclamation */
+    color: var(--app-status-danger);
+}
+
+.notification.is-success::before {
+    content: "\f058"; /* fa-circle-check */
+    color: var(--app-status-success);
+}
+
+/* Light / subtle variant (Modern UI Callouts) */
+.notification.is-info.is-light {
+    background-color: var(--app-status-info-bg);
+    border-color: var(--app-status-info-border);
+    border-left: 4px solid var(--app-status-info-accent);
+    color: var(--app-status-info-text);
+}
+
+.notification.is-warning.is-light {
+    background-color: var(--app-status-warning-bg);
+    border-color: var(--app-status-warning-border);
+    border-left: 4px solid var(--app-status-warning-accent);
+    color: var(--app-status-warning-text);
+}
+
+.notification.is-danger.is-light {
+    background-color: var(--app-status-danger-bg);
+    border-color: var(--app-status-danger-border);
+    border-left: 4px solid var(--app-status-danger-accent);
+    color: var(--app-status-danger-text);
+}
+
+.notification.is-success.is-light {
+    background-color: var(--app-status-success-bg);
+    border-color: var(--app-status-success-border);
+    border-left: 4px solid var(--app-status-success-accent);
+    color: var(--app-status-success-text);
+}
+
+/* Solid semantic notification styling */
+.notification.is-info:not(.is-light) {
+    background-color: var(--app-status-info);
+    border-color: var(--app-status-info);
+    border-left: 4px solid #1d4ed8;
+    color: #ffffff;
+}
+.notification.is-info:not(.is-light)::before {
+    color: #ffffff;
+}
+
+.notification.is-warning:not(.is-light) {
+    background-color: var(--app-status-warning);
+    border-color: var(--app-status-warning);
+    border-left: 4px solid #b45309;
+    color: #ffffff;
+}
+.notification.is-warning:not(.is-light)::before {
+    color: #ffffff;
+}
+
+.notification.is-danger:not(.is-light) {
+    background-color: var(--app-status-danger);
+    border-color: var(--app-status-danger);
+    border-left: 4px solid #b91c1c;
+    color: #ffffff;
+}
+.notification.is-danger:not(.is-light)::before {
+    color: #ffffff;
+}
+
+.notification.is-success:not(.is-light) {
+    background-color: var(--app-status-success);
+    border-color: var(--app-status-success);
+    border-left: 4px solid #15803d;
+    color: #ffffff;
+}
+.notification.is-success:not(.is-light)::before {
+    color: #ffffff;
+}
+
+.notification.is-info strong,
+.notification.is-info .title,
+.notification.is-info .subtitle,
+.notification.is-warning strong,
+.notification.is-warning .title,
+.notification.is-warning .subtitle,
+.notification.is-danger strong,
+.notification.is-danger .title,
+.notification.is-danger .subtitle,
+.notification.is-success strong,
+.notification.is-success .title,
+.notification.is-success .subtitle {
+    color: inherit;
+}
+
+/* Collapsible and structured message block headers */
+.message.is-info .message-header::before {
+    font-family: 'Font Awesome 6 Free';
+    font-weight: 900;
+    content: "\f05a";
+    margin-right: 0.5rem;
+}
+
+.message.is-warning .message-header::before {
+    font-family: 'Font Awesome 6 Free';
+    font-weight: 900;
+    content: "\f071";
+    margin-right: 0.5rem;
+}
+
+.message.is-danger .message-header::before {
+    font-family: 'Font Awesome 6 Free';
+    font-weight: 900;
+    content: "\f06a";
+    margin-right: 0.5rem;
+}
+
+.message.is-success .message-header::before {
+    font-family: 'Font Awesome 6 Free';
+    font-weight: 900;
+    content: "\f058";
+    margin-right: 0.5rem;
 }
 
 .notification.is-light {

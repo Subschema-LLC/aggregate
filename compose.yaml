@@ -2,7 +2,7 @@ services:
   php:
     image: dunglas/frankenphp:latest-php8.2
     ports:
-      - "9001:9001"
+      - "9002:9002"
       - "443:443"
     volumes:
       - .:/app:delegated
