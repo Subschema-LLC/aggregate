@@ -85,6 +85,42 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   availability there. Explore Matomo Tag Manager support where adopters need it.
 - **Extend Tag Manager Lite.** Still keep things simple but look for gaps and improvements.
 - **BI Translation Table** Add a new table called glossary or lookup where columns from certain tables or the values that are found in them can be translated. The UI and yaml will need fields for table, column, value, then translation, much like a lookup table.
+- **Visitor objection to anonymous collection.** Let visitors object to anonymous
+  measurement, not only to enhanced detail: an SDK opt-out call, a consent
+  drop-in toggle, and server-side honoring of the Global Privacy Control
+  (`Sec-GPC: 1`) request header, which needs no browser storage. Enforce an
+  objection on the server as well as in the SDK, and apply it before rate-limit
+  buckets, geographic lookups, queueing, or storage, as the kill switch and path
+  exclusions do. The UK statistical-purposes exception added to PECR by the
+  Data (Use and Access) Act 2025 requires a simple, free means of objecting.
+  Any stored opt-out preference needs its own disclosure.
+- **A documented consent-exemption configuration.** Publish a configuration
+  profile and checklist for operators assessing an audience-measurement
+  exemption, such as the CNIL's in France or the UK statistical-purposes
+  exception. Cover page depth disabled (tab storage writes to the device, and
+  the URL method is URL tracking under EDPB Guidelines 2/2023), raw and archive
+  retention of at most 25 months, organization-marker disclosure, and visitor
+  objection. "Cookieless" is not an exemption by itself: the EDPB treats scripts
+  that make the browser send device information as within ePrivacy Article 5(3).
+  Consider the CNIL's evaluation of audience-measurement tools once the profile
+  exists, and revisit if the EU Digital Omnibus's proposed first-party
+  audience-measurement exemption is adopted. Aggregate cannot certify a
+  deployment as exempt; the operator remains responsible for the assessment.
+- **Consent-banner categorization guidance.** Document how to list Aggregate in
+  consent management platforms and the micro consent drop-ins: anonymous
+  measurement in a separate exempt audience-measurement category with disclosure
+  text where an exemption applies, rather than as strictly necessary, and
+  enhanced collection behind analytics consent. Update the drop-in UI and sample
+  disclosures to match.
+- **Server-side collection.** Let a site's backend report page views and events
+  directly, so no Aggregate code runs on the visitor's device. This needs an
+  authenticated ingestion key for server callers, rate limiting that does not
+  throttle a single backend address, and a geography decision: the request IP
+  would be the server's, and forwarding a visitor IP needs trusted-proxy rules
+  and must stay local and coarse. Viewport buckets would be unavailable, and
+  device class would come from a forwarded User-Agent. Keep path sanitization,
+  kill switches, path exclusions, and anonymous-mode rules identical to browser
+  collection. GDPR still applies to the processing.
 
 ## Available foundations
 
