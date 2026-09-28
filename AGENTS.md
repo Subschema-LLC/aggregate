@@ -81,8 +81,13 @@ to the deployment's active aggregate configuration.
 - Optional `page_sequence` is a bounded page-depth number, enabled only by the
   UI/YAML `page_sequence_enabled` setting. Keep it off by default, capped at 20
   (20+), and free of IDs, path history and timestamps. Kill switches and path
-  exclusions apply before counter storage. Disclose its tab session storage;
-  a bounded count does not establish legal anonymity or consent exemption.
+  exclusions apply before counter storage or URL propagation. The UI/YAML
+  `page_sequence_method` selects tab session storage (default) or URL parameter
+  passing. The URL method uses no counter Web Storage, propagates only to
+  eligible same-origin links, and keeps the number untrusted. Trim only its
+  transport parameter after capture and keep event page paths query-free.
+  Disclose the chosen method's storage or URL effects; a bounded count does not
+  establish legal anonymity or consent exemption.
 - Optional geography must stay coarse and use local MMDB lookups. Never send
   visitor IP addresses to an external geolocation service or copy them into
   event payloads, queues, or application logs.
