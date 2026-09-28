@@ -151,6 +151,44 @@ final class InternalTrafficSettingsTest extends TestCase
         yield ['internal_traffic_cookie_domain', '..example.com'];
     }
 
+    #[DataProvider('pageSequenceConflicts')]
+    public function testPageSequenceCollisionOrMalformedSettingCannotBeSaved(mixed $enabled, bool $environmentMarker): void
+    {
+        $settings = $this->settings(['page_sequence_enabled' => $enabled, 'unrelated' => 'preserved']);
+        if ($environmentMarker) {
+            $_ENV['INTERNAL_TRAFFIC_NAME'] = 'page_sequence';
+        }
+        $before = file_get_contents($this->projectDir.'/config/aggregate.yaml');
+        try {
+            $settings->saveMarker([...InternalTrafficSettings::DEFAULTS, 'internal_traffic_name' => 'page_sequence']);
+            self::fail('An incompatible marker was saved.');
+        } catch (\InvalidArgumentException) {
+            self::assertSame($before, file_get_contents($this->projectDir.'/config/aggregate.yaml'));
+        }
+    }
+
+    public static function pageSequenceConflicts(): iterable
+    {
+        yield 'enabled collision' => [true, false];
+        yield 'enabled environment collision' => [true, true];
+        yield 'malformed false string' => ['false', false];
+        yield 'malformed null' => [null, false];
+    }
+
+    public function testConcurrentPageSequenceEnablementCannotCreateAMarkerCollision(): void
+    {
+        $settings = $this->settings(['page_sequence_enabled' => false]);
+        $settings->markerSettings();
+        file_put_contents($this->projectDir.'/config/aggregate.yaml', "page_sequence_enabled: true\n");
+        $before = file_get_contents($this->projectDir.'/config/aggregate.yaml');
+        try {
+            $settings->saveMarker([...InternalTrafficSettings::DEFAULTS, 'internal_traffic_name' => 'page_sequence']);
+            self::fail('A concurrently enabled page counter was overwritten.');
+        } catch (\InvalidArgumentException) {
+            self::assertSame($before, file_get_contents($this->projectDir.'/config/aggregate.yaml'));
+        }
+    }
+
     private function settings(array $values): InternalTrafficSettings
     {
         file_put_contents($this->projectDir.'/config/aggregate.yaml', Yaml::dump($values, 4, 2));

@@ -3,6 +3,7 @@
 namespace App\Entity;
 
 use App\Repository\EventRepository;
+use App\Service\CustomDataSettings;
 use App\Service\GeoIp\GeoArea;
 use App\Service\PrivacySanitizer;
 use Doctrine\ORM\Mapping as ORM;
@@ -182,6 +183,14 @@ class Event
         // Keep the approved values, not merely their names: an accidental
         // later setCustomData() must not enrich an anonymous event.
         $this->approvedAnonymousCustomData = (new PrivacySanitizer())->sanitizeEventData($data) ?? [];
+        if (array_key_exists(CustomDataSettings::PAGE_SEQUENCE_PROPERTY, $this->approvedAnonymousCustomData)) {
+            $pageSequence = CustomDataSettings::sanitizePageSequence($this->approvedAnonymousCustomData[CustomDataSettings::PAGE_SEQUENCE_PROPERTY]);
+            if ($pageSequence === null) {
+                unset($this->approvedAnonymousCustomData[CustomDataSettings::PAGE_SEQUENCE_PROPERTY]);
+            } else {
+                $this->approvedAnonymousCustomData[CustomDataSettings::PAGE_SEQUENCE_PROPERTY] = $pageSequence;
+            }
+        }
         $this->customData = $this->approvedAnonymousCustomData ?: null;
 
         return $this;

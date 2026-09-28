@@ -20,6 +20,13 @@ is claimed.
 
 Aggregate's anonymous mode creates no visitor identifier. By default, an anonymous event holds a sanitized path, a coarse referrer channel, device and viewport buckets, and a UTC hour. It stores no visitor or session ID, IP address, User-Agent string, or exact event timestamp. Optional goals, coarse geography, organization markers, and explicitly allowlisted properties can add context; their values still need review for identifying detail.
 
+Useful insight does not require a visit or session ID. Broad medium values, when
+explicitly allowed, can complement channels, page-path activity, event tracking
+and goal counts to help paint a picture of what is working. See the
+[measurement guide](docs/PRIVACY-COMPLIANCE.md#insight-without-visit-or-session-ids)
+for examples and current reporting boundaries, and the [roadmap](ROADMAP.md#proposals-to-explore)
+for planned work.
+
 When you need more, enhanced mode adds identifiers, properties and exact dimensions — but only for visitors who have made an affirmative choice, and it stops the moment they withdraw it.
 
 Once you start collecting data, connect Power BI, Tableau, or Looker to the approved aggregate reporting views.
@@ -65,6 +72,7 @@ Details:
 
 - **Privacy-minimized collection:** page views and safe named events, with optional allowlisted goals and coarse local geography.
 - **Reporting views with suppression:** completed hourly or daily aggregates with configurable minimum event counts.
+- **Optional page depth:** a capped page count shared by events on each page, configured through UI/YAML. See [storage and reporting boundaries](docs/DATA-MODEL.md#optional-page-depth) before enabling it.
 - **Consent-based enhanced detail:** visitor/session IDs, properties, and exact dimensions when enabled by your consent manager.
 - **Headless operation:** an ingestion API, YAML configuration, and CLI commands, with an optional admin dashboard.
 - **Organization traffic markers:** mark team browsers with a configurable cookie or local storage entry, defaulting to `orgInternalTraffic=true`, and filter retained event JSON in BI reports.
