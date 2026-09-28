@@ -19,11 +19,16 @@ final class NavigationExtension extends AbstractExtension
         private readonly FeatureFlagsExtension $features,
         private readonly AuthorizationCheckerInterface $authorization,
         private readonly UrlGeneratorInterface $urls,
+        private readonly array $quickSearchSynonyms = [],
+        private readonly array $quickSearchExtraItems = [],
     ) {}
 
     public function getFunctions(): array
     {
-        return [new TwigFunction('navigation_menu', [$this, 'menu'])];
+        return [
+            new TwigFunction('navigation_menu', [$this, 'menu']),
+            new TwigFunction('quick_search_items', [$this, 'quickSearchItems']),
+        ];
     }
 
     public function menu(mixed $navigation): array
@@ -166,5 +171,72 @@ final class NavigationExtension extends AbstractExtension
         }
 
         return true;
+    }
+
+    public function quickSearchItems(mixed $navigation): array
+    {
+        $navigation = is_array($navigation) ? $navigation : [];
+        $items = [];
+        $configuredItems = $navigation['items'] ?? [];
+
+        foreach ($configuredItems as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            if (isset($item['children']) && is_array($item['children'])) {
+                foreach ($item['children'] as $child) {
+                    if (!is_array($child) || empty($child['enabled'])) {
+                        continue;
+                    }
+                    $items[] = $this->buildQuickSearchItem($child, (string) ($item['label'] ?? 'General'));
+                }
+            } elseif (!empty($item['enabled'])) {
+                $items[] = $this->buildQuickSearchItem($item, 'General');
+            }
+        }
+
+        foreach ($this->quickSearchExtraItems as $extra) {
+            if (is_array($extra) && !empty($extra['title']) && !empty($extra['url'])) {
+                $synonyms = is_array($extra['synonyms'] ?? null)
+                    ? implode(' ', $extra['synonyms'])
+                    : (string) ($extra['synonyms'] ?? '');
+
+                $items[] = [
+                    'title' => (string) $extra['title'],
+                    'category' => (string) ($extra['category'] ?? 'General'),
+                    'url' => (string) $extra['url'],
+                    'icon' => (string) ($extra['icon'] ?? 'fas fa-link'),
+                    'description' => (string) ($extra['description'] ?? ''),
+                    'keywords' => $synonyms,
+                ];
+            }
+        }
+
+        return $items;
+    }
+
+    private function buildQuickSearchItem(array $item, string $category): array
+    {
+        $label = (string) ($item['label'] ?? '');
+        $config = $this->quickSearchSynonyms[$label] ?? [];
+
+        $synonyms = [];
+        if (isset($config['synonyms']) && is_array($config['synonyms'])) {
+            $synonyms = $config['synonyms'];
+        } elseif (isset($config['synonyms']) && is_string($config['synonyms'])) {
+            $synonyms = [$config['synonyms']];
+        }
+
+        $description = (string) ($config['description'] ?? ($label . ' settings and tools'));
+
+        return [
+            'title' => $label,
+            'category' => $category,
+            'url' => (string) ($item['url'] ?? ''),
+            'icon' => (string) ($item['icon'] ?? 'fas fa-link'),
+            'description' => $description,
+            'keywords' => implode(' ', $synonyms),
+        ];
     }
 }
