@@ -72,6 +72,39 @@ class ReleaseSigningTest(unittest.TestCase):
                 self.assertFalse(self.manifest.with_suffix(".json.sig").exists())
                 self.assertNotIn(self.private.read_text().strip(), result.stdout + result.stderr)
 
+    def run_check(self, secret, public=None):
+        environment = os.environ.copy()
+        environment.pop("RELEASE_SIGNING_PRIVATE_KEY", None)
+        if secret is not None:
+            environment["RELEASE_SIGNING_PRIVATE_KEY"] = secret
+        return subprocess.run(["php", str(SCRIPT), "--check-key", str(public or self.public)], env=environment, capture_output=True, text=True)
+
+    def test_check_key_explains_each_setup_mistake_without_printing_keys(self):
+        private = self.private.read_text().strip()
+        public = self.public.read_text().strip()
+        other_private = self.root / "other-private.key"
+        other_public = self.root / "other-public.key"
+        self.generate(other_private, other_public)
+        cases = (
+            (None, None, "is empty"),
+            ("", None, "is empty"),
+            ("not base64!", None, "not valid base64"),
+            (public, None, "which is a public key"),
+            (base64.b64encode(b"x" * 10).decode(), None, "decodes to 10 bytes"),
+            (private, self.root / "missing.pub", "Commit config/release-signing.pub"),
+            (private, other_public, "does not match"),
+        )
+        for secret, public_path, message in cases:
+            with self.subTest(message=message):
+                result = self.run_check(secret, public_path)
+                self.assertEqual(result.returncode, 1)
+                self.assertIn(message, result.stderr)
+                self.assertNotIn(private, result.stdout + result.stderr)
+        result = self.run_check(private + "\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("configured and match", result.stdout)
+        self.assertNotIn(private, result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
