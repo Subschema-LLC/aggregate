@@ -1,2 +1,33 @@
-.settings-page .account-password-form { max-width: 32rem; }
-.settings-page .account-card + .account-card { border-top: 1px solid var(--app-brand-border); margin-top: 1.5rem; padding-top: 1.5rem; }
+/* Users Management Styles */
+.settings-page .account-password-form {
+    max-width: 32rem;
+}
+
+.settings-page .account-card {
+    background-color: var(--app-brand-surface);
+    border: 1px solid var(--app-brand-border);
+    border-radius: var(--bulma-control-radius);
+    margin-bottom: 1rem;
+    padding: 1rem 1.25rem;
+    transition: border-color 0.15s ease;
+}
+
+.settings-page .account-card summary {
+    align-items: center;
+    cursor: pointer;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    justify-content: space-between;
+    list-style: none;
+    user-select: none;
+}
+
+.settings-page .account-card summary::-webkit-details-marker {
+    display: none;
+}
+
+.settings-page .account-card + .account-card {
+    border-top: 1px solid var(--app-brand-border);
+    margin-top: 1rem;
+}

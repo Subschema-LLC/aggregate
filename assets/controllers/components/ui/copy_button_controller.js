@@ -16,6 +16,10 @@ export default class extends Controller {
             if (!clipboard?.writeText) throw new Error('Clipboard unavailable');
             await clipboard.writeText('value' in source ? source.value : source.textContent);
             feedback.textContent = this.successValue;
+            this.element?.classList?.add?.('is-success');
+            if (this.element?.classList?.remove) {
+                setTimeout(() => this.element?.classList?.remove?.('is-success'), 2000);
+            }
         } catch (_) {
             if (typeof source.select === 'function') {
                 source.select();

@@ -14,6 +14,7 @@ final class DropInScripts
         private readonly string $projectDir = __DIR__.'/../..',
         private readonly ?TagManagerSettings $tags = null,
         private readonly ?SiteScriptConfig $sites = null,
+        private readonly ?StandaloneConsentSettings $standalone = null,
     ) {
     }
 
@@ -24,11 +25,14 @@ final class DropInScripts
             && is_string($site['name'] ?? null) && is_string($site['domain'] ?? null)));
     }
 
-    public function snippet(string $token, bool $withTags = false, string $format = 'window'): string
+    public function snippet(string $token, bool $withTags = false, string $format = 'window', string $consentOption = 'builtin'): string
     {
         $this->assertWebsite($token);
         if (!in_array($format, ['window', 'query'], true)) {
             throw new \InvalidArgumentException('Choose window configuration or query parameters.');
+        }
+        if (!in_array($consentOption, ['builtin', 'standalone', 'external'], true)) {
+            throw new \InvalidArgumentException('Choose built-in, standalone, or external consent controls.');
         }
         $host = $this->host();
         $script = '';
@@ -39,7 +43,9 @@ final class DropInScripts
         }
         $siteId = SiteScriptConfig::idForToken($token);
         $urls = [];
-        if ($this->sites === null || $this->sites->consent($siteId)['enabled']) {
+        if ($consentOption === 'standalone') {
+            $urls[] = $host.'/standalone-cmp/sites/'.$siteId.'/consent.js?min=1';
+        } elseif ($consentOption === 'builtin' && ($this->sites === null || $this->sites->consent($siteId)['enabled'])) {
             $urls[] = $host.'/cmp-lite/sites/'.$siteId.'/consent.js?min=1';
         }
         if ($withTags) {
@@ -137,6 +143,51 @@ final class DropInScripts
             $declaration => 'var consentConfig = '.$configuration.';',
             $stylesDeclaration => 'var consentStyles = '.$this->json($styles).';',
         ]), 'minified' => false];
+    }
+
+    /** Independent runtime, embedded styles and an explicit Aggregate integration adapter.
+     * @return array{content: string, minified: bool}
+     */
+    public function standaloneConsentScript(bool $minified, string $siteId): array
+    {
+        $this->config->assertHealthy();
+        $configuration = $this->standalone?->browserConfig($siteId)
+            ?? throw new \RuntimeException('Standalone consent settings are unavailable.');
+        $configuration['aggregateNamespace'] = $this->namespace();
+        $directory = $this->projectDir.'/micro-consent-dropins';
+        $source = @file_get_contents($directory.'/js/consent-ui.js');
+        $adapter = @file_get_contents($directory.'/js/aggregate-consent.js');
+        $styles = @file_get_contents($directory.'/css/consent-ui.css');
+        $declaration = 'var microConsentStyles = null;';
+        if (!is_string($source) || substr_count($source, $declaration) !== 1
+            || !is_string($adapter) || trim($adapter) === '' || !is_string($styles) || trim($styles) === '') {
+            throw new \RuntimeException('Standalone consent sources are unavailable.');
+        }
+        $json = $this->json($configuration);
+        if ($minified) {
+            $build = $this->projectDir.'/var/browser';
+            try {
+                $manifest = json_decode((string) @file_get_contents($build.'/standalone-consent-manifest.json'), true, flags: JSON_THROW_ON_ERROR);
+                $template = @file_get_contents($build.'/standalone-consent.template.min.js');
+                if (is_array($manifest) && ($manifest['format'] ?? null) === 1 && is_string($template)
+                    && ($manifest['sourceSha256'] ?? null) === hash('sha256', $source)
+                    && ($manifest['adapterSha256'] ?? null) === hash('sha256', $adapter)
+                    && ($manifest['stylesheetSha256'] ?? null) === hash('sha256', $styles)
+                    && ($manifest['templateSha256'] ?? null) === hash('sha256', $template)
+                    && str_contains($template, '__MICRO_CONSENT_CONFIG__') && str_contains($template, '__MICRO_CONSENT_STYLES__')) {
+                    return ['content' => strtr($template, [
+                        '__MICRO_CONSENT_CONFIG__' => $json,
+                        '__MICRO_CONSENT_STYLES__' => $this->json($styles),
+                    ]), 'minified' => true];
+                }
+            } catch (\Throwable) {
+                // A build is optional; stale or incomplete builds use current source.
+            }
+        }
+
+        return ['content' => 'window.MicroConsentConfig = '.$json.";\n"
+            .str_replace($declaration, 'var microConsentStyles = '.$this->json($styles).';', $source)
+            ."\n".$adapter, 'minified' => false];
     }
 
     private function namespace(): string

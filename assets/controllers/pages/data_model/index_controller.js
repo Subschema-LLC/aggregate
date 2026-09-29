@@ -42,4 +42,29 @@ export default class extends Controller {
         const row = event.currentTarget.closest('[data-property-row]');
         if (row) row.querySelector('[data-property-label]').textContent = event.currentTarget.value || 'New property';
     }
+    expandAllProperties() {
+        this.propertyRowsTarget.querySelectorAll('[data-property-row]').forEach(row => {
+            row.open = true;
+        });
+    }
+
+    collapseAllProperties() {
+        this.propertyRowsTarget.querySelectorAll('[data-property-row]').forEach(row => {
+            row.open = false;
+        });
+    }
+
+    filterProperties(event) {
+        const query = event.currentTarget.value.trim().toLowerCase();
+        const rows = this.propertyRowsTarget.querySelectorAll('[data-property-row]');
+        rows.forEach(row => {
+            const label = (row.querySelector('[data-property-label]')?.textContent || '').toLowerCase();
+            const inputs = Array.from(row.querySelectorAll('input, select')).map(i => i.value.toLowerCase()).join(' ');
+            const match = !query || label.includes(query) || inputs.includes(query);
+            row.hidden = !match;
+            if (match && query) {
+                row.open = true;
+            }
+        });
+    }
 }

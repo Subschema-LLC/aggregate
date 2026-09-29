@@ -13,6 +13,7 @@ needed when a registration's domain rules change.
 - [JavaScript integration](#javascript-integration)
 - [Custom event tracking](#custom-event-tracking)
 - [Page depth and single-page apps](#page-depth-and-single-page-apps)
+- [Strict collection profile](#strict-collection-profile)
 - [UTM and custom data collection](#utm-and-custom-data-collection)
 - [Health and ingestion checks](#health-and-ingestion-checks)
 - [Google Tag Manager](#google-tag-manager-gtm-integration)
@@ -128,6 +129,26 @@ enable a server-disabled counter, switch the server-selected method or remove
 server exclusions. Static/CDN copies must supply these same effective controls
 in `window.Aggregate.customData` before loading; keep them synchronized with
 server settings. The server independently enforces ingestion permissions.
+
+## Strict collection profile
+
+When the server's `collection_profile` is `strict`, the served `aggregate.js` sends only the page path, event name and goal:
+
+```json
+{"eventName": "view", "pagePath": "/pricing", "websiteToken": "REPLACE_WITH_PUBLIC_WEBSITE_TOKEN"}
+```
+
+`Aggregate.emit(name, properties, goal)` still works, but `properties` are not sent, and `setConsent()` changes nothing. The tracker does not read screen size, the referrer or the query string, and does not read, write or remove cookies or Web Storage. The server enforces the same limits for any client, including direct API requests. See the [privacy guide](PRIVACY-COMPLIANCE.md#strict-collection-profile).
+
+A static or CDN copy has no injected profile. Opt it into strict before it loads, in any of these ways:
+
+```html
+<script src="https://static.example.com/aggregate.js" data-endpoint="https://analytics.example.com/api/receive" data-website-token="REPLACE_WITH_PUBLIC_WEBSITE_TOKEN" data-collection-profile="strict" async></script>
+<!-- or, before the script loads -->
+<script>window.Aggregate = {endpoint: 'https://analytics.example.com/api/receive', websiteToken: 'REPLACE_WITH_PUBLIC_WEBSITE_TOKEN', collectionProfile: 'strict'};</script>
+```
+
+`Aggregate.configure({collectionProfile: 'strict'})` switches later events to strict. Page configuration can opt into strict but never out of a strict profile served by the installation.
 
 ## UTM and custom data collection
 

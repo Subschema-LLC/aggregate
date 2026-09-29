@@ -85,6 +85,27 @@ custom_data_properties:
   # Money: use integer minor units plus currency. float/double are approximate.
   # Send numeric/boolean values through emit(); query strings are not coerced.
   # See docs/EVENT-EXAMPLES.md for a flat ecommerce recipe and headless export.
+# Declared BI metadata only; publishes codes and text to routine BI users.
+# Do not include personal text. Consent-gated property codes become public to BI
+# users when declared here. Goals keep default labels in config/goals.yaml.
+# See docs/BI-GLOSSARY.md. No environment-variable override; an environment
+# mapping replaces this entire block. Run app:analytics:glossary:sync after edits.
+# bi_glossary:
+#   default_locale: en
+#   locales: [en, es, fr-CA]
+#   values:
+#     device_class:
+#       tablet:
+#         label: { es: 'Tableta' }
+#     event_name:
+#       newsletter_signup:
+#         label: 'Newsletter sign-up'
+#         description: 'Sent after double opt-in confirmation.'
+#     utm_medium:
+#       cpc: { label: 'Paid search', sort: 10 }
+#   columns:
+#     bi_anonymous_events_v1:
+#       event_count: { label: { es: 'Eventos' } }
 query_parameter_mappings:
   utm_source: utm_source
   utm_medium: utm_medium
@@ -120,6 +141,7 @@ environments:
     internal_traffic_value: 'true'
     internal_traffic_cookie_domain: ''
     internal_traffic_share_token: ''
+    collection_profile: standard
     anonymous_tracking_enabled: true
     anonymous_excluded_paths: []
     anonymous_geo_enabled: false
@@ -154,6 +176,7 @@ environments:
     internal_traffic_value: 'true'
     internal_traffic_cookie_domain: ''
     internal_traffic_share_token: ''
+    collection_profile: standard
     anonymous_tracking_enabled: true
     anonymous_excluded_paths: []
     anonymous_geo_enabled: false
@@ -187,6 +210,7 @@ environments:
     internal_traffic_value: 'true'
     internal_traffic_cookie_domain: ''
     internal_traffic_share_token: ''
+    collection_profile: standard
     anonymous_tracking_enabled: true
     anonymous_excluded_paths: []
     anonymous_geo_enabled: false
@@ -289,6 +313,15 @@ environments:
 #   The page has noindex/nofollow/no-store headers. Share tokens are never included
 #   in aggregate.js or downloaded HTML pages. Revocation does not remove markers
 #   already applied or downloaded pages hosted elsewhere.
+#
+# collection_profile (optional, default: standard)
+#   standard or strict. Strict records every event in anonymous mode with only
+#   the sanitized page path, event name and an approved goal. The served tracker
+#   then reads no screen size, referrer or query string and does not read, write
+#   or remove cookies or browser storage; the server discards other submitted
+#   dimensions and skips geography. Other settings stay saved but unused.
+#   Unrecognized values stop ingestion. This limits device access; it does not
+#   by itself make collection consent-exempt. See docs/PRIVACY-COMPLIANCE.md.
 #
 # anonymous_tracking_enabled (optional, default: true)
 #   Administrative collection kill switch. Set to false to reject both anonymous

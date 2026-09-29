@@ -145,6 +145,7 @@ cp config/aggregate.yaml.example config/aggregate.yaml
 
 # 4. Run migrations
 php bin/console doctrine:migrations:migrate -n
+php bin/console app:analytics:glossary:sync
 
 # 5. Compile assets
 php bin/console asset-map:compile
@@ -385,7 +386,8 @@ setup; database connectivity/permission errors and malformed application
 configuration now stop the installation check rather than reopening setup.
 Browser setup errors omit internal diagnostics. For migration failures, run
 `php bin/console doctrine:migrations:migrate` from the server; after successful
-migrations, use `php bin/console app:install` to create the administrator.
+migrations, run `php bin/console app:analytics:glossary:sync`, then use
+`php bin/console app:install` to create the administrator.
 
 ### Performance
 
@@ -514,6 +516,12 @@ Add to crontab:
 
 ### Updates
 
+After every migration run, synchronize the declared BI glossary in the same
+environment with `php bin/console app:analytics:glossary:sync`. The command needs
+table read/write privileges but no view-creation privileges. Recheck routine BI
+view grants using the [glossary guide](docs/BI-GLOSSARY.md#view-only-grants).
+
+
 The official repository is [Subschema-LLC/aggregate](https://github.com/Subschema-LLC/aggregate).
 For existing checkouts, update the remote once:
 
@@ -589,6 +597,7 @@ composer install --no-dev --optimize-autoloader
 
 # 5. Run migrations
 php bin/console doctrine:migrations:migrate -n
+php bin/console app:analytics:glossary:sync
 
 # 6. Clear cache
 php bin/console cache:clear --env=prod

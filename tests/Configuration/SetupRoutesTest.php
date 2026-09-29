@@ -81,7 +81,7 @@ final class SetupRoutesTest extends TestCase
             if ($role !== null) {
                 $browser->loginUser(SetupRoutesUserProvider::user($role));
             }
-            foreach (['/dashboard/setup', '/dashboard/setup/download/consent', '/dashboard/setup/download/tags', '/dashboard/tag-manager'] as $path) {
+            foreach (['/dashboard/setup', '/dashboard/setup/download/consent', '/dashboard/setup/download/tags', '/dashboard/tag-manager', '/dashboard/setup/download/standalone-consent', '/dashboard/setup/standalone/'.SiteScriptConfig::idForToken('public-site-token')] as $path) {
                 $browser->request('GET', $path);
                 self::assertSame($role === null ? 302 : 403, $browser->getResponse()->getStatusCode(), $path);
             }
@@ -279,6 +279,75 @@ final class SetupRoutesTest extends TestCase
         self::assertTrue($browser->getResponse()->headers->hasCacheControlDirective('no-store'));
         $browser->request('GET', '/dashboard/setup/download/consent', ['website' => 'unregistered-token']);
         self::assertSame(400, $browser->getResponse()->getStatusCode());
+    }
+
+    public function testStandaloneSelectionAndSaveRemainIndependentOfBuiltInSettings(): void
+    {
+        $browser = $this->browser('ROLE_ADMIN');
+        $site = SiteScriptConfig::idForToken('public-site-token');
+        $file = $this->directory.'/config/tag-manager/sites/'.$site.'.yaml';
+        $before = Yaml::parseFile($file);
+        $browser->request('GET', '/dashboard/setup', ['step' => '3', 'website' => 'public-site-token', 'consent_option' => 'standalone']);
+        self::assertSame(200, $browser->getResponse()->getStatusCode());
+        self::assertStringContainsString('/standalone-cmp/sites/'.$site.'/consent.js', (string) $browser->getResponse()->getContent());
+        self::assertStringNotContainsString('/cmp-lite/sites/', (string) $browser->getResponse()->getContent());
+        $path = '/dashboard/setup/standalone/'.$site;
+        $browser->request('POST', $path, ['_token' => 'invalid', 'yaml' => 'standalone_consent: {}']);
+        self::assertSame(403, $browser->getResponse()->getStatusCode());
+        self::assertSame($before, Yaml::parseFile($file));
+        $crawler = $browser->request('GET', $path);
+        self::assertSame(200, $browser->getResponse()->getStatusCode());
+        self::assertStringContainsString('not legal advice', (string) $browser->getResponse()->getContent());
+        $csrf = $crawler->filter('input[name="_token"]')->attr('value');
+        $browser->request('POST', $path, ['_token' => $csrf, 'yaml' => "standalone_consent:\n  respect_gpc: 'false'\n"]);
+        self::assertSame(422, $browser->getResponse()->getStatusCode());
+        self::assertStringContainsString('standalone_consent.respect_gpc', (string) $browser->getResponse()->getContent());
+        self::assertSame($before, Yaml::parseFile($file));
+        $browser->request('POST', $path, ['_token' => $csrf, 'yaml' => "standalone_consent:\n  name: Independent choices\n  formspree_endpoint: https://formspree.io/f/example\n"]);
+        self::assertSame(302, $browser->getResponse()->getStatusCode());
+        $after = Yaml::parseFile($file);
+        self::assertSame('Independent choices', $after['standalone_consent']['name']);
+        unset($after['standalone_consent']);
+        self::assertSame($before, $after);
+        foreach (['standalone-consent', 'standalone-settings'] as $kind) {
+            $browser->request('GET', '/dashboard/setup/download/'.$kind, ['website' => 'public-site-token']);
+            self::assertSame(200, $browser->getResponse()->getStatusCode());
+            self::assertStringContainsString('Independent choices', (string) $browser->getResponse()->getContent());
+            self::assertStringNotContainsString('private-site-setting', (string) $browser->getResponse()->getContent());
+        }
+        $browser->request('GET', '/dashboard/setup/download/snippet', ['website' => 'public-site-token', 'consent_option' => 'external']);
+        self::assertStringNotContainsString('/consent.js', (string) $browser->getResponse()->getContent());
+        $this->assertNoDatabaseConnection();
+    }
+
+    #[DataProvider('dashboardModes')]
+    public function testStandalonePublicScriptAndFailureIsolation(bool $dashboard): void
+    {
+        $browser = $this->browser(dashboard: $dashboard);
+        $site = SiteScriptConfig::idForToken('public-site-token');
+        $path = '/standalone-cmp/sites/'.$site.'/consent.js';
+        $browser->request('GET', $path);
+        self::assertSame(200, $browser->getResponse()->getStatusCode());
+        self::assertFalse($browser->getResponse()->headers->has('Set-Cookie'));
+        self::assertStringContainsString('micro_consent_v2:'.$site, (string) $browser->getResponse()->getContent());
+        $file = $this->directory.'/config/tag-manager/sites/'.$site.'.yaml';
+        $settings = Yaml::parseFile($file);
+        $settings['standalone_consent'] = ['respect_gpc' => 'false'];
+        file_put_contents($file, Yaml::dump($settings, 8));
+        $browser->request('GET', $path);
+        self::assertSame(503, $browser->getResponse()->getStatusCode());
+        self::assertTrue($browser->getResponse()->headers->hasCacheControlDirective('no-store'));
+        $browser->request('GET', '/cmp-lite/sites/'.$site.'/consent.js');
+        self::assertSame(200, $browser->getResponse()->getStatusCode(), 'Invalid standalone settings never break the simple banner.');
+        $browser->request('GET', '/aggregate.js');
+        self::assertSame(200, $browser->getResponse()->getStatusCode(), 'The tracker never reads standalone settings.');
+        $browser->request('GET', '/standalone-cmp/sites/'.str_repeat('a', 24).'/consent.js');
+        self::assertSame(404, $browser->getResponse()->getStatusCode());
+        if (!$dashboard) {
+            $browser->request('GET', '/dashboard/setup/standalone/'.$site);
+            self::assertSame(404, $browser->getResponse()->getStatusCode());
+        }
+        $this->assertNoDatabaseConnection();
     }
 
     private function browser(?string $role = null, bool $dashboard = true): KernelBrowser

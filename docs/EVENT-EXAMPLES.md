@@ -43,6 +43,12 @@ depth is also omitted. The server supplies timestamps and optional geography.
 Goals have their own allowlist and are omitted. Kill switches and path exclusions
 still apply.
 
+When the [strict collection profile](PRIVACY-COMPLIANCE.md#strict-collection-profile)
+is active, the complete bundle begins with `examples.strict.payload`, containing
+only `websiteToken`, `eventName` and `pagePath`, and a note that the server keeps
+nothing else. The anonymous and enhanced examples remain for reference; the page
+shows a matching notice. `--mode=anonymous` and `--mode=enhanced` are unchanged.
+
 ## A flat ecommerce starting point
 
 The UI's **Ecommerce recipe** and `--example=ecommerce` provide a proposed model

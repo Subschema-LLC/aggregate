@@ -29,6 +29,7 @@ class Kernel extends BaseKernel
             'App\\Controller\\BrowserAssetsController',
             'App\\Controller\\DataLifecycleController',
             'App\\Controller\\DataModelController',
+            'App\\Controller\\BiGlossaryController',
             'App\\Controller\\EventExamplesController',
             'App\\Controller\\FeatureFlagsController',
             'App\\Controller\\InternalTrafficController',

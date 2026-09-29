@@ -1,6 +1,6 @@
 # Setup and website drop-ins
 
-[Configuration](CONFIGURATION.md) · [Tracking](TRACKING.md) · [Tag manager](TAG-MANAGER.md) · [Privacy](PRIVACY-COMPLIANCE.md)
+[Configuration](CONFIGURATION.md) · [Tracking](TRACKING.md) · [Tag manager](TAG-MANAGER.md) · [Privacy](PRIVACY-COMPLIANCE.md) · [Regional consent examples](CONSENT-REGIONS.md)
 
 Administrators can open **Setup** for four steps: select a registered website,
 review collection controls, install scripts, and verify behavior. **Show me this
@@ -19,12 +19,29 @@ the code on a real website.
 The **Install scripts** step offers:
 
 - An HTML snippet for the selected website and installation method.
-- A configured consent manager JavaScript file, readable or compact when a
-  current build exists.
+- A configured JavaScript file for the selected consent option, readable or compact
+  when a current build exists; the standalone option also offers its YAML settings.
 - A small tag loader JavaScript file that retrieves the selected website's
   current `/tms-lite/sites/<site-id>/lib.js` from the installation.
 
-**Setup** and **Websites** offer the same three installation choices:
+In **Setup → Install scripts**, choose consent controls separately from the
+tracker installation method:
+
+| Consent option | Behavior |
+| --- | --- |
+| Simple built-in banner | Existing self-hosted `AggregateConsent` category chooser, when enabled for the site; no external request forms |
+| Standalone banner + optional Formspree requests | Independent `MicroConsent` banner, separate settings, GPC handling and optional user-submitted request form |
+| My own consent manager | Omit a supplied banner and connect the existing CMP yourself |
+
+The standalone choice opens **Configure standalone option** at
+`/dashboard/setup/standalone/<site-id>` and offers script/YAML downloads. Saving
+that mapping preserves built-in CMP and tag settings. Choose one banner per
+page. Review the [regional examples](CONSENT-REGIONS.md); they are engineering
+examples, not legal advice or automatic policy selection.
+
+**Setup** and **Websites** offer these tracker installation methods. The table
+below describes the existing built-in consent selection; Setup can substitute the
+standalone bundle or omit the CMP when another manager is selected:
 
 | Method | Generated installation code |
 | --- | --- |
@@ -43,6 +60,13 @@ Paste the snippet once into the website's `<head>`, retaining the script order
 and `defer` attributes. Remove duplicate tracker installations. The snippet
 contains only public website configuration and URLs, never administrator credentials,
 organization sharing tokens, or unrelated settings.
+
+The standalone hosted URL is
+`/standalone-cmp/sites/<site-id>/consent.js?min=1`. It includes the independent UI,
+CSS and Aggregate bridge, using that site's `standalone_consent` mapping. Its
+configured download is also self-contained; deploy it again after settings
+changes. The static core and optional bridges can be hosted independently of the
+server using [their installation guide](../micro-consent-dropins/README.md).
 
 The hosted `/cmp-lite/sites/<site-id>/consent.js` URL receives the saved namespace,
 website name, and that website's enabled tag consent categories each time it is
@@ -69,6 +93,27 @@ The wizard adds no mandatory UI dependency. Register a website with
 to list its script instance ID and YAML path. Configure its tags/CMP in that file
 and its allowed domains in `config/websites.yaml`. Choose one installation method
 below, substituting your public URL, namespace, website token, and `SITE_ID`.
+
+### Gate all initial measurement with the standalone option
+
+Use the complete per-site examples in the [regional guide](CONSENT-REGIONS.md).
+They disable the built-in CMP, enable the tag manager, and configure its tracker
+script with `consent: analytics`. Load the standalone bundle before the container:
+
+```html
+<script src="https://analytics.example.com/standalone-cmp/sites/SITE_ID/consent.js?min=1" defer referrerpolicy="no-referrer"></script>
+<script src="https://analytics.example.com/tms-lite/sites/SITE_ID/lib.js?min=1" defer referrerpolicy="no-referrer"></script>
+```
+
+Remove direct tracker installations and duplicates in other tag managers.
+The gated tracker remains unloaded until analytics is accepted. Once loaded,
+withdrawal removes identifiers but can resume anonymous events; reload the page
+after withdrawal so the denied tag stays unloaded. This is a script-load gate,
+not a new SDK all-collection stop API. Review provider-specific cleanup too.
+
+The direct-installation examples below allow coarse anonymous measurement before
+an enhanced-analytics choice. Use them only when that behavior matches your
+reviewed policy and notice.
 
 ### Direct tracker with window configuration
 
@@ -137,7 +182,7 @@ generated snippet does not invent or weaken a policy.
 
 ## Consent manager behavior
 
-The supplied CMP is a small, self-hosted category chooser. It makes no network
+The built-in CMP is a small, self-hosted category chooser. It makes no network
 submissions and does not use Formspree. It always includes **Enhanced analytics**
 and lists the other consent categories used by that website's enabled tags when
 its tag manager is enabled. Category names come from the same per-site YAML;
@@ -206,10 +251,32 @@ a tag category prevents future tag actions for that category; JavaScript already
 may keep running until the page is reloaded, and third-party cookies or data are
 not erased. Tags marked `none` remain eligible after reload.
 
-This CMP does not implement Google Consent Mode, IAB TCF, provider-level consent
+The built-in CMP does not implement Google Consent Mode, IAB TCF, provider-level consent
 records, or rights-request workflows. Its presence is not a compliance
 certification. The operator must supply appropriate disclosures and operational
 procedures for the actual deployment.
+
+## Standalone consent behavior
+
+The optional independent banner has its own `MicroConsent` API and
+`micro_consent_v2:<site-id>` preference record. Optional categories default denied;
+GPC, when respected and active, forces marketing off and a do-not-sell choice.
+It never grants analytics or controls an unconnected provider. A configurable
+1–365-day lifetime (default 180) is an operational review interval, not a legal
+consent rule; a changed revision requires a fresh choice.
+
+The endpoint and download include an optional bridge to the tracker/tag manager.
+Google Consent Mode is a separate signal-only adapter in the standalone source
+directory: it does not load Google and does not block provider requests by itself.
+The original built-in CMP and its stored choices remain separate.
+
+Formspree forms are disabled when the endpoint is blank. Enabling an exact
+`https://formspree.io/f/ID` endpoint sends a visitor's email, request type and
+message to that third party only when they submit. Explain that recipient and
+its handling of connection metadata. Submission does not verify identity,
+fulfill a rights request or erase event history. Browser choices work without
+sending a request. See [standalone setup and limits](../micro-consent-dropins/README.md)
+and the [settings reference](CONFIGURATION.md#standalone-consent-settings).
 
 ## Verify before collecting real traffic
 

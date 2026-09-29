@@ -78,10 +78,18 @@
         {% endif %}
         <p class="help">The token is stored in YAML as <code>internal_traffic_share_token</code>. Rotation or revocation stops old links; it does not remove existing markers or downloaded pages. A downloaded page contains no token and must be protected separately wherever it is hosted.</p>
     </section>
-    <div class="content">
-        <p>Matching markers set <code>{{ { (settings.internal_traffic_name): true }|json_encode }}</code> in each event’s existing <code>custom_data</code> JSON. The JSON property name matches the saved cookie or local storage name. In raw-event BI reports, filter out rows where <code>custom_data[{{ settings.internal_traffic_name|json_encode }}] = true</code>. A missing key means unmarked traffic. Existing grouped BI views and archives do not retain this JSON field.</p>
+    <details class="box mt-5">
+        <summary class="has-text-weight-semibold">
+            <span class="icon-text">
+                <span class="icon has-text-info"><i class="fas fa-circle-question" aria-hidden="true"></i></span>
+                <span>How internal traffic filtering works in BI & reporting</span>
+            </span>
+        </summary>
+        <div class="content mt-3">
+            <p>Matching markers set <code>{{ { (settings.internal_traffic_name): true }|json_encode }}</code> in each event’s existing <code>custom_data</code> JSON. The JSON property name matches the saved cookie or local storage name. In raw-event BI reports, filter out rows where <code>custom_data[{{ settings.internal_traffic_name|json_encode }}] = true</code>. A missing key means unmarked traffic. Existing grouped BI views and archives do not retain this JSON field.</p>
         <p>To expose the marker as a reporting column, add its configured name in Data model and regenerate the <code>analytics_custom_*_v1</code> views. These views contain individual retained raw rows in both privacy modes and need separate access approval. Archived counts cannot recover this marker after raw rows are deleted.</p>
         <p>This flag identifies your organization’s traffic. The <code>internal</code> referrer category describes navigation within the website and is independent of this marker. If you rename the marker, historical events keep their original JSON key; update report filters for both names.</p>
         <p>Use a shared team value, such as <code>orgInternalTraffic=true</code>, on every browser and device you want to mark. The marker is a reporting hint and does not change tracking consent or grant account access.</p>
-    </div>
+        </div>
+    </details>
 {% endblock %}

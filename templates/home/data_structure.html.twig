@@ -26,8 +26,9 @@
             <p>
                 Routine BI credentials should receive <strong>SELECT access only</strong> to
                 <code>bi_anonymous_events_v1</code>, <code>bi_anonymous_goals_v1</code>, and, when needed,
-                <code>bi_anonymous_geo_events_v1</code>. Do not grant routine reporting users access
-                to <code>events</code> or the other application tables.
+                <code>bi_anonymous_geo_events_v1</code>, plus the declared <code>bi_dim_*</code> and
+                <code>bi_glossary_*</code> metadata views needed for labels. Do not grant routine reporting
+                users access to <code>events</code>, <code>analytics_glossary</code>, or other application tables.
             </p>
         </div>
 
@@ -35,27 +36,46 @@
             <a class="button is-small is-light" href="#anonymous-events-view">Hourly event view</a>
             <a class="button is-small is-light" href="#anonymous-goals-view">Daily goal view</a>
             <a class="button is-small is-light" href="#anonymous-geography-view">Daily geography view</a>
+            <a class="button is-small is-light" href="#bi-glossary">BI labels and definitions</a>
             <a class="button is-small is-light" href="#custom-reporting-views">Custom reporting views</a>
             <a class="button is-small is-light" href="#private-source-tables">Private source tables</a>
             <a class="button is-small is-light" href="#query-examples">Query examples</a>
             <a class="button is-small is-light" href="#connection-checklist">Connection checklist</a>
         </nav>
 
-        <section id="anonymous-events-view" class="box">
-            <div class="level mb-4">
-                <div class="level-left">
-                    <div>
-                        <p class="heading">Supported BI contract</p>
-                        <h2 id="anonymous-events-view-heading" class="title is-3"><code>bi_<wbr>anonymous_<wbr>events_<wbr>v1</code></h2>
-                    </div>
-                </div>
-                <div class="level-right">
-                    <div class="tags">
-                        <span class="tag is-primary is-light">Anonymous only</span>
-                        <span class="tag is-light">Hourly grain</span>
-                    </div>
+        <div class="data-structure-toolbar" data-controller="pages--home--data-structure">
+            <div class="data-structure-search-box">
+                <span class="icon is-small has-text-grey" aria-hidden="true"><i class="fas fa-search"></i></span>
+                <input type="search" class="input is-small data-structure-search-input" placeholder="Filter columns, data types, views, or queries..." aria-label="Filter data visualization reference" data-pages--home--data-structure-target="input" data-action="input->pages--home--data-structure#filter">
+                <button type="button" class="button is-small is-light" data-action="pages--home--data-structure#clear" title="Clear filter">Clear</button>
+            </div>
+            <div class="data-structure-controls">
+                <span class="data-structure-counter" data-pages--home--data-structure-target="counter">Showing all 8 sections</span>
+                <div class="buttons are-small mb-0">
+                    <button type="button" class="button is-light" data-action="pages--home--data-structure#expandAll">
+                        <span class="icon"><i class="fas fa-angles-down" aria-hidden="true"></i></span>
+                        <span>Expand all</span>
+                    </button>
+                    <button type="button" class="button is-light" data-action="pages--home--data-structure#collapseAll">
+                        <span class="icon"><i class="fas fa-angles-up" aria-hidden="true"></i></span>
+                        <span>Collapse all</span>
+                    </button>
                 </div>
             </div>
+        </div>
+
+        <details id="anonymous-events-view" class="box data-structure-section" open>
+            <summary>
+                <div>
+                    <p class="heading mb-1">Supported BI contract</p>
+                    <h2 id="anonymous-events-view-heading" class="title is-4 mb-0"><code>bi_<wbr>anonymous_<wbr>events_<wbr>v1</code></h2>
+                </div>
+                <div class="tags mb-0">
+                    <span class="tag is-primary is-light">Anonymous only</span>
+                    <span class="tag is-light">Hourly grain</span>
+                </div>
+            </summary>
+            <div class="data-structure-content">
 
             <div class="content">
                 <p>
@@ -126,23 +146,21 @@
                 This totals already-released cells; it does not re-run suppression at the broader grain or
                 recover hidden cells.
             </div>
-        </section>
-
-        <section id="anonymous-goals-view" class="box mt-6">
-            <div class="level mb-4">
-                <div class="level-left">
-                    <div>
-                        <p class="heading">Conversion BI contract</p>
-                        <h2 id="anonymous-goals-view-heading" class="title is-3"><code>bi_<wbr>anonymous_<wbr>goals_<wbr>v1</code></h2>
-                    </div>
-                </div>
-                <div class="level-right">
-                    <div class="tags">
-                        <span class="tag is-primary is-light">Anonymous only</span>
-                        <span class="tag is-light">Daily grain</span>
-                    </div>
-                </div>
             </div>
+        </details>
+
+        <details id="anonymous-goals-view" class="box data-structure-section" open>
+            <summary>
+                <div>
+                    <p class="heading mb-1">Conversion BI contract</p>
+                    <h2 id="anonymous-goals-view-heading" class="title is-4 mb-0"><code>bi_<wbr>anonymous_<wbr>goals_<wbr>v1</code></h2>
+                </div>
+                <div class="tags mb-0">
+                    <span class="tag is-primary is-light">Anonymous only</span>
+                    <span class="tag is-light">Daily grain</span>
+                </div>
+            </summary>
+            <div class="data-structure-content">
 
             <div class="content">
                 <p>
@@ -194,23 +212,21 @@
                 and independent suppression. A configured goal can still be sensitive in context, and a
                 generic rejection warning is an allowlist result—not sensitive-data detection.
             </div>
-        </section>
-
-        <section id="anonymous-geography-view" class="box mt-6">
-            <div class="level mb-4">
-                <div class="level-left">
-                    <div>
-                        <p class="heading">Optional BI contract</p>
-                        <h2 id="anonymous-geography-view-heading" class="title is-3"><code>bi_<wbr>anonymous_<wbr>geo_<wbr>events_<wbr>v1</code></h2>
-                    </div>
-                </div>
-                <div class="level-right">
-                    <div class="tags">
-                        <span class="tag is-primary is-light">Anonymous only</span>
-                        <span class="tag is-light">Daily grain</span>
-                    </div>
-                </div>
             </div>
+        </details>
+
+        <details id="anonymous-geography-view" class="box data-structure-section" open>
+            <summary>
+                <div>
+                    <p class="heading mb-1">Optional BI contract</p>
+                    <h2 id="anonymous-geography-view-heading" class="title is-4 mb-0"><code>bi_<wbr>anonymous_<wbr>geo_<wbr>events_<wbr>v1</code></h2>
+                </div>
+                <div class="tags mb-0">
+                    <span class="tag is-primary is-light">Anonymous only</span>
+                    <span class="tag is-light">Daily grain</span>
+                </div>
+            </summary>
+            <div class="data-structure-content">
 
             <div class="content">
                 <p>
@@ -271,10 +287,88 @@
                 area when secondary suppression is needed. Events without a retained geography value are
                 excluded, so geography totals will not match the hourly view.
             </div>
-        </section>
+            </div>
+        </details>
 
-        <section id="custom-reporting-views" class="box mt-6">
-            <h2 class="title is-3">Custom reporting views</h2>
+        <details id="bi-glossary" class="box data-structure-section" open>
+            <summary>
+                <div>
+                    <p class="heading mb-1">Metadata reference</p>
+                    <h2 id="bi-glossary-heading" class="title is-4 mb-0">BI labels and definitions</h2>
+                </div>
+                <span class="tag is-info is-light mb-0">8 dimension views</span>
+            </summary>
+            <div class="data-structure-content">
+            <div class="content">
+                <p>Join declared metadata to reporting codes to display labels such as Tablet or Germany.
+                    These views contain configuration and built-in definitions, never observed traffic or counts.
+                    Administrators publish them with <code>app:analytics:glossary:sync</code> after migrations
+                    or metadata changes, or save through Reporting → BI glossary.</p>
+            </div>
+            <div class="table-container" role="region" aria-labelledby="bi-glossary-heading" tabindex="0">
+                <table class="table is-fullwidth is-striped">
+                    <caption class="is-sr-only">Approved glossary view contracts</caption>
+                    <thead><tr><th scope="col">View</th><th scope="col">Join key and purpose</th></tr></thead>
+                    <tbody>
+                        <tr><th scope="row"><code>bi_dim_event_name_v1</code></th><td><code>event_name</code>; declared event labels.</td></tr>
+                        <tr><th scope="row"><code>bi_dim_goal_event_v1</code></th><td><code>goal_event</code>; configured goal labels.</td></tr>
+                        <tr><th scope="row"><code>bi_dim_referrer_channel_v1</code></th><td><code>referrer_channel</code>; all built-in channel codes.</td></tr>
+                        <tr><th scope="row"><code>bi_dim_device_class_v1</code></th><td><code>device_class</code>; all five device codes.</td></tr>
+                        <tr><th scope="row"><code>bi_dim_viewport_bucket_v1</code></th><td><code>viewport_bucket</code>; all viewport codes.</td></tr>
+                        <tr><th scope="row"><code>bi_dim_geo_area_v1</code></th><td><code>geo_area</code>; all continents and countries, plus <code>geo_level</code>.</td></tr>
+                        <tr><th scope="row"><code>bi_glossary_values_v1</code></th><td>Filter to one <code>dimension</code> and <code>locale</code>, then join <code>code</code> to the fact's code column.</td></tr>
+                        <tr><th scope="row"><code>bi_glossary_columns_v1</code></th><td>Filter by <code>object_name</code> and <code>locale</code> for column labels and definitions.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="content">
+                <p>The six dimension views have one row per code in the deployment's default locale.
+                    Each uses prefixed fields such as <code>device_class_label</code>,
+                    <code>device_class_group</code>, <code>device_class_description</code>, and
+                    <code>device_class_sort</code>. In Power BI, confirm the automatically detected
+                    many-to-one relationship from the hourly fact's <code>device_class</code> to the
+                    dimension's <code>device_class</code>, then sort the label by its sort field.
+                    In Tableau, relate those same fields and display the label.</p>
+                <p>For translated labels, filter the localized values view to exactly one dimension and
+                    one published locale before joining. Joining all locales multiplies fact rows.
+                    Use this query for a Power Query locale parameter's allowed values:</p>
+                <pre><code>SELECT DISTINCT locale FROM bi_glossary_values_v1 ORDER BY locale;</code></pre>
+                <p>An unpublished locale returns no rows. The default-locale dimension views need no
+                    locale parameter. Fallback is already resolved during sync: <code>label_locale</code>
+                    records its language and <code>is_fallback = 1</code> marks a fallback label.</p>
+                <p>Use a left join and keep the original code when a label is missing. Undeclared event
+                    names, deleted goals, and synthetic <code>country:other</code>/<code>continent:other</code>
+                    pools can have no dimension row. Prefer disabling old goals to deleting their definitions.</p>
+                <pre><code>SELECT f.event_day, f.goal_event,
+       COALESCE(d.goal_event_label, f.goal_event) AS goal_label,
+       f.event_count
+FROM bi_anonymous_goals_v1 f
+LEFT JOIN bi_dim_goal_event_v1 d ON d.goal_event = f.goal_event;</code></pre>
+                <p>Use that native SQL in Power Query, or a Left Outer merge with
+                    <code>if [goal_event_label] = null then [goal_event] else [goal_event_label]</code>.
+                    In Tableau use <code>IFNULL([label], [code])</code> for localized data, with
+                    <code>[code]</code> taken from the fact; for the goal dimension use
+                    <code>IFNULL([goal_event_label], [goal_event])</code>.</p>
+            </div>
+            <div class="notification is-warning is-light mb-0">
+                Labels, descriptions, and declared codes are published to routine BI readers; keep them
+                free of personal or identifying text. Declaring values for consent-gated properties publishes
+                those codes even when their event values remain private. Glossary joins do not restore
+                withheld cells: sums by group still undercount. Column descriptions for private custom views
+                do not grant access to those facts. Keep the hourly, goal, and geography facts separate.
+            </div>
+            </div>
+        </details>
+
+        <details id="custom-reporting-views" class="box data-structure-section" open>
+            <summary>
+                <div>
+                    <p class="heading mb-1">Extended schema</p>
+                    <h2 class="title is-4 mb-0">Custom reporting views</h2>
+                </div>
+                <span class="tag is-link is-light mb-0">3 custom views</span>
+            </summary>
+            <div class="data-structure-content">
             <div class="content">
                 <p>Administrators can define JSON properties and SQL column names in Data model, then regenerate these views for reporting on retained raw events:</p>
                 <ul>
@@ -285,10 +379,18 @@
                 <p>Modeled scalar properties become text columns. Missing values, JSON null, arrays, and objects produce SQL null. These views expose individual rows without suppression and need separately approved raw-data access. They include raw rows already marked as archived while those rows remain retained; archive aggregate cells do not contain the custom properties.</p>
                 <p>The <code>bi_anonymous_*</code> views keep their existing dimensions and disclosure thresholds. Deleting raw events removes their custom properties from reporting, even when archived counts remain available.</p>
             </div>
-        </section>
+            </div>
+        </details>
 
-        <section id="private-source-tables" class="mt-6">
-            <h2 class="title is-3">Private source tables</h2>
+        <details id="private-source-tables" class="box data-structure-section" open>
+            <summary>
+                <div>
+                    <p class="heading mb-1">Underlying schema</p>
+                    <h2 class="title is-4 mb-0">Private source tables</h2>
+                </div>
+                <span class="tag is-danger is-light mb-0">Internal tables</span>
+            </summary>
+            <div class="data-structure-content">
             <div class="notification is-danger is-light">
                 These tables explain how the views are built; they are not the routine BI contract.
                 The private <code>events</code> table contains individual rows and may contain enhanced
@@ -373,10 +475,18 @@
                 friendly names, maintain a controlled token-to-name mapping in the visualization layer or
                 in a separately governed reporting dataset.
             </div>
-        </section>
+            </div>
+        </details>
 
-        <section id="query-examples" class="box mt-6">
-            <h2 class="title is-3">Safe query patterns</h2>
+        <details id="query-examples" class="box data-structure-section" open>
+            <summary>
+                <div>
+                    <p class="heading mb-1">Recipes & Patterns</p>
+                    <h2 class="title is-4 mb-0">Safe query patterns</h2>
+                </div>
+                <span class="tag is-success is-light mb-0">SQL recipes</span>
+            </summary>
+            <div class="data-structure-content">
             <p class="mb-5">
                 Replace the example token with a parameter supplied by your BI tool. These queries select
                 explicit columns and label results as released counts because enhanced events and unreleased
@@ -425,10 +535,18 @@ ORDER BY event_day, geo_area;</code></pre>
                 Use <code>SUM(event_count)</code>, not <code>COUNT(*)</code>. Counting rows counts released
                 grouped cells rather than the events represented by those cells.
             </div>
-        </section>
+            </div>
+        </details>
 
-        <section id="connection-checklist" class="box mt-6">
-            <h2 class="title is-3">Connection checklist</h2>
+        <details id="connection-checklist" class="box data-structure-section" open>
+            <summary>
+                <div>
+                    <p class="heading mb-1">Production checklist</p>
+                    <h2 class="title is-4 mb-0">Connection checklist</h2>
+                </div>
+                <span class="tag is-warning is-light mb-0">Setup guide</span>
+            </summary>
+            <div class="data-structure-content">
 
             <div class="columns">
                 <div class="column">
@@ -475,7 +593,8 @@ ORDER BY event_day, geo_area;</code></pre>
                 released data is legally anonymous. Apply appropriate retention, access controls, and review
                 to the visualization tool and its extracts.
             </div>
-        </section>
+            </div>
+        </details>
 
         <div class="buttons is-centered mt-6">
             <a class="button is-light" href="{{ path('app_how_it_works') }}">
