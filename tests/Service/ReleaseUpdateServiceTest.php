@@ -247,16 +247,60 @@ final class ReleaseUpdateServiceTest extends TestCase
         self::assertStringContainsString('No downgrade', $result['message']);
     }
 
-    public function testAbsentAndMalformedInstalledMetadataNeverRequestGithub(): void
+    public function testMalformedInstalledMetadataNeverRequestsGithub(): void
     {
         $client = new MockHttpClient([]);
         $service = $this->service($client);
         file_put_contents($this->directory.'/release.json', '{broken');
         self::assertSame('error', $service->check()['state']);
         self::assertStringContainsString('Installed release.json is invalid', $service->check()['message']);
-        unlink($this->directory.'/release.json');
-        self::assertSame('unavailable', $service->check()['state']);
         self::assertSame(0, $client->getRequestsCount());
+    }
+
+    public function testInstallationWithoutReleaseMetadataIsOfferedTheLatestRelease(): void
+    {
+        // For example a Plesk Git deployment: no release.json, so the version is unknown.
+        @unlink($this->directory.'/release.json');
+        $client = new MockHttpClient([
+            $this->json([$this->release('2026.09.02', 100)]),
+            $this->json($this->manifest('2026.09.02')),
+        ]);
+
+        $result = $this->service($client)->check();
+
+        self::assertSame('available', $result['state'], $result['message']);
+        self::assertTrue($result['adopting']);
+        self::assertNull($result['current_version']);
+        self::assertNull($result['compare_url']);
+        self::assertSame('2026.09.02', $result['latest_version']);
+        self::assertStringContainsString('has no release.json', $result['message']);
+    }
+
+    public function testConfiguredRepositoryIsQueriedAndItsManifestsMustNameIt(): void
+    {
+        $this->writeInstalled('2026.09.01');
+        $urls = [];
+        $release = $this->release('2026.09.02', 100);
+        $release = json_decode(str_replace('Subschema-LLC\\/aggregate', 'example-org\\/aggregate-fork', json_encode($release, JSON_THROW_ON_ERROR)), true);
+        $manifest = $this->manifest('2026.09.02');
+        $client = new MockHttpClient(function (string $method, string $url) use (&$urls, $release, &$manifest): MockResponse {
+            $urls[] = $url;
+
+            return str_contains($url, '/releases?') ? $this->json([$release]) : $this->json($manifest);
+        });
+        $config = $this->createMock(AggregateConfigLoader::class);
+        $config->method('all')->willReturn(['updates_branch' => 'master', 'updates_repository' => 'example-org/aggregate-fork']);
+        $service = new ReleaseUpdateService(new InstalledRelease($this->directory), $client, $this->cache, $this->clock, new UpdateSettings($config), new FeatureFlags($config));
+
+        $result = $service->check();
+        self::assertStringStartsWith('https://api.github.com/repos/example-org/aggregate-fork/releases', $urls[0]);
+        self::assertSame('error', $result['state'], 'A manifest naming another repository is refused.');
+        self::assertStringContainsString('example-org/aggregate-fork', $result['message']);
+
+        $manifest['repository'] = 'example-org/aggregate-fork';
+        $result = $service->check(true);
+        self::assertSame('available', $result['state'], $result['message']);
+        self::assertStringStartsWith('https://github.com/example-org/aggregate-fork/releases/download/', $result['package_url']);
     }
 
     public function testInvalidBranchAndMalformedConfigAreErrorsBeforeNetworkRequests(): void

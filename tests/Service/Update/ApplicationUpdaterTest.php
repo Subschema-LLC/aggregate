@@ -14,6 +14,8 @@ use App\Service\Update\ApplicationUpdater;
 use App\Service\Update\LocalConfigOverrides;
 use App\Service\Update\MaintenanceMode;
 use App\Service\Update\ReleasePackageInstaller;
+use App\Service\Update\SystemCheck;
+use App\Service\Update\Toolchain;
 use App\Service\Update\UpdateJournal;
 use App\Service\UpdateSettings;
 use Doctrine\DBAL\Connection;
@@ -154,6 +156,59 @@ final class ApplicationUpdaterTest extends TestCase
         $this->updater()->resume($this->record(...));
     }
 
+    public function testInstallationWithoutReleaseMetadataIsAdoptedByItsFirstReleaseUpdate(): void
+    {
+        // A Plesk Git deployment or copied files: no release.json or inventory.
+        unlink($this->project.'/release.json');
+        unlink($this->project.'/release-files.json');
+        [$package, $manifest, $signature] = $this->package('2.0.0');
+
+        $state = $this->updater()->start(['package' => $package, 'manifest' => $manifest, 'signature' => $signature], $this->record(...));
+
+        self::assertSame('handoff', $state['step'], (string) ($state['error'] ?? ''));
+        self::assertSame(['version' => null, 'commit' => null], $state['from']);
+        self::assertStringContainsString('"version": "2.0.0"', $this->read('release.json'));
+        self::assertFileExists($this->project.'/release-files.json');
+        // Without an inventory the differing config default is kept as an override.
+        self::assertStringEndsWith("parameters: { app.goal_events: { operator: {} } }\n", $this->read('config/goals.local.yaml'));
+    }
+
+    public function testSystemCheckExplainsReleaseAndGitRequirements(): void
+    {
+        $checks = array_column($this->updater()->preflight()['checks'], null, 'id');
+
+        self::assertSame('ok', $checks['source']['status']);
+        self::assertStringContainsString('Signed release packages from Subschema-LLC/aggregate, branch master', $checks['source']['detail']);
+        self::assertSame('ok', $checks['signing_key']['status']);
+        self::assertSame('ok', $checks['release_metadata']['status']);
+        self::assertStringContainsString('SQLite', $checks['database']['detail']);
+        self::assertArrayNotHasKey('git', $checks);
+
+        unlink($this->project.'/config/release-signing.pub');
+        unlink($this->project.'/release.json');
+        $checks = array_column($this->updater()->preflight()['checks'], null, 'id');
+        self::assertSame('error', $checks['signing_key']['status']);
+        self::assertSame('warning', $checks['release_metadata']['status']);
+        self::assertStringContainsString('Plesk Git deployment', $checks['release_metadata']['detail']);
+        self::assertContains($checks['signing_key']['detail'], $this->updater()->preflight()['problems']);
+    }
+
+    public function testGitSourceWithoutACheckoutIsAProblemThatPointsToReleasePackages(): void
+    {
+        $preflight = $this->updater(settings: ['updates_source' => 'git'])->preflight();
+        $checks = array_column($preflight['checks'], null, 'id');
+
+        self::assertSame('git', $preflight['installation_type']);
+        self::assertSame('error', $checks['checkout']['status']);
+        self::assertStringContainsString('updates_source: release', $checks['checkout']['detail']);
+        self::assertContains($checks['checkout']['detail'], $preflight['problems']);
+        self::assertArrayNotHasKey('signing_key', $checks);
+
+        $invalid = array_column($this->updater(settings: ['updates_source' => 'zip'])->preflight()['checks'], null, 'id');
+        self::assertSame('error', $invalid['source']['status']);
+        self::assertStringContainsString('updates_source must be auto, git or release', $invalid['source']['detail']);
+    }
+
     public function testServerDatabasesRequireAConfirmedBackup(): void
     {
         $this->connection = DriverManager::getConnection(['driver' => 'pdo_mysql', 'host' => '127.0.0.1', 'dbname' => 'aggregate', 'user' => 'app']);
@@ -263,10 +318,11 @@ final class ApplicationUpdaterTest extends TestCase
         $this->messages[] = [$level, $message];
     }
 
-    private function updater(?MockHttpClient $github = null): ApplicationUpdater
+    /** @param array<string, mixed> $settings */
+    private function updater(?MockHttpClient $github = null, array $settings = []): ApplicationUpdater
     {
         $config = $this->createStub(AggregateConfigLoader::class);
-        $config->method('all')->willReturn([]);
+        $config->method('all')->willReturn($settings);
         $features = new FeatureFlags($config);
         $settings = new UpdateSettings($config);
         $cache = new ArrayAdapter();
@@ -274,18 +330,25 @@ final class ApplicationUpdaterTest extends TestCase
         $installed = new InstalledRelease($this->project);
         $releases = new ReleaseUpdateService($installed, new MockHttpClient([]), $cache, $clock, $settings, $features);
         $overrides = new LocalConfigOverrides($this->project);
+        $journal = new UpdateJournal($this->project);
+        $maintenance = new MaintenanceMode($this->project);
+        $verifier = new ReleasePackageVerifier($config, $settings, $this->project, $features);
+        $updates = new ApplicationUpdateService($this->project, $github ?? new MockHttpClient([]), $cache, $clock, $features, '', $settings, $releases, $overrides);
+        $toolchain = new Toolchain($this->project);
 
         return new ApplicationUpdater(
             $this->project, 'prod', false,
-            new UpdateJournal($this->project),
-            new MaintenanceMode($this->project),
+            $journal,
+            $maintenance,
             new ReleasePackageInstaller($this->project, $overrides),
-            new ReleasePackageVerifier($config, $settings, $this->project, $features),
+            $verifier,
             $releases,
-            new ApplicationUpdateService($this->project, $github ?? new MockHttpClient([]), $cache, $clock, $features, '', $settings, $releases, $overrides),
+            $updates,
             $installed,
             $features,
             $this->connection,
+            new SystemCheck($this->project, $updates, $settings, $installed, $verifier, $journal, $maintenance, $features, $this->connection, $toolchain),
+            $toolchain,
         );
     }
 

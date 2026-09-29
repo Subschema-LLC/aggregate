@@ -69,4 +69,57 @@ final class UpdateSettingsTest extends TestCase
 
         (new UpdateSettings($config))->branch();
     }
+
+    public function testSourceAndRepositoryDefaultsAndValidation(): void
+    {
+        $settings = $this->settings([]);
+        self::assertSame('auto', $settings->source());
+        self::assertSame('Subschema-LLC/aggregate', $settings->repository());
+        self::assertSame('https://github.com/Subschema-LLC/aggregate', $settings->repositoryUrl());
+        self::assertTrue($settings->isOfficialRepository());
+
+        $custom = $this->settings(['updates_source' => 'release', 'updates_repository' => 'example-org/aggregate.fork_1']);
+        self::assertSame('release', $custom->source());
+        self::assertSame('example-org/aggregate.fork_1', $custom->repository());
+        self::assertFalse($custom->isOfficialRepository());
+        self::assertTrue($this->settings(['updates_repository' => 'subschema-llc/Aggregate'])->isOfficialRepository());
+    }
+
+    #[DataProvider('invalidSourcesAndRepositories')]
+    public function testInvalidSourceOrRepositoryIsAnError(string $key, mixed $value): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $settings = $this->settings([$key => $value]);
+        $key === 'updates_source' ? $settings->source() : $settings->repository();
+    }
+
+    public static function invalidSourcesAndRepositories(): iterable
+    {
+        foreach (['', 'zip', 'GIT', null, true, ['git']] as $index => $source) {
+            yield 'source '.$index => ['updates_source', $source];
+        }
+        foreach (['', 'owner', 'owner/', '/repo', 'owner/repo/extra', 'https://github.com/owner/repo', 'owner/repo.git', '-owner/repo', 'owner-/repo', 'ow--ner/repo', 'owner/..', 'owner/re po', null, ['owner/repo']] as $index => $repository) {
+            yield 'repository '.$index => ['updates_repository', $repository];
+        }
+    }
+
+    public function testSaveWritesOnlyValidatedSourceAndBranch(): void
+    {
+        $config = $this->createMock(AggregateConfigLoader::class);
+        $config->method('all')->willReturn([]);
+        $config->expects(self::once())->method('setMany')->with(['updates_source' => 'git', 'updates_branch' => 'releases/stable']);
+        (new UpdateSettings($config))->save('git', 'releases/stable');
+
+        $this->expectException(\InvalidArgumentException::class);
+        (new UpdateSettings($config))->save('git', '../x');
+    }
+
+    /** @param array<string, mixed> $values */
+    private function settings(array $values): UpdateSettings
+    {
+        $config = $this->createMock(AggregateConfigLoader::class);
+        $config->method('all')->willReturn($values);
+
+        return new UpdateSettings($config);
+    }
 }

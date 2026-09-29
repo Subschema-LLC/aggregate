@@ -8,6 +8,8 @@ use App\Service\AggregateConfigLoader;
 use App\Service\ApplicationUpdateService;
 use App\Service\FeatureFlags;
 use App\Service\Update\ApplicationUpdater;
+use App\Service\Update\SystemCheck;
+use App\Service\UpdateSettings;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -17,12 +19,15 @@ final class UpdatesController extends AbstractController
 {
     public const CSRF_TOKEN_ID = 'application_updates_refresh';
     public const INSTALL_CSRF_TOKEN_ID = 'application_updates_install';
+    public const SETTINGS_CSRF_TOKEN_ID = 'application_updates_settings';
 
     public function __construct(
         private readonly AggregateConfigLoader $config,
         private readonly ApplicationUpdateService $updates,
         private readonly FeatureFlags $features,
         private readonly ApplicationUpdater $updater,
+        private readonly SystemCheck $systemCheck,
+        private readonly UpdateSettings $settings,
     ) {
     }
 
@@ -31,12 +36,19 @@ final class UpdatesController extends AbstractController
     {
         $this->denyUnlessAvailableToAdmin();
 
+        $status = $this->updates->check();
+        $checks = $this->systemCheck->run();
+
         return $this->render('updates/index.html.twig', [
-            'update_status' => $this->updates->check(),
-            'update_repository' => ApplicationUpdateService::REPOSITORY,
-            'update_repository_url' => ApplicationUpdateService::REPOSITORY_URL,
+            'update_status' => $status,
+            'update_repository' => $status['repository'] ?? ApplicationUpdateService::REPOSITORY,
+            'update_repository_url' => $status['repository_url'] ?? ApplicationUpdateService::REPOSITORY_URL,
+            'update_official_repository' => strcasecmp((string) ($status['repository'] ?? ApplicationUpdateService::REPOSITORY), UpdateSettings::DEFAULT_REPOSITORY) === 0,
             'update_run' => $this->updater->status(),
             'update_database_sqlite' => $this->updater->isSqlite(),
+            'update_checks' => $checks,
+            'update_blocking_problems' => $this->systemCheck->problems(dashboard: true, checks: $checks),
+            'update_source_setting' => $status['source_setting'] ?? 'auto',
         ]);
     }
 
@@ -88,7 +100,7 @@ final class UpdatesController extends AbstractController
             return $this->redirectToRoute('app_updates');
         }
 
-        $problems = $this->updater->preflight()['problems'];
+        $problems = $this->systemCheck->problems(dashboard: true);
         if ($problems === []) {
             $problems = $this->updater->backgroundProblems();
         }
@@ -113,6 +125,41 @@ final class UpdatesController extends AbstractController
             return $this->redirectToRoute('app_updates');
         }
         $this->addFlash('success', 'The update has started. The site shows a maintenance page while files are replaced; reload this page to follow its progress.');
+
+        return $this->redirectToRoute('app_updates');
+    }
+
+    /**
+     * Save updates_source and updates_branch to the active YAML configuration,
+     * the same settings operators can edit in config/aggregate.yaml.
+     */
+    #[Route('/dashboard/updates/settings', name: 'app_updates_settings', methods: ['POST'])]
+    public function saveSettings(Request $request): Response
+    {
+        $this->denyUnlessAvailableToAdmin();
+
+        $submitted = $request->request->all();
+        $csrfToken = $submitted['_csrf_token'] ?? null;
+        if (!is_string($csrfToken) || !$this->isCsrfTokenValid(self::SETTINGS_CSRF_TOKEN_ID, $csrfToken)) {
+            $this->addFlash('error', 'Invalid security token. Please try again.');
+
+            return $this->redirectToRoute('app_updates');
+        }
+        $source = $submitted['updates_source'] ?? null;
+        $branch = is_string($submitted['updates_branch'] ?? null) ? trim($submitted['updates_branch']) : null;
+        try {
+            $this->settings->save(UpdateSettings::validateSource($source), (string) UpdateSettings::validateBranch($branch));
+        } catch (\InvalidArgumentException $e) {
+            $this->addFlash('error', $e->getMessage());
+
+            return $this->redirectToRoute('app_updates');
+        } catch (\RuntimeException) {
+            $this->addFlash('error', 'The update settings could not be saved. Check that config/aggregate.yaml is valid and writable, or edit updates_source and updates_branch there directly.');
+
+            return $this->redirectToRoute('app_updates');
+        }
+        $this->updates->check(true);
+        $this->addFlash('success', 'Update settings saved to the YAML configuration.');
 
         return $this->redirectToRoute('app_updates');
     }

@@ -12,7 +12,6 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 /** Public, read-only discovery of packaged releases. Discovery never verifies or installs a ZIP. */
 final class ReleaseUpdateService
 {
-    private const API_URL = 'https://api.github.com/repos/'.ApplicationUpdateService::REPOSITORY;
     private const PAGE_SIZE = 20;
     private const MAX_PAGES = 3;
     private const MAX_MANIFESTS = 20;
@@ -38,7 +37,7 @@ final class ReleaseUpdateService
             'current_version' => null, 'latest_version' => null, 'release_url' => null,
             'package_url' => null, 'manifest_url' => null, 'signature_url' => null,
             'signature_verified' => false, 'package_sha256' => null, 'package_size' => null,
-            'compatibility_errors' => [], 'search_limited' => false,
+            'compatibility_errors' => [], 'search_limited' => false, 'adopting' => false,
         ];
 
         if (!$this->features->isEnabled('updates')) {
@@ -50,17 +49,16 @@ final class ReleaseUpdateService
 
         try {
             $result['branch'] = $this->settings->branch();
-            $local = $this->installed->read();
-            if ($local === null) {
-                $result['message'] = 'This installation has no release.json. Deploy an official release package to enable packaged-release update checks.';
-
-                return $result;
-            }
+            // Without release.json (for example after a Plesk Git deployment or
+            // copied files) the installed version is unknown: any release is
+            // offered, and installing one records its version.
+            $local = $this->installed->read() ?? ['version' => '0.0.0', 'commit' => null, 'branch' => null];
+            $result['adopting'] = $local['commit'] === null;
             $result['installed_branch'] = $local['branch'];
             $result['current_commit'] = $local['commit'];
-            $result['current_version'] = $local['version'];
+            $result['current_version'] = $result['adopting'] ? null : $local['version'];
             $remote = $this->cache->get(
-                'aggregate.release-updates.'.hash('sha256', ApplicationUpdateService::REPOSITORY."\0".$result['branch']."\0".$this->githubToken),
+                'aggregate.release-updates.'.hash('sha256', $this->settings->repository()."\0".$result['branch']."\0".$this->githubToken),
                 function (ItemInterface $item): array {
                     try {
                         $remote = $this->releases();
@@ -101,7 +99,7 @@ final class ReleaseUpdateService
             }
             if ($latest === null && $incompatible === null) {
                 $result['state'] = $remote['search_limited'] ? 'unknown' : 'unavailable';
-                $result['message'] = 'No packaged stable release was found for the configured updates_branch.';
+                $result['message'] = 'No packaged stable release was found for the configured updates_branch. Draft and prerelease GitHub releases are not offered; a release must be published as stable with its ZIP, manifest and signature attached.';
             } else {
                 // Prefer a newer compatible version; if none exists, explain why a
                 // newer release cannot run here instead of suggesting a downgrade.
@@ -127,7 +125,7 @@ final class ReleaseUpdateService
                 $result['signature_url'] = $latest['signature_url'];
                 $result['package_sha256'] = $metadata['package']['sha256'];
                 $result['package_size'] = $metadata['package']['size'];
-                $result['compare_url'] = ApplicationUpdateService::REPOSITORY_URL.'/compare/'.$local['commit'].'...'.$metadata['commit'];
+                $result['compare_url'] = $local['commit'] === null ? null : $this->repositoryUrl().'/compare/'.$local['commit'].'...'.$metadata['commit'];
                 if ($result['state'] !== 'incompatible') {
                     $comparison = version_compare($local['version'], $metadata['version']);
                     $result['state'] = match (true) {
@@ -139,7 +137,9 @@ final class ReleaseUpdateService
                     };
                 }
                 $result['message'] = match ($result['state']) {
-                    'available' => 'A newer compatible packaged release is available for the configured branch.',
+                    'available' => $result['adopting']
+                        ? 'Release '.$metadata['version'].' is available. This installation has no release.json, so its version is unknown; installing the release records its version and compares every file with it.'
+                        : 'A newer compatible packaged release is available for the configured branch.',
                     'up_to_date' => 'This installation matches the latest compatible packaged release found for the configured branch.',
                     'ahead' => 'The installed version is newer than the packaged releases found. No downgrade is offered.',
                     'incompatible' => 'A packaged release is available but its PHP requirements are not met: '.implode(' ', $result['compatibility_errors']),
@@ -171,8 +171,7 @@ final class ReleaseUpdateService
     public function download(string $directory, ?string $version = null): array
     {
         $this->features->assertEnabled('updates');
-        $local = $this->installed->read()
-            ?? throw new \RuntimeException('This installation has no release.json, so packaged updates are unavailable.');
+        $local = $this->installed->read() ?? ['version' => '0.0.0'];
         $branch = $this->settings->branch();
         $selected = null;
         foreach ($this->releases()['releases'] as $release) {
@@ -229,6 +228,21 @@ final class ReleaseUpdateService
         return $paths;
     }
 
+    private function sameUrl(mixed $actual, string $expected): bool
+    {
+        return is_string($actual) && strcasecmp($actual, $expected) === 0;
+    }
+
+    private function apiUrl(): string
+    {
+        return 'https://api.github.com/repos/'.$this->settings->repository();
+    }
+
+    private function repositoryUrl(): string
+    {
+        return $this->settings->repositoryUrl();
+    }
+
     /** @return array{releases: list<array<string, mixed>>, search_limited: bool} */
     private function releases(): array
     {
@@ -238,7 +252,7 @@ final class ReleaseUpdateService
         $candidates = [];
         $limited = false;
         for ($page = 1; $page <= self::MAX_PAGES; ++$page) {
-            $json = $this->request(self::API_URL.'/releases?per_page='.self::PAGE_SIZE.'&page='.$page, 1048576, $deadline);
+            $json = $this->request($this->apiUrl().'/releases?per_page='.self::PAGE_SIZE.'&page='.$page, 1048576, $deadline);
             try {
                 $releases = json_decode($json, true, 32, JSON_THROW_ON_ERROR);
             } catch (\JsonException $e) {
@@ -269,7 +283,7 @@ final class ReleaseUpdateService
         foreach (array_slice($candidates, 0, self::MAX_MANIFESTS) as $candidate) {
             $json = $this->request($candidate['manifest_api_url'], ReleaseMetadata::MAX_BYTES, $deadline, true);
             try {
-                $metadata = ReleaseMetadata::parse($json, true);
+                $metadata = ReleaseMetadata::parse($json, true, $this->settings->repository());
             } catch (\InvalidArgumentException $e) {
                 throw new \RuntimeException('A published package manifest is invalid: '.$e->getMessage(), previous: $e);
             }
@@ -305,15 +319,16 @@ final class ReleaseUpdateService
             // Source-only GitHub releases are not installable application packages.
             return null;
         }
-        $releaseUrl = ApplicationUpdateService::REPOSITORY_URL.'/releases/tag/'.$release['tag_name'];
-        $downloadBase = ApplicationUpdateService::REPOSITORY_URL.'/releases/download/'.$release['tag_name'].'/';
-        if (($release['html_url'] ?? null) !== $releaseUrl || count($assets) !== count($names)) {
+        $releaseUrl = $this->repositoryUrl().'/releases/tag/'.$release['tag_name'];
+        $downloadBase = $this->repositoryUrl().'/releases/download/'.$release['tag_name'].'/';
+        // GitHub returns the repository's canonical capitalization.
+        if (!$this->sameUrl($release['html_url'] ?? null, $releaseUrl) || count($assets) !== count($names)) {
             throw new \RuntimeException('A packaged GitHub release is missing required assets or has an unexpected release URL.');
         }
         foreach ($assets as $name => $asset) {
             if (!is_int($asset['id'] ?? null) || $asset['id'] <= 0
-                || ($asset['url'] ?? null) !== self::API_URL.'/releases/assets/'.$asset['id']
-                || ($asset['browser_download_url'] ?? null) !== $downloadBase.$name
+                || !$this->sameUrl($asset['url'] ?? null, $this->apiUrl().'/releases/assets/'.$asset['id'])
+                || !$this->sameUrl($asset['browser_download_url'] ?? null, $downloadBase.$name)
                 || ($asset['state'] ?? null) !== 'uploaded'
                 || !is_int($asset['size'] ?? null) || $asset['size'] <= 0
                 || ($name === 'aggregate-release.json' && $asset['size'] > ReleaseMetadata::MAX_BYTES)

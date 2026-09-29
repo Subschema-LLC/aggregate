@@ -281,15 +281,53 @@ final class ApplicationUpdateServiceTest extends TestCase
         self::assertFileDoesNotExist($this->project.'/.git/aggregate-update.lock');
     }
 
-    public function testNonGitInstallationAndDirectoryInsideAnotherRepositoryAreUnavailable(): void
+    public function testDirectoriesWithoutTheirOwnCheckoutUseReleasePackagesWithoutParentGit(): void
     {
+        // For example a Plesk Git deployment: files copied without .git or release.json.
         $client = new MockHttpClient([]);
         $service = new ApplicationUpdateService($this->directory, $client, $this->cache, $this->clock, $this->defaultFlags());
-        self::assertSame('unavailable', $service->check()['state']);
+        self::assertSame('release', $service->source()['source']);
+        self::assertStringContainsString('Plesk Git deployment', $service->source()['reason']);
+        self::assertSame('release', $service->check()['installation_type']);
         mkdir($this->project.'/subdirectory');
         $nested = new ApplicationUpdateService($this->project.'/subdirectory', $client, $this->cache, $this->clock, $this->defaultFlags());
-        self::assertSame('unavailable', $nested->check()['state']);
+        self::assertSame('release', $nested->source()['source']);
+        $this->assertPullFails($nested, 'updates from release packages');
         self::assertSame(0, $client->getRequestsCount());
+    }
+
+    public function testYamlSourceOverridesDetectionAndInvalidSettingsAreReported(): void
+    {
+        self::assertSame(['source' => 'git', 'setting' => 'auto', 'reason' => 'Detected a .git directory in the application directory.'], $this->service()->source());
+        self::assertSame('release', $this->service(settings: ['updates_source' => 'release'])->source()['source']);
+        $this->assertPullFails($this->service(settings: ['updates_source' => 'release']), 'updates_source');
+        $release = $this->service(settings: ['updates_source' => 'git'], project: $this->directory);
+        self::assertSame('git', $release->source()['source']);
+
+        $invalid = $this->service(settings: ['updates_source' => 'ftp']);
+        self::assertSame('error', $invalid->check()['state']);
+        self::assertStringContainsString('updates_source must be auto, git or release', $invalid->check()['message']);
+        $badRepository = $this->service(settings: ['updates_repository' => 'https://evil.test/x']);
+        self::assertStringContainsString('updates_repository must be a GitHub repository', $badRepository->check()['message']);
+    }
+
+    public function testConfiguredRepositoryIsUsedForChecksAndPulls(): void
+    {
+        $latest = $this->commit($this->source, 'application.txt', 'fork update');
+        $this->git(['config', 'url.'.$this->source.'.insteadOf', 'https://github.com/example-org/aggregate-fork.git']);
+        $requested = [];
+        $client = new MockHttpClient(function (string $method, string $url) use (&$requested, $latest): MockResponse {
+            $requested[] = $url;
+
+            return $this->json(['sha' => $latest]);
+        });
+        $service = $this->service($client, settings: ['updates_repository' => 'example-org/aggregate-fork']);
+
+        $status = $service->check();
+        self::assertSame('https://api.github.com/repos/example-org/aggregate-fork/commits/deployment%2Fstable', $requested[0]);
+        self::assertSame('example-org/aggregate-fork', $status['repository']);
+        self::assertStringStartsWith('https://github.com/example-org/aggregate-fork/compare/', $status['compare_url']);
+        self::assertSame($latest, $service->pull()['current_commit']);
     }
 
     public function testArchiveInsideAnotherCheckoutDelegatesToReleaseChecksWithoutUsingParentGit(): void
@@ -321,7 +359,7 @@ final class ApplicationUpdateServiceTest extends TestCase
         self::assertSame(1, $client->getRequestsCount());
         $service->check(true);
         self::assertSame(2, $client->getRequestsCount());
-        $this->assertPullFails($service, 'installation uses a release package');
+        $this->assertPullFails($service, 'updates from release packages');
         self::assertSame($this->initial, $this->git(['rev-parse', 'HEAD']));
         self::assertFileDoesNotExist($this->project.'/.git/aggregate-update.lock');
     }
@@ -639,10 +677,11 @@ final class ApplicationUpdateServiceTest extends TestCase
         }
     }
 
-    private function service(?MockHttpClient $client = null, string $token = '', mixed $branch = 'deployment/stable', ?string $project = null, bool $overrides = false): ApplicationUpdateService
+    /** @param array<string, mixed> $settings */
+    private function service(?MockHttpClient $client = null, string $token = '', mixed $branch = 'deployment/stable', ?string $project = null, bool $overrides = false, array $settings = []): ApplicationUpdateService
     {
         $config = $this->createMock(AggregateConfigLoader::class);
-        $config->method('all')->willReturn(['updates_branch' => $branch]);
+        $config->method('all')->willReturn(['updates_branch' => $branch] + $settings);
         $project ??= $this->project;
 
         return new ApplicationUpdateService($project, $client ?? new MockHttpClient([]), $this->cache, $this->clock, new FeatureFlags($config), $token, new UpdateSettings($config), null, $overrides ? new LocalConfigOverrides($project) : null);

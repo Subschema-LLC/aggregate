@@ -51,6 +51,8 @@ class ApplicationUpdater
         private readonly InstalledRelease $installed,
         private readonly FeatureFlags $features,
         private readonly Connection $connection,
+        private readonly SystemCheck $systemCheck,
+        private readonly Toolchain $toolchain,
     ) {
     }
 
@@ -71,54 +73,24 @@ class ApplicationUpdater
     }
 
     /**
-     * Checks that need no network access and change nothing.
+     * The system check for the current user, plus what the dashboard compares
+     * with the command line before starting a background update.
      *
-     * @return array{problems: list<string>, warnings: list<string>, installation_type: string, environment: string, database: string, php_version: string}
+     * @return array{problems: list<string>, warnings: list<string>, checks: list<array<string, string>>, installation_type: string, environment: string, database: string, php_version: string}
      */
     public function preflight(): array
     {
-        $problems = [];
-        $warnings = [];
-        $type = $this->installationType();
-        if (!$this->features->isEnabled('updates')) {
-            $problems[] = 'Updates are disabled by feature_flags.updates.enabled.';
-        }
-        if ($this->journal->isLocked()) {
-            $problems[] = 'Another update is running.';
-        } else {
-            $last = $this->journal->read();
-            if (in_array($last['status'] ?? null, ['running', 'needs_attention'], true)) {
-                $problems[] = 'The previous update stopped at "'.($last['step'] ?? 'unknown').'". Resume it with app:updates:apply --resume or restore files with app:updates:rollback.';
-            }
-        }
-        foreach (['', 'config', 'public', 'src', 'vendor', 'var'] as $directory) {
-            $path = rtrim($this->projectDir.'/'.$directory, '/');
-            if (!is_dir($path) || !is_writable($path)) {
-                $problems[] = 'This user cannot write '.($directory === '' ? 'the application directory' : $directory.'/').'. Run the update as the user that owns the application files.';
-                break;
-            }
-        }
-        if ($type === 'release') {
-            if (!class_exists(\ZipArchive::class)) {
-                $problems[] = 'The PHP zip extension is required to install release packages.';
-            }
-        } else {
-            $problem = $this->updates->pullProblem();
-            if ($problem !== null) {
-                $problems[] = $problem;
-            }
-            if ($this->composer() === null) {
-                $warnings[] = 'Composer was not found. Updates that change composer.lock or importmap.php will stop before changing files.';
-            }
-        }
-        $free = @disk_free_space($this->projectDir);
-        if (is_float($free) && $free < 300 * 1024 * 1024) {
-            $warnings[] = 'Less than 300 MB of disk space is free. Updates need room for the download, staging copy and backup.';
+        $checks = $this->systemCheck->run();
+        try {
+            $type = $this->installationType();
+        } catch (\RuntimeException) {
+            $type = 'unknown';
         }
 
         return [
-            'problems' => $problems,
-            'warnings' => $warnings,
+            'problems' => $this->systemCheck->problems(checks: $checks),
+            'warnings' => $this->systemCheck->warnings($checks),
+            'checks' => $checks,
             'installation_type' => $type,
             'environment' => $this->environment,
             'database' => $this->databaseFingerprint(),
@@ -128,9 +100,7 @@ class ApplicationUpdater
 
     public function isSqlite(): bool
     {
-        $driver = (string) ($this->connection->getParams()['driver'] ?? '');
-
-        return in_array($driver, ['pdo_sqlite', 'sqlite3'], true);
+        return $this->systemCheck->isSqlite();
     }
 
     /** Identifies the database without revealing connection details or credentials. */
@@ -162,8 +132,8 @@ class ApplicationUpdater
             if (in_array($last['status'] ?? null, ['running', 'needs_attention'], true)) {
                 throw new \RuntimeException('The previous update stopped at "'.($last['step'] ?? 'unknown').'". Resume it with app:updates:apply --resume or restore files with app:updates:rollback.');
             }
-            $preflight = $this->preflight();
-            $problems = array_values(array_filter($preflight['problems'], static fn (string $problem): bool => $problem !== 'Another update is running.'));
+            // This process holds the lock, and the journal state was checked above.
+            $problems = $this->systemCheck->problems(ignore: ['last_update']);
             if ($problems !== []) {
                 throw new \RuntimeException(implode(' ', $problems));
             }
@@ -192,9 +162,10 @@ class ApplicationUpdater
             ];
 
             if ($type === 'release') {
-                $installed = $this->installed->read()
-                    ?? throw new \RuntimeException('release.json is missing or invalid, so this installation cannot be updated from a package.');
-                $state['from'] = ['version' => $installed['version'], 'commit' => $installed['commit']];
+                // Without release.json the installed version is unknown; the first
+                // release installed records it (for example after Plesk Git deployment).
+                $installed = $this->installed->read();
+                $state['from'] = ['version' => $installed['version'] ?? null, 'commit' => $installed['commit'] ?? null];
                 $local = array_filter([
                     'package' => $options['package'] ?? null,
                     'manifest' => $options['manifest'] ?? null,
@@ -326,7 +297,7 @@ class ApplicationUpdater
                     $this->updates->resetTo($state['from']['commit']);
                     $state = $this->say($state, 'Returned the checkout to commit '.$state['from']['commit'].'.');
                     $this->clearCacheDirectory($state['id']);
-                    if (($state['flags']['composer'] ?? false) && $this->composer() !== null) {
+                    if (($state['flags']['composer'] ?? false) && $this->toolchain->composer() !== null) {
                         $state = $this->composerInstall($state);
                     }
                 }
@@ -397,7 +368,7 @@ class ApplicationUpdater
         if (!function_exists('proc_open') || \DIRECTORY_SEPARATOR === '\\') {
             return ['Starting updates from the dashboard needs proc_open on a Unix-like server.'];
         }
-        if ($this->php() === null) {
+        if ($this->toolchain->php() === null) {
             return ['The command-line PHP executable could not be found. Set PHP_PATH for the web server or run the update from the command line.'];
         }
         try {
@@ -462,7 +433,7 @@ class ApplicationUpdater
     private function stepVerify(array $state): array
     {
         $manifest = $this->verifier->verify($state['files']['package'], $state['files']['manifest'], $state['files']['signature']);
-        if (version_compare($manifest['version'], (string) $state['from']['version'], '<=')) {
+        if ($state['from']['version'] !== null && version_compare($manifest['version'], (string) $state['from']['version'], '<=')) {
             throw new \RuntimeException('Release '.$manifest['version'].' is not newer than the installed version '.$state['from']['version'].'. Downgrades are not supported.');
         }
         $state['to'] = ['version' => $manifest['version'], 'commit' => $manifest['commit']];
@@ -558,7 +529,7 @@ class ApplicationUpdater
                 'composer' => (bool) array_intersect($changed, ['composer.json', 'composer.lock']) || !is_file($this->projectDir.'/vendor/autoload.php'),
                 'importmap' => in_array('importmap.php', $changed, true),
             ];
-            if (($state['flags']['composer'] || $state['flags']['importmap']) && $this->composer() === null) {
+            if (($state['flags']['composer'] || $state['flags']['importmap']) && $this->toolchain->composer() === null) {
                 throw new \RuntimeException('This update changes Composer or importmap dependencies, but Composer was not found. Install Composer for this user, then retry. Nothing was changed.');
             }
             $state = $this->stepMaintenance($state);
@@ -717,7 +688,7 @@ class ApplicationUpdater
     /** @param array<string, mixed> $state @return array<string, mixed> */
     private function composerInstall(array $state): array
     {
-        $composer = $this->composer() ?? throw new \RuntimeException('Composer was not found. Install it for this user, then run php bin/console app:updates:apply --resume.');
+        $composer = $this->toolchain->composer() ?? throw new \RuntimeException('Composer was not found. Install it for this user, then run php bin/console app:updates:apply --resume.');
         $arguments = ['install', '--no-interaction', '--no-progress', '--optimize-autoloader'];
         if ($this->environment === 'prod') {
             $arguments[] = '--no-dev';
@@ -772,46 +743,13 @@ class ApplicationUpdater
     /** @param list<string> $arguments @return list<string> */
     private function consoleCommand(array $arguments): array
     {
-        $php = $this->php() ?? throw new \RuntimeException('The command-line PHP executable could not be found. Set PHP_PATH or run the update from the command line.');
+        $php = $this->toolchain->php() ?? throw new \RuntimeException('The command-line PHP executable could not be found. Set PHP_PATH or run the update from the command line.');
         $command = [...$php, $this->projectDir.'/bin/console', ...$arguments, '--env='.$this->environment, '--no-interaction'];
         if (!$this->debug) {
             $command[] = '--no-debug';
         }
 
         return $command;
-    }
-
-    /** @return list<string>|null */
-    private function php(): ?array
-    {
-        $finder = new PhpExecutableFinder();
-        $php = $finder->find(false);
-
-        return $php === false ? null : [$php, ...$finder->findArguments()];
-    }
-
-    /** @return list<string>|null */
-    private function composer(): ?array
-    {
-        // Hosts that keep Composer off PATH (for example Plesk) can name it explicitly.
-        $configured = $_SERVER['AGGREGATE_COMPOSER'] ?? $_ENV['AGGREGATE_COMPOSER'] ?? getenv('AGGREGATE_COMPOSER');
-        if (is_string($configured) && $configured !== '' && is_file($configured)) {
-            if (str_ends_with($configured, '.phar')) {
-                $php = $this->php();
-
-                return $php === null ? null : [...$php, $configured];
-            }
-
-            return is_executable($configured) ? [$configured] : null;
-        }
-        if (is_file($this->projectDir.'/composer.phar')) {
-            $php = $this->php();
-
-            return $php === null ? null : [...$php, $this->projectDir.'/composer.phar'];
-        }
-        $composer = (new ExecutableFinder())->find('composer');
-
-        return $composer === null ? null : [$composer];
     }
 
     /** @return array<string, string|false> */

@@ -516,26 +516,58 @@ Add to crontab:
 
 ### Updates
 
-Install updates with one command, run from the application directory as the user
-that owns the application files. It works for Git checkouts and for installations
-from a release ZIP, and with the dashboard disabled:
+Choose where updates come from, then install them with the dashboard button or one
+command. Both use the same settings and the same installer.
+
+**1. Update source (YAML, or the Updates page).** In the active
+`config/aggregate.yaml`:
+
+```yaml
+updates_source: auto        # auto, release or git
+updates_branch: master
+# updates_repository: Subschema-LLC/aggregate   # YAML only
+```
+
+Use `release` for installations from a ZIP and for directories deployed without a
+`.git` folder, such as **Plesk Git deployment** or copied files. Use `git` for a Git
+clone in the application directory. `auto` picks `git` when there is a `.git`
+folder and `release` otherwise. The **Updates** page shows the source in effect and
+can save `updates_source` and `updates_branch`; see
+[configuration](docs/CONFIGURATION.md#github-update-checks).
+
+**2. Install.** Select **Install update** on the **Updates** page, or run from the
+application directory as the user that owns the application files. The command
+works with the dashboard disabled:
 
 ```bash
 php bin/console app:updates:check --refresh      # see what is available
+php bin/console app:updates:apply --preflight    # system check, changes nothing
 php bin/console app:updates:apply                # SQLite: snapshots the database automatically
 php bin/console app:updates:apply --database-backup-confirmed   # PostgreSQL, MySQL, MariaDB, SQL Server
 ```
 
-- **Git checkouts** fast-forward from the official repository (the same rules as
+**System check.** The Updates page lists everything an update depends on, as seen
+by the web server user: the source and repository, PHP and extensions, Git and
+Composer (Git source), `release.json` and the trusted signing key (release source),
+write access to the application files, whether the button can start the command
+line, free disk space, database backup handling, OPcache, maintenance mode and the
+last update. A problem there disables the button and says what to fix;
+`app:updates:apply --preflight` prints the same checks for the command-line user.
+
+- **Git source** fast-forwards the checkout from the configured repository (the same rules as
   `app:updates:pull` below), then run `composer install` when `composer.lock` or
   `importmap.php` changed and compile dashboard assets. Composer must be installed
   for updates that change dependencies; the update stops before changing files if
   it is missing.
-- **Release ZIP installations** download the newest signed release for
-  `updates_branch`, or install files you downloaded with
+- **Release source** downloads the newest signed release for `updates_branch`,
+  or installs files you downloaded with
   `--package=aggregate-YYYY.MM.NN.zip --manifest=aggregate-release.json --signature=aggregate-release.json.sig`.
   The signature is verified with the installation's trusted key before anything
-  changes. See the [release guide](docs/RELEASES.md#update-an-installation).
+  changes. An installation without `release.json` (for example after a Plesk Git
+  deployment) is offered the latest release, and installing it records the version.
+  If another tool deploys the same directory, turn its automatic deployment off
+  first so it does not overwrite installed updates. See the
+  [release guide](docs/RELEASES.md#update-an-installation).
 
 Both then run database migrations, `app:analytics:glossary:sync`, warm the cache and
 signal async workers to restart. While files are replaced, every web request,

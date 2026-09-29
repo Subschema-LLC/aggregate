@@ -535,10 +535,32 @@ window.Company1Analytics.emit('signup', {plan: 'pro'});
 
 ### GitHub update checks
 
-When the `updates` feature flag is enabled, the admin **Updates** page and `app:updates:check` use the public
-`Subschema-LLC/aggregate` repository. Set `updates_branch: master` in the active
-YAML environment to select the upstream branch; `master` is also the default.
-This setting has no uppercase environment-variable override. Git installations
+Three settings choose where updates come from. `updates_source` and `updates_branch`
+can also be changed on the dashboard **Updates** page, which saves them to the
+active YAML; `updates_repository` is YAML-only, because changing where application
+code comes from is a deployment decision.
+
+```yaml
+updates_source: auto        # auto, release or git
+updates_branch: master
+updates_repository: Subschema-LLC/aggregate   # GitHub owner/name
+```
+
+- `release` installs signed release ZIPs and works for any installation, including
+  directories deployed by Plesk Git deployment or copied files without `.git`.
+  An installation without `release.json` is offered the latest release; installing
+  it records the version.
+- `git` fast-forwards a Git checkout in the application directory.
+- `auto` (the default) uses `git` when the application directory has a `.git` folder
+  and `release` otherwise.
+
+A different `updates_repository` (for example a fork) must publish releases signed
+with a key this installation trusts through `updates_signing_public_key`, and its
+release manifests must name that repository.
+
+When the `updates` feature flag is enabled, the admin **Updates** page and `app:updates:check` use the
+configured repository, by default the public `Subschema-LLC/aggregate`. These
+settings have no uppercase environment-variable override. Git installations
 compare commits against that branch, and source pulls require the checkout to
 already be on it. Official ZIP installations use their embedded `release.json`
 and stable GitHub Releases without requiring Git. Checks never switch branches

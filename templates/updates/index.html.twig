@@ -20,7 +20,15 @@
     {% set status = statuses[update_status.state]|default(statuses.unknown) %}
     {% set run = update_run ?? null %}
     {% set run_busy = run and (run.running or run.status in ['running', 'needs_attention']) %}
-    {% set can_install = update_status.state == 'available' and (is_release or can_pull) and not run_busy %}
+    {% set blocking_problems = update_blocking_problems|default([]) %}
+    {% set can_install = update_status.state == 'available' and (is_release or can_pull) and not run_busy and blocking_problems is empty %}
+    {% set source_setting = update_source_setting|default('auto') %}
+    {% set check_styles = {
+        ok: {label: 'OK', color: 'success'},
+        info: {label: 'Info', color: 'info'},
+        warning: {label: 'Warning', color: 'warning'},
+        error: {label: 'Problem', color: 'danger'}
+    } %}
     {% set run_statuses = {
         running: {label: 'Update running', color: 'info'},
         completed: {label: 'Last update completed', color: 'success'},
@@ -61,6 +69,8 @@
     {% if not can_install %}
         {% if run_busy %}
             {% set install_reason = run.running ? 'An update is running now. Reload this page to follow its progress.' : 'The last update needs attention. Resume it or roll it back on the server first; see Update progress below.' %}
+        {% elseif blocking_problems is not empty %}
+            {% set install_reason = 'The system check below found ' ~ (blocking_problems|length == 1 ? 'a problem that stops' : blocking_problems|length ~ ' problems that stop') ~ ' updates from the dashboard.' %}
         {% elseif update_status.state == 'up_to_date' %}
             {% set install_reason = 'This installation is up to date. The button becomes available when Check now finds a newer ' ~ (is_release ? 'signed release' : 'commit') ~ '.' %}
         {% elseif not is_release and update_status.current_commit and not branch_matches %}
@@ -69,46 +79,116 @@
             {% set install_reason = 'There is no installable update right now (' ~ status.label|lower ~ '). The message above explains why; use Check now to look again.' %}
         {% endif %}
     {% endif %}
-    <div class="box" id="install-update">
-        <h2 class="title is-4">Install an update</h2>
-        {% if can_install %}
-            <p class="mb-3">
-                {% if is_release %}
-                    Downloads the signed release {{ update_status.latest_version }}, verifies it with this installation's trusted key, and replaces the application files in place.
-                {% else %}
-                    Fast-forwards this checkout from the official repository and installs changed Composer dependencies.
-                {% endif %}
-                It then runs database migrations and rebuilds the cache. Visitors and the collection API receive a maintenance response while files are replaced.
-            </p>
-            <p class="mb-3">Your configuration is kept: <code>.env.local</code>, <code>config/aggregate.yaml</code>, <code>config/websites.yaml</code>, site tag settings, <code>config/*.local.yaml</code> overrides and everything in <code>var/</code>. Edits to the shipped <code>goals.yaml</code>, <code>navigation.yaml</code> or <code>quick_search.yaml</code> move to their <code>.local.yaml</code> override. Changed files are backed up for rollback.</p>
-            <form method="post" action="{{ path('app_updates_install') }}">
-                <input type="hidden" name="_csrf_token" value="{{ csrf_token('application_updates_install') }}">
-                {% if update_database_sqlite %}
-                    <p class="help mb-3">This installation uses SQLite; a database snapshot is saved automatically before migrations run.</p>
-                {% else %}
+
+    <div class="columns is-desktop">
+        <div class="column is-flex is-flex-direction-column">
+            <div class="box is-flex-grow-1" id="update-source">
+                <h2 class="title is-4">Update source</h2>
+                <p class="mb-3">
+                    <strong>{{ is_release ? 'Signed release packages' : 'Git pull' }}</strong>
+                    from <a href="{{ update_repository_url }}">{{ update_repository }}</a>,
+                    branch <code>{{ update_status.branch ?? 'unavailable' }}</code>.
+                    {% if update_status.source_reason|default(null) %}<span class="has-text-grey">{{ update_status.source_reason }}</span>{% endif %}
+                </p>
+                <form method="post" action="{{ path('app_updates_settings') }}">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token('application_updates_settings') }}">
+                    <fieldset class="field">
+                        <legend class="label">Source</legend>
+                        <div class="control">
+                            <label class="radio"><input type="radio" name="updates_source" value="auto"{% if source_setting == 'auto' %} checked{% endif %}> Automatic</label>
+                            <label class="radio"><input type="radio" name="updates_source" value="release"{% if source_setting == 'release' %} checked{% endif %}> Release packages</label>
+                            <label class="radio"><input type="radio" name="updates_source" value="git"{% if source_setting == 'git' %} checked{% endif %}> Git pull</label>
+                        </div>
+                        <p class="help">Release packages work for any installation, including Plesk Git deployments and copied files. Git pull needs a Git checkout in the application directory. Automatic uses Git when there is a <code>.git</code> folder.</p>
+                    </fieldset>
                     <div class="field">
-                        <label class="checkbox">
-                            <input type="checkbox" name="database_backup_confirmed" value="1" required>
-                            I have a current backup of the database. Migrations cannot be reversed automatically.
-                        </label>
+                        <label class="label" for="updates-branch">Branch</label>
+                        <div class="control">
+                            <input class="input" id="updates-branch" name="updates_branch" type="text" required maxlength="255" value="{{ update_status.branch ?? 'master' }}" autocomplete="off" spellcheck="false">
+                        </div>
+                        <p class="help">Releases published from this branch, or the branch Git pulls. The default is <code>master</code>.</p>
                     </div>
+                    <button class="button" type="submit">Save update settings</button>
+                </form>
+                <p class="mt-4 mb-2">These settings live in <code>config/aggregate.yaml</code>, so headless installations can set them there instead:</p>
+                <pre><code>updates_source: {{ source_setting }}   # auto, release or git
+updates_branch: {{ update_status.branch ?? 'master' }}
+updates_repository: {{ update_repository }}</code></pre>
+                <p class="help">The repository is set in YAML only{% if not update_official_repository|default(true) %}; this installation does not use the official repository{% endif %}.</p>
+            </div>
+        </div>
+        <div class="column is-flex is-flex-direction-column">
+            <div class="box is-flex-grow-1" id="install-update">
+                <h2 class="title is-4">Install an update</h2>
+                {% if can_install %}
+                    <p class="mb-3">
+                        {% if is_release %}
+                            Downloads the signed release {{ update_status.latest_version }}, verifies it with this installation's trusted key, and replaces the application files in place.
+                        {% else %}
+                            Fast-forwards this checkout from the official repository and installs changed Composer dependencies.
+                        {% endif %}
+                        It then runs database migrations and rebuilds the cache. Visitors and the collection API receive a maintenance response while files are replaced.
+                    </p>
+                    <p class="mb-3">Your configuration is kept: <code>.env.local</code>, <code>config/aggregate.yaml</code>, <code>config/websites.yaml</code>, site tag settings, <code>config/*.local.yaml</code> overrides and everything in <code>var/</code>. Edits to the shipped <code>goals.yaml</code>, <code>navigation.yaml</code> or <code>quick_search.yaml</code> move to their <code>.local.yaml</code> override. Changed files are backed up for rollback.</p>
+                    <form method="post" action="{{ path('app_updates_install') }}">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token('application_updates_install') }}">
+                        {% if update_database_sqlite %}
+                            <p class="help mb-3">This installation uses SQLite; a database snapshot is saved automatically before migrations run.</p>
+                        {% else %}
+                            <div class="field">
+                                <label class="checkbox">
+                                    <input type="checkbox" name="database_backup_confirmed" value="1" required>
+                                    I have a current backup of the database. Migrations cannot be reversed automatically.
+                                </label>
+                            </div>
+                        {% endif %}
+                        <button class="button is-primary" type="submit">
+                            <span class="icon"><i class="fas fa-download" aria-hidden="true"></i></span>
+                            <span>Install update</span>
+                        </button>
+                        <p class="help">The web server user must be able to write the application files. If it cannot, run <code>php bin/console app:updates:apply</code> on the server as the files' owner.</p>
+                    </form>
+                {% else %}
+                    <p class="mb-3" id="install-unavailable">{{ install_reason }}</p>
+                    <button class="button is-primary" type="button" disabled aria-describedby="install-unavailable">
+                        <span class="icon"><i class="fas fa-download" aria-hidden="true"></i></span>
+                        <span>Install update</span>
+                    </button>
+                    {% if is_release or can_pull %}
+                        <p class="help">Updates can also be installed on the server with <code>php bin/console app:updates:apply</code>.</p>
+                    {% endif %}
                 {% endif %}
-                <button class="button is-primary" type="submit">
-                    <span class="icon"><i class="fas fa-download" aria-hidden="true"></i></span>
-                    <span>Install update</span>
-                </button>
-                <p class="help">The web server user must be able to write the application files. If it cannot, run <code>php bin/console app:updates:apply</code> on the server as the files' owner.</p>
-            </form>
-        {% else %}
-            <p class="mb-3" id="install-unavailable">{{ install_reason }}</p>
-            <button class="button is-primary" type="button" disabled aria-describedby="install-unavailable">
-                <span class="icon"><i class="fas fa-download" aria-hidden="true"></i></span>
-                <span>Install update</span>
-            </button>
-            {% if is_release or can_pull %}
-                <p class="help">Updates can also be installed on the server with <code>php bin/console app:updates:apply</code>.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="box" id="system-check">
+        <h2 class="title is-4">System check</h2>
+        <p class="mb-3">
+            {% if blocking_problems is empty %}
+                Nothing here stops updates from the dashboard.
+            {% else %}
+                {{ blocking_problems|length == 1 ? 'One problem stops' : blocking_problems|length ~ ' problems stop' }} updates from the dashboard.
             {% endif %}
-        {% endif %}
+            These checks run as the web server user. Run <code>php bin/console app:updates:apply --preflight</code> to check as the user who runs updates on the server.
+        </p>
+        <div class="table-container">
+            <table class="table is-fullwidth">
+                <thead>
+                    <tr><th scope="col">Status</th><th scope="col">Check</th><th scope="col">Details</th></tr>
+                </thead>
+                <tbody>
+                    {% for check in update_checks|default([]) %}
+                        {% set style = check_styles[check.status]|default(check_styles.info) %}
+                        <tr>
+                            <td><span class="tag is-{{ style.color }} is-light">{{ style.label }}</span></td>
+                            <th scope="row">{{ check.label }}{% if check.scope == 'dashboard' %} <span class="has-text-grey has-text-weight-normal">(dashboard)</span>{% endif %}</th>
+                            <td>{{ check.detail }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 
     {% if run %}
@@ -165,7 +245,7 @@ php bin/console app:updates:rollback</code></pre>
                     {% if is_release %}
                         <tr>
                             <th scope="row">Installed version</th>
-                            <td>{{ update_status.current_version ?? 'Unavailable' }}</td>
+                            <td>{{ update_status.current_version ?? (update_status.adopting|default(false) ? 'Unknown (no release.json)' : 'Unavailable') }}</td>
                         </tr>
                         <tr>
                             <th scope="row">Latest release version</th>
@@ -242,7 +322,7 @@ php bin/console app:updates:rollback</code></pre>
         {% endif %}
         <p>For PostgreSQL, MySQL, MariaDB or SQL Server, back up the database first and add <code>--database-backup-confirmed</code>. If a step fails after files change, the site stays in maintenance mode; continue with <code>--resume</code> or restore the previous files with <code>php bin/console app:updates:rollback</code>. Rolling back files does not reverse database migrations.</p>
         {% endif %}
-        <p>Set <code>updates_branch</code> in <code>config/aggregate.yaml</code> to choose the update branch. The default is <code>master</code>.</p>
+        <p>Choose the source and branch above, or set <code>updates_source</code>, <code>updates_branch</code> and <code>updates_repository</code> in <code>config/aggregate.yaml</code>.</p>
         <p>The public GitHub repository normally needs no token. An optional <code>AGGREGATE_GITHUB_TOKEN</code> in the server environment can increase the API rate limit.</p>
     </details>
 {% endblock %}

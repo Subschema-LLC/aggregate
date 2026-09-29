@@ -121,7 +121,11 @@ The command verifies the signature, branch, runtime requirements, ZIP size/hash,
 
 ## Update an installation
 
-Run as the user that owns the application files:
+Release packages are used when `updates_source` is `release`, or `auto` without a
+`.git` folder in the application directory; see
+[update settings](CONFIGURATION.md#github-update-checks). Select **Install update**
+on the dashboard **Updates** page, whose system check shows anything that would stop
+the update, or run as the user that owns the application files:
 
 ```bash
 php bin/console app:updates:apply --preflight   # checks only; changes nothing
@@ -172,8 +176,10 @@ How files are treated:
 
 Installations whose code predates `app:updates:apply` (such as the v0.2
 prerelease) need one manual update, described below; later updates use the
-command. The comparison uses the installed `release-files.json`. When it is missing,
-for example after a manual deployment, the update still runs, but because unchanged
+command. An installation without `release.json`, such as a Plesk Git deployment,
+is offered the latest release; installing it records the version. The comparison
+uses the installed `release-files.json`. When it is missing, for example after a
+manual deployment, the update still runs, but because unchanged
 files cannot be told apart from edits, any shipped config default that differs from
 the new one is kept as an override; review those override files after the update. Packages without `release-files.json` cannot be applied automatically;
 install them manually as described below.
