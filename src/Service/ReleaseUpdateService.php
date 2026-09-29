@@ -49,8 +49,8 @@ final class ReleaseUpdateService
 
         try {
             $result['branch'] = $this->settings->branch();
-            // Without release.json (for example after a Plesk Git deployment or
-            // copied files) the installed version is unknown: any release is
+            // Without release.json (for example when a deployment tool copied the
+            // files without .git) the installed version is unknown: any release is
             // offered, and installing one records its version.
             $local = $this->installed->read() ?? ['version' => '0.0.0', 'commit' => null, 'branch' => null];
             $result['adopting'] = $local['commit'] === null;

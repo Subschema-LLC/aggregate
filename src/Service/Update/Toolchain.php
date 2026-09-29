@@ -26,7 +26,7 @@ class Toolchain
     /** @return list<string>|null */
     public function composer(): ?array
     {
-        // Hosts that keep Composer off PATH (for example Plesk) can name it explicitly.
+        // Hosts that keep Composer off PATH (common on hosting panels) can name it explicitly.
         $configured = $_SERVER['AGGREGATE_COMPOSER'] ?? $_ENV['AGGREGATE_COMPOSER'] ?? getenv('AGGREGATE_COMPOSER');
         if (is_string($configured) && $configured !== '' && is_file($configured)) {
             if (str_ends_with($configured, '.phar')) {

@@ -99,7 +99,7 @@
                             <label class="radio"><input type="radio" name="updates_source" value="release"{% if source_setting == 'release' %} checked{% endif %}> Release packages</label>
                             <label class="radio"><input type="radio" name="updates_source" value="git"{% if source_setting == 'git' %} checked{% endif %}> Git pull</label>
                         </div>
-                        <p class="help">Release packages work for any installation, including Plesk Git deployments and copied files. Git pull needs a Git checkout in the application directory. Automatic uses Git when there is a <code>.git</code> folder.</p>
+                        <p class="help">Release packages work for any installation, including directories a deployment tool fills without <code>.git</code> (hosting-panel Git deployment, CI/CD, rsync or FTP). Git pull needs a Git checkout in the application directory. Automatic uses Git when there is a <code>.git</code> folder.</p>
                     </fieldset>
                     <div class="field">
                         <label class="label" for="updates-branch">Branch</label>

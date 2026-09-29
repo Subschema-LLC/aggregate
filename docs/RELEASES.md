@@ -176,8 +176,8 @@ How files are treated:
 
 Installations whose code predates `app:updates:apply` (such as the v0.2
 prerelease) need one manual update, described below; later updates use the
-command. An installation without `release.json`, such as a Plesk Git deployment,
-is offered the latest release; installing it records the version. The comparison
+command. An installation without `release.json`, such as files copied by a
+deployment tool without `.git`, is offered the latest release; installing it records the version. The comparison
 uses the installed `release-files.json`. When it is missing, for example after a
 manual deployment, the update still runs, but because unchanged
 files cannot be told apart from edits, any shipped config default that differs from

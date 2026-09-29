@@ -259,7 +259,7 @@ final class ReleaseUpdateServiceTest extends TestCase
 
     public function testInstallationWithoutReleaseMetadataIsOfferedTheLatestRelease(): void
     {
-        // For example a Plesk Git deployment: no release.json, so the version is unknown.
+        // For example files copied by a deployment tool: no release.json, so the version is unknown.
         @unlink($this->directory.'/release.json');
         $client = new MockHttpClient([
             $this->json([$this->release('2026.09.02', 100)]),

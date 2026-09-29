@@ -268,7 +268,9 @@ After deploying a release that adds or changes branding services, rebuild the pr
 Source deployments must also run `php bin/console importmap:install --env=prod --no-debug`
 and `php bin/console asset-map:compile --env=prod --no-debug` after dashboard asset
 changes. Cache clearing alone does not rebuild those assets. Prepared release
-ZIPs include them; see the [Plesk deployment actions](../PLESK-DEPLOYMENT.md#plesk-git-deployment-actions).
+ZIPs include them. `app:updates:apply` runs these steps for Git checkouts; for other
+pipelines see the [deployment guide](../DEPLOYMENT.md#updates) (and, for Plesk, its
+[deployment actions](../PLESK-DEPLOYMENT.md#plesk-git-deployment-actions)).
 Saving existing branding settings takes effect without an asset build.
 
 The two BI disclosure thresholds are configured separately in the admin dashboard and stored directly in the singleton `analytics_privacy_settings` database row:
@@ -547,7 +549,8 @@ updates_repository: Subschema-LLC/aggregate   # GitHub owner/name
 ```
 
 - `release` installs signed release ZIPs and works for any installation, including
-  directories deployed by Plesk Git deployment or copied files without `.git`.
+  directories a deployment tool fills without `.git` (a hosting panel's Git
+  deployment, CI/CD, rsync or FTP).
   An installation without `release.json` is offered the latest release; installing
   it records the version.
 - `git` fast-forwards a Git checkout in the application directory.

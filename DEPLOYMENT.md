@@ -450,9 +450,11 @@ php bin/console messenger:stats
 
 **3. Logs:**
 ```bash
-# Application logs (prod uses php://stderr by default)
-tail -f /var/www/vhosts/your-domain.com/logs/error_log
-tail -f /var/www/vhosts/your-domain.com/logs/proxy_error_log
+# Application logs (prod uses php://stderr by default, so they appear in the
+# web server or PHP-FPM error log). Paths depend on your server, for example:
+tail -f /var/log/nginx/error.log        # Nginx
+tail -f /var/log/apache2/error.log      # Apache (Debian/Ubuntu)
+# Hosting panels keep per-site logs; see your panel's documentation.
 
 # Worker logs
 tail -f var/log/worker.log
@@ -528,12 +530,20 @@ updates_branch: master
 # updates_repository: Subschema-LLC/aggregate   # YAML only
 ```
 
-Use `release` for installations from a ZIP and for directories deployed without a
-`.git` folder, such as **Plesk Git deployment** or copied files. Use `git` for a Git
-clone in the application directory. `auto` picks `git` when there is a `.git`
+Use `release` for installations from a ZIP and for directories a deployment tool
+fills without a `.git` folder, such as a hosting panel's Git deployment, CI/CD,
+rsync or FTP. Use `git` for a Git clone in the application directory. `auto` picks `git` when there is a `.git`
 folder and `release` otherwise. The **Updates** page shows the source in effect and
 can save `updates_source` and `updates_branch`; see
 [configuration](docs/CONFIGURATION.md#github-update-checks).
+
+**Hosting panels and deployment pipelines.** Give the application files one owner.
+Either keep deploying with your tool (a hosting panel's Git deployment, CI/CD,
+rsync) and run the [manual steps](#manual-update-steps) as its post-deploy actions,
+or set `updates_source: release`, stop the tool's automatic deployments to this
+directory, and update with the button or `app:updates:apply`. If both write the same
+directory, the next deployment overwrites what the updater installed.
+[Plesk](PLESK-DEPLOYMENT.md#full-source-upgrade) has a worked example.
 
 **2. Install.** Select **Install update** on the **Updates** page, or run from the
 application directory as the user that owns the application files. The command
@@ -563,8 +573,8 @@ last update. A problem there disables the button and says what to fix;
   or installs files you downloaded with
   `--package=aggregate-YYYY.MM.NN.zip --manifest=aggregate-release.json --signature=aggregate-release.json.sig`.
   The signature is verified with the installation's trusted key before anything
-  changes. An installation without `release.json` (for example after a Plesk Git
-  deployment) is offered the latest release, and installing it records the version.
+  changes. An installation without `release.json` (for example files copied by a
+  deployment tool) is offered the latest release, and installing it records the version.
   If another tool deploys the same directory, turn its automatic deployment off
   first so it does not overwrite installed updates. See the
   [release guide](docs/RELEASES.md#update-an-installation).
@@ -608,7 +618,8 @@ read-only to PHP. When the preflight finds that the web user cannot write the
 files, or that the command line sees a different environment or database than the
 web server, the page explains why and you run the command on the server instead.
 
-After an update, reload PHP-FPM if OPcache does not revalidate file timestamps
+After an update, reload PHP (PHP-FPM, Apache with mod_php, FrankenPHP or your
+host's equivalent) if OPcache does not revalidate file timestamps
 (`opcache.validate_timestamps=0`), and restart workers if your process manager
 does not restart them after the stop signal. For Docker images, rebuild and
 redeploy the image instead.
@@ -685,6 +696,10 @@ collection. If the installed version predates these commands, use `git pull --ff
 after updating `origin` and verifying its tracking branch for that first upgrade.
 For image-based deployments, rebuild and redeploy the image using your usual pipeline.
 
+#### Manual update steps
+
+Use these steps when a deployment tool updates the files, or for an installation whose code predates `app:updates:apply`.
+
 For upgrades that include the `Version20260724*` privacy migrations, pause `/api/receive` and stop all async workers before the steps below. The migrations permanently remove daily IP hashes, legacy non-granted event rows, and matching Doctrine-queue tracker envelopes. Inspect failed, external, and encoded/base64 queue transports separately before resuming ingestion.
 
 ```bash
@@ -753,9 +768,9 @@ chown -R www-data:www-data var/ public/
 ### 500 errors
 
 ```bash
-# Check logs
-tail -f /var/www/vhosts/your-domain.com/logs/error_log
-tail -f /var/www/vhosts/your-domain.com/logs/proxy_error_log
+# Check the web server or PHP-FPM error log (paths depend on your server)
+tail -f /var/log/nginx/error.log
+tail -f /var/log/apache2/error.log
 
 # Check web server logs
 tail -f /var/log/nginx/error.log

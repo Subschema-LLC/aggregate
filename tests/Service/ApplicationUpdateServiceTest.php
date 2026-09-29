@@ -283,11 +283,11 @@ final class ApplicationUpdateServiceTest extends TestCase
 
     public function testDirectoriesWithoutTheirOwnCheckoutUseReleasePackagesWithoutParentGit(): void
     {
-        // For example a Plesk Git deployment: files copied without .git or release.json.
+        // For example files a deployment tool copied without .git or release.json.
         $client = new MockHttpClient([]);
         $service = new ApplicationUpdateService($this->directory, $client, $this->cache, $this->clock, $this->defaultFlags());
         self::assertSame('release', $service->source()['source']);
-        self::assertStringContainsString('Plesk Git deployment', $service->source()['reason']);
+        self::assertStringContainsString('copied by a deployment tool', $service->source()['reason']);
         self::assertSame('release', $service->check()['installation_type']);
         mkdir($this->project.'/subdirectory');
         $nested = new ApplicationUpdateService($this->project.'/subdirectory', $client, $this->cache, $this->clock, $this->defaultFlags());

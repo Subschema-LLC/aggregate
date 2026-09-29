@@ -163,7 +163,7 @@ class ApplicationUpdater
 
             if ($type === 'release') {
                 // Without release.json the installed version is unknown; the first
-                // release installed records it (for example after Plesk Git deployment).
+                // release installed records it (for example after files were copied without .git).
                 $installed = $this->installed->read();
                 $state['from'] = ['version' => $installed['version'] ?? null, 'commit' => $installed['commit'] ?? null];
                 $local = array_filter([
@@ -641,7 +641,7 @@ class ApplicationUpdater
         $this->pruneBackups();
         $version = $state['type'] === 'release' ? 'release '.($state['to']['version'] ?? '') : 'commit '.($state['to']['commit'] ?? '');
 
-        return $this->say($state, 'Update complete: '.$version.'. Maintenance mode is off. If PHP OPcache does not revalidate files on your host, reload PHP-FPM now.', 'success');
+        return $this->say($state, 'Update complete: '.$version.'. Maintenance mode is off. If PHP OPcache does not revalidate files on your host, reload PHP (for example PHP-FPM or the web server) now.', 'success');
     }
 
     /** @param array<string, mixed> $state @return array<string, mixed> */

@@ -127,7 +127,7 @@ class SystemCheck
         $opcache = function_exists('opcache_get_status') && filter_var(ini_get('opcache.enable'), FILTER_VALIDATE_BOOL)
             && !filter_var(ini_get('opcache.validate_timestamps'), FILTER_VALIDATE_BOOL);
         $add('opcache', 'PHP OPcache', $opcache ? self::WARNING : self::OK, $opcache
-            ? 'opcache.validate_timestamps is off, so PHP keeps running old code after an update until PHP-FPM is reloaded. Reload it after each update.'
+            ? 'opcache.validate_timestamps is off, so PHP keeps running old code after an update until PHP is reloaded (for example PHP-FPM or the web server). Reload it after each update.'
             : 'PHP picks up changed files after an update.');
 
         $maintenance = $this->maintenance->status();
@@ -189,7 +189,7 @@ class SystemCheck
         try {
             $installed = $this->installed->read();
             $add('release_metadata', 'Installed release', $installed === null ? self::WARNING : self::OK, $installed === null
-                ? 'No release.json, so the installed version is unknown. Installing a release records it. If another tool deploys this directory (for example Plesk Git deployment), turn its automatic deployment off first, or it will overwrite installed updates.'
+                ? 'No release.json, so the installed version is unknown. Installing a release records it. If a deployment tool also writes to this directory (hosting-panel Git deployment, CI/CD, rsync or FTP), stop its automatic deployments first, or it will overwrite installed updates.'
                 : 'Version '.$installed['version'].(ReleaseMetadata::isCalendarVersion($installed['version']) ? '' : ' (earlier numbering)').' from '.$installed['repository'].'.');
         } catch (\RuntimeException $e) {
             $add('release_metadata', 'Installed release', self::ERROR, $e->getMessage());
@@ -208,7 +208,7 @@ class SystemCheck
         $git = $this->toolchain->git();
         $add('git', 'Git', $git !== null ? self::OK : self::ERROR, $git !== null ? 'Found at '.$git.'.' : 'Git is not installed or not on PATH for this user.');
         if (!file_exists($this->projectDir.'/.git')) {
-            $add('checkout', 'Git checkout', self::ERROR, 'The application directory has no .git folder, so it cannot pull. Tools such as Plesk Git deployment copy files without it: set updates_source: release to update from release packages instead.');
+            $add('checkout', 'Git checkout', self::ERROR, 'The application directory has no .git folder, so it cannot pull. Deployment tools that copy files (hosting-panel Git deployment, CI/CD, rsync, FTP) leave it out: set updates_source: release to update from release packages instead.');
         } elseif ($git !== null) {
             $problem = $this->updates->pullProblem();
             $add('checkout', 'Git checkout', $problem === null ? self::OK : self::ERROR, $problem ?? 'Clean checkout on the configured branch.');
@@ -216,7 +216,7 @@ class SystemCheck
         $composer = $this->toolchain->composer();
         $add('composer', 'Composer', $composer !== null ? self::OK : self::WARNING, $composer !== null
             ? 'Found; dependency changes are installed automatically.'
-            : 'Not found. Updates that change composer.lock or importmap.php stop before changing files. Install Composer or set AGGREGATE_COMPOSER to its path.');
+            : 'Not found on PATH. Updates that change composer.lock or importmap.php stop before changing files. Install Composer or set AGGREGATE_COMPOSER to its path (useful when a hosting panel keeps it elsewhere).');
     }
 
     private function databaseDriverExtension(): ?string

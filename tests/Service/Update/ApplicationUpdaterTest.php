@@ -158,7 +158,7 @@ final class ApplicationUpdaterTest extends TestCase
 
     public function testInstallationWithoutReleaseMetadataIsAdoptedByItsFirstReleaseUpdate(): void
     {
-        // A Plesk Git deployment or copied files: no release.json or inventory.
+        // Files copied by a deployment tool: no release.json or inventory.
         unlink($this->project.'/release.json');
         unlink($this->project.'/release-files.json');
         [$package, $manifest, $signature] = $this->package('2.0.0');
@@ -189,7 +189,7 @@ final class ApplicationUpdaterTest extends TestCase
         $checks = array_column($this->updater()->preflight()['checks'], null, 'id');
         self::assertSame('error', $checks['signing_key']['status']);
         self::assertSame('warning', $checks['release_metadata']['status']);
-        self::assertStringContainsString('Plesk Git deployment', $checks['release_metadata']['detail']);
+        self::assertStringContainsString('stop its automatic deployments first', $checks['release_metadata']['detail']);
         self::assertContains($checks['signing_key']['detail'], $this->updater()->preflight()['problems']);
     }
 

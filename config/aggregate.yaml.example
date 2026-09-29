@@ -8,7 +8,8 @@
 # Where updates come from (also editable on the dashboard Updates page):
 #   auto    - Git pull when this directory is a Git checkout, release packages otherwise
 #   release - signed release ZIPs from the repository's GitHub Releases; works for any
-#             installation, including Plesk Git deployments and copied files
+#             installation, including files copied without .git by a deployment
+#             tool (hosting-panel Git deployment, CI/CD, rsync, FTP)
 #   git     - fast-forward pulls of a Git checkout in this directory
 updates_source: auto
 # Git pulls use this branch; release packages must have been published from it.

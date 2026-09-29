@@ -366,7 +366,7 @@ final class UpdatesControllerTest extends TestCase
         $updates = $this->createMock(ApplicationUpdateService::class);
         $updates->method('check')->willReturn(array_replace($this->availableStatus(), [
             'installation_type' => 'release', 'branch' => 'master', 'latest_version' => '2026.09.02', 'adopting' => true,
-            'source_setting' => 'auto', 'source_reason' => 'No .git directory or release.json was found, as after a Plesk Git deployment or copied files, so release packages are used.',
+            'source_setting' => 'auto', 'source_reason' => 'No .git directory or release.json was found (for example files copied by a deployment tool), so release packages are used.',
             'repository' => 'Subschema-LLC/aggregate', 'repository_url' => 'https://github.com/Subschema-LLC/aggregate',
         ]));
         $checks = [
@@ -382,7 +382,8 @@ final class UpdatesControllerTest extends TestCase
         self::assertStringContainsString('name="updates_source" value="auto" checked', $html);
         self::assertStringContainsString('updates_source: auto   # auto, release or git', $html);
         self::assertStringContainsString('updates_repository: Subschema-LLC/aggregate', $html);
-        self::assertStringContainsString('Plesk Git deployment', $html);
+        self::assertStringContainsString('files copied by a deployment tool', $html);
+        self::assertStringNotContainsStringIgnoringCase('plesk', $html, 'The page names no hosting vendor.');
         self::assertStringContainsString('<h2 class="title is-4">System check</h2>', $html);
         self::assertStringContainsString('One problem stops updates from the dashboard.', $html);
         self::assertStringContainsString('User www-data cannot write &lt;src/&gt;.', $html);

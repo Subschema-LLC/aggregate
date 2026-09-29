@@ -576,7 +576,8 @@ class ApplicationUpdateService
     /**
      * Resolve updates_source. "auto" uses Git when the application directory is
      * its own Git checkout and release packages otherwise, including directories
-     * that another tool deploys without .git (for example Plesk Git deployment).
+     * that a deployment tool fills without .git (hosting-panel Git deployment,
+     * CI/CD, rsync, FTP or an extracted archive).
      *
      * @return array{source: string, setting: string, reason: string}
      */
@@ -597,7 +598,7 @@ class ApplicationUpdateService
             return ['source' => 'release', 'setting' => 'auto', 'reason' => 'Detected release.json from a release package.'];
         }
 
-        return ['source' => 'release', 'setting' => 'auto', 'reason' => 'No .git directory or release.json was found, as after a Plesk Git deployment or copied files, so release packages are used.'];
+        return ['source' => 'release', 'setting' => 'auto', 'reason' => 'No .git directory or release.json was found (for example files copied by a deployment tool), so release packages are used.'];
     }
 
     public function repositoryName(): string
