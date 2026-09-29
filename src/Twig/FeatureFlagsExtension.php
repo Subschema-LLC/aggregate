@@ -51,7 +51,7 @@ final class FeatureFlagsExtension extends AbstractExtension
 
     private function linksToUpdates(array $link): bool
     {
-        if (in_array($link['route'] ?? null, ['app_updates', 'app_updates_refresh', 'app_updates_install', 'app_updates_settings', 'app_updates_upload'], true)) {
+        if (in_array($link['route'] ?? null, ['app_updates', 'app_updates_refresh', 'app_updates_install', 'app_updates_settings', 'app_updates_upload', 'app_updates_method'], true)) {
             return true;
         }
 
@@ -68,6 +68,7 @@ final class FeatureFlagsExtension extends AbstractExtension
             '/dashboard/updates/install',
             '/dashboard/updates/settings',
             '/dashboard/updates/upload',
+            '/dashboard/updates/method',
         ], true);
     }
 }

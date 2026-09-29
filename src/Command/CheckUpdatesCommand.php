@@ -29,7 +29,7 @@ final class CheckUpdatesCommand extends Command
         $this
             ->addOption('refresh', null, InputOption::VALUE_NONE, 'Check GitHub now instead of using cached results')
             ->addOption('json', null, InputOption::VALUE_NONE, 'Output the update status as JSON')
-            ->setHelp('Checks updates_branch (default: master) of updates_repository (default: the official repository) in config/aggregate.yaml. A Git clone compares commits; any other installation checks signed release ZIPs. This command does not change application code. Results are cached for one hour.');
+            ->setHelp('Checks updates_branch (default: master) of updates_repository (default: the official repository) in config/aggregate.yaml. The update method (updates_method, see app:updates:method) decides what is compared: the repository method compares Git commits, the release method checks signed release ZIPs. Until a method is chosen, a Git clone uses the repository method and anything else uses release ZIPs. This command does not change application code. Results are cached for one hour.');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -51,7 +51,7 @@ final class CheckUpdatesCommand extends Command
         $installedBranch = $status['installed_branch'] ?? null;
         $io->definitionList(...[
             ['Repository' => OutputFormatter::escape((string) ($status['repository'] ?? ApplicationUpdateService::REPOSITORY))],
-            ['Update method' => $isRelease ? 'Release ZIPs' : 'From the repository (Git)'],
+            ['Update method' => ($isRelease ? 'Release ZIPs' : 'From the repository (Git, advanced)').(($status['update_method'] ?? null) === null ? ' (not chosen; fits this directory)' : '')],
             ['Configured branch' => OutputFormatter::escape($status['branch'] ?? 'Unavailable')],
             ...($isRelease ? [
                 ['Installed version' => OutputFormatter::escape($status['current_version'] ?? (($status['adopting'] ?? false) ? 'Unknown (no release.json)' : 'Unavailable'))],
@@ -85,13 +85,13 @@ final class CheckUpdatesCommand extends Command
             if (($status['package_url'] ?? null) !== null) {
                 $io->note('The release signature has not been verified by this check. Download the package, manifest and signature, then run:');
                 $io->text('php bin/console app:updates:verify-package PACKAGE MANIFEST SIGNATURE');
-                $io->text('See DEPLOYMENT.md#updates to install a verified package. Updates are not applied automatically.');
+                $io->text('To install it, run php bin/console app:updates:apply (it verifies the signature first). See docs/UPDATES.md.');
             }
         } elseif ($status['current_commit'] !== null && $installedBranch !== $status['branch']) {
             $io->warning('The installed branch does not match updates_branch. Switch branches manually or correct config/aggregate.yaml before pulling.');
         } elseif ($status['state'] === 'available') {
-            $io->text('After preparing your deployment, run: php bin/console app:updates:pull');
-            $io->text('See DEPLOYMENT.md#updates for backups, dependencies, migrations, assets, and worker restarts.');
+            $io->text('To install it, run php bin/console app:updates:apply, which also installs dependencies, runs migrations and rebuilds assets and the cache. app:updates:pull only updates the code.');
+            $io->text('See docs/UPDATES.md.');
         }
 
         return $failed ? Command::FAILURE : Command::SUCCESS;

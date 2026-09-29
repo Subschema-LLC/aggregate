@@ -73,6 +73,20 @@ class ApplicationUpdater
     }
 
     /**
+     * Why the update method cannot change now, or null. Switching during an
+     * update would leave a resume or rollback using the other method.
+     */
+    public function methodChangeProblem(): ?string
+    {
+        $state = $this->status();
+        if ($state !== null && ($state['running'] || in_array($state['status'] ?? null, ['running', 'needs_attention'], true))) {
+            return 'The update method cannot change while an update is running or needs attention. Finish, resume or roll back that update first.';
+        }
+
+        return null;
+    }
+
+    /**
      * The system check for the current user, plus what the dashboard compares
      * with the command line before starting a background update.
      *
@@ -143,7 +157,7 @@ class ApplicationUpdater
 
             $type = $this->installationType();
             if ($type === 'git' && array_filter([$options['package'] ?? null, $options['manifest'] ?? null, $options['signature'] ?? null]) !== []) {
-                throw new \RuntimeException('This installation is a Git clone, so it updates directly from the repository. Release ZIPs are for installations without .git.');
+                throw new \RuntimeException('This installation updates directly from the repository, so it does not install release ZIPs. To use release ZIPs, choose that update method first (Updates page, app:updates:method release or updates_method in config/aggregate.yaml).');
             }
             $id = gmdate('Ymd\THis\Z').'-'.bin2hex(random_bytes(3));
             $state = [
@@ -348,7 +362,7 @@ class ApplicationUpdater
     public function stageUpload(array $files): array
     {
         if ($this->installationType() === 'git') {
-            throw new \RuntimeException('This installation is a Git clone, so it updates directly from the repository. Release ZIPs are for installations without .git.');
+            throw new \RuntimeException('This installation updates directly from the repository, so it does not install release ZIPs. To use release ZIPs, choose that update method first (Updates page, app:updates:method release or updates_method in config/aggregate.yaml).');
         }
         $roles = [];
         foreach ($files as $name => $path) {

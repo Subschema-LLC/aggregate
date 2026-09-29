@@ -10,6 +10,11 @@ final class UpdateSettings
     public const DEFAULT_BRANCH = 'master';
     public const DEFAULT_REPOSITORY = 'Subschema-LLC/aggregate';
 
+    /** Signed release ZIPs: the recommended method for every installation. */
+    public const METHOD_RELEASE = 'release';
+    /** Fast-forward pulls of a Git clone: the advanced method. */
+    public const METHOD_REPOSITORY = 'repository';
+    public const METHODS = [self::METHOD_RELEASE, self::METHOD_REPOSITORY];
 
     public function __construct(private readonly AggregateConfigLoader $config)
     {
@@ -48,10 +53,38 @@ final class UpdateSettings
         return strcasecmp($this->repository(), self::DEFAULT_REPOSITORY) === 0;
     }
 
+    /**
+     * The update method an administrator chose (updates_method), or null when
+     * none has been chosen yet and the installation layout decides. An invalid
+     * value is an error rather than a silent fallback.
+     */
+    public function method(): ?string
+    {
+        $this->config->assertHealthy();
+        $values = $this->config->all();
+
+        return array_key_exists('updates_method', $values) ? self::validateMethod($values['updates_method']) : null;
+    }
+
+    /** Save the update method chosen on the Updates page or with app:updates:method. */
+    public function saveMethod(string $method): void
+    {
+        $this->config->setMany(['updates_method' => self::validateMethod($method)]);
+    }
+
     /** Save the branch chosen on the Updates page to the active YAML. */
     public function saveBranch(string $branch): void
     {
         $this->config->setMany(['updates_branch' => self::validateBranch($branch)]);
+    }
+
+    public static function validateMethod(mixed $method): string
+    {
+        if (!is_string($method) || !in_array($method, self::METHODS, true)) {
+            throw new \InvalidArgumentException('updates_method must be release (release ZIPs, recommended) or repository (a Git clone that pulls from the repository; advanced).');
+        }
+
+        return $method;
     }
 
     public static function validateRepository(mixed $repository): string

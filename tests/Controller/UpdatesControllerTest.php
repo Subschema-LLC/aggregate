@@ -39,7 +39,7 @@ final class UpdatesControllerTest extends TestCase
         $updates = $this->createMock(ApplicationUpdateService::class);
         $updates->expects(self::once())->method('check')->with(false)->willReturn($status);
 
-        $response = $this->controller($updates)->index();
+        $response = $this->controller($updates, method: 'repository')->index();
 
         self::assertSame(200, $response->getStatusCode());
         $html = (string) $response->getContent();
@@ -54,7 +54,7 @@ final class UpdatesControllerTest extends TestCase
         self::assertStringContainsString('name="_csrf_token" value="rendered-token"', $html);
         self::assertStringContainsString('Check now', $html);
         self::assertStringContainsString('cached for one hour', $html);
-        self::assertStringContainsString('href="https://github.com/Subschema-LLC/aggregate/blob/development/DEPLOYMENT.md#updates"', $html);
+        self::assertStringContainsString('href="https://github.com/Subschema-LLC/aggregate/blob/development/docs/UPDATES.md">update guide</a>', $html);
         self::assertStringContainsString('php bin/console app:updates:check --refresh', $html);
         self::assertStringContainsString('php bin/console app:updates:apply', $html);
         self::assertStringContainsString('method="post" action="/dashboard/updates/install"', $html);
@@ -77,7 +77,7 @@ final class UpdatesControllerTest extends TestCase
             'installed_branch' => 'development',
         ]));
 
-        $html = (string) $this->controller($updates)->index()->getContent();
+        $html = (string) $this->controller($updates, method: 'repository')->index()->getContent();
 
         self::assertStringContainsString('installed branch does not match', $html);
         self::assertStringContainsString('updates_branch', $html);
@@ -105,7 +105,7 @@ final class UpdatesControllerTest extends TestCase
         $updates = $this->createMock(ApplicationUpdateService::class);
         $updates->method('check')->willReturn($status);
 
-        $html = (string) $this->controller($updates)->index()->getContent();
+        $html = (string) $this->controller($updates, method: 'release')->index()->getContent();
 
         self::assertStringContainsString('Release package', $html);
         self::assertStringContainsString('Installed version', $html);
@@ -130,7 +130,7 @@ final class UpdatesControllerTest extends TestCase
         $updater->method('isSqlite')->willReturn(false);
         $updater->method('status')->willReturn(null);
 
-        $html = (string) $this->controller($updates, updater: $updater)->index()->getContent();
+        $html = (string) $this->controller($updates, updater: $updater, method: 'repository')->index()->getContent();
 
         $this->assertInstallDisabled($html, 'This installation is up to date. The button becomes available when Check now finds a newer commit.');
         self::assertStringContainsString('Install update', $html);
@@ -147,7 +147,7 @@ final class UpdatesControllerTest extends TestCase
             'message' => 'Requires PHP >=8.4.',
         ]));
 
-        $html = (string) $this->controller($updates)->index()->getContent();
+        $html = (string) $this->controller($updates, method: 'release')->index()->getContent();
 
         self::assertStringContainsString('Release requirements are not met', $html);
         self::assertStringNotContainsString('Update available', $html);
@@ -168,7 +168,7 @@ final class UpdatesControllerTest extends TestCase
             'compare_url' => null,
         ]);
 
-        $html = (string) $this->controller($updates)->index()->getContent();
+        $html = (string) $this->controller($updates, method: 'repository')->index()->getContent();
 
         self::assertStringContainsString('Update checking unavailable', $html);
         self::assertStringContainsString('This installation has no Git checkout.', $html);
@@ -176,7 +176,7 @@ final class UpdatesControllerTest extends TestCase
         self::assertStringNotContainsString('Up to date', $html);
         self::assertStringNotContainsString('Review changes on GitHub', $html);
         self::assertStringNotContainsString('<time ', $html);
-        self::assertStringContainsString('href="https://github.com/Subschema-LLC/aggregate">deployment guide</a>', $html);
+        self::assertStringContainsString('href="https://github.com/Subschema-LLC/aggregate/blob/master/docs/UPDATES.md">update guide</a>', $html);
     }
 
     public function testErrorStatusRendersEscapedDetailsWithoutClaimingTheCheckoutIsCurrent(): void
@@ -190,12 +190,12 @@ final class UpdatesControllerTest extends TestCase
             'compare_url' => null,
         ]));
 
-        $html = (string) $this->controller($updates)->index()->getContent();
+        $html = (string) $this->controller($updates, method: 'repository')->index()->getContent();
 
         self::assertStringContainsString('Update check failed', $html);
         self::assertStringContainsString('GitHub returned &lt;unexpected&gt; content.', $html);
         self::assertStringContainsString('&lt;development&gt;', $html);
-        self::assertStringContainsString('/blob/%3Cdevelopment%3E/DEPLOYMENT.md#updates', $html);
+        self::assertStringContainsString('/blob/%3Cdevelopment%3E/docs/UPDATES.md', $html);
         self::assertStringNotContainsString('Up to date', $html);
     }
 
@@ -305,7 +305,7 @@ final class UpdatesControllerTest extends TestCase
         $updater->expects(self::once())->method('startInBackground')->with(['--database-backup-confirmed', '--release=1.1.0']);
         $request->request->set('database_backup_confirmed', '1');
 
-        $response = $this->controller($updates, $request, updater: $updater, csrfId: UpdatesController::INSTALL_CSRF_TOKEN_ID)->install($request);
+        $response = $this->controller($updates, $request, updater: $updater, csrfId: UpdatesController::INSTALL_CSRF_TOKEN_ID, method: 'release')->install($request);
 
         self::assertSame('/dashboard/updates', $response->headers->get('Location'));
         self::assertStringContainsString('The update has started', $request->getSession()->getFlashBag()->peek('success')[0]);
@@ -320,7 +320,7 @@ final class UpdatesControllerTest extends TestCase
         $updater->method('isSqlite')->willReturn(false);
         $updater->expects(self::never())->method('startInBackground');
 
-        $this->controller($updates, $request, updater: $updater, csrfId: UpdatesController::INSTALL_CSRF_TOKEN_ID)->install($request);
+        $this->controller($updates, $request, updater: $updater, csrfId: UpdatesController::INSTALL_CSRF_TOKEN_ID, method: 'repository')->install($request);
 
         self::assertStringContainsString('database backup', $request->getSession()->getFlashBag()->peek('error')[0]);
     }
@@ -336,7 +336,7 @@ final class UpdatesControllerTest extends TestCase
         $updater->method('backgroundProblems')->willReturn($backgroundProblems);
         $updater->expects(self::never())->method('startInBackground');
 
-        $this->controller($updates, $request, updater: $updater, csrfId: UpdatesController::INSTALL_CSRF_TOKEN_ID, problems: $problems)->install($request);
+        $this->controller($updates, $request, updater: $updater, csrfId: UpdatesController::INSTALL_CSRF_TOKEN_ID, problems: $problems, method: 'repository')->install($request);
 
         self::assertStringContainsString($message, $request->getSession()->getFlashBag()->peek('error')[0]);
     }
@@ -362,46 +362,170 @@ final class UpdatesControllerTest extends TestCase
         self::assertSame(['Invalid security token. Please try again.'], $request->getSession()->getFlashBag()->peek('error'));
     }
 
-    public function testReleaseInstallationOffersDownloadAndUploadInCollapsiblePanels(): void
+    public function testReleaseMethodShowsOnlyTheZipPanelWithDownloadAndUpload(): void
     {
         $updates = $this->createMock(ApplicationUpdateService::class);
         $updates->method('check')->willReturn(array_replace($this->availableStatus(), [
             'installation_type' => 'release', 'branch' => 'master', 'latest_version' => '2026.09.02', 'adopting' => true,
-            'source_reason' => 'This directory has no .git folder or release.json (for example files copied by a deployment tool), so it updates with release ZIPs.',
             'repository' => 'Subschema-LLC/aggregate', 'repository_url' => 'https://github.com/Subschema-LLC/aggregate',
         ]));
 
-        $html = (string) $this->controller($updates)->index()->getContent();
+        $html = (string) $this->controller($updates, method: 'release')->index()->getContent();
 
-        self::assertStringContainsString('<details class="box is-flex-grow-1 update-panel" id="update-repository" open>', $html);
-        self::assertStringContainsString('<details class="box is-flex-grow-1 update-panel" id="update-zip" open>', $html);
-        self::assertStringContainsString('From the repository', $html);
-        self::assertStringContainsString('With a release ZIP', $html);
-        self::assertStringContainsString('Works when the application directory is a Git clone', $html);
-        self::assertStringContainsString('files copied by a deployment tool', $html);
+        self::assertStringContainsString('This installation updates with release ZIPs.', $html);
+        self::assertStringContainsString('<details class="box update-panel" id="update-zip" open>', $html);
+        self::assertStringNotContainsString('id="update-repository"', $html);
+        self::assertStringNotContainsString('id="update-method"', $html, 'The chooser only shows until a method is chosen.');
         self::assertStringContainsString('<input type="hidden" name="method" value="release">', $html);
+        self::assertStringNotContainsString('name="method" value="git"', $html);
         self::assertStringContainsString('Install update 2026.09.02', $html);
         self::assertStringContainsString('action="/dashboard/updates/upload" enctype="multipart/form-data"', $html);
         self::assertStringContainsString('name="release_files[]" accept=".zip,.json,.sig" multiple required', $html);
         self::assertStringContainsString('Unknown (no release.json)', $html);
         self::assertStringContainsString('<details class="box update-panel" id="update-settings">', $html);
+        self::assertStringContainsString('Switch update method', $html);
+        self::assertStringContainsString('id="switch-method-release" name="updates_method" value="release" required checked', $html);
+        self::assertStringContainsString('id="switch-method-repository" name="updates_method" value="repository" required aria-describedby', $html);
+        self::assertStringContainsString('The repository method is for advanced users.', $html);
+        self::assertStringContainsString('updates_method: release   # release (recommended) or repository (advanced)'."\n".'updates_branch: master', $html);
         self::assertStringContainsString('<details class="box update-panel" id="system-check">', $html);
         self::assertStringContainsString('<details class="box content update-panel" id="command-line">', $html);
-        self::assertStringNotContainsString('updates_source', $html);
+        self::assertStringContainsString('php bin/console app:updates:method release', $html);
         self::assertStringNotContainsStringIgnoringCase('plesk', $html, 'The page names no hosting vendor.');
     }
 
-    public function testGitInstallationOffersRepositoryUpdateAndExplainsWhyZipIsUnavailable(): void
+    public function testRepositoryMethodShowsOnlyTheRepositoryPanelWithAnAdvancedWarning(): void
     {
         $updates = $this->createMock(ApplicationUpdateService::class);
         $updates->method('check')->willReturn($this->availableStatus());
 
-        $html = (string) $this->controller($updates)->index()->getContent();
+        $html = (string) $this->controller($updates, method: 'repository')->index()->getContent();
 
+        self::assertStringContainsString('This installation updates directly from the repository (advanced).', $html);
+        self::assertStringContainsString('<details class="box update-panel" id="update-repository" open>', $html);
+        self::assertStringContainsString('<span class="tag is-warning is-light ml-2">Advanced</span>', $html);
+        self::assertStringContainsString('<strong>Advanced option.</strong>', $html);
+        self::assertStringContainsString('docs/UPDATES.md#update-from-the-repository-advanced', $html);
         self::assertStringContainsString('<input type="hidden" name="method" value="git">', $html);
-        self::assertStringContainsString('This directory is a Git clone, so it updates from the repository', $html);
-        self::assertStringContainsString('aria-describedby="zip-unavailable"', $html);
+        self::assertStringNotContainsString('id="update-zip"', $html);
         self::assertStringNotContainsString('action="/dashboard/updates/upload"', $html);
+        self::assertStringContainsString('id="switch-method-repository" name="updates_method" value="repository" required checked', $html);
+        self::assertStringContainsString('Git clone', $html);
+    }
+
+    public function testUnchosenMethodShowsOnlyTheChooserWithTheFittingMethodSelected(): void
+    {
+        $updates = $this->createMock(ApplicationUpdateService::class);
+        $updates->method('check')->willReturn($this->availableStatus());
+
+        $html = (string) $this->controller($updates, detected: 'repository')->index()->getContent();
+
+        self::assertStringContainsString('Choose how this installation updates.', $html);
+        self::assertStringContainsString('<details class="box update-panel" id="update-method" open>', $html);
+        self::assertStringContainsString('Not chosen yet', $html);
+        self::assertStringContainsString('action="/dashboard/updates/method"', $html);
+        self::assertStringContainsString('id="choose-method-repository" name="updates_method" value="repository" required checked', $html);
+        self::assertStringContainsString('id="choose-method-release" name="updates_method" value="release" required aria-describedby', $html);
+        self::assertStringContainsString('Recommended', $html);
+        self::assertStringContainsString('The repository method is for advanced users.', $html);
+        self::assertStringContainsString('Use this method', $html);
+        self::assertStringNotContainsString('id="update-zip"', $html);
+        self::assertStringNotContainsString('id="update-repository"', $html);
+        self::assertStringNotContainsString('action="/dashboard/updates/install"', $html);
+        self::assertStringNotContainsString('action="/dashboard/updates/upload"', $html);
+        self::assertStringNotContainsString('Switch update method', $html);
+        self::assertStringContainsString('# updates_method: release   # not chosen yet', $html);
+    }
+
+    public function testChosenMethodThatDoesNotFitTheDirectoryExplainsHowToFixIt(): void
+    {
+        $updates = $this->createMock(ApplicationUpdateService::class);
+        $updates->method('check')->willReturn(array_replace($this->availableStatus(), [
+            'state' => 'unavailable', 'current_commit' => null, 'latest_commit' => null, 'installed_branch' => null,
+            'message' => 'The update method is repository, but the application directory is not a Git clone.',
+        ]));
+
+        $html = (string) $this->controller($updates, method: 'repository', detected: 'release')->index()->getContent();
+
+        self::assertStringContainsString('id="repository-unavailable"', $html);
+        self::assertStringContainsString('docs/UPDATES.md#set-up-a-git-clone', $html);
+        self::assertStringContainsString('type="button" disabled aria-describedby="repository-unavailable"', $html);
+        self::assertStringNotContainsString('action="/dashboard/updates/install"', $html);
+        self::assertStringContainsString('<details class="box update-panel" id="update-settings" open>', $html);
+        self::assertStringContainsString('This directory is not a Git clone, so it must be set up as one first.', $html);
+    }
+
+    public function testDashboardNeverInstallsBeforeAMethodIsChosen(): void
+    {
+        $request = $this->request('POST', ['_csrf_token' => 'valid-token'], '/dashboard/updates/install');
+        $updates = $this->createMock(ApplicationUpdateService::class);
+        $updates->method('check')->willReturn($this->availableStatus());
+        $updater = $this->createMock(ApplicationUpdater::class);
+        $updater->method('isSqlite')->willReturn(true);
+        $updater->expects(self::never())->method('startInBackground');
+
+        $this->controller($updates, $request, updater: $updater, csrfId: UpdatesController::INSTALL_CSRF_TOKEN_ID, detected: 'repository')->install($request);
+
+        self::assertStringContainsString('Choose an update method', $request->getSession()->getFlashBag()->peek('error')[0]);
+    }
+
+    #[DataProvider('methodSubmissions')]
+    public function testAdministratorsChooseOrSwitchTheMethodSavedToYaml(mixed $method, string $detected, ?array $saved, string $type, string $flash): void
+    {
+        $request = $this->request('POST', ['_csrf_token' => 'valid-token', 'updates_method' => $method], '/dashboard/updates/method');
+        $updates = $this->createMock(ApplicationUpdateService::class);
+        $updates->expects($saved === null ? self::never() : self::once())->method('check')->with(true);
+
+        $response = $this->controller($updates, $request, csrfId: UpdatesController::METHOD_CSRF_TOKEN_ID, savedSettings: $saved, detected: $detected)->saveMethod($request);
+
+        self::assertSame('/dashboard/updates', $response->headers->get('Location'));
+        self::assertStringContainsString($flash, implode(' ', $request->getSession()->getFlashBag()->peekAll()[$type] ?? []));
+    }
+
+    public static function methodSubmissions(): iterable
+    {
+        yield 'release on a release directory' => ['release', 'release', ['updates_method' => 'release'], 'success', 'now updates with release ZIPs'];
+        yield 'repository on a clone' => ['repository', 'repository', ['updates_method' => 'repository'], 'success', 'from the repository (advanced)'];
+        yield 'repository without .git warns' => ['repository', 'release', ['updates_method' => 'repository'], 'warning', 'not a Git clone yet'];
+        yield 'release on a clone warns' => ['release', 'repository', ['updates_method' => 'release'], 'warning', 'is a Git clone'];
+        yield 'unknown method' => ['git', 'release', null, 'error', 'updates_method must be release'];
+        yield 'array method' => [['release'], 'release', null, 'error', 'updates_method must be release'];
+        yield 'missing method' => [null, 'release', null, 'error', 'updates_method must be release'];
+    }
+
+    public function testMethodCannotChangeWhileAnUpdateNeedsAttention(): void
+    {
+        $request = $this->request('POST', ['_csrf_token' => 'valid-token', 'updates_method' => 'release'], '/dashboard/updates/method');
+        $updates = $this->createMock(ApplicationUpdateService::class);
+        $updates->expects(self::never())->method('check');
+        $updater = $this->createMock(ApplicationUpdater::class);
+        $updater->method('methodChangeProblem')->willReturn('The update method cannot change while an update is running or needs attention.');
+
+        $this->controller($updates, $request, updater: $updater, csrfId: UpdatesController::METHOD_CSRF_TOKEN_ID)->saveMethod($request);
+
+        self::assertStringContainsString('cannot change while an update', $request->getSession()->getFlashBag()->peek('error')[0]);
+    }
+
+    public function testOnlyAdministratorsCanChooseTheMethod(): void
+    {
+        $request = $this->request('POST', ['_csrf_token' => 'valid-token', 'updates_method' => 'repository'], '/dashboard/updates/method');
+        $updates = $this->createMock(ApplicationUpdateService::class);
+        $updates->expects(self::never())->method('check');
+        $controller = $this->controller($updates, $request, admin: false);
+
+        $this->expectException(AccessDeniedException::class);
+        $controller->saveMethod($request);
+    }
+
+    public function testMethodIsNotSavedWithAnInvalidToken(): void
+    {
+        $request = $this->request('POST', ['_csrf_token' => 'forged', 'updates_method' => 'repository'], '/dashboard/updates/method');
+        $updates = $this->createMock(ApplicationUpdateService::class);
+        $updates->expects(self::never())->method('check');
+
+        $this->controller($updates, $request, csrfValid: false, csrfId: UpdatesController::METHOD_CSRF_TOKEN_ID)->saveMethod($request);
+
+        self::assertStringContainsString('Invalid security token', $request->getSession()->getFlashBag()->peek('error')[0]);
     }
 
     public function testSystemCheckProblemsOpenThatPanelAndDisableTheButtons(): void
@@ -413,7 +537,7 @@ final class UpdatesControllerTest extends TestCase
             ['id' => 'background', 'label' => 'Dashboard button can start updates', 'status' => 'ok', 'detail' => 'Command-line PHP found.', 'scope' => 'dashboard'],
         ];
 
-        $html = (string) $this->controller($updates, checks: $checks, problems: ['User www-data cannot write src/.'])->index()->getContent();
+        $html = (string) $this->controller($updates, checks: $checks, problems: ['User www-data cannot write src/.'], method: 'release')->index()->getContent();
 
         self::assertStringContainsString('<details class="box update-panel" id="system-check" open>', $html);
         self::assertStringContainsString('1 problem', $html);
@@ -459,7 +583,7 @@ final class UpdatesControllerTest extends TestCase
             ->willReturn(['package' => '/p.zip', 'manifest' => '/m.json', 'signature' => '/s.sig', 'version' => '2026.09.02']);
         $updater->expects(self::once())->method('startInBackground')->with(['--package=/p.zip', '--manifest=/m.json', '--signature=/s.sig']);
 
-        $this->controller($this->createMock(ApplicationUpdateService::class), $request, updater: $updater, csrfId: UpdatesController::UPLOAD_CSRF_TOKEN_ID)->upload($request);
+        $this->controller($this->createMock(ApplicationUpdateService::class), $request, updater: $updater, csrfId: UpdatesController::UPLOAD_CSRF_TOKEN_ID, method: 'release')->upload($request);
 
         self::assertStringContainsString('Verified release 2026.09.02. The update has started', $request->getSession()->getFlashBag()->peek('success')[0]);
     }
@@ -477,7 +601,7 @@ final class UpdatesControllerTest extends TestCase
         $updater->expects(self::never())->method('stageUpload');
         $updater->expects(self::never())->method('startInBackground');
 
-        $this->controller($this->createMock(ApplicationUpdateService::class), $request, updater: $updater, csrfId: UpdatesController::UPLOAD_CSRF_TOKEN_ID, problems: $problems)->upload($request);
+        $this->controller($this->createMock(ApplicationUpdateService::class), $request, updater: $updater, csrfId: UpdatesController::UPLOAD_CSRF_TOKEN_ID, problems: $problems, method: 'release')->upload($request);
 
         self::assertStringContainsString($message, $request->getSession()->getFlashBag()->peek('error')[0]);
     }
@@ -522,7 +646,7 @@ final class UpdatesControllerTest extends TestCase
             'log' => [['at' => 1789387200, 'level' => 'error', 'message' => 'Update stopped at "migrations".']],
         ]);
 
-        $html = (string) $this->controller($updates, updater: $updater)->index()->getContent();
+        $html = (string) $this->controller($updates, updater: $updater, method: 'repository')->index()->getContent();
 
         self::assertStringContainsString('Last update needs attention', $html);
         self::assertStringContainsString('Migration &lt;failed&gt;.', $html);
@@ -552,10 +676,13 @@ final class UpdatesControllerTest extends TestCase
         array $checks = [],
         array $settings = [],
         ?array $savedSettings = null,
+        ?string $method = null,
+        ?string $detected = null,
     ): UpdatesController {
         $config = $this->createMock(AggregateConfigLoader::class);
         $config->method('isDashboardEnabled')->willReturn($dashboardEnabled);
-        $config->method('all')->willReturn(['feature_flags' => ['updates' => ['enabled' => $featureEnabled]]] + $settings);
+        $config->method('all')->willReturn(['feature_flags' => ['updates' => ['enabled' => $featureEnabled]]] + $settings + ($method !== null ? ['updates_method' => $method] : []));
+        $updates->method('detectedMethod')->willReturn($detected ?? $method ?? 'release');
         if ($savedSettings !== null) {
             $config->expects(self::once())->method('setMany')->with($savedSettings);
         } else {
@@ -603,6 +730,7 @@ final class UpdatesControllerTest extends TestCase
             'app_updates_install' => '/dashboard/updates/install',
             'app_updates_settings' => '/dashboard/updates/settings',
             'app_updates_upload' => '/dashboard/updates/upload',
+            'app_updates_method' => '/dashboard/updates/method',
         }));
         $twig->addFunction(new TwigFunction('csrf_token', static fn (): string => 'rendered-token'));
 

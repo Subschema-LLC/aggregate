@@ -45,6 +45,8 @@ class ApplicationUpdateService
             $source = $this->source();
             $result += [
                 'source_reason' => $source['reason'],
+                'update_method' => $source['method'],
+                'detected_method' => $source['detected'],
                 'repository' => $this->repositoryName(),
                 'repository_url' => $this->repositoryUrl(),
             ];
@@ -52,7 +54,13 @@ class ApplicationUpdateService
             // The status message already explains invalid update settings.
         }
 
-        return $result + ['source_reason' => null, 'repository' => null, 'repository_url' => null];
+        return $result + [
+            'source_reason' => null,
+            'update_method' => null,
+            'detected_method' => $this->detectedMethod(),
+            'repository' => null,
+            'repository_url' => null,
+        ];
     }
 
     /** @return array<string, mixed> */
@@ -82,6 +90,12 @@ class ApplicationUpdateService
             $this->repositoryName();
         } catch (\RuntimeException $e) {
             return array_replace($result, ['state' => 'error', 'message' => $e->getMessage()]);
+        }
+        if ($source['mismatch'] !== null) {
+            return array_replace($result, [
+                'installation_type' => $source['source'],
+                'message' => $source['mismatch'],
+            ]);
         }
         if ($source['source'] === 'release') {
             return $this->releases?->check($refresh) ?? array_replace($result, [
@@ -573,23 +587,72 @@ class ApplicationUpdateService
     }
 
     /**
-     * How this installation updates. A Git clone (its own .git in the
-     * application directory) pulls from the repository; anything else (an
-     * extracted release ZIP, or files a deployment tool copied without .git)
-     * installs release ZIPs.
+     * How this installation updates. An administrator chooses the method with
+     * updates_method (Updates page, app:updates:method or YAML). Until one is
+     * chosen, the layout decides: a Git clone (its own .git in the application
+     * directory) pulls from the repository, and anything else installs release
+     * ZIPs. A chosen method that does not fit the layout is reported as a
+     * mismatch, and updates stop until it is resolved.
      *
-     * @return array{source: string, reason: string}
+     * @return array{source: 'git'|'release', reason: string, method: ?string, detected: string, mismatch: ?string}
      */
     public function source(): array
     {
-        if (file_exists($this->projectDir.'/.git') || is_link($this->projectDir.'/.git')) {
-            return ['source' => 'git', 'reason' => 'This directory is a Git clone, so it updates directly from the repository.'];
+        try {
+            $method = $this->settings?->method();
+        } catch (\InvalidArgumentException $e) {
+            throw new \RuntimeException($e->getMessage(), previous: $e);
         }
-        if (file_exists($this->projectDir.'/release.json') || is_link($this->projectDir.'/release.json')) {
-            return ['source' => 'release', 'reason' => 'This directory was installed from a release ZIP, so it updates with release ZIPs.'];
+        $detected = $this->detectedMethod();
+        if ($method === null) {
+            return [
+                'source' => $detected === UpdateSettings::METHOD_REPOSITORY ? 'git' : 'release',
+                'reason' => $this->layoutReason().' No update method has been chosen yet, so this one is used until an administrator chooses one.',
+                'method' => null,
+                'detected' => $detected,
+                'mismatch' => null,
+            ];
         }
 
-        return ['source' => 'release', 'reason' => 'This directory has no .git folder or release.json (for example files copied by a deployment tool), so it updates with release ZIPs.'];
+        $mismatch = null;
+        if ($method !== $detected) {
+            $mismatch = $method === UpdateSettings::METHOD_REPOSITORY
+                ? 'The update method is repository, but the application directory is not a Git clone, so there is nothing to pull. Set the directory up as a Git clone of the repository, or choose release ZIP updates. See docs/UPDATES.md.'
+                : 'The update method is release ZIP, but the application directory is a Git clone. Installing a ZIP over it would leave its files out of step with Git. Choose repository updates, or install a release ZIP into a new directory. See docs/UPDATES.md.';
+        }
+
+        return [
+            'source' => $method === UpdateSettings::METHOD_REPOSITORY ? 'git' : 'release',
+            'reason' => $method === UpdateSettings::METHOD_REPOSITORY
+                ? 'An administrator chose to update directly from the repository (advanced).'
+                : 'An administrator chose to update with release ZIPs.',
+            'method' => $method,
+            'detected' => $detected,
+            'mismatch' => $mismatch,
+        ];
+    }
+
+    /** The method the directory layout supports: repository for a Git clone, otherwise release. */
+    public function detectedMethod(): string
+    {
+        return $this->isGitClone() ? UpdateSettings::METHOD_REPOSITORY : UpdateSettings::METHOD_RELEASE;
+    }
+
+    public function isGitClone(): bool
+    {
+        return file_exists($this->projectDir.'/.git') || is_link($this->projectDir.'/.git');
+    }
+
+    private function layoutReason(): string
+    {
+        if ($this->isGitClone()) {
+            return 'This directory is a Git clone, so it can update directly from the repository.';
+        }
+        if (file_exists($this->projectDir.'/release.json') || is_link($this->projectDir.'/release.json')) {
+            return 'This directory was installed from a release ZIP, so it updates with release ZIPs.';
+        }
+
+        return 'This directory has no .git folder or release.json (for example files copied by a deployment tool), so it updates with release ZIPs.';
     }
 
     public function repositoryName(): string

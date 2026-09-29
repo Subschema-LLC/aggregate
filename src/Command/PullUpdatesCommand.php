@@ -64,7 +64,7 @@ HELP);
             ['Previous commit' => $result['previous_commit']],
             ['Installed commit' => $result['current_commit']],
         );
-        $io->warning('Deployment is not complete. Follow DEPLOYMENT.md#updates before resuming service, or use app:updates:apply next time to run these steps automatically.');
+        $io->warning('Deployment is not complete. Follow the manual update steps in DEPLOYMENT.md before resuming service, or use app:updates:apply next time to run these steps automatically.');
         $io->listing([
             'Install locked Composer dependencies for your deployment.',
             'Review and run the required database migrations.',

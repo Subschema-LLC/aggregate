@@ -139,7 +139,7 @@ curl http://localhost:9001/api/health
 
 Use `start-postgres` / `migrate-postgres` or `start-mariadb` / `migrate-mariadb` for another Docker profile. The sample environment is for development; use your own secrets and connection settings in production. Existing installations should follow the [upgrade guidance](docs/PRIVACY-COMPLIANCE.md#upgrading-older-installations) before applying historical privacy migrations.
 
-Admins can check **Updates**, or run `php bin/console app:updates:check --refresh`. The YAML setting `updates_branch` defaults to `master`. Install updates with `php bin/console app:updates:apply` or the **Install update** button: Git checkouts fast-forward from the official repository and ZIP installations install the newest signed release, then migrations and cache rebuilds run with a maintenance page in place. Your `.env.local`, `config/aggregate.yaml`, website and tag settings, `config/*.local.yaml` overrides and `var/` data are never overwritten. See [updates](DEPLOYMENT.md#updates) and [signed release packages](docs/RELEASES.md).
+Admins choose an update method on the **Updates** page: signed **release ZIPs** (recommended) or **the repository** for Git clones (advanced). Install updates with the **Install update** button or `php bin/console app:updates:apply`; migrations and cache rebuilds run with a maintenance page in place. `updates_method` and `updates_branch` (default `master`) can also be set in YAML or with `app:updates:method`. Your `.env.local`, `config/aggregate.yaml`, website and tag settings, `config/*.local.yaml` overrides and `var/` data are never overwritten. See the [update guide](docs/UPDATES.md) and [signed release packages](docs/RELEASES.md).
 
 The **Feature flags** admin page and YAML can disable Updates or hide its
 navigation entries. Updates stays enabled by default. See the
@@ -235,6 +235,7 @@ readiness, browser events, or data-layer events with named variable references.
 | [Data model](docs/DATA-MODEL.md) | UTM/query mappings, anonymous property whitelists, model sharing, and custom reporting columns |
 | [Event examples](docs/EVENT-EXAMPLES.md) | UI copy/download, headless JSON exports, typed properties, and a flat ecommerce recipe |
 | [JavaScript build](docs/JS-BUILD.md) | Optional minification, dynamic tracker configuration, and build verification |
+| [Updating](docs/UPDATES.md) | Choosing release ZIP or repository updates, setting up a Git clone, switching methods, recovery and troubleshooting |
 | [Release packages](docs/RELEASES.md) | Publishing from master, signing keys, installable ZIPs, verification, and update groundwork |
 | [Tracking and GTM](docs/TRACKING.md) | Browser integration, custom events, tag-manager examples, and troubleshooting |
 | [GTM tag template](https://github.com/Subschema-LLC/aggregate-gtm-tag-template) | Separate repository for the Google Tag Manager tag template, under development |
