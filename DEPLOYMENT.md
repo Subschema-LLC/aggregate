@@ -450,9 +450,11 @@ php bin/console messenger:stats
 
 **3. Logs:**
 ```bash
-# Application logs (prod uses php://stderr by default)
-tail -f /var/www/vhosts/your-domain.com/logs/error_log
-tail -f /var/www/vhosts/your-domain.com/logs/proxy_error_log
+# Application logs (prod uses php://stderr by default, so they appear in the
+# web server or PHP-FPM error log). Paths depend on your server, for example:
+tail -f /var/log/nginx/error.log        # Nginx
+tail -f /var/log/apache2/error.log      # Apache (Debian/Ubuntu)
+# Hosting panels keep per-site logs; see your panel's documentation.
 
 # Worker logs
 tail -f var/log/worker.log
@@ -516,26 +518,56 @@ Add to crontab:
 
 ### Updates
 
-Install updates with one command, run from the application directory as the user
-that owns the application files. It works for Git checkouts and for installations
-from a release ZIP, and with the dashboard disabled:
+Aggregate updates itself in one of two ways, both run from the dashboard
+**Updates** page or the command line:
+
+- **From the repository** — for a Git clone of the repository in the application
+  directory. The update fast-forwards the checkout (the same rules as
+  `app:updates:pull` below), runs `composer install` when `composer.lock` or
+  `importmap.php` changed, and compiles dashboard assets. Composer must be
+  installed for updates that change dependencies; the update stops before
+  changing files if it is missing.
+- **With a release ZIP** — for everything else: installations from a release ZIP
+  and directories filled without a `.git` folder. **Download from GitHub** fetches
+  the newest signed release for `updates_branch`; **Upload a release ZIP** installs
+  the ZIP, `aggregate-release.json` and `aggregate-release.json.sig` you downloaded,
+  for servers that cannot reach GitHub. Either way the signature is verified with
+  the installation's trusted key before anything changes, and the server needs no
+  Git, Composer or Node. An installation without `release.json` is offered the
+  latest release; installing it records the version. See the
+  [release guide](docs/RELEASES.md#update-an-installation).
+
+The page detects which option applies (a `.git` folder in the application
+directory means a Git clone) and explains why the other one is not available.
+Only one mechanism should write the application files: if another tool also
+deploys them, stop its automatic deployments before using the updater, or keep
+using that tool with the [manual steps](#manual-update-steps).
+
+From the command line, run as the user that owns the application files. The
+commands work with the dashboard disabled:
 
 ```bash
 php bin/console app:updates:check --refresh      # see what is available
+php bin/console app:updates:apply --preflight    # system check, changes nothing
 php bin/console app:updates:apply                # SQLite: snapshots the database automatically
 php bin/console app:updates:apply --database-backup-confirmed   # PostgreSQL, MySQL, MariaDB, SQL Server
+php bin/console app:updates:apply --package=aggregate-YYYY.MM.NN.zip \
+  --manifest=aggregate-release.json --signature=aggregate-release.json.sig   # release ZIP you downloaded
 ```
 
-- **Git checkouts** fast-forward from the official repository (the same rules as
-  `app:updates:pull` below), then run `composer install` when `composer.lock` or
-  `importmap.php` changed and compile dashboard assets. Composer must be installed
-  for updates that change dependencies; the update stops before changing files if
-  it is missing.
-- **Release ZIP installations** download the newest signed release for
-  `updates_branch`, or install files you downloaded with
-  `--package=aggregate-YYYY.MM.NN.zip --manifest=aggregate-release.json --signature=aggregate-release.json.sig`.
-  The signature is verified with the installation's trusted key before anything
-  changes. See the [release guide](docs/RELEASES.md#update-an-installation).
+**Settings.** `updates_branch` (default `master`) is the branch Git pulls and the
+branch releases must be published from; it can be saved on the Updates page.
+`updates_repository` (default `Subschema-LLC/aggregate`) is YAML-only; see
+[configuration](docs/CONFIGURATION.md#github-update-checks).
+
+**System check.** The Updates page lists everything an update depends on, as seen
+by the web server user: the update method and repository, PHP and extensions, Git
+and Composer (repository updates), `release.json`, the trusted signing key and the
+upload size limit (release ZIPs), write access to the application files, whether
+the page can start the command line, free disk space, database backup handling,
+OPcache, maintenance mode and the last update. A problem there disables the
+buttons and says what to fix; `app:updates:apply --preflight` prints the same
+checks for the command-line user.
 
 Both then run database migrations, `app:analytics:glossary:sync`, warm the cache and
 signal async workers to restart. While files are replaced, every web request,
@@ -565,18 +597,19 @@ after an interrupted update, `php scripts/restore-update-files.php` restores the
 files without loading the application. `app:updates:apply --status` shows the last
 update and its log.
 
-Administrators can also select **Install update** on the dashboard **Updates** page.
-The button is always shown; when nothing can be installed, it is disabled and the
-page says why (already up to date, no stable release found, a branch mismatch, or
-an update that needs attention). It runs the same command in the background
-(output in `var/updates/last-run.log`).
-This requires the PHP web server user to be able to write the application files,
-which is common on shared hosting but not in hardened deployments where code is
-read-only to PHP. When the preflight finds that the web user cannot write the
-files, or that the command line sees a different environment or database than the
-web server, the page explains why and you run the command on the server instead.
+The dashboard buttons run the same command in the background (output in
+`var/updates/last-run.log`). They are always shown; when nothing can be installed
+they are disabled and the page says why (already up to date, no stable release
+found, a branch mismatch, or an update that needs attention). Starting updates
+from the dashboard requires the PHP web server user to be able to write the
+application files, which is common on shared hosting but not in hardened
+deployments where code is read-only to PHP. When the system check finds that the
+web user cannot write the files, or that the command line sees a different
+environment or database than the web server, run the command on the server
+instead.
 
-After an update, reload PHP-FPM if OPcache does not revalidate file timestamps
+After an update, reload PHP (PHP-FPM, Apache with mod_php, FrankenPHP or your
+host's equivalent) if OPcache does not revalidate file timestamps
 (`opcache.validate_timestamps=0`), and restart workers if your process manager
 does not restart them after the stop signal. For Docker images, rebuild and
 redeploy the image instead.
@@ -653,6 +686,10 @@ collection. If the installed version predates these commands, use `git pull --ff
 after updating `origin` and verifying its tracking branch for that first upgrade.
 For image-based deployments, rebuild and redeploy the image using your usual pipeline.
 
+#### Manual update steps
+
+Use these steps when a deployment tool updates the files, or for an installation whose code predates `app:updates:apply`.
+
 For upgrades that include the `Version20260724*` privacy migrations, pause `/api/receive` and stop all async workers before the steps below. The migrations permanently remove daily IP hashes, legacy non-granted event rows, and matching Doctrine-queue tracker envelopes. Inspect failed, external, and encoded/base64 queue transports separately before resuming ingestion.
 
 ```bash
@@ -721,9 +758,9 @@ chown -R www-data:www-data var/ public/
 ### 500 errors
 
 ```bash
-# Check logs
-tail -f /var/www/vhosts/your-domain.com/logs/error_log
-tail -f /var/www/vhosts/your-domain.com/logs/proxy_error_log
+# Check the web server or PHP-FPM error log (paths depend on your server)
+tail -f /var/log/nginx/error.log
+tail -f /var/log/apache2/error.log
 
 # Check web server logs
 tail -f /var/log/nginx/error.log

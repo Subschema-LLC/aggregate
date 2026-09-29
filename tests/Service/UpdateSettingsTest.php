@@ -69,4 +69,51 @@ final class UpdateSettingsTest extends TestCase
 
         (new UpdateSettings($config))->branch();
     }
+
+    public function testRepositoryDefaultsAndValidation(): void
+    {
+        $settings = $this->settings([]);
+        self::assertSame('Subschema-LLC/aggregate', $settings->repository());
+        self::assertSame('https://github.com/Subschema-LLC/aggregate', $settings->repositoryUrl());
+        self::assertTrue($settings->isOfficialRepository());
+
+        $custom = $this->settings(['updates_repository' => 'example-org/aggregate.fork_1']);
+        self::assertSame('example-org/aggregate.fork_1', $custom->repository());
+        self::assertFalse($custom->isOfficialRepository());
+        self::assertTrue($this->settings(['updates_repository' => 'subschema-llc/Aggregate'])->isOfficialRepository());
+    }
+
+    #[DataProvider('invalidRepositories')]
+    public function testInvalidRepositoryIsAnError(string $key, mixed $value): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->settings([$key => $value])->repository();
+    }
+
+    public static function invalidRepositories(): iterable
+    {
+        foreach (['', 'owner', 'owner/', '/repo', 'owner/repo/extra', 'https://github.com/owner/repo', 'owner/repo.git', '-owner/repo', 'owner-/repo', 'ow--ner/repo', 'owner/..', 'owner/re po', null, ['owner/repo']] as $index => $repository) {
+            yield 'repository '.$index => ['updates_repository', $repository];
+        }
+    }
+
+    public function testSaveBranchWritesOnlyAValidatedBranch(): void
+    {
+        $config = $this->createMock(AggregateConfigLoader::class);
+        $config->method('all')->willReturn([]);
+        $config->expects(self::once())->method('setMany')->with(['updates_branch' => 'releases/stable']);
+        (new UpdateSettings($config))->saveBranch('releases/stable');
+
+        $this->expectException(\InvalidArgumentException::class);
+        (new UpdateSettings($config))->saveBranch('../x');
+    }
+
+    /** @param array<string, mixed> $values */
+    private function settings(array $values): UpdateSettings
+    {
+        $config = $this->createMock(AggregateConfigLoader::class);
+        $config->method('all')->willReturn($values);
+
+        return new UpdateSettings($config);
+    }
 }

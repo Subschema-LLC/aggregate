@@ -15,10 +15,10 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 /** Checks the configured upstream branch and permits explicit, fast-forward-only code updates. */
 class ApplicationUpdateService
 {
-    public const REPOSITORY = 'Subschema-LLC/aggregate';
+    /** The default repository; updates_repository in YAML can select another. */
+    public const REPOSITORY = UpdateSettings::DEFAULT_REPOSITORY;
     public const REPOSITORY_URL = 'https://github.com/'.self::REPOSITORY;
 
-    private const API_URL = 'https://api.github.com/repos/'.self::REPOSITORY;
     private const CACHE_SECONDS = 3600;
 
     public function __construct(
@@ -35,9 +35,28 @@ class ApplicationUpdateService
     }
 
     /**
-     * @return array<string, mixed> Git or packaged-release update status.
+     * @return array<string, mixed> Git or packaged-release update status, with
+     *         the configured source and repository.
      */
     public function check(bool $refresh = false): array
+    {
+        $result = $this->checkSource($refresh);
+        try {
+            $source = $this->source();
+            $result += [
+                'source_reason' => $source['reason'],
+                'repository' => $this->repositoryName(),
+                'repository_url' => $this->repositoryUrl(),
+            ];
+        } catch (\RuntimeException) {
+            // The status message already explains invalid update settings.
+        }
+
+        return $result + ['source_reason' => null, 'repository' => null, 'repository_url' => null];
+    }
+
+    /** @return array<string, mixed> */
+    private function checkSource(bool $refresh): array
     {
         $result = [
             'state' => 'unavailable',
@@ -58,9 +77,13 @@ class ApplicationUpdateService
             ]);
         }
 
-        // Archive installations can live inside an unrelated parent repository.
-        // Their own metadata takes precedence unless this root has its own .git.
-        if ($this->isReleaseInstallation()) {
+        try {
+            $source = $this->source();
+            $this->repositoryName();
+        } catch (\RuntimeException $e) {
+            return array_replace($result, ['state' => 'error', 'message' => $e->getMessage()]);
+        }
+        if ($source['source'] === 'release') {
             return $this->releases?->check($refresh) ?? array_replace($result, [
                 'state' => 'error',
                 'installation_type' => 'release',
@@ -119,7 +142,7 @@ class ApplicationUpdateService
 
             $latest = $remote['sha'];
             $result['latest_commit'] = $latest;
-            $result['compare_url'] = self::REPOSITORY_URL.'/compare/'.$local['commit'].'...'.$latest;
+            $result['compare_url'] = $this->repositoryUrl().'/compare/'.$local['commit'].'...'.$latest;
             if ($local['commit'] === $latest) {
                 $result['state'] = 'up_to_date';
             } else {
@@ -173,7 +196,7 @@ class ApplicationUpdateService
         $this->features->assertEnabled('updates');
 
         if ($this->isReleaseInstallation()) {
-            throw new \RuntimeException('This installation uses a release package. Download and verify a newer package and follow DEPLOYMENT.md#updates; Git source pulls are unavailable for packaged installations.');
+            throw new \RuntimeException('This installation is not a Git clone of the repository, so it updates from release ZIPs. Use app:updates:apply or the dashboard.');
         }
         $branch = $this->configuredBranch();
         $local = $this->repository();
@@ -195,7 +218,7 @@ class ApplicationUpdateService
             $temporaryRef = 'refs/aggregate-updates/'.bin2hex(random_bytes(16));
             $this->git([
                 'fetch', '--no-tags', '--no-prune', '--no-prune-tags', '--no-recurse-submodules', '--no-auto-maintenance',
-                '--no-write-fetch-head', '--', self::REPOSITORY_URL.'.git',
+                '--no-write-fetch-head', '--', $this->repositoryUrl().'.git',
                 'refs/heads/'.$branch.':'.$temporaryRef,
             ], 'GitHub could not be fetched. Verify network access and the configured updates_branch on GitHub.', 120);
 
@@ -509,7 +532,7 @@ class ApplicationUpdateService
             if ($this->githubToken !== '') {
                 $headers['Authorization'] = 'Bearer '.$this->githubToken;
             }
-            $response = $this->httpClient->request('GET', self::API_URL.$path, [
+            $response = $this->httpClient->request('GET', 'https://api.github.com/repos/'.$this->repositoryName().$path, [
                 'headers' => $headers,
                 'timeout' => 5,
                 'max_duration' => 10,
@@ -546,14 +569,47 @@ class ApplicationUpdateService
 
     public function isReleaseInstallation(): bool
     {
-        return (file_exists($this->projectDir.'/release.json') || is_link($this->projectDir.'/release.json'))
-            && !file_exists($this->projectDir.'/.git') && !is_link($this->projectDir.'/.git');
+        return $this->source()['source'] === 'release';
+    }
+
+    /**
+     * How this installation updates. A Git clone (its own .git in the
+     * application directory) pulls from the repository; anything else (an
+     * extracted release ZIP, or files a deployment tool copied without .git)
+     * installs release ZIPs.
+     *
+     * @return array{source: string, reason: string}
+     */
+    public function source(): array
+    {
+        if (file_exists($this->projectDir.'/.git') || is_link($this->projectDir.'/.git')) {
+            return ['source' => 'git', 'reason' => 'This directory is a Git clone, so it updates directly from the repository.'];
+        }
+        if (file_exists($this->projectDir.'/release.json') || is_link($this->projectDir.'/release.json')) {
+            return ['source' => 'release', 'reason' => 'This directory was installed from a release ZIP, so it updates with release ZIPs.'];
+        }
+
+        return ['source' => 'release', 'reason' => 'This directory has no .git folder or release.json (for example files copied by a deployment tool), so it updates with release ZIPs.'];
+    }
+
+    public function repositoryName(): string
+    {
+        try {
+            return $this->settings?->repository() ?? self::REPOSITORY;
+        } catch (\InvalidArgumentException $e) {
+            throw new \RuntimeException($e->getMessage(), previous: $e);
+        }
+    }
+
+    public function repositoryUrl(): string
+    {
+        return 'https://github.com/'.$this->repositoryName();
     }
 
     private function cacheKey(string $kind, string $value): string
     {
         // Separate credentials so changing repository access does not reuse an old failure.
-        return 'aggregate.updates.'.$kind.'.'.hash('sha256', self::REPOSITORY."\0".$value."\0".$this->githubToken);
+        return 'aggregate.updates.'.$kind.'.'.hash('sha256', $this->repositoryName()."\0".$value."\0".$this->githubToken);
     }
 
     /** @param list<string> $arguments @param list<int> $acceptedExitCodes */

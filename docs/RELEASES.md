@@ -121,7 +121,11 @@ The command verifies the signature, branch, runtime requirements, ZIP size/hash,
 
 ## Update an installation
 
-Run as the user that owns the application files:
+Release ZIPs update every installation that is not a Git clone of the repository.
+On the dashboard **Updates** page, use **Download from GitHub**, or **Upload a release
+ZIP** with its manifest and signature when the server cannot reach GitHub; the
+page's system check shows anything that would stop the update. From the command
+line, run as the user that owns the application files:
 
 ```bash
 php bin/console app:updates:apply --preflight   # checks only; changes nothing
@@ -172,8 +176,10 @@ How files are treated:
 
 Installations whose code predates `app:updates:apply` (such as the v0.2
 prerelease) need one manual update, described below; later updates use the
-command. The comparison uses the installed `release-files.json`. When it is missing,
-for example after a manual deployment, the update still runs, but because unchanged
+command. An installation without `release.json`, such as files copied by a
+deployment tool without `.git`, is offered the latest release; installing it records the version. The comparison
+uses the installed `release-files.json`. When it is missing, for example after a
+manual deployment, the update still runs, but because unchanged
 files cannot be told apart from edits, any shipped config default that differs from
 the new one is kept as an override; review those override files after the update. Packages without `release-files.json` cannot be applied automatically;
 install them manually as described below.

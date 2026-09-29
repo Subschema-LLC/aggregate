@@ -69,7 +69,27 @@ class ReleasePackageVerifier
             throw new \RuntimeException('The release manifest signature is invalid for the configured trusted public key.');
         }
 
-        return ReleaseMetadata::parse($manifestBytes, requirePackage: true);
+        return ReleaseMetadata::parse($manifestBytes, requirePackage: true, repository: $this->settings->repository());
+    }
+
+    /**
+     * Where the trusted release key comes from, or why none is usable. Reads
+     * configuration only; nothing is downloaded or verified.
+     *
+     * @return array{ok: bool, detail: string}
+     */
+    public function trustedKeyStatus(): array
+    {
+        try {
+            $key = $this->publicKey();
+        } catch (\RuntimeException $e) {
+            return ['ok' => false, 'detail' => $e->getMessage()];
+        }
+        $source = array_key_exists('updates_signing_public_key', $this->config->all())
+            ? 'updates_signing_public_key in YAML'
+            : 'config/release-signing.pub';
+
+        return ['ok' => true, 'detail' => 'Trusted key from '.$source.' (fingerprint '.substr(hash('sha256', $key), 0, 16).').'];
     }
 
     private function publicKey(): string
@@ -162,7 +182,7 @@ class ReleasePackageVerifier
             if (!is_string($embedded)) {
                 throw new \RuntimeException('The release ZIP has no readable release.json metadata.');
             }
-            $identity = ReleaseMetadata::parse($embedded);
+            $identity = ReleaseMetadata::parse($embedded, repository: $manifest['repository']);
             $expected = $manifest;
             unset($expected['package']);
             if ($identity != $expected || array_key_exists('package', $identity)) {
