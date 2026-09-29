@@ -566,7 +566,10 @@ files without loading the application. `app:updates:apply --status` shows the la
 update and its log.
 
 Administrators can also select **Install update** on the dashboard **Updates** page.
-It runs the same command in the background (output in `var/updates/last-run.log`).
+The button is always shown; when nothing can be installed, it is disabled and the
+page says why (already up to date, no stable release found, a branch mismatch, or
+an update that needs attention). It runs the same command in the background
+(output in `var/updates/last-run.log`).
 This requires the PHP web server user to be able to write the application files,
 which is common on shared hosting but not in hardened deployments where code is
 read-only to PHP. When the preflight finds that the web user cannot write the

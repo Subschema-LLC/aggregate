@@ -27,6 +27,42 @@ function createKeyFile(string $path, string $contents, int $mode): void
     }
 }
 
+/** The signing key from RELEASE_SIGNING_PRIVATE_KEY, with a specific reason when it is unusable. */
+function signingPrivateKey(): string
+{
+    $encoded = getenv('RELEASE_SIGNING_PRIVATE_KEY');
+    if (!is_string($encoded) || trim($encoded) === '') {
+        throw new RuntimeException('RELEASE_SIGNING_PRIVATE_KEY is empty. In GitHub, add a repository secret with that name (Settings > Secrets and variables > Actions) containing the single line from the private key file created by --generate-keypair.');
+    }
+    $private = base64_decode(trim($encoded), true);
+    if (!is_string($private)) {
+        throw new RuntimeException('RELEASE_SIGNING_PRIVATE_KEY is not valid base64. Paste the whole single line from the private key file, without quotes or extra text.');
+    }
+    if (strlen($private) === SODIUM_CRYPTO_SIGN_PUBLICKEYBYTES) {
+        throw new RuntimeException('RELEASE_SIGNING_PRIVATE_KEY holds a 32-byte value, which is a public key. Store the private key file\'s contents in the secret; commit only the public key.');
+    }
+    if (strlen($private) !== SODIUM_CRYPTO_SIGN_SECRETKEYBYTES) {
+        throw new RuntimeException('RELEASE_SIGNING_PRIVATE_KEY decodes to '.strlen($private).' bytes; a base64-encoded 64-byte Ed25519 secret key is required.');
+    }
+
+    return $private;
+}
+
+/** The public key shipped to installations, which must match the signing key. */
+function shippedPublicKey(string $path, string $private): string
+{
+    $encoded = @file_get_contents($path);
+    $public = is_string($encoded) ? base64_decode(trim($encoded), true) : false;
+    if (!is_string($public) || strlen($public) !== SODIUM_CRYPTO_SIGN_PUBLICKEYBYTES) {
+        throw new RuntimeException('The public key is missing or invalid at '.$path.'. Commit config/release-signing.pub (created with --generate-keypair) to the publishing branch, and tag a commit that includes it.');
+    }
+    if (!hash_equals($public, sodium_crypto_sign_publickey_from_secretkey($private))) {
+        throw new RuntimeException('RELEASE_SIGNING_PRIVATE_KEY does not match the public key at '.$path.'. Use the private key generated together with that public key.');
+    }
+
+    return $public;
+}
+
 try {
     if (!extension_loaded('sodium')) {
         throw new RuntimeException('The PHP sodium extension is required.');
@@ -53,8 +89,19 @@ try {
         echo "Created private signing key (0600): ".$argv[2]."\nCreated public verification key: ".$argv[3]."\n";
         exit(0);
     }
+    if (($argv[1] ?? '') === '--check-key') {
+        // Fails fast in CI before a long build; prints no key material.
+        if ($argc > 3) {
+            throw new RuntimeException('Usage: RELEASE_SIGNING_PRIVATE_KEY=<base64-key> php scripts/sign-release.php --check-key [PUBLIC_KEY_PATH]');
+        }
+        $private = signingPrivateKey();
+        shippedPublicKey($argv[2] ?? dirname(__DIR__).'/config/release-signing.pub', $private);
+        sodium_memzero($private);
+        echo "Release signing key and public key are configured and match.\n";
+        exit(0);
+    }
     if ($argc < 2 || $argc > 3) {
-        throw new RuntimeException('Usage: RELEASE_SIGNING_PRIVATE_KEY=<base64-key> php scripts/sign-release.php MANIFEST [PUBLIC_KEY_PATH]');
+        throw new RuntimeException('Usage: RELEASE_SIGNING_PRIVATE_KEY=<base64-key> php scripts/sign-release.php MANIFEST [PUBLIC_KEY_PATH], or --check-key [PUBLIC_KEY_PATH]');
     }
     $manifestPath = $argv[1];
     $publicKeyPath = $argv[2] ?? dirname(__DIR__).'/config/release-signing.pub';
@@ -66,19 +113,8 @@ try {
     if (($metadata['schema'] ?? null) !== 1 || !isset($metadata['package']['sha256'])) {
         throw new RuntimeException('Expected a schema 1 release manifest with package metadata.');
     }
-    $encodedPrivate = getenv('RELEASE_SIGNING_PRIVATE_KEY');
-    $private = is_string($encodedPrivate) ? base64_decode(trim($encodedPrivate), true) : false;
-    if (!is_string($private) || strlen($private) !== SODIUM_CRYPTO_SIGN_SECRETKEYBYTES) {
-        throw new RuntimeException('RELEASE_SIGNING_PRIVATE_KEY must contain a base64-encoded 64-byte Ed25519 secret key.');
-    }
-    $encodedPublic = @file_get_contents($publicKeyPath);
-    $public = is_string($encodedPublic) ? base64_decode(trim($encodedPublic), true) : false;
-    if (!is_string($public) || strlen($public) !== SODIUM_CRYPTO_SIGN_PUBLICKEYBYTES) {
-        throw new RuntimeException('Install the matching base64 public key at '.$publicKeyPath.' before signing releases.');
-    }
-    if (!hash_equals($public, sodium_crypto_sign_publickey_from_secretkey($private))) {
-        throw new RuntimeException('Signing key does not match the public key shipped to installations.');
-    }
+    $private = signingPrivateKey();
+    $public = shippedPublicKey($publicKeyPath, $private);
     $signature = sodium_crypto_sign_detached($manifest, $private);
     sodium_memzero($private);
     if (!sodium_crypto_sign_verify_detached($signature, $manifest, $public)) {

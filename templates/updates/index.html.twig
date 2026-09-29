@@ -58,6 +58,59 @@
         </div>
     {% endif %}
 
+    {% if not can_install %}
+        {% if run_busy %}
+            {% set install_reason = run.running ? 'An update is running now. Reload this page to follow its progress.' : 'The last update needs attention. Resume it or roll it back on the server first; see Update progress below.' %}
+        {% elseif update_status.state == 'up_to_date' %}
+            {% set install_reason = 'This installation is up to date. The button becomes available when Check now finds a newer ' ~ (is_release ? 'signed release' : 'commit') ~ '.' %}
+        {% elseif not is_release and update_status.current_commit and not branch_matches %}
+            {% set install_reason = 'The installed branch does not match updates_branch, so there is no fast-forward update to install.' %}
+        {% else %}
+            {% set install_reason = 'There is no installable update right now (' ~ status.label|lower ~ '). The message above explains why; use Check now to look again.' %}
+        {% endif %}
+    {% endif %}
+    <div class="box" id="install-update">
+        <h2 class="title is-4">Install an update</h2>
+        {% if can_install %}
+            <p class="mb-3">
+                {% if is_release %}
+                    Downloads the signed release {{ update_status.latest_version }}, verifies it with this installation's trusted key, and replaces the application files in place.
+                {% else %}
+                    Fast-forwards this checkout from the official repository and installs changed Composer dependencies.
+                {% endif %}
+                It then runs database migrations and rebuilds the cache. Visitors and the collection API receive a maintenance response while files are replaced.
+            </p>
+            <p class="mb-3">Your configuration is kept: <code>.env.local</code>, <code>config/aggregate.yaml</code>, <code>config/websites.yaml</code>, site tag settings, <code>config/*.local.yaml</code> overrides and everything in <code>var/</code>. Edits to the shipped <code>goals.yaml</code>, <code>navigation.yaml</code> or <code>quick_search.yaml</code> move to their <code>.local.yaml</code> override. Changed files are backed up for rollback.</p>
+            <form method="post" action="{{ path('app_updates_install') }}">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token('application_updates_install') }}">
+                {% if update_database_sqlite %}
+                    <p class="help mb-3">This installation uses SQLite; a database snapshot is saved automatically before migrations run.</p>
+                {% else %}
+                    <div class="field">
+                        <label class="checkbox">
+                            <input type="checkbox" name="database_backup_confirmed" value="1" required>
+                            I have a current backup of the database. Migrations cannot be reversed automatically.
+                        </label>
+                    </div>
+                {% endif %}
+                <button class="button is-primary" type="submit">
+                    <span class="icon"><i class="fas fa-download" aria-hidden="true"></i></span>
+                    <span>Install update</span>
+                </button>
+                <p class="help">The web server user must be able to write the application files. If it cannot, run <code>php bin/console app:updates:apply</code> on the server as the files' owner.</p>
+            </form>
+        {% else %}
+            <p class="mb-3" id="install-unavailable">{{ install_reason }}</p>
+            <button class="button is-primary" type="button" disabled aria-describedby="install-unavailable">
+                <span class="icon"><i class="fas fa-download" aria-hidden="true"></i></span>
+                <span>Install update</span>
+            </button>
+            {% if is_release or can_pull %}
+                <p class="help">Updates can also be installed on the server with <code>php bin/console app:updates:apply</code>.</p>
+            {% endif %}
+        {% endif %}
+    </div>
+
     {% if run %}
         {% set run_status = run_statuses[run.running ? 'running' : run.status]|default(run_statuses.running) %}
         <div class="box">
@@ -91,38 +144,6 @@ php bin/console app:updates:rollback</code></pre>
         </div>
     {% endif %}
 
-    {% if can_install %}
-        <div class="box">
-            <h2 class="title is-4">Install the update</h2>
-            <p class="mb-3">
-                {% if is_release %}
-                    Downloads the signed release {{ update_status.latest_version }}, verifies it with this installation's trusted key, and replaces the application files in place.
-                {% else %}
-                    Fast-forwards this checkout from the official repository and installs changed Composer dependencies.
-                {% endif %}
-                It then runs database migrations and rebuilds the cache. Visitors and the collection API receive a maintenance response while files are replaced.
-            </p>
-            <p class="mb-3">Your configuration is kept: <code>.env.local</code>, <code>config/aggregate.yaml</code>, <code>config/websites.yaml</code>, site tag settings, <code>config/*.local.yaml</code> overrides and everything in <code>var/</code>. Edits to the shipped <code>goals.yaml</code>, <code>navigation.yaml</code> or <code>quick_search.yaml</code> move to their <code>.local.yaml</code> override. Changed files are backed up for rollback.</p>
-            <form method="post" action="{{ path('app_updates_install') }}">
-                <input type="hidden" name="_csrf_token" value="{{ csrf_token('application_updates_install') }}">
-                {% if update_database_sqlite %}
-                    <p class="help mb-3">This installation uses SQLite; a database snapshot is saved automatically before migrations run.</p>
-                {% else %}
-                    <div class="field">
-                        <label class="checkbox">
-                            <input type="checkbox" name="database_backup_confirmed" value="1" required>
-                            I have a current backup of the database. Migrations cannot be reversed automatically.
-                        </label>
-                    </div>
-                {% endif %}
-                <button class="button is-primary" type="submit">
-                    <span class="icon"><i class="fas fa-download" aria-hidden="true"></i></span>
-                    <span>Install update</span>
-                </button>
-                <p class="help">The web server user must be able to write the application files. If it cannot, run <code>php bin/console app:updates:apply</code> on the server as the files' owner.</p>
-            </form>
-        </div>
-    {% endif %}
 
     <div class="box">
         <h2 class="title is-4">Installed application</h2>
