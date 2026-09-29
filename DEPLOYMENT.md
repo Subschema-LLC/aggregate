@@ -533,7 +533,7 @@ php bin/console app:updates:apply --database-backup-confirmed   # PostgreSQL, My
   it is missing.
 - **Release ZIP installations** download the newest signed release for
   `updates_branch`, or install files you downloaded with
-  `--package=aggregate-X.Y.Z.zip --manifest=aggregate-release.json --signature=aggregate-release.json.sig`.
+  `--package=aggregate-YYYY.MM.NN.zip --manifest=aggregate-release.json --signature=aggregate-release.json.sig`.
   The signature is verified with the installation's trusted key before anything
   changes. See the [release guide](docs/RELEASES.md#update-an-installation).
 

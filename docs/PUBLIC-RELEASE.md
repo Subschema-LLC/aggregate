@@ -26,7 +26,7 @@ the publication gates below remain open until their maintainer checks are done.
 | GitHub branches | The repository is private with default branch `development`. Effective rules on `development`, `uat`, and `master` require PRs with two approvals and prevent deletion/force pushes. **None requires the final `CI` check**; add that requirement to each ruleset. Latest CI runs for the remote tips below succeeded. |
 | GitHub security | Dependabot alerts are enabled; Dependabot security updates, secret scanning, and push protection are disabled. The private-vulnerability-reporting endpoint returned 404; verify availability and enable it when the repository becomes public. These settings were read, not changed. |
 | Actions and access | Actions default to read permission and cannot approve PR reviews. All Actions are permitted and repository-wide SHA pinning is not enforced, although the checked-in workflows pin third-party Actions. Two collaborators are visible, with admin/write roles; a maintainer must review their continued access and ruleset bypasses. |
-| Signing prerequisites | `config/release-signing.pub` is absent, and no repository Actions secrets were listed; inherited organization secrets were not reviewed. Production signing needs the public key, matching secret, and independent trust instructions. Existing tags `v0.1` and `v0.2` do not satisfy the stable `vX.Y.Z` packaging format. |
+| Signing prerequisites | `config/release-signing.pub` is absent, and no repository Actions secrets were listed; inherited organization secrets were not reviewed. Production signing needs the public key, matching secret, and independent trust instructions. Existing tags `v0.1` and `v0.2` do not satisfy the `vYYYY.MM.NN` [calendar version](RELEASES.md#version-numbers) packaging format. |
 
 The scan covered all locally available refs: local `development`, `master`,
 `docs/roadmap-2`, `feature/setup-dropins-tag-manager`, and the
@@ -137,8 +137,8 @@ backup private and use fresh checkouts afterward.
   only the public key and put the matching private key in the GitHub Actions
   secret. Establish an independent way for adopters to trust that public key.
 - [ ] Follow the `development` → `uat` → `master` promotion path and publish from
-  the configured release branch. Current package tooling requires stable tags in
-  `vX.Y.Z` form; installation checks ignore drafts and prereleases. Source beta
+  the configured release branch. Current package tooling requires
+  [calendar version](RELEASES.md#version-numbers) tags such as `v2026.09.01`; installation checks ignore drafts and prereleases. Source beta
   candidates use a recorded commit, not an invented package update channel.
 - [ ] Review the draft release, verify its package, and smoke-test the extracted
   ZIP on a clean target without Git, Composer, or Node. Confirm it includes
