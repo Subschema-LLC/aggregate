@@ -18,6 +18,16 @@
         incompatible: {label: 'Release requirements are not met', color: 'warning'}
     } %}
     {% set status = statuses[update_status.state]|default(statuses.unknown) %}
+    {% set run = update_run ?? null %}
+    {% set run_busy = run and (run.running or run.status in ['running', 'needs_attention']) %}
+    {% set can_install = update_status.state == 'available' and (is_release or can_pull) and not run_busy %}
+    {% set run_statuses = {
+        running: {label: 'Update running', color: 'info'},
+        completed: {label: 'Last update completed', color: 'success'},
+        failed: {label: 'Last update stopped; nothing was left half-installed', color: 'warning'},
+        needs_attention: {label: 'Last update needs attention', color: 'danger'},
+        rolled_back: {label: 'Last update was rolled back', color: 'warning'}
+    } %}
 
     <div class="level">
         <div class="level-left">
@@ -45,6 +55,72 @@
     {% if not is_release and update_status.current_commit and not branch_matches %}
         <div class="notification is-warning is-light">
             <p>The installed branch does not match <code>updates_branch</code>. Switch branches manually or correct <code>config/aggregate.yaml</code> before pulling an update.</p>
+        </div>
+    {% endif %}
+
+    {% if run %}
+        {% set run_status = run_statuses[run.running ? 'running' : run.status]|default(run_statuses.running) %}
+        <div class="box">
+            <h2 class="title is-4">Update progress</h2>
+            <div class="notification is-{{ run_status.color }} is-light" role="status">
+                <p class="has-text-weight-semibold">{{ run_status.label }}</p>
+                <p>
+                    {{ run.type == 'release' ? 'Release' : 'Git' }} update {{ run.id }}
+                    {%- if run.to.version|default(null) %} to version {{ run.to.version }}{% elseif run.to.commit|default(null) %} to commit <code>{{ run.to.commit|slice(0, 12) }}</code>{% endif %}
+                    {%- if run.step and run.status != 'completed' %}, step: {{ run.step|replace({'_': ' '}) }}{% endif %}.
+                </p>
+                {% if run.error %}<p class="mt-2">{{ run.error }}</p>{% endif %}
+                {% if run.running %}<p class="mt-2"><a href="{{ path('app_updates') }}">Reload</a> to follow progress. Visitors see a maintenance page while files are replaced.</p>{% endif %}
+            </div>
+            {% if run.status == 'needs_attention' and not run.running %}
+                <p class="mb-3">The site stays in maintenance mode until this is resolved on the server. After fixing the cause, continue the update or restore the previous files:</p>
+                <pre><code>php bin/console app:updates:apply --resume
+php bin/console app:updates:rollback</code></pre>
+            {% endif %}
+            {% set run_files = run.report.files|default({}) %}
+            {% if run_files.overrides_created|default([]) is not empty and run.status != 'rolled_back' %}
+                <p class="mt-3">Your edits to shipped configuration were moved to {% for override in run_files.overrides_created %}<code>{{ override }}</code>{{ loop.last ? '' : ', ' }}{% endfor %}. Each override replaces the matching shipped setting as a whole; compare it with the new default for entries added by the update.</p>
+            {% endif %}
+            {% if run.log|default([]) is not empty %}
+                <details class="mt-3">
+                    <summary class="is-clickable">Update log</summary>
+                    <pre class="mt-2">{% for entry in run.log|slice(-12) %}{{ entry.at|date('H:i:s', 'UTC') }}  {{ entry.message }}
+{% endfor %}</pre>
+                </details>
+            {% endif %}
+        </div>
+    {% endif %}
+
+    {% if can_install %}
+        <div class="box">
+            <h2 class="title is-4">Install the update</h2>
+            <p class="mb-3">
+                {% if is_release %}
+                    Downloads the signed release {{ update_status.latest_version }}, verifies it with this installation's trusted key, and replaces the application files in place.
+                {% else %}
+                    Fast-forwards this checkout from the official repository and installs changed Composer dependencies.
+                {% endif %}
+                It then runs database migrations and rebuilds the cache. Visitors and the collection API receive a maintenance response while files are replaced.
+            </p>
+            <p class="mb-3">Your configuration is kept: <code>.env.local</code>, <code>config/aggregate.yaml</code>, <code>config/websites.yaml</code>, site tag settings, <code>config/*.local.yaml</code> overrides and everything in <code>var/</code>. Edits to the shipped <code>goals.yaml</code>, <code>navigation.yaml</code> or <code>quick_search.yaml</code> move to their <code>.local.yaml</code> override. Changed files are backed up for rollback.</p>
+            <form method="post" action="{{ path('app_updates_install') }}">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token('application_updates_install') }}">
+                {% if update_database_sqlite %}
+                    <p class="help mb-3">This installation uses SQLite; a database snapshot is saved automatically before migrations run.</p>
+                {% else %}
+                    <div class="field">
+                        <label class="checkbox">
+                            <input type="checkbox" name="database_backup_confirmed" value="1" required>
+                            I have a current backup of the database. Migrations cannot be reversed automatically.
+                        </label>
+                    </div>
+                {% endif %}
+                <button class="button is-primary" type="submit">
+                    <span class="icon"><i class="fas fa-download" aria-hidden="true"></i></span>
+                    <span>Install update</span>
+                </button>
+                <p class="help">The web server user must be able to write the application files. If it cannot, run <code>php bin/console app:updates:apply</code> on the server as the files' owner.</p>
+            </form>
         </div>
     {% endif %}
 
@@ -136,14 +212,14 @@
         <p>Check for updates from the application directory on the server. This command also works with the dashboard disabled:</p>
         <pre><code>php bin/console app:updates:check --refresh</code></pre>
         <p>Before updating, review the changes, back up the database and configuration, and prepare any required maintenance window. Follow the <a href="{{ update_repository_url }}{% if update_status.branch %}/blob/{{ update_status.branch|url_encode }}/DEPLOYMENT.md#updates{% endif %}">deployment guide</a>, including pausing collection and workers before privacy migrations.</p>
+{% if is_release or can_pull %}
+        <p>Install the update from the server as the user that owns the application files. This works for release packages and Git checkouts, and with the dashboard disabled:</p>
+        <pre><code>php bin/console app:updates:apply</code></pre>
         {% if is_release %}
-            <p>Release packages include production dependencies and compiled assets. Preserve the installation's configuration and data, apply database migrations, rebuild the production cache, restart workers and check application health as described in the deployment guide.</p>
-            <p>The dashboard lists release packages. Automatic installation is not available yet.</p>
-        {% elseif can_pull %}
-            <p>Pull the available source update as your deployment user:</p>
-            <pre><code>php bin/console app:updates:pull</code></pre>
-            <p>The dashboard checks update status; source updates run through the CLI so the web process does not need permission to change application files.</p>
-            <p>Complete your deployment after pulling: install Composer dependencies, apply database migrations, clear and warm the production cache, compile dashboard assets, and restart long-running workers.</p>
+            <p>To install a ZIP you downloaded yourself, pass all three release files:</p>
+            <pre><code>php bin/console app:updates:apply --package=aggregate-X.Y.Z.zip --manifest=aggregate-release.json --signature=aggregate-release.json.sig</code></pre>
+        {% endif %}
+        <p>For PostgreSQL, MySQL, MariaDB or SQL Server, back up the database first and add <code>--database-backup-confirmed</code>. If a step fails after files change, the site stays in maintenance mode; continue with <code>--resume</code> or restore the previous files with <code>php bin/console app:updates:rollback</code>. Rolling back files does not reverse database migrations.</p>
         {% endif %}
         <p>Set <code>updates_branch</code> in <code>config/aggregate.yaml</code> to choose the update branch. The default is <code>master</code>.</p>
         <p>The public GitHub repository normally needs no token. An optional <code>AGGREGATE_GITHUB_TOKEN</code> in the server environment can increase the API rate limit.</p>

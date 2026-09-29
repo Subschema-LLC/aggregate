@@ -1,5 +1,8 @@
 # yaml-language-server: =../vendor/symfony/dependency-injection/Loader/schema/services.schema.json
 # Quick search configuration: synonyms and descriptions for dashboard navigation items.
+# Shipped defaults: application updates replace this file. To customize it,
+# copy it to config/quick_search.local.yaml and edit the copy. A parameter defined
+# in the local file replaces the matching parameter here as a whole.
 parameters:
   app.quick_search_synonyms:
     Websites:

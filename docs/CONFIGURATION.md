@@ -24,13 +24,39 @@ Configuration has separate sources of truth:
 
 - **Environment files and server variables:** Symfony infrastructure — database connection, message queue, app secret, and explicit proxy trust. Keep deployment values in untracked local files or server configuration.
 - **`config/aggregate.yaml`** (app-level, example committed): Analytics-specific settings — application branding, privacy measurement controls, internal traffic markers and sharing token, lifecycle policy, rate limit, JS namespace, dashboard toggle, and deployment-wide feature flags.
-- **`config/goals.yaml`** (app-level, committed): Stable conversion-goal codes and whether each is enabled for anonymous collection.
-- **`config/navigation.yaml`** (app-level, committed): Main navigation labels, icons, and link targets.
+- **`config/goals.yaml`** (app-level, committed): Stable conversion-goal codes and whether each is enabled for anonymous collection. Customize it in `config/goals.local.yaml` (see [Local overrides](#local-overrides-for-shipped-defaults)).
+- **`config/navigation.yaml`** (app-level, committed): Main navigation labels, icons, and link targets. Customize it in `config/navigation.local.yaml`.
+- **`config/quick_search.yaml`** (app-level, committed): Dashboard quick-search synonyms and extra entries. Customize it in `config/quick_search.local.yaml`.
 - **`config/websites.yaml`** (untracked): Website names, primary domains, allowed event-source domains, and public ingestion tokens, managed through the Websites page, YAML, or `app:create-website`.
 - **`config/tag-manager/sites/<site-id>.yaml`** (untracked): Per-website CMP settings, tags, triggers, and variables, managed through the Tag manager page or YAML. Run `app:tag-manager:sites` to list IDs and paths; see [Tag manager](TAG-MANAGER.md). Analytics collection settings and data models remain deployment-wide.
 - **`analytics_privacy_settings`** (database): BI disclosure thresholds, managed through the dashboard or controlled database administration; these are not mirrored in YAML.
 
 The web installer at `/install` is optional and only needed when you want dashboard-based setup.
+
+## Local overrides for shipped defaults
+
+`config/goals.yaml`, `config/navigation.yaml` and `config/quick_search.yaml` are
+shipped with the application, and updates replace them. To customize one, copy it
+to the matching untracked override and edit the copy:
+
+| Shipped default | Your override |
+| --- | --- |
+| `config/goals.yaml` | `config/goals.local.yaml` |
+| `config/navigation.yaml` | `config/navigation.local.yaml` |
+| `config/quick_search.yaml` | `config/quick_search.local.yaml` |
+
+Each parameter defined in an override (for example `app.goal_events`) replaces the
+shipped parameter **as a whole**; entries are not merged. Parameters the override
+does not define keep their shipped values. After an update, compare your override
+with the new default to pick up newly shipped entries, such as navigation links
+for new features. Clear the production cache after changing an override.
+
+Updates never write these override files. If you edited a shipped default
+directly, `app:updates:apply` (and `app:updates:pull`) first moves those edits into
+the override, then installs the new default. When an override already exists with
+different content, the update stops without changing anything so you can merge
+the two yourself. Git ignores `config/*.local.yaml`, and release packages never
+contain them.
 
 ## Environment files
 
@@ -515,8 +541,10 @@ YAML environment to select the upstream branch; `master` is also the default.
 This setting has no uppercase environment-variable override. Git installations
 compare commits against that branch, and source pulls require the checkout to
 already be on it. Official ZIP installations use their embedded `release.json`
-and stable GitHub Releases without requiring Git. Neither check switches branches
-or installs packages. Optionally set
+and stable GitHub Releases without requiring Git. Checks never switch branches
+or install anything; `app:updates:apply` installs updates. For Git updates that
+change dependencies, it uses `composer` on `PATH`, a `composer.phar` in the
+application directory, or the path in the `AGGREGATE_COMPOSER` environment variable. Optionally set
 `AGGREGATE_GITHUB_TOKEN` in the server environment or untracked `.env.local` for
 private-repository API access or higher rate limits. Keep this credential out of
 tracked YAML and browser configuration. Git pulls use the deployment user's

@@ -29,8 +29,8 @@ The production publishing branch and installed `updates_branch` both default to
 `master`; they are separate settings. Keep those defaults when evaluating a
 source candidate unless the test explicitly concerns source branch selection.
 The current signed-package workflow accepts stable `vX.Y.Z` tags, and ZIP update
-discovery ignores prereleases and drafts. There is no automatic beta ZIP update
-channel or automatic package application.
+discovery ignores prereleases and drafts, so `app:updates:apply` never installs a
+beta ZIP. There is no beta package update channel.
 
 ## First test session
 

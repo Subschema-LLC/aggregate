@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Service\Update\LocalConfigOverrides;
+use App\Service\Update\UpdatePaths;
 use Psr\Clock\ClockInterface;
 use Symfony\Component\Process\Process;
 use Symfony\Contracts\Cache\CacheInterface;
@@ -28,6 +30,7 @@ class ApplicationUpdateService
         private readonly string $githubToken = '',
         private readonly ?UpdateSettings $settings = null,
         private readonly ?ReleaseUpdateService $releases = null,
+        private readonly ?LocalConfigOverrides $overrides = null,
     ) {
     }
 
@@ -156,11 +159,16 @@ class ApplicationUpdateService
 
     /**
      * Fetch code only. Dependency installation, database migrations and runtime restarts
-     * remain explicit deployment steps performed by the operator.
+     * are separate steps (app:updates:apply runs them; app:updates:pull leaves them to the operator).
      *
-     * @return array{branch: string, previous_commit: string, current_commit: string, changed: bool}
+     * Local edits to shipped configuration defaults (config/goals.yaml and similar)
+     * are moved to their untracked config/NAME.local.yaml override before the merge.
+     *
+     * @param (\Closure(string $latest, list<string> $changedPaths): void)|null $beforeMerge
+     *        Runs after all checks pass and immediately before files change; may throw to abort.
+     * @return array{branch: string, previous_commit: string, current_commit: string, changed: bool, overrides_created: list<string>, changed_paths: list<string>}
      */
-    public function pull(): array
+    public function pull(?\Closure $beforeMerge = null): array
     {
         $this->features->assertEnabled('updates');
 
@@ -183,7 +191,7 @@ class ApplicationUpdateService
             }
 
             $local = $this->repository();
-            $this->assertReadyToPull($local, $branch);
+            $customized = $this->assertReadyToPull($local, $branch, $this->overrides !== null);
             $temporaryRef = 'refs/aggregate-updates/'.bin2hex(random_bytes(16));
             $this->git([
                 'fetch', '--no-tags', '--no-prune', '--no-prune-tags', '--no-recurse-submodules', '--no-auto-maintenance',
@@ -200,15 +208,26 @@ class ApplicationUpdateService
                 throw new \RuntimeException('Git returned an invalid commit for the update. Check the repository manually.');
             }
 
-            $beforeMerge = $this->repository();
-            if ($beforeMerge['branch'] !== $local['branch'] || $beforeMerge['commit'] !== $local['commit']) {
+            $current = $this->repository();
+            if ($current['branch'] !== $local['branch'] || $current['commit'] !== $local['commit']) {
                 throw new \RuntimeException('The local branch changed while the update was being fetched. Review the checkout before retrying.');
             }
-            $this->assertReadyToPull($beforeMerge, $branch);
 
+            $overridesCreated = [];
+            $changedPaths = [];
             if ($latest !== $local['commit']) {
                 if (!$this->isAncestor($local['commit'], $latest)) {
                     throw new \RuntimeException('Git cannot prove a fast-forward update. The branch may be ahead, diverged, or have incomplete shallow history; review its history manually.');
+                }
+                $customized = $this->assertReadyToPull($current, $branch, $this->overrides !== null);
+                $overridesCreated = $this->moveEditsToOverrides($customized);
+                $this->assertReadyToPull($this->repository(), $branch);
+                $changedPaths = array_values(array_filter(explode("\0", $this->git(
+                    ['diff', '--name-only', '-z', '--no-renames', $local['commit'], $latest],
+                    'Git could not list the files changed by the update.',
+                )->getOutput()), static fn (string $path): bool => $path !== ''));
+                if ($beforeMerge !== null) {
+                    $beforeMerge($latest, $changedPaths);
                 }
                 $this->git([
                     'merge', '--ff-only', '--no-edit', '--no-stat', '--no-autostash',
@@ -232,6 +251,8 @@ class ApplicationUpdateService
                 'previous_commit' => $local['commit'],
                 'current_commit' => $latest,
                 'changed' => $latest !== $local['commit'],
+                'overrides_created' => $overridesCreated,
+                'changed_paths' => $changedPaths,
             ];
         } finally {
             if ($temporaryRef !== null) {
@@ -246,6 +267,50 @@ class ApplicationUpdateService
             }
             fclose($lock);
         }
+    }
+
+    /** Why a Git update cannot start, or null when the checkout is ready. */
+    public function pullProblem(): ?string
+    {
+        try {
+            $this->features->assertEnabled('updates');
+            $local = $this->repository();
+            $this->assertReadyToPull($local, $this->configuredBranch(), $this->overrides !== null);
+            if (!is_writable($local['git_dir'])) {
+                return 'The Git metadata directory is not writable by this user. Run the update as the user that owns the checkout.';
+            }
+        } catch (\RuntimeException $e) {
+            return $e->getMessage();
+        }
+
+        return null;
+    }
+
+    public function headCommit(): string
+    {
+        return $this->repository()['commit'];
+    }
+
+    /**
+     * Return the checkout's files to an earlier commit of the same branch after a
+     * failed or unwanted update. Uncommitted edits that would be overwritten stop it.
+     */
+    public function resetTo(string $commit): void
+    {
+        if (!$this->isCommit($commit)) {
+            throw new \RuntimeException('The recorded previous commit is invalid.');
+        }
+        $local = $this->repository();
+        if ($local['branch'] === null) {
+            throw new \RuntimeException('A detached HEAD cannot be rolled back automatically. Check out the deployment branch first.');
+        }
+        if ($local['commit'] === $commit) {
+            return;
+        }
+        if (!$this->isAncestor($commit, $local['commit'])) {
+            throw new \RuntimeException('The recorded previous commit is not an ancestor of the checkout. Review the branch history manually.');
+        }
+        $this->git(['reset', '--keep', '--quiet', $commit], 'Git could not return to the previous commit. Local edits may conflict; review git status and roll back manually.', 120);
     }
 
     /** @return array{branch: ?string, commit: string, git_dir: string} */
@@ -293,8 +358,11 @@ class ApplicationUpdateService
         ];
     }
 
-    /** @param array{branch: ?string, commit: string, git_dir: string} $local */
-    private function assertReadyToPull(array $local, string $branch): void
+    /**
+     * @param array{branch: ?string, commit: string, git_dir: string} $local
+     * @return list<string> Customizable defaults with local edits (only when $allowCustomizedConfig)
+     */
+    private function assertReadyToPull(array $local, string $branch, bool $allowCustomizedConfig = false): array
     {
         if ($local['branch'] === null) {
             throw new \RuntimeException('A detached HEAD cannot be updated. Switch to the configured updates_branch before pulling.');
@@ -311,8 +379,18 @@ class ApplicationUpdateService
             ['status', '--porcelain=v1', '-z', '--untracked-files=normal', '--ignore-submodules=none'],
             'Git could not inspect local changes. Check checkout permissions before updating.',
         )->getOutput();
+        $customized = [];
         if ($status !== '') {
-            throw new \RuntimeException('The checkout has local changes or untracked files. Commit or move them before pulling an update.');
+            $entries = explode("\0", rtrim($status, "\0"));
+            foreach ($entries as $entry) {
+                $path = substr($entry, 3);
+                if ($allowCustomizedConfig && in_array(substr($entry, 0, 2), [' M', 'M ', 'MM'], true)
+                    && isset(UpdatePaths::CUSTOMIZABLE_CONFIG[$path])) {
+                    $customized[] = $path;
+                    continue;
+                }
+                throw new \RuntimeException('The checkout has local changes or untracked files. Commit or move them before pulling an update. Edits to config/goals.yaml, config/navigation.yaml and config/quick_search.yaml belong in their .local.yaml overrides.');
+            }
         }
         $files = $this->git(['ls-files', '-v', '-z'], 'Git could not inspect index flags before updating.')->getOutput();
         foreach (explode("\0", $files) as $file) {
@@ -320,6 +398,38 @@ class ApplicationUpdateService
                 throw new \RuntimeException('The checkout uses skip-worktree or assume-unchanged index flags. Clear those flags and review local changes before updating.');
             }
         }
+
+        return $customized;
+    }
+
+    /**
+     * @param list<string> $customized
+     * @return list<string> Override files written
+     */
+    private function moveEditsToOverrides(array $customized): array
+    {
+        if ($customized === [] || $this->overrides === null) {
+            return [];
+        }
+        $pending = [];
+        // Check every file first so a conflict changes nothing.
+        foreach ($customized as $default) {
+            $edited = @file_get_contents($this->projectDir.'/'.$default);
+            if (!is_string($edited)) {
+                throw new \RuntimeException($default.' could not be read. Check its permissions before updating.');
+            }
+            $pending[$default] = $this->overrides->contentToSave($default, $edited);
+        }
+        $created = [];
+        foreach ($pending as $default => $content) {
+            if ($content !== null) {
+                $this->overrides->save($default, $content);
+                $created[] = $this->overrides->overridePath($default);
+            }
+            $this->git(['checkout', '--quiet', 'HEAD', '--', $default], 'Git could not restore the shipped '.$default.' after saving your edits to '.$this->overrides->overridePath($default).'.');
+        }
+
+        return $created;
     }
 
     private function localComparison(string $current, string $latest): ?string
@@ -434,7 +544,7 @@ class ApplicationUpdateService
         }
     }
 
-    private function isReleaseInstallation(): bool
+    public function isReleaseInstallation(): bool
     {
         return (file_exists($this->projectDir.'/release.json') || is_link($this->projectDir.'/release.json'))
             && !file_exists($this->projectDir.'/.git') && !is_link($this->projectDir.'/.git');
