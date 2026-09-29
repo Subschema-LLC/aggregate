@@ -40,6 +40,11 @@ final class ReleaseMetadataTest extends TestCase
         yield 'prerelease' => [['version' => '1.2.3-beta.1']];
         yield 'leading zero' => [['version' => '01.2.3']];
         yield 'version overflow' => [['version' => '99999999999.2.3']];
+        yield 'calendar tag prefix' => [['version' => 'v2026.09.01']];
+        yield 'calendar index zero' => [['version' => '2026.09.00']];
+        yield 'calendar month thirteen' => [['version' => '2026.13.01']];
+        yield 'calendar three-digit index' => [['version' => '2026.09.100']];
+        yield 'calendar prerelease' => [['version' => '2026.09.01-rc1']];
         yield 'missing branch' => [['branch' => null]];
         yield 'invalid branch' => [['branch' => '../master']];
         yield 'invalid commit' => [['commit' => 'main']];
@@ -54,6 +59,21 @@ final class ReleaseMetadataTest extends TestCase
         yield 'wrong hash' => [['package' => ['filename' => 'aggregate-1.2.3.zip', 'sha256' => 'a', 'size' => 123]], true];
         yield 'negative size' => [['package' => ['filename' => 'aggregate-1.2.3.zip', 'sha256' => str_repeat('a', 64), 'size' => -1]], true];
         yield 'string size' => [['package' => ['filename' => 'aggregate-1.2.3.zip', 'sha256' => str_repeat('a', 64), 'size' => '123']], true];
+    }
+
+    public function testCalendarVersionsParseAndSortAfterLegacyVersions(): void
+    {
+        $calendar = array_replace(self::metadata(), ['version' => '2026.09.01']);
+        $calendar['package'] = ['filename' => 'aggregate-2026.09.01.zip', 'sha256' => str_repeat('b', 64), 'size' => 1];
+        self::assertSame('2026.09.01', ReleaseMetadata::parse(json_encode($calendar, JSON_THROW_ON_ERROR), true)['version']);
+
+        self::assertTrue(ReleaseMetadata::isCalendarVersion('2026.12.10'));
+        self::assertFalse(ReleaseMetadata::isCalendarVersion('2026.9.1'));
+        self::assertTrue(ReleaseMetadata::isVersion('0.2.0'), 'Earlier X.Y.Z installations stay readable so they can update.');
+        // The index counts releases within a month, so the tenth release sorts after the ninth.
+        $ordered = ['2026.10.01', '0.2.0', '2026.09.10', '2027.01.01', '2026.09.02'];
+        usort($ordered, 'version_compare');
+        self::assertSame(['0.2.0', '2026.09.02', '2026.09.10', '2026.10.01', '2027.01.01'], $ordered);
     }
 
     #[DataProvider('invalidJson')]

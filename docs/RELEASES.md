@@ -39,6 +39,29 @@ The helper creates a private file with mode `0600` and refuses to overwrite exis
 
 The public key and Actions secret are intentionally not generated or populated by this source change. Signing fails until both are configured and match. Future key rotation needs a trust transition for existing installations; replacing a key in a downloaded package does not authorize that new key.
 
+## Version numbers
+
+Releases use calendar versions: `vYYYY.MM.NN`, the year, the two-digit month, and
+`NN`, the release's number within that month starting at `01`. `NN` is not the day:
+the first release in September 2026 is `v2026.09.01`, the second is `v2026.09.02`,
+and the first in October is `v2026.10.01`. Numbering continues after the highest
+existing release for the month; a skipped number is not reused.
+
+Print the next unused tag for the current UTC month, or for a given month:
+
+```bash
+python3 scripts/release-version.py next
+python3 scripts/release-version.py next --month 2026.10
+python3 scripts/release-version.py check v2026.09.01
+```
+
+The release workflow and `build-release.py` accept only this format; a tag such as
+`v2026.9.1`, `v2026.09.00` or `v1.2.3` fails before anything is built. Package
+metadata and file names drop the `v` (`2026.09.01`, `aggregate-2026.09.01.zip`).
+Installations order versions by year, month and index, so every calendar release is
+newer than an earlier `X.Y.Z` package, and installations from such packages can
+still read their own metadata and update.
+
 ## Publish a release
 
 Follow the [branching strategy](../CONTRIBUTING.md#branching-strategy): working
@@ -46,7 +69,7 @@ branches start from `development` and merge back into it through contributor PRs
 
 1. Open and merge a promotion PR from `development` to `uat`, then complete user acceptance testing. Submit any fixes through working-branch PRs to `development` and promote them to `uat` for testing too.
 2. After acceptance testing passes, open and merge a promotion PR from `uat` to `master`. Production publishing defaults to `master`; maintainers using a different publishing branch must keep `config/release.yaml` aligned with their production target.
-3. Create and push an immutable stable tag such as `v1.0.0` on a commit from the configured publishing branch. An existing stable tag can also be supplied to the workflow's manual dispatch.
+3. Create and push an immutable [calendar version](#version-numbers) tag on a commit from the configured publishing branch, for example `tag=$(python3 scripts/release-version.py next) && git tag "$tag" origin/master && git push origin "$tag"`. An existing release tag can also be supplied to the workflow's manual dispatch.
 4. The **Build release package** workflow tests PHP, JavaScript, and release tooling; prepares clean production dependencies; compiles dashboard and minified browser assets; creates and signs the ZIP; and boots the extracted package.
 5. After success, review and publish the **draft GitHub Release**. Drafts and prereleases are ignored by installation checks. An existing release's assets are not overwritten; use a new version for corrections.
 
@@ -54,7 +77,7 @@ Each release includes:
 
 | Asset | Purpose |
 | --- | --- |
-| `aggregate-X.Y.Z.zip` | Application source, production dependencies, configuration defaults and examples, built assets, public signing key, embedded `release.json`, and `release-files.json` (the SHA-256 of every file in the package) |
+| `aggregate-YYYY.MM.NN.zip` | Application source, production dependencies, configuration defaults and examples, built assets, public signing key, embedded `release.json`, and `release-files.json` (the SHA-256 of every file in the package) |
 | `aggregate-release.json` | Version, repository, branch, commit, UTC build time, runtime requirements, ZIP filename, size, and SHA-256 |
 | `aggregate-release.json.sig` | Base64 detached Ed25519 signature over the exact manifest bytes |
 
@@ -72,7 +95,7 @@ re-enable it through active YAML or the Feature flags admin page when needed.
 ```bash
 php bin/console app:updates:check --refresh --json
 php bin/console app:updates:verify-package \
-  /path/to/aggregate-1.0.0.zip \
+  /path/to/aggregate-2026.09.01.zip \
   /path/to/aggregate-release.json \
   /path/to/aggregate-release.json.sig
 ```
@@ -96,9 +119,9 @@ Run as the user that owns the application files:
 ```bash
 php bin/console app:updates:apply --preflight   # checks only; changes nothing
 php bin/console app:updates:apply                # downloads, verifies and installs the newest release
-php bin/console app:updates:apply --release=1.2.0
+php bin/console app:updates:apply --release=2026.10.01
 php bin/console app:updates:apply \
-  --package=/path/to/aggregate-1.2.0.zip \
+  --package=/path/to/aggregate-2026.10.01.zip \
   --manifest=/path/to/aggregate-release.json \
   --signature=/path/to/aggregate-release.json.sig
 ```
@@ -182,7 +205,7 @@ After preparing the stage, build and sign:
 python3 scripts/build-release.py \
   --source-dir /path/to/prepared-stage \
   --output-dir /path/to/empty-dist \
-  --version 1.0.0 --branch master --commit FULL_COMMIT_SHA
+  --version v2026.09.01 --branch master --commit FULL_COMMIT_SHA
 php scripts/sign-release.php \
   /path/to/empty-dist/aggregate-release.json \
   config/release-signing.pub

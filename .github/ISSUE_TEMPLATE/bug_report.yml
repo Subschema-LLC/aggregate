@@ -12,7 +12,7 @@ body:
     attributes:
       label: Aggregate version or commit
       description: For a ZIP installation, use the installed version on the Updates page or in release.json. For a Git checkout, use git rev-parse HEAD. Write unknown if unavailable.
-      placeholder: "1.2.3 or commit hash"
+      placeholder: "2026.09.01 or commit hash"
     validations:
       required: true
   - type: dropdown
