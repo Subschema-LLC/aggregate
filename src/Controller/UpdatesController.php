@@ -11,6 +11,7 @@ use App\Service\Update\ApplicationUpdater;
 use App\Service\Update\SystemCheck;
 use App\Service\UpdateSettings;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
@@ -20,6 +21,7 @@ final class UpdatesController extends AbstractController
     public const CSRF_TOKEN_ID = 'application_updates_refresh';
     public const INSTALL_CSRF_TOKEN_ID = 'application_updates_install';
     public const SETTINGS_CSRF_TOKEN_ID = 'application_updates_settings';
+    public const UPLOAD_CSRF_TOKEN_ID = 'application_updates_upload';
 
     public function __construct(
         private readonly AggregateConfigLoader $config,
@@ -48,7 +50,7 @@ final class UpdatesController extends AbstractController
             'update_database_sqlite' => $this->updater->isSqlite(),
             'update_checks' => $checks,
             'update_blocking_problems' => $this->systemCheck->problems(dashboard: true, checks: $checks),
-            'update_source_setting' => $status['source_setting'] ?? 'auto',
+            'update_upload_limit' => SystemCheck::uploadLimit(),
         ]);
     }
 
@@ -93,29 +95,117 @@ final class UpdatesController extends AbstractController
 
             return $this->redirectToRoute('app_updates');
         }
-        $confirmed = ($submitted['database_backup_confirmed'] ?? null) === '1';
-        if (!$this->updater->isSqlite() && !$confirmed) {
-            $this->addFlash('error', 'Confirm that you have a current database backup before installing the update.');
+        $method = $submitted['method'] ?? null;
+        if ($method !== null && $method !== ($status['installation_type'] ?? null)) {
+            $this->addFlash('error', 'This installation cannot use that update method. Reload the page and use the enabled option.');
+
+            return $this->redirectToRoute('app_updates');
+        }
+        $arguments = [];
+        if (($status['installation_type'] ?? null) === 'release' && is_string($status['latest_version'] ?? null)) {
+            $arguments[] = '--release='.$status['latest_version'];
+        }
+
+        return $this->startUpdate($submitted, $arguments);
+    }
+
+    /**
+     * Install a release ZIP uploaded with its manifest and signature. The files
+     * are verified with the installation's trusted key before the update starts.
+     */
+    #[Route('/dashboard/updates/upload', name: 'app_updates_upload', methods: ['POST'])]
+    public function upload(Request $request): Response
+    {
+        $this->denyUnlessAvailableToAdmin();
+
+        $limit = SystemCheck::uploadLimit();
+        $length = (int) $request->server->get('CONTENT_LENGTH', 0);
+        if ($request->request->count() === 0 && $request->files->count() === 0 && $length > 0) {
+            // PHP discards the whole request when it exceeds post_max_size.
+            $this->addFlash('error', 'The upload was larger than this server accepts'.($limit > 0 && $limit < PHP_INT_MAX ? ' ('.round($limit / 1048576).' MB)' : '').'. Use Download from GitHub, or raise upload_max_filesize and post_max_size.');
+
+            return $this->redirectToRoute('app_updates');
+        }
+        $submitted = $request->request->all();
+        $csrfToken = $submitted['_csrf_token'] ?? null;
+        if (!is_string($csrfToken) || !$this->isCsrfTokenValid(self::UPLOAD_CSRF_TOKEN_ID, $csrfToken)) {
+            $this->addFlash('error', 'Invalid security token. Please try again.');
 
             return $this->redirectToRoute('app_updates');
         }
 
+        $uploads = $request->files->all()['release_files'] ?? [];
+        $files = [];
+        foreach (is_array($uploads) ? $uploads : [$uploads] as $upload) {
+            if (!$upload instanceof UploadedFile) {
+                continue;
+            }
+            if (!$upload->isValid()) {
+                $this->addFlash('error', 'The upload failed: '.$upload->getErrorMessage());
+
+                return $this->redirectToRoute('app_updates');
+            }
+            $files[$upload->getClientOriginalName()] = $upload->getPathname();
+        }
+        if ($files === []) {
+            $this->addFlash('error', 'Choose the release ZIP, aggregate-release.json and aggregate-release.json.sig to upload.');
+
+            return $this->redirectToRoute('app_updates');
+        }
+        $error = $this->startError($submitted);
+        if ($error !== null) {
+            $this->addFlash('error', $error);
+
+            return $this->redirectToRoute('app_updates');
+        }
+        try {
+            $staged = $this->updater->stageUpload($files);
+        } catch (\RuntimeException $e) {
+            $this->addFlash('error', 'The uploaded release was not installed: '.$e->getMessage());
+
+            return $this->redirectToRoute('app_updates');
+        }
+
+        return $this->launch($submitted, [
+            '--package='.$staged['package'],
+            '--manifest='.$staged['manifest'],
+            '--signature='.$staged['signature'],
+        ], 'Verified release '.$staged['version'].'. ');
+    }
+
+    /** @param array<string, mixed> $submitted @param list<string> $arguments */
+    private function startUpdate(array $submitted, array $arguments, string $prefix = ''): Response
+    {
+        $error = $this->startError($submitted);
+        if ($error !== null) {
+            $this->addFlash('error', $error);
+
+            return $this->redirectToRoute('app_updates');
+        }
+
+        return $this->launch($submitted, $arguments, $prefix);
+    }
+
+    /** Why the dashboard cannot start an update now, or null. @param array<string, mixed> $submitted */
+    private function startError(array $submitted): ?string
+    {
+        if (!$this->updater->isSqlite() && ($submitted['database_backup_confirmed'] ?? null) !== '1') {
+            return 'Confirm that you have a current database backup before installing the update.';
+        }
         $problems = $this->systemCheck->problems(dashboard: true);
         if ($problems === []) {
             $problems = $this->updater->backgroundProblems();
         }
-        if ($problems !== []) {
-            $this->addFlash('error', 'The update cannot start from the dashboard: '.implode(' ', $problems).' You can run php bin/console app:updates:apply on the server instead.');
 
-            return $this->redirectToRoute('app_updates');
-        }
+        return $problems === [] ? null
+            : 'The update cannot start from the dashboard: '.implode(' ', $problems).' You can run php bin/console app:updates:apply on the server instead.';
+    }
 
-        $arguments = [];
-        if ($confirmed) {
-            $arguments[] = '--database-backup-confirmed';
-        }
-        if (($status['installation_type'] ?? null) === 'release' && is_string($status['latest_version'] ?? null)) {
-            $arguments[] = '--release='.$status['latest_version'];
+    /** @param array<string, mixed> $submitted @param list<string> $arguments */
+    private function launch(array $submitted, array $arguments, string $prefix = ''): Response
+    {
+        if (($submitted['database_backup_confirmed'] ?? null) === '1') {
+            array_unshift($arguments, '--database-backup-confirmed');
         }
         try {
             $this->updater->startInBackground($arguments);
@@ -124,14 +214,14 @@ final class UpdatesController extends AbstractController
 
             return $this->redirectToRoute('app_updates');
         }
-        $this->addFlash('success', 'The update has started. The site shows a maintenance page while files are replaced; reload this page to follow its progress.');
+        $this->addFlash('success', $prefix.'The update has started. The site shows a maintenance page while files are replaced; reload this page to follow its progress.');
 
         return $this->redirectToRoute('app_updates');
     }
 
     /**
-     * Save updates_source and updates_branch to the active YAML configuration,
-     * the same settings operators can edit in config/aggregate.yaml.
+     * Save updates_branch to the active YAML configuration, the same setting
+     * operators can edit in config/aggregate.yaml.
      */
     #[Route('/dashboard/updates/settings', name: 'app_updates_settings', methods: ['POST'])]
     public function saveSettings(Request $request): Response
@@ -145,16 +235,15 @@ final class UpdatesController extends AbstractController
 
             return $this->redirectToRoute('app_updates');
         }
-        $source = $submitted['updates_source'] ?? null;
         $branch = is_string($submitted['updates_branch'] ?? null) ? trim($submitted['updates_branch']) : null;
         try {
-            $this->settings->save(UpdateSettings::validateSource($source), (string) UpdateSettings::validateBranch($branch));
+            $this->settings->saveBranch(UpdateSettings::validateBranch($branch));
         } catch (\InvalidArgumentException $e) {
             $this->addFlash('error', $e->getMessage());
 
             return $this->redirectToRoute('app_updates');
         } catch (\RuntimeException) {
-            $this->addFlash('error', 'The update settings could not be saved. Check that config/aggregate.yaml is valid and writable, or edit updates_source and updates_branch there directly.');
+            $this->addFlash('error', 'The update settings could not be saved. Check that config/aggregate.yaml is valid and writable, or edit updates_branch there directly.');
 
             return $this->redirectToRoute('app_updates');
         }

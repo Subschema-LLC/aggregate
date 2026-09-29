@@ -537,27 +537,19 @@ window.Company1Analytics.emit('signup', {plan: 'pro'});
 
 ### GitHub update checks
 
-Three settings choose where updates come from. `updates_source` and `updates_branch`
-can also be changed on the dashboard **Updates** page, which saves them to the
-active YAML; `updates_repository` is YAML-only, because changing where application
-code comes from is a deployment decision.
+Aggregate updates either **from the repository** (a Git clone in the application
+directory) or **with a release ZIP** (any other installation). The **Updates**
+page detects which applies; see the [deployment guide](../DEPLOYMENT.md#updates).
+Two settings choose where updates come from:
 
 ```yaml
-updates_source: auto        # auto, release or git
 updates_branch: master
 updates_repository: Subschema-LLC/aggregate   # GitHub owner/name
 ```
 
-- `release` installs signed release ZIPs and works for any installation, including
-  directories a deployment tool fills without `.git` (a hosting panel's Git
-  deployment, CI/CD, rsync or FTP).
-  An installation without `release.json` is offered the latest release; installing
-  it records the version.
-- `git` fast-forwards a Git checkout in the application directory.
-- `auto` (the default) uses `git` when the application directory has a `.git` folder
-  and `release` otherwise.
-
-A different `updates_repository` (for example a fork) must publish releases signed
+`updates_branch` can also be saved on the Updates page. `updates_repository` is
+YAML-only, because changing where application code comes from is a deployment
+decision. A different repository (for example a fork) must publish releases signed
 with a key this installation trusts through `updates_signing_public_key`, and its
 release manifests must name that repository.
 

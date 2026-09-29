@@ -518,66 +518,56 @@ Add to crontab:
 
 ### Updates
 
-Choose where updates come from, then install them with the dashboard button or one
-command. Both use the same settings and the same installer.
+Aggregate updates itself in one of two ways, both run from the dashboard
+**Updates** page or the command line:
 
-**1. Update source (YAML, or the Updates page).** In the active
-`config/aggregate.yaml`:
+- **From the repository** — for a Git clone of the repository in the application
+  directory. The update fast-forwards the checkout (the same rules as
+  `app:updates:pull` below), runs `composer install` when `composer.lock` or
+  `importmap.php` changed, and compiles dashboard assets. Composer must be
+  installed for updates that change dependencies; the update stops before
+  changing files if it is missing.
+- **With a release ZIP** — for everything else: installations from a release ZIP
+  and directories filled without a `.git` folder. **Download from GitHub** fetches
+  the newest signed release for `updates_branch`; **Upload a release ZIP** installs
+  the ZIP, `aggregate-release.json` and `aggregate-release.json.sig` you downloaded,
+  for servers that cannot reach GitHub. Either way the signature is verified with
+  the installation's trusted key before anything changes, and the server needs no
+  Git, Composer or Node. An installation without `release.json` is offered the
+  latest release; installing it records the version. See the
+  [release guide](docs/RELEASES.md#update-an-installation).
 
-```yaml
-updates_source: auto        # auto, release or git
-updates_branch: master
-# updates_repository: Subschema-LLC/aggregate   # YAML only
-```
+The page detects which option applies (a `.git` folder in the application
+directory means a Git clone) and explains why the other one is not available.
+Only one mechanism should write the application files: if another tool also
+deploys them, stop its automatic deployments before using the updater, or keep
+using that tool with the [manual steps](#manual-update-steps).
 
-Use `release` for installations from a ZIP and for directories a deployment tool
-fills without a `.git` folder, such as a hosting panel's Git deployment, CI/CD,
-rsync or FTP. Use `git` for a Git clone in the application directory. `auto` picks `git` when there is a `.git`
-folder and `release` otherwise. The **Updates** page shows the source in effect and
-can save `updates_source` and `updates_branch`; see
-[configuration](docs/CONFIGURATION.md#github-update-checks).
-
-**Hosting panels and deployment pipelines.** Give the application files one owner.
-Either keep deploying with your tool (a hosting panel's Git deployment, CI/CD,
-rsync) and run the [manual steps](#manual-update-steps) as its post-deploy actions,
-or set `updates_source: release`, stop the tool's automatic deployments to this
-directory, and update with the button or `app:updates:apply`. If both write the same
-directory, the next deployment overwrites what the updater installed.
-[Plesk](PLESK-DEPLOYMENT.md#full-source-upgrade) has a worked example.
-
-**2. Install.** Select **Install update** on the **Updates** page, or run from the
-application directory as the user that owns the application files. The command
-works with the dashboard disabled:
+From the command line, run as the user that owns the application files. The
+commands work with the dashboard disabled:
 
 ```bash
 php bin/console app:updates:check --refresh      # see what is available
 php bin/console app:updates:apply --preflight    # system check, changes nothing
 php bin/console app:updates:apply                # SQLite: snapshots the database automatically
 php bin/console app:updates:apply --database-backup-confirmed   # PostgreSQL, MySQL, MariaDB, SQL Server
+php bin/console app:updates:apply --package=aggregate-YYYY.MM.NN.zip \
+  --manifest=aggregate-release.json --signature=aggregate-release.json.sig   # release ZIP you downloaded
 ```
 
-**System check.** The Updates page lists everything an update depends on, as seen
-by the web server user: the source and repository, PHP and extensions, Git and
-Composer (Git source), `release.json` and the trusted signing key (release source),
-write access to the application files, whether the button can start the command
-line, free disk space, database backup handling, OPcache, maintenance mode and the
-last update. A problem there disables the button and says what to fix;
-`app:updates:apply --preflight` prints the same checks for the command-line user.
+**Settings.** `updates_branch` (default `master`) is the branch Git pulls and the
+branch releases must be published from; it can be saved on the Updates page.
+`updates_repository` (default `Subschema-LLC/aggregate`) is YAML-only; see
+[configuration](docs/CONFIGURATION.md#github-update-checks).
 
-- **Git source** fast-forwards the checkout from the configured repository (the same rules as
-  `app:updates:pull` below), then run `composer install` when `composer.lock` or
-  `importmap.php` changed and compile dashboard assets. Composer must be installed
-  for updates that change dependencies; the update stops before changing files if
-  it is missing.
-- **Release source** downloads the newest signed release for `updates_branch`,
-  or installs files you downloaded with
-  `--package=aggregate-YYYY.MM.NN.zip --manifest=aggregate-release.json --signature=aggregate-release.json.sig`.
-  The signature is verified with the installation's trusted key before anything
-  changes. An installation without `release.json` (for example files copied by a
-  deployment tool) is offered the latest release, and installing it records the version.
-  If another tool deploys the same directory, turn its automatic deployment off
-  first so it does not overwrite installed updates. See the
-  [release guide](docs/RELEASES.md#update-an-installation).
+**System check.** The Updates page lists everything an update depends on, as seen
+by the web server user: the update method and repository, PHP and extensions, Git
+and Composer (repository updates), `release.json`, the trusted signing key and the
+upload size limit (release ZIPs), write access to the application files, whether
+the page can start the command line, free disk space, database backup handling,
+OPcache, maintenance mode and the last update. A problem there disables the
+buttons and says what to fix; `app:updates:apply --preflight` prints the same
+checks for the command-line user.
 
 Both then run database migrations, `app:analytics:glossary:sync`, warm the cache and
 signal async workers to restart. While files are replaced, every web request,
@@ -607,16 +597,16 @@ after an interrupted update, `php scripts/restore-update-files.php` restores the
 files without loading the application. `app:updates:apply --status` shows the last
 update and its log.
 
-Administrators can also select **Install update** on the dashboard **Updates** page.
-The button is always shown; when nothing can be installed, it is disabled and the
-page says why (already up to date, no stable release found, a branch mismatch, or
-an update that needs attention). It runs the same command in the background
-(output in `var/updates/last-run.log`).
-This requires the PHP web server user to be able to write the application files,
-which is common on shared hosting but not in hardened deployments where code is
-read-only to PHP. When the preflight finds that the web user cannot write the
-files, or that the command line sees a different environment or database than the
-web server, the page explains why and you run the command on the server instead.
+The dashboard buttons run the same command in the background (output in
+`var/updates/last-run.log`). They are always shown; when nothing can be installed
+they are disabled and the page says why (already up to date, no stable release
+found, a branch mismatch, or an update that needs attention). Starting updates
+from the dashboard requires the PHP web server user to be able to write the
+application files, which is common on shared hosting but not in hardened
+deployments where code is read-only to PHP. When the system check finds that the
+web user cannot write the files, or that the command line sees a different
+environment or database than the web server, run the command on the server
+instead.
 
 After an update, reload PHP (PHP-FPM, Apache with mod_php, FrankenPHP or your
 host's equivalent) if OPcache does not revalidate file timestamps

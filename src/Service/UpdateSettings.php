@@ -10,13 +10,6 @@ final class UpdateSettings
     public const DEFAULT_BRANCH = 'master';
     public const DEFAULT_REPOSITORY = 'Subschema-LLC/aggregate';
 
-    /**
-     * Where updates come from. "git" fast-forwards a Git checkout of the
-     * repository; "release" installs signed release ZIPs from its GitHub
-     * Releases; "auto" (the default) picks git when the application directory is
-     * a Git checkout and release otherwise.
-     */
-    public const SOURCES = ['auto', 'git', 'release'];
 
     public function __construct(private readonly AggregateConfigLoader $config)
     {
@@ -30,14 +23,6 @@ final class UpdateSettings
         $branch = array_key_exists('updates_branch', $values) ? $values['updates_branch'] : self::DEFAULT_BRANCH;
 
         return self::validateBranch($branch);
-    }
-
-    public function source(): string
-    {
-        $this->config->assertHealthy();
-        $values = $this->config->all();
-
-        return self::validateSource(array_key_exists('updates_source', $values) ? $values['updates_source'] : 'auto');
     }
 
     /**
@@ -63,22 +48,10 @@ final class UpdateSettings
         return strcasecmp($this->repository(), self::DEFAULT_REPOSITORY) === 0;
     }
 
-    /** Save the source and branch chosen on the Updates page to the active YAML. */
-    public function save(string $source, string $branch): void
+    /** Save the branch chosen on the Updates page to the active YAML. */
+    public function saveBranch(string $branch): void
     {
-        $this->config->setMany([
-            'updates_source' => self::validateSource($source),
-            'updates_branch' => self::validateBranch($branch),
-        ]);
-    }
-
-    public static function validateSource(mixed $source): string
-    {
-        if (!is_string($source) || !in_array($source, self::SOURCES, true)) {
-            throw new \InvalidArgumentException('updates_source must be auto, git or release.');
-        }
-
-        return $source;
+        $this->config->setMany(['updates_branch' => self::validateBranch($branch)]);
     }
 
     public static function validateRepository(mixed $repository): string

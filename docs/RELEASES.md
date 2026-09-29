@@ -121,11 +121,11 @@ The command verifies the signature, branch, runtime requirements, ZIP size/hash,
 
 ## Update an installation
 
-Release packages are used when `updates_source` is `release`, or `auto` without a
-`.git` folder in the application directory; see
-[update settings](CONFIGURATION.md#github-update-checks). Select **Install update**
-on the dashboard **Updates** page, whose system check shows anything that would stop
-the update, or run as the user that owns the application files:
+Release ZIPs update every installation that is not a Git clone of the repository.
+On the dashboard **Updates** page, use **Download from GitHub**, or **Upload a release
+ZIP** with its manifest and signature when the server cannot reach GitHub; the
+page's system check shows anything that would stop the update. From the command
+line, run as the user that owns the application files:
 
 ```bash
 php bin/console app:updates:apply --preflight   # checks only; changes nothing

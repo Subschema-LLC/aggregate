@@ -233,6 +233,16 @@ details.box[open] > summary::after {
     transform: rotate(225deg);
 }
 
+details.box.update-panel > summary .title {
+    display: inline;
+    margin-bottom: 0;
+    vertical-align: middle;
+}
+
+details.box.update-panel[open] > summary {
+    margin-bottom: 1rem;
+}
+
 .card {
     background-color: var(--app-brand-surface);
     border: 1px solid var(--app-brand-border);

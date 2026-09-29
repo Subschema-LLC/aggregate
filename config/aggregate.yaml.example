@@ -5,15 +5,11 @@
 # Set them in your .env file (see .env.dev for local dev, your server's .env for prod).
 # They do NOT belong here.
 
-# Where updates come from (also editable on the dashboard Updates page):
-#   auto    - Git pull when this directory is a Git checkout, release packages otherwise
-#   release - signed release ZIPs from the repository's GitHub Releases; works for any
-#             installation, including files copied without .git by a deployment
-#             tool (hosting-panel Git deployment, CI/CD, rsync, FTP)
-#   git     - fast-forward pulls of a Git checkout in this directory
-updates_source: auto
-# Git pulls use this branch; release packages must have been published from it.
-# Source pulls require the local checkout to be on this branch.
+# Updates: a Git clone of the repository in this directory updates directly from
+# the repository; any other installation updates with signed release ZIPs. Git
+# pulls use this branch, and release ZIPs must have been published from it.
+# Source pulls require the local checkout to be on this branch. Also editable on
+# the dashboard Updates page.
 updates_branch: master
 # GitHub repository (owner/name) for both sources. YAML only; the dashboard shows
 # but cannot change it. Releases from another repository must be signed with a key

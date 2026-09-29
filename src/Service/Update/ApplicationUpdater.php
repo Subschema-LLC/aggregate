@@ -142,6 +142,9 @@ class ApplicationUpdater
             }
 
             $type = $this->installationType();
+            if ($type === 'git' && array_filter([$options['package'] ?? null, $options['manifest'] ?? null, $options['signature'] ?? null]) !== []) {
+                throw new \RuntimeException('This installation is a Git clone, so it updates directly from the repository. Release ZIPs are for installations without .git.');
+            }
             $id = gmdate('Ymd\THis\Z').'-'.bin2hex(random_bytes(3));
             $state = [
                 'id' => $id,
@@ -333,6 +336,65 @@ class ApplicationUpdater
         } finally {
             $this->journal->release();
         }
+    }
+
+    /**
+     * Keep a release ZIP, manifest and signature uploaded on the dashboard in
+     * var/updates/uploads and verify them before anything else happens.
+     *
+     * @param array<string, string> $files Temporary upload paths keyed by original file name
+     * @return array{package: string, manifest: string, signature: string, version: string}
+     */
+    public function stageUpload(array $files): array
+    {
+        if ($this->installationType() === 'git') {
+            throw new \RuntimeException('This installation is a Git clone, so it updates directly from the repository. Release ZIPs are for installations without .git.');
+        }
+        $roles = [];
+        foreach ($files as $name => $path) {
+            // Browsers may rename repeated downloads, so only the extension counts.
+            $role = match (strtolower(pathinfo($name, PATHINFO_EXTENSION))) {
+                'zip' => 'package',
+                'json' => 'manifest',
+                'sig' => 'signature',
+                default => throw new \RuntimeException('Unexpected file '.$name.'. Upload aggregate-YYYY.MM.NN.zip, aggregate-release.json and aggregate-release.json.sig from the release page.'),
+            };
+            if (isset($roles[$role])) {
+                throw new \RuntimeException('Upload one release ZIP with its own manifest and signature.');
+            }
+            $roles[$role] = [$name, $path];
+        }
+        foreach (['package' => 'the release ZIP', 'manifest' => 'aggregate-release.json', 'signature' => 'aggregate-release.json.sig'] as $role => $label) {
+            if (!isset($roles[$role])) {
+                throw new \RuntimeException('Missing '.$label.'. Upload all three files from the release page.');
+            }
+        }
+        $directory = $this->journal->ensureDirectory('uploads').'/'.bin2hex(random_bytes(8));
+        if (!@mkdir($directory, 0775) && !is_dir($directory)) {
+            throw new \RuntimeException('The upload could not be saved. Check write access to var/updates.');
+        }
+        $paths = [];
+        $canonical = ['package' => 'aggregate-package.zip', 'manifest' => 'aggregate-release.json', 'signature' => 'aggregate-release.json.sig'];
+        foreach ($roles as $role => [, $path]) {
+            $target = $directory.'/'.$canonical[$role];
+            if (!@rename($path, $target) && !@copy($path, $target)) {
+                $this->installer->removeTree($directory);
+                throw new \RuntimeException('The upload could not be saved. Check free disk space in var/updates.');
+            }
+            $paths[$role] = $target;
+        }
+        try {
+            $manifest = $this->verifier->verify($paths['package'], $paths['manifest'], $paths['signature']);
+            $installed = $this->installed->read();
+            if ($installed !== null && version_compare($manifest['version'], $installed['version'], '<=')) {
+                throw new \RuntimeException('Release '.$manifest['version'].' is not newer than the installed version '.$installed['version'].'. Downgrades are not supported.');
+            }
+        } catch (\Throwable $e) {
+            $this->installer->removeTree($directory);
+            throw new \RuntimeException($e->getMessage(), previous: $e);
+        }
+
+        return $paths + ['version' => $manifest['version']];
     }
 
     /**
@@ -638,6 +700,10 @@ class ApplicationUpdater
         $state['finished_at'] = time();
         $this->installer->removeTree($this->journal->directory().'/staging/'.$state['id']);
         $this->installer->removeTree($this->journal->directory().'/downloads/'.$state['id']);
+        $uploads = $this->journal->directory().'/uploads/';
+        if (is_string($state['files']['package'] ?? null) && str_starts_with($state['files']['package'], $uploads)) {
+            $this->installer->removeTree(dirname($state['files']['package']));
+        }
         $this->pruneBackups();
         $version = $state['type'] === 'release' ? 'release '.($state['to']['version'] ?? '') : 'commit '.($state['to']['commit'] ?? '');
 

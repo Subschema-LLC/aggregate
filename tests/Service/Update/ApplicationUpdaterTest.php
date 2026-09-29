@@ -178,11 +178,12 @@ final class ApplicationUpdaterTest extends TestCase
         $checks = array_column($this->updater()->preflight()['checks'], null, 'id');
 
         self::assertSame('ok', $checks['source']['status']);
-        self::assertStringContainsString('Signed release packages from Subschema-LLC/aggregate, branch master', $checks['source']['detail']);
+        self::assertStringContainsString('Release ZIPs from Subschema-LLC/aggregate, branch master', $checks['source']['detail']);
         self::assertSame('ok', $checks['signing_key']['status']);
         self::assertSame('ok', $checks['release_metadata']['status']);
         self::assertStringContainsString('SQLite', $checks['database']['detail']);
         self::assertArrayNotHasKey('git', $checks);
+        self::assertSame('dashboard', $checks['upload_limit']['scope']);
 
         unlink($this->project.'/config/release-signing.pub');
         unlink($this->project.'/release.json');
@@ -193,20 +194,50 @@ final class ApplicationUpdaterTest extends TestCase
         self::assertContains($checks['signing_key']['detail'], $this->updater()->preflight()['problems']);
     }
 
-    public function testGitSourceWithoutACheckoutIsAProblemThatPointsToReleasePackages(): void
+    public function testInvalidRepositorySettingIsAProblem(): void
     {
-        $preflight = $this->updater(settings: ['updates_source' => 'git'])->preflight();
+        $preflight = $this->updater(settings: ['updates_repository' => 'not a repository'])->preflight();
         $checks = array_column($preflight['checks'], null, 'id');
 
-        self::assertSame('git', $preflight['installation_type']);
-        self::assertSame('error', $checks['checkout']['status']);
-        self::assertStringContainsString('updates_source: release', $checks['checkout']['detail']);
-        self::assertContains($checks['checkout']['detail'], $preflight['problems']);
-        self::assertArrayNotHasKey('signing_key', $checks);
+        self::assertSame('error', $checks['source']['status']);
+        self::assertStringContainsString('updates_repository must be a GitHub repository', $checks['source']['detail']);
+        self::assertContains($checks['source']['detail'], $preflight['problems']);
+    }
 
-        $invalid = array_column($this->updater(settings: ['updates_source' => 'zip'])->preflight()['checks'], null, 'id');
-        self::assertSame('error', $invalid['source']['status']);
-        self::assertStringContainsString('updates_source must be auto, git or release', $invalid['source']['detail']);
+    public function testUploadedReleaseFilesAreVerifiedAndIdentifiedByExtension(): void
+    {
+        [$package, $manifest, $signature] = $this->package('2.0.0');
+        $uploads = [];
+        foreach (['aggregate-2.0.0 (1).zip' => $package, 'aggregate-release (1).json' => $manifest, 'aggregate-release.json (1).sig' => $signature] as $name => $source) {
+            $temporary = $this->directory.'/php-upload-'.bin2hex(random_bytes(4));
+            copy($source, $temporary);
+            $uploads[$name] = $temporary;
+        }
+
+        $staged = $this->updater()->stageUpload($uploads);
+
+        self::assertSame('2.0.0', $staged['version']);
+        self::assertStringStartsWith($this->project.'/var/updates/uploads/', $staged['package']);
+        self::assertFileExists($staged['manifest']);
+
+        $tampered = $this->directory.'/tampered.zip';
+        copy($package, $tampered);
+        file_put_contents($tampered, 'x', FILE_APPEND);
+        $copies = [];
+        foreach (['a.zip' => $tampered, 'b.json' => $manifest, 'c.sig' => $signature] as $name => $source) {
+            $copies[$name] = $this->directory.'/copy-'.$name;
+            copy($source, $copies[$name]);
+        }
+        try {
+            $this->updater()->stageUpload($copies);
+            self::fail('A package that does not match its signed manifest must be refused.');
+        } catch (\RuntimeException $e) {
+            self::assertStringContainsString('does not match its signed manifest', $e->getMessage());
+        }
+        self::assertCount(1, glob($this->project.'/var/updates/uploads/*'), 'Refused uploads are removed.');
+
+        $this->expectExceptionMessage('Missing aggregate-release.json.sig');
+        $this->updater()->stageUpload(['a.zip' => $package, 'b.json' => $manifest]);
     }
 
     public function testServerDatabasesRequireAConfirmedBackup(): void

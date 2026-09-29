@@ -292,22 +292,20 @@ final class ApplicationUpdateServiceTest extends TestCase
         mkdir($this->project.'/subdirectory');
         $nested = new ApplicationUpdateService($this->project.'/subdirectory', $client, $this->cache, $this->clock, $this->defaultFlags());
         self::assertSame('release', $nested->source()['source']);
-        $this->assertPullFails($nested, 'updates from release packages');
+        $this->assertPullFails($nested, 'not a Git clone');
         self::assertSame(0, $client->getRequestsCount());
     }
 
-    public function testYamlSourceOverridesDetectionAndInvalidSettingsAreReported(): void
+    public function testUpdateMethodIsDetectedFromTheInstallationAndInvalidRepositoriesAreReported(): void
     {
-        self::assertSame(['source' => 'git', 'setting' => 'auto', 'reason' => 'Detected a .git directory in the application directory.'], $this->service()->source());
-        self::assertSame('release', $this->service(settings: ['updates_source' => 'release'])->source()['source']);
-        $this->assertPullFails($this->service(settings: ['updates_source' => 'release']), 'updates_source');
-        $release = $this->service(settings: ['updates_source' => 'git'], project: $this->directory);
-        self::assertSame('git', $release->source()['source']);
+        self::assertSame(['source' => 'git', 'reason' => 'This directory is a Git clone, so it updates directly from the repository.'], $this->service()->source());
+        file_put_contents($this->directory.'/release.json', '{}');
+        self::assertStringContainsString('installed from a release ZIP', $this->service(project: $this->directory)->source()['reason']);
+        // Settings cannot turn a directory without .git into a Git installation.
+        self::assertSame('release', $this->service(settings: ['updates_source' => 'git'], project: $this->directory)->source()['source']);
 
-        $invalid = $this->service(settings: ['updates_source' => 'ftp']);
-        self::assertSame('error', $invalid->check()['state']);
-        self::assertStringContainsString('updates_source must be auto, git or release', $invalid->check()['message']);
         $badRepository = $this->service(settings: ['updates_repository' => 'https://evil.test/x']);
+        self::assertSame('error', $badRepository->check()['state']);
         self::assertStringContainsString('updates_repository must be a GitHub repository', $badRepository->check()['message']);
     }
 
@@ -359,7 +357,7 @@ final class ApplicationUpdateServiceTest extends TestCase
         self::assertSame(1, $client->getRequestsCount());
         $service->check(true);
         self::assertSame(2, $client->getRequestsCount());
-        $this->assertPullFails($service, 'updates from release packages');
+        $this->assertPullFails($service, 'not a Git clone');
         self::assertSame($this->initial, $this->git(['rev-parse', 'HEAD']));
         self::assertFileDoesNotExist($this->project.'/.git/aggregate-update.lock');
     }

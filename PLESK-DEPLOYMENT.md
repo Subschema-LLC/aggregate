@@ -326,21 +326,8 @@ remain wrong, check the [stylesheet troubleshooting steps](#navigation-layout-or
 
 ### Full source upgrade
 
-The update command runs all of the steps below and keeps your configuration.
-
-If Plesk's **Git** extension deploys this site, the application directory has no
-`.git` folder, so the application cannot pull from Git itself. Choose one method:
-
-- **Release packages (recommended):** set `updates_source: release` in
-  `config/aggregate.yaml` (or choose **Release packages** on the dashboard
-  **Updates** page), turn off automatic deployment in Plesk's Git settings, and
-  install updates with the **Install update** button or `app:updates:apply`. The
-  first update records the installed version.
-- **Plesk Git:** keep deploying through Plesk and run the manual steps below as
-  additional deployment actions.
-
-For a Git clone in the application directory, point the update command at Plesk's
-Composer, then run it with the domain's PHP:
+The update command runs all of the steps below and keeps your configuration. Point
+it at Plesk's Composer, then run it with the domain's PHP:
 
 ```bash
 cd /var/www/vhosts/your-domain.com/analytics

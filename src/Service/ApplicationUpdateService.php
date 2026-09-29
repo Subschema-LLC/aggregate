@@ -44,7 +44,6 @@ class ApplicationUpdateService
         try {
             $source = $this->source();
             $result += [
-                'source_setting' => $source['setting'],
                 'source_reason' => $source['reason'],
                 'repository' => $this->repositoryName(),
                 'repository_url' => $this->repositoryUrl(),
@@ -53,7 +52,7 @@ class ApplicationUpdateService
             // The status message already explains invalid update settings.
         }
 
-        return $result + ['source_setting' => null, 'source_reason' => null, 'repository' => null, 'repository_url' => null];
+        return $result + ['source_reason' => null, 'repository' => null, 'repository_url' => null];
     }
 
     /** @return array<string, mixed> */
@@ -197,7 +196,7 @@ class ApplicationUpdateService
         $this->features->assertEnabled('updates');
 
         if ($this->isReleaseInstallation()) {
-            throw new \RuntimeException('This installation updates from release packages (updates_source). Use app:updates:apply, or set updates_source: git for a Git checkout.');
+            throw new \RuntimeException('This installation is not a Git clone of the repository, so it updates from release ZIPs. Use app:updates:apply or the dashboard.');
         }
         $branch = $this->configuredBranch();
         $local = $this->repository();
@@ -574,31 +573,23 @@ class ApplicationUpdateService
     }
 
     /**
-     * Resolve updates_source. "auto" uses Git when the application directory is
-     * its own Git checkout and release packages otherwise, including directories
-     * that a deployment tool fills without .git (hosting-panel Git deployment,
-     * CI/CD, rsync, FTP or an extracted archive).
+     * How this installation updates. A Git clone (its own .git in the
+     * application directory) pulls from the repository; anything else (an
+     * extracted release ZIP, or files a deployment tool copied without .git)
+     * installs release ZIPs.
      *
-     * @return array{source: string, setting: string, reason: string}
+     * @return array{source: string, reason: string}
      */
     public function source(): array
     {
-        try {
-            $setting = $this->settings?->source() ?? 'auto';
-        } catch (\InvalidArgumentException $e) {
-            throw new \RuntimeException($e->getMessage(), previous: $e);
-        }
-        if ($setting !== 'auto') {
-            return ['source' => $setting, 'setting' => $setting, 'reason' => 'Set by updates_source: '.$setting.'.'];
-        }
         if (file_exists($this->projectDir.'/.git') || is_link($this->projectDir.'/.git')) {
-            return ['source' => 'git', 'setting' => 'auto', 'reason' => 'Detected a .git directory in the application directory.'];
+            return ['source' => 'git', 'reason' => 'This directory is a Git clone, so it updates directly from the repository.'];
         }
         if (file_exists($this->projectDir.'/release.json') || is_link($this->projectDir.'/release.json')) {
-            return ['source' => 'release', 'setting' => 'auto', 'reason' => 'Detected release.json from a release package.'];
+            return ['source' => 'release', 'reason' => 'This directory was installed from a release ZIP, so it updates with release ZIPs.'];
         }
 
-        return ['source' => 'release', 'setting' => 'auto', 'reason' => 'No .git directory or release.json was found (for example files copied by a deployment tool), so release packages are used.'];
+        return ['source' => 'release', 'reason' => 'This directory has no .git folder or release.json (for example files copied by a deployment tool), so it updates with release ZIPs.'];
     }
 
     public function repositoryName(): string

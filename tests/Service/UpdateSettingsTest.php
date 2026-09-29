@@ -70,48 +70,42 @@ final class UpdateSettingsTest extends TestCase
         (new UpdateSettings($config))->branch();
     }
 
-    public function testSourceAndRepositoryDefaultsAndValidation(): void
+    public function testRepositoryDefaultsAndValidation(): void
     {
         $settings = $this->settings([]);
-        self::assertSame('auto', $settings->source());
         self::assertSame('Subschema-LLC/aggregate', $settings->repository());
         self::assertSame('https://github.com/Subschema-LLC/aggregate', $settings->repositoryUrl());
         self::assertTrue($settings->isOfficialRepository());
 
-        $custom = $this->settings(['updates_source' => 'release', 'updates_repository' => 'example-org/aggregate.fork_1']);
-        self::assertSame('release', $custom->source());
+        $custom = $this->settings(['updates_repository' => 'example-org/aggregate.fork_1']);
         self::assertSame('example-org/aggregate.fork_1', $custom->repository());
         self::assertFalse($custom->isOfficialRepository());
         self::assertTrue($this->settings(['updates_repository' => 'subschema-llc/Aggregate'])->isOfficialRepository());
     }
 
-    #[DataProvider('invalidSourcesAndRepositories')]
-    public function testInvalidSourceOrRepositoryIsAnError(string $key, mixed $value): void
+    #[DataProvider('invalidRepositories')]
+    public function testInvalidRepositoryIsAnError(string $key, mixed $value): void
     {
         $this->expectException(\InvalidArgumentException::class);
-        $settings = $this->settings([$key => $value]);
-        $key === 'updates_source' ? $settings->source() : $settings->repository();
+        $this->settings([$key => $value])->repository();
     }
 
-    public static function invalidSourcesAndRepositories(): iterable
+    public static function invalidRepositories(): iterable
     {
-        foreach (['', 'zip', 'GIT', null, true, ['git']] as $index => $source) {
-            yield 'source '.$index => ['updates_source', $source];
-        }
         foreach (['', 'owner', 'owner/', '/repo', 'owner/repo/extra', 'https://github.com/owner/repo', 'owner/repo.git', '-owner/repo', 'owner-/repo', 'ow--ner/repo', 'owner/..', 'owner/re po', null, ['owner/repo']] as $index => $repository) {
             yield 'repository '.$index => ['updates_repository', $repository];
         }
     }
 
-    public function testSaveWritesOnlyValidatedSourceAndBranch(): void
+    public function testSaveBranchWritesOnlyAValidatedBranch(): void
     {
         $config = $this->createMock(AggregateConfigLoader::class);
         $config->method('all')->willReturn([]);
-        $config->expects(self::once())->method('setMany')->with(['updates_source' => 'git', 'updates_branch' => 'releases/stable']);
-        (new UpdateSettings($config))->save('git', 'releases/stable');
+        $config->expects(self::once())->method('setMany')->with(['updates_branch' => 'releases/stable']);
+        (new UpdateSettings($config))->saveBranch('releases/stable');
 
         $this->expectException(\InvalidArgumentException::class);
-        (new UpdateSettings($config))->save('git', '../x');
+        (new UpdateSettings($config))->saveBranch('../x');
     }
 
     /** @param array<string, mixed> $values */

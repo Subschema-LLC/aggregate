@@ -30,6 +30,7 @@ class SystemCheck
     private const REQUIRED_EXTENSIONS = ['ctype', 'iconv', 'pdo', 'mbstring', 'xml', 'curl', 'intl', 'sodium', 'zip'];
     private const WRITABLE = ['', 'bin', 'config', 'migrations', 'public', 'src', 'templates', 'var', 'vendor'];
     private const MIN_FREE_BYTES = 300 * 1024 * 1024;
+    private const MIN_UPLOAD_BYTES = 64 * 1024 * 1024;
 
     public function __construct(
         private readonly string $projectDir,
@@ -63,9 +64,9 @@ class SystemCheck
             $source = $this->updates->source();
             $repository = $this->settings->repository();
             $branch = $this->settings->branch();
-            $add('source', 'Update source', self::OK, sprintf(
+            $add('source', 'Update method', self::OK, sprintf(
                 '%s from %s, branch %s. %s',
-                $source['source'] === 'git' ? 'Git pull' : 'Signed release packages',
+                $source['source'] === 'git' ? 'Directly from the repository (Git pull)' : 'Release ZIPs',
                 $repository,
                 $branch,
                 $source['reason'],
@@ -74,7 +75,7 @@ class SystemCheck
                 $add('repository', 'Repository', self::WARNING, 'updates_repository points to '.$repository.' instead of '.UpdateSettings::DEFAULT_REPOSITORY.'. Only use a repository you control; releases must be signed with the key this installation trusts.');
             }
         } catch (\Throwable $e) {
-            $add('source', 'Update source', self::ERROR, 'Invalid update settings: '.$e->getMessage());
+            $add('source', 'Update method', self::ERROR, 'Invalid update settings: '.$e->getMessage());
         }
 
         $missing = array_values(array_filter(self::REQUIRED_EXTENSIONS, static fn (string $extension): bool => !extension_loaded($extension)));
@@ -200,6 +201,10 @@ class SystemCheck
             : 'No release-files.json yet. The first release update keeps any shipped configuration default that differs from the release as a .local.yaml override; review those files afterwards.');
         $key = $this->verifier->trustedKeyStatus();
         $add('signing_key', 'Release signing key', $key['ok'] ? self::OK : self::ERROR, $key['detail']);
+        $limit = self::uploadLimit();
+        $add('upload_limit', 'ZIP uploads', $limit >= self::MIN_UPLOAD_BYTES ? self::OK : self::INFO, $limit >= self::MIN_UPLOAD_BYTES
+            ? 'PHP accepts uploads up to '.$this->bytes($limit).'.'
+            : 'PHP accepts uploads up to '.($limit > 0 ? $this->bytes($limit) : 'an unknown size').', and release ZIPs are about 25 MB. Download from GitHub instead, or raise upload_max_filesize and post_max_size to at least 64M to upload a ZIP.', 'dashboard');
     }
 
     /** @param callable(string, string, string, string, string=): void $add */
@@ -208,7 +213,7 @@ class SystemCheck
         $git = $this->toolchain->git();
         $add('git', 'Git', $git !== null ? self::OK : self::ERROR, $git !== null ? 'Found at '.$git.'.' : 'Git is not installed or not on PATH for this user.');
         if (!file_exists($this->projectDir.'/.git')) {
-            $add('checkout', 'Git checkout', self::ERROR, 'The application directory has no .git folder, so it cannot pull. Deployment tools that copy files (hosting-panel Git deployment, CI/CD, rsync, FTP) leave it out: set updates_source: release to update from release packages instead.');
+            $add('checkout', 'Git checkout', self::ERROR, 'The application directory has no .git folder, so it cannot pull. Update it with a release ZIP instead.');
         } elseif ($git !== null) {
             $problem = $this->updates->pullProblem();
             $add('checkout', 'Git checkout', $problem === null ? self::OK : self::ERROR, $problem ?? 'Clean checkout on the configured branch.');
@@ -217,6 +222,35 @@ class SystemCheck
         $add('composer', 'Composer', $composer !== null ? self::OK : self::WARNING, $composer !== null
             ? 'Found; dependency changes are installed automatically.'
             : 'Not found on PATH. Updates that change composer.lock or importmap.php stop before changing files. Install Composer or set AGGREGATE_COMPOSER to its path (useful when a hosting panel keeps it elsewhere).');
+    }
+
+    /** The largest upload PHP accepts, in bytes (0 when uploads are off). */
+    public static function uploadLimit(): int
+    {
+        if (!filter_var(ini_get('file_uploads'), FILTER_VALIDATE_BOOL)) {
+            return 0;
+        }
+        $limits = array_filter(
+            [self::iniBytes((string) ini_get('upload_max_filesize')), self::iniBytes((string) ini_get('post_max_size'))],
+            static fn (int $bytes): bool => $bytes > 0,
+        );
+
+        return $limits === [] ? PHP_INT_MAX : min($limits);
+    }
+
+    private static function iniBytes(string $value): int
+    {
+        $value = trim($value);
+        if ($value === '' || !preg_match('/^(\d+)\s*([kmg]?)$/i', $value, $match)) {
+            return 0;
+        }
+
+        return (int) $match[1] * match (strtolower($match[2])) {
+            'g' => 1073741824,
+            'm' => 1048576,
+            'k' => 1024,
+            default => 1,
+        };
     }
 
     private function databaseDriverExtension(): ?string
