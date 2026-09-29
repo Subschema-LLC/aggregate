@@ -27,12 +27,12 @@
 
 
 
-<nav class="navbar is-dark app-navigation" aria-label="main navigation">
+<nav class="navbar is-dark app-navigation" aria-label="main navigation" data-controller="components--layout--navigation-menu" data-action="keydown.esc->components--layout--navigation-menu#close">
     <div class="navbar-brand">
         {{ _self.link(navigation.brand, 'navbar-item', true) }}
     </div>
 
-    <div class="app-navigation-items">
+    <div class="app-navigation-items" id="app-navigation-items">
         {% for item in navigation.items %}
             {% if item.children is defined %}
                 <details class="app-navigation-group" name="main-navigation-group">
@@ -49,15 +49,16 @@
         {% endfor %}
     </div>
 
-    {# Search and account controls wrap as one group so the account never drops alone onto its own row. #}
+    {# Search and account controls stay together. On compact desktops the search collapses to an icon
+       that expands over the account controls; on narrow screens the menu button reveals the items. #}
     <div class="app-navigation-tools">
     <div class="app-navigation-search" data-controller="components--layout--quick-search" data-components--layout--quick-search-items-value="{{ search_items|json_encode|e('html_attr') }}">
         <div class="quick-search-wrapper">
             <input type="search" class="quick-search-input" placeholder="Search... (Ctrl+K)" aria-label="Search pages and settings" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" data-components--layout--quick-search-target="input" data-action="input->components--layout--quick-search#filter keydown->components--layout--quick-search#navigate focus->components--layout--quick-search#show">
-            <span class="quick-search-icon"><i class="fas fa-search" aria-hidden="true"></i></span>
+            <span class="quick-search-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="14" height="14" focusable="false"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" d="M10.5 18a7.5 7.5 0 1 0 0-15 7.5 7.5 0 0 0 0 15Zm5.3-2.2L21 21"/></svg></span>
             <div class="quick-search-actions">
                 <button type="button" class="quick-search-clear" aria-label="Clear search" data-action="components--layout--quick-search#clear" hidden>
-                    <i class="fas fa-xmark" aria-hidden="true"></i>
+                    <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg>
                 </button>
                 <span class="quick-search-shortcut"><kbd>Ctrl+K</kbd></span>
             </div>
@@ -65,13 +66,14 @@
         <div class="quick-search-results" data-components--layout--quick-search-target="results" hidden role="listbox"></div>
     </div>
 
-    <div class="app-navigation-account">
-        <div class="navbar-item app-navigation-user">
+    <div class="app-navigation-account" id="app-navigation-account">
+        <div class="navbar-item app-navigation-user" title="{{ username }}">
+            <span class="app-navigation-avatar" aria-hidden="true">{{ username|slice(0, 1)|upper }}</span>
             <span class="icon-text">
                 {% if navigation.account.user_icon %}
                     <span class="icon"><i class="{{ navigation.account.user_icon }}" aria-hidden="true"></i></span>
                 {% endif %}
-                <span class="app-navigation-username" title="{{ username }}">{{ username }}</span>
+                <span class="app-navigation-username">{{ username }}</span>
             </span>
         </div>
         {{ component('Layout:ThemeToggle') }}
@@ -80,4 +82,10 @@
         </div>
     </div>
     </div>
+
+    {# Shown only on narrow screens once the menu controller connects; without it the full menu stays visible. #}
+    <button type="button" class="app-navigation-menu-toggle" aria-expanded="false" aria-controls="app-navigation-items app-navigation-account" data-components--layout--navigation-menu-target="toggle" data-action="components--layout--navigation-menu#toggle" hidden>
+        <svg class="app-navigation-menu-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path class="app-navigation-menu-open" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M4 7h16M4 12h16M4 17h16"/><path class="app-navigation-menu-close" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg>
+        <span class="is-sr-only">Menu</span>
+    </button>
 </nav>

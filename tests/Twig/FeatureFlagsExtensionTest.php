@@ -260,6 +260,18 @@ final class FeatureFlagsExtensionTest extends TestCase
         // Search and account controls share one wrapping group so the account
         // area never drops onto a row of its own.
         self::assertCount(1, $crawler->filter('.app-navigation-tools > .app-navigation-search + .app-navigation-account'));
+        // The narrow-screen menu button starts hidden, so the full menu stays
+        // usable without JavaScript, and controls the items and account areas.
+        $menuButton = $crawler->filter('button.app-navigation-menu-toggle[hidden][aria-expanded="false"]');
+        self::assertCount(1, $menuButton);
+        self::assertSame('Menu', trim($menuButton->filter('.is-sr-only')->text()));
+        foreach (explode(' ', (string) $menuButton->attr('aria-controls')) as $id) {
+            self::assertCount(1, $crawler->filter('#'.$id));
+        }
+        // Collapsed search and the compact user badge must not depend on the icon font.
+        self::assertCount(1, $crawler->filter('.quick-search-icon svg'));
+        self::assertCount(0, $crawler->filter('.quick-search-wrapper i'));
+        self::assertCount(1, $crawler->filter('.app-navigation-user[title] .app-navigation-avatar[aria-hidden="true"]'));
     }
 
     public function testEmptyInaccessibleAndHiddenGroupsAreRemoved(): void
