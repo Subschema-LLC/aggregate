@@ -49,6 +49,8 @@
         {% endfor %}
     </div>
 
+    {# Search and account controls wrap as one group so the account never drops alone onto its own row. #}
+    <div class="app-navigation-tools">
     <div class="app-navigation-search" data-controller="components--layout--quick-search" data-components--layout--quick-search-items-value="{{ search_items|json_encode|e('html_attr') }}">
         <div class="quick-search-wrapper">
             <input type="search" class="quick-search-input" placeholder="Search... (Ctrl+K)" aria-label="Search pages and settings" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" data-components--layout--quick-search-target="input" data-action="input->components--layout--quick-search#filter keydown->components--layout--quick-search#navigate focus->components--layout--quick-search#show">
@@ -69,12 +71,13 @@
                 {% if navigation.account.user_icon %}
                     <span class="icon"><i class="{{ navigation.account.user_icon }}" aria-hidden="true"></i></span>
                 {% endif %}
-                <span>{{ username }}</span>
+                <span class="app-navigation-username" title="{{ username }}">{{ username }}</span>
             </span>
         </div>
         {{ component('Layout:ThemeToggle') }}
         <div class="navbar-item">
             {{ _self.link(navigation.account.logout, 'button is-light') }}
         </div>
+    </div>
     </div>
 </nav>

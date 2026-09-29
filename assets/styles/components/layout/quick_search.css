@@ -25,8 +25,10 @@
 }
 
 .quick-search-input {
-    background-color: rgba(255, 255, 255, 0.12);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    /* Mix toward the navbar's contrast color so the outline (3:1) and placeholder
+       (4.5:1) stay readable on light, dark and most mid-tone brand navbars. */
+    background-color: color-mix(in srgb, var(--app-brand-navbar-contrast) 6%, transparent);
+    border: 1px solid color-mix(in srgb, var(--app-brand-navbar-contrast) 80%, var(--app-brand-navbar));
     border-radius: var(--bulma-radius-large, 9999px);
     box-sizing: border-box;
     color: var(--app-brand-navbar-contrast, #ffffff);
@@ -46,7 +48,12 @@
 }
 
 .quick-search-input::placeholder {
-    color: rgba(255, 255, 255, 0.6);
+    color: color-mix(in srgb, var(--app-brand-navbar-contrast) 92%, var(--app-brand-navbar));
+    opacity: 1;
+}
+
+.quick-search-input:hover {
+    border-color: var(--app-brand-navbar-contrast);
 }
 
 .quick-search-input:focus {
@@ -62,7 +69,7 @@
 }
 
 .quick-search-icon {
-    color: rgba(255, 255, 255, 0.6);
+    color: color-mix(in srgb, var(--app-brand-navbar-contrast) 85%, var(--app-brand-navbar));
     font-size: 0.75rem;
     left: 0.75rem;
     pointer-events: none;
@@ -86,7 +93,7 @@
     background: transparent;
     border: none;
     border-radius: 50%;
-    color: rgba(255, 255, 255, 0.75);
+    color: color-mix(in srgb, var(--app-brand-navbar-contrast) 85%, var(--app-brand-navbar));
     cursor: pointer;
     display: inline-flex;
     font-size: 0.75rem;
@@ -115,10 +122,10 @@
 }
 
 .quick-search-shortcut kbd {
-    background: rgba(255, 255, 255, 0.15);
-    border: 1px solid rgba(255, 255, 255, 0.25);
+    background: color-mix(in srgb, var(--app-brand-navbar-contrast) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--app-brand-navbar-contrast) 35%, var(--app-brand-navbar));
     border-radius: 4px;
-    color: rgba(255, 255, 255, 0.8);
+    color: color-mix(in srgb, var(--app-brand-navbar-contrast) 85%, var(--app-brand-navbar));
     font-family: inherit;
     font-size: 0.6875rem;
     font-weight: 500;

@@ -257,6 +257,9 @@ final class FeatureFlagsExtensionTest extends TestCase
         self::assertStringNotContainsString('Updates', $crawler->text());
         self::assertCount(0, $crawler->filter('summary a, [role="menu"], [role="menuitem"]'));
         self::assertCount(1, $crawler->filter('.app-navigation-account a[href="/logout?_csrf_token=logout-test-token"]'));
+        // Search and account controls share one wrapping group so the account
+        // area never drops onto a row of its own.
+        self::assertCount(1, $crawler->filter('.app-navigation-tools > .app-navigation-search + .app-navigation-account'));
     }
 
     public function testEmptyInaccessibleAndHiddenGroupsAreRemoved(): void
