@@ -268,7 +268,9 @@ After deploying a release that adds or changes branding services, rebuild the pr
 Source deployments must also run `php bin/console importmap:install --env=prod --no-debug`
 and `php bin/console asset-map:compile --env=prod --no-debug` after dashboard asset
 changes. Cache clearing alone does not rebuild those assets. Prepared release
-ZIPs include them; see the [Plesk deployment actions](../PLESK-DEPLOYMENT.md#plesk-git-deployment-actions).
+ZIPs include them. `app:updates:apply` runs these steps for Git checkouts; for other
+pipelines see the [deployment guide](../DEPLOYMENT.md#updates) (and, for Plesk, its
+[deployment actions](../PLESK-DEPLOYMENT.md#plesk-git-deployment-actions)).
 Saving existing branding settings takes effect without an asset build.
 
 The two BI disclosure thresholds are configured separately in the admin dashboard and stored directly in the singleton `analytics_privacy_settings` database row:
@@ -535,10 +537,25 @@ window.Company1Analytics.emit('signup', {plan: 'pro'});
 
 ### GitHub update checks
 
-When the `updates` feature flag is enabled, the admin **Updates** page and `app:updates:check` use the public
-`Subschema-LLC/aggregate` repository. Set `updates_branch: master` in the active
-YAML environment to select the upstream branch; `master` is also the default.
-This setting has no uppercase environment-variable override. Git installations
+Aggregate updates either **from the repository** (a Git clone in the application
+directory) or **with a release ZIP** (any other installation). The **Updates**
+page detects which applies; see the [deployment guide](../DEPLOYMENT.md#updates).
+Two settings choose where updates come from:
+
+```yaml
+updates_branch: master
+updates_repository: Subschema-LLC/aggregate   # GitHub owner/name
+```
+
+`updates_branch` can also be saved on the Updates page. `updates_repository` is
+YAML-only, because changing where application code comes from is a deployment
+decision. A different repository (for example a fork) must publish releases signed
+with a key this installation trusts through `updates_signing_public_key`, and its
+release manifests must name that repository.
+
+When the `updates` feature flag is enabled, the admin **Updates** page and `app:updates:check` use the
+configured repository, by default the public `Subschema-LLC/aggregate`. These
+settings have no uppercase environment-variable override. Git installations
 compare commits against that branch, and source pulls require the checkout to
 already be on it. Official ZIP installations use their embedded `release.json`
 and stable GitHub Releases without requiring Git. Checks never switch branches

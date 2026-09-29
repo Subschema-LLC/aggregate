@@ -14,6 +14,8 @@ use App\Service\Update\ApplicationUpdater;
 use App\Service\Update\LocalConfigOverrides;
 use App\Service\Update\MaintenanceMode;
 use App\Service\Update\ReleasePackageInstaller;
+use App\Service\Update\SystemCheck;
+use App\Service\Update\Toolchain;
 use App\Service\Update\UpdateJournal;
 use App\Service\UpdateSettings;
 use Doctrine\DBAL\Connection;
@@ -154,6 +156,90 @@ final class ApplicationUpdaterTest extends TestCase
         $this->updater()->resume($this->record(...));
     }
 
+    public function testInstallationWithoutReleaseMetadataIsAdoptedByItsFirstReleaseUpdate(): void
+    {
+        // Files copied by a deployment tool: no release.json or inventory.
+        unlink($this->project.'/release.json');
+        unlink($this->project.'/release-files.json');
+        [$package, $manifest, $signature] = $this->package('2.0.0');
+
+        $state = $this->updater()->start(['package' => $package, 'manifest' => $manifest, 'signature' => $signature], $this->record(...));
+
+        self::assertSame('handoff', $state['step'], (string) ($state['error'] ?? ''));
+        self::assertSame(['version' => null, 'commit' => null], $state['from']);
+        self::assertStringContainsString('"version": "2.0.0"', $this->read('release.json'));
+        self::assertFileExists($this->project.'/release-files.json');
+        // Without an inventory the differing config default is kept as an override.
+        self::assertStringEndsWith("parameters: { app.goal_events: { operator: {} } }\n", $this->read('config/goals.local.yaml'));
+    }
+
+    public function testSystemCheckExplainsReleaseAndGitRequirements(): void
+    {
+        $checks = array_column($this->updater()->preflight()['checks'], null, 'id');
+
+        self::assertSame('ok', $checks['source']['status']);
+        self::assertStringContainsString('Release ZIPs from Subschema-LLC/aggregate, branch master', $checks['source']['detail']);
+        self::assertSame('ok', $checks['signing_key']['status']);
+        self::assertSame('ok', $checks['release_metadata']['status']);
+        self::assertStringContainsString('SQLite', $checks['database']['detail']);
+        self::assertArrayNotHasKey('git', $checks);
+        self::assertSame('dashboard', $checks['upload_limit']['scope']);
+
+        unlink($this->project.'/config/release-signing.pub');
+        unlink($this->project.'/release.json');
+        $checks = array_column($this->updater()->preflight()['checks'], null, 'id');
+        self::assertSame('error', $checks['signing_key']['status']);
+        self::assertSame('warning', $checks['release_metadata']['status']);
+        self::assertStringContainsString('stop its automatic deployments first', $checks['release_metadata']['detail']);
+        self::assertContains($checks['signing_key']['detail'], $this->updater()->preflight()['problems']);
+    }
+
+    public function testInvalidRepositorySettingIsAProblem(): void
+    {
+        $preflight = $this->updater(settings: ['updates_repository' => 'not a repository'])->preflight();
+        $checks = array_column($preflight['checks'], null, 'id');
+
+        self::assertSame('error', $checks['source']['status']);
+        self::assertStringContainsString('updates_repository must be a GitHub repository', $checks['source']['detail']);
+        self::assertContains($checks['source']['detail'], $preflight['problems']);
+    }
+
+    public function testUploadedReleaseFilesAreVerifiedAndIdentifiedByExtension(): void
+    {
+        [$package, $manifest, $signature] = $this->package('2.0.0');
+        $uploads = [];
+        foreach (['aggregate-2.0.0 (1).zip' => $package, 'aggregate-release (1).json' => $manifest, 'aggregate-release.json (1).sig' => $signature] as $name => $source) {
+            $temporary = $this->directory.'/php-upload-'.bin2hex(random_bytes(4));
+            copy($source, $temporary);
+            $uploads[$name] = $temporary;
+        }
+
+        $staged = $this->updater()->stageUpload($uploads);
+
+        self::assertSame('2.0.0', $staged['version']);
+        self::assertStringStartsWith($this->project.'/var/updates/uploads/', $staged['package']);
+        self::assertFileExists($staged['manifest']);
+
+        $tampered = $this->directory.'/tampered.zip';
+        copy($package, $tampered);
+        file_put_contents($tampered, 'x', FILE_APPEND);
+        $copies = [];
+        foreach (['a.zip' => $tampered, 'b.json' => $manifest, 'c.sig' => $signature] as $name => $source) {
+            $copies[$name] = $this->directory.'/copy-'.$name;
+            copy($source, $copies[$name]);
+        }
+        try {
+            $this->updater()->stageUpload($copies);
+            self::fail('A package that does not match its signed manifest must be refused.');
+        } catch (\RuntimeException $e) {
+            self::assertStringContainsString('does not match its signed manifest', $e->getMessage());
+        }
+        self::assertCount(1, glob($this->project.'/var/updates/uploads/*'), 'Refused uploads are removed.');
+
+        $this->expectExceptionMessage('Missing aggregate-release.json.sig');
+        $this->updater()->stageUpload(['a.zip' => $package, 'b.json' => $manifest]);
+    }
+
     public function testServerDatabasesRequireAConfirmedBackup(): void
     {
         $this->connection = DriverManager::getConnection(['driver' => 'pdo_mysql', 'host' => '127.0.0.1', 'dbname' => 'aggregate', 'user' => 'app']);
@@ -263,10 +349,11 @@ final class ApplicationUpdaterTest extends TestCase
         $this->messages[] = [$level, $message];
     }
 
-    private function updater(?MockHttpClient $github = null): ApplicationUpdater
+    /** @param array<string, mixed> $settings */
+    private function updater(?MockHttpClient $github = null, array $settings = []): ApplicationUpdater
     {
         $config = $this->createStub(AggregateConfigLoader::class);
-        $config->method('all')->willReturn([]);
+        $config->method('all')->willReturn($settings);
         $features = new FeatureFlags($config);
         $settings = new UpdateSettings($config);
         $cache = new ArrayAdapter();
@@ -274,18 +361,25 @@ final class ApplicationUpdaterTest extends TestCase
         $installed = new InstalledRelease($this->project);
         $releases = new ReleaseUpdateService($installed, new MockHttpClient([]), $cache, $clock, $settings, $features);
         $overrides = new LocalConfigOverrides($this->project);
+        $journal = new UpdateJournal($this->project);
+        $maintenance = new MaintenanceMode($this->project);
+        $verifier = new ReleasePackageVerifier($config, $settings, $this->project, $features);
+        $updates = new ApplicationUpdateService($this->project, $github ?? new MockHttpClient([]), $cache, $clock, $features, '', $settings, $releases, $overrides);
+        $toolchain = new Toolchain($this->project);
 
         return new ApplicationUpdater(
             $this->project, 'prod', false,
-            new UpdateJournal($this->project),
-            new MaintenanceMode($this->project),
+            $journal,
+            $maintenance,
             new ReleasePackageInstaller($this->project, $overrides),
-            new ReleasePackageVerifier($config, $settings, $this->project, $features),
+            $verifier,
             $releases,
-            new ApplicationUpdateService($this->project, $github ?? new MockHttpClient([]), $cache, $clock, $features, '', $settings, $releases, $overrides),
+            $updates,
             $installed,
             $features,
             $this->connection,
+            new SystemCheck($this->project, $updates, $settings, $installed, $verifier, $journal, $maintenance, $features, $this->connection, $toolchain),
+            $toolchain,
         );
     }
 

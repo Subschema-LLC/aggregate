@@ -16,7 +16,11 @@ final class ReleaseMetadata
      * @return array{schema: int, version: string, repository: string, branch: string, commit: string, built_at: string,
      *     requirements: array{php: string, extensions: list<string>}, package?: array{filename: string, sha256: string, size: int}}
      */
-    public static function parse(string $json, bool $requirePackage = false): array
+    /**
+     * @param ?string $repository The repository the metadata must name, or null to
+     *        accept any GitHub owner/name (an installation's own identity).
+     */
+    public static function parse(string $json, bool $requirePackage = false, ?string $repository = ApplicationUpdateService::REPOSITORY): array
     {
         if (strlen($json) > self::MAX_BYTES) {
             throw new \InvalidArgumentException('Release metadata exceeds the permitted size.');
@@ -34,8 +38,14 @@ final class ReleaseMetadata
         if (!self::isVersion($data['version'] ?? null)) {
             throw new \InvalidArgumentException('Release metadata must identify a stable version in YYYY.MM.NN format.');
         }
-        if (($data['repository'] ?? null) !== ApplicationUpdateService::REPOSITORY) {
-            throw new \InvalidArgumentException('Release metadata does not identify the official Aggregate repository.');
+        if ($repository === null) {
+            try {
+                UpdateSettings::validateRepository($data['repository'] ?? null);
+            } catch (\InvalidArgumentException $e) {
+                throw new \InvalidArgumentException('Release metadata contains an invalid repository.', previous: $e);
+            }
+        } elseif (!is_string($data['repository'] ?? null) || strcasecmp($data['repository'], $repository) !== 0) {
+            throw new \InvalidArgumentException('Release metadata does not identify the configured update repository ('.$repository.').');
         }
         try {
             UpdateSettings::validateBranch($data['branch'] ?? null);

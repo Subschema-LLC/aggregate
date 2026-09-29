@@ -29,7 +29,7 @@ final class CheckUpdatesCommand extends Command
         $this
             ->addOption('refresh', null, InputOption::VALUE_NONE, 'Check GitHub now instead of using cached results')
             ->addOption('json', null, InputOption::VALUE_NONE, 'Output the update status as JSON')
-            ->setHelp('Checks updates_branch in config/aggregate.yaml (default: master) in the official repository. Supports Git checkouts and packaged releases. This command does not change application code. Results are cached for one hour.');
+            ->setHelp('Checks updates_branch (default: master) of updates_repository (default: the official repository) in config/aggregate.yaml. A Git clone compares commits; any other installation checks signed release ZIPs. This command does not change application code. Results are cached for one hour.');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -50,11 +50,11 @@ final class CheckUpdatesCommand extends Command
         $isRelease = ($status['installation_type'] ?? 'git') === 'release';
         $installedBranch = $status['installed_branch'] ?? null;
         $io->definitionList(...[
-            ['Repository' => ApplicationUpdateService::REPOSITORY],
-            ['Installation' => $isRelease ? 'Release package' : 'Git checkout'],
+            ['Repository' => OutputFormatter::escape((string) ($status['repository'] ?? ApplicationUpdateService::REPOSITORY))],
+            ['Update method' => $isRelease ? 'Release ZIPs' : 'From the repository (Git)'],
             ['Configured branch' => OutputFormatter::escape($status['branch'] ?? 'Unavailable')],
             ...($isRelease ? [
-                ['Installed version' => OutputFormatter::escape($status['current_version'] ?? 'Unavailable')],
+                ['Installed version' => OutputFormatter::escape($status['current_version'] ?? (($status['adopting'] ?? false) ? 'Unknown (no release.json)' : 'Unavailable'))],
                 ['Latest release version' => OutputFormatter::escape($status['latest_version'] ?? 'Unavailable')],
             ] : [
                 ['Installed branch' => OutputFormatter::escape($installedBranch ?? ($status['current_commit'] !== null ? 'Detached HEAD' : 'Unavailable'))],
