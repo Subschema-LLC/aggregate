@@ -33,7 +33,8 @@ final class InstalledRelease
             throw new \RuntimeException('Installed release.json could not be read. Check its file permissions.');
         }
         try {
-            return ReleaseMetadata::parse($contents);
+            // The installation's own identity; update checks compare versions, not repositories.
+            return ReleaseMetadata::parse($contents, repository: null);
         } catch (\InvalidArgumentException $e) {
             throw new \RuntimeException('Installed release.json is invalid: '.$e->getMessage().' Restore it from the installation package.', previous: $e);
         }

@@ -35,7 +35,7 @@ final class ApplyUpdateCommand extends Command
             ->addOption('yes', 'y', InputOption::VALUE_NONE, 'Do not ask for confirmation')
             ->addOption('resume', null, InputOption::VALUE_NONE, 'Continue an interrupted update from its last step')
             ->addOption('status', null, InputOption::VALUE_NONE, 'Show the last update and exit')
-            ->addOption('preflight', null, InputOption::VALUE_NONE, 'Check whether an update can run here without changing anything')
+            ->addOption('preflight', null, InputOption::VALUE_NONE, 'Run the system check: whether an update can run here, without changing anything')
             ->addOption('json', null, InputOption::VALUE_NONE, 'With --status or --preflight: print JSON')
             ->setHelp(<<<'HELP'
 Run as the user that owns the application files. The same command updates both kinds of installation:
@@ -106,10 +106,16 @@ HELP);
             if ($json) {
                 $output->writeln(json_encode($result, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE));
             } else {
-                foreach ($result['warnings'] as $warning) {
-                    $io->warning($warning);
-                }
-                $result['problems'] === [] ? $io->success('This installation is ready to update.') : $io->error($result['problems']);
+                $marks = ['ok' => '<info>OK</info>', 'info' => 'Info', 'warning' => '<comment>Warning</comment>', 'error' => '<error>Error</error>'];
+                $table = $io->createTable()->setHeaders(['Status', 'Check', 'Details'])->setColumnMaxWidth(1, 28)->setColumnMaxWidth(2, 72);
+                $table->setRows(array_map(static fn (array $check): array => [
+                    $marks[$check['status']] ?? $check['status'],
+                    OutputFormatter::escape($check['label']).($check['scope'] === 'dashboard' ? ' (dashboard only)' : ''),
+                    OutputFormatter::escape($check['detail']),
+                ], $result['checks'] ?? []));
+                $table->render();
+                $io->newLine();
+                $result['problems'] === [] ? $io->success('This installation is ready to update from the command line.') : $io->error($result['problems']);
             }
 
             return $result['problems'] === [] ? Command::SUCCESS : Command::FAILURE;
