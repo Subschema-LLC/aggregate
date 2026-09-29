@@ -418,6 +418,7 @@ mark.quick-search-highlight {
     .app-navigation-search:focus-within .quick-search-input {
         cursor: text;
         padding-right: 3.75rem;
+        height: 3.3rem;
     }
 
     .app-navigation-search:focus-within .quick-search-actions {
@@ -437,6 +438,7 @@ mark.quick-search-highlight {
         background-color: color-mix(in srgb, var(--app-brand-navbar-contrast) 6%, var(--app-brand-navbar));
         cursor: text;
         padding-right: 3.75rem;
+        height: 3.3rem;
     }
 
     .app-navigation-search:hover .quick-search-actions {
