@@ -24,7 +24,8 @@ final class UpdatesCommandTest extends TestCase
         self::assertSame(Command::SUCCESS, $tester->execute([]));
         self::assertStringContainsString('Subschema-LLC/aggregate', $tester->getDisplay());
         self::assertStringContainsString('app:updates:pull', $tester->getDisplay());
-        self::assertStringContainsString('DEPLOYMENT.md#updates', $tester->getDisplay());
+        self::assertStringContainsString('docs/UPDATES.md', $tester->getDisplay());
+        self::assertStringContainsString('app:updates:apply', $tester->getDisplay());
     }
 
     #[DataProvider('checkStates')]

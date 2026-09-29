@@ -219,7 +219,8 @@ environments:
 - `brand_font_family`: Safe comma-separated local/system font stack for application text (default: `system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif`)
 - `brand_heading_font_family`: Safe comma-separated local/system font stack for headings (default: `system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif`)
 - `js_namespace`: JavaScript global variable name (default: `Aggregate`)
-- `updates_branch`: Official GitHub branch used by source and packaged-release checks (default: `master`); YAML only, with active-environment precedence
+- `updates_method`: `release` (signed release ZIPs, recommended) or `repository` (Git clone pulls, advanced); unset until an administrator chooses on the Updates page, with `app:updates:method`, or here. See [the update guide](UPDATES.md#choose-an-update-method)
+- `updates_branch`: GitHub branch used by repository pulls and packaged-release checks (default: `master`); also editable on the Updates page, with active-environment precedence
 - `updates_signing_public_key`: Optional base64 Ed25519 public key overriding the packaged `config/release-signing.pub` for offline package verification; never a private key
 - `internal_traffic_storage`, `internal_traffic_name`, `internal_traffic_value`, `internal_traffic_cookie_domain`, `internal_traffic_share_token`: Browser marker and team sharing settings; see [Organization traffic](#organization-traffic)
 - `custom_data_properties`, `query_parameter_mappings`: Shareable property model, per-property consent settings, UTM/query capture, and reporting aliases; see [Custom data and UTM parameters](#custom-data-and-utm-parameters)
@@ -537,17 +538,22 @@ window.Company1Analytics.emit('signup', {plan: 'pro'});
 
 ### GitHub update checks
 
-Aggregate updates either **from the repository** (a Git clone in the application
-directory) or **with a release ZIP** (any other installation). The **Updates**
-page detects which applies; see the [deployment guide](../DEPLOYMENT.md#updates).
-Two settings choose where updates come from:
+Aggregate updates **with release ZIPs** (recommended) or **from the repository**
+(a Git clone in the application directory; advanced). An administrator chooses
+the method; see the [update guide](UPDATES.md). Three settings control updates:
 
 ```yaml
+updates_method: release                       # release (recommended) or repository (advanced)
 updates_branch: master
 updates_repository: Subschema-LLC/aggregate   # GitHub owner/name
 ```
 
-`updates_branch` can also be saved on the Updates page. `updates_repository` is
+`updates_method` can also be chosen on the Updates page or with
+`php bin/console app:updates:method release|repository`. While it is unset, the
+dashboard does not install updates and the command line uses the method that fits
+the directory: repository for a Git clone, release ZIPs otherwise. An invalid value
+stops updates until it is corrected. `updates_branch` can also be saved on the
+Updates page. `updates_repository` is
 YAML-only, because changing where application code comes from is a deployment
 decision. A different repository (for example a fork) must publish releases signed
 with a key this installation trusts through `updates_signing_public_key`, and its

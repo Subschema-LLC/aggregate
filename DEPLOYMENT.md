@@ -518,35 +518,41 @@ Add to crontab:
 
 ### Updates
 
-Aggregate updates itself in one of two ways, both run from the dashboard
-**Updates** page or the command line:
+Aggregate updates itself in place with one of two methods. An administrator
+chooses the method on the dashboard **Updates** page, with
+`php bin/console app:updates:method`, or with `updates_method` in
+`config/aggregate.yaml`; the page then shows only that method. The
+[update guide](docs/UPDATES.md) compares them in detail and covers setting up a Git
+clone, switching methods and troubleshooting.
 
-- **From the repository** — for a Git clone of the repository in the application
-  directory. The update fast-forwards the checkout (the same rules as
-  `app:updates:pull` below), runs `composer install` when `composer.lock` or
-  `importmap.php` changed, and compiles dashboard assets. Composer must be
-  installed for updates that change dependencies; the update stops before
-  changing files if it is missing.
-- **With a release ZIP** — for everything else: installations from a release ZIP
-  and directories filled without a `.git` folder. **Download from GitHub** fetches
-  the newest signed release for `updates_branch`; **Upload a release ZIP** installs
-  the ZIP, `aggregate-release.json` and `aggregate-release.json.sig` you downloaded,
-  for servers that cannot reach GitHub. Either way the signature is verified with
-  the installation's trusted key before anything changes, and the server needs no
-  Git, Composer or Node. An installation without `release.json` is offered the
-  latest release; installing it records the version. See the
-  [release guide](docs/RELEASES.md#update-an-installation).
+- **Release ZIP** (`updates_method: release`, recommended) — installs signed
+  releases published on GitHub. **Download from GitHub** fetches the newest
+  stable release for `updates_branch`; **Upload a release ZIP** installs the ZIP,
+  `aggregate-release.json` and `aggregate-release.json.sig` you downloaded, for
+  servers that cannot reach GitHub. The signature is verified with the
+  installation's trusted key before anything changes, and the server needs no Git,
+  Composer or Node. Works for any directory without `.git`, including files copied
+  by a deployment tool; an installation without `release.json` is offered the
+  latest release, and installing it records the version.
+- **From the repository** (`updates_method: repository`, advanced) — for a Git
+  clone of the repository in the application directory. The update fast-forwards
+  the checkout (the same rules as `app:updates:pull` below), runs `composer install`
+  when `composer.lock` or `importmap.php` changed, and compiles dashboard assets. It
+  installs whatever is on the branch, which is not a signed release, and needs Git
+  and Composer on the server.
 
-The page detects which option applies (a `.git` folder in the application
-directory means a Git clone) and explains why the other one is not available.
-Only one mechanism should write the application files: if another tool also
-deploys them, stop its automatic deployments before using the updater, or keep
-using that tool with the [manual steps](#manual-update-steps).
+Until a method is chosen, the dashboard does not install updates and the command
+line uses the method that fits the directory (a `.git` folder means repository).
+A chosen method that does not fit the directory stops updates, and the system check
+says what to change. Only one mechanism should write the application files: if
+another tool also deploys them, stop its automatic deployments before using the
+updater, or keep using that tool with the [manual steps](#manual-update-steps).
 
 From the command line, run as the user that owns the application files. The
 commands work with the dashboard disabled:
 
 ```bash
+php bin/console app:updates:method               # show the method; add release or repository to choose
 php bin/console app:updates:check --refresh      # see what is available
 php bin/console app:updates:apply --preflight    # system check, changes nothing
 php bin/console app:updates:apply                # SQLite: snapshots the database automatically
@@ -555,13 +561,16 @@ php bin/console app:updates:apply --package=aggregate-YYYY.MM.NN.zip \
   --manifest=aggregate-release.json --signature=aggregate-release.json.sig   # release ZIP you downloaded
 ```
 
-**Settings.** `updates_branch` (default `master`) is the branch Git pulls and the
-branch releases must be published from; it can be saved on the Updates page.
-`updates_repository` (default `Subschema-LLC/aggregate`) is YAML-only; see
+**Settings.** `updates_method` (`release` or `repository`) can be chosen on the
+Updates page, with `app:updates:method`, or in YAML. `updates_branch` (default
+`master`) is the branch Git pulls and the branch releases must be published from;
+it can be saved on the Updates page. `updates_repository` (default
+`Subschema-LLC/aggregate`) is YAML-only; see
 [configuration](docs/CONFIGURATION.md#github-update-checks).
 
 **System check.** The Updates page lists everything an update depends on, as seen
-by the web server user: the update method and repository, PHP and extensions, Git
+by the web server user: the update method (and whether it fits the directory) and
+repository, PHP and extensions, Git
 and Composer (repository updates), `release.json`, the trusted signing key and the
 upload size limit (release ZIPs), write access to the application files, whether
 the page can start the command line, free disk space, database backup handling,

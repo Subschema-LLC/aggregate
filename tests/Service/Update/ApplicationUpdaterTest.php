@@ -194,6 +194,47 @@ final class ApplicationUpdaterTest extends TestCase
         self::assertContains($checks['signing_key']['detail'], $this->updater()->preflight()['problems']);
     }
 
+    public function testSystemCheckReportsTheChosenMethodAndStopsOnAMismatch(): void
+    {
+        $checks = array_column($this->updater()->preflight()['checks'], null, 'id');
+        self::assertSame(['info', 'dashboard'], [$checks['method_choice']['status'], $checks['method_choice']['scope']]);
+        self::assertStringContainsString('app:updates:method', $checks['method_choice']['detail']);
+
+        $chosen = $this->updater(settings: ['updates_method' => 'release'])->preflight();
+        self::assertArrayNotHasKey('method_choice', array_column($chosen['checks'], null, 'id'));
+        self::assertSame('ok', array_column($chosen['checks'], null, 'id')['source']['status']);
+        self::assertSame('release', $chosen['installation_type']);
+
+        // The repository method for a directory that is not a Git clone.
+        $updater = $this->updater(settings: ['updates_method' => 'repository']);
+        $preflight = $updater->preflight();
+        $checks = array_column($preflight['checks'], null, 'id');
+        self::assertSame('error', $checks['source']['status']);
+        self::assertStringContainsString('not a Git clone', $checks['source']['detail']);
+        self::assertArrayNotHasKey('checkout', $checks, 'The mismatch is reported once.');
+        self::assertContains($checks['source']['detail'], $preflight['problems']);
+        [$package, $manifest, $signature] = $this->package('2.0.0');
+        $before = $this->snapshot('var/updates');
+        try {
+            $updater->start(['package' => $package, 'manifest' => $manifest, 'signature' => $signature], $this->record(...));
+            self::fail('A mismatched method must not start.');
+        } catch (\RuntimeException $e) {
+            self::assertStringContainsString('not a Git clone', $e->getMessage());
+        }
+        self::assertSame($before, $this->snapshot('var/updates'), 'Only the update lock was touched.');
+        $this->expectExceptionMessage('does not install release ZIPs');
+        $updater->stageUpload(['aggregate-2.0.0.zip' => $package, 'aggregate-release.json' => $manifest, 'aggregate-release.json.sig' => $signature]);
+    }
+
+    public function testMethodCannotChangeWhileAnUpdateNeedsAttention(): void
+    {
+        self::assertNull($this->updater()->methodChangeProblem());
+        (new UpdateJournal($this->project))->write(['id' => 'x', 'type' => 'release', 'status' => 'needs_attention', 'step' => 'migrations']);
+        self::assertStringContainsString('cannot change while an update', (string) $this->updater()->methodChangeProblem());
+        (new UpdateJournal($this->project))->write(['id' => 'x', 'type' => 'release', 'status' => 'completed', 'step' => 'finish']);
+        self::assertNull($this->updater()->methodChangeProblem());
+    }
+
     public function testInvalidRepositorySettingIsAProblem(): void
     {
         $preflight = $this->updater(settings: ['updates_repository' => 'not a repository'])->preflight();

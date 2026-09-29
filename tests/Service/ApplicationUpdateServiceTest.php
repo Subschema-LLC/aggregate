@@ -296,17 +296,67 @@ final class ApplicationUpdateServiceTest extends TestCase
         self::assertSame(0, $client->getRequestsCount());
     }
 
-    public function testUpdateMethodIsDetectedFromTheInstallationAndInvalidRepositoriesAreReported(): void
+    public function testUnchosenUpdateMethodFollowsTheInstallationAndInvalidRepositoriesAreReported(): void
     {
-        self::assertSame(['source' => 'git', 'reason' => 'This directory is a Git clone, so it updates directly from the repository.'], $this->service()->source());
+        $source = $this->service()->source();
+        self::assertSame(['git', null, 'repository', null], [$source['source'], $source['method'], $source['detected'], $source['mismatch']]);
+        self::assertStringContainsString('This directory is a Git clone', $source['reason']);
+        self::assertStringContainsString('No update method has been chosen yet', $source['reason']);
         file_put_contents($this->directory.'/release.json', '{}');
         self::assertStringContainsString('installed from a release ZIP', $this->service(project: $this->directory)->source()['reason']);
-        // Settings cannot turn a directory without .git into a Git installation.
+        // The retired updates_source setting has no effect.
         self::assertSame('release', $this->service(settings: ['updates_source' => 'git'], project: $this->directory)->source()['source']);
 
         $badRepository = $this->service(settings: ['updates_repository' => 'https://evil.test/x']);
         self::assertSame('error', $badRepository->check()['state']);
         self::assertStringContainsString('updates_repository must be a GitHub repository', $badRepository->check()['message']);
+    }
+
+    public function testChosenUpdateMethodIsUsedAndAMismatchStopsChecksAndPulls(): void
+    {
+        $client = new MockHttpClient([]);
+        $chosen = $this->service($client, settings: ['updates_method' => 'repository'])->source();
+        self::assertSame(['git', 'repository', 'repository', null], [$chosen['source'], $chosen['method'], $chosen['detected'], $chosen['mismatch']]);
+        self::assertStringContainsString('An administrator chose to update directly from the repository', $chosen['reason']);
+
+        // Repository chosen for a directory without .git: nothing to pull.
+        $noClone = $this->service($client, project: $this->directory, settings: ['updates_method' => 'repository']);
+        $status = $noClone->check();
+        self::assertSame(['unavailable', 'git', 'repository', 'release'], [$status['state'], $status['installation_type'], $status['update_method'], $status['detected_method']]);
+        self::assertStringContainsString('not a Git clone', $status['message']);
+        self::assertStringContainsString('docs/UPDATES.md', $status['message']);
+
+        // Release ZIPs chosen for a Git clone: ZIPs would bypass Git.
+        $clone = $this->service($client, settings: ['updates_method' => 'release']);
+        $source = $clone->source();
+        self::assertSame(['release', 'release', 'repository'], [$source['source'], $source['method'], $source['detected']]);
+        self::assertStringContainsString('is a Git clone', (string) $source['mismatch']);
+        self::assertSame('unavailable', $clone->check()['state']);
+        self::assertTrue($clone->isReleaseInstallation());
+        self::assertSame(0, $client->getRequestsCount());
+    }
+
+    #[DataProvider('invalidMethods')]
+    public function testInvalidUpdateMethodFailsClosed(mixed $method): void
+    {
+        $client = new MockHttpClient([]);
+        $service = $this->service($client, settings: ['updates_method' => $method]);
+
+        $status = $service->check();
+        self::assertSame('error', $status['state']);
+        self::assertStringContainsString('updates_method must be release', $status['message']);
+        self::assertNull($status['update_method']);
+        $this->expectException(\RuntimeException::class);
+        $service->source();
+    }
+
+    public static function invalidMethods(): iterable
+    {
+        yield 'retired source name' => ['git'];
+        yield 'empty' => [''];
+        yield 'null' => [null];
+        yield 'list' => [['release']];
+        yield 'case' => ['Release'];
     }
 
     public function testConfiguredRepositoryIsUsedForChecksAndPulls(): void

@@ -108,6 +108,33 @@ final class UpdateSettingsTest extends TestCase
         (new UpdateSettings($config))->saveBranch('../x');
     }
 
+    public function testMethodIsUnsetUntilChosenAndOnlyTwoValuesAreAccepted(): void
+    {
+        self::assertNull($this->settings([])->method());
+        self::assertSame('release', $this->settings(['updates_method' => 'release'])->method());
+        self::assertSame('repository', $this->settings(['updates_method' => 'repository'])->method());
+
+        foreach (['git', 'zip', 'Release', ' release', '', null, false, ['release']] as $invalid) {
+            try {
+                $this->settings(['updates_method' => $invalid])->method();
+                self::fail('Accepted invalid updates_method '.var_export($invalid, true));
+            } catch (\InvalidArgumentException $e) {
+                self::assertStringContainsString('updates_method must be release', $e->getMessage());
+            }
+        }
+    }
+
+    public function testSaveMethodWritesOnlyAValidatedMethod(): void
+    {
+        $config = $this->createMock(AggregateConfigLoader::class);
+        $config->method('all')->willReturn([]);
+        $config->expects(self::once())->method('setMany')->with(['updates_method' => 'repository']);
+        (new UpdateSettings($config))->saveMethod('repository');
+
+        $this->expectException(\InvalidArgumentException::class);
+        (new UpdateSettings($config))->saveMethod('git');
+    }
+
     /** @param array<string, mixed> $values */
     private function settings(array $values): UpdateSettings
     {
