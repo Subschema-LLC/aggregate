@@ -145,6 +145,23 @@ final class DashboardSectionsRoutesTest extends TestCase
         $this->assertNoDatabaseConnection();
     }
 
+    public function testCollapsibleHelpPanelsShowAToggleAndBrandingYamlStartsOpen(): void
+    {
+        $browser = $this->browser('ROLE_ADMIN');
+        $this->preventDatabaseReadsAndWrites();
+
+        $branding = $browser->request('GET', '/dashboard/branding');
+        $yaml = $branding->filter('details.message.is-info');
+        self::assertCount(1, $yaml);
+        self::assertNotNull($yaml->attr('open'), 'The YAML panel starts expanded.');
+        self::assertSame('YAML configuration', trim($yaml->filter('summary.message-header > span')->first()->text()));
+        self::assertCount(1, $yaml->filter('summary.message-header > .message-toggle[aria-hidden="true"] > svg'));
+
+        $collection = $browser->request('GET', '/dashboard/collection');
+        self::assertCount(1, $collection->filter('details.message.is-warning:not([open]) > summary.message-header > .message-toggle[aria-hidden="true"] > svg'));
+        $this->assertNoDatabaseConnection();
+    }
+
     public function testInstallationChoicesRenderOnGetAndSetupKeepsTheSelectedMethod(): void
     {
         $browser = $this->browser('ROLE_ADMIN');
