@@ -1,7 +1,11 @@
+{# Icons are inline SVG so the compact buttons stay recognizable when the icon font is unavailable. #}
 <div class="navbar-item app-theme-toggle" data-controller="components--layout--theme-toggle" data-action="storage@window->components--layout--theme-toggle#sync" hidden>
-    <button type="button" class="button is-small" aria-pressed="false" data-components--layout--theme-toggle-target="toggle" data-action="components--layout--theme-toggle#toggle">
-        <span class="icon" aria-hidden="true"><i class="fas fa-moon"></i></span>
-        <span>Dark mode</span>
+    <button type="button" class="button is-small app-theme-toggle-button" aria-pressed="false" title="Dark mode" data-components--layout--theme-toggle-target="toggle" data-action="components--layout--theme-toggle#toggle">
+        <svg class="app-theme-toggle-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M21 14.6A8.9 8.9 0 0 1 9.4 3a.8.8 0 0 0-1-1A10.5 10.5 0 1 0 22 15.6a.8.8 0 0 0-1-1Z"/></svg>
+        <span class="is-sr-only">Dark mode</span>
     </button>
-    <button type="button" class="button is-small" title="Use the configured site theme" data-components--layout--theme-toggle-target="reset" data-action="components--layout--theme-toggle#reset" hidden>Site default</button>
+    <button type="button" class="button is-small app-theme-toggle-button" title="Site default: use the configured site theme" data-components--layout--theme-toggle-target="reset" data-action="components--layout--theme-toggle#reset" hidden>
+        <svg class="app-theme-toggle-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M3.5 12a8.5 8.5 0 1 0 2.5-6M3.5 3.5V8h4.5"/></svg>
+        <span class="is-sr-only">Site default</span>
+    </button>
 </div>

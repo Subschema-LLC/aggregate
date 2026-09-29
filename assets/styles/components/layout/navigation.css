@@ -1,7 +1,12 @@
 /* Modern Navigation Bar and Submenu Dropdowns */
+/* Tints derive from the navbar's contrast color, so they stay visible whether
+   the configured brand navbar is light or dark, in either page theme. */
 .app-navigation {
+    --app-nav-tint: color-mix(in srgb, var(--app-brand-navbar-contrast) 8%, transparent);
+    --app-nav-tint-strong: color-mix(in srgb, var(--app-brand-navbar-contrast) 12%, transparent);
+    --app-nav-rule: color-mix(in srgb, var(--app-brand-navbar-contrast) 15%, transparent);
     align-items: center;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    border-bottom: 1px solid var(--app-nav-rule);
     box-shadow: 0 2px 10px -2px rgba(0, 0, 0, 0.18);
     display: flex;
     flex-wrap: wrap;
@@ -16,6 +21,29 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.25rem;
+}
+
+/* Layout stages, sized from the default menu (the bar stays on one row):
+   - 2000px and wider: full search field and username badge.
+   - 1366px to 1999px: search collapses to an icon that expands over the
+     account controls on hover or focus; the username shows as an initial.
+     Below 1560px, menu icons hide and item padding tightens.
+   - below 1366px: brand, search and a menu button; the menu opens below.
+   A deployment with many or long custom menu items can still exceed a stage;
+   the tools group then wraps as a unit rather than overlapping the menu. */
+.app-navigation-tools {
+    align-items: center;
+    display: flex;
+    flex: 1 1 0;
+    gap: 0.5rem;
+    justify-content: flex-end;
+    margin-inline-start: auto;
+    min-width: 0;
+}
+
+/* The signed-out bar has only the theme toggle, aligned to the end. */
+.app-navigation > .app-navigation-account {
+    margin-inline-start: auto;
 }
 
 .app-navigation .navbar-brand,
@@ -58,23 +86,107 @@
 
 .app-navigation-account {
     flex-shrink: 0;
-    gap: 0.5rem;
-    margin-inline-start: auto;
+    flex-wrap: nowrap;
+    gap: 0.25rem;
 }
 
 .app-navigation-user {
-    background-color: rgba(255, 255, 255, 0.08);
+    background-color: var(--app-nav-tint);
     border-radius: var(--bulma-control-radius);
     font-size: 0.875rem;
-    max-width: 22rem;
+    max-width: 16rem;
     padding: 0.375rem 0.75rem !important;
+}
+
+.app-navigation-user {
+    align-items: center;
+    display: flex;
+    min-width: 0;
+}
+
+.app-navigation-user .icon-text {
+    flex-wrap: nowrap;
+    max-width: 100%;
+    min-width: 0;
+}
+
+.app-navigation-user .icon-text > .icon {
+    flex-shrink: 0;
+}
+
+/* Long usernames truncate; the full name stays available as the title. */
+.app-navigation-username {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Initial shown instead of the username on compact desktops. */
+.app-navigation-avatar {
+    align-items: center;
+    background-color: var(--app-brand-navbar-contrast);
+    border-radius: 50%;
+    color: var(--app-brand-navbar);
+    display: none;
+    flex-shrink: 0;
+    font-size: 0.875rem;
+    font-weight: 700;
+    height: 2rem;
+    justify-content: center;
+    width: 2rem;
+}
+
+.app-navigation-menu-toggle {
+    align-items: center;
+    background: transparent;
+    border: 1px solid color-mix(in srgb, var(--app-brand-navbar-contrast) 35%, var(--app-brand-navbar));
+    border-radius: var(--bulma-control-radius);
+    color: var(--app-brand-navbar-contrast);
+    cursor: pointer;
+    display: none;
+    height: 2.5rem;
+    justify-content: center;
+    padding: 0;
+    width: 2.5rem;
+}
+
+.app-navigation-menu-toggle:hover {
+    background-color: var(--app-nav-tint-strong);
+}
+
+.app-navigation-menu-toggle:focus-visible {
+    outline: 3px solid var(--app-brand-navbar-contrast);
+    outline-offset: 2px;
+}
+
+.app-navigation-menu-toggle[hidden] {
+    display: none !important;
+}
+
+.app-navigation-menu-close,
+.app-navigation.is-open .app-navigation-menu-open {
+    display: none;
+}
+
+.app-navigation.is-open .app-navigation-menu-close {
+    display: inline;
 }
 
 .app-theme-toggle {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.375rem;
-    padding: 0.25rem 0.5rem;
+    flex-wrap: nowrap;
+    gap: 0.25rem;
+    padding: 0.25rem;
+}
+
+.app-theme-toggle-button {
+    padding-inline: 0.5rem;
+}
+
+.app-theme-toggle-icon {
+    display: block;
+    flex-shrink: 0;
 }
 
 .app-theme-toggle[hidden],
@@ -122,7 +234,7 @@
 
 .app-navigation-group > summary:hover,
 .app-navigation-group > summary:focus-visible {
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: var(--app-nav-tint-strong);
     text-decoration: none;
 }
 
@@ -133,7 +245,7 @@
 
 .app-navigation-children {
     background: var(--app-brand-navbar);
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    border: 1px solid var(--app-nav-rule);
     border-radius: var(--bulma-radius-medium);
     box-sizing: border-box;
     box-shadow: 0 12px 28px -4px rgba(0, 0, 0, 0.35), 0 4px 10px rgba(0, 0, 0, 0.2);
@@ -169,7 +281,7 @@
 
 .app-navigation .app-navigation-children .navbar-item:hover,
 .app-navigation .app-navigation-children .navbar-item:focus-visible {
-    background-color: rgba(255, 255, 255, 0.12);
+    background-color: var(--app-nav-tint-strong);
     text-decoration: none;
 }
 
@@ -178,47 +290,172 @@
     opacity: 0.5;
 }
 
-@media screen and (max-width: 1023px) {
-    .app-navigation .navbar-brand,
+/* Compact desktop: the username becomes an initial badge (full name in the
+   tooltip and for screen readers) so the bar stays on one row. */
+@media screen and (min-width: 1366px) and (max-width: 1999px) {
+    .app-navigation-tools {
+        flex: 0 0 auto;
+        position: relative;
+    }
+
+    .app-navigation-user {
+        background-color: transparent;
+        padding: 0.25rem !important;
+    }
+
+    .app-navigation-avatar {
+        display: inline-flex;
+    }
+
+    .app-navigation-user .icon-text {
+        border: 0;
+        clip: rect(0, 0, 0, 0);
+        height: 1px;
+        overflow: hidden;
+        position: absolute;
+        white-space: nowrap;
+        width: 1px;
+    }
+}
+
+@media screen and (min-width: 1366px) and (max-width: 1559px) {
+    .app-navigation-items .icon-text > .icon {
+        display: none;
+    }
+
+    .app-navigation-items > .navbar-item,
+    .app-navigation-items > .app-navigation-group > summary {
+        padding-inline: 0.6rem;
+    }
+}
+
+@media screen and (min-width: 1366px) {
+    .app-navigation-items {
+        flex-wrap: nowrap;
+    }
+
+    .app-navigation-items > .navbar-item,
+    .app-navigation-items > .app-navigation-group > summary {
+        white-space: nowrap;
+    }
+}
+
+/* Narrow screens: brand, search and a menu button on one row. The menu opens
+   as a vertical list with the account controls beneath it. Without the menu
+   controller the list simply stays open. */
+@media screen and (max-width: 1365px) {
+    .app-navigation {
+        column-gap: 0.5rem;
+        padding: 0.375rem 0.75rem;
+    }
+
+    .app-navigation .navbar-brand {
+        flex: 1 1 auto;
+        margin-right: 0;
+        order: 0;
+    }
+
+    .app-navigation-tools {
+        display: contents;
+    }
+
+    .app-navigation-search {
+        order: 1;
+    }
+
+    .app-navigation-menu-toggle {
+        display: inline-flex;
+        flex-shrink: 0;
+        order: 2;
+    }
+
     .app-navigation-items,
     .app-navigation-account {
+        flex-basis: 100%;
         width: 100%;
     }
 
-    .app-navigation-items > * {
-        flex: 1 1 9rem;
-        min-width: 0;
+    .app-navigation-items {
+        align-items: stretch;
+        border-top: 1px solid var(--app-nav-rule);
+        flex-direction: column;
+        gap: 0.125rem;
+        margin-top: 0.375rem;
+        order: 3;
+        padding-top: 0.375rem;
     }
 
-    .app-navigation-group[open] {
-        flex-basis: 100%;
+    .app-navigation-items > .navbar-item,
+    .app-navigation-items > .app-navigation-group > summary {
+        justify-content: flex-start;
+        width: 100%;
+    }
+
+    .app-navigation-group > summary {
+        justify-content: space-between;
+    }
+
+    .app-navigation-group > summary::after {
+        margin-inline-start: auto;
     }
 
     .app-navigation-children {
-        border-radius: var(--bulma-control-radius);
+        background: transparent;
+        border: 0;
+        border-inline-start: 2px solid var(--app-nav-rule);
+        border-radius: 0;
         box-shadow: none;
-        margin: 0.25rem 0.75rem 0.75rem;
+        margin: 0.125rem 0 0.375rem 1.1rem;
         max-width: none;
         min-width: 0;
+        padding: 0 0 0 0.5rem;
         position: static;
         width: auto;
     }
 
     .app-navigation-account {
-        border-top: 1px solid rgba(255, 255, 255, 0.15);
-        justify-content: space-between;
-        margin-top: 0.5rem;
+        border-top: 1px solid var(--app-nav-rule);
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin: 0.375rem 0 0.25rem;
+        order: 4;
         padding-top: 0.5rem;
     }
 
+    /* The username keeps its own line when fewer than 14rem remain. */
     .app-navigation-user {
-        flex-basis: 100%;
+        flex: 1 1 14rem;
         max-width: none;
+    }
+
+    .app-navigation-account > .navbar-item:last-child {
+        margin-inline-start: auto;
+    }
+
+    .app-navigation.is-collapsible:not(.is-open) .app-navigation-items,
+    .app-navigation.is-collapsible:not(.is-open) .app-navigation-account {
+        display: none;
+    }
+
+    /* The signed-out bar keeps its toggle beside the brand. */
+    .app-navigation > .app-navigation-account {
+        border-top: 0;
+        flex-basis: auto;
+        margin: 0;
+        padding-top: 0;
+        width: auto;
     }
 }
 
-@media screen and (max-width: 360px) {
-    .app-navigation-items > * {
+@media screen and (max-width: 479px) {
+    .app-navigation-user {
         flex-basis: 100%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .app-navigation *,
+    .app-navigation *::after {
+        transition: none !important;
     }
 }
