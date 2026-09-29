@@ -48,12 +48,12 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   [deployment-wide feature flags](docs/FEATURE-FLAGS.md) to selected websites or
   administrators where there is a concrete need. Preserve authorization and
   privacy enforcement; anonymous visitors must not acquire experiment identifiers.
-- **Apply verified release packages automatically.** Signed production ZIP
-  tooling, discovery, and offline verification are available. Application still
-  requires the [manual deployment steps](docs/RELEASES.md#install-or-deploy-a-verified-package).
-  A future resumable updater must coordinate maintenance and workers, preserve
-  configuration/data, run migrations and health checks, prevent concurrent
-  updates, and provide separate application-file and database recovery procedures.
+- **Updater follow-ups.** `app:updates:apply` and the dashboard **Install update**
+  button now [install signed releases and Git updates in place](docs/RELEASES.md#update-an-installation).
+  Still open: scheduled or unattended updates, a key-rotation path for the release
+  signing key, database snapshots for server databases, and per-entry merging of
+  `config/*.local.yaml` overrides with newly shipped defaults (an override currently
+  replaces the whole parameter).
 
 ## Proposals to explore
 

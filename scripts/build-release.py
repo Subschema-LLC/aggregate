@@ -36,8 +36,21 @@ ROOT_FILES = (
 CONFIG_FILES = (
     "aggregate.yaml.example", "websites.yaml.example", "bundles.php", "preload.php",
     "services.yaml", "services_dashboard.yaml", "routes_public.yaml", "routes_dashboard.yaml",
-    "navigation.yaml", "goals.yaml", "release.yaml", "release-signing.pub",
+    "navigation.yaml", "goals.yaml", "quick_search.yaml", "maintenance.php",
+    "release.yaml", "release-signing.pub",
 )
+# Operator-owned paths that a package must never contain, so extracting or
+# applying a release can never replace them. Keep this list identical to
+# App\Service\Update\UpdatePaths::PROTECTED (a release test compares them).
+PROTECTED_PATHS = (
+    ".env.local", ".env.local.php", ".env.*.local", ".env.prod",
+    "config/aggregate.yaml", "config/aggregate_*.yaml", "config/websites.yaml",
+    "config/*.local.yaml", "config/tag-manager/sites/**", "config/secrets/**",
+    "var/**",
+)
+# Exceptions to PROTECTED_PATHS: release-owned compiled browser templates.
+RELEASE_OWNED_EXCEPTIONS = ("var/browser/**",)
+INVENTORY = "release-files.json"
 SOURCE_TREES = ("src", "templates", "translations", "migrations", "assets", "micro-consent-dropins", "scripts")
 DOCUMENTATION_EXAMPLES = ("docs/examples/ecommerce-purchase.json",)
 REQUIRED_FILES = (
@@ -51,7 +64,7 @@ REQUIRED_FILES = (
     "var/browser/consent.template.min.js", "var/browser/consent-manifest.json",
     "var/browser/tag-manager.template.min.js", "var/browser/tag-manager-manifest.json",
     "config/aggregate.yaml.example", "config/websites.yaml.example", "config/services.yaml",
-    "config/bundles.php", "src/Kernel.php", "importmap.php",
+    "config/bundles.php", "config/quick_search.yaml", "config/maintenance.php", "src/Kernel.php", "importmap.php",
     "var/browser/standalone-consent.template.min.js", "var/browser/standalone-consent-manifest.json",
     "micro-consent-dropins/js/consent-ui.js", "micro-consent-dropins/js/consent-ui.min.js",
     "micro-consent-dropins/js/aggregate-consent.js", "micro-consent-dropins/js/aggregate-consent.min.js",
@@ -204,6 +217,21 @@ def tree_files(source, relative):
             yield path
 
 
+def path_matches(pattern, relative):
+    """Glob match where * stays within one path segment and a trailing /** matches everything below."""
+    if pattern.endswith("/**"):
+        prefix = pattern[:-3]
+        return relative.startswith(prefix + "/")
+    expression = "".join("[^/]*" if part == "*" else re.escape(part) for part in re.split(r"(\*)", pattern))
+    return re.fullmatch(expression, relative) is not None
+
+
+def is_protected(relative):
+    if any(path_matches(pattern, relative) for pattern in RELEASE_OWNED_EXCEPTIONS):
+        return False
+    return any(path_matches(pattern, relative) for pattern in PROTECTED_PATHS)
+
+
 def payload_paths(source):
     paths = {path for path in ROOT_FILES if (source / path).exists()}
     paths.update("config/" + name for name in CONFIG_FILES if (source / "config" / name).exists())
@@ -212,6 +240,9 @@ def payload_paths(source):
     # Documentation only, excluding local images, DB exports, and development SQL.
     paths.update(path.relative_to(source).as_posix() for path in (source / "docs").glob("*.md") if path.name.lower() != "todo.md")
     paths.update(path for path in DOCUMENTATION_EXAMPLES if (source / path).exists())
+    protected = sorted(path for path in paths if is_protected(path) or path in (INVENTORY, "release.json", ".env"))
+    if protected:
+        raise ValueError("Release inputs include operator-owned or generated paths: " + ", ".join(protected[:5]))
     return sorted(paths)
 
 
@@ -263,11 +294,22 @@ def build_release(source, output, version, branch, commit, built_at=None):
     try:
         with zipfile.ZipFile(package, "x", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
             package_created = True
+            inventory = {}
             for relative in paths:
-                path = source_file(source, relative)
-                write_entry(archive, relative, path.read_bytes(), relative == "bin/console" or relative.startswith("vendor/bin/"))
-            write_entry(archive, ".env", PRODUCTION_ENV.encode("utf-8"))
-            write_entry(archive, "release.json", json_bytes(metadata))
+                content = source_file(source, relative).read_bytes()
+                write_entry(archive, relative, content, relative == "bin/console" or relative.startswith("vendor/bin/"))
+                inventory[relative] = hashlib.sha256(content).hexdigest()
+            generated = {".env": PRODUCTION_ENV.encode("utf-8"), "release.json": json_bytes(metadata)}
+            for relative, content in generated.items():
+                write_entry(archive, relative, content)
+                inventory[relative] = hashlib.sha256(content).hexdigest()
+            # Lets the updater distinguish unchanged shipped files from operator
+            # edits and remove files a newer release no longer ships.
+            write_entry(archive, INVENTORY, json_bytes({
+                "schema": 1,
+                "version": version,
+                "files": dict(sorted(inventory.items())),
+            }))
         with package.open("rb") as handle:
             digest = hashlib.file_digest(handle, "sha256").hexdigest()
         manifest = dict(metadata, package={

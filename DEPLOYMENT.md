@@ -497,7 +497,7 @@ operator files when replacing application code or deploying a release ZIP.
 
 ```bash
 # Backup config (include deployment-specific settings — keep secure!)
-tar -czf config_backup_$(date +%Y%m%d).tar.gz .env config/aggregate.yaml config/goals.yaml
+tar --ignore-failed-read -czf config_backup_$(date +%Y%m%d).tar.gz .env .env.local config/aggregate*.yaml config/websites.yaml config/*.local.yaml config/tag-manager/sites
 
 # Full backup (exclude vendor and cache)
 tar -czf app_backup_$(date +%Y%m%d).tar.gz \
@@ -515,6 +515,72 @@ Add to crontab:
 ```
 
 ### Updates
+
+Install updates with one command, run from the application directory as the user
+that owns the application files. It works for Git checkouts and for installations
+from a release ZIP, and with the dashboard disabled:
+
+```bash
+php bin/console app:updates:check --refresh      # see what is available
+php bin/console app:updates:apply                # SQLite: snapshots the database automatically
+php bin/console app:updates:apply --database-backup-confirmed   # PostgreSQL, MySQL, MariaDB, SQL Server
+```
+
+- **Git checkouts** fast-forward from the official repository (the same rules as
+  `app:updates:pull` below), then run `composer install` when `composer.lock` or
+  `importmap.php` changed and compile dashboard assets. Composer must be installed
+  for updates that change dependencies; the update stops before changing files if
+  it is missing.
+- **Release ZIP installations** download the newest signed release for
+  `updates_branch`, or install files you downloaded with
+  `--package=aggregate-X.Y.Z.zip --manifest=aggregate-release.json --signature=aggregate-release.json.sig`.
+  The signature is verified with the installation's trusted key before anything
+  changes. See the [release guide](docs/RELEASES.md#update-an-installation).
+
+Both then run database migrations, `app:analytics:glossary:sync`, warm the cache and
+signal async workers to restart. While files are replaced, every web request,
+including `/api/receive`, gets a 503 maintenance response, so events sent during
+the update are not recorded. `var/maintenance.json` controls this page;
+`app:updates:maintenance status|on|off` shows or changes it.
+
+**Your configuration is not overwritten.** Updates never replace or delete
+`.env.local` and other local environment files, `config/aggregate.yaml` and
+`config/aggregate_*.yaml`, `config/websites.yaml`, `config/tag-manager/sites/`,
+`config/*.local.yaml`, the installed `config/release-signing.pub`, or anything in
+`var/` (database, branding uploads, logs). If you edited a shipped default,
+`config/goals.yaml`, `config/navigation.yaml` or `config/quick_search.yaml`, the
+edits move to the matching [local override](docs/CONFIGURATION.md#local-overrides-for-shipped-defaults)
+first. New keys in a release's `.env` are appended; existing values stay.
+
+**Recovery.** Changed files are backed up under `var/updates/backups/` (the last
+three updates are kept). If a check fails or a download does not verify, nothing
+changes. If installing files fails, the previous files are restored automatically.
+If a later step fails, such as a migration, the site stays in maintenance mode:
+fix the cause and run `php bin/console app:updates:apply --resume`, or restore the
+previous files with `php bin/console app:updates:rollback`. Rolling back files
+does **not** reverse database migrations. With SQLite, add `--restore-database` to
+put back the snapshot taken before the update, which discards data recorded since.
+With other databases, restore your own backup. If the console itself cannot start
+after an interrupted update, `php scripts/restore-update-files.php` restores the
+files without loading the application. `app:updates:apply --status` shows the last
+update and its log.
+
+Administrators can also select **Install update** on the dashboard **Updates** page.
+It runs the same command in the background (output in `var/updates/last-run.log`).
+This requires the PHP web server user to be able to write the application files,
+which is common on shared hosting but not in hardened deployments where code is
+read-only to PHP. When the preflight finds that the web user cannot write the
+files, or that the command line sees a different environment or database than the
+web server, the page explains why and you run the command on the server instead.
+
+After an update, reload PHP-FPM if OPcache does not revalidate file timestamps
+(`opcache.validate_timestamps=0`), and restart workers if your process manager
+does not restart them after the stop signal. For Docker images, rebuild and
+redeploy the image instead.
+
+Installations whose code predates `app:updates:apply` need one update with the
+manual steps below; later updates use the command. The remainder of this section
+describes version checks, source-only pulls and those manual steps.
 
 After every migration run, synchronize the declared BI glossary in the same
 environment with `php bin/console app:analytics:glossary:sync`. The command needs
@@ -575,8 +641,11 @@ also stops the update. Resolve custom code changes through your normal Git
 workflow. The dashboard only checks status and does not need permission to write
 application code.
 
-The pull command updates **source code only**. Back up the database and local
-configuration, review the changes, and complete all steps below before resuming
+The pull command updates **source code only**; `app:updates:apply` also runs the
+steps below. Edits to `config/goals.yaml`, `config/navigation.yaml` and
+`config/quick_search.yaml` move to their `.local.yaml` overrides before a pull
+instead of blocking it; other local modifications still stop the update. Back up
+the database and local configuration, review the changes, and complete all steps below before resuming
 collection. If the installed version predates these commands, use `git pull --ff-only`
 after updating `origin` and verifying its tracking branch for that first upgrade.
 For image-based deployments, rebuild and redeploy the image using your usual pipeline.
