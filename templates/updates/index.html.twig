@@ -22,6 +22,40 @@
     </button>
 {% endmacro %}
 
+{% macro method_form(selected, detected, busy, docs_url, id_prefix, submit_label) %}
+    <form method="post" action="{{ path('app_updates_method') }}">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token('application_updates_method') }}">
+        <fieldset>
+            <legend class="label">Update method</legend>
+            <div class="field">
+                <label class="radio is-block ml-0" for="{{ id_prefix }}-release">
+                    <input type="radio" id="{{ id_prefix }}-release" name="updates_method" value="release" required{% if selected == 'release' %} checked{% endif %} aria-describedby="{{ id_prefix }}-release-help">
+                    <strong>Release ZIP</strong>
+                    <span class="tag is-success is-light ml-1">Recommended</span>
+                </label>
+                <p class="help ml-5" id="{{ id_prefix }}-release-help">Installs signed releases published on GitHub, downloaded by this page or uploaded from your computer. Each release is verified with this installation's trusted key and includes its dependencies and built assets, so the server needs no Git, Composer or Node.{% if detected == 'release' %} Fits this directory.{% endif %}</p>
+            </div>
+            <div class="field">
+                <label class="radio is-block ml-0" for="{{ id_prefix }}-repository">
+                    <input type="radio" id="{{ id_prefix }}-repository" name="updates_method" value="repository" required{% if selected == 'repository' %} checked{% endif %} aria-describedby="{{ id_prefix }}-repository-help {{ id_prefix }}-repository-warning">
+                    <strong>From the repository</strong>
+                    <span class="tag is-warning is-light ml-1">Advanced</span>
+                </label>
+                <p class="help ml-5" id="{{ id_prefix }}-repository-help">Pulls the newest commit of the configured branch into a Git clone of the repository, then installs dependencies with Composer and builds assets on this server.{% if detected == 'repository' %} Fits this directory: it is a Git clone.{% else %} This directory is not a Git clone, so it must be set up as one first.{% endif %}</p>
+            </div>
+            <div class="notification is-warning is-light" id="{{ id_prefix }}-repository-warning">
+                <p><strong>The repository method is for advanced users.</strong> It installs whatever is on the branch, which is not a signed release, and it needs Git and Composer on the server. Local changes, a different branch or a failed Composer install stop an update, and you fix them on the server with Git. Choose it only if you manage this installation as a Git clone. <a href="{{ docs_url }}#choose-an-update-method">Compare the methods</a></p>
+            </div>
+        </fieldset>
+        {% if busy %}
+            <p class="help mb-2" id="{{ id_prefix }}-busy">The method cannot change while an update is running or needs attention.</p>
+            <button class="button is-primary" type="button" disabled aria-describedby="{{ id_prefix }}-busy">{{ submit_label }}</button>
+        {% else %}
+            <button class="button is-primary" type="submit">{{ submit_label }}</button>
+        {% endif %}
+    </form>
+{% endmacro %}
+
 {% block body %}
     {% set is_release = update_status.installation_type|default('git') == 'release' %}
     {% set installed_branch = update_status.installed_branch ?? null %}
@@ -43,6 +77,10 @@
     {% set blocking_problems = update_blocking_problems|default([]) %}
     {% set can_install = update_status.state == 'available' and (is_release or can_pull) and not run_busy and blocking_problems is empty %}
     {% set upload_limit = update_upload_limit|default(0) %}
+    {% set chosen_method = update_method|default(null) %}
+    {% set detected_method = update_detected_method|default('release') %}
+    {% set method_mismatch = chosen_method is not null and chosen_method != detected_method %}
+    {% set docs_url = update_repository_url ~ '/blob/' ~ (update_status.branch ?? 'master')|url_encode ~ '/docs/UPDATES.md' %}
     {% set check_styles = {
         ok: {label: 'OK', color: 'success'},
         info: {label: 'Info', color: 'info'},
@@ -75,7 +113,11 @@
         <div class="level-left">
             <div>
                 <h1 class="title">Application updates</h1>
-                <p class="subtitle">Update directly from the repository, or with a release ZIP.</p>
+                <p class="subtitle">
+                    {%- if chosen_method == 'repository' %}This installation updates directly from the repository (advanced).
+                    {%- elseif chosen_method == 'release' %}This installation updates with release ZIPs.
+                    {%- else %}Choose how this installation updates.{% endif -%}
+                </p>
             </div>
         </div>
         <div class="level-right">
@@ -86,48 +128,71 @@
         </div>
     </div>
 
-    <div class="notification is-{{ status.color }} is-light" role="status">
-        <div class="is-flex is-justify-content-space-between is-align-items-center is-flex-wrap-wrap">
-            <p class="has-text-weight-semibold">{{ status.label }}</p>
-            <form method="post" action="{{ path('app_updates_refresh') }}">
-                <input type="hidden" name="_csrf_token" value="{{ csrf_token('application_updates_refresh') }}">
-                <button class="button is-small" type="submit">
-                    <span class="icon"><i class="fas fa-rotate" aria-hidden="true"></i></span>
-                    <span>Check now</span>
-                </button>
-            </form>
-        </div>
-        <p>{{ update_status.message }}</p>
-        {% if update_status.compare_url %}
-            <p class="mt-2"><a href="{{ update_status.compare_url }}">Review changes on GitHub</a></p>
+    {% if not chosen_method %}
+        {% if update_status.state == 'error' %}
+            <div class="notification is-danger is-light" role="status">
+                <p class="has-text-weight-semibold">{{ status.label }}</p>
+                <p>{{ update_status.message }}</p>
+            </div>
         {% endif %}
-        <p class="help mt-2">
-            Last checked:
-            {% if update_status.checked_at is not null %}
-                <time datetime="{{ update_status.checked_at|date('c', 'UTC') }}">{{ update_status.checked_at|date('Y-m-d H:i:s', 'UTC') }} UTC</time>.
-            {% else %}
-                Not checked.
+        <details class="box update-panel" id="update-method" open>
+            <summary>
+                <span>
+                    <span class="title is-4">Choose how this installation updates</span>
+                    <span class="tag is-info is-light ml-2">Not chosen yet</span>
+                </span>
+            </summary>
+            <p class="mb-4">Pick one update method. This page then shows only that method, and an administrator can switch under <strong>Update settings</strong> at any time. {{ detected_method == 'repository' ? 'This directory is a Git clone, so the repository method is selected below; release ZIPs need a new directory.' : 'This directory is not a Git clone, so Release ZIP is selected below.' }} Until a method is chosen, the command line uses the one that fits this directory.</p>
+            {{ _self.method_form(detected_method, detected_method, run_busy, docs_url, 'choose-method', 'Use this method') }}
+        </details>
+    {% else %}
+        <div class="notification is-{{ status.color }} is-light" role="status">
+            <div class="is-flex is-justify-content-space-between is-align-items-center is-flex-wrap-wrap">
+                <p class="has-text-weight-semibold">{{ status.label }}</p>
+                <form method="post" action="{{ path('app_updates_refresh') }}">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token('application_updates_refresh') }}">
+                    <button class="button is-small" type="submit">
+                        <span class="icon"><i class="fas fa-rotate" aria-hidden="true"></i></span>
+                        <span>Check now</span>
+                    </button>
+                </form>
+            </div>
+            <p>{{ update_status.message }}</p>
+            {% if update_status.compare_url %}
+                <p class="mt-2"><a href="{{ update_status.compare_url }}">Review changes on GitHub</a></p>
             {% endif %}
-            Results are cached for one hour.
-        </p>
-    </div>
-
-    {% if not is_release and update_status.current_commit and not branch_matches %}
-        <div class="notification is-warning is-light">
-            <p>The installed branch does not match <code>updates_branch</code>. Switch branches manually or correct <code>config/aggregate.yaml</code> before pulling an update.</p>
+            <p class="help mt-2">
+                Last checked:
+                {% if update_status.checked_at is not null %}
+                    <time datetime="{{ update_status.checked_at|date('c', 'UTC') }}">{{ update_status.checked_at|date('Y-m-d H:i:s', 'UTC') }} UTC</time>.
+                {% else %}
+                    Not checked.
+                {% endif %}
+                Results are cached for one hour.
+            </p>
         </div>
-    {% endif %}
 
-    <div class="columns is-desktop">
-        <div class="column is-flex is-flex-direction-column">
-            <details class="box is-flex-grow-1 update-panel" id="update-repository" open>
+        {% if not is_release and update_status.current_commit and not branch_matches %}
+            <div class="notification is-warning is-light">
+                <p>The installed branch does not match <code>updates_branch</code>. Switch branches manually or correct <code>config/aggregate.yaml</code> before pulling an update.</p>
+            </div>
+        {% endif %}
+
+        {% if chosen_method == 'repository' %}
+            <details class="box update-panel" id="update-repository" open>
                 <summary>
                     <span>
                         <span class="title is-4">From the repository</span>
-                        <span class="tag {{ is_release ? 'is-light' : 'is-success is-light' }} ml-2">{{ is_release ? 'Not available here' : 'This installation' }}</span>
+                        <span class="tag is-warning is-light ml-2">Advanced</span>
                     </span>
                 </summary>
-                {% if not is_release %}
+                <div class="notification is-warning is-light">
+                    <p><strong>Advanced option.</strong> Updates install the newest commit of <code>{{ update_status.branch ?? 'master' }}</code>, which is not a signed release, and run Git and Composer on this server. If an update stops because of local changes, a different branch or a dependency problem, you resolve it on the server. Release ZIPs are the recommended method; switch under <strong>Update settings</strong>. <a href="{{ docs_url }}#update-from-the-repository-advanced">Repository update guide</a></p>
+                </div>
+                {% if method_mismatch %}
+                    <p class="mb-3" id="repository-unavailable">This directory is not a Git clone of <a href="{{ update_repository_url }}">{{ update_repository }}</a>, so there is nothing to pull. <a href="{{ docs_url }}#set-up-a-git-clone">Set it up as a Git clone</a>, or switch back to release ZIPs under <strong>Update settings</strong>.</p>
+                    {{ _self.disabled_button('Install update', 'repository-unavailable') }}
+                {% else %}
                     <p class="mb-3">Pulls the latest <code>{{ update_status.branch ?? 'master' }}</code> from <a href="{{ update_repository_url }}">{{ update_repository }}</a>, installs changed Composer dependencies and compiles dashboard assets, then runs database migrations and rebuilds the cache.</p>
                     <div class="table-container">
                         <table class="table is-fullwidth is-narrow">
@@ -152,21 +217,20 @@
                         <p class="mb-3" id="install-unavailable">{{ install_reason }}</p>
                         {{ _self.disabled_button('Install update', 'install-unavailable') }}
                     {% endif %}
-                {% else %}
-                    <p class="mb-3" id="repository-unavailable">Works when the application directory is a Git clone of <a href="{{ update_repository_url }}">{{ update_repository }}</a>. {{ update_status.source_reason|default('') }}</p>
-                    {{ _self.disabled_button('Install update', 'repository-unavailable') }}
                 {% endif %}
             </details>
-        </div>
-        <div class="column is-flex is-flex-direction-column">
-            <details class="box is-flex-grow-1 update-panel" id="update-zip" open>
+        {% else %}
+            <details class="box update-panel" id="update-zip" open>
                 <summary>
                     <span>
                         <span class="title is-4">With a release ZIP</span>
-                        <span class="tag {{ is_release ? 'is-success is-light' : 'is-light' }} ml-2">{{ is_release ? 'This installation' : 'Not available here' }}</span>
+                        <span class="tag is-success is-light ml-2">Recommended</span>
                     </span>
                 </summary>
-                {% if is_release %}
+                {% if method_mismatch %}
+                    <p class="mb-3" id="zip-unavailable">This directory is a Git clone, and installing a ZIP over it would leave its files out of step with Git. <a href="{{ docs_url }}#switch-methods">Install a release into a new directory</a>, or switch back to repository updates under <strong>Update settings</strong>.</p>
+                    {{ _self.disabled_button('Install update', 'zip-unavailable') }}
+                {% else %}
                     <p class="mb-3">Installs a signed release in place after verifying it with this installation's trusted key. Release ZIPs include dependencies and built assets, so the server needs no Git, Composer or Node.</p>
                     <div class="table-container">
                         <table class="table is-fullwidth is-narrow">
@@ -212,14 +276,11 @@
                             </button>
                         </form>
                     {% endif %}
-                {% else %}
-                    <p class="mb-3" id="zip-unavailable">Used by installations from a release ZIP or files copied without <code>.git</code>. This directory is a Git clone, so it updates from the repository; installing a ZIP over it would leave its files out of step with Git.</p>
-                    {{ _self.disabled_button('Install update', 'zip-unavailable') }}
                 {% endif %}
             </details>
-        </div>
-    </div>
-    <p class="help mb-5">Both options keep your configuration: <code>.env.local</code>, <code>config/aggregate.yaml</code>, <code>config/websites.yaml</code>, site tag settings, <code>config/*.local.yaml</code> overrides and everything in <code>var/</code>. Edits to the shipped <code>goals.yaml</code>, <code>navigation.yaml</code> or <code>quick_search.yaml</code> move to their <code>.local.yaml</code> override. Visitors and the collection API receive a maintenance response while files are replaced, and changed files are backed up for rollback.</p>
+        {% endif %}
+        <p class="help mb-5">Updates keep your configuration: <code>.env.local</code>, <code>config/aggregate.yaml</code>, <code>config/websites.yaml</code>, site tag settings, <code>config/*.local.yaml</code> overrides and everything in <code>var/</code>. Edits to the shipped <code>goals.yaml</code>, <code>navigation.yaml</code> or <code>quick_search.yaml</code> move to their <code>.local.yaml</code> override. Visitors and the collection API receive a maintenance response while files are replaced, and changed files are backed up for rollback.</p>
+    {% endif %}
 
     <details class="box update-panel" id="system-check"{% if blocking_problems is not empty %} open{% endif %}>
         <summary>
@@ -297,8 +358,16 @@ php bin/console app:updates:rollback</code></pre>
         </details>
     {% endif %}
 
-    <details class="box update-panel" id="update-settings">
+    <details class="box update-panel" id="update-settings"{% if method_mismatch %} open{% endif %}>
         <summary><span class="title is-4">Update settings</span></summary>
+        {% if chosen_method %}
+            <h3 class="title is-5 mb-2">Switch update method</h3>
+            <p class="mb-3">This installation updates {{ chosen_method == 'repository' ? 'directly from the repository (advanced)' : 'with release ZIPs' }}. Switching changes which method this page shows and which one <code>app:updates:apply</code> uses. It does not change any files; see <a href="{{ docs_url }}#switch-methods">switching methods</a> for what else each one needs.</p>
+            <div class="mb-5">
+                {{ _self.method_form(chosen_method, detected_method, run_busy, docs_url, 'switch-method', 'Save update method') }}
+            </div>
+            <hr>
+        {% endif %}
         <form method="post" action="{{ path('app_updates_settings') }}" class="mb-4">
             <input type="hidden" name="_csrf_token" value="{{ csrf_token('application_updates_settings') }}">
             <label class="label" for="updates-branch">Branch</label>
@@ -313,7 +382,9 @@ php bin/console app:updates:rollback</code></pre>
             <p class="help" id="updates-branch-help">The branch Git pulls, and the branch release ZIPs must be published from. The default is <code>master</code>.</p>
         </form>
         <p class="mb-2">The same settings in <code>config/aggregate.yaml</code>, for headless installations:</p>
-        <pre><code>updates_branch: {{ update_status.branch ?? 'master' }}
+        {% set method_line = chosen_method ? 'updates_method: ' ~ chosen_method ~ '   # release (recommended) or repository (advanced)' : '# updates_method: release   # not chosen yet: release (recommended) or repository (advanced)' %}
+        <pre><code>{{ method_line }}
+updates_branch: {{ update_status.branch ?? 'master' }}
 updates_repository: {{ update_repository }}   # GitHub owner/name; YAML only</code></pre>
         <p class="help">{% if not update_official_repository|default(true) %}This installation does not use the official repository. {% endif %}An optional <code>AGGREGATE_GITHUB_TOKEN</code> in the server environment raises the GitHub API rate limit; the public repository needs no token.</p>
     </details>
@@ -329,7 +400,7 @@ updates_repository: {{ update_repository }}   # GitHub owner/name; YAML only</co
                     </tr>
                     <tr>
                         <th scope="row">Installation</th>
-                        <td>{{ is_release ? 'Release package' : 'Git checkout' }}</td>
+                        <td>{{ detected_method == 'repository' ? 'Git clone' : 'Release package or copied files (no .git folder)' }}</td>
                     </tr>
                     <tr>
                         <th scope="row">Configured branch</th>
@@ -377,13 +448,15 @@ updates_repository: {{ update_repository }}   # GitHub owner/name; YAML only</co
     <details class="box content update-panel" id="command-line">
         <summary><span class="title is-4">Command line</span></summary>
         <p>The same updates run from the application directory on the server, including with the dashboard disabled. Run them as the user that owns the application files:</p>
-        <pre><code>php bin/console app:updates:check --refresh
+        <pre><code>php bin/console app:updates:method              # show the update method
+php bin/console app:updates:method release      # or: repository (advanced)
+php bin/console app:updates:check --refresh
 php bin/console app:updates:apply --preflight
 php bin/console app:updates:apply</code></pre>
         {% if is_release %}
             <p>To install release files you downloaded yourself:</p>
             <pre><code>php bin/console app:updates:apply --package=aggregate-YYYY.MM.NN.zip --manifest=aggregate-release.json --signature=aggregate-release.json.sig</code></pre>
         {% endif %}
-        <p>For PostgreSQL, MySQL, MariaDB or SQL Server, back up the database first and add <code>--database-backup-confirmed</code>. If a step fails after files change, the site stays in maintenance mode; continue with <code>--resume</code> or restore the previous files with <code>php bin/console app:updates:rollback</code>. Rolling back files does not reverse database migrations. See the <a href="{{ update_repository_url }}{% if update_status.branch %}/blob/{{ update_status.branch|url_encode }}/DEPLOYMENT.md#updates{% endif %}">deployment guide</a>.</p>
+        <p>For PostgreSQL, MySQL, MariaDB or SQL Server, back up the database first and add <code>--database-backup-confirmed</code>. If a step fails after files change, the site stays in maintenance mode; continue with <code>--resume</code> or restore the previous files with <code>php bin/console app:updates:rollback</code>. Rolling back files does not reverse database migrations. See the <a href="{{ docs_url }}">update guide</a>.</p>
     </details>
 {% endblock %}

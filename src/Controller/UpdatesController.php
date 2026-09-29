@@ -22,6 +22,7 @@ final class UpdatesController extends AbstractController
     public const INSTALL_CSRF_TOKEN_ID = 'application_updates_install';
     public const SETTINGS_CSRF_TOKEN_ID = 'application_updates_settings';
     public const UPLOAD_CSRF_TOKEN_ID = 'application_updates_upload';
+    public const METHOD_CSRF_TOKEN_ID = 'application_updates_method';
 
     public function __construct(
         private readonly AggregateConfigLoader $config,
@@ -51,6 +52,8 @@ final class UpdatesController extends AbstractController
             'update_checks' => $checks,
             'update_blocking_problems' => $this->systemCheck->problems(dashboard: true, checks: $checks),
             'update_upload_limit' => SystemCheck::uploadLimit(),
+            'update_method' => $this->chosenMethod(),
+            'update_detected_method' => $this->updates->detectedMethod(),
         ]);
     }
 
@@ -189,6 +192,9 @@ final class UpdatesController extends AbstractController
     /** Why the dashboard cannot start an update now, or null. @param array<string, mixed> $submitted */
     private function startError(array $submitted): ?string
     {
+        if ($this->chosenMethod() === null) {
+            return 'Choose an update method on this page before installing updates from the dashboard.';
+        }
         if (!$this->updater->isSqlite() && ($submitted['database_backup_confirmed'] ?? null) !== '1') {
             return 'Confirm that you have a current database backup before installing the update.';
         }
@@ -215,6 +221,53 @@ final class UpdatesController extends AbstractController
             return $this->redirectToRoute('app_updates');
         }
         $this->addFlash('success', $prefix.'The update has started. The site shows a maintenance page while files are replaced; reload this page to follow its progress.');
+
+        return $this->redirectToRoute('app_updates');
+    }
+
+    /**
+     * Save the update method an administrator chose (updates_method) to the
+     * active YAML configuration: release ZIPs, or the repository (advanced).
+     * The Updates page then shows only that method.
+     */
+    #[Route('/dashboard/updates/method', name: 'app_updates_method', methods: ['POST'])]
+    public function saveMethod(Request $request): Response
+    {
+        $this->denyUnlessAvailableToAdmin();
+
+        $submitted = $request->request->all();
+        $csrfToken = $submitted['_csrf_token'] ?? null;
+        if (!is_string($csrfToken) || !$this->isCsrfTokenValid(self::METHOD_CSRF_TOKEN_ID, $csrfToken)) {
+            $this->addFlash('error', 'Invalid security token. Please try again.');
+
+            return $this->redirectToRoute('app_updates');
+        }
+        $problem = $this->updater->methodChangeProblem();
+        if ($problem !== null) {
+            $this->addFlash('error', $problem);
+
+            return $this->redirectToRoute('app_updates');
+        }
+        try {
+            $method = UpdateSettings::validateMethod($submitted['updates_method'] ?? null);
+            $this->settings->saveMethod($method);
+        } catch (\InvalidArgumentException $e) {
+            $this->addFlash('error', $e->getMessage());
+
+            return $this->redirectToRoute('app_updates');
+        } catch (\RuntimeException) {
+            $this->addFlash('error', 'The update method could not be saved. Check that config/aggregate.yaml is valid and writable, or set updates_method there directly.');
+
+            return $this->redirectToRoute('app_updates');
+        }
+        $this->updates->check(true);
+        $label = $method === UpdateSettings::METHOD_REPOSITORY ? 'from the repository (advanced)' : 'with release ZIPs';
+        $this->addFlash('success', 'This installation now updates '.$label.'. The choice is saved as updates_method in the YAML configuration.');
+        if ($method !== $this->updates->detectedMethod()) {
+            $this->addFlash('warning', $method === UpdateSettings::METHOD_REPOSITORY
+                ? 'This directory is not a Git clone yet, so repository updates cannot run until it is one. The system check explains what to do; you can switch back to release ZIPs at any time.'
+                : 'This directory is a Git clone, so release ZIPs cannot be installed over it. Install a release ZIP into a new directory, or switch back to repository updates.');
+        }
 
         return $this->redirectToRoute('app_updates');
     }
@@ -251,6 +304,16 @@ final class UpdatesController extends AbstractController
         $this->addFlash('success', 'Update settings saved to the YAML configuration.');
 
         return $this->redirectToRoute('app_updates');
+    }
+
+    /** The method an administrator chose, or null when none is chosen or the setting is invalid (the status explains it). */
+    private function chosenMethod(): ?string
+    {
+        try {
+            return $this->settings->method();
+        } catch (\InvalidArgumentException|\RuntimeException) {
+            return null;
+        }
     }
 
     private function denyUnlessAvailableToAdmin(): void

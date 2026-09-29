@@ -38,13 +38,15 @@ final class ApplyUpdateCommand extends Command
             ->addOption('preflight', null, InputOption::VALUE_NONE, 'Run the system check: whether an update can run here, without changing anything')
             ->addOption('json', null, InputOption::VALUE_NONE, 'With --status or --preflight: print JSON')
             ->setHelp(<<<'HELP'
-Run as the user that owns the application files. The same command updates both kinds of installation:
+Run as the user that owns the application files. It uses the update method chosen with
+app:updates:method or updates_method (until one is chosen: repository for a Git clone,
+release otherwise):
 
-  Release package (installed from a ZIP): downloads the newest signed release for updates_branch
+  release (recommended): downloads the newest signed release for updates_branch
   from GitHub, or installs the files given with --package, --manifest and --signature. The
   signature is verified with the installation's trusted key before anything changes.
 
-  Git checkout: fast-forwards from the official repository, then runs composer install when
+  repository (advanced, Git clones only): fast-forwards from the configured repository, then runs composer install when
   dependencies changed and compiles dashboard assets.
 
 Both then run database migrations, sync the BI glossary, rebuild the cache and signal workers.

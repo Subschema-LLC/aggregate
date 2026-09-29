@@ -280,23 +280,24 @@ sudo supervisorctl start analytics-worker
 
 ## Updating the Application
 
-Admins can check **Updates** in the dashboard. From the domain's deployment account:
+The application updates itself; see the [update guide](docs/UPDATES.md). An
+administrator chooses the method on the dashboard **Updates** page: release ZIPs
+(recommended) or the repository for a Git clone (advanced). From the domain's
+deployment account, the same commands run with Plesk's PHP:
 
 ```bash
+/opt/plesk/php/8.3/bin/php bin/console app:updates:method
 /opt/plesk/php/8.3/bin/php bin/console app:updates:check --refresh
+/opt/plesk/php/8.3/bin/php bin/console app:updates:apply --preflight
 ```
 
-See [update behavior and prerequisites](DEPLOYMENT.md#updates) for Git credentials,
-private-repository checks, the one-time remote URL change, and upgrading versions
-that predate these commands. Back up the database and local configuration first.
-Set `updates_branch` in the active aggregate YAML configuration (default `master`).
-The pull command requires a clean Git checkout on that configured branch; complete the
-remaining deployment steps below after it succeeds.
-
-Official [release ZIPs](docs/RELEASES.md) include production dependencies and built
-assets and can check versions without Git. The dashboard links to packages;
-signed-package verification and manual deployment are available while automatic
-package replacement remains a separate implementation step.
+If you use the in-app updater, turn off automatic deployment in Plesk's **Git**
+settings (or stop using its **Deploy** action), because each deploy copies the
+repository over the installed files. A directory that Plesk fills from Git has no
+`.git` folder, so it uses release ZIPs unless you
+[set it up as a Git clone](docs/UPDATES.md#set-up-a-git-clone). To keep deploying
+with Plesk instead, use the actions below and the
+[manual update steps](DEPLOYMENT.md#manual-update-steps).
 
 ### Plesk Git deployment actions
 
