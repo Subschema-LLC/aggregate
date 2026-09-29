@@ -20,11 +20,11 @@ feature_flags:
 ```
 
 The `updates` flag covers the Updates page, Git and release version checks, Git
-source pulls, and offline release package verification. Disabled commands fail
-without contacting GitHub, reading release packages, or changing the installation.
-The page and refresh endpoint return 404 to an authenticated administrator when
-disabled. Existing authorization still applies. Automatic package application
-remains planned.
+source pulls, release package verification, and installing updates with
+`app:updates:apply` or the dashboard **Install update** button. Disabled commands
+fail without contacting GitHub, reading release packages, or changing the
+installation. The page, refresh and install endpoints return 404 to an
+authenticated administrator when disabled. Existing authorization still applies.
 
 | `enabled` | `hide_from_navigation` | Behavior |
 | --- | --- | --- |

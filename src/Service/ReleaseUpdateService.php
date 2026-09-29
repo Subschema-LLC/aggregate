@@ -162,6 +162,73 @@ final class ReleaseUpdateService
         return $result;
     }
 
+    /**
+     * Download the three release assets for installation. The files are not
+     * trusted until ReleasePackageVerifier checks the signed manifest.
+     *
+     * @return array{version: string, package: string, manifest: string, signature: string}
+     */
+    public function download(string $directory, ?string $version = null): array
+    {
+        $this->features->assertEnabled('updates');
+        $local = $this->installed->read()
+            ?? throw new \RuntimeException('This installation has no release.json, so packaged updates are unavailable.');
+        $branch = $this->settings->branch();
+        $selected = null;
+        foreach ($this->releases()['releases'] as $release) {
+            $metadata = $release['metadata'];
+            if ($metadata['branch'] !== $branch || ($version !== null && $metadata['version'] !== $version)) {
+                continue;
+            }
+            if (ReleaseMetadata::compatibilityErrors($metadata) !== []) {
+                if ($version !== null) {
+                    throw new \RuntimeException('Release '.$version.' is not compatible with this PHP runtime: '.implode(' ', ReleaseMetadata::compatibilityErrors($metadata)));
+                }
+                continue;
+            }
+            $selected = $release;
+            break;
+        }
+        if ($selected === null) {
+            throw new \RuntimeException($version === null
+                ? 'No compatible packaged release was found for updates_branch '.$branch.'.'
+                : 'Release '.$version.' was not found for updates_branch '.$branch.'.');
+        }
+        if (version_compare($selected['metadata']['version'], $local['version'], '<=')) {
+            throw new \RuntimeException('Release '.$selected['metadata']['version'].' is not newer than the installed version '.$local['version'].'. Downgrades are not supported.');
+        }
+        if (!is_dir($directory) && !@mkdir($directory, 0775, true) && !is_dir($directory)) {
+            throw new \RuntimeException('The download directory could not be created. Check write access to var/updates.');
+        }
+        $deadline = microtime(true) + 900;
+        $files = [
+            'package' => [$selected['package_api_url'], 'aggregate-'.$selected['version'].'.zip', $selected['package_size']],
+            'manifest' => [$selected['manifest_api_url'], 'aggregate-release.json', ReleaseMetadata::MAX_BYTES],
+            'signature' => [$selected['signature_api_url'], 'aggregate-release.json.sig', 256],
+        ];
+        $paths = ['version' => $selected['version']];
+        foreach ($files as $key => [$url, $name, $limit]) {
+            $path = $directory.'/'.$name;
+            $temporary = $path.'.part';
+            $handle = @fopen($temporary, 'w');
+            if ($handle === false) {
+                throw new \RuntimeException('The download could not be written. Check free disk space and write access to var/updates.');
+            }
+            try {
+                $this->request($url, $limit, $deadline, true, $handle, 600);
+            } finally {
+                fclose($handle);
+            }
+            if (!@rename($temporary, $path)) {
+                @unlink($temporary);
+                throw new \RuntimeException('The download could not be saved in var/updates.');
+            }
+            $paths[$key] = $path;
+        }
+
+        return $paths;
+    }
+
     /** @return array{releases: list<array<string, mixed>>, search_limited: bool} */
     private function releases(): array
     {
@@ -260,11 +327,14 @@ final class ReleaseUpdateService
             'package_url' => $downloadBase.$names[0], 'package_size' => $assets[$names[0]]['size'],
             'manifest_url' => $downloadBase.$names[1], 'signature_url' => $downloadBase.$names[2],
             'manifest_api_url' => $assets[$names[1]]['url'],
+            'package_api_url' => $assets[$names[0]]['url'],
+            'signature_api_url' => $assets[$names[2]]['url'],
         ];
     }
 
     /** Read only bounded data from a constructed GitHub API URL or its validated asset redirect. */
-    private function request(string $url, int $maxBytes, float $deadline, bool $asset = false): string
+    /** @param resource|null $sink Receives the body instead of returning it */
+    private function request(string $url, int $maxBytes, float $deadline, bool $asset = false, $sink = null, int $maxDuration = 10): string
     {
         $headers = [
             'Accept' => $asset ? 'application/octet-stream' : 'application/vnd.github+json',
@@ -282,7 +352,7 @@ final class ReleaseUpdateService
             try {
                 $response = $this->httpClient->request('GET', $url, [
                     'headers' => $headers, 'timeout' => min(5, $remaining),
-                    'max_duration' => min(10, $remaining), 'max_redirects' => 0, 'buffer' => false,
+                    'max_duration' => min($maxDuration, $remaining), 'max_redirects' => 0, 'buffer' => false,
                 ]);
                 $status = $response->getStatusCode();
                 if ($asset && $attempt === 0 && in_array($status, [301, 302, 303, 307, 308], true)) {
@@ -305,13 +375,22 @@ final class ReleaseUpdateService
                     });
                 }
                 $body = '';
-                foreach ($this->httpClient->stream($response, min(5, $remaining)) as $chunk) {
+                $received = 0;
+                foreach ($this->httpClient->stream($response, min($sink !== null ? 30 : 5, $remaining)) as $chunk) {
                     if ($chunk->isTimeout()) {
                         throw new \RuntimeException('The packaged-release metadata request timed out. Try checking again later.');
                     }
-                    $body .= $chunk->getContent();
-                    if (strlen($body) > $maxBytes) {
+                    $content = $chunk->getContent();
+                    $received += strlen($content);
+                    if ($received > $maxBytes) {
                         throw new \RuntimeException('GitHub release metadata exceeds the permitted response size.');
+                    }
+                    if ($sink !== null) {
+                        if (@fwrite($sink, $content) !== strlen($content)) {
+                            throw new \RuntimeException('The download could not be written. Check free disk space in var/updates.');
+                        }
+                    } else {
+                        $body .= $content;
                     }
                     if (microtime(true) > $deadline) {
                         throw new \RuntimeException('The packaged-release check exceeded its time limit. Try checking again later.');

@@ -9,6 +9,7 @@ use App\Service\ApplicationUpdateService;
 use App\Service\FeatureFlags;
 use App\Service\InstalledRelease;
 use App\Service\ReleaseUpdateService;
+use App\Service\Update\LocalConfigOverrides;
 use App\Service\UpdateSettings;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -35,7 +36,7 @@ final class ApplicationUpdateServiceTest extends TestCase
         $this->project = $this->directory.'/installation';
         self::assertTrue(mkdir($this->source, 0700, true));
         $this->git(['init', '--initial-branch=deployment/stable'], $this->source);
-        file_put_contents($this->source.'/.gitignore', "config/aggregate.yaml\n.env\nvar/\n");
+        file_put_contents($this->source.'/.gitignore', "config/aggregate.yaml\nconfig/*.local.yaml\n.env\nvar/\n");
         $this->initial = $this->commit($this->source, 'application.txt', 'initial version');
         $this->git(['clone', '--quiet', $this->source, $this->project], $this->directory);
         // Production keeps the URL fixed. Only this disposable clone rewrites it to
@@ -404,6 +405,8 @@ final class ApplicationUpdateServiceTest extends TestCase
             'previous_commit' => $this->initial,
             'current_commit' => $latest,
             'changed' => true,
+            'overrides_created' => [],
+            'changed_paths' => ['application.txt'],
         ], $result);
         self::assertSame($latest, $this->git(['rev-parse', 'HEAD']));
         self::assertSame('updated application', file_get_contents($this->project.'/application.txt'));
@@ -551,12 +554,108 @@ final class ApplicationUpdateServiceTest extends TestCase
         self::assertSame('local-only', $this->git(['branch', '--show-current']));
     }
 
-    private function service(?MockHttpClient $client = null, string $token = '', mixed $branch = 'deployment/stable', ?string $project = null): ApplicationUpdateService
+    public function testPullMovesEditedShippedConfigurationToItsLocalOverride(): void
+    {
+        $shipped = $this->shipGoals();
+        $edited = $shipped."        custom: { label: Custom, enabled: true, anonymous: false }\n";
+        file_put_contents($this->project.'/config/goals.yaml', $edited);
+        $upstream = "parameters:\n    app.goal_events:\n        purchase: { label: Purchase, enabled: true, anonymous: true }\n        lead: { label: Lead, enabled: true, anonymous: true }\n";
+        $latest = $this->commit($this->source, 'config/goals.yaml', $upstream);
+        $seen = null;
+
+        $result = $this->service(overrides: true)->pull(function (string $commit, array $changed) use (&$seen): void {
+            $seen = [$commit, $changed];
+        });
+
+        self::assertSame(['config/goals.local.yaml'], $result['overrides_created']);
+        self::assertSame([$latest, ['config/goals.yaml']], $seen);
+        self::assertSame($upstream, file_get_contents($this->project.'/config/goals.yaml'));
+        $local = (string) file_get_contents($this->project.'/config/goals.local.yaml');
+        self::assertStringEndsWith($edited, $local);
+        self::assertStringStartsWith('# Moved from config/goals.yaml', $local);
+        self::assertSame('', $this->git(['status', '--porcelain']));
+    }
+
+    public function testConflictingOverrideStopsThePullWithoutChangingFiles(): void
+    {
+        $shipped = $this->shipGoals();
+        $head = $this->git(['rev-parse', 'HEAD']);
+        file_put_contents($this->project.'/config/goals.yaml', $shipped.'# edited');
+        file_put_contents($this->project.'/config/goals.local.yaml', 'different operator content');
+        $this->commit($this->source, 'application.txt', 'remote change');
+
+        $this->assertPullFails($this->service(overrides: true), 'already exists with different content');
+
+        self::assertSame($head, $this->git(['rev-parse', 'HEAD']));
+        self::assertSame($shipped.'# edited', file_get_contents($this->project.'/config/goals.yaml'));
+        self::assertSame('different operator content', file_get_contents($this->project.'/config/goals.local.yaml'));
+    }
+
+    public function testOverridesDoNotExcuseOtherLocalChangesAndNoUpdateLeavesEditsInPlace(): void
+    {
+        $shipped = $this->shipGoals();
+        file_put_contents($this->project.'/config/goals.yaml', $shipped.'# edited');
+
+        self::assertFalse($this->service(overrides: true)->pull()['changed']);
+        self::assertFileDoesNotExist($this->project.'/config/goals.local.yaml');
+
+        $this->commit($this->source, 'application.txt', 'remote change');
+        file_put_contents($this->project.'/application.txt', 'local code edit');
+        $this->assertPullFails($this->service(overrides: true), 'local changes or untracked files');
+        $this->assertPullFails($this->service(), 'local changes or untracked files');
+        self::assertFileDoesNotExist($this->project.'/config/goals.local.yaml');
+    }
+
+    public function testBeforeMergeCallbackCanStopTheUpdateBeforeFilesChange(): void
+    {
+        $this->commit($this->source, 'application.txt', 'remote change');
+
+        try {
+            $this->service()->pull(static fn () => throw new \RuntimeException('Composer is missing.'));
+            self::fail('The callback should stop the pull.');
+        } catch (\RuntimeException $e) {
+            self::assertSame('Composer is missing.', $e->getMessage());
+        }
+
+        self::assertSame($this->initial, $this->git(['rev-parse', 'HEAD']));
+        self::assertSame('initial version', file_get_contents($this->project.'/application.txt'));
+        self::assertSame('', $this->git(['for-each-ref', '--format=%(refname)', 'refs/aggregate-updates/']));
+    }
+
+    public function testResetToReturnsToAnEarlierCommitOnly(): void
+    {
+        $latest = $this->commit($this->source, 'application.txt', 'remote change');
+        $this->service()->pull();
+
+        $this->service()->resetTo($this->initial);
+
+        self::assertSame($this->initial, $this->git(['rev-parse', 'HEAD']));
+        self::assertSame('initial version', file_get_contents($this->project.'/application.txt'));
+        try {
+            $this->service()->resetTo($latest);
+            self::fail('Moving forward is not a rollback.');
+        } catch (\RuntimeException $e) {
+            self::assertStringContainsString('not an ancestor', $e->getMessage());
+        }
+    }
+
+    private function service(?MockHttpClient $client = null, string $token = '', mixed $branch = 'deployment/stable', ?string $project = null, bool $overrides = false): ApplicationUpdateService
     {
         $config = $this->createMock(AggregateConfigLoader::class);
         $config->method('all')->willReturn(['updates_branch' => $branch]);
+        $project ??= $this->project;
 
-        return new ApplicationUpdateService($project ?? $this->project, $client ?? new MockHttpClient([]), $this->cache, $this->clock, new FeatureFlags($config), $token, new UpdateSettings($config));
+        return new ApplicationUpdateService($project, $client ?? new MockHttpClient([]), $this->cache, $this->clock, new FeatureFlags($config), $token, new UpdateSettings($config), null, $overrides ? new LocalConfigOverrides($project) : null);
+    }
+
+    /** Ship config/goals.yaml upstream and return the installation's shipped copy. */
+    private function shipGoals(): string
+    {
+        mkdir($this->source.'/config');
+        $this->commit($this->source, 'config/goals.yaml', "parameters:\n    app.goal_events:\n        purchase: { label: Purchase, enabled: true, anonymous: true }\n");
+        $this->git(['pull', '--quiet', '--ff-only']);
+
+        return (string) file_get_contents($this->project.'/config/goals.yaml');
     }
 
     private function archiveService(string $project, MockHttpClient $client): ApplicationUpdateService

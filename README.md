@@ -139,7 +139,7 @@ curl http://localhost:9001/api/health
 
 Use `start-postgres` / `migrate-postgres` or `start-mariadb` / `migrate-mariadb` for another Docker profile. The sample environment is for development; use your own secrets and connection settings in production. Existing installations should follow the [upgrade guidance](docs/PRIVACY-COMPLIANCE.md#upgrading-older-installations) before applying historical privacy migrations.
 
-Admins can check **Updates**, or run `php bin/console app:updates:check --refresh`. The YAML setting `updates_branch` defaults to `master`. Git installations support clean fast-forward source pulls with `app:updates:pull`, followed by the [deployment steps](DEPLOYMENT.md#updates). Official ZIP installations use version metadata to check public GitHub Releases without Git; see [signed release packages](docs/RELEASES.md).
+Admins can check **Updates**, or run `php bin/console app:updates:check --refresh`. The YAML setting `updates_branch` defaults to `master`. Install updates with `php bin/console app:updates:apply` or the **Install update** button: Git checkouts fast-forward from the official repository and ZIP installations install the newest signed release, then migrations and cache rebuilds run with a maintenance page in place. Your `.env.local`, `config/aggregate.yaml`, website and tag settings, `config/*.local.yaml` overrides and `var/` data are never overwritten. See [updates](DEPLOYMENT.md#updates) and [signed release packages](docs/RELEASES.md).
 
 The **Feature flags** admin page and YAML can disable Updates or hide its
 navigation entries. Updates stays enabled by default. See the
@@ -184,8 +184,8 @@ progress and availability. The tracking guide includes GTM Custom HTML examples.
 | Custom property model, UTM/query mappings, consent requirements, reporting columns | `config/aggregate.yaml`, managed through the Data model admin page or YAML |
 | Website domains, [allowed event sources](docs/CONFIGURATION.md#website-domains), and public ingestion tokens | `config/websites.yaml`, managed through the dashboard, YAML, or CLI creation options |
 | Per-website CMP, tags, triggers, and variables | `config/tag-manager/sites/<site-id>.yaml`, managed through the Tag manager admin page or YAML |
-| Conversion-goal definitions | `config/goals.yaml` |
-| Navigation labels and links | `config/navigation.yaml` |
+| Conversion-goal definitions | `config/goals.yaml`, customized in `config/goals.local.yaml` |
+| Navigation labels and links | `config/navigation.yaml`, customized in `config/navigation.local.yaml` |
 | BI disclosure thresholds | `analytics_privacy_settings` in the database; dashboard or controlled database administration |
 
 For headless deployments, set `dashboard_enabled: false` in the active YAML environment and `DASHBOARD_ENABLED=0`, then clear Symfony's cache. BI thresholds remain database settings; they are not mirrored in YAML. The [configuration reference](docs/CONFIGURATION.md) explains defaults, overrides, branding, goals, organization markers, and retention.
