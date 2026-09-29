@@ -6,7 +6,7 @@
     margin-left: 0.5rem;
     margin-right: 0.5rem;
     max-width: 22rem;
-    min-width: 8rem;
+    min-width: 14rem;
     position: relative;
     transition: max-width 0.2s cubic-bezier(0.16, 1, 0.3, 1), flex-basis 0.2s ease;
 }
@@ -25,8 +25,10 @@
 }
 
 .quick-search-input {
-    background-color: rgba(255, 255, 255, 0.12);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    /* Mix toward the navbar's contrast color so the outline (3:1) and placeholder
+       (4.5:1) stay readable on light, dark and most mid-tone brand navbars. */
+    background-color: color-mix(in srgb, var(--app-brand-navbar-contrast) 6%, transparent);
+    border: 1px solid color-mix(in srgb, var(--app-brand-navbar-contrast) 80%, var(--app-brand-navbar));
     border-radius: var(--bulma-radius-large, 9999px);
     box-sizing: border-box;
     color: var(--app-brand-navbar-contrast, #ffffff);
@@ -46,7 +48,12 @@
 }
 
 .quick-search-input::placeholder {
-    color: rgba(255, 255, 255, 0.6);
+    color: color-mix(in srgb, var(--app-brand-navbar-contrast) 92%, var(--app-brand-navbar));
+    opacity: 1;
+}
+
+.quick-search-input:hover {
+    border-color: var(--app-brand-navbar-contrast);
 }
 
 .quick-search-input:focus {
@@ -62,7 +69,7 @@
 }
 
 .quick-search-icon {
-    color: rgba(255, 255, 255, 0.6);
+    color: color-mix(in srgb, var(--app-brand-navbar-contrast) 85%, var(--app-brand-navbar));
     font-size: 0.75rem;
     left: 0.75rem;
     pointer-events: none;
@@ -86,7 +93,7 @@
     background: transparent;
     border: none;
     border-radius: 50%;
-    color: rgba(255, 255, 255, 0.75);
+    color: color-mix(in srgb, var(--app-brand-navbar-contrast) 85%, var(--app-brand-navbar));
     cursor: pointer;
     display: inline-flex;
     font-size: 0.75rem;
@@ -115,10 +122,10 @@
 }
 
 .quick-search-shortcut kbd {
-    background: rgba(255, 255, 255, 0.15);
-    border: 1px solid rgba(255, 255, 255, 0.25);
+    background: color-mix(in srgb, var(--app-brand-navbar-contrast) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--app-brand-navbar-contrast) 35%, var(--app-brand-navbar));
     border-radius: 4px;
-    color: rgba(255, 255, 255, 0.8);
+    color: color-mix(in srgb, var(--app-brand-navbar-contrast) 85%, var(--app-brand-navbar));
     font-family: inherit;
     font-size: 0.6875rem;
     font-weight: 500;
@@ -367,30 +374,138 @@ mark.quick-search-highlight {
     padding: 0.1rem 0.3rem;
 }
 
-@media screen and (max-width: 1023px) {
-    .app-navigation-search {
-        flex: 1 1 100%;
-        margin: 0.5rem 0;
-        max-width: 100%;
-        order: 2;
-        width: 100%;
+/* Collapsed search (below 2000px): an icon-sized field that expands on hover
+   (after a short delay, so passing the pointer over it does not trigger it) or
+   immediately on keyboard focus, including Ctrl+K and "/". */
+@media screen and (max-width: 1999px) {
+    .app-navigation-search,
+    .app-navigation-search:focus-within {
+        flex: 0 0 2.25rem;
+        height: 2.25rem;
+        margin: 0;
+        max-width: none;
+        min-width: 0;
+        width: 2.25rem;
     }
 
-    .app-navigation-search:focus-within {
-        flex: 1 1 100%;
-        max-width: 100%;
+    .quick-search-wrapper {
+        height: 2.25rem;
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        transition: width 0.18s ease, inset-inline-start 0.18s ease;
+        width: 2.25rem;
+        z-index: 5;
     }
 
     .quick-search-input {
-        width: 100%;
+        cursor: pointer;
+        height: 2.25rem;
+        padding-left: 2.25rem;
+        padding-right: 0;
     }
 
-    .quick-search-input:focus {
-        width: 100%;
+    .quick-search-icon {
+        left: 0.8rem;
+    }
+
+    .quick-search-actions {
+        opacity: 0;
+        transition: opacity 0.12s ease, visibility 0s linear 0.12s;
+        visibility: hidden;
+    }
+
+    .app-navigation-search:focus-within .quick-search-input {
+        cursor: text;
+        padding-right: 3.75rem;
+    }
+
+    .app-navigation-search:focus-within .quick-search-actions {
+        opacity: 1;
+        transition: opacity 0.12s ease;
+        visibility: visible;
+    }
+}
+
+@media screen and (max-width: 1999px) and (hover: hover) {
+    .app-navigation-search:hover .quick-search-wrapper {
+        transition-delay: 0.2s;
+    }
+
+    .app-navigation-search:hover .quick-search-input {
+        /* Opaque while it covers the controls to its right. */
+        background-color: color-mix(in srgb, var(--app-brand-navbar-contrast) 6%, var(--app-brand-navbar));
+        cursor: text;
+        padding-right: 3.75rem;
+    }
+
+    .app-navigation-search:hover .quick-search-actions {
+        opacity: 1;
+        transition: opacity 0.12s ease 0.3s, visibility 0s linear 0.3s;
+        visibility: visible;
+    }
+
+    .app-navigation-search:focus-within .quick-search-wrapper {
+        transition-delay: 0s;
+    }
+}
+
+/* Compact desktop: the field grows to the right over the account controls. */
+@media screen and (min-width: 1366px) and (max-width: 1999px) {
+    .app-navigation-search {
+        position: static;
+    }
+
+    .quick-search-wrapper {
+        inset-inline-start: 0;
+    }
+
+    .app-navigation-search:focus-within .quick-search-wrapper {
+        inset-inline-start: min(0px, calc(100% - 20rem));
+        width: max(100%, 20rem);
     }
 
     .quick-search-results {
-        max-width: 100%;
-        width: 100%;
+        inset-inline-end: 0;
+        inset-inline-start: auto;
+    }
+}
+
+@media screen and (min-width: 1366px) and (max-width: 1999px) and (hover: hover) {
+    .app-navigation-search:hover .quick-search-wrapper {
+        inset-inline-start: min(0px, calc(100% - 20rem));
+        width: max(100%, 20rem);
+    }
+}
+
+/* Narrow screens: the field grows to the left over the brand. */
+@media screen and (max-width: 1365px) {
+    .quick-search-wrapper {
+        inset-inline-end: 0;
+    }
+
+    .app-navigation-search:focus-within .quick-search-wrapper {
+        width: min(20rem, calc(100vw - 4.5rem));
+    }
+
+    .quick-search-results {
+        inset-inline-end: 0;
+        inset-inline-start: auto;
+        max-width: none;
+        min-width: 0;
+        width: min(24rem, calc(100vw - 1.5rem));
+    }
+}
+
+@media screen and (max-width: 1365px) and (hover: hover) {
+    .app-navigation-search:hover .quick-search-wrapper {
+        width: min(20rem, calc(100vw - 4.5rem));
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .quick-search-wrapper,
+    .quick-search-actions {
+        transition: none !important;
     }
 }
