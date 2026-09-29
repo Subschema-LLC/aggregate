@@ -6,165 +6,277 @@
 <div class="columns is-centered">
     <div class="column is-10">
         <div class="has-text-centered mb-6">
-            <span class="tag is-primary is-light mb-4">Product overview</span>
-            <h1 class="title is-2">How {{ app_branding.name }} Works</h1>
+            <span class="tag is-primary is-light is-rounded mb-3">Product overview</span>
+            <h1 class="title is-2 mb-3">How {{ app_branding.name }} Works</h1>
             <p class="subtitle is-4">
                 Add the tracking script to your site, collect privacy-minimized events,
                 and analyze approved data from infrastructure you control.
             </p>
         </div>
 
-        <div class="columns is-multiline">
+        <div class="columns is-multiline mb-5">
             <div class="column is-half is-flex">
-                <div class="box is-flex-grow-1">
-                    <p class="heading">Step 1</p>
-                    <h2 class="title is-4">
-                        <span class="icon-text">
-                            <span class="icon has-text-primary"><i class="fas fa-globe"></i></span>
-                            <span>Register your website</span>
-                        </span>
-                    </h2>
-                    <div class="content">
-                        <p>
-                            Add a name and domain in the dashboard. {{ app_branding.name }} creates a website token and
-                            checks each browser request's <code>Origin</code> or <code>Referer</code> against
-                            the registered domain, allowing matching subdomains.
-                        </p>
+                <div class="card is-flex-grow-1">
+                    <div class="card-content p-5">
+                        <span class="tag is-primary is-light is-rounded mb-2">Step 1</span>
+                        <h2 class="title is-4 mb-3">
+                            <span class="icon-text">
+                                <span class="icon has-text-primary mr-1"><i class="fas fa-globe" aria-hidden="true"></i></span>
+                                <span>Register your website</span>
+                            </span>
+                        </h2>
+                        <div class="content">
+                            <p>
+                                Add a name and domain in the dashboard. {{ app_branding.name }} creates a website token and
+                                checks each browser request's <code>Origin</code> or <code>Referer</code> against
+                                the registered domain, allowing matching subdomains.
+                            </p>
+                        </div>
                     </div>
                 </div>
             </div>
 
             <div class="column is-half is-flex">
-                <div class="box is-flex-grow-1">
-                    <p class="heading">Step 2</p>
-                    <h2 class="title is-4">
-                        <span class="icon-text">
-                            <span class="icon has-text-primary"><i class="fas fa-code"></i></span>
-                            <span>Install the tracking script</span>
-                        </span>
-                    </h2>
-                    <div class="content">
-                        <p>
-                            Paste the generated snippet into your site. The script sends a
-                            <code>view</code> event when a page loads. Use <code>emit(...)</code> with fixed,
-                            non-identifying event names and an optional goal code from
-                            <code>config/goals.yaml</code> to measure important interactions and conversions.
-                        </p>
+                <div class="card is-flex-grow-1">
+                    <div class="card-content p-5">
+                        <span class="tag is-primary is-light is-rounded mb-2">Step 2</span>
+                        <h2 class="title is-4 mb-3">
+                            <span class="icon-text">
+                                <span class="icon has-text-primary mr-1"><i class="fas fa-code" aria-hidden="true"></i></span>
+                                <span>Install the tracking script</span>
+                            </span>
+                        </h2>
+                        <div class="content">
+                            <p>
+                                Paste the generated snippet into your site. The script sends a
+                                <code>view</code> event when a page loads. Use <code>emit(...)</code> with fixed,
+                                non-identifying event names and an optional goal code from
+                                <code>config/goals.yaml</code> to measure important interactions and conversions.
+                            </p>
+                        </div>
                     </div>
                 </div>
             </div>
 
             <div class="column is-half is-flex">
-                <div class="box is-flex-grow-1">
-                    <p class="heading">Step 3</p>
-                    <h2 class="title is-4">
-                        <span class="icon-text">
-                            <span class="icon has-text-primary"><i class="fas fa-shield-halved"></i></span>
-                            <span>Measure at the right level</span>
-                        </span>
-                    </h2>
-                    <div class="content">
-                        <p>
-                            Events use anonymous mode with a sanitized path, coarse dimensions, and no
-                            visitor or session identifiers unless your consent integration enables enhanced
-                            analytics after consent is granted.
-                        </p>
+                <div class="card is-flex-grow-1">
+                    <div class="card-content p-5">
+                        <span class="tag is-primary is-light is-rounded mb-2">Step 3</span>
+                        <h2 class="title is-4 mb-3">
+                            <span class="icon-text">
+                                <span class="icon has-text-primary mr-1"><i class="fas fa-shield-halved" aria-hidden="true"></i></span>
+                                <span>Measure at the right level</span>
+                            </span>
+                        </h2>
+                        <div class="content">
+                            <p>
+                                Events use anonymous mode with a sanitized path, coarse dimensions, and no
+                                visitor or session identifiers unless enhanced analytics is granted. For maximum
+                                privacy, enable the <strong>strict collection profile</strong> to eliminate all
+                                browser storage, device probing, and referrer collection.
+                            </p>
+                        </div>
                     </div>
                 </div>
             </div>
 
             <div class="column is-half is-flex">
-                <div class="box is-flex-grow-1">
-                    <p class="heading">Step 4</p>
-                    <h2 class="title is-4">
-                        <span class="icon-text">
-                            <span class="icon has-text-primary"><i class="fas fa-chart-column"></i></span>
-                            <span>Connect your BI tools</span>
-                        </span>
-                    </h2>
-                    <div class="content">
-                        <p>
-                            Events are stored in your database. On a server database, connect BI tools with
-                            a read-only account limited to approved views. For SQLite, export approved view
-                            results instead of sharing the database file. Completed periods with low volume
-                            remain suppressed.
-                        </p>
-                        <p>
-                            <a class="button is-link is-light" href="{{ path('app_how_it_works_data_visualization') }}">
-                                <span class="icon" aria-hidden="true"><i class="fas fa-table-columns"></i></span>
-                                <span>View table and BI view structure</span>
-                            </a>
-                        </p>
+                <div class="card is-flex-grow-1">
+                    <div class="card-content p-5">
+                        <span class="tag is-primary is-light is-rounded mb-2">Step 4</span>
+                        <h2 class="title is-4 mb-3">
+                            <span class="icon-text">
+                                <span class="icon has-text-primary mr-1"><i class="fas fa-chart-column" aria-hidden="true"></i></span>
+                                <span>Connect your BI tools</span>
+                            </span>
+                        </h2>
+                        <div class="content">
+                            <p>
+                                Events are stored in your database. On a server database, connect BI tools with
+                                a read-only account limited to approved views. For SQLite, export approved view
+                                results instead of sharing the database file. Completed periods with low volume
+                                remain suppressed.
+                            </p>
+                            <p class="mt-4">
+                                <a class="button is-link is-light is-small" href="{{ path('app_how_it_works_data_visualization') }}">
+                                    <span class="icon" aria-hidden="true"><i class="fas fa-table-columns"></i></span>
+                                    <span>View table and BI view structure</span>
+                                </a>
+                            </p>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div class="box mt-5">
-            <h2 class="title is-3">What happens when an event arrives?</h2>
-            <div class="columns">
-                <div class="column">
-                    <div class="content">
-                        <h3 class="title is-5">Anonymous mode</h3>
-                        <ul>
-                            <li>Sanitizes the page path and keeps a safe event name.</li>
-                            <li>Uses coarse referrer, device, and viewport categories.</li>
-                            <li>Omits analytics identifiers, cookie values, and exact dimensions.</li>
-                            <li>Includes custom properties only when explicitly configured for collection without enhanced consent.</li>
-                            <li>Retains a goal only when its enabled definition permits anonymous use.</li>
-                            <li>Drops a disallowed goal without dropping the event and returns a generic SDK warning.</li>
-                            <li>Stores the event in a server-generated UTC hour bucket.</li>
-                        </ul>
+        <div class="card mb-5">
+            <div class="card-content p-5">
+                <h2 class="title is-3 mb-4">What happens when an event arrives?</h2>
+                <div class="columns mb-4">
+                    <div class="column is-6">
+                        <div class="box h-100">
+                            <span class="tag is-success is-light is-rounded mb-3">
+                                <span class="icon is-small mr-1"><i class="fas fa-shield-halved" aria-hidden="true"></i></span>
+                                Privacy Mode
+                            </span>
+                            <h3 class="title is-5 mb-3">Anonymous mode</h3>
+                            <div class="content">
+                                <ul>
+                                    <li>Sanitizes the page path and keeps a safe event name.</li>
+                                    <li>Uses coarse referrer, device, and viewport categories.</li>
+                                    <li>Omits analytics identifiers, cookie values, and exact dimensions.</li>
+                                    <li>Includes custom properties only when explicitly configured for collection without enhanced consent.</li>
+                                    <li>Retains a goal only when its enabled definition permits anonymous use.</li>
+                                    <li>Drops a disallowed goal without dropping the event and returns a generic SDK warning.</li>
+                                    <li>Stores the event in a server-generated UTC hour bucket.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="column is-6">
+                        <div class="box h-100">
+                            <span class="tag is-info is-light is-rounded mb-3">
+                                <span class="icon is-small mr-1"><i class="fas fa-sliders" aria-hidden="true"></i></span>
+                                Consented Detail
+                            </span>
+                            <h3 class="title is-5 mb-3">Enhanced analytics</h3>
+                            <div class="content">
+                                <ul>
+                                    <li>Your consent manager calls <code>setConsent(true)</code> only after the visitor grants enhanced analytics consent.</li>
+                                    <li>May include visitor and session IDs, properties, and exact dimensions.</li>
+                                    <li>Goal codes remain restricted to enabled definitions in <code>config/goals.yaml</code>.</li>
+                                    <li>Uses a sliding 30-minute session cookie and records an exact server timestamp.</li>
+                                    <li>Your integration calls <code>setConsent(false)</code> on rejection or withdrawal.</li>
+                                </ul>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <div class="column">
-                    <div class="content">
-                        <h3 class="title is-5">Enhanced analytics</h3>
-                        <ul>
-                            <li>Your consent manager calls <code>setConsent(true)</code> only after the visitor grants enhanced analytics consent.</li>
-                            <li>May include visitor and session IDs, properties, and exact dimensions.</li>
-                            <li>Goal codes remain restricted to enabled definitions in <code>config/goals.yaml</code>.</li>
-                            <li>Uses a sliding 30-minute session cookie and records an exact server timestamp.</li>
-                            <li>Your integration calls <code>setConsent(false)</code> on rejection or withdrawal.</li>
-                        </ul>
-                    </div>
+                <div class="notification is-info is-light mb-0">
+                    After <code>setConsent(false)</code>, {{ app_branding.name }} clears its browser identifiers and returns to
+                    anonymous mode. Privacy-minimized events, configured consent-free properties, and anonymous goals continue unless
+                    collection is disabled or the path is excluded. Consent withdrawal does not delete data
+                    already stored by the server.
                 </div>
-            </div>
-            <div class="notification is-info is-light mb-0">
-                After <code>setConsent(false)</code>, {{ app_branding.name }} clears its browser identifiers and returns to
-                anonymous mode. Privacy-minimized events, configured consent-free properties, and anonymous goals continue unless
-                collection is disabled or the path is excluded. Consent withdrawal does not delete data
-                already stored by the server.
             </div>
         </div>
 
-        <div class="columns mt-5">
+        <div class="card mb-5" id="strict-mode">
+            <div class="card-content p-5">
+                <div class="is-flex is-justify-content-between is-align-items-center is-flex-wrap-wrap gap-2 mb-3">
+                    <div>
+                        <span class="tag is-danger is-light is-rounded mb-2">
+                            <span class="icon is-small mr-1"><i class="fas fa-lock" aria-hidden="true"></i></span>
+                            Zero-Footprint Mode
+                        </span>
+                        <h2 class="title is-3 mb-1">Strict Collection Profile</h2>
+                    </div>
+                    <span class="tag is-light is-medium"><code>collection_profile: strict</code></span>
+                </div>
+                <p class="subtitle is-6 has-text-grey mb-4">
+                    The strict collection profile reduces telemetry to the absolute operational minimum: counting a page view or safe interaction. It enforces zero browser storage, eliminates device fingerprinting, and strips non-essential dimensions at ingestion.
+                </p>
+
+                <div class="columns is-multiline mb-4">
+                    <div class="column is-6">
+                        <div class="box h-100">
+                            <h3 class="title is-6 mb-3 has-text-success">
+                                <span class="icon is-small mr-1"><i class="fas fa-circle-check" aria-hidden="true"></i></span>
+                                What Strict Mode Retains
+                            </h3>
+                            <div class="content is-small">
+                                <ul>
+                                    <li><strong>Sanitized page path:</strong> The normalized URL path without query parameters or hash fragments.</li>
+                                    <li><strong>Safe event name:</strong> Whitelisted action name (e.g., <code>view</code> or approved custom events).</li>
+                                    <li><strong>Approved goal code:</strong> Only active goals defined in <code>config/goals.yaml</code>.</li>
+                                    <li><strong>UTC hour bucket:</strong> Server-stamped hourly aggregation window without exact timestamps.</li>
+                                    <li><strong>Core protection:</strong> Ingestion kill switch, sensitive-path exclusions, domain rules, and rate limits remain active.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="column is-6">
+                        <div class="box h-100">
+                            <h3 class="title is-6 mb-3 has-text-danger">
+                                <span class="icon is-small mr-1"><i class="fas fa-ban" aria-hidden="true"></i></span>
+                                What Strict Mode Completely Omits
+                            </h3>
+                            <div class="content is-small">
+                                <ul>
+                                    <li><strong>Zero browser storage:</strong> Never sets, reads, or deletes cookies, <code>localStorage</code>, or <code>sessionStorage</code>.</li>
+                                    <li><strong>No device or viewport dimensions:</strong> Device type, screen resolution, and viewport are recorded as <code>unknown</code>.</li>
+                                    <li><strong>No referrer URLs:</strong> Referrer channel and search terms are omitted and recorded as <code>unknown</code>.</li>
+                                    <li><strong>No geographic lookups:</strong> Server performs no IP-to-location lookups; coarse geography is not derived.</li>
+                                    <li><strong>No visitor or session identifiers:</strong> <code>setConsent()</code> changes nothing; no identifiers are created.</li>
+                                    <li><strong>No custom properties or page depth:</strong> Mapped query params, custom properties, and page depth counters are discarded.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="columns is-multiline mb-4">
+                    <div class="column is-6">
+                        <h4 class="title is-6 mb-2">Enabling on the server</h4>
+                        <div class="content is-small">
+                            <ul>
+                                <li><strong>Dashboard:</strong> Under <em>Settings &rarr; Collection controls</em>, select <strong>Strict</strong> and save.</li>
+                                <li><strong>YAML configuration:</strong> Set <code>collection_profile: strict</code> in <code>config/aggregate.yaml</code>.</li>
+                                <li><strong>Environment variable:</strong> Set <code>COLLECTION_PROFILE=strict</code> to override UI and YAML.</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="column is-6">
+                        <h4 class="title is-6 mb-2">Static / CDN tracker integration</h4>
+                        <div class="content is-small">
+                            <p>Standalone or CDN-hosted copies of <code>aggregate.js</code> can opt into strict mode directly on the page:</p>
+                            <ul>
+                                <li><code>&lt;script ... data-collection-profile="strict" async&gt;&lt;/script&gt;</code></li>
+                                <li>Inline bootstrap: <code>window.Aggregate = { collectionProfile: 'strict', ... };</code></li>
+                                <li>Runtime API: <code>Aggregate.configure({ collectionProfile: 'strict' });</code></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="notification is-warning is-light mb-0">
+                    <strong>Regulatory consideration:</strong> While the strict profile avoids accessing visitor terminal storage under Article 5(3) of the EU ePrivacy Directive and aligns with strict privacy-minimization principles, it does not by itself guarantee legal consent exemption across every jurisdiction. Operators remain responsible for their legal basis, notices, and privacy governance.
+                </div>
+            </div>
+        </div>
+
+
+        <div class="columns mb-5">
             <div class="column is-two-thirds is-flex">
-                <div class="box is-flex-grow-1">
-                    <h2 class="title is-3">Controls you manage</h2>
-                    <div class="content">
-                        <ul>
-                            <li>Registered domains and website tokens</li>
-                            <li>A global collection switch and sensitive-path exclusions</li>
-                            <li>Enabled goal codes and whether each may be retained anonymously</li>
-                            <li>UTM and query parameter mappings, per-property consent, and custom reporting columns</li>
-                            <li>Optional local, coarse geography</li>
-                            <li>Low-volume disclosure thresholds for approved BI views</li>
-                            <li>The JavaScript namespace and ingestion rate limit</li>
-                        </ul>
-                        <p>All six standard UTM properties require consent by default. For anonymous attribution, we recommend no more detail than <code>utm_medium</code>, using channel codes such as <code>email</code>, <code>social</code>, or <code>cpc</code>. Each property can be allowed separately; more detailed UTMs may reveal campaign information, search text, or identifiers, so review their values before overriding this recommendation.</p>
+                <div class="card is-flex-grow-1">
+                    <div class="card-content p-5">
+                        <h2 class="title is-4 mb-3">Controls you manage</h2>
+                        <div class="content">
+                            <ul>
+                                <li>Registered domains and website tokens</li>
+                                <li>Collection profile: switch between <strong>Standard</strong> (with anonymous/enhanced modes) and <strong>Strict</strong> (zero-storage minimal collection)</li>
+                                <li>A global collection switch and sensitive-path exclusions</li>
+                                <li>Enabled goal codes and whether each may be retained anonymously</li>
+                                <li>UTM and query parameter mappings, per-property consent, and custom reporting columns</li>
+                                <li>Optional local, coarse geography</li>
+                                <li>Low-volume disclosure thresholds for approved BI views</li>
+                                <li>The JavaScript namespace and ingestion rate limit</li>
+                            </ul>
+                            <p class="is-size-7 mt-3">All six standard UTM properties require consent by default. For anonymous attribution, we recommend no more detail than <code>utm_medium</code>, using channel codes such as <code>email</code>, <code>social</code>, or <code>cpc</code>. Each property can be allowed separately; more detailed UTMs may reveal campaign information, search text, or identifiers, so review their values before overriding this recommendation.</p>
+                        </div>
                     </div>
                 </div>
             </div>
             <div class="column is-flex">
-                <div class="notification is-warning is-light is-flex-grow-1">
-                    <h2 class="title is-5">Privacy is an ongoing responsibility</h2>
-                    <p>
+                <div class="notification is-warning is-light is-flex-grow-1 p-5">
+                    <h2 class="title is-5 mb-3">Privacy is an ongoing responsibility</h2>
+                    <p class="is-size-7">
                         Privacy-minimized data is not guaranteed to be legally anonymous. Operators remain
                         responsible for legal basis, notices, consent behavior, retention, access controls,
                         and rights requests.
                     </p>
-                    <p class="mt-3">
+                    <p class="is-size-7 mt-3">
                         Keep event and goal names fixed and non-identifying. The goal allowlist cannot detect
                         sensitive meaning: a broad goal can still be sensitive when combined with a path or
                         small audience. Do not send emails, account IDs, form contents, search terms, or other
@@ -174,9 +286,9 @@
             </div>
         </div>
 
-        <div class="has-text-centered mt-6">
+        <div class="has-text-centered mt-6 mb-4">
             <a class="button is-primary is-medium" href="{{ path('app_home') }}">
-                <span class="icon"><i class="fas fa-arrow-right"></i></span>
+                <span class="icon"><i class="fas fa-arrow-right" aria-hidden="true"></i></span>
                 <span>{% if app.user %}Return to Dashboard{% else %}Get Started{% endif %}</span>
             </a>
         </div>

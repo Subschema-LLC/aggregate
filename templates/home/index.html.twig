@@ -3,34 +3,112 @@
 {% block title %}{{ app_branding.name }}{% endblock %}
 
 {% block body %}
-<div class="box">
-    <h1 class="title">{{ app_branding.name }}</h1>
-    <p class="subtitle">Headless, privacy-first event collection API</p>
+<div class="block">
+    <div class="card mb-5">
+        <div class="card-content p-6">
+            <div class="level is-mobile mb-4">
+                <div class="level-left">
+                    <div class="level-item">
+                        {{ component('Branding:Identity', {branding: app_branding}) }}
+                    </div>
+                </div>
+                <div class="level-right">
+                    <div class="level-item">
+                        <span class="tag is-success is-light is-rounded">
+                            <span class="icon is-small mr-1"><i class="fas fa-shield-halved" aria-hidden="true"></i></span>
+                            Privacy-First Analytics
+                        </span>
+                    </div>
+                </div>
+            </div>
 
-    <div class="content">
-        <p>Core endpoints are available:</p>
-        <ul>
-            <li><code>POST /api/receive</code> for event ingestion</li>
-            <li><code>GET /api/health</code> for health checks</li>
-            <li><code>GET /aggregate.js</code> for the tracking script</li>
-        </ul>
+            <h1 class="title is-2 mb-3">{{ app_branding.name }}</h1>
+            <p class="subtitle is-4 mb-4">Headless, privacy-first event collection API</p>
+            <p class="is-size-6 mb-5">
+                Self-hosted analytics infrastructure providing trustworthy audience measurement,
+                anonymous event aggregation, and optional consent-managed detail without third-party cookies or persistent profiling.
+            </p>
+
+            <div class="buttons">
+                {% if installed|default(false) %}
+                    {% if dashboard_enabled|default(true) %}
+                        <a class="button is-primary is-medium" href="{{ path('app_login') }}">
+                            <span class="icon"><i class="fas fa-arrow-right-to-bracket" aria-hidden="true"></i></span>
+                            <span>Dashboard Login</span>
+                        </a>
+                    {% else %}
+                        <div class="notification is-info is-light is-fullwidth">
+                            <p><strong>Dashboard disabled:</strong> The dashboard UI is disabled in configuration.</p>
+                            <p class="help">Enable it in <code>config/aggregate.yaml</code> with <code>ui.dashboard.enabled: true</code>.</p>
+                        </div>
+                    {% endif %}
+                {% else %}
+                    {% if not dashboard_enabled|default(true) %}
+                        <div class="notification is-info is-light">
+                            <p><strong>Dashboard disabled:</strong> The dashboard UI is disabled in configuration.</p>
+                            <p class="help">Enable it in <code>config/aggregate.yaml</code> with <code>ui.dashboard.enabled: true</code>.</p>
+                        </div>
+                    {% else %}
+                        <div class="notification is-warning is-light">
+                            <p><strong>Setup required:</strong> {{ app_branding.name }} is not yet configured.</p>
+                            <p class="mt-3">
+                                <a class="button is-warning" href="{{ path('app_install') }}">
+                                    <span class="icon"><i class="fas fa-magic" aria-hidden="true"></i></span>
+                                    <span>Run Web Installer</span>
+                                </a>
+                            </p>
+                        </div>
+                    {% endif %}
+                {% endif %}
+
+                <a class="button is-light is-medium" href="{{ path('app_how_it_works') }}">
+                    <span class="icon"><i class="fas fa-circle-info" aria-hidden="true"></i></span>
+                    <span>How It Works</span>
+                </a>
+            </div>
+        </div>
     </div>
 
-    {% if dashboard_enabled %}
-        {% if is_installed %}
-            <a class="button is-primary" href="{{ path('app_login') }}">Open Dashboard Login</a>
-        {% else %}
-            <a class="button is-primary" href="{{ path('app_install') }}">Run Web Installer</a>
-        {% endif %}
-    {% else %}
-        <div class="notification is-warning is-light">
-            Dashboard is disabled. Set <code>dashboard_enabled: true</code> in <code>config/aggregate.yaml</code> to enable it.
+    <h2 class="title is-4 mb-4">Core API Endpoints</h2>
+    <div class="columns is-multiline">
+        <div class="column is-4">
+            <div class="box h-100">
+                <div class="is-flex is-align-items-center mb-3">
+                    <span class="tag is-primary is-light mr-2">POST</span>
+                    <code>/api/receive</code>
+                </div>
+                <h3 class="title is-6 mb-2">Event Ingestion</h3>
+                <p class="is-size-7">
+                    Primary ingestion endpoint for page views, clicks, and custom goals with automated rate limiting and coarse bucketing.
+                </p>
+            </div>
         </div>
-    {% endif %}
 
-    <a class="button is-light" href="{{ path('app_how_it_works') }}">
-        <span class="icon"><i class="fas fa-circle-info"></i></span>
-        <span>How It Works</span>
-    </a>
+        <div class="column is-4">
+            <div class="box h-100">
+                <div class="is-flex is-align-items-center mb-3">
+                    <span class="tag is-info is-light mr-2">GET</span>
+                    <code>/api/health</code>
+                </div>
+                <h3 class="title is-6 mb-2">System Health</h3>
+                <p class="is-size-7">
+                    Monitors service readiness, ingestion queue status, and database connectivity for production orchestrators.
+                </p>
+            </div>
+        </div>
+
+        <div class="column is-4">
+            <div class="box h-100">
+                <div class="is-flex is-align-items-center mb-3">
+                    <span class="tag is-link is-light mr-2">GET</span>
+                    <code>/aggregate.js</code>
+                </div>
+                <h3 class="title is-6 mb-2">Client Tracker Script</h3>
+                <p class="is-size-7">
+                    Featherweight browser script with automatic beaconing, beacon fallback, consent awareness, and zero tracking cookies.
+                </p>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}

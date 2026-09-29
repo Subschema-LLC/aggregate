@@ -5,7 +5,7 @@
     auto_https off
 }
 
-:9001 {
+:9002 {
     root * /app/public
 
     # Handle assets first - before the route block

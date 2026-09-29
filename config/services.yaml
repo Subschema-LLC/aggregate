@@ -5,6 +5,7 @@
 imports:
     - { resource: navigation.yaml }
     - { resource: goals.yaml }
+    - { resource: quick_search.yaml }
 
 # Put parameters here that don't need to change on each machine where the app is deployed
 # https://symfony.com/doc/current/best_practices.html#use-parameters-for-application-configuration
@@ -82,6 +83,11 @@ services:
 
     # Keep this explicit: without the extension, Twig silently renders every
     # app_branding value as empty when strict variables are disabled in prod.
+    App\Twig\NavigationExtension:
+        arguments:
+            $quickSearchSynonyms: '%app.quick_search_synonyms%'
+            $quickSearchExtraItems: '%app.quick_search_extra_items%'
+
     App\Twig\AppBrandingExtension:
         autoconfigure: false
         tags: ['twig.extension']

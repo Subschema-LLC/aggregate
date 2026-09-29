@@ -129,8 +129,10 @@
         </div>
     {% endif %}
 
-    <div class="content box">
-        <h2 class="title is-4">Deploy an update</h2>
+    <details class="content box mt-5" open>
+        <summary class="title is-4 is-clickable">
+            <span class="icon mr-1"><i class="fas fa-terminal" aria-hidden="true"></i></span> Deploy an update
+        </summary>
         <p>Check for updates from the application directory on the server. This command also works with the dashboard disabled:</p>
         <pre><code>php bin/console app:updates:check --refresh</code></pre>
         <p>Before updating, review the changes, back up the database and configuration, and prepare any required maintenance window. Follow the <a href="{{ update_repository_url }}{% if update_status.branch %}/blob/{{ update_status.branch|url_encode }}/DEPLOYMENT.md#updates{% endif %}">deployment guide</a>, including pausing collection and workers before privacy migrations.</p>
@@ -145,5 +147,5 @@
         {% endif %}
         <p>Set <code>updates_branch</code> in <code>config/aggregate.yaml</code> to choose the update branch. The default is <code>master</code>.</p>
         <p>The public GitHub repository normally needs no token. An optional <code>AGGREGATE_GITHUB_TOKEN</code> in the server environment can increase the API rate limit.</p>
-    </div>
+    </details>
 {% endblock %}

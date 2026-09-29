@@ -95,17 +95,17 @@
         </div>
     </form>
 </div>
-    <div class="message is-warning is-light">
-        <div class="message-header">
-            <p>What rejection means</p>
-        </div>
+    <details class="message is-warning is-light mt-5">
+        <summary class="message-header is-clickable">
+            <p><span class="icon mr-1"><i class="fas fa-shield-halved" aria-hidden="true"></i></span> What rejection means (privacy & legal boundaries)</p>
+        </summary>
         <div class="message-body content">
             <p><strong>Reject</strong> disables enhanced analytics: no visitor ID, session ID, analytics session cookie, properties requiring consent, or exact dimensions.</p>
             <p>Anonymous rows retain a safe event name, UTC hour bucket, sanitized path, coarse referrer/device/viewport buckets, optional coarse geography, and configured anonymous goals and consent-free properties. They may still be personal data in context; the <code>bi_anonymous_*</code> views group them and suppress low-volume cells.</p>
             <p>With the strict collection profile, every event is anonymous and keeps only the sanitized path, safe event name, UTC hour bucket and approved goal. Referrer, device and viewport are stored as <code>unknown</code>.</p>
             <p>IP geolocation is itself processing of personal data in many jurisdictions, even though the analytics event does not retain the IP. Enable it only after documenting a legal basis and notice appropriate to the deployment.</p>
         </div>
-    </div>
+    </details>
 </div>
 </div>
 </div>

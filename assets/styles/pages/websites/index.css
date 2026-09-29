@@ -1,2 +1,23 @@
+/* Websites Page Styles */
 .websites-page .website-summary,
-.websites-page .website-token { overflow-wrap: anywhere; }
+.websites-page .website-token {
+    overflow-wrap: anywhere;
+}
+
+.website-token-display {
+    align-items: center;
+    background-color: var(--app-brand-background);
+    border: 1px solid var(--app-brand-border);
+    border-radius: var(--bulma-control-radius);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+}
+
+.website-card-section {
+    border-top: 1px solid var(--app-brand-border);
+    margin-top: 1.25rem;
+    padding-top: 1.25rem;
+}

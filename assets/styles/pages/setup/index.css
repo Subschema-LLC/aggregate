@@ -1,9 +1,68 @@
-.setup-steps ol { display: flex; flex-wrap: wrap; gap: .75rem; list-style: none; margin: 0; padding: 0; }
-.setup-steps a { display: block; padding: .65rem 1rem; border: 1px solid var(--app-brand-border); border-radius: .35rem; }
-#setup-wizard .setup-steps a[aria-current="step"], #setup-wizard .setup-steps a[aria-current="step"]:hover, #setup-wizard .setup-steps a[aria-current="step"]:focus { background: var(--app-brand-primary); color: var(--app-brand-primary-contrast); font-weight: 700; }
-.setup-code { max-height: 24rem; overflow: auto; white-space: pre; }
-.setup-step-navigation { justify-content: space-between; }
-#setup-wizard .select, #setup-wizard select { max-width: 100%; }
+/* Setup Walkthrough Styles */
+.setup-steps ol {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
 
-.setup-installation-options { border: 0; min-width: 0; padding: 0; }
-.setup-installation-options .radio { display: block; margin: .5rem 0; }
+.setup-steps a {
+    align-items: center;
+    background-color: var(--app-brand-surface);
+    border: 1px solid var(--app-brand-border);
+    border-radius: var(--bulma-control-radius);
+    color: var(--app-brand-text);
+    display: flex;
+    font-weight: 500;
+    gap: 0.5rem;
+    padding: 0.65rem 1.15rem;
+    transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.setup-steps a:hover {
+    background-color: var(--app-brand-background);
+    border-color: var(--app-brand-primary);
+    text-decoration: none;
+}
+
+#setup-wizard .setup-steps a[aria-current="step"],
+#setup-wizard .setup-steps a[aria-current="step"]:hover,
+#setup-wizard .setup-steps a[aria-current="step"]:focus {
+    background: var(--app-brand-primary);
+    border-color: var(--app-brand-primary);
+    box-shadow: 0 2px 8px -1px rgba(0, 0, 0, 0.18);
+    color: var(--app-brand-primary-contrast);
+    font-weight: 700;
+}
+
+.setup-code {
+    border-radius: var(--bulma-radius-medium);
+    border: 1px solid var(--app-brand-border);
+    max-height: 24rem;
+    overflow: auto;
+    white-space: pre;
+}
+
+.setup-step-navigation {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 1.5rem;
+}
+
+#setup-wizard .select,
+#setup-wizard select {
+    max-width: 100%;
+}
+
+.setup-installation-options {
+    border: 0;
+    min-width: 0;
+    padding: 0;
+}
+
+.setup-installation-options .radio {
+    display: block;
+    margin: 0.5rem 0;
+}
