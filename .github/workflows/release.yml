@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing stable version tag to package (for example v1.2.3)'
+        description: 'Existing release tag to package, vYYYY.MM.NN (for example v2026.09.01)'
         required: true
         type: string
 
@@ -62,7 +62,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})$ ]] || { echo 'Use a stable vX.Y.Z release tag (maximum nine digits per component).' >&2; exit 1; }
+          # vYYYY.MM.NN: NN numbers that month's releases from 01; it is not the day.
+          python3 scripts/release-version.py check "$RELEASE_TAG" > /dev/null
           branch="$(php scripts/release-branch.php)"
           commit="$(git rev-parse HEAD)"
           tagged_commit="$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"

@@ -32,7 +32,7 @@ final class ReleaseMetadata
             throw new \InvalidArgumentException('Release metadata has an unsupported schema.');
         }
         if (!self::isVersion($data['version'] ?? null)) {
-            throw new \InvalidArgumentException('Release metadata must identify a stable version in X.Y.Z format.');
+            throw new \InvalidArgumentException('Release metadata must identify a stable version in YYYY.MM.NN format.');
         }
         if (($data['repository'] ?? null) !== ApplicationUpdateService::REPOSITORY) {
             throw new \InvalidArgumentException('Release metadata does not identify the official Aggregate repository.');
@@ -86,9 +86,21 @@ final class ReleaseMetadata
         return $data;
     }
 
+    /**
+     * Releases use calendar versions YYYY.MM.NN, where NN numbers that month's
+     * releases from 01 (for example 2026.09.01). Plain X.Y.Z versions from
+     * earlier packages remain readable so those installations can update;
+     * version_compare() orders both, and every calendar version is newer.
+     */
     public static function isVersion(mixed $version): bool
     {
-        return is_string($version) && preg_match('/^(?:0|[1-9]\d{0,8})\.(?:0|[1-9]\d{0,8})\.(?:0|[1-9]\d{0,8})$/D', $version) === 1;
+        return is_string($version) && (self::isCalendarVersion($version)
+            || preg_match('/^(?:0|[1-9]\d{0,8})\.(?:0|[1-9]\d{0,8})\.(?:0|[1-9]\d{0,8})$/D', $version) === 1);
+    }
+
+    public static function isCalendarVersion(mixed $version): bool
+    {
+        return is_string($version) && preg_match('/^20\d{2}\.(?:0[1-9]|1[0-2])\.(?:0[1-9]|[1-9]\d)$/D', $version) === 1;
     }
 
     /** @param array{requirements: array{php: string, extensions: list<string>}} $metadata

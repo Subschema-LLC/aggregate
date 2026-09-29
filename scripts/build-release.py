@@ -87,6 +87,18 @@ def json_bytes(value):
     return (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
 
 
+# Calendar versions: YEAR.MONTH.INDEX, where INDEX numbers that month's releases
+# from 01 (it is not the day). Tags add a leading "v", for example v2026.09.01.
+CALENDAR_VERSION = r"(20[0-9]{2})\.(0[1-9]|1[0-2])\.(0[1-9]|[1-9][0-9])"
+
+
+def validate_version(version):
+    """Return the version without its "v" prefix, or raise for anything but YYYY.MM.NN."""
+    if not isinstance(version, str) or not re.fullmatch(CALENDAR_VERSION, version.removeprefix("v")):
+        raise ValueError("Release version must be a calendar version YYYY.MM.NN, where NN numbers that month's releases from 01 (for example v2026.09.01).")
+    return version.removeprefix("v")
+
+
 def validate_branch(branch):
     if (
         not isinstance(branch, str) or not branch or len(branch.encode("utf-8")) > 255
@@ -249,9 +261,7 @@ def payload_paths(source):
 def build_release(source, output, version, branch, commit, built_at=None):
     source = Path(source).resolve()
     output = Path(output).resolve()
-    version = version.removeprefix("v")
-    if not re.fullmatch(r"(?:0|[1-9][0-9]{0,8})\.(?:0|[1-9][0-9]{0,8})\.(?:0|[1-9][0-9]{0,8})", version):
-        raise ValueError("Release version must be a stable semantic version, for example 1.2.3 or v1.2.3.")
+    version = validate_version(version)
     if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", commit):
         raise ValueError("Release commit must be a full lowercase Git commit hash.")
     validate_branch(branch)

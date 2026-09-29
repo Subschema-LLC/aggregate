@@ -112,6 +112,23 @@ final class ReleaseUpdateServiceTest extends TestCase
         self::assertSame(4, $client->getRequestsCount());
     }
 
+    public function testCalendarReleasesAreOrderedByMonthThenMonthlyIndexAndSupersedeLegacyVersions(): void
+    {
+        $this->writeInstalled('0.2.0');
+        $client = new MockHttpClient([
+            $this->json([$this->release('2026.09.09', 100), $this->release('2026.09.10', 200), $this->release('2026.08.12', 300)]),
+            $this->json($this->manifest('2026.09.10')),
+            $this->json($this->manifest('2026.09.09')),
+            $this->json($this->manifest('2026.08.12')),
+        ]);
+
+        $result = $this->service($client)->check();
+
+        self::assertSame('available', $result['state'], $result['message']);
+        self::assertSame('2026.09.10', $result['latest_version']);
+        self::assertStringEndsWith('/releases/download/v2026.09.10/aggregate-2026.09.10.zip', $result['package_url']);
+    }
+
     public function testDraftsPrereleasesNonVersionTagsAndSourceOnlyReleasesAreIgnored(): void
     {
         $draft = $this->release('3.0.0');

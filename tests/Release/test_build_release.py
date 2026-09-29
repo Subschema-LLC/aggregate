@@ -55,7 +55,7 @@ class ReleaseBuildTest(unittest.TestCase):
         return hashlib.sha256((self.source / relative).read_bytes()).hexdigest()
 
     def build(self, output="release", **overrides):
-        arguments = dict(source=self.source, output=self.root / output, version="v1.2.3", branch="master", commit="a" * 40, built_at="2026-09-14T12:00:00Z")
+        arguments = dict(source=self.source, output=self.root / output, version="v2026.09.01", branch="master", commit="a" * 40, built_at="2026-09-14T12:00:00Z")
         arguments.update(overrides)
         return BUILDER.build_release(**arguments)
 
@@ -76,7 +76,7 @@ class ReleaseBuildTest(unittest.TestCase):
         self.write("docs/examples/ecommerce-purchase.json", ecommerce_example)
         package, manifest_path = self.build()
         manifest = json.loads(manifest_path.read_bytes())
-        self.assertEqual(package.name, "aggregate-1.2.3.zip")
+        self.assertEqual(package.name, "aggregate-2026.09.01.zip")
         self.assertEqual(hashlib.sha256(package.read_bytes()).hexdigest(), manifest["package"]["sha256"])
         self.assertEqual(package.stat().st_size, manifest["package"]["size"])
         with zipfile.ZipFile(package) as archive:
@@ -119,7 +119,7 @@ class ReleaseBuildTest(unittest.TestCase):
             self.assertNotIn("config/goals.local.yaml", names)
             inventory = json.loads(archive.read("release-files.json"))
             self.assertEqual(1, inventory["schema"])
-            self.assertEqual("1.2.3", inventory["version"])
+            self.assertEqual("2026.09.01", inventory["version"])
             self.assertEqual(names - {"release-files.json"}, set(inventory["files"]))
             for name, digest in inventory["files"].items():
                 self.assertEqual(hashlib.sha256(archive.read(name)).hexdigest(), digest, name)
@@ -268,7 +268,7 @@ class ReleaseBuildTest(unittest.TestCase):
             self.build()
 
     def test_refuses_unsafe_metadata(self):
-        for values in ({"version": "../../bad"}, {"version": "1.2.3-beta.1"}, {"version": "1234567890.1.2"}, {"branch": "../bad"}, {"branch": "master\nevil"}, {"branch": "a" * 256}, {"branch": "HEAD"}, {"commit": "short"}, {"built_at": "2026-09-14T12:00:00"}):
+        for values in ({"version": "../../bad"}, {"version": "1.2.3"}, {"version": "2026.09.01-beta.1"}, {"version": "2026.9.1"}, {"version": "2026.13.01"}, {"version": "2026.09.00"}, {"version": "2026.09.100"}, {"version": "1999.09.01"}, {"branch": "../bad"}, {"branch": "master\nevil"}, {"branch": "a" * 256}, {"branch": "HEAD"}, {"commit": "short"}, {"built_at": "2026-09-14T12:00:00"}):
             with self.subTest(values=values), self.assertRaises(ValueError):
                 self.build(**values)
 
