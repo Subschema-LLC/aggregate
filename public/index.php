@@ -4,6 +4,13 @@ use App\Kernel;
 
 // Allow deployments that provide only .env.local or real OS env vars.
 $projectDir = dirname(__DIR__);
+
+// Answer 503 while an update replaces application files (see config/maintenance.php).
+if (is_file($projectDir.'/var/maintenance.json') && is_file($projectDir.'/config/maintenance.php')
+    && (require $projectDir.'/config/maintenance.php')($projectDir)) {
+    return;
+}
+
 if (!is_file($projectDir.'/.env')) {
     $_SERVER['APP_RUNTIME_OPTIONS'] ??= [];
 

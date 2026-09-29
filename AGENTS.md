@@ -140,10 +140,17 @@ operator configuration, runtime data, caches, and IDE files. A separate artifact
 repository is not required. Version discovery does not verify a signature;
 package verification must use an independently trusted public key.
 
-Automatic package application remains on the roadmap. Do not claim one-click
-updates are implemented. Future application must preserve configuration and data,
-coordinate maintenance and workers, handle migrations, and distinguish file
-recovery from database restoration. See [RELEASES.md](docs/RELEASES.md).
+`app:updates:apply` (and the dashboard **Install update** button, which runs it
+in the background) installs signed release ZIPs and fast-forward Git updates in
+place. Keep it preserving configuration and data: operator paths are listed once
+in `App\Service\Update\UpdatePaths` and mirrored by the release builder, edits to
+shipped config defaults move to `config/*.local.yaml`, and `.env` only gains new
+keys. Keep maintenance, the update lock and journal, backups, resume and rollback
+working, and keep file recovery distinct from database restoration: rollback
+never reverses migrations; only SQLite snapshots can be restored, on request.
+Anything a new step needs after files are replaced must run in the fresh
+`--resume` process, not in the process that replaced the files. See
+[RELEASES.md](docs/RELEASES.md#update-an-installation).
 
 ## How to deliver changes
 

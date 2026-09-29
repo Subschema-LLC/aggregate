@@ -106,6 +106,36 @@ class ReleaseBuildTest(unittest.TestCase):
             self.assertEqual({key: value for key, value in manifest.items() if key != "package"}, embedded)
             self.assertEqual(stat.S_IFREG | 0o755, archive.getinfo("bin/console").external_attr >> 16)
 
+    def test_archive_ships_config_defaults_and_an_inventory_of_every_file(self):
+        self.write("config/navigation.yaml", "parameters: {}\n")
+        self.write("config/goals.yaml", "parameters: {}\n")
+        for relative in ("config/goals.local.yaml", "config/navigation.local.yaml"):
+            self.write(relative, "operator override do-not-package")
+        package, _ = self.build()
+        with zipfile.ZipFile(package) as archive:
+            names = set(archive.namelist())
+            for relative in ("config/quick_search.yaml", "config/maintenance.php", "config/goals.yaml", "config/navigation.yaml"):
+                self.assertIn(relative, names)
+            self.assertNotIn("config/goals.local.yaml", names)
+            inventory = json.loads(archive.read("release-files.json"))
+            self.assertEqual(1, inventory["schema"])
+            self.assertEqual("1.2.3", inventory["version"])
+            self.assertEqual(names - {"release-files.json"}, set(inventory["files"]))
+            for name, digest in inventory["files"].items():
+                self.assertEqual(hashlib.sha256(archive.read(name)).hexdigest(), digest, name)
+
+    def test_refuses_operator_paths_in_packaged_trees(self):
+        for relative in ("var/browser/aggregate.template.min.js", "config/services.yaml"):
+            self.assertFalse(BUILDER.is_protected(relative), relative)
+        for relative in (".env.local", ".env.prod.local", "config/goals.local.yaml", "config/aggregate_prod.yaml", "config/tag-manager/sites/a.yaml", "var/data.db"):
+            self.assertTrue(BUILDER.is_protected(relative), relative)
+        original = BUILDER.SOURCE_TREES
+        BUILDER.SOURCE_TREES = original + ("config/secrets",)
+        self.addCleanup(setattr, BUILDER, "SOURCE_TREES", original)
+        self.write("config/secrets/prod/prod.decrypt.private.php", "secret")
+        with self.assertRaisesRegex(ValueError, "operator-owned"):
+            self.build()
+
     def test_archive_excludes_all_site_tag_and_consent_configuration(self):
         private_configuration = "site-specific-operator-configuration-do-not-package"
         for site_id in ("a" * 24, "b" * 24):

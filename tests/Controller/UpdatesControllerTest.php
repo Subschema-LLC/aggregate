@@ -8,6 +8,7 @@ use App\Controller\UpdatesController;
 use App\Service\AggregateConfigLoader;
 use App\Service\ApplicationUpdateService;
 use App\Service\FeatureFlags;
+use App\Service\Update\ApplicationUpdater;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\DependencyInjection\Container;
@@ -52,9 +53,13 @@ final class UpdatesControllerTest extends TestCase
         self::assertStringContainsString('cached for one hour', $html);
         self::assertStringContainsString('href="https://github.com/Subschema-LLC/aggregate/blob/development/DEPLOYMENT.md#updates"', $html);
         self::assertStringContainsString('php bin/console app:updates:check --refresh', $html);
-        self::assertStringContainsString('php bin/console app:updates:pull', $html);
-        self::assertStringContainsString('apply database migrations', $html);
-        self::assertStringContainsString('restart long-running workers', $html);
+        self::assertStringContainsString('php bin/console app:updates:apply', $html);
+        self::assertStringContainsString('method="post" action="/dashboard/updates/install"', $html);
+        self::assertStringContainsString('Install update', $html);
+        self::assertStringContainsString('runs database migrations', $html);
+        self::assertStringContainsString('config/*.local.yaml', $html);
+        self::assertStringContainsString('SQLite', $html);
+        self::assertStringNotContainsString('name="database_backup_confirmed"', $html);
         self::assertStringContainsString('Configured branch', $html);
         self::assertStringContainsString('Installed branch', $html);
         self::assertStringContainsString('normally needs no token', $html);
@@ -75,6 +80,8 @@ final class UpdatesControllerTest extends TestCase
         self::assertStringContainsString('development', $html);
         self::assertStringContainsString('master', $html);
         self::assertStringNotContainsString('app:updates:pull', $html);
+        self::assertStringNotContainsString('app:updates:apply', $html);
+        self::assertStringNotContainsString('Install update', $html);
     }
 
     public function testPackagedReleaseShowsVersionsAndVerificationLinksWithoutGitPullInstructions(): void
@@ -105,7 +112,8 @@ final class UpdatesControllerTest extends TestCase
         }
         self::assertStringContainsString('signature has not been verified', $html);
         self::assertStringContainsString('app:updates:verify-package', $html);
-        self::assertStringContainsString('Automatic installation is not available yet', $html);
+        self::assertStringContainsString('app:updates:apply --package=', $html);
+        self::assertStringContainsString('Downloads the signed release 1.1.0', $html);
         self::assertStringNotContainsString('app:updates:pull', $html);
         self::assertStringNotContainsString('Installed branch', $html);
     }
@@ -123,6 +131,7 @@ final class UpdatesControllerTest extends TestCase
 
         self::assertStringContainsString('Release requirements are not met', $html);
         self::assertStringNotContainsString('Update available', $html);
+        self::assertStringNotContainsString('Install update', $html);
         self::assertStringNotContainsString('app:updates:pull', $html);
     }
 
@@ -263,6 +272,101 @@ final class UpdatesControllerTest extends TestCase
         }
     }
 
+    public function testInstallStartsTheSameCommandInTheBackgroundAfterPreflight(): void
+    {
+        $request = $this->request('POST', ['_csrf_token' => 'valid-token'], '/dashboard/updates/install');
+        $updates = $this->createMock(ApplicationUpdateService::class);
+        $updates->expects(self::once())->method('check')->with(true)->willReturn(array_replace($this->availableStatus(), [
+            'installation_type' => 'release', 'latest_version' => '1.1.0',
+        ]));
+        $updater = $this->createMock(ApplicationUpdater::class);
+        $updater->method('isSqlite')->willReturn(false);
+        $updater->method('preflight')->willReturn(['problems' => [], 'warnings' => []]);
+        $updater->method('backgroundProblems')->willReturn([]);
+        $updater->expects(self::once())->method('startInBackground')->with(['--database-backup-confirmed', '--release=1.1.0']);
+        $request->request->set('database_backup_confirmed', '1');
+
+        $response = $this->controller($updates, $request, updater: $updater, csrfId: UpdatesController::INSTALL_CSRF_TOKEN_ID)->install($request);
+
+        self::assertSame('/dashboard/updates', $response->headers->get('Location'));
+        self::assertStringContainsString('The update has started', $request->getSession()->getFlashBag()->peek('success')[0]);
+    }
+
+    public function testInstallRequiresADatabaseBackupConfirmationForServerDatabases(): void
+    {
+        $request = $this->request('POST', ['_csrf_token' => 'valid-token'], '/dashboard/updates/install');
+        $updates = $this->createMock(ApplicationUpdateService::class);
+        $updates->method('check')->willReturn($this->availableStatus());
+        $updater = $this->createMock(ApplicationUpdater::class);
+        $updater->method('isSqlite')->willReturn(false);
+        $updater->expects(self::never())->method('startInBackground');
+
+        $this->controller($updates, $request, updater: $updater, csrfId: UpdatesController::INSTALL_CSRF_TOKEN_ID)->install($request);
+
+        self::assertStringContainsString('database backup', $request->getSession()->getFlashBag()->peek('error')[0]);
+    }
+
+    #[DataProvider('blockedInstalls')]
+    public function testInstallNeverStartsWhenNoUpdateOrPreflightFails(string $state, array $problems, array $backgroundProblems, string $message): void
+    {
+        $request = $this->request('POST', ['_csrf_token' => 'valid-token'], '/dashboard/updates/install');
+        $updates = $this->createMock(ApplicationUpdateService::class);
+        $updates->method('check')->willReturn(array_replace($this->availableStatus(), ['state' => $state]));
+        $updater = $this->createMock(ApplicationUpdater::class);
+        $updater->method('isSqlite')->willReturn(true);
+        $updater->method('preflight')->willReturn(['problems' => $problems, 'warnings' => []]);
+        $updater->method('backgroundProblems')->willReturn($backgroundProblems);
+        $updater->expects(self::never())->method('startInBackground');
+
+        $this->controller($updates, $request, updater: $updater, csrfId: UpdatesController::INSTALL_CSRF_TOKEN_ID)->install($request);
+
+        self::assertStringContainsString($message, $request->getSession()->getFlashBag()->peek('error')[0]);
+    }
+
+    public static function blockedInstalls(): iterable
+    {
+        yield 'already current' => ['up_to_date', [], [], 'No installable update'];
+        yield 'diverged checkout' => ['diverged', [], [], 'No installable update'];
+        yield 'files not writable' => ['available', ['This user cannot write the application directory.'], [], 'cannot write'];
+        yield 'console differs from web' => ['available', [], ['The command-line console uses a different environment or database than the web server.'], 'different environment'];
+    }
+
+    public function testInstallWithInvalidCsrfNeverChecksOrStarts(): void
+    {
+        $request = $this->request('POST', ['_csrf_token' => 'invalid-token'], '/dashboard/updates/install');
+        $updates = $this->createMock(ApplicationUpdateService::class);
+        $updates->expects(self::never())->method('check');
+        $updater = $this->createMock(ApplicationUpdater::class);
+        $updater->expects(self::never())->method('startInBackground');
+
+        $this->controller($updates, $request, csrfValid: false, updater: $updater, csrfId: UpdatesController::INSTALL_CSRF_TOKEN_ID)->install($request);
+
+        self::assertSame(['Invalid security token. Please try again.'], $request->getSession()->getFlashBag()->peek('error'));
+    }
+
+    public function testFailedUpdateShowsRecoveryCommandsAndHidesInstallButton(): void
+    {
+        $updates = $this->createMock(ApplicationUpdateService::class);
+        $updates->method('check')->willReturn($this->availableStatus());
+        $updater = $this->createStub(ApplicationUpdater::class);
+        $updater->method('isSqlite')->willReturn(true);
+        $updater->method('status')->willReturn([
+            'id' => '20260929T120000Z-abc123', 'type' => 'git', 'status' => 'needs_attention', 'running' => false,
+            'step' => 'migrations', 'to' => ['commit' => str_repeat('b', 40)], 'error' => 'Migration <failed>.',
+            'report' => ['files' => ['overrides_created' => ['config/goals.local.yaml']]],
+            'log' => [['at' => 1789387200, 'level' => 'error', 'message' => 'Update stopped at "migrations".']],
+        ]);
+
+        $html = (string) $this->controller($updates, updater: $updater)->index()->getContent();
+
+        self::assertStringContainsString('Last update needs attention', $html);
+        self::assertStringContainsString('Migration &lt;failed&gt;.', $html);
+        self::assertStringContainsString('app:updates:apply --resume', $html);
+        self::assertStringContainsString('app:updates:rollback', $html);
+        self::assertStringContainsString('config/goals.local.yaml', $html);
+        self::assertStringNotContainsString('Install update', $html);
+    }
+
     private function controller(
         ApplicationUpdateService $updates,
         ?Request $request = null,
@@ -270,11 +374,18 @@ final class UpdatesControllerTest extends TestCase
         bool $dashboardEnabled = true,
         bool $csrfValid = true,
         bool $featureEnabled = true,
+        ?ApplicationUpdater $updater = null,
+        string $csrfId = UpdatesController::CSRF_TOKEN_ID,
     ): UpdatesController {
         $config = $this->createStub(AggregateConfigLoader::class);
         $config->method('isDashboardEnabled')->willReturn($dashboardEnabled);
         $config->method('all')->willReturn(['feature_flags' => ['updates' => ['enabled' => $featureEnabled]]]);
-        $controller = new UpdatesController($config, $updates, new FeatureFlags($config));
+        if ($updater === null) {
+            $updater = $this->createStub(ApplicationUpdater::class);
+            $updater->method('status')->willReturn(null);
+            $updater->method('isSqlite')->willReturn(true);
+        }
+        $controller = new UpdatesController($config, $updates, new FeatureFlags($config), $updater);
 
         $authorization = $this->createMock(AuthorizationCheckerInterface::class);
         $authorization->expects($dashboardEnabled ? self::once() : self::never())
@@ -290,7 +401,7 @@ final class UpdatesControllerTest extends TestCase
         $csrf->expects($expectCsrfCheck ? self::once() : self::never())
             ->method('isTokenValid')
             ->with(self::callback(static fn (CsrfToken $token): bool =>
-                $token->getId() === UpdatesController::CSRF_TOKEN_ID
+                $token->getId() === $csrfId
                 && $token->getValue() === $submitted['_csrf_token']))
             ->willReturn($csrfValid);
 
@@ -303,7 +414,9 @@ final class UpdatesControllerTest extends TestCase
         ]), ['strict_variables' => true]);
         $twig->addFunction(new TwigFunction('path', static fn (string $route): string => match ($route) {
             'app_dashboard' => '/dashboard',
+            'app_updates' => '/dashboard/updates',
             'app_updates_refresh' => '/dashboard/updates/refresh',
+            'app_updates_install' => '/dashboard/updates/install',
         }));
         $twig->addFunction(new TwigFunction('csrf_token', static fn (): string => 'rendered-token'));
 
@@ -319,9 +432,9 @@ final class UpdatesControllerTest extends TestCase
         return $controller;
     }
 
-    private function request(string $method, array $submitted = []): Request
+    private function request(string $method, array $submitted = [], string $path = ''): Request
     {
-        $path = $method === 'POST' ? '/dashboard/updates/refresh' : '/dashboard/updates';
+        $path = $path !== '' ? $path : ($method === 'POST' ? '/dashboard/updates/refresh' : '/dashboard/updates');
         $request = Request::create($path, $method, $submitted);
         $request->setSession(new Session(new MockArraySessionStorage()));
 

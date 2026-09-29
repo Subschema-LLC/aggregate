@@ -145,9 +145,9 @@ backup private and use fresh checkouts afterward.
   production dependencies, built assets, metadata, and license notices, and
   excludes operator configuration, secrets, runtime data, and IDE files.
 - [ ] Publish release notes with tested environments, known issues, operator
-  actions, and manual upgrade/recovery instructions. Automatic package
-  application is not implemented. The release workflow does not make the
-  repository public automatically.
+  actions, and upgrade/recovery instructions (`app:updates:apply`, `--resume`,
+  `app:updates:rollback`, and the manual steps for installations that predate the
+  updater). The release workflow does not make the repository public automatically.
 
 ## Follow-up improvements
 

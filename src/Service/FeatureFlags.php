@@ -10,7 +10,7 @@ class FeatureFlags
     public const DEFINITIONS = [
         'updates' => [
             'label' => 'Updates',
-            'description' => 'Version checks, Git source updates, and offline release package verification.',
+            'description' => 'Version checks, release package verification, and installing updates from signed release packages or Git.',
             'enabled' => true,
             'hide_from_navigation' => false,
         ],

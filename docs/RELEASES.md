@@ -2,7 +2,7 @@
 
 [Deployment](../DEPLOYMENT.md#updates) · [Configuration](CONFIGURATION.md) · [JavaScript build](JS-BUILD.md)
 
-GitHub Releases on the public `Subschema-LLC/aggregate` repository host installable ZIPs. A separate artifact repository is unnecessary. The foundation includes production packaging, signed manifests, version checks without Git, and offline package verification. Automatic replacement of an existing installation is a follow-up: the dashboard currently checks versions and links to packages.
+GitHub Releases on the public `Subschema-LLC/aggregate` repository host installable ZIPs. A separate artifact repository is unnecessary. Installations check versions without Git, verify packages against an independently trusted key, and install them in place with `app:updates:apply` or the dashboard **Install update** button, keeping their configuration.
 
 Before the first public release, complete the [repository and reporting setup](PUBLIC-RELEASE.md).
 
@@ -54,7 +54,7 @@ Each release includes:
 
 | Asset | Purpose |
 | --- | --- |
-| `aggregate-X.Y.Z.zip` | Application source, production dependencies, configuration examples, built assets, public signing key, and embedded `release.json` |
+| `aggregate-X.Y.Z.zip` | Application source, production dependencies, configuration defaults and examples, built assets, public signing key, embedded `release.json`, and `release-files.json` (the SHA-256 of every file in the package) |
 | `aggregate-release.json` | Version, repository, branch, commit, UTC build time, runtime requirements, ZIP filename, size, and SHA-256 |
 | `aggregate-release.json.sig` | Base64 detached Ed25519 signature over the exact manifest bytes |
 
@@ -89,18 +89,88 @@ updates_signing_public_key: 'BASE64_ED25519_PUBLIC_KEY'
 
 The command verifies the signature, branch, runtime requirements, ZIP size/hash, bounded archive layout, and agreement with embedded `release.json`. Unsafe paths, symlinks, duplicate/case-conflicting paths, missing required files, and oversized archives are rejected. Inputs must be local files; the command performs no network requests, extraction, file replacement, or database changes. It checks the PHP runtime running the command; verify that the web process uses a compatible runtime too. Signature verification requires a public key trusted independently of the package being verified, including during initial installation.
 
+## Update an installation
+
+Run as the user that owns the application files:
+
+```bash
+php bin/console app:updates:apply --preflight   # checks only; changes nothing
+php bin/console app:updates:apply                # downloads, verifies and installs the newest release
+php bin/console app:updates:apply --release=1.2.0
+php bin/console app:updates:apply \
+  --package=/path/to/aggregate-1.2.0.zip \
+  --manifest=/path/to/aggregate-release.json \
+  --signature=/path/to/aggregate-release.json.sig
+```
+
+Add `--database-backup-confirmed` for PostgreSQL, MySQL, MariaDB and SQL Server
+after backing up the database; SQLite is snapshotted automatically. Administrators
+can start the same update from the dashboard **Updates** page. Downgrades are refused.
+
+The update runs these steps and records them in `var/updates/state.json`, so it can
+be resumed with `--resume` after an interruption. A lock prevents two updates at once.
+
+1. **Download and verify** the three release assets (skipped for local files). The
+   manifest signature, branch, runtime requirements, package checksum and archive
+   layout are checked as by `app:updates:verify-package`.
+2. **Stage and plan.** The ZIP is extracted under `var/updates/staging/`, every file
+   is checked against `release-files.json`, and the update works out which files
+   change. It stops here, before anything changes, if a file is not writable or an
+   edited configuration default conflicts with an existing override.
+3. **Maintenance and backup.** Web requests get a 503 page; workers are signalled;
+   an SQLite database is copied into the backup.
+4. **Install files** in place, dependencies first, each file written to a temporary
+   file and renamed. Every replaced or removed file is copied to
+   `var/updates/backups/<id>/` first. `release.json` and `release-files.json` are
+   written last. If this step fails, the files are restored automatically.
+5. **Continue with the new code.** A fresh `app:updates:apply --resume` process runs
+   migrations, `app:analytics:glossary:sync`, cache warmup and the worker restart
+   signal, then leaves maintenance mode and removes the staging copy.
+
+How files are treated:
+
+| Files | Update behavior |
+| --- | --- |
+| `.env.local`, `.env.*.local`, `.env.prod`, `config/aggregate.yaml`, `config/aggregate_*.yaml`, `config/websites.yaml`, `config/tag-manager/sites/`, `config/*.local.yaml`, `config/secrets/`, `var/` (except `var/browser/`) | Never replaced or deleted. Packages cannot contain them: the builder refuses them and the updater rejects a package that includes one. |
+| `config/goals.yaml`, `config/navigation.yaml`, `config/quick_search.yaml` | Edits move to `config/NAME.local.yaml` (see [local overrides](CONFIGURATION.md#local-overrides-for-shipped-defaults)); the new default is installed. |
+| `.env` | Existing values kept; keys new in the release are appended. |
+| `config/release-signing.pub` | The installed trusted key is never replaced by a package. |
+| `public/.htaccess`, `public/robots.txt` | Kept when you changed them; the release's version is saved in the backup's `incoming/` folder. |
+| Other shipped files | Replaced when they changed. Locally edited copies are reported and kept in the backup. |
+| Files in release-owned directories (`src`, `templates`, `translations`, `migrations`, `assets`, `micro-consent-dropins`, `scripts`, `vendor`, `public/assets`, `public/bundles`, `config/packages`, `config/routes`) that the new release does not ship | Removed after backup, so stale classes cannot be autoloaded. Keep custom code outside these directories. |
+| Root files that the previous release shipped and the new one does not | Removed when unchanged; kept and reported when you edited them. |
+
+Installations whose code predates `app:updates:apply` (such as the v0.2
+prerelease) need one manual update, described below; later updates use the
+command. The comparison uses the installed `release-files.json`. When it is missing,
+for example after a manual deployment, the update still runs, but because unchanged
+files cannot be told apart from edits, any shipped config default that differs from
+the new one is kept as an override; review those override files after the update. Packages without `release-files.json` cannot be applied automatically;
+install them manually as described below.
+
+Recovery keeps files and the database separate:
+
+- `php bin/console app:updates:rollback` restores the files the last update changed
+  (Git checkouts return to the previous commit) and warms the cache. It never
+  reverses migrations. `--restore-database` additionally restores the SQLite
+  snapshot, discarding data recorded since the update started.
+- If the console cannot start, `php scripts/restore-update-files.php` restores the
+  files from the backup without loading the application and leaves maintenance
+  mode on; then run `cache:clear` and `app:updates:maintenance off`.
+- `app:updates:maintenance on|off|status` controls the maintenance page directly.
+
 ## Install or deploy a verified package
 
 The ZIP contains its files at the archive root. Extract it into a fresh application directory, configure `.env.local` with database credentials and a newly generated `APP_SECRET`, point the web server at `public/`, and use `/install` for schema/admin setup. The existing web installer requires those infrastructure settings first; a full browser-only credentials/bootstrap installer is not included in this groundwork. No Git, Composer, or Node installation is needed on the target server for a prepared release package.
 
-For an existing installation, stage the new directory and retain deployment data deliberately:
+To update an existing installation, prefer [`app:updates:apply`](#update-an-installation). To deploy manually instead (for example, from a package without `release-files.json`), stage the new directory and retain deployment data deliberately:
 
 - Preserve `.env.local` and other actual environment overrides, the active `config/aggregate.yaml` or environment-specific files, `config/websites.yaml`, and `config/tag-manager/sites/` with each website's tag/CMP settings and environment overrides.
-- Merge customized `config/goals.yaml` and `config/navigation.yaml` as needed. Do not carry forward the entire old `config/` directory, which would hide new routes and service definitions.
+- Preserve `config/*.local.yaml` overrides, and move any edits of the shipped `config/goals.yaml`, `config/navigation.yaml` or `config/quick_search.yaml` into those overrides. Do not carry forward the entire old `config/` directory, which would hide new routes and service definitions.
 - Preserve `var/branding`, any SQLite database, and separately configured logo/MMDB paths. Do not share the whole `var/` directory: `var/cache` belongs to the new release and `var/browser` contains that release's compiled tracker, CMP, and tag-manager templates.
 - Back up the database and configuration, pause collection/async workers as required, run migrations and rebuild production caches against the preserved configuration, activate the new release, restart workers/reload PHP, and verify `/api/health` before resuming collection.
 
-Replacing application files does not reverse database migrations. File recovery and database restoration need separate procedures. The future automatic updater must coordinate these operations, report progress, resume after interruptions, and prevent concurrent updates; the current verifier intentionally leaves the installation untouched.
+Replacing application files does not reverse database migrations. File recovery and database restoration need separate procedures. `app:updates:verify-package` only verifies and leaves the installation untouched.
 
 ## Local package development
 

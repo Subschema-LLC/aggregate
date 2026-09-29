@@ -9,6 +9,9 @@
 # disabling a group makes every remaining child unclickable.
 # Navigation does not grant access: destination routes enforce authorization.
 # Clear the production cache after changing this file.
+# Shipped defaults: application updates replace this file. To customize it,
+# copy it to config/navigation.local.yaml and edit the copy. A parameter defined
+# in the local file replaces the matching parameter here as a whole.
 parameters:
     app.main_navigation:
         brand:

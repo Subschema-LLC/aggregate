@@ -29,9 +29,11 @@ final class PullUpdatesCommand extends Command
 Run as the deployment user after reviewing changes and preparing backups and maintenance.
 Fetches updates_branch from config/aggregate.yaml (default: master) in the official repository.
 The installed branch must match that setting; the command never switches branches.
-Local edits, untracked files, detached HEADs and divergent history prevent the update.
-This updates source code only. Complete dependencies, migrations, cache, assets and worker/PHP
-restarts using DEPLOYMENT.md#updates before resuming service. No deployment steps run automatically.
+Local edits, untracked files, detached HEADs and divergent history prevent the update, except
+edits to config/goals.yaml, config/navigation.yaml and config/quick_search.yaml: those move to the
+untracked config/NAME.local.yaml override before the shipped file is updated.
+This updates source code only. To also install dependencies, run migrations, rebuild the cache and
+show a maintenance page while files change, use app:updates:apply instead.
 HELP);
     }
 
@@ -54,12 +56,15 @@ HELP);
         }
 
         $io->success('Application source code was updated.');
+        foreach ($result['overrides_created'] ?? [] as $override) {
+            $io->note('Your edits now live in '.$override.'. It replaces the matching shipped parameter as a whole.');
+        }
         $io->definitionList(
             ['Branch' => OutputFormatter::escape($result['branch'])],
             ['Previous commit' => $result['previous_commit']],
             ['Installed commit' => $result['current_commit']],
         );
-        $io->warning('Deployment is not complete. Follow DEPLOYMENT.md#updates before resuming service.');
+        $io->warning('Deployment is not complete. Follow DEPLOYMENT.md#updates before resuming service, or use app:updates:apply next time to run these steps automatically.');
         $io->listing([
             'Install locked Composer dependencies for your deployment.',
             'Review and run the required database migrations.',
