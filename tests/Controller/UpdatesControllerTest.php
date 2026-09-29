@@ -60,6 +60,7 @@ final class UpdatesControllerTest extends TestCase
         self::assertStringContainsString('config/*.local.yaml', $html);
         self::assertStringContainsString('SQLite', $html);
         self::assertStringNotContainsString('name="database_backup_confirmed"', $html);
+        self::assertStringNotContainsString('disabled aria-describedby="install-unavailable"', $html);
         self::assertStringContainsString('Configured branch', $html);
         self::assertStringContainsString('Installed branch', $html);
         self::assertStringContainsString('normally needs no token', $html);
@@ -81,7 +82,7 @@ final class UpdatesControllerTest extends TestCase
         self::assertStringContainsString('master', $html);
         self::assertStringNotContainsString('app:updates:pull', $html);
         self::assertStringNotContainsString('app:updates:apply', $html);
-        self::assertStringNotContainsString('Install update', $html);
+        $this->assertInstallDisabled($html, 'The installed branch does not match updates_branch');
     }
 
     public function testPackagedReleaseShowsVersionsAndVerificationLinksWithoutGitPullInstructions(): void
@@ -118,6 +119,22 @@ final class UpdatesControllerTest extends TestCase
         self::assertStringNotContainsString('Installed branch', $html);
     }
 
+    public function testUpToDateInstallationShowsTheInstallButtonDisabledWithTheReason(): void
+    {
+        $updates = $this->createMock(ApplicationUpdateService::class);
+        $updates->method('check')->willReturn(array_replace($this->availableStatus(), ['state' => 'up_to_date', 'latest_commit' => str_repeat('a', 40)]));
+        $updater = $this->createStub(ApplicationUpdater::class);
+        $updater->method('isSqlite')->willReturn(false);
+        $updater->method('status')->willReturn(null);
+
+        $html = (string) $this->controller($updates, updater: $updater)->index()->getContent();
+
+        $this->assertInstallDisabled($html, 'This installation is up to date. The button becomes available when Check now finds a newer commit.');
+        self::assertStringContainsString('Install update', $html);
+        self::assertStringNotContainsString('name="database_backup_confirmed"', $html);
+        self::assertStringContainsString('php bin/console app:updates:apply', $html);
+    }
+
     public function testIncompatibleReleaseCannotBeReportedAsAvailable(): void
     {
         $updates = $this->createMock(ApplicationUpdateService::class);
@@ -131,7 +148,7 @@ final class UpdatesControllerTest extends TestCase
 
         self::assertStringContainsString('Release requirements are not met', $html);
         self::assertStringNotContainsString('Update available', $html);
-        self::assertStringNotContainsString('Install update', $html);
+        $this->assertInstallDisabled($html, 'There is no installable update right now (release requirements are not met)');
         self::assertStringNotContainsString('app:updates:pull', $html);
     }
 
@@ -364,7 +381,14 @@ final class UpdatesControllerTest extends TestCase
         self::assertStringContainsString('app:updates:apply --resume', $html);
         self::assertStringContainsString('app:updates:rollback', $html);
         self::assertStringContainsString('config/goals.local.yaml', $html);
-        self::assertStringNotContainsString('Install update', $html);
+        $this->assertInstallDisabled($html, 'The last update needs attention');
+    }
+
+    private function assertInstallDisabled(string $html, string $reason): void
+    {
+        self::assertStringNotContainsString('action="/dashboard/updates/install"', $html);
+        self::assertStringContainsString('type="button" disabled aria-describedby="install-unavailable"', $html);
+        self::assertStringContainsString($reason, $html);
     }
 
     private function controller(
