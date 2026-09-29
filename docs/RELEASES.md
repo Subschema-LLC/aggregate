@@ -37,7 +37,14 @@ php scripts/sign-release.php --generate-keypair \
 
 The helper creates a private file with mode `0600` and refuses to overwrite existing destinations. It prints file paths, never key contents. Commit **only** `config/release-signing.pub`, which contains the base64 public key. Add the contents of the private file as the repository's GitHub Actions secret **`RELEASE_SIGNING_PRIVATE_KEY`**. Back up the private key securely; never place it in application YAML, an environment example, or a ZIP.
 
-The public key and Actions secret are intentionally not generated or populated by this source change. Signing fails until both are configured and match. Future key rotation needs a trust transition for existing installations; replacing a key in a downloaded package does not authorize that new key.
+The public key and Actions secret are intentionally not generated or populated by this source change. Until both are configured and match, the release workflow stops at its first step, **Check release signing setup**, which names the problem: the secret is empty, is not base64, holds the public key instead of the private key, or does not match `config/release-signing.pub`. Check a key locally the same way without printing it:
+
+```bash
+RELEASE_SIGNING_PRIVATE_KEY="$(cat "$HOME/.config/aggregate-release/private.key")" \
+  php scripts/sign-release.php --check-key
+```
+
+The workflow builds the tagged commit, so the tag must point to a commit that already contains `config/release-signing.pub`. After committing the key and promoting it to the publishing branch, tag that commit with the next [version](#version-numbers). If an earlier tag failed and no release was published from it, you may delete that tag and tag the new commit instead. Future key rotation needs a trust transition for existing installations; replacing a key in a downloaded package does not authorize that new key.
 
 ## Version numbers
 

@@ -37,6 +37,12 @@ jobs:
           extensions: ctype, iconv, pdo_sqlite, pdo_mysql, mbstring, xml, curl, intl, sodium, zip
           coverage: none
           tools: composer:v2
+      - name: Check release signing setup
+        # Fails in seconds, before tests and packaging, when the signing secret
+        # or the committed public key is missing or they do not match.
+        env:
+          RELEASE_SIGNING_PRIVATE_KEY: ${{ secrets.RELEASE_SIGNING_PRIVATE_KEY }}
+        run: php scripts/sign-release.php --check-key
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
