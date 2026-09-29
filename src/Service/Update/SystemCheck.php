@@ -64,13 +64,15 @@ class SystemCheck
             $source = $this->updates->source();
             $repository = $this->settings->repository();
             $branch = $this->settings->branch();
-            $add('source', 'Update method', self::OK, sprintf(
-                '%s from %s, branch %s. %s',
-                $source['source'] === 'git' ? 'Directly from the repository (Git pull)' : 'Release ZIPs',
-                $repository,
-                $branch,
-                $source['reason'],
-            ));
+            $method = $source['source'] === 'git' ? 'Directly from the repository (advanced)' : 'Release ZIPs';
+            if ($source['mismatch'] !== null) {
+                $add('source', 'Update method', self::ERROR, $source['mismatch']);
+            } else {
+                $add('source', 'Update method', self::OK, sprintf('%s from %s, branch %s. %s', $method, $repository, $branch, $source['reason']));
+            }
+            if ($source['method'] === null) {
+                $add('method_choice', 'Update method chosen', self::INFO, 'Not yet. An administrator chooses release ZIPs or the repository on the Updates page, with php bin/console app:updates:method, or with updates_method in config/aggregate.yaml. The dashboard installs updates once a method is chosen; the command line uses the method that fits this directory until then.', 'dashboard');
+            }
             if (!$this->settings->isOfficialRepository()) {
                 $add('repository', 'Repository', self::WARNING, 'updates_repository points to '.$repository.' instead of '.UpdateSettings::DEFAULT_REPOSITORY.'. Only use a repository you control; releases must be signed with the key this installation trusts.');
             }
@@ -90,7 +92,7 @@ class SystemCheck
         if ($source !== null && $source['source'] === 'release') {
             $this->releaseChecks($add);
         } elseif ($source !== null) {
-            $this->gitChecks($add);
+            $this->gitChecks($add, $source['mismatch'] === null);
         }
 
         $unwritable = [];
@@ -208,13 +210,11 @@ class SystemCheck
     }
 
     /** @param callable(string, string, string, string, string=): void $add */
-    private function gitChecks(callable $add): void
+    private function gitChecks(callable $add, bool $isClone): void
     {
         $git = $this->toolchain->git();
         $add('git', 'Git', $git !== null ? self::OK : self::ERROR, $git !== null ? 'Found at '.$git.'.' : 'Git is not installed or not on PATH for this user.');
-        if (!file_exists($this->projectDir.'/.git')) {
-            $add('checkout', 'Git checkout', self::ERROR, 'The application directory has no .git folder, so it cannot pull. Update it with a release ZIP instead.');
-        } elseif ($git !== null) {
+        if ($isClone && $git !== null) {
             $problem = $this->updates->pullProblem();
             $add('checkout', 'Git checkout', $problem === null ? self::OK : self::ERROR, $problem ?? 'Clean checkout on the configured branch.');
         }

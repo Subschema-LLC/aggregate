@@ -121,8 +121,9 @@ The command verifies the signature, branch, runtime requirements, ZIP size/hash,
 
 ## Update an installation
 
-Release ZIPs update every installation that is not a Git clone of the repository.
-On the dashboard **Updates** page, use **Download from GitHub**, or **Upload a release
+Release ZIPs are the recommended update method (`updates_method: release`) and
+work for every installation that is not a Git clone of the repository; the
+[update guide](UPDATES.md) compares them with repository updates. On the dashboard **Updates** page, use **Download from GitHub**, or **Upload a release
 ZIP** with its manifest and signature when the server cannot reach GitHub; the
 page's system check shows anything that would stop the update. From the command
 line, run as the user that owns the application files:
