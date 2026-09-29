@@ -27,8 +27,8 @@ final class ApplyUpdateCommand extends Command
     protected function configure(): void
     {
         $this
-            ->addOption('release', null, InputOption::VALUE_REQUIRED, 'Release installations: install this version (X.Y.Z) instead of the latest')
-            ->addOption('package', null, InputOption::VALUE_REQUIRED, 'Release installations: a downloaded aggregate-X.Y.Z.zip to install instead of downloading')
+            ->addOption('release', null, InputOption::VALUE_REQUIRED, 'Release installations: install this version (YYYY.MM.NN) instead of the latest')
+            ->addOption('package', null, InputOption::VALUE_REQUIRED, 'Release installations: a downloaded aggregate-YYYY.MM.NN.zip to install instead of downloading')
             ->addOption('manifest', null, InputOption::VALUE_REQUIRED, 'With --package: the downloaded aggregate-release.json')
             ->addOption('signature', null, InputOption::VALUE_REQUIRED, 'With --package: the downloaded aggregate-release.json.sig')
             ->addOption('database-backup-confirmed', null, InputOption::VALUE_NONE, 'Confirm a current database backup exists (required for PostgreSQL, MySQL, MariaDB and SQL Server)')
