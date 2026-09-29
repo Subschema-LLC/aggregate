@@ -53,10 +53,12 @@
         <div class="quick-search-wrapper">
             <input type="search" class="quick-search-input" placeholder="Search... (Ctrl+K)" aria-label="Search pages and settings" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" data-components--layout--quick-search-target="input" data-action="input->components--layout--quick-search#filter keydown->components--layout--quick-search#navigate focus->components--layout--quick-search#show">
             <span class="quick-search-icon"><i class="fas fa-search" aria-hidden="true"></i></span>
-            <button type="button" class="quick-search-clear" aria-label="Clear search" data-action="components--layout--quick-search#clear" hidden>
-                <i class="fas fa-xmark" aria-hidden="true"></i>
-            </button>
-            <span class="quick-search-shortcut"><kbd>Ctrl+K</kbd></span>
+            <div class="quick-search-actions">
+                <button type="button" class="quick-search-clear" aria-label="Clear search" data-action="components--layout--quick-search#clear" hidden>
+                    <i class="fas fa-xmark" aria-hidden="true"></i>
+                </button>
+                <span class="quick-search-shortcut"><kbd>Ctrl+K</kbd></span>
+            </div>
         </div>
         <div class="quick-search-results" data-components--layout--quick-search-target="results" hidden role="listbox"></div>
     </div>

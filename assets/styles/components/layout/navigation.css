@@ -27,7 +27,7 @@
 }
 
 .app-navigation .navbar-brand {
-    flex-shrink: 1;
+    flex-shrink: 0;
     margin-right: 0.5rem;
 }
 
@@ -57,6 +57,7 @@
 }
 
 .app-navigation-account {
+    flex-shrink: 0;
     gap: 0.5rem;
     margin-inline-start: auto;
 }

@@ -177,7 +177,7 @@ parameters:
         - toggle
         - capabilities
     'Documentation':
-      description: 'Architecture, privacy mode vs enhanced analytics'
+      description: 'Architecture, anonymous mode, strict mode, and enhanced analytics'
       synonyms:
         - how it works
         - docs
@@ -185,5 +185,7 @@ parameters:
         - privacy guide
         - architecture
         - overview
+        - strict mode
+        - strict profile
 
   app.quick_search_extra_items: []

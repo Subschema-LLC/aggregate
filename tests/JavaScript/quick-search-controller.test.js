@@ -12,6 +12,7 @@ function createMockElement(tag = 'div') {
     children: [],
     attributes: {},
     dataset: {},
+    style: {},
     hidden: false,
     value: '',
     textContent: '',
@@ -187,4 +188,50 @@ test('quick search renders empty state when no items match', () => {
   assert.ok(empty, 'Empty state container rendered');
   const title = empty.children.find(c => c.textContent === 'No matching results');
   assert.ok(title, 'Empty state title rendered');
+});
+
+test('clear button and shortcut badge are mutually exclusive and never overlap', () => {
+  const instance = new QuickSearchController();
+  const input = createMockElement('input');
+  const results = createMockElement('div');
+  const wrapper = createMockElement('div');
+  const clearBtn = createMockElement('button');
+  clearBtn.className = 'quick-search-clear';
+  const shortcut = createMockElement('span');
+  shortcut.className = 'quick-search-shortcut';
+
+  wrapper.children.push(input, clearBtn, shortcut, results);
+  wrapper.querySelector = (sel) => {
+    if (sel === '.quick-search-clear') return clearBtn;
+    if (sel === '.quick-search-shortcut') return shortcut;
+    return null;
+  };
+
+  instance.element = wrapper;
+  instance.inputTarget = input;
+  instance.resultsTarget = results;
+  instance.hasInputTarget = true;
+  instance.hasResultsTarget = true;
+
+  // Empty state: clear button hidden, shortcut shown
+  input.value = '';
+  instance.updateClearButton();
+  assert.equal(clearBtn.style.display, 'none');
+  assert.equal(clearBtn.hidden, true);
+  assert.equal(shortcut.style.display, 'inline-flex');
+  assert.equal(shortcut.hidden, false);
+
+  // Active text state: clear button shown, shortcut hidden
+  input.value = 'analytics';
+  instance.updateClearButton();
+  assert.equal(clearBtn.style.display, 'inline-flex');
+  assert.equal(clearBtn.hidden, false);
+  assert.equal(shortcut.style.display, 'none');
+  assert.equal(shortcut.hidden, true);
+
+  // Clearing returns to initial state
+  input.value = '';
+  instance.updateClearButton();
+  assert.equal(clearBtn.style.display, 'none');
+  assert.equal(shortcut.style.display, 'inline-flex');
 });

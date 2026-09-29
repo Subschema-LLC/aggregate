@@ -71,8 +71,9 @@
                         <div class="content">
                             <p>
                                 Events use anonymous mode with a sanitized path, coarse dimensions, and no
-                                visitor or session identifiers unless your consent integration enables enhanced
-                                analytics after consent is granted.
+                                visitor or session identifiers unless enhanced analytics is granted. For maximum
+                                privacy, enable the <strong>strict collection profile</strong> to eliminate all
+                                browser storage, device probing, and referrer collection.
                             </p>
                         </div>
                     </div>
@@ -160,6 +161,92 @@
             </div>
         </div>
 
+        <div class="card mb-5" id="strict-mode">
+            <div class="card-content p-5">
+                <div class="is-flex is-justify-content-between is-align-items-center is-flex-wrap-wrap gap-2 mb-3">
+                    <div>
+                        <span class="tag is-danger is-light is-rounded mb-2">
+                            <span class="icon is-small mr-1"><i class="fas fa-lock" aria-hidden="true"></i></span>
+                            Zero-Footprint Mode
+                        </span>
+                        <h2 class="title is-3 mb-1">Strict Collection Profile</h2>
+                    </div>
+                    <span class="tag is-light is-medium"><code>collection_profile: strict</code></span>
+                </div>
+                <p class="subtitle is-6 has-text-grey mb-4">
+                    The strict collection profile reduces telemetry to the absolute operational minimum: counting a page view or safe interaction. It enforces zero browser storage, eliminates device fingerprinting, and strips non-essential dimensions at ingestion.
+                </p>
+
+                <div class="columns is-multiline mb-4">
+                    <div class="column is-6">
+                        <div class="box h-100">
+                            <h3 class="title is-6 mb-3 has-text-success">
+                                <span class="icon is-small mr-1"><i class="fas fa-circle-check" aria-hidden="true"></i></span>
+                                What Strict Mode Retains
+                            </h3>
+                            <div class="content is-small">
+                                <ul>
+                                    <li><strong>Sanitized page path:</strong> The normalized URL path without query parameters or hash fragments.</li>
+                                    <li><strong>Safe event name:</strong> Whitelisted action name (e.g., <code>view</code> or approved custom events).</li>
+                                    <li><strong>Approved goal code:</strong> Only active goals defined in <code>config/goals.yaml</code>.</li>
+                                    <li><strong>UTC hour bucket:</strong> Server-stamped hourly aggregation window without exact timestamps.</li>
+                                    <li><strong>Core protection:</strong> Ingestion kill switch, sensitive-path exclusions, domain rules, and rate limits remain active.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="column is-6">
+                        <div class="box h-100">
+                            <h3 class="title is-6 mb-3 has-text-danger">
+                                <span class="icon is-small mr-1"><i class="fas fa-ban" aria-hidden="true"></i></span>
+                                What Strict Mode Completely Omits
+                            </h3>
+                            <div class="content is-small">
+                                <ul>
+                                    <li><strong>Zero browser storage:</strong> Never sets, reads, or deletes cookies, <code>localStorage</code>, or <code>sessionStorage</code>.</li>
+                                    <li><strong>No device or viewport dimensions:</strong> Device type, screen resolution, and viewport are recorded as <code>unknown</code>.</li>
+                                    <li><strong>No referrer URLs:</strong> Referrer channel and search terms are omitted and recorded as <code>unknown</code>.</li>
+                                    <li><strong>No geographic lookups:</strong> Server performs no IP-to-location lookups; coarse geography is not derived.</li>
+                                    <li><strong>No visitor or session identifiers:</strong> <code>setConsent()</code> changes nothing; no identifiers are created.</li>
+                                    <li><strong>No custom properties or page depth:</strong> Mapped query params, custom properties, and page depth counters are discarded.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="columns is-multiline mb-4">
+                    <div class="column is-6">
+                        <h4 class="title is-6 mb-2">Enabling on the server</h4>
+                        <div class="content is-small">
+                            <ul>
+                                <li><strong>Dashboard:</strong> Under <em>Settings &rarr; Collection controls</em>, select <strong>Strict</strong> and save.</li>
+                                <li><strong>YAML configuration:</strong> Set <code>collection_profile: strict</code> in <code>config/aggregate.yaml</code>.</li>
+                                <li><strong>Environment variable:</strong> Set <code>COLLECTION_PROFILE=strict</code> to override UI and YAML.</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="column is-6">
+                        <h4 class="title is-6 mb-2">Static / CDN tracker integration</h4>
+                        <div class="content is-small">
+                            <p>Standalone or CDN-hosted copies of <code>aggregate.js</code> can opt into strict mode directly on the page:</p>
+                            <ul>
+                                <li><code>&lt;script ... data-collection-profile="strict" async&gt;&lt;/script&gt;</code></li>
+                                <li>Inline bootstrap: <code>window.Aggregate = { collectionProfile: 'strict', ... };</code></li>
+                                <li>Runtime API: <code>Aggregate.configure({ collectionProfile: 'strict' });</code></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="notification is-warning is-light mb-0">
+                    <strong>Regulatory consideration:</strong> While the strict profile avoids accessing visitor terminal storage under Article 5(3) of the EU ePrivacy Directive and aligns with strict privacy-minimization principles, it does not by itself guarantee legal consent exemption across every jurisdiction. Operators remain responsible for their legal basis, notices, and privacy governance.
+                </div>
+            </div>
+        </div>
+
+
         <div class="columns mb-5">
             <div class="column is-two-thirds is-flex">
                 <div class="card is-flex-grow-1">
@@ -168,6 +255,7 @@
                         <div class="content">
                             <ul>
                                 <li>Registered domains and website tokens</li>
+                                <li>Collection profile: switch between <strong>Standard</strong> (with anonymous/enhanced modes) and <strong>Strict</strong> (zero-storage minimal collection)</li>
                                 <li>A global collection switch and sensitive-path exclusions</li>
                                 <li>Enabled goal codes and whether each may be retained anonymously</li>
                                 <li>UTM and query parameter mappings, per-property consent, and custom reporting columns</li>

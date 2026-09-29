@@ -107,13 +107,27 @@ export default class extends Controller {
     updateClearButton() {
         const clearBtn = this.element.querySelector('.quick-search-clear');
         const shortcut = this.element.querySelector('.quick-search-shortcut');
-        const hasText = this.hasInputTarget && this.inputTarget.value.trim().length > 0;
+        const hasText = Boolean(this.hasInputTarget && this.inputTarget.value && this.inputTarget.value.trim().length > 0);
 
         if (clearBtn) {
             clearBtn.hidden = !hasText;
+            if (hasText) {
+                clearBtn.removeAttribute('hidden');
+                clearBtn.style.display = 'inline-flex';
+            } else {
+                clearBtn.setAttribute('hidden', '');
+                clearBtn.style.display = 'none';
+            }
         }
         if (shortcut) {
             shortcut.hidden = hasText;
+            if (hasText) {
+                shortcut.setAttribute('hidden', '');
+                shortcut.style.display = 'none';
+            } else {
+                shortcut.removeAttribute('hidden');
+                shortcut.style.display = 'inline-flex';
+            }
         }
     }
 
