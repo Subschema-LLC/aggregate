@@ -80,6 +80,12 @@ final class HowItWorksControllerTest extends WebTestCase
         self::assertCount(1, $crawler->filter('link[rel="stylesheet"][href*="/styles/app-"]'));
         self::assertSelectorExists('link[rel="stylesheet"][href*="/styles/vendor/bulma/bulma.min-"]');
         self::assertSelectorExists('.app-theme-toggle[hidden] button[aria-pressed="false"]');
+        // Compact icon buttons keep visible-to-assistive-technology names and do
+        // not depend on the icon font, which loads from a CDN.
+        self::assertSame('Dark mode', trim($crawler->filter('.app-theme-toggle button[aria-pressed] .is-sr-only')->text()));
+        self::assertSame('Site default', trim($crawler->filter('.app-theme-toggle button[hidden] .is-sr-only')->text()));
+        self::assertCount(2, $crawler->filter('.app-theme-toggle button svg[aria-hidden="true"]'));
+        self::assertCount(0, $crawler->filter('.app-theme-toggle i'));
         $preferenceScript = $crawler->filter('script[src*="/theme-preference-"]');
         self::assertCount(1, $preferenceScript);
         self::assertNull($preferenceScript->attr('async'));
