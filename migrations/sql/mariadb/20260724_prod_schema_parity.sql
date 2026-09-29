@@ -5,8 +5,10 @@
 --   aggregate_prod_1_2026-07-24_22-42-44.sql
 -- Source dump SHA-256:
 --   3a79cbfe5757ca37d8ce7f73bb751fb729bbc6ade494293922ee04450c796d55
--- Target application migration:
+-- Baseline application migration and additive glossary migration:
 --   DoctrineMigrations\Version20260724002000
+--   DoctrineMigrations\Version20260928000000
+-- Apply any other pending Doctrine migrations after this script.
 -- =============================================================================
 --
 -- IMPORTANT OPERATIONAL REQUIREMENTS
@@ -174,7 +176,8 @@ BEGIN
          CONCAT('DoctrineMigrations', CHAR(92), 'Version20260724000500'),
          CONCAT('DoctrineMigrations', CHAR(92), 'Version20260724001000'),
          CONCAT('DoctrineMigrations', CHAR(92), 'Version20260724001500'),
-         CONCAT('DoctrineMigrations', CHAR(92), 'Version20260724002000')
+         CONCAT('DoctrineMigrations', CHAR(92), 'Version20260724002000'),
+         CONCAT('DoctrineMigrations', CHAR(92), 'Version20260928000000')
      );
 
     IF v_count <> 0 THEN
@@ -469,8 +472,134 @@ VALUES
     (CONCAT('DoctrineMigrations', CHAR(92), 'Version20260724002000'), CURRENT_TIMESTAMP, 0);
 
 -- -----------------------------------------------------------------------------
+-- Declared BI glossary metadata. Never populate this table from event values.
+-- Views stay empty until: php bin/console app:analytics:glossary:sync
+-- Grant routine BI readers the views only, never the backing table.
+-- Binary collation preserves distinct case-sensitive declared codes.
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `analytics_glossary` (
+    `entry_type`          VARCHAR(16)  NOT NULL,
+    `subject`             VARCHAR(64)  NOT NULL,
+    `code`                VARCHAR(191) NOT NULL,
+    `locale`              VARCHAR(35)  NOT NULL,
+    `label`               VARCHAR(191) NOT NULL,
+    `label_locale`        VARCHAR(35)  DEFAULT NULL,
+    `group_label`         VARCHAR(191) DEFAULT NULL,
+    `description`         LONGTEXT     DEFAULT NULL,
+    `description_locale`  VARCHAR(35)  DEFAULT NULL,
+    `sort_order`          INT          NOT NULL,
+    `is_default_locale`   SMALLINT     NOT NULL,
+    `source`              VARCHAR(16)  NOT NULL,
+    `synced_at`           DATETIME     NOT NULL COMMENT '(DC2Type:datetime_immutable)',
+    PRIMARY KEY (`entry_type`, `subject`, `code`, `locale`),
+    KEY `IDX_GLOSSARY_DEFAULT` (`entry_type`, `subject`, `is_default_locale`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+DROP VIEW IF EXISTS bi_dim_event_name_v1;
+CREATE VIEW bi_dim_event_name_v1 AS
+SELECT
+    code AS event_name,
+    label AS event_name_label,
+    group_label AS event_name_group,
+    description AS event_name_description,
+    sort_order AS event_name_sort
+FROM analytics_glossary
+WHERE entry_type = 'value' AND subject = 'event_name' AND is_default_locale = 1;
+
+DROP VIEW IF EXISTS bi_dim_goal_event_v1;
+CREATE VIEW bi_dim_goal_event_v1 AS
+SELECT
+    code AS goal_event,
+    label AS goal_event_label,
+    group_label AS goal_event_group,
+    description AS goal_event_description,
+    sort_order AS goal_event_sort
+FROM analytics_glossary
+WHERE entry_type = 'value' AND subject = 'goal_event' AND is_default_locale = 1;
+
+DROP VIEW IF EXISTS bi_dim_referrer_channel_v1;
+CREATE VIEW bi_dim_referrer_channel_v1 AS
+SELECT
+    code AS referrer_channel,
+    label AS referrer_channel_label,
+    group_label AS referrer_channel_group,
+    description AS referrer_channel_description,
+    sort_order AS referrer_channel_sort
+FROM analytics_glossary
+WHERE entry_type = 'value' AND subject = 'referrer_channel' AND is_default_locale = 1;
+
+DROP VIEW IF EXISTS bi_dim_device_class_v1;
+CREATE VIEW bi_dim_device_class_v1 AS
+SELECT
+    code AS device_class,
+    label AS device_class_label,
+    group_label AS device_class_group,
+    description AS device_class_description,
+    sort_order AS device_class_sort
+FROM analytics_glossary
+WHERE entry_type = 'value' AND subject = 'device_class' AND is_default_locale = 1;
+
+DROP VIEW IF EXISTS bi_dim_viewport_bucket_v1;
+CREATE VIEW bi_dim_viewport_bucket_v1 AS
+SELECT
+    code AS viewport_bucket,
+    label AS viewport_bucket_label,
+    group_label AS viewport_bucket_group,
+    description AS viewport_bucket_description,
+    sort_order AS viewport_bucket_sort
+FROM analytics_glossary
+WHERE entry_type = 'value' AND subject = 'viewport_bucket' AND is_default_locale = 1;
+
+DROP VIEW IF EXISTS bi_dim_geo_area_v1;
+CREATE VIEW bi_dim_geo_area_v1 AS
+SELECT
+    code AS geo_area,
+    label AS geo_area_label,
+    group_label AS geo_area_group,
+    description AS geo_area_description,
+    sort_order AS geo_area_sort,
+    CASE WHEN code LIKE 'country:%' THEN 'country' ELSE 'continent' END AS geo_level
+FROM analytics_glossary
+WHERE entry_type = 'value' AND subject = 'geo_area' AND is_default_locale = 1;
+
+DROP VIEW IF EXISTS bi_glossary_values_v1;
+CREATE VIEW bi_glossary_values_v1 AS
+SELECT
+    subject AS dimension,
+    code,
+    locale,
+    label,
+    label_locale,
+    CASE WHEN label_locale = locale THEN 0 ELSE 1 END AS is_fallback,
+    group_label,
+    description,
+    sort_order,
+    is_default_locale
+FROM analytics_glossary
+WHERE entry_type = 'value';
+
+DROP VIEW IF EXISTS bi_glossary_columns_v1;
+CREATE VIEW bi_glossary_columns_v1 AS
+SELECT
+    subject AS object_name,
+    code AS column_name,
+    locale,
+    label,
+    label_locale,
+    CASE WHEN label_locale = locale THEN 0 ELSE 1 END AS is_fallback,
+    description,
+    is_default_locale
+FROM analytics_glossary
+WHERE entry_type = 'column';
+
+INSERT IGNORE INTO `doctrine_migration_versions`
+    (`version`, `executed_at`, `execution_time`)
+VALUES
+    (CONCAT('DoctrineMigrations', CHAR(92), 'Version20260928000000'), CURRENT_TIMESTAMP, 0);
+
+-- -----------------------------------------------------------------------------
 -- Postflight: fail unless the resulting logical schema and cleanup invariants
--- match the current Doctrine model and all nine migrations are recorded.
+-- match the current Doctrine model and all ten migrations in this script are recorded.
 -- -----------------------------------------------------------------------------
 DROP PROCEDURE IF EXISTS `_aggregate_postflight_20260724`;
 
@@ -584,6 +713,46 @@ BEGIN
 
     SELECT COUNT(*)
       INTO v_count
+      FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'analytics_glossary';
+
+    IF v_count <> 13 THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Postflight failed: analytics_glossary must contain exactly 13 columns';
+    END IF;
+
+    SELECT COUNT(*)
+      INTO v_count
+      FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'analytics_glossary'
+       AND COLUMN_NAME IN ('entry_type', 'subject', 'code', 'locale')
+       AND COLLATION_NAME = 'utf8mb4_bin';
+
+    IF v_count <> 4 THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Postflight failed: glossary keys require case-sensitive utf8mb4_bin collation';
+    END IF;
+
+    SELECT COUNT(*)
+      INTO v_count
+      FROM information_schema.VIEWS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME IN (
+           'bi_dim_event_name_v1', 'bi_dim_goal_event_v1',
+           'bi_dim_referrer_channel_v1', 'bi_dim_device_class_v1',
+           'bi_dim_viewport_bucket_v1', 'bi_dim_geo_area_v1',
+           'bi_glossary_values_v1', 'bi_glossary_columns_v1'
+       );
+
+    IF v_count <> 8 THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Postflight failed: all eight glossary metadata views are required';
+    END IF;
+
+    SELECT COUNT(*)
+      INTO v_count
       FROM `analytics_privacy_settings`
      WHERE `id` = 1;
 
@@ -626,12 +795,13 @@ BEGIN
          CONCAT('DoctrineMigrations', CHAR(92), 'Version20260724000500'),
          CONCAT('DoctrineMigrations', CHAR(92), 'Version20260724001000'),
          CONCAT('DoctrineMigrations', CHAR(92), 'Version20260724001500'),
-         CONCAT('DoctrineMigrations', CHAR(92), 'Version20260724002000')
+         CONCAT('DoctrineMigrations', CHAR(92), 'Version20260724002000'),
+         CONCAT('DoctrineMigrations', CHAR(92), 'Version20260928000000')
      );
 
-    IF v_count <> 9 THEN
+    IF v_count <> 10 THEN
         SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = 'Postflight failed: all nine Doctrine migrations must be recorded';
+            SET MESSAGE_TEXT = 'Postflight failed: all ten scripted Doctrine migrations must be recorded';
     END IF;
 END//
 DELIMITER ;
@@ -650,3 +820,6 @@ SET SESSION time_zone = @aggregate_old_time_zone;
 
 -- Keep the application and workers stopped until the application code and
 -- config/aggregate.yaml are deployed, caches are cleared, and smoke checks pass.
+-- Apply remaining migrations, then populate glossary views (no event data is read):
+--   php bin/console app:analytics:glossary:sync --env=prod
+-- Grant only the eight bi_dim_*/bi_glossary_* views, not analytics_glossary.

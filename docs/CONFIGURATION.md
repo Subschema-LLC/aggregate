@@ -11,6 +11,8 @@ Use this guide for application settings and runtime overrides. Run commands from
 - [Feature flags](#feature-flags)
 - [Organization traffic](#organization-traffic)
 - [Custom data and UTM parameters](#custom-data-and-utm-parameters)
+- [Standalone consent settings](#standalone-consent-settings)
+- [BI glossary](#bi-glossary)
 - [Archiving and retention](#archiving-and-retention)
 - [Main navigation](#main-navigation)
 - [Conversion goals](#conversion-goals)
@@ -195,9 +197,11 @@ environments:
 - `updates_signing_public_key`: Optional base64 Ed25519 public key overriding the packaged `config/release-signing.pub` for offline package verification; never a private key
 - `internal_traffic_storage`, `internal_traffic_name`, `internal_traffic_value`, `internal_traffic_cookie_domain`, `internal_traffic_share_token`: Browser marker and team sharing settings; see [Organization traffic](#organization-traffic)
 - `custom_data_properties`, `query_parameter_mappings`: Shareable property model, per-property consent settings, UTM/query capture, and reporting aliases; see [Custom data and UTM parameters](#custom-data-and-utm-parameters)
+- `bi_glossary`: Declared value labels, column glossary, and published locales; see [BI glossary](#bi-glossary)
 - `page_sequence_enabled`: Optional page depth on all events in both modes (default: `false`, strict YAML boolean, no environment override). Configure in Data model or YAML; see [page depth](DATA-MODEL.md#optional-page-depth) for the `20+` cap and reporting limits.
 - `page_sequence_method`: `session_storage` (default) or `url_parameter`, with no environment override. Choose tab storage or the fixed `aggregate_page_sequence` URL parameter; review [storage and URL tradeoffs](DATA-MODEL.md#optional-page-depth) before enabling.
 - `dashboard_enabled`: Enable/disable dashboard/login/install behavior (default: `true`)
+- `collection_profile`: `standard` (default) or `strict`, with an uppercase `COLLECTION_PROFILE` environment override. Strict records every event anonymously with only the sanitized path, event name and an approved goal, and the served tracker reads no screen size or referrer and does not touch cookies or browser storage. Other collection settings are kept but unused while strict is selected. See the [strict collection profile](PRIVACY-COMPLIANCE.md#strict-collection-profile).
 - `anonymous_tracking_enabled`: Administrative collection kill switch; `false` rejects anonymous and enhanced events (default: `true`)
 - `anonymous_excluded_paths`: Paths/globs excluded from anonymous and enhanced collection (default: `[]`)
 - `anonymous_geo_enabled`: Enable transient, local-IP-to-area lookup for accepted events (default: `false`)
@@ -212,7 +216,7 @@ environments:
 - `analytics_maintenance_batch_size`: Raw rows processed per maintenance batch (default: `1000`, range: `100`–`10000`)
 - `DASHBOARD_ENABLED` (env var): Boot-time dashboard feature boundary for loading dashboard routes/services. Set `0` for API-only deploys.
 - After changing dashboard feature settings (`dashboard_enabled` or `DASHBOARD_ENABLED`) in production, run `php bin/console cache:clear`.
-- Malformed YAML or invalid collection-kill-switch/path settings fail closed: ingestion stops and `/api/health` reports a generic configuration error. Invalid optional GeoIP lookup settings instead produce no `geo_area`.
+- Malformed YAML or invalid collection-kill-switch/path/profile settings fail closed: ingestion stops and `/api/health` reports a generic configuration error. Invalid optional GeoIP lookup settings instead produce no `geo_area`.
 
 Logo images may be at most 2 MiB, 4096 pixels per axis, and 16 megapixels in total. The settings UI validates and copies uploaded logos below `var/branding` in an environment-specific directory; keep `var/branding` on persistent storage shared by all application replicas, make it writable by the PHP process, and include it in backups. Replicas that use the settings UI must also share the active `aggregate.yaml` file (or otherwise coordinate and deploy each saved revision) so every replica switches logo references together. Uploaded bytes are served as supplied, so remove EXIF/XMP or other embedded metadata before uploading. A configured `brand_logo_path` is resolved from the project root when relative, while absolute local filesystem paths are also supported. Leave it empty for a text-only identity.
 
@@ -276,6 +280,25 @@ developer/contributor instructions.
 The default browser marker is `orgInternalTraffic=true`. Configure `internal_traffic_storage`, `internal_traffic_name`, `internal_traffic_value`, `internal_traffic_cookie_domain`, and `internal_traffic_share_token` in the active YAML environment, or use the Organization traffic admin page. A match stores a boolean in the existing event JSON under the configured marker name; no migration is needed.
 
 See [organization traffic](PRIVACY-COMPLIANCE.md#organization-traffic) for YAML examples, browser scope, installation-generated sharing tokens, downloadable marker pages, and Power BI/Tableau filtering. Existing grouped views and archives omit this JSON flag.
+
+## BI glossary
+
+`bi_glossary` in the active aggregate YAML controls published locales and declared
+value/column metadata. **Reporting → BI glossary** edits the same mapping; YAML
+plus `php bin/console app:analytics:glossary:sync` also work with the dashboard
+disabled. An environment file or `environments.<env>.bi_glossary` replaces the
+whole mapping, and there are no uppercase environment-variable overrides.
+Omitting the block publishes the built-in catalog, goal labels, and saved custom
+property descriptions in English after sync. Invalid glossary metadata makes its
+save/sync fail with field-level errors but does not affect tracker configuration,
+ingestion, or the health configuration check. See the
+[YAML reference and fallback rules](BI-GLOSSARY.md#yaml-reference).
+
+Treat all declared codes, labels, and descriptions as published text. Declaring
+values for consent-gated properties makes those codes visible to routine BI users
+without granting access to the underlying private events. Never include personal
+or identifying text. Goal default labels stay in `config/goals.yaml`; custom
+column descriptions stay in `custom_data_properties`.
 
 ## Custom data and UTM parameters
 
@@ -342,6 +365,57 @@ JavaScript. Navigation is presentation only: it cannot grant access to routes.
 After changing navigation in production, clear the production cache so the
 container and Twig globals are rebuilt.
 
+## Standalone consent settings
+
+The optional independent banner uses `standalone_consent` in
+`config/tag-manager/sites/<site-id>.yaml`. Find instance IDs with
+`php bin/console app:tag-manager:sites`. In **Setup → Install scripts**, select
+**Standalone banner + optional Formspree requests**, then **Configure standalone
+option** to edit that mapping. Downloads include configured JavaScript and YAML.
+This source is separate from `consent_manager` and `tag_manager`; its save preserves
+those mappings and unrelated settings. It has no uppercase environment-variable
+overrides. The site's environment-specific file takes precedence, or the active
+`environments.<env>.standalone_consent` replaces the whole mapping.
+
+```yaml
+standalone_consent:
+  name: Example website
+  privacy_policy_url: 'https://www.example.com/privacy'
+  formspree_endpoint: ''
+  categories: [analytics, functional, marketing]
+  respect_gpc: true
+  consent_lifetime_days: 180
+  revision: '1'
+```
+
+| Key | Validation and default |
+| --- | --- |
+| `name` | Defaults to the registered website's name; nonempty, at most 120 UTF-8 bytes |
+| `privacy_policy_url` | Empty or an absolute HTTPS URL without credentials; default empty |
+| `formspree_endpoint` | Empty or exactly `https://formspree.io/f/` plus an alphanumeric ID; empty disables the request form |
+| `categories` | 1–10 unique category names including `analytics`; 1–32 lowercase letters, digits, underscores or hyphens, beginning with a letter; `none` and prototype keys reserved |
+| `respect_gpc` | YAML boolean; default `true`; active GPC denies marketing and sets do-not-sell, never grants analytics |
+| `consent_lifetime_days` | Integer 1–365; default 180; an operational review interval, not a legal consent lifetime |
+| `revision` | Nonempty string up to 64 UTF-8 bytes; default `'1'`; change when purposes/notice change |
+
+Text is trimmed and rejects control characters. The browser receives camelCase
+keys through `window.MicroConsentConfig`; its site-specific storage key is
+`micro_consent_v2:<site-id>`. The configured script uses the deployment's tracker
+namespace in its optional adapter. No application secret or sharing token is
+included. Downloaded scripts are configuration snapshots.
+
+The hosted bundle at `/standalone-cmp/sites/<site-id>/consent.js` contains UI, CSS
+and the tracker/tag-manager bridge. It works with the dashboard disabled. The
+independent static core needs no server and can omit both optional adapters; see
+[the standalone guide](../micro-consent-dropins/README.md).
+
+These controls are not a region detector or legal certification. The
+[regional examples](CONSENT-REGIONS.md) all use a conservative initial script gate.
+Enhanced denial alone leaves anonymous SDK measurement possible, and already
+loaded scripts need withdrawal/cleanup handling. Enabling Formspree makes it a
+recipient of submitted request information; a successful submission does not
+complete the operator's rights-request duties.
+
 ## Administration pages
 
 The default navigation separates collection, reporting configuration, and
@@ -353,7 +427,8 @@ administration. Each settings page loads the data needed for its own task.
 | General settings | `/dashboard/settings` | Application host, tracker namespace, ingestion rate limit |
 | Branding | `/dashboard/branding` | Identity, logos, colors, typography |
 | Collection controls | `/dashboard/collection` | Collection switch, exclusions, optional local geography |
-| Setup | `/dashboard/setup` | Guided installation, button walkthrough, script copy/download, optional minification |
+| Setup | `/dashboard/setup` | Guided installation, separate built-in/standalone/external consent choice, script copy/download, optional minification |
+| Standalone consent settings | `/dashboard/setup/standalone/<site-id>` | Independent per-site banner settings and optional Formspree request endpoint |
 | Tag manager | `/dashboard/tag-manager` | Per-website CMP, script/method actions, consent, event triggers, variables, and YAML downloads |
 | BI disclosure | `/dashboard/privacy` | Database-backed event and geography thresholds |
 | Users | `/dashboard/users` | User creation and password administration |
@@ -392,7 +467,7 @@ An unknown, invalid, disabled, or anonymous-disallowed goal is omitted while the
 [Aggregate] Goal was not recorded because it is not an approved goal type.
 ```
 
-This is an allowlist warning, not a sensitive-data detector. Review every configured code and its use in context. After changing `config/goals.yaml` in production, clear the production cache so the service container is rebuilt.
+This is an allowlist warning, not a sensitive-data detector. Review every configured code and its use in context. After changing `config/goals.yaml` in production, clear the production cache so the service container is rebuilt, then run `php bin/console app:analytics:glossary:sync --env=prod` to publish updated labels. Prefer disabling retired goals to deleting their definitions so historical codes keep their labels.
 
 ## Optional coarse geography
 
@@ -472,6 +547,7 @@ export BRAND_TEXT_COLOR="#1F2937"
 export BRAND_FONT_FAMILY="system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
 export BRAND_HEADING_FONT_FAMILY="system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
 export DASHBOARD_ENABLED="0"
+export COLLECTION_PROFILE="strict"
 export ANONYMOUS_TRACKING_ENABLED="0"
 export ANONYMOUS_GEO_ENABLED="0"
 export ANALYTICS_ARCHIVING_ENABLED="1"

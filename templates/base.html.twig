@@ -55,8 +55,8 @@
     <script src="{{ asset('theme-preference.js') }}"></script>
     <link rel="stylesheet" href="{{ asset('styles/vendor/bulma/bulma.min.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="{{ path('app_branding_theme') }}">
     <link rel="stylesheet" href="{{ asset('styles/app.css') }}">
+    <link rel="stylesheet" href="{{ path('app_branding_theme') }}">
     {% block stylesheets %}{% endblock %}
     {% block javascripts %}{{ importmap('app') }}{% endblock %}
 </head>
@@ -81,5 +81,8 @@
             {% block body %}{% endblock %}
         </div>
     </section>
+
+    {% include 'partials/footer/footer.html.twig' %}
+
 </body>
 </html>

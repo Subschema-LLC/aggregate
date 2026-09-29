@@ -33,6 +33,8 @@ final class HowItWorksControllerTest extends WebTestCase
         self::assertSelectorTextContains('h1', 'How Aggregate Analytics Works');
         self::assertSelectorTextContains('body', 'Anonymous mode');
         self::assertSelectorTextContains('body', 'Enhanced analytics');
+        self::assertSelectorTextContains('body', 'Strict Collection Profile');
+        self::assertSelectorTextContains('body', 'collection_profile: strict');
         self::assertSelectorTextContains('body', 'config/goals.yaml');
         self::assertSelectorTextContains('body', 'Drops a disallowed goal without dropping the event');
         self::assertSelectorExists('a[href="/how-it-works/data-visualization"]');

@@ -14,6 +14,10 @@ consent_script_controller:
     resource: ../src/Controller/ConsentScriptController.php
     type: attribute
 
+standalone_consent_script_controller:
+    resource: ../src/Controller/StandaloneConsentScriptController.php
+    type: attribute
+
 tag_script_controller:
     resource: ../src/Controller/TagScriptController.php
     type: attribute

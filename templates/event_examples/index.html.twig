@@ -18,6 +18,11 @@
         <div class="notification is-info">
             Replace the website token placeholder with a registered website's public ingestion token. Enhanced collection requires an actual consent choice; copying the example does not obtain consent.
         </div>
+        {% if bundle.examples.strict is defined %}
+            <div class="notification is-warning" role="status">
+                The strict collection profile is active. The server keeps only the page path, event name and an approved goal, so the anonymous and enhanced examples below are for reference only. The downloaded examples include the strict payload.
+            </div>
+        {% endif %}
         <p class="mb-4"><a class="button is-primary" href="{{ path('app_event_examples_download', {example: example_source}) }}">Download examples and consent rules</a></p>
         {% if recommended_model_yaml %}
             <div class="notification is-warning">Review and merge the recommended property definitions into your existing model before using this recipe. Do not replace unrelated model settings. Ecommerce properties require enhanced consent by default.</div>

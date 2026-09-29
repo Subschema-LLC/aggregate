@@ -1,0 +1,32 @@
+{% extends 'base.html.twig' %}
+{% block title %}Standalone consent | {{ app_branding.name }}{% endblock %}
+{% block body %}
+    <h1 class="title">Standalone banner and privacy requests</h1>
+    <p class="subtitle">{{ site.name }}</p>
+    <div class="content">
+        <p>This independent drop-in offers category choices, a browser opt-out signal, and an optional Formspree request form. Install one consent manager per page. Its settings are separate from the simple built-in banner.</p>
+        <p>Leave <code>formspree_endpoint</code> empty to disable requests. When enabled, Formspree is a third-party recipient of submitted email addresses and messages, plus connection metadata. Disclose that recipient in your privacy notice. The endpoint is public. Sending a request does not verify identity, delete history, or fulfill the request.</p>
+        <p>The banner signals choices to connected scripts. To prevent measurement before analytics consent, load the tracker only through a tag requiring <code>analytics</code>. Withdrawing enhanced consent removes tracker identifiers; anonymous collection can continue until the page is reloaded without the tracker. Other providers need their own cleanup.</p>
+    </div>
+    <div class="notification is-info is-light">
+        <strong>Regional examples are engineering guidance, not legal advice.</strong>
+        Use the packaged <code>micro-consent-dropins/examples/</code> configs for US, Canada, EU/EEA, UK, or a global conservative starting point. Read <code>docs/CONSENT-REGIONS.md</code> for local differences and review duties. No region is detected automatically. Default enhanced permission stays denied everywhere.
+    </div>
+    {% if error %}<div class="notification is-danger" role="alert" id="standalone-error">{{ error }}</div>{% endif %}
+    {% component 'Ui:Validation' with {action: path('app_standalone_consent', {siteId: site.id})} %}
+        {% block content %}
+            <input type="hidden" name="_token" value="{{ csrf_token('standalone_consent_' ~ site.id) }}">
+            <div class="field">
+                <label class="label" for="standalone-yaml">Standalone consent YAML</label>
+                <div class="control"><textarea class="textarea is-family-monospace" id="standalone-yaml" name="yaml" rows="18" required aria-describedby="standalone-help{% if error %} standalone-error{% endif %}"{% if error %} aria-invalid="true"{% endif %}>{{ yaml }}</textarea></div>
+                <p class="help" id="standalone-help">Only this mapping is saved to this website's YAML. Use HTTPS policy and Formspree URLs, literal booleans, and a new revision when purposes change. The 1–365 day lifetime is an operational review interval, not a legal rule. Labels must accurately describe your purposes.</p>
+            </div>
+            <button class="button is-primary" type="submit">Save standalone settings</button>
+        {% endblock %}
+    {% endcomponent %}
+    <div class="buttons mt-5">
+        <a class="button" href="{{ path('app_setup', {step: 3, website: site.token, consent_option: 'standalone'}) }}">Back to installation</a>
+        <a class="button" href="{{ path('app_setup_download', {kind: 'standalone-settings', website: site.token}) }}">Download YAML</a>
+        <a class="button" href="{{ path('app_setup_download', {kind: 'standalone-consent', website: site.token}) }}">Download standalone script</a>
+    </div>
+{% endblock %}

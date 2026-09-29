@@ -188,8 +188,14 @@
         </div>
     </form>
 
-    <div class="content mt-6">
-        <h2 class="title is-4">Reporting and configuration boundaries</h2>
+    <details class="box mt-6">
+        <summary class="has-text-weight-semibold">
+            <span class="icon-text">
+                <span class="icon has-text-info"><i class="fas fa-book-bookmark" aria-hidden="true"></i></span>
+                <span>Reporting and configuration boundaries</span>
+            </span>
+        </summary>
+        <div class="content mt-4">
         <p>
             <code>analytics_archive_events</code>, <code>analytics_archive_goals</code>, and <code>analytics_archive_geo_events</code>
             are private, unsuppressed aggregate tables. Their operational views—<code>analytics_archived_events_v1</code>,
@@ -207,5 +213,6 @@
             The same seven settings can be managed directly in YAML. Uppercase environment variables take precedence;
             controls with an active override are disabled here and omitted from the YAML update.
         </p>
-    </div>
+        </div>
+    </details>
 {% endblock %}

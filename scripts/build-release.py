@@ -31,6 +31,7 @@ ROOT_FILES = (
     "public/consent.js", "public/consent.min.js", "public/consent.css", "public/tag-manager.js", "public/tag-manager.min.js",
     "var/browser/consent.template.min.js", "var/browser/consent-manifest.json",
     "var/browser/tag-manager.template.min.js", "var/browser/tag-manager-manifest.json",
+    "var/browser/standalone-consent.template.min.js", "var/browser/standalone-consent-manifest.json",
 )
 CONFIG_FILES = (
     "aggregate.yaml.example", "websites.yaml.example", "bundles.php", "preload.php",
@@ -51,6 +52,11 @@ REQUIRED_FILES = (
     "var/browser/tag-manager.template.min.js", "var/browser/tag-manager-manifest.json",
     "config/aggregate.yaml.example", "config/websites.yaml.example", "config/services.yaml",
     "config/bundles.php", "src/Kernel.php", "importmap.php",
+    "var/browser/standalone-consent.template.min.js", "var/browser/standalone-consent-manifest.json",
+    "micro-consent-dropins/js/consent-ui.js", "micro-consent-dropins/js/consent-ui.min.js",
+    "micro-consent-dropins/js/aggregate-consent.js", "micro-consent-dropins/js/aggregate-consent.min.js",
+    "micro-consent-dropins/js/gtm-consent-mode.js", "micro-consent-dropins/js/gtm-consent-mode.min.js",
+    "micro-consent-dropins/css/consent-ui.css",
 )
 PRODUCTION_ENV = """# Aggregate release defaults. Configure .env.local before running /install.
 # Generate APP_SECRET with: openssl rand -hex 32
@@ -158,6 +164,15 @@ def validate_prepared_source(source):
         for relative, field in inputs:
             if hashlib.sha256(source_file(source, relative).read_bytes()).hexdigest() != browser.get(field):
                 raise ValueError("Browser assets are stale; run npm run build:js before packaging.")
+    standalone = read_json(source, "var/browser/standalone-consent-manifest.json")
+    for relative, field in (
+        ("micro-consent-dropins/js/consent-ui.js", "sourceSha256"),
+        ("micro-consent-dropins/js/aggregate-consent.js", "adapterSha256"),
+        ("micro-consent-dropins/css/consent-ui.css", "stylesheetSha256"),
+        ("var/browser/standalone-consent.template.min.js", "templateSha256"),
+    ):
+        if hashlib.sha256(source_file(source, relative).read_bytes()).hexdigest() != standalone.get(field):
+            raise ValueError("Standalone consent assets are stale; run npm run build:js before packaging.")
     asset_manifest = read_json(source, "public/assets/manifest.json")
     if not isinstance(asset_manifest, dict) or not asset_manifest:
         raise ValueError("Compiled Symfony assets are missing.")

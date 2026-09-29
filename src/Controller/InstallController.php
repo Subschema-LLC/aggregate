@@ -104,6 +104,16 @@ class InstallController extends AbstractController
                 return $this->redirectToRoute('app_install');
             }
 
+            // Glossary metadata is populated after migrations, never during kernel boot.
+            $glossaryResult = $application->run(new ArrayInput([
+                'command' => 'app:analytics:glossary:sync',
+                '--no-interaction' => true,
+            ]), new NullOutput());
+
+            if ($glossaryResult !== 0) {
+                $this->addFlash('warning', 'Database setup completed, but the BI glossary was not updated. Run php bin/console app:analytics:glossary:sync on the server for diagnostics.');
+            }
+
             $this->internalTrafficSettings->ensureShareToken();
 
             // Create admin user

@@ -2,11 +2,14 @@
 
 Aggregate Analytics provides technical privacy controls. Installing it does not, by itself, make a website compliant with GDPR, CCPA/CPRA, ePrivacy, PECR, COPPA, or any other law. The operator must determine the appropriate legal basis, disclosures, retention rules, consent behavior, and rights-request process for each deployment.
 
-This document is engineering guidance, not legal advice.
+This document is engineering guidance, not legal advice. For conservative
+per-region example configurations and their limits, see
+[Regional consent examples](CONSENT-REGIONS.md).
 
 [README](../README.md) · [Configuration](CONFIGURATION.md) · [Tracking and GTM](TRACKING.md) · [Contributing](../CONTRIBUTING.md)
 
 - [Measurement model](#measurement-model)
+- [Strict collection profile](#strict-collection-profile)
 - [Anonymous-mode events](#anonymous-mode-events)
 - [Custom properties and UTM consent](#custom-properties-and-utm-consent)
 - [Optional page depth](#optional-page-depth)
@@ -16,6 +19,7 @@ This document is engineering guidance, not legal advice.
 - [BI exposure and suppression](#bi-exposure-and-suppression)
 - [Administrative controls](#administrative-controls)
 - [Consent and consent-manager integration](#enhanced-analytics-consent)
+- [Independent consent controls and regional examples](#independent-consent-controls-and-regional-examples)
 - [Suggested notice language](#suggested-notice-language)
 - [Infrastructure and logging](#infrastructure-and-logging)
 - [Retention and privacy rights](#retention-and-privacy-rights)
@@ -63,6 +67,32 @@ The [roadmap](../ROADMAP.md#proposals-to-explore) proposes examples and reviewed
 reporting extensions for this approach. Preserve the
 [BI disclosure boundaries](#bi-exposure-and-suppression); do not join existing
 views to recover withheld detail.
+
+## Strict collection profile
+
+Set `collection_profile: strict` to reduce collection to what reporting a page view or named event requires. The default `standard` profile keeps the behavior described in the rest of this guide.
+
+| | Standard | Strict |
+| --- | --- | --- |
+| Stored privacy mode | `anonymous`, or `enhanced` after consent | Always `anonymous`; consent choices are ignored |
+| Kept for each event | Path, event name, goal, UTC hour, coarse referrer/device/viewport, optional geography, permitted properties | Sanitized path, event name, approved goal and UTC hour only |
+| `referrer_channel`, `device_class`, `viewport_bucket` | Coarse categories | Stored as `unknown` |
+| Geography | Optional local lookup | No lookup |
+| Custom properties, page depth, organization marker | As configured | Not collected |
+
+**In the browser**, the served tracker reads the current pathname to build the sanitized path and sends one request per event with credentials omitted and no referrer. It does not read screen or window size, `document.referrer` or the query string. It does not read, write or remove cookies, `localStorage` or `sessionStorage`, does not rewrite links or the address bar, and never sends consent state, identifiers or the organization marker. Identifiers or counters left in a browser by an earlier standard-profile visit are not removed, because removing them would itself touch storage; they are never read or sent.
+
+**On the server**, strict applies to every request, including stale scripts and direct API calls. Submitted consent states, identifiers, properties, page depth, markers, referrers, device and viewport values are discarded, the User-Agent header is not classified, and no geographic lookup runs. The kill switch, path exclusions, website domain rules and the short-lived per-IP rate-limit bucket still apply.
+
+**Configuration.** Choose the profile under **Collection controls**, in the active YAML configuration, or with the `COLLECTION_PROFILE` environment variable, which takes precedence. An unrecognized value fails closed: ingestion stops, and a served tracker treats anything other than `standard` as strict. Custom properties, page depth, geography and enhanced settings stay saved while strict is selected, so switching back restores them.
+
+**Static and CDN copies** of `aggregate.js` have no injected profile and default to standard. Opt them in with `data-collection-profile="strict"`, an inline `collectionProfile: 'strict'`, or `configure({collectionProfile: 'strict'})`; page configuration can never loosen a served strict profile. The server enforces strict either way, but only a strict-configured script avoids the browser reads listed above.
+
+**Other scripts are separate.** The optional consent drop-in, tag manager loader and organization-marker page keep their own documented storage. Strict changes only the Aggregate tracker and ingestion; review any consent tool or tags you still load.
+
+**Reporting.** The BI contract is unchanged. From the switch onward, referrer, device and viewport are `unknown` and enhanced rows stop, so cells merge and fewer are withheld. Mark the switch date in reports that compare periods.
+
+**What strict does not establish.** Strict minimizes what the tracker touches on a device; it does not make measurement consent-exempt everywhere. Under the EU ePrivacy Directive, the "strictly necessary" exemption concerns a service the visitor explicitly requested, and the EDPB treats scripts that instruct a browser to send information, including a request carrying the page path, as within Article 5(3) ([EDPB Guidelines 2/2023](https://www.edpb.europa.eu/system/files/documents/2024-10/edpb_guidelines_202302_technical_scope_art_53_eprivacydirective_v2_en_0.pdf)). Some regulators provide narrower audience-measurement exemptions with their own conditions, such as the [CNIL's](https://www.cnil.fr/fr/cookies-solutions-pour-les-outils-de-mesure-daudience) in France and the UK statistical-purposes exception added to PECR by the Data (Use and Access) Act 2025, which requires clear information and a simple, free way to object. Aggregate does not yet provide a visitor objection control; see the [roadmap](../ROADMAP.md). Collecting from a site's own backend, so that no script runs on the device, is also planned work. Treat strict as an input to the operator's assessment, not a conclusion.
 
 ## Anonymous-mode events
 
@@ -302,9 +332,34 @@ Both thresholds count occurrences, not distinct people, because anonymous-mode e
 
 Archiving does not weaken this routine-BI contract: the thresholded `bi_anonymous_*` views transparently combine eligible live and archived anonymous counts. The underlying `analytics_archive_events`, `analytics_archive_goals`, and `analytics_archive_geo_events` tables are private and unsuppressed. The operational `analytics_archived_events_v1`, `analytics_archived_pageviews_v1`, and `analytics_archived_goals_v1` views are also private and unsuppressed. Aggregation can reduce exposure, but a rare cell may still identify or single out a person in context; never grant these tables or operational views to routine BI roles by default.
 
+### Declared BI glossary
+
+Routine BI roles may also read the six `bi_dim_*_v1` views plus
+`bi_glossary_values_v1` and `bi_glossary_columns_v1`. These publish declared
+metadata, not event observations: the resolver and sync never read events,
+archives, or fact views, and all Intl countries and all continents are published
+regardless of traffic. Keep the backing `analytics_glossary` table private. See
+[the glossary contract and grants](BI-GLOSSARY.md#view-only-grants).
+
+Labels, groups, descriptions, and codes must not contain personal or identifying
+text. Declaring codes for a property with `consent_required: true` publishes
+those codes to routine BI users even when its event values live only in private
+views. Neither labels nor column definitions authorize collection or access to
+private facts. The optional administrator event-name finder samples only the
+latest 1,000 retained events, displays names without counts, and persists nothing
+until the administrator explicitly saves a declaration.
+
+Join one label row per code; filter localized metadata to one dimension and
+locale before joining. Keep a left join with a code fallback for undeclared names
+and deleted goal definitions. Summing visible cells by a glossary group still
+undercounts where suppression withheld cells; metadata cannot reconstruct hidden
+counts or establish legal anonymity. Invalid glossary configuration affects only
+metadata save/sync, not tracking, ingestion, or health checks.
+
 ## Administrative controls
 
 ```yaml
+collection_profile: standard
 anonymous_tracking_enabled: true
 anonymous_excluded_paths: []
 anonymous_geo_enabled: false
@@ -312,6 +367,7 @@ anonymous_geo_level: macro_region
 anonymous_geo_database_path: ""
 ```
 
+- `collection_profile: strict` limits every event to the sanitized path, event name and approved goal in anonymous mode; see [Strict collection profile](#strict-collection-profile). `COLLECTION_PROFILE` overrides it.
 - `anonymous_tracking_enabled: false` is the global collection kill switch for both privacy modes.
 - `anonymous_excluded_paths` lists paths or recursive globs rejected in both privacy modes.
 - `anonymous_geo_enabled` opts into local coarse geography for accepted events; a database path by itself does not enable it.
@@ -333,7 +389,7 @@ parameters:
             enabled: true
 ```
 
-Codes must match `[A-Za-z][A-Za-z0-9_.:-]{0,99}` and remain fixed and non-identifying. Set `anonymous: false` for an enhanced-only goal and `enabled: false` to stop future collection without erasing the definition's historical meaning. Restrict write access to this file and clear the production cache after a change.
+Codes must match `[A-Za-z][A-Za-z0-9_.:-]{0,99}` and remain fixed and non-identifying. Set `anonymous: false` for an enhanced-only goal and `enabled: false` to stop future collection without erasing the definition's historical meaning. Restrict write access to this file and clear the production cache after a change, then run `php bin/console app:analytics:glossary:sync --env=prod` to update published goal labels. Disable goals instead of deleting definitions when historical labels should remain available.
 
 The BI disclosure thresholds are stored directly in the singleton `analytics_privacy_settings` database row and have their own CSRF-protected admin form:
 
@@ -344,7 +400,7 @@ All three views read the database row directly, so dashboard changes take effect
 
 Archiving and deletion policy is separate and can be managed by administrators at `/dashboard/data-lifecycle`, in `config/aggregate.yaml`, or with uppercase environment-variable overrides. Environment-controlled values are read-only in the UI. Both actions are disabled by default, settings are strictly range-checked, and unsafe archive/retention ordering is rejected. Schedule `php bin/console app:analytics:maintain` externally; a saved policy does not run maintenance from a web request.
 
-Malformed YAML or invalid ingestion-control types fail closed: ingestion is disabled and the health endpoint reports a generic configuration error. Out-of-range database thresholds also fail closed because the views require values within their documented ranges.
+Malformed YAML, invalid ingestion-control types, or an unrecognized collection profile fail closed: ingestion is disabled and the health endpoint reports a generic configuration error. Out-of-range database thresholds also fail closed because the views require values within their documented ranges.
 
 ## Enhanced analytics consent
 
@@ -404,7 +460,10 @@ Initialize enhanced consent only from a recorded affirmative choice:
 </script>
 ```
 
-Adapt the API calls to your consent manager. Test these cases in a new browser profile:
+This direct-loading example permits anonymous measurement before consent.
+Use the [separate script gate](CONSENT-REGIONS.md#what-denial-and-withdrawal-actually-do)
+when all measurement must wait for permission. Adapt the API calls to your consent
+manager. For a direct installation, test these cases in a new browser profile:
 
 1. Before a choice, a page view and `emit('button_click', {...}, 'signup')` create anonymous-mode rows with no IDs and only explicitly permitted custom properties; the goal is retained only when its enabled definition permits anonymous use.
 2. Anonymous `created_at` values are UTC hour boundaries rather than exact event times.
@@ -415,11 +474,54 @@ Adapt the API calls to your consent manager. Test these cases in a new browser p
 7. Globally disabling collection or visiting an excluded route produces no event row.
 8. An unknown, disabled, or disallowed goal leaves the underlying event intact, returns `goal_not_allowed`, and produces a generic console warning that does not contain the submitted value.
 
+## Independent consent controls and regional examples
+
+The optional [MicroConsent banner](../micro-consent-dropins/README.md) is separate
+from the built-in CMP. It can run without this application or connect through
+optional adapters. Its settings live in each site's `standalone_consent` YAML;
+**Setup** offers it as a distinct installation choice. Optional categories start
+denied. A respected active GPC signal denies marketing and signals a do-not-sell
+choice; it never grants enhanced analytics, identifies applicable law, or controls
+an unconnected provider. The optional Google Consent Mode adapter sends signals
+only and never downloads Google; signals do not guarantee that denied providers
+send no network requests.
+
+The [global, EU/EEA, UK, Canada and US examples](CONSENT-REGIONS.md) use a
+conservative tracker tag with `consent: analytics`. Before the first grant, the
+tracker stays unloaded, including its anonymous mode. Remove direct tracker
+installations and duplicates for this gate to work. After a tracker has loaded,
+withdrawal still invokes the existing `setConsent(false)` behavior described
+above; reload after withdrawal so the denied tag stays unloaded. Already loaded
+providers need their own cleanup. No browser banner can erase past server events.
+
+Region names are documentation choices, not automatic legal policies. No visitor
+IP lookup or browser-language inference selects them. The UK's current PECR
+statistical exception has explicit limits; retaining raw individual events is a
+material consideration. National ePrivacy rules, Canadian consent/Quebec
+activation duties, and US state/purpose rules differ. The examples do not certify
+an exemption or legal anonymity. Keep geography and page depth off and UTMs
+consent-gated unless separately assessed.
+
+MicroConsent stores a preference record with a revision and configurable review
+lifetime; the default 180 days is not a statutory consent period or authenticated
+server-side consent receipt. An optional Formspree endpoint enables explicit
+user-submitted requests containing email, request type and message, without
+automatically attaching page URLs, tracking IDs, website tokens or event data.
+Formspree is a third-party recipient and also handles ordinary connection
+metadata. Disclose and review its processing, account retention and security.
+Submission does not verify identity, process a right, or delete data; the operator
+must manage and respond to requests separately. Browser consent choices do not
+require a Formspree submission.
+
 ## Suggested notice language
 
 Adapt this text to the deployment and have counsel review it:
 
 > We use self-hosted analytics to understand page usage, named interactions such as button clicks, and [configured goal categories such as signup or purchase]. Unless you accept enhanced analytics, each event is limited to a fixed event name, [an allowlisted goal category, when applicable], sanitized page path, coarse traffic-source and device categories, [specifically listed custom properties collected without enhanced consent, such as campaign medium], [a country/continent category derived locally from the request IP, if enabled], and a server-generated UTC hour bucket. The analytics event does not retain the source IP or use an analytics cookie or visitor/session identifier. This privacy-minimized measurement continues when enhanced analytics is rejected, except on routes we exclude from measurement.
+
+With the strict collection profile, adapt this shorter text instead:
+
+> We use self-hosted analytics that records, for each page view or named interaction, only the page address without query strings or identifier-like segments, a fixed event name, [an allowlisted goal category, when applicable], and the UTC hour in which it occurred. Our analytics script does not read screen size or where you came from, does not store or read cookies or other browser storage, and does not use identifiers. [Describe any separate consent tool or tags you load.]
 
 If page depth is enabled with tab session storage, also disclose its storage and meaning:
 
@@ -495,7 +597,8 @@ See [deployment updates](../DEPLOYMENT.md#updates) and the [database migration g
 - [ ] Review every `config/goals.yaml` definition; keep codes fixed, use `anonymous: false` where appropriate, and never treat rejection warnings as sensitive-data detection.
 - [ ] Review each consent-free custom property's actual values; prefer no more UTM detail than medium and document any override.
 - [ ] Review paths for personal or sensitive data and configure exclusions.
-- [ ] Decide whether anonymous-mode measurement is appropriate in each jurisdiction and context.
+- [ ] Decide whether anonymous-mode measurement is appropriate in each jurisdiction and context, and whether the strict collection profile better fits that assessment.
+- [ ] If you rely on strict collection, serve `aggregate.js` from this installation or opt static copies into strict, and review any consent tool or tags that still store data.
 - [ ] Document the legal basis for each processing purpose.
 - [ ] Use consent wording that distinguishes privacy-minimized measurement from enhanced analytics.
 - [ ] Make acceptance and rejection of enhanced analytics equally clear.
@@ -503,7 +606,8 @@ See [deployment updates](../DEPLOYMENT.md#updates) and the [database migration g
 - [ ] Publish retention periods and implement their enforcement.
 - [ ] Dry-run, schedule, and monitor `app:analytics:maintain`; verify backup and downstream deletion separately.
 - [ ] Provide a server-side rights-request process for enhanced data.
-- [ ] Restrict routine BI users to the approved `bi_anonymous_events_v1` and `bi_anonymous_goals_v1` views they need; keep raw `events` private.
+- [ ] Restrict routine BI users to the approved `bi_anonymous_*` fact views and `bi_dim_*`/`bi_glossary_*` metadata views they need; keep raw `events` and `analytics_glossary` private.
+- [ ] Review glossary codes and text for identifying information, especially declarations for consent-gated properties.
 - [ ] Validate `anonymous_min_cell_count` against event and goal volumes and re-identification risk.
 - [ ] If geography is enabled, document its legal basis and notice, prefer macro-region, and verify that only the local MMDB is used.
 - [ ] Restrict geography BI users to `bi_anonymous_geo_events_v1` and validate `anonymous_geo_min_cell_count`; remember that it counts events, not people.
@@ -518,6 +622,10 @@ See [deployment updates](../DEPLOYMENT.md#updates) and the [database migration g
 ### Does anonymous-mode measurement require consent?
 
 There is no universal answer. The design removes browser IDs, unapproved custom properties, full URLs/raw referrers, and exact analytics timestamps, but it still stores individual hour-bucketed event rows and may retain configured goal categories and consent-free properties. The operator must assess applicable law, regulator guidance, purpose, context, infrastructure metadata, and promises made to visitors. Consult qualified counsel.
+
+### Can a configuration make Aggregate "strictly necessary"?
+
+Not by itself. That classification depends on the purpose and the jurisdiction, not only on how little is collected. The [strict collection profile](#strict-collection-profile) minimizes what the tracker touches on a device, which can support a narrower audience-measurement exemption where one exists, but site measurement generally is not a service the visitor asked for. Consult qualified counsel for each market.
 
 ### What does Reject mean?
 

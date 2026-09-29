@@ -19,7 +19,7 @@ security:
             security: false
 
         script:
-            pattern: ^/(?:aggregate|consent-manager|lib|tms-lite/sites/[a-f0-9]{24}/lib|cmp-lite/sites/[a-f0-9]{24}/consent)\.js$
+            pattern: ^/(?:aggregate|consent-manager|lib|tms-lite/sites/[a-f0-9]{24}/lib|(?:cmp-lite|standalone-cmp)/sites/[a-f0-9]{24}/consent)\.js$
             security: false
 
         health:

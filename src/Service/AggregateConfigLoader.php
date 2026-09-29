@@ -424,7 +424,13 @@ class AggregateConfigLoader implements ResetInterface
             }
         }
 
-        return true;
+        // An unrecognized profile must not silently fall back to the broader
+        // standard collection; treat it like other invalid collection controls.
+        $profile = $this->hasEnvironmentOverride(CollectionProfile::KEY)
+            ? $this->getWithEnvFallback(CollectionProfile::KEY, CollectionProfile::STANDARD)
+            : ($config[CollectionProfile::KEY] ?? CollectionProfile::STANDARD);
+
+        return CollectionProfile::isValid($profile);
     }
 
     private function isBooleanLike(mixed $value): bool

@@ -121,6 +121,19 @@ final class EventExampleGenerator
                 ],
             ],
         ];
+        if ($this->settings->isStrictCollection()) {
+            // Keep the standard examples for reference, but put the payload the
+            // server will actually store first so it is not mistaken for them.
+            $bundle['examples'] = ['strict' => [
+                'consent_required' => false,
+                'payload' => [
+                    'websiteToken' => $common['websiteToken'],
+                    'eventName' => $common['eventName'],
+                    'pagePath' => $common['pagePath'],
+                ],
+            ]] + $bundle['examples'];
+            array_unshift($bundle['notes'], 'The strict collection profile is active. The server records every event anonymously and keeps only the sanitized page path, event name and an approved goal. It ignores consent state, identifiers, custom properties, page depth, the organization marker, referrer, device and viewport values, and performs no geographic lookup. The anonymous and enhanced examples below show standard-profile payloads for reference only.');
+        }
         if ($model[CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY]) {
             $bundle['notes'][] = 'page_sequence: 2 represents page depth two in the configured counter; asynchronous events reuse the current page number. The counter stops at '.CustomDataSettings::PAGE_SEQUENCE_MAXIMUM.' (meaning '.CustomDataSettings::PAGE_SEQUENCE_MAXIMUM.' or more). It is an unverified client-supplied value, not a visitor or session identifier, unique-page count, or reconstructed journey.';
             $bundle['notes'][] = $model[CustomDataSettings::PAGE_SEQUENCE_METHOD_KEY] === 'url_parameter'

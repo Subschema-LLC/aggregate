@@ -6,6 +6,10 @@ setup_controller:
     resource: ../src/Controller/SetupController.php
     type: attribute
 
+standalone_consent_controller:
+    resource: ../src/Controller/StandaloneConsentController.php
+    type: attribute
+
 tag_manager_controller:
     resource: ../src/Controller/TagManagerController.php
     type: attribute
@@ -20,6 +24,10 @@ data_lifecycle_controller:
 
 data_model_controller:
     resource: ../src/Controller/DataModelController.php
+    type: attribute
+
+bi_glossary_controller:
+    resource: ../src/Controller/BiGlossaryController.php
     type: attribute
 
 event_examples_controller:

@@ -214,6 +214,127 @@ GROUP BY
 HAVING SUM(`event_count`) >= `minimum_cell_count`;
 
 -- -----------------------------------------------------------------------------
+-- Declared BI glossary metadata. Never populate this table from event values.
+-- Views stay empty until: php bin/console app:analytics:glossary:sync
+-- Grant routine BI readers the views only, never the backing table.
+-- Binary collation preserves distinct case-sensitive declared codes.
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `analytics_glossary` (
+    `entry_type`          VARCHAR(16)  NOT NULL,
+    `subject`             VARCHAR(64)  NOT NULL,
+    `code`                VARCHAR(191) NOT NULL,
+    `locale`              VARCHAR(35)  NOT NULL,
+    `label`               VARCHAR(191) NOT NULL,
+    `label_locale`        VARCHAR(35)  DEFAULT NULL,
+    `group_label`         VARCHAR(191) DEFAULT NULL,
+    `description`         LONGTEXT     DEFAULT NULL,
+    `description_locale`  VARCHAR(35)  DEFAULT NULL,
+    `sort_order`          INT          NOT NULL,
+    `is_default_locale`   SMALLINT     NOT NULL,
+    `source`              VARCHAR(16)  NOT NULL,
+    `synced_at`           DATETIME     NOT NULL COMMENT '(DC2Type:datetime_immutable)',
+    PRIMARY KEY (`entry_type`, `subject`, `code`, `locale`),
+    KEY `IDX_GLOSSARY_DEFAULT` (`entry_type`, `subject`, `is_default_locale`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+DROP VIEW IF EXISTS bi_dim_event_name_v1;
+CREATE VIEW bi_dim_event_name_v1 AS
+SELECT
+    code AS event_name,
+    label AS event_name_label,
+    group_label AS event_name_group,
+    description AS event_name_description,
+    sort_order AS event_name_sort
+FROM analytics_glossary
+WHERE entry_type = 'value' AND subject = 'event_name' AND is_default_locale = 1;
+
+DROP VIEW IF EXISTS bi_dim_goal_event_v1;
+CREATE VIEW bi_dim_goal_event_v1 AS
+SELECT
+    code AS goal_event,
+    label AS goal_event_label,
+    group_label AS goal_event_group,
+    description AS goal_event_description,
+    sort_order AS goal_event_sort
+FROM analytics_glossary
+WHERE entry_type = 'value' AND subject = 'goal_event' AND is_default_locale = 1;
+
+DROP VIEW IF EXISTS bi_dim_referrer_channel_v1;
+CREATE VIEW bi_dim_referrer_channel_v1 AS
+SELECT
+    code AS referrer_channel,
+    label AS referrer_channel_label,
+    group_label AS referrer_channel_group,
+    description AS referrer_channel_description,
+    sort_order AS referrer_channel_sort
+FROM analytics_glossary
+WHERE entry_type = 'value' AND subject = 'referrer_channel' AND is_default_locale = 1;
+
+DROP VIEW IF EXISTS bi_dim_device_class_v1;
+CREATE VIEW bi_dim_device_class_v1 AS
+SELECT
+    code AS device_class,
+    label AS device_class_label,
+    group_label AS device_class_group,
+    description AS device_class_description,
+    sort_order AS device_class_sort
+FROM analytics_glossary
+WHERE entry_type = 'value' AND subject = 'device_class' AND is_default_locale = 1;
+
+DROP VIEW IF EXISTS bi_dim_viewport_bucket_v1;
+CREATE VIEW bi_dim_viewport_bucket_v1 AS
+SELECT
+    code AS viewport_bucket,
+    label AS viewport_bucket_label,
+    group_label AS viewport_bucket_group,
+    description AS viewport_bucket_description,
+    sort_order AS viewport_bucket_sort
+FROM analytics_glossary
+WHERE entry_type = 'value' AND subject = 'viewport_bucket' AND is_default_locale = 1;
+
+DROP VIEW IF EXISTS bi_dim_geo_area_v1;
+CREATE VIEW bi_dim_geo_area_v1 AS
+SELECT
+    code AS geo_area,
+    label AS geo_area_label,
+    group_label AS geo_area_group,
+    description AS geo_area_description,
+    sort_order AS geo_area_sort,
+    CASE WHEN code LIKE 'country:%' THEN 'country' ELSE 'continent' END AS geo_level
+FROM analytics_glossary
+WHERE entry_type = 'value' AND subject = 'geo_area' AND is_default_locale = 1;
+
+DROP VIEW IF EXISTS bi_glossary_values_v1;
+CREATE VIEW bi_glossary_values_v1 AS
+SELECT
+    subject AS dimension,
+    code,
+    locale,
+    label,
+    label_locale,
+    CASE WHEN label_locale = locale THEN 0 ELSE 1 END AS is_fallback,
+    group_label,
+    description,
+    sort_order,
+    is_default_locale
+FROM analytics_glossary
+WHERE entry_type = 'value';
+
+DROP VIEW IF EXISTS bi_glossary_columns_v1;
+CREATE VIEW bi_glossary_columns_v1 AS
+SELECT
+    subject AS object_name,
+    code AS column_name,
+    locale,
+    label,
+    label_locale,
+    CASE WHEN label_locale = locale THEN 0 ELSE 1 END AS is_fallback,
+    description,
+    is_default_locale
+FROM analytics_glossary
+WHERE entry_type = 'column';
+
+-- -----------------------------------------------------------------------------
 -- users (dashboard login)
 -- Optional if running API-only/headless mode with dashboard disabled.
 -- -----------------------------------------------------------------------------
@@ -265,7 +386,8 @@ INSERT IGNORE INTO `doctrine_migration_versions` (`version`, `executed_at`, `exe
     ('DoctrineMigrations\\Version20260724001000', NOW(), 0),
     ('DoctrineMigrations\\Version20260724001500', NOW(), 0),
     ('DoctrineMigrations\\Version20260724002000', NOW(), 0),
-    ('DoctrineMigrations\\Version20260828000000', NOW(), 0);
+    ('DoctrineMigrations\\Version20260828000000', NOW(), 0),
+    ('DoctrineMigrations\\Version20260928000000', NOW(), 0);
 
 -- =============================================================================
 -- Done.
@@ -273,6 +395,8 @@ INSERT IGNORE INTO `doctrine_migration_versions` (`version`, `executed_at`, `exe
 --   1) configure .env/.env.local (DATABASE_URL, APP_SECRET, MESSENGER_TRANSPORT_DSN)
 --   2) apply newer migrations: php bin/console doctrine:migrations:migrate -n
 --   3) configure config/aggregate.yaml and review config/goals.yaml
+--      then clear production cache and run: php bin/console app:analytics:glossary:sync
+--      (repeat sync after each migration run or glossary/goal configuration change)
 --   4) configure BI disclosure thresholds in the admin dashboard if defaults are unsuitable
 --   5) create website token(s): php bin/console app:create-website
 -- =============================================================================

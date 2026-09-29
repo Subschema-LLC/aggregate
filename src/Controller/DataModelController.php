@@ -6,6 +6,7 @@ namespace App\Controller;
 
 use App\Service\AggregateConfigLoader;
 use App\Service\CustomDataSettings;
+use App\Service\Glossary\GlossarySync;
 use App\Service\InternalTrafficSettings;
 use App\Service\ReportingViewManager;
 use Psr\Log\LoggerInterface;
@@ -23,6 +24,7 @@ final class DataModelController extends AbstractController
         private readonly CustomDataSettings $settings,
         private readonly ReportingViewManager $views,
         private readonly LoggerInterface $logger,
+        private readonly GlossarySync $glossary,
     ) {
     }
 
@@ -182,6 +184,12 @@ final class DataModelController extends AbstractController
         try {
             $names = $this->views->regenerate();
             $this->addFlash('success', 'Regenerated '.implode(', ', $names).'.');
+            try {
+                $this->glossary->sync();
+            } catch (\Throwable $error) {
+                $this->logFailure('glossary_sync', $error);
+                $this->addFlash('warning', 'Reporting views were regenerated, but the BI glossary was not synced. Run php bin/console app:analytics:glossary:sync after correcting its configuration or database issue.');
+            }
         } catch (\InvalidArgumentException $e) {
             $this->addFlash('error', $e->getMessage());
         } catch (\Throwable $e) {

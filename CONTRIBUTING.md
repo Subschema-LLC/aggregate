@@ -112,6 +112,11 @@ Treat these as constraints on implementation and documentation:
   behavior when live and archived counts are combined.
   The separate `analytics_custom_*` views project unsuppressed retained events;
   treat them as private raw-data access and preserve the existing BI contracts.
+- **Glossary metadata is declared, never observed.** The glossary resolver and
+  sync must never read events, archives, or reporting facts. Publish complete
+  built-in lists and explicit configuration only; keep administrator suggestions
+  bounded, explicit, and unsaved until review. Metadata errors must not affect
+  tracking, ingestion, or health checks. See [BI glossary](docs/BI-GLOSSARY.md).
 - **Thresholds count events, not people.** A single person can contribute multiple
   events to a cell. Do not describe suppression as a unique-visitor minimum,
   k-anonymity, or proof that data is legally anonymous. Raw events, archive tables,
@@ -191,6 +196,7 @@ databases, then initialize the schema:
 
 ```bash
 php bin/console doctrine:migrations:migrate -n
+php bin/console app:analytics:glossary:sync
 php bin/console app:create-website
 ```
 

@@ -56,9 +56,33 @@
             <p class="help">For private reporting columns, add <code>page_sequence</code> as an Integer property with “Allow without consent”. Its collection is controlled by this switch. Supplied event properties and ordinary query mappings cannot override it; only the URL method reads the reserved sequence parameter.</p>
         </section>
         <section class="box">
-            <h2 class="title is-4">Custom data configurations</h2>
+            <div class="level mb-2">
+                <div class="level-left">
+                    <h2 class="title is-4 mb-0">Custom data configurations</h2>
+                </div>
+                <div class="level-right">
+                    <div class="buttons are-small mb-0">
+                        <button type="button" class="button is-light" data-action="pages--data-model--index#expandAllProperties">
+                            <span class="icon"><i class="fas fa-angles-down" aria-hidden="true"></i></span>
+                            <span>Expand all</span>
+                        </button>
+                        <button type="button" class="button is-light" data-action="pages--data-model--index#collapseAllProperties">
+                            <span class="icon"><i class="fas fa-angles-up" aria-hidden="true"></i></span>
+                            <span>Collapse all</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
             <p>Expand a custom data JSON property to edit its type, consent, and optional reporting columns. Property names are literal top-level JSON keys. Leave both reporting columns empty to collect a property without exposing it in custom reporting views. Explicitly allowing a property without consent adds it to the server-enforced anonymous whitelist.</p>
             <p class="help mb-3">Descriptions belong to the shared implementation model. Values must be flat strings, numbers, booleans, or null; nested data is discarded. Unlisted custom properties still require enhanced consent. The organization marker <code>{{ marker_name|default('orgInternalTraffic') }}</code> remains controlled by the browser marker and is always allowed in anonymous mode.</p>
+            {% if model.custom_data_properties|length > 2 %}
+                <div class="field mb-3">
+                    <div class="control has-icons-left">
+                        <input type="search" class="input is-small is-rounded" placeholder="Filter properties..." aria-label="Filter properties" data-action="input->pages--data-model--index#filterProperties">
+                        <span class="icon is-small is-left"><i class="fas fa-search" aria-hidden="true"></i></span>
+                    </div>
+                </div>
+            {% endif %}
             <div id="property-rows" data-pages--data-model--index-target="propertyRows">
                 {% for key, property in model.custom_data_properties %}
                     {{ component('DataModel:PropertyRow', {index: loop.index0, key: key, property: property, open: key == unsaved_property}) }}

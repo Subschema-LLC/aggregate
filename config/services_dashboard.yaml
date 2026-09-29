@@ -9,10 +9,12 @@ services:
 
     App\Controller\DashboardController: ~
     App\Controller\SetupController: ~
+    App\Controller\StandaloneConsentController: ~
     App\Controller\TagManagerController: ~
     App\Controller\BrowserAssetsController: ~
     App\Controller\DataLifecycleController: ~
     App\Controller\DataModelController: ~
+    App\Controller\BiGlossaryController: ~
     App\Controller\EventExamplesController: ~
     App\Controller\FeatureFlagsController: ~
     App\Controller\InternalTrafficController: ~

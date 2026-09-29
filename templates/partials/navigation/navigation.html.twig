@@ -2,7 +2,7 @@
 {% if app.user %}
     {{ component('Layout:Navigation', {navigation: navigation_menu(main_navigation), username: app.user.username}) }}
 {% else %}
-    <nav class="navbar is-dark app-navigation" aria-label="public navigation">
+    <nav class="navbar is-dark app-navigation has-shadow" aria-label="public navigation">
         <div class="navbar-brand">
             <a class="navbar-item" href="{{ path('app_home') }}">
                 {{ component('Branding:Identity', {branding: app_branding}) }}

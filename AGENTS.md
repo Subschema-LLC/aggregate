@@ -104,6 +104,13 @@ completed time buckets, minimum event counts, geography pooling and secondary
 suppression, including when live and archived data are combined. Thresholds
 count events, not people; they are not a guarantee of legal anonymity.
 
+The six `bi_dim_*_v1` views plus `bi_glossary_values_v1` and
+`bi_glossary_columns_v1` are approved metadata contracts; keep their backing
+`analytics_glossary` table private. Publish only built-in codes and declared
+configuration, never observed events or archive values. Glossary sync is explicit
+and must not affect collection or health configuration validation. See
+[BI-GLOSSARY.md](docs/BI-GLOSSARY.md) for locales, grants, and publishing limits.
+
 Raw `events`, archive tables, unsuppressed operational views, and
 `analytics_custom_*` projections are private inputs. Custom-property projections
 must not weaken the existing anonymous BI contracts or silently expose new data.

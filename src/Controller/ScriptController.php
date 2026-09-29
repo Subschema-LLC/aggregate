@@ -3,6 +3,7 @@
 namespace App\Controller;
 
 use App\Service\AggregateConfigLoader;
+use App\Service\CollectionProfile;
 use App\Service\CustomDataSettings;
 use App\Service\InternalTrafficSettings;
 use Symfony\Component\HttpFoundation\Request;
@@ -40,6 +41,7 @@ class ScriptController
             '__AGGREGATE_NAMESPACE__' => json_encode($namespace, $jsonFlags),
             '__AGGREGATE_INTERNAL_TRAFFIC__' => json_encode($this->internalTraffic->toBrowserConfig(), $jsonFlags),
             '__AGGREGATE_CUSTOM_DATA__' => json_encode($this->customData->toBrowserConfig(), $jsonFlags),
+            '__AGGREGATE_COLLECTION__' => json_encode((new CollectionProfile($this->config))->toBrowserConfig(), $jsonFlags),
         ];
         $minified = $request?->query->get('min') === '1' ? $this->minifiedTemplate($content) : null;
         if ($minified !== null) {
@@ -49,6 +51,7 @@ class ScriptController
                 "var namespace = 'Aggregate';" => 'var namespace = '.$values['__AGGREGATE_NAMESPACE__'].';',
                 "var internalTrafficDefaults = {storage: 'cookie', name: 'orgInternalTraffic', value: 'true', cookieDomain: ''};" => 'var internalTrafficDefaults = '.$values['__AGGREGATE_INTERNAL_TRAFFIC__'].';',
                 "var customDataDefaults = {queryParameters: {utm_source: 'utm_source', utm_medium: 'utm_medium', utm_campaign: 'utm_campaign', utm_term: 'utm_term', utm_content: 'utm_content', utm_id: 'utm_id'}, consentFreeProperties: []};" => 'var customDataDefaults = '.$values['__AGGREGATE_CUSTOM_DATA__'].';',
+                "var collectionDefaults = {profile: 'standard'};" => 'var collectionDefaults = '.$values['__AGGREGATE_COLLECTION__'].';',
             ]);
         }
 
@@ -76,7 +79,7 @@ class ScriptController
                 || ($manifest['templateSha256'] ?? null) !== hash('sha256', $template)) {
                 return null;
             }
-            foreach (['__AGGREGATE_NAMESPACE__', '__AGGREGATE_INTERNAL_TRAFFIC__', '__AGGREGATE_CUSTOM_DATA__'] as $placeholder) {
+            foreach (['__AGGREGATE_NAMESPACE__', '__AGGREGATE_INTERNAL_TRAFFIC__', '__AGGREGATE_CUSTOM_DATA__', '__AGGREGATE_COLLECTION__'] as $placeholder) {
                 if (!str_contains($template, $placeholder)) {
                     return null;
                 }
