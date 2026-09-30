@@ -161,12 +161,33 @@ jobs:
             port: 5432
             extensions: pdo_pgsql
             health: --health-cmd="pg_isready -U aggregate" --health-interval=5s --health-timeout=5s --health-retries=30
+          # SQL Server images differ in their bundled tools, so readiness is
+          # polled by the database preparation step instead of a health check.
           - database: SQL Server 2022
             driver: sqlsrv
             image: mcr.microsoft.com/mssql/server:2022-latest
             port: 1433
             extensions: sqlsrv, pdo_sqlsrv
-            health: --health-cmd="/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P Aggregate2026e2e -Q 'SELECT 1'" --health-interval=10s --health-timeout=5s --health-retries=30
+            health: ''
+          - database: SQL Server 2022, sqlsrv driver
+            driver: sqlsrv
+            native: '1'
+            image: mcr.microsoft.com/mssql/server:2022-latest
+            port: 1433
+            extensions: sqlsrv, pdo_sqlsrv
+            health: ''
+          - database: SQL Server 2019
+            driver: sqlsrv
+            image: mcr.microsoft.com/mssql/server:2019-latest
+            port: 1433
+            extensions: sqlsrv, pdo_sqlsrv
+            health: ''
+          - database: SQL Server 2017
+            driver: sqlsrv
+            image: mcr.microsoft.com/mssql/server:2017-latest
+            port: 1433
+            extensions: sqlsrv, pdo_sqlsrv
+            health: ''
     services:
       database:
         # An empty image skips the service (SQLite needs none).
@@ -227,7 +248,18 @@ jobs:
           <?php
           try {
               echo 'PDO drivers: ', implode(', ', PDO::getAvailableDrivers()), "\n";
-              $server = new PDO('sqlsrv:Server=127.0.0.1,1433;TrustServerCertificate=1', 'sa', 'Aggregate2026e2e', [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+              for ($attempt = 1; ; ++$attempt) {
+                  try {
+                      $server = new PDO('sqlsrv:Server=127.0.0.1,1433;TrustServerCertificate=1;LoginTimeout=5', 'sa', 'Aggregate2026e2e', [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+                      break;
+                  } catch (PDOException $e) {
+                      if ($attempt >= 40) {
+                          throw $e;
+                      }
+                      sleep(3);
+                  }
+              }
+              echo $server->query('SELECT @@VERSION')->fetchColumn(), "\n";
               $server->exec('CREATE DATABASE aggregate');
               $server->exec("CREATE LOGIN aggregate WITH PASSWORD = 'E2e p@ss''%w0rd', CHECK_POLICY = OFF");
               $server->exec('ALTER AUTHORIZATION ON DATABASE::aggregate TO aggregate');
@@ -246,6 +278,7 @@ jobs:
           AGGREGATE_E2E_DB_USER: aggregate
           AGGREGATE_E2E_DB_PASSWORD: ${{ matrix.driver == 'sqlsrv' && 'E2e p@ss''%w0rd' || 'E2e-p@ss%w0rd' }}
           AGGREGATE_E2E_TRUST_CERTIFICATE: '1'
+          AGGREGATE_E2E_SQLSRV_NATIVE: ${{ matrix.native || '0' }}
         run: php tests/Integration/fresh-install.php
 
   # Require this stable check in branch protection; matrix changes won't require

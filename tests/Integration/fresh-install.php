@@ -48,6 +48,8 @@ $base = 'http://127.0.0.1:'.$port;
 final class E2E
 {
     public static int $failures = 0;
+    /** @var array<string, int|string> */
+    public static array $summary = [];
     public static ?Process $server = null;
     public static string $root = '';
 
@@ -218,6 +220,17 @@ E2E::step('setup page: connect the database', static function () use ($browser, 
     E2E::check(str_ends_with((string) $browser->getHistory()->current()->getUri(), '/install'), 'Expected /install next. '.pageProblem($browser));
 });
 
+if (getenv('AGGREGATE_E2E_SQLSRV_NATIVE') === '1') {
+    E2E::step('switch to the native sqlsrv driver', static function () use ($root): void {
+        // The setup page writes mssql:// (pdo_sqlsrv); sqlsrv:// selects Doctrine's
+        // driver for Microsoft's sqlsrv extension, which the docs also describe.
+        $environment = (string) file_get_contents($root.'/.env.local');
+        $native = str_replace("DATABASE_URL='mssql://", "DATABASE_URL='sqlsrv://", $environment);
+        E2E::check($native !== $environment, 'The setup page did not write an mssql:// URL.');
+        file_put_contents($root.'/.env.local', $native);
+    });
+}
+
 E2E::step('/install: create the administrator (runs the migrations)', static function () use ($browser, $root): void {
     $crawler = $browser->getCrawler();
     E2E::check($crawler->filter('input[name=admin_username]')->count() === 1, 'Expected the administrator form. '.pageProblem($browser));
@@ -351,6 +364,7 @@ E2E::step('every dashboard page renders', static function () use ($browser, $bas
     }
     E2E::check($broken === [], "Broken pages:\n".implode("\n", $broken));
     printf("      (%d pages)\n", count($links));
+    E2E::$summary['pages'] = count($links);
 });
 
 E2E::step('save the BI thresholds from the dashboard', static function () use ($browser, $base, $root): void {
@@ -401,6 +415,7 @@ E2E::step('reporting views return the expected cells', static function () use ($
     }
     E2E::check((int) $db->fetchOne("SELECT COUNT(*) FROM analytics_custom_pageviews_v1 WHERE page_path = '/pricing'") === 6, 'analytics_custom_pageviews_v1 lacks the /pricing views.');
     printf("      (%d views)\n", count($names));
+    E2E::$summary['views'] = count($names);
 });
 
 E2E::step('small cells are suppressed', static function () use ($root, $collect): void {
@@ -426,5 +441,15 @@ E2E::step('retention deletes expired data', static function () use ($root): void
     E2E::check((int) $db->fetchOne("SELECT COUNT(*) FROM events WHERE url = '/pricing'") === 6, 'Recent events were deleted.');
 });
 
+$version = (string) connection($root)->fetchOne(match ($driver) {
+    'mysql' => 'SELECT VERSION()',
+    'pgsql' => 'SHOW server_version',
+    'sqlsrv' => "SELECT CAST(SERVERPROPERTY('ProductVersion') AS NVARCHAR(128))",
+    default => 'SELECT sqlite_version()',
+});
 E2E::stop();
-echo "Fresh install on {$driver}: all steps passed\n";
+$summary = sprintf('All steps passed on %s %s (%s): %d dashboard pages, %d views.', $driver, $version, connection($root)->getParams()['driver'] ?? '?', E2E::$summary['pages'] ?? 0, E2E::$summary['views'] ?? 0);
+echo "Fresh install on {$driver}: {$summary}\n";
+if (getenv('GITHUB_ACTIONS') === 'true') {
+    echo '::notice title=Fresh install ('.$driver.')::'.$summary."\n";
+}
