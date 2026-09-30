@@ -1,0 +1,19 @@
+/* Ui:DocsLink: a small link to the matching documentation page. */
+.docs-link {
+    font-size: 0.875rem;
+    margin-bottom: 1rem;
+}
+
+/* Keep a page's documentation link beside its subtitle. */
+.subtitle + .docs-link {
+    margin-top: -0.75rem;
+}
+
+.docs-link a {
+    text-underline-offset: 0.15em;
+}
+
+.docs-link a:hover,
+.docs-link a:focus-visible {
+    text-decoration: underline;
+}

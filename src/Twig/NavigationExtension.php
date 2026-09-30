@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Twig;
 
+use App\Service\DocumentationLinks;
 use Symfony\Component\Routing\Exception\ExceptionInterface as RoutingException;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Security\Core\Authorization\AuthorizationCheckerInterface;
@@ -21,6 +22,7 @@ final class NavigationExtension extends AbstractExtension
         private readonly UrlGeneratorInterface $urls,
         private readonly array $quickSearchSynonyms = [],
         private readonly array $quickSearchExtraItems = [],
+        private readonly ?DocumentationLinks $documentation = null,
     ) {}
 
     public function getFunctions(): array
@@ -77,7 +79,7 @@ final class NavigationExtension extends AbstractExtension
 
         if (array_key_exists('children', $item)) {
             // One level only, and a group is a disclosure label rather than a link.
-            if (!$allowGroup || array_key_exists('route', $item) || array_key_exists('url', $item)
+            if (!$allowGroup || $this->destinationCount($item) !== 0
                 || !is_array($item['children']) || !array_is_list($item['children'])) {
                 return null;
             }
@@ -92,12 +94,20 @@ final class NavigationExtension extends AbstractExtension
             return $children === [] ? null : [...$normalized, 'children' => $children];
         }
 
-        $hasRoute = array_key_exists('route', $item);
-        if ($hasRoute === array_key_exists('url', $item)) {
+        if ($this->destinationCount($item) !== 1) {
             return null;
         }
+        $hasRoute = array_key_exists('route', $item);
+        $external = false;
         $url = null;
-        if ($hasRoute) {
+        if (array_key_exists('docs', $item)) {
+            // A documentation topic; hidden when documentation links are turned off.
+            if (!DocumentationLinks::hasTopic($item['docs'])
+                || ($url = $this->documentation?->url($item['docs'])) === null) {
+                return null;
+            }
+            $external = true;
+        } elseif ($hasRoute) {
             $route = $this->text($item['route']);
             $parameters = $item['route_parameters'] ?? [];
             if ($route === null || !$this->validParameters($parameters)) {
@@ -125,10 +135,17 @@ final class NavigationExtension extends AbstractExtension
         return [
             ...$normalized,
             'url' => $enabled ? $url : null,
+            'external' => $external,
             'logout' => ($item['route'] ?? null) === 'app_logout'
                 || (is_string($url) && str_starts_with($url, '/') && !str_starts_with($url, '//')
                     && parse_url($url, PHP_URL_PATH) === '/logout'),
         ];
+    }
+
+    /** Destinations defined on a link: exactly one of route, url or docs (a documentation topic). */
+    private function destinationCount(array $item): int
+    {
+        return count(array_intersect(['route', 'url', 'docs'], array_keys($item)));
     }
 
     private function text(mixed $value): ?string

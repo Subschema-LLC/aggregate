@@ -5,7 +5,8 @@
 {% block body %}
 <div class="settings-page">
 <h1 class="title">General settings</h1>
-<p class="subtitle">Configure the public endpoint, tracker namespace, and request budget.</p>
+<p class="subtitle">Configure the public endpoint, tracker namespace, request budget, and documentation links.</p>
+{{ component('Ui:DocsLink', {topic: 'configuration.application', label: 'Application settings reference'}) }}
 <div class="box">
 <div class="columns">
     <div class="column is-7-desktop">
@@ -23,6 +24,20 @@
                     </span>
                 </div>
                 <p class="help">Public URL where this app is hosted. Used for JS generation and documentation.</p>
+            </div>
+
+            <div class="field">
+                <label class="label" for="documentation-url">Documentation URL</label>
+                <div class="control has-icons-left">
+                    <input class="input" type="url" id="documentation-url" name="documentation_url" value="{{ documentation_url }}" maxlength="2048" placeholder="Empty: no documentation links" aria-describedby="documentation-url-help"{% if documentation_url_overridden %} disabled{% endif %}>
+                    <span class="icon is-small is-left">
+                        <i class="fas fa-book-open"></i>
+                    </span>
+                </div>
+                <p class="help" id="documentation-url-help">
+                    Where documentation links open. Leave it empty to hide them. Default: <code>{{ documentation_default_url }}</code>
+                    {% if documentation_url_overridden %}<strong>Set by the <code>DOCUMENTATION_URL</code> environment variable</strong>, which takes precedence over this field.{% endif %}
+                </p>
             </div>
 
             <div class="field">
@@ -78,7 +93,8 @@
     <div class="notification is-light">
         <p>The worker runs outside the dashboard and should be managed by Docker, systemd, or Supervisor.</p>
         <p class="mt-2"><strong>Command:</strong> <code>php bin/console messenger:consume async --time-limit=3600 --memory-limit=128M</code></p>
-        <p class="help mt-2">See <code>docs/systemd/aggregate-worker.service</code> or <code>docs/supervisor/aggregate-worker.conf</code> for production examples.</p>
+        <p class="help mt-2">Example service files are in the application folder: <code>docs/systemd/aggregate-worker.service</code> and <code>docs/supervisor/aggregate-worker.conf</code>.</p>
+        {{ component('Ui:DocsLink', {topic: 'install.worker', label: 'Worker setup guide', class: 'mt-2'}) }}
     </div>
 </details>
 </div>

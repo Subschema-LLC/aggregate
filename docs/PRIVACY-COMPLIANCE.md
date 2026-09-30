@@ -288,7 +288,7 @@ SELECT * FROM events WHERE privacy_mode = 'enhanced' AND event_name = 'view';
 SELECT * FROM events WHERE privacy_mode = 'enhanced' AND event_name != 'view';
 ```
 
-The view dimensions and suppression rules are described below. See the [database guide](DATABASE.md) for connection strings, engine-specific setup, and migration compatibility. Website registrations remain in `config/websites.yaml`, outside the event tables.
+The view dimensions and suppression rules are described below. [Connect a BI tool](BI-CONNECTION.md) lists every column with safe query patterns and a connection checklist, and the [database guide](DATABASE.md) covers connection strings, engine-specific setup, and migration compatibility. Website registrations remain in `config/websites.yaml`, outside the event tables.
 
 ## BI exposure and suppression
 

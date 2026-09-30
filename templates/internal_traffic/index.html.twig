@@ -5,6 +5,7 @@
 {% block body %}
     <h1 class="title">Organization traffic</h1>
     <p class="subtitle">Give team members a shared browser marker so their visits can be filtered in Power BI or Tableau.</p>
+    {{ component('Ui:DocsLink', {topic: 'privacy.organization-traffic', label: 'Organization traffic guide'}) }}
 
     {% if configuration_error %}<div class="notification is-danger" role="alert">{{ configuration_error }}</div>{% endif %}
 

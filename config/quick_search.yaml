@@ -179,16 +179,24 @@ parameters:
         - experimental
         - toggle
         - capabilities
-    'Documentation':
-      description: 'Architecture, anonymous mode, strict mode, and enhanced analytics'
+    'How it works':
+      description: 'Overview of anonymous mode, strict mode, and enhanced analytics'
       synonyms:
         - how it works
-        - docs
-        - documentation
-        - privacy guide
+        - privacy
         - architecture
         - overview
         - strict mode
         - strict profile
+    'Documentation':
+      description: 'Searchable guides for installation, tracking, privacy, and BI reporting'
+      synonyms:
+        - docs
+        - documentation
+        - guide
+        - manual
+        - help
+        - knowledge base
+        - privacy guide
 
   app.quick_search_extra_items: []

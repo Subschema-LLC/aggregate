@@ -8,6 +8,7 @@
         <div class="level-left"><div>
             <h1 class="title">Setup</h1>
             <p class="subtitle">Connect a website, review collection, and install your scripts.</p>
+            {{ component('Ui:DocsLink', {topic: 'tracking.setup', label: 'Setup guide'}) }}
         </div></div>
         <div class="level-right"><button type="button" class="button" id="setup-tour-start" data-pages--setup--index-target="start" data-action="pages--setup--index#start" hidden>Show me this step</button></div>
     </div>
@@ -114,7 +115,7 @@
                 <a class="button" href="{{ path('app_setup_download', query|merge({kind: 'standalone-consent', min: '1'})) }}">Download compact script</a>
                 <a class="button" href="{{ path('app_setup_download', query|merge({kind: 'standalone-settings'})) }}">Download YAML</a>
             </div>
-            <p class="help">Regional examples in micro-consent-dropins/examples/ and docs/CONSENT-REGIONS.md are engineering guidance, not legal advice. Use an analytics consent gate for the entire tracker when no measurement before consent is required.</p>
+            <p class="help">The regional examples in <code>micro-consent-dropins/examples/</code> and the {% if docs_url('consent.regions') %}<a href="{{ docs_url('consent.regions') }}" target="_blank" rel="noopener noreferrer">regional consent guide<span class="is-sr-only"> (opens in a new tab)</span></a>{% else %}regional consent guide (<code>docs/CONSENT-REGIONS.md</code>){% endif %} are engineering guidance, not legal advice. Use an analytics consent gate for the entire tracker when no measurement before consent is required.</p>
         </div>
         {% elseif consent_option == 'builtin' %}
         <details class="mt-5">

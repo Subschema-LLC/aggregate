@@ -23,6 +23,8 @@ final class FirstRunSetup
 {
     /** Mirrors App\Service\AppBranding::DEFAULT_NAME; branding is not configured yet. */
     public const PRODUCT_NAME = 'Aggregate Analytics';
+    /** Mirrors App\Service\DocumentationLinks::DEFAULT_URL; documentation_url is not configured yet. */
+    public const DOCUMENTATION_URL = 'https://subschema-llc.github.io/aggregate/';
     public const CSRF_COOKIE = 'aggregate_setup_csrf';
     /** Marks every response from this page, so the browser can tell which requests reach PHP. */
     public const MARKER_HEADER = 'X-Aggregate-Setup';
@@ -733,6 +735,7 @@ final class FirstRunSetup
         $errors = $state['errors'];
         $product = $e(self::PRODUCT_NAME);
         $base = $e($this->base());
+        $installGuide = $e(self::DOCUMENTATION_URL.'install/deployment');
 
         $icons = ['ok' => '✓', 'warn' => '!', 'fail' => '✕'];
         $statusText = ['ok' => 'OK', 'warn' => 'Warning', 'fail' => 'Needs fixing'];
@@ -880,7 +883,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .
 </section>
 </fieldset>
 </form>
-<p class="help">Next: create the administrator account. <code>DEPLOYMENT.md</code> in the application folder describes this setup and links step-by-step guides for hosting panels.</p>
+<p class="help">Next: create the administrator account. The <a href="{$installGuide}#release-zip-on-a-web-host" target="_blank" rel="noopener noreferrer">installation guide</a> (also <code>DEPLOYMENT.md</code> in the application folder) describes this setup and links step-by-step guides for hosting panels.</p>
 </main>
 <script nonce="{$nonce}">
 (function () {
@@ -904,7 +907,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .
   Promise.all([reaches('/install'), reaches('/aggregate.js'), reaches('/branding/theme.css')]).then(function (results) {
     var messages = [];
     if (results[0] === false) {
-      messages.push('Addresses other than the home page do not reach the application, so the next step would show "not found". The web server must pass them to public/index.php: with Apache, allow public/.htaccess to take effect; with nginx, add the routing rules from the Web Server Configuration section of DEPLOYMENT.md. Your hosting panel\'s guide has the exact steps.');
+      messages.push('Addresses other than the home page do not reach the application, so the next step would show "not found". The web server must pass them to public/index.php: with Apache, allow public/.htaccess to take effect; with nginx, add the routing rules from the Web Server Configuration section of DEPLOYMENT.md ({$installGuide}#web-server-configuration). Your hosting panel\'s guide has the exact steps.');
     }
     if (results[1] === false || results[2] === false) {
       messages.push('The web server answers some .js and .css addresses itself, so tracker settings and dashboard colours saved later would not take effect. /aggregate.js and /branding/theme.css must reach PHP: if your hosting panel lets nginx serve static files directly, remove js and css from that list or turn the option off.');

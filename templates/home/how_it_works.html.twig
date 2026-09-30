@@ -32,6 +32,7 @@
                                 the registered domain, allowing matching subdomains.
                             </p>
                         </div>
+                        {{ component('Ui:DocsLink', {topic: 'configuration.websites', label: 'Website domains'}) }}
                     </div>
                 </div>
             </div>
@@ -54,6 +55,7 @@
                                 <code>config/goals.yaml</code> to measure important interactions and conversions.
                             </p>
                         </div>
+                        {{ component('Ui:DocsLink', {topic: 'tracking.setup', label: 'Tracking setup'}) }}
                     </div>
                 </div>
             </div>
@@ -72,10 +74,11 @@
                             <p>
                                 Events use anonymous mode with a sanitized path, coarse dimensions, and no
                                 visitor or session identifiers unless enhanced analytics is granted. For maximum
-                                privacy, enable the <strong>strict collection profile</strong> to eliminate all
-                                browser storage, device probing, and referrer collection.
+                                privacy, the <strong>strict collection profile</strong> stops all browser storage,
+                                device probing, and referrer collection.
                             </p>
                         </div>
+                        {{ component('Ui:DocsLink', {topic: 'privacy.measurement', label: 'Measurement model'}) }}
                     </div>
                 </div>
             </div>
@@ -104,6 +107,7 @@
                                 </a>
                             </p>
                         </div>
+                        {{ component('Ui:DocsLink', {topic: 'reporting.connect', label: 'Connect a BI tool'}) }}
                     </div>
                 </div>
             </div>
@@ -158,6 +162,7 @@
                     collection is disabled or the path is excluded. Consent withdrawal does not delete data
                     already stored by the server.
                 </div>
+                {{ component('Ui:DocsLink', {topic: 'privacy.enhanced', label: 'Enhanced analytics consent', class: 'mt-4'}) }}
             </div>
         </div>
 
@@ -167,14 +172,14 @@
                     <div>
                         <span class="tag is-danger is-light is-rounded mb-2">
                             <span class="icon is-small mr-1"><i class="fas fa-lock" aria-hidden="true"></i></span>
-                            Zero-Footprint Mode
+                            Minimal collection
                         </span>
                         <h2 class="title is-3 mb-1">Strict Collection Profile</h2>
                     </div>
                     <span class="tag is-light is-medium"><code>collection_profile: strict</code></span>
                 </div>
                 <p class="subtitle is-6 has-text-grey mb-4">
-                    The strict collection profile reduces telemetry to the absolute operational minimum: counting a page view or safe interaction. It enforces zero browser storage, eliminates device fingerprinting, and strips non-essential dimensions at ingestion.
+                    The strict collection profile reduces collection to what counting a page view or safe interaction requires. The tracker reads and writes no browser storage and reads no device details, and the server discards every other dimension when an event arrives.
                 </p>
 
                 <div class="columns is-multiline mb-4">
@@ -187,7 +192,7 @@
                             <div class="content is-small">
                                 <ul>
                                     <li><strong>Sanitized page path:</strong> The normalized URL path without query parameters or hash fragments.</li>
-                                    <li><strong>Safe event name:</strong> Whitelisted action name (e.g., <code>view</code> or approved custom events).</li>
+                                    <li><strong>Safe event name:</strong> A fixed action name (e.g., <code>view</code> or approved custom events).</li>
                                     <li><strong>Approved goal code:</strong> Only active goals defined in <code>config/goals.yaml</code>.</li>
                                     <li><strong>UTC hour bucket:</strong> Server-stamped hourly aggregation window without exact timestamps.</li>
                                     <li><strong>Core protection:</strong> Ingestion kill switch, sensitive-path exclusions, domain rules, and rate limits remain active.</li>
@@ -216,32 +221,24 @@
                     </div>
                 </div>
 
-                <div class="columns is-multiline mb-4">
-                    <div class="column is-6">
-                        <h4 class="title is-6 mb-2">Enabling on the server</h4>
-                        <div class="content is-small">
-                            <ul>
-                                <li><strong>Dashboard:</strong> Under <em>Settings &rarr; Collection controls</em>, select <strong>Strict</strong> and save.</li>
-                                <li><strong>YAML configuration:</strong> Set <code>collection_profile: strict</code> in <code>config/aggregate.yaml</code>.</li>
-                                <li><strong>Environment variable:</strong> Set <code>COLLECTION_PROFILE=strict</code> to override UI and YAML.</li>
-                            </ul>
-                        </div>
-                    </div>
-                    <div class="column is-6">
-                        <h4 class="title is-6 mb-2">Static / CDN tracker integration</h4>
-                        <div class="content is-small">
-                            <p>Standalone or CDN-hosted copies of <code>aggregate.js</code> can opt into strict mode directly on the page:</p>
-                            <ul>
-                                <li><code>&lt;script ... data-collection-profile="strict" async&gt;&lt;/script&gt;</code></li>
-                                <li>Inline bootstrap: <code>window.Aggregate = { collectionProfile: 'strict', ... };</code></li>
-                                <li>Runtime API: <code>Aggregate.configure({ collectionProfile: 'strict' });</code></li>
-                            </ul>
-                        </div>
-                    </div>
+                <div class="content is-small mb-4">
+                    <p>
+                        Administrators turn it on under <em>Collection &rarr; Collection controls</em>, with
+                        <code>collection_profile: strict</code> in the configuration file, or with the
+                        <code>COLLECTION_PROFILE</code> environment variable, which takes precedence. The server applies
+                        the strict profile to every request, including direct API calls; copies of the tracker hosted
+                        elsewhere, such as on a CDN, also need to opt in on the page so they avoid those browser reads.
+                    </p>
                 </div>
+                {% if docs_url('privacy.strict') %}
+                    <div class="is-flex is-flex-wrap-wrap mb-4">
+                        {{ component('Ui:DocsLink', {topic: 'privacy.strict', label: 'Strict profile in the privacy guide', class: 'mb-0 mr-5'}) }}
+                        {{ component('Ui:DocsLink', {topic: 'tracking.strict', label: 'Opting in a static or CDN tracker', class: 'mb-0'}) }}
+                    </div>
+                {% endif %}
 
                 <div class="notification is-warning is-light mb-0">
-                    <strong>Regulatory consideration:</strong> While the strict profile avoids accessing visitor terminal storage under Article 5(3) of the EU ePrivacy Directive and aligns with strict privacy-minimization principles, it does not by itself guarantee legal consent exemption across every jurisdiction. Operators remain responsible for their legal basis, notices, and privacy governance.
+                    <strong>Regulatory consideration:</strong> The strict profile minimizes what the tracker touches on a device, but it does not by itself make measurement exempt from consent. European guidance treats a script that makes the browser send information, including the page address, as within Article 5(3) of the EU ePrivacy Directive, and exemptions for audience measurement differ between countries. Operators remain responsible for their legal basis, notices, and privacy governance.
                 </div>
             </div>
         </div>
@@ -265,6 +262,7 @@
                             </ul>
                             <p class="is-size-7 mt-3">All six standard UTM properties require consent by default. For anonymous attribution, we recommend no more detail than <code>utm_medium</code>, using channel codes such as <code>email</code>, <code>social</code>, or <code>cpc</code>. Each property can be allowed separately; more detailed UTMs may reveal campaign information, search text, or identifiers, so review their values before overriding this recommendation.</p>
                         </div>
+                        {{ component('Ui:DocsLink', {topic: 'privacy.controls', label: 'Administrative controls'}) }}
                     </div>
                 </div>
             </div>
@@ -291,6 +289,13 @@
                 <span class="icon"><i class="fas fa-arrow-right" aria-hidden="true"></i></span>
                 <span>{% if app.user %}Return to Dashboard{% else %}Get Started{% endif %}</span>
             </a>
+            {% if docs_url('home') %}
+                <a class="button is-light is-medium" href="{{ docs_url('home') }}" target="_blank" rel="noopener noreferrer">
+                    <span class="icon"><i class="fas fa-book-open" aria-hidden="true"></i></span>
+                    <span>Read the documentation</span>
+                    <span class="is-sr-only">(opens in a new tab)</span>
+                </a>
+            {% endif %}
         </div>
     </div>
 </div>

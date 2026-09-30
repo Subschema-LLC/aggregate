@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Tests\Support;
 
+use App\Service\DocumentationLinks;
+use App\Twig\DocumentationExtension;
 use Symfony\Component\DependencyInjection\ServiceLocator;
 use Symfony\Component\EventDispatcher\EventDispatcher;
 use Symfony\Component\PropertyAccess\PropertyAccess;
@@ -20,11 +22,16 @@ use Twig\Environment;
 use Twig\Runtime\EscaperRuntime;
 use Twig\RuntimeLoader\FactoryRuntimeLoader;
 
-/** Use the real UX renderer in isolated controller tests, without booting services or a database. */
+/**
+ * Use the real UX renderer in isolated controller tests, without booting services or a database.
+ * Also registers docs_url(), which shared components use, with a fixed documentation_url.
+ */
 final class TwigComponents
 {
-    public static function register(Environment $twig): void
+    /** @param string $documentationUrl the documentation_url setting; '' turns documentation links off */
+    public static function register(Environment $twig, string $documentationUrl = DocumentationLinks::DEFAULT_URL): void
     {
+        $twig->addExtension(new DocumentationExtension(FixedDocumentationLinks::create($documentationUrl)));
         $dispatcher = new EventDispatcher();
         $accessor = PropertyAccess::createPropertyAccessor();
         $factory = new ComponentFactory(

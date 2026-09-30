@@ -11,6 +11,7 @@ use App\Repository\UserRepository;
 use App\Service\AggregateConfigLoader;
 use App\Service\AnalyticsPrivacySettings;
 use App\Service\BrandingLogoManager;
+use App\Service\DocumentationLinks;
 use App\Service\SiteScriptConfig;
 use App\Service\WebsiteConfigManager;
 use Doctrine\DBAL\Connection;
@@ -55,7 +56,7 @@ final class DashboardSectionsRoutesTest extends TestCase
     protected function setUp(): void
     {
         $this->environment = [$_ENV, $_SERVER];
-        foreach (['APP_HOST', 'JS_NAMESPACE'] as $key) {
+        foreach (['APP_HOST', 'JS_NAMESPACE', 'DOCUMENTATION_URL'] as $key) {
             unset($_ENV[$key], $_SERVER[$key]);
         }
         $this->temporaryDirectory = sys_get_temp_dir().'/aggregate-dashboard-sections-'.bin2hex(random_bytes(8));
@@ -300,6 +301,8 @@ final class DashboardSectionsRoutesTest extends TestCase
         self::assertSame(120, $saved['rate_limit_per_minute']);
         self::assertSame(['/account/**'], $saved['anonymous_excluded_paths']);
         self::assertSame('preserve-me', $saved['unrelated_operator_setting']);
+        // An unchanged documentation address is not written, so the default is not pinned.
+        self::assertArrayNotHasKey('documentation_url', $saved);
 
         $form = $browser->request('GET', '/dashboard/collection')->selectButton('Save Collection Settings')->form([
             'anonymous_excluded_paths' => "/account/**\n/checkout/**",
@@ -314,6 +317,54 @@ final class DashboardSectionsRoutesTest extends TestCase
         self::assertSame('standard', $saved['collection_profile']);
         self::assertSame('NewAnalytics', $saved['js_namespace']);
         self::assertSame('preserve-me', $saved['unrelated_operator_setting']);
+        $this->assertNoDatabaseConnection();
+    }
+
+    public function testDocumentationUrlControlsEveryDocumentationLink(): void
+    {
+        $browser = $this->browser('ROLE_ADMIN');
+        $this->preventDatabaseReadsAndWrites();
+        $crawler = $browser->request('GET', '/dashboard/settings');
+        self::assertSame(DocumentationLinks::DEFAULT_URL, $crawler->filter('input[name="documentation_url"]')->attr('value'));
+        self::assertSame(DocumentationLinks::DEFAULT_URL.'configure/configuration#application-settings', $crawler->filter('.docs-link a')->first()->attr('href'));
+        $navigation = $crawler->filter('nav.app-navigation a[href="'.DocumentationLinks::DEFAULT_URL.'"]');
+        self::assertCount(1, $navigation);
+        self::assertSame('_blank', $navigation->attr('target'));
+        self::assertSame('noopener noreferrer', $navigation->attr('rel'));
+        self::assertCount(1, $crawler->filter('nav.app-navigation a[href="/how-it-works"]'));
+
+        $browser->submit($crawler->selectButton('Save Settings')->form(['documentation_url' => 'https://docs.example.test/analytics']));
+        $this->assertRedirect($browser, '/dashboard/settings');
+        $saved = Yaml::parseFile($this->temporaryDirectory.'/config/aggregate.yaml');
+        self::assertSame('https://docs.example.test/analytics/', $saved['documentation_url']);
+        self::assertSame('preserve-me', $saved['unrelated_operator_setting']);
+        $crawler = $browser->request('GET', '/dashboard/collection');
+        self::assertSame('https://docs.example.test/analytics/privacy/compliance#administrative-controls', $crawler->filter('.docs-link a')->attr('href'));
+
+        $before = file_get_contents($this->temporaryDirectory.'/config/aggregate.yaml');
+        $values = $browser->request('GET', '/dashboard/settings')->selectButton('Save Settings')->form()->getPhpValues();
+        $values['documentation_url'] = 'javascript:alert(1)';
+        $browser->request('POST', '/dashboard/settings/save', $values, [], ['HTTP_ORIGIN' => 'http://localhost']);
+        $this->assertRedirect($browser, '/dashboard/settings');
+        self::assertStringContainsString('full web address', implode(' ', $browser->getRequest()->getSession()->getFlashBag()->peek('error')));
+        self::assertSame($before, file_get_contents($this->temporaryDirectory.'/config/aggregate.yaml'));
+
+        $browser->submit($browser->request('GET', '/dashboard/settings')->selectButton('Save Settings')->form(['documentation_url' => '']));
+        self::assertSame('', Yaml::parseFile($this->temporaryDirectory.'/config/aggregate.yaml')['documentation_url']);
+        $crawler = $browser->request('GET', '/dashboard/settings');
+        self::assertCount(0, $crawler->filter('.docs-link'));
+        self::assertCount(0, $crawler->filter('a[target="_blank"][href*="docs.example.test"], a[href^="'.DocumentationLinks::DEFAULT_URL.'"]'));
+        self::assertCount(1, $crawler->filter('nav.app-navigation a[href="/how-it-works"]'));
+
+        // DOCUMENTATION_URL takes precedence: the field is disabled and a submitted value is ignored.
+        $_ENV['DOCUMENTATION_URL'] = $_SERVER['DOCUMENTATION_URL'] = 'https://env-docs.example.test/';
+        $crawler = $browser->request('GET', '/dashboard/settings');
+        self::assertNotNull($crawler->filter('input[name="documentation_url"]')->attr('disabled'));
+        self::assertSame('https://env-docs.example.test/configure/configuration#application-settings', $crawler->filter('.docs-link a')->first()->attr('href'));
+        $values = $crawler->selectButton('Save Settings')->form()->getPhpValues();
+        $values['documentation_url'] = 'https://other.example.test/';
+        $browser->request('POST', '/dashboard/settings/save', $values, [], ['HTTP_ORIGIN' => 'http://localhost']);
+        self::assertSame('', Yaml::parseFile($this->temporaryDirectory.'/config/aggregate.yaml')['documentation_url']);
         $this->assertNoDatabaseConnection();
     }
 

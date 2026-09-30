@@ -245,6 +245,14 @@ environments:
 #   Public hostname used in dashboard integration snippets.
 #   Example: https://analytics.example.com
 #
+# documentation_url (optional, default: https://subschema-llc.github.io/aggregate/)
+#   Where the dashboard's documentation and help links open; also shown in
+#   command-line messages. Page paths such as operate/updates are appended, so
+#   your own site needs matching pages. Set to "" to hide links to external
+#   documentation; messages then name the documentation file in this folder.
+#   The public site describes the latest release. Also editable in General
+#   settings. The DOCUMENTATION_URL environment variable takes precedence.
+#
 # brand_name (optional, default: Aggregate Analytics)
 #   Application name used in page titles, headings, and explanatory copy.
 #

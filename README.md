@@ -217,7 +217,7 @@ Routine BI connections should use approved views:
 | `bi_anonymous_goals_v1` | Daily occurrences of configured goals |
 | `bi_anonymous_geo_events_v1` | Daily coarse geography with additional suppression |
 
-Keep raw `events`, archive tables, and unsuppressed operational views private. Organization markers are stored under their configured name in raw event JSON; the grouped views and archives omit that flag. See the [compliance guide](docs/PRIVACY-COMPLIANCE.md#bi-exposure-and-suppression) for access and disclosure rules, [organization traffic](docs/PRIVACY-COMPLIANCE.md#organization-traffic) for filtering, and the [database guide](docs/DATABASE.md) for connections and schema details.
+Keep raw `events`, archive tables, and unsuppressed operational views private. Organization markers are stored under their configured name in raw event JSON; the grouped views and archives omit that flag. [Connect a BI tool](docs/BI-CONNECTION.md) lists every column, safe query patterns and a connection checklist. See the [compliance guide](docs/PRIVACY-COMPLIANCE.md#bi-exposure-and-suppression) for access and disclosure rules, [organization traffic](docs/PRIVACY-COMPLIANCE.md#organization-traffic) for filtering, and the [database guide](docs/DATABASE.md) for connections and schema details.
 
 The [Data model](docs/DATA-MODEL.md) page provides UTM/query mappings, configurable anonymous property whitelists, downloadable YAML, and UI/CLI regeneration of private custom reporting views. All UTMs require consent by default. Anonymous attribution should use at most a broad `utm_medium`; administrators can override this recommendation with the documented warning about more detailed values.
 
@@ -245,6 +245,10 @@ It is built from these files on `master` and describes the current release.
 
 | Guide | Contents |
 | --- | --- |
+| [Why Aggregate exists](docs/WHY.md) | The problem, the principles, and what the project deliberately will not do |
+| [Architecture tour](docs/ARCHITECTURE.md) | How an event flows from a web page to a BI report, and where to make common changes |
+| [Design decisions](docs/DESIGN-DECISIONS.md) | Why the main choices were made, what they cost, and what would change them |
+| [Glossary](docs/GLOSSARY.md) | Terms used across the code, settings and documentation |
 | [Contributing](CONTRIBUTING.md) | Branching strategy, development setup, architecture, privacy invariants, tests, Make commands, and pull requests |
 | [Beta testing](docs/BETA-TESTING.md) | First test session, expected privacy/reporting behavior, known limitations, and feedback |
 | [Agent guide](AGENTS.md) | Product ethos, architecture boundaries, privacy rules, and development expectations for coding agents |
@@ -265,6 +269,7 @@ It is built from these files on `master` and describes the current release.
 | [Deployment](DEPLOYMENT.md) | Docker/native setup, web servers, workers, production operations, and upgrades |
 | [Plesk deployment](PLESK-DEPLOYMENT.md) | Plesk steps for a release ZIP without SSH, Git-based setup, and worker options |
 | [Database](docs/DATABASE.md) | Supported engines, connection strings, migrations, and reporting schema |
+| [Connect a BI tool](docs/BI-CONNECTION.md) | Approved reporting views and their columns, safe queries, and a connection checklist for Power BI or Tableau |
 
 ## Contributing
 

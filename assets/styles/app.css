@@ -3,6 +3,7 @@
 @import './components/layout/navigation.css';
 @import './components/layout/quick_search.css';
 @import './shared/settings.css';
+@import './components/ui/docs_link.css';
 @import './pages/users/index.css';
 @import './pages/settings/branding.css';
 @import './pages/setup/index.css';

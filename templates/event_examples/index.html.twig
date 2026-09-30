@@ -6,6 +6,7 @@
 <div class="event-examples-page">
     <h1 class="title">{{ example_source == 'ecommerce' ? 'Ecommerce examples' : 'Event examples' }}</h1>
     <p class="subtitle">{% if example_source == 'ecommerce' %}A flat ecommerce starting point with typed properties and money in minor units. This recipe does not change your saved model.{% else %}Synthetic request JSON from the saved data model. No events are read or sent.{% endif %}</p>
+    {{ component('Ui:DocsLink', {topic: 'tracking.event-examples', label: 'Event examples guide'}) }}
     {{ component('DataModel:Navigation', {current_model_page: 'app_event_examples'}) }}
     <div class="buttons">
         <a class="button" href="{{ path('app_event_examples') }}"{% if example_source == 'model' %} aria-current="page"{% endif %}>Saved model examples</a>
