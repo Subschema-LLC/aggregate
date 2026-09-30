@@ -115,7 +115,7 @@ tab storage or a URL parameter. See [optional page depth](DATA-MODEL.md#optional
 with its dependencies and compiled assets, signed by the maintainers. Not the
 "Source code" archives GitHub adds automatically.
 
-**Reporting views.** The SQL views BI tools read. The approved ones for routine
+**Reporting views.** The SQL views that BI tools and AI assistants read. The approved ones for routine
 BI users are `bi_anonymous_*`, `bi_dim_*` and `bi_glossary_*`; everything else is
 private. Their names carry a version (`_v1`).
 
