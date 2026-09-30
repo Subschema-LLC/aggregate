@@ -2,7 +2,7 @@
 
 [README](../README.md) · [Configuration](CONFIGURATION.md) · [Privacy and compliance](PRIVACY-COMPLIANCE.md)
 
-This guide covers the browser SDK, custom events, and GTM setup. Register a website in the dashboard or with `php bin/console app:create-website` first, and replace the example host and public website token with your values. The sharing token used for organization marker pages is a different token and must never be placed in a tracking snippet.
+This guide covers the browser SDK, custom events, and GTM setup. To send events from your own server instead, with no script on the page, see [server-side collection](SERVER-SIDE.md). Register a website in the dashboard or with `php bin/console app:create-website` first, and replace the example host and public website token with your values. The sharing token used for organization marker pages is a different token and must never be placed in a tracking snippet.
 
 Configure [allowed event-source domains](CONFIGURATION.md#website-domains) on the
 Websites page or in `config/websites.yaml`. New registrations default to the exact
