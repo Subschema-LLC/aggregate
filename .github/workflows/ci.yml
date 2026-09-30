@@ -213,10 +213,16 @@ jobs:
         run: |
           php <<'PHP'
           <?php
-          $server = new PDO('sqlsrv:Server=127.0.0.1,1433;TrustServerCertificate=1', 'sa', 'Aggregate2026e2e', [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-          $server->exec('CREATE DATABASE aggregate');
-          $server->exec("CREATE LOGIN aggregate WITH PASSWORD = 'E2e p@ss''%w0rd', CHECK_POLICY = OFF");
-          $server->exec('ALTER AUTHORIZATION ON DATABASE::aggregate TO aggregate');
+          try {
+              echo 'PDO drivers: ', implode(', ', PDO::getAvailableDrivers()), "\n";
+              $server = new PDO('sqlsrv:Server=127.0.0.1,1433;TrustServerCertificate=1', 'sa', 'Aggregate2026e2e', [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+              $server->exec('CREATE DATABASE aggregate');
+              $server->exec("CREATE LOGIN aggregate WITH PASSWORD = 'E2e p@ss''%w0rd', CHECK_POLICY = OFF");
+              $server->exec('ALTER AUTHORIZATION ON DATABASE::aggregate TO aggregate');
+          } catch (Throwable $e) {
+              echo '::error title=SQL Server preparation::', str_replace("\n", '%0A', get_class($e).': '.$e->getMessage()), "\n";
+              exit(1);
+          }
           PHP
       - name: Install through the setup page and exercise the application
         env:
