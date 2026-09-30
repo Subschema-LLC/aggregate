@@ -40,6 +40,7 @@ export default defineConfig({
       { text: 'Track', link: '/tracking/setup', activeMatch: '^/tracking/' },
       { text: 'Privacy', link: '/privacy/compliance', activeMatch: '^/(privacy|reporting)/' },
       { text: 'Operate', link: '/operate/updates', activeMatch: '^/operate/' },
+      { text: 'Contribute', link: '/contribute/contributing', activeMatch: '^/contribute/' },
       { text: 'Roadmap', link: '/project/roadmap' },
     ],
     sidebar: sections.map((section) => ({
