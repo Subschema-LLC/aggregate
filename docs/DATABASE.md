@@ -401,6 +401,11 @@ sudo apt-get install php8.2-sqlite3
 DATABASE_URL="sqlite:///%kernel.project_dir%/var/data.db"
 ```
 
+`%kernel.project_dir%` is replaced with the application directory. Only this
+exact token is replaced, so percent-encoded characters in other connection
+strings are left alone. The browser setup page of a release ZIP writes this
+value when you choose SQLite.
+
 **2. Run migrations:**
 ```bash
 php bin/console doctrine:migrations:migrate -n

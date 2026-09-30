@@ -11,6 +11,13 @@ open the form and create the first account. Keep `/install` and `/install/execut
 restricted until setup completes. Headless deployments should disable the
 dashboard as described in the [configuration guide](docs/CONFIGURATION.md).
 
+A release ZIP extracted without any environment configuration starts with the
+browser [setup page](docs/RELEASES.md#install-or-deploy-a-verified-package)
+instead. It and `/install` require the one-time code from `SETUP-CODE.txt` in the
+application directory, so a visitor who cannot read the server's files cannot
+configure the database or create the first account. Installations configured
+by hand (`.env.local` or environment variables) keep the behavior above.
+
 ## Table of Contents
 
 - [Docker Deployment](#docker-deployment)

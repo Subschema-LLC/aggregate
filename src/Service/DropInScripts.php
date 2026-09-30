@@ -202,13 +202,26 @@ final class DropInScripts
 
     private function host(): string
     {
-        $host = $this->config->getWithEnvFallback('app_host', 'http://localhost');
+        $host = self::normalizeAppHost($this->config->getWithEnvFallback('app_host', 'http://localhost'));
+        if ($host === null) {
+            throw new \RuntimeException('Set a valid application host URL in general settings.');
+        }
+
+        return $host;
+    }
+
+    /**
+     * The public base URL (`app_host`) used in generated snippets, without a
+     * trailing slash, or null when it is not a plain http(s) URL.
+     */
+    public static function normalizeAppHost(mixed $host): ?string
+    {
         $parts = is_string($host) ? parse_url($host) : false;
         if (!is_array($parts) || !in_array($parts['scheme'] ?? null, ['http', 'https'], true)
             || empty($parts['host'])
             || isset($parts['user']) || isset($parts['pass']) || isset($parts['query']) || isset($parts['fragment'])
             || preg_match('/[\x00-\x20\x7f]/', $host)) {
-            throw new \RuntimeException('Set a valid application host URL in general settings.');
+            return null;
         }
 
         return rtrim($host, '/');

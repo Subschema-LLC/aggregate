@@ -92,6 +92,11 @@ Connection string formats for `DATABASE_URL` (see [Database Guide](DATABASE.md))
 - SQL Server: `sqlsrv://user:pass@host:1433/dbname?serverVersion=2022`
 - SQLite: `sqlite:///%kernel.project_dir%/var/data.db`
 
+`%kernel.project_dir%` in `DATABASE_URL` is replaced with the application
+directory; no other `%` sequence is interpreted, so encode special characters
+in passwords as usual (`@` as `%40`). A release ZIP's browser setup page writes
+`.env.local` with the encoded connection and detected version for you.
+
 MySQL and MariaDB version hints must include the patch component. See the
 [DBAL 4 upgrade notes](DATABASE.md#upgrade-to-doctrine-dbal-4) before updating an
 existing installation that uses a short version hint.

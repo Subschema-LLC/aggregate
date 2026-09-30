@@ -1,15 +1,134 @@
 # Plesk Deployment Guide
 
-This guide walks you through deploying Aggregate Analytics on a Plesk hosting environment.
+There are two ways to install Aggregate Analytics with Plesk:
 
-## Prerequisites
+- **[From a release ZIP](#install-from-a-release-zip-no-ssh) (recommended).** Everything
+  happens in Plesk and the browser: no SSH, Git, Composer or Node. The ZIP already
+  contains the dependencies and compiled assets, and the dashboard installs later
+  updates.
+- **[From Git with SSH](#install-from-git-with-ssh-advanced).** For people who
+  want to deploy from the repository and run commands on the server.
+
+## Install from a release ZIP (no SSH)
+
+You need Plesk Obsidian with PHP 8.2 or newer available, and about ten minutes.
+
+### 1. Create the site
+
+1. In **Websites & Domains**, click **Add Subdomain** (or **Add Domain**), for
+   example `analytics.example.com`. Keep the suggested document root for now.
+2. Open the new site's **PHP Settings** and choose **PHP 8.2** or newer. Plesk's
+   PHP builds normally include every extension Aggregate needs; the setup page
+   tells you if one is missing.
+3. Optional but recommended: **SSL/TLS Certificates**, then **Install** a free
+   Let's Encrypt certificate.
+
+### 2. Create a database
+
+In **Databases**, click **Add Database**. Enter a database name, then a new
+user name and password, and keep them for step 5. By default Plesk gives the
+new user full access to its database, which is what Aggregate needs; the setup
+page checks it. The server is `localhost`.
+
+Skip this step to use SQLite instead: it needs no database server and suits
+trying Aggregate out or small sites, but BI tools read the whole file, so you
+cannot limit them to the reporting views. MySQL 8.0+ or MariaDB 10.6+ is the better
+choice for production.
+
+### 3. Upload and extract the release
+
+1. Download `aggregate-VERSION.zip` from the **Assets** list of the
+   [latest release](https://github.com/Subschema-LLC/aggregate/releases/latest).
+   Do not use the **Source code** archives: they lack the dependencies.
+2. In **Files**, open the site's folder (for example `analytics.example.com`),
+   click **Upload**, and choose the ZIP.
+3. Click the ZIP's menu (**⋯** or the arrow next to it) and choose **Extract
+   Files**. The folder now contains `public`, `vendor`, `README.md` and the other
+   application files. You can delete the ZIP afterwards.
+
+### 4. Point the document root at `public`
+
+Open the site's **Hosting Settings** and change **Document root** to the
+`public` folder inside it, for example `analytics.example.com/public`. Save.
+
+Only `public` may be reachable from the web: the rest of the folder holds your
+configuration and data. The setup page refuses to continue until this is right.
+
+### 5. Open the site and finish setup
+
+Open `https://analytics.example.com`. The setup page:
+
+1. **Checks the server** and explains how to fix anything it finds, such as a PHP
+   version or a missing extension. It also checks that the web server passes
+   the application's routes to PHP (see [troubleshooting](#zip-install-troubleshooting)).
+2. **Asks for the setup code.** Back in **Files**, open `SETUP-CODE.txt` in the
+   site's folder, next to `README.md` (refresh the list if you do not see it),
+   and copy the code. This shows that you manage the server. Bots watch for
+   new HTTPS certificates and open fresh installers within minutes, and without
+   the code one of them could finish your setup first.
+3. **Connects the database.** Choose **MySQL or MariaDB** and enter the details
+   from step 2, or choose **SQLite**. The page tests the connection, detects the
+   server version, and writes `.env.local` with the connection and a newly
+   generated application secret.
+
+Then create the administrator account. **Public address** is filled in with the
+address you opened; tracking snippets use it. Click **Install Now**, log in,
+and use **Setup** in the dashboard to register your first website and copy
+its tracking code.
+
+`SETUP-CODE.txt` is deleted when the administrator is created. No background
+worker or scheduled task is needed: events are recorded as they arrive.
+
+### Keep it running
+
+- **Updates:** the dashboard **Updates** page installs new release ZIPs, keeping
+  your configuration and data. See the [update guide](docs/UPDATES.md).
+- **Backups:** include the site's files (at least `.env.local`, `config/` and
+  `var/`) and the database, for example with Plesk's **Backup Manager**.
+- **Do not also deploy with Plesk Git** into the same folder: its deployments
+  would overwrite installed updates.
+
+### ZIP install troubleshooting
+
+| What you see | What to do |
+| --- | --- |
+| Plesk's default page, **403 Forbidden** or a file list | The document root is not the `public` folder. Repeat [step 4](#4-point-the-document-root-at-public). |
+| "This site needs PHP 8.2 or newer" | Choose PHP 8.2+ in **PHP Settings** and reload. |
+| "This folder does not contain a prepared release" | You extracted a **Source code** archive. Delete the files and extract `aggregate-VERSION.zip` from the release's **Assets**. |
+| "Addresses other than the home page do not reach the application", or **Not Found** at `/install` | Requests reach nginx only. In **Apache & nginx Settings**, turn on **Proxy mode** so Apache and `public/.htaccess` handle them. To stay with nginx only, see [nginx without Apache](#nginx-without-apache). |
+| "The web server answers some .js and .css addresses itself" | nginx serves `/aggregate.js` from disk, so tracker settings saved in the dashboard would not reach browsers. In **Apache & nginx Settings**, remove `js` and `css` from **Serve static files directly by nginx** (or clear that option), then reload the setup page. |
+| "PHP cannot write to …" | The files do not belong to the site's system user, for example after uploading over FTP as another account. Upload and extract them with the site's **Files**, or ask your provider to fix the owner. |
+| The database check fails | Open **Technical details** under the message. Check the name, user and password from **Databases**; the server is usually `localhost`. MariaDB older than 10.6 is not supported: choose SQLite or ask your provider about an upgrade. |
+| You want to start over | Delete `.env.local` (and `var/data.db` if you chose SQLite) in **Files**, then reload the site. |
+
+#### nginx without Apache
+
+With **Proxy mode** off, Plesk's nginx does not read `public/.htaccess`. Add
+these lines to **Apache & nginx Settings**, **Additional nginx directives**, so
+that application routes and `/aggregate.js` reach PHP:
+
+```nginx
+location = /aggregate.js {
+    rewrite ^ /index.php last;
+}
+if (!-e $request_filename) {
+    rewrite ^ /index.php last;
+}
+```
+
+These have not been tested on every Plesk version; reload the setup page
+afterwards to confirm its routing check passes.
+
+## Install from Git with SSH (advanced)
+
+### Prerequisites
 
 - Plesk Obsidian 18.0.35+ or later
 - PHP 8.2 or higher (PHP 8.3 recommended)
 - MySQL 8.0+ or MariaDB 10.6+
 - SSH access to your server
 
-## Quick Reference — Plesk-Specific Paths
+### Quick Reference — Plesk-Specific Paths
 
 On Plesk, PHP and Composer are not in the default system `PATH` for root SSH sessions. Use the full paths:
 
@@ -25,8 +144,6 @@ On Plesk, PHP and Composer are not in the default system `PATH` for root SSH ses
 ```
 
 ---
-
-## Step-by-Step Setup
 
 ### 1. Domain and PHP Configuration
 
@@ -481,9 +598,9 @@ Before going live:
 - [ ] PHP 8.2+ with required extensions enabled
 - [ ] `.env` created with correct credentials
 - [ ] Database created and migrations run
-- [ ] Assets compiled (`asset-map:compile`)
-- [ ] Background worker running
-- [ ] Web installer completed at `/install`
+- [ ] Assets compiled (`asset-map:compile`; release ZIPs include them)
+- [ ] Background worker running (async mode only)
+- [ ] Setup page and `/install` completed
 - [ ] Test event successfully tracked (`curl /api/health`)
 - [ ] File permissions correct
 - [ ] Backups configured
