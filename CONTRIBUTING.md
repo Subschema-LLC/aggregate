@@ -10,6 +10,11 @@ using the [security policy](SECURITY.md); ordinary bugs and proposals belong in
 [GitHub issues](https://github.com/Subschema-LLC/aggregate/issues). Review the
 [roadmap](ROADMAP.md) before proposing substantial work.
 
+New to the project? Three short pages give the background this guide assumes:
+[why Aggregate exists](docs/WHY.md), an [architecture tour](docs/ARCHITECTURE.md)
+that follows one event through the code, and the [design decisions](docs/DESIGN-DECISIONS.md)
+behind it. The [glossary](docs/GLOSSARY.md) explains the terms.
+
 Coding agents should also read [AGENTS.md](AGENTS.md) for the product ethos,
 architectural boundaries, and expectations for delivering changes.
 
@@ -438,7 +443,8 @@ describe the interaction and how you verified it.
 
 Before submitting, review the complete diff for unintended changes, secrets,
 personal data in examples, and generated artifacts. Update the relevant guide or
-configuration example when behavior changes. Privacy-sensitive PRs should explain
+configuration example when behavior changes. If the change alters or adds one of
+the [design decisions](docs/DESIGN-DECISIONS.md), update that page too. Privacy-sensitive PRs should explain
 which fields reach the browser payload, queue, event row, and reporting views,
 including the anonymous and withdrawn-consent cases.
 

@@ -176,3 +176,5 @@ Anything a new step needs after files are replaced must run in the fresh
   [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community conduct.
 - Report what changed, how it was checked, and any remaining limitations. Keep
   future features in [ROADMAP.md](ROADMAP.md), without implying they are delivered.
+  When a change alters a recorded choice, update
+  [docs/DESIGN-DECISIONS.md](docs/DESIGN-DECISIONS.md) in the same change.

@@ -11,6 +11,8 @@ export const sections = [
     text: 'Get started',
     items: [
       { source: 'README.md', route: 'start/overview', label: 'Overview' },
+      { source: 'docs/WHY.md', route: 'start/why', label: 'Why Aggregate exists' },
+      { source: 'docs/GLOSSARY.md', route: 'start/glossary', label: 'Glossary' },
       { source: 'docs/BETA-TESTING.md', route: 'start/beta-testing', label: 'Beta testing' },
     ],
   },
@@ -57,15 +59,22 @@ export const sections = [
     ],
   },
   {
+    text: 'Contribute',
+    items: [
+      { source: 'CONTRIBUTING.md', route: 'contribute/contributing', label: 'Contributing' },
+      { source: 'docs/ARCHITECTURE.md', route: 'contribute/architecture', label: 'Architecture tour' },
+      { source: 'docs/DESIGN-DECISIONS.md', route: 'contribute/design-decisions', label: 'Design decisions' },
+      { source: 'templates/README.md', route: 'contribute/ui-templates', label: 'UI templates' },
+      { source: 'AGENTS.md', route: 'contribute/coding-agents', label: 'Guide for coding agents' },
+    ],
+  },
+  {
     text: 'Project',
     items: [
       { source: 'ROADMAP.md', route: 'project/roadmap', label: 'Roadmap' },
-      { source: 'CONTRIBUTING.md', route: 'project/contributing', label: 'Contributing' },
       { source: 'SECURITY.md', route: 'project/security', label: 'Security policy' },
       { source: 'CODE_OF_CONDUCT.md', route: 'project/code-of-conduct', label: 'Code of conduct' },
       { source: 'docs/PUBLIC-RELEASE.md', route: 'project/public-release', label: 'Public release preparation' },
-      { source: 'templates/README.md', route: 'project/ui-templates', label: 'UI templates' },
-      { source: 'AGENTS.md', route: 'project/coding-agents', label: 'Guide for coding agents' },
     ],
   },
 ];

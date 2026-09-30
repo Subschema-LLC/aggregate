@@ -245,6 +245,10 @@ It is built from these files on `master` and describes the current release.
 
 | Guide | Contents |
 | --- | --- |
+| [Why Aggregate exists](docs/WHY.md) | The problem, the principles, and what the project deliberately will not do |
+| [Architecture tour](docs/ARCHITECTURE.md) | How an event flows from a web page to a BI report, and where to make common changes |
+| [Design decisions](docs/DESIGN-DECISIONS.md) | Why the main choices were made, what they cost, and what would change them |
+| [Glossary](docs/GLOSSARY.md) | Terms used across the code, settings and documentation |
 | [Contributing](CONTRIBUTING.md) | Branching strategy, development setup, architecture, privacy invariants, tests, Make commands, and pull requests |
 | [Beta testing](docs/BETA-TESTING.md) | First test session, expected privacy/reporting behavior, known limitations, and feedback |
 | [Agent guide](AGENTS.md) | Product ethos, architecture boundaries, privacy rules, and development expectations for coding agents |
