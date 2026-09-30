@@ -243,8 +243,17 @@ E2E::step('log in', static function () use ($browser): void {
     E2E::check(str_contains((string) $browser->getHistory()->current()->getUri(), '/dashboard'), 'Login did not reach the dashboard. '.pageProblem($browser));
 });
 
-E2E::step('register a website', static function () use ($root): void {
+E2E::step('register a website and declare typed properties', static function () use ($root): void {
     console($root, ['app:create-website'], "E2E site\nexample.test\n");
+    // Exercises each engine's JSON functions in the custom reporting views.
+    $config = Yaml::parseFile($root.'/config/aggregate.yaml');
+    $config['custom_data_properties'] = [
+        'plan' => ['type' => 'string', 'consent_required' => false, 'column' => 'plan_name'],
+        'total_minor' => ['type' => 'integer', 'consent_required' => false, 'column' => 'total_minor_text', 'numeric_column' => 'total_minor_number'],
+        'discount_rate' => ['type' => 'double', 'consent_required' => false, 'numeric_column' => 'discount_rate_number'],
+    ];
+    $config['query_parameter_mappings'] = [];
+    file_put_contents($root.'/config/aggregate.yaml', Yaml::dump($config, 4, 2));
 });
 
 $token = (string) (Yaml::parseFile($root.'/config/websites.yaml')['websites'][0]['token'] ?? '');
@@ -279,7 +288,7 @@ $batches = E2E::step('collect anonymous, goal and consented events', static func
     });
     $record('recent goals', static function () use ($collect): void {
         for ($i = 0; $i < 6; ++$i) {
-            $collect(['eventName' => 'purchase', 'goalEvent' => 'purchase', 'pagePath' => '/checkout/complete']);
+            $collect(['eventName' => 'purchase', 'goalEvent' => 'purchase', 'pagePath' => '/checkout/complete', 'eventData' => ['plan' => 'pro', 'total_minor' => 4999, 'discount_rate' => 0.1]]);
         }
     });
     $record('old events', static function () use ($collect): void {
@@ -385,6 +394,12 @@ E2E::step('reporting views return the expected cells', static function () use ($
     $goals = $db->fetchAllKeyValue('SELECT goal_event, SUM(event_count) FROM bi_anonymous_goals_v1 GROUP BY goal_event');
     E2E::check((int) ($goals['purchase'] ?? 0) === 6 && (int) ($goals['lead'] ?? 0) === 6, 'bi_anonymous_goals_v1: '.json_encode($goals));
     E2E::check((int) $db->fetchOne("SELECT COUNT(*) FROM bi_glossary_values_v1 WHERE dimension = 'goal_event' AND code = 'purchase'") === 1, 'The glossary lacks the purchase goal.');
+    $custom = $db->fetchAllAssociative("SELECT plan_name, total_minor_text, total_minor_number, discount_rate_number FROM analytics_custom_goals_v1 WHERE goal_event = 'purchase'");
+    E2E::check(count($custom) === 6, 'analytics_custom_goals_v1 rows: '.json_encode($custom));
+    foreach ($custom as $row) {
+        E2E::check($row['plan_name'] === 'pro' && (string) $row['total_minor_text'] === '4999' && (int) $row['total_minor_number'] === 4999 && abs((float) $row['discount_rate_number'] - 0.1) < 1e-9, 'Unexpected custom values: '.json_encode($row));
+    }
+    E2E::check((int) $db->fetchOne("SELECT COUNT(*) FROM analytics_custom_pageviews_v1 WHERE page_path = '/pricing'") === 6, 'analytics_custom_pageviews_v1 lacks the /pricing views.');
     printf("      (%d views)\n", count($names));
 });
 
