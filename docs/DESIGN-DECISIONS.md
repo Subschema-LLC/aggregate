@@ -241,6 +241,28 @@ database or create the first administrator.
 **What would change it.** An equally strong way to prove ownership of the server
 with less effort.
 
+### One documentation source, linked from the app
+
+**Decision.** The Markdown files in the repository are the only documentation.
+They are published as the public documentation site, and the GitHub wiki only
+points to it. The dashboard keeps help that depends on the installation or
+belongs next to a setting, and links to the site for explanations and
+procedures, through one configurable address (`documentation_url`).
+
+**Why.** Copies drift. The dashboard's own explainer pages had already fallen
+behind the guides, for example by showing a hardcoded tracker namespace. One
+source, checked by the site build and by a test of every link the app uses, stays
+correct as the code changes, and operators can point the links at their own
+documentation or turn them off.
+
+**Trade-off.** The public site describes the latest release, so an older
+installation can link to features it does not have yet. With the links turned
+off, the dashboard shows less help, and operators rely on the documentation files
+shipped in the application folder.
+
+**What would change it.** Versioned documentation, which would let each
+installation link to the guides for its own release.
+
 ### AGPL for the server, BSD for the tracker
 
 **Decision.** The server, dashboard and documentation are AGPL-3.0-only. The

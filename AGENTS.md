@@ -157,6 +157,11 @@ Anything a new step needs after files are replaced must run in the fresh
 - Follow clear requests through implementation and appropriate validation. Ask
   focused follow-ups when requirements are uncertain or conflict with these
   product boundaries. Keep documentation aligned with what actually exists.
+- The repository Markdown is the only documentation; the public site and the
+  wiki are built from it. Link dashboard help and command messages to it through
+  `DocumentationLinks` topics (`Ui:DocsLink`, `docs_url()`), which operators can
+  point elsewhere or turn off, instead of copying guides into templates. See
+  [linking the application to the documentation](CONTRIBUTING.md#linking-the-application-to-the-documentation).
 - Inspect the working tree and preserve the user's edits and staging. Include
   all new runtime dependencies and relevant tests in the change set; a previous
   deployment failed because a controller was committed without its new service

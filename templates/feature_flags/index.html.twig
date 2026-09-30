@@ -5,6 +5,7 @@
 {% block body %}
     <h1 class="title">Feature flags</h1>
     <p class="subtitle">Control optional features for this deployment. These settings apply to the active configuration across all websites.</p>
+    {{ component('Ui:DocsLink', {topic: 'feature-flags', label: 'Feature flags guide'}) }}
 
     <div class="content">
         <p>Disabling a feature blocks its actions. A disabled feature stays visible in navigation as an unavailable item until you hide it.</p>

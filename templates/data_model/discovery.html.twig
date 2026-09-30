@@ -5,6 +5,7 @@
 {% block body %}
 <div class="settings-page">
     <h1 class="title">Observed properties</h1>
+    {{ component('Ui:DocsLink', {topic: 'data-model', label: 'Data model guide'}) }}
     {{ component('DataModel:Navigation', {current_model_page: 'app_data_model_discovery'}) }}
     {% if configuration_error %}<div class="notification is-danger" role="alert">{{ configuration_error }}</div>{% endif %}
     {% if reporting_error %}<div class="notification is-warning" role="alert">{{ reporting_error }}</div>{% endif %}

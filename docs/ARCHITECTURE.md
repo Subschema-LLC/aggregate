@@ -124,9 +124,9 @@ Around them:
   [ReportingViewManager](../src/Service/ReportingViewManager.php).
 
 A BI tool connects with a database user that can read only the approved views
-(see [view-only grants](BI-GLOSSARY.md#view-only-grants)). The details of every
-view are in the [privacy guide](PRIVACY-COMPLIANCE.md#bi-exposure-and-suppression)
-and the [database guide](DATABASE.md).
+(see [view-only grants](BI-GLOSSARY.md#view-only-grants)). Every column is listed
+in [Connect a BI tool](BI-CONNECTION.md), and the suppression rules in the
+[privacy guide](PRIVACY-COMPLIANCE.md#bi-exposure-and-suppression).
 
 ## Configuration
 
@@ -211,4 +211,4 @@ that an engine accepts it. See [tests and checks](../CONTRIBUTING.md#tests-and-c
 | Change what a reporting view returns | A new migration that adds a new versioned view (such as `_v2`), keeping the old one | SQL for all five engines, the fresh-install test, [DATABASE.md](DATABASE.md) |
 | Write engine-specific SQL | A platform branch (`instanceof PostgreSQLPlatform` and so on), as in the existing migrations | The fresh-install CI run on every engine |
 | Add a dashboard page | [templates/README.md](../templates/README.md) conventions and `config/navigation.yaml` | A command-line or YAML equivalent for any setting it changes |
-| Add a documentation page | A Markdown file, then `website/pages.mjs` | Links from related pages; see [documentation site](../CONTRIBUTING.md#documentation-site) |
+| Add a documentation page | A Markdown file, then `website/pages.mjs` | Links from related pages, and a `DocumentationLinks` topic if the dashboard should link to it; see [documentation site](../CONTRIBUTING.md#documentation-site) |

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\Service\ApplicationUpdateService;
+use App\Service\DocumentationLinks;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Formatter\OutputFormatter;
@@ -19,8 +20,10 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 )]
 final class CheckUpdatesCommand extends Command
 {
-    public function __construct(private readonly ApplicationUpdateService $updates)
-    {
+    public function __construct(
+        private readonly ApplicationUpdateService $updates,
+        private readonly ?DocumentationLinks $documentation = null,
+    ) {
         parent::__construct();
     }
 
@@ -85,15 +88,22 @@ final class CheckUpdatesCommand extends Command
             if (($status['package_url'] ?? null) !== null) {
                 $io->note('The release signature has not been verified by this check. Download the package, manifest and signature, then run:');
                 $io->text('php bin/console app:updates:verify-package PACKAGE MANIFEST SIGNATURE');
-                $io->text('To install it, run php bin/console app:updates:apply (it verifies the signature first). See docs/UPDATES.md.');
+                $io->text('To install it, run php bin/console app:updates:apply (it verifies the signature first).');
+                $io->text('Update guide: '.$this->guide());
             }
         } elseif ($status['current_commit'] !== null && $installedBranch !== $status['branch']) {
             $io->warning('The installed branch does not match updates_branch. Switch branches manually or correct config/aggregate.yaml before pulling.');
         } elseif ($status['state'] === 'available') {
             $io->text('To install it, run php bin/console app:updates:apply, which also installs dependencies, runs migrations and rebuilds assets and the cache. app:updates:pull only updates the code.');
-            $io->text('See docs/UPDATES.md.');
+            $io->text('Update guide: '.$this->guide());
         }
 
         return $failed ? Command::FAILURE : Command::SUCCESS;
+    }
+
+    /** The update guide on the documentation site, or its file when documentation links are off. */
+    private function guide(string $topic = 'updates'): string
+    {
+        return $this->documentation?->reference($topic) ?? DocumentationLinks::file($topic);
     }
 }

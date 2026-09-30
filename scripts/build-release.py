@@ -52,7 +52,11 @@ PROTECTED_PATHS = (
 RELEASE_OWNED_EXCEPTIONS = ("var/browser/**",)
 INVENTORY = "release-files.json"
 SOURCE_TREES = ("src", "templates", "translations", "migrations", "assets", "micro-consent-dropins", "scripts")
-DOCUMENTATION_EXAMPLES = ("docs/examples/ecommerce-purchase.json",)
+DOCUMENTATION_EXAMPLES = (
+    "docs/examples/ecommerce-purchase.json",
+    # Worker service examples referenced by DEPLOYMENT.md and General settings.
+    "docs/systemd/aggregate-worker.service", "docs/supervisor/aggregate-worker.conf",
+)
 REQUIRED_FILES = (
     "LICENSE", "js/LICENSE.txt", "composer.json", "composer.lock", "bin/console", "public/index.php",
     "vendor/autoload.php", "vendor/autoload_runtime.php", "vendor/composer/installed.json",

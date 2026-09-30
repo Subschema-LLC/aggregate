@@ -6,6 +6,7 @@
 <div class="tag-settings" data-site-id="{{ selected_site }}">
     <h1 class="title">Tag manager lite</h1>
     <p class="subtitle">Choose a website, configure its tags and consent controls, and download its YAML.</p>
+    {{ component('Ui:DocsLink', {topic: 'tracking.tag-manager', label: 'Tag manager guide'}) }}
     <form method="get" action="{{ path('app_tag_manager') }}" class="box">
         <div class="field">
             <label class="label" for="tag-manager-site">Website</label>
