@@ -58,6 +58,7 @@ features:
 - [How do I install Aggregate on shared hosting without SSH?](/install/deployment#release-zip-on-a-web-host)
 - [Which databases are supported, and how do I connect SQL Server?](/install/databases)
 - [How do I add tracking to a website?](/tracking/setup)
+- [Can my server send events instead of a script?](/tracking/server-side)
 - [Does anonymous-mode measurement require consent?](/privacy/compliance#does-anonymous-mode-measurement-require-consent)
 - [How do I connect Power BI or Tableau?](/reporting/connect-bi)
 - [Can an AI assistant query my analytics safely?](/reporting/connect-bi#connect-an-ai-assistant)

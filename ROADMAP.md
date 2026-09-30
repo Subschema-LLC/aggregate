@@ -129,14 +129,13 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   text where an exemption applies, rather than as strictly necessary, and
   enhanced collection behind analytics consent. Update the drop-in UI and sample
   disclosures to match.
-- **Server-side collection.** Let a site's backend report page views and events
-  directly, so no Aggregate code runs on the visitor's device. This needs an
-  authenticated ingestion key for server callers, rate limiting that does not
-  throttle a single backend address, and a geography decision: the request IP
-  would be the server's, and forwarding a visitor IP needs trusted-proxy rules
-  and must stay local and coarse. Viewport buckets would be unavailable, and
-  device class would come from a forwarded User-Agent. Keep path sanitization,
-  kill switches, path exclusions, and anonymous-mode rules identical to browser
+- **Built-in server-side collection.** A site's backend can already send
+  anonymous events to the public endpoint, as the
+  [server-side guide](docs/SERVER-SIDE.md) describes, forwarding the visitor
+  address through trusted-proxy rules for rate limiting and geography. Still
+  open: an authenticated ingestion key for server callers, and per-caller rate
+  limits that don't depend on `TRUSTED_PROXIES`. Keep path sanitization, kill
+  switches, path exclusions and anonymous-mode rules identical to browser
   collection. GDPR still applies to the processing.
 
 ## Available foundations
