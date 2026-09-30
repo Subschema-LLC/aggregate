@@ -89,7 +89,7 @@ Connection string formats for `DATABASE_URL` (see [Database Guide](DATABASE.md))
 - PostgreSQL: `postgresql://user:pass@host:5432/dbname?serverVersion=16`
 - MySQL: `mysql://user:pass@host:3306/dbname?serverVersion=8.0.0`
 - MariaDB: `mysql://user:pass@host:3306/dbname?serverVersion=11.4.0-MariaDB`
-- SQL Server: `sqlsrv://user:pass@host:1433/dbname?serverVersion=2022`
+- SQL Server: `mssql://user:pass@host:1433/dbname?serverVersion=2022` (pdo_sqlsrv) or `sqlsrv://…` (sqlsrv); add `&driverOptions[TrustServerCertificate]=1` for a self-signed server certificate
 - SQLite: `sqlite:///%kernel.project_dir%/var/data.db`
 
 `%kernel.project_dir%` in `DATABASE_URL` is replaced with the application

@@ -33,7 +33,7 @@ DATABASE_URL="DATABASE_CONNECTION_STRING_HERE"
 | **PostgreSQL** | `postgresql://user:pass@host:5432/dbname?serverVersion=16` |
 | **MySQL** | `mysql://user:pass@host:3306/dbname?serverVersion=8.0.0` |
 | **MariaDB** | `mysql://user:pass@host:3306/dbname?serverVersion=11.4.0-MariaDB` |
-| **SQL Server** | `sqlsrv://user:pass@host:1433/dbname?serverVersion=2022` |
+| **SQL Server** | `mssql://user:pass@host:1433/dbname?serverVersion=2022` (pdo_sqlsrv) or `sqlsrv://…` (sqlsrv) |
 | **SQLite** | `sqlite:///%kernel.project_dir%/var/data.db` |
 
 ---
@@ -273,60 +273,78 @@ migration. The failed migration is not recorded as complete.
 
 ## Microsoft SQL Server
 
-**Enterprise-grade database for Windows environments.**
+**For organizations that already run SQL Server or Azure SQL.**
+
+SQL Server 2017, 2019 and 2022 are tested by the fresh-install CI job, with both
+Doctrine drivers: a fresh install through the setup page, migrations, the
+dashboard, collection, archiving, retention and every reporting view. Azure SQL
+Database is expected to work but is not tested.
 
 ### Prerequisites
 
-**PHP Extension:**
+PHP needs Microsoft's `pdo_sqlsrv` extension (and, for `sqlsrv://` URLs, the
+`sqlsrv` extension) plus Microsoft's ODBC Driver 17 or 18 for SQL Server. Follow
+Microsoft's instructions for your system: install `msodbcsql18` from Microsoft's
+package repository, then `sudo pecl install sqlsrv pdo_sqlsrv` and enable both
+extensions for the PHP version that serves the site. Check with:
 
 ```bash
-# Install Microsoft ODBC Driver
-# Ubuntu/Debian
-curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
-curl https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
-sudo apt-get update
-sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 mssql-tools18
-
-# Install PHP drivers
-sudo pecl install sqlsrv pdo_sqlsrv
-
-# Enable extensions
-echo "extension=pdo_sqlsrv.so" | sudo tee /etc/php/8.2/mods-available/pdo_sqlsrv.ini
-echo "extension=sqlsrv.so" | sudo tee /etc/php/8.2/mods-available/sqlsrv.ini
-sudo phpenmod pdo_sqlsrv sqlsrv
+php -m | grep -i sqlsrv   # should list pdo_sqlsrv and sqlsrv
+odbcinst -q -d            # should list ODBC Driver 18 for SQL Server
 ```
 
-**SQL Server:**
-- SQL Server 2019+
-- Or Azure SQL Database
-- Or SQL Server on Linux
+Shared hosting on Linux rarely offers these extensions; ask your provider.
 
 ### Setup
 
-**1. Create database and user:**
-```sql
--- Connect with SQL Server Management Studio or sqlcmd
-sqlcmd -S localhost -U sa -P YourPassword
+**1. Create an empty database and a login that owns it:**
 
--- Create database
+```sql
 CREATE DATABASE analytics;
 GO
-
--- Create user
-USE analytics;
-GO
 CREATE LOGIN analytics_user WITH PASSWORD = 'YourSecurePassword123!';
-CREATE USER analytics_user FOR LOGIN analytics_user;
-ALTER ROLE db_owner ADD MEMBER analytics_user;
+GO
+ALTER AUTHORIZATION ON DATABASE::analytics TO analytics_user;
 GO
 ```
 
-**2. Configure connection in `.env`:**
+Adding a database user to `db_owner` instead also works. The login must be
+able to create tables and views.
+
+**2. Connect.** A release ZIP's browser setup page offers **Microsoft SQL
+Server** when `pdo_sqlsrv` is available: it tests the connection, detects the
+version and writes `.env.local`. To configure it yourself, set `DATABASE_URL` in
+`.env.local`:
+
 ```dotenv
-DATABASE_URL="sqlsrv://analytics_user:YourSecurePassword123!@localhost:1433/analytics?serverVersion=2022"
+# pdo_sqlsrv (what the setup page writes)
+DATABASE_URL='mssql://analytics_user:YourSecurePassword123%21@db.example.com:1433/analytics?serverVersion=2022'
+# Doctrine's driver for the sqlsrv extension
+DATABASE_URL='sqlsrv://analytics_user:YourSecurePassword123%21@db.example.com:1433/analytics?serverVersion=2022'
 ```
 
-**3. Run migrations:**
+Percent-encode special characters in the login name and password (`!` as
+`%21`, `@` as `%40`, `%` as `%25`). Use the server's TCP port rather than a named
+instance (`host\INSTANCE` cannot be written in a URL): give the instance a fixed
+port in SQL Server Configuration Manager.
+
+**Self-signed certificates.** ODBC Driver 18 encrypts connections and checks
+the server's certificate by default. Servers you run yourself usually have a
+self-signed certificate, and the connection then fails with "certificate verify
+failed". Either install a trusted certificate on the server, or trust the
+server's certificate while keeping encryption, by appending
+`&driverOptions[TrustServerCertificate]=1` to the URL. The setup page's **Trust
+the server certificate** option does this. Plain `TrustServerCertificate=yes`
+or `Encrypt=yes` query parameters are ignored by Doctrine.
+
+**Azure SQL Database:**
+
+```dotenv
+DATABASE_URL='mssql://analytics_user:YourSecurePassword123%21@yourserver.database.windows.net:1433/analytics?serverVersion=2022'
+```
+
+**3. Run migrations** (the setup page's `/install` step does this for you):
+
 ```bash
 php bin/console doctrine:migrations:migrate -n
 php bin/console app:analytics:glossary:sync
@@ -334,45 +352,26 @@ php bin/console app:analytics:glossary:sync
 
 ### Version Support
 
-| SQL Server Version | serverVersion Parameter |
-|-------------------|------------------------|
-| SQL Server 2022 | `?serverVersion=2022` |
-| SQL Server 2019 | `?serverVersion=2019` |
-| SQL Server 2017 | `?serverVersion=2017` |
-| Azure SQL | `?serverVersion=2019` (or latest) |
+| SQL Server Version | serverVersion Parameter | Tested in CI |
+|-------------------|------------------------|--------------|
+| SQL Server 2022 | `?serverVersion=2022` | Yes, both drivers |
+| SQL Server 2019 | `?serverVersion=2019` | Yes |
+| SQL Server 2017 | `?serverVersion=2017` | Yes |
+| Azure SQL Database | `?serverVersion=2022` | No |
 
-### Connection String Options
-
-**Named Instance:**
-```dotenv
-DATABASE_URL="sqlsrv://user:pass@localhost\\INSTANCENAME:1433/dbname?serverVersion=2022"
-```
-
-**Integrated Authentication (Windows):**
-```dotenv
-DATABASE_URL="sqlsrv://localhost:1433/analytics?serverVersion=2022&TrustServerCertificate=yes"
-```
-
-**Azure SQL Database:**
-```dotenv
-DATABASE_URL="sqlsrv://user@server:pass@servername.database.windows.net:1433/analytics?serverVersion=2019&Encrypt=yes"
-```
+Doctrine uses the same SQL Server platform for all of these versions, so the
+hint is informational.
 
 ### Troubleshooting
 
-**Common Issues:**
-
-1. **Driver not found:**
-   ```bash
-   php -m | grep -i sqlsrv
-   # Should show: pdo_sqlsrv, sqlsrv
-   ```
-
-2. **SSL/TLS errors:**
-   Add `TrustServerCertificate=yes` to connection string
-
-3. **Connection timeout:**
-   Add `ConnectionTimeout=30` to connection string
+| Error | Fix |
+| --- | --- |
+| `This extension requires the Microsoft ODBC Driver for SQL Server` | Install `msodbcsql18` (see Prerequisites). |
+| `certificate verify failed` | Install a trusted certificate, or add `&driverOptions[TrustServerCertificate]=1`. |
+| `Login failed for user` | Check the login and password, and that SQL Server allows SQL Server authentication (mixed mode). |
+| `Cannot open database` | The database does not exist, or the login is not its owner or a user in it. |
+| `The encoding 'utf8' is not a supported encoding` | Update Aggregate: older versions passed Doctrine's default charset to the `sqlsrv` extension. `mssql://` URLs were not affected. |
+| Login timeout or `TCP Provider` errors | Check the host and port, that SQL Server listens on TCP (SQL Server Configuration Manager), and the firewall. |
 
 ---
 

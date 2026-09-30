@@ -131,7 +131,7 @@ No terminal is needed:
 
 See [Release ZIP on a web host](DEPLOYMENT.md#release-zip-on-a-web-host) for the
 details and step-by-step hosting panel guides (Plesk so far). PHP 8.2+ and MySQL
-8.0+, MariaDB 10.6+, PostgreSQL 13+ or SQLite are required.
+8.0+, MariaDB 10.6+, PostgreSQL 13+, SQL Server 2017+ or SQLite are required.
 
 ### For development
 

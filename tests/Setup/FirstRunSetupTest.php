@@ -8,6 +8,7 @@ use App\Service\AppBranding;
 use App\Service\ProjectDirEnvVarProcessor;
 use App\Setup\FirstRunSetup;
 use App\Setup\SetupCode;
+use Doctrine\Bundle\DoctrineBundle\ConnectionFactory;
 use Doctrine\DBAL\Tools\DsnParser;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -275,6 +276,40 @@ final class FirstRunSetupTest extends TestCase
         $ipv6 = (new DsnParser(['postgresql' => 'pdo_pgsql']))->parse(FirstRunSetup::serverDatabaseUrl('pgsql', '::1', 5432, 'db', 'u', 'p', '16'));
         self::assertSame('pdo_pgsql', $ipv6['driver']);
         self::assertSame(5432, $ipv6['port']);
+    }
+
+    public function testSqlServerUrlsSelectThePdoDriverAndCarryTheCertificateChoice(): void
+    {
+        $password = "Aggr3gate!'%40 x";
+        $url = FirstRunSetup::serverDatabaseUrl('sqlsrv', 'db.example.test', 1433, 'aggregate', 'app@login', $password, '2022', trustCertificate: true);
+        $file = FirstRunSetup::environmentFile(str_repeat('cd', 32), $url, new \DateTimeImmutable('2026-09-30 12:00'));
+        $parsed = (new Dotenv())->parse($file)['DATABASE_URL'];
+
+        // The scheme map Symfony's DoctrineBundle uses for DATABASE_URL.
+        $params = (new DsnParser(ConnectionFactory::DEFAULT_SCHEME_MAP))->parse($parsed);
+        self::assertSame('pdo_sqlsrv', $params['driver']);
+        self::assertSame('db.example.test', $params['host']);
+        self::assertSame(1433, $params['port']);
+        self::assertSame('app@login', $params['user']);
+        self::assertSame($password, $params['password']);
+        self::assertSame('aggregate', $params['dbname']);
+        self::assertSame('2022', $params['serverVersion']);
+        self::assertSame(['TrustServerCertificate' => '1'], $params['driverOptions']);
+
+        $untrusted = (new DsnParser(ConnectionFactory::DEFAULT_SCHEME_MAP))->parse(FirstRunSetup::serverDatabaseUrl('sqlsrv', 'localhost', 1433, 'a', 'u', 'p', '2019'));
+        self::assertArrayNotHasKey('driverOptions', $untrusted);
+        self::assertStringNotContainsString('TrustServerCertificate', FirstRunSetup::serverDatabaseUrl('mysql', 'localhost', 3306, 'a', 'u', 'p', '8.0.39', trustCertificate: true));
+    }
+
+    public function testSqlServerVersionsMapToReleaseYears(): void
+    {
+        self::assertSame('2017', FirstRunSetup::sqlServerVersion(14, 3));
+        self::assertSame('2019', FirstRunSetup::sqlServerVersion(15, 2));
+        self::assertSame('2022', FirstRunSetup::sqlServerVersion(16, 4));
+        self::assertSame('2025', FirstRunSetup::sqlServerVersion(17, 3));
+        self::assertSame('2022', FirstRunSetup::sqlServerVersion(12, 5), 'Azure SQL Database reports major version 12.');
+        $this->expectExceptionMessage('SQL Server 2017 or newer is needed');
+        FirstRunSetup::sqlServerVersion(13, 3);
     }
 
     public function testEnvironmentFileRefusesValuesThatWouldBreakQuoting(): void

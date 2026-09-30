@@ -36,8 +36,9 @@ so the server needs only PHP 8.2+ and a database: no terminal, Git, Composer or
 Node. These steps work with any hosting panel or web server that runs PHP.
 
 1. **Prepare the site.** Create the site in your hosting panel, choose PHP 8.2 or
-   newer for it, and create an empty MySQL 8.0+, MariaDB 10.6+ or PostgreSQL 13+
-   database with a user that has full access to it. SQLite needs no database
+   newer for it, and create an empty MySQL 8.0+, MariaDB 10.6+, PostgreSQL 13+ or
+   [SQL Server 2017+](docs/DATABASE.md#microsoft-sql-server) database with a user
+   that has full access to it. SQLite needs no database
    server and suits trying Aggregate out or small sites, but BI tools read the
    whole file, so they cannot be limited to the reporting views.
 2. **Upload the release.** Download `aggregate-VERSION.zip` from the **Assets** of

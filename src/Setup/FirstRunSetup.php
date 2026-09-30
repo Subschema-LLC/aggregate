@@ -43,6 +43,13 @@ final class FirstRunSetup
             'minimum' => 'PostgreSQL 13',
             'help' => 'Use an empty database owned by the user you enter below.',
         ],
+        'sqlsrv' => [
+            'label' => 'Microsoft SQL Server',
+            'extension' => 'pdo_sqlsrv',
+            'port' => 1433,
+            'minimum' => 'SQL Server 2017',
+            'help' => 'Also Azure SQL Database. Needs Microsoft\'s pdo_sqlsrv PHP extension and ODBC driver on this server. Use an empty database and a login that owns it.',
+        ],
         'sqlite' => [
             'label' => 'SQLite file',
             'extension' => 'pdo_sqlite',
@@ -203,17 +210,19 @@ final class FirstRunSetup
      * database name are percent-encoded, so the result never contains quotes,
      * whitespace or a literal "%kernel.project_dir%".
      */
-    public static function serverDatabaseUrl(string $driver, string $host, int $port, string $name, string $user, string $password, string $serverVersion): string
+    public static function serverDatabaseUrl(string $driver, string $host, int $port, string $name, string $user, string $password, string $serverVersion, bool $trustCertificate = false): string
     {
         $scheme = match ($driver) {
             'mysql' => 'mysql',
             'pgsql' => 'postgresql',
+            // Doctrine's alias for the pdo_sqlsrv driver that the setup page tested.
+            'sqlsrv' => 'mssql',
             default => throw new \InvalidArgumentException('Unsupported database driver.'),
         };
         $hostPart = str_contains($host, ':') ? '['.$host.']' : $host;
 
         return sprintf(
-            '%s://%s:%s@%s:%d/%s?serverVersion=%s',
+            '%s://%s:%s@%s:%d/%s?serverVersion=%s%s',
             $scheme,
             rawurlencode($user),
             rawurlencode($password),
@@ -221,7 +230,27 @@ final class FirstRunSetup
             $port,
             rawurlencode($name),
             rawurlencode($serverVersion),
+            // Becomes TrustServerCertificate=1 in the driver's connection string.
+            $driver === 'sqlsrv' && $trustCertificate ? '&driverOptions[TrustServerCertificate]=1' : '',
         );
+    }
+
+    /**
+     * The serverVersion hint for SQL Server from SERVERPROPERTY('ProductMajorVersion')
+     * and SERVERPROPERTY('EngineEdition').
+     */
+    public static function sqlServerVersion(int $majorVersion, int $engineEdition): string
+    {
+        // Azure SQL Database (5) and Managed Instance (8) track the newest engine.
+        if (in_array($engineEdition, [5, 8], true)) {
+            return '2022';
+        }
+        $releases = [14 => '2017', 15 => '2019', 16 => '2022', 17 => '2025'];
+        if ($majorVersion < 14) {
+            throw new \RuntimeException('This server runs an SQL Server version older than 2017 (major version '.$majorVersion.'); SQL Server 2017 or newer is needed.');
+        }
+
+        return $releases[$majorVersion] ?? '2025';
     }
 
     /** The complete .env.local written by the setup page. */
@@ -338,11 +367,19 @@ final class FirstRunSetup
             throw new \RuntimeException('The password is too long.');
         }
 
-        $dsn = $driver === 'mysql'
-            ? sprintf('mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4', $host, $port, $name)
-            : sprintf('pgsql:host=%s;port=%d;dbname=%s;connect_timeout=5', $host, $port, $name);
+        $trustCertificate = $driver === 'sqlsrv' && $values['trust_certificate'] !== '';
+        if ($driver === 'sqlsrv' && preg_match('/[{}]/', $name.$host) === 1) {
+            throw new \RuntimeException('Enter the database name without braces.');
+        }
+        $dsn = match ($driver) {
+            'mysql' => sprintf('mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4', $host, $port, $name),
+            'pgsql' => sprintf('pgsql:host=%s;port=%d;dbname=%s;connect_timeout=5', $host, $port, $name),
+            'sqlsrv' => sprintf('sqlsrv:Server=%s,%d;Database=%s;LoginTimeout=5%s', str_contains($host, ':') ? '['.$host.']' : $host, $port, $name, $trustCertificate ? ';TrustServerCertificate=1' : ''),
+        };
+        // pdo_sqlsrv rejects PDO::ATTR_TIMEOUT; its DSN carries LoginTimeout instead.
+        $options = [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION] + ($driver === 'sqlsrv' ? [] : [\PDO::ATTR_TIMEOUT => 5]);
         try {
-            $pdo = new \PDO($dsn, $user, $password, [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION, \PDO::ATTR_TIMEOUT => 5]);
+            $pdo = new \PDO($dsn, $user, $password, $options);
         } catch (\PDOException $e) {
             throw new \RuntimeException($this->explainConnectionError($driver, $e, $host), 0, $e);
         }
@@ -351,6 +388,10 @@ final class FirstRunSetup
             if ($driver === 'mysql') {
                 $serverVersion = self::mysqlServerVersion((string) $pdo->query('SELECT VERSION()')->fetchColumn());
                 $tables = $pdo->query('SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()')->fetchAll(\PDO::FETCH_COLUMN);
+            } elseif ($driver === 'sqlsrv') {
+                $server = $pdo->query("SELECT CAST(SERVERPROPERTY('ProductMajorVersion') AS INT) AS major, CAST(SERVERPROPERTY('EngineEdition') AS INT) AS edition")->fetch(\PDO::FETCH_ASSOC);
+                $serverVersion = self::sqlServerVersion((int) ($server['major'] ?? 0), (int) ($server['edition'] ?? 0));
+                $tables = $pdo->query('SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = SCHEMA_NAME()')->fetchAll(\PDO::FETCH_COLUMN);
             } else {
                 $serverVersion = self::postgresServerVersion((string) $pdo->query('SHOW server_version')->fetchColumn());
                 $tables = $pdo->query('SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema()')->fetchAll(\PDO::FETCH_COLUMN);
@@ -361,7 +402,7 @@ final class FirstRunSetup
         $this->assertUsableTables(array_map('strval', $tables));
         $this->assertCanCreateTablesAndViews($pdo);
 
-        return self::serverDatabaseUrl($driver, $host, $port, $name, $user, $password, $serverVersion);
+        return self::serverDatabaseUrl($driver, $host, $port, $name, $user, $password, $serverVersion, $trustCertificate);
     }
 
     private function prepareSqlite(): void
@@ -457,6 +498,16 @@ final class FirstRunSetup
                 $code === '1049' || str_contains($message, '[1049]') => 'That database does not exist. Check its name, or create it first.',
                 str_contains($message, '[2002]') || str_contains($message, '[2005]') || str_contains($message, '[2006]') => 'Could not reach a database server at '.$host.'. Check the server address and port.',
                 default => 'Could not connect to the database.',
+            };
+        }
+
+        if ($driver === 'sqlsrv') {
+            return match (true) {
+                str_contains($message, 'ODBC Driver') && (str_contains($message, 'requires') || str_contains($message, 'IMSSP')) => 'PHP\'s SQL Server extension is installed, but Microsoft\'s ODBC driver is missing on this server. Ask your hosting provider to install it.',
+                str_contains($message, 'certificate verify failed') || str_contains($message, 'certificate chain') || str_contains($message, 'SSL Provider') => 'The server\'s encryption certificate is not trusted, which is common with self-signed certificates. Tick "Trust the server certificate" if you manage this server, or install a trusted certificate on it.',
+                str_contains($message, 'Login failed') => 'The server rejected the login name or password.',
+                str_contains($message, 'Cannot open database') => 'That database does not exist, or this login cannot open it. Check its name, or create it first.',
+                default => 'Could not connect to a database server at '.$host.'. Check the server address and port, and that SQL Server accepts TCP connections.',
             };
         }
 
@@ -561,6 +612,7 @@ final class FirstRunSetup
             'name' => '',
             'user' => '',
             'password' => '',
+            'trust_certificate' => '',
             'setup_code' => '',
         ];
     }
@@ -725,6 +777,7 @@ final class FirstRunSetup
         $nonce = $this->nonce;
         $marker = self::MARKER_HEADER;
         $sqliteSelected = $values['driver'] === 'sqlite' ? ' hidden' : '';
+        $trustChecked = $values['trust_certificate'] !== '' ? ' checked' : '';
 
         return <<<HTML
 <!doctype html>
@@ -764,6 +817,7 @@ input:focus-visible, button:focus-visible, summary:focus-visible { outline: 3px 
 fieldset { border: 0; padding: 0; margin: 0; }
 fieldset[disabled] { opacity: .6; }
 .help { color: var(--muted); font-size: .9rem; margin: .25rem 0 0; }
+.check-label { display: flex; gap: .5rem; align-items: center; font-weight: 600; margin-top: 1rem; }
 .error { color: var(--fail); font-weight: 600; }
 .error pre { white-space: pre-wrap; font-weight: 400; color: var(--muted); }
 .notice { border-left: 4px solid var(--warn); padding: .25rem .75rem; margin: .75rem 0 0; }
@@ -816,6 +870,10 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .
 <input type="text" id="user" name="user" value="{$e($values['user'])}" autocomplete="off" spellcheck="false">
 <label for="password">Password</label>
 <input type="password" id="password" name="password" value="{$e($values['password'])}" autocomplete="new-password">
+<div id="trust-field">
+<label class="check-label"><input type="checkbox" name="trust_certificate" value="1"{$trustChecked} aria-describedby="trust-help"> Trust the server certificate <span class="muted">(SQL Server only)</span></label>
+<p class="help" id="trust-help">Needed when SQL Server uses a self-signed certificate, which is common on servers you run yourself. The connection is still encrypted.</p>
+</div>
 </div>
 <p class="help">Saving tests the connection, detects the server version and stores the settings, with a newly generated application secret, in <code>.env.local</code>.</p>
 <button type="submit">Save and continue</button>
@@ -827,9 +885,11 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .
 <script nonce="{$nonce}">
 (function () {
   var fields = document.getElementById('server-fields');
+  var trust = document.getElementById('trust-field');
   function sync() {
     var chosen = document.querySelector('input[name=driver]:checked');
     fields.hidden = !!chosen && chosen.value === 'sqlite';
+    trust.hidden = !chosen || chosen.value !== 'sqlsrv';
   }
   document.querySelectorAll('input[name=driver]').forEach(function (input) { input.addEventListener('change', sync); });
   sync();
