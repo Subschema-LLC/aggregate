@@ -83,9 +83,11 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   completed buckets, suppression and consistent live/archive behavior; preserve
   existing BI contracts and keep private custom views restricted. See the
   [current measurement boundaries](docs/PRIVACY-COMPLIANCE.md#insight-without-visit-or-session-ids).
-- **External analysis examples and an MCP integration.** Start with read-only
-  connections to approved `bi_anonymous_*` views and synthetic sample Python
-  notebooks. Any MCP server needs explicit credential scope and authorization;
+- **External analysis examples and an MCP integration.** AI assistants can
+  already [query the approved views](docs/BI-CONNECTION.md#connect-an-ai-assistant)
+  through a general SQL connector and the read-only reporting account. Package a
+  read-only integration over the approved `bi_anonymous_*` and glossary views,
+  with synthetic sample Python notebooks. Any MCP server needs explicit credential scope and authorization;
   it must not expose private raw inputs or let consumers undo suppression.
   Charts and analysis remain in external tools.
 - **Branding polish.** Improve the default logo and administration presentation

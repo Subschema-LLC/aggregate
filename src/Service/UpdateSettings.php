@@ -20,6 +20,11 @@ final class UpdateSettings
     {
     }
 
+    public function config(): AggregateConfigLoader
+    {
+        return $this->config;
+    }
+
     public function branch(): string
     {
         $this->config->assertHealthy();

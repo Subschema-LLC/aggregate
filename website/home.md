@@ -5,18 +5,18 @@ titleTemplate: false
 
 hero:
   name: Aggregate Analytics
-  text: Documentation
-  tagline: Self-hosted, privacy-focused analytics that feeds the BI tools you already use. Install it, collect with or without consent, and report in Power BI or Tableau.
+  text: Headless, AI-ready web analytics
+  tagline: Count what happens on your websites, not who did it. Aggregate keeps the results in your own database as privacy-protected SQL views that Power BI, Tableau or your AI assistant can query directly.
   actions:
     - theme: brand
       text: Install from a release ZIP
       link: /install/deployment#release-zip-on-a-web-host
     - theme: alt
+      text: Query with BI or AI
+      link: /reporting/connect-bi
+    - theme: alt
       text: Why Aggregate exists
       link: /start/why
-    - theme: alt
-      text: Source on GitHub
-      link: https://github.com/Subschema-LLC/aggregate
 
 features:
   - title: Install
@@ -35,10 +35,10 @@ features:
     details: Anonymous and enhanced measurement, what each stores, consent withdrawal, and small-number suppression.
     link: /privacy/compliance
     linkText: Privacy and compliance
-  - title: Report in your BI tool
-    details: Stable reporting views, safe queries, labels for codes, and view-only database access for Power BI or Tableau.
+  - title: Ask your BI tool or AI assistant
+    details: Stable, documented reporting views with small counts withheld. Power BI, Tableau and AI assistants use the same read-only account and never see a visitor record.
     link: /reporting/connect-bi
-    linkText: Connect a BI tool
+    linkText: Connect BI and AI tools
   - title: Configure
     details: YAML and dashboard settings, the custom data model, and feature flags.
     link: /configure/configuration
@@ -60,6 +60,7 @@ features:
 - [How do I add tracking to a website?](/tracking/setup)
 - [Does anonymous-mode measurement require consent?](/privacy/compliance#does-anonymous-mode-measurement-require-consent)
 - [How do I connect Power BI or Tableau?](/reporting/connect-bi)
+- [Can an AI assistant query my analytics safely?](/reporting/connect-bi#connect-an-ai-assistant)
 - [How do I give Power BI or Tableau read-only access?](/reporting/bi-glossary#view-only-grants)
 - [How do I update an installation, and what is kept?](/operate/updates)
 - [What happens to data when someone withdraws consent?](/privacy/compliance#does-withdrawing-consent-delete-past-data)

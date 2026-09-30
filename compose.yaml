@@ -1,6 +1,6 @@
 services:
   php:
-    image: dunglas/frankenphp:latest-php8.2
+    image: dunglas/frankenphp:${FRANKENPHP_VERSION:-latest-php8.2}
     ports:
       - "9002:9002"
       - "443:443"
@@ -19,7 +19,7 @@ services:
         condition: service_completed_successfully
 
   asset-compile:
-    image: dunglas/frankenphp:latest-php8.2
+    image: dunglas/frankenphp:${FRANKENPHP_VERSION:-latest-php8.2}
     volumes:
       - .:/app:delegated
     working_dir: /app
@@ -28,7 +28,7 @@ services:
     command: php bin/console asset-map:compile
 
   worker:
-    image: dunglas/frankenphp:latest-php8.2
+    image: dunglas/frankenphp:${FRANKENPHP_VERSION:-latest-php8.2}
     volumes:
       - .:/app:delegated
       - ./php/conf.d/symfony.ini:/usr/local/etc/php/conf.d/symfony.ini:ro

@@ -15,7 +15,7 @@
 **Use**
 - [Track websites](https://subschema-llc.github.io/aggregate/tracking/setup)
 - [Privacy and compliance](https://subschema-llc.github.io/aggregate/privacy/compliance)
-- [Connect a BI tool](https://subschema-llc.github.io/aggregate/reporting/connect-bi)
+- [Connect BI and AI tools](https://subschema-llc.github.io/aggregate/reporting/connect-bi)
 - [Configuration](https://subschema-llc.github.io/aggregate/configure/configuration)
 
 **Contribute**

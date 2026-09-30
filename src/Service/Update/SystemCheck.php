@@ -9,6 +9,7 @@ use App\Service\FeatureFlags;
 use App\Service\InstalledRelease;
 use App\Service\ReleaseMetadata;
 use App\Service\ReleasePackageVerifier;
+use App\Service\PhpRequirementResolver;
 use App\Service\UpdateSettings;
 use Doctrine\DBAL\Connection;
 
@@ -27,6 +28,7 @@ class SystemCheck
     public const WARNING = 'warning';
     public const ERROR = 'error';
 
+    public const MINIMUM_PHP_VERSION = '8.2.0';
     private const REQUIRED_EXTENSIONS = ['ctype', 'iconv', 'pdo', 'mbstring', 'xml', 'curl', 'intl', 'sodium', 'zip'];
     private const WRITABLE = ['', 'bin', 'config', 'migrations', 'public', 'src', 'templates', 'var', 'vendor'];
     private const MIN_FREE_BYTES = 300 * 1024 * 1024;
@@ -43,6 +45,7 @@ class SystemCheck
         private readonly FeatureFlags $features,
         private readonly Connection $connection,
         private readonly Toolchain $toolchain,
+        private readonly ?PhpRequirementResolver $phpRequirement = null,
     ) {
     }
 
@@ -80,14 +83,29 @@ class SystemCheck
             $add('source', 'Update method', self::ERROR, 'Invalid update settings: '.$e->getMessage());
         }
 
+        $resolver = $this->phpRequirement ?? new PhpRequirementResolver($this->projectDir, $this->settings->config());
+        $phpCheck = $resolver->check();
+        $phpVersionOk = $phpCheck['ok'];
         $missing = array_values(array_filter(self::REQUIRED_EXTENSIONS, static fn (string $extension): bool => !extension_loaded($extension)));
         $driver = $this->databaseDriverExtension();
         if ($driver !== null && !extension_loaded($driver)) {
             $missing[] = $driver;
         }
-        $add('php', 'PHP runtime', $missing === [] ? self::OK : self::ERROR, $missing === []
-            ? 'PHP '.PHP_VERSION.' ('.PHP_SAPI.') with the required extensions.'
-            : 'PHP '.PHP_VERSION.' is missing: '.implode(', ', $missing).'.');
+
+        $phpProblems = [];
+        if (!$phpVersionOk) {
+            $phpProblems[] = $phpCheck['detail'];
+        }
+        if ($missing !== []) {
+            $phpProblems[] = 'missing: '.implode(', ', $missing);
+        }
+
+        $phpOk = $phpVersionOk && $missing === [];
+        $phpDetail = $phpOk
+            ? $phpCheck['detail'].' with the required extensions.'
+            : 'PHP '.PHP_VERSION.' ('.implode('; ', $phpProblems).').';
+
+        $add('php', 'PHP runtime', $phpOk ? self::OK : self::ERROR, $phpDetail);
 
         if ($source !== null && $source['source'] === 'release') {
             $this->releaseChecks($add);

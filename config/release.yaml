@@ -1,3 +1,8 @@
 # Branch from which maintainers publish tagged release packages.
 # Deployment update settings belong in config/aggregate.yaml instead.
 branch: master
+
+# Baseline minimum PHP version supported by this release (falls back to 8.2 if omitted).
+# Can be overridden locally or per-environment in config/aggregate.yaml.
+minimum_php_version: '8.2'
+
