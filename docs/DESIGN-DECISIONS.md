@@ -124,13 +124,19 @@ this contract, not instead of it.
 ### The BI tool is the front end
 
 **Decision.** Aggregate never draws charts or builds reports. It publishes
-versioned SQL views, and the dashboard only administers the installation.
+versioned SQL views, and the dashboard only administers the installation. AI
+assistants query the same views, with the same read-only account, as BI tools.
 
 **Why.** The organizations it serves already own Power BI, Tableau or Looker.
 Building a weaker competing dashboard would cost effort and add another tool to
 review, while stable views let their existing reports keep working.
 
-**Trade-off.** You need a BI tool, or SQL, to see results.
+The same design makes AI analysis safer to offer: an assistant with the reporting
+account inherits suppression and never sees an identifier, and the glossary views
+give it the column meanings it needs.
+
+**Trade-off.** You need a BI tool, SQL, or an AI assistant with a database
+connector to see results.
 
 **What would change it.** Nothing; admin previews of SQL and columns are welcome,
 report screens are not.

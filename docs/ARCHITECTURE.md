@@ -125,7 +125,7 @@ Around them:
 
 A BI tool connects with a database user that can read only the approved views
 (see [view-only grants](BI-GLOSSARY.md#view-only-grants)). Every column is listed
-in [Connect a BI tool](BI-CONNECTION.md), and the suppression rules in the
+in [Connect BI tools and AI assistants](BI-CONNECTION.md), and the suppression rules in the
 [privacy guide](PRIVACY-COMPLIANCE.md#bi-exposure-and-suppression).
 
 ## Configuration

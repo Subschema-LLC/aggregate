@@ -35,9 +35,10 @@ review.
 - More detail (identifiers, custom properties, exact dimensions) is collected
   only for visitors who make an affirmative choice. It stops when they withdraw
   that choice.
-- Reports live in the BI tool the organization already uses. Aggregate
-  publishes stable SQL views that hide small numbers in the database itself,
-  so every report, extract and user gets the same protection.
+- Reports live in the BI tool the organization already uses, or come from an AI
+  assistant querying the same data. Aggregate publishes stable SQL views that
+  hide small numbers in the database itself, so every report, extract, user and
+  assistant gets the same protection.
 
 ## What the project believes
 
@@ -50,9 +51,10 @@ These principles decide most design questions. The
 2. **Say plainly what it does not do.** The README's "What you give up" section
    comes before the feature list. "Anonymous" is the name of a mode, not a legal
    conclusion, and the docs say where the line sits.
-3. **Your BI tool is the front end.** Aggregate collects, protects and publishes
-   data. It never draws charts. Its reporting views are a contract that BI
-   connections can rely on.
+3. **Your BI tool, or your AI assistant, is the front end.** Aggregate collects,
+   protects and publishes data. It never draws charts. Its reporting views are a
+   contract that BI connections and AI assistants can rely on, and their glossary
+   describes every column so people and models read them the same way.
 4. **Simple enough to explain on one page.** One events table, few columns,
    plain SQL views. A privacy officer should be able to read the data model and
    understand it.

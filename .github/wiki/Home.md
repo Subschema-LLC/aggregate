@@ -1,9 +1,10 @@
 # Aggregate Analytics
 
-Aggregate is self-hosted, privacy-focused analytics infrastructure. It counts page
-views and events without identifying visitors, collects more detail only with
-consent, and publishes stable SQL views that Power BI, Tableau or any other BI
-tool can read. It installs on ordinary PHP hosting from a release ZIP.
+Aggregate is headless, AI-ready web analytics. It counts what happens on your
+websites, not who did it, and keeps the results in your own database as
+privacy-protected SQL views. Power BI, Tableau or an AI assistant can query those
+views directly, with the same read-only account, and never see a visitor record.
+It installs on ordinary PHP hosting from a release ZIP.
 
 ## The documentation is at [subschema-llc.github.io/aggregate](https://subschema-llc.github.io/aggregate/)
 
@@ -21,7 +22,8 @@ reviewed together with the code. This wiki only points you to the right page.
 | Choose and connect a database (MySQL, MariaDB, PostgreSQL, SQL Server, SQLite) | [Databases](https://subschema-llc.github.io/aggregate/install/databases) |
 | Add tracking, a consent banner or tags to a website | [Setup and drop-ins](https://subschema-llc.github.io/aggregate/tracking/setup) · [Tracker](https://subschema-llc.github.io/aggregate/tracking/tracker) · [Tag manager](https://subschema-llc.github.io/aggregate/tracking/tag-manager) |
 | Know what is stored, and when consent is needed | [Privacy and compliance](https://subschema-llc.github.io/aggregate/privacy/compliance) |
-| Connect Power BI or Tableau | [Connect a BI tool](https://subschema-llc.github.io/aggregate/reporting/connect-bi) · [BI labels and glossary](https://subschema-llc.github.io/aggregate/reporting/bi-glossary) |
+| Connect Power BI or Tableau | [Connect BI and AI tools](https://subschema-llc.github.io/aggregate/reporting/connect-bi) · [BI labels and glossary](https://subschema-llc.github.io/aggregate/reporting/bi-glossary) |
+| Let an AI assistant answer questions about my traffic | [Connect an AI assistant](https://subschema-llc.github.io/aggregate/reporting/connect-bi#connect-an-ai-assistant) |
 | Change settings in YAML or the dashboard | [Configuration](https://subschema-llc.github.io/aggregate/configure/configuration) · [Custom data model](https://subschema-llc.github.io/aggregate/configure/data-model) |
 | Update an installation, or roll an update back | [Updating](https://subschema-llc.github.io/aggregate/operate/updates) |
 | Look up a term | [Glossary](https://subschema-llc.github.io/aggregate/start/glossary) |
