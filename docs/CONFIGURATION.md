@@ -89,8 +89,13 @@ Connection string formats for `DATABASE_URL` (see [Database Guide](DATABASE.md))
 - PostgreSQL: `postgresql://user:pass@host:5432/dbname?serverVersion=16`
 - MySQL: `mysql://user:pass@host:3306/dbname?serverVersion=8.0.0`
 - MariaDB: `mysql://user:pass@host:3306/dbname?serverVersion=11.4.0-MariaDB`
-- SQL Server: `sqlsrv://user:pass@host:1433/dbname?serverVersion=2022`
+- SQL Server: `mssql://user:pass@host:1433/dbname?serverVersion=2022` (pdo_sqlsrv) or `sqlsrv://…` (sqlsrv); add `&driverOptions[TrustServerCertificate]=1` for a self-signed server certificate
 - SQLite: `sqlite:///%kernel.project_dir%/var/data.db`
+
+`%kernel.project_dir%` in `DATABASE_URL` is replaced with the application
+directory; no other `%` sequence is interpreted, so encode special characters
+in passwords as usual (`@` as `%40`). A release ZIP's browser setup page writes
+`.env.local` with the encoded connection and detected version for you.
 
 MySQL and MariaDB version hints must include the patch component. See the
 [DBAL 4 upgrade notes](DATABASE.md#upgrade-to-doctrine-dbal-4) before updating an

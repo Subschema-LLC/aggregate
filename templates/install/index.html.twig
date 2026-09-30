@@ -16,49 +16,73 @@
             </h1>
 
             {% for message in app.flashes('error') %}
-                <div class="notification is-danger is-light">{{ message }}</div>
+                <div class="notification is-danger is-light" role="alert">{{ message }}</div>
             {% endfor %}
 
             <div class="content">
-                <p>Welcome! Create your admin account to complete the setup.</p>
+                <p>Create your administrator account to finish setup.</p>
                 <div class="notification is-info is-light">
                     <p><strong>What will happen:</strong></p>
                     <ul>
-                        <li>Database migrations will be run automatically</li>
+                        <li>The database tables and reporting views are created</li>
                         <li>Anonymous-mode events will use sanitized dimensions and server-generated UTC hour buckets</li>
                         <li>Your admin account will be created</li>
-                        <li>Worker setup is optional and only needed for async ingestion mode</li>
+                        <li>A background worker is needed only if you later switch to async ingestion</li>
                     </ul>
                 </div>
             </div>
 
             <form action="{{ path('app_install_execute') }}" method="post">
                 <input type="hidden" name="_csrf_token" value="{{ csrf_token('install') }}">
+
+                {% if setup_code_required|default(false) %}
                 <div class="field">
-                    <label class="label">Admin Username</label>
+                    <label class="label" for="setup_code">Setup code</label>
                     <div class="control has-icons-left">
-                        <input class="input" type="text" name="admin_username" placeholder="admin" required autofocus>
+                        <input class="input" type="text" id="setup_code" name="setup_code" placeholder="XXXX-XXXX-XXXX" required autocomplete="off" spellcheck="false" aria-describedby="setup_code_help">
+                        <span class="icon is-left"><i class="fas fa-key"></i></span>
+                    </div>
+                    <p class="help" id="setup_code_help">Copy it from <code>{{ setup_code_file }}</code> in the application folder. It shows that you manage this server.</p>
+                </div>
+                {% endif %}
+
+                <div class="field">
+                    <label class="label" for="admin_username">Admin Username</label>
+                    <div class="control has-icons-left">
+                        <input class="input" type="text" id="admin_username" name="admin_username" placeholder="admin" required autocomplete="username"{% if not setup_code_required|default(false) %} autofocus{% endif %}>
                         <span class="icon is-left"><i class="fas fa-user"></i></span>
                     </div>
                 </div>
 
                 <div class="field">
-                    <label class="label">Admin Password</label>
+                    <label class="label" for="admin_password">Admin Password</label>
                     <div class="control has-icons-left">
-                        <input class="input" type="password" name="admin_password" placeholder="Minimum 8 characters" required minlength="8">
+                        <input class="input" type="password" id="admin_password" name="admin_password" placeholder="Minimum 8 characters" required minlength="8" autocomplete="new-password" aria-describedby="admin_password_help">
                         <span class="icon is-left"><i class="fas fa-lock"></i></span>
                     </div>
-                    <p class="help">Choose a strong password. You can add more users later from Dashboard Settings.</p>
+                    <p class="help" id="admin_password_help">Choose a strong password. You can add more users later from Dashboard Settings.</p>
                 </div>
 
                 <div class="field">
-                    <label class="label">JS Namespace</label>
+                    <label class="label" for="app_host">Public address</label>
                     <div class="control has-icons-left">
-                        <input class="input" type="text" name="js_namespace" placeholder="Aggregate" value="Aggregate">
-                        <span class="icon is-left"><i class="fas fa-code"></i></span>
+                        <input class="input" type="url" id="app_host" name="app_host" value="{{ app_host|default('') }}" placeholder="https://analytics.example.com" autocomplete="url" aria-describedby="app_host_help">
+                        <span class="icon is-left"><i class="fas fa-globe"></i></span>
                     </div>
-                    <p class="help">The global variable name on tracked sites: <code>window.Aggregate</code></p>
+                    <p class="help" id="app_host_help">The address websites use to reach this installation. It goes into the tracking code you copy later. You can change it in Settings.</p>
                 </div>
+
+                <details class="mt-4">
+                    <summary class="has-text-weight-semibold">Advanced</summary>
+                    <div class="field mt-3">
+                        <label class="label" for="js_namespace">JS Namespace</label>
+                        <div class="control has-icons-left">
+                            <input class="input" type="text" id="js_namespace" name="js_namespace" placeholder="Aggregate" value="Aggregate" aria-describedby="js_namespace_help">
+                            <span class="icon is-left"><i class="fas fa-code"></i></span>
+                        </div>
+                        <p class="help" id="js_namespace_help">The global variable name on tracked sites: <code>window.Aggregate</code>. Keep the default unless it clashes with another script.</p>
+                    </div>
+                </details>
 
                 <div class="field mt-5">
                     <div class="control">

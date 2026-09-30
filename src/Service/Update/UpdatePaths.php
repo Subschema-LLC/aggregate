@@ -19,7 +19,7 @@ final class UpdatePaths
         '.env.local', '.env.local.php', '.env.*.local', '.env.prod',
         'config/aggregate.yaml', 'config/aggregate_*.yaml', 'config/websites.yaml',
         'config/*.local.yaml', 'config/tag-manager/sites/**', 'config/secrets/**',
-        'var/**',
+        'var/**', 'SETUP-CODE.txt',
     ];
 
     /** Release-owned paths inside a protected tree. */

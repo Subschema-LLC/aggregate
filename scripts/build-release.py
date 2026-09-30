@@ -36,7 +36,7 @@ ROOT_FILES = (
 CONFIG_FILES = (
     "aggregate.yaml.example", "websites.yaml.example", "bundles.php", "preload.php",
     "services.yaml", "services_dashboard.yaml", "routes_public.yaml", "routes_dashboard.yaml",
-    "navigation.yaml", "goals.yaml", "quick_search.yaml", "maintenance.php",
+    "navigation.yaml", "goals.yaml", "quick_search.yaml", "maintenance.php", "setup.php",
     "release.yaml", "release-signing.pub",
 )
 # Operator-owned paths that a package must never contain, so extracting or
@@ -46,7 +46,7 @@ PROTECTED_PATHS = (
     ".env.local", ".env.local.php", ".env.*.local", ".env.prod",
     "config/aggregate.yaml", "config/aggregate_*.yaml", "config/websites.yaml",
     "config/*.local.yaml", "config/tag-manager/sites/**", "config/secrets/**",
-    "var/**",
+    "var/**", "SETUP-CODE.txt",
 )
 # Exceptions to PROTECTED_PATHS: release-owned compiled browser templates.
 RELEASE_OWNED_EXCEPTIONS = ("var/browser/**",)
@@ -64,15 +64,17 @@ REQUIRED_FILES = (
     "var/browser/consent.template.min.js", "var/browser/consent-manifest.json",
     "var/browser/tag-manager.template.min.js", "var/browser/tag-manager-manifest.json",
     "config/aggregate.yaml.example", "config/websites.yaml.example", "config/services.yaml",
-    "config/bundles.php", "config/quick_search.yaml", "config/maintenance.php", "src/Kernel.php", "importmap.php",
+    "config/bundles.php", "config/quick_search.yaml", "config/maintenance.php", "config/setup.php",
+    "src/Setup/FirstRunSetup.php", "src/Setup/SetupCode.php", "src/Kernel.php", "importmap.php",
     "var/browser/standalone-consent.template.min.js", "var/browser/standalone-consent-manifest.json",
     "micro-consent-dropins/js/consent-ui.js", "micro-consent-dropins/js/consent-ui.min.js",
     "micro-consent-dropins/js/aggregate-consent.js", "micro-consent-dropins/js/aggregate-consent.min.js",
     "micro-consent-dropins/js/gtm-consent-mode.js", "micro-consent-dropins/js/gtm-consent-mode.min.js",
     "micro-consent-dropins/css/consent-ui.css",
 )
-PRODUCTION_ENV = """# Aggregate release defaults. Configure .env.local before running /install.
-# Generate APP_SECRET with: openssl rand -hex 32
+PRODUCTION_ENV = """# Aggregate release defaults. Do not edit: updates add new keys to this file.
+# Open the site in a browser to create .env.local with the setup page, or write
+# .env.local yourself (generate APP_SECRET with: openssl rand -hex 32).
 APP_ENV=prod
 APP_DEBUG=0
 APP_SECRET=

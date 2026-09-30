@@ -36,6 +36,7 @@
 /config/aggregate_*.yaml
 /config/*.local.yaml
 /.env.prod
+/SETUP-CODE.txt
 ###< aggregate-analytics ###
 
 ###> optional JavaScript build ###
@@ -54,3 +55,10 @@
 /release-files.json
 __pycache__/
 ###< release build ###
+
+###> documentation site ###
+/website/node_modules/
+/website/content/
+/website/.vitepress/cache/
+/website/.vitepress/dist/
+###< documentation site ###
