@@ -48,6 +48,27 @@ verify the reporting inbox/access list, complete candidate UAT and recovery
 rehearsals, and establish signing trust before publishing a reviewed package.
 No candidate was selected or published and no repository settings were changed.
 
+## Public readiness review: 2026-09-29
+
+The second readiness scan was conducted across all 307 reachable commits, tags,
+and branches prior to public release.
+
+| Check | Evidence and findings | Status |
+| --- | --- | --- |
+| History scanner | Scanned 307 commits with Gitleaks 8.30.1 across all branches, tags, and PR refs. 11 items flagged: 9 are example tokens in documentation/tests; 2 historical items reviewed (`APP_SECRET` in June 2025 initial `.env.dev` and `daily_salt_secret` in March 2026 `config/aggregate.yaml`). Current code contains no active credentials, private keys, or internal IPs. | Reviewed (local dev values only; no operational secrets) |
+| Author attribution | 96 commits authored as `scott.fillman@vaultalytics.com` and 183 as `scott.a.fillman@gmail.com`. | Verified for AGPLv3 publication |
+| Release signing | Ed25519 keypair generated (`scripts/sign-release.php --generate-keypair`). Public key committed at `config/release-signing.pub`. Private key stored securely in local user config (`~/.config/aggregate-release/private.key`, mode 0600) and configured as `RELEASE_SIGNING_PRIVATE_KEY` repository secret. Builds `v2026.09.02` and `v2026.09.03` signed and published as prereleases with verified signatures. | Operational & verified |
+| Branch protection | GitHub Rulesets for `Development`, `UAT`, and `Master` active. Block branch deletion, block force pushes, require pull requests with reviews, and **require the `CI` status check to pass** before merging. | Active |
+| Repository metadata | Repository description set: *"Privacy-first, self-hosted web analytics platform with anonymous aggregation, business intelligence views, and consent management."* Homepage set to `https://subschema.co/`. | Set |
+| Community health | AGPLv3 `LICENSE`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, PR template, and issue templates present and configured for `development` branch contributions. | Complete |
+
+### Post-visibility checklist (apply immediately after making public)
+
+- [ ] Turn on **Private vulnerability reporting** in repository Settings &rarr; Code security.
+- [ ] Turn on **Secret scanning** and **Push protection** (free for public repositories).
+- [ ] Ensure **Allow forking** is enabled in repository General settings.
+- [ ] Confirm the security inbox (subschema address in `SECURITY.md`) is active.
+
 ## Before changing repository visibility
 
 - [ ] Review current tracked files and every branch/tag to be published, following
