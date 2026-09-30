@@ -126,21 +126,127 @@ jobs:
       - name: Run packaging, branch configuration, and signing tests
         run: python3 -m unittest discover -s tests/Release -p 'test_*.py' -v
 
+  # Installs a fresh copy through the browser setup page and /install, then
+  # collects, archives and reports on each supported database engine. SQL
+  # string tests cannot show that an engine accepts the SQL; this does.
+  fresh-install:
+    name: Fresh install (${{ matrix.database }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - database: SQLite
+            driver: sqlite
+            image: ''
+            port: 1
+            extensions: pdo_sqlite
+            health: ''
+          - database: MySQL 8.0
+            driver: mysql
+            image: mysql:8.0
+            port: 3306
+            extensions: pdo_mysql
+            health: --health-cmd="mysqladmin ping -h 127.0.0.1 -proot-e2e" --health-interval=5s --health-timeout=5s --health-retries=30
+          - database: MariaDB 10.11
+            driver: mysql
+            image: mariadb:10.11
+            port: 3306
+            extensions: pdo_mysql
+            health: --health-cmd="healthcheck.sh --connect --innodb_initialized" --health-interval=5s --health-timeout=5s --health-retries=30
+          - database: PostgreSQL 16
+            driver: pgsql
+            image: postgres:16
+            port: 5432
+            extensions: pdo_pgsql
+            health: --health-cmd="pg_isready -U aggregate" --health-interval=5s --health-timeout=5s --health-retries=30
+          - database: SQL Server 2022
+            driver: sqlsrv
+            image: mcr.microsoft.com/mssql/server:2022-latest
+            port: 1433
+            extensions: sqlsrv, pdo_sqlsrv
+            health: --health-cmd="/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P Aggregate2026e2e -Q 'SELECT 1'" --health-interval=10s --health-timeout=5s --health-retries=30
+    services:
+      database:
+        # An empty image skips the service (SQLite needs none).
+        image: ${{ matrix.image }}
+        ports:
+          - ${{ matrix.port }}:${{ matrix.port }}
+        env:
+          MYSQL_ROOT_PASSWORD: root-e2e
+          MYSQL_DATABASE: aggregate
+          MYSQL_USER: aggregate
+          MYSQL_PASSWORD: E2e-p@ss%w0rd
+          MARIADB_ROOT_PASSWORD: root-e2e
+          MARIADB_DATABASE: aggregate
+          MARIADB_USER: aggregate
+          MARIADB_PASSWORD: E2e-p@ss%w0rd
+          POSTGRES_DB: aggregate
+          POSTGRES_USER: aggregate
+          POSTGRES_PASSWORD: E2e-p@ss%w0rd
+          ACCEPT_EULA: 'Y'
+          MSSQL_SA_PASSWORD: Aggregate2026e2e
+        options: ${{ matrix.health }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: '8.3'
+          extensions: ctype, iconv, mbstring, xml, curl, intl, sodium, zip, ${{ matrix.extensions }}
+          coverage: none
+          tools: composer:v2
+      - name: Install PHP dependencies and compile dashboard assets
+        env:
+          APP_ENV: prod
+          APP_DEBUG: '0'
+          APP_SECRET: build-only
+          DATABASE_URL: 'sqlite:///:memory:'
+        run: |
+          composer install --no-interaction --prefer-dist --no-scripts
+          php bin/console importmap:install --no-interaction
+          php bin/console asset-map:compile
+      - name: Create the SQL Server database and its owner login
+        if: matrix.driver == 'sqlsrv'
+        run: |
+          php <<'PHP'
+          <?php
+          $server = new PDO('sqlsrv:Server=127.0.0.1,1433;TrustServerCertificate=1', 'sa', 'Aggregate2026e2e', [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+          $server->exec('CREATE DATABASE aggregate');
+          $server->exec("CREATE LOGIN aggregate WITH PASSWORD = 'E2e p@ss''%w0rd', CHECK_POLICY = OFF");
+          $server->exec('ALTER AUTHORIZATION ON DATABASE::aggregate TO aggregate');
+          PHP
+      - name: Install through the setup page and exercise the application
+        env:
+          AGGREGATE_E2E_DISPOSABLE: '1'
+          AGGREGATE_E2E_DRIVER: ${{ matrix.driver }}
+          AGGREGATE_E2E_DB_HOST: 127.0.0.1
+          AGGREGATE_E2E_DB_PORT: ${{ matrix.port }}
+          AGGREGATE_E2E_DB_NAME: aggregate
+          AGGREGATE_E2E_DB_USER: aggregate
+          AGGREGATE_E2E_DB_PASSWORD: ${{ matrix.driver == 'sqlsrv' && 'E2e p@ss''%w0rd' || 'E2e-p@ss%w0rd' }}
+          AGGREGATE_E2E_TRUST_CERTIFICATE: '1'
+        run: php tests/Integration/fresh-install.php
+
   # Require this stable check in branch protection; matrix changes won't require
   # editing the protection rule. A failed, cancelled, or skipped job fails CI.
   ci:
     name: CI
     if: ${{ always() }}
-    needs: [php, javascript, release-tooling]
+    needs: [php, javascript, release-tooling, fresh-install]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
       PHP_RESULT: ${{ needs.php.result }}
       JAVASCRIPT_RESULT: ${{ needs.javascript.result }}
       RELEASE_TOOLING_RESULT: ${{ needs.release-tooling.result }}
+      FRESH_INSTALL_RESULT: ${{ needs.fresh-install.result }}
     steps:
       - name: Require all checks to pass
         run: |
           test "$PHP_RESULT" = success
           test "$JAVASCRIPT_RESULT" = success
           test "$RELEASE_TOOLING_RESULT" = success
+          test "$FRESH_INSTALL_RESULT" = success
