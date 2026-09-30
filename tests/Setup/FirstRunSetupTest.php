@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Setup;
 
 use App\Service\AppBranding;
+use App\Service\PhpRequirementResolver;
 use App\Service\ProjectDirEnvVarProcessor;
 use App\Setup\FirstRunSetup;
 use App\Setup\SetupCode;
@@ -335,6 +336,85 @@ final class FirstRunSetupTest extends TestCase
     public function testTheSetupPageUsesTheDefaultBrandName(): void
     {
         self::assertSame(AppBranding::DEFAULT_NAME, FirstRunSetup::PRODUCT_NAME);
+    }
+
+    /**
+     * public/index.php loads the setup page before Composer's autoloader, so its
+     * classes may use only PHP itself and each other. PHPUnit's autoloader would
+     * hide a violation from every other test here.
+     */
+    public function testTheSetupPageUsesNoClassOutsideItsOwnNamespace(): void
+    {
+        // PHP resolves an attribute's class only when it is read through
+        // reflection, which the container does and the setup page does not.
+        $attributesOnly = ['Symfony\\Component\\DependencyInjection\\Attribute\\Autowire'];
+        foreach (['FirstRunSetup', 'SetupCode'] as $class) {
+            $path = dirname(__DIR__, 2).'/src/Setup/'.$class.'.php';
+            foreach (\PhpToken::tokenize((string) file_get_contents($path)) as $token) {
+                if (!$token->is([T_NAME_QUALIFIED, T_NAME_FULLY_QUALIFIED])) {
+                    continue;
+                }
+                $name = ltrim($token->text, '\\');
+                self::assertTrue(
+                    !str_contains($name, '\\') || $name === 'App\\Setup' || str_starts_with($name, 'App\\Setup\\')
+                        || in_array($name, $attributesOnly, true),
+                    sprintf('%s.php line %d uses %s, which is not loaded before Composer.', $class, $token->line, $token->text),
+                );
+            }
+        }
+    }
+
+    public function testTheSetupPageRendersWithoutComposer(): void
+    {
+        $script = $this->project.'/var/render-setup.php';
+        file_put_contents($script, '<?php '.sprintf(
+            '$_SERVER = %s; $gate = require %s; $handled = $gate(%s); echo "\nHANDLED:", var_export($handled, true);',
+            var_export($this->server(), true),
+            var_export(dirname(__DIR__, 2).'/config/setup.php', true),
+            var_export($this->project, true),
+        ));
+        // A clean environment, so the test run's own APP_SECRET or DATABASE_URL
+        // does not mark the installation as configured.
+        $process = proc_open([PHP_BINARY, '-d', 'display_errors=stderr', $script], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, null, ['PATH' => (string) getenv('PATH')]);
+        self::assertIsResource($process);
+        $output = (string) stream_get_contents($pipes[1]);
+        $errors = (string) stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+
+        self::assertSame(0, proc_close($process), $errors);
+        self::assertStringNotContainsString('Fatal error', $output.$errors);
+        self::assertStringContainsString('HANDLED:true', $output);
+        self::assertStringContainsString(FirstRunSetup::PRODUCT_NAME, $output);
+        self::assertStringContainsString('PHP version', $output);
+    }
+
+    /** The setup page reads the PHP minimum without Composer, the same way as the service. */
+    #[DataProvider('phpMinimumConfigurations')]
+    public function testMinimumPhpVersionMatchesTheResolver(array $files, string $expected): void
+    {
+        foreach ($files as $file => $contents) {
+            file_put_contents($this->project.'/config/'.$file, $contents);
+        }
+
+        self::assertSame($expected, FirstRunSetup::minimumPhpVersion($this->project));
+        self::assertSame($expected, (new PhpRequirementResolver($this->project))->minimumVersion());
+    }
+
+    public static function phpMinimumConfigurations(): iterable
+    {
+        yield 'no configuration' => [[], '8.2.0'];
+        yield 'release baseline' => [['release.yaml' => "branch: master\nminimum_php_version: '8.3'\n"], '8.3.0'];
+        yield 'operator override' => [['release.yaml' => "minimum_php_version: '8.2'\n", 'aggregate.yaml' => "minimum_php_version: \"8.4.1\" # newer hosts\n"], '8.4.1'];
+        yield 'constraint syntax' => [['release.yaml' => "minimum_php_version: '>=8.3'\n"], '8.3.0'];
+        yield 'invalid value' => [['release.yaml' => "minimum_php_version: 'latest'\n"], '8.2.0'];
+        yield 'unquoted number is ignored' => [['release.yaml' => "minimum_php_version: 8.3\n"], '8.2.0'];
+        yield 'shipped release.yaml' => [['release.yaml' => (string) file_get_contents(dirname(__DIR__, 2).'/config/release.yaml')], FirstRunSetup::DEFAULT_MINIMUM_PHP_VERSION];
+    }
+
+    public function testTheSetupPageDefaultMatchesTheResolver(): void
+    {
+        self::assertSame(PhpRequirementResolver::DEFAULT_MINIMUM_PHP_VERSION, FirstRunSetup::DEFAULT_MINIMUM_PHP_VERSION);
     }
 
     /** @return array{0: bool, 1: string} */
