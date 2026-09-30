@@ -239,6 +239,10 @@ readiness, browser events, or data-layer events with named variable references.
 
 ## Documentation
 
+All guides are also published as a searchable site that needs no account:
+**[subschema-llc.github.io/aggregate](https://subschema-llc.github.io/aggregate/)**.
+It is built from these files on `master` and describes the current release.
+
 | Guide | Contents |
 | --- | --- |
 | [Contributing](CONTRIBUTING.md) | Branching strategy, development setup, architecture, privacy invariants, tests, Make commands, and pull requests |
