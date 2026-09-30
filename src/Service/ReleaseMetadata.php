@@ -119,8 +119,10 @@ final class ReleaseMetadata
     public static function compatibilityErrors(array $metadata): array
     {
         $errors = [];
-        if (version_compare(PHP_VERSION, substr($metadata['requirements']['php'], 2), '<')) {
-            $errors[] = 'Requires PHP '.$metadata['requirements']['php'].'; this runtime is '.PHP_VERSION.'.';
+        $constraint = (string) ($metadata['requirements']['php'] ?? '>=8.2');
+        $minVersion = preg_replace('/^[>=<\s^~v]+/', '', $constraint);
+        if ($minVersion !== '' && version_compare(PHP_VERSION, $minVersion, '<')) {
+            $errors[] = 'Requires PHP '.$constraint.'; this runtime is '.PHP_VERSION.'.';
         }
         foreach ($metadata['requirements']['extensions'] as $extension) {
             if (!extension_loaded($extension)) {

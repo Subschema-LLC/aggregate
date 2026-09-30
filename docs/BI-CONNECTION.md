@@ -1,12 +1,13 @@
-# Connect a BI tool
+# Connect BI tools and AI assistants
 
 [BI labels and glossary](BI-GLOSSARY.md) · [Privacy guide](PRIVACY-COMPLIANCE.md#bi-exposure-and-suppression) · [Databases](DATABASE.md)
 
-Aggregate has no reports of its own. Power BI, Tableau, Looker or any other tool
-that reads SQL connects to versioned views in the Aggregate database. This page
-lists those views, the queries that use them correctly, and what to check before
-giving a reporting tool access. Each installation also serves a shorter version
-of this reference at `/how-it-works/data-visualization`.
+Aggregate has no reports of its own. Power BI, Tableau, Looker, any other tool
+that reads SQL, or an AI assistant connects to versioned views in the Aggregate
+database. This page lists those views, the queries that use them correctly, and
+what to check before giving a reporting tool or an assistant access. Each
+installation also serves a shorter version of this reference at
+`/how-it-works/data-visualization`.
 
 ## The reporting boundary
 
@@ -262,12 +263,94 @@ in them.
 - Review stored BI extracts on their own schedule: raising a threshold later does
   not remove data already exported.
 
+## Connect an AI assistant
+
+An AI assistant or agent that can run SQL can answer questions from the same
+views as a BI tool: "Which pages gained the most views last week?", "How did
+sign-ups trend by day this month?" or "Which countries did most page views come
+from?" Aggregate does not include an assistant. Use any tool that connects a
+model to a SQL database, such as a database connector (an MCP server) for your
+assistant or a notebook, with the settings below. A packaged, read-only
+integration is a [roadmap proposal](../ROADMAP.md#proposals-to-explore).
+
+### Give it the reporting account
+
+Connect with the dedicated read-only account from the
+[connection checklist](#connection-checklist), which can read the approved views
+and nothing else. The assistant then gets the same protection as any BI user:
+completed periods only, small cells withheld, and no identifiers or raw rows.
+
+- Never give it the application's database credentials, the raw `events` table,
+  the `analytics_custom_*` views or a SQLite database file. On SQLite, give it an
+  export of the approved views instead.
+- Prefer a connector that can only read, and limit how many rows one query can
+  return.
+
+### Give it the data dictionary
+
+The glossary views describe every column and label every code, which is the
+context a model needs to write correct SQL instead of guessing. Load the column
+descriptions into the assistant's instructions, or let it query them:
+
+```sql
+SELECT object_name, column_name, label, description
+FROM bi_glossary_columns_v1
+WHERE is_default_locale = 1
+ORDER BY object_name, column_name;
+```
+
+Publish the glossary first with `app:analytics:glossary:sync` (see
+[BI labels and glossary](BI-GLOSSARY.md#install-and-synchronize)). The
+`bi_dim_*_v1` views give it readable labels for codes such as `device_class`.
+
+### Tell it the rules
+
+Assistants write plausible SQL that can still be wrong for these views. Add rules
+like these to its instructions:
+
+```text
+You can query these read-only SQL views about website traffic:
+- bi_anonymous_events_v1: one row per completed UTC hour and combination of
+  website_token, event_name, page_path, referrer_channel, device_class and
+  viewport_bucket, with event_count.
+- bi_anonymous_goals_v1: one row per completed UTC day, website_token and
+  goal_event, with event_count.
+- bi_anonymous_geo_events_v1: one row per completed UTC day, website_token,
+  event_name and geo_area, with event_count.
+- bi_dim_* views: labels for codes. Left join them and fall back to the code.
+Rules:
+- Total with SUM(event_count), never COUNT(*).
+- event_count counts events or goal occurrences, not people, visitors or visits.
+- A missing row means the count was withheld or unavailable, not zero.
+- Never join the three views to each other; each is counted separately.
+- All times are UTC. The current hour (events) and day (goals, geography) are
+  not included yet.
+- Filter by website_token to report on one website.
+```
+
+### What leaves your servers
+
+The model provider receives your questions and the query results: released
+counts, page paths, event names and labels, not visitor records. Paths and event
+names can still be sensitive in context, such as a path that names a medical
+condition. Check the provider's terms for how long it keeps prompts and whether
+it trains on them, or use a model you host yourself to keep everything in-house.
+
+### Limits
+
+An assistant can run many queries quickly, and comparing many results can narrow
+down withheld numbers, just as a determined BI user could. Thresholds count
+events, not people. Give assistant access only to people who may already see these
+reports, consider a higher threshold for low-traffic or sensitive sites, keep the
+connector's query log if it has one, and check important answers against the SQL
+the assistant ran.
+
 ## What suppression does not do
 
 Thresholds count events, not people, so one person can meet a threshold alone.
 Suppression reduces the chance of exposing rare combinations, but it does not
 establish k-anonymity or make the released data legally anonymous, and it cannot
 prevent every inference across reports, time periods or outside data. Apply
-retention, access control and review to the BI tool and its extracts as well. The
-[privacy guide](PRIVACY-COMPLIANCE.md#bi-exposure-and-suppression) explains the
-suppression rules in full.
+retention, access control and review to BI tools, AI assistants and their
+extracts as well. The [privacy guide](PRIVACY-COMPLIANCE.md#bi-exposure-and-suppression)
+explains the suppression rules in full.

@@ -63,6 +63,8 @@ final class FirstRunSetup
 
     /** Used when release.json is missing, as in a source checkout. */
     private const DEFAULT_EXTENSIONS = ['ctype', 'curl', 'iconv', 'intl', 'mbstring', 'pdo', 'sodium', 'xml', 'zip'];
+    /** Mirrors App\Service\PhpRequirementResolver::DEFAULT_MINIMUM_PHP_VERSION. */
+    public const DEFAULT_MINIMUM_PHP_VERSION = '8.2.0';
     private const SQLITE_FILE = 'var/data.db';
     private const SQLITE_URL = 'sqlite:///%kernel.project_dir%/var/data.db';
     private const PROBE_TABLE = 'aggregate_setup_check';
@@ -126,7 +128,7 @@ final class FirstRunSetup
 
         $minimum = $requirements['php'];
         $checks[] = version_compare(PHP_VERSION, $minimum, '>=')
-            ? ['label' => 'PHP version', 'status' => 'ok', 'detail' => 'PHP '.PHP_VERSION.'.']
+            ? ['label' => 'PHP version', 'status' => 'ok', 'detail' => 'PHP '.PHP_VERSION.' ('.$minimum.' or newer supported).']
             : ['label' => 'PHP version', 'status' => 'fail', 'detail' => 'PHP '.PHP_VERSION.' is too old; '.$minimum.' or newer is needed. Choose a newer PHP version for this site in your hosting panel\'s PHP settings, or ask your hosting provider.'];
 
         $missing = array_values(array_filter($requirements['extensions'], static fn (string $name): bool => !extension_loaded($name)));
@@ -572,7 +574,7 @@ final class FirstRunSetup
     /** @return array{php: string, extensions: list<string>} */
     private function releaseRequirements(): array
     {
-        $requirements = ['php' => '8.2.0', 'extensions' => self::DEFAULT_EXTENSIONS];
+        $requirements = ['php' => self::minimumPhpVersion($this->projectDir), 'extensions' => self::DEFAULT_EXTENSIONS];
         $raw = @file_get_contents($this->projectDir.'/release.json', false, null, 0, 65536);
         $release = is_string($raw) ? json_decode($raw, true) : null;
         $declared = is_array($release) && is_array($release['requirements'] ?? null) ? $release['requirements'] : [];
@@ -587,6 +589,40 @@ final class FirstRunSetup
         }
 
         return $requirements;
+    }
+
+    /**
+     * The minimum PHP version before release.json is read, resolved like
+     * App\Service\PhpRequirementResolver: a top-level minimum_php_version in
+     * config/aggregate.yaml, then in config/release.yaml, then 8.2.0.
+     *
+     * This page runs before Composer's autoloader exists, so it cannot use that
+     * service or a YAML parser. It reads only unindented, quoted values, which is
+     * what the service accepts: YAML reads an unquoted 8.3 as a number.
+     */
+    public static function minimumPhpVersion(string $projectDir): string
+    {
+        foreach (['config/aggregate.yaml', 'config/release.yaml'] as $file) {
+            $contents = @file_get_contents($projectDir.'/'.$file, false, null, 0, 262144);
+            if (is_string($contents)
+                && preg_match('/^minimum_php_version:[ \t]*([\'"])([^\'"\r\n]*)\1[ \t]*(?:#.*)?$/m', $contents, $match) === 1
+                && trim($match[2]) !== '') {
+                return self::normalizePhpVersion($match[2]);
+            }
+        }
+
+        return self::DEFAULT_MINIMUM_PHP_VERSION;
+    }
+
+    /** Mirrors App\Service\PhpRequirementResolver::normalizeVersion(). */
+    private static function normalizePhpVersion(string $version): string
+    {
+        $trimmed = trim((string) preg_replace('/^[>=<\s^~v]+/', '', $version));
+        if ($trimmed === '' || preg_match('/^\d+(\.\d+)*$/', $trimmed) !== 1) {
+            return self::DEFAULT_MINIMUM_PHP_VERSION;
+        }
+
+        return implode('.', array_pad(explode('.', $trimmed), 3, '0'));
     }
 
     private function memoryLimitBytes(): ?int

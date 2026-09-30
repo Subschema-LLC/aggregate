@@ -1,8 +1,24 @@
-# Headless Privacy Analytics
+# Aggregate: headless, AI-ready web analytics
 
-Measure events without assigning every visitor an identity.
+**Web analytics that your BI tools and AI assistants can query, without identifying your visitors.**
 
-Self-hosted web analytics with privacy-minimized anonymous-mode events, optional consent-based enhanced analytics, and reporting views for Power BI, Tableau, and other BI tools.
+Aggregate counts what happens on your websites, not who did it. It keeps the
+results in your own database as stable SQL views with privacy protection built
+in, so Power BI, Tableau, Looker or an AI assistant can answer questions about
+your traffic directly. There is no analytics dashboard to learn, and the views
+a report or a model reads hold no visitor-level data.
+
+- **Headless.** Collection, configuration and maintenance run from YAML and the
+  command line; an optional admin UI manages the installation. Reports live in
+  the tools you already use.
+- **AI-ready.** Give an assistant the same read-only account as your BI tool. It
+  sees documented, versioned views and a built-in data dictionary, never raw
+  rows, identifiers or counts below your disclosure threshold.
+- **Privacy enforced, not promised.** The server stores no visitor ID, IP
+  address or exact time in anonymous mode and adds detail only with consent, and
+  the database withholds small counts from every report, extract and query.
+- **Yours to run.** Self-hosted from a release ZIP on ordinary PHP hosting, with
+  MySQL, MariaDB, PostgreSQL, SQL Server or SQLite.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![Tracker: BSD-3](https://img.shields.io/badge/tracker-BSD--3--Clause-green.svg)](js/LICENSE.txt)
@@ -29,7 +45,7 @@ for planned work.
 
 When you need more, enhanced mode adds identifiers, properties and exact dimensions — but only for visitors who have made an affirmative choice, and it stops the moment they withdraw it.
 
-Once you start collecting data, connect Power BI, Tableau, or Looker to the approved aggregate reporting views.
+Once you start collecting data, connect Power BI, Tableau, Looker or an AI assistant to the approved reporting views.
 
 ![Dashboard screenshot](docs/images/dashboard.png)
 
@@ -45,6 +61,13 @@ for routine BI access.
 withhold the current bucket and hide any cell below your configured minimum. The threshold
 lives in the database and applies to every consumer of these views. Keep raw input
 tables private when granting a BI connection access.
+
+**Ready for AI analysis.** The reporting views keep their names and column meanings
+across releases, and the glossary views label every code and describe every column:
+the context a model needs to write correct SQL instead of guessing. An assistant
+connected with the read-only reporting account gets the same protection as a BI user,
+and what reaches a model provider is released counts, not visitor records. See
+[connect an AI assistant](docs/BI-CONNECTION.md#connect-an-ai-assistant).
 
 **Consent that actually toggles something.** `setConsent(true)` turns on visitor and session
 IDs, custom properties and exact dimensions. `setConsent(false)` drops the identifiers and
@@ -72,6 +95,7 @@ Details:
 
 - **Privacy-minimized collection:** page views and safe named events, with optional allowlisted goals and coarse local geography.
 - **Reporting views with suppression:** completed hourly or daily aggregates with configurable minimum event counts.
+- **AI-ready reporting:** versioned views and a built-in data dictionary that AI assistants can query with the same read-only account as BI tools.
 - **Optional page depth:** a capped page count shared by events on each page, with tab storage or URL parameter passing configured through UI/YAML. See [storage, URL and reporting boundaries](docs/DATA-MODEL.md#optional-page-depth) before enabling it.
 - **Consent-based enhanced detail:** visitor/session IDs, properties, and exact dimensions when enabled by your consent manager.
 - **Headless operation:** an ingestion API, YAML configuration, and CLI commands, with an optional admin dashboard.
@@ -95,6 +119,10 @@ combining periods only combines cells already released by the views.
 **Reports lag one bucket.** The current UTC hour is never released for events; the current
 UTC day is never released for goals and geography. There is no real-time view.
 
+**No built-in assistant or charts.** Aggregate makes the data safe and understandable
+to query. The BI tool, the model and the connector are yours to choose, and an
+assistant's access deserves the same review as any BI user's.
+
 **"Anonymous" is the name of a mode, not a legal conclusion.** Rare paths, unusual event
 names, small populations and outside information can still make a row personal in context.
 Withdrawing consent is prospective — it stops future enhanced detail, it does not erase
@@ -102,13 +130,14 @@ what the server already holds. The
 [compliance guide](docs/PRIVACY-COMPLIANCE.md) is specific about where the line sits and
 what remains your responsibility.
 
-This project suits teams that want self-hosted event measurement feeding their existing BI tools. It does not provide session replay, heatmaps, or a built-in marketing attribution suite.
+This project suits teams that want self-hosted event measurement feeding their existing BI tools and AI assistants. It does not provide session replay, heatmaps, or a built-in marketing attribution suite.
 
 ## Is this for you?
 
 **Likely yes** if you answer to a privacy office or DPO, you run a public-sector, health,
 education or legal site, you already own a BI stack and want measurement to feed it rather
-than compete with it, or you want to be able to explain your whole data model on one page.
+than compete with it, you want to ask an AI assistant about your traffic without handing it
+visitor-level data, or you want to be able to explain your whole data model on one page.
 
 **Likely no** if you need unique-visitor counts, funnels, session replay, heatmaps or
 marketing attribution. [Plausible](https://plausible.io) and [Matomo](https://matomo.org)
@@ -217,7 +246,7 @@ Routine BI connections should use approved views:
 | `bi_anonymous_goals_v1` | Daily occurrences of configured goals |
 | `bi_anonymous_geo_events_v1` | Daily coarse geography with additional suppression |
 
-Keep raw `events`, archive tables, and unsuppressed operational views private. Organization markers are stored under their configured name in raw event JSON; the grouped views and archives omit that flag. [Connect a BI tool](docs/BI-CONNECTION.md) lists every column, safe query patterns and a connection checklist. See the [compliance guide](docs/PRIVACY-COMPLIANCE.md#bi-exposure-and-suppression) for access and disclosure rules, [organization traffic](docs/PRIVACY-COMPLIANCE.md#organization-traffic) for filtering, and the [database guide](docs/DATABASE.md) for connections and schema details.
+Keep raw `events`, archive tables, and unsuppressed operational views private. Organization markers are stored under their configured name in raw event JSON; the grouped views and archives omit that flag. [Connect BI tools and AI assistants](docs/BI-CONNECTION.md) lists every column, safe query patterns, a connection checklist and how to set up an AI assistant. See the [compliance guide](docs/PRIVACY-COMPLIANCE.md#bi-exposure-and-suppression) for access and disclosure rules, [organization traffic](docs/PRIVACY-COMPLIANCE.md#organization-traffic) for filtering, and the [database guide](docs/DATABASE.md) for connections and schema details.
 
 The [Data model](docs/DATA-MODEL.md) page provides UTM/query mappings, configurable anonymous property whitelists, downloadable YAML, and UI/CLI regeneration of private custom reporting views. All UTMs require consent by default. Anonymous attribution should use at most a broad `utm_medium`; administrators can override this recommendation with the documented warning about more detailed values.
 
@@ -269,7 +298,7 @@ It is built from these files on `master` and describes the current release.
 | [Deployment](DEPLOYMENT.md) | Docker/native setup, web servers, workers, production operations, and upgrades |
 | [Plesk deployment](PLESK-DEPLOYMENT.md) | Plesk steps for a release ZIP without SSH, Git-based setup, and worker options |
 | [Database](docs/DATABASE.md) | Supported engines, connection strings, migrations, and reporting schema |
-| [Connect a BI tool](docs/BI-CONNECTION.md) | Approved reporting views and their columns, safe queries, and a connection checklist for Power BI or Tableau |
+| [Connect BI tools and AI assistants](docs/BI-CONNECTION.md) | Approved reporting views and their columns, safe queries, a connection checklist for Power BI or Tableau, and AI assistant setup |
 
 ## Contributing
 

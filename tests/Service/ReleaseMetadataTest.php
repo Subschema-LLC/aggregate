@@ -102,6 +102,19 @@ final class ReleaseMetadataTest extends TestCase
         self::assertStringContainsString('aggregate_missing_extension', $errors[1]);
     }
 
+    public function testCompatibilityAcceptsLowestSupportedAndNewerPhpVersions(): void
+    {
+        $metadata = self::metadata();
+        $metadata['requirements'] = ['php' => '>=8.2', 'extensions' => []];
+        self::assertSame([], ReleaseMetadata::compatibilityErrors($metadata));
+
+        $metadata['requirements'] = ['php' => '8.2.0', 'extensions' => []];
+        self::assertSame([], ReleaseMetadata::compatibilityErrors($metadata));
+
+        $metadata['requirements'] = ['php' => '>=8.0', 'extensions' => []];
+        self::assertSame([], ReleaseMetadata::compatibilityErrors($metadata));
+    }
+
     public function testInstalledIdentityDoesNotRequireGitAndIsNeverCached(): void
     {
         $directory = sys_get_temp_dir().'/aggregate-release-identity-'.bin2hex(random_bytes(8));
