@@ -25,6 +25,12 @@ updates_branch: master
 # updates_signing_public_key: 'BASE64_PUBLIC_KEY'
 # Never put the private release signing key in application configuration.
 
+# Minimum required PHP version (default: '8.2'). If unset, falls back to
+# config/release.yaml or 8.2. Any version equal to or newer than this minimum
+# is supported (e.g. PHP 8.2, 8.3, 8.4+). Can also be set per-environment.
+# minimum_php_version: '8.2'
+
+
 # Deployment-wide feature flags, managed through the Feature flags admin page
 # or this YAML. No uppercase environment-variable overrides. See docs/FEATURE-FLAGS.md.
 # An active environment's entire feature_flags mapping replaces this shared one.

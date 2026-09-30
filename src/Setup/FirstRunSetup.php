@@ -126,7 +126,7 @@ final class FirstRunSetup
 
         $minimum = $requirements['php'];
         $checks[] = version_compare(PHP_VERSION, $minimum, '>=')
-            ? ['label' => 'PHP version', 'status' => 'ok', 'detail' => 'PHP '.PHP_VERSION.'.']
+            ? ['label' => 'PHP version', 'status' => 'ok', 'detail' => 'PHP '.PHP_VERSION.' ('.$minimum.' or newer supported).']
             : ['label' => 'PHP version', 'status' => 'fail', 'detail' => 'PHP '.PHP_VERSION.' is too old; '.$minimum.' or newer is needed. Choose a newer PHP version for this site in your hosting panel\'s PHP settings, or ask your hosting provider.'];
 
         $missing = array_values(array_filter($requirements['extensions'], static fn (string $name): bool => !extension_loaded($name)));
@@ -572,7 +572,8 @@ final class FirstRunSetup
     /** @return array{php: string, extensions: list<string>} */
     private function releaseRequirements(): array
     {
-        $requirements = ['php' => '8.2.0', 'extensions' => self::DEFAULT_EXTENSIONS];
+        $resolver = new \App\Service\PhpRequirementResolver($this->projectDir);
+        $requirements = ['php' => $resolver->minimumVersion(), 'extensions' => self::DEFAULT_EXTENSIONS];
         $raw = @file_get_contents($this->projectDir.'/release.json', false, null, 0, 65536);
         $release = is_string($raw) ? json_decode($raw, true) : null;
         $declared = is_array($release) && is_array($release['requirements'] ?? null) ? $release['requirements'] : [];
