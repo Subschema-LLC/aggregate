@@ -283,6 +283,20 @@ final class FirstRunSetupTest extends TestCase
         FirstRunSetup::environmentFile(str_repeat('ab', 32), "sqlite:///tmp/it's.db", new \DateTimeImmutable());
     }
 
+    public function testTheSetupPageNamesNoHostingVendor(): void
+    {
+        // Panel-specific steps belong in the hosting guides linked from DEPLOYMENT.md.
+        unlink($this->project.'/vendor/autoload_runtime.php');
+        $blocked = $this->handle($this->server(['DOCUMENT_ROOT' => $this->project]));
+        self::assertStringContainsString('in your hosting panel', $blocked);
+
+        foreach ([$blocked, (string) file_get_contents(dirname(__DIR__, 2).'/src/Setup/FirstRunSetup.php'), (string) file_get_contents(dirname(__DIR__, 2).'/config/setup.php')] as $text) {
+            foreach (['plesk', 'cpanel', 'directadmin'] as $vendor) {
+                self::assertStringNotContainsStringIgnoringCase($vendor, $text);
+            }
+        }
+    }
+
     public function testTheSetupPageUsesTheDefaultBrandName(): void
     {
         self::assertSame(AppBranding::DEFAULT_NAME, FirstRunSetup::PRODUCT_NAME);

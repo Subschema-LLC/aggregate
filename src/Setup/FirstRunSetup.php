@@ -34,7 +34,7 @@ final class FirstRunSetup
             'extension' => 'pdo_mysql',
             'port' => 3306,
             'minimum' => 'MySQL 8.0 or MariaDB 10.6',
-            'help' => 'The usual choice with a hosting panel. Create an empty database and user first (in Plesk: Databases, then Add Database).',
+            'help' => 'The usual choice on shared hosting. First create an empty database and a user with full access to it in your hosting panel.',
         ],
         'pgsql' => [
             'label' => 'PostgreSQL',
@@ -118,17 +118,17 @@ final class FirstRunSetup
         $minimum = $requirements['php'];
         $checks[] = version_compare(PHP_VERSION, $minimum, '>=')
             ? ['label' => 'PHP version', 'status' => 'ok', 'detail' => 'PHP '.PHP_VERSION.'.']
-            : ['label' => 'PHP version', 'status' => 'fail', 'detail' => 'PHP '.PHP_VERSION.' is too old; '.$minimum.' or newer is needed. Choose a newer PHP version for this site (in Plesk: PHP Settings).'];
+            : ['label' => 'PHP version', 'status' => 'fail', 'detail' => 'PHP '.PHP_VERSION.' is too old; '.$minimum.' or newer is needed. Choose a newer PHP version for this site in your hosting panel\'s PHP settings, or ask your hosting provider.'];
 
         $missing = array_values(array_filter($requirements['extensions'], static fn (string $name): bool => !extension_loaded($name)));
         $checks[] = $missing === []
             ? ['label' => 'PHP extensions', 'status' => 'ok', 'detail' => 'All required extensions are enabled.']
-            : ['label' => 'PHP extensions', 'status' => 'fail', 'detail' => 'Missing: '.implode(', ', $missing).'. Enable them for this site (in Plesk: PHP Settings), or ask your hosting provider.'];
+            : ['label' => 'PHP extensions', 'status' => 'fail', 'detail' => 'Missing: '.implode(', ', $missing).'. Enable them in your hosting panel\'s PHP settings, or ask your hosting provider.'];
 
         $drivers = array_keys(array_filter(self::DRIVERS, static fn (array $driver): bool => extension_loaded($driver['extension'])));
         $checks[] = $drivers !== []
             ? ['label' => 'Database drivers', 'status' => 'ok', 'detail' => 'Available: '.implode(', ', array_map(static fn (string $key): string => self::DRIVERS[$key]['label'], $drivers)).'.']
-            : ['label' => 'Database drivers', 'status' => 'fail', 'detail' => 'PHP has no driver for a supported database. Enable pdo_mysql, pdo_pgsql or pdo_sqlite (in Plesk: PHP Settings).'];
+            : ['label' => 'Database drivers', 'status' => 'fail', 'detail' => 'PHP has no driver for a supported database. Enable pdo_mysql, pdo_pgsql or pdo_sqlite in your hosting panel\'s PHP settings, or ask your hosting provider.'];
 
         if (!is_file($this->projectDir.'/vendor/autoload_runtime.php')) {
             $checks[] = ['label' => 'Application files', 'status' => 'fail', 'detail' => is_dir($this->projectDir.'/.git')
@@ -154,11 +154,11 @@ final class FirstRunSetup
         }
         $checks[] = $unwritable === []
             ? ['label' => 'Write access', 'status' => 'ok', 'detail' => 'PHP can write its configuration and data.']
-            : ['label' => 'Write access', 'status' => 'fail', 'detail' => 'PHP cannot write to '.implode(', ', $unwritable).'. The files must belong to the account PHP runs as. In Plesk, upload and extract them with the File Manager of this domain; otherwise ask your hosting provider to fix the owner.'];
+            : ['label' => 'Write access', 'status' => 'fail', 'detail' => 'PHP cannot write to '.implode(', ', $unwritable).'. The files must belong to the account PHP runs as: upload and extract them with this site\'s file manager in your hosting panel, or ask your hosting provider to fix the owner.'];
 
         $memory = $this->memoryLimitBytes();
         if ($memory !== null && $memory < 128 * 1024 * 1024) {
-            $checks[] = ['label' => 'Memory limit', 'status' => 'warn', 'detail' => 'PHP may use only '.ini_get('memory_limit').'. Set memory_limit to at least 128M (in Plesk: PHP Settings).'];
+            $checks[] = ['label' => 'Memory limit', 'status' => 'warn', 'detail' => 'PHP may use only '.ini_get('memory_limit').'. Set memory_limit to at least 128M in your hosting panel\'s PHP settings.'];
         }
 
         return $checks;
@@ -316,7 +316,7 @@ final class FirstRunSetup
             throw new \RuntimeException('Choose a database type.');
         }
         if (!extension_loaded(self::DRIVERS[$driver]['extension'])) {
-            throw new \RuntimeException('PHP on this server lacks the '.self::DRIVERS[$driver]['extension'].' extension. Enable it (in Plesk: PHP Settings) or choose another database.');
+            throw new \RuntimeException('PHP on this server lacks the '.self::DRIVERS[$driver]['extension'].' extension. Enable it in your hosting panel\'s PHP settings, or choose another database.');
         }
         if ($driver === 'sqlite') {
             $this->prepareSqlite();
@@ -398,7 +398,7 @@ final class FirstRunSetup
         }
         sort($tables);
         $sample = implode(', ', array_slice($tables, 0, 3)).(count($tables) > 3 ? ', …' : '');
-        throw new \RuntimeException('This database already contains tables from another application ('.$sample.'). Use a new, empty database (in Plesk: Databases, then Add Database).');
+        throw new \RuntimeException('This database already contains tables from another application ('.$sample.'). Use a new, empty database; you can create one in your hosting panel.');
     }
 
     /** Migrations create tables and reporting views; a read-only user should fail here, not halfway through. */
@@ -410,7 +410,7 @@ final class FirstRunSetup
             $pdo->exec("CREATE TABLE {$table} (id INT)");
             $pdo->exec("CREATE VIEW {$view} AS SELECT id FROM {$table}");
         } catch (\PDOException $e) {
-            throw new \RuntimeException('Connected, but this user cannot create tables and views in the database. Give the user full access to it (in Plesk this is the default for a database user).', 0, $e);
+            throw new \RuntimeException('Connected, but this user cannot create tables and views in the database. Give the user full access to this database, including creating views.', 0, $e);
         } finally {
             try {
                 $pdo->exec("DROP VIEW IF EXISTS {$view}");
@@ -509,7 +509,7 @@ final class FirstRunSetup
             $root = rtrim(str_replace('\\', '/', $documentRoot), '/').'/';
             $application = rtrim(str_replace('\\', '/', $project), '/').'/';
             if (str_starts_with($application, $root)) {
-                return ['label' => 'Web root', 'status' => 'fail', 'detail' => 'The web server can reach private files such as configuration and data. Set the document root to '.$this->shortPath('public').' (in Plesk: Hosting Settings), then open this site again.'];
+                return ['label' => 'Web root', 'status' => 'fail', 'detail' => 'The web server can reach private files such as configuration and data. Set the site\'s document root to '.$this->shortPath('public').' in your hosting panel, then open this site again.'];
             }
         }
 
@@ -822,7 +822,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .
 </section>
 </fieldset>
 </form>
-<p class="help">Next: create the administrator account. Guides: <code>PLESK-DEPLOYMENT.md</code> and <code>DEPLOYMENT.md</code> in the application folder.</p>
+<p class="help">Next: create the administrator account. <code>DEPLOYMENT.md</code> in the application folder describes this setup and links step-by-step guides for hosting panels.</p>
 </main>
 <script nonce="{$nonce}">
 (function () {
@@ -844,10 +844,10 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .
   Promise.all([reaches('/install'), reaches('/aggregate.js'), reaches('/branding/theme.css')]).then(function (results) {
     var messages = [];
     if (results[0] === false) {
-      messages.push('Addresses other than the home page do not reach the application, so the next step would show "not found". In Plesk: Apache & nginx Settings, turn on Proxy mode so Apache handles requests, or add the nginx directives from PLESK-DEPLOYMENT.md.');
+      messages.push('Addresses other than the home page do not reach the application, so the next step would show "not found". The web server must pass them to public/index.php: with Apache, allow public/.htaccess to take effect; with nginx, add the routing rules from the Web Server Configuration section of DEPLOYMENT.md. Your hosting panel\'s guide has the exact steps.');
     }
     if (results[1] === false || results[2] === false) {
-      messages.push('The web server answers some .js and .css addresses itself, so tracker settings and dashboard colours saved later would not take effect. In Plesk: Apache & nginx Settings, remove js and css from the file types nginx serves directly (or turn that option off).');
+      messages.push('The web server answers some .js and .css addresses itself, so tracker settings and dashboard colours saved later would not take effect. /aggregate.js and /branding/theme.css must reach PHP: if your hosting panel lets nginx serve static files directly, remove js and css from that list or turn the option off.');
     }
     if (messages.length === 0) { return; }
     var box = document.getElementById('probe');

@@ -61,8 +61,8 @@ return static function ($projectDir) {
             .'<title>Setup: newer PHP needed</title></head>'
             .'<body style="font:16px/1.5 system-ui,sans-serif;max-width:36rem;margin:3rem auto;padding:0 1rem">'
             .'<h1 style="font-size:1.4rem">This site needs PHP 8.2 or newer</h1>'
-            .'<p>It is running PHP '.$version.'. Choose PHP 8.2 or newer for this site in your hosting panel '
-            .'(in Plesk: <strong>PHP Settings</strong> for the domain), then reload this page.</p></body></html>';
+            .'<p>It is running PHP '.$version.'. Choose PHP 8.2 or newer for this site in your hosting panel\'s '
+            .'PHP settings, or ask your hosting provider, then reload this page.</p></body></html>';
 
         return true;
     }

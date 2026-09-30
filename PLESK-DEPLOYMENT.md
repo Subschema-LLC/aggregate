@@ -1,6 +1,8 @@
 # Plesk Deployment Guide
 
-There are two ways to install Aggregate Analytics with Plesk:
+This guide applies the general [release ZIP steps](DEPLOYMENT.md#release-zip-on-a-web-host)
+to Plesk, with its menu names and fixes. There are two ways to install Aggregate
+Analytics with Plesk:
 
 - **[From a release ZIP](#install-from-a-release-zip-no-ssh) (recommended).** Everything
   happens in Plesk and the browser: no SSH, Git, Composer or Node. The ZIP already

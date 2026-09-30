@@ -129,9 +129,9 @@ No terminal is needed:
    in `SETUP-CODE.txt`, tests your database connection and writes `.env.local`.
    Then create the administrator account.
 
-The [Plesk guide](PLESK-DEPLOYMENT.md#install-from-a-release-zip-no-ssh) walks
-through every click. PHP 8.2+ and MySQL 8.0+, MariaDB 10.6+, PostgreSQL 13+ or
-SQLite are required.
+See [Release ZIP on a web host](DEPLOYMENT.md#release-zip-on-a-web-host) for the
+details and step-by-step hosting panel guides (Plesk so far). PHP 8.2+ and MySQL
+8.0+, MariaDB 10.6+, PostgreSQL 13+ or SQLite are required.
 
 ### For development
 
@@ -259,7 +259,7 @@ readiness, browser events, or data-layer events with named variable references.
 | [Tracking and GTM](docs/TRACKING.md) | Browser integration, custom events, tag-manager examples, and troubleshooting |
 | [GTM tag template](https://github.com/Subschema-LLC/aggregate-gtm-tag-template) | Separate repository for the Google Tag Manager tag template, under development |
 | [Deployment](DEPLOYMENT.md) | Docker/native setup, web servers, workers, production operations, and upgrades |
-| [Plesk deployment](PLESK-DEPLOYMENT.md) | Installing from a release ZIP without SSH, Git-based setup, and worker options |
+| [Plesk deployment](PLESK-DEPLOYMENT.md) | Plesk steps for a release ZIP without SSH, Git-based setup, and worker options |
 | [Database](docs/DATABASE.md) | Supported engines, connection strings, migrations, and reporting schema |
 
 ## Contributing

@@ -1,6 +1,6 @@
 # Deployment Guide
 
-This guide covers both Docker and native (non-Docker) deployment methods for Aggregate Analytics.
+This guide covers installing a release ZIP on a web host, and Docker and native (non-Docker) deployment methods for Aggregate Analytics.
 
 Complete first-time setup behind a local connection, VPN, or web-server access
 restriction before exposing the application publicly. Prefer
@@ -20,11 +20,57 @@ by hand (`.env.local` or environment variables) keep the behavior above.
 
 ## Table of Contents
 
+- [Release ZIP on a Web Host](#release-zip-on-a-web-host)
 - [Docker Deployment](#docker-deployment)
 - [Native Deployment](#native-deployment)
 - [Web Server Configuration](#web-server-configuration)
 - [Worker Process Setup](#worker-process-setup)
 - [Production Considerations](#production-considerations)
+
+---
+
+## Release ZIP on a Web Host
+
+A signed release ZIP contains the production dependencies and compiled assets,
+so the server needs only PHP 8.2+ and a database: no terminal, Git, Composer or
+Node. These steps work with any hosting panel or web server that runs PHP.
+
+1. **Prepare the site.** Create the site in your hosting panel, choose PHP 8.2 or
+   newer for it, and create an empty MySQL 8.0+, MariaDB 10.6+ or PostgreSQL 13+
+   database with a user that has full access to it. SQLite needs no database
+   server and suits trying Aggregate out or small sites, but BI tools read the
+   whole file, so they cannot be limited to the reporting views.
+2. **Upload the release.** Download `aggregate-VERSION.zip` from the **Assets** of
+   the [latest release](https://github.com/Subschema-LLC/aggregate/releases/latest),
+   not the **Source code** archives, which lack the dependencies. Upload and
+   extract it with the site's file manager, so that the files belong to the
+   account PHP runs as.
+3. **Set the document root** to the extracted `public` folder. Everything else in
+   the folder holds configuration and data and must not be reachable from the web.
+4. **Open the site.** The [setup page](docs/RELEASES.md#install-or-deploy-a-verified-package)
+   checks the server, asks for the one-time code in `SETUP-CODE.txt` (next to
+   `README.md` in the extracted folder), tests the database connection and writes
+   `.env.local`. Then create the administrator account on `/install`.
+
+The web server must pass requests for addresses that are not files, and for
+`/aggregate.js`, to `public/index.php`. Apache does this through `public/.htaccess`
+when overrides are allowed; for nginx, use the rules under
+[Web Server Configuration](#web-server-configuration). The setup page checks both.
+No background worker or scheduled task is needed in the default `sync://` mode.
+Later updates are installed from the dashboard **Updates** page; see the
+[update guide](docs/UPDATES.md).
+
+### Hosting panel guides
+
+Step-by-step guides with each panel's own menu names and fixes:
+
+| Hosting panel | Guide |
+| --- | --- |
+| Plesk | [Plesk deployment](PLESK-DEPLOYMENT.md#install-from-a-release-zip-no-ssh) |
+| cPanel | Planned; see the [roadmap](ROADMAP.md#after-beta-feedback) |
+
+The setup page itself names no hosting panel, so these guides are where
+panel-specific steps belong.
 
 ---
 
