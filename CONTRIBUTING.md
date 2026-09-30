@@ -247,8 +247,9 @@ the full version in the selected Makefile DSN or Compose environment; see
 ## Tests and checks
 
 The [CI workflow](.github/workflows/ci.yml) runs PHP tests and syntax/configuration
-checks, the JavaScript build and browser tests, and release-tooling tests on pushes
-and pull requests. Its final `CI` check requires all jobs to pass. The separate
+checks, the JavaScript build and browser tests, release-tooling tests, and a fresh
+install on each database engine on pushes and pull requests. Its final `CI` check
+requires all jobs to pass. The separate
 [release workflow](.github/workflows/release.yml) builds and verifies production
 packages; see the [release guide](docs/RELEASES.md) for maintainer setup.
 
@@ -281,6 +282,25 @@ migration tests inspect SQL for supported platforms; passing them is not evidenc
 that a migration has executed successfully on every database engine. Use a
 disposable database for real migration and query checks, and identify the engines
 you actually exercised in the PR.
+
+[tests/Integration/fresh-install.php](tests/Integration/fresh-install.php) is that
+check. It installs the checkout through the browser setup page and `/install`,
+opens every dashboard page, collects events through the API, archives, applies
+retention and suppression, and verifies every reporting view. CI runs it on SQLite,
+MySQL 8.0, MariaDB 10.11, PostgreSQL 16, and SQL Server 2017, 2019 and 2022 (both
+Doctrine SQL Server drivers). It rewrites `.env`, `.env.local`, `config/` and `var/`,
+so run it only in a disposable copy of the repository with an empty database:
+
+```bash
+AGGREGATE_E2E_DISPOSABLE=1 AGGREGATE_E2E_DRIVER=pgsql AGGREGATE_E2E_DB_HOST=127.0.0.1 \
+AGGREGATE_E2E_DB_PORT=5432 AGGREGATE_E2E_DB_NAME=aggregate AGGREGATE_E2E_DB_USER=aggregate \
+AGGREGATE_E2E_DB_PASSWORD=secret php tests/Integration/fresh-install.php
+```
+
+`AGGREGATE_E2E_DRIVER` is `mysql`, `pgsql`, `sqlsrv` or `sqlite` (no database
+settings needed). For SQL Server, `AGGREGATE_E2E_TRUST_CERTIFICATE=1` trusts a
+self-signed certificate and `AGGREGATE_E2E_SQLSRV_NATIVE=1` switches to the
+`sqlsrv://` driver after setup.
 
 The reporting-view suite includes an optional PostgreSQL execution test. With
 Docker running and `postgres:16-alpine` already cached locally, run:
