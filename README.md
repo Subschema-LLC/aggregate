@@ -116,6 +116,25 @@ are good software and will serve you better. This isn't trying to win that compa
 
 ## Quick start
 
+### On a web host, from a release ZIP
+
+No terminal is needed:
+
+1. Download `aggregate-VERSION.zip` from the **Assets** of the
+   [latest release](https://github.com/Subschema-LLC/aggregate/releases/latest)
+   (not the **Source code** archives).
+2. Upload and extract it with your hosting panel's file manager, and set the
+   site's document root to the extracted `public` folder.
+3. Open the site. The setup page checks the server, asks for the one-time code
+   in `SETUP-CODE.txt`, tests your database connection and writes `.env.local`.
+   Then create the administrator account.
+
+See [Release ZIP on a web host](DEPLOYMENT.md#release-zip-on-a-web-host) for the
+details and step-by-step hosting panel guides (Plesk so far). PHP 8.2+ and MySQL
+8.0+, MariaDB 10.6+, PostgreSQL 13+ or SQLite are required.
+
+### For development
+
 For this development setup, install PHP 8.2+, Composer, the required PHP extensions and database driver, Docker Compose, and Make. The [deployment guide](DEPLOYMENT.md) covers native and production installation; [CONTRIBUTING.md](CONTRIBUTING.md#set-up-a-development-checkout) covers development prerequisites in detail.
 
 From a fresh checkout:
@@ -240,7 +259,7 @@ readiness, browser events, or data-layer events with named variable references.
 | [Tracking and GTM](docs/TRACKING.md) | Browser integration, custom events, tag-manager examples, and troubleshooting |
 | [GTM tag template](https://github.com/Subschema-LLC/aggregate-gtm-tag-template) | Separate repository for the Google Tag Manager tag template, under development |
 | [Deployment](DEPLOYMENT.md) | Docker/native setup, web servers, workers, production operations, and upgrades |
-| [Plesk deployment](PLESK-DEPLOYMENT.md) | Shared-hosting setup and worker options |
+| [Plesk deployment](PLESK-DEPLOYMENT.md) | Plesk steps for a release ZIP without SSH, Git-based setup, and worker options |
 | [Database](docs/DATABASE.md) | Supported engines, connection strings, migrations, and reporting schema |
 
 ## Contributing

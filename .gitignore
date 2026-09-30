@@ -36,6 +36,7 @@
 /config/aggregate_*.yaml
 /config/*.local.yaml
 /.env.prod
+/SETUP-CODE.txt
 ###< aggregate-analytics ###
 
 ###> optional JavaScript build ###

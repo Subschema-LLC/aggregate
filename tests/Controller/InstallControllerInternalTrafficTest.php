@@ -9,6 +9,7 @@ use App\Entity\User;
 use App\Service\AggregateConfigLoader;
 use App\Service\InstallationChecker;
 use App\Service\InternalTrafficSettings;
+use App\Setup\SetupCode;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -54,6 +55,7 @@ final class InstallControllerInternalTrafficTest extends TestCase
         $_ENV = $this->savedEnvironment;
         $_SERVER = $this->savedServer;
         @unlink($this->projectDir.'/config/aggregate.yaml');
+        @unlink($this->projectDir.'/'.SetupCode::FILE);
         @rmdir($this->projectDir.'/config');
         @rmdir($this->projectDir);
     }
@@ -99,7 +101,7 @@ final class InstallControllerInternalTrafficTest extends TestCase
         $original = file_get_contents($this->projectDir.'/config/aggregate.yaml');
         $controller = $this->controller($config, runsMigrations: false, rendersInstaller: true);
 
-        self::assertSame(200, $controller->install()->getStatusCode());
+        self::assertSame(200, $controller->install(Request::create('https://analytics.example.test/install'))->getStatusCode());
         self::assertSame($original, file_get_contents($this->projectDir.'/config/aggregate.yaml'));
     }
 
@@ -177,6 +179,88 @@ final class InstallControllerInternalTrafficTest extends TestCase
         yield 'array' => [['valid-install-token']];
     }
 
+    public function testBrowserSetupCodeIsRequiredBeforeAnythingChanges(): void
+    {
+        $config = $this->writeConfig('');
+        $original = file_get_contents($this->projectDir.'/config/aggregate.yaml');
+        (new SetupCode($this->projectDir))->ensure();
+        $controller = $this->controller($config, runsMigrations: false);
+
+        $request = $this->installRequest();
+        $request->request->set('setup_code', 'AAAA-BBBB-CCCC');
+        $request->cookies->set(SetupCode::COOKIE, 'AAAA-BBBB-CCCC');
+
+        self::assertSame('/app_install', $controller->executeInstall($request)->headers->get('Location'));
+        self::assertSame(['Enter the setup code from SETUP-CODE.txt in the application folder.'], $this->session->getFlashBag()->get('error'));
+        self::assertSame($original, file_get_contents($this->projectDir.'/config/aggregate.yaml'));
+        self::assertFileExists($this->projectDir.'/'.SetupCode::FILE);
+    }
+
+    #[DataProvider('setupCodeCarriers')]
+    public function testVerifiedSetupCodeCompletesInstallationAndIsRemoved(string $carrier): void
+    {
+        $code = (new SetupCode($this->projectDir))->ensure();
+        $controller = $this->controller($this->writeConfig(''));
+        $request = $this->installRequest();
+        if ($carrier === 'cookie') {
+            $request->cookies->set(SetupCode::COOKIE, $code);
+        } else {
+            $request->request->set('setup_code', strtolower($code));
+        }
+
+        $response = $controller->executeInstall($request);
+
+        self::assertSame('/app_login', $response->headers->get('Location'));
+        self::assertFileDoesNotExist($this->projectDir.'/'.SetupCode::FILE);
+        $cleared = array_filter($response->headers->getCookies(), static fn ($cookie): bool => $cookie->getName() === SetupCode::COOKIE);
+        self::assertCount(1, $cleared);
+        self::assertTrue(array_values($cleared)[0]->isCleared());
+    }
+
+    public static function setupCodeCarriers(): iterable
+    {
+        yield 'same browser (cookie from the setup page)' => ['cookie'];
+        yield 'another browser (typed into the form)' => ['form'];
+    }
+
+    public function testPublicAddressIsSavedForTrackingSnippets(): void
+    {
+        $controller = $this->controller($this->writeConfig(''));
+        $request = $this->installRequest();
+        $request->request->set('app_host', 'https://analytics.example.com/');
+
+        self::assertSame('/app_login', $controller->executeInstall($request)->headers->get('Location'));
+        self::assertSame('https://analytics.example.com', Yaml::parseFile($this->projectDir.'/config/aggregate.yaml')['app_host']);
+    }
+
+    public function testInvalidPublicAddressIsRejectedBeforeMigrations(): void
+    {
+        $config = $this->writeConfig('');
+        $original = file_get_contents($this->projectDir.'/config/aggregate.yaml');
+        $controller = $this->controller($config, runsMigrations: false);
+        $request = $this->installRequest();
+        $request->request->set('app_host', 'analytics.example.com?x=1');
+
+        self::assertSame('/app_install', $controller->executeInstall($request)->headers->get('Location'));
+        self::assertSame($original, file_get_contents($this->projectDir.'/config/aggregate.yaml'));
+    }
+
+    public function testInstallerAsksOtherBrowsersForTheSetupCode(): void
+    {
+        $code = (new SetupCode($this->projectDir))->ensure();
+        $config = $this->writeConfig('');
+        $renders = [];
+        $controller = $this->controller($config, runsMigrations: false, capturesRender: $renders);
+
+        $controller->install(Request::create('https://analytics.example.test/install'));
+        $request = Request::create('https://analytics.example.test/install');
+        $request->cookies->set(SetupCode::COOKIE, $code);
+        $controller->install($request);
+
+        self::assertTrue($renders[0]['setup_code_required']);
+        self::assertFalse($renders[1]['setup_code_required']);
+    }
+
     private function writeConfig(string $token): AggregateConfigLoader
     {
         file_put_contents($this->projectDir.'/config/aggregate.yaml', Yaml::dump([
@@ -205,6 +289,7 @@ final class InstallControllerInternalTrafficTest extends TestCase
         bool $rendersInstaller = false,
         bool $hashFails = false,
         int $glossaryResult = Command::SUCCESS,
+        ?array &$capturesRender = null,
     ): InstallController {
         $checker = $this->createStub(InstallationChecker::class);
         $checker->method('isInstalled')->willReturn($alreadyInstalled);
@@ -216,6 +301,9 @@ final class InstallControllerInternalTrafficTest extends TestCase
             ->with(self::callback(static fn (User $user): bool =>
                 $user->getUsername() === 'admin' && in_array('ROLE_ADMIN', $user->getRoles(), true)));
         $entityManager->expects($createsUser ? self::once() : self::never())->method('flush');
+        $connection = $this->createMock(\Doctrine\DBAL\Connection::class);
+        $connection->expects($runsMigrations && $migrationResult === Command::SUCCESS ? self::once() : self::never())->method('close');
+        $entityManager->method('getConnection')->willReturn($connection);
         $passwordHasher = $this->createStub(UserPasswordHasherInterface::class);
         if ($hashFails) {
             $passwordHasher->method('hashPassword')->willThrowException(new \RuntimeException('Synthetic private connection detail'));
@@ -251,6 +339,7 @@ final class InstallControllerInternalTrafficTest extends TestCase
             $passwordHasher,
             $kernel,
             new InternalTrafficSettings($config),
+            new SetupCode($this->projectDir),
         );
         $router = $this->createStub(UrlGeneratorInterface::class);
         $router->method('generate')->willReturnCallback(static fn (string $route): string => '/'.$route);
@@ -266,9 +355,22 @@ final class InstallControllerInternalTrafficTest extends TestCase
         $csrf->method('isTokenValid')->willReturnCallback(static fn (CsrfToken $token): bool =>
             $token->getId() === 'install' && $token->getValue() === 'valid-install-token');
         $container->set('security.csrf.token_manager', $csrf);
+        if ($capturesRender !== null) {
+            $twig = $this->createStub(Environment::class);
+            $twig->method('render')->willReturnCallback(static function (string $template, array $context) use (&$capturesRender): string {
+                $capturesRender[] = $context;
+
+                return 'installer';
+            });
+            $container->set('twig', $twig);
+        }
         if ($rendersInstaller) {
             $twig = $this->createMock(Environment::class);
-            $twig->expects(self::once())->method('render')->with('install/index.html.twig', [])->willReturn('installer');
+            $twig->expects(self::once())->method('render')->with('install/index.html.twig', [
+                'setup_code_required' => false,
+                'setup_code_file' => SetupCode::FILE,
+                'app_host' => 'https://analytics.example.test',
+            ])->willReturn('installer');
             $container->set('twig', $twig);
         }
         $controller->setContainer($container);

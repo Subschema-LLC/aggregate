@@ -30,6 +30,16 @@ checkout, or a small accessibility fix. Keep each PR focused and target
 
 ## After beta feedback
 
+- **Hosting panel guides.** A release ZIP installs from any hosting panel's
+  file manager through the vendor-neutral [setup page](DEPLOYMENT.md#release-zip-on-a-web-host),
+  and [Plesk](PLESK-DEPLOYMENT.md#install-from-a-release-zip-no-ssh) has a
+  step-by-step guide. Add a **cPanel** guide next, verified on a real account:
+  creating the site and its document root, the database and user, PHP version
+  and extension settings, and routing on the Apache or LiteSpeed servers cPanel
+  hosts commonly use. Add other panels when adopters ask for them, and list each
+  guide in the [hosting panel guides](DEPLOYMENT.md#hosting-panel-guides) table.
+  Keep panel names out of the application itself; panel-specific steps belong
+  in the guides.
 - **Page-depth settings by event type.** The optional `page_sequence` counter
   currently applies to all events through one UI/YAML setting. Explore per-event
   inclusion where operators need it, keeping one page counter and shared server
