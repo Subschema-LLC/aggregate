@@ -36,6 +36,8 @@ services:
             - '../src/Entity/'
             - '../src/Kernel.php'
             - '../src/Service/Update/FileTransaction.php'
+            # Served by config/setup.php before the kernel exists; never a service.
+            - '../src/Setup/FirstRunSetup.php'
 
     App\Controller\HomeController: ~
     App\Controller\ReceiveController:

@@ -198,7 +198,16 @@ Recovery keeps files and the database separate:
 
 ## Install or deploy a verified package
 
-The ZIP contains its files at the archive root. Extract it into a fresh application directory, configure `.env.local` with database credentials and a newly generated `APP_SECRET`, point the web server at `public/`, and use `/install` for schema/admin setup. The existing web installer requires those infrastructure settings first; a full browser-only credentials/bootstrap installer is not included in this groundwork. No Git, Composer, or Node installation is needed on the target server for a prepared release package.
+The ZIP contains its files at the archive root. Extract it into a fresh application directory, point the web server at `public/`, and open the site. No Git, Composer, or Node installation is needed on the target server for a prepared release package.
+
+Until the installation has an application secret and a database, every request gets a **setup page** instead of the application (`config/setup.php`, loaded by `public/index.php` before Composer). It:
+
+- checks the PHP version and extensions against the package's `release.json`, the prepared dependencies, write access, and that the document root exposes only `public/`, and (with JavaScript) that application routes and `/aggregate.js` reach PHP;
+- asks for the one-time code that it writes to `SETUP-CODE.txt` in the application directory, so only someone who can read the server's files can continue;
+- tests a MySQL/MariaDB or PostgreSQL connection, or creates the SQLite file, checks that the user can create tables and views and that the database holds no other application's tables, and detects the `serverVersion`;
+- writes `.env.local` (mode `0600`, never replacing an existing file) with a new `APP_SECRET` and the `DATABASE_URL`, then continues to `/install`.
+
+`/install` accepts the code from that browser's cookie, or asks for it in another browser, and deletes `SETUP-CODE.txt` once the administrator exists. The setup page never appears when `.env.local`, `.env.local.php`, a non-empty `APP_SECRET` in `.env`, `.env.prod` or `.env.prod.local`, or a real `APP_SECRET` or `DATABASE_URL` environment variable exists. Deployments that write `.env.local` themselves are unaffected. To run the setup page again, delete `.env.local`. The [deployment guide](../DEPLOYMENT.md#release-zip-on-a-web-host) walks through it and links step-by-step hosting panel guides.
 
 To update an existing installation, prefer [`app:updates:apply`](#update-an-installation). To deploy manually instead (for example, from a package without `release-files.json`), stage the new directory and retain deployment data deliberately:
 

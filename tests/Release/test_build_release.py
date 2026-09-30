@@ -69,6 +69,7 @@ class ReleaseBuildTest(unittest.TestCase):
             "var/browser/unrelated-secret.json", "tests/private.txt", "node_modules/private.txt",
             "src/DataFixtures/AppFixtures.php", "docs/install_fresh.sql",
             "docs/examples/private.json", "docs/examples/nested/private.json", "docs/local/private.md",
+            "SETUP-CODE.txt",
         ):
             self.write(relative, "deployment-only-secret")
         self.write("config/release-signing.pub", "public verification key")
@@ -114,7 +115,7 @@ class ReleaseBuildTest(unittest.TestCase):
         package, _ = self.build()
         with zipfile.ZipFile(package) as archive:
             names = set(archive.namelist())
-            for relative in ("config/quick_search.yaml", "config/maintenance.php", "config/goals.yaml", "config/navigation.yaml"):
+            for relative in ("config/quick_search.yaml", "config/maintenance.php", "config/setup.php", "config/goals.yaml", "config/navigation.yaml"):
                 self.assertIn(relative, names)
             self.assertNotIn("config/goals.local.yaml", names)
             inventory = json.loads(archive.read("release-files.json"))
@@ -127,7 +128,7 @@ class ReleaseBuildTest(unittest.TestCase):
     def test_refuses_operator_paths_in_packaged_trees(self):
         for relative in ("var/browser/aggregate.template.min.js", "config/services.yaml"):
             self.assertFalse(BUILDER.is_protected(relative), relative)
-        for relative in (".env.local", ".env.prod.local", "config/goals.local.yaml", "config/aggregate_prod.yaml", "config/tag-manager/sites/a.yaml", "var/data.db"):
+        for relative in (".env.local", ".env.prod.local", "config/goals.local.yaml", "config/aggregate_prod.yaml", "config/tag-manager/sites/a.yaml", "var/data.db", "SETUP-CODE.txt"):
             self.assertTrue(BUILDER.is_protected(relative), relative)
         original = BUILDER.SOURCE_TREES
         BUILDER.SOURCE_TREES = original + ("config/secrets",)

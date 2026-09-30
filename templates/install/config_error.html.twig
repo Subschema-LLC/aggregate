@@ -27,15 +27,16 @@
 
                 <h2 class="subtitle mt-5">To fix this:</h2>
                 <ol>
-                    <li>Create a <code>.env</code> file in the project root with at minimum:
+                    <li>Add the missing values to <code>.env.local</code> in the application folder, for example:
                         <pre class="mt-2"><code>APP_ENV=prod
 APP_SECRET=your-secret-here
 DATABASE_URL="mysql://user:pass@localhost:3306/dbname?serverVersion=8.0.0"
-MESSENGER_TRANSPORT_DSN=doctrine://default</code></pre>
+MESSENGER_TRANSPORT_DSN=sync://</code></pre>
                     </li>
                     <li>Generate <code>APP_SECRET</code> with: <code>openssl rand -hex 32</code></li>
                     <li>Refresh this page</li>
                 </ol>
+                <p>Installed from a release ZIP? Delete <code>.env.local</code> and reload the site to use the setup page instead, which writes this file for you.</p>
             </div>
 
             <div class="buttons mt-5">

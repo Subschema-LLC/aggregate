@@ -1,6 +1,8 @@
 doctrine:
     dbal:
-        url: '%env(DATABASE_URL)%'
+        # project_dir: fills in only the literal %kernel.project_dir% token (for
+        # SQLite paths). Unlike resolve:, it leaves URL-encoded passwords alone.
+        url: '%env(project_dir:DATABASE_URL)%'
 
         # IMPORTANT: You MUST configure your server version,
         # either here or in the DATABASE_URL env var (see .env file)
