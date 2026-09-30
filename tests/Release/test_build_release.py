@@ -75,6 +75,9 @@ class ReleaseBuildTest(unittest.TestCase):
         self.write("config/release-signing.pub", "public verification key")
         ecommerce_example = (SCRIPT.parent.parent / "docs/examples/ecommerce-purchase.json").read_text(encoding="utf-8")
         self.write("docs/examples/ecommerce-purchase.json", ecommerce_example)
+        worker_examples = ("docs/systemd/aggregate-worker.service", "docs/supervisor/aggregate-worker.conf")
+        for relative in worker_examples:
+            self.write(relative, (SCRIPT.parent.parent / relative).read_text(encoding="utf-8"))
         package, manifest_path = self.build()
         manifest = json.loads(manifest_path.read_bytes())
         self.assertEqual(package.name, "aggregate-2026.09.01.zip")
@@ -98,6 +101,9 @@ class ReleaseBuildTest(unittest.TestCase):
                 self.assertIn("var/browser/" + name + ".template.min.js", names)
                 self.assertIn("var/browser/" + name + "-manifest.json", names)
             self.assertEqual(ecommerce_example.encode("utf-8"), archive.read("docs/examples/ecommerce-purchase.json"))
+            # DEPLOYMENT.md and General settings point to these worker service examples.
+            for relative in worker_examples:
+                self.assertIn(relative, names)
             for name in names:
                 self.assertNotIn(b"deployment-only-secret", archive.read(name), name)
                 self.assertFalse(name.startswith("aggregate/"))

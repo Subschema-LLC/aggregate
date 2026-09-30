@@ -1,0 +1,1 @@
+Full documentation: [subschema-llc.github.io/aggregate](https://subschema-llc.github.io/aggregate/) · These pages are published from [`.github/wiki`](https://github.com/Subschema-LLC/aggregate/tree/development/.github/wiki); change them with a pull request.

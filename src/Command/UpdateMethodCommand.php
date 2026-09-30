@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\Service\ApplicationUpdateService;
+use App\Service\DocumentationLinks;
 use App\Service\Update\ApplicationUpdater;
 use App\Service\UpdateSettings;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -25,6 +26,7 @@ final class UpdateMethodCommand extends Command
         private readonly UpdateSettings $settings,
         private readonly ApplicationUpdateService $updates,
         private readonly ApplicationUpdater $updater,
+        private readonly ?DocumentationLinks $documentation = null,
     ) {
         parent::__construct();
     }
@@ -77,8 +79,8 @@ HELP);
         $io->success('This installation now updates '.$this->label($method).'. Saved as updates_method in config/aggregate.yaml.');
         if ($method !== $this->updates->detectedMethod()) {
             $io->warning($method === UpdateSettings::METHOD_REPOSITORY
-                ? 'This directory is not a Git clone yet, so repository updates cannot run until it is one. See "Set up a Git clone" in docs/UPDATES.md.'
-                : 'This directory is a Git clone, so release ZIPs cannot be installed over it. Install a release into a new directory; see "Switch methods" in docs/UPDATES.md.');
+                ? 'This directory is not a Git clone yet, so repository updates cannot run until it is one. See "Set up a Git clone": '.$this->guide('updates.git-clone')
+                : 'This directory is a Git clone, so release ZIPs cannot be installed over it. Install a release into a new directory; see "Switch methods": '.$this->guide('updates.switch'));
         }
 
         return Command::SUCCESS;
@@ -107,5 +109,11 @@ HELP);
     private function label(string $method): string
     {
         return $method === UpdateSettings::METHOD_REPOSITORY ? 'directly from the repository (advanced)' : 'with release ZIPs';
+    }
+
+    /** A section of the update guide on the documentation site, or its file when documentation links are off. */
+    private function guide(string $topic): string
+    {
+        return $this->documentation?->reference($topic) ?? DocumentationLinks::file($topic);
     }
 }

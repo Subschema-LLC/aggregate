@@ -12,8 +12,8 @@ hero:
       text: Install from a release ZIP
       link: /install/deployment#release-zip-on-a-web-host
     - theme: alt
-      text: What Aggregate is
-      link: /start/overview
+      text: Why Aggregate exists
+      link: /start/why
     - theme: alt
       text: Source on GitHub
       link: https://github.com/Subschema-LLC/aggregate
@@ -36,9 +36,9 @@ features:
     link: /privacy/compliance
     linkText: Privacy and compliance
   - title: Report in your BI tool
-    details: Stable reporting views, labels for codes, and view-only database access for Power BI or Tableau.
-    link: /reporting/bi-glossary
-    linkText: BI labels and glossary
+    details: Stable reporting views, safe queries, labels for codes, and view-only database access for Power BI or Tableau.
+    link: /reporting/connect-bi
+    linkText: Connect a BI tool
   - title: Configure
     details: YAML and dashboard settings, the custom data model, and feature flags.
     link: /configure/configuration
@@ -48,9 +48,9 @@ features:
     link: /operate/updates
     linkText: Updating
   - title: Contribute
-    details: Development setup, tests, the branching strategy and the roadmap.
-    link: /project/contributing
-    linkText: Contributing
+    details: Why the project exists, how an event flows through the code, the decisions behind it, and how to send a change.
+    link: /contribute/architecture
+    linkText: Architecture tour
 ---
 
 ## Common questions
@@ -59,9 +59,12 @@ features:
 - [Which databases are supported, and how do I connect SQL Server?](/install/databases)
 - [How do I add tracking to a website?](/tracking/setup)
 - [Does anonymous-mode measurement require consent?](/privacy/compliance#does-anonymous-mode-measurement-require-consent)
+- [How do I connect Power BI or Tableau?](/reporting/connect-bi)
 - [How do I give Power BI or Tableau read-only access?](/reporting/bi-glossary#view-only-grants)
 - [How do I update an installation, and what is kept?](/operate/updates)
 - [What happens to data when someone withdraws consent?](/privacy/compliance#does-withdrawing-consent-delete-past-data)
+- [Why doesn't Aggregate count unique visitors?](/contribute/design-decisions#no-identifier-in-anonymous-mode-not-even-a-rotating-hash)
+- [I want to contribute. Where do I start?](/contribute/contributing)
 
 Search every page with the search box at the top, or press <kbd>/</kbd> or
 <kbd>Ctrl</kbd> <kbd>K</kbd>. Search runs in your browser and needs no account. This

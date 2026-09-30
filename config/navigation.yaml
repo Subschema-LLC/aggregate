@@ -2,7 +2,8 @@
 # Main navigation content. The brand entry controls its link destination and
 # retains a legacy label fallback; identity and theme branding come from
 # config/aggregate.yaml.
-# Links define exactly one Symfony route or URL. Top-level items may instead
+# Links define exactly one Symfony route, URL, or documentation topic (docs:),
+# which opens on the documentation site. Top-level items may instead
 # define a label and children (one submenu level, no parent route/URL).
 # Links and groups may require a security role and a registered feature name.
 # Hidden/inaccessible children are filtered before empty groups are removed;
@@ -99,9 +100,17 @@ parameters:
                     route: 'app_feature_flags'
                     icon: 'fas fa-toggle-on'
                     role: 'ROLE_ADMIN'
-            - label: 'Documentation'
-              route: 'app_how_it_works'
-              icon: 'fas fa-circle-info'
+            - label: 'Help'
+              icon: 'fas fa-circle-question'
+              children:
+                  - label: 'How it works'
+                    route: 'app_how_it_works'
+                    icon: 'fas fa-circle-info'
+                  # A documentation topic (App\Service\DocumentationLinks::TOPICS) on
+                  # the site set by documentation_url; hidden when that is empty.
+                  - label: 'Documentation'
+                    docs: 'home'
+                    icon: 'fas fa-book'
 
         account:
             user_icon: 'fas fa-user'

@@ -12,11 +12,15 @@
 {% macro link(item, classes, is_brand = false) %}
     {% if item %}
         {% set tag = item.enabled ? 'a' : 'span' %}
-        <{{ tag }} class="{{ classes }}" {% if item.enabled %}href="{{ item.logout ? logout_path('main') : item.url }}"{% else %}role="link" aria-disabled="true"{% endif %}>
+        {% set external = item.enabled and item.external|default(false) %}
+        <{{ tag }} class="{{ classes }}" {% if item.enabled %}href="{{ item.logout ? logout_path('main') : item.url }}"{% if external %} target="_blank" rel="noopener noreferrer"{% endif %}{% else %}role="link" aria-disabled="true"{% endif %}>
             {% if is_brand %}
                 {{ component('Branding:Identity', {branding: app_branding}) }}
             {% else %}
                 {{ _self.label(item) }}
+            {% endif %}
+            {% if external %}
+                <span class="is-sr-only">(opens in a new tab)</span>
             {% endif %}
             {% if not item.enabled %}
                 <span class="ml-1" aria-hidden="true">(disabled)</span>

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\Service\ApplicationUpdateService;
+use App\Service\DocumentationLinks;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Formatter\OutputFormatter;
@@ -18,8 +19,10 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 )]
 final class PullUpdatesCommand extends Command
 {
-    public function __construct(private readonly ApplicationUpdateService $updates)
-    {
+    public function __construct(
+        private readonly ApplicationUpdateService $updates,
+        private readonly ?DocumentationLinks $documentation = null,
+    ) {
         parent::__construct();
     }
 
@@ -64,7 +67,8 @@ HELP);
             ['Previous commit' => $result['previous_commit']],
             ['Installed commit' => $result['current_commit']],
         );
-        $io->warning('Deployment is not complete. Follow the manual update steps in DEPLOYMENT.md before resuming service, or use app:updates:apply next time to run these steps automatically.');
+        $io->warning('Deployment is not complete. Follow the manual update steps before resuming service, or use app:updates:apply next time to run these steps automatically. Manual update steps: '
+            .($this->documentation?->reference('install.manual-update') ?? DocumentationLinks::file('install.manual-update')));
         $io->listing([
             'Install locked Composer dependencies for your deployment.',
             'Review and run the required database migrations.',

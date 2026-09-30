@@ -105,7 +105,9 @@ function rewriteLine(line, source) {
   // External images, including linked badges, are removed.
   outsideCode(/\[!\[[^\]]*\]\(https?:[^)]*\)\]\([^)]*\)\s*/g, () => '');
   outsideCode(/!\[[^\]]*\]\(https?:[^)]*\)\s*/g, () => '');
-  outsideCode(/(!?\[(?:[^[\]]|\[[^\]]*\])*\]\()([^)\s]+)(\))/g, (match, open, target, close) => open + rewriteTarget(target, source, open.startsWith('!')) + close);
+  // Images first, so an image inside a link ([![alt](a.svg)](a.svg)) is rewritten too.
+  outsideCode(/(!\[[^\]]*\]\()([^)\s]+)(\))/g, (match, open, target, close) => open + rewriteTarget(target, source, true) + close);
+  outsideCode(/((?<!!)\[(?:[^[\]]|\[[^\]]*\])*\]\()([^)\s]+)(\))/g, (match, open, target, close) => open + rewriteTarget(target, source, false) + close);
   outsideCode(/^(\s*\[[^\]]+\]:\s*)(\S+)/, (match, open, target) => open + rewriteTarget(target, source, false));
 
   return line;

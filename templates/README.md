@@ -89,8 +89,11 @@ also work after DOM replacement. Keep all targets inside their controller's
 element: the data-model page root contains its form and row templates, and each
 tag row has its own controller. Use unique HTML IDs for labels and copy targets.
 
-Shared components include `Ui:CopyButton`, `Ui:Confirm`, `Ui:Validation`, and
-`Ui:Notification`. Confirm and Validation render forms with a `content` block:
+Shared components include `Ui:CopyButton`, `Ui:Confirm`, `Ui:Validation`,
+`Ui:Notification`, and `Ui:DocsLink`. `Ui:DocsLink` links a page to its
+documentation topic (`{{ component('Ui:DocsLink', {topic: 'data-model', label:
+'Data model guide'}) }}`) and renders nothing when documentation links are
+turned off. Confirm and Validation render forms with a `content` block:
 
 ```twig
 {% component 'Ui:Validation' with {action: path('app_settings_save'), method: 'post'} %}

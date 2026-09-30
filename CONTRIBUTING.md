@@ -10,6 +10,11 @@ using the [security policy](SECURITY.md); ordinary bugs and proposals belong in
 [GitHub issues](https://github.com/Subschema-LLC/aggregate/issues). Review the
 [roadmap](ROADMAP.md) before proposing substantial work.
 
+New to the project? Three short pages give the background this guide assumes:
+[why Aggregate exists](docs/WHY.md), an [architecture tour](docs/ARCHITECTURE.md)
+that follows one event through the code, and the [design decisions](docs/DESIGN-DECISIONS.md)
+behind it. The [glossary](docs/GLOSSARY.md) explains the terms.
+
 Coding agents should also read [AGENTS.md](AGENTS.md) for the product ethos,
 architectural boundaries, and expectations for delivering changes.
 
@@ -271,6 +276,28 @@ The [documentation workflow](.github/workflows/docs.yml) builds the site on pull
 requests that change documentation and publishes it to GitHub Pages from `master`,
 so the site describes the current release.
 
+### Linking the application to the documentation
+
+The dashboard and command line link to the site through
+[DocumentationLinks](src/Service/DocumentationLinks.php), whose `TOPICS` name a
+site page and heading for each subject. Templates use
+`{{ component('Ui:DocsLink', {topic: 'tracking.setup'}) }}` or `docs_url('topic')`,
+and navigation entries use `docs: topic`; none of them build documentation URLs
+themselves. Operators can point the links at another site or turn them off with
+[`documentation_url`](docs/CONFIGURATION.md#documentation-links), so every link
+must be optional: render nothing, or name the documentation file, when it is off.
+`DocumentationLinksTest` fails when a topic's page or heading no longer exists, so
+update `TOPICS` when you rename a heading or move a page.
+
+Keep help in the application when it depends on the installation (generated
+snippets, live settings, SQL previews) or must be read at the point of action
+(warnings next to a setting). Put explanations and procedures in the
+documentation and link to them, rather than copying them into templates.
+
+The project wiki on GitHub is a short signpost to this site. Its pages live in
+[.github/wiki](.github/wiki) and are published by the
+[wiki workflow](.github/workflows/wiki.yml); edit them there, not on GitHub.
+
 ## Tests and checks
 
 The [CI workflow](.github/workflows/ci.yml) runs PHP tests and syntax/configuration
@@ -438,7 +465,8 @@ describe the interaction and how you verified it.
 
 Before submitting, review the complete diff for unintended changes, secrets,
 personal data in examples, and generated artifacts. Update the relevant guide or
-configuration example when behavior changes. Privacy-sensitive PRs should explain
+configuration example when behavior changes. If the change alters or adds one of
+the [design decisions](docs/DESIGN-DECISIONS.md), update that page too. Privacy-sensitive PRs should explain
 which fields reach the browser payload, queue, event row, and reporting views,
 including the anonymous and withdrawn-consent cases.
 
