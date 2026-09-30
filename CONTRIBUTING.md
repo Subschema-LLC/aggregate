@@ -244,6 +244,33 @@ the full Doctrine version hint. When overriding a database image, also update
 the full version in the selected Makefile DSN or Compose environment; see
 [database version configuration](docs/DATABASE.md#upgrade-to-doctrine-dbal-4).
 
+## Documentation site
+
+The public documentation site at
+[subschema-llc.github.io/aggregate](https://subschema-llc.github.io/aggregate/) is
+built from the Markdown files in this repository; there is no separate copy to
+maintain. [website/pages.mjs](website/pages.mjs) lists which files are published,
+at which address and in which sidebar section. Keep writing links the way GitHub
+renders them (`../DEPLOYMENT.md#release-zip-on-a-web-host`): the build turns links
+between published files into site links, links to other repository files into
+GitHub links, and fails when a linked file or heading does not exist. External
+images are left out so the site makes no third-party requests, and search runs in
+the browser from a local index.
+
+To add a page, add its file to `website/pages.mjs`. To preview the site locally
+(Node 20 or newer):
+
+```bash
+cd website
+npm ci
+npm run dev     # live preview at http://localhost:5173/aggregate/
+npm run build   # the same strict build CI runs
+```
+
+The [documentation workflow](.github/workflows/docs.yml) builds the site on pull
+requests that change documentation and publishes it to GitHub Pages from `master`,
+so the site describes the current release.
+
 ## Tests and checks
 
 The [CI workflow](.github/workflows/ci.yml) runs PHP tests and syntax/configuration
