@@ -1,0 +1,60 @@
+name: Wiki
+
+# Publishes .github/wiki to the repository's GitHub wiki, which points readers to
+# the documentation site. Edit the pages in .github/wiki, not on GitHub: every
+# run replaces the wiki's content. Pushes to master publish it together with the
+# documentation site; run it manually to publish from another branch.
+#
+# One-time setup: open the Wiki tab and create the first page with any content.
+# GitHub creates the wiki's repository only then, and this workflow replaces that
+# page. Consider limiting wiki editing to collaborators (Settings > Features).
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/wiki/**'
+      - '.github/workflows/wiki.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wiki
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish wiki
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Replace the wiki's pages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          SOURCE_REF: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          wiki="$RUNNER_TEMP/wiki"
+          if ! git clone --depth 1 "https://x-access-token:${GITHUB_TOKEN}@github.com/${REPOSITORY}.wiki.git" "$wiki"; then
+            echo "::error title=Wiki not available::Enable the wiki under Settings > Features, open the Wiki tab and create the first page with any content, then run this workflow again."
+            exit 1
+          fi
+          find "$wiki" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -R .github/wiki/. "$wiki/"
+          cd "$wiki"
+          git add --all
+          if git diff --cached --quiet; then
+            echo "The wiki already matches .github/wiki."
+            exit 0
+          fi
+          git -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit --quiet -m "Publish from ${SOURCE_REF} at ${GITHUB_SHA::7}"
+          git push --quiet origin HEAD
+          echo "Published $(git ls-files | wc -l) pages to https://github.com/${REPOSITORY}/wiki"

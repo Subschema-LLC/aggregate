@@ -64,6 +64,11 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   signing key, database snapshots for server databases, and per-entry merging of
   `config/*.local.yaml` overrides with newly shipped defaults (an override currently
   replaces the whole parameter).
+- **Versioned documentation.** The [documentation site](CONTRIBUTING.md#documentation-site)
+  follows `master`, so it describes the latest release, and the dashboard links
+  to it through [`documentation_url`](docs/CONFIGURATION.md#documentation-links).
+  Publish a copy of the site for each release and link each installation to the
+  guides for its own version.
 
 ## Proposals to explore
 

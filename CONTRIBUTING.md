@@ -276,6 +276,28 @@ The [documentation workflow](.github/workflows/docs.yml) builds the site on pull
 requests that change documentation and publishes it to GitHub Pages from `master`,
 so the site describes the current release.
 
+### Linking the application to the documentation
+
+The dashboard and command line link to the site through
+[DocumentationLinks](src/Service/DocumentationLinks.php), whose `TOPICS` name a
+site page and heading for each subject. Templates use
+`{{ component('Ui:DocsLink', {topic: 'tracking.setup'}) }}` or `docs_url('topic')`,
+and navigation entries use `docs: topic`; none of them build documentation URLs
+themselves. Operators can point the links at another site or turn them off with
+[`documentation_url`](docs/CONFIGURATION.md#documentation-links), so every link
+must be optional: render nothing, or name the documentation file, when it is off.
+`DocumentationLinksTest` fails when a topic's page or heading no longer exists, so
+update `TOPICS` when you rename a heading or move a page.
+
+Keep help in the application when it depends on the installation (generated
+snippets, live settings, SQL previews) or must be read at the point of action
+(warnings next to a setting). Put explanations and procedures in the
+documentation and link to them, rather than copying them into templates.
+
+The project wiki on GitHub is a short signpost to this site. Its pages live in
+[.github/wiki](.github/wiki) and are published by the
+[wiki workflow](.github/workflows/wiki.yml); edit them there, not on GitHub.
+
 ## Tests and checks
 
 The [CI workflow](.github/workflows/ci.yml) runs PHP tests and syntax/configuration

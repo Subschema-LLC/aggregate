@@ -22,7 +22,7 @@
     </button>
 {% endmacro %}
 
-{% macro method_form(selected, detected, busy, docs_url, id_prefix, submit_label) %}
+{% macro method_form(selected, detected, busy, update_guide_url, id_prefix, submit_label) %}
     <form method="post" action="{{ path('app_updates_method') }}">
         <input type="hidden" name="_csrf_token" value="{{ csrf_token('application_updates_method') }}">
         <fieldset>
@@ -44,7 +44,7 @@
                 <p class="help ml-5" id="{{ id_prefix }}-repository-help">Pulls the newest commit of the configured branch into a Git clone of the repository, then installs dependencies with Composer and builds assets on this server.{% if detected == 'repository' %} Fits this directory: it is a Git clone.{% else %} This directory is not a Git clone, so it must be set up as one first.{% endif %}</p>
             </div>
             <div class="notification is-warning is-light" id="{{ id_prefix }}-repository-warning">
-                <p><strong>The repository method is for advanced users.</strong> It installs whatever is on the branch, which is not a signed release, and it needs Git and Composer on the server. Local changes, a different branch or a failed Composer install stop an update, and you fix them on the server with Git. Choose it only if you manage this installation as a Git clone. <a href="{{ docs_url }}#choose-an-update-method">Compare the methods</a></p>
+                <p><strong>The repository method is for advanced users.</strong> It installs whatever is on the branch, which is not a signed release, and it needs Git and Composer on the server. Local changes, a different branch or a failed Composer install stop an update, and you fix them on the server with Git. Choose it only if you manage this installation as a Git clone. <a href="{{ update_guide_url }}#choose-an-update-method">Compare the methods</a></p>
             </div>
         </fieldset>
         {% if busy %}
@@ -80,7 +80,8 @@
     {% set chosen_method = update_method|default(null) %}
     {% set detected_method = update_detected_method|default('release') %}
     {% set method_mismatch = chosen_method is not null and chosen_method != detected_method %}
-    {% set docs_url = update_repository_url ~ '/blob/' ~ (update_status.branch ?? 'master')|url_encode ~ '/docs/UPDATES.md' %}
+    {# The documentation site, or the guide in the update source when documentation links are off. #}
+    {% set update_guide_url = docs_url('updates') ?? (update_repository_url ~ '/blob/' ~ (update_status.branch ?? 'master')|url_encode ~ '/docs/UPDATES.md') %}
     {% set check_styles = {
         ok: {label: 'OK', color: 'success'},
         info: {label: 'Info', color: 'info'},
@@ -118,6 +119,7 @@
                     {%- elseif chosen_method == 'release' %}This installation updates with release ZIPs.
                     {%- else %}Choose how this installation updates.{% endif -%}
                 </p>
+                {{ component('Ui:DocsLink', {topic: 'updates', label: 'Update guide'}) }}
             </div>
         </div>
         <div class="level-right">
@@ -143,7 +145,7 @@
                 </span>
             </summary>
             <p class="mb-4">Pick one update method. This page then shows only that method, and an administrator can switch under <strong>Update settings</strong> at any time. {{ detected_method == 'repository' ? 'This directory is a Git clone, so the repository method is selected below; release ZIPs need a new directory.' : 'This directory is not a Git clone, so Release ZIP is selected below.' }} Until a method is chosen, the command line uses the one that fits this directory.</p>
-            {{ _self.method_form(detected_method, detected_method, run_busy, docs_url, 'choose-method', 'Use this method') }}
+            {{ _self.method_form(detected_method, detected_method, run_busy, update_guide_url, 'choose-method', 'Use this method') }}
         </details>
     {% else %}
         <div class="notification is-{{ status.color }} is-light" role="status">
@@ -187,10 +189,10 @@
                     </span>
                 </summary>
                 <div class="notification is-warning is-light">
-                    <p><strong>Advanced option.</strong> Updates install the newest commit of <code>{{ update_status.branch ?? 'master' }}</code>, which is not a signed release, and run Git and Composer on this server. If an update stops because of local changes, a different branch or a dependency problem, you resolve it on the server. Release ZIPs are the recommended method; switch under <strong>Update settings</strong>. <a href="{{ docs_url }}#update-from-the-repository-advanced">Repository update guide</a></p>
+                    <p><strong>Advanced option.</strong> Updates install the newest commit of <code>{{ update_status.branch ?? 'master' }}</code>, which is not a signed release, and run Git and Composer on this server. If an update stops because of local changes, a different branch or a dependency problem, you resolve it on the server. Release ZIPs are the recommended method; switch under <strong>Update settings</strong>. <a href="{{ update_guide_url }}#update-from-the-repository-advanced">Repository update guide</a></p>
                 </div>
                 {% if method_mismatch %}
-                    <p class="mb-3" id="repository-unavailable">This directory is not a Git clone of <a href="{{ update_repository_url }}">{{ update_repository }}</a>, so there is nothing to pull. <a href="{{ docs_url }}#set-up-a-git-clone">Set it up as a Git clone</a>, or switch back to release ZIPs under <strong>Update settings</strong>.</p>
+                    <p class="mb-3" id="repository-unavailable">This directory is not a Git clone of <a href="{{ update_repository_url }}">{{ update_repository }}</a>, so there is nothing to pull. <a href="{{ update_guide_url }}#set-up-a-git-clone">Set it up as a Git clone</a>, or switch back to release ZIPs under <strong>Update settings</strong>.</p>
                     {{ _self.disabled_button('Install update', 'repository-unavailable') }}
                 {% else %}
                     <p class="mb-3">Pulls the latest <code>{{ update_status.branch ?? 'master' }}</code> from <a href="{{ update_repository_url }}">{{ update_repository }}</a>, installs changed Composer dependencies and compiles dashboard assets, then runs database migrations and rebuilds the cache.</p>
@@ -228,7 +230,7 @@
                     </span>
                 </summary>
                 {% if method_mismatch %}
-                    <p class="mb-3" id="zip-unavailable">This directory is a Git clone, and installing a ZIP over it would leave its files out of step with Git. <a href="{{ docs_url }}#switch-methods">Install a release into a new directory</a>, or switch back to repository updates under <strong>Update settings</strong>.</p>
+                    <p class="mb-3" id="zip-unavailable">This directory is a Git clone, and installing a ZIP over it would leave its files out of step with Git. <a href="{{ update_guide_url }}#switch-methods">Install a release into a new directory</a>, or switch back to repository updates under <strong>Update settings</strong>.</p>
                     {{ _self.disabled_button('Install update', 'zip-unavailable') }}
                 {% else %}
                     <p class="mb-3">Installs a signed release in place after verifying it with this installation's trusted key. Release ZIPs include dependencies and built assets, so the server needs no Git, Composer or Node.</p>
@@ -362,9 +364,9 @@ php bin/console app:updates:rollback</code></pre>
         <summary><span class="title is-4">Update settings</span></summary>
         {% if chosen_method %}
             <h3 class="title is-5 mb-2">Switch update method</h3>
-            <p class="mb-3">This installation updates {{ chosen_method == 'repository' ? 'directly from the repository (advanced)' : 'with release ZIPs' }}. Switching changes which method this page shows and which one <code>app:updates:apply</code> uses. It does not change any files; see <a href="{{ docs_url }}#switch-methods">switching methods</a> for what else each one needs.</p>
+            <p class="mb-3">This installation updates {{ chosen_method == 'repository' ? 'directly from the repository (advanced)' : 'with release ZIPs' }}. Switching changes which method this page shows and which one <code>app:updates:apply</code> uses. It does not change any files; see <a href="{{ update_guide_url }}#switch-methods">switching methods</a> for what else each one needs.</p>
             <div class="mb-5">
-                {{ _self.method_form(chosen_method, detected_method, run_busy, docs_url, 'switch-method', 'Save update method') }}
+                {{ _self.method_form(chosen_method, detected_method, run_busy, update_guide_url, 'switch-method', 'Save update method') }}
             </div>
             <hr>
         {% endif %}
@@ -457,6 +459,6 @@ php bin/console app:updates:apply</code></pre>
             <p>To install release files you downloaded yourself:</p>
             <pre><code>php bin/console app:updates:apply --package=aggregate-YYYY.MM.NN.zip --manifest=aggregate-release.json --signature=aggregate-release.json.sig</code></pre>
         {% endif %}
-        <p>For PostgreSQL, MySQL, MariaDB or SQL Server, back up the database first and add <code>--database-backup-confirmed</code>. If a step fails after files change, the site stays in maintenance mode; continue with <code>--resume</code> or restore the previous files with <code>php bin/console app:updates:rollback</code>. Rolling back files does not reverse database migrations. See the <a href="{{ docs_url }}">update guide</a>.</p>
+        <p>For PostgreSQL, MySQL, MariaDB or SQL Server, back up the database first and add <code>--database-backup-confirmed</code>. If a step fails after files change, the site stays in maintenance mode; continue with <code>--resume</code> or restore the previous files with <code>php bin/console app:updates:rollback</code>. Rolling back files does not reverse database migrations. See the <a href="{{ update_guide_url }}">update guide</a>.</p>
     </details>
 {% endblock %}

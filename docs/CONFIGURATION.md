@@ -17,6 +17,7 @@ Use this guide for application settings and runtime overrides. Run commands from
 - [Main navigation](#main-navigation)
 - [Conversion goals](#conversion-goals)
 - [Coarse geography](#optional-coarse-geography)
+- [Documentation links](#documentation-links)
 - [JavaScript namespace](#customizing-the-javascript-namespace)
 - [Environment overrides](#environment-variable-override)
 
@@ -212,6 +213,7 @@ environments:
 
 - `rate_limit_per_minute`: API requests per IP per minute (default: `100`)
 - `app_host`: Public hostname, used in dashboard integration snippets
+- `documentation_url`: Address of the documentation site that dashboard help links and command-line messages point to (default: `https://subschema-llc.github.io/aggregate/`). See [documentation links](#documentation-links)
 - `brand_name`: Application name used in page titles, headings, and explanatory copy (default: `Aggregate Analytics`)
 - `brand_logo_text`: Visible text displayed beside the optional navigation logo; with a valid image, leave it empty for an image-only identity (default: `brand_name`)
 - `brand_logo_path`: Optional PNG, JPEG, or WebP logo path; use an absolute path or a path relative to the project root
@@ -366,7 +368,7 @@ registered key). The shared template honors its availability and
 `hide_from_navigation` setting for each reference. See
 [feature navigation integration](FEATURE-FLAGS.md#add-a-feature-as-a-developer).
 
-The `brand` entry controls where the branded identity links. Its `label` remains a backward-compatible name/wordmark fallback for existing deployments. Runtime identity, logo, theme-color, and font settings live in `config/aggregate.yaml` (or their environment overrides), so UI changes do not require rebuilding navigation configuration. Edit `items` and `account` to manage the remaining authenticated-navbar links. Each link defines exactly one Symfony `route` name (for example, `app_how_it_works`) or literal `url`; `label` is required, while `icon`, `route_parameters`, and an optional security `role` are supported. Existing flat configurations and an empty `items` list remain supported.
+The `brand` entry controls where the branded identity links. Its `label` remains a backward-compatible name/wordmark fallback for existing deployments. Runtime identity, logo, theme-color, and font settings live in `config/aggregate.yaml` (or their environment overrides), so UI changes do not require rebuilding navigation configuration. Edit `items` and `account` to manage the remaining authenticated-navbar links. Each link defines exactly one Symfony `route` name (for example, `app_how_it_works`), literal `url`, or documentation topic (`docs`, see [documentation links](#documentation-links)); `label` is required, while `icon`, `route_parameters`, and an optional security `role` are supported. Existing flat configurations and an empty `items` list remain supported.
 
 Top-level items can instead group links under `children`. A group has a label
 and optional icon/role/feature, with no route or URL of its own:
@@ -381,7 +383,10 @@ parameters:
         children:
           - { label: 'Data model', route: app_data_model, role: ROLE_ADMIN }
           - { label: 'Event examples', route: app_event_examples, role: ROLE_ADMIN }
-      - { label: Documentation, route: app_how_it_works }
+      - label: Help
+        children:
+          - { label: 'How it works', route: app_how_it_works }
+          - { label: Documentation, docs: home }
     account:
       user_icon: 'fas fa-user'
       logout: { label: Logout, route: app_logout }
@@ -458,7 +463,7 @@ administration. Each settings page loads the data needed for its own task.
 | Page | Route | Purpose |
 | --- | --- | --- |
 | Websites | `/dashboard` | Website registrations and expandable integration snippets |
-| General settings | `/dashboard/settings` | Application host, tracker namespace, ingestion rate limit |
+| General settings | `/dashboard/settings` | Application host, documentation links, tracker namespace, ingestion rate limit |
 | Branding | `/dashboard/branding` | Identity, logos, colors, typography |
 | Collection controls | `/dashboard/collection` | Collection switch, exclusions, optional local geography |
 | Setup | `/dashboard/setup` | Guided installation, separate built-in/standalone/external consent choice, script copy/download, optional minification |
@@ -518,6 +523,43 @@ For each accepted event, the server validates the source as a public IP, perform
 IP-derived geography describes an approximate network exit. VPNs, mobile carriers, corporate gateways, and geolocation-database errors can place it in the wrong area. Never represent `geo_area` as a visitor's precise residence or physical location.
 
 Prefer `macro_region`. Country mode should be enabled only when traffic and risk assessment support it. IP lookup is personal-data processing in many jurisdictions, and a stored area can still contribute to singling out a person. Review the compliance guide and provide appropriate notice before enabling it.
+
+## Documentation links
+
+Each dashboard page links to its section of the documentation site, and
+command-line messages about updates name the relevant page. The site's address
+is `documentation_url`: set it under **Administration → General settings**, in
+`config/aggregate.yaml`, or with the `DOCUMENTATION_URL` environment variable,
+which takes precedence and disables the field.
+
+```yaml
+# Default: the project's public site, built from the master branch.
+documentation_url: "https://subschema-llc.github.io/aggregate/"
+# Your own copy or a white-labeled site with the same page paths:
+# documentation_url: "https://docs.example.com/analytics/"
+# No links to external documentation:
+# documentation_url: ""
+```
+
+The value must be a full `https://` (or `http://`) address without a query
+string, fragment or credentials; a trailing `/` is added. Page paths such as
+`operate/updates#switch-methods` are appended to it, so a replacement site needs
+the same paths: build it from this repository's `website/` folder
+([documentation site](../CONTRIBUTING.md#documentation-site)). An empty value
+hides links to external documentation. The public pages at `/how-it-works` stay
+available, the Updates page links to the update guide in the update source
+instead, and command-line messages name the documentation file in the
+application folder, such as `docs/UPDATES.md`. An invalid value also hides the
+links.
+
+The public site describes the latest release. An installation that has not been
+updated may find features described that it does not have yet; the
+documentation files in its own folder match its version.
+
+In a customized `navigation.local.yaml`, `docs: <topic>` links a menu entry to
+the site and hides it when documentation links are off. Topics are listed in
+`App\Service\DocumentationLinks::TOPICS`, for example `home`, `tracking.setup`,
+`reporting.connect` or `updates`.
 
 ## Customizing the JavaScript Namespace
 
@@ -591,6 +633,7 @@ App-specific settings from `aggregate.yaml` can be overridden with environment v
 
 ```bash
 export JS_NAMESPACE="MyCustomAnalytics"
+export DOCUMENTATION_URL="https://docs.example.com/analytics/"
 export BRAND_NAME="Company Analytics"
 export BRAND_LOGO_TEXT="Company Analytics"
 export BRAND_LOGO_PATH="/var/lib/company/analytics-logo.webp"

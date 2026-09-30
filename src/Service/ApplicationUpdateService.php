@@ -31,6 +31,7 @@ class ApplicationUpdateService
         private readonly ?UpdateSettings $settings = null,
         private readonly ?ReleaseUpdateService $releases = null,
         private readonly ?LocalConfigOverrides $overrides = null,
+        private readonly ?DocumentationLinks $documentation = null,
     ) {
     }
 
@@ -617,8 +618,8 @@ class ApplicationUpdateService
         $mismatch = null;
         if ($method !== $detected) {
             $mismatch = $method === UpdateSettings::METHOD_REPOSITORY
-                ? 'The update method is repository, but the application directory is not a Git clone, so there is nothing to pull. Set the directory up as a Git clone of the repository, or choose release ZIP updates. See docs/UPDATES.md.'
-                : 'The update method is release ZIP, but the application directory is a Git clone. Installing a ZIP over it would leave its files out of step with Git. Choose repository updates, or install a release ZIP into a new directory. See docs/UPDATES.md.';
+                ? 'The update method is repository, but the application directory is not a Git clone, so there is nothing to pull. Set the directory up as a Git clone of the repository, or choose release ZIP updates. Guide: '.$this->documentationReference('updates.git-clone')
+                : 'The update method is release ZIP, but the application directory is a Git clone. Installing a ZIP over it would leave its files out of step with Git. Choose repository updates, or install a release ZIP into a new directory. Guide: '.$this->documentationReference('updates.switch');
         }
 
         return [
@@ -701,5 +702,11 @@ class ApplicationUpdateService
             // Git stderr can contain credential-bearing URLs or local configuration.
             throw new \RuntimeException($failure);
         }
+    }
+
+    /** The documentation site URL for a topic, or the documentation file when links are off. */
+    private function documentationReference(string $topic): string
+    {
+        return $this->documentation?->reference($topic) ?? DocumentationLinks::file($topic);
     }
 }

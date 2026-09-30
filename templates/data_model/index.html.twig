@@ -8,6 +8,7 @@
      data-pages--data-model--index-mapping-index-value="{{ model.query_parameter_mappings|length }}">
     <h1 class="title">Data model</h1>
     <p class="subtitle">Define custom properties, campaign capture, consent requirements, and reporting columns. Download the saved model to share with your analytics implementation developers.</p>
+    {{ component('Ui:DocsLink', {topic: 'data-model', label: 'Data model guide'}) }}
 
     {% if configuration_error %}<div class="notification is-danger" role="alert">{{ configuration_error }}</div>{% endif %}
     {{ component('DataModel:Navigation', {current_model_page: 'app_data_model'}) }}

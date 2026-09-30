@@ -30,6 +30,7 @@
                 <code>bi_glossary_*</code> metadata views needed for labels. Do not grant routine reporting
                 users access to <code>events</code>, <code>analytics_glossary</code>, or other application tables.
             </p>
+            {{ component('Ui:DocsLink', {topic: 'reporting.connect', label: 'Full guide: connect a BI tool', class: 'mt-3'}) }}
         </div>
 
         <nav class="buttons is-centered mb-6" aria-label="Page sections">
@@ -322,34 +323,21 @@
                 </table>
             </div>
             <div class="content">
-                <p>The six dimension views have one row per code in the deployment's default locale.
-                    Each uses prefixed fields such as <code>device_class_label</code>,
-                    <code>device_class_group</code>, <code>device_class_description</code>, and
-                    <code>device_class_sort</code>. In Power BI, confirm the automatically detected
-                    many-to-one relationship from the hourly fact's <code>device_class</code> to the
-                    dimension's <code>device_class</code>, then sort the label by its sort field.
-                    In Tableau, relate those same fields and display the label.</p>
-                <p>For translated labels, filter the localized values view to exactly one dimension and
-                    one published locale before joining. Joining all locales multiplies fact rows.
-                    Use this query for a Power Query locale parameter's allowed values:</p>
-                <pre><code>SELECT DISTINCT locale FROM bi_glossary_values_v1 ORDER BY locale;</code></pre>
-                <p>An unpublished locale returns no rows. The default-locale dimension views need no
-                    locale parameter. Fallback is already resolved during sync: <code>label_locale</code>
-                    records its language and <code>is_fallback = 1</code> marks a fallback label.</p>
-                <p>Use a left join and keep the original code when a label is missing. Undeclared event
-                    names, deleted goals, and synthetic <code>country:other</code>/<code>continent:other</code>
-                    pools can have no dimension row. Prefer disabling old goals to deleting their definitions.</p>
+                <p>The six dimension views have one row per code in the deployment's default locale, with
+                    prefixed fields such as <code>device_class_label</code> and <code>device_class_sort</code>.
+                    Relate each one many-to-one to the matching fact column and display the label. For translated
+                    labels, filter <code>bi_glossary_values_v1</code> to one dimension and one published locale before
+                    joining; joining all locales multiplies fact rows.</p>
+                <p>Use a left join and keep the original code when a label is missing: undeclared event names,
+                    deleted goals, and the synthetic <code>country:other</code>/<code>continent:other</code> pools
+                    have no dimension row.</p>
                 <pre><code>SELECT f.event_day, f.goal_event,
        COALESCE(d.goal_event_label, f.goal_event) AS goal_label,
        f.event_count
 FROM bi_anonymous_goals_v1 f
 LEFT JOIN bi_dim_goal_event_v1 d ON d.goal_event = f.goal_event;</code></pre>
-                <p>Use that native SQL in Power Query, or a Left Outer merge with
-                    <code>if [goal_event_label] = null then [goal_event] else [goal_event_label]</code>.
-                    In Tableau use <code>IFNULL([label], [code])</code> for localized data, with
-                    <code>[code]</code> taken from the fact; for the goal dimension use
-                    <code>IFNULL([goal_event_label], [goal_event])</code>.</p>
             </div>
+            {{ component('Ui:DocsLink', {topic: 'reporting.glossary-relationships', label: 'Power BI and Tableau steps, locale parameters, and column lists'}) }}
             <div class="notification is-warning is-light mb-0">
                 Labels, descriptions, and declared codes are published to routine BI readers; keep them
                 free of personal or identifying text. Declaring values for consent-gated properties publishes
@@ -376,9 +364,10 @@ LEFT JOIN bi_dim_goal_event_v1 d ON d.goal_event = f.goal_event;</code></pre>
                     <li><code>analytics_custom_pageviews_v1</code>: page views only.</li>
                     <li><code>analytics_custom_goals_v1</code>: events with a retained goal.</li>
                 </ul>
-                <p>Modeled scalar properties become text columns. Missing values, JSON null, arrays, and objects produce SQL null. These views expose individual rows without suppression and need separately approved raw-data access. They include raw rows already marked as archived while those rows remain retained; archive aggregate cells do not contain the custom properties.</p>
+                <p>Modeled scalar properties become text columns, and numeric properties can also get a number column for calculations. Missing values, JSON null, arrays, and objects produce SQL null. These views expose individual rows without suppression and need separately approved raw-data access. They include raw rows already marked as archived while those rows remain retained; archive aggregate cells do not contain the custom properties.</p>
                 <p>The <code>bi_anonymous_*</code> views keep their existing dimensions and disclosure thresholds. Deleting raw events removes their custom properties from reporting, even when archived counts remain available.</p>
             </div>
+            {{ component('Ui:DocsLink', {topic: 'reporting.custom-views', label: 'Custom reporting views'}) }}
             </div>
         </details>
 
@@ -554,7 +543,7 @@ ORDER BY event_day, geo_area;</code></pre>
                     <div class="content">
                         <ul>
                             <li>Create a dedicated database principal; never reuse the application's credentials.</li>
-                            <li>Grant only the minimal connection/schema access required plus SELECT on the approved view or views needed; do not grant source-table SELECT.</li>
+                            <li>Grant only the minimal connection/schema access required plus SELECT on the approved view or views needed; do not grant source-table SELECT.{% if docs_url('reporting.glossary') %} <a href="{{ docs_url('reporting.glossary') }}#view-only-grants" target="_blank" rel="noopener noreferrer">Grant statements for each database<span class="is-sr-only"> (opens in a new tab)</span></a>.{% endif %}</li>
                             <li>Use TLS and restrict the principal to the BI service's expected network location.</li>
                             <li>Review and reapply view grants after upgrades because migrations may recreate the views.</li>
                             <li>A shared view exposes every website token in it; BI filters are not tenant isolation.</li>

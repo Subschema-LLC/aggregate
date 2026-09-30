@@ -39,10 +39,30 @@ final class HowItWorksControllerTest extends WebTestCase
         self::assertSelectorTextContains('body', 'Drops a disallowed goal without dropping the event');
         self::assertSelectorExists('a[href="/how-it-works/data-visualization"]');
         self::assertSelectorExists('a[href="/"]');
+        // Each section links to its guide on the documentation site, without sending a referrer.
+        self::assertSelectorExists('a[href="https://subschema-llc.github.io/aggregate/privacy/compliance#strict-collection-profile"][rel="noopener noreferrer"][target="_blank"]');
+        self::assertSelectorExists('a[href="https://subschema-llc.github.io/aggregate/reporting/connect-bi"]');
+        self::assertSelectorExists('a[href="https://subschema-llc.github.io/aggregate/"]');
+        // Operator how-to lives in the guides; the page no longer hardcodes a tracker namespace.
+        self::assertStringNotContainsString('window.Aggregate', (string) $client->getResponse()->getContent());
         self::assertDoesNotMatchRegularExpression(
             '/--app-brand-[a-z-]+:\s*;/',
             (string) $client->getResponse()->getContent(),
         );
+    }
+
+    public function testDataVisualizationReferenceLinksToTheFullGuide(): void
+    {
+        $client = self::createClient();
+
+        $client->request('GET', '/how-it-works/data-visualization');
+
+        self::assertResponseIsSuccessful();
+        self::assertSelectorTextContains('h1', 'Data Structure for Visualization');
+        self::assertSelectorTextContains('body', 'bi_anonymous_events_v1');
+        self::assertSelectorTextContains('body', 'Connection checklist');
+        self::assertSelectorExists('a[href="https://subschema-llc.github.io/aggregate/reporting/connect-bi"][rel="noopener noreferrer"]');
+        self::assertSelectorExists('a[href="https://subschema-llc.github.io/aggregate/reporting/bi-glossary#view-only-grants"]');
     }
 
     public function testUiImportMapServesItsRuntimeDependencies(): void

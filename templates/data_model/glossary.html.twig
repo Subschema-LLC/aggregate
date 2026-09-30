@@ -6,6 +6,7 @@
 <div class="bi-glossary-page">
     <h1 class="title">BI glossary</h1>
     <p class="mb-4">Publish labels and definitions for your BI tools. Labels, descriptions, groups, and declared codes are visible to routine BI users. Do not include personal or identifying text.</p>
+    {{ component('Ui:DocsLink', {topic: 'reporting.glossary', label: 'BI glossary guide'}) }}
     {% if errors %}
         <div class="notification is-danger" role="alert">
             <p>Nothing was saved. Correct these glossary fields:</p>

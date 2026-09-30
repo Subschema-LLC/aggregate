@@ -54,7 +54,7 @@ final class UpdatesControllerTest extends TestCase
         self::assertStringContainsString('name="_csrf_token" value="rendered-token"', $html);
         self::assertStringContainsString('Check now', $html);
         self::assertStringContainsString('cached for one hour', $html);
-        self::assertStringContainsString('href="https://github.com/Subschema-LLC/aggregate/blob/development/docs/UPDATES.md">update guide</a>', $html);
+        self::assertStringContainsString('href="https://docs.example.test/aggregate/operate/updates">update guide</a>', $html);
         self::assertStringContainsString('php bin/console app:updates:check --refresh', $html);
         self::assertStringContainsString('php bin/console app:updates:apply', $html);
         self::assertStringContainsString('method="post" action="/dashboard/updates/install"', $html);
@@ -176,7 +176,7 @@ final class UpdatesControllerTest extends TestCase
         self::assertStringNotContainsString('Up to date', $html);
         self::assertStringNotContainsString('Review changes on GitHub', $html);
         self::assertStringNotContainsString('<time ', $html);
-        self::assertStringContainsString('href="https://github.com/Subschema-LLC/aggregate/blob/master/docs/UPDATES.md">update guide</a>', $html);
+        self::assertStringContainsString('href="https://docs.example.test/aggregate/operate/updates">update guide</a>', $html);
     }
 
     public function testErrorStatusRendersEscapedDetailsWithoutClaimingTheCheckoutIsCurrent(): void
@@ -190,7 +190,8 @@ final class UpdatesControllerTest extends TestCase
             'compare_url' => null,
         ]));
 
-        $html = (string) $this->controller($updates, method: 'repository')->index()->getContent();
+        // With documentation links off, the guide comes from the update source's branch, escaped.
+        $html = (string) $this->controller($updates, method: 'repository', documentationUrl: '')->index()->getContent();
 
         self::assertStringContainsString('Update check failed', $html);
         self::assertStringContainsString('GitHub returned &lt;unexpected&gt; content.', $html);
@@ -405,7 +406,7 @@ final class UpdatesControllerTest extends TestCase
         self::assertStringContainsString('<details class="box update-panel" id="update-repository" open>', $html);
         self::assertStringContainsString('<span class="tag is-warning is-light ml-2">Advanced</span>', $html);
         self::assertStringContainsString('<strong>Advanced option.</strong>', $html);
-        self::assertStringContainsString('docs/UPDATES.md#update-from-the-repository-advanced', $html);
+        self::assertStringContainsString('href="https://docs.example.test/aggregate/operate/updates#update-from-the-repository-advanced"', $html);
         self::assertStringContainsString('<input type="hidden" name="method" value="git">', $html);
         self::assertStringNotContainsString('id="update-zip"', $html);
         self::assertStringNotContainsString('action="/dashboard/updates/upload"', $html);
@@ -448,7 +449,7 @@ final class UpdatesControllerTest extends TestCase
         $html = (string) $this->controller($updates, method: 'repository', detected: 'release')->index()->getContent();
 
         self::assertStringContainsString('id="repository-unavailable"', $html);
-        self::assertStringContainsString('docs/UPDATES.md#set-up-a-git-clone', $html);
+        self::assertStringContainsString('href="https://docs.example.test/aggregate/operate/updates#set-up-a-git-clone"', $html);
         self::assertStringContainsString('type="button" disabled aria-describedby="repository-unavailable"', $html);
         self::assertStringNotContainsString('action="/dashboard/updates/install"', $html);
         self::assertStringContainsString('<details class="box update-panel" id="update-settings" open>', $html);
@@ -678,6 +679,7 @@ final class UpdatesControllerTest extends TestCase
         ?array $savedSettings = null,
         ?string $method = null,
         ?string $detected = null,
+        string $documentationUrl = 'https://docs.example.test/aggregate/',
     ): UpdatesController {
         $config = $this->createMock(AggregateConfigLoader::class);
         $config->method('isDashboardEnabled')->willReturn($dashboardEnabled);
@@ -739,7 +741,7 @@ final class UpdatesControllerTest extends TestCase
         $container->set('security.csrf.token_manager', $csrf);
         $container->set('router', $router);
         $container->set('request_stack', $stack);
-        \App\Tests\Support\TwigComponents::register($twig);
+        \App\Tests\Support\TwigComponents::register($twig, $documentationUrl);
         $container->set('twig', $twig);
         $controller->setContainer($container);
 

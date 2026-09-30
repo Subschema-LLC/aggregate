@@ -36,9 +36,9 @@ features:
     link: /privacy/compliance
     linkText: Privacy and compliance
   - title: Report in your BI tool
-    details: Stable reporting views, labels for codes, and view-only database access for Power BI or Tableau.
-    link: /reporting/bi-glossary
-    linkText: BI labels and glossary
+    details: Stable reporting views, safe queries, labels for codes, and view-only database access for Power BI or Tableau.
+    link: /reporting/connect-bi
+    linkText: Connect a BI tool
   - title: Configure
     details: YAML and dashboard settings, the custom data model, and feature flags.
     link: /configure/configuration
@@ -59,6 +59,7 @@ features:
 - [Which databases are supported, and how do I connect SQL Server?](/install/databases)
 - [How do I add tracking to a website?](/tracking/setup)
 - [Does anonymous-mode measurement require consent?](/privacy/compliance#does-anonymous-mode-measurement-require-consent)
+- [How do I connect Power BI or Tableau?](/reporting/connect-bi)
 - [How do I give Power BI or Tableau read-only access?](/reporting/bi-glossary#view-only-grants)
 - [How do I update an installation, and what is kept?](/operate/updates)
 - [What happens to data when someone withdraws consent?](/privacy/compliance#does-withdrawing-consent-delete-past-data)

@@ -9,6 +9,7 @@ use App\Service\AnalyticsPrivacySettings;
 use App\Service\BrandingLogoManager;
 use App\Service\BrandingTheme;
 use App\Service\CollectionProfile;
+use App\Service\DocumentationLinks;
 use App\Service\DropInScripts;
 use App\Service\WebsiteConfigManager;
 use App\Service\WebsiteDomainPolicy;
@@ -75,7 +76,7 @@ class DashboardController extends AbstractController
     }
 
     #[Route('/dashboard/settings', name: 'app_application_settings', methods: ['GET'])]
-    public function applicationSettings(): Response
+    public function applicationSettings(DocumentationLinks $documentation): Response
     {
         $this->denyIfDashboardDisabled();
         $this->denyIfNotAdmin();
@@ -84,6 +85,9 @@ class DashboardController extends AbstractController
             'app_host' => $this->config->getWithEnvFallback('app_host', 'http://localhost:8000'),
             'js_namespace' => $this->config->getWithEnvFallback('js_namespace', 'Aggregate'),
             'rate_limit' => $this->config->getWithEnvFallback('rate_limit_per_minute', 100),
+            'documentation_url' => $documentation->configuredValue(),
+            'documentation_url_overridden' => $documentation->hasEnvironmentOverride(),
+            'documentation_default_url' => DocumentationLinks::DEFAULT_URL,
         ]);
     }
 
@@ -292,7 +296,7 @@ class DashboardController extends AbstractController
     }
 
     #[Route('/dashboard/settings/save', name: 'app_settings_save', methods: ['POST'])]
-    public function saveSettings(Request $request): Response
+    public function saveSettings(Request $request, DocumentationLinks $documentation): Response
     {
         $this->denyIfDashboardDisabled();
         $this->denyIfNotAdmin();
@@ -311,12 +315,28 @@ class DashboardController extends AbstractController
             return $this->redirectToRoute('app_application_settings');
         }
 
+        $settings = [
+            'app_host' => $appHost,
+            'js_namespace' => $jsNamespace,
+            'rate_limit_per_minute' => $rateLimit,
+        ];
+
+        // DOCUMENTATION_URL takes precedence and its field is disabled. Save only a
+        // changed value, so saving other settings does not pin the default address.
+        if (!$documentation->hasEnvironmentOverride() && $request->request->has('documentation_url')) {
+            try {
+                $documentationUrl = DocumentationLinks::normalize($request->request->get('documentation_url'));
+            } catch (\InvalidArgumentException $exception) {
+                $this->addFlash('error', $exception->getMessage());
+                return $this->redirectToRoute('app_application_settings');
+            }
+            if ($documentationUrl !== $documentation->configuredValue()) {
+                $settings[DocumentationLinks::CONFIG_KEY] = $documentationUrl;
+            }
+        }
+
         try {
-            $this->config->setMany([
-                'app_host' => $appHost,
-                'js_namespace' => $jsNamespace,
-                'rate_limit_per_minute' => $rateLimit,
-            ]);
+            $this->config->setMany($settings);
 
             $this->addFlash('success', 'Settings updated successfully in config/aggregate.yaml!');
         } catch (\Exception $e) {

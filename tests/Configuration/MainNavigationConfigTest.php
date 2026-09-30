@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Configuration;
 
 use App\Service\ApplicationUpdateService;
+use App\Service\DocumentationLinks;
 use App\Service\ReportingViewManager;
 use App\Twig\FeatureFlagsExtension;
 use App\Twig\NavigationExtension;
@@ -108,7 +109,14 @@ final class MainNavigationConfigTest extends KernelTestCase
 
             $hasRoute = array_key_exists('route', $link);
             $hasUrl = array_key_exists('url', $link);
-            self::assertNotSame($hasRoute, $hasUrl, 'A navigation link must define exactly one of "route" or "url".');
+            $hasDocs = array_key_exists('docs', $link);
+            self::assertSame(1, (int) $hasRoute + (int) $hasUrl + (int) $hasDocs, 'A navigation link must define exactly one of "route", "url" or "docs".');
+
+            if ($hasDocs) {
+                self::assertTrue(DocumentationLinks::hasTopic($link['docs']), sprintf('Navigation documentation topic "%s" does not exist.', $link['docs']));
+
+                continue;
+            }
 
             if ($hasRoute) {
                 self::assertIsString($link['route']);
