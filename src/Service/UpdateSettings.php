@@ -14,7 +14,13 @@ final class UpdateSettings
     public const METHOD_RELEASE = 'release';
     /** Fast-forward pulls of a Git clone: the advanced method. */
     public const METHOD_REPOSITORY = 'repository';
-    public const METHODS = [self::METHOD_RELEASE, self::METHOD_REPOSITORY];
+    /**
+     * The code is deployed another way (Plesk Git, cPanel Git Version Control,
+     * CI/CD, rsync). That tool installs updates; the application only reports
+     * the deployed commit and runs the post-deployment steps when asked.
+     */
+    public const METHOD_DEPLOYMENT = 'deployment';
+    public const METHODS = [self::METHOD_RELEASE, self::METHOD_REPOSITORY, self::METHOD_DEPLOYMENT];
 
     public function __construct(private readonly AggregateConfigLoader $config)
     {
@@ -86,7 +92,7 @@ final class UpdateSettings
     public static function validateMethod(mixed $method): string
     {
         if (!is_string($method) || !in_array($method, self::METHODS, true)) {
-            throw new \InvalidArgumentException('updates_method must be release (release ZIPs, recommended) or repository (a Git clone that pulls from the repository; advanced).');
+            throw new \InvalidArgumentException('updates_method must be release (release ZIPs, recommended), repository (a Git clone that pulls from the repository; advanced) or deployment (the code is deployed another way, such as a hosting panel\'s Git deployment or CI/CD).');
         }
 
         return $method;

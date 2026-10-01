@@ -8,12 +8,14 @@
 # Updates (see docs/UPDATES.md). Choose how this installation updates:
 #   release     signed release ZIPs from GitHub (recommended; no Git or Composer needed)
 #   repository  fast-forward pulls of a Git clone in this directory (advanced)
+#   deployment  another tool deploys the code (a hosting panel's Git deployment,
+#               CI/CD); run bin/console app:updates:deployed after each deployment
 # Also chosen on the dashboard Updates page or with app:updates:method. While
 # unset, the dashboard does not install updates and the command line uses the
 # method that fits this directory.
 # updates_method: release
-# Repository pulls use this branch, and release ZIPs must have been published from
-# it. Repository pulls require the local checkout to be on this branch. Also
+# Repository pulls use this branch, release ZIPs must have been published from
+# it, and a deployed commit is compared with it. Repository pulls require the local checkout to be on this branch. Also
 # editable on the dashboard Updates page.
 updates_branch: master
 # GitHub repository (owner/name) for both sources. YAML only; the dashboard shows

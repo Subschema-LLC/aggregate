@@ -572,8 +572,9 @@ Add to crontab:
 
 ### Updates
 
-Aggregate updates itself in place with one of two methods. An administrator
-chooses the method on the dashboard **Updates** page, with
+Aggregate updates itself in place with one of two methods, or reports on code you
+deploy with another tool. An administrator chooses the method on the dashboard
+**Updates** page, with
 `php bin/console app:updates:method`, or with `updates_method` in
 `config/aggregate.yaml`; the page then shows only that method. The
 [update guide](docs/UPDATES.md) compares them in detail and covers setting up a Git
@@ -594,19 +595,26 @@ clone, switching methods and troubleshooting.
   when `composer.lock` or `importmap.php` changed, and compiles dashboard assets. It
   installs whatever is on the branch, which is not a signed release, and needs Git
   and Composer on the server.
+- **Deployed another way** (`updates_method: deployment`) — for code your own tool
+  deploys from Git: a hosting panel's Git deployment such as Plesk or cPanel,
+  CI/CD, or rsync. That tool installs updates; the Updates page is read only and
+  shows the deployed commit and how far behind it is. After each deployment,
+  `php bin/console app:updates:deployed` (best run from the tool's deployment
+  action) installs dependencies, runs migrations and rebuilds assets and the cache.
+  See [deploy the code another way](docs/UPDATES.md#deploy-the-code-another-way).
 
 Until a method is chosen, the dashboard does not install updates and the command
 line uses the method that fits the directory (a `.git` folder means repository).
 A chosen method that does not fit the directory stops updates, and the system check
 says what to change. Only one mechanism should write the application files: if
 another tool also deploys them, stop its automatic deployments before using the
-updater, or keep using that tool with the [manual steps](#manual-update-steps).
+updater, or keep using that tool and choose **deployed another way**.
 
 From the command line, run as the user that owns the application files. The
 commands work with the dashboard disabled:
 
 ```bash
-php bin/console app:updates:method               # show the method; add release or repository to choose
+php bin/console app:updates:method               # show the method; add release, repository or deployment to choose
 php bin/console app:updates:check --refresh      # see what is available
 php bin/console app:updates:apply --preflight    # system check, changes nothing
 php bin/console app:updates:apply                # SQLite: snapshots the database automatically
@@ -615,9 +623,10 @@ php bin/console app:updates:apply --package=aggregate-YYYY.MM.NN.zip \
   --manifest=aggregate-release.json --signature=aggregate-release.json.sig   # release ZIP you downloaded
 ```
 
-**Settings.** `updates_method` (`release` or `repository`) can be chosen on the
+**Settings.** `updates_method` (`release`, `repository` or `deployment`) can be chosen on the
 Updates page, with `app:updates:method`, or in YAML. `updates_branch` (default
-`master`) is the branch Git pulls and the branch releases must be published from;
+`master`) is the branch Git pulls, the branch releases must be published from, and
+the branch a deployed commit is compared with;
 it can be saved on the Updates page. `updates_repository` (default
 `Subschema-LLC/aggregate`) is YAML-only; see
 [configuration](docs/CONFIGURATION.md#github-update-checks).
@@ -626,7 +635,8 @@ it can be saved on the Updates page. `updates_repository` (default
 by the web server user: the update method (and whether it fits the directory) and
 repository, PHP and extensions, Git
 and Composer (repository updates), `release.json`, the trusted signing key and the
-upload size limit (release ZIPs), write access to the application files, whether
+upload size limit (release ZIPs), the last post-deployment run, the deployment
+repository and Composer dependencies (deployed another way), write access to the application files, whether
 the page can start the command line, free disk space, database backup handling,
 OPcache, maintenance mode and the last update. A problem there disables the
 buttons and says what to fix; `app:updates:apply --preflight` prints the same

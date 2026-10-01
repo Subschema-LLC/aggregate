@@ -38,6 +38,8 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   and extension settings, and routing on the Apache or LiteSpeed servers cPanel
   hosts commonly use. Add other panels when adopters ask for them, and list each
   guide in the [hosting panel guides](DEPLOYMENT.md#hosting-panel-guides) table.
+  Verify the cPanel Git Version Control example in
+  [deploy the code another way](docs/UPDATES.md#cpanel) on the same account.
   Keep panel names out of the application itself; panel-specific steps belong
   in the guides.
 - **Page-depth settings by event type.** The optional `page_sequence` counter
@@ -182,5 +184,6 @@ checkout, or a small accessibility fix. Keep each PR focused and target
 - [Custom data models](docs/DATA-MODEL.md), including UTM/query mappings, per-property consent settings, downloadable YAML, and private reporting columns. All UTMs require consent by default; anonymous attribution should use at most broad `utm_medium` values, with documented warnings for overrides.
 - [Optional JavaScript minification](docs/JS-BUILD.md) for tracker, organization-marker, and drop-in scripts.
 - [Git source updates](DEPLOYMENT.md#updates) and [signed release packages](docs/RELEASES.md), with dashboard/CLI version checks and configurable update branches defaulting to `master`.
+- [Code deployed another way](docs/UPDATES.md#deploy-the-code-another-way), such as with a hosting panel's Git deployment or CI/CD: a read-only Updates page with the deployed commit and how far behind it is, and one post-deployment command for the tool's deployment action.
 
 The [README](README.md) covers the wider feature set and privacy tradeoffs. The [release history](https://github.com/Subschema-LLC/aggregate/releases) records published packages.
