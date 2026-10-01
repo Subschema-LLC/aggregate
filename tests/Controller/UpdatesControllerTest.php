@@ -9,6 +9,7 @@ use App\Service\AggregateConfigLoader;
 use App\Service\ApplicationUpdateService;
 use App\Service\FeatureFlags;
 use App\Service\Update\ApplicationUpdater;
+use App\Service\Update\DeploymentAction;
 use App\Service\Update\SystemCheck;
 use App\Service\UpdateSettings;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -388,7 +389,7 @@ final class UpdatesControllerTest extends TestCase
         self::assertStringContainsString('id="switch-method-release" name="updates_method" value="release" required checked', $html);
         self::assertStringContainsString('id="switch-method-repository" name="updates_method" value="repository" required aria-describedby', $html);
         self::assertStringContainsString('The repository method is for advanced users.', $html);
-        self::assertStringContainsString('updates_method: release   # release (recommended) or repository (advanced)'."\n".'updates_branch: master', $html);
+        self::assertStringContainsString('updates_method: release   # release (recommended), repository (advanced) or deployment (deployed another way)'."\n".'updates_branch: master', $html);
         self::assertStringContainsString('<details class="box update-panel" id="system-check">', $html);
         self::assertStringContainsString('<details class="box content update-panel" id="command-line">', $html);
         self::assertStringContainsString('php bin/console app:updates:method release', $html);
@@ -414,6 +415,59 @@ final class UpdatesControllerTest extends TestCase
         self::assertStringContainsString('Git clone', $html);
     }
 
+    public function testCodeDeployedAnotherWayGetsAReadOnlyPanel(): void
+    {
+        $updates = $this->createMock(ApplicationUpdateService::class);
+        $updates->method('check')->willReturn(array_replace($this->availableStatus(), [
+            'installation_type' => 'deployment', 'branch' => 'master', 'installed_branch' => 'master',
+            'message' => '3 newer commits are on master. Deploy them with your deployment tool.',
+            'commits_behind' => 3, 'commit_source' => 'record', 'deployment_pending' => true,
+            'deployed_at' => 1789387200, 'deployed_commit' => str_repeat('a', 40),
+            'deployment_repository' => '/var/www/vhosts/example.com/git/aggregate.git', 'deployment_candidates' => [], 'repository_error' => null,
+        ]));
+        $action = $this->createStub(DeploymentAction::class);
+        $action->method('build')->willReturn([
+            'commands' => [], 'script' => "rm -rf /srv/site/var/cache/prod
+php /srv/site/bin/console app:updates:deployed --git-dir=/var/www/vhosts/example.com/git/aggregate.git",
+            'php' => 'php', 'composer' => 'composer', 'composer_found' => true, 'repository' => '/var/www/vhosts/example.com/git/aggregate.git',
+            'repository_source' => 'detected', 'candidates' => [], 'backup_flag' => false, 'environment' => 'prod', 'project_dir' => '/srv/site',
+        ]);
+
+        $html = (string) $this->controller($updates, method: 'deployment', detected: 'release', deploymentAction: $action)->index()->getContent();
+
+        self::assertStringContainsString('This installation is deployed another way; this page shows what is deployed.', $html);
+        self::assertStringContainsString('<details class="box update-panel" id="update-deployment" open>', $html);
+        self::assertStringContainsString('Read only', $html);
+        self::assertStringContainsString('<th scope="row">Commits behind</th>', $html);
+        self::assertMatchesRegularExpression('#Commits behind</th>\s*<td>3</td>#', $html);
+        self::assertStringContainsString('Files changed since the post-deployment steps last ran', $html);
+        self::assertStringContainsString('/var/www/vhosts/example.com/git/aggregate.git', $html);
+        self::assertStringContainsString('app:updates:deployed --git-dir=/var/www/vhosts/example.com/git/aggregate.git', $html);
+        self::assertStringContainsString('href="https://docs.example.test/aggregate/operate/updates#deploy-the-code-another-way"', $html);
+        self::assertStringContainsString('id="switch-method-deployment" name="updates_method" value="deployment" required checked', $html);
+        self::assertStringContainsString('updates_method: deployment', $html);
+        // Nothing on the page installs code or starts the steps.
+        self::assertStringNotContainsString('action="/dashboard/updates/install"', $html);
+        self::assertStringNotContainsString('action="/dashboard/updates/upload"', $html);
+        self::assertStringNotContainsString('Install update', $html);
+        self::assertStringNotContainsString('id="update-settings" open', $html, 'Any directory fits this method.');
+        self::assertStringNotContainsStringIgnoringCase('plesk', $html, 'The page names no hosting vendor.');
+    }
+
+    public function testDashboardNeverInstallsCodeDeployedAnotherWay(): void
+    {
+        $request = $this->request('POST', ['_csrf_token' => 'valid-token'], '/dashboard/updates/install');
+        $updates = $this->createMock(ApplicationUpdateService::class);
+        $updates->method('check')->willReturn(array_replace($this->availableStatus(), ['installation_type' => 'deployment']));
+        $updater = $this->createMock(ApplicationUpdater::class);
+        $updater->method('isSqlite')->willReturn(true);
+        $updater->expects(self::never())->method('startInBackground');
+
+        $this->controller($updates, $request, updater: $updater, csrfId: UpdatesController::INSTALL_CSRF_TOKEN_ID, method: 'deployment')->install($request);
+
+        self::assertStringContainsString('deployed another way', $request->getSession()->getFlashBag()->peek('error')[0]);
+    }
+
     public function testUnchosenMethodShowsOnlyTheChooserWithTheFittingMethodSelected(): void
     {
         $updates = $this->createMock(ApplicationUpdateService::class);
@@ -429,6 +483,8 @@ final class UpdatesControllerTest extends TestCase
         self::assertStringContainsString('id="choose-method-release" name="updates_method" value="release" required aria-describedby', $html);
         self::assertStringContainsString('Recommended', $html);
         self::assertStringContainsString('The repository method is for advanced users.', $html);
+        self::assertStringContainsString('id="choose-method-deployment" name="updates_method" value="deployment" required aria-describedby', $html);
+        self::assertStringContainsString('I deploy the code another way', $html);
         self::assertStringContainsString('Use this method', $html);
         self::assertStringNotContainsString('id="update-zip"', $html);
         self::assertStringNotContainsString('id="update-repository"', $html);
@@ -489,6 +545,8 @@ final class UpdatesControllerTest extends TestCase
         yield 'repository on a clone' => ['repository', 'repository', ['updates_method' => 'repository'], 'success', 'from the repository (advanced)'];
         yield 'repository without .git warns' => ['repository', 'release', ['updates_method' => 'repository'], 'warning', 'not a Git clone yet'];
         yield 'release on a clone warns' => ['release', 'repository', ['updates_method' => 'release'], 'warning', 'is a Git clone'];
+        yield 'deployed another way' => ['deployment', 'release', ['updates_method' => 'deployment'], 'success', 'by deploying the code another way'];
+        yield 'deployed another way points to the command' => ['deployment', 'repository', ['updates_method' => 'deployment'], 'warning', 'run the post-deployment command'];
         yield 'unknown method' => ['git', 'release', null, 'error', 'updates_method must be release'];
         yield 'array method' => [['release'], 'release', null, 'error', 'updates_method must be release'];
         yield 'missing method' => [null, 'release', null, 'error', 'updates_method must be release'];
@@ -680,6 +738,7 @@ final class UpdatesControllerTest extends TestCase
         ?string $method = null,
         ?string $detected = null,
         string $documentationUrl = 'https://docs.example.test/aggregate/',
+        ?DeploymentAction $deploymentAction = null,
     ): UpdatesController {
         $config = $this->createMock(AggregateConfigLoader::class);
         $config->method('isDashboardEnabled')->willReturn($dashboardEnabled);
@@ -698,7 +757,7 @@ final class UpdatesControllerTest extends TestCase
         $systemCheck = $this->createStub(SystemCheck::class);
         $systemCheck->method('run')->willReturn($checks);
         $systemCheck->method('problems')->willReturn($problems);
-        $controller = new UpdatesController($config, $updates, new FeatureFlags($config), $updater, $systemCheck, new UpdateSettings($config));
+        $controller = new UpdatesController($config, $updates, new FeatureFlags($config), $updater, $systemCheck, new UpdateSettings($config), $deploymentAction);
 
         $authorization = $this->createMock(AuthorizationCheckerInterface::class);
         $authorization->expects($dashboardEnabled ? self::once() : self::never())

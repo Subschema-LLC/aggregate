@@ -1,12 +1,14 @@
 # Updating Aggregate
 
-Aggregate updates itself in place. An administrator chooses one of two update
-methods, and the dashboard **Updates** page then shows only that method. The same
-updates run from the command line, including with the dashboard disabled.
+Aggregate can update itself in place, or you can deploy it with a tool you
+already use. An administrator chooses one of three update methods, and the
+dashboard **Updates** page then shows only that method. Everything also runs from
+the command line, including with the dashboard disabled.
 
 - [Choose an update method](#choose-an-update-method)
 - [Update with release ZIPs (recommended)](#update-with-release-zips-recommended)
 - [Update from the repository (advanced)](#update-from-the-repository-advanced)
+- [Deploy the code another way](#deploy-the-code-another-way)
 - [Set up a Git clone](#set-up-a-git-clone)
 - [Switch methods](#switch-methods)
 - [Settings](#settings)
@@ -17,20 +19,22 @@ updates run from the command line, including with the dashboard disabled.
 
 ## Choose an update method
 
-| | Release ZIP (recommended) | From the repository (advanced) |
-| --- | --- | --- |
-| What is installed | A signed release published on GitHub | The newest commit of `updates_branch` |
-| Verification | The release signature is checked with this installation's trusted key before anything changes | None beyond HTTPS to GitHub; a commit is not a signed release |
-| Server needs | PHP only; the ZIP includes dependencies and built assets | Git 2.30 or newer and Composer, run as the user that owns the files |
-| Installation layout | Any directory without a `.git` folder: an extracted release ZIP, or files copied by a deployment tool | A full Git clone of the repository in the application directory, on `updates_branch` |
-| Dashboard | **Download from GitHub**, or **Upload a release ZIP** for servers that cannot reach GitHub | **Install update** |
-| What can stop an update | No stable release yet, a failed signature check, or unwritable files | Local changes, untracked files, another branch, diverged history, missing Composer, unwritable `.git` |
-| Suits | Most installations, including shared hosting | Developers and operators who manage the installation with Git and can fix Git problems on the server |
+| | Release ZIP (recommended) | From the repository (advanced) | Deployed another way |
+| --- | --- | --- | --- |
+| Who installs updates | Aggregate | Aggregate | Your tool: a hosting panel's Git deployment (such as Plesk or cPanel), CI/CD, rsync |
+| What is installed | A signed release published on GitHub | The newest commit of `updates_branch` | Whatever your tool deploys |
+| Verification | The release signature is checked with this installation's trusted key before anything changes | None beyond HTTPS to GitHub; a commit is not a signed release | Up to your tool |
+| Server needs | PHP only; the ZIP includes dependencies and built assets | Git 2.30 or newer and Composer, run as the user that owns the files | Composer and command-line PHP for the [post-deployment steps](#after-each-deployment) |
+| Installation layout | Any directory without a `.git` folder: an extracted release ZIP, or copied files | A full Git clone of the repository in the application directory, on `updates_branch` | Any |
+| Dashboard | **Download from GitHub**, or **Upload a release ZIP** for servers that cannot reach GitHub | **Install update** | Read only: the deployed commit, how far behind it is, and whether the post-deployment steps ran |
+| Suits | Most installations, including shared hosting | Developers and operators who manage the installation with Git and can fix Git problems on the server | Sites that already deploy from Git with a hosting panel or pipeline |
 
-Choose release ZIPs unless you have a reason to run a Git clone. Both methods
-keep your configuration and data, put the site in maintenance mode while files
-change, back up changed files, and run database migrations, BI glossary sync,
-cache warmup and a worker restart signal afterwards.
+Choose release ZIPs unless you have a reason to run a Git clone or already deploy
+with another tool. The two methods that install updates keep your configuration
+and data, put the site in maintenance mode while files change, back up changed
+files, and run database migrations, BI glossary sync, cache warmup and a worker
+restart signal afterwards. With the third, your tool replaces the files and one
+command runs the same steps after it.
 
 **Where to choose.** Only administrators can see the Updates page and choose the
 method. Any of these saves the same `updates_method` setting in the active
@@ -39,10 +43,12 @@ method. Any of these saves the same `updates_method` setting in the active
 - On the **Updates** page. Until a method is chosen, the page shows only the
   choice, with the method that fits the directory selected. Afterwards, switch
   under **Update settings**.
-- On the server: `php bin/console app:updates:method release` or
-  `php bin/console app:updates:method repository`. Without an argument, the
+- On the server: `php bin/console app:updates:method release`,
+  `php bin/console app:updates:method repository` or
+  `php bin/console app:updates:method deployment`. Without an argument, the
   command shows the current method and whether it fits the directory.
-- In YAML: `updates_method: release` or `updates_method: repository`.
+- In YAML: `updates_method: release`, `updates_method: repository` or
+  `updates_method: deployment` (deployed another way).
 
 **Until a method is chosen**, the dashboard does not install updates, and the
 command line uses the method that fits the directory: repository for a Git clone,
@@ -54,6 +60,7 @@ until it is corrected.
 system check says what to change. Choosing the repository for a directory without
 `.git`, or release ZIPs for a Git clone, both do this. Either
 [set up a Git clone](#set-up-a-git-clone) or [switch back](#switch-methods).
+"Deployed another way" fits any directory.
 
 ## Update with release ZIPs (recommended)
 
@@ -99,7 +106,8 @@ shipped configuration default that differs from the release is kept as a
 
 **Only one thing should write the application files.** If a hosting panel, CI/CD
 pipeline, rsync or FTP job also deploys this directory, turn off its automatic
-deployments before using the updater, or it will overwrite installed updates.
+deployments before using the updater, or it will overwrite installed updates. To
+keep using that tool instead, choose [deployed another way](#deploy-the-code-another-way).
 
 ## Update from the repository (advanced)
 
@@ -139,6 +147,138 @@ On the **Updates** page, click **Check now**, back up the database if asked, the
 **Install update**. From the command line, `php bin/console app:updates:apply`
 does the same. `app:updates:pull` only fast-forwards the code, without the other
 steps; use it only with the [manual update steps](../DEPLOYMENT.md#manual-update-steps).
+
+## Deploy the code another way
+
+Choose this method when a tool you already use deploys Aggregate from Git: a
+hosting panel's Git deployment such as Plesk Git or cPanel Git Version Control, a
+CI/CD pipeline, or an rsync script. That tool pulls and copies the code; Aggregate
+never installs updates itself, and the dashboard has no install button.
+
+Choose it on the Updates page (**I deploy the code another way**), with
+`php bin/console app:updates:method deployment`, or with
+`updates_method: deployment` in YAML. Running `app:updates:deployed` for the first
+time also chooses it when no method has been chosen yet.
+
+### What the Updates page shows
+
+The panel is read only:
+
+- **Deployed commit**: the commit recorded the last time the
+  [post-deployment steps](#after-each-deployment) ran, or, when files changed since,
+  the commit the deployment repository holds now.
+- **Latest on the branch** and **commits behind**, from GitHub, with a link to
+  review the changes. The branch is `updates_branch`; set it to the branch you deploy.
+- **Post-deployment steps last ran**, and a warning when deployed files changed
+  since, which means database migrations or cache rebuilds may be pending.
+- **Deployment repository**, found without any setting: the application directory
+  when it is a Git clone, Plesk's `/var/www/vhosts/DOMAIN/git/NAME.git`, or
+  cPanel's `~/repositories/NAME`, when there is exactly one.
+- The commands to run after each deployment, with this server's paths.
+
+`php bin/console app:updates:check` shows the same from the command line. A commit
+that is not on GitHub (for example from a private fork) shows as unknown rather
+than behind.
+
+### After each deployment
+
+Deployed code needs the same steps as an update: Composer dependencies, database
+migrations, BI glossary sync, dashboard assets and a cache rebuild. Run these on the
+server as the user that owns the files, by hand or from your tool's deployment
+action so they run every time. `php bin/console app:updates:deployed --show-action`
+prints them with the paths of your server, and the Updates page shows them too:
+
+```bash
+rm -rf /var/www/vhosts/example.com/analytics/var/cache/prod
+/opt/plesk/php/8.3/bin/php /opt/psa/var/modules/composer/composer.phar install --working-dir=/var/www/vhosts/example.com/analytics --no-interaction --optimize-autoloader --no-dev
+/opt/plesk/php/8.3/bin/php /var/www/vhosts/example.com/analytics/bin/console app:updates:deployed --git-dir=/var/www/vhosts/example.com/git/aggregate.git --database-backup-confirmed
+```
+
+- The first line removes the compiled cache, which can still refer to code the
+  deployment replaced. Run it before anything else boots the application.
+- `composer install` installs the locked dependencies (they are not in the
+  repository). It also clears the cache and installs dashboard assets.
+- `app:updates:deployed` shows a maintenance page, takes an SQLite snapshot, runs
+  `composer install` again only if `vendor/` still differs from `composer.lock`,
+  runs database migrations and BI glossary sync, installs and compiles dashboard
+  assets, warms the cache, signals workers, and records the deployed commit. When
+  the steps already ran for the same files, it does nothing; `--force` runs them
+  again.
+- `--git-dir` names the repository the files came from, so the commit is recorded.
+  Give `--commit=SHA` instead when the job has the commit at hand, such as
+  `--commit=$(git rev-parse HEAD)` in a clone or `--commit=$GITHUB_SHA` in GitHub
+  Actions. Without either, a single repository found next to the site is used.
+- `--database-backup-confirmed` is required for PostgreSQL, MySQL, MariaDB and SQL
+  Server, because migrations cannot be reversed automatically. Add it to an
+  automatic deployment only when the database is backed up on a schedule. SQLite
+  needs no flag.
+
+The commands use absolute paths because tools run deployment actions from
+different directories. If a step fails, the site stays in maintenance mode: fix
+the cause, then run `php bin/console app:updates:apply --resume` or
+`app:updates:deployed` again. `app:updates:rollback` turns maintenance mode off
+(and with `--restore-database` restores the SQLite snapshot), but cannot return
+deployed files: deploy the previous commit with your tool.
+
+### Keep your files out of the deployment
+
+Your tool decides which files it replaces or deletes. Your configuration and data
+are not in the repository: `.env.local`, `config/aggregate.yaml` and
+`config/aggregate_*.yaml`, `config/websites.yaml`, `config/*.local.yaml`,
+`config/tag-manager/sites/`, `config/secrets/` and `var/`. Keep them out of the
+repository you deploy from, and exclude them from anything that deletes files, such
+as `rsync --delete`. Also exclude what the post-deployment steps create:
+`vendor/`, `assets/vendor/`, `public/assets/` and `public/bundles/`.
+
+### Plesk
+
+1. In **Websites & Domains**, open **Git** and add the repository: the official
+   `https://github.com/Subschema-LLC/aggregate.git` or your fork, with the branch
+   you set as `updates_branch`.
+2. Choose automatic or manual deployment, and set the **deployment path** to a
+   folder outside `httpdocs`, such as `analytics`. Point the domain's document
+   root at `analytics/public`.
+3. Under **Repository settings**, enable **additional deployment actions** and
+   paste the three commands from the Updates page (or `--show-action`).
+4. Deployment actions run as the subscription's system user. When SSH access is
+   forbidden for that user, Plesk runs them in a chrooted environment, where PHP
+   and Composer are not available. Set the user's SSH access to `/bin/bash` in the
+   subscription's web hosting access settings.
+5. Deploy, then finish setup in the browser as in the
+   [Plesk guide](../PLESK-DEPLOYMENT.md#5-open-the-site-and-finish-setup). The
+   deployment action cannot finish until setup has created `.env.local`, so run
+   the post-deployment commands once after setup, or deploy again.
+
+### cPanel
+
+cPanel's **Git Version Control** clones a repository into `~/repositories/NAME`
+and deploys it with tasks from a `.cpanel.yml` file committed at the top of the
+repository, so it needs your own fork or branch. A `.cpanel.yml` that copies the
+code next to the repository and runs the post-deployment steps:
+
+```yaml
+---
+deployment:
+  tasks:
+    - export DEPLOYPATH=$HOME/analytics
+    - /usr/bin/rsync -a --delete --exclude=.git --exclude=/.env --exclude=/.env.local --exclude=/.env.*.local --exclude=/.env.prod --exclude=/config/aggregate.yaml --exclude=/config/aggregate_*.yaml --exclude=/config/websites.yaml --exclude=/config/*.local.yaml --exclude=/config/tag-manager/sites/ --exclude=/config/secrets/ --exclude=/var/ --exclude=/vendor/ --exclude=/assets/vendor/ --exclude=/public/assets/ --exclude=/public/bundles/ --exclude=/SETUP-CODE.txt ./ $DEPLOYPATH/
+    - /bin/rm -rf $DEPLOYPATH/var/cache/prod
+    - /opt/cpanel/composer/bin/composer install --working-dir=$DEPLOYPATH --no-interaction --optimize-autoloader --no-dev
+    - /opt/cpanel/ea-php83/root/usr/bin/php $DEPLOYPATH/bin/console app:updates:deployed --commit=$(git rev-parse HEAD) --database-backup-confirmed
+```
+
+Adjust the PHP path to the version the domain uses and the deployment folder to
+yours, and point the domain's document root at its `public` folder. This example
+has not yet been verified on a real cPanel account; please report what you had
+to change. Without a
+fork, you can clone straight into the application folder instead: **Update from
+Remote** then pulls the code, and you run the post-deployment commands yourself.
+
+### CI/CD and rsync
+
+Copy the files with the exclusions above, then run the post-deployment commands
+over SSH with the commit the pipeline built, for example
+`--commit=$GITHUB_SHA` in GitHub Actions or `--commit=$CI_COMMIT_SHA` in GitLab.
 
 ## Set up a Git clone
 
@@ -230,6 +370,11 @@ settings**, with `php bin/console app:updates:method`, or in YAML.
 **From release ZIPs to the repository.** [Set up a Git clone](#set-up-a-git-clone)
 first, or right after switching; until the directory is a clone, updates stop.
 
+**To or from deployed another way.** Choosing it changes nothing on disk; add the
+[post-deployment commands](#after-each-deployment) to your tool. Before switching
+away from it, turn off the tool's automatic deployments, so only one thing writes
+the application files.
+
 **From the repository to release ZIPs.** A Git clone cannot take release ZIPs,
 because the ZIP would change tracked files behind Git's back. Either:
 
@@ -247,8 +392,8 @@ because the ZIP would change tracked files behind Git's back. Either:
 
 | Setting | Values | Where to change it |
 | --- | --- | --- |
-| `updates_method` | `release` (recommended) or `repository` (advanced); unset until an administrator chooses | Updates page, `app:updates:method`, YAML |
-| `updates_branch` | Branch the repository method pulls, and the branch releases must be published from; default `master` | Updates page, YAML |
+| `updates_method` | `release` (recommended), `repository` (advanced) or `deployment` (deployed another way); unset until an administrator chooses | Updates page, `app:updates:method`, YAML |
+| `updates_branch` | Branch the repository method pulls, the branch releases must be published from, and the branch a deployed commit is compared with; default `master` | Updates page, YAML |
 | `updates_repository` | GitHub `owner/name`; default `Subschema-LLC/aggregate` | YAML only |
 | `updates_signing_public_key` | Optional base64 Ed25519 public key that replaces the shipped `config/release-signing.pub` | YAML only |
 | `AGGREGATE_GITHUB_TOKEN` | Optional token that raises the GitHub API rate limit, or reads a private repository | Server environment or `.env.local` |
@@ -262,7 +407,9 @@ remains the single source of truth. See
 
 ## What an update keeps
 
-Updates never replace or delete `.env.local` and other local environment files,
+With [deployed another way](#deploy-the-code-another-way), your tool replaces the
+files; [keep your files out of it](#keep-your-files-out-of-the-deployment). The other
+two methods never replace or delete `.env.local` and other local environment files,
 `config/aggregate.yaml` and `config/aggregate_*.yaml`, `config/websites.yaml`,
 `config/tag-manager/sites/`, `config/*.local.yaml`, `config/secrets/`, the
 installed `config/release-signing.pub`, or anything in `var/` (database, branding
@@ -294,13 +441,15 @@ restores the files without loading the application.
 
 ```bash
 php bin/console app:updates:method                 # show the method and whether it fits
-php bin/console app:updates:method release         # or: repository
+php bin/console app:updates:method release         # or: repository, deployment
 php bin/console app:updates:check --refresh        # what is available
 php bin/console app:updates:apply --preflight      # system check as this user; changes nothing
 php bin/console app:updates:apply                  # install; add --database-backup-confirmed for non-SQLite databases
 php bin/console app:updates:apply --status         # last update and its log
 php bin/console app:updates:apply --resume         # continue a stopped update
 php bin/console app:updates:rollback               # restore the previous files
+php bin/console app:updates:deployed --show-action # deployed another way: the commands to run after each deployment
+php bin/console app:updates:deployed               # deployed another way: run the post-deployment steps
 php bin/console app:updates:maintenance status     # or: on, off
 php bin/console app:updates:verify-package PACKAGE MANIFEST SIGNATURE
 ```
@@ -328,4 +477,8 @@ checks for the command-line user.
 | User … cannot write … | Run `app:updates:apply` on the server as the owner of the files, or give the web server user write access to use the dashboard. |
 | The site still runs old code after an update | PHP OPcache is not revalidating files (`opcache.validate_timestamps=0`); reload PHP-FPM or the web server. |
 | Installed updates disappear later | Another deployment tool overwrote the files; turn off its automatic deployments. |
+| **Post-deployment steps: Not recorded yet**, or files changed since | Run the [post-deployment commands](#after-each-deployment), and add them to your tool's deployment action. |
+| The deployed commit is unknown | Give `app:updates:deployed` `--git-dir` (the folder your tool keeps the repository in) or `--commit`. |
+| Several deployment repositories were found | Name the deployed one with `--git-dir`. |
+| A deployment action fails with "command not found" for PHP or Composer | Use the full paths from `--show-action`. On Plesk, set the system user's SSH access to `/bin/bash`, so actions do not run in a chroot. |
 | The site shows a maintenance page after a failed update | Run `app:updates:apply --resume` after fixing the cause, or `app:updates:rollback`; then `app:updates:maintenance off` if needed. |

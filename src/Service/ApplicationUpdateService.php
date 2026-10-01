@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Service\Update\DeploymentState;
 use App\Service\Update\LocalConfigOverrides;
 use App\Service\Update\UpdatePaths;
 use Psr\Clock\ClockInterface;
@@ -32,6 +33,7 @@ class ApplicationUpdateService
         private readonly ?ReleaseUpdateService $releases = null,
         private readonly ?LocalConfigOverrides $overrides = null,
         private readonly ?DocumentationLinks $documentation = null,
+        private readonly ?DeploymentState $deployment = null,
     ) {
     }
 
@@ -77,6 +79,7 @@ class ApplicationUpdateService
             'checked_at' => null,
             'message' => '',
             'compare_url' => null,
+            'commits_behind' => null,
         ];
 
         if (!$this->features->isEnabled('updates')) {
@@ -105,6 +108,9 @@ class ApplicationUpdateService
                 'message' => 'Release update checking is unavailable. Rebuild the application cache and verify the release update service configuration.',
             ]);
         }
+        if ($source['source'] === 'deployment') {
+            return $this->checkDeployment($refresh, $result);
+        }
 
         try {
             $result['branch'] = $this->configuredBranch();
@@ -128,25 +134,7 @@ class ApplicationUpdateService
         }
 
         try {
-            $remote = $this->cache->get(
-                $this->cacheKey('branch', $branch),
-                function (ItemInterface $item) use ($branch): array {
-                    $response = $this->github('/commits/'.rawurlencode($branch));
-                    $sha = $response['data']['sha'] ?? null;
-                    $error = $response['error'];
-                    if ($error === null && !$this->isCommit($sha)) {
-                        $error = 'GitHub returned invalid commit metadata. Try checking for updates again later.';
-                    }
-                    $item->expiresAt($this->clock->now()->modify('+'.($error === null ? self::CACHE_SECONDS : 60).' seconds'));
-
-                    return [
-                        'sha' => $error === null ? $sha : null,
-                        'error' => $error,
-                        'checked_at' => $this->clock->now()->getTimestamp(),
-                    ];
-                },
-                $refresh ? INF : null,
-            );
+            $remote = $this->remoteHead($branch, $refresh);
             $result['checked_at'] = $remote['checked_at'];
             if ($remote['error'] !== null) {
                 $result['state'] = 'error';
@@ -163,18 +151,10 @@ class ApplicationUpdateService
             } else {
                 $result['state'] = $this->localComparison($local['commit'], $latest) ?? '';
                 if ($result['state'] === '') {
-                    $comparison = $this->cache->get(
-                        $this->cacheKey('compare', $local['commit'].'...'.$latest),
-                        function (ItemInterface $item) use ($local, $latest): array {
-                            $comparison = $this->remoteComparison($local['commit'], $latest);
-                            $item->expiresAt($this->clock->now()->modify('+'.($comparison['state'] === 'error' ? 60 : self::CACHE_SECONDS).' seconds'));
-
-                            return $comparison;
-                        },
-                        $refresh ? INF : null,
-                    );
+                    $comparison = $this->compare($local['commit'], $latest, $refresh);
                     $result['state'] = $comparison['state'];
                     $result['message'] = $comparison['message'];
+                    $result['commits_behind'] = $comparison['behind'];
                 }
             }
 
@@ -210,7 +190,11 @@ class ApplicationUpdateService
     {
         $this->features->assertEnabled('updates');
 
-        if ($this->isReleaseInstallation()) {
+        $source = $this->source()['source'];
+        if ($source === 'deployment') {
+            throw new \RuntimeException('This installation is deployed another way. Pull and deploy with that tool, then run php bin/console app:updates:deployed.');
+        }
+        if ($source === 'release') {
             throw new \RuntimeException('This installation is not a Git clone of the repository, so it updates from release ZIPs. Use app:updates:apply or the dashboard.');
         }
         $branch = $this->configuredBranch();
@@ -312,6 +296,9 @@ class ApplicationUpdateService
     {
         try {
             $this->features->assertEnabled('updates');
+            if ($this->source()['source'] === 'deployment') {
+                return 'This installation is deployed another way, so this application does not pull the code.';
+            }
             $local = $this->repository();
             $this->assertReadyToPull($local, $this->configuredBranch(), $this->overrides !== null);
             if (!is_writable($local['git_dir'])) {
@@ -502,18 +489,19 @@ class ApplicationUpdateService
         )->getExitCode() === 0;
     }
 
-    /** @return array{state: string, message: string} */
+    /** @return array{state: string, message: string, behind: ?int} */
     private function remoteComparison(string $current, string $latest): array
     {
         $response = $this->github('/compare/'.$current.'...'.$latest);
         if ($response['status'] === 404) {
             return [
                 'state' => 'unknown',
-                'message' => 'GitHub cannot compare the installed commit with this branch. The local commit may be unpublished; review its history before updating.',
+                'message' => 'GitHub cannot compare the installed commit with this branch. The commit may not be published on GitHub (for example a local or fork commit); review its history before updating.',
+                'behind' => null,
             ];
         }
         if ($response['error'] !== null) {
-            return ['state' => 'error', 'message' => $response['error']];
+            return ['state' => 'error', 'message' => $response['error'], 'behind' => null];
         }
 
         $data = $response['data'];
@@ -530,8 +518,174 @@ class ApplicationUpdateService
         }
 
         return $state !== null
-            ? ['state' => $state, 'message' => '']
-            : ['state' => 'error', 'message' => 'GitHub returned invalid comparison metadata. No update status could be determined.'];
+            // GitHub's ahead_by counts the branch commits this installation lacks.
+            ? ['state' => $state, 'message' => '', 'behind' => $ahead]
+            : ['state' => 'error', 'message' => 'GitHub returned invalid comparison metadata. No update status could be determined.', 'behind' => null];
+    }
+
+    /**
+     * The newest commit of a GitHub branch, cached for an hour (a minute after errors).
+     *
+     * @return array{sha: ?string, error: ?string, checked_at: int}
+     */
+    private function remoteHead(string $branch, bool $refresh): array
+    {
+        return $this->cache->get(
+            $this->cacheKey('branch', $branch),
+            function (ItemInterface $item) use ($branch): array {
+                $response = $this->github('/commits/'.rawurlencode($branch));
+                $sha = $response['data']['sha'] ?? null;
+                $error = $response['error'];
+                if ($error === null && !$this->isCommit($sha)) {
+                    $error = 'GitHub returned invalid commit metadata. Try checking for updates again later.';
+                }
+                $item->expiresAt($this->clock->now()->modify('+'.($error === null ? self::CACHE_SECONDS : 60).' seconds'));
+
+                return [
+                    'sha' => $error === null ? $sha : null,
+                    'error' => $error,
+                    'checked_at' => $this->clock->now()->getTimestamp(),
+                ];
+            },
+            $refresh ? INF : null,
+        );
+    }
+
+    /**
+     * How an installed commit relates to the branch's newest commit, from GitHub,
+     * cached like remoteHead().
+     *
+     * @return array{state: string, message: string, behind: ?int}
+     */
+    private function compare(string $current, string $latest, bool $refresh): array
+    {
+        $comparison = $this->cache->get(
+            $this->cacheKey('compare', $current.'...'.$latest),
+            function (ItemInterface $item) use ($current, $latest): array {
+                $comparison = $this->remoteComparison($current, $latest);
+                $item->expiresAt($this->clock->now()->modify('+'.($comparison['state'] === 'error' ? 60 : self::CACHE_SECONDS).' seconds'));
+
+                return $comparison;
+            },
+            $refresh ? INF : null,
+        );
+
+        return $comparison + ['behind' => null];
+    }
+
+    /**
+     * Status of code deployed another way (Plesk Git, cPanel, CI/CD): which
+     * commit is deployed, compared with the GitHub branch, and whether the
+     * post-deployment steps (app:updates:deployed) ran for the current files.
+     * Read-only: nothing here changes the installation.
+     *
+     * The deployed commit is the one recorded when the post-deployment steps
+     * last finished, while no file has changed since. Otherwise it is read from
+     * the deployment tool's Git repository, when one is found next to the site.
+     *
+     * @param array<string, mixed> $result
+     * @return array<string, mixed>
+     */
+    private function checkDeployment(bool $refresh, array $result): array
+    {
+        $result['installation_type'] = 'deployment';
+        $result += [
+            'deployed_at' => null,
+            'deployed_commit' => null,
+            'deployment_pending' => null,
+            'deployment_repository' => null,
+            'deployment_candidates' => [],
+            'repository_commit' => null,
+            'repository_error' => null,
+            'commit_source' => null,
+        ];
+        if ($this->deployment === null) {
+            return array_replace($result, [
+                'state' => 'error',
+                'message' => 'Deployment checking is unavailable. Rebuild the application cache and verify the update service configuration.',
+            ]);
+        }
+        try {
+            $result['branch'] = $this->configuredBranch();
+            $record = $this->deployment->record();
+            $pending = $this->deployment->changedSinceRecord();
+        } catch (\Throwable $e) {
+            return array_replace($result, ['state' => 'error', 'message' => $e instanceof \RuntimeException
+                ? $e->getMessage() : 'The deployed files could not be inspected. Check read access to the application directory.']);
+        }
+        $result['deployment_pending'] = $pending;
+        $result['deployed_at'] = $record['finished_at'] ?? null;
+        $result['deployed_commit'] = $record['commit'] ?? null;
+
+        $repositoryBranch = null;
+        $repository = $this->deployment->repository();
+        $result['deployment_repository'] = $repository;
+        if ($repository === null) {
+            $result['deployment_candidates'] = $this->deployment->candidates();
+        } else {
+            try {
+                $read = $this->deployment->readRepository($repository, $result['branch']);
+                $result['repository_commit'] = $read['commit'];
+                $repositoryBranch = $read['branch'];
+            } catch (\RuntimeException $e) {
+                $result['repository_error'] = $e->getMessage();
+            }
+        }
+
+        if ($record !== null && $record['commit'] !== null && (!$pending || $result['repository_commit'] === null)) {
+            $result['current_commit'] = $record['commit'];
+            $result['installed_branch'] = $record['branch'];
+            $result['commit_source'] = 'record';
+        } elseif ($result['repository_commit'] !== null) {
+            $result['current_commit'] = $result['repository_commit'];
+            $result['installed_branch'] = $repositoryBranch ?? $result['branch'];
+            $result['commit_source'] = 'repository';
+        }
+
+        try {
+            $remote = $this->remoteHead($result['branch'], $refresh);
+        } catch (\Throwable) {
+            $remote = ['sha' => null, 'error' => 'Update metadata could not be checked or cached. Check application cache permissions, then retry.', 'checked_at' => null];
+        }
+        $result['checked_at'] = $remote['checked_at'];
+        $result['latest_commit'] = $remote['sha'];
+
+        if ($result['current_commit'] === null) {
+            return array_replace($result, [
+                'state' => 'unknown',
+                'message' => 'The deployed commit is unknown. Run php bin/console app:updates:deployed with --git-dir (the folder your deployment tool keeps the Git repository in) or --commit after deploying, and it is recorded.',
+            ]);
+        }
+        if ($remote['error'] !== null) {
+            return array_replace($result, ['state' => 'error', 'message' => $remote['error']]);
+        }
+
+        $commit = $result['current_commit'];
+        $result['compare_url'] = $this->repositoryUrl().'/compare/'.$commit.'...'.$remote['sha'];
+        if ($commit === $remote['sha']) {
+            return array_replace($result, [
+                'state' => 'up_to_date',
+                'commits_behind' => 0,
+                'message' => 'The deployed commit is the latest commit on '.$result['branch'].'.',
+            ]);
+        }
+        try {
+            $comparison = $this->compare($commit, $remote['sha'], $refresh);
+        } catch (\Throwable) {
+            $comparison = ['state' => 'error', 'message' => 'Update metadata could not be checked or cached. Check application cache permissions, then retry.', 'behind' => null];
+        }
+        $result['commits_behind'] = $comparison['behind'];
+        $behind = $comparison['behind'] === null ? 'Newer commits are' : ($comparison['behind'] === 1 ? '1 newer commit is' : $comparison['behind'].' newer commits are');
+
+        return array_replace($result, [
+            'state' => $comparison['state'],
+            'message' => ($comparison['message'] !== '' ? $comparison['message'] : match ($comparison['state']) {
+                'available' => $behind.' on '.$result['branch'].'. Deploy them with your deployment tool, then run php bin/console app:updates:deployed (its deployment action can do this for you).',
+                'ahead' => 'The deployed commit is ahead of '.$result['branch'].' on GitHub. Check that updates_branch matches the branch you deploy.',
+                'diverged' => 'The deployed commit and '.$result['branch'].' on GitHub have diverged. Check that updates_branch matches the branch you deploy.',
+                default => 'The deployed commit could not be compared with '.$result['branch'].'.',
+            }),
+        ]);
     }
 
     /** @return array{status: ?int, data: array, error: ?string} */
@@ -573,6 +727,12 @@ class ApplicationUpdateService
         return is_string($sha) && preg_match('/^[0-9a-f]{40}$/D', $sha) === 1;
     }
 
+    /** The configured updates_branch. */
+    public function branch(): string
+    {
+        return $this->configuredBranch();
+    }
+
     private function configuredBranch(): string
     {
         try {
@@ -593,9 +753,11 @@ class ApplicationUpdateService
      * chosen, the layout decides: a Git clone (its own .git in the application
      * directory) pulls from the repository, and anything else installs release
      * ZIPs. A chosen method that does not fit the layout is reported as a
-     * mismatch, and updates stop until it is resolved.
+     * mismatch, and updates stop until it is resolved. The deployment method
+     * fits any layout, because a deployment tool, not this application,
+     * replaces the files.
      *
-     * @return array{source: 'git'|'release', reason: string, method: ?string, detected: string, mismatch: ?string}
+     * @return array{source: 'git'|'release'|'deployment', reason: string, method: ?string, detected: string, mismatch: ?string}
      */
     public function source(): array
     {
@@ -610,6 +772,15 @@ class ApplicationUpdateService
                 'source' => $detected === UpdateSettings::METHOD_REPOSITORY ? 'git' : 'release',
                 'reason' => $this->layoutReason().' No update method has been chosen yet, so this one is used until an administrator chooses one.',
                 'method' => null,
+                'detected' => $detected,
+                'mismatch' => null,
+            ];
+        }
+        if ($method === UpdateSettings::METHOD_DEPLOYMENT) {
+            return [
+                'source' => 'deployment',
+                'reason' => 'An administrator chose to deploy the code another way (such as a hosting panel\'s Git deployment or a CI/CD pipeline). That tool installs updates; php bin/console app:updates:deployed runs the post-deployment steps after each deployment.',
+                'method' => $method,
                 'detected' => $detected,
                 'mismatch' => null,
             ];
@@ -653,7 +824,27 @@ class ApplicationUpdateService
             return 'This directory was installed from a release ZIP, so it updates with release ZIPs.';
         }
 
-        return 'This directory has no .git folder or release.json (for example files copied by a deployment tool), so it updates with release ZIPs.';
+        return 'This directory has no .git folder or release.json (for example files copied by a deployment tool), so it updates with release ZIPs. If you deploy the code another way, such as with a hosting panel\'s Git deployment, choose that method instead.';
+    }
+
+    /** How updates are installed here: release, git or deployment. */
+    public function installationType(): string
+    {
+        return match ($this->source()['source']) {
+            'deployment' => 'deployment',
+            'git' => 'git',
+            default => 'release',
+        };
+    }
+
+    /**
+     * The Git repository the code is deployed from: the application directory
+     * when it is a clone, or the only repository a hosting panel keeps for this
+     * site. Null when none (or several) are found.
+     */
+    public function deploymentRepository(): ?string
+    {
+        return $this->deployment?->repository() ?? ($this->isGitClone() ? $this->projectDir : null);
     }
 
     public function repositoryName(): string

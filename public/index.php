@@ -26,7 +26,8 @@ if (!is_file($projectDir.'/.env')) {
     $_SERVER['APP_RUNTIME_OPTIONS'] = isset($_SERVER['APP_RUNTIME_OPTIONS']) ? $_SERVER['APP_RUNTIME_OPTIONS'] : [];
 
     if (is_file($projectDir.'/.env.local')) {
-        $_SERVER['APP_RUNTIME_OPTIONS']['dotenv_path'] = $projectDir.'/.env.local';
+        // Symfony Runtime resolves dotenv_path against the project directory.
+        $_SERVER['APP_RUNTIME_OPTIONS']['dotenv_path'] = '.env.local';
     } else {
         $_SERVER['APP_RUNTIME_OPTIONS']['disable_dotenv'] = true;
         $_SERVER['APP_ENV'] = isset($_SERVER['APP_ENV']) ? $_SERVER['APP_ENV'] : (isset($_ENV['APP_ENV']) ? $_ENV['APP_ENV'] : 'prod');

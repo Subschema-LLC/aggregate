@@ -17,7 +17,8 @@ use Symfony\Component\Process\Process;
 /**
  * Installs an update from a signed release ZIP or a fast-forward Git pull, then
  * completes the deployment steps: database migrations, glossary sync, cache
- * rebuild and worker restart.
+ * rebuild and worker restart. With the deployment method the code is deployed
+ * another way, and app:updates:deployed runs only those steps here.
  *
  * Progress lives in UpdateJournal so an interrupted update can be resumed or
  * rolled back, and a lock prevents concurrent updates. Web requests get a 503
@@ -33,6 +34,7 @@ class ApplicationUpdater
 {
     public const RELEASE_STEPS = ['download', 'verify', 'stage', 'maintenance', 'database_backup', 'apply_files', 'handoff', 'migrations', 'glossary', 'cache', 'workers', 'finish'];
     public const GIT_STEPS = ['apply_files', 'dependencies', 'handoff', 'migrations', 'glossary', 'assets', 'cache', 'workers', 'finish'];
+    public const DEPLOYMENT_STEPS = ['maintenance', 'database_backup', 'dependencies', 'handoff', 'migrations', 'glossary', 'assets', 'cache', 'workers', 'finish'];
     private const KEEP_BACKUPS = 3;
 
     /** @var (callable(string, string): void)|null */
@@ -53,12 +55,24 @@ class ApplicationUpdater
         private readonly Connection $connection,
         private readonly SystemCheck $systemCheck,
         private readonly Toolchain $toolchain,
+        private readonly ?DeploymentState $deployment = null,
     ) {
     }
 
+    /** release, git or deployment */
     public function installationType(): string
     {
-        return $this->updates->isReleaseInstallation() ? 'release' : 'git';
+        return $this->updates->installationType();
+    }
+
+    /** @return list<string> */
+    public static function stepsFor(string $type): array
+    {
+        return match ($type) {
+            'git' => self::GIT_STEPS,
+            'deployment' => self::DEPLOYMENT_STEPS,
+            default => self::RELEASE_STEPS,
+        };
     }
 
     /** @return array<string, mixed>|null The last recorded update, with whether it is still running */
@@ -130,9 +144,13 @@ class ApplicationUpdater
     }
 
     /**
-     * Start a new update.
+     * Start a new update. With the deployment method, app:updates:deployed
+     * ($options['deployed']) runs the post-deployment steps for code deployed
+     * another way: the commit comes from $options['commit'], the Git repository
+     * in $options['repository'], or the repository found next to the site, and
+     * files the steps already ran for are skipped unless $options['force'] is set.
      *
-     * @param array{version?: ?string, package?: ?string, manifest?: ?string, signature?: ?string, database_backup_confirmed?: bool} $options
+     * @param array{version?: ?string, package?: ?string, manifest?: ?string, signature?: ?string, database_backup_confirmed?: bool, deployed?: bool, commit?: ?string, repository?: ?string, force?: bool} $options
      * @param callable(string, string): void $output
      * @return array<string, mixed> The final journal state, or a no-op result
      */
@@ -142,9 +160,21 @@ class ApplicationUpdater
         $this->preload();
         $this->journal->acquire();
         try {
+            $type = $this->installationType();
             $last = $this->journal->read();
+            $superseded = null;
             if (in_array($last['status'] ?? null, ['running', 'needs_attention'], true)) {
-                throw new \RuntimeException('The previous update stopped at "'.($last['step'] ?? 'unknown').'". Resume it with app:updates:apply --resume or restore files with app:updates:rollback.');
+                if ($type !== 'deployment' || ($last['type'] ?? null) !== 'deployment') {
+                    throw new \RuntimeException('The previous update stopped at "'.($last['step'] ?? 'unknown').'". Resume it with app:updates:apply --resume or restore files with app:updates:rollback.');
+                }
+                // Running app:updates:deployed again is how a deployment retries: every step repeats.
+                $superseded = $last;
+            }
+            if ($type !== 'deployment' && ($options['deployed'] ?? false)) {
+                throw new \RuntimeException('Deployments are only recorded when the code is deployed another way. Choose that update method first (Updates page, app:updates:method deployment or updates_method: deployment in config/aggregate.yaml).');
+            }
+            if ($type === 'deployment' && !($options['deployed'] ?? false)) {
+                throw new \RuntimeException('This installation is deployed another way (such as a hosting panel\'s Git deployment or CI/CD), so this application does not install updates. Deploy with that tool, then run php bin/console app:updates:deployed.');
             }
             // This process holds the lock, and the journal state was checked above.
             $problems = $this->systemCheck->problems(ignore: ['last_update']);
@@ -155,7 +185,6 @@ class ApplicationUpdater
                 throw new \RuntimeException('Back up the database before updating, then confirm it with --database-backup-confirmed. Database migrations cannot be reversed automatically.');
             }
 
-            $type = $this->installationType();
             if ($type === 'git' && array_filter([$options['package'] ?? null, $options['manifest'] ?? null, $options['signature'] ?? null]) !== []) {
                 throw new \RuntimeException('This installation updates directly from the repository, so it does not install release ZIPs. To use release ZIPs, choose that update method first (Updates page, app:updates:method release or updates_method in config/aggregate.yaml).');
             }
@@ -178,6 +207,7 @@ class ApplicationUpdater
                 'started_at' => time(),
             ];
 
+            $prepared = null;
             if ($type === 'release') {
                 // Without release.json the installed version is unknown; the first
                 // release installed records it (for example after files were copied without .git).
@@ -210,6 +240,14 @@ class ApplicationUpdater
                         $state['to']['version'] = $check['latest_version'];
                     }
                 }
+            } elseif ($type === 'deployment') {
+                // After a stopped run, the files match an earlier record but the steps did not finish.
+                $prepared = $this->prepareDeployment($superseded !== null ? ['force' => true] + $options : $options);
+                if ($prepared['done'] !== null) {
+                    return ['status' => 'up_to_date', 'message' => $prepared['done']];
+                }
+                $state['from'] = $prepared['from'];
+                $state['to'] = $prepared['to'];
             } else {
                 $check = $this->updates->check(true);
                 if ($check['state'] === 'up_to_date') {
@@ -222,8 +260,21 @@ class ApplicationUpdater
                 $state['to'] = ['commit' => $check['latest_commit']];
             }
 
+            if ($superseded !== null) {
+                $state['superseded'] = $superseded['id'] ?? true;
+            }
             $state = $this->journal->write($state);
-            $state = $this->say($state, sprintf('Starting %s update %s.', $type === 'release' ? 'release' : 'Git', $id));
+            if ($superseded !== null) {
+                $state = $this->say($state, 'Replacing deployment '.($superseded['id'] ?? '').', which stopped at "'.($superseded['step'] ?? 'unknown').'". Every step runs again.', 'warning');
+            }
+            foreach ($prepared['warnings'] ?? [] as $warning) {
+                $state = $this->say($state, $warning, 'warning');
+            }
+            $state = $this->say($state, match ($type) {
+                'release' => 'Starting release update '.$id.'.',
+                'deployment' => 'Running the post-deployment steps ('.$id.')'.($state['to']['commit'] !== null ? ' for commit '.$state['to']['commit'] : '').'.',
+                default => 'Starting Git update '.$id.'.',
+            });
 
             return $this->run($state);
         } finally {
@@ -258,10 +309,10 @@ class ApplicationUpdater
             if ($state['step'] === 'handoff') {
                 // This fresh process already runs the new code: continue after the handoff.
                 $state['completed'][] = 'handoff';
-                $steps = $state['type'] === 'release' ? self::RELEASE_STEPS : self::GIT_STEPS;
+                $steps = self::stepsFor((string) $state['type']);
                 $state['step'] = $steps[array_search('handoff', $steps, true) + 1];
             }
-            if ($state['step'] !== null && $this->stepIndex($state, $state['step']) > $this->stepIndex($state, 'apply_files')) {
+            if ($state['step'] !== null && $this->stepIndex($state, $state['step']) > $this->stepIndex($state, $this->pausedAfter($state))) {
                 $this->maintenance->enable('update');
             }
             $state = $this->say($state, 'Resuming update '.$state['id'].' at "'.($state['step'] ?? 'start').'".');
@@ -292,6 +343,10 @@ class ApplicationUpdater
                 // Repeating a rollback that stopped: reuse what the first attempt found.
                 $filesChanged = (bool) ($state['rollback']['files'] ?? true);
                 $migrationsStarted = (bool) ($state['rollback']['migrations'] ?? true);
+            } elseif (($state['type'] ?? null) === 'deployment') {
+                // The deployment tool changed the files, so there is no file backup here.
+                $filesChanged = false;
+                $migrationsStarted = in_array('migrations', $state['completed'], true) || in_array($state['step'], ['migrations', 'glossary', 'assets', 'cache', 'workers', 'finish'], true);
             } else {
                 $filesChanged = in_array('apply_files', $state['completed'], true) || $state['step'] === 'apply_files'
                     || $this->stepIndex($state, (string) $state['step']) > $this->stepIndex($state, 'apply_files');
@@ -319,6 +374,12 @@ class ApplicationUpdater
                     }
                 }
                 $this->clearCacheDirectory($state['id']);
+            }
+            if (($state['type'] ?? null) === 'deployment') {
+                $state = $this->say($state, 'These files were deployed another way, so they were left as they are.'
+                    .(DeploymentState::isCommit($state['from']['commit'] ?? null)
+                        ? ' To return to the previous version, deploy commit '.$state['from']['commit'].' with that tool.'
+                        : ' To return to the previous version, deploy it again with that tool.'), 'warning');
             }
             if ($restoreDatabase) {
                 $this->restoreSqlite($this->projectDir.'/'.$state['database_backup']['path']);
@@ -361,8 +422,12 @@ class ApplicationUpdater
      */
     public function stageUpload(array $files): array
     {
-        if ($this->installationType() === 'git') {
+        $type = $this->installationType();
+        if ($type === 'git') {
             throw new \RuntimeException('This installation updates directly from the repository, so it does not install release ZIPs. To use release ZIPs, choose that update method first (Updates page, app:updates:method release or updates_method in config/aggregate.yaml).');
+        }
+        if ($type === 'deployment') {
+            throw new \RuntimeException('This installation is deployed another way, so it does not install release ZIPs. Deploy the new version with that tool, or choose release ZIP updates first.');
         }
         $roles = [];
         foreach ($files as $name => $path) {
@@ -468,7 +533,7 @@ class ApplicationUpdater
     /** @param array<string, mixed> $state @return array<string, mixed> */
     private function run(array $state): array
     {
-        $steps = $state['type'] === 'release' ? self::RELEASE_STEPS : self::GIT_STEPS;
+        $steps = self::stepsFor((string) $state['type']);
         $start = $state['step'] === null ? 0 : max(0, (int) array_search($state['step'], $steps, true));
         for ($index = $start; $index < count($steps); ++$index) {
             $step = $steps[$index];
@@ -627,6 +692,14 @@ class ApplicationUpdater
     private function stepDependencies(array $state): array
     {
         $this->clearCacheDirectory($state['id']);
+        if ($state['type'] === 'deployment') {
+            // Checked now rather than at the start, so a resumed run sees what the operator fixed.
+            if ($this->deploymentState()->dependenciesOutOfDate($this->environment !== 'prod')) {
+                return $this->composerInstall($state);
+            }
+
+            return $this->say($state, 'Composer dependencies already match composer.lock.');
+        }
         if ($state['flags']['composer'] ?? false) {
             return $this->composerInstall($state);
         }
@@ -682,6 +755,13 @@ class ApplicationUpdater
     /** @param array<string, mixed> $state @return array<string, mixed> */
     private function stepAssets(array $state): array
     {
+        if ($state['type'] === 'deployment') {
+            // Deployment tools copy only what the repository holds, without the
+            // downloaded importmap packages or bundle assets. Both commands
+            // only add what is missing.
+            $this->console($state, ['importmap:install'], 900);
+            $this->console($state, ['assets:install', 'public'], 900);
+        }
         if ($this->shouldCompileAssets()) {
             $this->console($state, ['asset-map:compile'], 900);
         }
@@ -719,6 +799,9 @@ class ApplicationUpdater
             $this->installer->removeTree(dirname($state['files']['package']));
         }
         $this->pruneBackups();
+        if ($state['type'] === 'deployment') {
+            return $this->finishDeployment($state);
+        }
         $version = $state['type'] === 'release' ? 'release '.($state['to']['version'] ?? '') : 'commit '.($state['to']['commit'] ?? '');
 
         return $this->say($state, 'Update complete: '.$version.'. Maintenance mode is off. If PHP OPcache does not revalidate files on your host, reload PHP (for example PHP-FPM or the web server) now.', 'success');
@@ -730,6 +813,22 @@ class ApplicationUpdater
         $step = (string) $state['step'];
         $message = $error->getMessage() !== '' ? $error->getMessage() : $error::class;
         $state['error'] = $message;
+        if ($state['type'] === 'deployment') {
+            // A run that replaced a stopped one keeps the site paused: that run may have left migrations half done.
+            if ($this->stepIndex($state, $step) < $this->stepIndex($state, 'dependencies') && !isset($state['superseded'])) {
+                try {
+                    $this->maintenance->disable();
+                } catch (\Throwable) {
+                }
+                $state['status'] = 'failed';
+
+                return $this->say($state, 'The post-deployment steps did not run: '.$message.' Nothing was changed, and the site is out of maintenance mode. Fix the cause, then run php bin/console app:updates:deployed again.', 'error');
+            }
+            $this->maintenance->hold('update');
+            $state['status'] = 'needs_attention';
+
+            return $this->say($state, 'The post-deployment steps stopped at "'.$step.'": '.$message.' The site stays in maintenance mode. Fix the cause, then run php bin/console app:updates:apply --resume or php bin/console app:updates:deployed again.', 'error');
+        }
         $beforeFiles = $this->stepIndex($state, $step) < $this->stepIndex($state, 'apply_files');
         try {
             if ($beforeFiles) {
@@ -763,6 +862,99 @@ class ApplicationUpdater
         $state['status'] = 'needs_attention';
 
         return $this->say($state, 'Update stopped at "'.$step.'": '.$message.' The site stays in maintenance mode. Fix the cause and run php bin/console app:updates:apply --resume, or restore the previous files with php bin/console app:updates:rollback.', 'error');
+    }
+
+    /**
+     * What a deployment run starts from and records: the commit the deployment
+     * tool deployed, and a fingerprint of the deployed files. "done" explains
+     * why nothing needs to run.
+     *
+     * @param array{commit?: ?string, repository?: ?string, force?: bool} $options
+     * @return array{done: ?string, from: array<string, mixed>, to: array<string, mixed>, warnings: list<string>}
+     */
+    private function prepareDeployment(array $options): array
+    {
+        $deployment = $this->deploymentState();
+        $branch = $this->updates->branch();
+        $warnings = [];
+        $commit = null;
+        $deployedBranch = $branch;
+        if (is_string($options['commit'] ?? null) && $options['commit'] !== '') {
+            $commit = strtolower(trim($options['commit']));
+            if (!DeploymentState::isCommit($commit)) {
+                throw new \RuntimeException('--commit needs the full 40-character Git commit hash, for example from git rev-parse HEAD.');
+            }
+        } else {
+            $explicit = is_string($options['repository'] ?? null) && $options['repository'] !== '' ? $options['repository'] : null;
+            $repository = $explicit ?? $this->updates->deploymentRepository();
+            if ($repository === null) {
+                $warnings[] = 'The deployed commit was not recorded: no Git repository was found next to the site, and no --commit or --git-dir was given. Update checks cannot tell how far behind this installation is until one is.';
+            } else {
+                try {
+                    $read = $deployment->readRepository($repository, $branch);
+                    $commit = $read['commit'];
+                    if ($read['branch'] !== null && $read['branch'] !== $branch) {
+                        $warnings[] = 'The deployment repository has '.$read['branch'].' checked out, but updates_branch is '.$branch.', so update checks compare with '.$branch.'. Set updates_branch to the branch you deploy.';
+                    }
+                    $deployedBranch = $read['branch'] ?? $branch;
+                } catch (\RuntimeException $e) {
+                    if ($explicit !== null) {
+                        throw $e;
+                    }
+                    $warnings[] = $e->getMessage().' The deployed commit was not recorded.';
+                }
+            }
+        }
+
+        $fingerprint = $deployment->fingerprint();
+        $record = $deployment->record();
+        $from = ['commit' => $record['commit'] ?? null, 'branch' => $record['branch'] ?? null, 'finished_at' => $record['finished_at'] ?? null];
+        $to = ['commit' => $commit, 'branch' => $deployedBranch, 'fingerprint' => $fingerprint];
+        $done = null;
+        if (!($options['force'] ?? false) && $record !== null && hash_equals($record['fingerprint'], $fingerprint)
+            && !$deployment->dependenciesOutOfDate($this->environment !== 'prod')) {
+            if ($commit === null || $commit === $record['commit']) {
+                $done = 'The post-deployment steps already ran for these files. Add --force to run them again.';
+            } elseif ($record['commit'] === null) {
+                // Only the commit was missing: record it without pausing the site.
+                $deployment->save($commit, $deployedBranch, $fingerprint, (string) ($record['update'] ?? ''));
+                $done = 'The post-deployment steps already ran for these files. Recorded their commit '.$commit.'.';
+            }
+        }
+
+        return ['done' => $done, 'from' => $from, 'to' => $to, 'warnings' => $warnings];
+    }
+
+    /** @param array<string, mixed> $state @return array<string, mixed> */
+    private function finishDeployment(array $state): array
+    {
+        $deployment = $this->deploymentState();
+        $fingerprint = (string) ($state['to']['fingerprint'] ?? '');
+        if ($fingerprint === '') {
+            $fingerprint = $deployment->fingerprint();
+        } elseif (!hash_equals($fingerprint, $deployment->fingerprint())) {
+            $state = $this->say($state, 'Files changed while the post-deployment steps ran, so they may need another run: run php bin/console app:updates:deployed again.', 'warning');
+        }
+        try {
+            $deployment->save($state['to']['commit'] ?? null, $state['to']['branch'] ?? null, $fingerprint, (string) $state['id']);
+        } catch (\RuntimeException $e) {
+            // The deployment itself is complete; only the status shown on the Updates page is missing.
+            $state = $this->say($state, $e->getMessage().' The Updates page will still show the post-deployment steps as pending.', 'warning');
+        }
+        $commit = $state['to']['commit'] ?? null;
+
+        return $this->say($state, 'Post-deployment steps complete'.(is_string($commit) ? ' for commit '.$commit : '').'. Maintenance mode is off. If PHP OPcache does not revalidate files on your host, reload PHP (for example PHP-FPM or the web server) now.', 'success');
+    }
+
+    private function deploymentState(): DeploymentState
+    {
+        return $this->deployment ?? new DeploymentState($this->projectDir);
+    }
+
+    /** The step after which the site is paused: files change at apply_files, or a deployment pauses first. */
+    private function pausedAfter(array $state): string
+    {
+        return ($state['type'] ?? null) === 'deployment' ? 'maintenance' : 'apply_files';
     }
 
     /** @param array<string, mixed> $state @return array<string, mixed> */
@@ -889,7 +1081,7 @@ class ApplicationUpdater
     /** @param array<string, mixed> $state */
     private function stepIndex(array $state, string $step): int
     {
-        $steps = ($state['type'] ?? 'release') === 'release' ? self::RELEASE_STEPS : self::GIT_STEPS;
+        $steps = self::stepsFor((string) ($state['type'] ?? 'release'));
         $index = array_search($step, $steps, true);
 
         return $index === false ? -1 : $index;

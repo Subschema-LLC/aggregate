@@ -151,7 +151,8 @@ category. See [tag manager](TAG-MANAGER.md).
 events, served at `/aggregate.js` with the installation's settings.
 
 **Update method.** How an installation updates: `release` (signed ZIPs,
-recommended) or `repository` (a Git clone). `updates_branch` chooses the release
+recommended), `repository` (a Git clone) or `deployment` (another tool deploys the
+code, and Aggregate only reports on it). `updates_branch` chooses the release
 channel, `master` by default. See [updating](UPDATES.md).
 
 **Viewport bucket and device class.** Coarse size and device categories derived

@@ -34,6 +34,15 @@ if ($lock === false || !flock($lock, LOCK_EX | LOCK_NB)) {
 // Keep visitors on the maintenance page until an administrator finishes recovery.
 @file_put_contents($projectDir.'/var/maintenance.json', json_encode(['since' => time(), 'expires_at' => null, 'reason' => 'rollback'])."\n");
 
+if ($state['type'] === 'deployment') {
+    $commit = is_string($state['from']['commit'] ?? null) ? $state['from']['commit'] : 'the previous commit';
+    fwrite(STDOUT, "Your deployment tool installed these files, so there is no file backup here.\n"
+        ."Deploy {$commit} again with that tool. Its deployment action then finishes the\n"
+        ."deployment and turns maintenance mode off. To turn it off by hand:\n\n"
+        ."  rm -rf var/cache/*\n"
+        ."  php bin/console app:updates:maintenance off\n");
+    exit(0);
+}
 if ($state['type'] !== 'release') {
     $commit = is_string($state['from']['commit'] ?? null) ? $state['from']['commit'] : 'PREVIOUS_COMMIT';
     fwrite(STDOUT, "This is a Git checkout. Restore the previous code with:\n\n"

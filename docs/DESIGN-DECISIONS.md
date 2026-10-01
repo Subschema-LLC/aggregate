@@ -232,6 +232,29 @@ shipped defaults need the local override files.
 **What would change it.** A trust mechanism that is at least as independent of
 the package.
 
+### Code deployed by another tool is reported, not installed
+
+**Decision.** A third update method, "deployed another way", is for sites that a
+hosting panel's Git deployment or a CI/CD pipeline deploys. The application never
+installs code for it: the Updates page is read only, showing the deployed commit
+and how far behind the branch it is, and one command,
+`app:updates:deployed`, runs the post-deployment steps from the tool's deployment
+action. The deployed commit is recorded by that command or read from the tool's
+Git repository, found next to the site without a setting.
+
+**Why.** Many operators already deploy every site from Git with their panel or
+pipeline, and two mechanisms writing the same files would overwrite each other.
+Leaving installation to their tool keeps one writer, while the steps every
+deployment needs (dependencies, migrations, glossary, assets, cache) still run
+the same way as an in-app update, under the same maintenance page and journal.
+
+**Trade-off.** The dashboard cannot install or roll back these deployments, and
+the version shown depends on the post-deployment command running, or on finding
+the tool's repository. Each tool needs its own setup, which the guides cover.
+
+**What would change it.** Evidence that operators want the dashboard to trigger
+their tool's deployment, which would need each tool's API.
+
 ### A one-time setup code for browser installation
 
 **Decision.** The browser setup page and `/install` accept nothing until the

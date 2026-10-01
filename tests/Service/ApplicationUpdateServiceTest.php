@@ -136,7 +136,7 @@ final class ApplicationUpdateServiceTest extends TestCase
         $result = $this->service($client)->check();
 
         self::assertSame('unknown', $result['state']);
-        self::assertStringContainsString('unpublished', $result['message']);
+        self::assertStringContainsString('may not be published on GitHub', $result['message']);
         self::assertFileDoesNotExist($this->project.'/.git/FETCH_HEAD');
     }
 

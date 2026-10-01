@@ -226,8 +226,8 @@ environments:
 - `brand_font_family`: Safe comma-separated local/system font stack for application text (default: `system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif`)
 - `brand_heading_font_family`: Safe comma-separated local/system font stack for headings (default: `system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif`)
 - `js_namespace`: JavaScript global variable name (default: `Aggregate`)
-- `updates_method`: `release` (signed release ZIPs, recommended) or `repository` (Git clone pulls, advanced); unset until an administrator chooses on the Updates page, with `app:updates:method`, or here. See [the update guide](UPDATES.md#choose-an-update-method)
-- `updates_branch`: GitHub branch used by repository pulls and packaged-release checks (default: `master`); also editable on the Updates page, with active-environment precedence
+- `updates_method`: `release` (signed release ZIPs, recommended), `repository` (Git clone pulls, advanced) or `deployment` (deployed another way, such as a hosting panel's Git deployment or CI/CD); unset until an administrator chooses on the Updates page, with `app:updates:method`, or here. See [the update guide](UPDATES.md#choose-an-update-method)
+- `updates_branch`: GitHub branch used by repository pulls, packaged-release checks and comparisons of deployed commits (default: `master`); also editable on the Updates page, with active-environment precedence
 - `updates_signing_public_key`: Optional base64 Ed25519 public key overriding the packaged `config/release-signing.pub` for offline package verification; never a private key
 - `internal_traffic_storage`, `internal_traffic_name`, `internal_traffic_value`, `internal_traffic_cookie_domain`, `internal_traffic_share_token`: Browser marker and team sharing settings; see [Organization traffic](#organization-traffic)
 - `custom_data_properties`, `query_parameter_mappings`: Shareable property model, per-property consent settings, UTM/query capture, and reporting aliases; see [Custom data and UTM parameters](#custom-data-and-utm-parameters)
@@ -276,9 +276,9 @@ After deploying a release that adds or changes branding services, rebuild the pr
 Source deployments must also run `php bin/console importmap:install --env=prod --no-debug`
 and `php bin/console asset-map:compile --env=prod --no-debug` after dashboard asset
 changes. Cache clearing alone does not rebuild those assets. Prepared release
-ZIPs include them. `app:updates:apply` runs these steps for Git checkouts; for other
-pipelines see the [deployment guide](../DEPLOYMENT.md#updates) (and, for Plesk, its
-[deployment actions](../PLESK-DEPLOYMENT.md#plesk-git-deployment-actions)).
+ZIPs include them. `app:updates:apply` runs these steps for Git checkouts, and
+`app:updates:deployed` for code [deployed another way](UPDATES.md#deploy-the-code-another-way)
+(for Plesk, see its [deployment actions](../PLESK-DEPLOYMENT.md#plesk-git-deployment-actions)).
 Saving existing branding settings takes effect without an asset build.
 
 The two BI disclosure thresholds are configured separately in the admin dashboard and stored directly in the singleton `analytics_privacy_settings` database row:
@@ -586,17 +586,18 @@ window.Company1Analytics.emit('signup', {plan: 'pro'});
 ### GitHub update checks
 
 Aggregate updates **with release ZIPs** (recommended) or **from the repository**
-(a Git clone in the application directory; advanced). An administrator chooses
-the method; see the [update guide](UPDATES.md). Three settings control updates:
+(a Git clone in the application directory; advanced), or reports on code
+**deployed another way** by your own tool. An administrator chooses the method;
+see the [update guide](UPDATES.md). Three settings control updates:
 
 ```yaml
-updates_method: release                       # release (recommended) or repository (advanced)
+updates_method: release                       # release (recommended), repository (advanced) or deployment
 updates_branch: master
 updates_repository: Subschema-LLC/aggregate   # GitHub owner/name
 ```
 
 `updates_method` can also be chosen on the Updates page or with
-`php bin/console app:updates:method release|repository`. While it is unset, the
+`php bin/console app:updates:method release|repository|deployment`. While it is unset, the
 dashboard does not install updates and the command line uses the method that fits
 the directory: repository for a Git clone, release ZIPs otherwise. An invalid value
 stops updates until it is corrected. `updates_branch` can also be saved on the

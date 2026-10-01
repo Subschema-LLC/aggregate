@@ -56,6 +56,17 @@ final class ApplyUpdateCommandTest extends TestCase
         self::assertStringContainsString('The update is complete.', $display);
     }
 
+    public function testCodeDeployedAnotherWayIsNotInstalledHere(): void
+    {
+        $updater = $this->createMock(ApplicationUpdater::class);
+        $updater->method('installationType')->willReturn('deployment');
+        $updater->expects(self::never())->method('start');
+        $tester = new CommandTester(new ApplyUpdateCommand($updater));
+
+        self::assertSame(1, $tester->execute(['--yes' => true, '--database-backup-confirmed' => true]));
+        self::assertStringContainsString('app:updates:deployed', preg_replace('/\s+/', ' ', $tester->getDisplay()));
+    }
+
     public function testFailuresExitNonZeroAndPreflightReportsProblems(): void
     {
         $updater = $this->createMock(ApplicationUpdater::class);

@@ -11,6 +11,7 @@ use App\Service\InstalledRelease;
 use App\Service\ReleasePackageVerifier;
 use App\Service\ReleaseUpdateService;
 use App\Service\Update\ApplicationUpdater;
+use App\Service\Update\DeploymentState;
 use App\Service\Update\LocalConfigOverrides;
 use App\Service\Update\MaintenanceMode;
 use App\Service\Update\ReleasePackageInstaller;
@@ -368,6 +369,73 @@ final class ApplicationUpdaterTest extends TestCase
         self::assertNull((new MaintenanceMode($this->project))->status());
     }
 
+    public function testCodeDeployedAnotherWayRunsOnlyThePostDeploymentSteps(): void
+    {
+        $this->put('vendor/composer/installed.json', '{"packages": []}');
+        $updater = $this->updater(settings: ['updates_method' => 'deployment']);
+        $commit = str_repeat('c', 40);
+        [$package, $manifest, $signature] = $this->package('2.0.0');
+
+        // Nothing installs code here: not app:updates:apply, the dashboard or an upload.
+        foreach ([fn () => $updater->start([], $this->record(...)), fn () => $updater->stageUpload(['a.zip' => $package, 'a.json' => $manifest, 'a.sig' => $signature])] as $attempt) {
+            try {
+                $attempt();
+                self::fail('Code deployed another way must not be installed from here.');
+            } catch (\RuntimeException $e) {
+                self::assertStringContainsString('deployed another way', $e->getMessage());
+            }
+        }
+        $checks = array_column($updater->preflight()['checks'], null, 'id');
+        self::assertSame('deployment', $updater->preflight()['installation_type']);
+        self::assertSame('warning', $checks['deployment']['status'], 'No post-deployment run is recorded yet.');
+        self::assertSame('ok', $checks['composer']['status']);
+        self::assertArrayNotHasKey('background', $checks, 'The dashboard never starts anything for this method.');
+
+        $files = $this->snapshot('var');
+        $state = $updater->start(['deployed' => true, 'commit' => $commit], $this->record(...));
+
+        self::assertSame('deployment', $state['type']);
+        self::assertSame(['maintenance', 'database_backup', 'dependencies'], $state['completed']);
+        self::assertSame('needs_attention', $state['status'], 'The fixture console cannot continue after the handoff.');
+        self::assertSame($files, $this->snapshot('var'), 'Deployed files are never changed.');
+        self::assertFileExists($this->project.'/'.$state['backup'].'/database.sqlite');
+        self::assertTrue((new MaintenanceMode($this->project))->status()['active']);
+
+        // The fresh process continues after the handoff and records the deployment.
+        $finished = $updater->resume($this->record(...));
+        self::assertSame('completed', $finished['status']);
+        self::assertSame($commit, (new DeploymentState($this->project))->record()['commit']);
+        self::assertNull((new MaintenanceMode($this->project))->status());
+        self::assertSame($commit, $this->updater(settings: ['updates_method' => 'deployment'])->status()['to']['commit']);
+
+        // Running it again for the same files does nothing.
+        self::assertSame('up_to_date', $updater->start(['deployed' => true, 'commit' => $commit], $this->record(...))['status']);
+
+        // A stopped run is replaced by running the steps again, not blocked, even
+        // when the files still match the last finished run.
+        self::assertSame('needs_attention', $updater->start(['deployed' => true, 'commit' => $commit, 'force' => true], $this->record(...))['status']);
+        $again = $updater->start(['deployed' => true, 'commit' => $commit], $this->record(...));
+        self::assertSame('needs_attention', $again['status']);
+        self::assertStringContainsString('Every step runs again', implode("\n", array_column($this->messages, 1)));
+        $this->put('src/App.php', '<?php // deployed again');
+
+        // Rolling back leaves the deployed files and lifts maintenance mode.
+        $rolledBack = $updater->rollback(false, $this->record(...));
+        self::assertSame(['rolled_back', false], [$rolledBack['status'], $rolledBack['files_restored']]);
+        self::assertSame('<?php // deployed again', $this->read('src/App.php'));
+        self::assertNull((new MaintenanceMode($this->project))->status());
+        self::assertStringContainsString('deploy commit '.$commit, implode("\n", array_column($this->messages, 1)));
+
+        $this->expectExceptionMessage('full 40-character');
+        $updater->start(['deployed' => true, 'commit' => 'abc123'], $this->record(...));
+    }
+
+    public function testRecordingADeploymentNeedsTheMethod(): void
+    {
+        $this->expectExceptionMessage('Choose that update method first');
+        $this->updater(settings: ['updates_method' => 'release'])->start(['deployed' => true], $this->record(...));
+    }
+
     private function commitAll(string $repository): string
     {
         $this->git(['add', '--all'], $repository);
@@ -405,7 +473,8 @@ final class ApplicationUpdaterTest extends TestCase
         $journal = new UpdateJournal($this->project);
         $maintenance = new MaintenanceMode($this->project);
         $verifier = new ReleasePackageVerifier($config, $settings, $this->project, $features);
-        $updates = new ApplicationUpdateService($this->project, $github ?? new MockHttpClient([]), $cache, $clock, $features, '', $settings, $releases, $overrides);
+        $deployment = new DeploymentState($this->project);
+        $updates = new ApplicationUpdateService($this->project, $github ?? new MockHttpClient([]), $cache, $clock, $features, '', $settings, $releases, $overrides, deployment: $deployment);
         $toolchain = new Toolchain($this->project);
 
         return new ApplicationUpdater(
@@ -419,8 +488,9 @@ final class ApplicationUpdaterTest extends TestCase
             $installed,
             $features,
             $this->connection,
-            new SystemCheck($this->project, $updates, $settings, $installed, $verifier, $journal, $maintenance, $features, $this->connection, $toolchain),
+            new SystemCheck($this->project, $updates, $settings, $installed, $verifier, $journal, $maintenance, $features, $this->connection, $toolchain, deployment: $deployment),
             $toolchain,
+            $deployment,
         );
     }
 
