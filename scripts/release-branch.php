@@ -11,8 +11,8 @@ require dirname(__DIR__).'/vendor/autoload.php';
 try {
     // Preserve mapping/sequence identity: {} can use defaults, [] is not config.
     $config = Yaml::parseFile(dirname(__DIR__).'/config/release.yaml', Yaml::PARSE_OBJECT_FOR_MAP);
-    if (!$config instanceof stdClass || array_diff(array_keys(get_object_vars($config)), ['branch']) !== []) {
-        throw new RuntimeException('Release configuration must be a YAML mapping containing only the optional branch key.');
+    if (!$config instanceof stdClass || array_diff(array_keys(get_object_vars($config)), ['branch', 'minimum_php_version']) !== []) {
+        throw new RuntimeException('Release configuration must be a YAML mapping containing only optional branch and minimum_php_version keys.');
     }
     $values = get_object_vars($config);
     $branch = UpdateSettings::validateBranch(array_key_exists('branch', $values) ? $values['branch'] : UpdateSettings::DEFAULT_BRANCH);

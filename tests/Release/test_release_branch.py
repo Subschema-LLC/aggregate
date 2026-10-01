@@ -29,7 +29,13 @@ class ReleaseBranchTest(unittest.TestCase):
         return subprocess.run(["php", str(self.root / "scripts/release-branch.php")], cwd=self.root, capture_output=True, text=True)
 
     def test_accepts_master_default_and_configured_literal_branches(self):
-        for yaml, branch in (("{}", "master"), ("branch: master\n", "master"), ("branch: releases/stable\n", "releases/stable"), ("branch: 'release+production'\n", "release+production")):
+        for yaml, branch in (
+            ("{}", "master"),
+            ("branch: master\n", "master"),
+            ("branch: releases/stable\n", "releases/stable"),
+            ("branch: 'release+production'\n", "release+production"),
+            ("branch: master\nminimum_php_version: '8.2'\n", "master"),
+        ):
             with self.subTest(yaml=yaml):
                 result = self.run_helper(yaml)
                 self.assertEqual(result.returncode, 0, result.stderr)
