@@ -8,7 +8,7 @@ export default class extends Controller {
         this.restoreDraftIfAvailable();
         this.validateAll();
 
-        const form = this.element.querySelector('form');
+        const form = this.element && typeof this.element.querySelector === 'function' ? this.element.querySelector('form') : null;
         if (form) {
             form.addEventListener('submit', () => {
                 setTimeout(() => this.clearDraft(), 2000);
@@ -29,9 +29,10 @@ export default class extends Controller {
     addRow(kind) {
         const isProperty = kind === 'property';
         const container = isProperty ? this.propertyRowsTarget : this.mappingRowsTarget;
-        if (container.children.length >= (isProperty ? 50 : 100)) return;
+        if (!container || container.children.length >= (isProperty ? 50 : 100)) return;
 
         const template = isProperty ? this.propertyTemplateTarget : this.mappingTemplateTarget;
+        if (!template || !template.content || !template.content.firstElementChild) return;
         const row = template.content.firstElementChild.cloneNode(true);
         const index = isProperty ? this.propertyIndexValue++ : this.mappingIndexValue++;
         for (const field of row.querySelectorAll('[data-field]')) {
@@ -45,12 +46,14 @@ export default class extends Controller {
         }
         container.appendChild(row);
         const input = row.querySelector('input');
-        if (input) input.focus();
+        if (input && typeof input.focus === 'function') input.focus();
     }
 
     removeRow(event) {
-        const row = event.currentTarget.closest('[data-property-row], tr');
-        if (row && this.element.contains(row)) {
+        const row = event && event.currentTarget && typeof event.currentTarget.closest === 'function'
+            ? event.currentTarget.closest('[data-property-row], tr')
+            : null;
+        if (row && this.element && typeof this.element.contains === 'function' && this.element.contains(row)) {
             row.remove();
             this.validateAll();
             this.saveDraft();
@@ -58,68 +61,84 @@ export default class extends Controller {
     }
 
     renameProperty(event) {
-        const row = event.currentTarget.closest('[data-property-row]');
+        const row = event && event.currentTarget && typeof event.currentTarget.closest === 'function'
+            ? event.currentTarget.closest('[data-property-row]')
+            : null;
         if (row) {
-            row.querySelector('[data-property-label]').textContent = event.currentTarget.value || 'New property';
+            const label = row.querySelector('[data-property-label]');
+            if (label) {
+                label.textContent = event.currentTarget.value || 'New property';
+            }
         }
     }
 
     showReservedColumns(event) {
-        if (event) event.preventDefault();
+        if (event && typeof event.preventDefault === 'function') event.preventDefault();
         const details = this.hasReservedDetailsTarget
             ? this.reservedDetailsTarget
-            : document.getElementById('reserved-columns-list');
+            : (typeof document !== 'undefined' ? document.getElementById('reserved-columns-list') : null);
         if (details) {
             details.open = true;
-            details.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            if (typeof details.scrollIntoView === 'function') {
+                details.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
         }
     }
 
     validateKey(event) {
-        const input = event.currentTarget;
-        const value = input.value.trim();
-        const feedback = input.closest('.column')?.querySelector('[data-key-feedback]');
+        const input = event && event.currentTarget ? event.currentTarget : null;
+        if (!input) return;
+        const value = (input.value || '').trim();
+        const feedback = input.closest && typeof input.closest === 'function'
+            ? input.closest('.column')?.querySelector('[data-key-feedback]')
+            : null;
 
-        const allKeyInputs = Array.from(this.element.querySelectorAll('[data-field="key"]'));
-        const isDuplicate = value !== '' && allKeyInputs.filter(el => el.value.trim().toLowerCase() === value.toLowerCase()).length > 1;
+        const allKeyInputs = this.element && typeof this.element.querySelectorAll === 'function'
+            ? Array.from(this.element.querySelectorAll('[data-field="key"]'))
+            : [];
+        const isDuplicate = value !== '' && allKeyInputs.filter(el => (el.value || '').trim().toLowerCase() === value.toLowerCase()).length > 1;
         const isValidFormat = value === '' || /^[a-zA-Z][a-zA-Z0-9_.-]{0,63}$/.test(value);
 
         if (isDuplicate) {
-            input.classList.add('is-danger');
+            if (input.classList && typeof input.classList.add === 'function') input.classList.add('is-danger');
             if (feedback) {
                 feedback.innerHTML = '<span class="has-text-danger"><i class="fas fa-triangle-exclamation mr-1" aria-hidden="true"></i> Duplicate key: "<strong>' + this.escape(value) + '</strong>" is already used by another property.</span>';
             }
         } else if (!isValidFormat) {
-            input.classList.add('is-danger');
+            if (input.classList && typeof input.classList.add === 'function') input.classList.add('is-danger');
             if (feedback) {
                 feedback.innerHTML = '<span class="has-text-danger"><i class="fas fa-triangle-exclamation mr-1" aria-hidden="true"></i> Must begin with a letter and use up to 64 letters, numbers, underscores, dots, or hyphens.</span>';
             }
         } else {
-            input.classList.remove('is-danger');
+            if (input.classList && typeof input.classList.remove === 'function') input.classList.remove('is-danger');
             if (feedback) feedback.innerHTML = '';
         }
     }
 
     validateColumn(event) {
-        const input = event.currentTarget;
-        this.checkColumnField(input);
+        const input = event && event.currentTarget ? event.currentTarget : null;
+        if (input) this.checkColumnField(input);
     }
 
     validateAll() {
+        if (!this.element || typeof this.element.querySelectorAll !== 'function') return;
+
         const columnInputs = this.element.querySelectorAll('[data-field="column"], [data-field="numeric_column"]');
         columnInputs.forEach(input => this.checkColumnField(input));
 
         const keyInputs = this.element.querySelectorAll('[data-field="key"]');
         keyInputs.forEach(input => {
-            const value = input.value.trim();
-            const feedback = input.closest('.column')?.querySelector('[data-key-feedback]');
-            const isDuplicate = value !== '' && Array.from(keyInputs).filter(el => el.value.trim().toLowerCase() === value.toLowerCase()).length > 1;
+            const value = (input.value || '').trim();
+            const feedback = input.closest && typeof input.closest === 'function'
+                ? input.closest('.column')?.querySelector('[data-key-feedback]')
+                : null;
+            const isDuplicate = value !== '' && Array.from(keyInputs).filter(el => (el.value || '').trim().toLowerCase() === value.toLowerCase()).length > 1;
             if (isDuplicate) {
-                input.classList.add('is-danger');
+                if (input.classList && typeof input.classList.add === 'function') input.classList.add('is-danger');
                 if (feedback) {
                     feedback.innerHTML = '<span class="has-text-danger"><i class="fas fa-triangle-exclamation mr-1" aria-hidden="true"></i> Duplicate key: "<strong>' + this.escape(value) + '</strong>" is already used.</span>';
                 }
-            } else if (input.classList.contains('is-danger') && feedback && feedback.textContent.includes('Duplicate')) {
+            } else if (input.classList && typeof input.classList.contains === 'function' && input.classList.contains('is-danger') && feedback && feedback.textContent.includes('Duplicate')) {
                 input.classList.remove('is-danger');
                 feedback.innerHTML = '';
             }
@@ -127,13 +146,16 @@ export default class extends Controller {
     }
 
     checkColumnField(input) {
-        const value = input.value.trim().toLowerCase();
-        const isNumeric = input.dataset.field === 'numeric_column';
+        if (!input) return;
+        const value = (input.value || '').trim().toLowerCase();
+        const isNumeric = input.dataset ? input.dataset.field === 'numeric_column' : false;
         const feedbackSelector = isNumeric ? '[data-numeric-column-feedback]' : '[data-column-feedback]';
-        const feedback = input.closest('.column')?.querySelector(feedbackSelector);
+        const feedback = input.closest && typeof input.closest === 'function'
+            ? input.closest('.column')?.querySelector(feedbackSelector)
+            : null;
 
         if (value === '') {
-            input.classList.remove('is-danger');
+            if (input.classList && typeof input.classList.remove === 'function') input.classList.remove('is-danger');
             if (feedback) feedback.innerHTML = '';
             return;
         }
@@ -141,37 +163,42 @@ export default class extends Controller {
         const reservedList = this.reservedColumnsValue || [];
         const isReserved = reservedList.includes(value);
 
-        const allColumnInputs = Array.from(this.element.querySelectorAll('[data-field="column"], [data-field="numeric_column"]'));
-        const isDuplicate = allColumnInputs.filter(el => el.value.trim().toLowerCase() === value).length > 1;
+        const allColumnInputs = this.element && typeof this.element.querySelectorAll === 'function'
+            ? Array.from(this.element.querySelectorAll('[data-field="column"], [data-field="numeric_column"]'))
+            : [];
+        const isDuplicate = allColumnInputs.filter(el => (el.value || '').trim().toLowerCase() === value).length > 1;
         const isValidFormat = /^[a-z][a-z0-9_]{0,62}$/.test(value);
 
         if (isReserved) {
-            input.classList.add('is-danger');
+            if (input.classList && typeof input.classList.add === 'function') input.classList.add('is-danger');
             if (feedback) {
                 feedback.innerHTML = '<span class="has-text-danger"><i class="fas fa-triangle-exclamation mr-1" aria-hidden="true"></i> "<strong>' + this.escape(value) + '</strong>" is a built-in column name and cannot be reused. <a href="#reserved-columns-list" data-action="pages--data-model--index#showReservedColumns">View built-in list</a></span>';
             }
         } else if (isDuplicate) {
-            input.classList.add('is-danger');
+            if (input.classList && typeof input.classList.add === 'function') input.classList.add('is-danger');
             if (feedback) {
                 feedback.innerHTML = '<span class="has-text-danger"><i class="fas fa-triangle-exclamation mr-1" aria-hidden="true"></i> Duplicate column: "<strong>' + this.escape(value) + '</strong>" is already used as a reporting column.</span>';
             }
         } else if (!isValidFormat) {
-            input.classList.add('is-danger');
+            if (input.classList && typeof input.classList.add === 'function') input.classList.add('is-danger');
             if (feedback) {
                 feedback.innerHTML = '<span class="has-text-danger"><i class="fas fa-triangle-exclamation mr-1" aria-hidden="true"></i> Must be lowercase, start with a letter, and use only letters, numbers, and underscores (max 63 chars).</span>';
             }
         } else {
-            input.classList.remove('is-danger');
+            if (input.classList && typeof input.classList.remove === 'function') input.classList.remove('is-danger');
             if (feedback) feedback.innerHTML = '';
         }
     }
 
     saveDraft() {
+        if (typeof sessionStorage === 'undefined' || !this.propertyRowsTarget) return;
         try {
-            const form = this.element.querySelector('form');
+            const form = this.element && typeof this.element.querySelector === 'function' ? this.element.querySelector('form') : null;
             if (!form) return;
             const entries = [];
-            const rows = this.propertyRowsTarget.querySelectorAll('[data-property-row]');
+            const rows = this.propertyRowsTarget && typeof this.propertyRowsTarget.querySelectorAll === 'function'
+                ? this.propertyRowsTarget.querySelectorAll('[data-property-row]')
+                : [];
             rows.forEach(row => {
                 const key = row.querySelector('[data-field="key"]')?.value ?? '';
                 const type = row.querySelector('[data-field="type"]')?.value ?? 'scalar';
@@ -179,27 +206,27 @@ export default class extends Controller {
                 const desc = row.querySelector('[data-field="description"]')?.value ?? '';
                 const col = row.querySelector('[data-field="column"]')?.value ?? '';
                 const numCol = row.querySelector('[data-field="numeric_column"]')?.value ?? '';
-                entries.push({ key, type, consent, desc, col, numCol });
+                entries.push({ key: key, type: type, consent: consent, desc: desc, col: col, numCol: numCol });
             });
 
             sessionStorage.setItem('aggregate_data_model_draft_v1', JSON.stringify({
                 properties: entries,
                 timestamp: Date.now()
             }));
-        } catch (e) {
-        }
+        } catch (e) {}
     }
 
     restoreDraftIfAvailable() {
+        if (typeof sessionStorage === 'undefined' || !this.propertyRowsTarget) return;
         try {
             const raw = sessionStorage.getItem('aggregate_data_model_draft_v1');
             if (!raw) return;
             const draft = JSON.parse(raw);
-            if (!draft || !draft.properties || (Date.now() - draft.timestamp) > 86400000) {
-                return;
-            }
+            if (!draft || !draft.properties || (Date.now() - draft.timestamp) > 86400000) return;
 
-            const currentRows = this.propertyRowsTarget.querySelectorAll('[data-property-row]');
+            const currentRows = this.propertyRowsTarget && typeof this.propertyRowsTarget.querySelectorAll === 'function'
+                ? this.propertyRowsTarget.querySelectorAll('[data-property-row]')
+                : [];
             if (currentRows.length === draft.properties.length) {
                 draft.properties.forEach((prop, idx) => {
                     const row = currentRows[idx];
@@ -222,34 +249,35 @@ export default class extends Controller {
                     if (label && prop.key) label.textContent = prop.key;
                 });
             }
-        } catch (e) {
-        }
+        } catch (e) {}
     }
 
     clearDraft() {
+        if (typeof sessionStorage === 'undefined') return;
         try {
             sessionStorage.removeItem('aggregate_data_model_draft_v1');
         } catch (e) {}
     }
 
     expandAllProperties() {
-        this.propertyRowsTarget.querySelectorAll('[data-property-row]').forEach(row => {
-            row.open = true;
-        });
+        if (!this.propertyRowsTarget || typeof this.propertyRowsTarget.querySelectorAll !== 'function') return;
+        const rows = this.propertyRowsTarget.querySelectorAll('[data-property-row]');
+        rows.forEach(row => { row.open = true; });
     }
 
     collapseAllProperties() {
-        this.propertyRowsTarget.querySelectorAll('[data-property-row]').forEach(row => {
-            row.open = false;
-        });
+        if (!this.propertyRowsTarget || typeof this.propertyRowsTarget.querySelectorAll !== 'function') return;
+        const rows = this.propertyRowsTarget.querySelectorAll('[data-property-row]');
+        rows.forEach(row => { row.open = false; });
     }
 
     filterProperties(event) {
-        const query = event.currentTarget.value.trim().toLowerCase();
+        if (!this.propertyRowsTarget || typeof this.propertyRowsTarget.querySelectorAll !== 'function') return;
+        const query = (event?.currentTarget?.value || '').trim().toLowerCase();
         const rows = this.propertyRowsTarget.querySelectorAll('[data-property-row]');
         rows.forEach(row => {
             const label = (row.querySelector('[data-property-label]')?.textContent || '').toLowerCase();
-            const inputs = Array.from(row.querySelectorAll('input, select')).map(i => i.value.toLowerCase()).join(' ');
+            const inputs = Array.from(row.querySelectorAll ? row.querySelectorAll('input, select') : []).map(i => (i.value || '').toLowerCase()).join(' ');
             const match = !query || label.includes(query) || inputs.includes(query);
             row.hidden = !match;
             if (match && query) {
