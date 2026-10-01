@@ -795,8 +795,10 @@
       if (this.consent) {
         payload.screenWidth = (screen && screen.width) || null;
       }
+      // The payload's custom properties travel as customData; the server still
+      // accepts the earlier eventData name from older copies of this script.
       var customData = this.customDataForEvent(null, advancePage);
-      if (customData) payload.eventData = customData;
+      if (customData) payload.customData = customData;
 
       this.send(payload);
     },
@@ -828,7 +830,7 @@
         payload.screenWidth = (screen && screen.width) || null;
       }
       var customData = this.customDataForEvent(eventData, safeEventName === 'view');
-      if (customData || this.consent) payload.eventData = customData;
+      if (customData || this.consent) payload.customData = customData;
 
       this.send(payload);
 

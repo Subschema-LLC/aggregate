@@ -66,6 +66,12 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   signing key, database snapshots for server databases, and per-entry merging of
   `config/*.local.yaml` overrides with newly shipped defaults (an override currently
   replaces the whole parameter).
+- **Retire the `eventData` payload name.** Collection requests now carry custom
+  properties in `customData`, and `/api/receive` still reads the earlier
+  `eventData` when `customData` is absent. Remove that fallback in a later
+  release, once older static or CDN copies of the tracker and server-side
+  integrations send `customData`, and say so in the release notes. The GTM tag
+  template calls `emit()`, so it already follows the served tracker.
 - **Versioned documentation.** The [documentation site](CONTRIBUTING.md#documentation-site)
   follows `master`, so it describes the latest release, and the dashboard links
   to it through [`documentation_url`](docs/CONFIGURATION.md#documentation-links).

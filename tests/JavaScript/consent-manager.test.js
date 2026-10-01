@@ -245,7 +245,7 @@ test('withdrawal clears real SDK identifiers and leaves later events anonymous i
     assert.equal(anonymous.visitorId, undefined);
     assert.equal(anonymous.sessionId, undefined);
     assert.equal(anonymous.screenWidth, undefined);
-    assert.equal(anonymous.eventData, undefined);
+    assert.equal(anonymous.customData, undefined);
     assert.equal(app.tagChoices.at(-1).analytics, false);
   }
 });

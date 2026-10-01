@@ -86,7 +86,7 @@ The tracker is authored directly in [public/aggregate.js](../public/aggregate.js
 ## Page depth and single-page apps
 
 The optional [page-depth setting](DATA-MODEL.md#optional-page-depth) adds
-`eventData.page_sequence` to all events. Enable it in Data model or YAML after
+`customData.page_sequence` to all events. Enable it in Data model or YAML after
 reviewing the selected method's storage or URL implications. It counts from `1`
 through `20` (`20+`), with interactions and asynchronous events sharing the current
 page's number. The counter does not create a visitor or session ID.
@@ -174,6 +174,13 @@ window.Aggregate = {
 ```
 
 After loading, `Aggregate.configure({customData: {...}})` accepts the same settings. `consentFreeProperties` is a list of JSON keys, `queryParameters` is a source-to-key mapping, and optional `propertyTypes` maps JSON keys to `scalar`, `string`, `integer`, `float`, `double`, or `boolean`. Supplying a field replaces that field; `{queryParameters: {}}` disables URL collection. Omitted fields retain their current settings. Browser overrides cannot weaken server-side consent or type checks. Descriptions and reporting aliases are not needed in browser configuration.
+
+The tracker sends an event's properties in the collection request's `customData`
+object; server-side and other direct clients do the same (see the
+[server-side guide](SERVER-SIDE.md)). `eventData`, the object's earlier name, is
+still accepted when `customData` is absent, and both pass the same server
+filtering. The `customData` settings above are a different thing: they configure
+which properties the tracker collects, not the properties themselves.
 
 Properties are flat scalars: strings, finite numbers, booleans, or null. At most 50 properties are sent, strings are bounded to 500 UTF-8 bytes, and nested arrays/objects are omitted. Property keys use `[A-Za-z][A-Za-z0-9_.-]{0,63}`; reserved prototype names and the configured organization marker cannot be supplied as custom properties. Dots in keys are literal, not nesting.
 
@@ -282,13 +289,13 @@ Named custom events may be stored in anonymous mode. Before `setConsent(true)`, 
      (function() {
        if (window.Aggregate && window.Aggregate.emit) {
          var eventName = {{Event Name Variable}};
-         var eventData = {
+         var customData = {
            category: {{Event Category}},
            label: {{Event Label}},
            value: {{Event Value}}
          };
          var goalEvent = {{Goal Event Variable}};
-         window.Aggregate.emit(eventName, eventData, goalEvent);
+         window.Aggregate.emit(eventName, customData, goalEvent);
        }
      })();
    </script>
@@ -466,7 +473,7 @@ dataLayer.push({
   'event': 'customAnalyticsEvent',
   'eventName': 'signup_click',
   'goalEvent': 'signup',
-  'eventData': {
+  'customData': {
     'plan': 'pro',
     'source': 'pricing_page'
   }
@@ -481,7 +488,7 @@ dataLayer.push({
      if (window.Aggregate && window.Aggregate.emit) {
        window.Aggregate.emit(
          {{DLV - eventName}},
-         {{DLV - eventData}},
+         {{DLV - customData}},
          {{DLV - goalEvent}}
        );
      }
@@ -489,5 +496,5 @@ dataLayer.push({
    ```
 3. Create Data Layer Variables:
    - `DLV - eventName` → Data Layer Variable Name: `eventName`
-   - `DLV - eventData` → Data Layer Variable Name: `eventData`
+   - `DLV - customData` → Data Layer Variable Name: `customData`
    - `DLV - goalEvent` → Data Layer Variable Name: `goalEvent` (optional)

@@ -81,21 +81,21 @@ test('event method tags preserve tracker consent and anonymous payload boundarie
   assert.equal(requests[0].consentState, 'denied');
   assert.equal(requests[0].visitorId, undefined);
   assert.equal(requests[0].sessionId, undefined);
-  assert.equal(requests[0].eventData, undefined, 'a tag category cannot whitelist custom analytics properties');
+  assert.equal(requests[0].customData, undefined, 'a tag category cannot whitelist custom analytics properties');
   assert.equal(localStorage.has('aggregate_visitor_id'), false);
 
   window.Aggregate.setConsent(true);
   purchase(3000);
   assert.equal(requests.length, 2, 'method event tags must handle repeated events');
   assert.equal(requests[1].consentState, 'granted');
-  assert.deepEqual(requests[1].eventData, {total_minor: 3000, product: 'sku-example'});
+  assert.deepEqual(requests[1].customData, {total_minor: 3000, product: 'sku-example'});
   assert.equal(typeof requests[1].visitorId, 'string');
 
   window.Aggregate.setConsent(false);
   purchase(4000);
   assert.equal(requests.length, 3);
   assert.equal(requests[2].consentState, 'denied');
-  assert.equal(requests[2].eventData, undefined);
+  assert.equal(requests[2].customData, undefined);
   assert.equal(requests[2].visitorId, undefined);
   assert.equal(localStorage.has('aggregate_visitor_id'), false);
   assert.equal(sessionStorage.has('aggregate_session_id'), false);
@@ -225,7 +225,7 @@ for (const namespace of ['Aggregate', 'CompanyAnalytics']) {
       page.window[namespace].emit('button_click', {private: 'omitted'});
       assert.equal(page.requests.at(-1).url, page.endpoint);
       assert.equal(page.requests.at(-1).body.websiteToken, page.token);
-      assert.equal(page.requests.at(-1).body.eventData, undefined);
+      assert.equal(page.requests.at(-1).body.customData, undefined);
       if (namespace !== 'Aggregate') assert.equal(page.window.Aggregate, undefined);
     });
   }
@@ -239,14 +239,14 @@ for (const namespace of ['Aggregate', 'CompanyAnalytics']) {
     assert.equal(page.localStorage.has('aggregate_visitor_id'), true);
     assert.equal(page.cookies.has('aggregate_session'), true);
     page.window[namespace].emit('purchase', {total_minor: 1234});
-    assert.deepEqual(page.requests.at(-1).body.eventData, {total_minor: 1234});
+    assert.deepEqual(page.requests.at(-1).body.customData, {total_minor: 1234});
     page.window.AggregateConsent.setConsent(false);
     assert.equal(page.localStorage.has('aggregate_visitor_id'), false);
     assert.equal(page.sessionStorage.has('aggregate_session_id'), false);
     assert.equal(page.cookies.has('aggregate_session'), false);
     page.window[namespace].emit('purchase', {total_minor: 2345});
     assert.equal(page.requests.at(-1).body.consentState, 'denied');
-    assert.equal(page.requests.at(-1).body.eventData, undefined);
+    assert.equal(page.requests.at(-1).body.customData, undefined);
     assert.equal(page.requests.at(-1).body.visitorId, undefined);
     assert.equal(page.requests.at(-1).body.websiteToken, page.token);
     assert.equal(page.injectedScripts.length, 1, 'consent changes do not insert the SDK twice');
@@ -265,7 +265,7 @@ for (const namespace of ['Aggregate', 'CompanyAnalytics']) {
     page.window.AggregateConsent.setConsent(true);
     page.window[namespace].emit('purchase', {total_minor: 3456});
     assert.equal(page.requests.at(-1).body.consentState, 'granted');
-    assert.deepEqual(page.requests.at(-1).body.eventData, {total_minor: 3456});
+    assert.deepEqual(page.requests.at(-1).body.customData, {total_minor: 3456});
     assert.equal(page.injectedScripts.length, 1);
   });
 }

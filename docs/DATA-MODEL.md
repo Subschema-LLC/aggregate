@@ -47,7 +47,7 @@ Rules:
 - Definitions support `description` (default empty, at most 1,000 bytes), `consent_required` (a YAML boolean, default `true`), `column` (optional text reporting alias), `type` (optional collection type), and `numeric_column` (optional numeric reporting alias). Empty reporting aliases collect the property without projecting it in custom reporting views.
 - Property keys and parameter names are case-sensitive, start with a letter, and contain up to 64 letters, digits, underscores, dots, or hyphens. Prototype-related names are rejected. Dots are literal top-level keys, not nested paths.
 - Up to 50 properties and 100 parameter mappings are supported. Each source maps to one defined property; multiple sources can share a destination. Configuration order determines priority: the first nonblank parameter value wins, including repeated occurrences of one parameter. Explicit scalar `emit()` properties override URL values, including `false`, `0`, and `null`.
-- The SDK reads the current page URL for each event. Attribution is not persisted, carried to later pages, or derived from the referrer. Selected values go into `eventData` and are stored in `events.custom_data`; full query strings and fragments are still discarded.
+- The SDK reads the current page URL for each event. Attribution is not persisted, carried to later pages, or derived from the referrer. Selected values go into the payload's `customData` object and are stored in `events.custom_data`; full query strings and fragments are still discarded.
 - Properties remain flat scalars or null, with at most 50 retained keys and strings limited to 500 UTF-8 bytes. Nested values are discarded. Anonymous protections for identifiers, exact dimensions, and UTC hour timestamps remain in place.
 - Reporting aliases use up to 63 lowercase letters, digits, or underscores, starting with a letter. They must be unique and cannot collide with built-in columns. Historical marker names outside normal property grammar can remain as reporting-only columns with `consent_required: true`; they cannot become query destinations.
 - Collection changes apply to future requests and do not erase historical data. Malformed models prevent the tracker from being served and cause ingestion to fail closed. Synchronize the active YAML across application replicas.
@@ -69,7 +69,7 @@ Choose **Carry page depth between pages** in the UI to use either tab session
 storage or URL parameter passing. These deployment-wide settings have no
 environment-variable overrides and use the same validation for UI and YAML.
 Unknown methods fail closed. Enabling page depth automatically adds the
-reserved numeric `eventData.page_sequence` property to page views, named events
+reserved numeric `customData.page_sequence` property to page views, named events
 and goals in both privacy modes. No custom-property definition is needed to
 collect it. Per-event-type settings remain [planned work](../ROADMAP.md#after-beta-feedback).
 
@@ -111,7 +111,7 @@ page_sequence_method: url_parameter
 The tracker reads the fixed `aggregate_page_sequence` parameter from the current
 page URL. One integer written as `1` through `20` is accepted; missing, duplicate
 or malformed values start at `1`. A page opened as
-`/example?aggregate_page_sequence=2` sends `eventData.page_sequence: 2` on its
+`/example?aggregate_page_sequence=2` sends `customData.page_sequence: 2` on its
 initial view and subsequent asynchronous events.
 
 On an allowed page, the tracker captures this number in memory as soon as its
@@ -124,7 +124,7 @@ Disabled or excluded pages are not rewritten.
 
 The event's `pagePath` contains only the sanitized pathname, even if URL cleanup
 fails. The server also strips queries and fragments from supplied page paths in
-both privacy modes. Only the intended numeric `eventData.page_sequence` is sent;
+both privacy modes. Only the intended numeric `customData.page_sequence` is sent;
 the transport parameter is not included in event page information or ordinary
 query-property mappings.
 
@@ -179,7 +179,7 @@ consent, a page view on the second tracked page can send:
   "viewportBucket": "large",
   "internalTraffic": false,
   "consentState": "denied",
-  "eventData": {
+  "customData": {
     "utm_medium": "email",
     "page_sequence": 2
   }

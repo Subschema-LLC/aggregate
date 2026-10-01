@@ -192,7 +192,7 @@ function assertLastRequestIsAnonymous(runtime) {
 
   assert.equal(payload.consentState, 'denied');
   assert.equal(payload.eventName, 'button_click');
-  assert.equal(payload.eventData, undefined);
+  assert.equal(payload.customData, undefined);
   assert.equal(payload.goalEvent, 'purchase');
   assert.equal(payload.screenWidth, undefined);
   assert.equal(payload.visitorId, undefined);
@@ -223,7 +223,7 @@ test('the default cookie marks page views and events without exposing its raw na
   for (const payload of runtime.requests) {
     assert.equal(payload.internalTraffic, true);
     assert.equal(payload.consentState, 'unknown');
-    assert.equal(payload.eventData, undefined);
+    assert.equal(payload.customData, undefined);
     assert.equal(payload.visitorId, undefined);
     assert.equal(payload.sessionId, undefined);
     assert.equal(JSON.stringify(payload).includes('orgInternalTraffic'), false);
@@ -402,7 +402,7 @@ test('anonymous events transmit goal candidates but omit enhanced fields', () =>
 
   assert.equal(payload.consentState, 'unknown');
   assert.equal(payload.goalEvent, 'purchase');
-  assert.equal(payload.eventData, undefined);
+  assert.equal(payload.customData, undefined);
   assert.equal(payload.screenWidth, undefined);
   assert.equal(payload.visitorId, undefined);
   assert.equal(payload.sessionId, undefined);
@@ -453,7 +453,8 @@ test('an explicit true value enables enhanced fields', () => {
   const payload = runtime.requests.at(-1);
 
   assert.equal(payload.consentState, 'granted');
-  assert.deepEqual(payload.eventData, {plan: 'pro'});
+  assert.deepEqual(payload.customData, {plan: 'pro'});
+  assert.equal(payload.eventData, undefined, 'custom properties are sent only as customData');
   assert.equal(payload.goalEvent, 'purchase');
   assert.equal(payload.screenWidth, 1440);
   assert.match(payload.visitorId, /^[A-Za-z0-9_-]+$/);
@@ -549,8 +550,8 @@ test('standard UTM parameters accompany enhanced page views and custom events', 
     utm_source: 'newsletter', utm_medium: 'email', utm_campaign: 'summer sale',
     utm_term: 'red shoes', utm_content: 'hero', utm_id: 'launch'
   };
-  assert.deepEqual(runtime.requests[0].eventData, utms);
-  assert.deepEqual(runtime.requests[1].eventData, Object.assign({plan: 'pro'}, utms));
+  assert.deepEqual(runtime.requests[0].customData, utms);
+  assert.deepEqual(runtime.requests[1].customData, Object.assign({plan: 'pro'}, utms));
   for (const payload of runtime.requests) {
     assert.equal(payload.pagePath, '/pricing');
     assert.equal(JSON.stringify(payload).includes('private@example.com'), false);
@@ -566,7 +567,7 @@ test('UTMs require consent by default and never create anonymous identifiers', (
   runtime.window.Aggregate.emit('button_click');
 
   for (const payload of runtime.requests) {
-    assert.equal(payload.eventData, undefined);
+    assert.equal(payload.customData, undefined);
     assert.equal(payload.visitorId, undefined);
     assert.equal(payload.sessionId, undefined);
   }
@@ -584,8 +585,8 @@ test('anonymous views and events include only operator-approved custom propertie
     plan: 'pro', active: false, quantity: 0, nullable: null, email: 'private@example.com'
   });
 
-  assert.deepEqual(runtime.requests[0].eventData, {utm_source: 'newsletter'});
-  assert.deepEqual(runtime.requests[1].eventData, {
+  assert.deepEqual(runtime.requests[0].customData, {utm_source: 'newsletter'});
+  assert.deepEqual(runtime.requests[1].customData, {
     plan: 'pro', active: false, quantity: 0, nullable: null, utm_source: 'newsletter'
   });
   assert.equal(runtime.requests[1].consentState, 'unknown');
@@ -604,11 +605,11 @@ test('many query parameters mapping to one property use configuration order and 
   });
 
   runtime.triggerPageView();
-  assert.deepEqual(runtime.requests[0].eventData, {campaignName: 'preferred'});
+  assert.deepEqual(runtime.requests[0].customData, {campaignName: 'preferred'});
 
   runtime.window.location.search = '?legacy_campaign=fallback&campaign=%20';
   runtime.window.Aggregate.emit('button_click');
-  assert.deepEqual(runtime.requests.at(-1).eventData, {campaignName: 'fallback'});
+  assert.deepEqual(runtime.requests.at(-1).customData, {campaignName: 'fallback'});
 });
 
 test('explicit scalar event values override query values, including false, zero, empty string and null', () => {
@@ -619,7 +620,7 @@ test('explicit scalar event values override query values, including false, zero,
 
   for (const value of ['explicit', false, 0, '', null]) {
     runtime.window.Aggregate.emit('button_click', {campaignName: value});
-    assert.deepEqual(runtime.requests.at(-1).eventData, {campaignName: value});
+    assert.deepEqual(runtime.requests.at(-1).customData, {campaignName: value});
   }
 });
 
@@ -634,8 +635,8 @@ test('query collection uses the current page only and never persists attribution
   runtime.window.location.search = '';
   runtime.window.Aggregate.emit('button_click');
 
-  assert.deepEqual(runtime.requests[0].eventData, {utm_source: 'first-page'});
-  assert.equal(runtime.requests[1].eventData, undefined);
+  assert.deepEqual(runtime.requests[0].customData, {utm_source: 'first-page'});
+  assert.equal(runtime.requests[1].customData, undefined);
   assert.equal(runtime.localStorage.has('utm_source'), false);
   assert.equal(runtime.sessionStorage.has('utm_source'), false);
   assert.equal(runtime.cookieWrites.every((value) => value.startsWith('aggregate_session=')), true);
@@ -648,7 +649,7 @@ test('query names match case exactly and malformed query encoding does not break
   });
 
   assert.equal(runtime.window.Aggregate.emit('button_click'), true);
-  assert.deepEqual(runtime.requests.at(-1).eventData, {utm_source: '%broken'});
+  assert.deepEqual(runtime.requests.at(-1).customData, {utm_source: '%broken'});
 });
 
 test('custom property processing rejects inherited, nested, unsafe and organization-marker values', () => {
@@ -661,7 +662,7 @@ test('custom property processing rejects inherited, nested, unsafe and organizat
 
   runtime.window.Aggregate.emit('button_click', eventData);
 
-  assert.deepEqual(runtime.requests.at(-1).eventData, {plan: 'pro', safe: true});
+  assert.deepEqual(runtime.requests.at(-1).customData, {plan: 'pro', safe: true});
   assert.equal(runtime.requests.at(-1).internalTraffic, false);
 });
 
@@ -672,7 +673,7 @@ test('custom properties and query values have the server scalar count and UTF-8 
 
   runtime.window.Aggregate.emit('button_click', eventData);
 
-  const sent = runtime.requests.at(-1).eventData;
+  const sent = runtime.requests.at(-1).customData;
   assert.equal(Object.keys(sent).length, 50);
   assert.equal(sent.unicode, '😀'.repeat(125));
   assert.equal(sent.malformed, 'validtext');
@@ -680,7 +681,7 @@ test('custom properties and query values have the server scalar count and UTF-8 
 
   runtime.window.location.search = '?utm_source=' + encodeURIComponent('é'.repeat(300));
   runtime.window.Aggregate.emit('button_click');
-  assert.equal(runtime.requests.at(-1).eventData.utm_source, 'é'.repeat(250));
+  assert.equal(runtime.requests.at(-1).customData.utm_source, 'é'.repeat(250));
 });
 
 test('custom-data configuration can replace mappings, disable them and revoke consent-free properties', () => {
@@ -692,21 +693,21 @@ test('custom-data configuration can replace mappings, disable them and revoke co
   const sdk = runtime.window.CompanyAnalytics;
 
   sdk.emit('button_click');
-  assert.deepEqual(runtime.requests.at(-1).eventData, {utm_source: 'newsletter'});
+  assert.deepEqual(runtime.requests.at(-1).customData, {utm_source: 'newsletter'});
 
   sdk.configure({customData: {queryParameters: {campaign: 'campaignName'}, consentFreeProperties: ['campaignName']}});
   sdk.emit('button_click');
-  assert.deepEqual(runtime.requests.at(-1).eventData, {campaignName: 'launch'});
+  assert.deepEqual(runtime.requests.at(-1).customData, {campaignName: 'launch'});
 
   sdk.configure({customData: {queryParameters: {}}});
   sdk.emit('button_click');
-  assert.equal(runtime.requests.at(-1).eventData, undefined);
+  assert.equal(runtime.requests.at(-1).customData, undefined);
 
   sdk.emit('button_click', {campaignName: 'explicit'});
-  assert.deepEqual(runtime.requests.at(-1).eventData, {campaignName: 'explicit'});
+  assert.deepEqual(runtime.requests.at(-1).customData, {campaignName: 'explicit'});
   sdk.configure({customData: {consentFreeProperties: []}});
   sdk.emit('button_click', {campaignName: 'explicit'});
-  assert.equal(runtime.requests.at(-1).eventData, undefined);
+  assert.equal(runtime.requests.at(-1).customData, undefined);
 });
 
 test('malformed browser collection settings fail closed and cannot map the organization marker', () => {
@@ -719,12 +720,12 @@ test('malformed browser collection settings fail closed and cannot map the organ
   });
 
   runtime.window.Aggregate.emit('button_click');
-  assert.equal(runtime.requests.at(-1).eventData, undefined);
+  assert.equal(runtime.requests.at(-1).customData, undefined);
   assert.equal(runtime.requests.at(-1).internalTraffic, false);
 
   runtime.window.Aggregate.configure({customData: {queryParameters: null, consentFreeProperties: 'plan'}});
   runtime.window.Aggregate.emit('button_click', {plan: 'private'});
-  assert.equal(runtime.requests.at(-1).eventData, undefined);
+  assert.equal(runtime.requests.at(-1).customData, undefined);
 });
 
 test('consent withdrawal immediately filters event properties back to the approved subset', () => {
@@ -735,11 +736,11 @@ test('consent withdrawal immediately filters event properties back to the approv
 
   runtime.window.Aggregate.setConsent(true);
   runtime.window.Aggregate.emit('button_click', {plan: 'pro', private: 'enhanced-only'});
-  assert.deepEqual(runtime.requests.at(-1).eventData, {plan: 'pro', private: 'enhanced-only', utm_source: 'newsletter'});
+  assert.deepEqual(runtime.requests.at(-1).customData, {plan: 'pro', private: 'enhanced-only', utm_source: 'newsletter'});
 
   runtime.window.Aggregate.setConsent(false);
   runtime.window.Aggregate.emit('button_click', {plan: 'pro', private: 'enhanced-only'});
-  assert.deepEqual(runtime.requests.at(-1).eventData, {plan: 'pro'});
+  assert.deepEqual(runtime.requests.at(-1).customData, {plan: 'pro'});
   assert.equal(runtime.requests.at(-1).visitorId, undefined);
   assert.equal(runtime.requests.at(-1).sessionId, undefined);
 });
@@ -753,18 +754,18 @@ for (const enhanced of [false, true]) {
     }}});
     const sdk = runtime.window.Aggregate;
     sdk.emit('purchase_completed', {title: 'Demo\u0000', quantity: 2, amount: 12.5, revenue: 25, active: false, optional: null, legacy: '12.5'});
-    assert.deepEqual(runtime.requests.at(-1).eventData, {title: 'Demo', quantity: 2, amount: 12.5, revenue: 25, active: false, optional: null, legacy: '12.5'});
+    assert.deepEqual(runtime.requests.at(-1).customData, {title: 'Demo', quantity: 2, amount: 12.5, revenue: 25, active: false, optional: null, legacy: '12.5'});
 
     sdk.emit('purchase_completed', {title: 2, quantity: 2.5, amount: '12.5', revenue: Infinity, active: 'false', optional: true});
-    assert.equal(runtime.requests.at(-1).eventData, enhanced ? null : undefined);
+    assert.equal(runtime.requests.at(-1).customData, enhanced ? null : undefined);
 
     for (const quantity of [0, -2, 9007199254740991, -9007199254740991]) {
       sdk.emit('purchase_completed', {quantity});
-      assert.deepEqual(runtime.requests.at(-1).eventData, {quantity});
+      assert.deepEqual(runtime.requests.at(-1).customData, {quantity});
     }
     for (const quantity of [9007199254740992, -9007199254740992, NaN, Infinity, '2', true]) {
       sdk.emit('purchase_completed', {quantity});
-      assert.equal(runtime.requests.at(-1).eventData, enhanced ? null : undefined);
+      assert.equal(runtime.requests.at(-1).customData, enhanced ? null : undefined);
     }
   });
 }
@@ -779,9 +780,9 @@ test('typed numeric and boolean query mappings never coerce URL strings or block
     location: {search: '?qty=2&total=12.5&active=true&name=Demo'}
   });
   runtime.triggerPageView();
-  assert.deepEqual(runtime.requests.at(-1).eventData, {title: 'Demo'});
+  assert.deepEqual(runtime.requests.at(-1).customData, {title: 'Demo'});
   runtime.window.Aggregate.emit('purchase_completed', {quantity: 2, revenue: 12.5, active: true});
-  assert.deepEqual(runtime.requests.at(-1).eventData, {quantity: 2, revenue: 12.5, active: true, title: 'Demo'});
+  assert.deepEqual(runtime.requests.at(-1).customData, {quantity: 2, revenue: 12.5, active: true, title: 'Demo'});
 });
 
 test('declaring a type cannot grant consent and withdrawal restores the permitted subset', () => {
@@ -791,13 +792,13 @@ test('declaring a type cannot grant consent and withdrawal restores the permitte
   }}});
   const sdk = runtime.window.Aggregate;
   sdk.emit('purchase_completed', {quantity: 2, revenue: 12.5, orgInternalTraffic: true});
-  assert.deepEqual(runtime.requests.at(-1).eventData, {quantity: 2});
+  assert.deepEqual(runtime.requests.at(-1).customData, {quantity: 2});
   sdk.setConsent(true);
   sdk.emit('purchase_completed', {quantity: 2, revenue: 12.5, orgInternalTraffic: true});
-  assert.deepEqual(runtime.requests.at(-1).eventData, {quantity: 2, revenue: 12.5});
+  assert.deepEqual(runtime.requests.at(-1).customData, {quantity: 2, revenue: 12.5});
   sdk.setConsent(false);
   sdk.emit('purchase_completed', {quantity: 2, revenue: 12.5});
-  assert.deepEqual(runtime.requests.at(-1).eventData, {quantity: 2});
+  assert.deepEqual(runtime.requests.at(-1).customData, {quantity: 2});
   assert.equal(runtime.requests.at(-1).visitorId, undefined);
 });
 
@@ -807,15 +808,15 @@ test('malformed declared types block affected properties and malformed maps bloc
   }}});
   const sdk = runtime.window.Aggregate;
   sdk.emit('purchase_completed', {valid: 2, invalid: 12.5, invalidNull: null});
-  assert.deepEqual(runtime.requests.at(-1).eventData, {valid: 2});
+  assert.deepEqual(runtime.requests.at(-1).customData, {valid: 2});
   for (const propertyTypes of [null, false, 'integer', ['integer']]) {
     sdk.configure({customData: {propertyTypes}});
     sdk.emit('purchase_completed', {valid: 2, legacy: 'text'});
-    assert.equal(runtime.requests.at(-1).eventData, null);
+    assert.equal(runtime.requests.at(-1).customData, null);
   }
   sdk.configure({customData: {propertyTypes: {valid: 'integer'}}});
   sdk.emit('purchase_completed', {valid: 2, legacy: 'text'});
-  assert.deepEqual(runtime.requests.at(-1).eventData, {valid: 2, legacy: 'text'});
+  assert.deepEqual(runtime.requests.at(-1).customData, {valid: 2, legacy: 'text'});
 });
 
 const pageSequenceKey = 'aggregate_page_sequence:site-token';
@@ -828,7 +829,7 @@ test('optional page sequence survives document navigation while asynchronous eve
   await Promise.resolve().then(() => first.window.Aggregate.emit('async_complete', {}, 'purchase'));
 
   for (const payload of first.requests) {
-    assert.equal(payload.eventData.page_sequence, 1);
+    assert.equal(payload.customData.page_sequence, 1);
     assert.equal(payload.consentState, 'denied');
     assert.equal(payload.visitorId, undefined);
     assert.equal(payload.sessionId, undefined);
@@ -841,13 +842,13 @@ test('optional page sequence survives document navigation while asynchronous eve
   const second = loadSdk({inline, sessionStorageInstance: first.sessionStorage, location: {pathname: '/features'}});
   second.triggerPageView();
   second.window.Aggregate.emit('button_click');
-  assert.deepEqual(second.requests.map((payload) => payload.eventData.page_sequence), [2, 2]);
+  assert.deepEqual(second.requests.map((payload) => payload.customData.page_sequence), [2, 2]);
   const reload = loadSdk({inline, sessionStorageInstance: first.sessionStorage, location: {pathname: '/features'}});
   reload.triggerPageView();
-  assert.equal(reload.requests.at(-1).eventData.page_sequence, 3);
+  assert.equal(reload.requests.at(-1).customData.page_sequence, 3);
   const separateTab = loadSdk({inline});
   separateTab.triggerPageView();
-  assert.equal(separateTab.requests.at(-1).eventData.page_sequence, 1);
+  assert.equal(separateTab.requests.at(-1).customData.page_sequence, 1);
 });
 
 test('explicit SPA page views advance the count while consent transitions preserve coarse page depth', () => {
@@ -861,7 +862,7 @@ test('explicit SPA page views advance the count while consent transitions preser
   sdk.emit('view');
   sdk.setConsent(false);
   sdk.emit('button_click');
-  assert.deepEqual(runtime.requests.map((payload) => payload.eventData.page_sequence), [1, 2, 2, 3, 3]);
+  assert.deepEqual(runtime.requests.map((payload) => payload.customData.page_sequence), [1, 2, 2, 3, 3]);
   assert.deepEqual(runtime.requests.map((payload) => payload.pagePath), ['/pricing', '/features', '/features', '/features', '/features']);
   const withdrawn = runtime.requests.at(-1);
   assert.equal(withdrawn.consentState, 'denied');
@@ -879,7 +880,7 @@ test('page sequence is opt-in, clears old state when disabled, and rejects truth
     });
     runtime.triggerPageView();
     runtime.window.Aggregate.emit('button_click', {page_sequence: 2});
-    for (const payload of runtime.requests) assert.equal(payload.eventData?.page_sequence, undefined);
+    for (const payload of runtime.requests) assert.equal(payload.customData?.page_sequence, undefined);
     assert.equal(runtime.sessionStorage.has(pageSequenceKey), false);
     assert.equal(runtime.sessionStorage.reads.includes(pageSequenceKey), false);
     assert.equal(runtime.sessionStorage.writes.some(([key]) => key === pageSequenceKey), false);
@@ -890,10 +891,10 @@ test('page sequence is opt-in, clears old state when disabled, and rejects truth
   sdk.configure({customData: {pageSequenceEnabled: false}});
   assert.equal(runtime.sessionStorage.has(pageSequenceKey), false);
   sdk.emit('button_click');
-  assert.equal(runtime.requests.at(-1).eventData, undefined);
+  assert.equal(runtime.requests.at(-1).customData, undefined);
   sdk.configure({customData: {pageSequenceEnabled: true}});
   sdk.emit('button_click');
-  assert.deepEqual(runtime.requests.at(-1).eventData, {page_sequence: 1});
+  assert.deepEqual(runtime.requests.at(-1).customData, {page_sequence: 1});
 });
 
 test('reserved page sequence cannot be replaced by explicit properties, query mappings, types or a full property payload', () => {
@@ -908,11 +909,11 @@ test('reserved page sequence cannot be replaced by explicit properties, query ma
   const data = Object.fromEntries(Array.from({length: 50}, (_, index) => ['property_' + index, index]));
   data.page_sequence = 123456;
   runtime.window.Aggregate.emit('button_click', data);
-  assert.equal(runtime.requests.at(-1).eventData.page_sequence, 1);
-  assert.equal(Object.keys(runtime.requests.at(-1).eventData).length, 50);
+  assert.equal(runtime.requests.at(-1).customData.page_sequence, 1);
+  assert.equal(Object.keys(runtime.requests.at(-1).customData).length, 50);
   runtime.window.Aggregate.configure({customData: {pageSequenceEnabled: false}});
   runtime.window.Aggregate.emit('button_click', {page_sequence: 'spoofed'});
-  assert.equal(runtime.requests.at(-1).eventData, null);
+  assert.equal(runtime.requests.at(-1).customData, null);
 });
 
 test('sequence state is scoped by public website token and does not advance on unrelated reconfiguration', () => {
@@ -926,7 +927,7 @@ test('sequence state is scoped by public website token and does not advance on u
   sdk.trackView();
   sdk.configure({websiteToken: 'site-token'});
   sdk.emit('button_click');
-  assert.deepEqual(runtime.requests.map((payload) => payload.eventData.page_sequence), [1, 1, 1, 2, 1]);
+  assert.deepEqual(runtime.requests.map((payload) => payload.customData.page_sequence), [1, 1, 1, 2, 1]);
   assert.deepEqual(runtime.sessionStorage.writes, [
     [pageSequenceKey, '1'], ['aggregate_page_sequence:second%2Ftoken', '1'], ['aggregate_page_sequence:second%2Ftoken', '2']
   ]);
@@ -942,7 +943,7 @@ test('page sequence does not allocate state for missing or malformed website tok
     });
     runtime.triggerPageView();
     assert.deepEqual(runtime.sessionStorage.writes, []);
-    for (const payload of runtime.requests) assert.equal(payload.eventData, undefined);
+    for (const payload of runtime.requests) assert.equal(payload.customData, undefined);
   }
   const runtime = loadSdk({inline: {customData: {pageSequenceEnabled: true}}});
   assert.equal(runtime.window.Aggregate.emit('invalid event name'), false);
@@ -953,16 +954,16 @@ test('page counts stop at twenty and malformed stored counts restart at one', ()
   for (const stored of ['0', '-1', '2.5', '21', '99999999999999999999', '01', ' 2', '2 ', '1e1', 'NaN', 'Infinity', '{"count":2}', '2\n']) {
     const runtime = loadSdk({inline: {customData: {pageSequenceEnabled: true}}, sessionStorage: {[pageSequenceKey]: stored}});
     runtime.triggerPageView();
-    assert.equal(runtime.requests.at(-1).eventData.page_sequence, 1, stored);
+    assert.equal(runtime.requests.at(-1).customData.page_sequence, 1, stored);
   }
   const runtime = loadSdk({inline: {customData: {pageSequenceEnabled: true}}, sessionStorage: {[pageSequenceKey]: '19'}});
   runtime.triggerPageView();
   for (let page = 0; page < 25; page++) runtime.window.Aggregate.trackView();
-  assert.equal(runtime.requests.every((payload) => payload.eventData.page_sequence === 20), true);
+  assert.equal(runtime.requests.every((payload) => payload.customData.page_sequence === 20), true);
   assert.deepEqual(runtime.sessionStorage.writes, [[pageSequenceKey, '20']]);
   const nextDocument = loadSdk({inline: {customData: {pageSequenceEnabled: true}}, sessionStorageInstance: runtime.sessionStorage});
   nextDocument.triggerPageView();
-  assert.equal(nextDocument.requests.at(-1).eventData.page_sequence, 20);
+  assert.equal(nextDocument.requests.at(-1).customData.page_sequence, 20);
 });
 
 test('blocked session storage uses memory only and a new document starts over', () => {
@@ -971,11 +972,11 @@ test('blocked session storage uses memory only and a new document starts over', 
   runtime.triggerPageView();
   runtime.window.Aggregate.trackView();
   runtime.window.Aggregate.emit('async_complete');
-  assert.deepEqual(runtime.requests.map((payload) => payload.eventData.page_sequence), [1, 2, 2]);
+  assert.deepEqual(runtime.requests.map((payload) => payload.customData.page_sequence), [1, 2, 2]);
   assert.deepEqual(runtime.sessionStorage.writes, []);
   const nextDocument = loadSdk(options);
   nextDocument.triggerPageView();
-  assert.equal(nextDocument.requests.at(-1).eventData.page_sequence, 1);
+  assert.equal(nextDocument.requests.at(-1).customData.page_sequence, 1);
 });
 
 test('excluded document and SPA paths do not read, store, disclose or advance page sequence', () => {
@@ -983,21 +984,21 @@ test('excluded document and SPA paths do not read, store, disclose or advance pa
   const runtime = loadSdk({inline, location: {pathname: '/private'}, sessionStorage: {[pageSequenceKey]: '4'}});
   runtime.triggerPageView();
   runtime.window.Aggregate.emit('button_click');
-  assert.equal(runtime.requests.every((payload) => payload.eventData === undefined), true);
+  assert.equal(runtime.requests.every((payload) => payload.customData === undefined), true);
   assert.equal(runtime.sessionStorage.reads.includes(pageSequenceKey), false);
   assert.deepEqual(runtime.sessionStorage.writes, []);
   runtime.window.location.pathname = '/public';
   runtime.window.Aggregate.trackView();
-  assert.equal(runtime.requests.at(-1).eventData.page_sequence, 5);
+  assert.equal(runtime.requests.at(-1).customData.page_sequence, 5);
   runtime.window.location.pathname = '/users/1234';
   runtime.window.Aggregate.trackView();
-  assert.equal(runtime.requests.at(-1).eventData, undefined);
+  assert.equal(runtime.requests.at(-1).customData, undefined);
   runtime.window.location.pathname = '/private/nested/path';
   runtime.window.Aggregate.emit('view');
-  assert.equal(runtime.requests.at(-1).eventData, undefined);
+  assert.equal(runtime.requests.at(-1).customData, undefined);
   runtime.window.location.pathname = '/public';
   runtime.window.Aggregate.trackView();
-  assert.equal(runtime.requests.at(-1).eventData.page_sequence, 6);
+  assert.equal(runtime.requests.at(-1).customData.page_sequence, 6);
   assert.deepEqual(runtime.sessionStorage.writes, [[pageSequenceKey, '5'], [pageSequenceKey, '6']]);
 });
 
@@ -1011,12 +1012,12 @@ test('counter exclusions match single-segment and recursive server globs without
   ]) {
     const runtime = loadSdk({inline: {customData: {pageSequenceEnabled: true, pageSequenceExcludedPaths: [pattern]}}, location: {pathname}});
     runtime.triggerPageView();
-    assert.equal(Boolean(runtime.requests.at(-1).eventData), !excluded, pattern + ': ' + pathname);
+    assert.equal(Boolean(runtime.requests.at(-1).customData), !excluded, pattern + ': ' + pathname);
   }
   for (const patterns of [null, true, '/private/**', {}, [null], [7], ['private'], ['/' + 'a'.repeat(512)]]) {
     const runtime = loadSdk({inline: {customData: {pageSequenceEnabled: true, pageSequenceExcludedPaths: patterns}}});
     runtime.triggerPageView();
-    assert.equal(runtime.requests.at(-1).eventData, undefined);
+    assert.equal(runtime.requests.at(-1).customData, undefined);
     assert.equal(runtime.sessionStorage.reads.includes(pageSequenceKey), false);
     assert.deepEqual(runtime.sessionStorage.writes, []);
   }
@@ -1035,7 +1036,7 @@ test('counter exclusions canonicalize encoded routes before touching sequence st
       location: {pathname}, sessionStorage: {[pageSequenceKey]: '4'}
     });
     runtime.triggerPageView();
-    assert.equal(runtime.requests.at(-1).eventData, undefined, pathname);
+    assert.equal(runtime.requests.at(-1).customData, undefined, pathname);
     assert.equal(runtime.sessionStorage.reads.includes(pageSequenceKey), false, pathname);
     assert.deepEqual(runtime.sessionStorage.writes, [], pathname);
   }
@@ -1044,7 +1045,7 @@ test('counter exclusions canonicalize encoded routes before touching sequence st
     location: {pathname: '/people/%2531%2532%2533%2534'}
   });
   runtime.triggerPageView();
-  assert.equal(runtime.requests.at(-1).eventData, undefined);
+  assert.equal(runtime.requests.at(-1).customData, undefined);
   assert.equal(runtime.sessionStorage.reads.includes(pageSequenceKey), false);
 });
 
@@ -1058,7 +1059,7 @@ test('browser overrides cannot enable a counter disabled by the served runtime p
     runtime.triggerPageView();
     runtime.window.Aggregate.configure({customData: {pageSequenceEnabled: true}});
     runtime.window.Aggregate.trackView();
-    assert.equal(runtime.requests.every((payload) => payload.eventData === undefined), true);
+    assert.equal(runtime.requests.every((payload) => payload.customData === undefined), true);
     assert.equal(runtime.sessionStorage.has(pageSequenceKey), false);
     assert.equal(runtime.sessionStorage.reads.includes(pageSequenceKey), false);
     assert.deepEqual(runtime.sessionStorage.writes, []);
@@ -1078,15 +1079,15 @@ test('browser exclusions can add restrictions but cannot remove served runtime e
   runtime.triggerPageView();
   sdk.configure({customData: {pageSequenceExcludedPaths: []}});
   sdk.emit('view');
-  assert.equal(runtime.requests.every((payload) => payload.eventData === undefined), true);
+  assert.equal(runtime.requests.every((payload) => payload.customData === undefined), true);
   assert.equal(runtime.sessionStorage.reads.includes(pageSequenceKey), false);
   assert.deepEqual(runtime.sessionStorage.writes, []);
   runtime.window.location.pathname = '/public';
   sdk.trackView();
-  assert.equal(runtime.requests.at(-1).eventData.page_sequence, 1);
+  assert.equal(runtime.requests.at(-1).customData.page_sequence, 1);
   sdk.configure({customData: {pageSequenceExcludedPaths: ['/public']}});
   sdk.trackView();
-  assert.equal(runtime.requests.at(-1).eventData, undefined);
+  assert.equal(runtime.requests.at(-1).customData, undefined);
   assert.deepEqual(runtime.sessionStorage.writes, [[pageSequenceKey, '1']]);
 });
 
@@ -1114,7 +1115,7 @@ test('URL sequence initializes the current page directly and preserves depth for
   runtime.window.Aggregate.trackView();
   runtime.window.Aggregate.emit('async_complete');
   runtime.window.Aggregate.emit('view');
-  assert.deepEqual(runtime.requests.map((payload) => payload.eventData.page_sequence), [7, 7, 7, 8, 8, 9]);
+  assert.deepEqual(runtime.requests.map((payload) => payload.customData.page_sequence), [7, 7, 7, 8, 8, 9]);
   for (const payload of runtime.requests) {
     assert.equal(payload.consentState, 'denied');
     assert.equal(payload.visitorId, undefined);
@@ -1137,7 +1138,7 @@ test('URL sequence requires exactly one bounded canonical integer value', () => 
   ]) {
     const runtime = loadSdk(urlSequenceOptions({location: {search: query ? '?' + query : ''}}));
     runtime.triggerPageView();
-    assert.equal(runtime.requests.at(-1).eventData.page_sequence, expected, query);
+    assert.equal(runtime.requests.at(-1).customData.page_sequence, expected, query);
     assertNoPageCounterStorage(runtime);
   }
 });
@@ -1158,7 +1159,7 @@ test('URL sequence decorates only the activated internal link and preserves nati
   assert.equal(anchor.getAttribute('href'), expected);
   runtime.triggerPageView();
   runtime.window.Aggregate.emit('async_complete');
-  assert.deepEqual(runtime.requests.map((payload) => payload.eventData.page_sequence), [2, 2]);
+  assert.deepEqual(runtime.requests.map((payload) => payload.customData.page_sequence), [2, 2]);
   assertNoPageCounterStorage(runtime);
 });
 
@@ -1170,10 +1171,10 @@ test('URL sequence follows decorated navigation, resets after a cleaned-URL relo
   const destination = new URL(anchor.href);
   const next = loadSdk(urlSequenceOptions({location: {pathname: destination.pathname, search: destination.search, hash: destination.hash}}));
   next.triggerPageView();
-  assert.equal(next.requests.at(-1).eventData.page_sequence, 2);
+  assert.equal(next.requests.at(-1).customData.page_sequence, 2);
   const reload = loadSdk(urlSequenceOptions({location: {pathname: next.window.location.pathname, search: next.window.location.search}}));
   reload.triggerPageView();
-  assert.equal(reload.requests.at(-1).eventData.page_sequence, 1);
+  assert.equal(reload.requests.at(-1).customData.page_sequence, 1);
 
   const capped = loadSdk(urlSequenceOptions({location: {search: '?aggregate_page_sequence=20'}}));
   const capLink = capped.createAnchor('/next?aggregate_page_sequence=1&aggregate%5Fpage_sequence=2');
@@ -1181,7 +1182,7 @@ test('URL sequence follows decorated navigation, resets after a cleaned-URL relo
   capped.window.Aggregate.trackView();
   capped.click(capLink);
   assert.equal(capLink.getAttribute('href'), 'https://www.example.com/next?aggregate_page_sequence=20');
-  assert.equal(capped.requests.every((payload) => payload.eventData.page_sequence === 20), true);
+  assert.equal(capped.requests.every((payload) => payload.customData.page_sequence === 20), true);
   for (const runtime of [first, next, reload, capped]) assertNoPageCounterStorage(runtime);
 });
 
@@ -1248,7 +1249,7 @@ test('URL sequence neither collects nor propagates through excluded source and d
     source.click(sourceLink);
     source.triggerPageView();
     assert.equal(sourceLink.getAttribute('href'), '/public', pathname);
-    assert.equal(source.requests.at(-1).eventData, undefined, pathname);
+    assert.equal(source.requests.at(-1).customData, undefined, pathname);
     assert.deepEqual(source.historyCalls, [], pathname);
     assertNoPageCounterStorage(source);
     const destination = loadSdk({serverCustomData});
@@ -1274,7 +1275,7 @@ test('disabled and malformed URL sequence settings fail closed without counter s
     const anchor = runtime.createAnchor('/features');
     runtime.triggerPageView();
     runtime.click(anchor);
-    assert.equal(runtime.requests.at(-1).eventData, undefined);
+    assert.equal(runtime.requests.at(-1).customData, undefined);
     assert.equal(anchor.getAttribute('href'), '/features');
     assert.equal(runtime.sessionStorage.has(pageSequenceKey), true);
     assert.deepEqual(runtime.historyCalls, []);
@@ -1293,10 +1294,10 @@ test('served URL method cannot be switched into storage by inline or configure o
   runtime.triggerPageView();
   runtime.window.Aggregate.configure({customData: {pageSequenceMethod: 'session_storage'}});
   runtime.window.Aggregate.emit('async_complete');
-  assert.deepEqual(runtime.requests.map((payload) => payload.eventData.page_sequence), [7, 7]);
+  assert.deepEqual(runtime.requests.map((payload) => payload.customData.page_sequence), [7, 7]);
   runtime.window.Aggregate.configure({customData: {pageSequenceEnabled: false, pageSequenceMethod: 'session_storage'}});
   runtime.window.Aggregate.emit('async_complete');
-  assert.equal(runtime.requests.at(-1).eventData, undefined);
+  assert.equal(runtime.requests.at(-1).customData, undefined);
   assertNoPageCounterStorage(runtime);
 
   const storage = loadSdk({
@@ -1308,7 +1309,7 @@ test('served URL method cannot be switched into storage by inline or configure o
   const anchor = storage.createAnchor('/features');
   storage.click(anchor);
   assert.equal(anchor.getAttribute('href'), '/features');
-  assert.equal(storage.requests.at(-1).eventData.page_sequence, 1);
+  assert.equal(storage.requests.at(-1).customData.page_sequence, 1);
   assert.deepEqual(storage.sessionStorage.writes, [[pageSequenceKey, '1']]);
 });
 
@@ -1328,7 +1329,7 @@ test('disabled or invalid served URL policy cannot be repaired by browser overri
     runtime.triggerPageView();
     const anchor = runtime.createAnchor('/features');
     runtime.click(anchor);
-    assert.equal(runtime.requests.at(-1).eventData, undefined);
+    assert.equal(runtime.requests.at(-1).customData, undefined);
     assert.equal(anchor.getAttribute('href'), '/features');
     assert.equal(runtime.sessionStorage.has(pageSequenceKey), true);
     assertNoPageCounterStorage(runtime);
@@ -1343,10 +1344,10 @@ test('static storage-to-URL mode transitions leave old counter state untouched a
   };
   runtime.window.Aggregate.configure({customData: {pageSequenceMethod: 'url_parameter'}});
   runtime.window.Aggregate.emit('async_complete');
-  assert.equal(runtime.requests.at(-1).eventData.page_sequence, 7);
+  assert.equal(runtime.requests.at(-1).customData.page_sequence, 7);
   runtime.window.Aggregate.configure({customData: {pageSequenceEnabled: false}});
   runtime.window.Aggregate.emit('async_complete');
-  assert.equal(runtime.requests.at(-1).eventData, undefined);
+  assert.equal(runtime.requests.at(-1).customData, undefined);
   assert.deepEqual(runtime.sessionStorage.reads, before.reads);
   assert.deepEqual(runtime.sessionStorage.writes, before.writes);
   assert.deepEqual(runtime.sessionStorage.removals, before.removals);
@@ -1361,7 +1362,7 @@ test('the URL transport parameter cannot become an ordinary mapped custom proper
     }}, location: {search: '?aggregate_page_sequence=7'}
   }));
   runtime.window.Aggregate.emit('async_complete', {page_sequence: 19});
-  assert.deepEqual(runtime.requests.at(-1).eventData, {page_sequence: 7});
+  assert.deepEqual(runtime.requests.at(-1).customData, {page_sequence: 7});
   assertNoPageCounterStorage(runtime);
 });
 
@@ -1384,7 +1385,7 @@ test('URL depth is captured before DOM readiness and cleanup preserves history s
   runtime.window.Aggregate.emit('early_event');
   runtime.triggerPageView();
   runtime.window.Aggregate.emit('async_complete');
-  assert.deepEqual(runtime.requests.map((payload) => payload.eventData.page_sequence), [7, 7, 7]);
+  assert.deepEqual(runtime.requests.map((payload) => payload.customData.page_sequence), [7, 7, 7]);
   assert.equal(runtime.historyCalls.length, 1);
   const anchor = runtime.createAnchor('/next');
   runtime.click(anchor);
@@ -1402,7 +1403,7 @@ test('cleanup removes invalid and duplicate transport values and preserves empty
     assert.equal(runtime.window.location.origin, 'https://www.example.com');
     assert.equal(runtime.window.location.pathname, '//section/page');
     runtime.triggerPageView();
-    assert.equal(runtime.requests.at(-1).eventData.page_sequence, 1);
+    assert.equal(runtime.requests.at(-1).customData.page_sequence, 1);
     assertNoPageCounterStorage(runtime);
   }
 });
@@ -1425,7 +1426,7 @@ test('deferred URL-mode configuration captures and trims once without resetting 
   sdk.configure({websiteToken: 'site-token'});
   sdk.trackView();
   runtime.triggerPageView();
-  assert.deepEqual(runtime.requests.map((payload) => payload.eventData.page_sequence), [7, 7, 7, 8, 8]);
+  assert.deepEqual(runtime.requests.map((payload) => payload.customData.page_sequence), [7, 7, 7, 8, 8]);
   assert.equal(runtime.historyCalls.length, 1);
   assertNoPageCounterStorage(runtime);
 });
@@ -1438,7 +1439,7 @@ test('unavailable or throwing History APIs leave URL depth usable without repeat
     runtime.window.Aggregate.configure({endpoint: '/changed'});
     runtime.window.Aggregate.emit('async_complete');
     assert.equal(runtime.window.location.search, '?aggregate_page_sequence=6&keep=yes');
-    assert.deepEqual(runtime.requests.map((payload) => payload.eventData.page_sequence), [6, 6, 6]);
+    assert.deepEqual(runtime.requests.map((payload) => payload.customData.page_sequence), [6, 6, 6]);
     assert.equal(runtime.historyCalls.length, historyOptions.historyThrows ? 1 : 0);
     const anchor = runtime.createAnchor('/next');
     runtime.click(anchor);
@@ -1459,7 +1460,7 @@ test('framework-wrapped replaceState can reenter configuration and tracking with
   }));
   runtime.triggerPageView();
   runtime.window.Aggregate.emit('async_complete');
-  assert.deepEqual(runtime.requests.map((payload) => payload.eventData.page_sequence), [9, 9, 9]);
+  assert.deepEqual(runtime.requests.map((payload) => payload.customData.page_sequence), [9, 9, 9]);
   assert.equal(runtime.historyCalls.length, 1);
   assert.equal(runtime.historyCalls[0].state, state);
   assert.equal(runtime.window.location.search, '');

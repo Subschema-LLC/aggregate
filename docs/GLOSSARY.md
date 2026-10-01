@@ -41,8 +41,9 @@ hour or day never appears.
 
 **Custom data model.** The list of optional event properties an installation
 accepts (`custom_data_properties`), each with its consent requirement, type and
-reporting columns. Properties are stored in the event's bounded JSON
-`custom_data`. See [custom data model](DATA-MODEL.md).
+reporting columns. An event sends them in its request's `customData` object
+(`eventData`, the earlier name, is still accepted), and they are stored in the
+event's bounded JSON `custom_data`. See [custom data model](DATA-MODEL.md).
 
 **Custom reporting views.** `analytics_custom_*` views that turn allowed
 properties into columns. They show individual raw rows, so they are private.
