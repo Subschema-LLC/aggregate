@@ -24,7 +24,7 @@ class CustomDataSettings
     /** The earlier name of that object, still accepted when customData is absent. */
     public const LEGACY_PAYLOAD_KEY = 'eventData';
     public const MAXIMUM_SAFE_INTEGER = 9_007_199_254_740_991;
-    private const RESERVED_COLUMNS = [
+    public const RESERVED_COLUMNS = [
         'id', 'website_token', 'event_name', 'page_path', 'referrer_channel', 'privacy_mode',
         'device_class', 'viewport_bucket', 'geo_area', 'goal_event', 'created_at', 'archived_at',
         'url', 'referrer', 'screen_width', 'visitor_id', 'session_id', 'consent_state',

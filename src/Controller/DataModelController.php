@@ -56,12 +56,23 @@ final class DataModelController extends AbstractController
             }
         }
 
+        $restoredForm = false;
+        if ($request->hasSession() && $request->getSession()->has('data_model_submitted_form')) {
+            $submittedForm = $request->getSession()->remove('data_model_submitted_form');
+            if (is_array($submittedForm)) {
+                $model = $this->rehydrateModelFromSubmittedForm($model, $submittedForm);
+                $restoredForm = true;
+            }
+        }
+
         return $this->privateResponse($this->render('data_model/index.html.twig', [
             ...$context,
             'model' => $model,
             'unsaved_property' => $unsavedProperty,
             'addition_error' => $additionError,
             'detailed_anonymous_utms' => $this->detailedAnonymousUtms($model),
+            'reserved_columns' => CustomDataSettings::RESERVED_COLUMNS,
+            'restored_form' => $restoredForm,
         ]));
     }
 
@@ -146,6 +157,7 @@ final class DataModelController extends AbstractController
         }
         foreach ($model[CustomDataSettings::MAPPINGS_KEY] as $source => $key) {
             if (in_array($source, CustomDataSettings::UTM_KEYS, true) && $source !== 'utm_medium'
+                && isset($model[CustomDataSettings::PROPERTIES_KEY][$key])
                 && !$model[CustomDataSettings::PROPERTIES_KEY][$key]['consent_required']) {
                 $properties[$key] = true;
             }
@@ -166,9 +178,15 @@ final class DataModelController extends AbstractController
             $this->addFlash('success', 'Data model saved. Collection settings apply to future events. Use the Reporting views page to apply reporting-column changes.');
         } catch (\InvalidArgumentException $e) {
             $this->addFlash('error', $e->getMessage());
+            if ($request->hasSession()) {
+                $request->getSession()->set('data_model_submitted_form', $request->request->all());
+            }
         } catch (\Throwable $e) {
             $this->logFailure('save', $e);
             $this->addFlash('error', 'The data model could not be saved. Check the active YAML configuration and file permissions.');
+            if ($request->hasSession()) {
+                $request->getSession()->set('data_model_submitted_form', $request->request->all());
+            }
         }
 
         return $this->back();
@@ -328,4 +346,63 @@ final class DataModelController extends AbstractController
         }
         $this->denyAccessUnlessGranted('ROLE_ADMIN');
     }
+
+    /**
+     * Rehydrates user-submitted property rows, descriptions, types, and column names
+     * when validation fails so that keyed-in values are not lost on refresh/redirect.
+     */
+    private function rehydrateModelFromSubmittedForm(array $currentModel, array $submitted): array
+    {
+        $properties = [];
+        $propertyRows = is_array($submitted['properties'] ?? null) ? $submitted['properties'] : [];
+        $rowCounter = 0;
+        foreach ($propertyRows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $rowCounter++;
+            $key = trim((string) ($row['key'] ?? ''));
+            if ($key === '' && trim((string) ($row['description'] ?? '')) === '' && trim((string) ($row['column'] ?? '')) === '' && trim((string) ($row['numeric_column'] ?? '')) === '') {
+                continue;
+            }
+
+            $displayKey = $key !== '' ? $key : ('new_property_' . $rowCounter);
+            $arrayKey = $displayKey;
+            $suffix = 2;
+            while (isset($properties[$arrayKey])) {
+                $arrayKey = $displayKey . '_' . $suffix;
+                $suffix++;
+            }
+
+            $properties[$arrayKey] = [
+                'original_key' => $key,
+                'description' => (string) ($row['description'] ?? ''),
+                'column' => trim((string) ($row['column'] ?? '')),
+                'numeric_column' => trim((string) ($row['numeric_column'] ?? '')),
+                'consent_required' => ($row['consent_required'] ?? '1') === '1',
+                'type' => (string) ($row['type'] ?? 'scalar'),
+            ];
+        }
+
+        $mappings = [];
+        $mappingRows = is_array($submitted['mappings'] ?? null) ? $submitted['mappings'] : [];
+        foreach ($mappingRows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $param = trim((string) ($row['parameter'] ?? ''));
+            $prop = trim((string) ($row['property'] ?? ''));
+            if ($param !== '') {
+                $mappings[$param] = $prop;
+            }
+        }
+
+        return [
+            CustomDataSettings::PROPERTIES_KEY => $properties !== [] ? $properties : $currentModel[CustomDataSettings::PROPERTIES_KEY],
+            CustomDataSettings::MAPPINGS_KEY => $mappingRows !== [] ? $mappings : $currentModel[CustomDataSettings::MAPPINGS_KEY],
+            CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY => ($submitted[CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY] ?? '0') === '1',
+            CustomDataSettings::PAGE_SEQUENCE_METHOD_KEY => (string) ($submitted[CustomDataSettings::PAGE_SEQUENCE_METHOD_KEY] ?? $currentModel[CustomDataSettings::PAGE_SEQUENCE_METHOD_KEY]),
+        ];
+    }
+
 }
