@@ -31,6 +31,10 @@ Restores the files the last update changed: release installations from the backu
 var/updates/backups/, Git checkouts by returning to the previous commit. Configuration you
 own is not part of the update and is left as it is. Then the cache is rebuilt.
 
+Files installed by a deployment tool are left as they are, because that tool owns them:
+redeploy the previous commit with it. Rolling back such a deployment turns maintenance
+mode off and, with --restore-database, restores its SQLite snapshot.
+
 Database changes are separate. Migrations that already ran are not reversed. SQLite
 installations can add --restore-database to put back the snapshot taken before the update,
 which also discards anything recorded since. For other databases, restore your own backup.
@@ -60,7 +64,9 @@ HELP);
             if ($restoreDatabase) {
                 $io->warning('Restoring the database snapshot discards all data recorded since the update started.');
             }
-            if (!$io->confirm('Restore the previous application files now?', false)) {
+            if (!$io->confirm(($status['type'] ?? null) === 'deployment'
+                ? 'Roll back now? Files from your deployment tool stay as they are; redeploy the previous commit with it.'
+                : 'Restore the previous application files now?', false)) {
                 return Command::FAILURE;
             }
         }

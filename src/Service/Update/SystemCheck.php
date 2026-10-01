@@ -31,6 +31,8 @@ class SystemCheck
     public const MINIMUM_PHP_VERSION = '8.2.0';
     private const REQUIRED_EXTENSIONS = ['ctype', 'iconv', 'pdo', 'mbstring', 'xml', 'curl', 'intl', 'sodium', 'zip'];
     private const WRITABLE = ['', 'bin', 'config', 'migrations', 'public', 'src', 'templates', 'var', 'vendor'];
+    /** Code deployed another way is replaced by that tool; the post-deployment steps write only these. */
+    private const DEPLOYMENT_WRITABLE = ['var', 'vendor', 'public', 'assets'];
     private const MIN_FREE_BYTES = 300 * 1024 * 1024;
     private const MIN_UPLOAD_BYTES = 64 * 1024 * 1024;
 
@@ -46,6 +48,8 @@ class SystemCheck
         private readonly Connection $connection,
         private readonly Toolchain $toolchain,
         private readonly ?PhpRequirementResolver $phpRequirement = null,
+        private readonly ?DeploymentState $deployment = null,
+        private readonly string $environment = 'prod',
     ) {
     }
 
@@ -67,14 +71,18 @@ class SystemCheck
             $source = $this->updates->source();
             $repository = $this->settings->repository();
             $branch = $this->settings->branch();
-            $method = $source['source'] === 'git' ? 'Directly from the repository (advanced)' : 'Release ZIPs';
+            $method = match ($source['source']) {
+                'git' => 'Directly from the repository (advanced)',
+                'deployment' => 'Deployed another way',
+                default => 'Release ZIPs',
+            };
             if ($source['mismatch'] !== null) {
                 $add('source', 'Update method', self::ERROR, $source['mismatch']);
             } else {
                 $add('source', 'Update method', self::OK, sprintf('%s from %s, branch %s. %s', $method, $repository, $branch, $source['reason']));
             }
             if ($source['method'] === null) {
-                $add('method_choice', 'Update method chosen', self::INFO, 'Not yet. An administrator chooses release ZIPs or the repository on the Updates page, with php bin/console app:updates:method, or with updates_method in config/aggregate.yaml. The dashboard installs updates once a method is chosen; the command line uses the method that fits this directory until then.', 'dashboard');
+                $add('method_choice', 'Update method chosen', self::INFO, 'Not yet. An administrator chooses release ZIPs, the repository or "deployed another way" on the Updates page, with php bin/console app:updates:method, or with updates_method in config/aggregate.yaml. The dashboard installs updates once a method is chosen; the command line uses the method that fits this directory until then.', 'dashboard');
             }
             if (!$this->settings->isOfficialRepository()) {
                 $add('repository', 'Repository', self::WARNING, 'updates_repository points to '.$repository.' instead of '.UpdateSettings::DEFAULT_REPOSITORY.'. Only use a repository you control; releases must be signed with the key this installation trusts.');
@@ -109,12 +117,14 @@ class SystemCheck
 
         if ($source !== null && $source['source'] === 'release') {
             $this->releaseChecks($add);
+        } elseif ($source !== null && $source['source'] === 'deployment') {
+            $this->deploymentChecks($add);
         } elseif ($source !== null) {
             $this->gitChecks($add, $source['mismatch'] === null);
         }
 
         $unwritable = [];
-        foreach (self::WRITABLE as $directory) {
+        foreach (($source['source'] ?? null) === 'deployment' ? self::DEPLOYMENT_WRITABLE : self::WRITABLE as $directory) {
             $path = rtrim($this->projectDir.'/'.$directory, '/');
             if (is_dir($path) && !is_writable($path)) {
                 $unwritable[] = $directory === '' ? 'the application directory' : $directory.'/';
@@ -127,9 +137,12 @@ class SystemCheck
 
         $php = $this->toolchain->php();
         $background = function_exists('proc_open') && \DIRECTORY_SEPARATOR !== '\\' && $php !== null;
-        $add('background', 'Dashboard button can start updates', $background ? self::OK : self::ERROR, $background
-            ? 'Command-line PHP found at '.$php[0].'.'
-            : ($php === null ? 'The command-line PHP executable was not found. Set PHP_PATH for the web server.' : 'Starting background processes (proc_open on Unix) is not available.').' Use php bin/console app:updates:apply instead.', 'dashboard');
+        // Code deployed another way is never updated from the dashboard.
+        if (($source['source'] ?? null) !== 'deployment') {
+            $add('background', 'Dashboard button can start updates', $background ? self::OK : self::ERROR, $background
+                ? 'Command-line PHP found at '.$php[0].'.'
+                : ($php === null ? 'The command-line PHP executable was not found. Set PHP_PATH for the web server.' : 'Starting background processes (proc_open on Unix) is not available.').' Use php bin/console app:updates:apply instead.', 'dashboard');
+        }
 
         $free = @disk_free_space($this->projectDir);
         if (is_float($free)) {
@@ -159,7 +172,9 @@ class SystemCheck
         if ($this->journal->isLocked()) {
             $add('last_update', 'Update activity', self::ERROR, 'An update is running now.');
         } elseif (in_array($last['status'] ?? null, ['running', 'needs_attention'], true)) {
-            $add('last_update', 'Update activity', self::ERROR, 'The last update stopped at "'.($last['step'] ?? 'unknown').'". Continue it with php bin/console app:updates:apply --resume or restore files with php bin/console app:updates:rollback.');
+            $add('last_update', 'Update activity', self::ERROR, ($last['type'] ?? null) === 'deployment'
+                ? 'The last deployment stopped at "'.($last['step'] ?? 'unknown').'". Continue it with php bin/console app:updates:apply --resume, or deploy again.'
+                : 'The last update stopped at "'.($last['step'] ?? 'unknown').'". Continue it with php bin/console app:updates:apply --resume or restore files with php bin/console app:updates:rollback.');
         } else {
             $add('last_update', 'Update activity', self::OK, $last === null ? 'No update has run yet.' : 'Last update '.$last['id'].': '.str_replace('_', ' ', (string) $last['status']).'.');
         }
@@ -225,6 +240,57 @@ class SystemCheck
         $add('upload_limit', 'ZIP uploads', $limit >= self::MIN_UPLOAD_BYTES ? self::OK : self::INFO, $limit >= self::MIN_UPLOAD_BYTES
             ? 'PHP accepts uploads up to '.$this->bytes($limit).'.'
             : 'PHP accepts uploads up to '.($limit > 0 ? $this->bytes($limit) : 'an unknown size').', and release ZIPs are about 25 MB. Download from GitHub instead, or raise upload_max_filesize and post_max_size to at least 64M to upload a ZIP.', 'dashboard');
+    }
+
+    /** @param callable(string, string, string, string, string=): void $add */
+    private function deploymentChecks(callable $add): void
+    {
+        $deployment = $this->deployment ?? new DeploymentState($this->projectDir);
+        try {
+            $record = $deployment->record();
+            $changed = $deployment->changedSinceRecord();
+            if ($record === null) {
+                $add('deployment', 'Post-deployment steps', self::WARNING, 'Not recorded yet. After each deployment, run php bin/console app:updates:deployed (for example from your deployment tool\'s deployment action) so database migrations run and the cache is rebuilt.');
+            } else {
+                $add('deployment', 'Post-deployment steps', $changed ? self::WARNING : self::OK, sprintf(
+                    'Last ran %s UTC%s.%s',
+                    gmdate('Y-m-d H:i', $record['finished_at']),
+                    $record['commit'] !== null ? ' for commit '.substr($record['commit'], 0, 12) : '',
+                    $changed ? ' Files changed since then, so database migrations and cache rebuilds may be pending: run php bin/console app:updates:deployed.' : ' No files changed since.',
+                ));
+            }
+        } catch (\Throwable $e) {
+            $add('deployment', 'Post-deployment steps', self::WARNING, $e instanceof \RuntimeException ? $e->getMessage() : 'The deployed files could not be inspected.');
+        }
+
+        $repository = $deployment->repository() ?? ($this->updates->isGitClone() ? $this->projectDir : null);
+        if ($repository === null) {
+            $candidates = $deployment->candidates();
+            $add('deployment_repository', 'Deployment repository', self::INFO, $candidates === []
+                ? 'None found next to this site. The deployed commit is known only when app:updates:deployed is given --git-dir or --commit.'
+                : 'Several found ('.implode(', ', $candidates).'). Give the deployed one to app:updates:deployed with --git-dir.');
+        } else {
+            try {
+                $read = $deployment->readRepository($repository, $this->settings->branch());
+                $add('deployment_repository', 'Deployment repository', self::OK, sprintf('%s holds commit %s%s.', $repository, substr($read['commit'], 0, 12), $read['branch'] !== null ? ' on '.$read['branch'] : ''));
+            } catch (\RuntimeException|\InvalidArgumentException $e) {
+                $add('deployment_repository', 'Deployment repository', self::WARNING, $e->getMessage());
+            }
+        }
+
+        $composer = $this->toolchain->composer();
+        try {
+            $outOfDate = $deployment->dependenciesOutOfDate($this->environment !== 'prod');
+        } catch (\Throwable) {
+            $outOfDate = true;
+        }
+        if (!$outOfDate) {
+            $add('composer', 'Composer dependencies', self::OK, 'vendor/ matches composer.lock.');
+        } elseif ($composer !== null) {
+            $add('composer', 'Composer dependencies', self::INFO, 'vendor/ does not match composer.lock. app:updates:deployed runs composer install.');
+        } else {
+            $add('composer', 'Composer dependencies', self::ERROR, 'vendor/ does not match composer.lock, and Composer was not found. Run composer install before app:updates:deployed, or set AGGREGATE_COMPOSER to its path.');
+        }
     }
 
     /** @param callable(string, string, string, string, string=): void $add */

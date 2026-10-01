@@ -399,10 +399,11 @@ sudo supervisorctl start analytics-worker
 
 ## Updating the Application
 
-The application updates itself; see the [update guide](docs/UPDATES.md). An
-administrator chooses the method on the dashboard **Updates** page: release ZIPs
-(recommended) or the repository for a Git clone (advanced). From the domain's
-deployment account, the same commands run with Plesk's PHP:
+Choose one of three update methods on the dashboard **Updates** page (see the
+[update guide](docs/UPDATES.md#choose-an-update-method)): release ZIPs
+(recommended), the repository for a Git clone (advanced), or **I deploy the code
+another way** to keep deploying with Plesk's Git. From the domain's deployment
+account, the same commands run with Plesk's PHP:
 
 ```bash
 /opt/plesk/php/8.3/bin/php bin/console app:updates:method
@@ -412,37 +413,33 @@ deployment account, the same commands run with Plesk's PHP:
 
 If you use the in-app updater, turn off automatic deployment in Plesk's **Git**
 settings (or stop using its **Deploy** action), because each deploy copies the
-repository over the installed files. A directory that Plesk fills from Git has no
-`.git` folder, so it uses release ZIPs unless you
-[set it up as a Git clone](docs/UPDATES.md#set-up-a-git-clone). To keep deploying
-with Plesk instead, use the actions below and the
-[manual update steps](DEPLOYMENT.md#manual-update-steps).
+repository over the installed files.
 
 ### Plesk Git deployment actions
 
-Plesk's **Deploy** action copies the Git source into the deployment directory;
-it does not automatically compile Symfony's dashboard assets. For source
-deployments, add the following to the repository's **Additional deployment
-actions**, adjusting the directory and PHP version to match the domain. Run
-them as the domain's deployment user, who needs write access to `public/assets/`
-and the application cache:
+To keep deploying with Plesk's **Git**, choose **I deploy the code another way**
+(`app:updates:method deployment`). The Updates page then shows the deployed
+commit and how far behind it is, and Plesk installs every update. Add the
+post-deployment commands to the repository's **Additional deployment actions**,
+so each deployment installs Composer dependencies, runs database migrations and
+rebuilds the dashboard assets and cache. The Updates page shows them with this
+domain's paths, as does
+`/opt/plesk/php/8.3/bin/php bin/console app:updates:deployed --show-action`:
 
 ```bash
-set -eu
-cd /var/www/vhosts/your-domain.com/analytics
-export APP_ENV=prod APP_DEBUG=0
-
-/opt/plesk/php/8.3/bin/php bin/console cache:clear --env=prod --no-debug
-/opt/plesk/php/8.3/bin/php bin/console importmap:install --env=prod --no-debug --no-interaction
-/opt/plesk/php/8.3/bin/php bin/console asset-map:compile --env=prod --no-debug
+rm -rf /var/www/vhosts/your-domain.com/analytics/var/cache/prod
+/opt/plesk/php/8.3/bin/php /opt/psa/var/modules/composer/composer.phar install --working-dir=/var/www/vhosts/your-domain.com/analytics --no-interaction --optimize-autoloader --no-dev
+/opt/plesk/php/8.3/bin/php /var/www/vhosts/your-domain.com/analytics/bin/console app:updates:deployed --git-dir=/var/www/vhosts/your-domain.com/git/aggregate.git --database-backup-confirmed
 ```
 
-This block rebuilds the cache and dashboard assets. Install the locked production
-Composer dependencies before it, as shown in the full upgrade sequence below;
-database migrations and worker coordination are also part of that sequence.
-Running `npm run build:js` does not replace AssetMapper compilation. After a
-successful deploy, hard refresh the browser. If the layout or saved colors
-remain wrong, check the [stylesheet troubleshooting steps](#navigation-layout-or-theme-colors-are-missing).
+Run them as the domain's system user, with SSH access set to `/bin/bash`: when SSH
+access is forbidden, Plesk runs deployment actions in a chroot without PHP or
+Composer. Pass `--database-backup-confirmed` only when the database is backed up
+on a schedule, because migrations cannot be reversed automatically. See
+[deploy the code another way](docs/UPDATES.md#deploy-the-code-another-way) for
+what each command does and for the files to keep out of the repository. After a
+successful deploy, hard refresh the browser. If the layout or saved colors remain
+wrong, check the [stylesheet troubleshooting steps](#navigation-layout-or-theme-colors-are-missing).
 
 ### Full source upgrade
 
