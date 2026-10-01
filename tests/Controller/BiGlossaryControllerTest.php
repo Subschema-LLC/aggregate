@@ -12,6 +12,7 @@ use App\Service\Glossary\BuiltinGlossaryCatalog;
 use App\Service\Glossary\EventNameSuggestions;
 use App\Service\Glossary\GlossaryResolver;
 use App\Service\Glossary\GlossarySync;
+use App\Service\WebsiteConfigManager;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -62,13 +63,16 @@ final class BiGlossaryControllerTest extends TestCase
             'query_parameter_mappings' => [],
             'bi_glossary' => ['locales' => ['en', 'es']],
         ], 8));
+        file_put_contents($this->directory.'/config/websites.yaml', Yaml::dump(['websites' => [
+            ['name' => 'Online shop', 'domain' => 'shop.example.com', 'token' => str_repeat('a', 32)],
+        ]], 4, 2));
         file_put_contents($this->directory.'/config/goals.yaml', "# Must remain unchanged\nparameters:\n  app.goal_events:\n    contact: { label: 'Contact request', enabled: true, anonymous: true }\n");
         $this->config = new AggregateConfigLoader($this->directory, 'test');
         $translator = new Translator('en');
         $translator->addLoader('array', new TranslationArrayLoader());
         $translator->addResource('array', ['value.device_class.tablet.label' => 'Tablet'], 'en', 'bi_glossary');
         $catalog = new BuiltinGlossaryCatalog($translator);
-        $this->settings = new BiGlossarySettings($this->config, new CustomDataSettings($this->config), $catalog, ['contact' => ['label' => 'Contact request', 'enabled' => true, 'anonymous' => true]]);
+        $this->settings = new BiGlossarySettings($this->config, new CustomDataSettings($this->config), $catalog, ['contact' => ['label' => 'Contact request', 'enabled' => true, 'anonymous' => true]], new WebsiteConfigManager($this->directory));
         $this->resolver = new GlossaryResolver($this->settings, $catalog);
         $this->sync = $this->createMock(GlossarySync::class);
         $this->sync->method('diff')->willReturn(['changed' => false, 'insert' => 0, 'change' => 0, 'delete' => 0, 'total' => 0]);
@@ -242,6 +246,29 @@ final class BiGlossaryControllerTest extends TestCase
         self::assertCount(1, $crawler->filter('input[name="code"][value="spring_2027"]'));
         self::assertStringContainsString('Publishing its codes here makes them visible to every routine BI user', $crawler->text());
         self::assertStringContainsString('Spring campaign', $crawler->text());
+    }
+
+    public function testRegisteredWebsitesAreListedByNameAndTranslatableAndRemovedOnesCanBeAdded(): void
+    {
+        $token = str_repeat('a', 32);
+        $request = $this->request(['locale' => 'es'], 'GET');
+        $crawler = new Crawler((string) $this->controller($request)->index($request)->getContent());
+        $section = $crawler->filter('details')->reduce(static fn (Crawler $node): bool => trim($node->filter('summary')->text()) === 'website_token');
+        self::assertCount(1, $section);
+        self::assertCount(1, $section->filter('input[name="code"][value="'.$token.'"]'));
+        self::assertStringContainsString('Online shop', $section->text());
+        self::assertSame('shop.example.com', $section->filter('textarea[name="description"]')->attr('placeholder'), 'The domain is the default definition.');
+        self::assertSame('Online shop (falls back to en)', $section->filter('input[name="label"]')->attr('placeholder'));
+        self::assertStringContainsString('Websites', $section->text());
+        self::assertCount(1, $section->filter('input[name="add_code"]'), 'A removed website can be declared to keep its label.');
+
+        $this->sync->expects(self::exactly(2))->method('sync')->willReturn([]);
+        $request = $this->request($this->entry(['subject' => 'website_token', 'code' => $token, 'locale' => 'es', 'label' => 'Tienda en línea']));
+        self::assertSame(302, $this->controller($request)->save($request)->getStatusCode());
+        self::assertSame(['es' => 'Tienda en línea'], $this->settings->get()['values']['website_token'][$token]['label']);
+        $request = $this->request($this->entry(['subject' => 'website_token', 'code' => 'removed-site', 'label' => 'Old microsite']));
+        self::assertSame(302, $this->controller($request)->save($request)->getStatusCode());
+        self::assertSame(['en' => 'Old microsite'], $this->settings->get()['values']['website_token']['removed-site']['label']);
     }
 
     public function testExplicitSuggestionsAndAddOpenUnsavedRowsWithoutWritingConfiguration(): void

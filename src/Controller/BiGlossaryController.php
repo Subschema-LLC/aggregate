@@ -239,7 +239,7 @@ final class BiGlossaryController extends AbstractController
                 try {
                     if (!is_string($addition['add_dimension']) || !is_string($addition['add_code'])
                         || !$this->allowsNewCode($addition['add_dimension'])) {
-                        throw new \InvalidArgumentException('Choose an event-name or custom-property dimension.');
+                        throw new \InvalidArgumentException('Choose an event-name, website or custom-property dimension.');
                     }
                     $preview = $settings;
                     $preview['values'][$addition['add_dimension']][$addition['add_code']] ??= [];
@@ -280,7 +280,11 @@ final class BiGlossaryController extends AbstractController
                     $property = $type === 'columns' ? $this->propertyForColumn($subject, (string) $code) : null;
                     $entries[$type][$subject][] = [
                         'code' => (string) $code, 'current' => $current, 'default' => $default, 'input' => $input,
-                        'source' => match ($default['source'] ?? 'builtin') { 'config' => $type === 'values' ? 'goals.yaml' : 'Data model', 'glossary' => 'Glossary', default => 'Built-in' },
+                        'source' => match ($default['source'] ?? 'builtin') {
+                            'config' => match (true) { $type === 'columns' => 'Data model', $subject === 'website_token' => 'Websites', default => 'goals.yaml' },
+                            'glossary' => 'Glossary',
+                            default => 'Built-in',
+                        },
                         'property' => $property, 'overridden' => isset($settings[$type][$subject][$code]),
                         'unsaved' => $translations === [], 'open' => $isSubmitted || $translations === [],
                     ];

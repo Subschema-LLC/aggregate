@@ -390,7 +390,7 @@ E2E::step('glossary sync, reporting view regeneration and archiving', static fun
     E2E::check((int) $db->fetchOne('SELECT SUM(event_count) FROM analytics_archive_events') === 12, 'Archive totals changed on a second run.');
 });
 
-E2E::step('reporting views return the expected cells', static function () use ($root): void {
+E2E::step('reporting views return the expected cells', static function () use ($root, $token): void {
     $db = connection($root);
     $views = $db->createSchemaManager()->introspectViews();
     $names = [];
@@ -399,7 +399,7 @@ E2E::step('reporting views return the expected cells', static function () use ($
         $names[] = $name;
         $db->fetchOne('SELECT COUNT(*) FROM '.$name);
     }
-    foreach (['bi_anonymous_events_v1', 'bi_anonymous_goals_v1', 'bi_anonymous_geo_events_v1', 'bi_glossary_values_v1', 'bi_glossary_columns_v1', 'analytics_archived_events_v1'] as $required) {
+    foreach (['bi_anonymous_events_v1', 'bi_anonymous_goals_v1', 'bi_anonymous_geo_events_v1', 'bi_dim_website_token_v1', 'bi_glossary_values_v1', 'bi_glossary_columns_v1', 'analytics_archived_events_v1'] as $required) {
         E2E::check(in_array($required, $names, true), $required.' is missing; views: '.implode(', ', $names));
     }
     $pages = $db->fetchAllKeyValue("SELECT page_path, SUM(event_count) FROM bi_anonymous_events_v1 WHERE event_name = 'view' GROUP BY page_path");
@@ -408,6 +408,8 @@ E2E::step('reporting views return the expected cells', static function () use ($
     $goals = $db->fetchAllKeyValue('SELECT goal_event, SUM(event_count) FROM bi_anonymous_goals_v1 GROUP BY goal_event');
     E2E::check((int) ($goals['purchase'] ?? 0) === 6 && (int) ($goals['lead'] ?? 0) === 6, 'bi_anonymous_goals_v1: '.json_encode($goals));
     E2E::check((int) $db->fetchOne("SELECT COUNT(*) FROM bi_glossary_values_v1 WHERE dimension = 'goal_event' AND code = 'purchase'") === 1, 'The glossary lacks the purchase goal.');
+    $sites = $db->fetchAllKeyValue('SELECT f.website_token, d.website_token_label FROM bi_anonymous_goals_v1 f LEFT JOIN bi_dim_website_token_v1 d ON d.website_token = f.website_token GROUP BY f.website_token, d.website_token_label');
+    E2E::check($sites === [$token => 'E2E site'], 'Website labels do not join to the facts: '.json_encode($sites));
     $custom = $db->fetchAllAssociative("SELECT plan_name, total_minor_text, total_minor_number, discount_rate_number FROM analytics_custom_goals_v1 WHERE goal_event = 'purchase'");
     E2E::check(count($custom) === 6, 'analytics_custom_goals_v1 rows: '.json_encode($custom));
     foreach ($custom as $row) {

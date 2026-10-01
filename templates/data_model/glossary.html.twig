@@ -44,6 +44,7 @@
         {% for dimension, rows in entries.values %}
             <details class="box"{% if rows|filter(row => row.open)|length %} open{% endif %}>
                 <summary class="has-text-weight-semibold">{{ dimension }}</summary>
+                {% if dimension == 'website_token' %}<p class="help mt-3">Every registered website is listed by its token, labeled with its name and described by its domain until you add translations here. Sync after adding or renaming a website. To keep labeling a removed website's history, add its token below.</p>{% endif %}
                 {% if consent_dimensions[dimension] is defined %}<div class="notification is-warning mt-3">This property requires consent for collection. Publishing its codes here makes them visible to every routine BI user, even though event values are available only in private views.</div>{% endif %}
                 {% for entry in rows %}
                     {{ component('DataModel:GlossaryEntry', {entry: entry, entry_type: 'value', subject: dimension, locale: locale, default_locale: settings.default_locale, id: 'value-' ~ loop.parent.loop.index ~ '-' ~ loop.index, errors: errors}) }}

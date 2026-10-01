@@ -498,12 +498,13 @@ Current migrations:
 - `migrations/Version20260828000000.php` (completed-day, threshold-filtered anonymous goal BI view)
 - `migrations/Version20260901000000.php` (private archives, lifecycle maintenance, and combined live/archive BI views)
 - `migrations/Version20260928000000.php` (declared BI glossary table and eight fixed metadata views)
+- `migrations/Version20261001000000.php` (website labels view `bi_dim_website_token_v1`)
 
 The current schema contains:
 - `events` (private individual rows for both `anonymous` and `enhanced` privacy modes, with optional coarse `geo_area` and allowlisted `goal_event`)
 - `analytics_privacy_settings` (database source of truth for hourly event, daily goal, and geographic BI suppression thresholds)
 - `analytics_glossary` (private synchronized metadata table; never granted to routine BI users)
-- `bi_dim_event_name_v1`, `bi_dim_goal_event_v1`, `bi_dim_referrer_channel_v1`, `bi_dim_device_class_v1`, `bi_dim_viewport_bucket_v1`, `bi_dim_geo_area_v1`, `bi_glossary_values_v1`, and `bi_glossary_columns_v1` (approved declared-metadata views)
+- `bi_dim_event_name_v1`, `bi_dim_goal_event_v1`, `bi_dim_referrer_channel_v1`, `bi_dim_device_class_v1`, `bi_dim_viewport_bucket_v1`, `bi_dim_geo_area_v1`, `bi_dim_website_token_v1`, `bi_glossary_values_v1`, and `bi_glossary_columns_v1` (approved declared-metadata views)
 - `bi_anonymous_events_v1` (supported grouped anonymous-mode BI contract)
 - `bi_anonymous_goals_v1` (supported completed-day anonymous goal-count BI contract)
 - `bi_anonymous_geo_events_v1` (supported daily, lower-dimensional anonymous geography BI contract)
@@ -539,21 +540,22 @@ $events->addColumn('goal_event', 'string', ['length' => 191, 'notnull' => false]
 ### BI glossary metadata
 
 The [BI glossary](BI-GLOSSARY.md) supplies declared value labels and column
-explanations through eight fixed views. Migration `Version20260928000000` creates
-one backing table with a composite `(entry_type, subject, code, locale)` primary
-key and an `(entry_type, subject, is_default_locale)` index. Case-sensitive key
+explanations through nine fixed views. Migration `Version20260928000000` creates
+eight of them and one backing table with a composite `(entry_type, subject, code, locale)` primary
+key and an `(entry_type, subject, is_default_locale)` index; `Version20261001000000`
+adds `bi_dim_website_token_v1` over the same table. Case-sensitive key
 collations preserve distinct declared codes on MySQL/MariaDB and SQL Server.
 Its remaining fields are `label`, `label_locale`, `group_label`, `description`,
 `description_locale`, `sort_order`, `source`, and `synced_at`.
 
 Run `php bin/console app:analytics:glossary:sync` after migrations and declared
 metadata changes. Sync resolves all published locales from YAML, configured
-goals, the saved custom model, and the built-in catalog. It never queries events,
+goals, registered websites, the saved custom model, and the built-in catalog. It never queries events,
 archives, or reporting facts. The initial migration leaves views empty. Changed
 rows are replaced in one DML transaction on all supported engines; unchanged
 syncs leave timestamps alone. Sync needs no view-creation privileges.
 
-The six `bi_dim_*_v1` views have one row per code in the default locale. The two
+The seven `bi_dim_*_v1` views have one row per code in the default locale. The two
 `bi_glossary_*_v1` views expose localized value and column metadata. Grant those
 views, never `analytics_glossary`; see the complete
 [view-only grant examples](BI-GLOSSARY.md#view-only-grants). Labels do not expand

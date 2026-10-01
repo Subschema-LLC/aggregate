@@ -2,12 +2,14 @@
 
 The BI glossary publishes human-readable labels and definitions for reporting
 codes and columns. It uses declared configuration and a built-in catalog, never
-event values or counts. Connect Power BI or Tableau to its eight fixed views and
-join them to the existing reporting code columns. Labels do not change the grain,
+event values or counts. Connect Power BI or Tableau to its nine fixed views and
+join them to the existing reporting code columns, including `website_token`, so
+reports show website names instead of tokens. Labels do not change the grain,
 counts, suppression, or access restrictions of a fact view.
 
-The glossary is deployment-wide. There are no page-path labels, content-grouping
-rules, per-website dictionaries, or in-app analytics reports.
+The glossary is deployment-wide: every website shares one set of labels. There are
+no page-path labels, content-grouping rules, per-website dictionaries, or in-app
+analytics reports.
 
 ## Install and synchronize
 
@@ -18,8 +20,9 @@ php bin/console doctrine:migrations:migrate --env=prod --no-interaction
 php bin/console app:analytics:glossary:sync --env=prod
 ```
 
-Migration `Version20260928000000` creates `analytics_glossary` and eight views.
-They are empty until the first sync. Installation scripts, Makefile migration
+Migration `Version20260928000000` creates `analytics_glossary` and eight views, and
+`Version20261001000000` adds `bi_dim_website_token_v1`. They are empty until the
+first sync. Installation scripts, Makefile migration
 targets, and the web installer run the sync after migrations. For manual SQL
 installs, run the command after deploying configuration and applying any remaining
 migrations. Sync uses only reads and transactional writes on `analytics_glossary`;
@@ -27,7 +30,8 @@ it does not need privileges to create or replace views. Label edits never change
 view definitions. A view-column change requires a new versioned contract.
 
 With no `bi_glossary` block, sync publishes English built-ins, every continent and
-Intl country, configured goal labels, and saved custom-property descriptions.
+Intl country, configured goal labels, every registered website's name and domain,
+and saved custom-property descriptions.
 Disabled goals remain in the glossary. Disable a retired goal instead of deleting
 its definition, so historical reports keep its label.
 
@@ -58,8 +62,9 @@ populated glossary. A deadlock, lock timeout, or competing replacement key
 conflict is retried once before reporting failure. The summary includes rows written, dimensions, locales, and fallback
 label counts per locale. These are metadata counts, not traffic counts.
 
-Run sync after YAML edits. Changes to `config/goals.yaml` require clearing the
-production cache first, then running sync in production. Successful
+Run sync after YAML edits, and after adding, renaming or removing a website.
+Changes to `config/goals.yaml` require clearing the production cache first, then
+running sync in production. Successful
 `app:analytics:views:regenerate` and its admin button also synchronize glossary
 columns after deploying the saved model. **Manual sync uses the saved model's
 column aliases; it does not inspect deployed view metadata.** Regenerate views
@@ -93,6 +98,12 @@ bi_glossary:
     #   contact:
     #     label: { es: 'Solicitud de contacto' }
     #     description: 'Quote form submitted; excludes test submissions.'
+    # Registered websites are listed by token and labeled with their name;
+    # translate, group or describe them here:
+    # website_token:
+    #   a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6:
+    #     label: { es: 'Tienda en línea' }
+    #     group: { en: 'Retail', es: 'Comercio' }
     # The text alias must exist in custom_data_properties:
     # utm_medium:
     #   cpc: { label: 'Paid search' }
@@ -130,6 +141,7 @@ Only these dimensions are accepted:
 | `privacy_mode` | `anonymous`, `enhanced`; built-in catalog; this adds no field to anonymous fact views |
 | `goal_event` | Every code declared in `config/goals.yaml`, including disabled goals; that file's label is default-locale text |
 | `event_name` | `view` is built in; other declared names must pass the server's safe-event-name validation |
+| `website_token` | Every website registered in `config/websites.yaml`; its `name` is default-locale label text and its `domain` default-locale description text. Another declared token (at most 191 bytes, no control characters or surrounding whitespace) keeps labeling a removed website's history |
 | A modeled property's text column alias | Explicitly declared scalar codes, at most 191 bytes with no control characters or surrounding whitespace; numeric aliases are not value dimensions |
 
 Core dimension names retain their enumerated meaning. Use a distinct text alias
@@ -164,8 +176,9 @@ description. For each published locale, try:
 1. The requested locale, checking glossary overrides, source configuration, then
    the built-in catalog (including Intl country names).
 2. Each shorter parent tag in that order: `zh-Hant-TW` → `zh-Hant` → `zh`.
-3. The default locale, in the same source order. Goal labels and property
-   descriptions count as text in this locale, regardless of their written language.
+3. The default locale, in the same source order. Goal labels, website names and
+   domains, and property descriptions count as text in this locale, regardless of
+   their written language.
 4. English, the catalog's base language.
 5. For a label only, the code itself; unavailable groups and descriptions are null.
 
@@ -201,10 +214,11 @@ labels and descriptions are covered by completeness tests.
 | `bi_dim_device_class_v1` | `device_class` plus prefixed label, group, description, and sort |
 | `bi_dim_viewport_bucket_v1` | `viewport_bucket` plus prefixed label, group, description, and sort |
 | `bi_dim_geo_area_v1` | `geo_area` plus prefixed label, group, description, sort, and `geo_level` |
+| `bi_dim_website_token_v1` | `website_token` plus prefixed label, group, description, and sort |
 | `bi_glossary_values_v1` | `dimension`, `code`, `locale`, `label`, `label_locale`, `is_fallback`, `group_label`, `description`, `sort_order`, `is_default_locale` |
 | `bi_glossary_columns_v1` | `object_name`, `column_name`, `locale`, `label`, `label_locale`, `is_fallback`, `description`, `is_default_locale` |
 
-The six dimension views have exactly one row per declared code, use
+The seven dimension views have exactly one row per declared code, use
 `default_locale`, and require no locale filter. For example,
 `bi_dim_device_class_v1` provides `device_class`, `device_class_label`,
 `device_class_group`, `device_class_description`, and `device_class_sort`.
@@ -216,7 +230,9 @@ single-direction relationship from `bi_anonymous_events_v1.device_class` to
 auto-detection. Use `device_class_label` in the field list and sort it by
 `device_class_sort`. Verify the detected relationship rather than connecting
 label/group fields. In Tableau, relate the same views on `device_class` and use
-the label as the displayed dimension. Keep the hourly, daily goal, and daily
+the label as the displayed dimension. Website names work the same way: relate each
+fact view's `website_token` to `bi_dim_website_token_v1.website_token` and show
+`website_token_label`. Keep the hourly, daily goal, and daily
 geography facts separate: their different grains and independent suppression
 cannot be safely joined to reconstruct additional detail.
 
@@ -266,6 +282,10 @@ can download the mapping as YAML and missing-label CSV. A save writes only
 but the database needs `app:analytics:glossary:sync`. It is unavailable with
 `dashboard_enabled: false`; YAML and CLI still provide the full configuration.
 
+The `website_token` section lists every registered website with its name and
+domain as the default text. Its **Add website_token code** field declares the token
+of a removed website, so its retained history keeps a label.
+
 The explicit **Find unlabeled event names** action samples at most the latest
 1,000 retained events for administrators. It shows names only, without counts;
 adding one opens an unsaved row. Only saving that row declares the name for
@@ -274,6 +294,10 @@ facts. All countries and continents are published even when they have no traffic
 
 Treat all glossary text and codes as published metadata. Do not put personal or
 identifying text in labels, groups, descriptions, event names, or custom codes.
+Every registered website's name and domain is published to every routine BI user,
+including websites without traffic. When names identify clients that some BI users
+must not see, give those websites neutral glossary labels and descriptions; labels
+are not tenant isolation, and the fact views expose every website's tokens.
 Declaring codes for a property with `consent_required: true` publishes those codes
 to every routine BI user, even though that property's event values are only
 available through private data access. Publication does not change consent rules
@@ -299,7 +323,8 @@ GRANT USAGE ON SCHEMA public TO bi_reader;
 GRANT SELECT ON bi_anonymous_events_v1, bi_anonymous_goals_v1,
     bi_anonymous_geo_events_v1, bi_dim_event_name_v1, bi_dim_goal_event_v1,
     bi_dim_referrer_channel_v1, bi_dim_device_class_v1, bi_dim_viewport_bucket_v1,
-    bi_dim_geo_area_v1, bi_glossary_values_v1, bi_glossary_columns_v1 TO bi_reader;
+    bi_dim_geo_area_v1, bi_dim_website_token_v1, bi_glossary_values_v1,
+    bi_glossary_columns_v1 TO bi_reader;
 ```
 
 MySQL/MariaDB (replace `analytics` and the approved client host; the view definer
@@ -315,6 +340,7 @@ GRANT SELECT ON analytics.bi_dim_referrer_channel_v1 TO 'bi_reader'@'bi-host';
 GRANT SELECT ON analytics.bi_dim_device_class_v1 TO 'bi_reader'@'bi-host';
 GRANT SELECT ON analytics.bi_dim_viewport_bucket_v1 TO 'bi_reader'@'bi-host';
 GRANT SELECT ON analytics.bi_dim_geo_area_v1 TO 'bi_reader'@'bi-host';
+GRANT SELECT ON analytics.bi_dim_website_token_v1 TO 'bi_reader'@'bi-host';
 GRANT SELECT ON analytics.bi_glossary_values_v1 TO 'bi_reader'@'bi-host';
 GRANT SELECT ON analytics.bi_glossary_columns_v1 TO 'bi_reader'@'bi-host';
 ```
@@ -332,6 +358,7 @@ GRANT SELECT ON OBJECT::dbo.bi_dim_referrer_channel_v1 TO bi_reader;
 GRANT SELECT ON OBJECT::dbo.bi_dim_device_class_v1 TO bi_reader;
 GRANT SELECT ON OBJECT::dbo.bi_dim_viewport_bucket_v1 TO bi_reader;
 GRANT SELECT ON OBJECT::dbo.bi_dim_geo_area_v1 TO bi_reader;
+GRANT SELECT ON OBJECT::dbo.bi_dim_website_token_v1 TO bi_reader;
 GRANT SELECT ON OBJECT::dbo.bi_glossary_values_v1 TO bi_reader;
 GRANT SELECT ON OBJECT::dbo.bi_glossary_columns_v1 TO bi_reader;
 ```

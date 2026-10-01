@@ -12,6 +12,7 @@ use App\Service\Glossary\BiGlossarySettings;
 use App\Service\Glossary\BuiltinGlossaryCatalog;
 use App\Service\Glossary\GlossaryResolver;
 use App\Service\Glossary\GlossarySync;
+use App\Service\WebsiteConfigManager;
 use Doctrine\DBAL\Configuration;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
@@ -24,6 +25,7 @@ use Doctrine\DBAL\Platforms\SQLitePlatform;
 use Doctrine\DBAL\Platforms\SQLServerPlatform;
 use Doctrine\DBAL\Schema\Schema;
 use DoctrineMigrations\Version20260928000000;
+use DoctrineMigrations\Version20261001000000;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\AbstractLogger;
@@ -36,6 +38,7 @@ use Symfony\Component\Translation\Translator;
 use Symfony\Component\Yaml\Yaml;
 
 require_once dirname(__DIR__, 3).'/migrations/Version20260928000000.php';
+require_once dirname(__DIR__, 3).'/migrations/Version20261001000000.php';
 
 final class GlossarySyncTest extends TestCase
 {
@@ -233,6 +236,12 @@ final class GlossarySyncTest extends TestCase
         }
         try {
             file_put_contents($projectDir.'/config/aggregate.yaml', "{}\n");
+            $shop = str_repeat('a', 32);
+            $blog = str_repeat('b', 32);
+            file_put_contents($projectDir.'/config/websites.yaml', Yaml::dump(['websites' => [
+                ['name' => 'Online shop', 'domain' => 'shop.example.com', 'token' => $shop],
+                ['name' => "Blog\twith a tab", 'domain' => 'blog.example.com', 'token' => $blog],
+            ]], 4, 2));
             $loader = new AggregateConfigLoader($projectDir, 'test');
             $translator = new Translator('en');
             $translator->setFallbackLocales(['en']);
@@ -241,7 +250,7 @@ final class GlossarySyncTest extends TestCase
             $catalog = new BuiltinGlossaryCatalog($translator);
             $settings = new BiGlossarySettings($loader, new CustomDataSettings($loader), $catalog, [
                 'contact' => ['label' => 'Contact request', 'enabled' => true, 'anonymous' => true],
-            ]);
+            ], new WebsiteConfigManager($projectDir));
             $sync = new GlossarySync($connection, new GlossaryResolver($settings, $catalog));
             $command = new CommandTester(new SyncGlossaryCommand($sync));
 
@@ -249,6 +258,11 @@ final class GlossarySyncTest extends TestCase
             self::assertSame(5, (int) $connection->fetchOne('SELECT COUNT(*) FROM bi_dim_device_class_v1'));
             self::assertSame('Tablet', $connection->fetchOne("SELECT device_class_label FROM bi_dim_device_class_v1 WHERE device_class = 'tablet'"));
             self::assertSame(count(GeoArea::CONTINENT_CODES) + count(Countries::getCountryCodes()), (int) $connection->fetchOne('SELECT COUNT(*) FROM bi_dim_geo_area_v1'));
+            // Registered websites are published by name, with their domain as the definition.
+            self::assertSame([
+                ['website_token' => $shop, 'website_token_label' => 'Online shop', 'website_token_group' => null, 'website_token_description' => 'shop.example.com', 'website_token_sort' => 10],
+                ['website_token' => $blog, 'website_token_label' => 'Blog with a tab', 'website_token_group' => null, 'website_token_description' => 'blog.example.com', 'website_token_sort' => 20],
+            ], $connection->fetchAllAssociative('SELECT * FROM bi_dim_website_token_v1 ORDER BY website_token_sort'));
             self::assertSame(Command::SUCCESS, $command->execute(['--check' => true]));
             $connection->executeStatement("UPDATE analytics_glossary SET synced_at = '2000-01-01 00:00:00'");
             self::assertSame(0, $sync->sync()['written']);
@@ -256,7 +270,14 @@ final class GlossarySyncTest extends TestCase
 
             file_put_contents($projectDir.'/config/aggregate.yaml', Yaml::dump(['bi_glossary' => [
                 'locales' => ['en', 'es', 'fr-CA'],
-                'values' => ['device_class' => ['tablet' => ['label' => ['es' => 'Tableta']]]],
+                'values' => [
+                    'device_class' => ['tablet' => ['label' => ['es' => 'Tableta']]],
+                    'website_token' => [
+                        $shop => ['label' => ['es' => 'Tienda en línea'], 'group' => 'Retail'],
+                        // A removed website keeps its label for retained history.
+                        'retired-site-token' => ['label' => 'Old microsite'],
+                    ],
+                ],
             ]], 8, 2));
             $loader->reset();
             self::assertSame(Command::FAILURE, $command->execute(['--check' => true]));
@@ -265,6 +286,10 @@ final class GlossarySyncTest extends TestCase
             self::assertSame(0, (int) $connection->fetchOne("SELECT COUNT(*) FROM bi_glossary_values_v1 WHERE label IS NULL OR label = ''"));
             self::assertSame('Tableta', $connection->fetchOne("SELECT label FROM bi_glossary_values_v1 WHERE dimension = 'device_class' AND code = 'tablet' AND locale = 'es'"));
             self::assertSame(1, (int) $connection->fetchOne("SELECT is_fallback FROM bi_glossary_values_v1 WHERE dimension = 'device_class' AND code = 'tablet' AND locale = 'fr-CA'"));
+            self::assertSame('Tienda en línea', $connection->fetchOne("SELECT label FROM bi_glossary_values_v1 WHERE dimension = 'website_token' AND code = '".$shop."' AND locale = 'es'"));
+            self::assertSame(['Online shop', 'Retail'], array_values($connection->fetchNumeric("SELECT website_token_label, website_token_group FROM bi_dim_website_token_v1 WHERE website_token = '".$shop."'")));
+            self::assertSame('Old microsite', $connection->fetchOne("SELECT website_token_label FROM bi_dim_website_token_v1 WHERE website_token = 'retired-site-token'"));
+            self::assertSame(1, (int) $connection->fetchOne("SELECT is_fallback FROM bi_glossary_values_v1 WHERE dimension = 'website_token' AND code = '".$blog."' AND locale = 'es'"));
             $counts = [];
             foreach ($connection->fetchAllAssociative('SELECT dimension, locale, COUNT(*) AS total FROM bi_glossary_values_v1 GROUP BY dimension, locale') as $row) {
                 $counts[$row['dimension']][$row['locale']] = (int) $row['total'];
@@ -279,6 +304,7 @@ final class GlossarySyncTest extends TestCase
         } finally {
             [$_ENV, $_SERVER] = $environment;
             unlink($projectDir.'/config/aggregate.yaml');
+            @unlink($projectDir.'/config/websites.yaml');
             rmdir($projectDir.'/config');
             rmdir($projectDir);
         }
@@ -294,10 +320,11 @@ final class GlossarySyncTest extends TestCase
             $configuration->setMiddlewares([new Middleware($logger)]);
         }
         $connection = DriverManager::getConnection(['driver' => 'pdo_sqlite', 'memory' => true], $configuration);
-        $migration = new Version20260928000000($connection, new NullLogger());
-        $migration->up(new Schema());
-        foreach ($migration->getSql() as $query) {
-            $connection->executeStatement($query->getStatement());
+        foreach ([new Version20260928000000($connection, new NullLogger()), new Version20261001000000($connection, new NullLogger())] as $migration) {
+            $migration->up(new Schema());
+            foreach ($migration->getSql() as $query) {
+                $connection->executeStatement($query->getStatement());
+            }
         }
 
         return $connection;

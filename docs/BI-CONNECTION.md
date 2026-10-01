@@ -16,7 +16,7 @@ Routine BI users get `SELECT` on the approved views and nothing else:
 | Views | Contents |
 | --- | --- |
 | `bi_anonymous_events_v1`, `bi_anonymous_goals_v1`, `bi_anonymous_geo_events_v1` | Counted anonymous events, with small cells withheld |
-| The six `bi_dim_*_v1` views, `bi_glossary_values_v1`, `bi_glossary_columns_v1` | Labels and definitions for codes and columns; no traffic |
+| The seven `bi_dim_*_v1` views, `bi_glossary_values_v1`, `bi_glossary_columns_v1` | Labels and definitions for codes, columns and websites; no traffic |
 
 Do not grant them the raw `events` table, the archive tables, the
 `analytics_glossary` table, the operational `analytics_archived_*` views or the
