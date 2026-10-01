@@ -334,7 +334,7 @@ Archiving does not weaken this routine-BI contract: the thresholded `bi_anonymou
 
 ### Declared BI glossary
 
-Routine BI roles may also read the six `bi_dim_*_v1` views plus
+Routine BI roles may also read the seven `bi_dim_*_v1` views plus
 `bi_glossary_values_v1` and `bi_glossary_columns_v1`. These publish declared
 metadata, not event observations: the resolver and sync never read events,
 archives, or fact views, and all Intl countries and all continents are published

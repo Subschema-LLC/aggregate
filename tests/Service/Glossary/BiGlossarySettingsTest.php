@@ -9,6 +9,7 @@ use App\Service\CustomDataSettings;
 use App\Service\Glossary\BiGlossarySettings;
 use App\Service\Glossary\BuiltinGlossaryCatalog;
 use App\Service\Glossary\GlossaryValidationException;
+use App\Service\WebsiteConfigManager;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Translation\Translator;
@@ -123,6 +124,7 @@ final class BiGlossarySettingsTest extends TestCase
         }
         foreach (['', ' trailing ', "control\nvalue", str_repeat('a', 192), "\xFF"] as $index => $code) {
             yield 'custom code '.$index => [['values' => ['utm_medium' => [$code => []]]], 'bi_glossary.values.utm_medium.'.$code];
+            yield 'website token '.$index => [['values' => ['website_token' => [$code => []]]], 'bi_glossary.values.website_token.'.$code];
         }
         yield 'non-mapping codes' => [['values' => ['device_class' => 'tablet']], 'bi_glossary.values.device_class'];
         yield 'non-mapping definition' => [['values' => ['device_class' => ['tablet' => 'Tablet']]], 'bi_glossary.values.device_class.tablet'];
@@ -153,6 +155,36 @@ final class BiGlossarySettingsTest extends TestCase
             $columns['column_'.$number] = [];
         }
         yield 'column bound' => [['columns' => ['bi_anonymous_events_v1' => $columns]], 'bi_glossary.columns'];
+    }
+
+    public function testRegisteredWebsitesAreCodesLabeledByNameAndDomain(): void
+    {
+        $shop = str_repeat('a', 32);
+        $long = str_repeat('é', 120);
+        file_put_contents($this->projectDir.'/config/websites.yaml', Yaml::dump(['websites' => [
+            ['name' => 'Online shop', 'domain' => 'shop.example.com', 'token' => $shop],
+            ['name' => $long, 'domain' => "blog.example.com\n", 'token' => 'blog-token'],
+            ['name' => 'Duplicate', 'domain' => 'dup.example.com', 'token' => $shop],
+            ['name' => 'Padded token', 'domain' => 'pad.example.com', 'token' => ' padded '],
+            ['domain' => 'unnamed.example.com', 'token' => 'unnamed-token'],
+        ]], 4, 2));
+        $settings = $this->settings();
+
+        self::assertSame([$shop, 'blog-token', 'unnamed-token'], $settings->dimensions()['website_token'], 'Unpublishable and repeated tokens are left out.');
+        $websites = $settings->websites();
+        self::assertSame(['name' => 'Online shop', 'domain' => 'shop.example.com'], $websites[$shop]);
+        self::assertSame(190, strlen($websites['blog-token']['name']), 'Names are cut to 191 bytes on a character boundary.');
+        self::assertTrue(mb_check_encoding($websites['blog-token']['name'], 'UTF-8'));
+        self::assertSame('blog.example.com', $websites['blog-token']['domain']);
+        self::assertSame('Unnamed', $websites['unnamed-token']['name']);
+
+        // Another token keeps labeling a removed website; registered ones need no entry.
+        $normalized = $settings->validate(['locales' => ['en', 'es'], 'values' => ['website_token' => [
+            $shop => ['label' => ['es' => 'Tienda en línea']],
+            'removed-site' => ['label' => 'Old microsite'],
+        ]]]);
+        self::assertSame(['es' => 'Tienda en línea'], $normalized['values']['website_token'][$shop]['label']);
+        self::assertSame(['en' => 'Old microsite'], $normalized['values']['website_token']['removed-site']['label']);
     }
 
     public function testMaximumTextAndSortAreAccepted(): void
@@ -228,6 +260,6 @@ final class BiGlossarySettingsTest extends TestCase
         return new BiGlossarySettings($loader, new CustomDataSettings($loader), new BuiltinGlossaryCatalog(new Translator('en')), [
             'contact' => ['label' => 'Contact request', 'enabled' => true, 'anonymous' => true],
             'retired' => ['label' => 'Retired goal', 'enabled' => false, 'anonymous' => false],
-        ]);
+        ], new WebsiteConfigManager($this->projectDir));
     }
 }

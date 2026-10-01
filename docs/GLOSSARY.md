@@ -19,7 +19,7 @@ rows are rolled into when archiving is on (`analytics_archiving_enabled`). The
 reporting views include archived counts. See
 [archiving and retention](CONFIGURATION.md#archiving-and-retention).
 
-**BI glossary.** Labels and descriptions for codes and columns, declared in
+**BI glossary.** Labels and descriptions for codes, websites and columns, declared in
 configuration and published to BI tools through the `bi_dim_*` and
 `bi_glossary_*` views by `app:analytics:glossary:sync`. See
 [BI labels and glossary](BI-GLOSSARY.md).

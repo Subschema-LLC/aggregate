@@ -14,7 +14,8 @@ use Symfony\Component\Translation\TranslatorBagInterface;
 /** Declared metadata only: this catalog has no database dependency. */
 class BuiltinGlossaryCatalog
 {
-    public const DIMENSIONS = ['event_name', 'goal_event', 'referrer_channel', 'device_class', 'viewport_bucket', 'geo_area'];
+    /** Dimensions with a bi_dim_*_v1 view, in contract order. */
+    public const DIMENSIONS = ['event_name', 'goal_event', 'referrer_channel', 'device_class', 'viewport_bucket', 'geo_area', 'website_token'];
 
     public function __construct(private readonly TranslatorBagInterface $translator)
     {
@@ -24,7 +25,9 @@ class BuiltinGlossaryCatalog
     {
         return [
             'event_name' => ['view'],
+            // Codes come from configuration: goals.yaml and the registered websites.
             'goal_event' => [],
+            'website_token' => [],
             'referrer_channel' => PrivacySanitizer::REFERRER_CHANNELS,
             'device_class' => PrivacySanitizer::DEVICE_CLASSES,
             'viewport_bucket' => PrivacySanitizer::VIEWPORT_BUCKETS,
