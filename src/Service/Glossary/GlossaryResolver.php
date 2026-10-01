@@ -24,6 +24,7 @@ class GlossaryResolver
             $dimensions[$dimension] = array_values(array_unique([...$dimensions[$dimension], ...array_map('strval', array_keys($codes))]));
         }
         $goals = $this->settings->goals();
+        $websites = $this->settings->websites();
         $descriptions = [];
         foreach ($this->settings->properties() as $definition) {
             foreach (['column', 'numeric_column'] as $field) {
@@ -39,6 +40,9 @@ class GlossaryResolver
                     $sourceText = [];
                     if ($type === 'value' && $subject === 'goal_event') {
                         $sourceText['label'] = $goals[$code]['label'];
+                    } elseif ($type === 'value' && $subject === 'website_token' && isset($websites[$code])) {
+                        // A website's name and domain are default-locale text from websites.yaml.
+                        $sourceText = array_filter(['label' => $websites[$code]['name'], 'description' => $websites[$code]['domain']], 'is_string');
                     } elseif ($type === 'column' && in_array($subject, ReportingViewManager::VIEW_NAMES, true) && isset($descriptions[$code])) {
                         $sourceText['description'] = $descriptions[$code];
                     }

@@ -324,8 +324,11 @@ value/column metadata. **Reporting → BI glossary** edits the same mapping; YAM
 plus `php bin/console app:analytics:glossary:sync` also work with the dashboard
 disabled. An environment file or `environments.<env>.bi_glossary` replaces the
 whole mapping, and there are no uppercase environment-variable overrides.
-Omitting the block publishes the built-in catalog, goal labels, and saved custom
-property descriptions in English after sync. Invalid glossary metadata makes its
+Omitting the block publishes the built-in catalog, goal labels, registered
+website names and domains (for `bi_dim_website_token_v1`), and saved custom
+property descriptions in English after sync. Translate or relabel websites under
+`bi_glossary.values.website_token`, and sync after adding, renaming or removing a
+website. Invalid glossary metadata makes its
 save/sync fail with field-level errors but does not affect tracker configuration,
 ingestion, or the health configuration check. See the
 [YAML reference and fallback rules](BI-GLOSSARY.md#yaml-reference).
