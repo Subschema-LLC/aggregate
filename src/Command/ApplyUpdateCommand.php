@@ -51,6 +51,10 @@ release otherwise):
 
 Both then run database migrations, sync the BI glossary, rebuild the cache and signal workers.
 
+  deployment: the code is deployed another way (a hosting panel's Git deployment, CI/CD), so this command
+  installs nothing. Run app:updates:deployed after each deployment instead; --resume still
+  continues its steps if they stopped.
+
 Your configuration is never overwritten: .env.local, config/aggregate*.yaml, config/websites.yaml,
 config/tag-manager/sites/, config/*.local.yaml and var/ are left alone. Edits to the shipped
 config/goals.yaml, config/navigation.yaml or config/quick_search.yaml move to the matching
@@ -140,6 +144,11 @@ HELP);
             if ($input->getOption('resume')) {
                 $state = $this->updater->resume($write);
             } else {
+                if ($this->updater->installationType() === 'deployment') {
+                    $io->error('This installation is deployed another way (such as a hosting panel\'s Git deployment or CI/CD), so this command installs nothing. Deploy with that tool, then run php bin/console app:updates:deployed.');
+
+                    return Command::FAILURE;
+                }
                 $confirmed = (bool) $input->getOption('database-backup-confirmed');
                 if (!$input->getOption('yes')) {
                     if (!$input->isInteractive()) {
@@ -209,6 +218,15 @@ HELP);
         }
         if (($files['env_keys_added'] ?? []) !== []) {
             $io->note('New release defaults were added to .env: '.implode(', ', $files['env_keys_added']).'. Override them in .env.local.');
+        }
+        if (($state['type'] ?? null) === 'deployment') {
+            match ($state['status'] ?? null) {
+                'completed' => $io->success('The post-deployment steps are complete.'),
+                'failed' => $io->error('The post-deployment steps did not run. '.($state['error'] ?? '')),
+                default => $io->error('The post-deployment steps need attention. '.($state['error'] ?? '').' Run app:updates:apply --status for details.'),
+            };
+
+            return;
         }
         match ($state['status'] ?? null) {
             'completed' => $io->success('The update is complete.'),

@@ -8,6 +8,7 @@ use App\Service\AggregateConfigLoader;
 use App\Service\ApplicationUpdateService;
 use App\Service\FeatureFlags;
 use App\Service\Update\ApplicationUpdater;
+use App\Service\Update\DeploymentAction;
 use App\Service\Update\SystemCheck;
 use App\Service\UpdateSettings;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -31,6 +32,7 @@ final class UpdatesController extends AbstractController
         private readonly ApplicationUpdater $updater,
         private readonly SystemCheck $systemCheck,
         private readonly UpdateSettings $settings,
+        private readonly ?DeploymentAction $deploymentAction = null,
     ) {
     }
 
@@ -54,6 +56,7 @@ final class UpdatesController extends AbstractController
             'update_upload_limit' => SystemCheck::uploadLimit(),
             'update_method' => $this->chosenMethod(),
             'update_detected_method' => $this->updates->detectedMethod(),
+            'update_deployment_action' => ($status['installation_type'] ?? null) === 'deployment' ? $this->deploymentAction() : null,
         ]);
     }
 
@@ -93,6 +96,11 @@ final class UpdatesController extends AbstractController
         }
 
         $status = $this->updates->check(true);
+        if (($status['installation_type'] ?? null) === 'deployment') {
+            $this->addFlash('error', 'This installation is deployed another way, so updates are installed with that tool, not from this page.');
+
+            return $this->redirectToRoute('app_updates');
+        }
         if (($status['state'] ?? null) !== 'available') {
             $this->addFlash('error', 'No installable update is available. '.($status['message'] ?? ''));
 
@@ -227,8 +235,8 @@ final class UpdatesController extends AbstractController
 
     /**
      * Save the update method an administrator chose (updates_method) to the
-     * active YAML configuration: release ZIPs, or the repository (advanced).
-     * The Updates page then shows only that method.
+     * active YAML configuration: release ZIPs, the repository (advanced) or code
+     * deployed another way. The Updates page then shows only that method.
      */
     #[Route('/dashboard/updates/method', name: 'app_updates_method', methods: ['POST'])]
     public function saveMethod(Request $request): Response
@@ -261,9 +269,15 @@ final class UpdatesController extends AbstractController
             return $this->redirectToRoute('app_updates');
         }
         $this->updates->check(true);
-        $label = $method === UpdateSettings::METHOD_REPOSITORY ? 'from the repository (advanced)' : 'with release ZIPs';
+        $label = match ($method) {
+            UpdateSettings::METHOD_REPOSITORY => 'from the repository (advanced)',
+            UpdateSettings::METHOD_DEPLOYMENT => 'by deploying the code another way',
+            default => 'with release ZIPs',
+        };
         $this->addFlash('success', 'This installation now updates '.$label.'. The choice is saved as updates_method in the YAML configuration.');
-        if ($method !== $this->updates->detectedMethod()) {
+        if ($method === UpdateSettings::METHOD_DEPLOYMENT) {
+            $this->addFlash('warning', 'After each deployment, run the post-deployment command shown on this page, or add it to your deployment tool\'s deployment action.');
+        } elseif ($method !== $this->updates->detectedMethod()) {
             $this->addFlash('warning', $method === UpdateSettings::METHOD_REPOSITORY
                 ? 'This directory is not a Git clone yet, so repository updates cannot run until it is one. The system check explains what to do; you can switch back to release ZIPs at any time.'
                 : 'This directory is a Git clone, so release ZIPs cannot be installed over it. Install a release ZIP into a new directory, or switch back to repository updates.');
@@ -304,6 +318,16 @@ final class UpdatesController extends AbstractController
         $this->addFlash('success', 'Update settings saved to the YAML configuration.');
 
         return $this->redirectToRoute('app_updates');
+    }
+
+    /** @return array<string, mixed>|null The deployment action for this server, or null when it cannot be built */
+    private function deploymentAction(): ?array
+    {
+        try {
+            return $this->deploymentAction?->build();
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /** The method an administrator chose, or null when none is chosen or the setting is invalid (the status explains it). */

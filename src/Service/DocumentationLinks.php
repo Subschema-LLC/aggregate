@@ -64,6 +64,7 @@ final class DocumentationLinks
         'updates.repository' => ['operate/updates#update-from-the-repository-advanced', 'docs/UPDATES.md'],
         'updates.git-clone' => ['operate/updates#set-up-a-git-clone', 'docs/UPDATES.md'],
         'updates.switch' => ['operate/updates#switch-methods', 'docs/UPDATES.md'],
+        'updates.deployment' => ['operate/updates#deploy-the-code-another-way', 'docs/UPDATES.md'],
         'releases.install' => ['operate/releases#install-or-deploy-a-verified-package', 'docs/RELEASES.md'],
     ];
 

@@ -19,7 +19,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * Show or choose the update method (updates_method) without the dashboard. It
  * saves the same YAML setting as the Updates page.
  */
-#[AsCommand(name: 'app:updates:method', description: 'Show or choose how this installation updates: release (ZIPs) or repository (Git, advanced)')]
+#[AsCommand(name: 'app:updates:method', description: 'Show or choose how this installation updates: release (ZIPs), repository (Git, advanced) or deployment (deployed another way)')]
 final class UpdateMethodCommand extends Command
 {
     public function __construct(
@@ -34,7 +34,7 @@ final class UpdateMethodCommand extends Command
     protected function configure(): void
     {
         $this
-            ->addArgument('method', InputArgument::OPTIONAL, 'release or repository; omit to show the current method')
+            ->addArgument('method', InputArgument::OPTIONAL, 'release, repository or deployment; omit to show the current method')
             ->setHelp(<<<'HELP'
 Without an argument, shows the update method and whether it fits this directory.
 
@@ -43,6 +43,11 @@ Without an argument, shows the update method and whether it fits this directory.
   repository  Fast-forward pulls of a Git clone (advanced). Installs the newest
               commit of updates_branch, which is not a signed release, and needs
               Git and Composer on the server.
+  deployment  You deploy the code another way: a hosting panel's Git
+              deployment, CI/CD or rsync. That tool installs updates. Run
+              app:updates:deployed after each deployment (or from its
+              deployment action); the Updates page shows the deployed commit
+              and how far behind it is.
 
 The choice is saved as updates_method in the active config/aggregate.yaml, the
 same setting the dashboard Updates page changes. It does not change any files.
@@ -77,7 +82,9 @@ HELP);
         }
 
         $io->success('This installation now updates '.$this->label($method).'. Saved as updates_method in config/aggregate.yaml.');
-        if ($method !== $this->updates->detectedMethod()) {
+        if ($method === UpdateSettings::METHOD_DEPLOYMENT) {
+            $io->note('After each deployment, run php bin/console app:updates:deployed, or add it to your deployment tool\'s deployment action. php bin/console app:updates:deployed --show-action prints the commands for this server; see "Deploy the code another way": '.$this->guide('updates.deployment'));
+        } elseif ($method !== $this->updates->detectedMethod()) {
             $io->warning($method === UpdateSettings::METHOD_REPOSITORY
                 ? 'This directory is not a Git clone yet, so repository updates cannot run until it is one. See "Set up a Git clone": '.$this->guide('updates.git-clone')
                 : 'This directory is a Git clone, so release ZIPs cannot be installed over it. Install a release into a new directory; see "Switch methods": '.$this->guide('updates.switch'));
@@ -92,7 +99,11 @@ HELP);
         $io->definitionList(
             ['Update method' => $source['method'] === null ? 'Not chosen' : ucfirst($this->label($source['method']))],
             ['This directory' => $source['detected'] === UpdateSettings::METHOD_REPOSITORY ? 'Git clone (fits repository updates)' : 'No .git folder (fits release ZIPs)'],
-            ['Used by app:updates:apply' => ucfirst($this->label($source['source'] === 'git' ? UpdateSettings::METHOD_REPOSITORY : UpdateSettings::METHOD_RELEASE))],
+            ['Used by app:updates:apply' => ucfirst($this->label(match ($source['source']) {
+                'git' => UpdateSettings::METHOD_REPOSITORY,
+                'deployment' => UpdateSettings::METHOD_DEPLOYMENT,
+                default => UpdateSettings::METHOD_RELEASE,
+            }))],
         );
         if ($source['mismatch'] !== null) {
             $io->error($source['mismatch']);
@@ -100,7 +111,7 @@ HELP);
             return Command::FAILURE;
         }
         if ($source['method'] === null) {
-            $io->note('Choose a method with php bin/console app:updates:method release (recommended) or repository (advanced), or on the Updates page.');
+            $io->note('Choose a method with php bin/console app:updates:method release (recommended), repository (advanced) or deployment (deployed another way), or on the Updates page.');
         }
 
         return Command::SUCCESS;
@@ -108,7 +119,11 @@ HELP);
 
     private function label(string $method): string
     {
-        return $method === UpdateSettings::METHOD_REPOSITORY ? 'directly from the repository (advanced)' : 'with release ZIPs';
+        return match ($method) {
+            UpdateSettings::METHOD_REPOSITORY => 'directly from the repository (advanced)',
+            UpdateSettings::METHOD_DEPLOYMENT => 'by deploying the code another way',
+            default => 'with release ZIPs',
+        };
     }
 
     /** A section of the update guide on the documentation site, or its file when documentation links are off. */

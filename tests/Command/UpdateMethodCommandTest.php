@@ -56,6 +56,8 @@ final class UpdateMethodCommandTest extends TestCase
         yield 'repository on a clone' => ['repository', 'repository', 'directly from the repository (advanced)', false];
         yield 'repository without .git' => ['repository', 'release', 'not a Git clone yet', true];
         yield 'release on a clone' => ['release', 'repository', 'is a Git clone', true];
+        yield 'deployed another way, any directory' => ['deployment', 'release', 'by deploying the code another way', false];
+        yield 'deployed another way from a clone' => ['deployment', 'repository', 'app:updates:deployed', false];
     }
 
     public function testInvalidMethodIsRejectedWithoutSaving(): void

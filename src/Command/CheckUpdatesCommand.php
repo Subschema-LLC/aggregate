@@ -32,7 +32,7 @@ final class CheckUpdatesCommand extends Command
         $this
             ->addOption('refresh', null, InputOption::VALUE_NONE, 'Check GitHub now instead of using cached results')
             ->addOption('json', null, InputOption::VALUE_NONE, 'Output the update status as JSON')
-            ->setHelp('Checks updates_branch (default: master) of updates_repository (default: the official repository) in config/aggregate.yaml. The update method (updates_method, see app:updates:method) decides what is compared: the repository method compares Git commits, the release method checks signed release ZIPs. Until a method is chosen, a Git clone uses the repository method and anything else uses release ZIPs. This command does not change application code. Results are cached for one hour.');
+            ->setHelp('Checks updates_branch (default: master) of updates_repository (default: the official repository) in config/aggregate.yaml. The update method (updates_method, see app:updates:method) decides what is compared: the repository method compares Git commits, the release method checks signed release ZIPs, and the deployment method compares the deployed commit with the branch and reports whether app:updates:deployed ran for the current files. Until a method is chosen, a Git clone uses the repository method and anything else uses release ZIPs. This command does not change application code. Results are cached for one hour.');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -51,19 +51,30 @@ final class CheckUpdatesCommand extends Command
 
         $io = new SymfonyStyle($input, $output);
         $isRelease = ($status['installation_type'] ?? 'git') === 'release';
+        $isDeployment = ($status['installation_type'] ?? 'git') === 'deployment';
         $installedBranch = $status['installed_branch'] ?? null;
         $io->definitionList(...[
             ['Repository' => OutputFormatter::escape((string) ($status['repository'] ?? ApplicationUpdateService::REPOSITORY))],
-            ['Update method' => ($isRelease ? 'Release ZIPs' : 'From the repository (Git, advanced)').(($status['update_method'] ?? null) === null ? ' (not chosen; fits this directory)' : '')],
+            ['Update method' => ($isRelease ? 'Release ZIPs' : ($isDeployment ? 'Deployed another way' : 'From the repository (Git, advanced)')).(($status['update_method'] ?? null) === null ? ' (not chosen; fits this directory)' : '')],
             ['Configured branch' => OutputFormatter::escape($status['branch'] ?? 'Unavailable')],
-            ...($isRelease ? [
+            ...($isDeployment ? [
+                ['Deployed commit' => ($status['current_commit'] ?? 'Unknown').(($status['commit_source'] ?? null) === 'repository' ? ' (read from the deployment repository)' : '')],
+                ['GitHub commit' => $status['latest_commit'] ?? 'Unavailable'],
+                ['Commits behind' => is_int($status['commits_behind'] ?? null) ? (string) $status['commits_behind'] : 'Unknown'],
+                ['Post-deployment steps' => is_int($status['deployed_at'] ?? null)
+                    ? 'Last ran '.gmdate('Y-m-d H:i', $status['deployed_at']).' UTC'.(($status['deployment_pending'] ?? false) ? '; files changed since' : '')
+                    : 'Not recorded'],
+                ['Deployment repository' => OutputFormatter::escape((string) ($status['deployment_repository'] ?? 'None found'))],
+            ] : ($isRelease ? [
                 ['Installed version' => OutputFormatter::escape($status['current_version'] ?? (($status['adopting'] ?? false) ? 'Unknown (no release.json)' : 'Unavailable'))],
                 ['Latest release version' => OutputFormatter::escape($status['latest_version'] ?? 'Unavailable')],
+                ['Installed commit' => $status['current_commit'] ?? 'Unavailable'],
+                ['GitHub commit' => $status['latest_commit'] ?? 'Unavailable'],
             ] : [
                 ['Installed branch' => OutputFormatter::escape($installedBranch ?? ($status['current_commit'] !== null ? 'Detached HEAD' : 'Unavailable'))],
-            ]),
-            ['Installed commit' => $status['current_commit'] ?? 'Unavailable'],
-            ['GitHub commit' => $status['latest_commit'] ?? 'Unavailable'],
+                ['Installed commit' => $status['current_commit'] ?? 'Unavailable'],
+                ['GitHub commit' => $status['latest_commit'] ?? 'Unavailable'],
+            ])),
             ['Checked at (UTC)' => $status['checked_at'] === null ? 'Not checked' : gmdate('Y-m-d H:i:s', $status['checked_at'])],
         ]);
 
@@ -91,6 +102,16 @@ final class CheckUpdatesCommand extends Command
                 $io->text('To install it, run php bin/console app:updates:apply (it verifies the signature first).');
                 $io->text('Update guide: '.$this->guide());
             }
+        } elseif ($isDeployment) {
+            if ($status['deployment_pending'] ?? false) {
+                $io->warning(($status['deployed_at'] ?? null) === null
+                    ? 'The post-deployment steps have not been recorded here yet. Run php bin/console app:updates:deployed after each deployment so database migrations run and the cache is rebuilt.'
+                    : 'Files changed since the post-deployment steps last ran, so database migrations and cache rebuilds may be pending. Run php bin/console app:updates:deployed.');
+            }
+            if ($status['state'] === 'available') {
+                $io->text('Deploy the newer commits with your deployment tool, then run php bin/console app:updates:deployed (or let the tool\'s deployment action run it).');
+            }
+            $io->text('Guide: '.$this->guide('updates.deployment'));
         } elseif ($status['current_commit'] !== null && $installedBranch !== $status['branch']) {
             $io->warning('The installed branch does not match updates_branch. Switch branches manually or correct config/aggregate.yaml before pulling.');
         } elseif ($status['state'] === 'available') {

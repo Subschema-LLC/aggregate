@@ -128,6 +128,35 @@ final class UpdatesCommandTest extends TestCase
         self::assertStringNotContainsString('app:updates:pull', $tester->getDisplay());
     }
 
+    public function testDeploymentCheckReportsTheDeployedCommitAndPendingSteps(): void
+    {
+        $status = array_replace($this->updateStatus(), [
+            'installation_type' => 'deployment',
+            'branch' => 'master',
+            'commits_behind' => 4,
+            'commit_source' => 'repository',
+            'deployed_at' => 1789426800,
+            'deployment_pending' => true,
+            'deployment_repository' => '/var/www/vhosts/example.com/git/aggregate.git',
+        ]);
+        $updates = $this->createMock(ApplicationUpdateService::class);
+        $updates->method('check')->willReturn($status);
+        $updates->expects(self::never())->method('pull');
+        $tester = new CommandTester(new CheckUpdatesCommand($updates));
+
+        self::assertSame(Command::SUCCESS, $tester->execute([]));
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay());
+        self::assertStringContainsString('Deployed another way', $display);
+        self::assertStringContainsString(str_repeat('a', 40).' (read from the deployment repository)', $display);
+        self::assertStringContainsString('Commits behind 4', $display);
+        self::assertStringContainsString('files changed since', $display);
+        self::assertStringContainsString('/var/www/vhosts/example.com/git/aggregate.git', $display);
+        self::assertStringContainsString('may be pending. Run php bin/console app:updates:deployed', $display);
+        self::assertStringContainsString('Deploy the newer commits with your deployment tool', $display);
+        self::assertStringNotContainsString('app:updates:apply', $display);
+        self::assertStringNotContainsString('app:updates:pull', $display);
+    }
+
     public function testSuccessfulPullReportsThatDeploymentStillNeedsCompletion(): void
     {
         $updates = $this->createMock(ApplicationUpdateService::class);
