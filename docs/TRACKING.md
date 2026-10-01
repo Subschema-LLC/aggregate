@@ -186,7 +186,7 @@ Use **Collection → Event examples** or `php bin/console app:analytics:examples
 For the checked-in Docker setup:
 
 ```bash
-curl http://localhost:9001/api/health
+curl http://localhost:9002/api/health
 ```
 
 In browser DevTools, look for `/api/receive` requests and inspect the response body as well as its HTTP status. HTTP 202 can indicate a recorded anonymous event, an accepted enhanced event, or intentionally ignored collection on a disabled/excluded route. An enhanced event uses the configured Messenger transport; a worker is needed for asynchronous delivery. See [worker setup](../DEPLOYMENT.md#worker-process-setup).

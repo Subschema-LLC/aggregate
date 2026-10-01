@@ -202,7 +202,7 @@ The loader first uses `config/aggregate_<environment>.yaml` when that file exist
 ```yaml
 environments:
   dev:
-    app_host: "http://localhost:9001"
+    app_host: "http://localhost:9002"
     dashboard_enabled: true
   prod:
     app_host: "https://analytics.example.com"

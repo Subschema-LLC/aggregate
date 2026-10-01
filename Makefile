@@ -160,7 +160,7 @@ ifeq ($(USE_DOCKER),1)
 	@echo ""
 endif
 	@echo "Health Check:"
-	@curl -s http://localhost/api/health || echo "❌ Health check failed"
+	@curl -s http://localhost:9002/api/health || echo "❌ Health check failed"
 
 test-tracking: ## Send a test tracking event
 	@echo "Sending test tracking event..."

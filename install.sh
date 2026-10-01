@@ -212,8 +212,8 @@ if [ ! -f config/aggregate.yaml ]; then
     echo ""
     echo "Creating config/aggregate.yaml..."
 
-    read -p "Public app host [http://localhost:9001]: " APP_HOST
-    APP_HOST=${APP_HOST:-http://localhost:9001}
+    read -p "Public app host [http://localhost:9002]: " APP_HOST
+    APP_HOST=${APP_HOST:-http://localhost:9002}
     read -p "JS namespace [Aggregate]: " JS_NAMESPACE
     JS_NAMESPACE=${JS_NAMESPACE:-Aggregate}
     read -p "Enable dashboard UI? [Y/n]: " DASHBOARD_CHOICE
@@ -251,7 +251,7 @@ environments:
 
   dev:
     rate_limit_per_minute: 1000
-    app_host: "http://localhost:9001"
+    app_host: "http://localhost:9002"
     js_namespace: "Aggregate"
     dashboard_enabled: true
     anonymous_tracking_enabled: true
