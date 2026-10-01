@@ -1,6 +1,6 @@
 {% props index, key, property, open = false %}
 
 <details class="box" data-property-row{% if open %} open{% endif %}>
-    <summary><strong data-property-label>{{ key ?: 'New property' }}</strong></summary>
+    <summary><strong data-property-label>{{ property.original_key|default(key) ?: 'New property' }}</strong></summary>
     {{ component('DataModel:PropertyFields', {index: index, key: key, property: property}) }}
 </details>

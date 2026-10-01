@@ -1,7 +1,7 @@
 {% props entry, entry_type, subject, locale, default_locale, id, errors %}
 
 {% set prefix = 'bi_glossary.' ~ (entry_type == 'value' ? 'values' : 'columns') ~ '.' ~ subject ~ '.' ~ entry.code %}
-<details class="mt-3"{% if entry.open %} open{% endif %}>
+<details class="glossary-entry-item mt-3"{% if entry.open %} open{% endif %}>
     <summary><code>{{ entry.code }}</code> — {{ entry.default.label }} <span class="tag">{{ entry.source }}</span>{% if entry.unsaved %} <span class="tag is-warning">Unsaved</span>{% endif %}</summary>
     {% component 'Ui:Validation' with {action: path('app_bi_glossary_save'), method: 'post', class: 'box mt-2'} %}
         {% block content %}
@@ -9,18 +9,85 @@
             <input type="hidden" name="entry_type" value="{{ entry_type }}"><input type="hidden" name="subject" value="{{ subject }}"><input type="hidden" name="code" value="{{ entry.code }}"><input type="hidden" name="locale" value="{{ locale }}">
             {% for field, message in errors %}{% if field == prefix or field starts with prefix ~ '.' %}<p class="help is-danger" role="alert"><code>{{ field }}</code>: {{ message }}</p>{% endif %}{% endfor %}
             {% if entry.unsaved %}<p class="notification is-info">This code is not yet published. Save to apply the change.</p>{% endif %}
-            <div class="field"><label class="label" for="{{ id }}-label">Label ({{ locale }})</label><div class="control"><input class="input" id="{{ id }}-label" name="label" value="{{ entry.input.label }}" maxlength="191" placeholder="{{ entry.current.label }}{% if entry.current.label_locale != locale %} (falls back to {{ entry.current.label_locale ?? 'code' }}){% endif %}"></div></div>
+            <div class="field">
+                <label class="label" for="{{ id }}-label">
+                    <span class="field-label-wrap">
+                        <span>Label ({{ locale }})</span>
+                        <span class="field-tooltip" tabindex="0" role="button" aria-label="Label information">
+                            <span class="icon is-small has-text-info"><i class="fas fa-circle-info" aria-hidden="true"></i></span>
+                            <span class="tooltip-bubble">
+                                <strong>Label:</strong> Human-readable name displayed in BI dashboards, visual charts, and reports (e.g. <code>Credit Card</code> instead of raw code <code>cc</code>).
+                                <br><strong>Formatting rules:</strong> Plain text, maximum 191 characters. If blank, falls back to the default locale label or the code itself.
+                            </span>
+                        </span>
+                    </span>
+                </label>
+                <div class="control">
+                    <input class="input" id="{{ id }}-label" name="label" data-action="input->pages--data-model--glossary#saveDraft" value="{{ entry.input.label }}" maxlength="191" placeholder="{{ entry.current.label }}{% if entry.current.label_locale != locale %} (falls back to {{ entry.current.label_locale ?? 'code' }}){% endif %}">
+                </div>
+            </div>
             {% if entry_type == 'value' %}
-                <div class="field"><label class="label" for="{{ id }}-group">Group ({{ locale }})</label><div class="control"><input class="input" id="{{ id }}-group" name="group" value="{{ entry.input.group }}" maxlength="191" placeholder="{{ entry.current.group_label ?? '' }}"></div></div>
-                <div class="field"><label class="label" for="{{ id }}-sort">Sort order (all locales)</label><div class="control"><input class="input" id="{{ id }}-sort" name="sort" type="number" min="0" max="100000" step="1" value="{{ entry.input.sort }}" placeholder="{{ entry.current.sort_order }}"></div></div>
+                <div class="field">
+                    <label class="label" for="{{ id }}-group">
+                        <span class="field-label-wrap">
+                            <span>Group ({{ locale }})</span>
+                            <span class="field-tooltip" tabindex="0" role="button" aria-label="Group category information">
+                                <span class="icon is-small has-text-info"><i class="fas fa-circle-info" aria-hidden="true"></i></span>
+                                <span class="tooltip-bubble">
+                                    <strong>Group:</strong> Optional parent category or cluster used for roll-up hierarchies and filtering in BI tools.
+                                    <br><strong>Formatting rules:</strong> Plain text, maximum 191 characters. Optional.
+                                </span>
+                            </span>
+                        </span>
+                    </label>
+                    <div class="control">
+                        <input class="input" id="{{ id }}-group" name="group" data-action="input->pages--data-model--glossary#saveDraft" value="{{ entry.input.group }}" maxlength="191" placeholder="{{ entry.current.group_label ?? '' }}">
+                    </div>
+                </div>
+                <div class="field">
+                    <label class="label" for="{{ id }}-sort">
+                        <span class="field-label-wrap">
+                            <span>Sort order (all locales)</span>
+                            <span class="field-tooltip" tabindex="0" role="button" aria-label="Sort order information">
+                                <span class="icon is-small has-text-info"><i class="fas fa-circle-info" aria-hidden="true"></i></span>
+                                <span class="tooltip-bubble">
+                                    <strong>Sort order:</strong> Determines display position in dropdowns and report legends. Lower numbers appear first.
+                                    <br><strong>Formatting rules:</strong> Whole number from 0 to 100,000. Shared across all locales.
+                                </span>
+                            </span>
+                        </span>
+                    </label>
+                    <div class="control">
+                        <input class="input" id="{{ id }}-sort" name="sort" data-action="input->pages--data-model--glossary#saveDraft" type="number" min="0" max="100000" step="1" value="{{ entry.input.sort }}" placeholder="{{ entry.current.sort_order }}">
+                    </div>
+                </div>
             {% endif %}
             {% if entry.property and locale == default_locale %}
                 <div class="field"><p class="label">Description ({{ locale }})</p><p>{{ entry.property.description ?: 'No model description declared.' }}</p><p class="help">The default description comes from the <a href="{{ path('app_data_model') }}">Data model editor</a>. Choose another published locale to translate it here.</p></div>
             {% else %}
-                <div class="field"><label class="label" for="{{ id }}-description">Description ({{ locale }})</label><div class="control"><textarea class="textarea" id="{{ id }}-description" name="description" maxlength="1000" rows="2" placeholder="{{ entry.current.description ?? '' }}">{{ entry.input.description }}</textarea></div></div>
+                <div class="field">
+                    <label class="label" for="{{ id }}-description">
+                        <span class="field-label-wrap">
+                            <span>Description ({{ locale }})</span>
+                            <span class="field-tooltip" tabindex="0" role="button" aria-label="Description information">
+                                <span class="icon is-small has-text-info"><i class="fas fa-circle-info" aria-hidden="true"></i></span>
+                                <span class="tooltip-bubble">
+                                    <strong>Description:</strong> Business definition and context for analysts and report consumers.
+                                    <br><strong>Formatting rules:</strong> Plain text, maximum 1000 characters.
+                                </span>
+                            </span>
+                        </span>
+                    </label>
+                    <div class="control">
+                        <textarea class="textarea" id="{{ id }}-description" name="description" data-action="input->pages--data-model--glossary#saveDraft" maxlength="1000" rows="2" placeholder="{{ entry.current.description ?? '' }}">{{ entry.input.description }}</textarea>
+                    </div>
+                </div>
                 {% if entry.property %}<p class="help mb-3">Default description: {{ entry.property.description }}. <a href="{{ path('app_data_model') }}">Edit the data model</a>.</p>{% endif %}
             {% endif %}
-            <div class="buttons"><button class="button is-primary" name="action" value="entry" type="submit">Save {{ entry.code }} and sync</button>{% if entry.overridden %}<button class="button" name="action" value="reset" type="submit" formnovalidate>Reset {{ entry.code }} overrides</button>{% endif %}</div>
+            <div class="buttons entry-action-buttons">
+                <button class="button is-primary" name="action" value="entry" type="submit">Save {{ entry.code }} and sync</button>
+                {% if entry.overridden %}<button class="button" name="action" value="reset" type="submit" formnovalidate>Reset {{ entry.code }} overrides</button>{% endif %}
+            </div>
         {% endblock %}
     {% endcomponent %}
 </details>

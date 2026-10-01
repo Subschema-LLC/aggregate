@@ -597,6 +597,30 @@ final class DataModelControllerTest extends TestCase
         return in_array($action, ['download', 'reporting'], true) ? $controller->$action() : $controller->$action($request);
     }
 
+    public function testPreservesSubmittedValuesWhenValidationFails(): void
+    {
+        $request = $this->request([
+            'properties' => [
+                ['key' => 'my_custom_metric', 'description' => 'Test description', 'column' => 'id', 'consent_required' => '0'],
+            ],
+            'mappings' => [],
+        ]);
+
+        $saveResponse = $this->controller($request)->save($request);
+        self::assertSame(302, $saveResponse->getStatusCode());
+
+        $indexRequest = $this->request([], 'GET');
+        $indexRequest->setSession($request->getSession());
+        $indexResponse = $this->controller($indexRequest)->index($indexRequest);
+        self::assertSame(200, $indexResponse->getStatusCode());
+
+        $content = (string) $indexResponse->getContent();
+        self::assertStringContainsString('my_custom_metric', $content);
+        self::assertStringContainsString('Test description', $content);
+        self::assertStringContainsString('id', $content);
+        self::assertStringContainsString('Values preserved', $content);
+    }
+
     private function controller(Request $request, bool $admin = true, ?LoggerInterface $logger = null): DataModelController
     {
         $controller = new DataModelController($this->config, $this->settings, $this->views, $logger ?? new NullLogger(), $this->glossary);

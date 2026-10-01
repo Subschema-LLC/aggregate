@@ -20,7 +20,7 @@ class CustomDataSettings
     public const UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'utm_id'];
     public const TYPES = ['scalar', 'string', 'integer', 'float', 'double', 'boolean'];
     public const MAXIMUM_SAFE_INTEGER = 9_007_199_254_740_991;
-    private const RESERVED_COLUMNS = [
+    public const RESERVED_COLUMNS = [
         'id', 'website_token', 'event_name', 'page_path', 'referrer_channel', 'privacy_mode',
         'device_class', 'viewport_bucket', 'geo_area', 'goal_event', 'created_at', 'archived_at',
         'url', 'referrer', 'screen_width', 'visitor_id', 'session_id', 'consent_state',
