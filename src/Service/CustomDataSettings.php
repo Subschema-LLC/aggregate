@@ -19,8 +19,12 @@ class CustomDataSettings
     public const PAGE_SEQUENCE_MAXIMUM = 20;
     public const UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'utm_id'];
     public const TYPES = ['scalar', 'string', 'integer', 'float', 'double', 'boolean'];
+    /** The collection payload object that carries an event's custom properties. */
+    public const PAYLOAD_KEY = 'customData';
+    /** The earlier name of that object, still accepted when customData is absent. */
+    public const LEGACY_PAYLOAD_KEY = 'eventData';
     public const MAXIMUM_SAFE_INTEGER = 9_007_199_254_740_991;
-    private const RESERVED_COLUMNS = [
+    public const RESERVED_COLUMNS = [
         'id', 'website_token', 'event_name', 'page_path', 'referrer_channel', 'privacy_mode',
         'device_class', 'viewport_bucket', 'geo_area', 'goal_event', 'created_at', 'archived_at',
         'url', 'referrer', 'screen_width', 'visitor_id', 'session_id', 'consent_state',
@@ -203,6 +207,16 @@ class CustomDataSettings
     public function isStrictCollection(): bool
     {
         return (new PrivacyPolicy($this->config))->isStrictCollection();
+    }
+
+    /**
+     * The custom properties a collection payload submits: its customData object,
+     * or, only when that key is absent, the legacy eventData object. Both pass
+     * the same filtering afterwards, so neither name can carry more.
+     */
+    public static function submittedProperties(array $payload): mixed
+    {
+        return array_key_exists(self::PAYLOAD_KEY, $payload) ? $payload[self::PAYLOAD_KEY] : ($payload[self::LEGACY_PAYLOAD_KEY] ?? null);
     }
 
     /** Server enforcement is independent of any browser-side override. */

@@ -38,7 +38,7 @@ consent and `page_sequence: 2` when the separate [page-depth setting](DATA-MODEL
 is enabled. The same generated count appears in enhanced and ecommerce examples.
 Enhanced examples illustrate permitted modeled properties; unlisted ordinary
 scalar properties still require enhanced consent. Reserved marker and legacy
-reporting-only keys are identified but omitted from `eventData`; disabled page
+reporting-only keys are identified but omitted from `customData`; disabled page
 depth is also omitted. The server supplies timestamps and optional geography.
 Goals have their own allowlist and are omitted. Kill switches and path exclusions
 still apply.
@@ -88,7 +88,7 @@ ecommerce properties by default.
   "visitorId": "synthetic-visitor",
   "sessionId": "synthetic-session",
   "screenWidth": 1440,
-  "eventData": {
+  "customData": {
     "currency": "USD",
     "total_minor": 4999,
     "tax_minor": 400,

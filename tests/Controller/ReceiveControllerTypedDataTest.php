@@ -58,7 +58,7 @@ final class ReceiveControllerTypedDataTest extends TestCase
             'internalTraffic' => true,
             // Forged browser rules cannot expand the saved deployment policy.
             'customData' => ['propertyTypes' => [], 'consentFreeProperties' => ['revenue']],
-            'eventData' => [
+            'customData' => [
                 'product_name' => "Demo product\0",
                 'quantity' => 2.0,
                 'unit_price' => 12.5,
@@ -166,7 +166,7 @@ final class ReceiveControllerTypedDataTest extends TestCase
         });
         // The JSON decoder can represent a syntactically valid exponent as
         // PHP infinity. Reject it before JSON storage or transport encoding.
-        $rawJson = '{"websiteToken":"example-token","eventName":"purchase_completed","pagePath":"/shop","consentState":"granted","eventData":{"revenue":1e309,"quantity":1}}';
+        $rawJson = '{"websiteToken":"example-token","eventName":"purchase_completed","pagePath":"/shop","consentState":"granted","customData":{"revenue":1e309,"quantity":1}}';
 
         $response = $this->ingest([], [
             'revenue' => ['type' => 'double'], 'quantity' => ['type' => 'integer'],
@@ -213,7 +213,7 @@ final class ReceiveControllerTypedDataTest extends TestCase
         $consent = $enhanced ? 'granted' : 'denied';
         $rawJson = '{"websiteToken":"example-token","eventName":"button_click","pagePath":"/example","consentState":"'.$consent.'",'
             .'"visitorId":"forged-id","sessionId":"forged-session","customData":{"pageSequenceEnabled":true,"pageSequenceMethod":"url_parameter","consentFreeProperties":["page_sequence","private"]},'
-            .'"eventData":{"utm_medium":"email","page_sequence":'.$numberJson.',"private":"detail"}}';
+            .'"customData":{"utm_medium":"email","page_sequence":'.$numberJson.',"private":"detail"}}';
 
         $response = $this->ingest([], ['utm_medium' => ['consent_required' => false]], $entityManager, $bus, $rawJson, ['page_sequence_enabled' => $enabled, 'page_sequence_method' => $method]);
 
@@ -243,7 +243,7 @@ final class ReceiveControllerTypedDataTest extends TestCase
 
         $response = $this->ingest([
             'websiteToken' => 'example-token', 'eventName' => 'view', 'pagePath' => '/example',
-            'consentState' => 'denied', 'eventData' => ['page_sequence' => 2],
+            'consentState' => 'denied', 'customData' => ['page_sequence' => 2],
         ], [], $entityManager, $bus, configValues: $settings);
 
         self::assertSame(500, $response->getStatusCode());
@@ -319,7 +319,7 @@ final class ReceiveControllerTypedDataTest extends TestCase
             $field => $page,
             'referrer' => 'https://example.test/previous?aggregate_page_sequence=1&private-query=value#private-fragment',
             'consentState' => $enhanced ? 'granted' : 'denied',
-            'eventData' => ['page_sequence' => 2],
+            'customData' => ['page_sequence' => 2],
         ], [], $entityManager, $bus, configValues: ['page_sequence_enabled' => true, 'page_sequence_method' => 'url_parameter']);
 
         self::assertSame(202, $response->getStatusCode());

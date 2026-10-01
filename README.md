@@ -179,11 +179,11 @@ make start-mysql
 make migrate-mysql
 ```
 
-The checked-in Compose setup serves **http://localhost:9001**. Set the active YAML environment's `app_host` to that URL for local integration snippets. Open `/install` to create a dashboard administrator, then register a website in the dashboard or through the CLI:
+The checked-in Compose setup serves **http://localhost:9002**. Set the active YAML environment's `app_host` to that URL for local integration snippets. Open `/install` to create a dashboard administrator, then register a website in the dashboard or through the CLI:
 
 ```bash
 docker compose exec php php bin/console app:create-website
-curl http://localhost:9001/api/health
+curl http://localhost:9002/api/health
 ```
 
 Use `start-postgres` / `migrate-postgres` or `start-mariadb` / `migrate-mariadb` for another Docker profile. The sample environment is for development; use your own secrets and connection settings in production. Existing installations should follow the [upgrade guidance](docs/PRIVACY-COMPLIANCE.md#upgrading-older-installations) before applying historical privacy migrations.

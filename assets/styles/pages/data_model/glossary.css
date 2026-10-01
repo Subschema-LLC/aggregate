@@ -1,0 +1,111 @@
+/* BI Glossary Page Spacing, Tooltips & Visual Enhancements */
+.bi-glossary-page details.box {
+    margin-bottom: 1.5rem;
+}
+
+.bi-glossary-page details.box summary {
+    cursor: pointer;
+    font-size: 1.05rem;
+    padding-bottom: 0.25rem;
+}
+
+.bi-glossary-page .glossary-entry-item {
+    margin-top: 0.875rem;
+    margin-bottom: 0.875rem;
+}
+
+.bi-glossary-page .glossary-entry-item summary {
+    cursor: pointer;
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--bulma-control-radius, 4px);
+    transition: background-color 0.15s ease;
+}
+
+.bi-glossary-page .glossary-entry-item summary:hover {
+    background-color: var(--app-brand-background, #f5f5f5);
+}
+
+.bi-glossary-page .add-code-form-wrapper {
+    margin-top: 1.75rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--app-brand-border, #dbdbdb);
+}
+
+.bi-glossary-page .entry-action-buttons {
+    margin-top: 1.25rem;
+}
+
+/* Tooltip and Info Icon Styling */
+.bi-glossary-page .field-label-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    position: relative;
+    max-width: 100%;
+}
+
+.bi-glossary-page .field-tooltip {
+    align-items: center;
+    border-radius: 4px;
+    cursor: pointer;
+    display: inline-flex;
+    position: relative;
+    user-select: none;
+    vertical-align: middle;
+}
+
+.bi-glossary-page .field-tooltip:focus-visible {
+    outline: 2px solid var(--app-brand-primary, #3273dc);
+    outline-offset: 2px;
+}
+
+.bi-glossary-page .field-tooltip .tooltip-bubble {
+    background: var(--app-brand-surface, #ffffff);
+    border: 1px solid var(--app-brand-border, #dbdbdb);
+    border-radius: var(--bulma-radius-medium, 6px);
+    bottom: calc(100% + 8px);
+    box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.25), 0 4px 10px rgba(0, 0, 0, 0.12);
+    color: var(--app-brand-text, #363636);
+    display: none;
+    font-size: 0.75rem;
+    font-weight: 400;
+    left: 50%;
+    line-height: 1.4;
+    max-width: min(22rem, calc(100vw - 3rem));
+    padding: 0.65rem 0.85rem;
+    pointer-events: auto;
+    position: absolute;
+    text-align: left;
+    transform: translateX(-50%);
+    white-space: normal;
+    width: max-content;
+    z-index: 100;
+}
+
+.bi-glossary-page .field-tooltip .tooltip-bubble::after {
+    border-color: var(--app-brand-surface, #ffffff) transparent transparent transparent;
+    border-style: solid;
+    border-width: 6px;
+    content: '';
+    left: 50%;
+    position: absolute;
+    top: 100%;
+    transform: translateX(-50%);
+}
+
+.bi-glossary-page .field-tooltip:hover .tooltip-bubble,
+.bi-glossary-page .field-tooltip:focus .tooltip-bubble,
+.bi-glossary-page .field-tooltip:focus-within .tooltip-bubble {
+    display: block;
+}
+
+@media (max-width: 768px) {
+    .bi-glossary-page .field-tooltip .tooltip-bubble {
+        left: 0;
+        transform: none;
+    }
+    .bi-glossary-page .field-tooltip .tooltip-bubble::after {
+        left: 1rem;
+        transform: none;
+    }
+}

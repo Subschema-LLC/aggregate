@@ -1,38 +1,119 @@
 {% props index, key, property %}
 
 {% set consent_required = property.consent_required is defined ? property.consent_required : true %}
+{% set current_key = property.original_key is defined and property.original_key != '' ? property.original_key : key %}
 <div class="columns is-multiline mt-3">
     <div class="column is-half">
-        <label class="label" for="property-{{ index }}-key">JSON key</label>
-        <input class="input" id="property-{{ index }}-key" data-field="key" data-action="input->pages--data-model--index#renameProperty" name="properties[{{ index }}][key]" value="{{ key }}" maxlength="128" required>
+        <label class="label" for="property-{{ index }}-key">
+            <span class="field-label-wrap">
+                <span>JSON key</span>
+                <span class="field-tooltip" tabindex="0" role="button" aria-label="JSON key information and formatting rules">
+                    <span class="icon is-small has-text-info"><i class="fas fa-circle-info" aria-hidden="true"></i></span>
+                    <span class="tooltip-bubble">
+                        <strong>JSON key:</strong> The top-level key in <code>eventData</code> sent with events (e.g. <code>cart_value</code>).
+                        <br><strong>Formatting rules:</strong> Must begin with a letter and contain up to 64 letters, numbers, underscores, dots, or hyphens (<code>[a-zA-Z][a-zA-Z0-9_.-]{0,63}</code>). Must be unique across properties.
+                    </span>
+                </span>
+            </span>
+        </label>
+        <input class="input" id="property-{{ index }}-key" data-field="key" data-action="input->pages--data-model--index#renameProperty input->pages--data-model--index#validateKey input->pages--data-model--index#saveDraft" name="properties[{{ index }}][key]" value="{{ current_key }}" maxlength="128" required>
+        <div class="field-feedback is-size-7 mt-1" data-key-feedback></div>
     </div>
     <div class="column is-half">
-        <label class="label" for="property-{{ index }}-type">JSON value type</label>
-        <div class="select is-fullwidth"><select id="property-{{ index }}-type" data-field="type" name="properties[{{ index }}][type]">
+        <label class="label" for="property-{{ index }}-type">
+            <span class="field-label-wrap">
+                <span>JSON value type</span>
+                <span class="field-tooltip" tabindex="0" role="button" aria-label="JSON value type information">
+                    <span class="icon is-small has-text-info"><i class="fas fa-circle-info" aria-hidden="true"></i></span>
+                    <span class="tooltip-bubble">
+                        <strong>JSON value type:</strong> Enforces data type on ingested values. Mismatches are rejected without coercion (null is allowed).
+                        <br><strong>Options:</strong>
+                        <br>• <em>Scalar:</em> Flat string, number, or boolean.
+                        <br>• <em>String:</em> Text string.
+                        <br>• <em>Integer:</em> Whole safe integer.
+                        <br>• <em>Float/Double:</em> Floating-point number.
+                        <br>• <em>Boolean:</em> true or false.
+                    </span>
+                </span>
+            </span>
+        </label>
+        <div class="select is-fullwidth"><select id="property-{{ index }}-type" data-field="type" data-action="change->pages--data-model--index#saveDraft" name="properties[{{ index }}][type]">
             {% for type, label in {scalar: 'Any flat scalar (existing behavior)', string: 'String', integer: 'Integer', float: 'Float (JSON number)', double: 'Double (JSON number)', boolean: 'Boolean'} %}
                 <option value="{{ type }}"{% if property.type|default('scalar') == type %} selected{% endif %}>{{ label }}</option>
             {% endfor %}
         </select></div>
     </div>
     <div class="column is-half">
-        <label class="label" for="property-{{ index }}-consent">Collection</label>
-        <div class="select is-fullwidth"><select id="property-{{ index }}-consent" data-field="consent_required" name="properties[{{ index }}][consent_required]">
+        <label class="label" for="property-{{ index }}-consent">
+            <span class="field-label-wrap">
+                <span>Collection</span>
+                <span class="field-tooltip" tabindex="0" role="button" aria-label="Collection consent requirements information">
+                    <span class="icon is-small has-text-info"><i class="fas fa-circle-info" aria-hidden="true"></i></span>
+                    <span class="tooltip-bubble">
+                        <strong>Collection mode:</strong> Controls whether this property can be collected without visitor analytics consent.
+                        <br><strong>Options:</strong>
+                        <br>• <em>Require enhanced consent:</em> Omitted from anonymous tracking unless user granted consent.
+                        <br>• <em>Allow without consent:</em> Added to the server anonymous allowlist. Must never contain personal identifiers.
+                    </span>
+                </span>
+            </span>
+        </label>
+        <div class="select is-fullwidth"><select id="property-{{ index }}-consent" data-field="consent_required" data-action="change->pages--data-model--index#saveDraft" name="properties[{{ index }}][consent_required]">
             <option value="1"{% if consent_required %} selected{% endif %}>Require enhanced consent</option>
             <option value="0"{% if not consent_required %} selected{% endif %}>Allow without consent</option>
         </select></div>
     </div>
     <div class="column is-half">
-        <label class="label" for="property-{{ index }}-description">Description</label>
-        <input class="input" id="property-{{ index }}-description" data-field="description" name="properties[{{ index }}][description]" value="{{ property.description|default('') }}" maxlength="1000">
+        <label class="label" for="property-{{ index }}-description">
+            <span class="field-label-wrap">
+                <span>Description</span>
+                <span class="field-tooltip" tabindex="0" role="button" aria-label="Description information">
+                    <span class="icon is-small has-text-info"><i class="fas fa-circle-info" aria-hidden="true"></i></span>
+                    <span class="tooltip-bubble">
+                        <strong>Description:</strong> Shared documentation explaining the purpose and business meaning of this property. Exported in the data model YAML.
+                        <br><strong>Formatting rules:</strong> Optional plain text, maximum 1000 characters.
+                    </span>
+                </span>
+            </span>
+        </label>
+        <input class="input" id="property-{{ index }}-description" data-field="description" data-action="input->pages--data-model--index#saveDraft" name="properties[{{ index }}][description]" value="{{ property.description|default('') }}" maxlength="1000">
     </div>
     <div class="column is-half">
-        <label class="label" for="property-{{ index }}-column">Text reporting column (optional)</label>
-        <input class="input" id="property-{{ index }}-column" data-field="column" name="properties[{{ index }}][column]" value="{{ property.column|default('') }}" maxlength="63" pattern="[a-z][a-z0-9_]{0,62}">
+        <label class="label" for="property-{{ index }}-column">
+            <span class="field-label-wrap">
+                <span>Text reporting column (optional)</span>
+                <span class="field-tooltip" tabindex="0" role="button" aria-label="Text reporting column information and formatting rules">
+                    <span class="icon is-small has-text-info"><i class="fas fa-circle-info" aria-hidden="true"></i></span>
+                    <span class="tooltip-bubble">
+                        <strong>Text reporting column:</strong> Creates a custom SQL column in reporting views. Leave blank to collect without exposing in views.
+                        <br><strong>Formatting rules:</strong> Unique lowercase SQL identifier (1–63 chars), starting with a letter and using only lowercase letters, digits, and underscores (<code>[a-z][a-z0-9_]{0,62}</code>). Cannot match built-in column names.
+                    </span>
+                </span>
+            </span>
+        </label>
+        <input class="input" id="property-{{ index }}-column" data-field="column" data-action="input->pages--data-model--index#validateColumn input->pages--data-model--index#saveDraft" name="properties[{{ index }}][column]" value="{{ property.column|default('') }}" maxlength="63" pattern="[a-z][a-z0-9_]{0,62}">
+        <div class="field-feedback is-size-7 mt-1" data-column-feedback></div>
+        <p class="help">Cannot use built-in names (<a href="#reserved-columns-list" data-action="pages--data-model--index#showReservedColumns">view built-in column names</a>).</p>
     </div>
     <div class="column is-half">
-        <label class="label" for="property-{{ index }}-numeric_column">Numeric reporting column (optional)</label>
-        <input class="input" id="property-{{ index }}-numeric_column" data-field="numeric_column" name="properties[{{ index }}][numeric_column]" value="{{ property.numeric_column|default('') }}" maxlength="63" pattern="[a-z][a-z0-9_]{0,62}">
-        <p class="help">Requires Integer, Float, or Double. Adds a separate column for calculations and preserves the existing text column.</p>
+        <label class="label" for="property-{{ index }}-numeric_column">
+            <span class="field-label-wrap">
+                <span>Numeric reporting column (optional)</span>
+                <span class="field-tooltip" tabindex="0" role="button" aria-label="Numeric reporting column information and formatting rules">
+                    <span class="icon is-small has-text-info"><i class="fas fa-circle-info" aria-hidden="true"></i></span>
+                    <span class="tooltip-bubble">
+                        <strong>Numeric reporting column:</strong> Adds a numeric SQL column for mathematical operations (sums, averages) while preserving text values.
+                        <br><strong>Formatting rules:</strong> Requires property type Integer, Float, or Double. Unique lowercase SQL identifier (1–63 chars, <code>[a-z][a-z0-9_]{0,62}</code>). Cannot match built-in column names.
+                    </span>
+                </span>
+            </span>
+        </label>
+        <input class="input" id="property-{{ index }}-numeric_column" data-field="numeric_column" data-action="input->pages--data-model--index#validateColumn input->pages--data-model--index#saveDraft" name="properties[{{ index }}][numeric_column]" value="{{ property.numeric_column|default('') }}" maxlength="63" pattern="[a-z][a-z0-9_]{0,62}">
+        <div class="field-feedback is-size-7 mt-1" data-numeric-column-feedback></div>
+        <p class="help">Requires Integer, Float, or Double. Cannot use built-in names (<a href="#reserved-columns-list" data-action="pages--data-model--index#showReservedColumns">view built-in list</a>).</p>
     </div>
 </div>
-<button class="button is-light" type="button" data-remove-row data-action="pages--data-model--index#removeRow">Remove property</button>
+<button class="button is-light mt-2" type="button" data-remove-row data-action="pages--data-model--index#removeRow">
+    <span class="icon is-small"><i class="fas fa-trash-can" aria-hidden="true"></i></span>
+    <span>Remove property</span>
+</button>

@@ -107,7 +107,7 @@ final class EventExampleGenerator
             'examples' => [
                 'anonymous' => [
                     'consent_required' => false,
-                    'payload' => $common + ['consentState' => 'denied', 'eventData' => (object) $anonymous],
+                    'payload' => $common + ['consentState' => 'denied', CustomDataSettings::PAYLOAD_KEY => (object) $anonymous],
                 ],
                 'enhanced' => [
                     'consent_required' => true,
@@ -116,7 +116,7 @@ final class EventExampleGenerator
                         'visitorId' => 'synthetic-visitor',
                         'sessionId' => 'synthetic-session',
                         'screenWidth' => 1440,
-                        'eventData' => (object) $enhanced,
+                        CustomDataSettings::PAYLOAD_KEY => (object) $enhanced,
                     ],
                 ],
             ],

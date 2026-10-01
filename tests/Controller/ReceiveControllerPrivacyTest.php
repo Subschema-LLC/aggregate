@@ -78,7 +78,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
                 'visitorId' => 'private-visitor',
                 'sessionId' => 'private-session',
                 'internalTraffic' => true,
-                'eventData' => [
+                'customData' => [
                     'plan' => "pro\0",
                     'zero' => 0,
                     'flag' => false,
@@ -125,6 +125,63 @@ final class ReceiveControllerPrivacyTest extends TestCase
         self::assertStringNotContainsString('private', serialize($persisted));
     }
 
+    /**
+     * customData is the payload's property object; eventData is its earlier
+     * name. Direct requests under either name pass the same server filtering,
+     * and when both are sent only customData is read.
+     */
+    #[DataProvider('propertyPayloads')]
+    public function testCustomDataAndLegacyEventDataPassTheSameFilteringInBothModes(array $properties, string $consentState, ?array $expected): void
+    {
+        $persisted = null;
+        $queued = null;
+        $entityManager = $this->createStub(EntityManagerInterface::class);
+        $entityManager->method('persist')->willReturnCallback(static function (object $event) use (&$persisted): void {
+            $persisted = $event;
+        });
+        $bus = $this->createStub(MessageBusInterface::class);
+        $bus->method('dispatch')->willReturnCallback(static function (object $message) use (&$queued): Envelope {
+            $queued = $message;
+
+            return new Envelope($message);
+        });
+
+        $response = $this->invoke(
+            payload: ['websiteToken' => 'public-site-token', 'pagePath' => '/pricing', 'eventName' => 'plan_selected', 'consentState' => $consentState] + $properties,
+            bus: $bus,
+            recorder: new AnonymousEventRecorder($entityManager),
+            config: $this->privacyConfig(customDataProperties: [
+                'plan' => ['consent_required' => false],
+                'email' => ['consent_required' => true],
+            ]),
+        );
+
+        self::assertSame(202, $response->getStatusCode());
+        if ($consentState === 'granted') {
+            self::assertInstanceOf(TrackEventMessage::class, $queued);
+            self::assertSame($expected, $queued->eventData);
+        } else {
+            self::assertInstanceOf(Event::class, $persisted);
+            self::assertSame($expected, $persisted->getCustomData());
+            self::assertStringNotContainsString('person@example.com', serialize($persisted));
+            self::assertStringNotContainsString('unconfigured', serialize($persisted));
+        }
+    }
+
+    public static function propertyPayloads(): iterable
+    {
+        $submitted = ['plan' => 'pro', 'email' => 'person@example.com', 'unconfigured' => 'unconfigured-value'];
+        foreach (['customData', 'eventData'] as $key) {
+            yield $key.' without consent' => [[$key => $submitted], 'denied', ['plan' => 'pro']];
+            // Consent permits declared and other scalar properties alike.
+            yield $key.' with consent' => [[$key => $submitted], 'granted', $submitted];
+        }
+        $both = ['customData' => ['plan' => 'preferred'], 'eventData' => ['plan' => 'legacy', 'email' => 'person@example.com']];
+        yield 'both names: customData wins without consent' => [$both, 'denied', ['plan' => 'preferred']];
+        yield 'both names: customData wins with consent' => [$both, 'granted', ['plan' => 'preferred']];
+        yield 'an empty customData is not replaced by eventData' => [['customData' => null, 'eventData' => ['plan' => 'legacy']], 'denied', null];
+    }
+
     public static function anonymousConsentStates(): iterable
     {
         yield 'denied' => ['denied'];
@@ -145,7 +202,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
                 'websiteToken' => 'public-site-token',
                 'pagePath' => '/pricing',
                 'consentState' => 'denied',
-                'eventData' => ['email' => 'private@example.com'],
+                'customData' => ['email' => 'private@example.com'],
             ],
             bus: $bus,
             recorder: new AnonymousEventRecorder($entityManager),
@@ -192,7 +249,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
             'internalTrafficValue' => 'raw-marker-value-must-not-be-retained',
             'visitorId' => 'enhanced-visitor',
             'sessionId' => 'enhanced-session',
-            'eventData' => [$markerName => !$expected, 'plan' => 'pro'],
+            'customData' => [$markerName => !$expected, 'plan' => 'pro'],
         ];
         if ($includeFlag) {
             $payload['internalTraffic'] = $submitted;
@@ -267,7 +324,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
                 'visitorId' => 'forged-visitor',
                 'sessionId' => 'forged-session',
                 'goalEvent' => 'purchase',
-                'eventData' => ['email' => 'person@example.com'],
+                'customData' => ['email' => 'person@example.com'],
             ],
             bus: $bus,
             recorder: new AnonymousEventRecorder($entityManager),
@@ -356,7 +413,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
                 'viewportBucket' => 'large',
                 'goalEvent' => 'purchase',
                 'screenWidth' => 1440,
-                'eventData' => ['plan' => "pro\0", 'nested' => ['ignored']],
+                'customData' => ['plan' => "pro\0", 'nested' => ['ignored']],
                 'consentState' => 'granted',
                 'visitorId' => 'visitor_abc',
                 'sessionId' => 'session_abc',
@@ -664,7 +721,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
             'viewportBucket' => 'small',
             'screenWidth' => 390,
             'internalTraffic' => true,
-            'eventData' => ['utm_medium' => 'private-medium', 'page_sequence' => 3, 'orgInternalTraffic' => true],
+            'customData' => ['utm_medium' => 'private-medium', 'page_sequence' => 3, 'orgInternalTraffic' => true],
         ];
 
         yield 'standard tracker payload with enhanced consent' => [$full, 'Mozilla/5.0 (iPhone) Mobile Safari'];
@@ -721,7 +778,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
                 'websiteToken' => 'public-site-token',
                 'pagePath' => '/pricing',
                 'eventName' => 'button_click',
-                'eventData' => ['email' => 'private@example.com'],
+                'customData' => ['email' => 'private@example.com'],
                 'consentState' => 'denied',
             ],
             bus: $this->createStub(MessageBusInterface::class),

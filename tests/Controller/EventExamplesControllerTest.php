@@ -75,11 +75,11 @@ final class EventExamplesControllerTest extends TestCase
         $this->assertPrivate($response);
         self::assertSame($before, file_get_contents($this->projectDir.'/config/aggregate.yaml'));
         self::assertSame('denied', $anonymous['consentState']);
-        self::assertSame(['utm_medium' => 'email'], $anonymous['eventData']);
+        self::assertSame(['utm_medium' => 'email'], $anonymous['customData']);
         self::assertArrayNotHasKey('visitorId', $anonymous);
         self::assertArrayNotHasKey('sessionId', $anonymous);
         self::assertSame('granted', $enhanced['consentState']);
-        self::assertArrayHasKey('plan', $enhanced['eventData']);
+        self::assertArrayHasKey('plan', $enhanced['customData']);
         self::assertSame('REPLACE_WITH_PUBLIC_WEBSITE_TOKEN', $enhanced['websiteToken']);
         self::assertCount(1, $crawler->filter('details[open] #example-anonymous'));
         self::assertCount(0, $crawler->filter('details[open] #example-enhanced'));
@@ -119,8 +119,8 @@ final class EventExamplesControllerTest extends TestCase
             self::assertCount(1, $crawler->filter('a[href="/dashboard/data-model/examples/download?mode='.$mode.'&example=ecommerce"]'));
         }
         $anonymous = json_decode($crawler->filter('#example-anonymous')->text(), flags: JSON_THROW_ON_ERROR);
-        self::assertInstanceOf(\stdClass::class, $anonymous->eventData);
-        self::assertSame([], get_object_vars($anonymous->eventData));
+        self::assertInstanceOf(\stdClass::class, $anonymous->customData);
+        self::assertSame([], get_object_vars($anonymous->customData));
         self::assertObjectNotHasProperty('visitorId', $anonymous);
         self::assertObjectNotHasProperty('sessionId', $anonymous);
         $recommended = Yaml::parse($crawler->filter('#ecommerce-model-yaml')->text(null, false));
