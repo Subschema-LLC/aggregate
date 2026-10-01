@@ -234,8 +234,8 @@ docker compose exec php php bin/console app:create-website
 ```
 
 The checked-in Compose/Caddy configuration serves the application at
-`http://localhost:9001`; use that URL for `app_host` and open
-`http://localhost:9001/install` for dashboard setup. The profile helpers select
+`http://localhost:9002`; use that URL for `app_host` and open
+`http://localhost:9002/install` for dashboard setup. The profile helpers select
 the database connection string as well as the service profile. Substitute
 `start-postgres` / `migrate-postgres` or `start-mariadb` / `migrate-mariadb` to work
 with those databases. Run one database profile at a time.
@@ -448,7 +448,7 @@ current commands.
 | `make clean` | Remove Compose volumes, including development database data, and clear local cache/logs |
 
 For a simple health check against the checked-in Docker setup, use
-`curl http://localhost:9001/api/health`. `make status` assumes port 80 for its HTTP
+`curl http://localhost:9002/api/health`. `make status` assumes port 80 for its HTTP
 health check.
 
 ## Preparing a pull request

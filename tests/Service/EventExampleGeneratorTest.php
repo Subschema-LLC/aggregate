@@ -49,9 +49,9 @@ final class EventExampleGeneratorTest extends TestCase
         self::assertTrue($bundle['synthetic']);
         self::assertFalse($policy->hasEnhancedConsent($anonymous['consentState']));
         self::assertTrue($policy->hasEnhancedConsent($enhanced['consentState']));
-        self::assertSame([], (array) $anonymous['eventData']);
-        self::assertSame(CustomDataSettings::UTM_KEYS, array_keys((array) $enhanced['eventData']));
-        self::assertSame('email', $enhanced['eventData']->utm_medium);
+        self::assertSame([], (array) $anonymous['customData']);
+        self::assertSame(CustomDataSettings::UTM_KEYS, array_keys((array) $enhanced['customData']));
+        self::assertSame('email', $enhanced['customData']->utm_medium);
         foreach (['visitorId', 'sessionId', 'screenWidth', 'occurredAt', 'timestamp', 'geoArea', 'userAgent'] as $key) {
             self::assertArrayNotHasKey($key, $anonymous);
         }
@@ -59,8 +59,8 @@ final class EventExampleGeneratorTest extends TestCase
         self::assertFalse($anonymous['internalTraffic']);
         self::assertFalse($enhanced['internalTraffic']);
         $decoded = json_decode($generator->exportJson(), flags: JSON_THROW_ON_ERROR);
-        self::assertInstanceOf(\stdClass::class, $decoded->examples->anonymous->payload->eventData);
-        self::assertSame([], get_object_vars($decoded->examples->anonymous->payload->eventData));
+        self::assertInstanceOf(\stdClass::class, $decoded->examples->anonymous->payload->customData);
+        self::assertSame([], get_object_vars($decoded->examples->anonymous->payload->customData));
     }
 
     public function testExamplesRespectAliasesLiteralKeysAndExplicitDetailedUtmOverrides(): void
@@ -77,8 +77,8 @@ final class EventExampleGeneratorTest extends TestCase
 
         self::assertSame([
             'utm_medium' => 'email', 'utm_campaign' => 'example-campaign', 'campaign.kind' => 'example',
-        ], (array) $bundle['examples']['anonymous']['payload']['eventData']);
-        self::assertSame('example', $bundle['examples']['enhanced']['payload']['eventData']->plan);
+        ], (array) $bundle['examples']['anonymous']['payload']['customData']);
+        self::assertSame('example', $bundle['examples']['enhanced']['payload']['customData']->plan);
         self::assertSame(['utm_campaign'], $bundle['properties'][2]['query_parameters']);
         self::assertSame('anonymous_and_enhanced', $bundle['properties'][2]['collection']);
         self::assertSame('enhanced_only', $bundle['properties'][3]['collection']);
@@ -99,7 +99,7 @@ final class EventExampleGeneratorTest extends TestCase
         ])->generate();
 
         foreach ($bundle['examples'] as $example) {
-            self::assertSame(['plan' => 'example'], (array) $example['payload']['eventData']);
+            self::assertSame(['plan' => 'example'], (array) $example['payload']['customData']);
             self::assertFalse($example['payload']['internalTraffic']);
         }
         self::assertSame('not_submittable', $bundle['properties'][0]['collection']);
@@ -141,7 +141,7 @@ final class EventExampleGeneratorTest extends TestCase
         self::assertStringNotContainsString(str_repeat('secret', 10), $json);
         self::assertStringNotContainsString('production_only', $json);
         $bundle = json_decode($json, true, flags: JSON_THROW_ON_ERROR);
-        self::assertSame(['plan' => 'example'], $bundle['examples']['enhanced']['payload']['eventData']);
+        self::assertSame(['plan' => 'example'], $bundle['examples']['enhanced']['payload']['customData']);
     }
 
     public function testEnvironmentSpecificFileAndEnvironmentMarkerNameAreRespected(): void
@@ -153,7 +153,7 @@ final class EventExampleGeneratorTest extends TestCase
         ]));
         $_ENV['INTERNAL_TRAFFIC_NAME'] = 'staff';
 
-        self::assertSame(['plan' => 'example'], (array) $generator->generate()['examples']['anonymous']['payload']['eventData']);
+        self::assertSame(['plan' => 'example'], (array) $generator->generate()['examples']['anonymous']['payload']['customData']);
     }
 
     public function testEmptyReplacementModelProducesObjectsInBothModes(): void
@@ -162,8 +162,8 @@ final class EventExampleGeneratorTest extends TestCase
         $bundle = json_decode($json, flags: JSON_THROW_ON_ERROR);
 
         foreach ($bundle->examples as $example) {
-            self::assertInstanceOf(\stdClass::class, $example->payload->eventData);
-            self::assertSame([], get_object_vars($example->payload->eventData));
+            self::assertInstanceOf(\stdClass::class, $example->payload->customData);
+            self::assertSame([], get_object_vars($example->payload->customData));
         }
         self::assertSame([], $bundle->properties);
     }
@@ -177,7 +177,7 @@ final class EventExampleGeneratorTest extends TestCase
         $bundle = $this->generator(['custom_data_properties' => $properties, 'query_parameter_mappings' => []])->generate();
 
         foreach ($bundle['examples'] as $example) {
-            self::assertCount(50, (array) $example['payload']['eventData']);
+            self::assertCount(50, (array) $example['payload']['customData']);
             self::assertLessThan(65_536, strlen(json_encode($example['payload'], JSON_THROW_ON_ERROR)));
         }
     }
@@ -249,9 +249,9 @@ final class EventExampleGeneratorTest extends TestCase
         ]);
         $bundle = json_decode($generator->exportJson(), true, flags: JSON_THROW_ON_ERROR);
 
-        self::assertSame(['label' => 'example', 'quantity' => 2, 'flag' => true], $bundle['examples']['anonymous']['payload']['eventData']);
-        self::assertSame(12.5, $bundle['examples']['enhanced']['payload']['eventData']['ratio']);
-        self::assertSame(12.5, $bundle['examples']['enhanced']['payload']['eventData']['amount']);
+        self::assertSame(['label' => 'example', 'quantity' => 2, 'flag' => true], $bundle['examples']['anonymous']['payload']['customData']);
+        self::assertSame(12.5, $bundle['examples']['enhanced']['payload']['customData']['ratio']);
+        self::assertSame(12.5, $bundle['examples']['enhanced']['payload']['customData']['amount']);
         self::assertSame('integer', $bundle['properties'][1]['type']);
     }
 
@@ -263,18 +263,18 @@ final class EventExampleGeneratorTest extends TestCase
 
         self::assertSame('ecommerce_recommendation', $bundle['source']);
         self::assertSame('purchase', $bundle['examples']['enhanced']['payload']['eventName']);
-        self::assertSame([], (array) $bundle['examples']['anonymous']['payload']['eventData']);
+        self::assertSame([], (array) $bundle['examples']['anonymous']['payload']['customData']);
         self::assertSame([
             'currency' => 'USD', 'total_minor' => 4999, 'tax_minor' => 400, 'shipping_minor' => 500,
             'item_count' => 2, 'discount_rate' => 0.1, 'product_category' => 'accessories', 'checkout_step' => 'complete',
-        ], (array) $bundle['examples']['enhanced']['payload']['eventData']);
+        ], (array) $bundle['examples']['enhanced']['payload']['customData']);
         self::assertSame('integer', $bundle['recommended_model']['custom_data_properties']['total_minor']['type']);
         self::assertSame('total_minor_number', $bundle['recommended_model']['custom_data_properties']['total_minor']['numeric_column']);
         foreach ($bundle['recommended_model']['custom_data_properties'] as $property) {
             self::assertTrue($property['consent_required']);
         }
         self::assertSame($before, file_get_contents($this->projectDir.'/config/aggregate.yaml'));
-        self::assertSame(['existing_property' => 'example'], (array) $generator->generate()['examples']['anonymous']['payload']['eventData']);
+        self::assertSame(['existing_property' => 'example'], (array) $generator->generate()['examples']['anonymous']['payload']['customData']);
         self::assertArrayNotHasKey('goalEvent', $bundle['examples']['enhanced']['payload']);
         self::assertStringContainsString('unsaved proposed model', $bundle['notes'][0]);
         self::assertStringContainsString('Group calculations by currency', implode(' ', $bundle['notes']));
@@ -289,8 +289,8 @@ final class EventExampleGeneratorTest extends TestCase
         self::assertSame($generated['examples']['enhanced']['payload'], $documented);
         self::assertSame('purchase', $documented['eventName']);
         self::assertSame('granted', $documented['consentState']);
-        self::assertSame(4999, $documented['eventData']['total_minor']);
-        self::assertSame(0.1, $documented['eventData']['discount_rate']);
+        self::assertSame(4999, $documented['customData']['total_minor']);
+        self::assertSame(0.1, $documented['customData']['discount_rate']);
         self::assertFalse($documented['internalTraffic']);
 
         $guide = file_get_contents(dirname(__DIR__, 2).'/docs/EVENT-EXAMPLES.md');
@@ -307,7 +307,7 @@ final class EventExampleGeneratorTest extends TestCase
         foreach (['model', 'ecommerce'] as $example) {
             $bundle = json_decode($generator->exportJson('all', $example), true, flags: JSON_THROW_ON_ERROR);
             foreach ($bundle['examples'] as $item) {
-                self::assertSame(2, $item['payload']['eventData']['page_sequence']);
+                self::assertSame(2, $item['payload']['customData']['page_sequence']);
             }
             $properties = array_column($bundle['properties'], null, 'key');
             self::assertSame('integer', $properties['page_sequence']['type']);
@@ -315,7 +315,7 @@ final class EventExampleGeneratorTest extends TestCase
             self::assertSame([], $properties['page_sequence']['query_parameters']);
             self::assertStringContainsString('asynchronous events reuse', implode(' ', $bundle['notes']));
         }
-        $payload = (array) $generator->generate()['examples']['anonymous']['payload']['eventData'];
+        $payload = (array) $generator->generate()['examples']['anonymous']['payload']['customData'];
         self::assertSame(['utm_medium' => 'email', 'page_sequence' => 2], $payload);
     }
 
@@ -326,7 +326,7 @@ final class EventExampleGeneratorTest extends TestCase
             'query_parameter_mappings' => [],
         ])->generate();
         foreach ($bundle['examples'] as $item) {
-            self::assertSame([], (array) $item['payload']['eventData']);
+            self::assertSame([], (array) $item['payload']['customData']);
         }
         self::assertSame('not_submittable', $bundle['properties'][0]['collection']);
     }
@@ -339,7 +339,7 @@ final class EventExampleGeneratorTest extends TestCase
         }
         $bundle = $this->generator(['page_sequence_enabled' => true, 'custom_data_properties' => $properties])->generate();
         foreach ($bundle['examples'] as $example) {
-            $data = (array) $example['payload']['eventData'];
+            $data = (array) $example['payload']['customData'];
             self::assertCount(50, $data);
             self::assertSame(2, $data['page_sequence']);
         }
@@ -355,7 +355,7 @@ final class EventExampleGeneratorTest extends TestCase
             self::assertStringContainsString('Copied, edited, or shared URLs', $notes);
             self::assertStringNotContainsString('in this tab counter', $notes);
             foreach ($bundle['examples'] as $item) {
-                self::assertSame(2, $item['payload']['eventData']->page_sequence);
+                self::assertSame(2, $item['payload']['customData']->page_sequence);
             }
             if ($example === 'ecommerce') {
                 self::assertSame('url_parameter', $bundle['recommended_model']['page_sequence_method']);

@@ -301,7 +301,7 @@ $batches = E2E::step('collect anonymous, goal and consented events', static func
     });
     $record('recent goals', static function () use ($collect): void {
         for ($i = 0; $i < 6; ++$i) {
-            $collect(['eventName' => 'purchase', 'goalEvent' => 'purchase', 'pagePath' => '/checkout/complete', 'eventData' => ['plan' => 'pro', 'total_minor' => 4999, 'discount_rate' => 0.1]]);
+            $collect(['eventName' => 'purchase', 'goalEvent' => 'purchase', 'pagePath' => '/checkout/complete', 'customData' => ['plan' => 'pro', 'total_minor' => 4999, 'discount_rate' => 0.1]]);
         }
     });
     $record('old events', static function () use ($collect): void {

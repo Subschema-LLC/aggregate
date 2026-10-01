@@ -55,6 +55,9 @@ final class BiGlossaryController extends AbstractController
         } catch (\Throwable $error) {
             $this->logFailure('save', $error);
             $this->addFlash('error', 'The glossary could not be saved. Check the active YAML configuration and file permissions.');
+            if ($request->hasSession()) {
+                $request->getSession()->set('bi_glossary_submitted_form', $request->request->all());
+            }
 
             return $this->back($request);
         }
@@ -220,6 +223,12 @@ final class BiGlossaryController extends AbstractController
             }
         }
         $form = $request->request->all();
+        if ($form === [] && $request->hasSession() && $request->getSession()->has('bi_glossary_submitted_form')) {
+            $sessionForm = $request->getSession()->remove('bi_glossary_submitted_form');
+            if (is_array($sessionForm)) {
+                $form = $sessionForm;
+            }
+        }
         $locale = $form['locale'] ?? $request->query->all()['locale'] ?? $settings['default_locale'];
         if (!is_string($locale) || !in_array($locale, $settings['locales'], true)) {
             $locale = $settings['default_locale'];

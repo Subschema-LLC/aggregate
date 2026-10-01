@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace App\Tests\Migration;
 
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Schema\Column;
+use Doctrine\DBAL\Schema\PrimaryKeyConstraint;
 use Doctrine\DBAL\Schema\Schema;
+use Doctrine\DBAL\Schema\Table;
 use DoctrineMigrations\Version20260724000000;
 use DoctrineMigrations\Version20260724000250;
 use DoctrineMigrations\Version20260724001500;
@@ -62,19 +65,22 @@ final class PrivacyModeSchemaMigrationTest extends TestCase
 
     private function legacySchema(): Schema
     {
-        $schema = new Schema();
-        $events = $schema->createTable('events');
-        $events->addColumn('id', 'integer', ['autoincrement' => true]);
-        $events->addColumn('website_token', 'string', ['length' => 191]);
-        $events->addColumn('daily_ip_hash', 'string', ['length' => 191]);
-        $events->addColumn('generalized_user_agent', 'string', ['length' => 191]);
-        $events->addColumn('consent_state', 'string', [
-            'length' => 20,
-            'default' => 'unknown',
-        ]);
-        $events->addColumn('created_at', 'datetime_immutable');
-        $events->setPrimaryKey(['id']);
+        // Built with the schema editors: DBAL 4.5 deprecates the table and column mutators.
+        $string = static fn (string $name, int $length): Column => Column::editor()
+            ->setUnquotedName($name)->setTypeName('string')->setLength($length)->create();
+        $events = Table::editor()
+            ->setUnquotedName('events')
+            ->setColumns(
+                Column::editor()->setUnquotedName('id')->setTypeName('integer')->setAutoincrement(true)->create(),
+                $string('website_token', 191),
+                $string('daily_ip_hash', 191),
+                $string('generalized_user_agent', 191),
+                Column::editor()->setUnquotedName('consent_state')->setTypeName('string')->setLength(20)->setDefaultValue('unknown')->create(),
+                Column::editor()->setUnquotedName('created_at')->setTypeName('datetime_immutable')->create(),
+            )
+            ->setPrimaryKeyConstraint(PrimaryKeyConstraint::editor()->setUnquotedColumnNames('id')->create())
+            ->create();
 
-        return $schema;
+        return Schema::editor()->setTables($events)->create();
     }
 }

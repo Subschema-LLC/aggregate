@@ -10,7 +10,7 @@
   "visitorId": "synthetic-visitor",
   "sessionId": "synthetic-session",
   "screenWidth": 1440,
-  "eventData": {
+  "customData": {
     "currency": "USD",
     "total_minor": 4999,
     "tax_minor": 400,

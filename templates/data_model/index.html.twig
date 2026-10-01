@@ -5,7 +5,8 @@
 {% block body %}
 <div class="data-model-editor" data-controller="pages--data-model--index"
      data-pages--data-model--index-property-index-value="{{ model.custom_data_properties|length }}"
-     data-pages--data-model--index-mapping-index-value="{{ model.query_parameter_mappings|length }}">
+     data-pages--data-model--index-mapping-index-value="{{ model.query_parameter_mappings|length }}"
+     data-pages--data-model--index-reserved-columns-value="{{ (reserved_columns|default([]))|json_encode }}">
     <h1 class="title">Data model</h1>
     <p class="subtitle">Define custom properties, campaign capture, consent requirements, and reporting columns. Download the saved model to share with your analytics implementation developers.</p>
     {{ component('Ui:DocsLink', {topic: 'data-model', label: 'Data model guide'}) }}
@@ -13,6 +14,12 @@
     {% if configuration_error %}<div class="notification is-danger" role="alert">{{ configuration_error }}</div>{% endif %}
     {{ component('DataModel:Navigation', {current_model_page: 'app_data_model'}) }}
     {% if unsaved_property %}<div class="notification is-info" role="status"><code>{{ unsaved_property }}</code> has been added to this form. Review its settings and save to apply the change.</div>{% endif %}
+    {% if restored_form|default(false) %}
+        <div class="notification is-warning" role="alert">
+            <span class="icon is-small mr-1"><i class="fas fa-clock-rotate-left" aria-hidden="true"></i></span>
+            <strong>Values preserved:</strong> Your submitted properties and mappings were preserved so you can correct the errors and save again without retyping.
+        </div>
+    {% endif %}
     {% if addition_error %}<div class="notification is-warning" role="alert">{{ addition_error }}</div>{% endif %}
 
     <div class="notification is-info">
@@ -38,7 +45,7 @@
                         </select>
                     </div>
                 </div>
-                <p class="help" id="page-depth-help">Adds <code>eventData.page_sequence</code>: the first tracked page is 1, the next is 2, and 20 means 20 or more. Interactions and asynchronous events reuse the current page's count. This setting applies to every event type.</p>
+                <p class="help" id="page-depth-help">Adds <code>customData.page_sequence</code>: the first tracked page is 1, the next is 2, and 20 means 20 or more. Interactions and asynchronous events reuse the current page's count. This setting applies to every event type.</p>
                 <p class="help" id="page-depth-privacy">Page depth continues when enhanced analytics is rejected. It adds no visitor identifier or path history. Review the selected method's storage or URL disclosures and applicable consent requirements. Counts do not establish individual journeys. Routine anonymous BI views do not expose page depth.</p>
             </div>
             <div class="field">
@@ -76,6 +83,23 @@
             </div>
             <p>Expand a custom data JSON property to edit its type, consent, and optional reporting columns. Property names are literal top-level JSON keys. Leave both reporting columns empty to collect a property without exposing it in custom reporting views. Explicitly allowing a property without consent adds it to the server-enforced anonymous whitelist.</p>
             <p class="help mb-3">Descriptions belong to the shared implementation model. Values must be flat strings, numbers, booleans, or null; nested data is discarded. Unlisted custom properties still require enhanced consent. The organization marker <code>{{ marker_name|default('orgInternalTraffic') }}</code> remains controlled by the browser marker and is always allowed in anonymous mode.</p>
+
+            <details class="reserved-columns-reference box is-light mt-2 mb-4" id="reserved-columns-list" data-pages--data-model--index-target="reservedDetails">
+                <summary class="is-size-7 has-text-info is-clickable py-1">
+                    <span class="icon is-small mr-1"><i class="fas fa-table-columns" aria-hidden="true"></i></span>
+                    <strong class="has-text-info">View {{ (reserved_columns|default([]))|length }} reserved built-in column names</strong>
+                    <span class="has-text-grey"> (cannot be used for custom reporting columns)</span>
+                </summary>
+                <div class="content is-small mt-2 pt-2 border-top">
+                    <p class="mb-2">The following column names are reserved by Aggregate's event schema and reporting views. If entered as a text or numeric reporting column, the form will reject them:</p>
+                    <div class="tags are-small mb-1">
+                        {% for col in reserved_columns|default([]) %}
+                            <span class="tag is-info is-light is-family-monospace">{{ col }}</span>
+                        {% endfor %}
+                    </div>
+                </div>
+            </details>
+
             {% if model.custom_data_properties|length > 2 %}
                 <div class="field mb-3">
                     <div class="control has-icons-left">
@@ -86,10 +110,15 @@
             {% endif %}
             <div id="property-rows" data-pages--data-model--index-target="propertyRows">
                 {% for key, property in model.custom_data_properties %}
-                    {{ component('DataModel:PropertyRow', {index: loop.index0, key: key, property: property, open: key == unsaved_property}) }}
+                    {{ component('DataModel:PropertyRow', {index: loop.index0, key: key, property: property, open: key == unsaved_property or restored_form|default(false)}) }}
                 {% endfor %}
             </div>
-            <button class="button" type="button" id="add-property" data-action="pages--data-model--index#addProperty">Add property</button>
+            <div class="add-property-action-wrapper mt-4 mb-4">
+                <button class="button is-outlined is-primary" type="button" id="add-property" data-action="pages--data-model--index#addProperty">
+                    <span class="icon is-small"><i class="fas fa-plus" aria-hidden="true"></i></span>
+                    <span>Add property</span>
+                </button>
+            </div>
             <p class="help">Explicit types reject mismatched values without coercion; null is allowed. Integer values must be whole safe JSON numbers. Float and Double both use approximate double precision for portable reporting. Up to 50 properties. Reporting columns use unique lowercase letters, digits, and underscores, starting with a letter. After views are deployed, keep their aliases and order; append new columns at the end.</p>
         </section>
         <section class="box">
@@ -106,10 +135,12 @@
                     </tbody>
                 </table>
             </div>
-            <button class="button" type="button" id="add-mapping" data-action="pages--data-model--index#addMapping">Add parameter mapping</button>
+            <div class="add-mapping-action-wrapper mt-4 mb-3">
+                <button class="button" type="button" id="add-mapping" data-action="pages--data-model--index#addMapping">Add parameter mapping</button>
+            </div>
             <p class="help">Up to 100 mappings. Names begin with a letter and may contain letters, digits, underscores, dots, or hyphens (64 characters maximum). The organization marker cannot be set through a query parameter.</p>
         </section>
-        <div class="buttons">
+        <div class="buttons mt-5">
             <button class="button is-primary" type="submit"{% if configuration_error %} disabled{% endif %}>Save model</button>
             {% if not configuration_error %}<a class="button" href="{{ path('app_data_model_download') }}">Download saved YAML</a>{% endif %}
         </div>

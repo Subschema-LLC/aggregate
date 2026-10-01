@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace App\Tests\Migration;
 
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Schema\Column;
+use Doctrine\DBAL\Schema\PrimaryKeyConstraint;
 use Doctrine\DBAL\Schema\Schema;
+use Doctrine\DBAL\Schema\Table;
 use DoctrineMigrations\Version20260724000500;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
@@ -16,13 +19,11 @@ final class PrivacyCleanupMigrationTest extends TestCase
 {
     public function testCleanupPurgesOnlyUntrustedEnhancedRowsAndTrackerEnvelopes(): void
     {
-        $schema = new Schema();
-        $events = $schema->createTable('events');
-        $events->addColumn('id', 'integer');
-        $events->setPrimaryKey(['id']);
-        $messages = $schema->createTable('messenger_messages');
-        $messages->addColumn('id', 'bigint');
-        $messages->setPrimaryKey(['id']);
+        // Built with the schema editors: DBAL 4.5 deprecates the table and column mutators.
+        $schema = Schema::editor()->setTables(
+            $this->tableWithId('events', 'integer'),
+            $this->tableWithId('messenger_messages', 'bigint'),
+        )->create();
 
         $migration = new Version20260724000500(
             $this->createStub(Connection::class),
@@ -50,5 +51,14 @@ final class PrivacyCleanupMigrationTest extends TestCase
         self::assertStringContainsString("body LIKE '%TrackEventMessage%'", $statements[1]);
         self::assertStringContainsString("headers LIKE '%TrackEventMessage%'", $statements[1]);
         self::assertStringNotContainsString("privacy_mode = 'anonymous'", $statements[0]);
+    }
+
+    private function tableWithId(string $name, string $type): Table
+    {
+        return Table::editor()
+            ->setUnquotedName($name)
+            ->setColumns(Column::editor()->setUnquotedName('id')->setTypeName($type)->create())
+            ->setPrimaryKeyConstraint(PrimaryKeyConstraint::editor()->setUnquotedColumnNames('id')->create())
+            ->create();
     }
 }
