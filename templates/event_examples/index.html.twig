@@ -40,7 +40,7 @@
                         Visitor and session identifiers are fixed synthetic examples; copying <code>"granted"</code> does not obtain consent.
                     {% elseif mode == 'anonymous' %}
                         {% if example_source == 'ecommerce' %}
-                            This recipe's ecommerce properties require enhanced consent, so <code>eventData</code> is empty without consent.
+                            This recipe's ecommerce properties require enhanced consent, so <code>customData</code> is empty without consent.
                         {% else %}
                             Includes only modeled properties allowed without enhanced consent.
                         {% endif %}

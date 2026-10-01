@@ -170,7 +170,7 @@ test('strict consent choices never enable enhanced fields or touch identifier st
   runtime.api.emit('signup_completed', {plan: 'pro'});
 
   for (const payload of runtime.requests) {
-    for (const field of ['consentState', 'visitorId', 'sessionId', 'screenWidth', 'eventData', 'internalTraffic', 'referrerChannel', 'deviceClass', 'viewportBucket']) {
+    for (const field of ['consentState', 'visitorId', 'sessionId', 'screenWidth', 'customData', 'eventData', 'internalTraffic', 'referrerChannel', 'deviceClass', 'viewportBucket']) {
       assert.equal(Object.prototype.hasOwnProperty.call(payload, field), false, field + ' must not be sent');
     }
   }

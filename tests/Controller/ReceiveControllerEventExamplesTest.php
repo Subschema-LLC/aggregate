@@ -39,7 +39,7 @@ final class ReceiveControllerEventExamplesTest extends TestCase
         $payload = $bundle['examples'][$mode]['payload'];
         $event = $this->ingestAndPersist($payload, $config, $mode);
 
-        self::assertSame($payload['eventData'] ?: null, $event->getCustomData());
+        self::assertSame($payload['customData'] ?: null, $event->getCustomData());
         self::assertSame($payload['eventName'], $event->getEventName());
         self::assertSame($payload['pagePath'], $event->getUrl());
         self::assertSame($payload['referrerChannel'], $event->getReferrer());
@@ -90,7 +90,7 @@ final class ReceiveControllerEventExamplesTest extends TestCase
         foreach (['anonymous', 'enhanced'] as $mode) {
             $payload = $bundle['examples'][$mode]['payload'];
             $event = $this->ingestAndPersist($payload, $adoptedConfig, $mode);
-            self::assertSame((array) $payload['eventData'] ?: null, $event->getCustomData());
+            self::assertSame((array) $payload['customData'] ?: null, $event->getCustomData());
             self::assertSame('purchase', $event->getEventName());
             self::assertNull($event->getGoalEvent());
         }
@@ -107,8 +107,8 @@ final class ReceiveControllerEventExamplesTest extends TestCase
         $bundle = (new EventExampleGenerator(new CustomDataSettings($config)))->generate();
         $payload = $bundle['examples']['enhanced']['payload'];
         $payload['consentState'] = $consent;
-        $payload['eventData']->companyStaff = 'forged-marker-value';
-        $payload['eventData']->unmodeled = 'private-property';
+        $payload['customData']->companyStaff = 'forged-marker-value';
+        $payload['customData']->unmodeled = 'private-property';
         $event = $this->ingestAndPersist($payload, $config, 'anonymous');
 
         $this->assertAnonymous($event);

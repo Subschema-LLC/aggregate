@@ -132,9 +132,11 @@ class ReceiveController
             $internalTrafficName = $internalTrafficSettings->toBrowserConfig()['name'];
             // Resolve the deployment's property policy before either storage
             // path. Client-side consent flags never authorize custom keys.
+            // customData is the payload's property object; eventData is its
+            // earlier name, read only when customData is absent.
             $eventData = $strictCollection
                 ? null
-                : $customDataSettings->filterEventData($payload['eventData'] ?? null, $enhancedConsent);
+                : $customDataSettings->filterEventData(CustomDataSettings::submittedProperties($payload), $enhancedConsent);
             if ($eventData !== null) {
                 unset($eventData[$internalTrafficName]);
             }

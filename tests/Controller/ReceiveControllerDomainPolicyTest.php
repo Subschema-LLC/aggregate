@@ -198,7 +198,7 @@ final class ReceiveControllerDomainPolicyTest extends TestCase
                 'origin' => 'https://example.com',
                 'url' => 'https://example.com/pricing',
                 'referrer' => 'https://example.com/',
-                'eventData' => ['domain_policy' => 'all'],
+                'customData' => ['domain_policy' => 'all'],
             ],
         );
 

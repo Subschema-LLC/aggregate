@@ -95,7 +95,7 @@ User-Agent: (the visitor's User-Agent header)
 | `referrerChannel` | No | A channel code instead of `referrer`. Use `unknown` for events that don't come from a visitor's request. |
 | `deviceClass` | No | A device code. Without it, Aggregate derives one from the `User-Agent` header. Use `unknown` for events that don't come from a visitor's request. |
 | `goalEvent` | No | A goal code from `config/goals.yaml` that allows anonymous use, such as `purchase`. |
-| `eventData` | No | Properties the [data model](DATA-MODEL.md) allows without consent. |
+| `customData` | No | Properties the [data model](DATA-MODEL.md) allows without consent. `eventData`, the earlier name, is still accepted when `customData` is absent. |
 | `internalTraffic` | No | `true` when the request carries your [organization traffic](PRIVACY-COMPLIANCE.md#organization-traffic) marker cookie, so staff visits can be filtered in reports. |
 
 | Header | Value |
