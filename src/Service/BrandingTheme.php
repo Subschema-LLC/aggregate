@@ -334,7 +334,8 @@ final class BrandingTheme
         return $blackContrast >= $whiteContrast ? '#000000' : '#FFFFFF';
     }
 
-    private static function contrastRatio(string $firstColor, string $secondColor): float
+    /** WCAG 2 contrast ratio between two normalized #RRGGBB colors. */
+    public static function contrastRatio(string $firstColor, string $secondColor): float
     {
         $firstLuminance = self::relativeLuminance($firstColor);
         $secondLuminance = self::relativeLuminance($secondColor);

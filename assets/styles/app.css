@@ -12,6 +12,7 @@
 @import './components/websites/create_dialog.css';
 @import './components/websites/domain_fields.css';
 @import './pages/tag_manager/index.css';
+@import './pages/consent_manager/index.css';
 @import './pages/data_model/index.css';
 @import './pages/data_model/reporting.css';
 @import './pages/data_model/glossary.css';

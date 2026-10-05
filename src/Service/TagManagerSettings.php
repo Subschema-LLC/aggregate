@@ -10,8 +10,16 @@ final class TagManagerSettings
     public const MAX_TAGS = 20;
     public const DEFAULTS = ['enabled' => false, 'variables' => [], 'tags' => []];
 
-    public function __construct(private readonly AggregateConfigLoader $config, private readonly ?SiteScriptConfig $sites = null)
-    {
+    /**
+     * @param ?string $codeCacheDirectory remembers custom JavaScript that passed its
+     *   checks, so serving a website's script does not parse it on every request
+     */
+    public function __construct(
+        private readonly AggregateConfigLoader $config,
+        private readonly ?SiteScriptConfig $sites = null,
+        private readonly ?FeatureFlags $features = null,
+        private readonly ?string $codeCacheDirectory = null,
+    ) {
     }
 
     /** @return array{enabled: bool, tags: list<array>} */
@@ -21,12 +29,18 @@ final class TagManagerSettings
         $config->assertHealthy();
         $values = $config->all();
 
-        return self::validate(array_key_exists('tag_manager', $values) ? $values['tag_manager'] : self::DEFAULTS);
+        return self::validate(array_key_exists('tag_manager', $values) ? $values['tag_manager'] : self::DEFAULTS, $this->codeCacheDirectory);
+    }
+
+    /** Whether this installation serves custom JavaScript tags (the custom_scripts feature flag). */
+    public function customScriptsEnabled(): bool
+    {
+        return $this->features === null || $this->features->isEnabled(TagManagerCustomCode::FEATURE);
     }
 
     public function save(array $submitted, ?string $siteId = null): void
     {
-        $validated = self::validate($submitted);
+        $validated = self::validate($submitted, $this->codeCacheDirectory);
         $config = $this->configuration($siteId);
         if ($siteId !== null) {
             $this->sites->ensureDirectory();
@@ -39,31 +53,60 @@ final class TagManagerSettings
         });
     }
 
-    /** Only enabled, explicitly public script definitions reach the browser. */
+    /**
+     * Only enabled, explicitly public script definitions reach the browser.
+     * Custom JavaScript is compiled into the script separately (see
+     * customScripts()); its definition here carries no code.
+     */
     public function toBrowserConfig(?string $siteId = null): array
     {
         $settings = $this->all($siteId);
-
-        return [
+        $tags = $this->servedTags($settings);
+        $configuration = [
             'enabled' => $settings['enabled'],
             'variables' => $settings['enabled'] ? $settings['variables'] : [],
-            'tags' => $settings['enabled'] ? array_values(array_map(
-                static fn (array $tag): array => array_diff_key($tag, ['enabled' => true]),
-                array_filter($settings['tags'], static fn (array $tag): bool => $tag['enabled']),
-            )) : [],
+            'tags' => array_values(array_map(static fn (array $tag): array => array_diff_key($tag, ['enabled' => true, 'code' => true]), $tags)),
         ];
+        if (in_array('custom', array_column($tags, 'type'), true)) {
+            // Lets custom code send events with tag.emit() through the tracker's namespace.
+            $namespace = $this->config->getWithEnvFallback('js_namespace', 'Aggregate');
+            $configuration['namespace'] = is_string($namespace) && preg_match('/^[A-Za-z_$][A-Za-z0-9_$]{0,63}$/D', $namespace) === 1 ? $namespace : 'Aggregate';
+        }
+
+        return $configuration;
+    }
+
+    /** @return array<string, string> Tag ID => code of the custom JavaScript served with the tags. */
+    public function customScripts(?string $siteId = null): array
+    {
+        $scripts = [];
+        foreach ($this->servedTags($this->all($siteId)) as $tag) {
+            if ($tag['type'] === 'custom') {
+                $scripts[$tag['id']] = $tag['code'];
+            }
+        }
+
+        return $scripts;
+    }
+
+    /** @return list<array> Tags a visitor's browser receives: enabled, with custom JavaScript only when allowed. */
+    private function servedTags(array $settings): array
+    {
+        if (!$settings['enabled']) {
+            return [];
+        }
+        $custom = $this->customScriptsEnabled();
+
+        return array_values(array_filter($settings['tags'], static fn (array $tag): bool => $tag['enabled'] && ($custom || $tag['type'] !== 'custom')));
     }
 
     /** @return list<string> Categories needed by the tracker and enabled tags. */
     public function consentCategories(?string $siteId = null): array
     {
-        $settings = $this->all($siteId);
         $categories = ['analytics' => true];
-        if ($settings['enabled']) {
-            foreach ($settings['tags'] as $tag) {
-                if ($tag['enabled'] && $tag['consent'] !== 'none') {
-                    $categories[$tag['consent']] = true;
-                }
+        foreach ($this->servedTags($this->all($siteId)) as $tag) {
+            if ($tag['consent'] !== 'none') {
+                $categories[$tag['consent']] = true;
             }
         }
         unset($categories['analytics']);
@@ -86,7 +129,7 @@ final class TagManagerSettings
     }
 
     /** @return array{enabled: bool, tags: list<array>} */
-    public static function validate(mixed $submitted): array
+    public static function validate(mixed $submitted, ?string $codeCacheDirectory = null): array
     {
         if (!is_array($submitted) || array_diff(array_keys($submitted), ['enabled', 'variables', 'tags']) !== []) {
             throw new \InvalidArgumentException('tag_manager must contain only enabled, variables and tags.');
@@ -104,9 +147,10 @@ final class TagManagerSettings
         $validated = [];
         $ids = [];
         $sources = [];
+        $codeBytes = 0;
         foreach ($tags as $tag) {
-            if (!is_array($tag) || array_diff(array_keys($tag), ['id', 'type', 'src', 'method', 'args', 'enabled', 'consent', 'trigger']) !== []) {
-                throw new \InvalidArgumentException('Each tag must contain only its ID, action, enabled setting, consent and trigger. Inline code is not supported.');
+            if (!is_array($tag) || array_diff(array_keys($tag), ['id', 'type', 'src', 'method', 'args', 'code', 'enabled', 'consent', 'trigger']) !== []) {
+                throw new \InvalidArgumentException('Each tag must contain only its ID, action, enabled setting, consent and trigger.');
             }
             $id = $tag['id'] ?? null;
             $type = array_key_exists('type', $tag) ? $tag['type'] : 'script';
@@ -123,8 +167,8 @@ final class TagManagerSettings
                 throw new \InvalidArgumentException('Each tag consent category must contain 1–32 lowercase letters, digits, underscores or hyphens, beginning with a letter. Use none only for a tag that needs no consent.');
             }
             if ($type === 'script') {
-                if (array_key_exists('method', $tag) || array_key_exists('args', $tag)) {
-                    throw new \InvalidArgumentException('A script tag uses src; method and args belong to a call tag.');
+                if (array_key_exists('method', $tag) || array_key_exists('args', $tag) || array_key_exists('code', $tag)) {
+                    throw new \InvalidArgumentException('A script tag uses src; method and args belong to a call tag, and code to a custom tag.');
                 }
                 $src = TagManagerVariables::validateSource($tag['src'] ?? null, $variables);
                 if (isset($sources[$src])) {
@@ -133,15 +177,25 @@ final class TagManagerSettings
                 $sources[$src] = true;
                 $action = ['src' => $src];
             } elseif ($type === 'call') {
-                if (array_key_exists('src', $tag)) {
-                    throw new \InvalidArgumentException('A call tag uses method and args; src belongs to a script tag.');
+                if (array_key_exists('src', $tag) || array_key_exists('code', $tag)) {
+                    throw new \InvalidArgumentException('A call tag uses method and args; src belongs to a script tag, and code to a custom tag.');
                 }
                 $action = [
                     'method' => TagManagerValues::validateMethod($tag['method'] ?? null),
                     'args' => TagManagerValues::validateArguments(array_key_exists('args', $tag) ? $tag['args'] : [], $variables),
                 ];
+            } elseif ($type === 'custom') {
+                if (array_key_exists('src', $tag) || array_key_exists('method', $tag) || array_key_exists('args', $tag)) {
+                    throw new \InvalidArgumentException('A custom tag uses code; src belongs to a script tag, and method and args to a call tag.');
+                }
+                $code = TagManagerCustomCode::validate($tag['code'] ?? null, 'Tag '.$id.': the custom JavaScript', $codeCacheDirectory);
+                $codeBytes += strlen($code);
+                if ($codeBytes > TagManagerCustomCode::MAX_TOTAL_BYTES) {
+                    throw new \InvalidArgumentException(sprintf('Custom JavaScript for one website may total at most %s bytes, because every page downloads it with the tag manager. Load larger code with tag.loadScript().', number_format(TagManagerCustomCode::MAX_TOTAL_BYTES)));
+                }
+                $action = ['code' => $code];
             } else {
-                throw new \InvalidArgumentException('A tag type must be script or call.');
+                throw new \InvalidArgumentException('A tag type must be script, call or custom.');
             }
             $ids[$id] = true;
             $validated[] = ['id' => $id, ...$action, 'enabled' => $tagEnabled, 'consent' => $consent, 'trigger' => $trigger, 'type' => $type];

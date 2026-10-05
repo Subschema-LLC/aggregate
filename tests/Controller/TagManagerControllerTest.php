@@ -6,6 +6,7 @@ namespace App\Tests\Controller;
 
 use App\Controller\TagManagerController;
 use App\Service\AggregateConfigLoader;
+use App\Service\FeatureFlags;
 use App\Service\AppBranding;
 use App\Service\DropInScripts;
 use App\Service\SiteScriptConfig;
@@ -162,12 +163,12 @@ final class TagManagerControllerTest extends TestCase
         self::assertCount(1, $request->getSession()->getFlashBag()->peek('error'));
     }
 
-    public function testSiteFormAtomicallySavesVariablesCallArgumentsTriggersAndConsentWithoutChangingOtherSites(): void
+    public function testSiteFormSavesVariablesCallArgumentsAndTriggersWithoutChangingConsentOrOtherSites(): void
     {
         $this->sites->save($this->otherSiteId, ['enabled' => true, 'tags' => [['id' => 'other', 'src' => 'https://scripts.example/other.js']]], ['enabled' => false, 'name' => 'Second choices']);
         $globalBefore = file_get_contents($this->projectDir.'/config/aggregate.yaml');
         $otherBefore = file_get_contents($this->sitePath($this->otherSiteId));
-        file_put_contents($this->sitePath($this->siteId), "unrelated_setting: private-site-value\n");
+        file_put_contents($this->sitePath($this->siteId), "unrelated_setting: private-site-value\nconsent_manager:\n  enabled: false\n  name: Own banner\n  theme: {accent: '#1A4F8B'}\n");
         $form = $this->siteForm();
         $request = $this->request($form);
         $response = $this->controller($request)->save($request);
@@ -178,7 +179,7 @@ final class TagManagerControllerTest extends TestCase
         self::assertSame($otherBefore, file_get_contents($this->sitePath($this->otherSiteId)));
         $saved = Yaml::parseFile($this->sitePath($this->siteId));
         self::assertSame('private-site-value', $saved['unrelated_setting']);
-        self::assertSame(['enabled' => true, 'name' => 'First shop choices'], $saved['consent_manager']);
+        self::assertSame(['enabled' => false, 'name' => 'Own banner', 'theme' => ['accent' => '#1A4F8B']], $saved['consent_manager'], 'consent settings have their own page');
         self::assertSame(['plan' => 'window.siteData.plan'], $saved['tag_manager']['variables']);
         self::assertCount(2, $saved['tag_manager']['tags']);
         self::assertSame('script', $saved['tag_manager']['tags'][0]['type']);
@@ -194,7 +195,7 @@ final class TagManagerControllerTest extends TestCase
     }
 
     #[DataProvider('invalidSiteFields')]
-    public function testInvalidSiteArgumentsOrConsentNeverPartiallySave(array $changes): void
+    public function testInvalidSiteArgumentsNeverPartiallySave(array $changes): void
     {
         $this->sites->save($this->siteId, TagManagerSettings::DEFAULTS, ['enabled' => true, 'name' => 'Existing choices']);
         $before = file_get_contents($this->sitePath($this->siteId));
@@ -219,10 +220,7 @@ final class TagManagerControllerTest extends TestCase
         yield 'unknown ref' => [['args_json' => '[{"$var":"missing"}]']];
         yield 'unsafe method' => [['method' => 'window.eval']];
         yield 'simultaneous script URL' => [['src' => 'https://scripts.example/conflict.js']];
-        yield 'missing CMP fields' => [['consent_manager' => null]];
-        yield 'string false CMP' => [['consent_manager' => ['enabled' => 'false', 'name' => 'Name']]];
-        yield 'empty CMP name' => [['consent_manager' => ['enabled' => '0', 'name' => '']]];
-        yield 'extra CMP policy' => [['consent_manager' => ['enabled' => '1', 'name' => 'Name', 'categories' => ['marketing']]]];
+        yield 'consent fields belong to the consent manager page' => [['consent_manager' => ['enabled' => '0', 'name' => 'Name']]];
         yield 'removed referenced variable' => [['variables' => [['alias' => 'plan', 'path' => 'site.plan', 'remove' => '1']]]];
     }
 
@@ -238,7 +236,9 @@ final class TagManagerControllerTest extends TestCase
         self::assertSame($this->siteId, $crawler->filter('#tag-manager-site option[selected]')->attr('value'));
         self::assertSame('First shop', $crawler->filter('#tag-manager-scope')->text());
         self::assertSame($this->siteId, $crawler->filter('input[name="site"]')->attr('value'));
-        self::assertSame('First shop choices', $crawler->filter('#site-consent-name')->attr('value'));
+        self::assertCount(0, $crawler->filter('[name^="consent_manager"]'));
+        self::assertStringContainsString('Consent manager lite: enabled', $crawler->text());
+        self::assertCount(1, $crawler->filter('a[href="/dashboard/consent-manager?site='.$this->siteId.'"].button'));
         self::assertSame('window.siteData.plan', $crawler->filter('#variable-0-path')->attr('value'));
         self::assertSame('call', $crawler->filter('#tag-1-type option[selected]')->attr('value'));
         self::assertSame('Aggregate.emit', $crawler->filter('#tag-1-method')->attr('value'));
@@ -251,7 +251,7 @@ final class TagManagerControllerTest extends TestCase
         $other = new Crawler((string) $this->controller($otherRequest)->index($otherRequest)->getContent());
         self::assertSame('Second shop', $other->filter('#tag-manager-scope')->text());
         self::assertSame('0', $other->filter('#tag-manager-enabled option[selected]')->attr('value'));
-        self::assertSame('Second shop', $other->filter('#site-consent-name')->attr('value'));
+        self::assertCount(1, $other->filter('a[href="/dashboard/consent-manager?site='.$this->otherSiteId.'"].button'));
         self::assertSame('', $other->filter('#tag-0-id')->attr('value'));
 
         $legacyRequest = Request::create('/dashboard/tag-manager', 'GET', ['site' => '']);
@@ -259,7 +259,7 @@ final class TagManagerControllerTest extends TestCase
         self::assertSame('', $legacy->filter('#tag-manager-site option[selected]')->attr('value'));
         self::assertSame('Shared configuration', $legacy->filter('#tag-manager-scope')->text());
         self::assertSame('Shared configuration', $legacy->filter('#tag-manager-site option[selected]')->text());
-        self::assertCount(0, $legacy->filter('[name="consent_manager[name]"]'));
+        self::assertStringNotContainsString('Consent manager lite: ', $legacy->text());
     }
 
     public function testDownloadExportsOnlySelectedPublicSettingsAndRequiresAdmin(): void
@@ -277,7 +277,7 @@ final class TagManagerControllerTest extends TestCase
         self::assertSame('attachment; filename="website-scripts-'.$this->siteId.'.yaml"', $response->headers->get('Content-Disposition'));
         self::assertSame(['tag_manager', 'consent_manager'], array_keys($export));
         self::assertSame('Aggregate.emit', $export['tag_manager']['tags'][1]['method']);
-        self::assertSame('First shop choices', $export['consent_manager']['name']);
+        self::assertSame(['enabled' => true, 'name' => 'First shop'], $export['consent_manager']);
         self::assertStringNotContainsString('private-', $response->getContent());
         self::assertStringNotContainsString('second-public-token', $response->getContent());
 
@@ -315,7 +315,6 @@ final class TagManagerControllerTest extends TestCase
     {
         return [
             'site' => $this->siteId, 'enabled' => '1',
-            'consent_manager' => ['enabled' => '1', 'name' => 'First shop choices'],
             'variables' => [
                 ['alias' => 'plan', 'path' => 'window.siteData.plan'],
                 ['alias' => 'remove_me', 'path' => 'site.removed', 'remove' => '1'],
@@ -358,7 +357,6 @@ final class TagManagerControllerTest extends TestCase
         $this->sites->save($this->siteId, TagManagerSettings::DEFAULTS, ['enabled' => true, 'name' => 'Existing choices']);
         $before = file_get_contents($this->sitePath($this->siteId));
         $form = $this->siteForm();
-        $form['consent_manager']['name'] = 'Typed choices';
         $form['variables'][] = ['alias' => 'region', 'path' => 'window.siteData.region'];
         $form['tags'][0]['src'] = 'https://scripts.example/typed.js?plan={{plan}}';
         $form['tags'][1]['args_json'] = '["purchase", {"total_minor": 1299'; // invalid JSON
@@ -371,7 +369,6 @@ final class TagManagerControllerTest extends TestCase
 
         $view = $this->view($request, ['site' => $this->siteId]);
         self::assertStringContainsString('Values preserved', $view->text());
-        self::assertSame('Typed choices', $view->filter('#site-consent-name')->attr('value'));
         self::assertSame('1', $view->filter('#tag-manager-enabled option[selected]')->attr('value'));
         self::assertSame('window.siteData.plan', $view->filter('#variable-0-path')->attr('value'));
         self::assertSame('remove_me', $view->filter('#variable-1-alias')->attr('value'));
@@ -393,7 +390,6 @@ final class TagManagerControllerTest extends TestCase
 
         $again = $this->view($request, ['site' => $this->siteId]);
         self::assertStringNotContainsString('Values preserved', $again->text());
-        self::assertSame('Existing choices', $again->filter('#site-consent-name')->attr('value'));
         self::assertSame('', $again->filter('#tag-0-id')->attr('value'));
     }
 
@@ -464,6 +460,90 @@ final class TagManagerControllerTest extends TestCase
         self::assertCount(0, (new Crawler((string) $this->controller($shared)->index($shared)->getContent()))->filter('#tag-manager-tracker-url'));
     }
 
+    public function testCustomJavaScriptIsSavedAsReadableYamlAndOfferedWithTemplatesAndHelp(): void
+    {
+        $form = $this->siteForm();
+        $form['tags'][] = ['id' => 'signup', 'type' => 'custom', 'code' => "// Count signups\r\ntag.emit('signup', {plan: tag.get('plan')});\r\n", 'enabled' => '1', 'consent' => 'analytics', 'trigger' => ['type' => 'dom_ready']];
+        $request = $this->request($form);
+        $this->controller($request)->save($request);
+
+        self::assertCount(1, $request->getSession()->getFlashBag()->get('success'));
+        $yaml = (string) file_get_contents($this->sitePath($this->siteId));
+        self::assertStringContainsString("code: |-\n        // Count signups\n        tag.emit('signup', {plan: tag.get('plan')});", $yaml);
+        self::assertSame(['id' => 'signup', 'code' => "// Count signups\ntag.emit('signup', {plan: tag.get('plan')});", 'enabled' => true, 'consent' => 'analytics', 'trigger' => ['type' => 'dom_ready'], 'type' => 'custom'],
+            Yaml::parse($yaml)['tag_manager']['tags'][2]);
+
+        $page = $this->view($request, ['site' => $this->siteId]);
+        self::assertSame('custom', $page->filter('#tag-2-type option[selected]')->attr('value'));
+        self::assertSame("// Count signups\ntag.emit('signup', {plan: tag.get('plan')});", $page->filter('#tag-2-code')->text(null, false));
+        self::assertStringContainsString("function (tag) { 'use strict'; … }", $page->filter('#tag-2-code-tip')->text());
+        self::assertStringContainsString("tag.get('alias')", $page->filter('#tag-2-code')->attr('placeholder'));
+        self::assertSame(['Engagement tracking', 'dataLayer helpers', 'Third-party vendors'], $page->filter('#tag-3-template optgroup')->each(static fn (Crawler $group): string => $group->attr('label')));
+        self::assertCount(8, $page->filter('#tag-3-template option[value]:not([value=""])'));
+        $templates = json_decode($page->filter('#tag-custom-templates')->text(), true, flags: JSON_THROW_ON_ERROR);
+        self::assertSame('outbound-links', $templates['Engagement tracking'][1]['id']);
+        self::assertStringNotContainsString('</script', $page->filter('#tag-custom-templates')->html());
+    }
+
+    public function testRejectedCustomJavaScriptIsExplainedAndKeptForCorrection(): void
+    {
+        $before = file_get_contents($this->sitePath($this->siteId));
+        $form = $this->siteForm();
+        $form['tags'][] = ['id' => 'broken', 'type' => 'custom', 'code' => "const ready = true;\nif (ready {\n  tag.emit('x');\n}", 'enabled' => '1', 'consent' => 'analytics', 'trigger' => ['type' => 'dom_ready']];
+        $request = $this->request($form);
+        $this->controller($request)->save($request);
+
+        self::assertSame(['Tag broken: the custom JavaScript has a syntax error on line 2: Unexpected: {.'], $request->getSession()->getFlashBag()->get('error'));
+        self::assertSame($before, file_get_contents($this->sitePath($this->siteId)));
+        $page = $this->view($request, ['site' => $this->siteId]);
+        self::assertSame("const ready = true;\nif (ready {\n  tag.emit('x');\n}", $page->filter('#tag-2-code')->text(null, false));
+        self::assertSame('custom', $page->filter('#tag-2-type option[selected]')->attr('value'));
+
+        foreach ([['src' => 'https://scripts.example/x.js'], ['method' => 'Acme.track']] as $extra) {
+            $mixed = $this->siteForm();
+            $mixed['tags'][] = ['id' => 'mixed', 'type' => 'custom', 'code' => "tag.emit('x');", 'enabled' => '1', 'consent' => 'analytics'] + $extra;
+            $request = $this->request($mixed);
+            $this->controller($request)->save($request);
+            self::assertSame(['A custom JavaScript action uses only its code. Clear the script URL, method and arguments.'], $request->getSession()->getFlashBag()->get('error'));
+        }
+        $codeOnScript = $this->siteForm();
+        $codeOnScript['tags'][0]['code'] = "tag.emit('x');";
+        $request = $this->request($codeOnScript);
+        $this->controller($request)->save($request);
+        self::assertSame(['Only a Run custom JavaScript action uses code. Clear the code or choose that action.'], $request->getSession()->getFlashBag()->get('error'));
+    }
+
+    public function testSwitchedOffCustomJavaScriptKeepsExistingTagsButAllowsNoNewOrChangedCode(): void
+    {
+        $form = $this->siteForm();
+        $form['tags'][] = ['id' => 'kept', 'type' => 'custom', 'code' => "tag.emit('kept');\r\nreturn;\r\n", 'enabled' => '1', 'consent' => 'analytics', 'trigger' => ['type' => 'dom_ready']];
+        $request = $this->request($form);
+        $this->controller($request)->save($request);
+        file_put_contents($this->projectDir.'/config/aggregate.yaml', Yaml::dump(['admin_token' => 'private-admin-token', 'feature_flags' => ['custom_scripts' => ['enabled' => false]]]));
+        $this->config = new AggregateConfigLoader($this->projectDir, 'test');
+
+        $page = $this->view($request, ['site' => $this->siteId]);
+        self::assertStringContainsString('Custom JavaScript is turned off for this installation', $page->filter('#tag-2-code')->ancestors()->filter('[data-action-fields="custom"]')->text());
+        self::assertNotNull($page->filter('#tag-2-code')->attr('readonly'));
+        self::assertCount(1, $page->filter('#tag-2-type option[value="custom"]'), 'an existing custom tag keeps its action');
+        self::assertCount(0, $page->filter('#tag-3-type option[value="custom"]'), 'new rows do not offer it');
+
+        // The form submits the unchanged textarea with a browser's \r\n line breaks.
+        $unchanged = $this->request($form);
+        $this->controller($unchanged)->save($unchanged);
+        self::assertCount(1, $unchanged->getSession()->getFlashBag()->get('success'), 'saving other changes keeps the existing code');
+
+        $before = file_get_contents($this->sitePath($this->siteId));
+        foreach (['kept' => "tag.emit('changed');", 'new-one' => "tag.emit('new');"] as $id => $code) {
+            $changed = $form;
+            $changed['tags'][2] = ['id' => $id, 'code' => $code] + $form['tags'][2];
+            $request = $this->request($changed);
+            $this->controller($request)->save($request);
+            self::assertStringStartsWith('Custom JavaScript tags are turned off for this installation', $request->getSession()->getFlashBag()->get('error')[0] ?? '');
+            self::assertSame($before, file_get_contents($this->sitePath($this->siteId)));
+        }
+    }
+
     private function view(Request $previous, array $query): Crawler
     {
         $request = Request::create('/dashboard/tag-manager', 'GET', $query);
@@ -474,7 +554,7 @@ final class TagManagerControllerTest extends TestCase
 
     private function controller(Request $request, bool $csrfValid = true, bool $admin = true): TagManagerController
     {
-        $settings = new TagManagerSettings($this->config, $this->sites);
+        $settings = new TagManagerSettings($this->config, $this->sites, new FeatureFlags($this->config));
         $scripts = new DropInScripts($this->config, new WebsiteConfigManager($this->projectDir), new AppBranding($this->config, $this->projectDir), $this->projectDir, $settings, $this->sites);
         $controller = new TagManagerController($this->config, $settings, new NullLogger(), $this->sites, $scripts);
         $authorization = $this->createMock(AuthorizationCheckerInterface::class);
@@ -515,6 +595,7 @@ final class TagManagerControllerTest extends TestCase
                 'app_tag_manager_download' => '/dashboard/tag-manager/download',
                 'app_setup' => '/dashboard/setup',
                 'app_data_model' => '/dashboard/data-model',
+                'app_consent_manager' => '/dashboard/consent-manager',
             };
 
             return $path.($parameters !== [] ? '?'.http_build_query($parameters) : '');

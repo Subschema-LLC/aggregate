@@ -1,25 +1,39 @@
 /*! SPDX-License-Identifier: AGPL-3.0-only; see LICENSE in the source repository. */
 
+/* Defaults for consent_manager.theme; the script sets configured colors on these elements. */
+.ac-consent,
+.ac-consent-open {
+    --ac-background: #FFFFFF;
+    --ac-text: #202124;
+    --ac-accent: #2459B8;
+    --ac-border: #202124;
+    --ac-button-background: #FFFFFF;
+    --ac-button-text: #202124;
+    --ac-button-border: #202124;
+}
+
 .ac-consent {
     box-sizing: border-box;
     width: min(34rem, calc(100vw - 2rem));
     font: 16px/1.5 system-ui, sans-serif;
-    color: #202124;
-    background: #fff;
+    color: var(--ac-text);
+    background: var(--ac-background);
     position: fixed;
     bottom: 1rem;
     right: 1rem;
     z-index: 2147483000;
     max-width: min(34rem, calc(100vw - 2rem));
     padding: 1rem;
-    border: 2px solid #202124;
+    border: 2px solid var(--ac-border);
     border-radius: .5rem;
     box-shadow: 0 2px 12px #0003;
     max-height: calc(100vh - 2rem);
     overflow: auto;
+    text-align: left;
 }
 
-.ac-consent[hidden] {
+.ac-consent[hidden],
+.ac-consent-open[hidden] {
     display: none;
 }
 
@@ -33,25 +47,46 @@
     margin: .5rem 0;
 }
 
+.ac-consent a {
+    color: var(--ac-accent);
+    text-decoration: underline;
+}
+
+.ac-consent fieldset {
+    border: 1px solid var(--ac-border);
+    border-radius: .25rem;
+    margin: .75rem 0;
+    padding: .25rem .75rem;
+}
+
+.ac-consent input[type="checkbox"] {
+    accent-color: var(--ac-accent);
+}
+
+.ac-consent-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    margin-top: .75rem;
+}
+
 .ac-consent button,
 .ac-consent-open {
     font: inherit;
-    color: #202124;
-    background: #fff;
-    border: 2px solid #202124;
+    color: var(--ac-button-text);
+    background: var(--ac-button-background);
+    border: 2px solid var(--ac-button-border);
     border-radius: .25rem;
     padding: .5rem .75rem;
     cursor: pointer;
 }
 
-.ac-consent button {
-    margin: .25rem .5rem .25rem 0;
-}
-
+.ac-consent a:focus-visible,
 .ac-consent button:focus-visible,
+.ac-consent input:focus-visible,
 .ac-consent-open:focus-visible,
 .ac-consent h2:focus-visible {
-    outline: 3px solid #2459b8;
+    outline: 3px solid var(--ac-accent);
     outline-offset: 3px;
 }
 
@@ -61,6 +96,11 @@
     bottom: .5rem;
     left: .5rem;
     z-index: 2147482999;
+}
+
+.ac-consent-open--right {
+    left: auto;
+    right: .5rem;
 }
 
 .ac-consent-category {

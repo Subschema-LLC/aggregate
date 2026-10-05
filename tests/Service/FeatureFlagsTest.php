@@ -39,7 +39,8 @@ final class FeatureFlagsTest extends TestCase
     {
         $flags = $this->flags([]);
 
-        self::assertSame(['updates' => ['enabled' => true, 'hide_from_navigation' => false]], $flags->all());
+        self::assertSame(['updates' => ['enabled' => true, 'hide_from_navigation' => false], 'custom_scripts' => ['enabled' => true, 'hide_from_navigation' => false]], $flags->all());
+        self::assertTrue($flags->isEnabled('custom_scripts'), 'custom JavaScript tags are available unless switched off');
         self::assertTrue($flags->isEnabled('updates'));
         self::assertFalse($flags->isHiddenFromNavigation('updates'));
         self::assertSame('Updates', $flags->definitions()['updates']['label']);
@@ -168,11 +169,11 @@ final class FeatureFlagsTest extends TestCase
 
         $flags->save(['updates' => ['enabled' => false]]);
 
-        self::assertSame(['updates' => ['enabled' => false, 'hide_from_navigation' => true]], $flags->all());
+        self::assertSame(['updates' => ['enabled' => false, 'hide_from_navigation' => true], 'custom_scripts' => ['enabled' => true, 'hide_from_navigation' => false]], $flags->all());
         self::assertSame([
             'app_host' => 'https://analytics.example',
             'custom_data_properties' => ['plan' => ['consent_required' => true]],
-            'feature_flags' => ['updates' => ['enabled' => false, 'hide_from_navigation' => true]],
+            'feature_flags' => ['updates' => ['enabled' => false, 'hide_from_navigation' => true], 'custom_scripts' => ['enabled' => true, 'hide_from_navigation' => false]],
         ], Yaml::parseFile($this->projectDir.'/config/aggregate.yaml'));
         self::assertFalse((new FeatureFlags(new AggregateConfigLoader($this->projectDir, 'test')))->isEnabled('updates'));
 
@@ -187,7 +188,7 @@ final class FeatureFlagsTest extends TestCase
 
         $flags->save(['updates' => ['hide_from_navigation' => true]]);
 
-        self::assertSame(['updates' => ['enabled' => true, 'hide_from_navigation' => true]], $flags->all());
+        self::assertSame(['updates' => ['enabled' => true, 'hide_from_navigation' => true], 'custom_scripts' => ['enabled' => true, 'hide_from_navigation' => false]], $flags->all());
         self::assertSame($flags->all(), Yaml::parseFile($this->projectDir.'/config/aggregate.yaml')['feature_flags']);
     }
 
@@ -205,14 +206,14 @@ final class FeatureFlagsTest extends TestCase
         }
         $first = new FeatureFlags(new AggregateConfigLoader($this->projectDir, 'test'));
         $second = new FeatureFlags(new AggregateConfigLoader($this->projectDir, 'test'));
-        self::assertSame($initial, $first->all());
-        self::assertSame($initial, $second->all());
+        self::assertSame($initial + ['custom_scripts' => ['enabled' => true, 'hide_from_navigation' => false]], $first->all());
+        self::assertSame($initial + ['custom_scripts' => ['enabled' => true, 'hide_from_navigation' => false]], $second->all());
 
         $first->save(['updates' => ['enabled' => false]]);
         $second->save(['updates' => ['hide_from_navigation' => true]]);
 
         $reloaded = new FeatureFlags(new AggregateConfigLoader($this->projectDir, 'test'));
-        self::assertSame(['updates' => ['enabled' => false, 'hide_from_navigation' => true]], $reloaded->all());
+        self::assertSame(['updates' => ['enabled' => false, 'hide_from_navigation' => true], 'custom_scripts' => ['enabled' => true, 'hide_from_navigation' => false]], $reloaded->all());
         self::assertSame($reloaded->all(), $second->all());
     }
 
@@ -299,7 +300,7 @@ final class FeatureFlagsTest extends TestCase
         self::assertSame('https://shared.example', $written['app_host']);
         self::assertSame($otherEnvironment, $written['environments']['prod']);
         self::assertSame('https://test.example', $written['environments']['test']['app_host']);
-        self::assertSame(['updates' => ['enabled' => false, 'hide_from_navigation' => true]], $written['environments']['test']['feature_flags']);
+        self::assertSame(['updates' => ['enabled' => false, 'hide_from_navigation' => true], 'custom_scripts' => ['enabled' => true, 'hide_from_navigation' => false]], $written['environments']['test']['feature_flags']);
     }
 
     public function testSharedMappingIsUsedWhenTheActiveEnvironmentOmitsIt(): void
@@ -326,7 +327,7 @@ final class FeatureFlagsTest extends TestCase
         self::assertSame($main, file_get_contents($this->projectDir.'/config/aggregate.yaml'));
         self::assertSame([
             'app_host' => 'https://test.example',
-            'feature_flags' => ['updates' => ['enabled' => false, 'hide_from_navigation' => true]],
+            'feature_flags' => ['updates' => ['enabled' => false, 'hide_from_navigation' => true], 'custom_scripts' => ['enabled' => true, 'hide_from_navigation' => false]],
         ], Yaml::parseFile($this->projectDir.'/config/aggregate_test.yaml'));
     }
 

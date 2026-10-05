@@ -8,6 +8,76 @@
   var scriptNonce = currentScript && currentScript.nonce;
   var scriptSource = currentScript && currentScript.src;
 
+  // Wording, colors and buttons come from the website's consent_manager YAML,
+  // validated by the server. Anything missing or malformed uses these defaults.
+  // Keep in step with ConsentAppearance::DEFAULT_TEXT (a test compares them).
+  var defaultText = {
+    "title": "{name}: privacy choices",
+    "description": "Choose which optional categories to allow. Enhanced analytics uses browser identifiers and additional event details. Tags in each selected category may load third-party scripts.",
+    "details": [
+      "Coarse anonymous measurement may continue after rejection. You can change your choice here at any time. Withdrawal removes analytics identifiers and stops future enhanced detail; it does not erase stored history.",
+      "After withdrawal, reload this page to stop optional scripts already loaded. Tags configured to require no consent can run regardless of these choices. See this website’s privacy notice for its data, purposes, and providers."
+    ],
+    "categoriesLegend": "Optional categories",
+    "categories": {"analytics": "Enhanced analytics"},
+    "reject": "Reject all optional categories",
+    "accept": "Accept all optional categories",
+    "save": "Save selected choices",
+    "reopen": "Privacy choices",
+    "privacyLink": "Read this website’s privacy notice",
+    "statusApplied": "Your privacy choices have been applied.",
+    "statusNotSaved": "This choice could not be saved; choose again on your next visit.",
+    "statusOtherTab": "Your privacy choices were updated in another tab."
+  };
+  function own(value, key) {
+    try {
+      return value && typeof value === 'object' && !Array.isArray(value) && Object.prototype.hasOwnProperty.call(value, key) ? value[key] : undefined;
+    } catch (error) { return undefined; }
+  }
+  var configuredText = own(consentConfig, 'text');
+  function text(key) {
+    var value = own(configuredText, key);
+    var result = typeof value === 'string' && value.trim() !== '' ? value : defaultText[key];
+    return key === 'title' ? result.split('{name}').join(consentConfig.name) : result;
+  }
+  function paragraphs() {
+    var value = own(configuredText, 'details');
+    return Array.isArray(value) && value.length <= 4 && value.every(function (entry) { return typeof entry === 'string' && entry.trim() !== ''; })
+      ? value : defaultText.details;
+  }
+  function categoryLabel(category) {
+    var value = own(own(configuredText, 'categories'), category);
+    if (typeof value === 'string' && value.trim() !== '') return value;
+    return category === 'analytics' ? defaultText.categories.analytics
+      : category.replace(/[-_]/g, ' ').replace(/^./, function (letter) { return letter.toUpperCase(); });
+  }
+  var buttonOptions = own(consentConfig, 'buttons');
+  var shownButtons = (function () {
+    var value = own(buttonOptions, 'show');
+    var known = ['reject', 'accept', 'save'];
+    if (!Array.isArray(value) || value.indexOf('reject') === -1
+      || (value.indexOf('accept') === -1 && value.indexOf('save') === -1)
+      || !value.every(function (entry, index) { return known.indexOf(entry) !== -1 && value.indexOf(entry) === index; })) return known;
+    return value;
+  })();
+  var reopenPosition = ['bottom-left', 'bottom-right', 'hidden'].indexOf(own(buttonOptions, 'reopen')) !== -1
+    ? own(buttonOptions, 'reopen') : 'bottom-left';
+  var privacyPolicyUrl = (function () {
+    var value = own(consentConfig, 'privacyPolicyUrl');
+    try { return typeof value === 'string' && new URL(value).protocol === 'https:' ? value : ''; }
+    catch (error) { return ''; }
+  })();
+  function applyTheme(node) {
+    var theme = own(consentConfig, 'theme');
+    ['background', 'text', 'accent', 'border', 'buttonBackground', 'buttonText', 'buttonBorder'].forEach(function (key) {
+      var color = own(theme, key);
+      // Only #RRGGBB values reach the stylesheet, through CSSOM (allowed by CSP).
+      if (typeof color === 'string' && /^#[0-9A-Fa-f]{6}$/.test(color) && node.style && typeof node.style.setProperty === 'function') {
+        node.style.setProperty('--ac-' + key.replace(/[A-Z]/g, function (letter) { return '-' + letter.toLowerCase(); }), color);
+      }
+    });
+  }
+
   var storageKey = 'analytics_consent_v1:' + consentConfig.namespace + (consentConfig.siteId ? ':' + consentConfig.siteId : '');
   var categories = ['analytics'];
   (Array.isArray(consentConfig.categories) ? consentConfig.categories : []).forEach(function (category) {
@@ -92,19 +162,27 @@
       }
     }
     if (panel) {
-      panel.hidden = true;
-      preferenceButton.setAttribute('aria-expanded', 'false');
+      showPanel(false);
       preferenceButton.focus();
-      status.textContent = 'Your privacy choices have been applied.'
-        + (storageAvailable ? '' : ' This choice could not be saved; choose again on your next visit.');
+      status.textContent = text('statusApplied') + (storageAvailable ? '' : ' ' + text('statusNotSaved'));
     }
+  }
+
+  // The reopen button shows only while the banner is closed, so they never overlap.
+  function showPanel(visible) {
+    panel.hidden = !visible;
+    preferenceButton.hidden = visible || reopenPosition === 'hidden';
+    preferenceButton.setAttribute('aria-expanded', visible ? 'true' : 'false');
+  }
+
+  function syncCheckboxes() {
+    categories.forEach(function (category) { if (checkboxes[category]) checkboxes[category].checked = choices[category]; });
   }
 
   function open() {
     if (!panel) return;
-    panel.hidden = false;
-    categories.forEach(function (category) { checkboxes[category].checked = choices[category]; });
-    preferenceButton.setAttribute('aria-expanded', 'true');
+    showPanel(true);
+    syncCheckboxes();
     heading.focus();
   }
 
@@ -135,10 +213,9 @@
         && categories.every(function (category) { return hasChoice(value, category); })));
     notify();
     if (panel) {
-      panel.hidden = chosen;
-      preferenceButton.setAttribute('aria-expanded', chosen ? 'false' : 'true');
-      categories.forEach(function (category) { checkboxes[category].checked = choices[category]; });
-      status.textContent = 'Your privacy choices were updated in another tab.';
+      showPanel(!chosen);
+      syncCheckboxes();
+      status.textContent = text('statusOtherTab');
     }
   });
 
@@ -169,67 +246,81 @@
     panel.setAttribute('role', 'dialog');
     panel.setAttribute('aria-labelledby', 'ac-consent-title');
     panel.setAttribute('aria-describedby', 'ac-consent-description');
-    heading = element('h2', consentConfig.name + ': privacy choices');
+    applyTheme(panel);
+    heading = element('h2', text('title'));
     heading.id = 'ac-consent-title';
     heading.tabIndex = -1;
     panel.appendChild(heading);
-    var description = element('p', 'Choose which optional categories to allow. Enhanced analytics uses browser identifiers and additional event details. Tags in each selected category may load third-party scripts.');
+    var description = element('p', text('description'));
     description.id = 'ac-consent-description';
     panel.appendChild(description);
-    panel.appendChild(element('p', 'Coarse anonymous measurement may continue after rejection. You can change your choice here at any time. Withdrawal removes analytics identifiers and stops future enhanced detail; it does not erase stored history.'));
-    panel.appendChild(element('p', 'After withdrawal, reload this page to stop optional scripts already loaded. Tags configured to require no consent can run regardless of these choices. See this website’s privacy notice for its data, purposes, and providers.'));
-    var fieldset = element('fieldset');
-    fieldset.appendChild(element('legend', 'Optional categories'));
-    categories.forEach(function (category) {
-      var label = element('label');
-      label.className = 'ac-consent-category';
-      var checkbox = element('input');
-      checkbox.type = 'checkbox';
-      checkbox.checked = choices[category];
-      checkbox.id = 'ac-consent-' + category;
-      checkboxes[category] = checkbox;
-      label.appendChild(checkbox);
-      label.appendChild(element('span', ' ' + (category === 'analytics' ? 'Enhanced analytics' : category.replace(/[-_]/g, ' ').replace(/^./, function (letter) { return letter.toUpperCase(); }))));
-      fieldset.appendChild(label);
+    paragraphs().forEach(function (paragraph) { panel.appendChild(element('p', paragraph)); });
+    if (privacyPolicyUrl) {
+      var notice = element('p');
+      var link = element('a', text('privacyLink'));
+      link.href = privacyPolicyUrl;
+      link.referrerPolicy = 'no-referrer';
+      notice.appendChild(link);
+      panel.appendChild(notice);
+    }
+    // Without a save button there is nothing to select, so the choice is all or nothing.
+    if (shownButtons.indexOf('save') !== -1) {
+      var fieldset = element('fieldset');
+      fieldset.appendChild(element('legend', text('categoriesLegend')));
+      categories.forEach(function (category) {
+        var label = element('label');
+        label.className = 'ac-consent-category';
+        var checkbox = element('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = choices[category];
+        checkbox.id = 'ac-consent-' + category;
+        checkboxes[category] = checkbox;
+        label.appendChild(checkbox);
+        label.appendChild(element('span', ' ' + categoryLabel(category)));
+        fieldset.appendChild(label);
+      });
+      panel.appendChild(fieldset);
+    }
+    var actions = {
+      reject: function () { setConsent({}); },
+      accept: function () {
+        var values = {};
+        categories.forEach(function (category) { values[category] = true; });
+        setConsent(values);
+      },
+      save: function () {
+        var values = {};
+        categories.forEach(function (category) { values[category] = checkboxes[category].checked === true; });
+        setConsent(values);
+      }
+    };
+    // Every action button shares one style, so no choice is visually favored.
+    var row = element('div');
+    row.className = 'ac-consent-actions';
+    shownButtons.forEach(function (name) {
+      var button = element('button', text(name));
+      button.type = 'button';
+      button.addEventListener('click', actions[name]);
+      row.appendChild(button);
     });
-    panel.appendChild(fieldset);
-    var reject = element('button', 'Reject all optional categories');
-    reject.type = 'button';
-    reject.addEventListener('click', function () { setConsent({}); });
-    panel.appendChild(reject);
-    var accept = element('button', 'Accept all optional categories');
-    accept.type = 'button';
-    accept.addEventListener('click', function () {
-      var values = {};
-      categories.forEach(function (category) { values[category] = true; });
-      setConsent(values);
-    });
-    panel.appendChild(accept);
-    var save = element('button', 'Save selected choices');
-    save.type = 'button';
-    save.addEventListener('click', function () {
-      var values = {};
-      categories.forEach(function (category) { values[category] = checkboxes[category].checked === true; });
-      setConsent(values);
-    });
-    panel.appendChild(save);
+    panel.appendChild(row);
     panel.addEventListener('keydown', function (event) {
       if (event.key !== 'Escape') return;
-      panel.hidden = true;
-      preferenceButton.setAttribute('aria-expanded', 'false');
+      showPanel(false);
       preferenceButton.focus();
     });
-    preferenceButton = element('button', 'Privacy choices');
+    preferenceButton = element('button', text('reopen'));
     preferenceButton.type = 'button';
-    preferenceButton.className = 'ac-consent-open';
+    preferenceButton.className = 'ac-consent-open' + (reopenPosition === 'bottom-right' ? ' ac-consent-open--right' : '');
+    // A hidden button needs the website's own link to AggregateConsent.open().
+    applyTheme(preferenceButton);
     preferenceButton.setAttribute('aria-controls', panel.id);
-    preferenceButton.setAttribute('aria-expanded', chosen ? 'false' : 'true');
     preferenceButton.addEventListener('click', open);
     status = element('span');
     status.className = 'ac-consent-status';
     status.setAttribute('role', 'status');
     status.setAttribute('aria-live', 'polite');
-    panel.hidden = chosen;
+    showPanel(!chosen);
     document.body.appendChild(preferenceButton);
     document.body.appendChild(panel);
     document.body.appendChild(status);

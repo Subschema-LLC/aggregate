@@ -14,6 +14,10 @@ tag_manager_controller:
     resource: ../src/Controller/TagManagerController.php
     type: attribute
 
+consent_manager_controller:
+    resource: ../src/Controller/ConsentManagerController.php
+    type: attribute
+
 browser_assets_controller:
     resource: ../src/Controller/BrowserAssetsController.php
     type: attribute

@@ -5,3 +5,63 @@
 .tag-settings .table-container { max-width: 100%; }
 .tag-settings-fieldset { border: 0; margin: 0; min-inline-size: 0; padding: 0; }
 .tag-settings-fieldset > legend { margin-block-end: 1rem; max-width: 100%; padding: 0; overflow-wrap: anywhere; }
+
+/* Custom JavaScript editor. */
+.tag-settings .custom-code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: .875rem;
+    line-height: 1.5;
+    tab-size: 2;
+    white-space: pre;
+}
+.tag-settings .custom-code-status.is-danger { color: var(--bulma-danger-on-scheme, #cc0f35); }
+.tag-settings .custom-code-status.is-success { color: var(--bulma-success-on-scheme, #257942); }
+.tag-settings .custom-api { font-size: .75rem; margin: .35rem 0 0; padding-left: 1rem; }
+.tag-settings .custom-api li + li { margin-top: .15rem; }
+
+/* Help icon with a hover and focus bubble, as on the data model pages. */
+.tag-settings .field-label-wrap { align-items: center; display: inline-flex; gap: .35rem; max-width: 100%; position: relative; }
+.tag-settings .field-tooltip { align-items: center; border-radius: 4px; cursor: pointer; display: inline-flex; position: relative; user-select: none; vertical-align: middle; }
+.tag-settings .field-tooltip:focus-visible { outline: 2px solid var(--app-brand-primary, #3273dc); outline-offset: 2px; }
+.tag-settings .field-tooltip .tooltip-bubble {
+    background: var(--app-brand-surface, #ffffff);
+    border: 1px solid var(--app-brand-border, #dbdbdb);
+    border-radius: var(--bulma-radius-medium, 6px);
+    bottom: calc(100% + 8px);
+    box-shadow: 0 10px 25px -3px rgba(0, 0, 0, .25), 0 4px 10px rgba(0, 0, 0, .12);
+    color: var(--app-brand-text, #363636);
+    display: none;
+    font-size: .75rem;
+    font-weight: 400;
+    /* Opens to the right: the icon sits near the start of its label. */
+    left: -.5rem;
+    line-height: 1.4;
+    max-width: min(26rem, calc(100vw - 3rem));
+    padding: .65rem .85rem;
+    position: absolute;
+    text-align: left;
+    white-space: normal;
+    width: max-content;
+    z-index: 100;
+}
+.tag-settings .field-tooltip .tooltip-bubble::after {
+    border-color: var(--app-brand-surface, #ffffff) transparent transparent transparent;
+    border-style: solid;
+    border-width: 6px;
+    content: '';
+    left: .6rem;
+    position: absolute;
+    top: 100%;
+}
+.tag-settings .field-tooltip:hover .tooltip-bubble,
+.tag-settings .field-tooltip:focus .tooltip-bubble,
+.tag-settings .field-tooltip:focus-within .tooltip-bubble { display: block; }
+
+/* On narrow screens the bubble spans the field, so it never leaves the page. */
+@media (max-width: 768px) {
+    .tag-settings .label-with-tooltip { position: relative; }
+    .tag-settings .label-with-tooltip .field-label-wrap,
+    .tag-settings .label-with-tooltip .field-tooltip { position: static; }
+    .tag-settings .label-with-tooltip .tooltip-bubble { left: 0; max-width: none; right: 0; width: auto; }
+    .tag-settings .label-with-tooltip .tooltip-bubble::after { display: none; }
+}

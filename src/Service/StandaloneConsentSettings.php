@@ -67,7 +67,7 @@ class StandaloneConsentSettings
             'consentLifetimeDays' => $settings['consent_lifetime_days'],
             'revision' => $settings['revision'],
             'storageKey' => 'micro_consent_v2:'.$siteId,
-        ];
+        ] + ConsentAppearance::browser($settings);
     }
 
     public static function validate(mixed $submitted, string $defaultName = 'Privacy choices'): array
@@ -75,10 +75,11 @@ class StandaloneConsentSettings
         if (!is_array($submitted) || ($submitted !== [] && array_is_list($submitted))) {
             throw new \InvalidArgumentException('standalone_consent must be a mapping.');
         }
-        foreach (array_diff(array_keys($submitted), array_keys(self::DEFAULTS)) as $key) {
+        foreach (array_diff(array_keys($submitted), [...array_keys(self::DEFAULTS), ...ConsentAppearance::KEYS]) as $key) {
             throw new \InvalidArgumentException('standalone_consent.'.$key.' is not a supported option.');
         }
-        $settings = array_replace(self::DEFAULTS, ['name' => $defaultName], $submitted);
+        $appearance = ConsentAppearance::validate($submitted, ConsentAppearance::STANDALONE, 'standalone_consent');
+        $settings = array_diff_key(array_replace(self::DEFAULTS, ['name' => $defaultName], $submitted), array_flip(ConsentAppearance::KEYS));
         foreach (['name' => 120, 'revision' => 64] as $field => $maximum) {
             $settings[$field] = self::text($settings[$field], $field, $maximum, false);
         }
@@ -116,7 +117,7 @@ class StandaloneConsentSettings
             throw new \InvalidArgumentException('standalone_consent.categories must include analytics.');
         }
 
-        return $settings;
+        return $settings + $appearance;
     }
 
     private static function text(mixed $value, string $field, int $maximum, bool $allowEmpty): string

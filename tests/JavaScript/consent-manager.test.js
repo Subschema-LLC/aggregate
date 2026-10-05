@@ -41,7 +41,9 @@ function runtime(options = {}) {
   };
   const document = eventTarget({readyState: options.readyState || 'complete', referrer: ''});
   document.createElement = (tag) => {
-    const node = eventTarget({tagName: tag.toUpperCase(), textContent: '', children: [], attributes: {}, style: {}, hidden: false});
+    const properties = {};
+    const node = eventTarget({tagName: tag.toUpperCase(), textContent: '', children: [], attributes: {}, hidden: false,
+      style: {properties, setProperty: (name, value) => { properties[name] = value; }}});
     node.setAttribute = (key, value) => { node.attributes[key] = String(value); };
     node.appendChild = (child) => { node.children.push(child); return child; };
     node.focus = () => { document.activeElement = node; };
@@ -74,7 +76,7 @@ function runtime(options = {}) {
     fetch: (url, request) => { requests.push(JSON.parse(request.body)); return Promise.resolve({ok: true}); }
   });
   window.location = context.location;
-  const configuration = JSON.stringify({namespace, name: options.name || 'Example Analytics', categories: options.categories || ['analytics'], siteId: options.siteId});
+  const configuration = JSON.stringify(Object.assign({namespace, name: options.name || 'Example Analytics', categories: options.categories || ['analytics'], siteId: options.siteId}, options.config || {}));
   const styles = JSON.stringify(options.staticStyles ? null : stylesheet);
   const configured = source.replace("var consentConfig = {namespace: 'Aggregate', name: 'Analytics'};", 'var consentConfig = ' + configuration + ';')
     .replaceAll('__AGGREGATE_CONSENT_CONFIG__', configuration)
@@ -373,5 +375,88 @@ test('static CMP sources load their adjacent stylesheet without copying query pa
     assert.equal(app.panel().hidden, false);
     app.load();
     assert.equal(app.document.head.children.length, 1, 'repeat loading does not duplicate the stylesheet');
+  }
+});
+
+const texts = (app) => app.allNodes.filter((node) => node.textContent).map((node) => node.tagName + ':' + node.textContent);
+const buttonsIn = (app) => app.allNodes.filter((node) => node.tagName === 'BUTTON' && node.className !== 'ac-consent-open' && !String(node.className).startsWith('ac-consent-open')).map((node) => node.textContent);
+
+test('configured wording replaces every default string, with {name} in the title and per-category labels', () => {
+  const app = runtime({categories: ['analytics', 'ad-tools'], name: 'Shop', config: {text: {
+    title: 'Cookies at {name}', description: 'We ask first.', details: ['One.', 'Two.', 'Three.'], categoriesLegend: 'Pick',
+    categories: {analytics: 'Statistics', 'ad-tools': 'Ads'}, reject: 'No thanks', accept: 'Yes please', save: 'Keep selection',
+    reopen: 'Cookies', statusApplied: 'Done.', statusNotSaved: 'Not kept.', statusOtherTab: 'Changed elsewhere.'
+  }}, writeBlocked: true});
+  const shown = texts(app);
+  for (const expected of ['H2:Cookies at Shop', 'P:We ask first.', 'P:One.', 'P:Two.', 'P:Three.', 'LEGEND:Pick', 'SPAN: Statistics', 'SPAN: Ads', 'BUTTON:Cookies']) {
+    assert.ok(shown.includes(expected), expected);
+  }
+  assert.deepEqual(buttonsIn(app), ['No thanks', 'Yes please', 'Keep selection']);
+  assert.equal(shown.some((entry) => entry.includes('Coarse anonymous measurement')), false, 'configured details replace the defaults');
+  app.findText('No thanks').dispatchEvent({type: 'click'});
+  assert.equal(app.allNodes.find((node) => node.className === 'ac-consent-status').textContent, 'Done. Not kept.');
+  assert.deepEqual(JSON.parse(JSON.stringify(app.window.AggregateConsent.getState())), {analytics: false, 'ad-tools': false});
+});
+
+test('empty details remove the extra paragraphs and malformed wording falls back to defaults', () => {
+  const app = runtime({config: {text: {details: [], accept: '', reject: 7, title: '   ', categories: {analytics: ['x']}}}});
+  const paragraphs = app.allNodes.filter((node) => node.tagName === 'P');
+  assert.equal(paragraphs.length, 1);
+  assert.deepEqual(buttonsIn(app), ['Reject all optional categories', 'Accept all optional categories', 'Save selected choices']);
+  assert.equal(app.findText('Example Analytics: privacy choices').tagName, 'H2');
+  assert.ok(app.findText(' Enhanced analytics'));
+});
+
+test('buttons follow the configured order, and without save there are no checkboxes and the choice is all or nothing', () => {
+  const ordered = runtime({config: {buttons: {show: ['accept', 'save', 'reject']}}});
+  assert.deepEqual(buttonsIn(ordered), ['Accept all optional categories', 'Save selected choices', 'Reject all optional categories']);
+
+  const simple = runtime({categories: ['analytics', 'marketing'], config: {buttons: {show: ['reject', 'accept']}}});
+  assert.deepEqual(buttonsIn(simple), ['Reject all optional categories', 'Accept all optional categories']);
+  assert.equal(simple.allNodes.some((node) => ['FIELDSET', 'INPUT'].includes(node.tagName)), false);
+  simple.findText('Accept all optional categories').dispatchEvent({type: 'click'});
+  assert.deepEqual(JSON.parse(JSON.stringify(simple.window.AggregateConsent.getState())), {analytics: true, marketing: true});
+  simple.window.AggregateConsent.open();
+  simple.window.dispatchEvent({type: 'storage', key: 'analytics_consent_v1:Aggregate', newValue: '{"analytics":false,"marketing":false}'});
+  assert.deepEqual(JSON.parse(JSON.stringify(simple.window.AggregateConsent.getState())), {analytics: false, marketing: false});
+
+  for (const show of [['accept', 'save'], ['reject'], ['reject', 'reject', 'accept'], ['reject', 'manage'], 'reject,accept']) {
+    assert.deepEqual(buttonsIn(runtime({config: {buttons: {show}}})).length, 3, 'unsafe or malformed lists keep all buttons: ' + JSON.stringify(show));
+  }
+});
+
+test('the reopen button can move to the right or be hidden for a website link to AggregateConsent.open()', () => {
+  const reopen = (app) => app.allNodes.find((node) => String(node.className).startsWith('ac-consent-open'));
+  const fresh = runtime();
+  assert.equal(reopen(fresh).className, 'ac-consent-open');
+  assert.equal(reopen(fresh).hidden, true, 'the reopen button stays out of the way while the banner is open');
+  fresh.findText('Reject all optional categories').dispatchEvent({type: 'click'});
+  assert.equal(fresh.panel().hidden, true);
+  assert.equal(reopen(fresh).hidden, false);
+  assert.equal(fresh.document.activeElement, reopen(fresh));
+  assert.equal(reopen(runtime({config: {buttons: {reopen: 'bottom-right'}}})).className, 'ac-consent-open ac-consent-open--right');
+  const hidden = runtime({saved: '{"analytics":false}', config: {buttons: {reopen: 'hidden'}}});
+  assert.equal(reopen(hidden).hidden, true);
+  assert.equal(hidden.panel().hidden, true);
+  hidden.window.AggregateConsent.open();
+  assert.equal(hidden.panel().hidden, false, 'the API still opens the banner');
+  assert.equal(reopen(runtime({config: {buttons: {reopen: 'top'}}})).className, 'ac-consent-open');
+});
+
+test('only #RRGGBB theme colors are applied, through CSS custom properties on the banner and reopen button', () => {
+  const app = runtime({config: {theme: {background: '#102030', text: '#FFFFFF', buttonBackground: '#ABCDEF', accent: 'red', border: '#123; display:none', buttonText: '#fff'}}});
+  const expected = {'--ac-background': '#102030', '--ac-text': '#FFFFFF', '--ac-button-background': '#ABCDEF'};
+  assert.deepEqual(app.panel().style.properties, expected);
+  assert.deepEqual(app.allNodes.find((node) => String(node.className).startsWith('ac-consent-open')).style.properties, expected);
+});
+
+test('a privacy notice link appears only for an HTTPS URL and sends no referrer', () => {
+  const app = runtime({config: {privacyPolicyUrl: 'https://www.example.test/privacy', text: {privacyLink: 'Privacy notice'}}});
+  const link = app.findText('Privacy notice');
+  assert.equal(link.tagName, 'A');
+  assert.equal(link.href, 'https://www.example.test/privacy');
+  assert.equal(link.referrerPolicy, 'no-referrer');
+  for (const privacyPolicyUrl of ['javascript:alert(1)', 'http://www.example.test/privacy', '/privacy', 5]) {
+    assert.equal(runtime({config: {privacyPolicyUrl}}).allNodes.some((node) => node.tagName === 'A'), false, String(privacyPolicyUrl));
   }
 });

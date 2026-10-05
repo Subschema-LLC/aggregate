@@ -117,7 +117,9 @@ final class DropInScripts
         $configuration = $this->json([
             'namespace' => $this->namespace(), 'name' => $consent['name'],
             'categories' => $this->tags?->consentCategories($siteId) ?? ['analytics'],
-        ] + ($siteId === null ? [] : ['siteId' => $siteId]));
+        ] + ($siteId === null ? [] : ['siteId' => $siteId])
+            + (($consent['privacy_policy_url'] ?? '') !== '' ? ['privacyPolicyUrl' => $consent['privacy_policy_url']] : [])
+            + ConsentAppearance::browser($consent));
         if ($minified) {
             $directory = $this->projectDir.'/var/browser';
             try {

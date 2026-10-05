@@ -16,7 +16,9 @@ const PLACEHOLDERS = {
 const DROP_INS = [
   {name: 'consent', variable: 'consentConfig', placeholder: '__AGGREGATE_CONSENT_CONFIG__',
     stylesheet: {source: 'consent.css', variable: 'consentStyles', placeholder: '__AGGREGATE_CONSENT_STYLES__'}},
-  {name: 'tag-manager', variable: 'tagManagerConfig', placeholder: '__AGGREGATE_TAG_MANAGER__'}
+  {name: 'tag-manager', variable: 'tagManagerConfig', placeholder: '__AGGREGATE_TAG_MANAGER__',
+    // Custom JavaScript tags are compiled into the served script in place of this.
+    extra: {variable: 'customScripts', placeholder: '__AGGREGATE_CUSTOM_SCRIPTS__'}}
 ];
 const AGPL_NOTICE = '/*! Aggregate Analytics — SPDX-License-Identifier: AGPL-3.0-only; see LICENSE in the source repository. */\n';
 
@@ -87,11 +89,16 @@ async function build({projectDir = path.resolve(__dirname, '..'), outputDir = pr
     ['var/browser/aggregate.template.min.js', minifiedTemplate],
     ['public/internal-traffic-marker.min.js', await minify(AGPL_NOTICE + marker)]
   ]);
-  for (const {name, variable, placeholder, stylesheet} of DROP_INS) {
+  for (const {name, variable, placeholder, stylesheet, extra} of DROP_INS) {
     const source = fs.readFileSync(path.join(projectDir, 'public', name + '.js'), 'utf8');
     const declaration = new RegExp('^  var ' + variable + ' = .+;$', 'm');
     if (!declaration.test(source)) throw new Error('Drop-in configuration declaration not found: ' + variable);
     let templateSource = source.replace(declaration, '  var ' + variable + ' = ' + placeholder + ';');
+    if (extra) {
+      const extraDeclaration = new RegExp('^  var ' + extra.variable + ' = .+;$', 'm');
+      if (!extraDeclaration.test(templateSource)) throw new Error('Drop-in declaration not found: ' + extra.variable);
+      templateSource = templateSource.replace(extraDeclaration, '  var ' + extra.variable + ' = ' + extra.placeholder + ';');
+    }
     const stylesheetManifest = {};
     if (stylesheet) {
       const styles = fs.readFileSync(path.join(projectDir, 'public', stylesheet.source), 'utf8');
@@ -103,6 +110,8 @@ async function build({projectDir = path.resolve(__dirname, '..'), outputDir = pr
     }
     const template = await minify(templateSource);
     if (!template.includes(placeholder)) throw new Error('Minifier removed a dynamic drop-in placeholder: ' + placeholder);
+    // The server replaces each placeholder once; a copied placeholder would duplicate code.
+    if (extra && template.split(extra.placeholder).length !== 2) throw new Error('The minified template must contain ' + extra.placeholder + ' exactly once.');
     if (stylesheet && !template.includes(stylesheet.placeholder)) throw new Error('Minifier removed a dynamic drop-in stylesheet: ' + stylesheet.placeholder);
     outputs.set('public/' + name + '.min.js', await minify(source));
     outputs.set('var/browser/' + name + '.template.min.js', template);
