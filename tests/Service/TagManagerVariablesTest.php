@@ -71,6 +71,25 @@ final class TagManagerVariablesTest extends TestCase
         }
     }
 
+    #[DataProvider('htmlEncodedSources')]
+    public function testHtmlEncodedAmpersandsFromCopiedSnippetsBecomeQuerySeparators(string $pasted, string $expected): void
+    {
+        self::assertSame($expected, TagManagerVariables::normalizeSource($pasted));
+        self::assertSame($expected, TagManagerVariables::validateSource($pasted, ['sku' => 'ecommerce.items[0].sku']));
+    }
+
+    public static function htmlEncodedSources(): iterable
+    {
+        $tracker = 'https://analytics.example/aggregate.js?min=1&endpoint=https%3A%2F%2Fanalytics.example%2Fapi%2Freceive&token=public-token&consent=0';
+        yield 'tracker URL from an HTML snippet' => [str_replace('&', '&amp;', $tracker), $tracker];
+        yield 'uppercase entity' => ['https://scripts.example/a.js?x=1&AMP;y=2', 'https://scripts.example/a.js?x=1&y=2'];
+        yield 'numeric entities' => ['https://scripts.example/a.js?x=1&#38;y=2&#x26;z=3&#038;w=4', 'https://scripts.example/a.js?x=1&y=2&z=3&w=4'];
+        yield 'double-encoded' => ['https://scripts.example/a.js?x=1&amp;amp;y=2', 'https://scripts.example/a.js?x=1&y=2'];
+        yield 'template variable kept' => ['https://scripts.example/{{sku}}.js?a=1&amp;b=2', 'https://scripts.example/{{sku}}.js?a=1&b=2'];
+        yield 'plain separators unchanged' => [$tracker, $tracker];
+        yield 'other entities unchanged' => ['https://scripts.example/a.js?q=&lt;', 'https://scripts.example/a.js?q=&lt;'];
+    }
+
     #[DataProvider('validSources')]
     public function testStaticAuthorityWithDeclaredPathAndQueryVariablesIsAllowed(string $src): void
     {

@@ -14,7 +14,9 @@ table, and script serving works with `dashboard_enabled: false`.
 
 Open **Collection → Tag manager**, choose a website, and edit its CMP, variables,
 actions, triggers, and consent categories. Save to add another row, disable tags
-without deleting them, or select **Remove this tag when saving**. **Setup** copies
+without deleting them, or select **Remove this tag when saving**. If a save is
+rejected, nothing is written and the page shows the values you entered once
+more, with the error, so you can correct them without retyping. **Setup** copies
 or downloads the selected website's installation snippet and drop-ins.
 **Websites** offers the same window, query-parameter, and tag-manager installation
 choices. Choosing **Tag manager** installs its container and enabled CMP;
@@ -123,6 +125,11 @@ The list supports up to 20 tags. IDs are unique, begin with a letter, and contai
 HTTPS URLs of at most 2048 bytes, without credentials, fragments, spaces,
 backslashes or control characters. URL templates may substitute declared
 `{{alias}}` values only in the path or query, keeping the scheme and host fixed.
+A URL copied out of an HTML `src` attribute often keeps HTML's `&amp;` between
+query parameters; a browser would request that literally, so the tracker would
+read `amp;token` instead of `token`. Encoded ampersands (`&amp;`, `&#38;`,
+`&#x26;`) are therefore converted to `&` wherever URLs are validated: when the
+UI saves, and when YAML is loaded and served. Write plain `&` in YAML.
 
 The optional **Shared configuration** selection uses `tag_manager` in the active
 `config/aggregate.yaml` instead, served at `/lib.js` with `/consent-manager.js`.
@@ -310,16 +317,19 @@ still read page and browser information.
 
 ### Load the tracker through the manager
 
-Both installation pages offer a separate **Copy tracker URL** control in
-tag-manager mode. In the selected website's settings, enable the tag manager,
-add a **Load an HTTPS script** action with that URL, and select **Document ready**.
-Choose `none` to allow anonymous tracking before an analytics choice, or
-`analytics` to wait for analytics consent before loading any tracker code.
+The Tag manager page shows the selected website's tracker URL above its
+settings. **Add as a new tag** fills the empty tag row with that URL, a
+**Document ready** trigger and the ID `aggregate-tracker`, without saving; empty
+script URL fields also offer it as a suggestion. Both installation pages offer
+the same URL with **Copy tracker URL** in tag-manager mode. Choose `none` to
+allow anonymous tracking before an analytics choice, or `analytics` to wait for
+analytics consent before loading any tracker code. Enable the tag manager and
+save. Once a tag loads that URL, the page names the tag instead.
 
 The headless equivalent is below. Merge it into
 `config/tag-manager/sites/<site-id>.yaml`, preserving any existing settings and
-tags. Replace the public host, encoded endpoint, and website token. In YAML use
-literal `&` separators, not HTML's `&amp;`:
+tags. Replace the public host, encoded endpoint, and website token. Use literal
+`&` separators, not HTML's `&amp;`:
 
 ```yaml
 tag_manager:
@@ -331,6 +341,31 @@ tag_manager:
       consent: none
       trigger: {type: dom_ready}
 ```
+
+To send custom data with the tracker's page view, append
+`&cd.<property>=<value>` pairs to its URL, using variables for values that come
+from the page:
+
+```yaml
+tag_manager:
+  enabled: true
+  variables:
+    page_type: page.type
+  tags:
+    - id: aggregate-tracker
+      type: script
+      src: 'https://analytics.example.com/aggregate.js?min=1&endpoint=https%3A%2F%2Fanalytics.example.com%2Fapi%2Freceive&token=REPLACE_WITH_PUBLIC_WEBSITE_TOKEN&consent=0&cd.page_type={{page_type}}'
+      consent: none
+      trigger: {type: dom_ready}
+```
+
+Each property must be defined in the [data model](DATA-MODEL.md); with
+`consent: none`, only properties marked `consent_required: false` are recorded
+before an analytics choice. A missing, null or nonscalar variable skips the whole
+tag, so the tracker does not load on a page without that value. Use variables
+that every tracked page provides, and never personal data: the values travel in
+the script request. See [custom data in the script URL](TRACKING.md#custom-data-in-the-script-url)
+for the complete rules.
 
 Remove any separate tracker snippet when using this tag, including a tracker
 installed through GTM, so the automatic page view is not sent twice. If the

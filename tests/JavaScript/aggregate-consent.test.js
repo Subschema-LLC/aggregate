@@ -1495,3 +1495,65 @@ test('page information and network referrers omit full queries in both modes and
     }
   }
 });
+
+const scriptUrl = (query) => 'https://analytics.example/aggregate.js?min=1&endpoint=https%3A%2F%2Fanalytics.example%2Fapi%2Freceive&token=site-token' + query;
+
+test('cd.* script URL values accompany the automatic page view under the same rules as emit() properties', () => {
+  const runtime = loadSdk({
+    src: scriptUrl('&consent=0&cd.page_type=pricing&cd.plan=team&cd.section.name=sales&cd.email=private%40example.com'),
+    serverCustomData: {queryParameters: {}, consentFreeProperties: ['page_type', 'section.name']}
+  });
+
+  runtime.triggerPageView();
+  runtime.window.Aggregate.emit('button_click');
+  runtime.window.Aggregate.trackView();
+
+  assert.deepEqual(runtime.requests[0].customData, {page_type: 'pricing', 'section.name': 'sales'}, 'consent-required values wait for consent');
+  assert.equal(runtime.requests[0].consentState, 'denied');
+  assert.equal(runtime.requests[1].customData, undefined, 'named events do not inherit script URL values');
+  assert.equal(runtime.requests[2].customData, undefined, 'later views do not inherit them either');
+  assert.equal(JSON.stringify(runtime.requests).includes('private@example.com'), false);
+});
+
+test('cd.* values include consent-required properties after an affirmative choice and override page URL mappings', () => {
+  const runtime = loadSdk({
+    src: scriptUrl('&cd.plan=team&cd.utm_source=from-script'),
+    inline: {consent: true},
+    location: {search: '?utm_source=newsletter&utm_medium=email'}
+  });
+
+  runtime.triggerPageView();
+
+  assert.deepEqual(runtime.requests[0].customData, {plan: 'team', utm_source: 'from-script', utm_medium: 'email'});
+});
+
+test('cd.* values are bounded, trimmed strings with safe keys, and never coerced to declared types', () => {
+  const many = Array.from({length: 60}, (_, index) => '&cd.key' + index + '=v' + index).join('');
+  const runtime = loadSdk({
+    src: scriptUrl('&cd.blank=%20%20&cd.blank=second&cd.first=one&cd.first=two&cd.padded=%20%00value%20&cd.__proto__=x'
+      + '&cd.=empty&cd.9bad=x&cd.total_minor=1299&cd.active=true&cd.long=' + 'é'.repeat(300) + '&CD.upper=x&cdplain=x&plan=x' + many),
+    inline: {consent: true, customData: {queryParameters: {}, propertyTypes: {total_minor: 'integer', active: 'boolean'}}}
+  });
+
+  runtime.triggerPageView();
+  const sent = runtime.requests[0].customData;
+
+  assert.equal(sent.blank, 'second');
+  assert.equal(sent.first, 'one');
+  assert.equal(sent.padded, 'value');
+  assert.equal(Buffer.byteLength(sent.long), 500);
+  for (const key of ['__proto__', '', '9bad', 'total_minor', 'active', 'upper', 'cdplain', 'plan']) {
+    assert.equal(Object.prototype.hasOwnProperty.call(sent, key), false, key);
+  }
+  assert.equal(Object.keys(sent).length, 50);
+});
+
+test('strict collection and a missing script URL send no cd.* values', () => {
+  const strict = loadSdk({src: scriptUrl('&cd.plan=team'), inline: {consent: true, collectionProfile: 'strict'}});
+  strict.triggerPageView();
+  assert.deepEqual(Object.keys(strict.requests[0]).sort(), ['eventName', 'pagePath', 'websiteToken']);
+
+  const inline = loadSdk({inline: {consent: true, customData: {queryParameters: {}}}});
+  inline.triggerPageView();
+  assert.equal(inline.requests[0].customData, undefined);
+});

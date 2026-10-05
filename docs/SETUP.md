@@ -51,7 +51,8 @@ standalone bundle or omit the CMP when another manager is selected:
 
 Tag-manager mode includes no inline tracker configuration or direct tracker
 script. It offers a separate copyable tracker URL for adding the tracker as a
-tag. Choosing a snippet does not add tags or enable the container; see
+tag, which the Tag manager page also shows and can add for you. Choosing a
+snippet does not add tags or enable the container; see
 [loading the tracker through the manager](TAG-MANAGER.md#load-the-tracker-through-the-manager).
 The choices and generated code work without JavaScript; clipboard buttons need
 JavaScript, or you can select and copy the displayed code.
