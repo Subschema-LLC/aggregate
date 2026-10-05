@@ -342,6 +342,31 @@ tag_manager:
       trigger: {type: dom_ready}
 ```
 
+To send custom data with the tracker's page view, append
+`&cd.<property>=<value>` pairs to its URL, using variables for values that come
+from the page:
+
+```yaml
+tag_manager:
+  enabled: true
+  variables:
+    page_type: page.type
+  tags:
+    - id: aggregate-tracker
+      type: script
+      src: 'https://analytics.example.com/aggregate.js?min=1&endpoint=https%3A%2F%2Fanalytics.example.com%2Fapi%2Freceive&token=REPLACE_WITH_PUBLIC_WEBSITE_TOKEN&consent=0&cd.page_type={{page_type}}'
+      consent: none
+      trigger: {type: dom_ready}
+```
+
+Each property must be defined in the [data model](DATA-MODEL.md); with
+`consent: none`, only properties marked `consent_required: false` are recorded
+before an analytics choice. A missing, null or nonscalar variable skips the whole
+tag, so the tracker does not load on a page without that value. Use variables
+that every tracked page provides, and never personal data: the values travel in
+the script request. See [custom data in the script URL](TRACKING.md#custom-data-in-the-script-url)
+for the complete rules.
+
 Remove any separate tracker snippet when using this tag, including a tracker
 installed through GTM, so the automatic page view is not sent twice. If the
 tracker is already installed directly, keep that installation and leave this

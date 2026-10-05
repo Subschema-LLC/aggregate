@@ -120,7 +120,7 @@ function eventTarget(object = {}) {
 // Model only the two installed drop-ins. A configured script tag is fetched
 // asynchronously and evaluated later, with its own currentScript URL, exactly
 // where the SDK reads query parameters. There is no inline tracker config.
-function dropInPage({namespace = 'Aggregate', tokenParameter = 'token', saved, trackerTag = true, tagConsent = 'none', withCmp = true} = {}) {
+function dropInPage({namespace = 'Aggregate', tokenParameter = 'token', saved, trackerTag = true, tagConsent = 'none', withCmp = true, trackerQuery = '', variables = {}, dataLayer} = {}) {
   const requests = [];
   const timers = [];
   const injectedScripts = [];
@@ -185,14 +185,15 @@ function dropInPage({namespace = 'Aggregate', tokenParameter = 'token', saved, t
   trackerUrl.searchParams.set(tokenParameter, token);
   trackerUrl.searchParams.set('consent', '0');
   const tags = trackerTag ? [{
-    id: 'aggregate-sdk', type: 'script', src: trackerUrl.href, consent: tagConsent, trigger: {type: 'dom_ready'}
+    id: 'aggregate-sdk', type: 'script', src: trackerUrl.href + trackerQuery, consent: tagConsent, trigger: {type: 'dom_ready'}
   }] : [];
-  execute(configuredManager({enabled: true, tags}), {src: 'https://analytics.example/tms-lite/sites/' + siteId + '/lib.js', dataset: {}});
+  if (dataLayer) window.dataLayer = dataLayer;
+  execute(configuredManager({enabled: true, variables, tags}), {src: 'https://analytics.example/tms-lite/sites/' + siteId + '/lib.js', dataset: {}});
 
   return {
     window, document, requests, injectedScripts, localStorage, sessionStorage, cookies, endpoint, token, trackerUrl,
     loadInjectedTracker() {
-      const script = injectedScripts.find((node) => node.src === trackerUrl.href);
+      const script = injectedScripts.find((node) => node.src === trackerUrl.href || node.src.startsWith(trackerUrl.href + '&'));
       assert.ok(script, 'the configured TMS tag must request the SDK');
       assert.equal(script.async, true);
       execute(configuredSdk(namespace), script);
@@ -291,4 +292,24 @@ test('query endpoint and token also initialize the SDK without a CMP or any inli
   assert.equal(page.requests[0].body.websiteToken, page.token);
   assert.equal(page.requests[0].body.consentState, 'denied');
   assert.equal(page.requests[0].body.visitorId, undefined);
+});
+
+test('a managed tracker URL carries dataLayer values as custom data on its page view', () => {
+  const page = dropInPage({
+    saved: '{"analytics":true}',
+    trackerQuery: '&cd.page_type={{page_type}}&cd.plan={{plan}}',
+    variables: {page_type: 'page.type', plan: 'account.plan'},
+    dataLayer: [{page: {type: 'checkout'}, account: {plan: 'team & co'}}]
+  });
+  assert.equal(page.injectedScripts.length, 1);
+  assert.equal(new URL(page.injectedScripts[0].src).searchParams.get('cd.plan'), 'team & co', 'the manager URL-encodes each value');
+  page.loadInjectedTracker();
+  page.flushTimers();
+  assert.equal(page.requests[0].body.eventName, 'view');
+  assert.deepEqual(page.requests[0].body.customData, {page_type: 'checkout', plan: 'team & co'});
+  page.window.Aggregate.emit('button_click');
+  assert.equal(page.requests.at(-1).body.customData, null, 'named events do not inherit the page view values');
+
+  const missing = dropInPage({saved: '{"analytics":true}', trackerQuery: '&cd.plan={{plan}}', variables: {plan: 'account.plan'}, dataLayer: []});
+  assert.equal(missing.injectedScripts.length, 0, 'a missing variable skips the whole tracker tag');
 });
