@@ -45,6 +45,22 @@ final class TagManagerSettingsTest extends TestCase
         ])->toBrowserConfig());
     }
 
+    public function testYamlUrlWithHtmlAmpersandsIsServedWithQuerySeparatorsAndStaysUniqueOnce(): void
+    {
+        $tracker = 'https://analytics.example/aggregate.js?min=1&endpoint=https%3A%2F%2Fanalytics.example%2Fapi%2Freceive&token=public-token&consent=0';
+        $settings = $this->settings(['tag_manager' => ['enabled' => true, 'tags' => [
+            ['id' => 'tracker', 'src' => str_replace('&', '&amp;', $tracker), 'consent' => 'none'],
+        ]]]);
+        self::assertSame($tracker, $settings->toBrowserConfig()['tags'][0]['src']);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('unique HTTPS URL');
+        TagManagerSettings::validate(['tags' => [
+            ['id' => 'encoded', 'src' => str_replace('&', '&amp;', $tracker)],
+            ['id' => 'plain', 'src' => $tracker],
+        ]]);
+    }
+
     public function testOmittedPerTagEnabledDefaultsToTrueWithoutEnablingManager(): void
     {
         $tag = self::tag();

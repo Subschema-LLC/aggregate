@@ -3,7 +3,11 @@
 {% block title %}Tag manager - {{ app_branding.name }}{% endblock %}
 
 {% block body %}
-<div class="tag-settings" data-site-id="{{ selected_site }}">
+{% set rows = settings.tags %}
+{% set has_new_row = rows|length < max_tags %}
+{% if has_new_row %}{% set rows = rows|merge([{id: '', src: '', type: 'script', enabled: true, consent: 'analytics', trigger: {type: 'dom_ready'}}]) %}{% endif %}
+{% set suggest_tracker = tracker_url and not tracker_tag %}
+<div class="tag-settings" data-site-id="{{ selected_site }}" data-controller="pages--tag-manager--index"{% if has_new_row %} data-pages--tag-manager--index-new-row-value="{{ rows|length - 1 }}"{% endif %}>
     <h1 class="title">Tag manager lite</h1>
     <p class="subtitle">Choose a website, configure its tags and consent controls, and download its YAML.</p>
     {{ component('Ui:DocsLink', {topic: 'tracking.tag-manager', label: 'Tag manager guide'}) }}
@@ -28,6 +32,29 @@
         <p><a href="{{ path('app_setup', site ? {website: site.token, step: 3, tags: '1'} : {step: 3, tags: '1'}) }}">Open setup to copy or download scripts, or build compact versions.</a></p>
     </div>
 
+    {% if tracker_url and not configuration_error %}
+        <section class="box" aria-labelledby="tag-manager-tracker-title">
+            <h3 class="title is-5" id="tag-manager-tracker-title">Tracker URL for {{ site.domain }}</h3>
+            {% if tracker_tag %}
+                <p class="mb-3">This website's tracker is loaded by the tag <strong>{{ tracker_tag }}</strong>.</p>
+            {% else %}
+                <p class="mb-3">To collect analytics through the tag manager, load this URL with a <strong>Load an HTTPS script</strong> action on <strong>Document ready</strong>. Choose <code>none</code> to allow the tracker's anonymous mode before a choice, or <code>analytics</code> to wait for analytics consent. Remove any other tracker installation on the site to avoid duplicate page views.</p>
+            {% endif %}
+            <pre class="setup-code"><code id="tag-manager-tracker-url">{{ tracker_url }}</code></pre>
+            <div class="buttons mt-3">
+                {% if not tracker_tag and has_new_row %}
+                    <button type="button" class="button is-primary" data-action="pages--tag-manager--index#addTracker" data-pages--tag-manager--index-url-param="{{ tracker_url }}" data-pages--tag-manager--index-id-param="{{ tracker_tag_id }}">
+                        <span class="icon is-small"><i class="fas fa-plus" aria-hidden="true"></i></span>
+                        <span>Add as a new tag</span>
+                    </button>
+                {% endif %}
+                {{ component('Ui:CopyButton', {target: 'tag-manager-tracker-url', status: 'tag-manager-tracker-status', label: 'Copy tracker URL', class: 'button'}) }}
+            </div>
+            <p class="help" id="tag-manager-tracker-status" role="status" aria-live="polite" data-pages--tag-manager--index-target="status"></p>
+            <p class="help">To send custom data with the page view, add <code>&amp;cd.&lt;property&gt;=&lt;value&gt;</code> to the URL, for example <code>&amp;cd.page_type={% verbatim %}{{page_type}}{% endverbatim %}</code> with a variable below. Each property must be defined in the <a href="{{ path('app_data_model') }}">data model</a>, and those requiring consent are recorded only after an analytics choice. If a variable is missing on a page, the whole tag is skipped and the tracker does not load there.</p>
+        </section>
+    {% endif %}
+
     <details class="box mb-5">
         <summary class="has-text-weight-semibold">
             <span class="icon-text">
@@ -48,6 +75,12 @@
         <p class="mb-4"><a class="button" href="{{ path('app_tag_manager_download', {site: selected_site}) }}">Download settings YAML</a></p>
         {% component 'Ui:Validation' with {action: path('app_tag_manager_save'), method: 'post', id: 'tag-manager-form', 'aria-labelledby': 'tag-manager-scope'} %}
         {% block content %}
+            {% if restored_form %}
+                <div class="notification is-warning" role="alert">
+                    <span class="icon is-small mr-1"><i class="fas fa-clock-rotate-left" aria-hidden="true"></i></span>
+                    <strong>Values preserved:</strong> Nothing was saved. The settings you entered are shown below so you can correct the error and save again without retyping.
+                </div>
+            {% endif %}
             <input type="hidden" name="_csrf_token" value="{{ csrf_token('tag_manager_settings') }}">
             <input type="hidden" name="site" value="{{ selected_site }}">
             {% if consent_settings %}
@@ -76,11 +109,9 @@
                 <p class="help" id="tag-manager-enabled-help">Disabling preserves definitions and prevents new page loads from receiving these tags.</p>
             </div>
 
-            <details class="box">
+            <details class="box"{% if restored_form and variable_rows|length > 0 %} open{% endif %}>
                 <summary class="has-text-weight-semibold">Variables — read values from this page</summary>
                 <div class="content mt-3"><p>Give each value an alias and a path, such as <code>plan</code> → <code>window.siteData.plan</code> or <code>category</code> → <code>dataLayer[0].ecommerce.items[0].category</code>. Paths read own data properties; they do not run JavaScript or getters.</p><p>Use <code>{% verbatim %}{{plan}}{% endverbatim %}</code> in a script URL's path or query, or <code>{"$var":"plan"}</code> in method arguments. URL substitutions are encoded; the host stays fixed. Missing or invalid values skip that tag.</p></div>
-                {% set variable_rows = [] %}
-                {% for alias, data_path in settings.variables %}{% set variable_rows = variable_rows|merge([{alias: alias, path: data_path}]) %}{% endfor %}
                 {% if variable_rows|length < max_variables %}{% set variable_rows = variable_rows|merge([{alias: '', path: ''}]) %}{% endif %}
                 {% for variable in variable_rows %}
                     {{ component('TagManager:VariableRow', {index: loop.index0, variable: variable}) }}
@@ -88,11 +119,10 @@
                 <p class="help">Up to {{ max_variables }} variables. Save to add another row. Leave both fields empty to keep the current list.</p>
             </details>
 
-            {% set rows = settings.tags %}
-            {% if rows|length < max_tags %}{% set rows = rows|merge([{id: '', src: '', type: 'script', enabled: true, consent: 'analytics', trigger: {type: 'dom_ready'}}]) %}{% endif %}
             {% for tag in rows %}
-                {{ component('TagManager:TagRow', {index: loop.index0, tag: tag}) }}
+                {{ component('TagManager:TagRow', {index: loop.index0, tag: tag, script_suggestions: suggest_tracker}) }}
             {% endfor %}
+            {% if suggest_tracker %}<datalist id="tag-script-suggestions"><option value="{{ tracker_url }}">This website's tracker</option></datalist>{% endif %}
             <datalist id="tag-consent-categories"><option value="analytics">Analytics</option><option value="functional">Functional</option><option value="marketing">Marketing</option><option value="none">No consent required</option></datalist>
             <datalist id="tag-event-examples"><option value="click"></option><option value="submit"></option><option value="change"></option><option value="cart:updated"></option><option value="purchase"></option><option value="checkout_complete"></option></datalist>
             <details class="box"><summary class="has-text-weight-semibold">Trigger and event reference</summary><div class="table-container mt-3"><table class="table is-fullwidth"><thead><tr><th>Trigger</th><th>When it runs</th><th>Example</th></tr></thead><tbody>

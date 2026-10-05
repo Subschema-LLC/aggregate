@@ -776,7 +776,7 @@
       } catch(e) {}
     },
 
-    trackView: function(advancePage){
+    trackView: function(advancePage, eventData){
       if (strictCollection) {
         this.send({eventName: 'view', pagePath: this.sanitizePagePath()});
         return;
@@ -797,7 +797,8 @@
       }
       // The payload's custom properties travel as customData; the server still
       // accepts the earlier eventData name from older copies of this script.
-      var customData = this.customDataForEvent(null, advancePage);
+      // eventData holds the script URL's cd.* values for the automatic view.
+      var customData = this.customDataForEvent(eventData || null, advancePage);
       if (customData) payload.customData = customData;
 
       this.send(payload);
@@ -876,6 +877,11 @@
   // static copy never clears or creates storage on its way to strict mode.
   Analytics.requireStrictCollection(window[namespace].collectionProfile);
 
+  // Custom properties for the automatic page view, read from the script URL as
+  // cd.<property>=<value> so a tag manager can fill them from page values.
+  // They pass the same consent, allowlist and type checks as emit() data.
+  var initialViewData = Object.create(null);
+
   // Try to read configuration from script tag (query params or data-attributes)
   try {
     var s = document.currentScript || (function(){var ss=document.getElementsByTagName('script'); return ss[ss.length-1];})();
@@ -904,6 +910,18 @@
           if (cs !== null) {
             Analytics.setConsent(cs);
           }
+          // Collect a bounded surplus; customDataForEvent keeps the first 50
+          // values that pass consent and type checks.
+          var viewDataCount = 0;
+          u.searchParams.forEach(function(value, name){
+            if (name.indexOf('cd.') !== 0 || viewDataCount >= 100) return;
+            var key = name.slice(3);
+            // URL values are strings; repeated names keep the first nonblank one.
+            var text = value.replace(/[\u0000-\u001f\u007f]/g, '').trim();
+            if (!text || !Analytics.isCustomDataKey(key) || Object.prototype.hasOwnProperty.call(initialViewData, key)) return;
+            initialViewData[key] = text;
+            viewDataCount++;
+          });
         } catch(e) {}
       }
     }
@@ -936,8 +954,8 @@
 
   // auto pageview on load
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
-    setTimeout(function(){ Analytics.trackView(); }, 0);
+    setTimeout(function(){ Analytics.trackView(undefined, initialViewData); }, 0);
   } else {
-    document.addEventListener('DOMContentLoaded', function(){ Analytics.trackView(); });
+    document.addEventListener('DOMContentLoaded', function(){ Analytics.trackView(undefined, initialViewData); });
   }
 })();

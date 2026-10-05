@@ -6,6 +6,8 @@ namespace App\Tests\Controller;
 
 use App\Controller\TagManagerController;
 use App\Service\AggregateConfigLoader;
+use App\Service\AppBranding;
+use App\Service\DropInScripts;
 use App\Service\SiteScriptConfig;
 use App\Service\TagManagerSettings;
 use App\Service\WebsiteConfigManager;
@@ -46,6 +48,7 @@ final class TagManagerControllerTest extends TestCase
         mkdir($this->projectDir.'/config', 0700, true);
         file_put_contents($this->projectDir.'/config/aggregate.yaml', Yaml::dump([
             'admin_token' => 'private-admin-token',
+            'app_host' => 'https://analytics.example',
             'environments' => [
                 'test' => ['updates_branch' => 'uat'],
                 'prod' => ['tag_manager' => ['enabled' => false]],
@@ -338,9 +341,142 @@ final class TagManagerControllerTest extends TestCase
         return $request;
     }
 
+    public function testUrlPastedFromAnHtmlSnippetIsSavedWithQuerySeparators(): void
+    {
+        $tracker = 'https://analytics.example/aggregate.js?min=1&endpoint=https%3A%2F%2Fanalytics.example%2Fapi%2Freceive&token=first-public-token&consent=0';
+        $form = $this->siteForm();
+        $form['tags'][0]['src'] = str_replace('&', '&amp;', $tracker);
+        $request = $this->request($form);
+        $this->controller($request)->save($request);
+
+        self::assertCount(1, $request->getSession()->getFlashBag()->peek('success'));
+        self::assertSame($tracker, Yaml::parseFile($this->sitePath($this->siteId))['tag_manager']['tags'][0]['src']);
+    }
+
+    public function testRejectedFormIsShownAgainOnceForTheSameWebsiteWithoutSaving(): void
+    {
+        $this->sites->save($this->siteId, TagManagerSettings::DEFAULTS, ['enabled' => true, 'name' => 'Existing choices']);
+        $before = file_get_contents($this->sitePath($this->siteId));
+        $form = $this->siteForm();
+        $form['consent_manager']['name'] = 'Typed choices';
+        $form['variables'][] = ['alias' => 'region', 'path' => 'window.siteData.region'];
+        $form['tags'][0]['src'] = 'https://scripts.example/typed.js?plan={{plan}}';
+        $form['tags'][1]['args_json'] = '["purchase", {"total_minor": 1299'; // invalid JSON
+        $form['tags'][] = ['id' => 'second-try', 'type' => 'script', 'src' => 'https://scripts.example/second.js', 'enabled' => '0', 'consent' => 'Marketing!', 'trigger' => ['type' => 'document_event', 'event' => 'cart:updated']];
+        $form['tags'][] = ['id' => '', 'type' => 'script', 'src' => '', 'enabled' => '1', 'consent' => 'analytics', 'trigger' => ['type' => 'dom_ready']];
+        $request = $this->request($form);
+        $this->controller($request)->save($request);
+        self::assertCount(1, $request->getSession()->getFlashBag()->get('error'));
+        self::assertSame($before, file_get_contents($this->sitePath($this->siteId)));
+
+        $view = $this->view($request, ['site' => $this->siteId]);
+        self::assertStringContainsString('Values preserved', $view->text());
+        self::assertSame('Typed choices', $view->filter('#site-consent-name')->attr('value'));
+        self::assertSame('1', $view->filter('#tag-manager-enabled option[selected]')->attr('value'));
+        self::assertSame('window.siteData.plan', $view->filter('#variable-0-path')->attr('value'));
+        self::assertSame('remove_me', $view->filter('#variable-1-alias')->attr('value'));
+        self::assertCount(1, $view->filter('input[name="variables[1][remove]"][checked]'), 'a remove choice is kept');
+        self::assertSame('region', $view->filter('#variable-2-alias')->attr('value'), 'blank variable rows are not restored as entries');
+        self::assertSame('', $view->filter('#variable-3-alias')->attr('value'));
+        self::assertCount(0, $view->filter('#variable-4-alias'));
+        self::assertCount(1, $view->filter('details[open] #variable-2-alias'));
+        self::assertSame('https://scripts.example/typed.js?plan={{plan}}', $view->filter('#tag-0-src')->attr('value'));
+        self::assertSame('call', $view->filter('#tag-1-type option[selected]')->attr('value'));
+        self::assertSame('["purchase", {"total_minor": 1299', $view->filter('#tag-1-args')->text());
+        self::assertSame('second-try', $view->filter('#tag-2-id')->attr('value'));
+        self::assertSame('Marketing!', $view->filter('#tag-2-consent')->attr('value'));
+        self::assertSame('0', $view->filter('#tag-2-enabled option[selected]')->attr('value'));
+        self::assertSame('document_event', $view->filter('#tag-2-trigger option[selected]')->attr('value'));
+        self::assertSame('cart:updated', $view->filter('#tag-2-event')->attr('value'));
+        self::assertSame('', $view->filter('#tag-3-id')->attr('value'), 'one empty row for a new tag');
+        self::assertCount(0, $view->filter('#tag-4-id'));
+
+        $again = $this->view($request, ['site' => $this->siteId]);
+        self::assertStringNotContainsString('Values preserved', $again->text());
+        self::assertSame('Existing choices', $again->filter('#site-consent-name')->attr('value'));
+        self::assertSame('', $again->filter('#tag-0-id')->attr('value'));
+    }
+
+    public function testRejectedFormIsNotShownForAnotherWebsite(): void
+    {
+        $form = $this->siteForm();
+        $form['tags'][1]['method'] = 'window.eval';
+        $request = $this->request($form);
+        $this->controller($request)->save($request);
+
+        $other = $this->view($request, ['site' => $this->otherSiteId]);
+        self::assertStringNotContainsString('Values preserved', $other->text());
+        self::assertSame('', $other->filter('#tag-0-id')->attr('value'));
+        $first = $this->view($request, ['site' => $this->siteId]);
+        self::assertStringNotContainsString('Values preserved', $first->text(), 'a rejected form is offered once');
+    }
+
+    public function testRejectedFormKeepsRemoveChoice(): void
+    {
+        $form = $this->siteForm();
+        $form['tags'][0]['remove'] = '1';
+        $form['tags'][1]['method'] = 'window.eval';
+        $request = $this->request($form);
+        $this->controller($request)->save($request);
+
+        $view = $this->view($request, ['site' => $this->siteId]);
+        self::assertSame('window.eval', $view->filter('#tag-1-method')->attr('value'));
+        self::assertCount(1, $view->filter('input[name="tags[0][remove]"][checked]'));
+        self::assertCount(0, $view->filter('input[name="tags[1][remove]"][checked]'));
+    }
+
+    public function testFormWithInvalidCsrfIsNeverKeptForPrefilling(): void
+    {
+        $form = $this->siteForm();
+        $form['tags'][0]['src'] = 'https://attacker.example/inject.js';
+        $request = $this->request($form);
+        $this->controller($request, false)->save($request);
+
+        self::assertFalse($request->getSession()->has(TagManagerController::SUBMITTED_FORM_KEY));
+        $view = $this->view($request, ['site' => $this->siteId]);
+        self::assertStringNotContainsString('attacker.example', $view->html());
+    }
+
+    public function testWebsiteTrackerUrlIsOfferedUntilATagLoadsIt(): void
+    {
+        $tracker = 'https://analytics.example/aggregate.js?min=1&endpoint=https%3A%2F%2Fanalytics.example%2Fapi%2Freceive&token=first-public-token&consent=0';
+        $request = Request::create('/dashboard/tag-manager', 'GET', ['site' => $this->siteId]);
+        $view = new Crawler((string) $this->controller($request)->index($request)->getContent());
+
+        self::assertSame($tracker, $view->filter('#tag-manager-tracker-url')->text());
+        self::assertStringContainsString('&cd.page_type={{page_type}}', $view->filter('#tag-manager-tracker-title')->ancestors()->first()->text());
+        self::assertStringContainsString('first.example', $view->filter('#tag-manager-tracker-title')->text());
+        $add = $view->filter('[data-action="pages--tag-manager--index#addTracker"]');
+        self::assertSame($tracker, $add->attr('data-pages--tag-manager--index-url-param'));
+        self::assertSame(TagManagerController::TRACKER_TAG_ID, $add->attr('data-pages--tag-manager--index-id-param'));
+        self::assertSame('0', $view->filter('.tag-settings')->attr('data-pages--tag-manager--index-new-row-value'));
+        self::assertSame('tag-script-suggestions', $view->filter('#tag-0-src')->attr('list'));
+        self::assertSame($tracker, $view->filter('#tag-script-suggestions option')->attr('value'));
+
+        $this->sites->save($this->siteId, ['enabled' => true, 'tags' => [['id' => 'sdk', 'src' => $tracker, 'consent' => 'none']]], ['enabled' => true, 'name' => 'First shop']);
+        $configured = new Crawler((string) $this->controller($request)->index($request)->getContent());
+        self::assertStringContainsString('loaded by the tag sdk', $configured->filter('#tag-manager-tracker-title')->ancestors()->first()->text());
+        self::assertCount(0, $configured->filter('[data-action="pages--tag-manager--index#addTracker"]'));
+        self::assertCount(0, $configured->filter('#tag-script-suggestions'));
+        self::assertNull($configured->filter('#tag-1-src')->attr('list'));
+
+        $shared = Request::create('/dashboard/tag-manager', 'GET', ['site' => '']);
+        self::assertCount(0, (new Crawler((string) $this->controller($shared)->index($shared)->getContent()))->filter('#tag-manager-tracker-url'));
+    }
+
+    private function view(Request $previous, array $query): Crawler
+    {
+        $request = Request::create('/dashboard/tag-manager', 'GET', $query);
+        $request->setSession($previous->getSession());
+
+        return new Crawler((string) $this->controller($request)->index($request)->getContent());
+    }
+
     private function controller(Request $request, bool $csrfValid = true, bool $admin = true): TagManagerController
     {
-        $controller = new TagManagerController($this->config, new TagManagerSettings($this->config, $this->sites), new NullLogger(), $this->sites);
+        $settings = new TagManagerSettings($this->config, $this->sites);
+        $scripts = new DropInScripts($this->config, new WebsiteConfigManager($this->projectDir), new AppBranding($this->config, $this->projectDir), $this->projectDir, $settings, $this->sites);
+        $controller = new TagManagerController($this->config, $settings, new NullLogger(), $this->sites, $scripts);
         $authorization = $this->createMock(AuthorizationCheckerInterface::class);
         $authorization->method('isGranted')->with('ROLE_ADMIN')->willReturn($admin);
         $csrf = $this->createMock(CsrfTokenManagerInterface::class);
@@ -378,6 +514,7 @@ final class TagManagerControllerTest extends TestCase
                 'app_tag_manager_save' => '/dashboard/tag-manager/save',
                 'app_tag_manager_download' => '/dashboard/tag-manager/download',
                 'app_setup' => '/dashboard/setup',
+                'app_data_model' => '/dashboard/data-model',
             };
 
             return $path.($parameters !== [] ? '?'.http_build_query($parameters) : '');
