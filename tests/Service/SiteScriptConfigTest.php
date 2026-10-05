@@ -133,6 +133,36 @@ final class SiteScriptConfigTest extends TestCase
         self::assertSame($original, Yaml::parseFile($this->sitePath($this->firstId)));
     }
 
+    public function testAppearanceIsValidatedExportedAndKeptWhenOnlyStatusAndNameAreSaved(): void
+    {
+        $appearance = [
+            'privacy_policy_url' => 'https://www.example.com/privacy',
+            'text' => ['title' => 'Cookies at {name}', 'details' => ['One paragraph.']],
+            'theme' => ['accent' => '#1A4F8B'],
+            'buttons' => ['show' => ['reject', 'accept'], 'reopen' => 'bottom-right'],
+        ];
+        $this->writeSite($this->firstId, ['tag_manager' => self::tagSettings('existing'), 'consent_manager' => ['enabled' => true, 'name' => 'Shop'] + $appearance]);
+
+        self::assertSame(['enabled' => true, 'name' => 'Shop'] + $appearance, $this->sites->consent($this->firstId));
+        self::assertSame(['enabled' => true, 'name' => 'Shop'] + $appearance, Yaml::parse($this->sites->export($this->firstId))['consent_manager']);
+
+        $this->sites->save($this->firstId, self::tagSettings('changed'), ['enabled' => false, 'name' => 'Renamed']);
+        self::assertSame(['enabled' => false, 'name' => 'Renamed'] + $appearance, $this->sites->consent($this->firstId));
+        $this->sites->saveConsent($this->firstId, ['theme' => ['accent' => '#AB1234']]);
+        self::assertSame('#AB1234', $this->sites->consent($this->firstId)['theme']['accent']);
+        self::assertSame($appearance['text'], $this->sites->consent($this->firstId)['text']);
+        $this->sites->saveConsent($this->firstId, ['theme' => null, 'privacy_policy_url' => null]);
+        self::assertArrayNotHasKey('theme', $this->sites->consent($this->firstId), 'null removes an optional key');
+        self::assertArrayNotHasKey('privacy_policy_url', $this->sites->consent($this->firstId));
+        self::assertSame($appearance['buttons'], $this->sites->consent($this->firstId)['buttons']);
+
+        $before = file_get_contents($this->sitePath($this->firstId));
+        $this->assertRejected(fn () => $this->sites->saveConsent($this->firstId, ['theme' => ['text' => '#EEEEEE']]));
+        $this->assertRejected(fn () => $this->sites->saveConsent($this->firstId, ['buttons' => ['show' => ['accept']]]));
+        $this->assertRejected(fn () => $this->sites->saveConsent($this->firstId, ['privacy_policy_url' => 'http://www.example.com/privacy']));
+        self::assertSame($before, file_get_contents($this->sitePath($this->firstId)));
+    }
+
     public function testEmptyAndCommentsOnlyFilesRemainValidDefaultConfigurations(): void
     {
         foreach (['', "# Configure this registered website here.\n\n"] as $contents) {
@@ -207,7 +237,8 @@ final class SiteScriptConfigTest extends TestCase
 
     public static function invalidConsent(): iterable
     {
-        foreach ([null, false, 'enabled', ['unexpected' => true], ['enabled' => null], ['enabled' => 'false'], ['enabled' => 1], ['name' => null], ['name' => false], ['name' => ''], ['name' => '  '], ['name' => "Bad\nname"], ['name' => str_repeat('é', 61)]] as $value) {
+        foreach ([null, false, 'enabled', ['unexpected' => true], ['enabled' => null], ['enabled' => 'false'], ['enabled' => 1], ['name' => null], ['name' => false], ['name' => ''], ['name' => '  '], ['name' => "Bad\nname"], ['name' => str_repeat('é', 61)],
+            ['text' => ['footer' => 'x']], ['theme' => ['text' => '#FFFFFF']], ['buttons' => ['show' => ['accept']]], ['privacy_policy_url' => 'javascript:alert(1)'], [true, false]] as $value) {
             yield [$value];
         }
     }

@@ -88,6 +88,24 @@ blocking of a repeat abuser.
 **What would change it.** Sustained abuse would be handled at the web server or
 firewall rather than by storing addresses here.
 
+### Consent banners can be restyled, not tilted toward "accept"
+
+**Decision.** Both consent banners let operators change their wording, colors,
+button order and the reopen button, but every action button shares one set of
+colors, a reject button is always present, and colors must pass WCAG contrast.
+
+**Why.** Operators need banners that match their site and language. A banner that
+makes accepting easier or more prominent than refusing steers visitors, which
+regulators in several regions treat as invalid consent; a low-contrast banner
+hides the choice from some visitors altogether.
+
+**Trade-off.** No highlighted "primary" accept button, which many sites expect,
+and some brand palettes are rejected until a darker or lighter shade is chosen.
+
+**What would change it.** Clear, settled guidance that a styled preference is
+acceptable in the regions adopters serve, and a way to apply it equally to every
+choice.
+
 ## Data and reporting
 
 ### One events table for both modes

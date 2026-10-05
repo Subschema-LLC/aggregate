@@ -55,7 +55,7 @@ final class SiteScriptConfig
         return new AggregateConfigLoader($this->projectDir, $this->environment, 'tag-manager/sites/'.$id);
     }
 
-    /** @return array{enabled:bool,name:string} */
+    /** @return array{enabled: bool, name: string, privacy_policy_url?: string, text?: array, theme?: array, buttons?: array} */
     public function consent(string $id): array
     {
         $site = $this->site($id);
@@ -66,32 +66,58 @@ final class SiteScriptConfig
         return self::validateConsent(array_key_exists('consent_manager', $values) ? $values['consent_manager'] : [], $site['name']);
     }
 
+    /**
+     * Changes the supplied consent_manager keys: each supplied key replaces its
+     * saved value, null removes an optional key (restoring its default), and
+     * omitted keys keep their saved values.
+     */
     public function saveConsent(string $id, array $consent): void
     {
         $site = $this->site($id);
-        $consent = self::validateConsent($consent, $site['name']);
+        self::validateConsent(self::withoutRemovals($consent), $site['name']);
         $this->ensureDirectory();
         $this->configuration($id)->updateMany(static function (array $current) use ($consent, $site): array {
             TagManagerSettings::validate(array_key_exists('tag_manager', $current) ? $current['tag_manager'] : TagManagerSettings::DEFAULTS);
-            self::validateConsent(array_key_exists('consent_manager', $current) ? $current['consent_manager'] : [], $site['name']);
 
-            return ['consent_manager' => $consent];
+            return ['consent_manager' => self::mergeConsent($current, $consent, $site['name'])];
         });
     }
 
-    /** Save the two related settings atomically without replacing unrelated YAML. */
+    /**
+     * Save the two related settings atomically without replacing unrelated YAML.
+     * Consent keys missing from $consent keep their saved values.
+     */
     public function save(string $id, array $tags, array $consent): void
     {
         $site = $this->site($id);
         $tags = TagManagerSettings::validate($tags);
-        $consent = self::validateConsent($consent, $site['name']);
+        self::validateConsent(self::withoutRemovals($consent), $site['name']);
         $this->ensureDirectory();
         $this->configuration($id)->updateMany(static function (array $current) use ($tags, $consent, $site): array {
             TagManagerSettings::validate(array_key_exists('tag_manager', $current) ? $current['tag_manager'] : TagManagerSettings::DEFAULTS);
-            self::validateConsent(array_key_exists('consent_manager', $current) ? $current['consent_manager'] : [], $site['name']);
 
-            return ['tag_manager' => $tags, 'consent_manager' => $consent];
+            return ['tag_manager' => $tags, 'consent_manager' => self::mergeConsent($current, $consent, $site['name'])];
         });
+    }
+
+    /** The saved consent_manager with $changes applied, validated as a whole. */
+    private static function mergeConsent(array $current, array $changes, string $defaultName): array
+    {
+        $saved = self::validateConsent(array_key_exists('consent_manager', $current) ? $current['consent_manager'] : [], $defaultName);
+
+        return self::validateConsent(self::withoutRemovals(array_replace($saved, $changes)), $defaultName);
+    }
+
+    /** Drops optional keys set to null; a null enabled or name stays invalid. */
+    private static function withoutRemovals(array $consent): array
+    {
+        foreach (['privacy_policy_url', ...ConsentAppearance::KEYS] as $key) {
+            if (array_key_exists($key, $consent) && $consent[$key] === null) {
+                unset($consent[$key]);
+            }
+        }
+
+        return $consent;
     }
 
     public function ensureDirectory(): void
@@ -118,8 +144,9 @@ final class SiteScriptConfig
 
     private static function validateConsent(mixed $settings, string $defaultName): array
     {
-        if (!is_array($settings) || array_diff(array_keys($settings), ['enabled', 'name']) !== []) {
-            throw new \InvalidArgumentException('Consent manager settings support only enabled and name.');
+        $supported = ['enabled', 'name', 'privacy_policy_url', ...ConsentAppearance::KEYS];
+        if (!is_array($settings) || ($settings !== [] && array_is_list($settings)) || array_diff(array_keys($settings), $supported) !== []) {
+            throw new \InvalidArgumentException('Consent manager settings support only '.implode(', ', $supported).'.');
         }
         $enabled = array_key_exists('enabled', $settings) ? $settings['enabled'] : true;
         $name = array_key_exists('name', $settings) ? $settings['name'] : $defaultName;
@@ -128,6 +155,11 @@ final class SiteScriptConfig
             throw new \InvalidArgumentException('Consent controls need a YAML boolean enabled setting and a name of 1–120 UTF-8 bytes without control characters.');
         }
 
-        return ['enabled' => $enabled, 'name' => trim($name)];
+        $result = ['enabled' => $enabled, 'name' => trim($name)];
+        if (array_key_exists('privacy_policy_url', $settings)) {
+            $result['privacy_policy_url'] = ConsentAppearance::privacyPolicyUrl($settings['privacy_policy_url'], 'consent_manager.privacy_policy_url');
+        }
+
+        return $result + ConsentAppearance::validate($settings, ConsentAppearance::BUILTIN, 'consent_manager');
     }
 }

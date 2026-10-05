@@ -31,6 +31,7 @@ export const sections = [
       { source: 'docs/TRACKING.md', route: 'tracking/tracker', label: 'Tracker' },
       { source: 'docs/SERVER-SIDE.md', route: 'tracking/server-side', label: 'Server-side collection' },
       { source: 'docs/TAG-MANAGER.md', route: 'tracking/tag-manager', label: 'Tag manager' },
+      { source: 'docs/CONSENT-MANAGER.md', route: 'tracking/consent-manager', label: 'Consent manager lite' },
       { source: 'docs/CONSENT-REGIONS.md', route: 'tracking/consent-regions', label: 'Regional consent examples' },
       { source: 'micro-consent-dropins/README.md', route: 'tracking/standalone-consent', label: 'Standalone consent banner' },
       { source: 'docs/EVENT-EXAMPLES.md', route: 'tracking/event-examples', label: 'Event examples' },

@@ -81,12 +81,14 @@ final class SetupRoutesTest extends TestCase
             if ($role !== null) {
                 $browser->loginUser(SetupRoutesUserProvider::user($role));
             }
-            foreach (['/dashboard/setup', '/dashboard/setup/download/consent', '/dashboard/setup/download/tags', '/dashboard/tag-manager', '/dashboard/setup/download/standalone-consent', '/dashboard/setup/standalone/'.SiteScriptConfig::idForToken('public-site-token')] as $path) {
+            foreach (['/dashboard/setup', '/dashboard/setup/download/consent', '/dashboard/setup/download/tags', '/dashboard/tag-manager', '/dashboard/consent-manager', '/dashboard/setup/download/standalone-consent', '/dashboard/setup/standalone/'.SiteScriptConfig::idForToken('public-site-token')] as $path) {
                 $browser->request('GET', $path);
                 self::assertSame($role === null ? 302 : 403, $browser->getResponse()->getStatusCode(), $path);
             }
-            $browser->request('POST', '/dashboard/setup/build-scripts', ['_token' => 'forged']);
-            self::assertSame($role === null ? 302 : 403, $browser->getResponse()->getStatusCode());
+            foreach (['/dashboard/setup/build-scripts', '/dashboard/consent-manager/save'] as $path) {
+                $browser->request('POST', $path, ['_token' => 'forged']);
+                self::assertSame($role === null ? 302 : 403, $browser->getResponse()->getStatusCode(), $path);
+            }
         }
         $this->assertNoDatabaseConnection();
     }
@@ -111,6 +113,25 @@ final class SetupRoutesTest extends TestCase
         self::assertStringNotContainsString('window[', (string) $browser->getResponse()->getContent());
         $browser->request('GET', '/dashboard/tag-manager');
         self::assertSame(200, $browser->getResponse()->getStatusCode());
+
+        // The consent banner's own page saves through its rendered form.
+        $siteId = SiteScriptConfig::idForToken('public-site-token');
+        $crawler = $browser->request('GET', '/dashboard/consent-manager', ['site' => $siteId]);
+        self::assertSame(200, $browser->getResponse()->getStatusCode());
+        self::assertTrue($browser->getResponse()->headers->hasCacheControlDirective('no-store'));
+        self::assertCount(1, $crawler->filter('a[href="/dashboard/consent-manager"]'), 'the navigation lists the page');
+        $form = $crawler->filter('form#consent-manager-form')->form();
+        $form['text[accept]'] = 'Accept all';
+        $form['theme[accent]'] = '#1a4f8b';
+        $browser->submit($form);
+        self::assertSame(302, $browser->getResponse()->getStatusCode());
+        $saved = Yaml::parseFile($this->directory.'/config/tag-manager/sites/'.$siteId.'.yaml');
+        self::assertSame(['accept' => 'Accept all'], $saved['consent_manager']['text']);
+        self::assertSame(['accent' => '#1A4F8B'], $saved['consent_manager']['theme']);
+        self::assertSame('first', $saved['tag_manager']['tags'][0]['id']);
+        self::assertSame('private-site-setting', $saved['private_note']);
+        $browser->request('GET', '/cmp-lite/sites/'.$siteId.'/consent.js');
+        self::assertStringContainsString('"text":{"accept":"Accept all"},"theme":{"accent":"#1A4F8B"}', (string) $browser->getResponse()->getContent());
         $this->assertNoDatabaseConnection();
     }
 

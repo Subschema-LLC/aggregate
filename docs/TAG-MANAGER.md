@@ -9,11 +9,13 @@ tag defaults to analytics consent; choose another category or explicitly use
 `none` for an action that needs no consent.
 
 The manager is disabled by default. Each registered website has its own YAML,
-CMP settings, and remotely hosted scripts. Nothing is stored in a tag database
+consent banner settings, and remotely hosted scripts. Nothing is stored in a tag database
 table, and script serving works with `dashboard_enabled: false`.
 
-Open **Collection → Tag manager**, choose a website, and edit its CMP, variables,
-actions, triggers, and consent categories. Save to add another row, disable tags
+Open **Collection → Tag manager lite**, choose a website, and edit its variables,
+actions, triggers, and consent categories. The built-in consent banner has its own
+page, **Collection → Consent manager lite**; see the
+[consent manager guide](CONSENT-MANAGER.md). Save to add another row, disable tags
 without deleting them, or select **Remove this tag when saving**. If a save is
 rejected, nothing is written and the page shows the values you entered once
 more, with the error, so you can correct them without retyping. **Setup** copies
@@ -83,7 +85,10 @@ shared configuration.
 The built-in CMP defaults to enabled, using the registered website's name. Its
 optional categories come from that site's enabled tags, plus analytics for the
 tracker. Disable it when integrating another CMP; disabling grants no consent.
-Names contain 1–120 UTF-8 bytes without control characters.
+Names contain 1–120 UTF-8 bytes without control characters. Its wording, colors,
+buttons and privacy link are further `consent_manager` keys, described in the
+[consent manager guide](CONSENT-MANAGER.md#yaml-reference). Saving the tag
+manager page changes only `tag_manager`.
 
 ```yaml
 consent_manager:

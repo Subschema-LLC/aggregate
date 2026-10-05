@@ -315,6 +315,17 @@ final class DropInScriptsTest extends TestCase
             self::assertFalse($scripts->standaloneConsentScript(true, $siteId)['minified'], $path);
             file_put_contents($this->directory.$path, $original);
         }
+        // Wording, colors and buttons reach both banners as camelCase browser settings.
+        $settings->save($siteId, ['name' => 'Choices', 'text' => ['request_opt_out' => 'Do not sell'], 'theme' => ['accent' => '#1a4f8b'], 'buttons' => ['show' => ['reject', 'manage']]]);
+        $configured = $scripts->standaloneConsentScript(false, $siteId)['content'];
+        self::assertStringContainsString('"text":{"requestOptOut":"Do not sell"},"theme":{"accent":"#1A4F8B"},"buttons":{"show":["reject","manage"]}', $configured);
+        $sites->saveConsent($siteId, ['enabled' => true, 'name' => 'Shop', 'privacy_policy_url' => 'https://www.example.test/privacy',
+            'text' => ['privacy_link' => 'Notice'], 'theme' => ['button_background' => '#fff'], 'buttons' => ['reopen' => 'hidden']]);
+        $builtIn = $scripts->consentScript(false, $siteId)['content'];
+        self::assertStringContainsString('"privacyPolicyUrl":"https://www.example.test/privacy","text":{"privacyLink":"Notice"},"theme":{"buttonBackground":"#FFFFFF"},"buttons":{"reopen":"hidden"}', $builtIn);
+        $sites->saveConsent($siteId, ['privacy_policy_url' => '']);
+        self::assertStringNotContainsString('"privacyPolicyUrl":', $scripts->consentScript(false, $siteId)['content']);
+        $settings->save($siteId, ['name' => 'Choices </script>']);
         // Invalid built-in controls cannot block the independent option.
         $sites->configuration($siteId)->updateMany(static fn (): array => ['consent_manager' => ['enabled' => 'invalid']]);
         self::assertSame($snippet, $scripts->snippet('public-website-token', true, 'window', 'standalone'));

@@ -192,6 +192,8 @@ denied unless the browser has a remembered affirmative choice for that category.
 
 Visitors can accept all optional categories, reject all optional categories, or
 save a selection. **Privacy choices** remains available to reopen the controls.
+Its wording, colors, buttons and privacy link are set per website on the
+**Consent manager lite** page; see the [consent manager guide](CONSENT-MANAGER.md).
 Tags can load a script or call a named library method when their trigger and
 consent requirement match. Event triggers skipped before consent are not replayed.
 Tags explicitly configured with `consent: none` can run before any choice and

@@ -439,9 +439,14 @@ standalone_consent:
 | `respect_gpc` | YAML boolean; default `true`; active GPC denies marketing and sets do-not-sell, never grants analytics |
 | `consent_lifetime_days` | Integer 1–365; default 180; an operational review interval, not a legal consent lifetime |
 | `revision` | Nonempty string up to 64 UTF-8 bytes; default `'1'`; change when purposes/notice change |
+| `text` | Optional wording overrides, as plain text; keys and limits in the [standalone guide](../micro-consent-dropins/README.md#wording-colors-and-buttons) |
+| `theme` | Optional `#RRGGBB` colors: `background`, `text`, `accent`, `border`, `button_background`, `button_text`, `button_border`; contrast is checked |
+| `buttons` | Optional `show` (from `reject`, `accept`, `manage`; `reject` required) and `reopen` (`bottom-right`, `bottom-left` or `hidden`) |
 
-Text is trimmed and rejects control characters. The browser receives camelCase
-keys through `window.MicroConsentConfig`; its site-specific storage key is
+Text is trimmed and rejects control characters. The built-in banner's
+equivalent settings are `consent_manager` in the same file, edited on the
+**Consent manager lite** page; see the [consent manager guide](CONSENT-MANAGER.md).
+The browser receives camelCase keys through `window.MicroConsentConfig`; its site-specific storage key is
 `micro_consent_v2:<site-id>`. The configured script uses the deployment's tracker
 namespace in its optional adapter. No application secret or sharing token is
 included. Downloaded scripts are configuration snapshots.

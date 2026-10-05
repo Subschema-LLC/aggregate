@@ -142,6 +142,33 @@ final class StandaloneConsentSettingsTest extends TestCase
         }
     }
 
+    public function testWordingColorsAndButtonsAreValidatedForTheStandaloneBanner(): void
+    {
+        $saved = $this->settings->save($this->firstId, [
+            'text' => ['manage' => 'Customize', 'storage_notice' => 'Kept for {days} days.'],
+            'theme' => ['background' => '#102030', 'text' => '#ffffff', 'accent' => '#9CC8FF', 'button_background' => '#FFFFFF', 'button_text' => '#102030'],
+            'buttons' => ['show' => ['manage', 'reject'], 'reopen' => 'bottom-left'],
+        ]);
+        self::assertSame(['manage' => 'Customize', 'storage_notice' => 'Kept for {days} days.'], $saved['text']);
+        self::assertSame('#FFFFFF', $saved['theme']['text']);
+        self::assertSame($saved, $this->settings->get($this->firstId));
+        $browser = $this->settings->browserConfig($this->firstId);
+        self::assertSame(['manage' => 'Customize', 'storageNotice' => 'Kept for {days} days.'], $browser['text']);
+        self::assertSame('#102030', $browser['theme']['buttonText']);
+        self::assertSame(['show' => ['manage', 'reject'], 'reopen' => 'bottom-left'], $browser['buttons']);
+
+        $before = file_get_contents($this->projectDir.'/config/tag-manager/sites/'.$this->firstId.'.yaml');
+        foreach ([['text' => ['save_choices' => 'x']], ['theme' => ['accent' => '#FFFFFF']], ['buttons' => ['show' => ['accept', 'save']]]] as $invalid) {
+            try {
+                $this->settings->save($this->firstId, $invalid);
+                self::fail('Accepted '.json_encode($invalid));
+            } catch (\InvalidArgumentException $e) {
+                self::assertStringStartsWith('standalone_consent.', $e->getMessage());
+            }
+        }
+        self::assertSame($before, file_get_contents($this->projectDir.'/config/tag-manager/sites/'.$this->firstId.'.yaml'));
+    }
+
     public function testSaveChangesOnlyStandaloneMappingAndPreservesOtherSitesAndDeployment(): void
     {
         $this->write('config/aggregate.yaml', ['app_host' => 'https://analytics.example', 'deployment_secret' => 'private']);
