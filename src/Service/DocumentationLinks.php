@@ -39,6 +39,7 @@ final class DocumentationLinks
         'tracking.consent-manager' => ['tracking/consent-manager', 'docs/CONSENT-MANAGER.md'],
         'tracking.event-examples' => ['tracking/event-examples', 'docs/EVENT-EXAMPLES.md'],
         'tracking.strict' => ['tracking/tracker#strict-collection-profile', 'docs/TRACKING.md'],
+        'tracking.attributes' => ['tracking/tracker#track-clicks-and-forms-with-data-attributes', 'docs/TRACKING.md'],
         'consent.regions' => ['tracking/consent-regions', 'docs/CONSENT-REGIONS.md'],
         'consent.standalone' => ['tracking/standalone-consent', 'micro-consent-dropins/README.md'],
         'privacy' => ['privacy/compliance', 'docs/PRIVACY-COMPLIANCE.md'],

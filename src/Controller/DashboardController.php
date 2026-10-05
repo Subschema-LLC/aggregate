@@ -11,6 +11,7 @@ use App\Service\BrandingTheme;
 use App\Service\CollectionProfile;
 use App\Service\DocumentationLinks;
 use App\Service\DropInScripts;
+use App\Service\TrackingAttributes;
 use App\Service\WebsiteConfigManager;
 use App\Service\WebsiteDomainPolicy;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
@@ -72,6 +73,7 @@ class DashboardController extends AbstractController
             'snippet_format' => $format,
             'include_tags' => $withTags,
             'js_namespace' => $this->config->getWithEnvFallback('js_namespace', 'Aggregate'),
+            'tracking_attributes' => TrackingAttributes::names($this->config->getWithEnvFallback('js_namespace', 'Aggregate')),
         ]);
     }
 
@@ -84,6 +86,7 @@ class DashboardController extends AbstractController
         return $this->renderDashboardPage('settings/application.html.twig', [
             'app_host' => $this->config->getWithEnvFallback('app_host', 'http://localhost:8000'),
             'js_namespace' => $this->config->getWithEnvFallback('js_namespace', 'Aggregate'),
+            'tracking_attributes' => TrackingAttributes::names($this->config->getWithEnvFallback('js_namespace', 'Aggregate')),
             'rate_limit' => $this->config->getWithEnvFallback('rate_limit_per_minute', 100),
             'documentation_url' => $documentation->configuredValue(),
             'documentation_url_overridden' => $documentation->hasEnvironmentOverride(),
