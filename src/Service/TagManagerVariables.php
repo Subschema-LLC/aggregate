@@ -48,10 +48,29 @@ final class TagManagerVariables
         return $variables;
     }
 
+    /**
+     * A URL copied out of an HTML snippet keeps its `&amp;` separators, which a
+     * browser then requests literally, so the tracker reads `amp;token` instead
+     * of `token`. A literal entity is never a meaningful query separator, so
+     * every entry point stores and serves the plain `&` instead.
+     */
+    public static function normalizeSource(string $src): string
+    {
+        do {
+            $previous = $src;
+            $src = (string) preg_replace('/&(?:amp|#0*38|#x0*26);/i', '&', $src);
+        } while ($src !== $previous);
+
+        return $src;
+    }
+
     /** Only the path and query may contain declared {{alias}} placeholders. */
     public static function validateSource(mixed $src, array $variables): string
     {
         $variables = self::validate($variables);
+        if (is_string($src)) {
+            $src = self::normalizeSource($src);
+        }
         if (!is_string($src) || $src === '' || strlen($src) > 2048
             || preg_match('/[\x00-\x20\x7f\\\\]/', $src) === 1
             || preg_match('/\Ahttps:\/\/([^\/?#]+)/i', $src, $authority) !== 1
