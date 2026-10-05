@@ -12,6 +12,7 @@ needed when a registration's domain rules change.
 
 - [JavaScript integration](#javascript-integration)
 - [Custom event tracking](#custom-event-tracking)
+- [Track clicks and forms with data attributes](#track-clicks-and-forms-with-data-attributes)
 - [Page depth and single-page apps](#page-depth-and-single-page-apps)
 - [Strict collection profile](#strict-collection-profile)
 - [UTM and custom data collection](#utm-and-custom-data-collection)
@@ -83,6 +84,90 @@ window.Aggregate.setConsent(false);
 
 The tracker is authored directly in [public/aggregate.js](../public/aggregate.js), with no required build step. The configured `/aggregate.js` response uses the same BSD-3-Clause license and retains its notice. [Optional minification](JS-BUILD.md) provides `/aggregate.js?min=1` with the same configuration. Use the supplied server routing so YAML collection settings, marker settings, and the JavaScript namespace reach the browser. [Namespace overrides](CONFIGURATION.md#customizing-the-javascript-namespace) and [organization marker setup](PRIVACY-COMPLIANCE.md#organization-traffic) are documented separately.
 
+## Track clicks and forms with data attributes
+
+Mark an element in your HTML and the tracker sends an event when it is clicked,
+or, for a form, when it is submitted. No JavaScript is needed:
+
+```html
+<section data-aggregate-prop-section="pricing">
+  <button data-aggregate-event="plan_click"
+          data-aggregate-prop-plan="pro"
+          data-aggregate-goal="signup">Choose Pro</button>
+</section>
+
+<form data-aggregate-event="newsletter_submit" data-aggregate-prop-list="weekly">
+  ...
+</form>
+```
+
+| Attribute | What it does |
+| --- | --- |
+| `data-aggregate-event` | Names the event, with the same rules as `emit()`. On a form, it is sent when the form is submitted. On any other element, it is sent when the element, or anything inside it, is clicked. |
+| `data-aggregate-goal` | Adds a goal from `config/goals.yaml`, checked by the server as for `emit()`. Read from the marked element only. |
+| `data-aggregate-prop-<key>` | Adds the custom property `<key>`. It can be on the marked element or any element around it; the nearest one supplies each property. |
+
+Clicking the button above sends `plan_click` with `{plan: 'pro', section: 'pricing'}`
+and the `signup` goal, exactly as `Aggregate.emit('plan_click', {plan: 'pro', section: 'pricing'}, 'signup')`
+would. It carries the same page context as every event (sanitized page path,
+referrer channel, device class, viewport bucket, mapped query parameters and,
+when enabled, page depth) and passes the same consent, data-model and server
+checks: a property is stored only when the [data model](DATA-MODEL.md) defines
+it; before an analytics choice only properties marked `consent_required: false`
+are sent; and the [strict profile](#strict-collection-profile) sends only the
+event name, goal and page path.
+
+Nothing else is read from the page: not the element's text, not link addresses,
+and not form fields. Values come only from the attributes you write, so keep
+them fixed descriptions such as a plan tier or page section. A template that
+fills an attribute from a signed-in visitor's account sends that value with
+every event.
+
+- **Keys.** The property key is the rest of the attribute name, which HTML
+  lowercases: `data-aggregate-prop-plan_type` sends `plan_type`. A key with
+  capitals, such as `planType`, cannot be written this way; send it with `emit()`.
+- **Values** are text: trimmed, without control characters and at most 500 UTF-8
+  bytes. Empty values are skipped. A property the data model declares as
+  `integer`, `float`, `double` or `boolean` accepts only that value's plain
+  written form (`1299`, `-2.5`, `1e3`, `true` or `false`) and is sent as that
+  type; other text is left out. Undeclared and `string` properties stay text,
+  so `"42"` remains `"42"`. Page URLs are treated more strictly because anyone
+  can edit them; attributes are written by the site.
+- **Changing values.** Attributes are read when the click or submission happens,
+  so page scripts can change them, for example
+  `button.setAttribute('data-aggregate-prop-plan', 'team')`. Elements added
+  after the page loads work too.
+- **Nested elements.** One click sends one event, from the innermost marked
+  element. A click inside a marked form belongs to a marked button inside it or
+  a marked element around it; the form sends its own event when submitted.
+- **What counts.** Clicks count even when the page's own handlers cancel them
+  or stop them from bubbling, because the tracker listens before those handlers
+  run. Keyboard activation counts too (Enter on a link, Enter or Space on a
+  button); middle-button clicks do not. A submission counts when the browser accepts the form: built-in
+  validation that blocks it sends nothing, but a script that cancels the
+  submission after its own checks still counts, so call `emit()` after those
+  checks instead when only accepted submissions should count. `requestSubmit()`
+  counts; `form.submit()` dispatches no submit event and does not.
+- **Mistakes.** An invalid event name, or `view` (reserved for page views; use
+  `trackView()`), sends nothing and logs one browser console warning naming the
+  attribute.
+- **Installation.** It works however the tracker is installed: directly, as a
+  [tag manager script action](TAG-MANAGER.md#load-the-tracker-through-the-manager)
+  or through GTM. The tracker listens on the whole document once it has loaded,
+  so clicks before then are not sent. Elements inside open shadow roots work,
+  and the host and the elements around it can supply properties. A tracker
+  loaded twice by mistake still sends each marked interaction once, although
+  page views would be doubled; install it once.
+- **Names.** Attribute names follow the [JavaScript namespace](CONFIGURATION.md#customizing-the-javascript-namespace):
+  with `js_namespace: AcmeStats` they are `data-acmestats-event`,
+  `data-acmestats-goal` and `data-acmestats-prop-<key>`. The namespace is
+  lowercased, and characters other than letters, digits, `_` and `-` are dropped.
+  The Websites page shows the names for your installation.
+
+Only marked elements are tracked; this is not automatic click collection. For
+markup you cannot edit, a [tag manager custom JavaScript tag](TAG-MANAGER.md#starter-templates)
+can track elements by CSS selector instead.
+
 ## Page depth and single-page apps
 
 The optional [page-depth setting](DATA-MODEL.md#optional-page-depth) adds
@@ -138,7 +223,7 @@ When the server's `collection_profile` is `strict`, the served `aggregate.js` se
 {"eventName": "view", "pagePath": "/pricing", "websiteToken": "REPLACE_WITH_PUBLIC_WEBSITE_TOKEN"}
 ```
 
-`Aggregate.emit(name, properties, goal)` still works, but `properties` are not sent, and `setConsent()` changes nothing. The tracker does not read screen size, the referrer or the query string, and does not read, write or remove cookies or Web Storage. The server enforces the same limits for any client, including direct API requests. See the [privacy guide](PRIVACY-COMPLIANCE.md#strict-collection-profile).
+`Aggregate.emit(name, properties, goal)` and [marked clicks and forms](#track-clicks-and-forms-with-data-attributes) still work, but properties are not sent (the tracker skips `data-aggregate-prop-*` attributes), and `setConsent()` changes nothing. The tracker does not read screen size, the referrer or the query string, and does not read, write or remove cookies or Web Storage. The server enforces the same limits for any client, including direct API requests. See the [privacy guide](PRIVACY-COMPLIANCE.md#strict-collection-profile).
 
 A static or CDN copy has no injected profile. Opt it into strict before it loads, in any of these ways:
 

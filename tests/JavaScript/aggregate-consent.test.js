@@ -61,11 +61,17 @@ function loadSdk(options) {
     src: options.src || ''
   };
   const listeners = {};
+  const captureListeners = {};
   const document = {
     currentScript: script,
     readyState: 'loading',
     referrer: options.referrer || '',
-    addEventListener: (name, listener) => { listeners[name] = listener; },
+    // Capturing listeners (marked click and form tracking) are kept apart
+    // from the bubbling ones these tests dispatch to.
+    addEventListener: (name, listener, options) => {
+      if (options === true || (options && options.capture)) captureListeners[name] = listener;
+      else listeners[name] = listener;
+    },
     getElementsByTagName: () => [script],
     querySelector: (selector) => selector === 'base[target]' && options.baseTarget
       ? {getAttribute: () => options.baseTarget} : null

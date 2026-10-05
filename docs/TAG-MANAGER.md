@@ -266,17 +266,21 @@ Review selectors, event names and vendor addresses before saving.
 
 | Group | Template | What it does |
 | --- | --- | --- |
-| Engagement tracking | Clicks on matching elements | Sends `element_click` with the clicked element's `data-track` label. |
+| Engagement tracking | Clicks on matching elements | Sends `signup_click` with a fixed `section` when an element matching a CSS selector is clicked. |
 | Engagement tracking | Outbound link clicks | Sends `outbound_click` with only the destination's host name. |
-| Engagement tracking | Form submissions | Sends `form_submit` with a form's `data-track-form` name; field values are never read. |
+| Engagement tracking | Form submissions | Sends `form_submit` with a fixed `form_name` when a form matching a CSS selector is submitted; field values are never read. |
 | Engagement tracking | Scroll depth | Sends `scroll_depth` once at 25, 50, 75 and 100 percent. |
 | dataLayer helpers | Push an event when an element is seen | Pushes a data-layer event the first time an element is half visible. |
 | dataLayer helpers | Push an event for a page condition | Pushes a data-layer event on a matching page, such as an order confirmation. |
 | Third-party vendors | Load a vendor library and set it up | Loads a vendor's HTTPS script, then calls its setup function, with `marketing` consent. |
 | Third-party vendors | Fire an image pixel | Requests a vendor's tracking image without a referrer, with `marketing` consent. |
 
-The engagement templates' properties (`element_label`, `link_domain`,
-`form_name` and `scroll_percent`) are recorded only when defined in your
+The click and form templates are for markup you cannot edit. Where you can,
+[data attributes](TRACKING.md#track-clicks-and-forms-with-data-attributes) such
+as `data-aggregate-event` track clicks and forms without a tag.
+
+The engagement templates' properties (`section`, `link_domain`, `form_name` and
+`scroll_percent`) are recorded only when defined in your
 [data model](DATA-MODEL.md), and before an analytics choice only when marked
 `consent_required: false`. No template reads form values, cookies or browser storage.
 
