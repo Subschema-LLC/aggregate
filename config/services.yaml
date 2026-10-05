@@ -124,6 +124,10 @@ services:
             $projectDir: '%kernel.project_dir%'
             $environment: '%kernel.environment%'
 
+    App\Service\BrowserScriptCompactor:
+        arguments:
+            $cacheDirectory: '%kernel.cache_dir%/browser-scripts'
+
     App\Service\TagManagerSettings:
         arguments:
             # Remembers custom JavaScript that passed its checks; safe to clear.

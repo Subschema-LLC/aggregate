@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Service\BrowserScriptCache;
+use App\Service\BrowserScriptCompactor;
 use App\Service\SiteScriptConfig;
 use App\Service\TagManagerCustomCode;
 use App\Service\TagManagerSettings;
@@ -23,6 +25,7 @@ final class TagScriptController
         private readonly TagManagerSettings $settings,
         private readonly string $projectDir = __DIR__.'/../..',
         private readonly ?SiteScriptConfig $sites = null,
+        private readonly ?BrowserScriptCompactor $compactor = null,
     ) {
     }
 
@@ -52,14 +55,28 @@ final class TagScriptController
         }
 
         // One pass, so text inside custom code is never treated as a placeholder.
-        $minified = $request?->query->get('min') === '1' ? $this->minifiedTemplate($source) : null;
+        $minified = null;
+        $variant = 'source';
+        if ($request?->query->get('min') === '1') {
+            // The Terser build when it matches the source, otherwise the source compacted here.
+            $minified = $this->minifiedTemplate($source);
+            $variant = 'minified';
+            if ($minified === null) {
+                $minified = ($this->compactor ?? new BrowserScriptCompactor())->template($source, [
+                    self::SOURCE_DEFAULTS => 'var tagManagerConfig = '.self::PLACEHOLDER.';',
+                    self::CUSTOM_DEFAULTS => 'var customScripts = '.self::CUSTOM_PLACEHOLDER.';',
+                ], [self::PLACEHOLDER, self::CUSTOM_PLACEHOLDER]);
+                $variant = $minified !== null ? 'compact' : 'source';
+            }
+        }
         $content = $minified !== null
             ? strtr($minified, [self::PLACEHOLDER => $json, self::CUSTOM_PLACEHOLDER => $custom])
             : strtr($source, [self::SOURCE_DEFAULTS => 'var tagManagerConfig = '.$json.';', self::CUSTOM_DEFAULTS => 'var customScripts = '.$custom.';']);
         $response = $this->response($content);
-        $response->headers->set('X-Aggregate-Script', $minified !== null ? 'minified' : 'source');
+        $response->headers->set('X-Aggregate-Script', $variant);
 
-        return $response;
+        // Reused for five minutes, then confirmed unchanged with a 304.
+        return BrowserScriptCache::apply($response, $request);
     }
 
     /**
@@ -82,7 +99,7 @@ final class TagScriptController
         return new Response($content, $status, [
             'Content-Type' => 'application/javascript; charset=UTF-8',
             'X-Content-Type-Options' => 'nosniff',
-            'Cache-Control' => $status === 200 ? 'public, max-age=0, must-revalidate' : 'no-store',
+            'Cache-Control' => 'no-store',
         ]);
     }
 

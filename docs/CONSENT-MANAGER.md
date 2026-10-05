@@ -49,7 +49,9 @@ with the same validation as YAML edits. Saving the tag manager no longer changes
 these settings, and saving this page leaves tags, the standalone banner and
 unrelated YAML alone. Find site IDs with `php bin/console app:tag-manager:sites`.
 
-The hosted script changes on the next page load. A copy you downloaded from
+The hosted script changes within five minutes for returning visitors, who may
+reuse it that long ([browser caching](JS-BUILD.md#browser-caching)), and at once
+for new ones. A copy you downloaded from
 **Setup** to host yourself is a snapshot: download it again after saving.
 
 ## YAML reference

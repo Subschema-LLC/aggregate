@@ -135,9 +135,10 @@ final class DropInScriptsTest extends TestCase
         $_ENV['APP_HOST'] = 'https://environment.example.test';
         $response = (new ConsentScriptController($scripts))(Request::create('/consent-manager.js?min=1'));
         self::assertSame(200, $response->getStatusCode());
-        self::assertSame('source', $response->headers->get('X-Aggregate-Script'));
+        self::assertSame('compact', $response->headers->get('X-Aggregate-Script'), 'without a Node build the server compacts the script');
         self::assertSame('nosniff', $response->headers->get('X-Content-Type-Options'));
-        self::assertTrue($response->headers->hasCacheControlDirective('must-revalidate'));
+        self::assertSame('300', $response->headers->getCacheControlDirective('max-age'));
+        self::assertNotNull($response->getEtag());
         self::assertStringContainsString('EnvironmentAnalytics', $response->getContent());
         self::assertStringContainsString('https://environment.example.test/lib.js?min=1', $scripts->tagLoader());
     }
@@ -175,6 +176,7 @@ final class DropInScriptsTest extends TestCase
         ]));
         $built = $scripts->consentScript(true);
         self::assertTrue($built['minified']);
+        self::assertSame('minified', $built['variant']);
         self::assertStringContainsString('"namespace":"ExampleAnalytics"', $built['content']);
         self::assertStringNotContainsString('__AGGREGATE_CONSENT_CONFIG__', $built['content']);
         self::assertStringNotContainsString('__AGGREGATE_CONSENT_STYLES__', $built['content']);
@@ -188,7 +190,11 @@ final class DropInScriptsTest extends TestCase
         file_put_contents($this->directory.'/public/consent.css', $styles."\n.ac-consent { border-width: 3px; }\n");
         $fallback = $scripts->consentScript(true);
         self::assertFalse($fallback['minified']);
+        self::assertSame('compact', $fallback['variant']);
         self::assertStringContainsString('border-width: 3px', $fallback['content']);
+        self::assertStringStartsWith('/*! SPDX-License-Identifier: AGPL-3.0-only', $fallback['content']);
+        self::assertStringContainsString('"namespace":"ExampleAnalytics"', $fallback['content']);
+        self::assertSame('source', $scripts->consentScript(false)['variant'], 'only ?min=1 asks for a smaller script');
         file_put_contents($this->directory.'/public/consent.css', $styles);
         $manifest = json_decode(file_get_contents($this->directory.'/var/browser/consent-manifest.json'), true, flags: JSON_THROW_ON_ERROR);
         unset($manifest['stylesheetSha256']);
@@ -312,7 +318,15 @@ final class DropInScriptsTest extends TestCase
         foreach ($inputs as $path) {
             $original = file_get_contents($this->directory.$path);
             file_put_contents($this->directory.$path, $original."\n/* updated */");
-            self::assertFalse($scripts->standaloneConsentScript(true, $siteId)['minified'], $path);
+            $stale = $scripts->standaloneConsentScript(true, $siteId);
+            self::assertFalse($stale['minified'], $path);
+            // Without a current build, each file is compacted here with its license notice.
+            self::assertSame('compact', $stale['variant'], $path);
+            self::assertStringStartsWith('window.MicroConsentConfig = {', $stale['content']);
+            self::assertSame(2, preg_match_all('~(?:^|\n)/\*! SPDX-License-Identifier: AGPL-3.0-only~', $stale['content']), $path.': the runtime and the bridge keep their notices');
+            self::assertStringNotContainsString('__MICRO_CONSENT_', $stale['content']);
+            self::assertStringNotContainsString('// Optional bridge', $stale['content']);
+            self::assertLessThan(strlen($plain['content']), strlen($stale['content']));
             file_put_contents($this->directory.$path, $original);
         }
         // Wording, colors and buttons reach both banners as camelCase browser settings.

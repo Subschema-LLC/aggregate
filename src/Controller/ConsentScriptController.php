@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Service\BrowserScriptCache;
 use App\Service\DropInScripts;
 use App\Service\SiteScriptConfig;
 use Symfony\Component\HttpFoundation\Request;
@@ -36,11 +37,10 @@ final class ConsentScriptController
             ]);
         }
 
-        return new Response($script['content'], headers: [
+        return BrowserScriptCache::apply(new Response($script['content'], headers: [
             'Content-Type' => 'application/javascript; charset=UTF-8',
-            'Cache-Control' => 'public, max-age=0, must-revalidate',
             'X-Content-Type-Options' => 'nosniff',
-            'X-Aggregate-Script' => $script['minified'] ? 'minified' : 'source',
-        ]);
+            'X-Aggregate-Script' => $script['variant'],
+        ]), $request);
     }
 }

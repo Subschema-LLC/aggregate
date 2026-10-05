@@ -52,7 +52,8 @@ final class TagScriptControllerTest extends TestCase
         self::assertSame(200, $script->getStatusCode());
         self::assertSame('application/javascript; charset=UTF-8', $script->headers->get('Content-Type'));
         self::assertSame('source', $script->headers->get('X-Aggregate-Script'));
-        self::assertTrue($script->headers->hasCacheControlDirective('must-revalidate'));
+        self::assertSame('300', $script->headers->getCacheControlDirective('max-age'), 'reused for five minutes');
+        self::assertNotNull($script->getEtag());
         self::assertSame('nosniff', $script->headers->get('X-Content-Type-Options'));
         $content = (string) $script->getContent();
         self::assertStringContainsString('https:\/\/scripts.example\/analytics.js?site=public', $content);
@@ -144,7 +145,7 @@ final class TagScriptControllerTest extends TestCase
     }
 
     #[DataProvider('invalidBuilds')]
-    public function testUnavailableOrStaleBuildUsesConfiguredSource(string $problem): void
+    public function testUnavailableOrStaleBuildIsReplacedByTheConfiguredSourceCompactedOnTheServer(string $problem): void
     {
         $this->buildFixture();
         $directory = $this->projectDir.'/var/browser';
@@ -170,8 +171,11 @@ final class TagScriptControllerTest extends TestCase
             ],
         ]])(Request::create('/lib.js?min=1'));
         self::assertSame(200, $response->getStatusCode());
-        self::assertSame('source', $response->headers->get('X-Aggregate-Script'));
+        self::assertSame('compact', $response->headers->get('X-Aggregate-Script'));
         self::assertStringContainsString('current.js', (string) $response->getContent());
+        self::assertStringStartsWith("/*!\n * Aggregate optional tag manager\n * SPDX-License-Identifier: AGPL-3.0-only", (string) $response->getContent());
+        self::assertStringContainsString('var customScripts={};', (string) $response->getContent());
+        self::assertStringNotContainsString('// The server injects', (string) $response->getContent());
         self::assertStringNotContainsString(TagScriptController::PLACEHOLDER, (string) $response->getContent());
         self::assertSame(['plan' => 'site.currentPlan'], $this->publicConfig($response)['variables']);
         self::assertSame('Acme.track', $this->publicConfig($response)['tags'][1]['method']);
@@ -238,7 +242,8 @@ final class TagScriptControllerTest extends TestCase
 
     private function publicConfig(Response $response): array
     {
-        self::assertSame(1, preg_match('/(?:var tagManagerConfig = |window.fixture=)(.*);/', (string) $response->getContent(), $matches));
+        // Source, Terser fixture or server-compacted script: the JSON ends where the next statement starts.
+        self::assertSame(1, preg_match('/(?:var tagManagerConfig ?= ?|window\.fixture=)(.*?);(?:\n|var customScripts)/', (string) $response->getContent(), $matches));
 
         return json_decode($matches[1], true, flags: JSON_THROW_ON_ERROR);
     }
@@ -274,10 +279,13 @@ final class TagScriptControllerTest extends TestCase
         self::assertStringContainsString("window.custom={\n\"signup\": function (tag) {\n'use strict';\n".$code."\n}\n};", (string) $minified->getContent());
         self::assertStringNotContainsString(TagScriptController::CUSTOM_PLACEHOLDER.';', (string) $minified->getContent());
 
-        // An older template without the custom placeholder is not used.
+        // An older template without the custom placeholder is not used; the
+        // source compacted here carries the code instead.
         file_put_contents($this->projectDir.'/var/browser/tag-manager.template.min.js', "/*! preserved license */\nwindow.fixture=__AGGREGATE_TAG_MANAGER__;\n");
         $this->writeManifest();
-        self::assertSame('source', $this->controller($settings)(Request::create('/lib.js', 'GET', ['min' => '1']))->headers->get('X-Aggregate-Script'));
+        $compact = $this->controller($settings)(Request::create('/lib.js', 'GET', ['min' => '1']));
+        self::assertSame('compact', $compact->headers->get('X-Aggregate-Script'));
+        self::assertSame(1, substr_count((string) $compact->getContent(), "var customScripts={\n\"signup\": function (tag) {\n'use strict';\n".$code."\n}\n};"), 'custom code is inserted as written, after compacting');
     }
 
     public function testSwitchingOffCustomJavaScriptStopsServingItAndItsConsentCategory(): void
