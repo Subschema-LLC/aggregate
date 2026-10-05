@@ -40,6 +40,15 @@
   var internalTrafficDefaults = {storage: 'cookie', name: 'orgInternalTraffic', value: 'true', cookieDomain: ''};
   var customDataDefaults = {queryParameters: {utm_source: 'utm_source', utm_medium: 'utm_medium', utm_campaign: 'utm_campaign', utm_term: 'utm_term', utm_content: 'utm_content', utm_id: 'utm_id'}, consentFreeProperties: []};
   var collectionDefaults = {profile: 'standard'};
+  // Build switches. This readable script keeps every feature. With the page
+  // speed setting "Leave out unused tracker features" on, the server sends a
+  // smaller build in which a switch is false and the code it guards is left
+  // out: page depth while it is turned off, and what only the standard profile
+  // uses while the strict profile is on. Pages cannot turn those back on, so
+  // the smaller build behaves exactly like this one for the settings it is
+  // sent with. A switch is only ever the whole test of an if statement.
+  var withPageDepth = true;
+  var withStandardProfile = true;
   // The strict profile sends only the page path, event name and goal. It reads
   // nothing else from the device and never reads, writes or removes cookies or
   // Web Storage. Anything other than the literal standard profile is strict.
@@ -88,11 +97,14 @@
     configureInternalTraffic: function(options){
       if (!options || typeof options !== 'object') return;
 
-      var fields = ['storage', 'name', 'value', 'cookieDomain'];
-      for (var i = 0; i < fields.length; i++) {
-        var field = fields[i];
-        if (typeof options[field] !== 'undefined') {
-          this.config.internalTraffic[field] = options[field];
+      // The strict profile never reads the marker, so its build has no settings.
+      if (withStandardProfile) {
+        var fields = ['storage', 'name', 'value', 'cookieDomain'];
+        for (var i = 0; i < fields.length; i++) {
+          var field = fields[i];
+          if (typeof options[field] !== 'undefined') {
+            this.config.internalTraffic[field] = options[field];
+          }
         }
       }
     },
@@ -105,61 +117,64 @@
     configureCustomData: function(options){
       if (!options || typeof options !== 'object' || Array.isArray(options)) return;
 
-      if (Object.prototype.hasOwnProperty.call(options, 'pageSequenceMethod') && !pageSequenceMethodLocked) {
-        var previousMethod = this.pageSequenceMethod();
-        this.config.customData.pageSequenceMethod = options.pageSequenceMethod;
-        if (previousMethod !== this.pageSequenceMethod()) {
-          this.pageSequences = Object.create(null);
-          this.pageSequenceUrlInitial = null;
-          this.pageSequenceUrlTrimAttempted = false;
-        }
-      }
-      if (Object.prototype.hasOwnProperty.call(options, 'pageSequenceEnabled')) {
-        // Only a literal boolean enables this optional anonymous dimension.
-        this.config.customData.pageSequenceEnabled = options.pageSequenceEnabled === true && pageSequenceAuthorized;
-        if (!this.config.customData.pageSequenceEnabled) this.clearPageSequence();
-      }
-      if (Object.prototype.hasOwnProperty.call(options, 'pageSequenceExcludedPaths')) {
-        this.config.customData.pageSequenceExcludedPaths = options.pageSequenceExcludedPaths;
-      }
-
-      if (Object.prototype.hasOwnProperty.call(options, 'queryParameters')) {
-        var mappings = Object.create(null);
-        if (options.queryParameters && typeof options.queryParameters === 'object' && !Array.isArray(options.queryParameters)) {
-          var sources = Object.keys(options.queryParameters);
-          for (var i = 0; i < sources.length; i++) {
-            var source = sources[i];
-            var destination = options.queryParameters[source];
-            if (this.isCustomDataKey(source) && source !== 'aggregate_page_sequence' && this.isCustomDataKey(destination)) {
-              mappings[source] = destination;
-            }
+      // The strict profile sends no custom data or page depth.
+      if (withStandardProfile) {
+        if (Object.prototype.hasOwnProperty.call(options, 'pageSequenceMethod') && !pageSequenceMethodLocked) {
+          var previousMethod = this.pageSequenceMethod();
+          this.config.customData.pageSequenceMethod = options.pageSequenceMethod;
+          if (previousMethod !== this.pageSequenceMethod()) {
+            this.pageSequences = Object.create(null);
+            this.pageSequenceUrlInitial = null;
+            this.pageSequenceUrlTrimAttempted = false;
           }
         }
-        this.config.customData.queryParameters = mappings;
-      }
+        if (Object.prototype.hasOwnProperty.call(options, 'pageSequenceEnabled')) {
+          // Only a literal boolean enables this optional anonymous dimension.
+          this.config.customData.pageSequenceEnabled = options.pageSequenceEnabled === true && pageSequenceAuthorized;
+          if (!this.config.customData.pageSequenceEnabled) this.clearPageSequence();
+        }
+        if (Object.prototype.hasOwnProperty.call(options, 'pageSequenceExcludedPaths')) {
+          this.config.customData.pageSequenceExcludedPaths = options.pageSequenceExcludedPaths;
+        }
 
-      if (Object.prototype.hasOwnProperty.call(options, 'consentFreeProperties')) {
-        this.config.customData.consentFreeProperties = Array.isArray(options.consentFreeProperties)
-          ? options.consentFreeProperties.filter(this.isCustomDataKey.bind(this))
-          : [];
-      }
-
-      if (Object.prototype.hasOwnProperty.call(options, 'propertyTypes')) {
-        var types = null;
-        if (options.propertyTypes && typeof options.propertyTypes === 'object' && !Array.isArray(options.propertyTypes)) {
-          types = Object.create(null);
-          var properties = Object.keys(options.propertyTypes);
-          for (var j = 0; j < properties.length; j++) {
-            var property = properties[j];
-            if (this.isCustomDataKey(property)) {
-              var type = options.propertyTypes[property];
-              // Keep an invalid declared type blocked rather than silently
-              // reverting that property's collection to unrestricted scalars.
-              types[property] = ['scalar', 'string', 'integer', 'float', 'double', 'boolean'].indexOf(type) !== -1 ? type : 'invalid';
+        if (Object.prototype.hasOwnProperty.call(options, 'queryParameters')) {
+          var mappings = Object.create(null);
+          if (options.queryParameters && typeof options.queryParameters === 'object' && !Array.isArray(options.queryParameters)) {
+            var sources = Object.keys(options.queryParameters);
+            for (var i = 0; i < sources.length; i++) {
+              var source = sources[i];
+              var destination = options.queryParameters[source];
+              if (this.isCustomDataKey(source) && source !== 'aggregate_page_sequence' && this.isCustomDataKey(destination)) {
+                mappings[source] = destination;
+              }
             }
           }
+          this.config.customData.queryParameters = mappings;
         }
-        this.config.customData.propertyTypes = types;
+
+        if (Object.prototype.hasOwnProperty.call(options, 'consentFreeProperties')) {
+          this.config.customData.consentFreeProperties = Array.isArray(options.consentFreeProperties)
+            ? options.consentFreeProperties.filter(this.isCustomDataKey.bind(this))
+            : [];
+        }
+
+        if (Object.prototype.hasOwnProperty.call(options, 'propertyTypes')) {
+          var types = null;
+          if (options.propertyTypes && typeof options.propertyTypes === 'object' && !Array.isArray(options.propertyTypes)) {
+            types = Object.create(null);
+            var properties = Object.keys(options.propertyTypes);
+            for (var j = 0; j < properties.length; j++) {
+              var property = properties[j];
+              if (this.isCustomDataKey(property)) {
+                var type = options.propertyTypes[property];
+                // Keep an invalid declared type blocked rather than silently
+                // reverting that property's collection to unrestricted scalars.
+                types[property] = ['scalar', 'string', 'integer', 'float', 'double', 'boolean'].indexOf(type) !== -1 ? type : 'invalid';
+              }
+            }
+          }
+          this.config.customData.propertyTypes = types;
+        }
       }
     },
 
@@ -198,66 +213,71 @@
     },
 
     pageSequenceCanonicalPath: function(path){
-      try {
-        // The server canonicalizes the submitted pagePath before exclusions.
-        // Keep this check separate from the existing SDK payload formatting.
-        if (path.slice(0, 2) === '//') return null;
-        path = path.split(/[?#]/)[0];
-        for (var pass = 0; pass < 2; pass++) {
-          var decoded = decodeURIComponent(path);
-          if (decoded === path) break;
-          path = decoded;
-        }
-        path = path.replace(/[\u0000-\u001f\u007f]/g, '').replace(/\\/g, '/');
-        var segments = path.split('/');
-        var canonical = [];
-        for (var i = 0; i < segments.length; i++) {
-          var segment = segments[i].split(';')[0];
-          if (!segment || segment === '.') continue;
-          if (segment === '..') {
-            canonical.pop();
-            continue;
+      if (withPageDepth) {
+        try {
+          // The server canonicalizes the submitted pagePath before exclusions.
+          // Keep this check separate from the existing SDK payload formatting.
+          if (path.slice(0, 2) === '//') return null;
+          path = path.split(/[?#]/)[0];
+          for (var pass = 0; pass < 2; pass++) {
+            var decoded = decodeURIComponent(path);
+            if (decoded === path) break;
+            path = decoded;
           }
-          var encoded = encodeURIComponent(segment).replace(/[!'()*]/g, function(character){
-            return '%' + character.charCodeAt(0).toString(16).toUpperCase();
-          });
-          var identifierCandidate = segment.replace(/^ +| +$/g, '');
-          var byteLength = encodeURIComponent(identifierCandidate).replace(/%[0-9A-F]{2}/g, 'x').length;
-          var identifier = this.sanitizePagePath('/' + identifierCandidate) === '/_redacted'
-            || (byteLength >= 24 && /[a-z]/i.test(identifierCandidate) && /[0-9]/.test(identifierCandidate));
-          canonical.push(/%[0-9a-f]{2}/i.test(segment) || identifier ? '_redacted' : encoded);
+          path = path.replace(/[\u0000-\u001f\u007f]/g, '').replace(/\\/g, '/');
+          var segments = path.split('/');
+          var canonical = [];
+          for (var i = 0; i < segments.length; i++) {
+            var segment = segments[i].split(';')[0];
+            if (!segment || segment === '.') continue;
+            if (segment === '..') {
+              canonical.pop();
+              continue;
+            }
+            var encoded = encodeURIComponent(segment).replace(/[!'()*]/g, function(character){
+              return '%' + character.charCodeAt(0).toString(16).toUpperCase();
+            });
+            var identifierCandidate = segment.replace(/^ +| +$/g, '');
+            var byteLength = encodeURIComponent(identifierCandidate).replace(/%[0-9A-F]{2}/g, 'x').length;
+            var identifier = this.sanitizePagePath('/' + identifierCandidate) === '/_redacted'
+              || (byteLength >= 24 && /[a-z]/i.test(identifierCandidate) && /[0-9]/.test(identifierCandidate));
+            canonical.push(/%[0-9a-f]{2}/i.test(segment) || identifier ? '_redacted' : encoded);
+          }
+          return ('/' + canonical.join('/')).slice(0, 512).replace(/%(?:[0-9A-F])?$/, '');
+        } catch(e) {
+          // Invalid encoding cannot safely establish that an exclusion is absent.
+          return null;
         }
-        return ('/' + canonical.join('/')).slice(0, 512).replace(/%(?:[0-9A-F])?$/, '');
-      } catch(e) {
-        // Invalid encoding cannot safely establish that an exclusion is absent.
-        return null;
       }
     },
 
     pageSequencePathAllowed: function(path){
-      var configured = this.config.customData;
-      var browserPatterns = Object.prototype.hasOwnProperty.call(configured, 'pageSequenceExcludedPaths')
-        ? configured.pageSequenceExcludedPaths : [];
-      if (!Array.isArray(pageSequenceExcludedPaths) || !Array.isArray(browserPatterns)) return false;
-      var patterns = pageSequenceExcludedPaths.concat(browserPatterns);
-      if (!patterns.length) return true;
-      var rawPath = typeof path === 'string' ? path : (location.pathname || '/');
-      var safePath = this.sanitizePagePath(rawPath);
-      var canonicalPath = this.pageSequenceCanonicalPath(safePath);
-      if (canonicalPath === null) return false;
-      for (var i = 0; i < patterns.length; i++) {
-        var pattern = patterns[i];
-        if (typeof pattern !== 'string' || pattern.charAt(0) !== '/' || pattern.length > 512) return false;
-        var directory = pattern.slice(-3) === '/**' ? pattern.slice(0, -3) : null;
-        if (directory !== null && (rawPath === directory || safePath === directory || canonicalPath === directory)) return false;
-        // Match the server: ** crosses slashes; * and ? stay within a segment.
-        var expression = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*|\*|\?/g, function(wildcard){
-          return wildcard === '**' ? '.*' : (wildcard === '*' ? '[^/]*' : '[^/]');
-        });
-        var matcher = new RegExp('^' + expression + '(?![\\s\\S])');
-        if (matcher.test(rawPath) || matcher.test(safePath) || matcher.test(canonicalPath)) return false;
+      if (withPageDepth) {
+        var configured = this.config.customData;
+        var browserPatterns = Object.prototype.hasOwnProperty.call(configured, 'pageSequenceExcludedPaths')
+          ? configured.pageSequenceExcludedPaths : [];
+        if (!Array.isArray(pageSequenceExcludedPaths) || !Array.isArray(browserPatterns)) return false;
+        var patterns = pageSequenceExcludedPaths.concat(browserPatterns);
+        if (!patterns.length) return true;
+        var rawPath = typeof path === 'string' ? path : (location.pathname || '/');
+        var safePath = this.sanitizePagePath(rawPath);
+        var canonicalPath = this.pageSequenceCanonicalPath(safePath);
+        if (canonicalPath === null) return false;
+        for (var i = 0; i < patterns.length; i++) {
+          var pattern = patterns[i];
+          if (typeof pattern !== 'string' || pattern.charAt(0) !== '/' || pattern.length > 512) return false;
+          var directory = pattern.slice(-3) === '/**' ? pattern.slice(0, -3) : null;
+          if (directory !== null && (rawPath === directory || safePath === directory || canonicalPath === directory)) return false;
+          // Match the server: ** crosses slashes; * and ? stay within a segment.
+          var expression = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*|\*|\?/g, function(wildcard){
+            return wildcard === '**' ? '.*' : (wildcard === '*' ? '[^/]*' : '[^/]');
+          });
+          var matcher = new RegExp('^' + expression + '(?![\\s\\S])');
+          if (matcher.test(rawPath) || matcher.test(safePath) || matcher.test(canonicalPath)) return false;
+        }
+        return true;
       }
-      return true;
+      return false;
     },
 
     pageSequenceForEvent: function(advance){
@@ -266,219 +286,231 @@
         this.clearPageSequence();
         return null;
       }
-      var method = this.pageSequenceMethod();
-      if (method === null) return null;
-      if (Object.prototype.hasOwnProperty.call(this.config.customData, 'propertyTypes')
-        && (!this.config.customData.propertyTypes || typeof this.config.customData.propertyTypes !== 'object'
-          || Array.isArray(this.config.customData.propertyTypes))) return null;
-      // Excluded pages must not affect the count later sent by an allowed page.
-      // Evaluate before reading or writing the optional browser state.
-      if (!this.pageSequencePathAllowed()) return null;
+      if (withPageDepth) {
+        var method = this.pageSequenceMethod();
+        if (method === null) return null;
+        if (Object.prototype.hasOwnProperty.call(this.config.customData, 'propertyTypes')
+          && (!this.config.customData.propertyTypes || typeof this.config.customData.propertyTypes !== 'object'
+            || Array.isArray(this.config.customData.propertyTypes))) return null;
+        // Excluded pages must not affect the count later sent by an allowed page.
+        // Evaluate before reading or writing the optional browser state.
+        if (!this.pageSequencePathAllowed()) return null;
 
-      var key = this.pageSequenceStorageKey();
-      if (!key) return null;
-      var sequence = this.pageSequences[key];
-      var changed = false;
-      if (typeof sequence === 'undefined') {
-        if (method === 'url_parameter') {
-          if (this.pageSequenceUrlInitial === null) {
-            this.pageSequenceUrlInitial = 1;
+        var key = this.pageSequenceStorageKey();
+        if (!key) return null;
+        var sequence = this.pageSequences[key];
+        var changed = false;
+        if (typeof sequence === 'undefined') {
+          if (method === 'url_parameter') {
+            if (this.pageSequenceUrlInitial === null) {
+              this.pageSequenceUrlInitial = 1;
+              try {
+                var pageUrl = new URL(location.origin);
+                pageUrl.search = location.search || '';
+                var values = pageUrl.searchParams.getAll('aggregate_page_sequence');
+                if (values.length === 1 && /^(?:[1-9]|1[0-9]|20)$/.test(values[0])) this.pageSequenceUrlInitial = Number(values[0]);
+              } catch(e) {}
+            }
+            sequence = this.pageSequenceUrlInitial;
+          } else {
+            var previous = 0;
             try {
-              var pageUrl = new URL(location.origin);
-              pageUrl.search = location.search || '';
-              var values = pageUrl.searchParams.getAll('aggregate_page_sequence');
-              if (values.length === 1 && /^(?:[1-9]|1[0-9]|20)$/.test(values[0])) this.pageSequenceUrlInitial = Number(values[0]);
+              var stored = sessionStorage.getItem(key);
+              // Store only the bounded count: no IDs, paths, history or timestamps.
+              // Malformed or out-of-range browser state starts again at page one.
+              if (typeof stored === 'string' && /^(?:[1-9]|1[0-9]|20)$/.test(stored)) previous = Number(stored);
             } catch(e) {}
+            sequence = Math.min(previous + 1, 20);
           }
-          sequence = this.pageSequenceUrlInitial;
-        } else {
-          var previous = 0;
-          try {
-            var stored = sessionStorage.getItem(key);
-            // Store only the bounded count: no IDs, paths, history or timestamps.
-            // Malformed or out-of-range browser state starts again at page one.
-            if (typeof stored === 'string' && /^(?:[1-9]|1[0-9]|20)$/.test(stored)) previous = Number(stored);
-          } catch(e) {}
-          sequence = Math.min(previous + 1, 20);
+          changed = true;
+        } else if (advance && sequence < 20) {
+          sequence++;
+          changed = true;
         }
-        changed = true;
-      } else if (advance && sequence < 20) {
-        sequence++;
-        changed = true;
+        this.pageSequences[key] = sequence;
+        if (method === 'url_parameter') this.trimPageSequenceUrl();
+        if (changed && method === 'session_storage') {
+          // When storage is blocked, the document's in-memory count still works.
+          try { sessionStorage.setItem(key, String(sequence)); } catch(e) {}
+        }
+        return sequence;
       }
-      this.pageSequences[key] = sequence;
-      if (method === 'url_parameter') this.trimPageSequenceUrl();
-      if (changed && method === 'session_storage') {
-        // When storage is blocked, the document's in-memory count still works.
-        try { sessionStorage.setItem(key, String(sequence)); } catch(e) {}
-      }
-      return sequence;
+      return null;
     },
 
     pageSequenceQueryWithoutCounter: function(search){
-      return (search || '').replace(/^\?/, '').split('&').filter(function(part){
-        try {
-          return decodeURIComponent(part.split('=')[0].replace(/\+/g, ' ')) !== 'aggregate_page_sequence';
-        } catch(e) {
-          return true;
-        }
-      }).join('&');
+      if (withPageDepth) {
+        return (search || '').replace(/^\?/, '').split('&').filter(function(part){
+          try {
+            return decodeURIComponent(part.split('=')[0].replace(/\+/g, ' ')) !== 'aggregate_page_sequence';
+          } catch(e) {
+            return true;
+          }
+        }).join('&');
+      }
     },
 
     trimPageSequenceUrl: function(){
-      if (this.pageSequenceUrlTrimAttempted) return;
-      var search = location.search || '';
-      var query = this.pageSequenceQueryWithoutCounter(search);
-      if (query === search.replace(/^\?/, '')) return;
-      // Capture the count and set this guard before invoking a potentially
-      // framework-wrapped History API. Reentrant events reuse memory, and a
-      // failed cleanup is not retried for every asynchronous event.
-      this.pageSequenceUrlTrimAttempted = true;
-      try {
-        var history = window.history;
-        if (!history || typeof history.replaceState !== 'function') return;
-        var cleanUrl = typeof location.href === 'string' ? new URL(location.href) : new URL(location.origin);
-        if (cleanUrl.origin !== location.origin) return;
-        if (typeof location.href !== 'string') {
-          cleanUrl.pathname = location.pathname || '/';
-          cleanUrl.hash = location.hash || '';
-        }
-        cleanUrl.search = query ? '?' + query : '';
-        history.replaceState(history.state, '', cleanUrl.href);
-      } catch(e) {}
+      if (withPageDepth) {
+        if (this.pageSequenceUrlTrimAttempted) return;
+        var search = location.search || '';
+        var query = this.pageSequenceQueryWithoutCounter(search);
+        if (query === search.replace(/^\?/, '')) return;
+        // Capture the count and set this guard before invoking a potentially
+        // framework-wrapped History API. Reentrant events reuse memory, and a
+        // failed cleanup is not retried for every asynchronous event.
+        this.pageSequenceUrlTrimAttempted = true;
+        try {
+          var history = window.history;
+          if (!history || typeof history.replaceState !== 'function') return;
+          var cleanUrl = typeof location.href === 'string' ? new URL(location.href) : new URL(location.origin);
+          if (cleanUrl.origin !== location.origin) return;
+          if (typeof location.href !== 'string') {
+            cleanUrl.pathname = location.pathname || '/';
+            cleanUrl.hash = location.hash || '';
+          }
+          cleanUrl.search = query ? '?' + query : '';
+          history.replaceState(history.state, '', cleanUrl.href);
+        } catch(e) {}
+      }
     },
 
     decoratePageSequenceLink: function(event){
-      if (strictCollection) return;
-      if (!pageSequenceAuthorized || this.config.customData.pageSequenceEnabled !== true
-        || this.pageSequenceMethod() !== 'url_parameter' || !event || event.defaultPrevented
-        || event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey
-        || !this.pageSequencePathAllowed()) return;
-      try {
-        var anchor = event.target;
-        while (anchor && (typeof anchor.tagName !== 'string' || anchor.tagName.toLowerCase() !== 'a')) {
-          anchor = anchor.parentElement || anchor.parentNode;
-        }
-        if (!anchor || typeof anchor.getAttribute !== 'function' || anchor.hasAttribute('download')) return;
-        var href = anchor.getAttribute('href');
-        if (typeof href !== 'string' || !href.trim() || href.trim().charAt(0) === '#') return;
-        var target = anchor.getAttribute('target');
-        if (!target && typeof document.querySelector === 'function') {
-          var base = document.querySelector('base[target]');
-          if (base) target = base.getAttribute('target');
-        }
-        if (target && target.toLowerCase() !== '_self') return;
+      if (withPageDepth) {
+        if (strictCollection) return;
+        if (!pageSequenceAuthorized || this.config.customData.pageSequenceEnabled !== true
+          || this.pageSequenceMethod() !== 'url_parameter' || !event || event.defaultPrevented
+          || event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey
+          || !this.pageSequencePathAllowed()) return;
+        try {
+          var anchor = event.target;
+          while (anchor && (typeof anchor.tagName !== 'string' || anchor.tagName.toLowerCase() !== 'a')) {
+            anchor = anchor.parentElement || anchor.parentNode;
+          }
+          if (!anchor || typeof anchor.getAttribute !== 'function' || anchor.hasAttribute('download')) return;
+          var href = anchor.getAttribute('href');
+          if (typeof href !== 'string' || !href.trim() || href.trim().charAt(0) === '#') return;
+          var target = anchor.getAttribute('target');
+          if (!target && typeof document.querySelector === 'function') {
+            var base = document.querySelector('base[target]');
+            if (base) target = base.getAttribute('target');
+          }
+          if (target && target.toLowerCase() !== '_self') return;
 
-        var currentUrl = new URL(location.origin);
-        currentUrl.pathname = location.pathname || '/';
-        currentUrl.search = location.search || '';
-        currentUrl.hash = location.hash || '';
-        var destination = new URL(typeof anchor.href === 'string' ? anchor.href : href, document.baseURI || currentUrl.href);
-        if (['http:', 'https:'].indexOf(destination.protocol) === -1 || destination.origin !== location.origin
-          || destination.username || destination.password || !this.pageSequencePathAllowed(destination.pathname)) return;
-        var query = this.pageSequenceQueryWithoutCounter(destination.search);
-        if (destination.href.indexOf('#') !== -1 && destination.pathname === currentUrl.pathname
-          && query === this.pageSequenceQueryWithoutCounter(currentUrl.search)) return;
+          var currentUrl = new URL(location.origin);
+          currentUrl.pathname = location.pathname || '/';
+          currentUrl.search = location.search || '';
+          currentUrl.hash = location.hash || '';
+          var destination = new URL(typeof anchor.href === 'string' ? anchor.href : href, document.baseURI || currentUrl.href);
+          if (['http:', 'https:'].indexOf(destination.protocol) === -1 || destination.origin !== location.origin
+            || destination.username || destination.password || !this.pageSequencePathAllowed(destination.pathname)) return;
+          var query = this.pageSequenceQueryWithoutCounter(destination.search);
+          if (destination.href.indexOf('#') !== -1 && destination.pathname === currentUrl.pathname
+            && query === this.pageSequenceQueryWithoutCounter(currentUrl.search)) return;
 
-        var sequence = this.pageSequenceForEvent(false);
-        if (sequence === null) return;
-        // Preserve unrelated query bytes (including signatures) and the hash.
-        // Replacing only our parameter also makes repeated clicks idempotent.
-        destination.search = '?' + query + (query ? '&' : '') + 'aggregate_page_sequence=' + Math.min(sequence + 1, 20);
-        anchor.setAttribute('href', destination.href);
-      } catch(e) {}
+          var sequence = this.pageSequenceForEvent(false);
+          if (sequence === null) return;
+          // Preserve unrelated query bytes (including signatures) and the hash.
+          // Replacing only our parameter also makes repeated clicks idempotent.
+          destination.search = '?' + query + (query ? '&' : '') + 'aggregate_page_sequence=' + Math.min(sequence + 1, 20);
+          anchor.setAttribute('href', destination.href);
+        } catch(e) {}
+      }
     },
 
     customDataForEvent: function(eventData, advancePage){
       if (strictCollection) return null;
-      var clean = Object.create(null);
-      var count = 0;
-      var settings = this.config.customData;
-      if (Object.prototype.hasOwnProperty.call(settings, 'propertyTypes')
-        && (!settings.propertyTypes || typeof settings.propertyTypes !== 'object' || Array.isArray(settings.propertyTypes))) return null;
-      var self = this;
-      var canInclude = function(key){
-        return self.isCustomDataKey(key) && key !== self.config.internalTraffic.name && key !== 'page_sequence'
-          && (self.consent || settings.consentFreeProperties.indexOf(key) !== -1);
-      };
-      var cleanValue = function(key, value){
-        var type = settings.propertyTypes && Object.prototype.hasOwnProperty.call(settings.propertyTypes, key)
-          ? settings.propertyTypes[key] : 'scalar';
-        if (['scalar', 'string', 'integer', 'float', 'double', 'boolean'].indexOf(type) === -1) return undefined;
-        if (value !== null) {
-          if (type === 'string' && typeof value !== 'string') return undefined;
-          if (type === 'boolean' && typeof value !== 'boolean') return undefined;
-          if (['integer', 'float', 'double'].indexOf(type) !== -1 && (typeof value !== 'number' || !isFinite(value))) return undefined;
-          if (type === 'integer' && (Math.floor(value) !== value || Math.abs(value) > 9007199254740991)) return undefined;
-        }
-        // Match the server's flat, bounded scalar property model. Keep at
-        // most 500 UTF-8 bytes without splitting a character.
-        if (typeof value === 'string') {
-          var characters = Array.from(value.replace(/[\u0000-\u001f\u007f]/g, ''));
-          var result = '';
-          var bytes = 0;
-          for (var i = 0; i < characters.length; i++) {
-            var point = characters[i].codePointAt(0);
-            if (point >= 0xd800 && point <= 0xdfff) continue;
-            var size = point < 0x80 ? 1 : (point < 0x800 ? 2 : (point < 0x10000 ? 3 : 4));
-            if (bytes + size > 500) break;
-            result += characters[i];
-            bytes += size;
+      if (withStandardProfile) {
+        var clean = Object.create(null);
+        var count = 0;
+        var settings = this.config.customData;
+        if (Object.prototype.hasOwnProperty.call(settings, 'propertyTypes')
+          && (!settings.propertyTypes || typeof settings.propertyTypes !== 'object' || Array.isArray(settings.propertyTypes))) return null;
+        var tracker = this;
+        var canInclude = function(key){
+          return tracker.isCustomDataKey(key) && key !== tracker.config.internalTraffic.name && key !== 'page_sequence'
+            && (tracker.consent || settings.consentFreeProperties.indexOf(key) !== -1);
+        };
+        var cleanValue = function(key, value){
+          var type = settings.propertyTypes && Object.prototype.hasOwnProperty.call(settings.propertyTypes, key)
+            ? settings.propertyTypes[key] : 'scalar';
+          if (['scalar', 'string', 'integer', 'float', 'double', 'boolean'].indexOf(type) === -1) return undefined;
+          if (value !== null) {
+            if (type === 'string' && typeof value !== 'string') return undefined;
+            if (type === 'boolean' && typeof value !== 'boolean') return undefined;
+            if (['integer', 'float', 'double'].indexOf(type) !== -1 && (typeof value !== 'number' || !isFinite(value))) return undefined;
+            if (type === 'integer' && (Math.floor(value) !== value || Math.abs(value) > 9007199254740991)) return undefined;
           }
-          return result;
+          // Match the server's flat, bounded scalar property model. Keep at
+          // most 500 UTF-8 bytes without splitting a character.
+          if (typeof value === 'string') {
+            var characters = Array.from(value.replace(/[\u0000-\u001f\u007f]/g, ''));
+            var result = '';
+            var bytes = 0;
+            for (var i = 0; i < characters.length; i++) {
+              var point = characters[i].codePointAt(0);
+              if (point >= 0xd800 && point <= 0xdfff) continue;
+              var size = point < 0x80 ? 1 : (point < 0x800 ? 2 : (point < 0x10000 ? 3 : 4));
+              if (bytes + size > 500) break;
+              result += characters[i];
+              bytes += size;
+            }
+            return result;
+          }
+          if (value === null || typeof value === 'boolean' || (typeof value === 'number' && isFinite(value))) return value;
+          return undefined;
+        };
+
+        // The sequence is generated independently of event properties and URL
+        // mappings, and uses one of the existing bounded custom-data slots.
+        var pageSequence = this.pageSequenceForEvent(advancePage);
+        if (pageSequence !== null) {
+          clean.page_sequence = pageSequence;
+          count++;
         }
-        if (value === null || typeof value === 'boolean' || (typeof value === 'number' && isFinite(value))) return value;
-        return undefined;
-      };
 
-      // The sequence is generated independently of event properties and URL
-      // mappings, and uses one of the existing bounded custom-data slots.
-      var pageSequence = this.pageSequenceForEvent(advancePage);
-      if (pageSequence !== null) {
-        clean.page_sequence = pageSequence;
-        count++;
-      }
-
-      // Explicit event properties take precedence over URL mappings, including
-      // false, zero and null. Never copy inherited or nested properties.
-      if (eventData && typeof eventData === 'object' && !Array.isArray(eventData)) {
-        var keys = Object.keys(eventData);
-        for (var i = 0; i < keys.length && count < 50; i++) {
-          var key = keys[i].trim();
-          if (!canInclude(key)) continue;
-          var value = cleanValue(key, eventData[keys[i]]);
-          if (typeof value === 'undefined') continue;
-          if (!Object.prototype.hasOwnProperty.call(clean, key)) count++;
-          clean[key] = value;
-        }
-      }
-
-      // Read only explicitly mapped parameters from this page's current URL.
-      // Attribution is never persisted in cookies or browser storage.
-      try {
-        var pageUrl = new URL(location.origin);
-        pageUrl.search = location.search || '';
-        var sources = Object.keys(settings.queryParameters);
-        for (var j = 0; j < sources.length && count < 50; j++) {
-          if (sources[j] === 'aggregate_page_sequence') continue;
-          var destination = settings.queryParameters[sources[j]];
-          if (!canInclude(destination) || Object.prototype.hasOwnProperty.call(clean, destination)) continue;
-          var values = pageUrl.searchParams.getAll(sources[j]);
-          for (var k = 0; k < values.length; k++) {
-            var queryValue = cleanValue(destination, values[k]);
-            // Query values are strings. Numeric/boolean types must be sent as
-            // JSON values through emit(); never guess or coerce URL values.
-            if (typeof queryValue !== 'string') continue;
-            queryValue = queryValue.trim();
-            if (!queryValue) continue;
-            clean[destination] = queryValue;
-            count++;
-            break;
+        // Explicit event properties take precedence over URL mappings, including
+        // false, zero and null. Never copy inherited or nested properties.
+        if (eventData && typeof eventData === 'object' && !Array.isArray(eventData)) {
+          var keys = Object.keys(eventData);
+          for (var i = 0; i < keys.length && count < 50; i++) {
+            var key = keys[i].trim();
+            if (!canInclude(key)) continue;
+            var value = cleanValue(key, eventData[keys[i]]);
+            if (typeof value === 'undefined') continue;
+            if (!Object.prototype.hasOwnProperty.call(clean, key)) count++;
+            clean[key] = value;
           }
         }
-      } catch(e) {}
 
-      return count ? clean : null;
+        // Read only explicitly mapped parameters from this page's current URL.
+        // Attribution is never persisted in cookies or browser storage.
+        try {
+          var pageUrl = new URL(location.origin);
+          pageUrl.search = location.search || '';
+          var sources = Object.keys(settings.queryParameters);
+          for (var j = 0; j < sources.length && count < 50; j++) {
+            if (sources[j] === 'aggregate_page_sequence') continue;
+            var destination = settings.queryParameters[sources[j]];
+            if (!canInclude(destination) || Object.prototype.hasOwnProperty.call(clean, destination)) continue;
+            var values = pageUrl.searchParams.getAll(sources[j]);
+            for (var k = 0; k < values.length; k++) {
+              var queryValue = cleanValue(destination, values[k]);
+              // Query values are strings. Numeric/boolean types must be sent as
+              // JSON values through emit(); never guess or coerce URL values.
+              if (typeof queryValue !== 'string') continue;
+              queryValue = queryValue.trim();
+              if (!queryValue) continue;
+              clean[destination] = queryValue;
+              count++;
+              break;
+            }
+          }
+        } catch(e) {}
+
+        return count ? clean : null;
+      }
+      return null;
     },
 
     isInternalTraffic: function(){
@@ -486,30 +518,32 @@
       // Read it independently of analytics consent, but never create it here.
       // Strict collection does not read the marker's cookie or storage.
       if (strictCollection) return false;
-      try {
-        var marker = this.config.internalTraffic;
-        if (!marker || typeof marker.name !== 'string' || !marker.name || typeof marker.value !== 'string') return false;
-        if (['aggregate_session', 'aggregate_visitor_id', 'aggregate_session_id'].indexOf(marker.name) !== -1) return false;
+      if (withStandardProfile) {
+        try {
+          var marker = this.config.internalTraffic;
+          if (!marker || typeof marker.name !== 'string' || !marker.name || typeof marker.value !== 'string') return false;
+          if (['aggregate_session', 'aggregate_visitor_id', 'aggregate_session_id'].indexOf(marker.name) !== -1) return false;
 
-        if (marker.storage === 'local_storage') {
-          return localStorage.getItem(marker.name) === marker.value;
-        }
-        if (marker.storage !== 'cookie') return false;
-
-        var cookies = document.cookie.split(';');
-        var prefix = marker.name + '=';
-        for (var i = 0; i < cookies.length; i++) {
-          // Strip separator whitespace without normalizing the marker value.
-          var cookie = cookies[i].replace(/^[\t ]+/, '');
-          if (cookie.indexOf(prefix) === 0) {
-            // Host-only and parent-domain cookies can coexist after changing
-            // scope. Any exact marker match opts this browser into the flag.
-            try {
-              if (decodeURIComponent(cookie.substring(prefix.length)) === marker.value) return true;
-            } catch(e) {}
+          if (marker.storage === 'local_storage') {
+            return localStorage.getItem(marker.name) === marker.value;
           }
-        }
-      } catch(e) {}
+          if (marker.storage !== 'cookie') return false;
+
+          var cookies = document.cookie.split(';');
+          var prefix = marker.name + '=';
+          for (var i = 0; i < cookies.length; i++) {
+            // Strip separator whitespace without normalizing the marker value.
+            var cookie = cookies[i].replace(/^[\t ]+/, '');
+            if (cookie.indexOf(prefix) === 0) {
+              // Host-only and parent-domain cookies can coexist after changing
+              // scope. Any exact marker match opts this browser into the flag.
+              try {
+                if (decodeURIComponent(cookie.substring(prefix.length)) === marker.value) return true;
+              } catch(e) {}
+            }
+          }
+        } catch(e) {}
+      }
 
       return false;
     },
@@ -518,93 +552,105 @@
       // Strict collection never creates identifiers and does not touch storage,
       // even to remove identifiers left by an earlier standard-profile visit.
       if (strictCollection) return;
-      try {
-        localStorage.removeItem('aggregate_visitor_id');
-      } catch(e) {}
+      if (withStandardProfile) {
+        try {
+          localStorage.removeItem('aggregate_visitor_id');
+        } catch(e) {}
 
-      try {
-        sessionStorage.removeItem('aggregate_session_id');
-      } catch(e) {}
+        try {
+          sessionStorage.removeItem('aggregate_session_id');
+        } catch(e) {}
 
-      this.deleteSessionCookie();
+        this.deleteSessionCookie();
+      }
     },
 
     // Enhanced-consent session cookie helpers
     getSessionCookie: function(){
-      try {
-        var name = 'aggregate_session=';
-        var cookies = document.cookie.split(';');
-        for (var i = 0; i < cookies.length; i++) {
-          var cookie = cookies[i].trim();
-          if (cookie.indexOf(name) === 0) {
-            return decodeURIComponent(cookie.substring(name.length));
+      if (withStandardProfile) {
+        try {
+          var name = 'aggregate_session=';
+          var cookies = document.cookie.split(';');
+          for (var i = 0; i < cookies.length; i++) {
+            var cookie = cookies[i].trim();
+            if (cookie.indexOf(name) === 0) {
+              return decodeURIComponent(cookie.substring(name.length));
+            }
           }
+          return null;
+        } catch(e) {
+          return null;
         }
-        return null;
-      } catch(e) {
-        return null;
       }
+      return null;
     },
 
     setSessionCookie: function(sessionId){
-      try {
-        var cookieValue = 'aggregate_session=' + encodeURIComponent(sessionId) + ';' +
-          'path=/;' +
-          'max-age=1800;' +  // 30-minute sliding session window
-          'SameSite=Lax';
+      if (withStandardProfile) {
+        try {
+          var cookieValue = 'aggregate_session=' + encodeURIComponent(sessionId) + ';' +
+            'path=/;' +
+            'max-age=1800;' +  // 30-minute sliding session window
+            'SameSite=Lax';
 
-        // Prevent clear-text transmission when the tracked page uses HTTPS.
-        if (location.protocol === 'https:') {
-          cookieValue += ';Secure';
-        }
+          // Prevent clear-text transmission when the tracked page uses HTTPS.
+          if (location.protocol === 'https:') {
+            cookieValue += ';Secure';
+          }
 
-        document.cookie = cookieValue;
-      } catch(e) {}
+          document.cookie = cookieValue;
+        } catch(e) {}
+      }
     },
 
     deleteSessionCookie: function(){
-      try {
-        document.cookie = 'aggregate_session=; path=/; max-age=0; SameSite=Lax';
-      } catch(e) {}
+      if (withStandardProfile) {
+        try {
+          document.cookie = 'aggregate_session=; path=/; max-age=0; SameSite=Lax';
+        } catch(e) {}
+      }
     },
 
     ensureIds: function(){
-      try {
-        // Anonymous measurement never uses browser identifiers.
-        if (strictCollection || !this.consent) return {visitorId: null, sessionId: null};
+      if (withStandardProfile) {
+        try {
+          // Anonymous measurement never uses browser identifiers.
+          if (strictCollection || !this.consent) return {visitorId: null, sessionId: null};
 
-        // Enhanced consent permits visitor and session identifiers.
-        var vKey = 'aggregate_visitor_id';
-        var sKey = 'aggregate_session_id';
+          // Enhanced consent permits visitor and session identifiers.
+          var vKey = 'aggregate_visitor_id';
+          var sKey = 'aggregate_session_id';
 
-        // Get or create visitor ID (persistent across sessions via localStorage)
-        var visitorId = localStorage.getItem(vKey);
-        if (!visitorId) {
-          visitorId = self.crypto && self.crypto.randomUUID ? self.crypto.randomUUID() : (Math.random().toString(36).slice(2) + Date.now());
-          localStorage.setItem(vKey, visitorId);
+          // Get or create visitor ID (persistent across sessions via localStorage)
+          var visitorId = localStorage.getItem(vKey);
+          if (!visitorId) {
+            visitorId = self.crypto && self.crypto.randomUUID ? self.crypto.randomUUID() : (Math.random().toString(36).slice(2) + Date.now());
+            localStorage.setItem(vKey, visitorId);
+          }
+
+          // Get or create session ID with fallback priority:
+          // 1. Session cookie (preferred - works across page loads)
+          // 2. sessionStorage (fallback if cookies disabled)
+          // 3. Generate new UUID
+          var sessionId = this.getSessionCookie();
+          if (!sessionId) {
+            sessionId = sessionStorage.getItem(sKey);
+          }
+          if (!sessionId) {
+            sessionId = self.crypto && self.crypto.randomUUID ? self.crypto.randomUUID() : (Math.random().toString(36).slice(2) + Date.now());
+            sessionStorage.setItem(sKey, sessionId);
+            this.setSessionCookie(sessionId);
+          } else {
+            // Refresh cookie expiry on each request (sliding window)
+            this.setSessionCookie(sessionId);
+          }
+
+          return {visitorId: visitorId, sessionId: sessionId};
+        } catch(e) {
+          return {visitorId: null, sessionId: null};
         }
-
-        // Get or create session ID with fallback priority:
-        // 1. Session cookie (preferred - works across page loads)
-        // 2. sessionStorage (fallback if cookies disabled)
-        // 3. Generate new UUID
-        var sessionId = this.getSessionCookie();
-        if (!sessionId) {
-          sessionId = sessionStorage.getItem(sKey);
-        }
-        if (!sessionId) {
-          sessionId = self.crypto && self.crypto.randomUUID ? self.crypto.randomUUID() : (Math.random().toString(36).slice(2) + Date.now());
-          sessionStorage.setItem(sKey, sessionId);
-          this.setSessionCookie(sessionId);
-        } else {
-          // Refresh cookie expiry on each request (sliding window)
-          this.setSessionCookie(sessionId);
-        }
-
-        return {visitorId: visitorId, sessionId: sessionId};
-      } catch(e) {
-        return {visitorId: null, sessionId: null};
       }
+      return {visitorId: null, sessionId: null};
     },
 
     getConsentState: function(){
@@ -677,62 +723,70 @@
 
     getReferrerChannel: function(){
       if (strictCollection) return 'unknown';
-      if (!document.referrer) return 'direct';
+      if (withStandardProfile) {
+        if (!document.referrer) return 'direct';
 
-      try {
-        var referrer = new URL(document.referrer, location.origin);
-        if (referrer.origin === location.origin) return 'internal';
+        try {
+          var referrer = new URL(document.referrer, location.origin);
+          if (referrer.origin === location.origin) return 'internal';
 
-        var host = referrer.hostname.toLowerCase().replace(/^www\./, '');
-        var searchHosts = [
-          'google.', 'bing.com', 'duckduckgo.com', 'search.yahoo.',
-          'baidu.com', 'yandex.', 'ecosia.org', 'brave.com'
-        ];
-        var socialHosts = [
-          'facebook.com', 'instagram.com', 'linkedin.com', 'x.com',
-          'twitter.com', 't.co', 'reddit.com', 'pinterest.com',
-          'youtube.com', 'youtu.be', 'tiktok.com', 'mastodon.social'
-        ];
-        var emailHosts = [
-          'mail.google.com', 'outlook.live.com', 'outlook.office.com',
-          'mail.yahoo.com', 'proton.me', 'protonmail.com'
-        ];
+          var host = referrer.hostname.toLowerCase().replace(/^www\./, '');
+          var searchHosts = [
+            'google.', 'bing.com', 'duckduckgo.com', 'search.yahoo.',
+            'baidu.com', 'yandex.', 'ecosia.org', 'brave.com'
+          ];
+          var socialHosts = [
+            'facebook.com', 'instagram.com', 'linkedin.com', 'x.com',
+            'twitter.com', 't.co', 'reddit.com', 'pinterest.com',
+            'youtube.com', 'youtu.be', 'tiktok.com', 'mastodon.social'
+          ];
+          var emailHosts = [
+            'mail.google.com', 'outlook.live.com', 'outlook.office.com',
+            'mail.yahoo.com', 'proton.me', 'protonmail.com'
+          ];
 
-        for (var i = 0; i < searchHosts.length; i++) {
-          if (host === searchHosts[i] || host.indexOf(searchHosts[i]) !== -1) return 'search';
+          for (var i = 0; i < searchHosts.length; i++) {
+            if (host === searchHosts[i] || host.indexOf(searchHosts[i]) !== -1) return 'search';
+          }
+          for (var j = 0; j < socialHosts.length; j++) {
+            if (host === socialHosts[j] || host.slice(-(socialHosts[j].length + 1)) === '.' + socialHosts[j]) return 'social';
+          }
+          for (var k = 0; k < emailHosts.length; k++) {
+            if (host === emailHosts[k] || host.slice(-(emailHosts[k].length + 1)) === '.' + emailHosts[k]) return 'email';
+          }
+
+          return 'referral';
+        } catch(e) {
+          return 'unknown';
         }
-        for (var j = 0; j < socialHosts.length; j++) {
-          if (host === socialHosts[j] || host.slice(-(socialHosts[j].length + 1)) === '.' + socialHosts[j]) return 'social';
-        }
-        for (var k = 0; k < emailHosts.length; k++) {
-          if (host === emailHosts[k] || host.slice(-(emailHosts[k].length + 1)) === '.' + emailHosts[k]) return 'email';
-        }
-
-        return 'referral';
-      } catch(e) {
-        return 'unknown';
       }
+      return 'unknown';
     },
 
     getViewportBucket: function(){
       if (strictCollection) return 'unknown';
-      try {
-        var width = window.innerWidth || (screen && screen.width) || 0;
-        if (!width) return 'unknown';
-        if (width < 640) return 'small';
-        if (width < 1024) return 'medium';
-        return 'large';
-      } catch(e) {
-        return 'unknown';
+      if (withStandardProfile) {
+        try {
+          var width = window.innerWidth || (screen && screen.width) || 0;
+          if (!width) return 'unknown';
+          if (width < 640) return 'small';
+          if (width < 1024) return 'medium';
+          return 'large';
+        } catch(e) {
+          return 'unknown';
+        }
       }
+      return 'unknown';
     },
 
     getDeviceClass: function(){
       if (strictCollection) return 'unknown';
-      var viewportBucket = this.getViewportBucket();
-      if (viewportBucket === 'small') return 'mobile';
-      if (viewportBucket === 'medium') return 'tablet';
-      if (viewportBucket === 'large') return 'desktop';
+      if (withStandardProfile) {
+        var viewportBucket = this.getViewportBucket();
+        if (viewportBucket === 'small') return 'mobile';
+        if (viewportBucket === 'medium') return 'tablet';
+        if (viewportBucket === 'large') return 'desktop';
+      }
       return 'unknown';
     },
 
@@ -740,12 +794,14 @@
       if (!this.config.websiteToken) return;
       payload.websiteToken = this.config.websiteToken;
       // Strict payloads carry no consent state, organization marker or IDs.
-      if (!strictCollection) {
-        payload.consentState = this.getConsentState();
-        payload.internalTraffic = this.isInternalTraffic();
-        var ids = this.ensureIds();
-        if (ids.visitorId) payload.visitorId = ids.visitorId;
-        if (ids.sessionId) payload.sessionId = ids.sessionId;
+      if (withStandardProfile) {
+        if (!strictCollection) {
+          payload.consentState = this.getConsentState();
+          payload.internalTraffic = this.isInternalTraffic();
+          var ids = this.ensureIds();
+          if (ids.visitorId) payload.visitorId = ids.visitorId;
+          if (ids.sessionId) payload.sessionId = ids.sessionId;
+        }
       }
       try {
         var headers = {'Content-Type':'application/json'};
@@ -782,26 +838,28 @@
         return;
       }
 
-      var payload = {
-        eventName: 'view',
-        pagePath: this.sanitizePagePath(),
-        referrerChannel: this.getReferrerChannel(),
-        deviceClass: this.getDeviceClass(),
-        viewportBucket: this.getViewportBucket()
-      };
+      if (withStandardProfile) {
+        var payload = {
+          eventName: 'view',
+          pagePath: this.sanitizePagePath(),
+          referrerChannel: this.getReferrerChannel(),
+          deviceClass: this.getDeviceClass(),
+          viewportBucket: this.getViewportBucket()
+        };
 
-      // Exact screen size is an enhanced dimension. Anonymous page views use
-      // only the coarse viewport bucket above.
-      if (this.consent) {
-        payload.screenWidth = (screen && screen.width) || null;
+        // Exact screen size is an enhanced dimension. Anonymous page views use
+        // only the coarse viewport bucket above.
+        if (this.consent) {
+          payload.screenWidth = (screen && screen.width) || null;
+        }
+        // The payload's custom properties travel as customData; the server still
+        // accepts the earlier eventData name from older copies of this script.
+        // eventData holds the script URL's cd.* values for the automatic view.
+        var customData = this.customDataForEvent(eventData || null, advancePage);
+        if (customData) payload.customData = customData;
+
+        this.send(payload);
       }
-      // The payload's custom properties travel as customData; the server still
-      // accepts the earlier eventData name from older copies of this script.
-      // eventData holds the script URL's cd.* values for the automatic view.
-      var customData = this.customDataForEvent(eventData || null, advancePage);
-      if (customData) payload.customData = customData;
-
-      this.send(payload);
     },
 
     emit: function(eventName, eventData, goalEvent){
@@ -814,26 +872,28 @@
         return true;
       }
 
-      var payload = {
-        pagePath: this.sanitizePagePath(),
-        referrerChannel: this.getReferrerChannel(),
-        deviceClass: this.getDeviceClass(),
-        viewportBucket: this.getViewportBucket(),
-        eventName: safeEventName
-      };
+      if (withStandardProfile) {
+        var payload = {
+          pagePath: this.sanitizePagePath(),
+          referrerChannel: this.getReferrerChannel(),
+          deviceClass: this.getDeviceClass(),
+          viewportBucket: this.getViewportBucket(),
+          eventName: safeEventName
+        };
 
-      // Goals are server-validated against the configured allowlist in both
-      // privacy modes. Only configured consent-free properties can accompany
-      // anonymous events; exact dimensions and IDs require enhanced consent.
-      payload.goalEvent = goalEvent || null;
+        // Goals are server-validated against the configured allowlist in both
+        // privacy modes. Only configured consent-free properties can accompany
+        // anonymous events; exact dimensions and IDs require enhanced consent.
+        payload.goalEvent = goalEvent || null;
 
-      if (this.consent) {
-        payload.screenWidth = (screen && screen.width) || null;
+        if (this.consent) {
+          payload.screenWidth = (screen && screen.width) || null;
+        }
+        var customData = this.customDataForEvent(eventData, safeEventName === 'view');
+        if (customData || this.consent) payload.customData = customData;
+
+        this.send(payload);
       }
-      var customData = this.customDataForEvent(eventData, safeEventName === 'view');
-      if (customData || this.consent) payload.customData = customData;
-
-      this.send(payload);
 
       return true;
     },
@@ -846,12 +906,14 @@
         this.consent = false;
         return;
       }
-      this.consent = this.parseConsent(granted);
+      if (withStandardProfile) {
+        this.consent = this.parseConsent(granted);
 
-      // Withdrawing enhanced consent removes identifiers immediately. Coarse,
-      // hour-bucketed anonymous-mode rows continue without those identifiers.
-      if (!this.consent) {
-        this.clearIdentifiers();
+        // Withdrawing enhanced consent removes identifiers immediately. Coarse,
+        // hour-bucketed anonymous-mode rows continue without those identifiers.
+        if (!this.consent) {
+          this.clearIdentifiers();
+        }
       }
     },
 
@@ -895,16 +957,18 @@
     // Attribute values are text. A property the data model declares as a
     // number or boolean accepts only that value's plain written form.
     attributeValue: function(key, text){
-      text = String(text).replace(/[\u0000-\u001f\u007f]/g, '').trim();
-      if (!text) return undefined;
-      var types = this.config.customData.propertyTypes;
-      var type = types && typeof types === 'object' && Object.prototype.hasOwnProperty.call(types, key) ? types[key] : 'scalar';
-      if (type === 'integer') return /^-?(?:0|[1-9][0-9]*)$/.test(text) ? Number(text) : undefined;
-      if (type === 'float' || type === 'double') {
-        return /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$/.test(text) ? Number(text) : undefined;
+      if (withStandardProfile) {
+        text = String(text).replace(/[\u0000-\u001f\u007f]/g, '').trim();
+        if (!text) return undefined;
+        var types = this.config.customData.propertyTypes;
+        var type = types && typeof types === 'object' && Object.prototype.hasOwnProperty.call(types, key) ? types[key] : 'scalar';
+        if (type === 'integer') return /^-?(?:0|[1-9][0-9]*)$/.test(text) ? Number(text) : undefined;
+        if (type === 'float' || type === 'double') {
+          return /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$/.test(text) ? Number(text) : undefined;
+        }
+        if (type === 'boolean') return text === 'true' ? true : (text === 'false' ? false : undefined);
+        return text;
       }
-      if (type === 'boolean') return text === 'true' ? true : (text === 'false' ? false : undefined);
-      return text;
     },
 
     trackMarkedInteraction: function(event, kind){
@@ -945,25 +1009,27 @@
         }
 
         var properties = null;
-        if (!strictCollection) {
-          properties = Object.create(null);
-          var count = 0;
-          for (var j = index; j < chain.length && count < 50; j++) {
-            var attributes = chain[j].attributes;
-            if (!attributes) continue;
-            for (var k = 0; k < attributes.length && count < 50; k++) {
-              var attributeName = attributes[k].name;
-              if (typeof attributeName !== 'string' || attributeName.indexOf(names.prop) !== 0) continue;
-              var key = attributeName.slice(names.prop.length);
-              // The nearest element supplies each property.
-              if (!this.isCustomDataKey(key) || Object.prototype.hasOwnProperty.call(properties, key)) continue;
-              var value = this.attributeValue(key, attributes[k].value);
-              if (typeof value === 'undefined') continue;
-              properties[key] = value;
-              count++;
+        if (withStandardProfile) {
+          if (!strictCollection) {
+            properties = Object.create(null);
+            var count = 0;
+            for (var j = index; j < chain.length && count < 50; j++) {
+              var attributes = chain[j].attributes;
+              if (!attributes) continue;
+              for (var k = 0; k < attributes.length && count < 50; k++) {
+                var attributeName = attributes[k].name;
+                if (typeof attributeName !== 'string' || attributeName.indexOf(names.prop) !== 0) continue;
+                var key = attributeName.slice(names.prop.length);
+                // The nearest element supplies each property.
+                if (!this.isCustomDataKey(key) || Object.prototype.hasOwnProperty.call(properties, key)) continue;
+                var value = this.attributeValue(key, attributes[k].value);
+                if (typeof value === 'undefined') continue;
+                properties[key] = value;
+                count++;
+              }
             }
+            if (!count) properties = null;
           }
-          if (!count) properties = null;
         }
 
         var goal = element.getAttribute(names.goal);
@@ -1027,18 +1093,21 @@
           if (cs !== null) {
             Analytics.setConsent(cs);
           }
-          // Collect a bounded surplus; customDataForEvent keeps the first 50
-          // values that pass consent and type checks.
-          var viewDataCount = 0;
-          u.searchParams.forEach(function(value, name){
-            if (name.indexOf('cd.') !== 0 || viewDataCount >= 100) return;
-            var key = name.slice(3);
-            // URL values are strings; repeated names keep the first nonblank one.
-            var text = value.replace(/[\u0000-\u001f\u007f]/g, '').trim();
-            if (!text || !Analytics.isCustomDataKey(key) || Object.prototype.hasOwnProperty.call(initialViewData, key)) return;
-            initialViewData[key] = text;
-            viewDataCount++;
-          });
+          // The strict profile sends no custom data.
+          if (withStandardProfile) {
+            // Collect a bounded surplus; customDataForEvent keeps the first 50
+            // values that pass consent and type checks.
+            var viewDataCount = 0;
+            u.searchParams.forEach(function(value, name){
+              if (name.indexOf('cd.') !== 0 || viewDataCount >= 100) return;
+              var key = name.slice(3);
+              // URL values are strings; repeated names keep the first nonblank one.
+              var text = value.replace(/[\u0000-\u001f\u007f]/g, '').trim();
+              if (!text || !Analytics.isCustomDataKey(key) || Object.prototype.hasOwnProperty.call(initialViewData, key)) return;
+              initialViewData[key] = text;
+              viewDataCount++;
+            });
+          }
         } catch(e) {}
       }
     }
@@ -1065,8 +1134,10 @@
   if (Analytics.pageSequenceMethod() === 'url_parameter') Analytics.pageSequenceForEvent(false);
 
   // Decorate only an activated eligible link; native navigation stays in charge.
-  if (!strictCollection) {
-    document.addEventListener('click', function(event){ Analytics.decoratePageSequenceLink(event); });
+  if (withPageDepth) {
+    if (!strictCollection) {
+      document.addEventListener('click', function(event){ Analytics.decoratePageSequenceLink(event); });
+    }
   }
 
   // Marked clicks and form submissions. Listening while the event is captured

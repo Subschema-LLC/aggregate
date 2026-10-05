@@ -10,7 +10,10 @@ use App\Service\BrandingLogoManager;
 use App\Service\BrandingTheme;
 use App\Service\CollectionProfile;
 use App\Service\DocumentationLinks;
+use App\Service\BrowserScriptCache;
 use App\Service\DropInScripts;
+use App\Service\TrackerBuilds;
+use App\Service\TrackerScript;
 use App\Service\TrackingAttributes;
 use App\Service\WebsiteConfigManager;
 use App\Service\WebsiteDomainPolicy;
@@ -78,10 +81,18 @@ class DashboardController extends AbstractController
     }
 
     #[Route('/dashboard/settings', name: 'app_application_settings', methods: ['GET'])]
-    public function applicationSettings(DocumentationLinks $documentation): Response
+    public function applicationSettings(DocumentationLinks $documentation, TrackerBuilds $trackerBuilds, TrackerScript $tracker): Response
     {
         $this->denyIfDashboardDisabled();
         $this->denyIfNotAdmin();
+
+        try {
+            $sizes = $tracker->sizes();
+        } catch (\Throwable) {
+            // Invalid collection settings stop the tracker from being served;
+            // the page still opens so they can be repaired.
+            $sizes = null;
+        }
 
         return $this->renderDashboardPage('settings/application.html.twig', [
             'app_host' => $this->config->getWithEnvFallback('app_host', 'http://localhost:8000'),
@@ -91,7 +102,45 @@ class DashboardController extends AbstractController
             'documentation_url' => $documentation->configuredValue(),
             'documentation_url_overridden' => $documentation->hasEnvironmentOverride(),
             'documentation_default_url' => DocumentationLinks::DEFAULT_URL,
+            'page_speed' => [
+                'omit_unused_features' => $trackerBuilds->enabled(),
+                'omit_unused_features_overridden' => $trackerBuilds->hasEnvironmentOverride(),
+                'tracker' => $sizes,
+                'build_label' => $sizes !== null ? TrackerBuilds::describe($sizes['build']) : null,
+                'cache_minutes' => intdiv(BrowserScriptCache::MAX_AGE, 60),
+            ],
         ]);
+    }
+
+    /** The page speed setting; also YAML tracker_omit_unused_features or the environment. */
+    #[Route('/dashboard/settings/page-speed', name: 'app_page_speed_save', methods: ['POST'])]
+    public function savePageSpeed(Request $request, TrackerBuilds $trackerBuilds): Response
+    {
+        $this->denyIfDashboardDisabled();
+        $this->denyIfNotAdmin();
+
+        if (!$this->isCsrfTokenValid('page_speed', (string) $request->request->get('_csrf_token', ''))) {
+            $this->addFlash('error', 'Invalid security token. Please try again.');
+
+            return $this->redirect($this->generateUrl('app_application_settings').'#page-speed');
+        }
+        if ($trackerBuilds->hasEnvironmentOverride()) {
+            $this->addFlash('error', 'Leave out unused tracker features is set by the TRACKER_OMIT_UNUSED_FEATURES environment variable, which takes precedence over this page.');
+
+            return $this->redirect($this->generateUrl('app_application_settings').'#page-speed');
+        }
+
+        try {
+            $enabled = TrackerBuilds::normalize($request->request->get(TrackerBuilds::CONFIG_KEY, '0'));
+            $this->config->set(TrackerBuilds::CONFIG_KEY, $enabled);
+            $this->addFlash('success', $enabled
+                ? 'Visitors now get the smallest tracker for your settings. Browsers that already have the tracker receive it within five minutes.'
+                : 'Every visitor now gets the full tracker. Browsers that already have the tracker receive it within five minutes.');
+        } catch (\Exception $e) {
+            $this->addFlash('error', 'Failed to save the page speed setting: '.$e->getMessage());
+        }
+
+        return $this->redirect($this->generateUrl('app_application_settings').'#page-speed');
     }
 
     #[Route('/dashboard/branding', name: 'app_branding_settings', methods: ['GET'])]
@@ -127,6 +176,7 @@ class DashboardController extends AbstractController
         return $this->renderDashboardPage('settings/collection.html.twig', [
             'collection_profile' => $collectionProfile->name(),
             'collection_profile_env_override' => $collectionProfile->hasEnvironmentOverride(),
+            'tracker_omit_unused_features' => (new TrackerBuilds($this->config))->enabled(),
             'anonymous_tracking_enabled' => $this->config->getBoolWithEnvFallback('anonymous_tracking_enabled', true),
             'anonymous_excluded_paths' => array_values(array_filter($excludedPaths, 'is_string')),
             'anonymous_geo_enabled' => $this->config->getBoolWithEnvFallback('anonymous_geo_enabled', false),

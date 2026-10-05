@@ -42,6 +42,7 @@ final class DashboardSectionsRoutesTest extends TestCase
         '/dashboard/website/create' => '/dashboard',
         '/dashboard/website/delete/example-token' => '/dashboard',
         '/dashboard/settings/save' => '/dashboard/settings',
+        '/dashboard/settings/page-speed' => '/dashboard/settings',
         '/dashboard/settings/branding' => '/dashboard/branding',
         '/dashboard/settings/anonymous' => '/dashboard/collection',
         '/dashboard/settings/analytics-privacy' => '/dashboard/privacy',
@@ -56,7 +57,7 @@ final class DashboardSectionsRoutesTest extends TestCase
     protected function setUp(): void
     {
         $this->environment = [$_ENV, $_SERVER];
-        foreach (['APP_HOST', 'JS_NAMESPACE', 'DOCUMENTATION_URL'] as $key) {
+        foreach (['APP_HOST', 'JS_NAMESPACE', 'DOCUMENTATION_URL', 'TRACKER_OMIT_UNUSED_FEATURES'] as $key) {
             unset($_ENV[$key], $_SERVER[$key]);
         }
         $this->temporaryDirectory = sys_get_temp_dir().'/aggregate-dashboard-sections-'.bin2hex(random_bytes(8));
@@ -365,6 +366,56 @@ final class DashboardSectionsRoutesTest extends TestCase
         $values['documentation_url'] = 'https://other.example.test/';
         $browser->request('POST', '/dashboard/settings/save', $values, [], ['HTTP_ORIGIN' => 'http://localhost']);
         self::assertSame('', Yaml::parseFile($this->temporaryDirectory.'/config/aggregate.yaml')['documentation_url']);
+        $this->assertNoDatabaseConnection();
+    }
+
+    public function testPageSpeedPanelShowsEachSaverAndSavesItsSetting(): void
+    {
+        $browser = $this->browser('ROLE_ADMIN');
+        $this->preventDatabaseReadsAndWrites();
+        $crawler = $browser->request('GET', '/dashboard/settings');
+        $panel = $crawler->filter('#page-speed');
+        self::assertCount(1, $panel);
+        self::assertSame('/aggregate.js?min=1', $panel->attr('data-pages--settings--page-speed-url-value'));
+        self::assertNotNull($panel->filter('input[name="tracker_omit_unused_features"]')->attr('checked'), 'on by default');
+        $savers = $panel->filter('.page-speed-savers tbody th')->each(static fn (Crawler $cell): string => $cell->text());
+        self::assertSame(['Leave out unused tracker features', 'Minified scripts', 'Shorter internal names', 'Compression', 'Browser caching', 'Loads without blocking'], $savers);
+        // Page depth is off here, so the tracker without it is sent and the summary shows the saving.
+        self::assertStringContainsString('Page depth is off, so visitors get the tracker without it.', $panel->filter('.page-speed-savers')->text());
+        self::assertMatchesRegularExpression('/Visitors download the tracker in [0-9.]+ KB compressed, instead of [0-9.]+ KB for the full tracker/', $panel->filter('.page-speed-summary')->text());
+        self::assertStringEndsWith('tracking/page-speed', (string) $panel->filter('.docs-link a')->last()->attr('href'));
+
+        $form = $panel->selectButton('Save page speed setting')->form();
+        $form['tracker_omit_unused_features']->untick();
+        $browser->submit($form);
+        $this->assertRedirect($browser, '/dashboard/settings');
+        $saved = Yaml::parseFile($this->temporaryDirectory.'/config/aggregate.yaml');
+        self::assertFalse($saved['tracker_omit_unused_features'], 'an unticked box turns it off');
+        self::assertSame('preserve-me', $saved['unrelated_operator_setting']);
+        self::assertSame('ExampleAnalytics', $saved['js_namespace']);
+        $panel = $browser->request('GET', '/dashboard/settings')->filter('#page-speed');
+        self::assertNull($panel->filter('input[name="tracker_omit_unused_features"]')->attr('checked'));
+        self::assertStringContainsString('Every visitor gets the full tracker.', $panel->text());
+        self::assertStringNotContainsString('instead of', $panel->filter('.page-speed-summary')->text());
+
+        $form = $panel->selectButton('Save page speed setting')->form();
+        $form['tracker_omit_unused_features']->tick();
+        $browser->submit($form);
+        self::assertTrue(Yaml::parseFile($this->temporaryDirectory.'/config/aggregate.yaml')['tracker_omit_unused_features']);
+
+        // The environment variable takes precedence: the box is disabled and saving is refused.
+        $_ENV['TRACKER_OMIT_UNUSED_FEATURES'] = $_SERVER['TRACKER_OMIT_UNUSED_FEATURES'] = 'off';
+        $panel = $browser->request('GET', '/dashboard/settings')->filter('#page-speed');
+        self::assertNotNull($panel->filter('input[name="tracker_omit_unused_features"]')->attr('disabled'));
+        self::assertCount(0, $panel->selectButton('Save page speed setting'));
+        $before = file_get_contents($this->temporaryDirectory.'/config/aggregate.yaml');
+        $browser->request('POST', '/dashboard/settings/page-speed', ['_csrf_token' => $panel->filter('input[name="_csrf_token"]')->attr('value'), 'tracker_omit_unused_features' => '1'], [], ['HTTP_ORIGIN' => 'http://localhost']);
+        $this->assertRedirect($browser, '/dashboard/settings');
+        self::assertStringContainsString('TRACKER_OMIT_UNUSED_FEATURES', implode(' ', $browser->getRequest()->getSession()->getFlashBag()->peek('error')));
+        self::assertSame($before, file_get_contents($this->temporaryDirectory.'/config/aggregate.yaml'));
+
+        // Callouts beside the settings that change the tracker's size.
+        self::assertStringContainsString('visitors get a tracker about half the size', $browser->request('GET', '/dashboard/collection')->filter('.page-speed-note')->text());
         $this->assertNoDatabaseConnection();
     }
 

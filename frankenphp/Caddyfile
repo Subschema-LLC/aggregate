@@ -8,6 +8,19 @@
 :9002 {
     root * /app/public
 
+    # Page speed: compress scripts, styles and SVG images, including the
+    # tracker, tag manager and consent scripts. HTML pages, which carry form
+    # tokens, are left uncompressed, out of reach of compression side channels
+    # such as BREACH. See docs/PAGE-SPEED.md.
+    encode zstd gzip {
+        match {
+            header Content-Type application/javascript*
+            header Content-Type text/javascript*
+            header Content-Type text/css*
+            header Content-Type image/svg+xml*
+        }
+    }
+
     # Handle assets first - before the route block
         @assets path /assets/*
         handle @assets {

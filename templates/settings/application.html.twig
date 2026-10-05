@@ -5,7 +5,7 @@
 {% block body %}
 <div class="settings-page">
 <h1 class="title">General settings</h1>
-<p class="subtitle">Configure the public endpoint, tracker namespace, request budget, and documentation links.</p>
+<p class="subtitle">Configure the public endpoint, tracker namespace, request budget, documentation links, and page speed.</p>
 {{ component('Ui:DocsLink', {topic: 'configuration.application', label: 'Application settings reference'}) }}
 <div class="box">
 <div class="columns">
@@ -88,6 +88,105 @@
     </div>
 </div>
 </div>
+{% set tracker = page_speed.tracker %}
+<section class="box page-speed" id="page-speed" aria-labelledby="page-speed-title"
+    data-controller="pages--settings--page-speed"
+    data-pages--settings--page-speed-url-value="{{ path('aggregate_script', {min: 1}) }}">
+    <h2 class="title is-5" id="page-speed-title"><span class="icon has-text-success" aria-hidden="true"><i class="fas fa-gauge-high"></i></span> Page speed</h2>
+    <p class="mb-3">Aggregate's scripts load on every page you track. These page speed savers keep them small and out of the way of your pages.</p>
+    {% if tracker %}
+        <p class="mb-3 page-speed-summary">
+            Visitors download the tracker in <strong>{{ (tracker.gzip / 1024)|number_format(1) }} KB</strong> compressed
+            {%- if tracker.gzip < tracker.full_gzip %}, instead of {{ (tracker.full_gzip / 1024)|number_format(1) }} KB for the full tracker{% endif %}
+            and {{ (tracker.source_gzip / 1024)|number_format(1) }} KB for the readable source.
+            <span class="help is-inline">Measured with gzip; Brotli is smaller still.</span>
+        </p>
+    {% else %}
+        <div class="notification is-warning is-light">The tracker is not served until the collection settings are valid. Check Collection controls and the data model.</div>
+    {% endif %}
+
+    <form action="{{ path('app_page_speed_save') }}" method="post" class="mb-4">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token('page_speed') }}">
+        <div class="field">
+            <label class="checkbox" for="tracker-omit-unused-features">
+                <input type="checkbox" id="tracker-omit-unused-features" name="tracker_omit_unused_features" value="1" aria-describedby="tracker-omit-unused-features-help"{% if page_speed.omit_unused_features %} checked{% endif %}{% if page_speed.omit_unused_features_overridden %} disabled{% endif %}>
+                <strong>Leave out unused tracker features</strong>
+            </label>
+            <p class="help" id="tracker-omit-unused-features-help">
+                Sends a smaller tracker without the code for features your settings turn off: page depth while it is off (about a sixth smaller), and everything the strict profile does not use while it is on (about half the size). Pages cannot turn those features on, so nothing else changes. The readable <code>/aggregate.js</code> keeps every feature. YAML: <code>tracker_omit_unused_features</code>, on by default.
+                {% if page_speed.omit_unused_features_overridden %}<strong>Set by the <code>TRACKER_OMIT_UNUSED_FEATURES</code> environment variable</strong>, which takes precedence over this page.{% endif %}
+            </p>
+        </div>
+        {% if not page_speed.omit_unused_features_overridden %}
+            <button type="submit" class="button is-link is-small">Save page speed setting</button>
+        {% endif %}
+    </form>
+
+    <div class="table-container">
+    <table class="table is-fullwidth page-speed-savers">
+        <caption class="is-sr-only">Page speed savers and their status</caption>
+        <thead>
+            <tr><th scope="col">Saver</th><th scope="col">Status</th></tr>
+        </thead>
+        <tbody>
+            <tr>
+                <th scope="row">Leave out unused tracker features</th>
+                <td>
+                    {% if not page_speed.omit_unused_features %}
+                        <span class="tag is-light">Off</span> Every visitor gets the full tracker.
+                    {% elseif tracker and tracker.build == 'without-page-depth' %}
+                        <span class="tag is-success">Saving</span> Page depth is off, so visitors get the tracker without it.
+                    {% elseif tracker and tracker.build == 'strict' %}
+                        <span class="tag is-success">Saving</span> The strict profile is on, so visitors get the strict-profile tracker.
+                    {% else %}
+                        <span class="tag is-info is-light">On</span> Page depth is on, so visitors need the full tracker.
+                    {% endif %}
+                </td>
+            </tr>
+            <tr>
+                <th scope="row">Minified scripts</th>
+                <td>
+                    {% if tracker and tracker.variant == 'minified' %}
+                        <span class="tag is-success">On</span> The build from <strong>Build browser scripts</strong> is current.
+                    {% elseif tracker and tracker.variant == 'compact' %}
+                        <span class="tag is-success">On</span> This server compacts the scripts itself. <a href="{{ path('app_setup', {step: 3}) }}#build-browser-scripts">Build browser scripts</a> for the smallest files.
+                    {% else %}
+                        <span class="tag is-warning">Off</span> The readable scripts are sent.
+                    {% endif %}
+                </td>
+            </tr>
+            <tr>
+                <th scope="row">Shorter internal names</th>
+                <td>
+                    {% if tracker and tracker.variant == 'minified' %}
+                        <span class="tag is-success">On</span> The tracker's internal names are shortened in every build.
+                    {% else %}
+                        <span class="tag is-light">Not in use</span> Comes with the build: <a href="{{ path('app_setup', {step: 3}) }}#build-browser-scripts">Build browser scripts</a> on a host with Node.
+                    {% endif %}
+                </td>
+            </tr>
+            <tr>
+                <th scope="row">Compression</th>
+                <td>
+                    <span class="tag is-light" data-pages--settings--page-speed-target="compression">Checking…</span>
+                    <span data-pages--settings--page-speed-target="compressionDetail">Checking how your web server sends the tracker.</span>
+                    <span data-pages--settings--page-speed-target="compressionHelp" hidden>Turn on gzip or Brotli for scripts in your web server; the supplied nginx, Apache and FrankenPHP settings do.
+                        {{ component('Ui:DocsLink', {topic: 'page-speed.compression', label: 'Turn on compression'}) }}</span>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row">Browser caching</th>
+                <td><span class="tag is-success">On</span> Browsers reuse a script for {{ page_speed.cache_minutes }} minutes, then a short <code>304 Not Modified</code> confirms it is unchanged.</td>
+            </tr>
+            <tr>
+                <th scope="row">Loads without blocking</th>
+                <td><span class="tag is-success">On</span> The install snippets load scripts with <code>defer</code> or <code>async</code>, so pages render first.</td>
+            </tr>
+        </tbody>
+    </table>
+    </div>
+    {{ component('Ui:DocsLink', {topic: 'page-speed', label: 'Page speed guide'}) }}
+</section>
 <details class="box">
     <summary class="has-text-weight-semibold">Worker operation</summary>
     <div class="notification is-light">

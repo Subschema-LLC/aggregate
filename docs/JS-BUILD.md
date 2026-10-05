@@ -2,7 +2,7 @@
 
 [Tracking](TRACKING.md) · [Data model](DATA-MODEL.md) · [Deployment](../DEPLOYMENT.md)
 
-The readable JavaScript files remain the source of truth. An optional Node build produces smaller tracker, organization-marker, consent, and tag-manager scripts. PHP serves prebuilt files; Node and Terser are needed only where you explicitly run a build.
+The readable JavaScript files remain the source of truth. An optional Node build produces smaller tracker, organization-marker, consent, and tag-manager scripts. PHP serves prebuilt files; Node and Terser are needed only where you explicitly run a build. [Page speed](PAGE-SPEED.md) lists every saver, including web server compression.
 
 UI pages and reusable components use Symfony's standard Stimulus and AssetMapper
 integration, described in the [template guide](../templates/README.md). Page
@@ -41,12 +41,14 @@ Rebuild generated files after editing source or pulling updates, and copy them i
 | Source | Generated output |
 | --- | --- |
 | `public/aggregate.js` | `public/aggregate.min.js` with static defaults |
-| `public/aggregate.js` | `var/browser/aggregate.template.min.js` and `var/browser/manifest.json` for configured responses |
+| `public/aggregate.js` | `var/browser/aggregate.template.min.js`, `var/browser/aggregate-without-page-depth.template.min.js`, `var/browser/aggregate-strict.template.min.js` and `var/browser/manifest.json` for configured responses |
 | `templates/internal_traffic/marker.js.twig` | `public/internal-traffic-marker.min.js` |
 | `public/consent.js` and `public/consent.css` | `public/consent.min.js`, `var/browser/consent.template.min.js`, `var/browser/consent-manifest.json` |
 | `public/tag-manager.js` | `public/tag-manager.min.js`, `var/browser/tag-manager.template.min.js`, `var/browser/tag-manager-manifest.json` |
 | `micro-consent-dropins/js/consent-ui.js`, `micro-consent-dropins/js/aggregate-consent.js`, and `micro-consent-dropins/css/consent-ui.css` | `var/browser/standalone-consent.template.min.js`, `var/browser/standalone-consent-manifest.json` for configured standalone responses/downloads |
 | `micro-consent-dropins/js/*.js` | Matching `*.min.js` files alongside each source; independent core and optional adapters |
+
+Every tracker build gives the tracker's internal functions and state short names; names that pages, payloads or other scripts use are kept, and the build checks each name before shortening it. Besides the full tracker, the build makes two smaller ones for settings that turn features off: without page depth, and for the strict profile (see [Leave out unused tracker features](PAGE-SPEED.md#leave-out-unused-tracker-features)). `public/aggregate.js` marks that code with two build switches, `withPageDepth` and `withStandardProfile`; the build and the server's compactor remove the code a switch guards.
 
 The tracker retains its full BSD-3-Clause license notice. Other generated first-party scripts include an AGPL-3.0-only notice; existing license and preservation comments are retained. Keep the corresponding source and license files when distributing these assets.
 
@@ -64,9 +66,12 @@ The server verifies SHA-256 hashes for both source and compiled template. When t
 
 | Script | Source, gzip | Compacted on the server, gzip | Terser build, gzip |
 | --- | --- | --- | --- |
-| Tracker | 13.5 KB | 8.0 KB | 7.9 KB |
-| Tag manager | 7.9 KB | 6.0 KB | 4.9 KB |
-| Consent banner | 4.4 KB | 3.4 KB | 2.9 KB |
+| Tracker (full build) | 13.9 KB | 8.9 KB | 7.5 KB |
+| Tag manager | 7.7 KB | 6.0 KB | 4.8 KB |
+| Consent banner | 4.3 KB | 3.4 KB | 2.9 KB |
+
+Sizes are in KB of 1,024 bytes at gzip level 6. The smaller tracker builds and
+Brotli sizes are listed under [Page speed](PAGE-SPEED.md#what-visitors-download).
 
 ### Browser caching
 
@@ -142,8 +147,9 @@ behavior. See the [standalone guide](../micro-consent-dropins/README.md) and
 ```bash
 npm run check:js
 node tests/JavaScript/javascript-build.test.js
+node tests/JavaScript/tracker-builds.test.js
 AGGREGATE_SDK_SOURCE=public/aggregate.min.js node tests/JavaScript/aggregate-consent.test.js
 AGGREGATE_MARKER_SOURCE=public/internal-traffic-marker.min.js node tests/JavaScript/internal-traffic-marker.test.js
 ```
 
-`make check-js` is equivalent to `npm run check:js`. The check rebuilds in memory and fails if an expected output is missing or differs from current source. The SDK and marker commands run the same behavioral tests against the minified files. PHP's `ScriptControllerTest` covers current public-setting injection and fallback for invalid or stale builds.
+`make check-js` is equivalent to `npm run check:js`. The check rebuilds in memory and fails if an expected output is missing or differs from current source. The SDK and marker commands run the same behavioral tests against the minified files. `tracker-builds.test.js` runs one scripted visit through every tracker build and compares everything a page could observe with the readable source; PHP's `TrackerBuildsCompactTest` runs it against the builds the server compacts. PHP's `ScriptControllerTest` covers current public-setting injection, build selection and fallback for invalid or stale builds.

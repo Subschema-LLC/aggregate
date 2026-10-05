@@ -47,6 +47,9 @@
                 </div>
                 <p class="help" id="page-depth-help">Adds <code>customData.page_sequence</code>: the first tracked page is 1, the next is 2, and 20 means 20 or more. Interactions and asynchronous events reuse the current page's count. This setting applies to every event type.</p>
                 <p class="help" id="page-depth-privacy">Page depth continues when enhanced analytics is rejected. It adds no visitor identifier or path history. Review the selected method's storage or URL disclosures and applicable consent requirements. Counts do not establish individual journeys. Routine anonymous BI views do not expose page depth.</p>
+                {% component 'Ui:PageSpeedNote' with {enabled: tracker_omit_unused_features} %}
+                    {% block content %}While page depth is off, visitors get a tracker without its code, about a sixth smaller to download. Turning it on sends the full tracker.{% endblock %}
+                {% endcomponent %}
             </div>
             <div class="field">
                 <label class="label" for="page-sequence-method">Carry page depth between pages</label>
