@@ -66,7 +66,7 @@ The server verifies SHA-256 hashes for both source and compiled template. When t
 
 | Script | Source, gzip | Compacted on the server, gzip | Terser build, gzip |
 | --- | --- | --- | --- |
-| Tracker (full build) | 13.9 KB | 8.9 KB | 7.5 KB |
+| Tracker (full build) | 14.1 KB | 9.1 KB | 7.6 KB |
 | Tag manager | 7.7 KB | 6.0 KB | 4.8 KB |
 | Consent banner | 4.3 KB | 3.4 KB | 2.9 KB |
 

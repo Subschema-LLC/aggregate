@@ -125,7 +125,7 @@ function loadSdk(options) {
       search: ''
     }, options.location || {}),
     screen: {width: 1440},
-    self: {crypto: {randomUUID: () => '00000000-0000-4000-8000-000000000001'}},
+    self: options.self || {crypto: {randomUUID: () => '00000000-0000-4000-8000-000000000001'}},
     sessionStorage,
     setTimeout: () => {},
     window
@@ -465,6 +465,31 @@ test('an explicit true value enables enhanced fields', () => {
   assert.equal(payload.screenWidth, 1440);
   assert.match(payload.visitorId, /^[A-Za-z0-9_-]+$/);
   assert.match(payload.sessionId, /^[A-Za-z0-9_-]+$/);
+});
+
+test('new identifiers come only from the browser cryptographic source', () => {
+  const fresh = {localStorage: {aggregate_visitor_id: null}, sessionStorage: {aggregate_session_id: null}};
+  // Without randomUUID (an insecure context, say), random bytes make a version 4 UUID.
+  let calls = 0;
+  const bytes = {crypto: {getRandomValues: (array) => { calls++; for (let i = 0; i < array.length; i++) array[i] = (i * 37 + calls) & 255; return array; }}};
+  const runtime = loadSdk(Object.assign({self: bytes}, fresh));
+  runtime.window.Aggregate.configure({consent: true});
+  runtime.window.Aggregate.emit('button_click');
+  const payload = runtime.requests.at(-1);
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  assert.match(payload.visitorId, uuid);
+  assert.match(payload.sessionId, uuid);
+  assert.notEqual(payload.visitorId, payload.sessionId);
+
+  // Without any cryptographic source, no identifier is created or stored.
+  const none = loadSdk(Object.assign({self: {}}, fresh));
+  none.window.Aggregate.configure({consent: true});
+  none.window.Aggregate.emit('button_click');
+  const anonymous = none.requests.at(-1);
+  assert.equal(anonymous.consentState, 'granted');
+  assert.equal(anonymous.visitorId, undefined);
+  assert.equal(anonymous.sessionId, undefined);
+  assert.equal(none.localStorage.writes.some(([key]) => key === 'aggregate_visitor_id'), false);
 });
 
 test('an anonymously submitted rejected goal produces only the generic SDK warning', async () => {

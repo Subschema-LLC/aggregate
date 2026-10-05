@@ -611,6 +611,26 @@
       }
     },
 
+    // A random version 4 UUID from the browser's cryptographic source, or null
+    // where there is none; the event is then sent without that identifier.
+    randomId: function(){
+      if (withStandardProfile) {
+        try {
+          var random = self.crypto;
+          if (random && typeof random.randomUUID === 'function') return random.randomUUID();
+          if (random && typeof random.getRandomValues === 'function') {
+            var bytes = random.getRandomValues(new Uint8Array(16));
+            bytes[6] = (bytes[6] & 0x0f) | 0x40;
+            bytes[8] = (bytes[8] & 0x3f) | 0x80;
+            var hex = '';
+            for (var i = 0; i < bytes.length; i++) hex += (bytes[i] + 0x100).toString(16).slice(1);
+            return hex.slice(0, 8) + '-' + hex.slice(8, 12) + '-' + hex.slice(12, 16) + '-' + hex.slice(16, 20) + '-' + hex.slice(20);
+          }
+        } catch(e) {}
+      }
+      return null;
+    },
+
     ensureIds: function(){
       if (withStandardProfile) {
         try {
@@ -624,7 +644,8 @@
           // Get or create visitor ID (persistent across sessions via localStorage)
           var visitorId = localStorage.getItem(vKey);
           if (!visitorId) {
-            visitorId = self.crypto && self.crypto.randomUUID ? self.crypto.randomUUID() : (Math.random().toString(36).slice(2) + Date.now());
+            visitorId = this.randomId();
+            if (!visitorId) return {visitorId: null, sessionId: null};
             localStorage.setItem(vKey, visitorId);
           }
 
@@ -637,7 +658,8 @@
             sessionId = sessionStorage.getItem(sKey);
           }
           if (!sessionId) {
-            sessionId = self.crypto && self.crypto.randomUUID ? self.crypto.randomUUID() : (Math.random().toString(36).slice(2) + Date.now());
+            sessionId = this.randomId();
+            if (!sessionId) return {visitorId: visitorId, sessionId: null};
             sessionStorage.setItem(sKey, sessionId);
             this.setSessionCookie(sessionId);
           } else {

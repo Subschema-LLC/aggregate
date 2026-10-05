@@ -28,14 +28,14 @@ at level 6 and Brotli at quality 5, typical web server settings:
 
 | Tracker | As sent | Gzip | Brotli |
 | --- | --- | --- | --- |
-| Readable source (`/aggregate.js`) | 52.1 KB | 13.9 KB | 13.2 KB |
-| Full build (`?min=1`) | 22.0 KB | 7.5 KB | 7.1 KB |
-| Without page depth (`?min=1`, page depth off) | 17.7 KB | 6.2 KB | 5.9 KB |
+| Readable source (`/aggregate.js`) | 53.0 KB | 14.1 KB | 13.5 KB |
+| Full build (`?min=1`) | 22.3 KB | 7.6 KB | 7.2 KB |
+| Without page depth (`?min=1`, page depth off) | 18.0 KB | 6.3 KB | 6.0 KB |
 | Strict profile (`?min=1`, strict profile on) | 9.7 KB | 3.8 KB | 3.6 KB |
 
 Before these savers, the full build was 7.7 KB with gzip. Without a current
 build, as on a server updated from Git without Node, the server compacts the
-same three trackers itself: 8.9 KB, 7.4 KB and 4.6 KB with gzip. With gzip,
+same three trackers itself: 9.1 KB, 7.5 KB and 4.6 KB with gzip. With gzip,
 the tag manager is about 4.8 KB before the tags you configure, and the consent
 banner's script about 2.9 KB before its styles and text.
 
