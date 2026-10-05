@@ -41,6 +41,32 @@ export default class extends Controller {
             + (manager && manager.value !== '1' ? ' The tag manager is disabled, so enable it too before the tracker can load.' : ''));
     }
 
+    // Keeps every tag chaining list ("Run after …") in step with the IDs typed into the rows.
+    refreshRunAfter(event) {
+        const field = event?.target;
+        if (!field || typeof field.matches !== 'function' || !field.matches('input[name^="tags["][name$="[id]"]')) return;
+        const rows = Array.from(this.element.querySelectorAll('[data-tag-row]'));
+        const idOf = (row) => (row.querySelector('input[name$="[id]"]')?.value ?? '').trim();
+        const ids = rows.map(idOf).filter((id) => /^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(id));
+        for (const row of rows) {
+            const select = row.querySelector('select[data-tag-after]');
+            if (!select) continue;
+            const own = idOf(row);
+            const chosen = select.value;
+            const choices = ids.filter((id, index) => id !== own && ids.indexOf(id) === index);
+            if (chosen && !choices.includes(chosen)) choices.push(chosen);
+            const document = this.element.ownerDocument;
+            const options = [select.options[0], ...choices.map((id) => {
+                const option = document.createElement('option');
+                option.value = id;
+                option.textContent = `Run after ${id}`;
+                return option;
+            })];
+            select.replaceChildren(...options);
+            select.value = chosen;
+        }
+    }
+
     say(message) {
         if (this.hasStatusTarget) this.statusTarget.textContent = message;
     }

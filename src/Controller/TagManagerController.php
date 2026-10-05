@@ -193,6 +193,7 @@ final class TagManagerController extends AbstractController
                     'enabled' => ($row['enabled'] ?? '1') !== '0',
                     'consent' => $text($row['consent'] ?? null, 64),
                     'trigger' => ['type' => $text($trigger['type'] ?? null, 64) ?: 'dom_ready', 'event' => $text($trigger['event'] ?? null, 200)],
+                    'after' => $text($row['after'] ?? null, 64),
                     'remove' => ($row['remove'] ?? null) === '1',
                 ];
                 // The trailing empty row comes back as the page's usual new-tag row.
@@ -274,12 +275,12 @@ final class TagManagerController extends AbstractController
 
         $tags = [];
         foreach ($submitted['tags'] as $tag) {
-            if (!is_array($tag) || array_diff(array_keys($tag), ['id', 'type', 'src', 'method', 'args_json', 'code', 'enabled', 'consent', 'trigger', 'remove']) !== []
+            if (!is_array($tag) || array_diff(array_keys($tag), ['id', 'type', 'src', 'method', 'args_json', 'code', 'enabled', 'consent', 'trigger', 'after', 'remove']) !== []
                 || !is_string($tag['id'] ?? null) || !in_array($tag['enabled'] ?? null, ['0', '1'], true)
                 || (array_key_exists('remove', $tag) && $tag['remove'] !== '1')) {
                 throw new \InvalidArgumentException('Each tag needs a valid ID, action and availability setting.');
             }
-            foreach (['type', 'src', 'method', 'args_json', 'code', 'consent'] as $key) {
+            foreach (['type', 'src', 'method', 'args_json', 'code', 'consent', 'after'] as $key) {
                 if (array_key_exists($key, $tag) && !is_string($tag[$key])) {
                     throw new \InvalidArgumentException('Tag action and consent fields must be text.');
                 }
@@ -325,7 +326,9 @@ final class TagManagerController extends AbstractController
                 throw new \InvalidArgumentException('Each tag needs a valid trigger type and event name.');
             }
             if (in_array($trigger['type'], ['dom_ready', 'window_load'], true) && ($trigger['event'] ?? '') === '') unset($trigger['event']);
-            $tags[] = ['id' => $tag['id'], 'type' => $type, ...$action, 'enabled' => $tag['enabled'] === '1', 'consent' => $tag['consent'] ?? 'analytics', 'trigger' => $trigger];
+            $entry = ['id' => $tag['id'], 'type' => $type, ...$action, 'enabled' => $tag['enabled'] === '1', 'consent' => $tag['consent'] ?? 'analytics', 'trigger' => $trigger];
+            if (($tag['after'] ?? '') !== '') $entry['after'] = $tag['after'];
+            $tags[] = $entry;
         }
 
         return TagManagerSettings::validate(['enabled' => $submitted['enabled'] === '1', 'variables' => $variables, 'tags' => $tags]);

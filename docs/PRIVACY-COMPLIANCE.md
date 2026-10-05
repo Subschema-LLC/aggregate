@@ -119,7 +119,7 @@ The word `anonymous` describes the product mode, not a guaranteed legal classifi
 
 ### Event-name and path limitations
 
-Event names are analytics dimensions, not a place for user-entered values. Use a fixed taxonomy such as `navigation_click` or `checkout_started`; never construct a name from an email address, search term, form value, record ID, or free text.
+Event names are analytics dimensions, not a place for user-entered values. Use a fixed taxonomy such as `navigation_click` or `checkout_started`; never construct a name from an email address, search term, form value, record ID, or free text. The same applies to [tracking attributes](TRACKING.md#track-clicks-and-forms-with-data-attributes) written into page templates: the tracker reads only those attributes, never an element's text, link addresses or form fields, so whatever a template puts in them is what is sent.
 
 Goal names are also analytics dimensions. `config/goals.yaml` is the server-side source of truth: each YAML key is the stable stored code, `enabled` controls future collection, and `anonymous` controls whether that code may be retained in anonymous mode. Payload matching is exact and case-sensitive; whitespace and case variants are not normalized. Unknown, invalid, disabled, and anonymous-disallowed goals are removed while the underlying event is still accepted. The API returns only the generic advisory code `goal_not_allowed`; the SDK writes a generic console warning and never echoes the rejected value.
 
@@ -139,7 +139,7 @@ Review application routes before enabling measurement. Exclusions are enforced b
 
 ## Custom properties and UTM consent
 
-Administrators configure the custom data model in YAML or **Data model**. A property's `consent_required` defaults to `true`; setting it to `false` permits that key in anonymous-mode events, including after rejection or withdrawal. The rule applies both to `emit()` properties and to mapped URL parameters. The SDK filters before transmission and the server independently filters before persistence. Collection changes affect future events; changing a definition does not erase historical values.
+Administrators configure the custom data model in YAML or **Data model**. A property's `consent_required` defaults to `true`; setting it to `false` permits that key in anonymous-mode events, including after rejection or withdrawal. The rule applies to `emit()` properties, to properties from tracking attributes and to mapped URL parameters. The SDK filters before transmission and the server independently filters before persistence. Collection changes affect future events; changing a definition does not erase historical values.
 
 The six standard UTM properties—`utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`, and `utm_id`—all require consent by default. For anonymous attribution, the recommendation is **no more granular than `utm_medium`**, using reviewed channel codes such as `email`, `social`, or `cpc`. This recommendation is advisory: each property can be allowed separately. More detailed UTMs can reveal campaign membership, search text, identifiers, or sensitive context. Review those values and their purpose before overriding the recommendation. The setting allows a key, not a fixed list of values; even `utm_medium` can contain unexpected or personal text if an implementation puts it there.
 

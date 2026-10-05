@@ -50,6 +50,7 @@ function loadSdk(options) {
   const accesses = [];
   const requests = [];
   const listeners = {};
+  const captureListeners = {};
   const script = recorder('script', {
     dataset: Object.assign({websiteToken: 'site-token'}, options.dataset || {}),
     src: options.src || ''
@@ -59,7 +60,12 @@ function loadSdk(options) {
     readyState: 'loading',
     referrer: 'https://www.search.example/?q=private+search',
     cookie: 'aggregate_session=earlier-session; orgInternalTraffic=true',
-    addEventListener: (name, listener) => { listeners[name] = listener; },
+    // Capturing listeners (marked click and form tracking) are kept apart
+    // from the bubbling ones these tests dispatch to.
+    addEventListener: (name, listener, options) => {
+      if (options === true || (options && options.capture)) captureListeners[name] = listener;
+      else listeners[name] = listener;
+    },
     getElementsByTagName: () => [script],
     querySelector: () => null,
     baseURI: 'https://www.example.com/pricing?utm_medium=email&aggregate_page_sequence=4'

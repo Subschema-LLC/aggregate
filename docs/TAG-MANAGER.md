@@ -121,7 +121,7 @@ tag_manager:
 
 Defaults are `enabled: false`, `variables: {}`, and `tags: []` for the manager;
 individual tags default to `enabled: true`, `type: script`, `consent: analytics`,
-and `trigger: {type: dom_ready}`. Booleans must be YAML `true` or `false`, not
+`trigger: {type: dom_ready}` and no [`after`](#tag-chaining). Booleans must be YAML `true` or `false`, not
 quoted strings or numbers. An invalid entry prevents that instance from serving
 executable tags until corrected; other sites remain independent. Disabled
 entries are validated too.
@@ -181,10 +181,60 @@ UTF-8 bytes. Numbers must be finite and integers inside JavaScript's safe range.
 The selected method retains normal website privileges; this is not a sandbox
 for untrusted libraries.
 
-Scripts are asynchronous and there is no dependency ordering, polling, or retry
-timer. A call does not wait for another tag's script download. Load its library
-before the manager or dispatch a provider-ready event after the API exists.
-A missing method skips the action; a later matching event can try again.
+Scripts load asynchronously, and list order does not make one tag wait for
+another. A call to a library that a script tag loads needs that library first:
+chain the call to the script tag with [tag chaining](#tag-chaining). Otherwise
+a missing method skips the action, and a later matching event can try again.
+There is no polling or retry timer.
+
+### Tag chaining
+
+Tag chaining makes a tag wait until another tag has finished. Choose the other
+tag under **Tag chaining** on the tag's row, where each choice reads
+**Run after** and its ID, or set `after` in YAML. A tag has finished when:
+
+- a **script** tag: its script has loaded and run;
+- a **method** tag: its method has been called without an error;
+- a **custom JavaScript** tag: its code has run without an error or, if it
+  returns a promise, that promise has resolved.
+
+The waiting tag still runs on its own trigger and with its own consent category;
+it just runs no earlier than the tag it names. If its trigger fires first, the run
+is kept and happens as soon as that tag finishes, after checking the waiting
+tag's consent again. Several waiting runs of an event trigger are kept in order,
+up to 20. This loads the tracker, then sends an event once it is ready:
+
+```yaml
+tag_manager:
+  enabled: true
+  tags:
+    - id: aggregate-tracker
+      src: 'https://analytics.example.com/aggregate.js?min=1&endpoint=https%3A%2F%2Fanalytics.example.com%2Fapi%2Freceive&token=REPLACE_WITH_PUBLIC_WEBSITE_TOKEN&consent=0'
+      consent: analytics
+      trigger: {type: dom_ready}
+    - id: weather-view
+      type: call
+      method: Aggregate.emit
+      args: [weather_view]
+      consent: analytics
+      trigger: {type: dom_ready}
+      after: aggregate-tracker
+```
+
+Both tags use **Document ready**, and the visitor may accept analytics after the
+page has loaded; either way the call runs after the tracker has loaded.
+
+- The tag named must run once per page: a script tag on any trigger, or a method
+  or custom tag on **Document ready** or **Window finished loading**. A tag on an
+  event trigger can run many times, so nothing can wait for it.
+- One tag can be named; chains (C after B after A) are fine, loops are refused.
+- If the named tag never finishes, the waiting tag does not run: its consent is
+  refused, it is disabled or not served, its script fails to load, or its code
+  throws an error. A disabled or unserved tag also stops the tags waiting for it
+  from being served at all. A failure writes one browser console warning that
+  names the tags left waiting.
+- The **Tag chaining** list on each tag row offers **Run after** for each of the
+  other rows' IDs, including ones typed but not yet saved.
 
 A call to `Aggregate.emit` preserves the tracker's consent and property rules.
 Granting a method tag's `marketing` category does not grant enhanced analytics.
@@ -226,7 +276,7 @@ The function receives one `tag` object:
 | `tag.data` | A copy of the [data-layer model](#data-layer-and-variables); for a `data_layer` trigger, the snapshot taken for that event. Changing the copy changes nothing else. |
 | `tag.get('alias')` | The value of a declared [variable](#data-layer-and-variables), or `undefined` when it is missing. |
 | `tag.consent('marketing')` | Whether a category is granted now. `none` is always `true`. |
-| `tag.emit(name, properties, goal)` | Calls the tracker's `emit()` under the configured `js_namespace` and returns `false` when the tracker has not loaded. The tracker's consent and property rules apply, as for a [call action](#actions-and-arguments). |
+| `tag.emit(name, properties, goal)` | Calls the tracker's `emit()` under the configured `js_namespace`. If the tracker has not loaded yet, the event is held, up to 20 a page, and sent once it has, provided the tag still has consent; `true` means sent or held. The tracker's consent and property rules apply, as for a [call action](#actions-and-arguments). |
 | `tag.push({event: 'name'})` | Adds an object to `window.dataLayer`, which can trigger other tags. |
 | `tag.loadScript(url)` | Loads an HTTPS script asynchronously with the manager's nonce and no referrer, and returns a promise. It is refused once the tag's consent has been withdrawn. |
 | `tag.onCleanup(fn)` | Registers a function to run when the tag's consent is withdrawn, for removing listeners, timers or observers. |
@@ -266,17 +316,21 @@ Review selectors, event names and vendor addresses before saving.
 
 | Group | Template | What it does |
 | --- | --- | --- |
-| Engagement tracking | Clicks on matching elements | Sends `element_click` with the clicked element's `data-track` label. |
+| Engagement tracking | Clicks on matching elements | Sends `signup_click` with a fixed `section` when an element matching a CSS selector is clicked. |
 | Engagement tracking | Outbound link clicks | Sends `outbound_click` with only the destination's host name. |
-| Engagement tracking | Form submissions | Sends `form_submit` with a form's `data-track-form` name; field values are never read. |
+| Engagement tracking | Form submissions | Sends `form_submit` with a fixed `form_name` when a form matching a CSS selector is submitted; field values are never read. |
 | Engagement tracking | Scroll depth | Sends `scroll_depth` once at 25, 50, 75 and 100 percent. |
 | dataLayer helpers | Push an event when an element is seen | Pushes a data-layer event the first time an element is half visible. |
 | dataLayer helpers | Push an event for a page condition | Pushes a data-layer event on a matching page, such as an order confirmation. |
 | Third-party vendors | Load a vendor library and set it up | Loads a vendor's HTTPS script, then calls its setup function, with `marketing` consent. |
 | Third-party vendors | Fire an image pixel | Requests a vendor's tracking image without a referrer, with `marketing` consent. |
 
-The engagement templates' properties (`element_label`, `link_domain`,
-`form_name` and `scroll_percent`) are recorded only when defined in your
+The click and form templates are for markup you cannot edit. Where you can,
+[data attributes](TRACKING.md#track-clicks-and-forms-with-data-attributes) such
+as `data-aggregate-event` track clicks and forms without a tag.
+
+The engagement templates' properties (`section`, `link_domain`, `form_name` and
+`scroll_percent`) are recorded only when defined in your
 [data model](DATA-MODEL.md), and before an analytics choice only when marked
 `consent_required: false`. No template reads form values, cookies or browser storage.
 
@@ -536,10 +590,12 @@ unloaded; a load gate cannot undo executed code or erase history. For a
 conservative no-measurement-before-choice setup, use the
 [regional examples](CONSENT-REGIONS.md) instead of this `consent: none` example.
 
-This script loads asynchronously. An `Aggregate.emit` method tag on the same
-`dom_ready` trigger cannot assume the tracker is ready, regardless of YAML list
-order. Emit application events after the API is available, or load the tracker
-directly before the manager when dependent calls require that order.
+This script loads asynchronously, so a tag that sends events through the
+tracker should not assume it is ready. Use [tag chaining](#tag-chaining) to set
+a method tag to **Run after** `aggregate-tracker`. In custom
+JavaScript, `tag.emit()` holds events until the tracker has loaded, however the
+tracker was installed, so no setting is needed; tag chaining still makes the
+whole tag wait when its other code needs the tracker too.
 
 ## Optional minification
 

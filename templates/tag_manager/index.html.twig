@@ -7,7 +7,7 @@
 {% set has_new_row = rows|length < max_tags %}
 {% if has_new_row %}{% set rows = rows|merge([{id: '', src: '', type: 'script', enabled: true, consent: 'analytics', trigger: {type: 'dom_ready'}}]) %}{% endif %}
 {% set suggest_tracker = tracker_url and not tracker_tag %}
-<div class="tag-settings" data-site-id="{{ selected_site }}" data-controller="pages--tag-manager--index"{% if has_new_row %} data-pages--tag-manager--index-new-row-value="{{ rows|length - 1 }}"{% endif %}>
+<div class="tag-settings" data-site-id="{{ selected_site }}" data-controller="pages--tag-manager--index" data-action="input->pages--tag-manager--index#refreshRunAfter"{% if has_new_row %} data-pages--tag-manager--index-new-row-value="{{ rows|length - 1 }}"{% endif %}>
     <h1 class="title">Tag manager lite</h1>
     <p class="subtitle">Choose a website, configure its tags, and download its YAML. Its consent banner has its own page, <a href="{{ path('app_consent_manager', site ? {site: selected_site} : {}) }}">Consent manager lite</a>.</p>
     {{ component('Ui:DocsLink', {topic: 'tracking.tag-manager', label: 'Tag manager guide'}) }}
@@ -109,8 +109,9 @@
                 <p class="help">Up to {{ max_variables }} variables. Save to add another row. Leave both fields empty to keep the current list.</p>
             </details>
 
+            {% set tag_ids = rows|map(row => row.id|default(''))|filter(id => id != '') %}
             {% for tag in rows %}
-                {{ component('TagManager:TagRow', {index: loop.index0, tag: tag, script_suggestions: suggest_tracker, custom_scripts_enabled: custom_scripts_enabled, custom_templates: custom_templates}) }}
+                {{ component('TagManager:TagRow', {index: loop.index0, tag: tag, script_suggestions: suggest_tracker, custom_scripts_enabled: custom_scripts_enabled, custom_templates: custom_templates, tag_ids: tag_ids}) }}
             {% endfor %}
             {% if suggest_tracker %}<datalist id="tag-script-suggestions"><option value="{{ tracker_url }}">This website's tracker</option></datalist>{% endif %}
             {# Starter templates for custom JavaScript, read by the tag row editor. #}

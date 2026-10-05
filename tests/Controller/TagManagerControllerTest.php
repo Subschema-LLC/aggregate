@@ -513,6 +513,39 @@ final class TagManagerControllerTest extends TestCase
         self::assertSame(['Only a Run custom JavaScript action uses code. Clear the code or choose that action.'], $request->getSession()->getFlashBag()->get('error'));
     }
 
+    public function testRunAfterIsSavedOfferedForEveryOtherTagAndExplainedWhenItCannotWork(): void
+    {
+        $form = $this->siteForm();
+        $form['tags'][0]['after'] = '';
+        $form['tags'][] = ['id' => 'views', 'type' => 'custom', 'code' => "tag.emit('weather_view');", 'enabled' => '1', 'consent' => 'analytics', 'trigger' => ['type' => 'dom_ready'], 'after' => 'helper'];
+        $request = $this->request($form);
+        $this->controller($request)->save($request);
+
+        self::assertCount(1, $request->getSession()->getFlashBag()->get('success'));
+        $tags = Yaml::parse((string) file_get_contents($this->sitePath($this->siteId)))['tag_manager']['tags'];
+        self::assertSame('helper', $tags[2]['after']);
+        self::assertArrayNotHasKey('after', $tags[0], 'an empty choice stores nothing');
+
+        $page = $this->view($request, ['site' => $this->siteId]);
+        $options = static fn (string $id): array => $page->filter('#'.$id.' option')->each(static fn (Crawler $option): string => (string) $option->attr('value'));
+        self::assertSame(['', 'purchase', 'views'], $options('tag-0-after'));
+        self::assertSame(['', 'helper', 'purchase'], $options('tag-2-after'));
+        self::assertSame(['', 'helper', 'purchase', 'views'], $options('tag-3-after'), 'the new row can wait for any tag');
+        self::assertSame('helper', $page->filter('#tag-2-after option[selected]')->attr('value'));
+        self::assertSame('Tag chaining', $page->filter('label[for="tag-2-after"]')->text());
+        self::assertSame(['Not chained: run on the trigger', 'Run after helper', 'Run after purchase'], $page->filter('#tag-2-after option')->each(static fn (Crawler $option): string => $option->text()));
+        self::assertStringContainsString('this tag waits until that tag has finished', $page->filter('#tag-2-after-help')->text());
+
+        $before = file_get_contents($this->sitePath($this->siteId));
+        $form['tags'][2]['after'] = 'purchase';
+        $rejected = $this->request($form);
+        $this->controller($rejected)->save($rejected);
+        self::assertSame(['Tag views runs after purchase, which can run many times. Choose a tag that runs once per page: a script, or an action triggered on Document ready or Window finished loading.'],
+            $rejected->getSession()->getFlashBag()->get('error'));
+        self::assertSame($before, file_get_contents($this->sitePath($this->siteId)));
+        self::assertSame('purchase', $this->view($rejected, ['site' => $this->siteId])->filter('#tag-2-after option[selected]')->attr('value'), 'the choice is kept for correction');
+    }
+
     public function testSwitchedOffCustomJavaScriptKeepsExistingTagsButAllowsNoNewOrChangedCode(): void
     {
         $form = $this->siteForm();

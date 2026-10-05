@@ -106,6 +106,29 @@ and some brand palettes are rejected until a darker or lighter shade is chosen.
 acceptable in the regions adopters serve, and a way to apply it equally to every
 choice.
 
+### Clicks and forms tracked only where the page marks them
+
+**Decision.** The tracker sends click and form events only for elements a site
+marks with [data attributes](TRACKING.md#track-clicks-and-forms-with-data-attributes),
+using the event name and property values written in them. It never collects
+clicks automatically and never reads element text, link addresses or form fields.
+
+**Why.** Automatic collection records whatever a page contains: button labels
+with names, links carrying emails or account IDs, search text. Anonymous mode
+promises fixed event names and no free text, and markup the site writes keeps
+that promise while making every event one an operator chose. Attributes work
+without JavaScript, follow the configured namespace for white labels, and pass
+the same data-model and consent checks as `emit()`.
+
+**Trade-off.** Someone has to mark each interaction worth measuring, or add a tag
+manager tag that selects elements by CSS; there is no "track everything" switch.
+Property keys written as attributes must be lowercase, because HTML lowercases
+attribute names.
+
+**What would change it.** A detail that is coarse and non-identifying by
+construction, such as an outbound link's host name, if adopters need it. It would
+still need a data-model definition before it is stored.
+
 ## Data and reporting
 
 ### One events table for both modes

@@ -594,6 +594,10 @@ window.Company1Analytics.setConsent(true);
 window.Company1Analytics.emit('signup', {plan: 'pro'});
 ```
 
+The namespace also names the [tracking attributes](TRACKING.md#track-clicks-and-forms-with-data-attributes),
+lowercased: `data-company1analytics-event`, `data-company1analytics-goal` and
+`data-company1analytics-prop-<key>`. Update marked HTML when changing it.
+
 ## Environment Variable Override
 
 ### GitHub update checks

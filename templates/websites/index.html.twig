@@ -102,6 +102,10 @@
     <div class="content mt-4">
         <p>The tracker automatically sends an anonymous <code>view</code> event. Named interactions use <code>emit(...)</code>. Keep event codes fixed and non-identifying: start with a letter and use at most 100 characters from letters, numbers, <code>_ . : -</code>. Never insert user-entered text into a code.</p>
         <pre><code>window[{{ js_namespace|json_encode(15) }}].emit('button_click');</code></pre>
+        <p>Or mark clicks and form submissions in your HTML, without JavaScript. Properties can sit on the element or any element around it; the nearest wins. Only these attributes are read, never the element's text, link addresses or form fields.</p>
+        <pre><code>&lt;button {{ tracking_attributes.event }}="plan_click" {{ tracking_attributes.prop }}plan="pro" {{ tracking_attributes.goal }}="signup"&gt;Choose Pro&lt;/button&gt;
+&lt;form {{ tracking_attributes.event }}="newsletter_submit"&gt;…&lt;/form&gt;</code></pre>
+        {{ component('Ui:DocsLink', {topic: 'tracking.attributes', label: 'Data attribute tracking'}) }}
         <p>Custom properties require an explicit consent-free setting in the saved data model or enhanced analytics consent. Goals require an enabled definition in <code>config/goals.yaml</code>; anonymous goals must also permit anonymous use. A disallowed goal is dropped while the event remains recorded.</p>
         <h2 class="title is-5 mt-4">Enhanced analytics consent</h2>
         <p>Enable identifiers, properties requiring consent, and exact dimensions only after the visitor accepts enhanced analytics.</p>
