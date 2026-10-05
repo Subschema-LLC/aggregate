@@ -343,7 +343,7 @@ final class TagManagerSettingsTest extends TestCase
     {
         $call = static fn (string $id, array $trigger = ['type' => 'dom_ready'], array $extra = []): array => ['id' => $id, 'type' => 'call', 'method' => 'Acme.track', 'trigger' => $trigger] + $extra;
         yield 'missing' => [[$call('a', extra: ['after' => 'ghost'])], 'Tag a runs after ghost, but there is no tag with that ID.'];
-        yield 'not text' => [[$call('a', extra: ['after' => ['b']]), $call('b')], 'Tag a: "Run after" must be the ID of another tag.'];
+        yield 'not text' => [[$call('a', extra: ['after' => ['b']]), $call('b')], 'Tag a: tag chaining must name the ID of another tag to run after.'];
         yield 'itself' => [[$call('a', extra: ['after' => 'a'])], 'Tag a cannot run after itself.'];
         yield 'event call' => [[$call('a', extra: ['after' => 'b']), $call('b', ['type' => 'data_layer', 'event' => 'purchase'])], 'Tag a runs after b, which can run many times.'];
         yield 'pair' => [[$call('a', extra: ['after' => 'b']), $call('b', extra: ['after' => 'a'])], 'Tags a and b wait for each other, so none of them would run.'];

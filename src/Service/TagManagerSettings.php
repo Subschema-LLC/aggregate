@@ -216,7 +216,7 @@ final class TagManagerSettings
     }
 
     /**
-     * "Run after" makes a tag wait until another tag has finished: its script
+     * Tag chaining ("Run after") makes a tag wait until another tag has finished: its script
      * loaded, or its method call or custom code done. That tag must run once
      * per page, and chains cannot loop.
      *
@@ -232,7 +232,7 @@ final class TagManagerSettings
             }
             $after = $tag['after'];
             if (!is_string($after)) {
-                throw new \InvalidArgumentException(sprintf('Tag %s: "Run after" must be the ID of another tag.', $tag['id']));
+                throw new \InvalidArgumentException(sprintf('Tag %s: tag chaining must name the ID of another tag to run after.', $tag['id']));
             }
             if (!isset($byId[$after])) {
                 throw new \InvalidArgumentException(sprintf('Tag %s runs after %s, but there is no tag with that ID.', $tag['id'], $after));
@@ -249,7 +249,7 @@ final class TagManagerSettings
                 $position = array_search($current, $chain, true);
                 if ($position !== false) {
                     $loop = array_slice($chain, $position);
-                    throw new \InvalidArgumentException(sprintf('Tags %s wait for each other, so none of them would run. Remove one of their "Run after" settings.', count($loop) === 2 ? implode(' and ', $loop) : implode(', ', $loop)));
+                    throw new \InvalidArgumentException(sprintf('Tags %s wait for each other, so none of them would run. Remove the tag chaining from one of them.', count($loop) === 2 ? implode(' and ', $loop) : implode(', ', $loop)));
                 }
                 $chain[] = $current;
             }

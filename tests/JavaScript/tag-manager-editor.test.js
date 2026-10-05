@@ -233,7 +233,7 @@ function chainPage(rows) {
   const built = rows.map(({id, after = ''}) => {
     const idField = {value: id, matches: (selector) => selector === 'input[name^="tags["][name$="[id]"]'};
     const select = {
-      options: [{value: '', textContent: 'No other tag: run on the trigger'}],
+      options: [{value: '', textContent: 'Not chained: run on the trigger'}],
       value: after,
       replaceChildren(...options) { this.options = options; }
     };
@@ -252,6 +252,7 @@ test('"Run after" lists follow the IDs typed into other rows and keep the curren
   assert.deepEqual(chain.choices(1), ['', 'tracker', 'pixel']);
   assert.equal(chain.rows[1].select.value, 'tracker');
   assert.deepEqual(chain.choices(2), ['', 'tracker', 'views']);
+  assert.deepEqual(chain.rows[2].select.options.map((option) => option.textContent), ['Not chained: run on the trigger', 'Run after tracker', 'Run after views']);
 
   chain.rows[0].idField.value = 'renamed';
   chain.controller.refreshRunAfter({target: chain.rows[0].idField});

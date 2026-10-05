@@ -41,7 +41,7 @@ export default class extends Controller {
             + (manager && manager.value !== '1' ? ' The tag manager is disabled, so enable it too before the tracker can load.' : ''));
     }
 
-    // Keeps every "Run after" list in step with the IDs typed into the rows.
+    // Keeps every tag chaining list ("Run after …") in step with the IDs typed into the rows.
     refreshRunAfter(event) {
         const field = event?.target;
         if (!field || typeof field.matches !== 'function' || !field.matches('input[name^="tags["][name$="[id]"]')) return;
@@ -59,7 +59,7 @@ export default class extends Controller {
             const options = [select.options[0], ...choices.map((id) => {
                 const option = document.createElement('option');
                 option.value = id;
-                option.textContent = id;
+                option.textContent = `Run after ${id}`;
                 return option;
             })];
             select.replaceChildren(...options);

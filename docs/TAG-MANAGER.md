@@ -121,7 +121,7 @@ tag_manager:
 
 Defaults are `enabled: false`, `variables: {}`, and `tags: []` for the manager;
 individual tags default to `enabled: true`, `type: script`, `consent: analytics`,
-`trigger: {type: dom_ready}` and no [`after`](#run-after-another-tag). Booleans must be YAML `true` or `false`, not
+`trigger: {type: dom_ready}` and no [`after`](#tag-chaining). Booleans must be YAML `true` or `false`, not
 quoted strings or numbers. An invalid entry prevents that instance from serving
 executable tags until corrected; other sites remain independent. Disabled
 entries are validated too.
@@ -183,18 +183,20 @@ for untrusted libraries.
 
 Scripts load asynchronously, and list order does not make one tag wait for
 another. A call to a library that a script tag loads needs that library first:
-set the call's [Run after](#run-after-another-tag) to the script tag. Otherwise
+chain the call to the script tag with [tag chaining](#tag-chaining). Otherwise
 a missing method skips the action, and a later matching event can try again.
 There is no polling or retry timer.
 
-### Run after another tag
+### Tag chaining
 
-**Run after** (`after` in YAML) makes a tag wait until another tag has finished:
+Tag chaining makes a tag wait until another tag has finished. Choose the other
+tag under **Tag chaining** on the tag's row, where each choice reads
+**Run after** and its ID, or set `after` in YAML. A tag has finished when:
 
-- a **script** tag has finished when its script has loaded and run;
-- a **method** tag has finished when its method has been called without an error;
-- a **custom JavaScript** tag has finished when its code has run without an
-  error or, if it returns a promise, when that promise resolves.
+- a **script** tag: its script has loaded and run;
+- a **method** tag: its method has been called without an error;
+- a **custom JavaScript** tag: its code has run without an error or, if it
+  returns a promise, that promise has resolved.
 
 The waiting tag still runs on its own trigger and with its own consent category;
 it just runs no earlier than the tag it names. If its trigger fires first, the run
@@ -231,8 +233,8 @@ page has loaded; either way the call runs after the tracker has loaded.
   throws an error. A disabled or unserved tag also stops the tags waiting for it
   from being served at all. A failure writes one browser console warning that
   names the tags left waiting.
-- The **Run after** list on each tag row offers the IDs of the other rows,
-  including ones typed but not yet saved.
+- The **Tag chaining** list on each tag row offers **Run after** for each of the
+  other rows' IDs, including ones typed but not yet saved.
 
 A call to `Aggregate.emit` preserves the tracker's consent and property rules.
 Granting a method tag's `marketing` category does not grant enhanced analytics.
@@ -585,10 +587,10 @@ conservative no-measurement-before-choice setup, use the
 [regional examples](CONSENT-REGIONS.md) instead of this `consent: none` example.
 
 This script loads asynchronously, so a tag that sends events through the
-tracker should not assume it is ready. Set a method tag's
-[Run after](#run-after-another-tag) to `aggregate-tracker`. In custom
+tracker should not assume it is ready. Use [tag chaining](#tag-chaining) to set
+a method tag to **Run after** `aggregate-tracker`. In custom
 JavaScript, `tag.emit()` holds events until the tracker has loaded, however the
-tracker was installed, so no setting is needed; **Run after** still makes the
+tracker was installed, so no setting is needed; tag chaining still makes the
 whole tag wait when its other code needs the tracker too.
 
 ## Optional minification

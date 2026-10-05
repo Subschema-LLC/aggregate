@@ -532,7 +532,9 @@ final class TagManagerControllerTest extends TestCase
         self::assertSame(['', 'helper', 'purchase'], $options('tag-2-after'));
         self::assertSame(['', 'helper', 'purchase', 'views'], $options('tag-3-after'), 'the new row can wait for any tag');
         self::assertSame('helper', $page->filter('#tag-2-after option[selected]')->attr('value'));
-        self::assertStringContainsString('Waits until that tag has finished', $page->filter('#tag-2-after-help')->text());
+        self::assertSame('Tag chaining', $page->filter('label[for="tag-2-after"]')->text());
+        self::assertSame(['Not chained: run on the trigger', 'Run after helper', 'Run after purchase'], $page->filter('#tag-2-after option')->each(static fn (Crawler $option): string => $option->text()));
+        self::assertStringContainsString('this tag waits until that tag has finished', $page->filter('#tag-2-after-help')->text());
 
         $before = file_get_contents($this->sitePath($this->siteId));
         $form['tags'][2]['after'] = 'purchase';
