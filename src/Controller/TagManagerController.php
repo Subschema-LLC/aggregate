@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Service\AggregateConfigLoader;
+use App\Service\DropInScripts;
 use App\Service\SiteScriptConfig;
 use App\Service\TagManagerSettings;
 use App\Service\TagManagerVariables;
@@ -18,12 +19,17 @@ use Symfony\Component\Yaml\Yaml;
 final class TagManagerController extends AbstractController
 {
     public const CSRF_TOKEN_ID = 'tag_manager_settings';
+    /** Session key for a form that failed validation, so the next page load can show it again. */
+    public const SUBMITTED_FORM_KEY = 'tag_manager_submitted_form';
+    /** Suggested ID when the page adds the website's tracker as a tag. */
+    public const TRACKER_TAG_ID = 'aggregate-tracker';
 
     public function __construct(
         private readonly AggregateConfigLoader $config,
         private readonly TagManagerSettings $settings,
         private readonly LoggerInterface $logger,
         private readonly SiteScriptConfig $sites,
+        private readonly ?DropInScripts $scripts = null,
     ) {
     }
 
@@ -49,12 +55,32 @@ final class TagManagerController extends AbstractController
             $configurationError = 'Script configuration could not be loaded. Correct its YAML before saving. Invalid configuration is not served to visitors.';
             $this->logFailure('load', $e);
         }
+        $variableRows = [];
+        foreach ($settings['variables'] as $alias => $path) {
+            $variableRows[] = ['alias' => $alias, 'path' => $path];
+        }
+
+        $submitted = $this->takeSubmittedForm($request, $siteId);
+        $restored = $submitted !== null && $configurationError === null;
+        if ($restored) {
+            [$settings, $variableRows, $consent] = $this->draftFromForm($submitted, $settings, $variableRows, $consent);
+        }
+
+        $trackerUrl = $this->trackerUrl($site);
+        $trackerTag = null;
+        foreach ($settings['tags'] as $tag) {
+            if ($trackerUrl !== null && ($tag['src'] ?? null) === $trackerUrl && ($tag['type'] ?? 'script') === 'script') {
+                $trackerTag = $tag['id'];
+                break;
+            }
+        }
 
         return $this->privateResponse($this->render('tag_manager/index.html.twig', [
-            'settings' => $settings, 'consent_settings' => $consent,
+            'settings' => $settings, 'variable_rows' => $variableRows, 'consent_settings' => $consent,
             'sites' => $websites, 'selected_site' => $siteId, 'site' => $site,
             'max_tags' => TagManagerSettings::MAX_TAGS, 'max_variables' => TagManagerVariables::MAX_VARIABLES,
-            'configuration_error' => $configurationError,
+            'configuration_error' => $configurationError, 'restored_form' => $restored,
+            'tracker_url' => $trackerUrl, 'tracker_tag' => $trackerTag, 'tracker_tag_id' => self::TRACKER_TAG_ID,
         ]));
     }
 
@@ -85,12 +111,117 @@ final class TagManagerController extends AbstractController
             $this->addFlash('success', 'Script settings saved to YAML. Changes apply on the next page load.');
         } catch (\InvalidArgumentException $e) {
             $this->addFlash('error', $e->getMessage());
+            $this->rememberSubmittedForm($request, $siteId, $submitted);
         } catch (\Throwable $e) {
             $this->logFailure('save', $e);
             $this->addFlash('error', 'Script settings could not be saved. Check the YAML configuration and file permissions.');
+            $this->rememberSubmittedForm($request, $siteId, $submitted);
         }
 
         return $this->back($siteId);
+    }
+
+    /**
+     * Keeps a rejected form for one page load. Only forms that passed the CSRF
+     * check are kept, so another site cannot prefill an administrator's editor.
+     */
+    private function rememberSubmittedForm(Request $request, string $siteId, array $submitted): void
+    {
+        if (!$request->hasSession()) {
+            return;
+        }
+        unset($submitted['_csrf_token']);
+        $request->getSession()->set(self::SUBMITTED_FORM_KEY, ['site' => $siteId, 'form' => $submitted]);
+    }
+
+    /** The rejected form for this website, removed from the session whether or not it matches. */
+    private function takeSubmittedForm(?Request $request, string $siteId): ?array
+    {
+        if ($request === null || !$request->hasSession() || !$request->getSession()->has(self::SUBMITTED_FORM_KEY)) {
+            return null;
+        }
+        $stored = $request->getSession()->remove(self::SUBMITTED_FORM_KEY);
+        if (!is_array($stored) || ($stored['site'] ?? null) !== $siteId || !is_array($stored['form'] ?? null)) {
+            return null;
+        }
+
+        return $stored['form'];
+    }
+
+    /**
+     * Rebuilds the editor rows from a rejected form exactly as typed, including
+     * values that failed validation. Nothing here is saved or served.
+     *
+     * @return array{0: array, 1: list<array>, 2: ?array}
+     */
+    private function draftFromForm(array $form, array $settings, array $variableRows, ?array $consent): array
+    {
+        $text = static fn (mixed $value, int $limit = 4096): string => is_string($value) ? substr($value, 0, $limit) : '';
+        $rows = static fn (mixed $value, int $limit): array => is_array($value) ? array_slice(array_values($value), 0, $limit) : [];
+
+        if (in_array($form['enabled'] ?? null, ['0', '1'], true)) {
+            $settings['enabled'] = $form['enabled'] === '1';
+        }
+
+        if (array_key_exists('variables', $form)) {
+            $variableRows = [];
+            foreach ($rows($form['variables'], TagManagerVariables::MAX_VARIABLES) as $row) {
+                if (!is_array($row)) continue;
+                $variable = ['alias' => $text($row['alias'] ?? null), 'path' => $text($row['path'] ?? null), 'remove' => ($row['remove'] ?? null) === '1'];
+                if ($variable['alias'] !== '' || $variable['path'] !== '') $variableRows[] = $variable;
+            }
+        }
+
+        if (array_key_exists('tags', $form)) {
+            $tags = [];
+            foreach ($rows($form['tags'], TagManagerSettings::MAX_TAGS) as $row) {
+                if (!is_array($row)) continue;
+                $trigger = is_array($row['trigger'] ?? null) ? $row['trigger'] : [];
+                $tag = [
+                    'id' => $text($row['id'] ?? null),
+                    'type' => in_array($row['type'] ?? null, ['script', 'call'], true) ? $row['type'] : 'script',
+                    'src' => $text($row['src'] ?? null),
+                    'method' => $text($row['method'] ?? null),
+                    'args_json' => $text($row['args_json'] ?? null, 2_000_000),
+                    'enabled' => ($row['enabled'] ?? '1') !== '0',
+                    'consent' => $text($row['consent'] ?? null, 64),
+                    'trigger' => ['type' => $text($trigger['type'] ?? null, 64) ?: 'dom_ready', 'event' => $text($trigger['event'] ?? null, 200)],
+                    'remove' => ($row['remove'] ?? null) === '1',
+                ];
+                // The trailing empty row comes back as the page's usual new-tag row.
+                if ($tag['id'] === '' && $tag['src'] === '' && $tag['method'] === '' && in_array(trim($tag['args_json']), ['', '[]'], true)) continue;
+                $tags[] = $tag;
+            }
+            $settings['tags'] = $tags;
+        }
+
+        $submittedConsent = $form['consent_manager'] ?? null;
+        if ($consent !== null && is_array($submittedConsent)) {
+            if (in_array($submittedConsent['enabled'] ?? null, ['0', '1'], true)) {
+                $consent['enabled'] = $submittedConsent['enabled'] === '1';
+            }
+            if (is_string($submittedConsent['name'] ?? null)) {
+                $consent['name'] = $text($submittedConsent['name'], 480);
+            }
+        }
+
+        return [$settings, $variableRows, $consent];
+    }
+
+    /** The selected website's configured tracker URL, ready to paste as a script tag. */
+    private function trackerUrl(?array $site): ?string
+    {
+        if ($site === null || $this->scripts === null) {
+            return null;
+        }
+        try {
+            return $this->scripts->trackerUrl($site['token']);
+        } catch (\Throwable $e) {
+            // A missing or invalid app_host only hides the suggestion; the editor still works.
+            $this->logFailure('tracker_url', $e);
+
+            return null;
+        }
     }
 
     #[Route('/dashboard/tag-manager/download', name: 'app_tag_manager_download', methods: ['GET'])]
