@@ -124,6 +124,11 @@ services:
             $projectDir: '%kernel.project_dir%'
             $environment: '%kernel.environment%'
 
+    App\Service\TagManagerSettings:
+        arguments:
+            # Remembers custom JavaScript that passed its checks; safe to clear.
+            $codeCacheDirectory: '%kernel.cache_dir%/tag-manager-code'
+
     App\Service\GoalEventRegistry:
         arguments:
             $definitions: '%app.goal_events%'

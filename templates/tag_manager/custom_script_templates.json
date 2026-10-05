@@ -1,0 +1,201 @@
+[
+  {
+    "id": "cta-clicks",
+    "group": "Engagement tracking",
+    "label": "Clicks on matching elements",
+    "description": "Sends an event when a visitor clicks an element that matches a CSS selector.",
+    "consent": "analytics",
+    "trigger": {
+      "type": "dom_ready"
+    },
+    "code": [
+      "// Sends an Aggregate event when someone clicks an element matching the selector.",
+      "// Change the selector and event name. Each property you send must exist in",
+      "// the data model; send fixed labels, never text a visitor typed.",
+      "const selector = '[data-track]';",
+      "const eventName = 'element_click';",
+      "",
+      "function onClick(event) {",
+      "  const element = event.target instanceof Element ? event.target.closest(selector) : null;",
+      "  if (!element) return;",
+      "  tag.emit(eventName, {element_label: element.getAttribute('data-track') || undefined});",
+      "}",
+      "",
+      "document.addEventListener('click', onClick, true);",
+      "tag.onCleanup(() => document.removeEventListener('click', onClick, true));"
+    ]
+  },
+  {
+    "id": "outbound-links",
+    "group": "Engagement tracking",
+    "label": "Outbound link clicks",
+    "description": "Sends an event with the destination's host name when a visitor follows a link to another website.",
+    "consent": "analytics",
+    "trigger": {
+      "type": "dom_ready"
+    },
+    "code": [
+      "// Sends an event when someone follows a link to another website. Only the",
+      "// destination's host name is sent, never the full address.",
+      "function onClick(event) {",
+      "  const link = event.target instanceof Element ? event.target.closest('a[href]') : null;",
+      "  if (!link) return;",
+      "  let url;",
+      "  try {",
+      "    url = new URL(link.href, document.baseURI);",
+      "  } catch (error) {",
+      "    return;",
+      "  }",
+      "  if (!/^https?:$/.test(url.protocol) || url.hostname === location.hostname) return;",
+      "  tag.emit('outbound_click', {link_domain: url.hostname});",
+      "}",
+      "",
+      "document.addEventListener('click', onClick, true);",
+      "tag.onCleanup(() => document.removeEventListener('click', onClick, true));"
+    ]
+  },
+  {
+    "id": "form-submissions",
+    "group": "Engagement tracking",
+    "label": "Form submissions",
+    "description": "Sends an event when a matching form is submitted. Field values are never read.",
+    "consent": "analytics",
+    "trigger": {
+      "type": "dom_ready"
+    },
+    "code": [
+      "// Sends an event when a matching form is submitted. Field values are never",
+      "// read. Mark forms with data-track-form=\"newsletter\", or change the selector.",
+      "const selector = 'form[data-track-form]';",
+      "",
+      "function onSubmit(event) {",
+      "  const form = event.target instanceof HTMLFormElement ? event.target : null;",
+      "  if (!form || !form.matches(selector)) return;",
+      "  tag.emit('form_submit', {form_name: form.getAttribute('data-track-form') || undefined});",
+      "}",
+      "",
+      "document.addEventListener('submit', onSubmit, true);",
+      "tag.onCleanup(() => document.removeEventListener('submit', onSubmit, true));"
+    ]
+  },
+  {
+    "id": "scroll-depth",
+    "group": "Engagement tracking",
+    "label": "Scroll depth",
+    "description": "Sends one event the first time a visitor scrolls past 25, 50, 75 and 100 percent of the page.",
+    "consent": "analytics",
+    "trigger": {
+      "type": "window_load"
+    },
+    "code": [
+      "// Sends one event the first time the visitor scrolls past each threshold.",
+      "const thresholds = [25, 50, 75, 100];",
+      "const reached = new Set();",
+      "",
+      "function onScroll() {",
+      "  const scrollable = document.documentElement.scrollHeight - window.innerHeight;",
+      "  const percent = scrollable <= 0 ? 100 : Math.round((window.scrollY / scrollable) * 100);",
+      "  for (const threshold of thresholds) {",
+      "    if (percent >= threshold && !reached.has(threshold)) {",
+      "      reached.add(threshold);",
+      "      tag.emit('scroll_depth', {scroll_percent: threshold});",
+      "    }",
+      "  }",
+      "  if (reached.size === thresholds.length) window.removeEventListener('scroll', onScroll);",
+      "}",
+      "",
+      "window.addEventListener('scroll', onScroll, {passive: true});",
+      "tag.onCleanup(() => window.removeEventListener('scroll', onScroll));",
+      "onScroll();"
+    ]
+  },
+  {
+    "id": "element-visible",
+    "group": "dataLayer helpers",
+    "label": "Push an event when an element is seen",
+    "description": "Pushes a dataLayer event the first time an element is at least half visible, for other tags to use.",
+    "consent": "analytics",
+    "trigger": {
+      "type": "dom_ready"
+    },
+    "code": [
+      "// Pushes a dataLayer event the first time an element matching the selector is",
+      "// at least half visible. Other tags can use it with a dataLayer event trigger.",
+      "const selector = '#pricing';",
+      "const eventName = 'pricing_seen';",
+      "const element = document.querySelector(selector);",
+      "",
+      "if (element && 'IntersectionObserver' in window) {",
+      "  const observer = new IntersectionObserver((entries) => {",
+      "    if (!entries.some((entry) => entry.isIntersecting)) return;",
+      "    observer.disconnect();",
+      "    tag.push({event: eventName});",
+      "  }, {threshold: 0.5});",
+      "  observer.observe(element);",
+      "  tag.onCleanup(() => observer.disconnect());",
+      "}"
+    ]
+  },
+  {
+    "id": "page-condition",
+    "group": "dataLayer helpers",
+    "label": "Push an event for a page condition",
+    "description": "Pushes a dataLayer event when the page matches a condition, such as an order confirmation page.",
+    "consent": "analytics",
+    "trigger": {
+      "type": "dom_ready"
+    },
+    "code": [
+      "// Pushes a dataLayer event when the page matches a condition, for example an",
+      "// order confirmation page. Change the condition to suit your website; a",
+      "// configured variable works too, such as tag.get('page_type') === 'confirmation'.",
+      "const isConfirmation = location.pathname.startsWith('/checkout/thank-you');",
+      "",
+      "if (isConfirmation) {",
+      "  tag.push({event: 'checkout_complete'});",
+      "}"
+    ]
+  },
+  {
+    "id": "vendor-library",
+    "group": "Third-party vendors",
+    "label": "Load a vendor library and set it up",
+    "description": "Loads a vendor's HTTPS script, then calls its setup function. Runs with marketing consent.",
+    "consent": "marketing",
+    "trigger": {
+      "type": "dom_ready"
+    },
+    "code": [
+      "// Loads a vendor's HTTPS script, then calls its setup function. Replace the",
+      "// address and the setup call with the vendor's instructions. The tag's consent",
+      "// category decides when this runs; withdrawal stops later runs, but cannot",
+      "// unload the vendor's script, so use onCleanup for anything it offers.",
+      "const libraryUrl = 'https://cdn.vendor.example/library.js';",
+      "const accountId = 'YOUR-ACCOUNT-ID';",
+      "",
+      "tag.loadScript(libraryUrl).then(() => {",
+      "  if (typeof window.VendorLibrary?.init === 'function') {",
+      "    window.VendorLibrary.init({account: accountId});",
+      "  }",
+      "});"
+    ]
+  },
+  {
+    "id": "image-pixel",
+    "group": "Third-party vendors",
+    "label": "Fire an image pixel",
+    "description": "Requests a vendor's 1×1 tracking image. Runs with marketing consent.",
+    "consent": "marketing",
+    "trigger": {
+      "type": "dom_ready"
+    },
+    "code": [
+      "// Requests a vendor's tracking image. Replace the address with the one the",
+      "// vendor gives you, and keep only fixed, non-personal values in it. The page",
+      "// address is not sent; remove the referrerPolicy line if the vendor needs it.",
+      "const pixel = new Image(1, 1);",
+      "pixel.referrerPolicy = 'no-referrer';",
+      "pixel.src = 'https://pixel.vendor.example/collect?account=YOUR-ACCOUNT-ID&event=page_view';"
+    ]
+  }
+]

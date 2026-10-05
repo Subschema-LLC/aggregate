@@ -139,7 +139,7 @@ final class SiteScriptConfig
         return Yaml::dump([
             'tag_manager' => TagManagerSettings::validate(array_key_exists('tag_manager', $values) ? $values['tag_manager'] : TagManagerSettings::DEFAULTS),
             'consent_manager' => self::validateConsent(array_key_exists('consent_manager', $values) ? $values['consent_manager'] : [], $site['name']),
-        ], 10, 2);
+        ], 10, 2, Yaml::DUMP_MULTI_LINE_LITERAL_BLOCK);
     }
 
     private static function validateConsent(mixed $settings, string $defaultName): array

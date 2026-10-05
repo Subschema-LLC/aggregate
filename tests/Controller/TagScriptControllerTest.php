@@ -6,6 +6,7 @@ namespace App\Tests\Controller;
 
 use App\Controller\TagScriptController;
 use App\Service\AggregateConfigLoader;
+use App\Service\FeatureFlags;
 use App\Service\TagManagerSettings;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -49,7 +50,7 @@ final class TagScriptControllerTest extends TestCase
         ])();
 
         self::assertSame(200, $script->getStatusCode());
-        self::assertSame('application/javascript', $script->headers->get('Content-Type'));
+        self::assertSame('application/javascript; charset=UTF-8', $script->headers->get('Content-Type'));
         self::assertSame('source', $script->headers->get('X-Aggregate-Script'));
         self::assertTrue($script->headers->hasCacheControlDirective('must-revalidate'));
         self::assertSame('nosniff', $script->headers->get('X-Content-Type-Options'));
@@ -245,13 +246,70 @@ final class TagScriptControllerTest extends TestCase
     private function controller(array $settings): TagScriptController
     {
         file_put_contents($this->projectDir.'/config/aggregate.yaml', Yaml::dump($settings, 6, 2));
+        $loader = new AggregateConfigLoader($this->projectDir, 'test');
 
-        return new TagScriptController(new TagManagerSettings(new AggregateConfigLoader($this->projectDir, 'test')), $this->projectDir);
+        return new TagScriptController(new TagManagerSettings($loader, null, new FeatureFlags($loader)), $this->projectDir);
+    }
+
+    public function testCustomJavaScriptIsCompiledIntoTheScriptAsStrictFunctionsWithoutItsCodeInTheConfiguration(): void
+    {
+        $code = "// Marker text __AGGREGATE_TAG_MANAGER__ and var customScripts = {}; stay as written.\ntag.emit('signup', {plan: tag.get('plan')});";
+        $settings = ['js_namespace' => 'ShopAnalytics', 'tag_manager' => ['enabled' => true, 'tags' => [
+            ['id' => 'signup', 'type' => 'custom', 'code' => $code, 'consent' => 'marketing'],
+            ['id' => 'off', 'type' => 'custom', 'code' => "tag.emit('off');", 'enabled' => false],
+            ['id' => 'pixel', 'src' => 'https://scripts.example/pixel.js'],
+        ]]];
+        $content = (string) $this->controller($settings)()->getContent();
+
+        self::assertSame(1, substr_count($content, "var customScripts = {\n\"signup\": function (tag) {\n'use strict';\n".$code."\n}\n};"));
+        self::assertStringNotContainsString("tag.emit('off')", $content, 'disabled tags are not served');
+        $config = $this->publicConfig($this->controller($settings)());
+        self::assertSame('ShopAnalytics', $config['namespace']);
+        self::assertSame([['id' => 'signup', 'consent' => 'marketing', 'trigger' => ['type' => 'dom_ready'], 'type' => 'custom'],
+            ['id' => 'pixel', 'src' => 'https://scripts.example/pixel.js', 'consent' => 'analytics', 'trigger' => ['type' => 'dom_ready'], 'type' => 'script']], $config['tags']);
+
+        $this->buildFixture();
+        $minified = $this->controller($settings)(Request::create('/lib.js', 'GET', ['min' => '1']));
+        self::assertSame('minified', $minified->headers->get('X-Aggregate-Script'));
+        self::assertStringContainsString("window.custom={\n\"signup\": function (tag) {\n'use strict';\n".$code."\n}\n};", (string) $minified->getContent());
+        self::assertStringNotContainsString(TagScriptController::CUSTOM_PLACEHOLDER.';', (string) $minified->getContent());
+
+        // An older template without the custom placeholder is not used.
+        file_put_contents($this->projectDir.'/var/browser/tag-manager.template.min.js', "/*! preserved license */\nwindow.fixture=__AGGREGATE_TAG_MANAGER__;\n");
+        $this->writeManifest();
+        self::assertSame('source', $this->controller($settings)(Request::create('/lib.js', 'GET', ['min' => '1']))->headers->get('X-Aggregate-Script'));
+    }
+
+    public function testSwitchingOffCustomJavaScriptStopsServingItAndItsConsentCategory(): void
+    {
+        $settings = ['feature_flags' => ['custom_scripts' => ['enabled' => false]], 'tag_manager' => ['enabled' => true, 'tags' => [
+            ['id' => 'signup', 'type' => 'custom', 'code' => "tag.emit('signup');", 'consent' => 'marketing'],
+            ['id' => 'pixel', 'src' => 'https://scripts.example/pixel.js'],
+        ]]];
+        $response = $this->controller($settings)();
+        self::assertStringNotContainsString("tag.emit('signup')", (string) $response->getContent());
+        self::assertStringContainsString('var customScripts = {};', (string) $response->getContent());
+        $config = $this->publicConfig($response);
+        self::assertSame(['pixel'], array_column($config['tags'], 'id'));
+        self::assertArrayNotHasKey('namespace', $config);
+        $loader = new AggregateConfigLoader($this->projectDir, 'test');
+        self::assertSame(['analytics'], (new TagManagerSettings($loader, null, new FeatureFlags($loader)))->consentCategories());
+    }
+
+    public function testInvalidCustomJavaScriptInYamlServesNoTags(): void
+    {
+        $response = $this->controller(['tag_manager' => ['enabled' => true, 'tags' => [
+            ['id' => 'broken', 'type' => 'custom', 'code' => "tag.emit('x';"],
+            ['id' => 'pixel', 'src' => 'https://scripts.example/pixel.js'],
+        ]]])();
+        self::assertSame(503, $response->getStatusCode());
+        self::assertStringNotContainsString('pixel.js', (string) $response->getContent());
+        self::assertStringNotContainsString("tag.emit('x'", (string) $response->getContent());
     }
 
     private function buildFixture(): void
     {
-        file_put_contents($this->projectDir.'/var/browser/tag-manager.template.min.js', "/*! preserved license */\nwindow.fixture=__AGGREGATE_TAG_MANAGER__;\n");
+        file_put_contents($this->projectDir.'/var/browser/tag-manager.template.min.js', "/*! preserved license */\nwindow.fixture=__AGGREGATE_TAG_MANAGER__;\nwindow.custom=__AGGREGATE_CUSTOM_SCRIPTS__;\n");
         $this->writeManifest();
     }
 

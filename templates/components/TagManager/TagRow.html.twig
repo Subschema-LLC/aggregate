@@ -1,15 +1,16 @@
-{% props index, tag, script_suggestions = false %}
+{% props index, tag, script_suggestions = false, custom_scripts_enabled = true, custom_templates = [] %}
 
 <div class="box">
     <fieldset class="tag-settings-fieldset" data-tag-row data-controller="components--tag-manager--tag-row" aria-describedby="tag-{{ index }}-help">
         <legend class="title is-5">{% if tag.id %}Tag {{ index + 1 }}: {{ tag.id }}{% else %}Add a tag{% endif %}</legend>
-        <p class="help mb-3" id="tag-{{ index }}-help">Choose one action and a trigger. Leave a new row's ID, URL and method empty to keep the current list.</p>
+        <p class="help mb-3" id="tag-{{ index }}-help">Choose one action and a trigger. Leave a new row's ID, URL, method and code empty to keep the current list.</p>
         <div class="field"><label class="label" for="tag-{{ index }}-id">ID</label><div class="control"><input class="input" id="tag-{{ index }}-id" name="tags[{{ index }}][id]" value="{{ tag.id }}" maxlength="64" pattern="[A-Za-z][A-Za-z0-9_-]{0,63}" autocomplete="off" placeholder="purchase-event"></div></div>
         <div class="field">
             <label class="label" for="tag-{{ index }}-type">Action</label>
             <div class="control select"><select id="tag-{{ index }}-type" name="tags[{{ index }}][type]" data-tag-type data-components--tag-manager--tag-row-target="actionType" data-action="change->components--tag-manager--tag-row#update" required>
                 <option value="script"{% if tag.type == 'script' %} selected{% endif %}>Load an HTTPS script</option>
                 <option value="call"{% if tag.type == 'call' %} selected{% endif %}>Call a library method</option>
+                {% if custom_scripts_enabled or tag.type == 'custom' %}<option value="custom"{% if tag.type == 'custom' %} selected{% endif %}>Run custom JavaScript</option>{% endif %}
             </select></div>
         </div>
         <div data-components--tag-manager--tag-row-target="actionFields" data-action-fields="script">
@@ -18,6 +19,51 @@
         <div data-components--tag-manager--tag-row-target="actionFields" data-action-fields="call">
             <div class="field"><label class="label" for="tag-{{ index }}-method">Library method</label><div class="control"><input class="input" id="tag-{{ index }}-method" name="tags[{{ index }}][method]" value="{{ tag.method|default('') }}" maxlength="128" autocomplete="off" placeholder="Aggregate.emit"></div><p class="help">Use a named method such as <code>Aggregate.emit</code> or <code>Acme.track</code>. Its library must already be loaded. Expressions, constructors and JavaScript code are not accepted.</p></div>
             <div class="field"><label class="label" for="tag-{{ index }}-args">Arguments (JSON array)</label><div class="control"><textarea class="textarea" id="tag-{{ index }}-args" name="tags[{{ index }}][args_json]" rows="4" spellcheck="false">{{ tag.args_json is defined ? tag.args_json : tag.args|default([])|json_encode(448) }}</textarea></div><p class="help">Example: <code>["purchase", {"total_minor": 1299, "plan": {"$var": "plan"}}]</code>. Arguments are bounded JSON data; they are never evaluated as code. Leave the URL empty for a method action.</p></div>
+        </div>
+        <div data-components--tag-manager--tag-row-target="actionFields" data-action-fields="custom">
+            {% if not custom_scripts_enabled %}<p class="notification is-warning is-light">Custom JavaScript is turned off for this installation on the Feature flags page. This tag is kept but not served, and its code cannot be changed.</p>{% endif %}
+            {% if custom_templates is not empty %}
+            <div class="field">
+                <label class="label" for="tag-{{ index }}-template">Start from a template</label>
+                <div class="control"><div class="select"><select id="tag-{{ index }}-template" data-components--tag-manager--tag-row-target="template" data-action="change->components--tag-manager--tag-row#applyTemplate" aria-describedby="tag-{{ index }}-template-help">
+                    <option value="">Choose a template…</option>
+                    {% for group, templates in custom_templates %}<optgroup label="{{ group }}">{% for template in templates %}<option value="{{ template.id }}" title="{{ template.description }}">{{ template.label }}</option>{% endfor %}</optgroup>{% endfor %}
+                </select></div></div>
+                <p class="help" id="tag-{{ index }}-template-help">Fills in the code, a trigger, a consent category and, for a new tag, an ID. Review it before saving, especially selectors, event names and addresses.</p>
+            </div>
+            {% endif %}
+            <div class="field">
+                <label class="label label-with-tooltip" for="tag-{{ index }}-code">
+                    <span class="field-label-wrap">
+                        <span>JavaScript</span>
+                        <span class="field-tooltip" tabindex="0" role="button" aria-label="How custom JavaScript runs" aria-describedby="tag-{{ index }}-code-tip">
+                            <span class="icon is-small has-text-info"><i class="fas fa-circle-question" aria-hidden="true"></i></span>
+                            <span class="tooltip-bubble" id="tag-{{ index }}-code-tip" role="tooltip">
+                                <strong>How it runs:</strong> your code is the body of <code>function (tag) { 'use strict'; … }</code>. It runs when the trigger fires and consent allows; errors are caught and logged with the tag's ID.
+                                <ul class="custom-api">
+                                    <li><code>tag.get('alias')</code> reads a variable</li>
+                                    <li><code>tag.event</code> trigger, event name and detail</li>
+                                    <li><code>tag.data</code> a copy of the dataLayer model</li>
+                                    <li><code>tag.consent('marketing')</code> checks a category</li>
+                                    <li><code>tag.emit('name', {…})</code> sends an Aggregate event</li>
+                                    <li><code>tag.push({event: '…'})</code> adds to the dataLayer</li>
+                                    <li><code>tag.loadScript(url)</code> loads HTTPS scripts</li>
+                                    <li><code>tag.onCleanup(fn)</code> runs when consent is withdrawn</li>
+                                </ul>
+                                Not allowed: HTML, <code>eval</code>, <code>new Function</code>, text in timers, <code>document.write</code>, <code>import()</code>, <code>debugger</code>.
+                            </span>
+                        </span>
+                    </span>
+                </label>
+                <div class="control"><textarea class="textarea custom-code" id="tag-{{ index }}-code" name="tags[{{ index }}][code]" rows="12" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off" placeholder="// Runs when the trigger fires and consent allows, as the body of
+// function (tag) { 'use strict'; ... }. Your variables stay local.
+// tag.get('alias')   tag.event   tag.data   tag.consent('marketing')
+// tag.emit('name', {key: 'value'})   tag.push({event: 'name'})
+// tag.loadScript('https://...')   tag.onCleanup(() => { ... })
+tag.emit('newsletter_signup', {plan: tag.get('plan')});" data-components--tag-manager--tag-row-target="code" data-action="input->components--tag-manager--tag-row#checkCode" aria-describedby="tag-{{ index }}-code-status tag-{{ index }}-code-help"{% if not custom_scripts_enabled %} readonly{% endif %}>{{ tag.code|default('') }}</textarea></div>
+                <p class="help custom-code-status" id="tag-{{ index }}-code-status" role="status" aria-live="polite" data-components--tag-manager--tag-row-target="codeStatus"></p>
+                <p class="help" id="tag-{{ index }}-code-help">Runs on visitors' pages with full access to them, so review code as you would a script on your own site. The server checks it again when you save; up to 20,000 bytes per tag. {% if docs_url('tracking.tag-manager') %}<a href="{{ docs_url('tracking.tag-manager') }}#custom-javascript" target="_blank" rel="noopener noreferrer">Custom JavaScript guide<span class="is-sr-only"> (opens in a new tab)</span></a>{% endif %}</p>
+            </div>
         </div>
         <div class="field"><label class="label" for="tag-{{ index }}-consent">Consent category</label><div class="control"><input class="input" id="tag-{{ index }}-consent" name="tags[{{ index }}][consent]" value="{{ tag.consent }}" list="tag-consent-categories" maxlength="32" pattern="[a-z][a-z0-9_-]{0,31}" required></div><p class="help">Use analytics, functional, marketing, or another lowercase category. Enter none for <strong>No consent required</strong>; that action may run before a choice and after rejection.</p></div>
         <div class="field"><label class="label" for="tag-{{ index }}-enabled">Availability</label><div class="control select"><select id="tag-{{ index }}-enabled" name="tags[{{ index }}][enabled]" required><option value="1"{% if tag.enabled %} selected{% endif %}>Enabled</option><option value="0"{% if not tag.enabled %} selected{% endif %}>Disabled</option></select></div></div>
