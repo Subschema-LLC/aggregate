@@ -96,8 +96,15 @@ final class TagManagerSettings
             return [];
         }
         $custom = $this->customScriptsEnabled();
+        $served = array_filter($settings['tags'], static fn (array $tag): bool => $tag['enabled'] && ($custom || $tag['type'] !== 'custom'));
+        // A tag set to run after one that is not served would never run.
+        do {
+            $ids = array_flip(array_column($served, 'id'));
+            $before = count($served);
+            $served = array_filter($served, static fn (array $tag): bool => !isset($tag['after']) || isset($ids[$tag['after']]));
+        } while (count($served) !== $before);
 
-        return array_values(array_filter($settings['tags'], static fn (array $tag): bool => $tag['enabled'] && ($custom || $tag['type'] !== 'custom')));
+        return array_values($served);
     }
 
     /** @return list<string> Categories needed by the tracker and enabled tags. */
@@ -149,8 +156,8 @@ final class TagManagerSettings
         $sources = [];
         $codeBytes = 0;
         foreach ($tags as $tag) {
-            if (!is_array($tag) || array_diff(array_keys($tag), ['id', 'type', 'src', 'method', 'args', 'code', 'enabled', 'consent', 'trigger']) !== []) {
-                throw new \InvalidArgumentException('Each tag must contain only its ID, action, enabled setting, consent and trigger.');
+            if (!is_array($tag) || array_diff(array_keys($tag), ['id', 'type', 'src', 'method', 'args', 'code', 'enabled', 'consent', 'trigger', 'after']) !== []) {
+                throw new \InvalidArgumentException('Each tag must contain only its ID, action, enabled setting, consent, trigger and, optionally, the tag it runs after.');
             }
             $id = $tag['id'] ?? null;
             $type = array_key_exists('type', $tag) ? $tag['type'] : 'script';
@@ -198,10 +205,57 @@ final class TagManagerSettings
                 throw new \InvalidArgumentException('A tag type must be script, call or custom.');
             }
             $ids[$id] = true;
-            $validated[] = ['id' => $id, ...$action, 'enabled' => $tagEnabled, 'consent' => $consent, 'trigger' => $trigger, 'type' => $type];
+            $entry = ['id' => $id, ...$action, 'enabled' => $tagEnabled, 'consent' => $consent, 'trigger' => $trigger, 'type' => $type];
+            if (array_key_exists('after', $tag)) {
+                $entry['after'] = $tag['after'];
+            }
+            $validated[] = $entry;
         }
 
-        return ['enabled' => $enabled, 'variables' => $variables, 'tags' => $validated];
+        return ['enabled' => $enabled, 'variables' => $variables, 'tags' => self::validateChains($validated)];
+    }
+
+    /**
+     * "Run after" makes a tag wait until another tag has finished: its script
+     * loaded, or its method call or custom code done. That tag must run once
+     * per page, and chains cannot loop.
+     *
+     * @param list<array> $tags
+     * @return list<array>
+     */
+    private static function validateChains(array $tags): array
+    {
+        $byId = array_column($tags, null, 'id');
+        foreach ($tags as $tag) {
+            if (!array_key_exists('after', $tag)) {
+                continue;
+            }
+            $after = $tag['after'];
+            if (!is_string($after)) {
+                throw new \InvalidArgumentException(sprintf('Tag %s: "Run after" must be the ID of another tag.', $tag['id']));
+            }
+            if (!isset($byId[$after])) {
+                throw new \InvalidArgumentException(sprintf('Tag %s runs after %s, but there is no tag with that ID.', $tag['id'], $after));
+            }
+            if ($after === $tag['id']) {
+                throw new \InvalidArgumentException(sprintf('Tag %s cannot run after itself.', $tag['id']));
+            }
+            $first = $byId[$after];
+            if ($first['type'] !== 'script' && !in_array($first['trigger']['type'], ['dom_ready', 'window_load'], true)) {
+                throw new \InvalidArgumentException(sprintf('Tag %s runs after %s, which can run many times. Choose a tag that runs once per page: a script, or an action triggered on Document ready or Window finished loading.', $tag['id'], $after));
+            }
+            $chain = [$tag['id']];
+            for ($current = $after; $current !== null; $current = $byId[$current]['after'] ?? null) {
+                $position = array_search($current, $chain, true);
+                if ($position !== false) {
+                    $loop = array_slice($chain, $position);
+                    throw new \InvalidArgumentException(sprintf('Tags %s wait for each other, so none of them would run. Remove one of their "Run after" settings.', count($loop) === 2 ? implode(' and ', $loop) : implode(', ', $loop)));
+                }
+                $chain[] = $current;
+            }
+        }
+
+        return $tags;
     }
 
     /** @return array{type: string, event?: string} */

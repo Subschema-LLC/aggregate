@@ -311,6 +311,56 @@ final class TagManagerSettingsTest extends TestCase
         yield 'site total' => [array_map(static fn (int $index): array => ['id' => 'large'.$index, 'type' => 'custom', 'code' => $large], range(1, 4)), 'may total at most 65,536 bytes'];
     }
 
+    public function testRunAfterIsKeptPublishedAndDroppedWithATagThatIsNotServed(): void
+    {
+        $tracker = self::tag('tracker');
+        $values = ['tag_manager' => ['enabled' => true, 'tags' => [
+            ['id' => 'views', 'type' => 'call', 'method' => 'Aggregate.emit', 'args' => ['view_extra'], 'consent' => 'marketing', 'after' => 'tracker'],
+            $tracker,
+            ['id' => 'later', 'type' => 'call', 'method' => 'Aggregate.emit', 'args' => ['later'], 'consent' => 'functional', 'after' => 'views'],
+        ]]];
+        $settings = $this->settings($values);
+        self::assertSame('tracker', $settings->all()['tags'][0]['after']);
+        self::assertArrayNotHasKey('after', $settings->all()['tags'][1], 'no key without a setting, so existing YAML is unchanged');
+        self::assertSame(['views' => 'tracker', 'tracker' => null, 'later' => 'views'],
+            array_column(array_map(static fn (array $tag): array => ['id' => $tag['id'], 'after' => $tag['after'] ?? null], $settings->toBrowserConfig()['tags']), 'after', 'id'));
+
+        $values['tag_manager']['tags'][1]['enabled'] = false;
+        $disabled = $this->settings($values);
+        self::assertSame([], $disabled->toBrowserConfig()['tags'], 'tags waiting for a disabled tag, directly or not, are not served');
+        self::assertSame(['analytics'], $disabled->consentCategories());
+    }
+
+    #[DataProvider('invalidChains')]
+    public function testRunAfterMustNameAnotherTagThatRunsOncePerPageWithoutALoop(array $tags, string $message): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage($message);
+        TagManagerSettings::validate(['tags' => $tags]);
+    }
+
+    public static function invalidChains(): iterable
+    {
+        $call = static fn (string $id, array $trigger = ['type' => 'dom_ready'], array $extra = []): array => ['id' => $id, 'type' => 'call', 'method' => 'Acme.track', 'trigger' => $trigger] + $extra;
+        yield 'missing' => [[$call('a', extra: ['after' => 'ghost'])], 'Tag a runs after ghost, but there is no tag with that ID.'];
+        yield 'not text' => [[$call('a', extra: ['after' => ['b']]), $call('b')], 'Tag a: "Run after" must be the ID of another tag.'];
+        yield 'itself' => [[$call('a', extra: ['after' => 'a'])], 'Tag a cannot run after itself.'];
+        yield 'event call' => [[$call('a', extra: ['after' => 'b']), $call('b', ['type' => 'data_layer', 'event' => 'purchase'])], 'Tag a runs after b, which can run many times.'];
+        yield 'pair' => [[$call('a', extra: ['after' => 'b']), $call('b', extra: ['after' => 'a'])], 'Tags a and b wait for each other, so none of them would run.'];
+        yield 'loop' => [[$call('x', extra: ['after' => 'a']), $call('a', extra: ['after' => 'b']), $call('b', extra: ['after' => 'c']), $call('c', extra: ['after' => 'a'])], 'Tags a, b, c wait for each other'];
+    }
+
+    public function testATagCanRunAfterAScriptOnAnyTriggerOrAPageLoadAction(): void
+    {
+        $tags = TagManagerSettings::validate(['tags' => [
+            ['id' => 'pixel', 'src' => 'https://scripts.example/pixel.js', 'trigger' => ['type' => 'data_layer', 'event' => 'purchase']],
+            ['id' => 'after-pixel', 'type' => 'call', 'method' => 'Pixel.track', 'trigger' => ['type' => 'data_layer', 'event' => 'purchase'], 'after' => 'pixel'],
+            ['id' => 'setup', 'type' => 'call', 'method' => 'Acme.init', 'trigger' => ['type' => 'window_load']],
+            ['id' => 'after-setup', 'type' => 'call', 'method' => 'Acme.track', 'after' => 'setup'],
+        ]])['tags'];
+        self::assertSame(['after-pixel' => 'pixel', 'after-setup' => 'setup'], array_column(array_filter($tags, static fn (array $tag): bool => isset($tag['after'])), 'after', 'id'));
+    }
+
     public function testMalformedApplicationYamlCannotPublishTags(): void
     {
         file_put_contents($this->projectDir.'/config/aggregate.yaml', 'private_key: [not-valid');

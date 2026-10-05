@@ -226,3 +226,38 @@ test('a template fills the code, trigger, consent and an empty ID, and asks befo
   unknown.controller.applyTemplate();
   assert.equal(unknown.codeInput.value, '');
 });
+
+// Rows with an ID field and a "Run after" list, as the page renders them.
+function chainPage(rows) {
+  const document = {createElement: () => ({value: '', textContent: ''})};
+  const built = rows.map(({id, after = ''}) => {
+    const idField = {value: id, matches: (selector) => selector === 'input[name^="tags["][name$="[id]"]'};
+    const select = {
+      options: [{value: '', textContent: 'No other tag: run on the trigger'}],
+      value: after,
+      replaceChildren(...options) { this.options = options; }
+    };
+    if (after) select.options.push({value: after, textContent: after});
+    return {idField, select, row: {querySelector: (selector) => selector.startsWith('input') ? idField : select}};
+  });
+  const controller = Object.assign(new Page(), {element: {ownerDocument: document, querySelectorAll: () => built.map((entry) => entry.row)}});
+  return {controller, rows: built, choices: (index) => built[index].select.options.map((option) => option.value)};
+}
+
+test('"Run after" lists follow the IDs typed into other rows and keep the current choice', () => {
+  const chain = chainPage([{id: 'tracker'}, {id: 'views', after: 'tracker'}, {id: ''}]);
+  chain.rows[2].idField.value = 'pixel';
+  chain.controller.refreshRunAfter({target: chain.rows[2].idField});
+  assert.deepEqual(chain.choices(0), ['', 'views', 'pixel']);
+  assert.deepEqual(chain.choices(1), ['', 'tracker', 'pixel']);
+  assert.equal(chain.rows[1].select.value, 'tracker');
+  assert.deepEqual(chain.choices(2), ['', 'tracker', 'views']);
+
+  chain.rows[0].idField.value = 'renamed';
+  chain.controller.refreshRunAfter({target: chain.rows[0].idField});
+  assert.deepEqual(chain.choices(1), ['', 'renamed', 'pixel', 'tracker'], 'a choice whose tag was renamed stays visible until changed');
+
+  const other = chainPage([{id: 'tracker'}]);
+  other.controller.refreshRunAfter({target: {matches: () => false}});
+  assert.deepEqual(other.choices(0), [''], 'typing in other fields changes nothing');
+});

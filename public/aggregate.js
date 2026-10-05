@@ -953,9 +953,17 @@
   }
 
   // auto pageview on load
+  var start = function(){
+    Analytics.trackView(undefined, initialViewData);
+    // Tell a tag manager on the page that events can be sent; one that held
+    // events for this tracker sends them now, after the page view.
+    try {
+      document.dispatchEvent(new CustomEvent('aggregate:tracker-ready', {detail: {namespace: namespace}}));
+    } catch(e) {}
+  };
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
-    setTimeout(function(){ Analytics.trackView(undefined, initialViewData); }, 0);
+    setTimeout(start, 0);
   } else {
-    document.addEventListener('DOMContentLoaded', function(){ Analytics.trackView(undefined, initialViewData); });
+    document.addEventListener('DOMContentLoaded', start);
   }
 })();

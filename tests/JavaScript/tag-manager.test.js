@@ -48,7 +48,8 @@ function runtime({config = configuration, cmp, ready = true, nonce, dataLayer, g
     }
   };
   const errors = [];
-  window.console = {error: (...entry) => errors.push(entry)};
+  const warnings = [];
+  window.console = {error: (...entry) => errors.push(entry), warn: (...entry) => warnings.push(entry)};
   const context = vm.createContext({window, document, URL});
   const configuredSource = source.replace(defaults, 'var tagManagerConfig = ' + JSON.stringify(config) + ';')
     .replaceAll('__AGGREGATE_TAG_MANAGER__', JSON.stringify(config))
@@ -58,7 +59,7 @@ function runtime({config = configuration, cmp, ready = true, nonce, dataLayer, g
   const dispatch = (event, detail) => { for (const callback of listeners.get(event) || []) callback({type: event, detail}); };
   const dispatchWindow = (event, detail) => { for (const callback of windowListeners.get(event) || []) callback({type: event, detail}); };
   run();
-  return {window, document, appended, run, dispatch, dispatchWindow, errors};
+  return {window, document, appended, run, dispatch, dispatchWindow, errors, warnings};
 }
 
 function scriptTag(id, trigger, consent = 'none', src = 'https://scripts.example/' + id + '.js') {
@@ -599,13 +600,172 @@ test('tag.push, tag.emit and tag.loadScript respect the dataLayer, tracker names
   assert.equal(page.appended.length, 1);
 });
 
-test('tag.emit returns false without a tracker, and custom code cannot re-enter itself through the dataLayer', () => {
+test('without a tracker tag.emit holds up to 20 events, and custom code cannot re-enter itself through the dataLayer', () => {
   const page = runtime({globals: {count: 0, emitted: []}, config: {enabled: true, tags: [
     customTag('loop', {type: 'data_layer', event: 'again'})
   ]}, custom: {loop: "window.count++; window.emitted.push(tag.emit('x')); tag.push({event: 'again'});"}});
   page.window.dataLayer.push({event: 'again'});
   assert.ok(page.window.count >= 1 && page.window.count <= 100, 'bounded: ' + page.window.count);
-  assert.deepEqual([...new Set(page.window.emitted)], [false]);
+  const held = page.window.emitted.filter((result) => result === true).length;
+  assert.equal(held, Math.min(20, page.window.count));
+  assert.ok(page.window.emitted.slice(20).every((result) => result === false), 'events past the limit are refused');
+});
+
+// A tracker stand-in under the configured namespace.
+function installTracker(page, namespace = 'Aggregate') {
+  const sent = [];
+  page.window[namespace] = {emit(name, properties, goal) { sent.push([name, JSON.parse(JSON.stringify(properties ?? null)), goal]); return true; }};
+  return sent;
+}
+
+test('events held for the tracker are sent, in order and after consent is checked again, once it announces itself', () => {
+  const page = runtime({cmp: consentManager(true), config: {enabled: true, namespace: 'Shop', tags: [
+    customTag('weather', {type: 'dom_ready'}, 'analytics')
+  ]}, custom: {weather: "const data = {app: 'site'}; window.results = [tag.emit('weather_view', data, 'visit'), tag.emit('second')]; data.app = 'changed later';"}});
+  assert.deepEqual([...page.window.results], [true, true], 'held, so reported as accepted');
+  const sent = installTracker(page, 'Shop');
+  assert.deepEqual(sent, [], 'nothing is sent before the tracker announces itself');
+  page.dispatch('aggregate:tracker-ready', {namespace: 'Shop'});
+  assert.deepEqual(sent, [['weather_view', {app: 'site'}, 'visit'], ['second', null, undefined]]);
+  page.dispatch('aggregate:tracker-ready', {namespace: 'Shop'});
+  assert.equal(sent.length, 2, 'each held event is sent once');
+
+  const withdrawn = runtime({cmp: consentManager(true), config: {enabled: true, tags: [customTag('weather', {type: 'dom_ready'}, 'analytics')]},
+    custom: {weather: "tag.emit('weather_view');"}});
+  withdrawn.window.AggregateTags.setConsent({analytics: false});
+  const none = installTracker(withdrawn);
+  withdrawn.dispatch('aggregate:tracker-ready');
+  assert.deepEqual(none, [], 'a tag that lost consent sends nothing it held');
+});
+
+test('held events are also sent at window load and when a script tag loads, for trackers that do not announce themselves', () => {
+  const page = runtime({ready: false, config: {enabled: true, tags: [
+    customTag('early', {type: 'dom_ready'}),
+    scriptTag('tracker', {type: 'dom_ready'})
+  ]}, custom: {early: "tag.emit('early_view');"}});
+  page.dispatch('DOMContentLoaded');
+  const sent = installTracker(page);
+  page.appended[0].listeners.load();
+  assert.deepEqual(sent.map(([name]) => name), ['early_view']);
+
+  const loaded = runtime({ready: false, config: {enabled: true, tags: [customTag('early', {type: 'dom_ready'})]}, custom: {early: "tag.emit('early_view');"}});
+  loaded.dispatch('DOMContentLoaded');
+  const atLoad = installTracker(loaded);
+  loaded.dispatchWindow('load');
+  assert.deepEqual(atLoad.map(([name]) => name), ['early_view']);
+});
+
+test('a tag set to run after a script waits until that script has loaded, even when both share a trigger', () => {
+  const page = runtime({ready: false, cmp: consentManager(true), globals: {ran: []}, config: {enabled: true, tags: [
+    {...customTag('weather', {type: 'dom_ready'}, 'analytics'), after: 'tracker'},
+    scriptTag('tracker', {type: 'dom_ready'}, 'analytics')
+  ]}, custom: {weather: "window.ran.push('weather');"}});
+  page.dispatch('DOMContentLoaded');
+  assert.deepEqual(page.appended.map((script) => script.attributes['data-aggregate-tag']), ['tracker']);
+  assert.deepEqual([...page.window.ran], [], 'waiting for the script');
+  page.dispatchWindow('load');
+  assert.deepEqual([...page.window.ran], []);
+  page.appended[0].listeners.load();
+  assert.deepEqual([...page.window.ran], ['weather']);
+  page.window.AggregateTags.setConsent({analytics: true});
+  assert.deepEqual([...page.window.ran], ['weather'], 'a page-load tag still runs once');
+});
+
+test('consent given after the page loaded runs the chain in order: the script loads, then the waiting tag', () => {
+  const page = runtime({globals: {ran: []}, config: {enabled: true, tags: [
+    scriptTag('tracker', {type: 'dom_ready'}, 'analytics'),
+    {...customTag('weather', {type: 'window_load'}, 'analytics'), after: 'tracker'}
+  ]}, custom: {weather: "window.ran.push(tag.emit('weather_view'));"}});
+  page.window.AggregateTags.setConsent({analytics: true});
+  assert.equal(page.appended.length, 1);
+  assert.deepEqual([...page.window.ran], []);
+  const sent = installTracker(page);
+  page.appended[0].listeners.load();
+  assert.deepEqual([...page.window.ran], [true]);
+  assert.deepEqual(sent.map(([name]) => name), ['weather_view']);
+});
+
+test('waiting runs check consent again, event triggers keep each event in order, and denied tags never wait', () => {
+  const page = runtime({ready: false, globals: {ran: []}, config: {enabled: true, tags: [
+    scriptTag('library', {type: 'window_load'}),
+    {...customTag('purchase', {type: 'data_layer', event: 'purchase'}, 'marketing'), after: 'library'},
+    {...callTag('denied', {type: 'data_layer', event: 'purchase'}, [], 'analytics'), after: 'library'}
+  ]}, custom: {purchase: "window.ran.push(tag.data.total);"}});
+  page.window.AggregateTags.setConsent({marketing: true});
+  page.window.dataLayer.push({event: 'purchase', total: 1});
+  page.window.dataLayer.push({event: 'purchase', total: 2});
+  page.dispatchWindow('load');
+  page.appended[0].listeners.load();
+  assert.deepEqual([...page.window.ran], [1, 2]);
+  page.window.dataLayer.push({event: 'purchase', total: 3});
+  assert.deepEqual([...page.window.ran], [1, 2, 3], 'later events run straight away');
+
+  const revoked = runtime({ready: false, globals: {ran: []}, config: {enabled: true, tags: [
+    scriptTag('library', {type: 'window_load'}),
+    {...customTag('purchase', {type: 'data_layer', event: 'purchase'}, 'marketing'), after: 'library'}
+  ]}, custom: {purchase: "window.ran.push(tag.data.total);"}});
+  revoked.window.AggregateTags.setConsent({marketing: true});
+  revoked.window.dataLayer.push({event: 'purchase', total: 1});
+  revoked.window.AggregateTags.setConsent({marketing: false});
+  revoked.dispatchWindow('load');
+  assert.equal(revoked.appended.length, 1);
+  revoked.appended[0].listeners.load();
+  assert.deepEqual([...revoked.window.ran], [], 'withdrawn before the script loaded');
+});
+
+test('custom and call tags finish when their code is done; a returned promise finishes when it resolves', async () => {
+  const ran = [];
+  const page = runtime({globals: {ran, Library: {track() { ran.push('call'); }}}, config: {enabled: true, tags: [
+    {...customTag('third', {type: 'dom_ready'}), after: 'second'},
+    {...customTag('second', {type: 'dom_ready'}), after: 'first'},
+    callTag('first', {type: 'dom_ready'})
+  ]}, custom: {
+    second: "window.ran.push('second start'); return new Promise((resolve) => { window.resolveSecond = resolve; });",
+    third: "window.ran.push('third');"
+  }});
+  assert.deepEqual([...page.window.ran], ['call', 'second start']);
+  page.window.resolveSecond();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual([...page.window.ran], ['call', 'second start', 'third']);
+});
+
+test('when a tag fails, the tags waiting for it do not run and one console warning names them', async () => {
+  const page = runtime({globals: {ran: []}, config: {enabled: true, tags: [
+    scriptTag('vendor', {type: 'dom_ready'}),
+    {...customTag('setup', {type: 'dom_ready'}), after: 'vendor'},
+    {...customTag('broken', {type: 'dom_ready'})},
+    {...customTag('rejects', {type: 'dom_ready'})},
+    {...customTag('after-broken', {type: 'dom_ready'}), after: 'broken'},
+    {...customTag('after-rejects', {type: 'dom_ready'}), after: 'rejects'}
+  ]}, custom: {
+    setup: "window.ran.push('setup');",
+    broken: "throw new Error('broken');",
+    rejects: "return Promise.reject(new Error('rejected'));",
+    'after-broken': "window.ran.push('after-broken');",
+    'after-rejects': "window.ran.push('after-rejects');"
+  }});
+  page.appended[0].listeners.error();
+  page.appended[0].listeners.error();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual([...page.window.ran], []);
+  assert.deepEqual(page.warnings.map(([message]) => message).sort(), [
+    '[Aggregate tag manager] Tag "broken" failed, so the tags set to run after it did not run: "after-broken".',
+    '[Aggregate tag manager] Tag "rejects" failed, so the tags set to run after it did not run: "after-rejects".',
+    '[Aggregate tag manager] Tag "vendor" could not load its script, so the tags set to run after it did not run: "setup".'
+  ]);
+});
+
+test('"Run after" must name another tag in the configuration', () => {
+  for (const after of ['missing', 'self', 12, null]) {
+    const page = runtime({config: {enabled: true, tags: [
+      {...scriptTag('self', {type: 'dom_ready'}), after}, scriptTag('other', {type: 'dom_ready'})
+    ]}});
+    assert.equal(page.appended.length, 0, String(after));
+  }
+  const valid = runtime({config: {enabled: true, tags: [{...scriptTag('first', {type: 'dom_ready'}), after: 'second'}, scriptTag('second', {type: 'dom_ready'})]}});
+  assert.deepEqual(valid.appended.map((script) => script.attributes['data-aggregate-tag']), ['second']);
+  valid.appended[0].listeners.load();
+  assert.deepEqual(valid.appended.map((script) => script.attributes['data-aggregate-tag']), ['second', 'first']);
 });
 
 test('a custom tag without its compiled function, or with a malformed namespace, disables every tag', () => {

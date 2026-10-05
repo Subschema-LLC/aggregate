@@ -1,4 +1,4 @@
-{% props index, tag, script_suggestions = false, custom_scripts_enabled = true, custom_templates = [] %}
+{% props index, tag, script_suggestions = false, custom_scripts_enabled = true, custom_templates = [], tag_ids = [] %}
 
 <div class="box">
     <fieldset class="tag-settings-fieldset" data-tag-row data-controller="components--tag-manager--tag-row" aria-describedby="tag-{{ index }}-help">
@@ -71,6 +71,16 @@ tag.emit('newsletter_signup', {plan: tag.get('plan')});" data-components--tag-ma
             {% for type, label in {dom_ready: 'Document ready', window_load: 'Window finished loading', document_event: 'Document event', window_event: 'Window event', data_layer: 'dataLayer event'} %}<option value="{{ type }}"{% if tag.trigger.type == type %} selected{% endif %}>{{ label }}</option>{% endfor %}
         </select></div></div>
         <div class="field" data-event-field data-components--tag-manager--tag-row-target="eventField"><label class="label" for="tag-{{ index }}-event">Event name</label><div class="control"><input class="input" id="tag-{{ index }}-event" name="tags[{{ index }}][trigger][event]" value="{{ tag.trigger.event|default('') }}" maxlength="100" pattern="[A-Za-z][A-Za-z0-9_.:-]{0,99}" list="tag-event-examples" placeholder="purchase"></div><p class="help">Enter the exact name for a document, window or dataLayer event. Leave empty for document ready or window load. The event is a trigger; its payload is not copied into arguments automatically.</p></div>
+        {% set after = tag.after|default('') %}
+        <div class="field">
+            <label class="label" for="tag-{{ index }}-after">Run after</label>
+            <div class="control"><div class="select"><select id="tag-{{ index }}-after" name="tags[{{ index }}][after]" data-tag-after aria-describedby="tag-{{ index }}-after-help">
+                <option value="">No other tag: run on the trigger</option>
+                {% for id in tag_ids %}{% if id != tag.id %}<option value="{{ id }}"{% if after == id %} selected{% endif %}>{{ id }}</option>{% endif %}{% endfor %}
+                {% if after and after not in tag_ids %}<option value="{{ after }}" selected>{{ after }}</option>{% endif %}
+            </select></div></div>
+            <p class="help" id="tag-{{ index }}-after-help">Waits until that tag has finished: its script has loaded, or its method call or custom code is done. Use it to run code after the tracker or a vendor library has loaded. Choose a tag that runs once per page; if it never runs, this one does not either.</p>
+        </div>
         {% if tag.id %}<label class="checkbox"><input type="checkbox" name="tags[{{ index }}][remove]" value="1"{% if tag.remove|default(false) %} checked{% endif %}> Remove this tag when saving</label>{% endif %}
     </fieldset>
 </div>
