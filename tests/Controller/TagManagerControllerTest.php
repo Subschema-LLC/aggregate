@@ -444,6 +444,7 @@ final class TagManagerControllerTest extends TestCase
         $view = new Crawler((string) $this->controller($request)->index($request)->getContent());
 
         self::assertSame($tracker, $view->filter('#tag-manager-tracker-url')->text());
+        self::assertStringContainsString('&cd.page_type={{page_type}}', $view->filter('#tag-manager-tracker-title')->ancestors()->first()->text());
         self::assertStringContainsString('first.example', $view->filter('#tag-manager-tracker-title')->text());
         $add = $view->filter('[data-action="pages--tag-manager--index#addTracker"]');
         self::assertSame($tracker, $add->attr('data-pages--tag-manager--index-url-param'));
@@ -513,6 +514,7 @@ final class TagManagerControllerTest extends TestCase
                 'app_tag_manager_save' => '/dashboard/tag-manager/save',
                 'app_tag_manager_download' => '/dashboard/tag-manager/download',
                 'app_setup' => '/dashboard/setup',
+                'app_data_model' => '/dashboard/data-model',
             };
 
             return $path.($parameters !== [] ? '?'.http_build_query($parameters) : '');

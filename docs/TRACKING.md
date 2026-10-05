@@ -156,7 +156,28 @@ The tracker reads `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_c
 
 `query_parameter_mappings` maps each source parameter to a defined JSON property. Multiple parameters may target the same property. Configuration order determines priority: the first source with a nonblank value wins; repeated occurrences use the first nonblank value. Names match exactly, including case. Explicit scalar values passed to `emit()` take precedence, including `false`, `0`, an empty string, and `null`.
 
-Mapped values accompany page views and named events when consent permits. The tracker reads the current page query for each event, never the tracker script URL or the referrer, and does not persist attribution in cookies or browser storage. A subsequent page without the parameter has no carried-forward campaign value. Unmapped parameters and URL fragments are omitted.
+Mapped values accompany page views and named events when consent permits. The tracker reads the current page query for each event, never the referrer, and does not persist attribution in cookies or browser storage. A subsequent page without the parameter has no carried-forward campaign value. Unmapped parameters and URL fragments are omitted. Values in the tracker's own script URL are a separate, explicit source; see below.
+
+### Custom data in the script URL
+
+The tracker's script URL can carry properties for the automatic page view as
+`cd.<property>=<value>`:
+
+```html
+<script src="https://your-host/aggregate.js?min=1&amp;endpoint=https%3A%2F%2Fyour-host%2Fapi%2Freceive&amp;token=your-website-token&amp;consent=0&amp;cd.page_type=pricing&amp;cd.section=sales" defer referrerpolicy="no-referrer"></script>
+```
+
+This is mainly for the [tag manager](TAG-MANAGER.md#load-the-tracker-through-the-manager),
+whose script URLs can fill values from page or dataLayer variables, such as
+`&cd.page_type={{page_type}}`. The values behave like properties passed to
+`emit()`:
+
+- They go only with the page view sent when the script loads. Later `trackView()` calls and named events do not inherit them; pass properties to `emit()` for those.
+- Each property must be defined in the data model, and the server drops anything else. A property requiring consent is sent only after an affirmative analytics choice; before that, only properties with `consent_required: false` are sent. Strict collection sends none.
+- Values are strings, trimmed, with control characters removed and at most 500 UTF-8 bytes. Empty values are skipped, and a repeated name keeps its first nonblank value. Numeric and boolean typed properties are not filled from the URL, as with page query mappings.
+- They take precedence over page query mappings for the same property. Prefixes are case-sensitive: `CD.plan` is ignored.
+
+Script URL values are part of the request for the script itself, so the analytics host, and any proxy or CDN in front of it, receives them whatever the visitor's consent choice. Aggregate does not store that request, and the supplied nginx and Apache examples keep `/aggregate.js` out of access logs. Use page-level descriptions such as a page type, section or plan tier, never personal data. Varying values also give each variant its own browser cache entry for the script.
 
 Set a property's `consent_required` to `false` to permit it before a choice, after rejection, and after withdrawal. The server independently enforces this property allowlist for API clients as well as the SDK. For anonymous UTM collection, the recommendation is **no more detail than `utm_medium`**, using reviewed channel codes such as `email`, `social`, or `cpc`. This is advisory: each UTM property can be enabled separately. Enabling source, campaign, term, content, or ID can expose campaign details, search text, or identifiers. Review actual values before overriding the recommendation; permitting a key does not restrict its values to a fixed vocabulary.
 

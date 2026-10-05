@@ -51,6 +51,7 @@
                 {{ component('Ui:CopyButton', {target: 'tag-manager-tracker-url', status: 'tag-manager-tracker-status', label: 'Copy tracker URL', class: 'button'}) }}
             </div>
             <p class="help" id="tag-manager-tracker-status" role="status" aria-live="polite" data-pages--tag-manager--index-target="status"></p>
+            <p class="help">To send custom data with the page view, add <code>&amp;cd.&lt;property&gt;=&lt;value&gt;</code> to the URL, for example <code>&amp;cd.page_type={% verbatim %}{{page_type}}{% endverbatim %}</code> with a variable below. Each property must be defined in the <a href="{{ path('app_data_model') }}">data model</a>, and those requiring consent are recorded only after an analytics choice. If a variable is missing on a page, the whole tag is skipped and the tracker does not load there.</p>
         </section>
     {% endif %}
 

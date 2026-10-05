@@ -101,6 +101,7 @@ Before an anonymous-mode event leaves the browser, the SDK:
 - accepts only fixed event names matching `[A-Za-z][A-Za-z0-9_.:-]{0,99}`, such as `view`, `button_click`, or `ui:menu_open`, and rejects identifier-like names;
 - uses `location.pathname` for the page path;
 - omits full query strings and fragments, extracting only configured query parameters whose destination properties permit anonymous collection;
+- sends `cd.*` values from its own script URL with the first page view only when their properties permit anonymous collection (those values reach the analytics host in the script request whatever the consent state, so they should describe the page, not the visitor);
 - redacts path segments resembling email addresses, UUIDs, numeric route IDs, hex IDs, or opaque tokens;
 - converts the referrer to a coarse channel: `direct`, `internal`, `search`, `social`, `email`, `referral`, or `unknown`;
 - sends only coarse device and viewport buckets;
