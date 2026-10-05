@@ -66,7 +66,7 @@ An anonymous-mode page-view row is recorded automatically when the script loads.
 Use a fixed event taxonomy. Names must match `[A-Za-z][A-Za-z0-9_.:-]{0,99}` and must not contain user-entered or identifier-like values.
 Even with enhanced consent, keep event properties purpose-limited and avoid emails, account IDs, form contents, search terms, or other free text.
 
-Call SDK methods after the script has loaded. The following sequence illustrates the API; connect the consent calls to actual consent-manager choices rather than running the whole sequence on page load. The SDK does not queue calls made before it exists.
+Call SDK methods after the script has loaded. The following sequence illustrates the API; connect the consent calls to actual consent-manager choices rather than running the whole sequence on page load. The SDK does not queue calls made before it exists. Once it has sent its automatic page view, it dispatches `aggregate:tracker-ready` on `document`, with the namespace in `event.detail.namespace`, so later scripts can wait for it; the tag manager's `tag.emit()` [holds events until then](TAG-MANAGER.md#custom-javascript).
 
 ```javascript
 // Anonymous mode records the safe event name, coarse context, and the allowlisted
