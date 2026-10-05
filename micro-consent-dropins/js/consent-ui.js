@@ -34,7 +34,7 @@
   var input = own(window, 'MicroConsentConfig');
   if (input === absent) input = {};
   if (!record(input)) { validConfig = false; input = {}; }
-  var keys = ['name', 'privacyPolicyUrl', 'formspreeEndpoint', 'categories', 'respectGpc', 'consentLifetimeDays', 'revision', 'storageKey', 'aggregateNamespace'];
+  var keys = ['name', 'privacyPolicyUrl', 'formspreeEndpoint', 'categories', 'respectGpc', 'consentLifetimeDays', 'revision', 'storageKey', 'aggregateNamespace', 'text', 'theme', 'buttons'];
   try {
     Object.getOwnPropertyNames(input).forEach(function (key) {
       if (keys.indexOf(key) === -1 || own(input, key) === absent) validConfig = false;
@@ -45,6 +45,110 @@
     if (value === absent) return fallback;
     if (!check(value)) { validConfig = false; return fallback; }
     return value;
+  }
+  // Default wording. Keep in step with ConsentAppearance::DEFAULT_TEXT (a test compares them).
+  var defaultText = {
+    "title": "{name}: privacy choices",
+    "description": "Choose which optional categories to allow. They start denied. You can change your choices at any time.",
+    "details": [
+      "These choices apply to connected tools. If this website uses privacy-minimized analytics, coarse measurement may continue after rejection. See its privacy notice for the actual data and providers."
+    ],
+    "privacyLink": "Read this website’s privacy notice",
+    "reject": "Reject optional categories",
+    "accept": "Accept optional categories",
+    "manage": "Manage choices",
+    "save": "Save selected choices",
+    "reopen": "Privacy choices",
+    "close": "Close privacy settings",
+    "settingsLabel": "Privacy settings",
+    "preferencesTab": "Preferences",
+    "requestsTab": "Privacy request",
+    "preferencesIntro": "Allow only the categories you choose. Rejection and withdrawal stop future actions in connected tools. Scripts already loaded may continue until you reload, and their cookies and stored history are not automatically erased.",
+    "categoriesLegend": "Optional categories",
+    "categories": {
+      "analytics": "Analytics (enhanced details when connected to the analytics tracker)"
+    },
+    "optOut": "Opt out of sale, sharing, or targeted advertising in connected tools",
+    "optOutHelp": "This opt-out disables the marketing category and signals connected providers. It cannot enforce choices for tools that are not connected or process an organization-wide privacy request.",
+    "gpcNotice": "Your browser sends Global Privacy Control. We keep the advertising opt-out on and marketing denied. This signal does not grant analytics consent.",
+    "storageNotice": "Your category choices, opt-out, policy revision, and save time are stored in this browser for up to {days} days. No visitor identifier is added.",
+    "statusApplied": "Your privacy choices have been applied.",
+    "statusNotSaved": "They could not be saved. Choose again on your next visit.",
+    "statusOtherTab": "Privacy choices were updated in another tab.",
+    "requestDisclosure": "Submitting this form sends your email address, request type, and optional message to Formspree for this website’s operator. Nothing is sent until you submit. No visitor identifier or page URL is added. Do not include sensitive information.",
+    "requestEmail": "Email address",
+    "requestType": "Request type",
+    "requestAccess": "Access my data",
+    "requestDelete": "Delete my data",
+    "requestCorrect": "Correct my data",
+    "requestOptOut": "Opt out of sale, sharing, or targeted advertising",
+    "requestMessage": "Message (optional, up to 2,000 characters)",
+    "requestSubmit": "Submit privacy request",
+    "requestInvalid": "Enter a valid email address and request type, and keep your message within 2,000 characters.",
+    "requestUnavailable": "This request could not be sent. Use the contact information in this website’s privacy notice.",
+    "requestSending": "Sending your request to Formspree…",
+    "requestFailed": "Your request could not be submitted. Your entries are still here; retry or use the contact information in this website’s privacy notice.",
+    "requestSent": "Your request was submitted to Formspree for this website’s operator. The operator must review and process it; submission does not erase stored data."
+  };
+  // Labels allow 120 UTF-8 bytes; paragraphs and messages allow 1,000.
+  var labelKeys = ["title", "privacyLink", "reject", "accept", "manage", "save", "reopen", "close", "settingsLabel", "preferencesTab", "requestsTab", "categoriesLegend", "categories", "requestEmail", "requestType", "requestAccess", "requestDelete", "requestCorrect", "requestOptOut", "requestMessage", "requestSubmit"];
+  var themeDefaults = {background: '#FFFFFF', text: '#17212D', accent: '#174F85', border: '#B7C1CE', buttonBackground: '#FFFFFF', buttonText: '#174F85', buttonBorder: '#174F85'};
+  var buttonNames = ['reject', 'accept', 'manage'];
+  var reopenPositions = ['bottom-left', 'bottom-right', 'hidden'];
+  function names(value) {
+    try { return Object.keys(value); } catch (error) { return null; }
+  }
+  function hexColor(value) {
+    if (typeof value !== 'string' || !/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(value)) return null;
+    var hex = value.slice(1).toUpperCase();
+    return '#' + (hex.length === 3 ? hex.replace(/./g, '$&$&') : hex);
+  }
+  function contrast(first, second) {
+    function luminance(hex) {
+      return [1, 3, 5].reduce(function (sum, offset, index) {
+        var channel = parseInt(hex.slice(offset, offset + 2), 16) / 255;
+        channel = channel <= 0.04045 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4);
+        return sum + [0.2126, 0.7152, 0.0722][index] * channel;
+      }, 0);
+    }
+    var a = luminance(first), b = luminance(second);
+    return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+  }
+  // The same rules as the server's ConsentAppearance; anything else fails closed.
+  function validText(value) {
+    var entries = record(value) ? names(value) : null;
+    return !!entries && entries.every(function (key) {
+      var entry = own(value, key);
+      if (!Object.prototype.hasOwnProperty.call(defaultText, key) || entry === absent) return false;
+      if (key === 'details') {
+        return Array.isArray(entry) && entry.length <= 4 && entry.every(function (paragraph) { return boundedText(paragraph, 1000, false); });
+      }
+      if (key === 'categories') {
+        var categories = record(entry) ? names(entry) : null;
+        return !!categories && categories.every(function (category) {
+          return /^[a-z][a-z0-9_-]{0,31}$/.test(category) && reserved.indexOf(category) === -1 && boundedText(own(entry, category), 120, false);
+        });
+      }
+      return boundedText(entry, labelKeys.indexOf(key) === -1 ? 1000 : 120, false);
+    });
+  }
+  function validTheme(value) {
+    var entries = record(value) ? names(value) : null;
+    if (!entries || !entries.every(function (key) { return Object.prototype.hasOwnProperty.call(themeDefaults, key) && hexColor(own(value, key)) !== null; })) return false;
+    var colors = {};
+    names(themeDefaults).forEach(function (key) { colors[key] = entries.indexOf(key) === -1 ? themeDefaults[key] : hexColor(own(value, key)); });
+    return contrast(colors.text, colors.background) >= 4.5 && contrast(colors.accent, colors.background) >= 4.5
+      && contrast(colors.buttonText, colors.buttonBackground) >= 4.5
+      && Math.max(contrast(colors.buttonBackground, colors.background), contrast(colors.buttonBorder, colors.background)) >= 3;
+  }
+  function validButtons(value) {
+    var entries = record(value) ? names(value) : null;
+    if (!entries || !entries.every(function (key) { return key === 'show' || key === 'reopen'; })) return false;
+    var show = own(value, 'show'), reopen = own(value, 'reopen');
+    return (show === absent || (Array.isArray(show) && show.indexOf('reject') !== -1
+        && (show.indexOf('accept') !== -1 || show.indexOf('manage') !== -1)
+        && show.every(function (button, index) { return buttonNames.indexOf(button) !== -1 && show.indexOf(button) === index; })))
+      && (reopen === absent || reopenPositions.indexOf(reopen) !== -1);
   }
   var config = {
     name: option('name', 'Privacy choices', function (value) { return boundedText(value, 120, false); }),
@@ -63,8 +167,30 @@
     consentLifetimeDays: option('consentLifetimeDays', 180, function (value) { return Number.isInteger(value) && value >= 1 && value <= 365; }),
     revision: option('revision', '1', function (value) { return boundedText(value, 64, false); }),
     storageKey: option('storageKey', 'micro_consent_v2', function (value) { return boundedText(value, 191, false); }),
-    aggregateNamespace: option('aggregateNamespace', 'Aggregate', function (value) { return boundedText(value, 120, false) && reserved.indexOf(value) === -1; })
+    aggregateNamespace: option('aggregateNamespace', 'Aggregate', function (value) { return boundedText(value, 120, false) && reserved.indexOf(value) === -1; }),
+    text: option('text', {}, validText),
+    theme: option('theme', {}, validTheme),
+    buttons: option('buttons', {}, validButtons)
   };
+  function t(key) {
+    var value = own(config.text, key);
+    var result = typeof value === 'string' ? value.trim() : defaultText[key];
+    if (key === 'title') result = result.split('{name}').join(config.name.trim());
+    if (key === 'storageNotice') result = result.split('{days}').join(String(config.consentLifetimeDays));
+    return result;
+  }
+  function details() {
+    var value = own(config.text, 'details');
+    return (value === absent ? defaultText.details : value).map(function (paragraph) { return paragraph.trim(); });
+  }
+  function categoryLabel(category) {
+    var value = own(own(config.text, 'categories'), category);
+    if (typeof value === 'string') return value.trim();
+    return own(defaultText.categories, category) !== absent ? defaultText.categories[category]
+      : category.replace(/[-_]/g, ' ').replace(/^./, function (letter) { return letter.toUpperCase(); });
+  }
+  var shownButtons = own(config.buttons, 'show') === absent ? buttonNames.slice() : own(config.buttons, 'show').slice();
+  var reopenPosition = own(config.buttons, 'reopen') === absent ? 'bottom-right' : own(config.buttons, 'reopen');
   config.name = config.name.trim();
   config.revision = config.revision.trim();
   config.categories = config.categories.slice();
@@ -208,7 +334,7 @@
     renderState();
     closePanel();
     if (status) status.textContent = validConfig
-      ? 'Your privacy choices have been applied.' + (storageAvailable ? '' : ' They could not be saved. Choose again on your next visit.')
+      ? t('statusApplied') + (storageAvailable ? '' : ' ' + t('statusNotSaved'))
       : 'Privacy controls are misconfigured. Optional categories remain denied.';
   }
   function selectPanel(showRequests) {
@@ -250,7 +376,7 @@
     try { restore(window.localStorage.getItem(config.storageKey)); }
     catch (error) { storageAvailable = false; deny(); }
     notify(); renderState();
-    if (status) status.textContent = 'Privacy choices were updated in another tab.';
+    if (status) status.textContent = t('statusOtherTab');
   });
   window.addEventListener('focus', function () { getState(); enforceSignals(); notify(); renderState(); });
 
@@ -267,7 +393,7 @@
   }
   function policyLink(parent) {
     if (!config.privacyPolicyUrl) return;
-    var link = element('a', 'Read this website’s privacy notice');
+    var link = element('a', t('privacyLink'));
     link.href = config.privacyPolicyUrl; link.referrerPolicy = 'no-referrer'; parent.appendChild(link);
   }
   function accept() {
@@ -275,24 +401,32 @@
     config.categories.forEach(function (category) { selected[category] = true; });
     setConsent(selected);
   }
+  // The banner shows the configured buttons; the preferences dialog replaces
+  // manage with save. Every action button shares one style.
   function actions(parent, withSave) {
     var row = element('div', null, 'mc-actions');
-    row.appendChild(button('Reject optional categories', function () { setConsent({}); }));
-    var allow = button('Accept optional categories', accept);
-    allow.disabled = !validConfig; row.appendChild(allow);
-    if (withSave) {
-      var save = button('Save selected choices', function () {
-        var selected = {};
-        config.categories.forEach(function (category) { selected[category] = checkboxes[category].checked === true; });
-        selected.doNotSell = optOutControl.checked === true;
-        setConsent(selected);
-      });
-      save.disabled = !validConfig; row.appendChild(save);
-    } else row.appendChild(button('Manage choices', function () { open(false); }));
+    var list = shownButtons.map(function (name) { return withSave && name === 'manage' ? 'save' : name; });
+    if (withSave && list.indexOf('save') === -1) list.push('save');
+    list.forEach(function (name) {
+      var node;
+      if (name === 'reject') node = button(t('reject'), function () { setConsent({}); });
+      else if (name === 'manage') node = button(t('manage'), function () { open(false); });
+      else if (name === 'accept') { node = button(t('accept'), accept); node.disabled = !validConfig; }
+      else {
+        node = button(t('save'), function () {
+          var selected = {};
+          config.categories.forEach(function (category) { selected[category] = checkboxes[category].checked === true; });
+          selected.doNotSell = optOutControl.checked === true;
+          setConsent(selected);
+        });
+        node.disabled = !validConfig;
+      }
+      row.appendChild(node);
+    });
     parent.appendChild(row);
   }
   function requestForm(parent) {
-    var disclosure = element('p', 'Submitting this form sends your email address, request type, and optional message to Formspree for this website’s operator. Nothing is sent until you submit. No visitor identifier or page URL is added. Do not include sensitive information.');
+    var disclosure = element('p', t('requestDisclosure'));
     disclosure.id = 'mc-request-disclosure'; parent.appendChild(disclosure);
     var form = element('form');
     form.id = 'mc-request-form'; form.method = 'post'; form.action = config.formspreeEndpoint;
@@ -304,16 +438,16 @@
       row.appendChild(label); row.appendChild(control); form.appendChild(row);
       return control;
     }
-    var email = field('input', 'email', 'Email address');
+    var email = field('input', 'email', t('requestEmail'));
     email.type = 'email'; email.required = true; email.maxLength = 254; email.autocomplete = 'email';
-    var type = field('select', 'request_type', 'Request type');
-    [['access', 'Access my data'], ['delete', 'Delete my data'], ['correct', 'Correct my data'], ['opt-out', 'Opt out of sale, sharing, or targeted advertising']].forEach(function (entry) {
+    var type = field('select', 'request_type', t('requestType'));
+    [['access', t('requestAccess')], ['delete', t('requestDelete')], ['correct', t('requestCorrect')], ['opt-out', t('requestOptOut')]].forEach(function (entry) {
       var option = element('option', entry[1]); option.value = entry[0]; type.appendChild(option);
     });
     type.value = 'access';
-    var message = field('textarea', 'message', 'Message (optional, up to 2,000 characters)');
+    var message = field('textarea', 'message', t('requestMessage'));
     message.maxLength = 2000; message.rows = 3;
-    var submit = element('button', 'Submit privacy request', 'mc-button'); submit.type = 'submit'; form.appendChild(submit);
+    var submit = element('button', t('requestSubmit'), 'mc-button'); submit.type = 'submit'; form.appendChild(submit);
     var feedback = element('p', '', 'mc-request-status'); feedback.id = 'mc-request-status';
     feedback.setAttribute('role', 'status'); feedback.setAttribute('aria-live', 'polite'); form.appendChild(feedback);
     var pending = false;
@@ -326,15 +460,15 @@
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address) || address.length > 254
         || ['access', 'delete', 'correct', 'opt-out'].indexOf(kind) === -1 || text.length > 2000
         || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/.test(text)) {
-        feedback.textContent = 'Enter a valid email address and request type, and keep your message within 2,000 characters.'; return;
+        feedback.textContent = t('requestInvalid'); return;
       }
       if (!validConfig || !config.formspreeEndpoint || typeof window.fetch !== 'function') {
-        feedback.textContent = 'This request could not be sent. Use the contact information in this website’s privacy notice.'; return;
+        feedback.textContent = t('requestUnavailable'); return;
       }
       var data = new FormData();
       data.append('email', address); data.append('request_type', kind); data.append('message', text);
-      pending = true; submit.disabled = true; feedback.textContent = 'Sending your request to Formspree…';
-      function failed() { feedback.textContent = 'Your request could not be submitted. Your entries are still here; retry or use the contact information in this website’s privacy notice.'; }
+      pending = true; submit.disabled = true; feedback.textContent = t('requestSending');
+      function failed() { feedback.textContent = t('requestFailed'); }
       var submission;
       try {
         submission = window.fetch(config.formspreeEndpoint, {
@@ -344,7 +478,7 @@
       Promise.resolve(submission).then(function (response) {
         if (!response || response.ok !== true) { failed(); return; }
         email.value = ''; message.value = '';
-        feedback.textContent = 'Your request was submitted to Formspree for this website’s operator. The operator must review and process it; submission does not erase stored data.';
+        feedback.textContent = t('requestSent');
       }, failed).then(function () { pending = false; submit.disabled = false; });
     });
     parent.appendChild(form);
@@ -359,22 +493,30 @@
       style.referrerPolicy = 'no-referrer'; document.head.appendChild(style);
     }
     root = element('div', null, 'mc-root');
+    // Validated #RRGGBB colors reach the stylesheet through CSSOM, which CSP allows.
+    names(config.theme).forEach(function (key) {
+      if (root.style && typeof root.style.setProperty === 'function') {
+        root.style.setProperty('--mc-' + key.replace(/[A-Z]/g, function (letter) { return '-' + letter.toLowerCase(); }), hexColor(config.theme[key]));
+      }
+    });
     banner = element('section', null, 'mc-banner'); banner.setAttribute('aria-labelledby', 'mc-banner-title');
-    var title = element('h2', config.name + ': privacy choices'); title.id = 'mc-banner-title'; banner.appendChild(title);
-    banner.appendChild(element('p', 'Choose which optional categories to allow. They start denied. You can change your choices at any time.'));
-    banner.appendChild(element('p', 'These choices apply to connected tools. If this website uses privacy-minimized analytics, coarse measurement may continue after rejection. See its privacy notice for the actual data and providers.'));
+    var title = element('h2', t('title')); title.id = 'mc-banner-title'; banner.appendChild(title);
+    banner.appendChild(element('p', t('description')));
+    details().forEach(function (paragraph) { banner.appendChild(element('p', paragraph)); });
     if (!validConfig) banner.appendChild(element('p', 'Privacy controls are misconfigured. Optional categories remain denied. Contact this website’s operator.', 'mc-error'));
     policyLink(banner); actions(banner, false);
-    opener = button('Privacy choices', function () { open(false); }); opener.className += ' mc-open';
+    opener = button(t('reopen'), function () { open(false); }); opener.className += ' mc-open' + (reopenPosition === 'bottom-left' ? ' mc-open--left' : '');
+    // A hidden button needs the website's own link to MicroConsent.open().
+    opener.hidden = reopenPosition === 'hidden';
     opener.setAttribute('aria-controls', 'mc-dialog'); opener.setAttribute('aria-expanded', 'false');
     dialog = element('dialog', null, 'mc-dialog'); dialog.id = 'mc-dialog'; dialog.hidden = true;
     dialog.setAttribute('role', 'dialog'); dialog.setAttribute('aria-modal', 'true'); dialog.setAttribute('aria-labelledby', 'mc-dialog-title');
-    heading = element('h2', config.name + ': privacy choices'); heading.id = 'mc-dialog-title'; heading.tabIndex = -1; dialog.appendChild(heading);
-    var tabs = element('div', null, 'mc-tabs'); tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', 'Privacy settings');
-    preferenceTab = button('Preferences', function () { selectPanel(false); }); preferenceTab.id = 'mc-preferences-tab';
+    heading = element('h2', t('title')); heading.id = 'mc-dialog-title'; heading.tabIndex = -1; dialog.appendChild(heading);
+    var tabs = element('div', null, 'mc-tabs'); tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', t('settingsLabel'));
+    preferenceTab = button(t('preferencesTab'), function () { selectPanel(false); }); preferenceTab.id = 'mc-preferences-tab';
     preferenceTab.setAttribute('role', 'tab'); preferenceTab.setAttribute('aria-controls', 'mc-preferences'); tabs.appendChild(preferenceTab);
     if (validConfig && config.formspreeEndpoint) {
-      requestTab = button('Privacy request', function () { selectPanel(true); }); requestTab.id = 'mc-requests-tab';
+      requestTab = button(t('requestsTab'), function () { selectPanel(true); }); requestTab.id = 'mc-requests-tab';
       requestTab.setAttribute('role', 'tab'); requestTab.setAttribute('aria-controls', 'mc-requests'); tabs.appendChild(requestTab);
     }
     tabs.addEventListener('keydown', function (event) {
@@ -385,19 +527,18 @@
     });
     dialog.appendChild(tabs);
     preferences = element('section'); preferences.id = 'mc-preferences'; preferences.setAttribute('role', 'tabpanel'); preferences.setAttribute('aria-labelledby', preferenceTab.id);
-    preferences.appendChild(element('p', 'Allow only the categories you choose. Rejection and withdrawal stop future actions in connected tools. Scripts already loaded may continue until you reload, and their cookies and stored history are not automatically erased.'));
-    var fields = element('fieldset'); fields.appendChild(element('legend', 'Optional categories'));
+    preferences.appendChild(element('p', t('preferencesIntro')));
+    var fields = element('fieldset'); fields.appendChild(element('legend', t('categoriesLegend')));
     config.categories.forEach(function (category) {
       var row = element('label', null, 'mc-category'); var checkbox = element('input');
       checkbox.type = 'checkbox'; checkbox.id = 'mc-category-' + category; row.htmlFor = checkbox.id; checkboxes[category] = checkbox; row.appendChild(checkbox);
-      row.appendChild(element('span', category === 'analytics' ? 'Analytics (enhanced details when connected to the analytics tracker)'
-        : category.replace(/[-_]/g, ' ').replace(/^./, function (letter) { return letter.toUpperCase(); })));
+      row.appendChild(element('span', categoryLabel(category)));
       fields.appendChild(row);
     });
     preferences.appendChild(fields);
     var optOutLabel = element('label', null, 'mc-category'); optOutControl = element('input'); optOutControl.type = 'checkbox';
     optOutControl.id = 'mc-do-not-sell'; optOutLabel.htmlFor = optOutControl.id; optOutLabel.appendChild(optOutControl);
-    optOutLabel.appendChild(element('span', 'Opt out of sale, sharing, or targeted advertising in connected tools'));
+    optOutLabel.appendChild(element('span', t('optOut')));
     optOutControl.addEventListener('change', function () {
       if (checkboxes.marketing) {
         checkboxes.marketing.disabled = !validConfig || optOutControl.checked || gpc();
@@ -405,15 +546,15 @@
       }
     });
     preferences.appendChild(optOutLabel);
-    preferences.appendChild(element('p', 'This opt-out disables the marketing category and signals connected providers. It cannot enforce choices for tools that are not connected or process an organization-wide privacy request.'));
-    gpcNotice = element('p', 'Your browser sends Global Privacy Control. We keep the advertising opt-out on and marketing denied. This signal does not grant analytics consent.', 'mc-notice'); preferences.appendChild(gpcNotice);
-    preferences.appendChild(element('p', 'Your category choices, opt-out, policy revision, and save time are stored in this browser for up to ' + config.consentLifetimeDays + ' days. No visitor identifier is added.'));
+    preferences.appendChild(element('p', t('optOutHelp')));
+    gpcNotice = element('p', t('gpcNotice'), 'mc-notice'); preferences.appendChild(gpcNotice);
+    preferences.appendChild(element('p', t('storageNotice')));
     policyLink(preferences); actions(preferences, true); dialog.appendChild(preferences);
     if (requestTab) {
       requests = element('section'); requests.id = 'mc-requests'; requests.setAttribute('role', 'tabpanel'); requests.setAttribute('aria-labelledby', requestTab.id);
       requestForm(requests); dialog.appendChild(requests);
     }
-    dialog.appendChild(button('Close privacy settings', closePanel));
+    dialog.appendChild(button(t('close'), closePanel));
     dialog.addEventListener('cancel', function (event) { event.preventDefault(); closePanel(); });
     dialog.addEventListener('keydown', function (event) {
       if (event.key === 'Escape') { event.preventDefault(); closePanel(); return; }

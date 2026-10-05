@@ -15,36 +15,51 @@ reviewed exceptions, and limits. This option is separate from the built-in
 
 | File | Purpose |
 | --- | --- |
+| `consent-config.js` | Your settings: the one `MicroConsentConfig` object, with every option listed |
 | `js/consent-ui.js` | Independent banner, preferences, remembered choices, optional request form |
 | `css/consent-ui.css` | Standalone presentation; loaded relative to the core script |
 | `js/aggregate-consent.js` | Optional tracker and tag-manager bridge |
 | `js/gtm-consent-mode.js` | Optional Google Consent Mode signal adapter; never loads Google |
 
-Host the core script and stylesheet with their relative directories intact.
-Matching `.min.js` files are optional; the readable sources work without a build.
-Set configuration **before** loading the core:
+Host the folder with its relative directories intact. Matching `.min.js` files
+are optional; the readable sources work without a build.
+
+Every setting lives in one object, `window.MicroConsentConfig`, in
+`consent-config.js`. Edit that file, then load it **before** the core:
 
 ```html
-<script>
-window.MicroConsentConfig = {
-  name: 'Example website',
-  privacyPolicyUrl: 'https://www.example.com/privacy',
-  formspreeEndpoint: '',
-  categories: ['analytics', 'functional', 'marketing'],
-  respectGpc: true,
-  consentLifetimeDays: 180,
-  revision: '1',
-  storageKey: 'micro_consent_v2:example-website',
-  aggregateNamespace: 'Aggregate'
-};
-</script>
+<script src="/micro-consent-dropins/consent-config.js" defer></script>
 <script src="/micro-consent-dropins/js/consent-ui.js" defer referrerpolicy="no-referrer"></script>
 ```
 
+The file lists every option with its default; wording, colors and buttons are
+commented out, so uncomment only what you change. Keep your edited copy when you
+update the other files, and the defaults for anything you left commented out keep
+improving. A separate file needs no inline script, so your Content Security
+Policy needs no nonce or hash for configuration. If you prefer an inline
+`<script>` that sets the same object, give it a nonce or hash; do not weaken your
+policy to install a banner.
+
 The core loads `../css/consent-ui.css` relative to its own script URL and carries
 its nonce. If embedding the JavaScript inline, include the stylesheet explicitly.
-Supply an appropriate nonce or hash for inline configuration under your Content
-Security Policy; do not weaken that policy just to install a banner.
+
+| Setting | Default and rules |
+| --- | --- |
+| `name` | `'Privacy choices'`. Shown in the title; 1–120 bytes. |
+| `privacyPolicyUrl` | `''`. An absolute HTTPS link to your privacy notice, or `''` for none. |
+| `formspreeEndpoint` | `''`. See [the request form](#optional-privacy-request-form-with-formspree). |
+| `categories` | `['analytics', 'functional', 'marketing']`. 1–10 unique lowercase names, including `analytics`. |
+| `respectGpc` | `true`. See below. |
+| `consentLifetimeDays` | `180`. 1–365. |
+| `revision` | `'1'`. Change it when purposes or the notice change. |
+| `storageKey` | `'micro_consent_v2'`. Use a unique key per website on one origin. |
+| `aggregateNamespace` | `'Aggregate'`. Used by the optional tracker bridge. |
+| `text` | Default wording. Each key replaces one piece of text; see [wording, colors and buttons](#wording-colors-and-buttons). |
+| `theme` | Default colors. |
+| `buttons` | `{show: ['reject', 'accept', 'manage'], reopen: 'bottom-right'}`. |
+
+An unknown or invalid setting keeps every optional category denied and shows a
+configuration error in the banner, so check the page after editing.
 
 Every optional category starts denied. Visitors can accept, reject, save a
 selection, or reopen preferences. The preference record uses the configured
@@ -61,12 +76,38 @@ Neither the signal nor its absence grants analytics consent. Connect relevant
 providers to the choice; a boolean alone does not fulfill every sale, sharing,
 or targeted-advertising obligation.
 
+## Wording, colors and buttons
+
+These work like the [built-in banner's](../docs/CONSENT-MANAGER.md), with the
+same rules:
+
+- **`text`** replaces wording, as plain text: HTML is shown as typed. Labels allow
+  120 UTF-8 bytes and paragraphs 1,000, without line breaks. `{name}` in `title`
+  becomes `name`, and `{days}` in `storageNotice` becomes `consentLifetimeDays`.
+  `details` is a list of up to four extra banner paragraphs (`[]` for none), and
+  `categories` maps category names to labels. Every key, including the request
+  form's, is listed in `consent-config.js`. The defaults describe what the banner
+  and connected tools actually do; keep replacements accurate.
+- **`theme`** sets `background`, `text`, `accent` (links, focus, checkboxes),
+  `border`, `buttonBackground`, `buttonText` and `buttonBorder` as `'#RRGGBB'`.
+  Text, links and button labels need 4.5:1 contrast against their background,
+  and buttons need a background or border with 3:1 against the banner. Every
+  button shares these colors, so no choice is styled to look preferred.
+- **`buttons.show`** lists the banner's buttons in order, from `'reject'`,
+  `'accept'` and `'manage'` (which opens the preferences). `reject` is required,
+  plus `accept` or `manage`. The preferences dialog shows the same buttons with
+  **Save** in place of **Manage**.
+- **`buttons.reopen`** places the button that reopens the banner: `'bottom-right'`,
+  `'bottom-left'`, or `'hidden'`. If you hide it, link to `MicroConsent.open()`
+  from every page, for example in your footer; withdrawing must stay as easy as
+  consenting.
+
 ## Connect the tracker and tag manager
 
 Load the separate bridge when using those products:
 
 ```html
-<!-- MicroConsentConfig and the core script appear first, as above. -->
+<!-- consent-config.js and the core script appear first, as above. -->
 <script src="/micro-consent-dropins/js/aggregate-consent.js" defer referrerpolicy="no-referrer"></script>
 <script src="https://analytics.example.com/tms-lite/sites/SITE_ID/lib.js?min=1" defer referrerpolicy="no-referrer"></script>
 ```
@@ -106,7 +147,7 @@ denied defaults are established first. Load the core normally afterward. For
 example, if your site separately installs GTM:
 
 ```html
-<!-- MicroConsentConfig is initialized before these lines. -->
+<!-- The consent-config.js script tag comes before these lines. -->
 <script src="/micro-consent-dropins/js/gtm-consent-mode.js" referrerpolicy="no-referrer"></script>
 <!-- Your separately reviewed Google/GTM integration goes here, if used. -->
 <script src="/micro-consent-dropins/js/consent-ui.js" defer referrerpolicy="no-referrer"></script>
@@ -177,12 +218,14 @@ the old prototype should migrate to the API above.
 built-in CMP and can save/download its settings. The source is
 `standalone_consent` in `config/tag-manager/sites/<site-id>.yaml`; see the
 [configuration reference](../docs/CONFIGURATION.md#standalone-consent-settings).
-The hosted `/standalone-cmp/sites/<site-id>/consent.js?min=1` response and Setup
-JavaScript download bundle the UI, CSS and Aggregate adapter; do not add a second
-copy of that adapter when using the configured bundle. Downloaded files are
-snapshots: download and deploy again after changing settings. A standalone website
-can instead use the camelCase browser configuration shown above without the
-application.
+The YAML accepts the same `text`, `theme` and `buttons` settings, with snake_case
+keys (`privacy_link`, `button_background`). The hosted
+`/standalone-cmp/sites/<site-id>/consent.js?min=1` response and Setup
+JavaScript download bundle the UI, CSS, Aggregate adapter and your settings; do
+not add `consent-config.js` or a second copy of that adapter when using the
+configured bundle. Downloaded files are snapshots: download and deploy again
+after changing settings. A standalone website can instead use `consent-config.js`
+without the application.
 
 Run the [optional JavaScript build](../docs/JS-BUILD.md) when compact assets are
 needed. Test a fresh browser, remembered choices, expiry/revision changes, GPC,

@@ -63,7 +63,7 @@ final class TagManagerController extends AbstractController
         $submitted = $this->takeSubmittedForm($request, $siteId);
         $restored = $submitted !== null && $configurationError === null;
         if ($restored) {
-            [$settings, $variableRows, $consent] = $this->draftFromForm($submitted, $settings, $variableRows, $consent);
+            [$settings, $variableRows] = $this->draftFromForm($submitted, $settings, $variableRows);
         }
 
         $trackerUrl = $this->trackerUrl($site);
@@ -100,14 +100,8 @@ final class TagManagerController extends AbstractController
         try {
             $this->selectedSite(array_key_exists('site', $submitted) ? $submitted['site'] : '');
             $tagSettings = $this->settingsFromForm($submitted);
-            if ($siteId !== '') {
-                $this->sites->save($siteId, $tagSettings, $this->consentFromForm($submitted));
-            } else {
-                if (array_key_exists('consent_manager', $submitted)) {
-                    throw new \InvalidArgumentException('Choose a website to configure its consent manager.');
-                }
-                $this->settings->save($tagSettings);
-            }
+            // Consent manager settings have their own page and save separately.
+            $this->settings->save($tagSettings, $siteId !== '' ? $siteId : null);
             $this->addFlash('success', 'Script settings saved to YAML. Changes apply on the next page load.');
         } catch (\InvalidArgumentException $e) {
             $this->addFlash('error', $e->getMessage());
@@ -152,9 +146,9 @@ final class TagManagerController extends AbstractController
      * Rebuilds the editor rows from a rejected form exactly as typed, including
      * values that failed validation. Nothing here is saved or served.
      *
-     * @return array{0: array, 1: list<array>, 2: ?array}
+     * @return array{0: array, 1: list<array>}
      */
-    private function draftFromForm(array $form, array $settings, array $variableRows, ?array $consent): array
+    private function draftFromForm(array $form, array $settings, array $variableRows): array
     {
         $text = static fn (mixed $value, int $limit = 4096): string => is_string($value) ? substr($value, 0, $limit) : '';
         $rows = static fn (mixed $value, int $limit): array => is_array($value) ? array_slice(array_values($value), 0, $limit) : [];
@@ -195,17 +189,7 @@ final class TagManagerController extends AbstractController
             $settings['tags'] = $tags;
         }
 
-        $submittedConsent = $form['consent_manager'] ?? null;
-        if ($consent !== null && is_array($submittedConsent)) {
-            if (in_array($submittedConsent['enabled'] ?? null, ['0', '1'], true)) {
-                $consent['enabled'] = $submittedConsent['enabled'] === '1';
-            }
-            if (is_string($submittedConsent['name'] ?? null)) {
-                $consent['name'] = $text($submittedConsent['name'], 480);
-            }
-        }
-
-        return [$settings, $variableRows, $consent];
+        return [$settings, $variableRows];
     }
 
     /** The selected website's configured tracker URL, ready to paste as a script tag. */
@@ -251,7 +235,7 @@ final class TagManagerController extends AbstractController
 
     private function settingsFromForm(array $submitted): array
     {
-        if (array_diff(array_keys($submitted), ['_csrf_token', 'site', 'enabled', 'variables', 'tags', 'consent_manager']) !== []
+        if (array_diff(array_keys($submitted), ['_csrf_token', 'site', 'enabled', 'variables', 'tags']) !== []
             || !in_array($submitted['enabled'] ?? null, ['0', '1'], true)
             || !is_array($submitted['tags'] ?? null) || !array_is_list($submitted['tags'])
             || count($submitted['tags']) > TagManagerSettings::MAX_TAGS) {
@@ -323,17 +307,6 @@ final class TagManagerController extends AbstractController
         }
 
         return TagManagerSettings::validate(['enabled' => $submitted['enabled'] === '1', 'variables' => $variables, 'tags' => $tags]);
-    }
-
-    private function consentFromForm(array $submitted): array
-    {
-        $consent = $submitted['consent_manager'] ?? null;
-        if (!is_array($consent) || array_diff(array_keys($consent), ['enabled', 'name']) !== []
-            || !in_array($consent['enabled'] ?? null, ['0', '1'], true) || !is_string($consent['name'] ?? null)) {
-            throw new \InvalidArgumentException('The consent manager needs a valid enabled setting and display name.');
-        }
-
-        return ['enabled' => $consent['enabled'] === '1', 'name' => $consent['name']];
     }
 
     private function selectedSite(mixed $siteId): ?array

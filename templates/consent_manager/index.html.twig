@@ -1,0 +1,191 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Consent manager - {{ app_branding.name }}{% endblock %}
+
+{% block stylesheets %}
+    {# The banner's own stylesheet, so the preview matches what visitors see. #}
+    <link rel="stylesheet" href="{{ asset('consent.css') }}">
+{% endblock %}
+
+{% block body %}
+<div class="consent-settings">
+    <h1 class="title">Consent manager lite</h1>
+    <p class="subtitle">The built-in privacy banner that loads with the tag manager: whether it shows, its wording, colors and buttons.</p>
+    {{ component('Ui:DocsLink', {topic: 'tracking.consent-manager', label: 'Consent manager guide'}) }}
+
+    {% if sites is empty %}
+        <p class="notification is-info is-light">Register a website first. Each website has its own consent manager settings.</p>
+    {% else %}
+    <form method="get" action="{{ path('app_consent_manager') }}" class="box">
+        <div class="field">
+            <label class="label" for="consent-manager-site">Website</label>
+            <div class="control select"><select id="consent-manager-site" name="site">
+                {% for website in sites %}<option value="{{ website.id }}"{% if selected_site == website.id %} selected{% endif %}>{{ website.name }} ({{ website.domain }})</option>{% endfor %}
+            </select></div>
+        </div>
+        <button type="submit" class="button">Open website settings</button>
+    </form>
+
+    <h2 class="title is-4" id="consent-manager-scope">{{ site.name }}</h2>
+    <div class="content">
+        <p>Saved in <code>config/tag-manager/sites/{{ selected_site }}.yaml</code> under <code>consent_manager</code>, where you can also edit them directly. The same validation applies to both. Its categories come from this website’s enabled tags on the <a href="{{ path('app_tag_manager', {site: selected_site}) }}">Tag manager</a> page, plus enhanced analytics.</p>
+        <p>The hosted banner changes on the next page load. A banner you downloaded from <a href="{{ path('app_setup', {website: site.token, step: 3, tags: '1'}) }}">Setup</a> to host yourself is a snapshot: download it again after saving. The <a href="{{ path('app_standalone_consent', {siteId: selected_site}) }}">standalone banner</a> is configured separately.</p>
+    </div>
+
+    {% if configuration_error %}
+        <div class="notification is-danger" role="alert">{{ configuration_error }}</div>
+    {% else %}
+    <div class="columns" data-controller="pages--consent-manager--index"
+         data-pages--consent-manager--index-name-value="{{ form.name }}">
+        <div class="column is-7">
+        {% component 'Ui:Validation' with {action: path('app_consent_manager_save'), method: 'post', id: 'consent-manager-form', 'aria-labelledby': 'consent-manager-scope', 'data-action': 'input->pages--consent-manager--index#update change->pages--consent-manager--index#update'} %}
+        {% block content %}
+            {% if restored_form %}
+                <div class="notification is-warning" role="alert">
+                    <span class="icon is-small mr-1"><i class="fas fa-clock-rotate-left" aria-hidden="true"></i></span>
+                    <strong>Values preserved:</strong> Nothing was saved. The settings you entered are shown below so you can correct the error and save again without retyping.
+                </div>
+            {% endif %}
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token('consent_manager_settings') }}">
+            <input type="hidden" name="site" value="{{ selected_site }}">
+
+            <div class="box"><fieldset class="consent-settings-fieldset">
+                <legend class="title is-5">Banner</legend>
+                <div class="field">
+                    <label class="label" for="consent-enabled">Built-in consent manager</label>
+                    <div class="control select"><select id="consent-enabled" name="enabled" required aria-describedby="consent-enabled-help">
+                        <option value="1"{% if form.enabled %} selected{% endif %}>Enabled</option>
+                        <option value="0"{% if not form.enabled %} selected{% endif %}>Disabled — use your existing CMP</option>
+                    </select></div>
+                    <p class="help" id="consent-enabled-help">Disabling it does not grant consent. Connect your own CMP to pass explicit choices to the tag manager and tracker.</p>
+                </div>
+                <div class="field">
+                    <label class="label" for="consent-name">Name</label>
+                    <div class="control"><input class="input" id="consent-name" name="name" value="{{ form.name }}" maxlength="120" required data-pages--consent-manager--index-target="nameInput"></div>
+                    <p class="help">Shown in the title wherever it contains <code>{name}</code>.</p>
+                </div>
+                <div class="field">
+                    <label class="label" for="consent-privacy-url">Privacy notice URL</label>
+                    <div class="control"><input class="input" type="url" id="consent-privacy-url" name="privacy_policy_url" value="{{ form.privacy_policy_url }}" maxlength="2048" placeholder="https://www.example.com/privacy" pattern="https://.+" autocomplete="off"></div>
+                    <p class="help">Optional. An HTTPS link to your privacy notice, shown in the banner.</p>
+                </div>
+            </fieldset></div>
+
+            <div class="box"><fieldset class="consent-settings-fieldset">
+                <legend class="title is-5">Wording</legend>
+                <p class="help mb-4">Each field starts with its current wording. Text that matches the default is not saved, so later improvements to the default wording still reach your banner. Clear a field to restore its default. Text is shown as plain text; HTML is not interpreted.</p>
+                <div class="field">
+                    <label class="label" for="consent-text-title">Title</label>
+                    <div class="control"><input class="input" id="consent-text-title" name="text[title]" value="{{ form.text.title }}" placeholder="{{ default_text.title }}" maxlength="120" data-default="{{ default_text.title }}"></div>
+                </div>
+                <div class="field">
+                    <label class="label" for="consent-text-description">Description</label>
+                    <div class="control"><textarea class="textarea" id="consent-text-description" name="text[description]" rows="3" maxlength="1000" placeholder="{{ default_text.description }}" data-default="{{ default_text.description }}">{{ form.text.description }}</textarea></div>
+                </div>
+                <div class="field">
+                    <span class="label" id="consent-details-label">Additional paragraphs</span>
+                    {% for paragraph in form.details %}
+                        <div class="control mb-2"><textarea class="textarea" id="consent-text-details-{{ loop.index0 }}" name="text[details][]" rows="2" maxlength="1000" aria-labelledby="consent-details-label consent-details-{{ loop.index0 }}-number">{{ paragraph }}</textarea><span class="is-sr-only" id="consent-details-{{ loop.index0 }}-number">paragraph {{ loop.index }}</span></div>
+                    {% endfor %}
+                    <p class="help">Up to {{ max_details }} paragraphs. Leave them all empty to show none. The defaults explain that anonymous measurement can continue after rejection and what withdrawal does; keep your wording accurate for this website.</p>
+                </div>
+                <div class="field">
+                    <label class="label" for="consent-text-categories-legend">Category list heading</label>
+                    <div class="control"><input class="input" id="consent-text-categories-legend" name="text[categories_legend]" value="{{ form.text.categories_legend }}" placeholder="{{ default_text.categories_legend }}" maxlength="120" data-default="{{ default_text.categories_legend }}"></div>
+                </div>
+                <div class="field">
+                    <span class="label">Category labels</span>
+                    {% for category, label in form.categories %}
+                        <div class="field is-horizontal">
+                            <div class="field-label is-normal"><label class="label has-text-weight-normal" for="consent-category-{{ category }}"><code>{{ category }}</code></label></div>
+                            <div class="field-body"><div class="control is-expanded"><input class="input" id="consent-category-{{ category }}" name="text[categories][{{ category }}]" value="{{ label }}" placeholder="{{ default_labels[category] }}" maxlength="120" data-default="{{ default_labels[category] }}" data-category="{{ category }}"></div></div>
+                        </div>
+                    {% endfor %}
+                    <p class="help">Categories come from this website’s enabled tags, plus analytics.</p>
+                </div>
+                <div class="columns is-multiline">
+                    {% for key, label in {reject: 'Reject button', accept: 'Accept button', save: 'Save button', reopen: 'Reopen button', privacy_link: 'Privacy notice link'} %}
+                        <div class="column is-half">
+                            <label class="label" for="consent-text-{{ key }}">{{ label }}</label>
+                            <div class="control"><input class="input" id="consent-text-{{ key }}" name="text[{{ key }}]" value="{{ form.text[key] }}" placeholder="{{ default_text[key] }}" maxlength="120" data-default="{{ default_text[key] }}"></div>
+                        </div>
+                    {% endfor %}
+                </div>
+                <details>
+                    <summary class="has-text-weight-semibold">Screen reader announcements</summary>
+                    <p class="help mt-2">Announced after a choice, not shown on screen.</p>
+                    {% for key, label in {status_applied: 'After a choice', status_not_saved: 'Added when the browser could not save the choice', status_other_tab: 'After a choice in another tab'} %}
+                        <div class="field mt-3">
+                            <label class="label" for="consent-text-{{ key }}">{{ label }}</label>
+                            <div class="control"><input class="input" id="consent-text-{{ key }}" name="text[{{ key }}]" value="{{ form.text[key] }}" placeholder="{{ default_text[key] }}" maxlength="1000"></div>
+                        </div>
+                    {% endfor %}
+                </details>
+            </fieldset></div>
+
+            <div class="box"><fieldset class="consent-settings-fieldset">
+                <legend class="title is-5">Colors</legend>
+                <p class="help mb-4">Text needs at least 4.5:1 contrast against its background, and buttons need a visible edge (3:1). Saving checks this. Every action button uses the same colors, so no choice looks preferred.</p>
+                <div class="columns is-multiline is-mobile">
+                    {% for key, label in {background: 'Background', text: 'Text', accent: 'Links, focus and checkboxes', border: 'Banner border', button_background: 'Button background', button_text: 'Button text', button_border: 'Button border'} %}
+                        <div class="column is-half-tablet is-full-mobile">
+                            <label class="label" for="consent-theme-{{ key }}">{{ label }}</label>
+                            <div class="control consent-color"><input type="color" id="consent-theme-{{ key }}" name="theme[{{ key }}]" value="{{ form.theme[key]|lower }}" data-default="{{ default_theme[key]|lower }}" data-theme-key="{{ key }}"><code data-pages--consent-manager--index-target="colorValue" data-theme-key="{{ key }}">{{ form.theme[key] }}</code></div>
+                        </div>
+                    {% endfor %}
+                </div>
+                <p class="help" role="status" aria-live="polite" data-pages--consent-manager--index-target="contrast"></p>
+                <button type="button" class="button is-small" data-action="pages--consent-manager--index#resetColors">Use default colors</button>
+            </fieldset></div>
+
+            <div class="box"><fieldset class="consent-settings-fieldset">
+                <legend class="title is-5">Buttons</legend>
+                <div class="field">
+                    <label class="label" for="consent-buttons-show">Buttons and order</label>
+                    <div class="control select"><select id="consent-buttons-show" name="buttons[show]" aria-describedby="consent-buttons-help">
+                        {% for value, label in arrangements %}<option value="{{ value }}"{% if form.show == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                    </select></div>
+                    <p class="help" id="consent-buttons-help">A reject button is always included, so refusing takes one click, like accepting. Without <strong>Save selection</strong>, the banner has no category checkboxes and the choice is all or nothing.</p>
+                </div>
+                <div class="field">
+                    <label class="label" for="consent-buttons-reopen">Reopen button</label>
+                    <div class="control select"><select id="consent-buttons-reopen" name="buttons[reopen]" aria-describedby="consent-reopen-help">
+                        {% for value, label in reopen_positions %}<option value="{{ value }}"{% if form.reopen == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                    </select></div>
+                    <p class="help" id="consent-reopen-help">Lets visitors change their choice later. If you hide it, add a link on every page, for example in your footer, that calls <code>AggregateConsent.open()</code>; the guide has an example. Withdrawing consent must stay as easy as giving it.</p>
+                </div>
+            </fieldset></div>
+
+            <button class="button is-primary" type="submit">Save consent manager settings</button>
+        {% endblock %}
+        {% endcomponent %}
+        </div>
+
+        <div class="column is-5">
+            <figure class="consent-preview-figure">
+                <figcaption class="has-text-weight-semibold mb-2">Preview</figcaption>
+                <p class="help mb-3">How the banner looks to a visitor who has not chosen yet. It updates as you edit; nothing here is saved or sent.</p>
+                {% set theme_style %}{% for key, color in form.theme %}--ac-{{ key|replace({'_': '-'}) }}: {{ color }};{% endfor %}{% endset %}
+                <div class="consent-preview" inert>
+                    <section class="ac-consent" style="{{ theme_style|trim }}" data-pages--consent-manager--index-target="banner">
+                        <h2 data-pages--consent-manager--index-target="title">{{ form.text.title|replace({'{name}': form.name}) }}</h2>
+                        <p data-pages--consent-manager--index-target="description">{{ form.text.description }}</p>
+                        <div data-pages--consent-manager--index-target="details">{% for paragraph in form.details|filter(p => p|trim is not empty) %}<p>{{ paragraph }}</p>{% endfor %}</div>
+                        <p data-pages--consent-manager--index-target="privacy"{% if not form.privacy_policy_url %} hidden{% endif %}><a href="#">{{ form.text.privacy_link }}</a></p>
+                        <fieldset data-pages--consent-manager--index-target="categories"{% if 'save' not in form.show %} hidden{% endif %}>
+                            <legend data-pages--consent-manager--index-target="legend">{{ form.text.categories_legend }}</legend>
+                            {% for category, label in form.categories %}<label class="ac-consent-category"><input type="checkbox"> <span data-category="{{ category }}">{{ label }}</span></label>{% endfor %}
+                        </fieldset>
+                        <div class="ac-consent-actions" data-pages--consent-manager--index-target="buttons">
+                            {% for name in form.show|split(',') %}<button type="button" data-button="{{ name }}">{{ form.text[name] }}</button>{% endfor %}
+                        </div>
+                    </section>
+                    <button type="button" class="ac-consent-open{% if form.reopen == 'bottom-right' %} ac-consent-open--right{% endif %}" style="{{ theme_style|trim }}"{% if form.reopen == 'hidden' %} hidden{% endif %} data-pages--consent-manager--index-target="reopen">{{ form.text.reopen }}</button>
+                </div>
+            </figure>
+        </div>
+    </div>
+    {% endif %}
+    {% endif %}
+</div>
+{% endblock %}
