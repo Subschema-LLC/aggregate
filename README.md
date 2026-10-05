@@ -211,7 +211,7 @@ installation, use the website token from your registration and your analytics ho
 <script src="https://analytics.example.com/aggregate.js?min=1" defer referrerpolicy="no-referrer"></script>
 ```
 
-The tracker sends a page view automatically. Once it has loaded, record a named event with `window.Aggregate.emit('button_click')`. Configure goals and review event properties before using them.
+The tracker sends a page view automatically. Once it has loaded, record a named event with `window.Aggregate.emit('button_click')`, or mark an element in your HTML with `data-aggregate-event="button_click"` to send it on click (or, on a form, on submission); see [data attribute tracking](docs/TRACKING.md#track-clicks-and-forms-with-data-attributes). Configure goals and review event properties before using them.
 
 Tag-manager snippets install the container and enabled CMP. To load analytics
 through it, explicitly enable the manager and add the supplied tracker URL as a

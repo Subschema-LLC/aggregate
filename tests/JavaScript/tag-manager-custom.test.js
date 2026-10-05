@@ -29,10 +29,14 @@ test('the custom script corpus records what a JavaScript engine accepts as a str
 class Element {
   constructor(attributes = {}, parent = null) { this.attributes = attributes; this.parent = parent; }
   getAttribute(name) { return Object.prototype.hasOwnProperty.call(this.attributes, name) ? this.attributes[name] : null; }
+  // Enough of CSS for the templates: tag, .class and [attribute], combined.
   matches(selector) {
-    const attribute = /\[([a-z-]+)/.exec(selector);
     const tag = /^([a-z]+)/.exec(selector);
-    return (!tag || this.tagName === tag[1]) && (!attribute || this.getAttribute(attribute[1]) !== null);
+    const className = /\.([a-z-]+)/.exec(selector);
+    const attribute = /\[([a-z-]+)/.exec(selector);
+    return (!tag || this.tagName === tag[1])
+      && (!className || (this.getAttribute('class') || '').split(/\s+/).includes(className[1]))
+      && (!attribute || this.getAttribute(attribute[1]) !== null);
   }
   closest(selector) { for (let node = this; node; node = node.parent) if (node.matches(selector)) return node; return null; }
 }
@@ -91,14 +95,14 @@ test('every starter template compiles as a strict function body and names an exi
   }
 });
 
-test('the click template sends a fixed label from a matching element and removes its listener on cleanup', () => {
+test('the click template sends its fixed event for elements matching its selector and removes its listener on cleanup', () => {
   const browser = page();
   browser.run(template('cta-clicks'));
   const listener = browser.listeners.document.get('click:capture');
-  listener({target: new Span({}, new Span({'data-track': 'pricing-cta'}))});
-  listener({target: new Span({})});
+  listener({target: new Span({}, new Anchor({class: 'button signup-button', href: '/signup'}))});
+  listener({target: new Span({class: 'other-button'})});
   listener({target: {}});
-  assert.deepEqual(plain(browser.calls.emit), [['element_click', {element_label: 'pricing-cta'}]]);
+  assert.deepEqual(plain(browser.calls.emit), [['signup_click', {section: 'pricing'}]]);
   browser.cleanup();
   assert.equal(browser.listeners.document.has('click:capture'), false);
 });
@@ -116,12 +120,12 @@ test('the outbound template sends only the host name of links to other websites'
   assert.equal(browser.listeners.document.size, 0);
 });
 
-test('the form template names marked forms without reading fields', () => {
+test('the form template names forms matching its selector without reading fields', () => {
   const browser = page();
   browser.run(template('form-submissions'));
   const listener = browser.listeners.document.get('submit:capture');
-  listener({target: new HTMLFormElement({'data-track-form': 'newsletter'})});
-  listener({target: new HTMLFormElement({})});
+  listener({target: new HTMLFormElement({class: 'newsletter'})});
+  listener({target: new HTMLFormElement({class: 'search'})});
   assert.deepEqual(plain(browser.calls.emit), [['form_submit', {form_name: 'newsletter'}]]);
   assert.doesNotMatch(template('form-submissions'), /\.value|FormData|elements/);
 });

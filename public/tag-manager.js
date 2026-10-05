@@ -36,6 +36,14 @@
   var MISSING = {};
   var cleanups = Object.create(null);
   var trackerNamespace = 'Aggregate';
+  // Tags that finished (a script loaded, a call made, custom code done), and
+  // the runs of tags set to run after one of them that are still waiting.
+  var finished = Object.create(null);
+  var waiting = Object.create(null);
+  var reportedBlocked = Object.create(null);
+  // tag.emit() calls made before the tracker loaded, sent once it has.
+  var heldEvents = [];
+  var trackerAnnounced = false;
 
   function own(object, key) {
     if (!object || (typeof object !== 'object' && typeof object !== 'function') || denied.indexOf(String(key)) !== -1) return MISSING;
@@ -140,6 +148,12 @@
         } else return false;
         ids[tag.id] = true;
       }
+      // "Run after" names another tag; the server also refuses chains that loop.
+      for (var j = 0; j < config.tags.length; j++) {
+        if (!Object.prototype.hasOwnProperty.call(config.tags[j], 'after')) continue;
+        var after = config.tags[j].after;
+        if (typeof after !== 'string' || !ids[after] || after === config.tags[j].id) return false;
+      }
       return true;
     } catch (error) { return false; }
   }
@@ -211,6 +225,86 @@
     return tag.consent === 'none' || consentState[tag.consent] === true;
   }
 
+  function warn(message) {
+    try {
+      var log = own(window, 'console');
+      if (log !== MISSING && log && typeof log.warn === 'function') log.warn('[Aggregate tag manager] ' + message);
+    } catch (ignored) {}
+  }
+
+  // The tracker's emit(), when the tracker has loaded.
+  function tracker() {
+    var api = own(window, trackerNamespace);
+    var emit = api === MISSING ? MISSING : own(api, 'emit');
+    return typeof emit === 'function' ? {api: api, emit: emit} : null;
+  }
+
+  // Sends one event through the tracker: true when it accepted the event,
+  // false when it refused it or failed, null when it has not loaded yet.
+  function sendEvent(tag, args) {
+    var found = tracker();
+    if (!found) return null;
+    try { return Reflect.apply(found.emit, found.api, args) !== false; }
+    catch (error) { report(tag, error); return false; }
+  }
+
+  // Runs after the current task, so a tracker that has just loaded sends its
+  // own page view first.
+  function soon(callback) {
+    if (typeof setTimeout === 'function') setTimeout(callback, 0);
+    else callback();
+  }
+
+  function trackerReady(event) {
+    var detail = event && own(event, 'detail');
+    var name = detail && detail !== MISSING ? own(detail, 'namespace') : MISSING;
+    if (name !== MISSING && name !== trackerNamespace) return;
+    trackerAnnounced = true;
+    releaseHeldEvents();
+  }
+
+  // Sends events held for the tracker, for tags that still have consent.
+  function releaseHeldEvents() {
+    if (!heldEvents.length || !tracker()) return;
+    var held = heldEvents;
+    heldEvents = [];
+    held.forEach(function (entry) {
+      if (allowed(entry.tag)) sendEvent(entry.tag, entry.args);
+    });
+  }
+
+  // A tag finished: send held events (it may have loaded the tracker), then
+  // run the tags waiting for it, each checking its consent again.
+  function finish(tag) {
+    soon(releaseHeldEvents);
+    if (!configured || finished[tag.id]) return;
+    finished[tag.id] = true;
+    tagManagerConfig.tags.forEach(function (dependent) {
+      if (dependent.after !== tag.id) return;
+      var runs = waiting[dependent.id] || [];
+      waiting[dependent.id] = [];
+      runs.forEach(function (context) { attempt(dependent, context); });
+    });
+  }
+
+  // Explains, once, why tags set to run after a failed tag did not run.
+  function blocked(tag, reason) {
+    if (!configured || finished[tag.id] || reportedBlocked[tag.id]) return;
+    var dependents = tagManagerConfig.tags.filter(function (dependent) { return dependent.after === tag.id; })
+      .map(function (dependent) { return '"' + dependent.id + '"'; });
+    if (!dependents.length) return;
+    reportedBlocked[tag.id] = true;
+    warn('Tag "' + tag.id + '" ' + reason + ', so the tags set to run after it did not run: ' + dependents.join(', ') + '.');
+  }
+
+  // Keeps a run of a tag whose "Run after" tag has not finished. A page-load
+  // trigger keeps one run; an event trigger keeps up to 20, in order.
+  function hold(tag, context) {
+    var runs = waiting[tag.id] || (waiting[tag.id] = []);
+    var when = trigger(tag);
+    if ((when.type === 'dom_ready' || when.type === 'window_load') ? runs.length === 0 : runs.length < 20) runs.push(context);
+  }
+
   // JSON copies give custom code ordinary objects it can change freely.
   function plain(value) {
     try { return value === undefined ? undefined : JSON.parse(JSON.stringify(value)); } catch (error) { return undefined; }
@@ -243,12 +337,20 @@
         layer.push(entry);
         return true;
       },
+      // Until the tracker has loaded and sent its page view, events wait for
+      // it (up to 20 a page).
       emit: function (name, properties, goal) {
-        var tracker = own(window, trackerNamespace);
-        var emit = tracker === MISSING ? MISSING : own(tracker, 'emit');
-        if (typeof emit !== 'function') return false;
-        try { return Reflect.apply(emit, tracker, [name, properties, goal]) !== false; }
-        catch (error) { report(tag, error); return false; }
+        if (trackerAnnounced) {
+          var sent = sendEvent(tag, [name, properties, goal]);
+          if (sent !== null) return sent;
+        }
+        if (heldEvents.length >= 20) return false;
+        // A copy, so later changes to the object do not change the event.
+        heldEvents.push({tag: tag, args: [name, plain(properties), goal]});
+        // A tracker already here, such as an older copy that does not announce
+        // itself, receives them once its own page view is on its way.
+        if (tracker()) soon(releaseHeldEvents);
+        return true;
       },
       loadScript: function (url) {
         return new Promise(function (resolve, reject) {
@@ -292,10 +394,15 @@
   function attempt(tag, context) {
     if (!configured || completed[tag.id] || executing[tag.id]
         || (tag.consent !== 'none' && consentState[tag.consent] !== true)) return;
+    if (typeof tag.after === 'string' && !finished[tag.after]) {
+      hold(tag, context);
+      return;
+    }
     if (actionDepth === 0) actionCount = 0;
     if (actionDepth >= 20 || ++actionCount > 100) return;
     actionDepth++;
     executing[tag.id] = true;
+    var done = false;
     try {
       if ((tag.type || 'script') === 'script') {
         var src = scriptUrl(tag.src, context);
@@ -307,13 +414,23 @@
         script.referrerPolicy = 'no-referrer';
         script.setAttribute('data-aggregate-tag', tag.id);
         if (nonce) script.nonce = nonce;
+        // A script has finished when it has loaded and run, including work it
+        // scheduled straight away, such as the tracker's page view.
+        script.addEventListener('load', function () { soon(function () { finish(tag); }); });
+        script.addEventListener('error', function () { blocked(tag, 'could not load its script'); });
         completed[tag.id] = true;
         parent.appendChild(script);
       } else if (tag.type === 'custom') {
         var lifecycle = trigger(tag);
         if (lifecycle.type === 'dom_ready' || lifecycle.type === 'window_load') completed[tag.id] = true;
         var result = Reflect.apply(own(customScripts, tag.id), undefined, [customApi(tag, context)]);
-        if (result && typeof result.then === 'function') result.then(undefined, function (error) { report(tag, error); });
+        // Code that returns a promise has finished when the promise resolves.
+        if (result && typeof result.then === 'function') {
+          result.then(function () { finish(tag); }, function (error) {
+            report(tag, error);
+            blocked(tag, 'failed');
+          });
+        } else done = true;
       } else {
         var parts = methodParts(tag.method);
         var receiver = window;
@@ -327,14 +444,17 @@
         var when = trigger(tag);
         if (when.type === 'dom_ready' || when.type === 'window_load') completed[tag.id] = true;
         Reflect.apply(method, receiver, args);
+        done = true;
       }
     } catch (error) {
       // Missing or failing provider libraries do not affect other tags or expose payloads.
       if (tag.type === 'custom') report(tag, error);
+      blocked(tag, 'failed');
     } finally {
       executing[tag.id] = false;
       actionDepth--;
     }
+    if (done) finish(tag);
   }
 
   function fire(type, event, context, grants) {
@@ -539,9 +659,12 @@
   });
   if (typeof window.addEventListener === 'function') window.addEventListener('load', function () {
     windowLoaded = true;
+    soon(releaseHeldEvents);
     if (started) fire('window_load', null, dataState);
   });
   document.addEventListener('aggregate:consent-ready', connectConsentManager);
+  // The tracker announces itself after its page view, however it was installed.
+  document.addEventListener('aggregate:tracker-ready', trackerReady);
   connectConsentManager();
   attachEvents();
   attachDataLayer();

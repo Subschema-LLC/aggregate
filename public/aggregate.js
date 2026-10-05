@@ -853,6 +853,123 @@
       if (!this.consent) {
         this.clearIdentifiers();
       }
+    },
+
+    // Interactions marked up in the page. data-<namespace>-event names a click,
+    // or a submission on a form; data-<namespace>-goal adds a goal; and
+    // data-<namespace>-prop-<key> attributes on the element or its ancestors add
+    // custom properties, the nearest first. Nothing else is read from the page:
+    // no element text, link addresses or form fields. The names follow the
+    // configured namespace, so data-aggregate-event by default.
+    attributeNames: function(){
+      var prefix = 'data-' + (String(namespace).replace(/[^A-Za-z0-9_-]/g, '').toLowerCase() || 'aggregate') + '-';
+      return {event: prefix + 'event', goal: prefix + 'goal', prop: prefix + 'prop-'};
+    },
+
+    warnedAttributes: Object.create(null),
+
+    warnAttribute: function(message){
+      if (this.warnedAttributes[message] || Object.keys(this.warnedAttributes).length >= 20) return;
+      this.warnedAttributes[message] = true;
+      try {
+        if (typeof console !== 'undefined' && console && typeof console.warn === 'function') {
+          console.warn('[' + namespace + '] ' + message);
+        }
+      } catch(e) {}
+    },
+
+    // The event's elements from its target outwards, through open shadow roots.
+    attributeChain: function(event){
+      var chain = [];
+      var path = typeof event.composedPath === 'function' ? event.composedPath() : null;
+      if (!path || !path.length) {
+        path = [];
+        for (var node = event.target; node && path.length < 1000; node = node.parentNode) path.push(node);
+      }
+      for (var i = 0; i < path.length; i++) {
+        if (path[i] && path[i].nodeType === 1 && typeof path[i].getAttribute === 'function') chain.push(path[i]);
+      }
+      return chain;
+    },
+
+    // Attribute values are text. A property the data model declares as a
+    // number or boolean accepts only that value's plain written form.
+    attributeValue: function(key, text){
+      text = String(text).replace(/[\u0000-\u001f\u007f]/g, '').trim();
+      if (!text) return undefined;
+      var types = this.config.customData.propertyTypes;
+      var type = types && typeof types === 'object' && Object.prototype.hasOwnProperty.call(types, key) ? types[key] : 'scalar';
+      if (type === 'integer') return /^-?(?:0|[1-9][0-9]*)$/.test(text) ? Number(text) : undefined;
+      if (type === 'float' || type === 'double') {
+        return /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$/.test(text) ? Number(text) : undefined;
+      }
+      if (type === 'boolean') return text === 'true' ? true : (text === 'false' ? false : undefined);
+      return text;
+    },
+
+    trackMarkedInteraction: function(event, kind){
+      try {
+        if (!event) return;
+        var names = this.attributeNames();
+        // A tracker loaded twice for one namespace (directly and through a tag
+        // manager, say) still sends each marked interaction once.
+        var handled = '__' + names.event;
+        if (event[handled] === true) return;
+        try { event[handled] = true; } catch(e) {}
+        var chain = this.attributeChain(event);
+        var index = -1;
+        for (var i = 0; i < chain.length; i++) {
+          var isForm = typeof chain[i].tagName === 'string' && chain[i].tagName.toUpperCase() === 'FORM';
+          if (kind === 'submit') {
+            // A submission belongs to the form itself, never to its ancestors.
+            if (isForm && chain[i].hasAttribute(names.event)) index = i;
+            break;
+          }
+          // Forms send on submission only; a click inside one can still match
+          // a marked button inside it or a marked element around it.
+          if (!isForm && chain[i].hasAttribute(names.event)) {
+            index = i;
+            break;
+          }
+        }
+        if (index === -1) return;
+
+        var element = chain[index];
+        var written = element.getAttribute(names.event);
+        var eventName = this.sanitizeEventName(written);
+        if (!eventName || eventName === 'view') {
+          this.warnAttribute(eventName === 'view'
+            ? names.event + '="view" is reserved for page views and was not sent. Use a name such as "' + (kind === 'submit' ? 'form_submit' : 'button_click') + '", or call trackView() for a page view.'
+            : names.event + '="' + String(written).slice(0, 100) + '" is not a valid event name and was not sent. Use a fixed name of letters, digits, _ . : or -, starting with a letter.');
+          return;
+        }
+
+        var properties = null;
+        if (!strictCollection) {
+          properties = Object.create(null);
+          var count = 0;
+          for (var j = index; j < chain.length && count < 50; j++) {
+            var attributes = chain[j].attributes;
+            if (!attributes) continue;
+            for (var k = 0; k < attributes.length && count < 50; k++) {
+              var attributeName = attributes[k].name;
+              if (typeof attributeName !== 'string' || attributeName.indexOf(names.prop) !== 0) continue;
+              var key = attributeName.slice(names.prop.length);
+              // The nearest element supplies each property.
+              if (!this.isCustomDataKey(key) || Object.prototype.hasOwnProperty.call(properties, key)) continue;
+              var value = this.attributeValue(key, attributes[k].value);
+              if (typeof value === 'undefined') continue;
+              properties[key] = value;
+              count++;
+            }
+          }
+          if (!count) properties = null;
+        }
+
+        var goal = element.getAttribute(names.goal);
+        goal = typeof goal === 'string' && goal.trim() ? goal.trim() : null;
+        this.emit(eventName, properties, goal);
+      } catch(e) {}
     }
   };
 
@@ -952,10 +1069,23 @@
     document.addEventListener('click', function(event){ Analytics.decoratePageSequenceLink(event); });
   }
 
+  // Marked clicks and form submissions. Listening while the event is captured
+  // means a page script that stops it from bubbling cannot hide it.
+  document.addEventListener('click', function(event){ Analytics.trackMarkedInteraction(event, 'click'); }, true);
+  document.addEventListener('submit', function(event){ Analytics.trackMarkedInteraction(event, 'submit'); }, true);
+
   // auto pageview on load
+  var start = function(){
+    Analytics.trackView(undefined, initialViewData);
+    // Tell a tag manager on the page that events can be sent; one that held
+    // events for this tracker sends them now, after the page view.
+    try {
+      document.dispatchEvent(new CustomEvent('aggregate:tracker-ready', {detail: {namespace: namespace}}));
+    } catch(e) {}
+  };
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
-    setTimeout(function(){ Analytics.trackView(undefined, initialViewData); }, 0);
+    setTimeout(start, 0);
   } else {
-    document.addEventListener('DOMContentLoaded', function(){ Analytics.trackView(undefined, initialViewData); });
+    document.addEventListener('DOMContentLoaded', start);
   }
 })();
