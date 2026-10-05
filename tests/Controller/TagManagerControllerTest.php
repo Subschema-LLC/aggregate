@@ -6,6 +6,7 @@ namespace App\Tests\Controller;
 
 use App\Controller\TagManagerController;
 use App\Service\AggregateConfigLoader;
+use App\Service\FeatureFlags;
 use App\Service\AppBranding;
 use App\Service\DropInScripts;
 use App\Service\SiteScriptConfig;
@@ -459,6 +460,90 @@ final class TagManagerControllerTest extends TestCase
         self::assertCount(0, (new Crawler((string) $this->controller($shared)->index($shared)->getContent()))->filter('#tag-manager-tracker-url'));
     }
 
+    public function testCustomJavaScriptIsSavedAsReadableYamlAndOfferedWithTemplatesAndHelp(): void
+    {
+        $form = $this->siteForm();
+        $form['tags'][] = ['id' => 'signup', 'type' => 'custom', 'code' => "// Count signups\r\ntag.emit('signup', {plan: tag.get('plan')});\r\n", 'enabled' => '1', 'consent' => 'analytics', 'trigger' => ['type' => 'dom_ready']];
+        $request = $this->request($form);
+        $this->controller($request)->save($request);
+
+        self::assertCount(1, $request->getSession()->getFlashBag()->get('success'));
+        $yaml = (string) file_get_contents($this->sitePath($this->siteId));
+        self::assertStringContainsString("code: |-\n        // Count signups\n        tag.emit('signup', {plan: tag.get('plan')});", $yaml);
+        self::assertSame(['id' => 'signup', 'code' => "// Count signups\ntag.emit('signup', {plan: tag.get('plan')});", 'enabled' => true, 'consent' => 'analytics', 'trigger' => ['type' => 'dom_ready'], 'type' => 'custom'],
+            Yaml::parse($yaml)['tag_manager']['tags'][2]);
+
+        $page = $this->view($request, ['site' => $this->siteId]);
+        self::assertSame('custom', $page->filter('#tag-2-type option[selected]')->attr('value'));
+        self::assertSame("// Count signups\ntag.emit('signup', {plan: tag.get('plan')});", $page->filter('#tag-2-code')->text(null, false));
+        self::assertStringContainsString("function (tag) { 'use strict'; … }", $page->filter('#tag-2-code-tip')->text());
+        self::assertStringContainsString("tag.get('alias')", $page->filter('#tag-2-code')->attr('placeholder'));
+        self::assertSame(['Engagement tracking', 'dataLayer helpers', 'Third-party vendors'], $page->filter('#tag-3-template optgroup')->each(static fn (Crawler $group): string => $group->attr('label')));
+        self::assertCount(8, $page->filter('#tag-3-template option[value]:not([value=""])'));
+        $templates = json_decode($page->filter('#tag-custom-templates')->text(), true, flags: JSON_THROW_ON_ERROR);
+        self::assertSame('outbound-links', $templates['Engagement tracking'][1]['id']);
+        self::assertStringNotContainsString('</script', $page->filter('#tag-custom-templates')->html());
+    }
+
+    public function testRejectedCustomJavaScriptIsExplainedAndKeptForCorrection(): void
+    {
+        $before = file_get_contents($this->sitePath($this->siteId));
+        $form = $this->siteForm();
+        $form['tags'][] = ['id' => 'broken', 'type' => 'custom', 'code' => "const ready = true;\nif (ready {\n  tag.emit('x');\n}", 'enabled' => '1', 'consent' => 'analytics', 'trigger' => ['type' => 'dom_ready']];
+        $request = $this->request($form);
+        $this->controller($request)->save($request);
+
+        self::assertSame(['Tag broken: the custom JavaScript has a syntax error on line 2: Unexpected: {.'], $request->getSession()->getFlashBag()->get('error'));
+        self::assertSame($before, file_get_contents($this->sitePath($this->siteId)));
+        $page = $this->view($request, ['site' => $this->siteId]);
+        self::assertSame("const ready = true;\nif (ready {\n  tag.emit('x');\n}", $page->filter('#tag-2-code')->text(null, false));
+        self::assertSame('custom', $page->filter('#tag-2-type option[selected]')->attr('value'));
+
+        foreach ([['src' => 'https://scripts.example/x.js'], ['method' => 'Acme.track']] as $extra) {
+            $mixed = $this->siteForm();
+            $mixed['tags'][] = ['id' => 'mixed', 'type' => 'custom', 'code' => "tag.emit('x');", 'enabled' => '1', 'consent' => 'analytics'] + $extra;
+            $request = $this->request($mixed);
+            $this->controller($request)->save($request);
+            self::assertSame(['A custom JavaScript action uses only its code. Clear the script URL, method and arguments.'], $request->getSession()->getFlashBag()->get('error'));
+        }
+        $codeOnScript = $this->siteForm();
+        $codeOnScript['tags'][0]['code'] = "tag.emit('x');";
+        $request = $this->request($codeOnScript);
+        $this->controller($request)->save($request);
+        self::assertSame(['Only a Run custom JavaScript action uses code. Clear the code or choose that action.'], $request->getSession()->getFlashBag()->get('error'));
+    }
+
+    public function testSwitchedOffCustomJavaScriptKeepsExistingTagsButAllowsNoNewOrChangedCode(): void
+    {
+        $form = $this->siteForm();
+        $form['tags'][] = ['id' => 'kept', 'type' => 'custom', 'code' => "tag.emit('kept');\r\nreturn;\r\n", 'enabled' => '1', 'consent' => 'analytics', 'trigger' => ['type' => 'dom_ready']];
+        $request = $this->request($form);
+        $this->controller($request)->save($request);
+        file_put_contents($this->projectDir.'/config/aggregate.yaml', Yaml::dump(['admin_token' => 'private-admin-token', 'feature_flags' => ['custom_scripts' => ['enabled' => false]]]));
+        $this->config = new AggregateConfigLoader($this->projectDir, 'test');
+
+        $page = $this->view($request, ['site' => $this->siteId]);
+        self::assertStringContainsString('Custom JavaScript is turned off for this installation', $page->filter('#tag-2-code')->ancestors()->filter('[data-action-fields="custom"]')->text());
+        self::assertNotNull($page->filter('#tag-2-code')->attr('readonly'));
+        self::assertCount(1, $page->filter('#tag-2-type option[value="custom"]'), 'an existing custom tag keeps its action');
+        self::assertCount(0, $page->filter('#tag-3-type option[value="custom"]'), 'new rows do not offer it');
+
+        // The form submits the unchanged textarea with a browser's \r\n line breaks.
+        $unchanged = $this->request($form);
+        $this->controller($unchanged)->save($unchanged);
+        self::assertCount(1, $unchanged->getSession()->getFlashBag()->get('success'), 'saving other changes keeps the existing code');
+
+        $before = file_get_contents($this->sitePath($this->siteId));
+        foreach (['kept' => "tag.emit('changed');", 'new-one' => "tag.emit('new');"] as $id => $code) {
+            $changed = $form;
+            $changed['tags'][2] = ['id' => $id, 'code' => $code] + $form['tags'][2];
+            $request = $this->request($changed);
+            $this->controller($request)->save($request);
+            self::assertStringStartsWith('Custom JavaScript tags are turned off for this installation', $request->getSession()->getFlashBag()->get('error')[0] ?? '');
+            self::assertSame($before, file_get_contents($this->sitePath($this->siteId)));
+        }
+    }
+
     private function view(Request $previous, array $query): Crawler
     {
         $request = Request::create('/dashboard/tag-manager', 'GET', $query);
@@ -469,7 +554,7 @@ final class TagManagerControllerTest extends TestCase
 
     private function controller(Request $request, bool $csrfValid = true, bool $admin = true): TagManagerController
     {
-        $settings = new TagManagerSettings($this->config, $this->sites);
+        $settings = new TagManagerSettings($this->config, $this->sites, new FeatureFlags($this->config));
         $scripts = new DropInScripts($this->config, new WebsiteConfigManager($this->projectDir), new AppBranding($this->config, $this->projectDir), $this->projectDir, $settings, $this->sites);
         $controller = new TagManagerController($this->config, $settings, new NullLogger(), $this->sites, $scripts);
         $authorization = $this->createMock(AuthorizationCheckerInterface::class);

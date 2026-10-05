@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "4a8bfe6a3de64b7fe842cee6cd53ec35",
+    "content-hash": "ba6f48bee26d630a997300480924683a",
     "packages": [
         {
             "name": "composer/semver",
@@ -1329,6 +1329,55 @@
                 "source": "https://github.com/maxmind/MaxMind-DB-Reader-php/tree/v1.14.0"
             },
             "time": "2026-09-10T22:02:38+00:00"
+        },
+        {
+            "name": "mck89/peast",
+            "version": "v1.18.1",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/mck89/peast.git",
+                "reference": "70881e535f519aba943b6200411d2888d6c50dec"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/mck89/peast/zipball/70881e535f519aba943b6200411d2888d6c50dec",
+                "reference": "70881e535f519aba943b6200411d2888d6c50dec",
+                "shasum": ""
+            },
+            "require": {
+                "ext-mbstring": "*",
+                "php": ">=5.4.0"
+            },
+            "require-dev": {
+                "phpunit/phpunit": "^4.0 || ^5.0 || ^6.0 || ^7.0 || ^8.0 || ^9.0"
+            },
+            "type": "library",
+            "extra": {
+                "branch-alias": {
+                    "dev-master": "1.18.1-dev"
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Peast\\": "lib/Peast/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "BSD-3-Clause"
+            ],
+            "authors": [
+                {
+                    "name": "Marco Marchiò",
+                    "email": "marco.mm89@gmail.com"
+                }
+            ],
+            "description": "Peast is PHP library that generates AST for JavaScript code",
+            "support": {
+                "issues": "https://github.com/mck89/peast/issues",
+                "source": "https://github.com/mck89/peast/tree/v1.18.1"
+            },
+            "time": "2026-09-15T06:27:15+00:00"
         },
         {
             "name": "monolog/monolog",

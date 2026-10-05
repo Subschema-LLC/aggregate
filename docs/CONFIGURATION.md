@@ -300,10 +300,15 @@ feature_flags:
   updates:
     enabled: true
     hide_from_navigation: false
+  custom_scripts:
+    enabled: true
 ```
 
 Updates is enabled and visible by default. Disabling it blocks update routes and
 commands; hiding removes navigation entries independently of availability.
+`custom_scripts` (enabled by default) serves the tag manager's
+[custom JavaScript tags](TAG-MANAGER.md#custom-javascript); disabling it keeps
+their YAML but stops serving them.
 Disabled, visible features appear without a clickable link. These settings have
 no uppercase environment-variable overrides. Use YAML booleans; malformed or
 unregistered flag settings make flagged features unavailable. An active

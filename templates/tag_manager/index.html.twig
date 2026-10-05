@@ -110,9 +110,11 @@
             </details>
 
             {% for tag in rows %}
-                {{ component('TagManager:TagRow', {index: loop.index0, tag: tag, script_suggestions: suggest_tracker}) }}
+                {{ component('TagManager:TagRow', {index: loop.index0, tag: tag, script_suggestions: suggest_tracker, custom_scripts_enabled: custom_scripts_enabled, custom_templates: custom_templates}) }}
             {% endfor %}
             {% if suggest_tracker %}<datalist id="tag-script-suggestions"><option value="{{ tracker_url }}">This website's tracker</option></datalist>{% endif %}
+            {# Starter templates for custom JavaScript, read by the tag row editor. #}
+            <script type="application/json" id="tag-custom-templates">{{ custom_templates_json|raw }}</script>
             <datalist id="tag-consent-categories"><option value="analytics">Analytics</option><option value="functional">Functional</option><option value="marketing">Marketing</option><option value="none">No consent required</option></datalist>
             <datalist id="tag-event-examples"><option value="click"></option><option value="submit"></option><option value="change"></option><option value="cart:updated"></option><option value="purchase"></option><option value="checkout_complete"></option></datalist>
             <details class="box"><summary class="has-text-weight-semibold">Trigger and event reference</summary><div class="table-container mt-3"><table class="table is-fullwidth"><thead><tr><th>Trigger</th><th>When it runs</th><th>Example</th></tr></thead><tbody>

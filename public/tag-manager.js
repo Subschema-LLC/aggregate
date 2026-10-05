@@ -9,6 +9,9 @@
 
   // The server injects the current, validated public YAML settings here.
   var tagManagerConfig = {enabled: false, tags: []};
+  // Custom JavaScript tags: the server compiles each one's code here as
+  // function (tag) { 'use strict'; ... }, after parsing it (TagManagerCustomCode).
+  var customScripts = {};
   if (window.AggregateTags && window.AggregateTags._aggregateTagManager === true) return;
 
   var denied = ['__proto__', 'prototype', 'constructor'];
@@ -31,6 +34,8 @@
   var draining = false;
   var pending = [];
   var MISSING = {};
+  var cleanups = Object.create(null);
+  var trackerNamespace = 'Aggregate';
 
   function own(object, key) {
     if (!object || (typeof object !== 'object' && typeof object !== 'function') || denied.indexOf(String(key)) !== -1) return MISSING;
@@ -98,6 +103,10 @@
   function validConfiguration(config) {
     try {
       if (!config || typeof config.enabled !== 'boolean' || !Array.isArray(config.tags) || config.tags.length > 20) return false;
+      if (Object.prototype.hasOwnProperty.call(config, 'namespace')) {
+        if (typeof config.namespace !== 'string' || !/^[A-Za-z_$][A-Za-z0-9_$]{0,63}$/.test(config.namespace)) return false;
+        trackerNamespace = config.namespace;
+      }
       var variables = Object.prototype.hasOwnProperty.call(config, 'variables') ? config.variables : {};
       if (!record(variables) && !(Array.isArray(variables) && variables.length === 0)) return false;
       var aliases = Object.keys(variables);
@@ -126,6 +135,8 @@
           sources[tag.src] = true;
         } else if (type === 'call') {
           if (!methodParts(tag.method) || !Array.isArray(tag.args) || tag.args.length > 10) return false;
+        } else if (type === 'custom') {
+          if (typeof own(customScripts, tag.id) !== 'function') return false;
         } else return false;
         ids[tag.id] = true;
       }
@@ -189,6 +200,95 @@
     catch (error) { return null; }
   }
 
+  function report(tag, error) {
+    try {
+      var log = own(window, 'console');
+      if (log !== MISSING && log && typeof log.error === 'function') log.error('[Aggregate tag manager] Custom JavaScript in tag "' + tag.id + '" failed:', error);
+    } catch (ignored) {}
+  }
+
+  function allowed(tag) {
+    return tag.consent === 'none' || consentState[tag.consent] === true;
+  }
+
+  // JSON copies give custom code ordinary objects it can change freely.
+  function plain(value) {
+    try { return value === undefined ? undefined : JSON.parse(JSON.stringify(value)); } catch (error) { return undefined; }
+  }
+
+  // The one object custom code receives. Everything a script may need from
+  // the tag manager goes through it, with the tag's consent still applying.
+  function customApi(tag, context) {
+    var when = trigger(tag);
+    var event = {trigger: when.type, name: Object.prototype.hasOwnProperty.call(when, 'event') ? when.event : null};
+    if ((when.type === 'document_event' || when.type === 'window_event') && context && record(own(context, 'event'))) {
+      event.detail = plain(own(own(context, 'event'), 'detail'));
+    }
+    return Object.freeze({
+      id: tag.id,
+      event: Object.freeze(event),
+      data: plain(when.type === 'data_layer' ? context : dataState) || {},
+      get: function (alias) {
+        var value = readVariable(String(alias), context);
+        return value === MISSING ? undefined : value;
+      },
+      consent: function (category) {
+        return category === 'none' || consentState[category] === true;
+      },
+      push: function (entry) {
+        if (!record(entry)) return false;
+        var layer = own(window, 'dataLayer');
+        if (layer === MISSING) { layer = []; window.dataLayer = layer; }
+        if (!Array.isArray(layer)) return false;
+        layer.push(entry);
+        return true;
+      },
+      emit: function (name, properties, goal) {
+        var tracker = own(window, trackerNamespace);
+        var emit = tracker === MISSING ? MISSING : own(tracker, 'emit');
+        if (typeof emit !== 'function') return false;
+        try { return Reflect.apply(emit, tracker, [name, properties, goal]) !== false; }
+        catch (error) { report(tag, error); return false; }
+      },
+      loadScript: function (url) {
+        return new Promise(function (resolve, reject) {
+          var address;
+          try { address = new URL(String(url), document.baseURI); } catch (error) { reject(new Error('tag.loadScript needs a valid URL.')); return; }
+          if (address.protocol !== 'https:' || address.username || address.password) { reject(new Error('tag.loadScript loads only HTTPS URLs without credentials.')); return; }
+          if (!allowed(tag)) { reject(new Error('Consent for this tag was withdrawn.')); return; }
+          var parent = document.head || document.body || document.documentElement;
+          var script = document.createElement('script');
+          script.async = true;
+          script.src = address.href;
+          script.referrerPolicy = 'no-referrer';
+          script.setAttribute('data-aggregate-tag', tag.id);
+          if (nonce) script.nonce = nonce;
+          script.addEventListener('load', function () { resolve(); });
+          script.addEventListener('error', function () { reject(new Error('Could not load ' + address.href)); });
+          parent.appendChild(script);
+        });
+      },
+      onCleanup: function (callback) {
+        if (typeof callback !== 'function') return;
+        var list = cleanups[tag.id] || (cleanups[tag.id] = []);
+        if (list.length < 50) list.push(callback);
+      }
+    });
+  }
+
+  // Withdrawal runs the cleanup functions of custom tags that lost consent.
+  function runCleanups() {
+    if (!configured) return;
+    tagManagerConfig.tags.forEach(function (tag) {
+      var list = cleanups[tag.id];
+      if (!list || !list.length || allowed(tag)) return;
+      cleanups[tag.id] = [];
+      list.forEach(function (callback) {
+        try { callback(); } catch (error) { report(tag, error); }
+      });
+    });
+  }
+
   function attempt(tag, context) {
     if (!configured || completed[tag.id] || executing[tag.id]
         || (tag.consent !== 'none' && consentState[tag.consent] !== true)) return;
@@ -209,6 +309,11 @@
         if (nonce) script.nonce = nonce;
         completed[tag.id] = true;
         parent.appendChild(script);
+      } else if (tag.type === 'custom') {
+        var lifecycle = trigger(tag);
+        if (lifecycle.type === 'dom_ready' || lifecycle.type === 'window_load') completed[tag.id] = true;
+        var result = Reflect.apply(own(customScripts, tag.id), undefined, [customApi(tag, context)]);
+        if (result && typeof result.then === 'function') result.then(undefined, function (error) { report(tag, error); });
       } else {
         var parts = methodParts(tag.method);
         var receiver = window;
@@ -225,6 +330,7 @@
       }
     } catch (error) {
       // Missing or failing provider libraries do not affect other tags or expose payloads.
+      if (tag.type === 'custom') report(tag, error);
     } finally {
       executing[tag.id] = false;
       actionDepth--;
@@ -262,6 +368,7 @@
   function setConsent(value) {
     if (typeof value === 'boolean') consentState.analytics = value;
     else consentState = categoryState(value);
+    runCleanups();
     loadLifecycle();
   }
 

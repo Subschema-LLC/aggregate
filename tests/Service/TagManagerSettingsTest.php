@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Service;
 
 use App\Service\AggregateConfigLoader;
+use App\Service\FeatureFlags;
 use App\Service\TagManagerSettings;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -258,6 +259,58 @@ final class TagManagerSettingsTest extends TestCase
         }
     }
 
+    public function testCustomCodeIsCompiledSeparatelyAndOnlyServedWhileTheFeatureIsOn(): void
+    {
+        $values = ['js_namespace' => 'Acme', 'tag_manager' => ['enabled' => true, 'tags' => [
+            self::tag(),
+            ['id' => 'signup', 'type' => 'custom', 'code' => "tag.emit('signup');\r\n", 'consent' => 'marketing'],
+            ['id' => 'paused', 'type' => 'custom', 'code' => "tag.emit('paused');", 'enabled' => false, 'consent' => 'functional'],
+        ]]];
+        $settings = $this->settings($values);
+        self::assertSame("tag.emit('signup');", $settings->all()['tags'][1]['code']);
+        $browser = $settings->toBrowserConfig();
+        self::assertSame('Acme', $browser['namespace']);
+        self::assertSame(['id' => 'signup', 'consent' => 'marketing', 'trigger' => ['type' => 'dom_ready'], 'type' => 'custom'], $browser['tags'][1]);
+        self::assertCount(2, $browser['tags'], 'disabled custom tags are not served');
+        self::assertSame(['signup' => "tag.emit('signup');"], $settings->customScripts());
+        self::assertSame(['analytics', 'marketing'], $settings->consentCategories());
+
+        $values['feature_flags'] = ['custom_scripts' => ['enabled' => false]];
+        $off = $this->settings($values, true);
+        self::assertFalse($off->customScriptsEnabled());
+        self::assertSame("tag.emit('signup');", $off->all()['tags'][1]['code'], 'turning the feature off keeps the code');
+        self::assertSame([], $off->customScripts());
+        self::assertSame(['analytics'], array_column($off->toBrowserConfig()['tags'], 'id'));
+        self::assertArrayNotHasKey('namespace', $off->toBrowserConfig(), 'no namespace is published without custom tags');
+        self::assertSame(['analytics'], $off->consentCategories(), 'categories of unserved custom tags are not offered');
+
+        $values['js_namespace'] = 'not a name';
+        unset($values['feature_flags']);
+        self::assertSame('Aggregate', $this->settings($values, true)->toBrowserConfig()['namespace']);
+    }
+
+    #[DataProvider('invalidCustomTags')]
+    public function testCustomTagsUseOnlyCheckedCode(array $tags, string $message): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage($message);
+        TagManagerSettings::validate(['tags' => $tags]);
+    }
+
+    public static function invalidCustomTags(): iterable
+    {
+        $custom = ['id' => 'custom', 'type' => 'custom', 'code' => "tag.emit('a');"];
+        yield 'missing code' => [[['id' => 'custom', 'type' => 'custom']], 'Tag custom: the custom JavaScript must be JavaScript text'];
+        yield 'code list' => [[array_replace($custom, ['code' => ["tag.emit('a');"]])], 'must be JavaScript text'];
+        yield 'with src' => [[$custom + ['src' => 'https://scripts.example/a.js']], 'A custom tag uses code'];
+        yield 'with method' => [[$custom + ['method' => 'Acme.emit']], 'A custom tag uses code'];
+        yield 'call with code' => [[['id' => 'call', 'type' => 'call', 'method' => 'Acme.emit', 'code' => 'x();']], 'code to a custom tag'];
+        yield 'escape' => [[array_replace($custom, ['code' => '}); alert(1); (function () {'])], 'closes its function early'];
+        yield 'eval' => [[array_replace($custom, ['code' => 'eval("1");'])], 'Tag custom: the custom JavaScript calls eval()'];
+        $large = '//'.str_repeat('x', 19998);
+        yield 'site total' => [array_map(static fn (int $index): array => ['id' => 'large'.$index, 'type' => 'custom', 'code' => $large], range(1, 4)), 'may total at most 65,536 bytes'];
+    }
+
     public function testMalformedApplicationYamlCannotPublishTags(): void
     {
         file_put_contents($this->projectDir.'/config/aggregate.yaml', 'private_key: [not-valid');
@@ -265,11 +318,12 @@ final class TagManagerSettingsTest extends TestCase
         (new TagManagerSettings(new AggregateConfigLoader($this->projectDir, 'test')))->toBrowserConfig();
     }
 
-    private function settings(array $values): TagManagerSettings
+    private function settings(array $values, bool $withFeatureFlags = false): TagManagerSettings
     {
         file_put_contents($this->projectDir.'/config/aggregate.yaml', Yaml::dump($values, 8, 2));
+        $config = new AggregateConfigLoader($this->projectDir, 'test');
 
-        return new TagManagerSettings(new AggregateConfigLoader($this->projectDir, 'test'));
+        return new TagManagerSettings($config, features: $withFeatureFlags ? new FeatureFlags($config) : null);
     }
 
     private static function tag(string $id = 'analytics', bool $enabled = true): array
