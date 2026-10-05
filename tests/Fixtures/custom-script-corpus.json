@@ -1,0 +1,337 @@
+[
+ {
+  "code": "tag.emit('signup', {plan: tag.get('plan')});",
+  "syntax": true,
+  "allowed": true
+ },
+ {
+  "code": "return;",
+  "syntax": true,
+  "allowed": true
+ },
+ {
+  "code": "const {a, b: [c, ...d]} = tag.data; tag.push({event: 'x', a, c, d});",
+  "syntax": true,
+  "allowed": true
+ },
+ {
+  "code": "for (let i = 0; i < 3; i++) { let i = 2; }",
+  "syntax": true,
+  "allowed": true
+ },
+ {
+  "code": "outer: for (;;) { inner: for (;;) { break outer; } }",
+  "syntax": true,
+  "allowed": true
+ },
+ {
+  "code": "tag.loadScript('https://cdn.example/x.js').then(() => window.x?.init?.());",
+  "syntax": true,
+  "allowed": true
+ },
+ {
+  "code": "async function run() { await tag.loadScript('https://cdn.example/x.js'); }\nrun();",
+  "syntax": true,
+  "allowed": true
+ },
+ {
+  "code": "var e; try { JSON.parse('{') } catch (e) { var e; }",
+  "syntax": true,
+  "allowed": true
+ },
+ {
+  "code": "class Widget { #count = 0; static #made = 0; increment() { return ++this.#count; } }\nnew Widget().increment();",
+  "syntax": true,
+  "allowed": true
+ },
+ {
+  "code": "setTimeout(() => tag.emit('later'), 1000);",
+  "syntax": true,
+  "allowed": true
+ },
+ {
+  "code": "const s = `${tag.id} ${tag.event.trigger}`;",
+  "syntax": true,
+  "allowed": true
+ },
+ {
+  "code": "function helper(value = 1, ...rest) { return value + rest.length; }\nhelper();",
+  "syntax": true,
+  "allowed": true
+ },
+ {
+  "code": "if (tag.consent('marketing')) { tag.push({event: 'ok'}); }",
+  "syntax": true,
+  "allowed": true
+ },
+ {
+  "code": "switch (tag.event.name) { case 'a': { let x = 1; break; } case 'b': { let x = 2; break; } }",
+  "syntax": true,
+  "allowed": true
+ },
+ {
+  "code": "label: { break label; }",
+  "syntax": true,
+  "allowed": true
+ },
+ {
+  "code": "const el = document.querySelector('a'); el?.addEventListener('click', () => {});",
+  "syntax": true,
+  "allowed": true
+ },
+ {
+  "code": "x ??= 1; y ||= 2; z &&= 3;",
+  "syntax": true,
+  "allowed": true
+ },
+ {
+  "code": "var tag2 = tag; function tag3() {}",
+  "syntax": true,
+  "allowed": true
+ },
+ {
+  "code": "// a comment mentioning eval(), document.write() and debugger is fine\nconst words = 'eval(1) document.write debugger';",
+  "syntax": true,
+  "allowed": true
+ },
+ {
+  "code": "const a = ;",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "if (x {",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "import x from 'y';",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "await tag.loadScript('https://x');",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "break;",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "with (a) {}",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "var n = 0123;",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "var s = '\\012';",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "delete x;",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "eval = 1;",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "arguments++;",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "var let = 1;",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "var yield = 1;",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "var static = 1;",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "var public = 1;",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "function f(a, a) {}",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "(a, a) => 1;",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "function eval() {}",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "var arguments;",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "const a = 1; const a = 2;",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "let x; let x;",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "let tag = 1;",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "const t = 1; var t = 2;",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "function g() { let y; { var y; } }",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "try {} catch (e) { let e; }",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "switch (1) { case 1: let a; break; case 2: let a; }",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "class C {} class C {}",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "label: label: 1;",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "class C { m() { with (x) {} } }",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "}); alert(1); (function () {",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "}).call(window, (function () {",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "} || function () {",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "eval('1 + 1');",
+  "syntax": true,
+  "allowed": false
+ },
+ {
+  "code": "window.eval('1');",
+  "syntax": true,
+  "allowed": false
+ },
+ {
+  "code": "new Function('return 1')();",
+  "syntax": true,
+  "allowed": false
+ },
+ {
+  "code": "Function('return 1')();",
+  "syntax": true,
+  "allowed": false
+ },
+ {
+  "code": "setTimeout('tag.emit(1)', 10);",
+  "syntax": true,
+  "allowed": false
+ },
+ {
+  "code": "setInterval(`x()`, 10);",
+  "syntax": true,
+  "allowed": false
+ },
+ {
+  "code": "document.write('<p>hello</p>');",
+  "syntax": true,
+  "allowed": false
+ },
+ {
+  "code": "window.document.writeln('x');",
+  "syntax": true,
+  "allowed": false
+ },
+ {
+  "code": "debugger;",
+  "syntax": true,
+  "allowed": false
+ },
+ {
+  "code": "import('https://cdn.example/module.js');",
+  "syntax": true,
+  "allowed": false
+ },
+ {
+  "code": "<script>tag.emit('x');</script>",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "<img src=x>",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "x = 1 <!-- }); window.escaped = 1; ({a: function () {",
+  "syntax": true,
+  "allowed": true
+ },
+ {
+  "code": "/*\n*/ --> }); window.escaped = 1; (function () {",
+  "syntax": true,
+  "allowed": true
+ },
+ {
+  "code": "x = 1; /* */ --> }); window.escaped = 1; (function () {",
+  "syntax": false,
+  "allowed": false
+ },
+ {
+  "code": "let a = 2;\nwhile (a --> 0) {}",
+  "syntax": true,
+  "allowed": true
+ }
+]

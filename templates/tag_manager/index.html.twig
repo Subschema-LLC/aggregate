@@ -9,7 +9,7 @@
 {% set suggest_tracker = tracker_url and not tracker_tag %}
 <div class="tag-settings" data-site-id="{{ selected_site }}" data-controller="pages--tag-manager--index"{% if has_new_row %} data-pages--tag-manager--index-new-row-value="{{ rows|length - 1 }}"{% endif %}>
     <h1 class="title">Tag manager lite</h1>
-    <p class="subtitle">Choose a website, configure its tags and consent controls, and download its YAML.</p>
+    <p class="subtitle">Choose a website, configure its tags, and download its YAML. Its consent banner has its own page, <a href="{{ path('app_consent_manager', site ? {site: selected_site} : {}) }}">Consent manager lite</a>.</p>
     {{ component('Ui:DocsLink', {topic: 'tracking.tag-manager', label: 'Tag manager guide'}) }}
     <form method="get" action="{{ path('app_tag_manager') }}" class="box">
         <div class="field">
@@ -69,6 +69,13 @@
         </div>
     </details>
 
+    {% if site and consent_settings %}
+        <div class="box">
+            <p><strong>Consent manager lite:</strong> {{ consent_settings.enabled ? 'enabled' : 'disabled (use your own CMP)' }}. It asks visitors about analytics and each consent category used by this website’s enabled tags.</p>
+            <p class="mt-2"><a class="button is-small" href="{{ path('app_consent_manager', {site: selected_site}) }}">Configure the consent banner</a></p>
+        </div>
+    {% endif %}
+
     {% if configuration_error %}
         <div class="notification is-danger" role="alert">{{ configuration_error }}</div>
     {% else %}
@@ -83,23 +90,6 @@
             {% endif %}
             <input type="hidden" name="_csrf_token" value="{{ csrf_token('tag_manager_settings') }}">
             <input type="hidden" name="site" value="{{ selected_site }}">
-            {% if consent_settings %}
-                <div class="box">
-                <fieldset class="tag-settings-fieldset">
-                    <legend class="title is-5">Consent controls for this website</legend>
-                    <div class="field">
-                        <label class="label" for="site-consent-enabled">Built-in consent manager</label>
-                        <div class="control select"><select id="site-consent-enabled" name="consent_manager[enabled]" required>
-                            <option value="1"{% if consent_settings.enabled %} selected{% endif %}>Enabled</option>
-                            <option value="0"{% if not consent_settings.enabled %} selected{% endif %}>Disabled — use your existing CMP</option>
-                        </select></div>
-                        <p class="help">Disabling these controls does not grant consent. Connect another CMP to communicate explicit choices if needed.</p>
-                    </div>
-                    <div class="field"><label class="label" for="site-consent-name">Name shown in the consent prompt</label><div class="control"><input class="input" id="site-consent-name" name="consent_manager[name]" value="{{ consent_settings.name }}" maxlength="120" required></div></div>
-                    <p class="help">Categories come from this website's enabled tags, plus enhanced analytics. Tag and consent settings are saved together. A downloaded CMP file must be downloaded again after changing the name or categories.</p>
-                </fieldset>
-                </div>
-            {% endif %}
             <div class="field">
                 <label class="label" for="tag-manager-enabled">Tag manager</label>
                 <div class="control select"><select id="tag-manager-enabled" name="enabled" required aria-describedby="tag-manager-enabled-help">
@@ -120,9 +110,11 @@
             </details>
 
             {% for tag in rows %}
-                {{ component('TagManager:TagRow', {index: loop.index0, tag: tag, script_suggestions: suggest_tracker}) }}
+                {{ component('TagManager:TagRow', {index: loop.index0, tag: tag, script_suggestions: suggest_tracker, custom_scripts_enabled: custom_scripts_enabled, custom_templates: custom_templates}) }}
             {% endfor %}
             {% if suggest_tracker %}<datalist id="tag-script-suggestions"><option value="{{ tracker_url }}">This website's tracker</option></datalist>{% endif %}
+            {# Starter templates for custom JavaScript, read by the tag row editor. #}
+            <script type="application/json" id="tag-custom-templates">{{ custom_templates_json|raw }}</script>
             <datalist id="tag-consent-categories"><option value="analytics">Analytics</option><option value="functional">Functional</option><option value="marketing">Marketing</option><option value="none">No consent required</option></datalist>
             <datalist id="tag-event-examples"><option value="click"></option><option value="submit"></option><option value="change"></option><option value="cart:updated"></option><option value="purchase"></option><option value="checkout_complete"></option></datalist>
             <details class="box"><summary class="has-text-weight-semibold">Trigger and event reference</summary><div class="table-container mt-3"><table class="table is-fullwidth"><thead><tr><th>Trigger</th><th>When it runs</th><th>Example</th></tr></thead><tbody>

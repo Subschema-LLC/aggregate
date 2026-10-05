@@ -24,9 +24,10 @@ configuration and published to BI tools through the `bi_dim_*` and
 `bi_glossary_*` views by `app:analytics:glossary:sync`. See
 [BI labels and glossary](BI-GLOSSARY.md).
 
-**Built-in consent banner (CMP).** The small self-hosted consent manager served
-at `/cmp-lite/sites/<site-id>/consent.js`, configured per website. CMP stands for
-consent management platform. See [setup](SETUP.md#consent-manager-behavior).
+**Built-in consent banner (CMP).** Consent manager lite: the small self-hosted
+consent manager served at `/cmp-lite/sites/<site-id>/consent.js`, configured per
+website. CMP stands for consent management platform. See the
+[consent manager guide](CONSENT-MANAGER.md).
 
 **Cell.** One row of a reporting view: a count of events that share the same
 website, time bucket and dimensions.

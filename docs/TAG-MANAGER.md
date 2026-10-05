@@ -2,18 +2,21 @@
 
 ## Aggregate Tag Manager Lite
 
-The tag manager loads HTTPS scripts or calls methods on libraries already loaded
-on the page. Each tag has a trigger and consent requirement, with optional named
+The tag manager loads HTTPS scripts, calls methods on libraries already loaded
+on the page, or runs [custom JavaScript](#custom-javascript) written in the
+dashboard or YAML. Each tag has a trigger and consent requirement, with optional named
 variables from a data layer. The manager itself can load without consent. Each
 tag defaults to analytics consent; choose another category or explicitly use
 `none` for an action that needs no consent.
 
 The manager is disabled by default. Each registered website has its own YAML,
-CMP settings, and remotely hosted scripts. Nothing is stored in a tag database
+consent banner settings, and remotely hosted scripts. Nothing is stored in a tag database
 table, and script serving works with `dashboard_enabled: false`.
 
-Open **Collection → Tag manager**, choose a website, and edit its CMP, variables,
-actions, triggers, and consent categories. Save to add another row, disable tags
+Open **Collection → Tag manager lite**, choose a website, and edit its variables,
+actions, triggers, and consent categories. The built-in consent banner has its own
+page, **Collection → Consent manager lite**; see the
+[consent manager guide](CONSENT-MANAGER.md). Save to add another row, disable tags
 without deleting them, or select **Remove this tag when saving**. If a save is
 rejected, nothing is written and the page shows the values you entered once
 more, with the error, so you can correct them without retyping. **Setup** copies
@@ -83,7 +86,10 @@ shared configuration.
 The built-in CMP defaults to enabled, using the registered website's name. Its
 optional categories come from that site's enabled tags, plus analytics for the
 tracker. Disable it when integrating another CMP; disabling grants no consent.
-Names contain 1–120 UTF-8 bytes without control characters.
+Names contain 1–120 UTF-8 bytes without control characters. Its wording, colors,
+buttons and privacy link are further `consent_manager` keys, described in the
+[consent manager guide](CONSENT-MANAGER.md#yaml-reference). Saving the tag
+manager page changes only `tag_manager`.
 
 ```yaml
 consent_manager:
@@ -157,7 +163,8 @@ configured tracker namespace when it differs. The method's receiver is preserved
 so APIs using `this` work. Method paths contain library and method identifiers;
 calls, expressions, bracket notation, constructors, prototype traversal and
 browser execution APIs are rejected. Only own data properties are resolved;
-getters and inherited methods are unsupported. No JavaScript strings are evaluated.
+getters and inherited methods are unsupported. A call action evaluates no
+JavaScript strings; use a [custom JavaScript](#custom-javascript) action for code.
 
 Arguments are a YAML list of JSON-compatible literals, with nested maps/lists.
 An exact `{$var: alias}` object inserts a named variable's scalar value while
@@ -183,6 +190,151 @@ A call to `Aggregate.emit` preserves the tracker's consent and property rules.
 Granting a method tag's `marketing` category does not grant enhanced analytics.
 Calls made while analytics consent is denied retain only the anonymous fields
 permitted by the tracker and server. See the [data model](DATA-MODEL.md).
+
+## Custom JavaScript
+
+`type: custom` runs JavaScript you write, for small integrations a script URL or
+a method call cannot express: listening for clicks, pushing data-layer events,
+or setting up a vendor's library. It runs as script, not HTML: a `<script>`
+element, markup or a `<noscript>` pixel is rejected. Custom HTML tags are a
+[roadmap proposal](../ROADMAP.md#proposals-to-explore).
+
+### Write the body of one function
+
+The manager runs your code as the body of this function:
+
+```javascript
+function (tag) {
+  'use strict';
+  // your code
+}
+```
+
+Variables and functions you declare stay inside the tag, so two tags cannot
+overwrite each other's names. Strict mode turns common mistakes, such as
+assigning to an undeclared variable, into errors. `return` ends the tag early,
+and `this` is `undefined`. Assign to `window.name` explicitly when you mean to
+create a page global. The **JavaScript** field's placeholder and its help icon
+show the same outline.
+
+The function receives one `tag` object:
+
+| Member | What it does |
+| --- | --- |
+| `tag.id` | The tag's ID. |
+| `tag.event` | `{trigger, name, detail}`: the trigger type, the event name for event triggers (otherwise `null`), and for document and window events a copy of a `CustomEvent`'s `detail`. |
+| `tag.data` | A copy of the [data-layer model](#data-layer-and-variables); for a `data_layer` trigger, the snapshot taken for that event. Changing the copy changes nothing else. |
+| `tag.get('alias')` | The value of a declared [variable](#data-layer-and-variables), or `undefined` when it is missing. |
+| `tag.consent('marketing')` | Whether a category is granted now. `none` is always `true`. |
+| `tag.emit(name, properties, goal)` | Calls the tracker's `emit()` under the configured `js_namespace` and returns `false` when the tracker has not loaded. The tracker's consent and property rules apply, as for a [call action](#actions-and-arguments). |
+| `tag.push({event: 'name'})` | Adds an object to `window.dataLayer`, which can trigger other tags. |
+| `tag.loadScript(url)` | Loads an HTTPS script asynchronously with the manager's nonce and no referrer, and returns a promise. It is refused once the tag's consent has been withdrawn. |
+| `tag.onCleanup(fn)` | Registers a function to run when the tag's consent is withdrawn, for removing listeners, timers or observers. |
+
+In YAML, write the code as a literal block (`|`) so its lines stay as written.
+Saving the page and **Download YAML** write multi-line code the same way:
+
+```yaml
+tag_manager:
+  enabled: true
+  variables:
+    plan: ecommerce.plan
+  tags:
+    - id: signup-event
+      type: custom
+      consent: analytics
+      trigger: {type: data_layer, event: signup}
+      code: |
+        // Send the plan the page put in the dataLayer.
+        tag.emit('signup', {plan: tag.get('plan')});
+```
+
+A custom tag on **Document ready** or **Window finished loading** runs once per
+page. On an event trigger it runs for every matching event. Errors, including
+rejected promises, are caught and written to the browser console with the tag's
+ID (`[Aggregate tag manager] Custom JavaScript in tag "signup-event" failed:`);
+other tags keep running. Withdrawing a category runs the cleanup functions of
+its tags. A tag that already ran on page load does not run again when consent is
+granted later on the same page, and the manager cannot stop work your code
+started without a cleanup function.
+
+### Starter templates
+
+**Start from a template** fills in the code, a trigger, a consent category and,
+for a new row, an ID. Each template starts with a comment that explains it.
+Review selectors, event names and vendor addresses before saving.
+
+| Group | Template | What it does |
+| --- | --- | --- |
+| Engagement tracking | Clicks on matching elements | Sends `element_click` with the clicked element's `data-track` label. |
+| Engagement tracking | Outbound link clicks | Sends `outbound_click` with only the destination's host name. |
+| Engagement tracking | Form submissions | Sends `form_submit` with a form's `data-track-form` name; field values are never read. |
+| Engagement tracking | Scroll depth | Sends `scroll_depth` once at 25, 50, 75 and 100 percent. |
+| dataLayer helpers | Push an event when an element is seen | Pushes a data-layer event the first time an element is half visible. |
+| dataLayer helpers | Push an event for a page condition | Pushes a data-layer event on a matching page, such as an order confirmation. |
+| Third-party vendors | Load a vendor library and set it up | Loads a vendor's HTTPS script, then calls its setup function, with `marketing` consent. |
+| Third-party vendors | Fire an image pixel | Requests a vendor's tracking image without a referrer, with `marketing` consent. |
+
+The engagement templates' properties (`element_label`, `link_domain`,
+`form_name` and `scroll_percent`) are recorded only when defined in your
+[data model](DATA-MODEL.md), and before an analytics choice only when marked
+`consent_required: false`. No template reads form values, cookies or browser storage.
+
+### Checks and limits
+
+The editor checks syntax as you type, using your browser's own JavaScript
+engine. The server checks again when the page is saved and when YAML is loaded,
+so YAML edits get the same checks. It parses the code as the body of the strict
+function above and refuses:
+
+- syntax errors, reported with the line number in your code;
+- code that closes the function early to run outside it;
+- `eval()`, `Function()` and `new Function()`, and text passed to `setTimeout()`
+  or `setInterval()`, which all run text as code;
+- `document.write()` and `document.writeln()`, which erase a page that has
+  finished loading;
+- `import()`, `debugger`, and code that starts with HTML.
+
+Each tag holds up to 20,000 bytes, and one website's custom code up to 65,536
+bytes in total, because every page downloads it with the manager. Load larger
+code from your own HTTPS file with `tag.loadScript()`. Line breaks are saved as
+`\n` and trailing whitespace is removed. An invalid custom tag, like any invalid
+entry, stops that website's instance from serving tags until it is corrected.
+
+These checks catch mistakes, not intent. Custom code has the same access as any
+script on your pages: it can read page content, form fields and cookies, and send
+data to any server. Aggregate's collection rules govern what reaches Aggregate,
+not what custom code sends elsewhere. Only administrators who can edit the Tag
+manager page or the YAML can add it; review it as you would code committed to
+your site. The checks cannot find logic errors, endless loops or code that reads
+personal data. The code is public in the served script, so keep secrets out of it.
+
+### How it is delivered
+
+The server compiles each custom tag into the website's served tag manager script
+(`lib.js`) as a function, after its checks pass, the way GTM builds its
+container. Nothing is evaluated from text in the browser, so a Content Security
+Policy needs no `'unsafe-eval'` or `'unsafe-inline'`: the policy that allows the
+manager script allows its custom tags. Changes apply on the next page load, with
+no extra request per tag. Results of the server's checks are remembered in the
+application cache, so serving does not parse unchanged code again.
+
+### Turn custom JavaScript off
+
+Custom JavaScript tags are on by default. Turn off **Custom JavaScript tags** on
+the [Feature flags](FEATURE-FLAGS.md) page, or in YAML:
+
+```yaml
+feature_flags:
+  custom_scripts:
+    enabled: false
+```
+
+While it is off, existing custom tags stay in each website's YAML but are not
+served, and their consent categories leave the built-in banner. The Tag manager
+page shows their code read-only and does not offer the action for new rows;
+saving can keep or remove them but cannot add or change custom code. Other tags
+are unaffected. Turning the flag back on serves the kept tags again.
 
 ## Trigger and browser-event dictionary
 
@@ -309,7 +461,7 @@ writes no cookies or persistent browser storage. It does not grant tracker
 consent or change collection permissions. The event collection kill switch and
 excluded paths do not disable independently configured tag actions.
 
-Script URLs, method arguments and variable paths are public. External libraries
+Script URLs, method arguments, custom code and variable paths are public. External libraries
 have normal website-script privileges. Review providers and allow their script
 origins under your CSP. The loader forwards its script nonce to inserted scripts;
 provider requests use `referrerpolicy="no-referrer"`, but running providers may

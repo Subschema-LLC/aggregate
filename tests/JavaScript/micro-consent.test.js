@@ -33,7 +33,8 @@ function runtime(options = {}) {
   const window = target({navigator: {globalPrivacyControl: options.gpc === true, userAgent: 'Test browser'}});
   const document = target({readyState: options.readyState || 'complete', referrer: ''});
   function node(tag) {
-    const value = target({tagName: tag.toUpperCase(), children: [], attributes: {}, style: {}, hidden: false, disabled: false, checked: false, value: '', tabIndex: 0, textContent: ''});
+    const properties = {};
+    const value = target({tagName: tag.toUpperCase(), children: [], attributes: {}, style: {properties, setProperty: (name, entry) => { properties[name] = entry; }}, hidden: false, disabled: false, checked: false, value: '', tabIndex: 0, textContent: ''});
     value.appendChild = child => { value.children.push(child); child.parentElement = value; return child; };
     value.setAttribute = (name, entry) => { value.attributes[name] = String(entry); if (name === 'open') value.open = true; };
     value.removeAttribute = name => { delete value.attributes[name]; if (name === 'open') value.open = false; };
@@ -274,4 +275,82 @@ test('invalid and failed Formspree submissions retain user input and never alter
   assert.match(app.byId('mc-request-status').textContent, /could not be submitted/);
   assert.doesNotMatch(app.byId('mc-request-status').textContent, /private server response/);
   assert.equal(app.state().analytics, false); assert.equal(app.text('Submit privacy request').disabled, false);
+});
+
+const configFile = fs.readFileSync(path.join(base, 'micro-consent-dropins/consent-config.js'), 'utf8');
+function configFrom(source) {
+  const sandbox = {window: {}};
+  vm.runInNewContext(source, sandbox);
+  return clean(sandbox.window.MicroConsentConfig);
+}
+const shown = app => app.all.filter(node => node.textContent && node.tagName !== 'STYLE').map(node => node.tagName + ':' + node.textContent);
+const buttonsIn = (app, parent) => parent.children.filter(node => node.tagName === 'DIV' && node.className === 'mc-actions')[0].children.map(node => node.textContent);
+
+test('the shipped config file is valid, and uncommenting every option reproduces the defaults exactly', () => {
+  const shipped = configFrom(configFile);
+  assert.deepEqual(Object.keys(shipped), ['name', 'privacyPolicyUrl', 'formspreeEndpoint', 'categories', 'respectGpc', 'consentLifetimeDays', 'revision', 'storageKey', 'aggregateNamespace', 'text', 'theme', 'buttons']);
+  const plain = runtime({config: shipped});
+  assert.equal(plain.all.some(node => node.className === 'mc-error'), false);
+  assert.equal(plain.text('Example website: privacy choices').tagName, 'H2');
+
+  const everything = configFrom(configFile.replace(/^(\s*)\/\/ (\w+: .*)$/gm, '$1$2'));
+  assert.ok(Object.keys(everything.text).length >= 37, 'every wording key is listed in the file');
+  assert.deepEqual(Object.keys(everything.theme).length, 7);
+  assert.deepEqual(everything.buttons, {show: ['reject', 'accept', 'manage'], reopen: 'bottom-right'});
+  const explicit = runtime({config: everything});
+  assert.equal(explicit.all.some(node => node.className === 'mc-error'), false);
+  assert.deepEqual(shown(explicit), shown(plain), 'listed values equal the built-in defaults');
+  const root = explicit.all.find(node => node.className === 'mc-root');
+  assert.equal(root.style.properties['--mc-button-text'], '#174F85');
+  assert.equal(root.style.properties['--mc-background'], '#FFFFFF');
+});
+
+test('configured wording, colors, button order and reopen position are applied as plain text and CSS variables', () => {
+  const app = runtime({config: {
+    name: 'Shop', consentLifetimeDays: 30, categories: ['analytics', 'ad-tools'], formspreeEndpoint: 'https://formspree.io/f/abc123',
+    text: {title: 'Cookies at {name}', description: '<b>Not markup</b>', details: [], accept: 'Yes', reject: 'No', manage: 'Choose', save: 'Keep',
+      reopen: 'Cookies', storageNotice: 'Kept {days} days.', categories: {'ad-tools': 'Advertising'}, requestAccess: 'See my data'},
+    theme: {background: '#102030', text: '#fff', accent: '#9CC8FF', buttonBackground: '#FFFFFF', buttonText: '#102030', buttonBorder: '#FFFFFF'},
+    buttons: {show: ['manage', 'accept', 'reject'], reopen: 'bottom-left'}
+  }});
+  assert.equal(app.all.some(node => node.className === 'mc-error'), false);
+  const banner = app.all.find(node => node.className === 'mc-banner');
+  assert.deepEqual(banner.children.filter(node => node.tagName === 'P').map(node => node.textContent), ['<b>Not markup</b>']);
+  assert.equal(banner.children[0].textContent, 'Cookies at Shop');
+  assert.deepEqual(buttonsIn(app, banner), ['Choose', 'Yes', 'No']);
+  assert.deepEqual(buttonsIn(app, app.byId('mc-preferences')), ['Keep', 'Yes', 'No'], 'manage becomes save in the dialog');
+  assert.ok(app.text('Kept 30 days.'));
+  assert.ok(app.text('Advertising'));
+  assert.ok(app.text('Analytics (enhanced details when connected to the analytics tracker)'));
+  assert.ok(app.text('See my data'));
+  const opener = app.all.find(node => String(node.className).includes('mc-open'));
+  assert.equal(opener.className, 'mc-button mc-open mc-open--left');
+  assert.equal(opener.textContent, 'Cookies');
+  assert.deepEqual(app.all.find(node => node.className === 'mc-root').style.properties, {
+    '--mc-background': '#102030', '--mc-text': '#FFFFFF', '--mc-accent': '#9CC8FF', '--mc-button-background': '#FFFFFF', '--mc-button-text': '#102030', '--mc-button-border': '#FFFFFF'
+  });
+
+  const minimal = runtime({config: {buttons: {show: ['reject', 'accept'], reopen: 'hidden'}}});
+  assert.deepEqual(buttonsIn(minimal, minimal.all.find(node => node.className === 'mc-banner')), ['Reject optional categories', 'Accept optional categories']);
+  assert.deepEqual(buttonsIn(minimal, minimal.byId('mc-preferences')), ['Reject optional categories', 'Accept optional categories', 'Save selected choices']);
+  assert.equal(minimal.all.find(node => String(node.className).includes('mc-open')).hidden, true);
+  minimal.window.MicroConsent.open();
+  assert.equal(minimal.byId('mc-dialog').open, true, 'the API still opens preferences');
+});
+
+test('invalid wording, colors or buttons fail closed like any other invalid setting', () => {
+  for (const config of [
+    {text: {footer: 'x'}}, {text: {accept: ''}}, {text: {accept: 'Line\nbreak'}}, {text: {accept: 'é'.repeat(61)}}, {text: {description: 'x'.repeat(1001)}},
+    {text: {details: ['a', 'b', 'c', 'd', 'e']}}, {text: {details: 'one'}}, {text: {categories: {Analytics: 'x'}}}, {text: {categories: {none: 'x'}}}, {text: ['x']},
+    {theme: {accent: 'red'}}, {theme: {shadow: '#000000'}}, {theme: {text: '#999999'}}, {theme: {buttonBorder: '#FFFFFF'}}, {theme: {background: '#000; display:none'}},
+    {buttons: {show: ['accept', 'manage']}}, {buttons: {show: ['reject']}}, {buttons: {show: ['reject', 'reject', 'accept']}}, {buttons: {show: ['reject', 'save']}},
+    {buttons: {reopen: 'top'}}, {buttons: {other: true}}, {buttons: ['reject']}
+  ]) {
+    const app = runtime({config});
+    assert.ok(app.all.some(node => node.className === 'mc-error'), JSON.stringify(config));
+    app.text('Accept optional categories') && assert.equal(app.text('Accept optional categories').disabled, true);
+    assert.equal(app.all.find(node => node.className === 'mc-root').style.properties['--mc-background'], undefined, 'no partial theme');
+    app.window.MicroConsent.setConsent({analytics: true});
+    assert.equal(app.state().analytics, false, JSON.stringify(config));
+  }
 });

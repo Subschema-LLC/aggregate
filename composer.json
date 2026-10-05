@@ -25,6 +25,7 @@
         "doctrine/doctrine-migrations-bundle": "^3.4",
         "doctrine/orm": "^3.4",
         "maxmind-db/reader": "^1.13",
+        "mck89/peast": "^1.18",
         "phpdocumentor/reflection-docblock": "^6.0",
         "phpstan/phpdoc-parser": "^2.1",
         "symfony/asset": "7.4.*",

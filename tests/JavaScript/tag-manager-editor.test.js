@@ -149,3 +149,80 @@ test('adding the tracker fills only the empty new-tag row and explains what is l
   assert.equal(again.fields.src.value, tracker, 'adding twice is harmless');
   assert.doesNotMatch(again.status.textContent, /disabled/);
 });
+
+function codeEditor({code = '', disabled = false, templatesJson, confirm = () => true, id = '', consent = 'analytics'} = {}) {
+  const classes = new Set();
+  const status = {textContent: '', classList: {toggle: (name, on) => (on ? classes.add(name) : classes.delete(name))}};
+  const codeInput = {value: code, disabled, validity: '', setCustomValidity(message) { this.validity = message; }, focus() { this.focused = true; }};
+  const fields = {id: {value: id}, consent: {value: consent}};
+  const eventInput = {value: ''};
+  const asked = [];
+  const document = {
+    getElementById: (name) => (name === 'tag-custom-templates' && templatesJson !== undefined ? {textContent: templatesJson} : null),
+    defaultView: {Function, confirm: (message) => { asked.push(message); return confirm(); }}
+  };
+  const controller = Object.assign(new Editor(), {
+    element: {ownerDocument: document, querySelector: (selector) => (selector.includes('[id]') ? fields.id : selector.includes('[consent]') ? fields.consent : null)},
+    actionTypeTarget: {value: 'custom'}, triggerTarget: {value: 'dom_ready'},
+    actionFieldsTargets: [], eventFieldTarget: {querySelector: () => eventInput},
+    hasCodeTarget: true, codeTarget: codeInput, hasCodeStatusTarget: true, codeStatusTarget: status,
+    hasTemplateTarget: true, templateTarget: {value: ''}
+  });
+  return {controller, codeInput, status, classes, fields, eventInput, asked};
+}
+
+test('the code editor compiles without running, reports syntax errors and HTML, and blocks submitting them', () => {
+  const valid = codeEditor({code: "tag.emit('x'); window.ranInEditor = true;"});
+  valid.controller.checkCode();
+  assert.equal(valid.codeInput.validity, '');
+  assert.match(valid.status.textContent, /No syntax errors found/);
+  assert.deepEqual([...valid.classes], ['is-success']);
+  assert.equal(globalThis.ranInEditor, undefined, 'checking never runs the code');
+
+  for (const [code, expected] of [['const a = ;', /^Syntax error: /], ['with (a) {}', /^Syntax error: /], ['let tag = 1;', /^Syntax error: /],
+    ['}); alert(1); (function () {', /^Syntax error: /], ['<script>tag.emit(1)</script>', /looks like HTML/]]) {
+    const row = codeEditor({code});
+    row.controller.checkCode();
+    assert.match(row.codeInput.validity, expected, code);
+    assert.equal(row.status.textContent, row.codeInput.validity);
+    assert.deepEqual([...row.classes], ['is-danger']);
+  }
+
+  const hidden = codeEditor({code: 'const a = ;', disabled: true});
+  hidden.controller.checkCode();
+  assert.equal(hidden.codeInput.validity, '', 'a hidden action never blocks the form');
+  assert.equal(hidden.status.textContent, '');
+});
+
+test('a template fills the code, trigger, consent and an empty ID, and asks before replacing other code', () => {
+  const templatesJson = JSON.stringify({'Third-party vendors': [{id: 'image-pixel', label: 'Fire an image pixel', consent: 'marketing',
+    trigger: {type: 'window_load'}, code: "// Pixel\nnew Image().src = 'https://pixel.example/x';"}]});
+  const fresh = codeEditor({templatesJson});
+  fresh.controller.templateTarget.value = 'image-pixel';
+  fresh.controller.applyTemplate();
+  assert.equal(fresh.codeInput.value, "// Pixel\nnew Image().src = 'https://pixel.example/x';");
+  assert.equal(fresh.fields.id.value, 'image-pixel');
+  assert.equal(fresh.fields.consent.value, 'marketing');
+  assert.equal(fresh.controller.triggerTarget.value, 'window_load');
+  assert.equal(fresh.controller.templateTarget.value, '', 'the picker resets for the next choice');
+  assert.equal(fresh.codeInput.focused, true);
+  assert.deepEqual(fresh.asked, []);
+
+  const kept = codeEditor({templatesJson, code: 'tag.emit("mine");', id: 'my-tag', confirm: () => false});
+  kept.controller.templateTarget.value = 'image-pixel';
+  kept.controller.applyTemplate();
+  assert.equal(kept.codeInput.value, 'tag.emit("mine");');
+  assert.equal(kept.fields.id.value, 'my-tag');
+  assert.match(kept.asked[0], /Replace the current code with the "Fire an image pixel" template\?/);
+
+  const replaced = codeEditor({templatesJson, code: 'tag.emit("mine");', id: 'my-tag'});
+  replaced.controller.templateTarget.value = 'image-pixel';
+  replaced.controller.applyTemplate();
+  assert.match(replaced.codeInput.value, /^\/\/ Pixel/);
+  assert.equal(replaced.fields.id.value, 'my-tag', 'an existing ID is kept');
+
+  const unknown = codeEditor({templatesJson: '{not json'});
+  unknown.controller.templateTarget.value = 'image-pixel';
+  unknown.controller.applyTemplate();
+  assert.equal(unknown.codeInput.value, '');
+});

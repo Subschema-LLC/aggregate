@@ -27,17 +27,26 @@ parameters:
         - banner
         - getting started
     'Tag manager lite':
-      description: 'Configure tags, triggers, variables, and CMP controls'
+      description: 'Configure tags, triggers, and variables'
       synonyms:
         - tags
         - scripts
         - triggers
         - variables
-        - cmp
         - analytics
         - tms
         - gtm
         - pixels
+    'Consent manager lite':
+      description: 'Built-in consent banner: wording, colors, buttons, and privacy link'
+      synonyms:
+        - cmp
+        - consent
+        - banner
+        - cookie banner
+        - privacy choices
+        - colors
+        - wording
     'Collection controls':
       description: 'Standard/strict collection profiles, excluded paths, and GeoIP'
       synonyms:

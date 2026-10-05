@@ -88,6 +88,24 @@ blocking of a repeat abuser.
 **What would change it.** Sustained abuse would be handled at the web server or
 firewall rather than by storing addresses here.
 
+### Consent banners can be restyled, not tilted toward "accept"
+
+**Decision.** Both consent banners let operators change their wording, colors,
+button order and the reopen button, but every action button shares one set of
+colors, a reject button is always present, and colors must pass WCAG contrast.
+
+**Why.** Operators need banners that match their site and language. A banner that
+makes accepting easier or more prominent than refusing steers visitors, which
+regulators in several regions treat as invalid consent; a low-contrast banner
+hides the choice from some visitors altogether.
+
+**Trade-off.** No highlighted "primary" accept button, which many sites expect,
+and some brand palettes are rejected until a darker or lighter shade is chosen.
+
+**What would change it.** Clear, settled guidance that a styled preference is
+acceptable in the regions adopters serve, and a way to apply it equally to every
+choice.
+
 ## Data and reporting
 
 ### One events table for both modes
@@ -213,6 +231,32 @@ validation. BI thresholds are a known exception: they are stored only in the
 database.
 
 **What would change it.** Nothing; new exceptions need a documented reason.
+
+### Custom JavaScript compiled into the tag manager script
+
+**Decision.** A [custom JavaScript tag](TAG-MANAGER.md#custom-javascript) is the
+body of a strict `function (tag) { ... }`. The server parses it with a JavaScript
+parser when it is saved or loaded, refuses syntax errors, code that escapes the
+function and constructs that run text as code, and then compiles every custom tag
+into the website's served `lib.js`, as GTM builds a container. Custom HTML is not
+supported.
+
+**Why.** One generated script means one request and code that is ready when the
+trigger fires; a separate file per tag, as some tag managers load, arrives too
+late for a click that leaves the page, and can be served from a different
+version than the container that references it. Compiled functions need no
+`eval` in the browser or `'unsafe-eval'` in a Content Security Policy. Checking
+at save time explains a mistake to the administrator instead of breaking
+visitors' pages, and one shared validator covers the dashboard and YAML.
+
+**Trade-off.** A new PHP dependency (Peast) parses the code. Every page downloads
+all of a website's custom code, so it is capped at 20,000 bytes per tag and
+65,536 bytes per website. The checks find mistakes, not intent: custom code has
+full page privileges and can send data anywhere.
+
+**What would change it.** Custom code large enough that downloading it on every
+page costs more than a separate request, or a vendor need that only HTML can
+meet, which the roadmap's custom HTML proposal would weigh.
 
 ## Operation and project
 

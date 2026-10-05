@@ -7,6 +7,7 @@ namespace App\Controller;
 use App\Service\AggregateConfigLoader;
 use App\Service\DropInScripts;
 use App\Service\SiteScriptConfig;
+use App\Service\TagManagerCustomCode;
 use App\Service\TagManagerSettings;
 use App\Service\TagManagerVariables;
 use Psr\Log\LoggerInterface;
@@ -63,7 +64,7 @@ final class TagManagerController extends AbstractController
         $submitted = $this->takeSubmittedForm($request, $siteId);
         $restored = $submitted !== null && $configurationError === null;
         if ($restored) {
-            [$settings, $variableRows, $consent] = $this->draftFromForm($submitted, $settings, $variableRows, $consent);
+            [$settings, $variableRows] = $this->draftFromForm($submitted, $settings, $variableRows);
         }
 
         $trackerUrl = $this->trackerUrl($site);
@@ -75,10 +76,18 @@ final class TagManagerController extends AbstractController
             }
         }
 
+        $templates = [];
+        foreach (TagManagerCustomCode::templates() as $template) {
+            $templates[$template['group']][] = $template;
+        }
+
         return $this->privateResponse($this->render('tag_manager/index.html.twig', [
             'settings' => $settings, 'variable_rows' => $variableRows, 'consent_settings' => $consent,
             'sites' => $websites, 'selected_site' => $siteId, 'site' => $site,
             'max_tags' => TagManagerSettings::MAX_TAGS, 'max_variables' => TagManagerVariables::MAX_VARIABLES,
+            'custom_scripts_enabled' => $this->settings->customScriptsEnabled(),
+            'custom_templates' => $templates,
+            'custom_templates_json' => json_encode($templates, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR),
             'configuration_error' => $configurationError, 'restored_form' => $restored,
             'tracker_url' => $trackerUrl, 'tracker_tag' => $trackerTag, 'tracker_tag_id' => self::TRACKER_TAG_ID,
         ]));
@@ -100,14 +109,11 @@ final class TagManagerController extends AbstractController
         try {
             $this->selectedSite(array_key_exists('site', $submitted) ? $submitted['site'] : '');
             $tagSettings = $this->settingsFromForm($submitted);
-            if ($siteId !== '') {
-                $this->sites->save($siteId, $tagSettings, $this->consentFromForm($submitted));
-            } else {
-                if (array_key_exists('consent_manager', $submitted)) {
-                    throw new \InvalidArgumentException('Choose a website to configure its consent manager.');
-                }
-                $this->settings->save($tagSettings);
+            if (!$this->settings->customScriptsEnabled()) {
+                $this->assertNoNewCustomCode($tagSettings, $siteId !== '' ? $siteId : null);
             }
+            // Consent manager settings have their own page and save separately.
+            $this->settings->save($tagSettings, $siteId !== '' ? $siteId : null);
             $this->addFlash('success', 'Script settings saved to YAML. Changes apply on the next page load.');
         } catch (\InvalidArgumentException $e) {
             $this->addFlash('error', $e->getMessage());
@@ -152,9 +158,9 @@ final class TagManagerController extends AbstractController
      * Rebuilds the editor rows from a rejected form exactly as typed, including
      * values that failed validation. Nothing here is saved or served.
      *
-     * @return array{0: array, 1: list<array>, 2: ?array}
+     * @return array{0: array, 1: list<array>}
      */
-    private function draftFromForm(array $form, array $settings, array $variableRows, ?array $consent): array
+    private function draftFromForm(array $form, array $settings, array $variableRows): array
     {
         $text = static fn (mixed $value, int $limit = 4096): string => is_string($value) ? substr($value, 0, $limit) : '';
         $rows = static fn (mixed $value, int $limit): array => is_array($value) ? array_slice(array_values($value), 0, $limit) : [];
@@ -179,33 +185,24 @@ final class TagManagerController extends AbstractController
                 $trigger = is_array($row['trigger'] ?? null) ? $row['trigger'] : [];
                 $tag = [
                     'id' => $text($row['id'] ?? null),
-                    'type' => in_array($row['type'] ?? null, ['script', 'call'], true) ? $row['type'] : 'script',
+                    'type' => in_array($row['type'] ?? null, ['script', 'call', 'custom'], true) ? $row['type'] : 'script',
                     'src' => $text($row['src'] ?? null),
                     'method' => $text($row['method'] ?? null),
                     'args_json' => $text($row['args_json'] ?? null, 2_000_000),
+                    'code' => $text($row['code'] ?? null, 100_000),
                     'enabled' => ($row['enabled'] ?? '1') !== '0',
                     'consent' => $text($row['consent'] ?? null, 64),
                     'trigger' => ['type' => $text($trigger['type'] ?? null, 64) ?: 'dom_ready', 'event' => $text($trigger['event'] ?? null, 200)],
                     'remove' => ($row['remove'] ?? null) === '1',
                 ];
                 // The trailing empty row comes back as the page's usual new-tag row.
-                if ($tag['id'] === '' && $tag['src'] === '' && $tag['method'] === '' && in_array(trim($tag['args_json']), ['', '[]'], true)) continue;
+                if ($tag['id'] === '' && $tag['src'] === '' && $tag['method'] === '' && trim($tag['code']) === '' && in_array(trim($tag['args_json']), ['', '[]'], true)) continue;
                 $tags[] = $tag;
             }
             $settings['tags'] = $tags;
         }
 
-        $submittedConsent = $form['consent_manager'] ?? null;
-        if ($consent !== null && is_array($submittedConsent)) {
-            if (in_array($submittedConsent['enabled'] ?? null, ['0', '1'], true)) {
-                $consent['enabled'] = $submittedConsent['enabled'] === '1';
-            }
-            if (is_string($submittedConsent['name'] ?? null)) {
-                $consent['name'] = $text($submittedConsent['name'], 480);
-            }
-        }
-
-        return [$settings, $variableRows, $consent];
+        return [$settings, $variableRows];
     }
 
     /** The selected website's configured tracker URL, ready to paste as a script tag. */
@@ -233,7 +230,7 @@ final class TagManagerController extends AbstractController
         try {
             $this->selectedSite($siteId);
             $content = $siteId !== '' ? $this->sites->export($siteId)
-                : Yaml::dump(['tag_manager' => $this->settings->all()], 12, 2);
+                : Yaml::dump(['tag_manager' => $this->settings->all()], 12, 2, Yaml::DUMP_MULTI_LINE_LITERAL_BLOCK);
         } catch (\InvalidArgumentException) {
             return $this->privateResponse(new Response('Choose a registered website with valid script settings.', Response::HTTP_BAD_REQUEST));
         } catch (\Throwable $e) {
@@ -251,7 +248,7 @@ final class TagManagerController extends AbstractController
 
     private function settingsFromForm(array $submitted): array
     {
-        if (array_diff(array_keys($submitted), ['_csrf_token', 'site', 'enabled', 'variables', 'tags', 'consent_manager']) !== []
+        if (array_diff(array_keys($submitted), ['_csrf_token', 'site', 'enabled', 'variables', 'tags']) !== []
             || !in_array($submitted['enabled'] ?? null, ['0', '1'], true)
             || !is_array($submitted['tags'] ?? null) || !array_is_list($submitted['tags'])
             || count($submitted['tags']) > TagManagerSettings::MAX_TAGS) {
@@ -277,12 +274,12 @@ final class TagManagerController extends AbstractController
 
         $tags = [];
         foreach ($submitted['tags'] as $tag) {
-            if (!is_array($tag) || array_diff(array_keys($tag), ['id', 'type', 'src', 'method', 'args_json', 'enabled', 'consent', 'trigger', 'remove']) !== []
+            if (!is_array($tag) || array_diff(array_keys($tag), ['id', 'type', 'src', 'method', 'args_json', 'code', 'enabled', 'consent', 'trigger', 'remove']) !== []
                 || !is_string($tag['id'] ?? null) || !in_array($tag['enabled'] ?? null, ['0', '1'], true)
                 || (array_key_exists('remove', $tag) && $tag['remove'] !== '1')) {
                 throw new \InvalidArgumentException('Each tag needs a valid ID, action and availability setting.');
             }
-            foreach (['type', 'src', 'method', 'args_json', 'consent'] as $key) {
+            foreach (['type', 'src', 'method', 'args_json', 'code', 'consent'] as $key) {
                 if (array_key_exists($key, $tag) && !is_string($tag[$key])) {
                     throw new \InvalidArgumentException('Tag action and consent fields must be text.');
                 }
@@ -292,7 +289,11 @@ final class TagManagerController extends AbstractController
             $src = $tag['src'] ?? '';
             $method = $tag['method'] ?? '';
             $args = trim($tag['args_json'] ?? '');
-            if ($tag['id'] === '' && $src === '' && $method === '' && in_array($args, ['', '[]'], true)) continue;
+            $code = $tag['code'] ?? '';
+            if ($tag['id'] === '' && $src === '' && $method === '' && trim($code) === '' && in_array($args, ['', '[]'], true)) continue;
+            if ($type !== 'custom' && trim($code) !== '') {
+                throw new \InvalidArgumentException('Only a Run custom JavaScript action uses code. Clear the code or choose that action.');
+            }
             if ($type === 'script') {
                 if ($method !== '' || !in_array($args, ['', '[]'], true)) {
                     throw new \InvalidArgumentException('A script action uses its HTTPS URL. Clear the method and arguments or choose Call a library method.');
@@ -309,8 +310,13 @@ final class TagManagerController extends AbstractController
                     throw new \InvalidArgumentException('Method arguments must be valid JSON, for example ["purchase", {"total_minor": 1299}].');
                 }
                 $action = ['method' => $method, 'args' => $decoded];
+            } elseif ($type === 'custom') {
+                if ($src !== '' || $method !== '' || !in_array($args, ['', '[]'], true)) {
+                    throw new \InvalidArgumentException('A custom JavaScript action uses only its code. Clear the script URL, method and arguments.');
+                }
+                $action = ['code' => $code];
             } else {
-                throw new \InvalidArgumentException('Choose a script or library method action.');
+                throw new \InvalidArgumentException('Choose a script, library method or custom JavaScript action.');
             }
             $trigger = $tag['trigger'] ?? ['type' => 'dom_ready'];
             if (!is_array($trigger) || array_diff(array_keys($trigger), ['type', 'event']) !== []
@@ -325,15 +331,26 @@ final class TagManagerController extends AbstractController
         return TagManagerSettings::validate(['enabled' => $submitted['enabled'] === '1', 'variables' => $variables, 'tags' => $tags]);
     }
 
-    private function consentFromForm(array $submitted): array
+    /**
+     * With custom JavaScript switched off, existing custom tags may be kept or
+     * removed but not added or changed. They are not served either way.
+     * $tagSettings are already validated, so code compares as it is saved.
+     */
+    private function assertNoNewCustomCode(array $tagSettings, ?string $siteId): void
     {
-        $consent = $submitted['consent_manager'] ?? null;
-        if (!is_array($consent) || array_diff(array_keys($consent), ['enabled', 'name']) !== []
-            || !in_array($consent['enabled'] ?? null, ['0', '1'], true) || !is_string($consent['name'] ?? null)) {
-            throw new \InvalidArgumentException('The consent manager needs a valid enabled setting and display name.');
+        $saved = [];
+        try {
+            foreach ($this->settings->all($siteId)['tags'] as $tag) {
+                if ($tag['type'] === 'custom') $saved[$tag['id']] = $tag['code'];
+            }
+        } catch (\Throwable) {
+            // Unreadable saved settings are reported by the save itself.
         }
-
-        return ['enabled' => $consent['enabled'] === '1', 'name' => $consent['name']];
+        foreach ($tagSettings['tags'] as $tag) {
+            if ($tag['type'] === 'custom' && ($saved[$tag['id']] ?? null) !== $tag['code']) {
+                throw new \InvalidArgumentException('Custom JavaScript tags are turned off for this installation on the Feature flags page. Existing ones are kept but not served, and none can be added or changed.');
+            }
+        }
     }
 
     private function selectedSite(mixed $siteId): ?array

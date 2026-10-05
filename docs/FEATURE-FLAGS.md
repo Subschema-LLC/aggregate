@@ -26,6 +26,12 @@ fail without contacting GitHub, reading release packages, or changing the
 installation. The page, refresh and install endpoints return 404 to an
 authenticated administrator when disabled. Existing authorization still applies.
 
+The `custom_scripts` flag covers [custom JavaScript tags](TAG-MANAGER.md#custom-javascript)
+in the tag manager. When disabled, existing custom tags stay in each website's
+YAML but are not served to visitors, their consent categories leave the built-in
+banner, and the Tag manager page cannot add or change custom code. It has no
+navigation entry, so `hide_from_navigation` has no effect on it.
+
 | `enabled` | `hide_from_navigation` | Behavior |
 | --- | --- | --- |
 | `true` | `false` | Available; navigation links are shown to authorized users. |
@@ -33,8 +39,9 @@ authenticated administrator when disabled. Existing authorization still applies.
 | `false` | `false` | Unavailable; navigation shows an inactive item without a link. |
 | `false` | `true` | Unavailable; navigation entries are hidden. |
 
-Omitted options use registered defaults. Updates defaults to enabled and visible,
-preserving installations without a `feature_flags` mapping. Use real YAML booleans
+Omitted options use registered defaults. Updates and custom JavaScript tags
+default to enabled and visible, preserving installations without a
+`feature_flags` mapping. Use real YAML booleans
 (`true` / `false`); quoted strings, numbers, null values, unknown feature names,
 and unknown options are rejected. Invalid flag configuration makes flagged
 features unavailable and hides their navigation entries. Correct invalid YAML

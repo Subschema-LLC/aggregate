@@ -19,7 +19,12 @@ function consentManager(initial = false) {
   };
 }
 
-function runtime({config = configuration, cmp, ready = true, nonce, dataLayer, globals = {}} = {}) {
+// The server compiles each custom tag's code into the script like this.
+function compiled(custom) {
+  return '{' + Object.entries(custom).map(([id, code]) => JSON.stringify(id) + ": function (tag) {\n'use strict';\n" + code + '\n}').join(',\n') + '}';
+}
+
+function runtime({config = configuration, cmp, ready = true, nonce, dataLayer, globals = {}, custom = {}} = {}) {
   const appended = [];
   const listeners = new Map();
   const windowListeners = new Map();
@@ -34,20 +39,26 @@ function runtime({config = configuration, cmp, ready = true, nonce, dataLayer, g
     readyState: ready ? 'complete' : 'loading',
     currentScript: {nonce},
     head: {appendChild: (script) => appended.push(script)},
-    createElement: (tag) => ({tag, attributes: {}, setAttribute(name, value) { this.attributes[name] = value; }}),
+    baseURI: 'https://shop.example/page',
+    createElement: (tag) => ({tag, attributes: {}, listeners: {}, setAttribute(name, value) { this.attributes[name] = value; },
+      addEventListener(name, callback) { this.listeners[name] = callback; }}),
     addEventListener: (event, callback) => {
       if (!listeners.has(event)) listeners.set(event, []);
       listeners.get(event).push(callback);
     }
   };
+  const errors = [];
+  window.console = {error: (...entry) => errors.push(entry)};
   const context = vm.createContext({window, document, URL});
   const configuredSource = source.replace(defaults, 'var tagManagerConfig = ' + JSON.stringify(config) + ';')
-    .replaceAll('__AGGREGATE_TAG_MANAGER__', JSON.stringify(config));
+    .replaceAll('__AGGREGATE_TAG_MANAGER__', JSON.stringify(config))
+    .replace('var customScripts = {};', 'var customScripts = ' + compiled(custom) + ';')
+    .replaceAll('__AGGREGATE_CUSTOM_SCRIPTS__', compiled(custom));
   const run = () => vm.runInContext(configuredSource, context);
   const dispatch = (event, detail) => { for (const callback of listeners.get(event) || []) callback({type: event, detail}); };
   const dispatchWindow = (event, detail) => { for (const callback of windowListeners.get(event) || []) callback({type: event, detail}); };
   run();
-  return {window, document, appended, run, dispatch, dispatchWindow};
+  return {window, document, appended, run, dispatch, dispatchWindow, errors};
 }
 
 function scriptTag(id, trigger, consent = 'none', src = 'https://scripts.example/' + id + '.js') {
@@ -480,4 +491,126 @@ test('invalid runtime configuration fails closed before any provider request', (
     page.window.AggregateTags.setConsent(true);
     assert.equal(page.appended.length, 0);
   }
+});
+
+function customTag(id, trigger, consent = 'none') {
+  return {id, type: 'custom', consent, trigger};
+}
+const clean = (value) => JSON.parse(JSON.stringify(value));
+const settle = () => new Promise((resolve) => setImmediate(resolve));
+
+test('custom JavaScript runs as a strict function with the tag object, once for lifecycle triggers and per event otherwise', () => {
+  const calls = [];
+  const page = runtime({
+    globals: {calls},
+    config: {enabled: true, variables: {plan: 'account.plan'}, tags: [
+      customTag('ready', {type: 'dom_ready'}),
+      customTag('purchase', {type: 'data_layer', event: 'purchase'}),
+      customTag('cart', {type: 'document_event', event: 'cart:updated'})
+    ]},
+    custom: {
+      ready: "window.calls.push(['ready', this === undefined, typeof tag.emit, Object.isFrozen(tag), tag.event.trigger, tag.event.name]);\nvar local = 1;",
+      purchase: "window.calls.push(['purchase', tag.event.name, tag.get('plan'), tag.data.order.total, tag.get('missing')]);\ntag.data.order.total = 0;",
+      cart: "window.calls.push(['cart', tag.event.trigger, tag.event.detail]);"
+    }
+  });
+  page.window.dataLayer.push({event: 'purchase', account: {plan: 'team'}, order: {total: 1299}});
+  page.window.dataLayer.push({event: 'purchase'});
+  page.dispatch('cart:updated', {items: 2});
+  page.dispatch('DOMContentLoaded');
+  assert.deepEqual(clean(page.window.calls), [
+    ['ready', true, 'function', true, 'dom_ready', null],
+    ['purchase', 'purchase', 'team', 1299, null],
+    ['purchase', 'purchase', 'team', 1299, null],
+    ['cart', 'document_event', {items: 2}]
+  ]);
+  assert.equal(page.window.local, undefined, 'declarations stay inside the function');
+  assert.deepEqual(page.errors, []);
+});
+
+test('custom code waits for its consent category and errors, including rejected promises, are caught and logged', async () => {
+  const cmp = consentManager(false);
+  const page = runtime({cmp, globals: {ran: []}, config: {enabled: true, tags: [
+    customTag('throws', {type: 'dom_ready'}, 'analytics'),
+    customTag('rejects', {type: 'dom_ready'}, 'analytics'),
+    customTag('after', {type: 'dom_ready'}, 'analytics')
+  ]}, custom: {
+    throws: "window.ran.push('throws'); undefinedFunction();",
+    rejects: "window.ran.push('rejects'); return Promise.reject(new Error('later'));",
+    after: "window.ran.push('after');"
+  }});
+  assert.deepEqual(clean(page.window.ran), []);
+  cmp.update(true);
+  await settle();
+  assert.deepEqual(clean(page.window.ran), ['throws', 'rejects', 'after'], 'one failing tag does not stop the next');
+  assert.deepEqual(page.errors.map((entry) => entry[0]), [
+    '[Aggregate tag manager] Custom JavaScript in tag "throws" failed:',
+    '[Aggregate tag manager] Custom JavaScript in tag "rejects" failed:'
+  ]);
+  assert.equal(page.errors[1][1].message, 'later');
+  cmp.update(true);
+  assert.equal(page.window.ran.length, 3, 'lifecycle tags do not rerun, even after an error');
+});
+
+test('tag.onCleanup runs when that tag loses consent, once, and tag.consent reports current grants', () => {
+  const page = runtime({globals: {log: []}, config: {enabled: true, tags: [
+    customTag('ads', {type: 'dom_ready'}, 'marketing'),
+    customTag('stats', {type: 'dom_ready'}, 'analytics')
+  ]}, custom: {
+    ads: "window.log.push('ads ran', tag.consent('marketing'), tag.consent('analytics'));\ntag.onCleanup(() => window.log.push('ads cleanup'));\ntag.onCleanup(() => { throw new Error('cleanup failed'); });",
+    stats: "tag.onCleanup(() => window.log.push('stats cleanup'));"
+  }});
+  page.window.AggregateTags.setConsent({marketing: true, analytics: true});
+  page.window.AggregateTags.setConsent({analytics: true});
+  page.window.AggregateTags.setConsent({analytics: true});
+  assert.deepEqual(clean(page.window.log), ['ads ran', true, true, 'ads cleanup']);
+  assert.equal(page.errors.length, 1);
+  page.window.AggregateTags.setConsent({});
+  assert.deepEqual(clean(page.window.log).slice(-1), ['stats cleanup']);
+});
+
+test('tag.push, tag.emit and tag.loadScript respect the dataLayer, tracker namespace, HTTPS and consent', async () => {
+  const sent = [];
+  const page = runtime({nonce: 'page-nonce', globals: {Shop: {emit(...entry) { sent.push(entry); return this === page.window.Shop; }}, results: []},
+    config: {enabled: true, namespace: 'Shop', tags: [
+      customTag('helper', {type: 'dom_ready'}, 'marketing'),
+      customTag('follow', {type: 'data_layer', event: 'helper_done'})
+    ]}, custom: {
+      helper: [
+        "window.results.push(tag.emit('signup', {plan: 'team'}, 'lead'), tag.push({event: 'helper_done'}), tag.push('not an object'));",
+        "tag.loadScript('https://cdn.example/lib.js').then(() => window.results.push('loaded'));",
+        "tag.loadScript('http://insecure.example/x.js').catch((error) => window.results.push(error.message));",
+        "tag.loadScript('https://user:pass@cdn.example/x.js').catch((error) => window.results.push(error.message));"
+      ].join('\n'),
+      follow: "window.results.push('follow ran');"
+    }});
+  page.window.AggregateTags.setConsent({marketing: true});
+  await settle();
+  assert.deepEqual(clean(sent), [['signup', {plan: 'team'}, 'lead']]);
+  const script = page.appended.find((node) => node.src === 'https://cdn.example/lib.js');
+  assert.equal(script.nonce, 'page-nonce');
+  assert.equal(script.referrerPolicy, 'no-referrer');
+  assert.equal(script.attributes['data-aggregate-tag'], 'helper');
+  script.listeners.load();
+  await settle();
+  // A pushed event is processed at once, so its tag runs inside tag.push().
+  assert.deepEqual(clean(page.window.results), ['follow ran', true, true, false,
+    'tag.loadScript loads only HTTPS URLs without credentials.', 'tag.loadScript loads only HTTPS URLs without credentials.', 'loaded']);
+  assert.equal(page.appended.length, 1);
+});
+
+test('tag.emit returns false without a tracker, and custom code cannot re-enter itself through the dataLayer', () => {
+  const page = runtime({globals: {count: 0, emitted: []}, config: {enabled: true, tags: [
+    customTag('loop', {type: 'data_layer', event: 'again'})
+  ]}, custom: {loop: "window.count++; window.emitted.push(tag.emit('x')); tag.push({event: 'again'});"}});
+  page.window.dataLayer.push({event: 'again'});
+  assert.ok(page.window.count >= 1 && page.window.count <= 100, 'bounded: ' + page.window.count);
+  assert.deepEqual([...new Set(page.window.emitted)], [false]);
+});
+
+test('a custom tag without its compiled function, or with a malformed namespace, disables every tag', () => {
+  const missing = runtime({config: {enabled: true, tags: [customTag('ghost', {type: 'dom_ready'}), scriptTag('other', {type: 'dom_ready'})]}});
+  assert.equal(missing.appended.length, 0);
+  const namespace = runtime({config: {enabled: true, namespace: 'not valid', tags: [scriptTag('other', {type: 'dom_ready'})]}});
+  assert.equal(namespace.appended.length, 0);
 });

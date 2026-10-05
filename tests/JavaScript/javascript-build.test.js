@@ -37,7 +37,7 @@ test('optional build preserves licensing, dynamic config and script syntax, and 
       template = template.split(placeholder).join(JSON.stringify(values[index]));
     }
     new vm.Script(template, {filename: 'configured-aggregate.min.js'});
-    for (const {name, placeholder, stylesheet} of DROP_INS) {
+    for (const {name, placeholder, stylesheet, extra} of DROP_INS) {
       const standalone = outputs.get('public/' + name + '.min.js');
       assert.match(standalone, /SPDX-License-Identifier: AGPL-3\.0-only/);
       assert.doesNotMatch(standalone, /__AGGREGATE_/);
@@ -54,6 +54,10 @@ test('optional build preserves licensing, dynamic config and script syntax, and 
         assert.ok(compiled.includes(stylesheet.placeholder));
         configured = configured.split(stylesheet.placeholder).join(JSON.stringify(styles));
         assert.ok(standalone.includes(stylesheet.source), 'static build keeps its sibling CSS fallback');
+      }
+      if (extra) {
+        assert.equal(compiled.split(extra.placeholder).length, 2, extra.placeholder + ' appears once');
+        configured = configured.split(extra.placeholder).join('{"cta": function (tag) {\n\'use strict\';\ntag.emit(\'x\');\n}}');
       }
       assert.doesNotMatch(configured, /__AGGREGATE_/);
       new vm.Script(configured);

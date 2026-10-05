@@ -109,6 +109,12 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   is under development in its own repository; track template progress and
   availability there. Explore Matomo Tag Manager support where adopters need it.
 - **Extend Tag Manager Lite.** Still keep things simple but look for gaps and improvements.
+- **Custom HTML tags.** [Custom JavaScript tags](docs/TAG-MANAGER.md#custom-javascript)
+  run script compiled into the manager. Explore a separate custom HTML action for
+  vendor snippets that ship as markup, such as `<noscript>` pixels or several
+  `<script>` elements. Inserting HTML runs inline scripts that skip the server's
+  parser checks and need `'unsafe-inline'` or a nonce under a Content Security
+  Policy, so the design needs its own validation, consent and CSP story.
 - **BI Translation Table** Add a new table called glossary or lookup where columns from certain tables or the values that are found in them can be translated. The UI and yaml will need fields for table, column, value, then translation, much like a lookup table. The [BI glossary](docs/BI-GLOSSARY.md) already translates declared codes of the reporting dimensions, custom properties and, through `bi_dim_website_token_v1`, website tokens; free-form lookups for other columns remain open.
 - **Visitor objection to anonymous collection.** Let visitors object to anonymous
   measurement, not only to enhanced detail: an SDK opt-out call, a consent

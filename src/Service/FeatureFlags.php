@@ -14,6 +14,12 @@ class FeatureFlags
             'enabled' => true,
             'hide_from_navigation' => false,
         ],
+        'custom_scripts' => [
+            'label' => 'Custom JavaScript tags',
+            'description' => 'Tag manager tags that run JavaScript written in the dashboard or YAML. When off, existing custom tags are kept but not served to visitors, and new ones cannot be added.',
+            'enabled' => true,
+            'hide_from_navigation' => false,
+        ],
     ];
 
     private const OPTIONS = ['enabled', 'hide_from_navigation'];

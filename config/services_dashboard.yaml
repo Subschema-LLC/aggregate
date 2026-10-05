@@ -11,6 +11,7 @@ services:
     App\Controller\SetupController: ~
     App\Controller\StandaloneConsentController: ~
     App\Controller\TagManagerController: ~
+    App\Controller\ConsentManagerController: ~
     App\Controller\BrowserAssetsController: ~
     App\Controller\DataLifecycleController: ~
     App\Controller\DataModelController: ~

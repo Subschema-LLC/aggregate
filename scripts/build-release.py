@@ -74,7 +74,7 @@ REQUIRED_FILES = (
     "micro-consent-dropins/js/consent-ui.js", "micro-consent-dropins/js/consent-ui.min.js",
     "micro-consent-dropins/js/aggregate-consent.js", "micro-consent-dropins/js/aggregate-consent.min.js",
     "micro-consent-dropins/js/gtm-consent-mode.js", "micro-consent-dropins/js/gtm-consent-mode.min.js",
-    "micro-consent-dropins/css/consent-ui.css",
+    "micro-consent-dropins/css/consent-ui.css", "micro-consent-dropins/consent-config.js",
 )
 PRODUCTION_ENV = """# Aggregate release defaults. Do not edit: updates add new keys to this file.
 # Open the site in a browser to create .env.local with the setup page, or write

@@ -252,7 +252,8 @@ class AggregateConfigLoader implements ResetInterface
             }
             $effectiveConfig = array_replace($effectiveConfig, $values);
 
-            $yaml = Yaml::dump($data, 4, 2);
+            // Multi-line text, such as custom JavaScript, stays readable as a literal block.
+            $yaml = Yaml::dump($data, 4, 2, Yaml::DUMP_MULTI_LINE_LITERAL_BLOCK);
             $writeFailure = null;
             try {
                 $written = $this->replaceLockedContents($configHandle, $yaml);
