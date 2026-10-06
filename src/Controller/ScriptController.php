@@ -3,6 +3,8 @@
 namespace App\Controller;
 
 use App\Service\AggregateConfigLoader;
+use App\Service\BrowserScriptCache;
+use App\Service\BrowserScriptCompactor;
 use App\Service\CollectionProfile;
 use App\Service\CustomDataSettings;
 use App\Service\InternalTrafficSettings;
@@ -17,6 +19,7 @@ class ScriptController
         private readonly InternalTrafficSettings $internalTraffic,
         private readonly CustomDataSettings $customData,
         private readonly string $projectDir = __DIR__.'/../..',
+        private readonly ?BrowserScriptCompactor $compactor = null,
     ) {}
 
     #[Route('/aggregate.js', name: 'aggregate_script', methods: ['GET'])]
@@ -43,7 +46,23 @@ class ScriptController
             '__AGGREGATE_CUSTOM_DATA__' => json_encode($this->customData->toBrowserConfig(), $jsonFlags),
             '__AGGREGATE_COLLECTION__' => json_encode((new CollectionProfile($this->config))->toBrowserConfig(), $jsonFlags),
         ];
-        $minified = $request?->query->get('min') === '1' ? $this->minifiedTemplate($content) : null;
+        $variant = 'source';
+        $minified = null;
+        if ($request?->query->get('min') === '1') {
+            // The Terser build when it matches the source; otherwise, as on a
+            // server without Node, the source compacted here.
+            $minified = $this->minifiedTemplate($content);
+            $variant = 'minified';
+            if ($minified === null) {
+                $minified = ($this->compactor ?? new BrowserScriptCompactor())->template($content, [
+                    "var namespace = 'Aggregate';" => 'var namespace = __AGGREGATE_NAMESPACE__;',
+                    "var internalTrafficDefaults = {storage: 'cookie', name: 'orgInternalTraffic', value: 'true', cookieDomain: ''};" => 'var internalTrafficDefaults = __AGGREGATE_INTERNAL_TRAFFIC__;',
+                    "var customDataDefaults = {queryParameters: {utm_source: 'utm_source', utm_medium: 'utm_medium', utm_campaign: 'utm_campaign', utm_term: 'utm_term', utm_content: 'utm_content', utm_id: 'utm_id'}, consentFreeProperties: []};" => 'var customDataDefaults = __AGGREGATE_CUSTOM_DATA__;',
+                    "var collectionDefaults = {profile: 'standard'};" => 'var collectionDefaults = __AGGREGATE_COLLECTION__;',
+                ], array_keys($values));
+                $variant = $minified !== null ? 'compact' : 'source';
+            }
+        }
         if ($minified !== null) {
             $content = strtr($minified, $values);
         } else {
@@ -57,11 +76,10 @@ class ScriptController
 
         $response = new Response($content);
         $response->headers->set('Content-Type', 'application/javascript');
-        $response->headers->set('X-Aggregate-Script', $minified !== null ? 'minified' : 'source');
-        // Revalidate on each page load so edited collection settings take effect.
-        $response->headers->set('Cache-Control', 'public, max-age=0, must-revalidate');
+        $response->headers->set('X-Aggregate-Script', $variant);
 
-        return $response;
+        // Reused for five minutes, then confirmed unchanged with a 304.
+        return BrowserScriptCache::apply($response, $request);
     }
 
     private function minifiedTemplate(string $source): ?string

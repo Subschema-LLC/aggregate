@@ -60,7 +60,26 @@ For installations using the supplied server routing, add `min=1` to the existing
 
 Use `&min=1` if the URL already has query parameters. The endpoint injects the current public namespace, organization-marker settings, query mappings, and consent-free property list into the minified template. YAML/UI changes apply without rebuilding. Private configuration and sharing tokens are never included.
 
-The server verifies SHA-256 hashes for both source and compiled template. Missing, stale, incomplete, or corrupt build files fall back to the current configured source. The response header `X-Aggregate-Script` reports `minified` or `source`; both variants revalidate on each page load. Deploy the private `var/browser` files together, and keep that directory outside the web root.
+The server verifies SHA-256 hashes for both source and compiled template. When the build files are missing, stale, incomplete or corrupt, as on a server updated from Git without Node, the server compacts the current source itself instead: it parses the script with the PHP JavaScript parser it already uses for custom tags and prints it again without comments or formatting, keeping names, braces and the license notice. Compacted scripts are close to the Terser build once compressed (see below) and are cached under `var/cache/<environment>/browser-scripts`, so this happens once per release. Source the parser cannot read is served as it is. The response header `X-Aggregate-Script` reports `minified`, `compact` or `source`. Deploy the private `var/browser` files together, and keep that directory outside the web root.
+
+| Script | Source, gzip | Compacted on the server, gzip | Terser build, gzip |
+| --- | --- | --- | --- |
+| Tracker | 13.5 KB | 8.0 KB | 7.9 KB |
+| Tag manager | 7.9 KB | 6.0 KB | 4.9 KB |
+| Consent banner | 4.4 KB | 3.4 KB | 2.9 KB |
+
+### Browser caching
+
+The configured tracker, tag manager and consent scripts are sent with
+`Cache-Control: public, max-age=300` and an `ETag`. A browser, or a CDN in front
+of Aggregate, reuses a script for five minutes without asking. After that, an
+unchanged script is confirmed with a `304 Not Modified` reply of a few hundred
+bytes instead of being downloaded again. Saved changes, such as a new tag or new
+banner wording, therefore reach a returning visitor within five minutes and a new
+visitor at once. Collection rules such as the kill switch, excluded paths and the
+data model are also enforced by the server, so they apply to every event
+immediately, whatever copy of the tracker a browser holds. Error responses are
+never cached.
 
 `public/aggregate.min.js` is the standalone static variant. It uses source defaults and does not receive server YAML injection. When hosting it on a static server or CDN, provide matching inline `window.Aggregate` settings as described in [Tracking](TRACKING.md#utm-and-custom-data-collection). Rebuild and refresh the CDN copy after source changes.
 
@@ -71,7 +90,7 @@ self-contained consent UI, and a tag-manager loader. Use
 `/cmp-lite/sites/<site-id>/consent.js?min=1` and
 `/tms-lite/sites/<site-id>/lib.js?min=1` for hosted scripts. These routes have no
 static files, so the front controller supplies current per-site settings. Both
-endpoints verify build hashes and fall back to current source. The consent
+endpoints verify build hashes and otherwise compact the current source. The consent
 endpoint injects the website name, categories, instance ID, and tracker namespace;
 the tag endpoint injects current enabled tags and their variable definitions.
 Saving YAML does not require rebuilding. Static `consent.min.js` and

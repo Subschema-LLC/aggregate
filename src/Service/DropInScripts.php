@@ -15,6 +15,7 @@ final class DropInScripts
         private readonly ?TagManagerSettings $tags = null,
         private readonly ?SiteScriptConfig $sites = null,
         private readonly ?StandaloneConsentSettings $standalone = null,
+        private readonly ?BrowserScriptCompactor $compactor = null,
     ) {
     }
 
@@ -95,14 +96,17 @@ final class DropInScripts
             ."  script.referrerPolicy = 'no-referrer';\n  script.async = true;\n  (document.head || document.documentElement).appendChild(script);\n})();\n";
     }
 
-    /** @return array{content: string, minified: bool} */
+    /**
+     * @return array{content: string, minified: bool, variant: string} variant: minified (the
+     *   Terser build), compact (compacted here when no build matches) or source
+     */
     public function consentScript(bool $minified = false, ?string $siteId = null): array
     {
         $this->config->assertHealthy();
         $consent = $siteId === null ? ['enabled' => true, 'name' => $this->branding->getName()]
             : ($this->sites?->consent($siteId) ?? throw new \InvalidArgumentException('Choose a registered website.'));
         if (!$consent['enabled']) {
-            return ['content' => '/* Built-in consent controls are disabled for this website. */', 'minified' => false];
+            return ['content' => '/* Built-in consent controls are disabled for this website. */', 'minified' => false, 'variant' => 'source'];
         }
         $source = @file_get_contents($this->projectDir.'/public/consent.js');
         $styles = @file_get_contents($this->projectDir.'/public/consent.css');
@@ -134,21 +138,31 @@ final class DropInScripts
                     return ['content' => strtr($template, [
                         '__AGGREGATE_CONSENT_CONFIG__' => $configuration,
                         '__AGGREGATE_CONSENT_STYLES__' => $this->json($styles),
-                    ]), 'minified' => true];
+                    ]), 'minified' => true, 'variant' => 'minified'];
                 }
             } catch (\Throwable) {
-                // Optional builds fall back to the current configured source.
+                // Optional builds fall back to compacting the current source.
+            }
+            $compact = $this->compactor()->template($source, [
+                $declaration => 'var consentConfig = __AGGREGATE_CONSENT_CONFIG__;',
+                $stylesDeclaration => 'var consentStyles = __AGGREGATE_CONSENT_STYLES__;',
+            ], ['__AGGREGATE_CONSENT_CONFIG__', '__AGGREGATE_CONSENT_STYLES__']);
+            if ($compact !== null) {
+                return ['content' => strtr($compact, [
+                    '__AGGREGATE_CONSENT_CONFIG__' => $configuration,
+                    '__AGGREGATE_CONSENT_STYLES__' => $this->json($styles),
+                ]), 'minified' => false, 'variant' => 'compact'];
             }
         }
 
         return ['content' => strtr($source, [
             $declaration => 'var consentConfig = '.$configuration.';',
             $stylesDeclaration => 'var consentStyles = '.$this->json($styles).';',
-        ]), 'minified' => false];
+        ]), 'minified' => false, 'variant' => 'source'];
     }
 
     /** Independent runtime, embedded styles and an explicit Aggregate integration adapter.
-     * @return array{content: string, minified: bool}
+     * @return array{content: string, minified: bool, variant: string}
      */
     public function standaloneConsentScript(bool $minified, string $siteId): array
     {
@@ -180,16 +194,28 @@ final class DropInScripts
                     return ['content' => strtr($template, [
                         '__MICRO_CONSENT_CONFIG__' => $json,
                         '__MICRO_CONSENT_STYLES__' => $this->json($styles),
-                    ]), 'minified' => true];
+                    ]), 'minified' => true, 'variant' => 'minified'];
                 }
             } catch (\Throwable) {
-                // A build is optional; stale or incomplete builds use current source.
+                // A build is optional; stale or incomplete builds are compacted here.
+            }
+            // Each file is compacted alone, keeping its own license notice.
+            $runtime = $this->compactor()->template($source, [$declaration => 'var microConsentStyles = __MICRO_CONSENT_STYLES__;'], ['__MICRO_CONSENT_STYLES__']);
+            $bridge = $this->compactor()->compact($adapter);
+            if ($runtime !== null && $bridge !== null) {
+                return ['content' => 'window.MicroConsentConfig = '.$json.";\n"
+                    .strtr($runtime, ['__MICRO_CONSENT_STYLES__' => $this->json($styles)]).$bridge, 'minified' => false, 'variant' => 'compact'];
             }
         }
 
         return ['content' => 'window.MicroConsentConfig = '.$json.";\n"
             .str_replace($declaration, 'var microConsentStyles = '.$this->json($styles).';', $source)
-            ."\n".$adapter, 'minified' => false];
+            ."\n".$adapter, 'minified' => false, 'variant' => 'source'];
+    }
+
+    private function compactor(): BrowserScriptCompactor
+    {
+        return $this->compactor ?? new BrowserScriptCompactor();
     }
 
     private function namespace(): string

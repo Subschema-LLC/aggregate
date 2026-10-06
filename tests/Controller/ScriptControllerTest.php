@@ -43,7 +43,9 @@ final class ScriptControllerTest extends TestCase
 
         self::assertSame(200, $response->getStatusCode());
         self::assertSame('application/javascript', $response->headers->get('Content-Type'));
-        self::assertStringContainsString('must-revalidate', (string) $response->headers->get('Cache-Control'));
+        self::assertSame('300', $response->headers->getCacheControlDirective('max-age'));
+        self::assertTrue($response->headers->hasCacheControlDirective('public'));
+        self::assertNotNull($response->getEtag());
         self::assertStringContainsString('var namespace = "CompanyAnalytics";', $script);
         self::assertSame([
             'storage' => 'local_storage',
@@ -180,7 +182,9 @@ final class ScriptControllerTest extends TestCase
         $response = $this->response($settings, Request::create('/aggregate.js?min=1'), $directory);
         $script = (string) $response->getContent();
         self::assertSame('minified', $response->headers->get('X-Aggregate-Script'));
-        self::assertStringContainsString('must-revalidate', (string) $response->headers->get('Cache-Control'));
+        self::assertSame('300', $response->headers->getCacheControlDirective('max-age'));
+        self::assertTrue($response->headers->hasCacheControlDirective('public'));
+        self::assertNotNull($response->getEtag());
         self::assertStringContainsString('/*! preserved license */', $script);
         self::assertStringNotContainsString('__AGGREGATE_', $script);
         self::assertStringNotContainsString('</script>', $script);
@@ -233,9 +237,9 @@ final class ScriptControllerTest extends TestCase
         self::assertSame(['profile' => 'strict'], $this->collectionBrowserConfig($script));
     }
 
-    public function testMissingStaleOrIncompleteBuildFallsBackToCurrentConfiguredSource(): void
+    public function testMissingStaleOrIncompleteBuildIsReplacedByTheCurrentSourceCompactedOnTheServer(): void
     {
-        foreach (['missing', 'stale-source', 'stale-template', 'malformed-manifest', 'missing-placeholder'] as $problem) {
+        foreach (['missing', 'stale-source', 'stale-template', 'malformed-manifest', 'missing-placeholder', 'unparseable'] as $problem) {
             $directory = $this->buildFixture();
             if ($problem === 'missing') unlink($directory.'/var/browser/aggregate.template.min.js');
             if ($problem === 'stale-source') file_put_contents($directory.'/public/aggregate.js', "\n// New source version\n", FILE_APPEND);
@@ -245,12 +249,24 @@ final class ScriptControllerTest extends TestCase
                 file_put_contents($directory.'/var/browser/aggregate.template.min.js', 'window.fixture=__AGGREGATE_NAMESPACE__;');
                 $this->writeManifest($directory);
             }
+            // Only source the server cannot parse is sent as it is.
+            if ($problem === 'unparseable') file_put_contents($directory.'/public/aggregate.js', "\n})(;\n", FILE_APPEND);
 
             $response = $this->response(['js_namespace' => 'CurrentAnalytics'], Request::create('/aggregate.js?min=1'), $directory);
+            $content = (string) $response->getContent();
             self::assertSame(200, $response->getStatusCode(), $problem);
-            self::assertSame('source', $response->headers->get('X-Aggregate-Script'), $problem);
-            self::assertStringContainsString('var namespace = "CurrentAnalytics";', (string) $response->getContent(), $problem);
-            self::assertStringNotContainsString('__AGGREGATE_', (string) $response->getContent(), $problem);
+            self::assertStringNotContainsString('__AGGREGATE_', $content, $problem);
+            if ($problem === 'unparseable') {
+                self::assertSame('source', $response->headers->get('X-Aggregate-Script'));
+                self::assertStringContainsString('var namespace = "CurrentAnalytics";', $content);
+                continue;
+            }
+            self::assertSame('compact', $response->headers->get('X-Aggregate-Script'), $problem);
+            self::assertStringContainsString('var namespace="CurrentAnalytics";', $content, $problem);
+            self::assertStringStartsWith("/*!\n * Aggregate Analytics browser tracker\n * SPDX-License-Identifier: BSD-3-Clause", $content, 'the license notice is kept');
+            self::assertStringContainsString('Redistribution and use in source and binary forms', $content);
+            self::assertStringNotContainsString('// ScriptController replaces these defaults', $content, 'other comments are removed');
+            self::assertLessThan(0.7 * strlen((string) $this->response(['js_namespace' => 'CurrentAnalytics'], Request::create('/aggregate.js'), $directory)->getContent()), strlen($content));
         }
     }
 

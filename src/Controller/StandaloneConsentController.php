@@ -54,7 +54,7 @@ final class StandaloneConsentController extends AbstractController
                     throw new \InvalidArgumentException('Supply only the standalone_consent mapping.');
                 }
                 $this->settings->save($siteId, $parsed['standalone_consent']);
-                $this->addFlash('success', 'Standalone consent settings saved. Hosted scripts update on the next page load; replace downloaded snapshots separately.');
+                $this->addFlash('success', 'Standalone consent settings saved. Hosted scripts update for visitors within five minutes; replace downloaded snapshots separately.');
 
                 return $this->redirectToRoute('app_standalone_consent', ['siteId' => $siteId]);
             } catch (\InvalidArgumentException|ParseException $e) {

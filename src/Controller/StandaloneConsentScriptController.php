@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Service\BrowserScriptCache;
 use App\Service\DropInScripts;
 use App\Service\SiteScriptConfig;
 use Symfony\Component\HttpFoundation\Request;
@@ -30,9 +31,9 @@ final class StandaloneConsentScriptController
         } catch (\Throwable) {
             return new Response('/* Standalone consent unavailable; optional consent remains denied. */', 503, $headers);
         }
-        $headers['Cache-Control'] = 'public, max-age=0, must-revalidate';
-        $headers['X-Aggregate-Script'] = $script['minified'] ? 'minified' : 'source';
+        unset($headers['Cache-Control']);
+        $headers['X-Aggregate-Script'] = $script['variant'];
 
-        return new Response($script['content'], headers: $headers);
+        return BrowserScriptCache::apply(new Response($script['content'], headers: $headers), $request);
     }
 }
