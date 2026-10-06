@@ -262,6 +262,12 @@ environments:
 
 # Configuration options:
 #
+# website_activity_active_days (optional, default: 1)
+#   Days without events before a site transitions from Active (pulsing green dot) to Idle.
+#
+# website_activity_stale_days (optional, default: 3)
+#   Days without events before an Idle site transitions to Inactive.
+#
 # rate_limit_per_minute (optional, default: 100)
 #   Maximum API requests per IP per minute.
 #

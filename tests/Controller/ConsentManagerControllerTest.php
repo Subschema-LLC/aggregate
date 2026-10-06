@@ -318,4 +318,28 @@ final class ConsentManagerControllerTest extends TestCase
 
         return $twig;
     }
+
+
+    public function testPrecheckCategoriesAreSavedAndRenderedInFormAndPreview(): void
+    {
+        $form = $this->defaults();
+        $form["precheck_categories"] = ["analytics", "marketing"];
+        $request = $this->post($form);
+        $this->controller($request)->save($request);
+
+        $saved = Yaml::parseFile($this->sitePath($this->siteId));
+        self::assertSame(["analytics", "marketing"], $saved["consent_manager"]["precheck_categories"]);
+
+        $page = new Crawler((string) $this->index(["site" => $this->siteId])->getContent());
+        self::assertNotNull($page->filter("#consent-precheck-analytics")->attr("checked"));
+        self::assertNotNull($page->filter('[data-preview-checkbox="analytics"]')->attr("checked"));
+
+        // Clearing precheck removes it from YAML
+        $form["precheck_categories"] = [];
+        $request = $this->post($form);
+        $this->controller($request)->save($request);
+
+        $savedAfter = Yaml::parseFile($this->sitePath($this->siteId));
+        self::assertArrayNotHasKey("precheck_categories", $savedAfter["consent_manager"]);
+    }
 }

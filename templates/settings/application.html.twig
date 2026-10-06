@@ -62,7 +62,37 @@
                 <p class="help">Maximum number of events allowed per IP per minute.</p>
             </div>
 
-            <div class="field">
+            <hr class="my-4">
+            <h3 class="title is-6 mb-2">Website activity thresholds</h3>
+            <p class="subtitle is-7 mb-3">Controls the data reception status indicator across website cards and quick search.</p>
+
+            <div class="field is-horizontal">
+                <div class="field-body">
+                    <div class="field">
+                        <label class="label" for="website-activity-active-days">Active threshold (days)</label>
+                        <div class="control has-icons-left">
+                            <input class="input" type="number" id="website-activity-active-days" name="website_activity_active_days" value="{{ website_activity_active_days|default(1) }}" required min="1" max="365">
+                            <span class="icon is-small is-left">
+                                <i class="fas fa-bolt"></i>
+                            </span>
+                        </div>
+                        <p class="help">Events received within this many days are marked <strong>Active</strong> (pulsing dot).</p>
+                    </div>
+
+                    <div class="field">
+                        <label class="label" for="website-activity-stale-days">Stale threshold (days)</label>
+                        <div class="control has-icons-left">
+                            <input class="input" type="number" id="website-activity-stale-days" name="website_activity_stale_days" value="{{ website_activity_stale_days|default(3) }}" required min="1" max="365">
+                            <span class="icon is-small is-left">
+                                <i class="fas fa-clock"></i>
+                            </span>
+                        </div>
+                        <p class="help">Sites with no events past this threshold transition to <strong>Inactive</strong>.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="field mt-4">
                 <div class="control">
                     <button type="submit" class="button is-link">
                         <span class="icon"><i class="fas fa-save"></i></span>

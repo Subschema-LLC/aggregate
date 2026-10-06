@@ -7,6 +7,8 @@ namespace App\Twig;
 use App\Service\DocumentationLinks;
 use Symfony\Component\Routing\Exception\ExceptionInterface as RoutingException;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
+use App\Service\WebsiteActivityService;
+use App\Service\WebsiteConfigManager;
 use Symfony\Component\Security\Core\Authorization\AuthorizationCheckerInterface;
 use Twig\Extension\AbstractExtension;
 use Twig\TwigFunction;
@@ -23,6 +25,8 @@ final class NavigationExtension extends AbstractExtension
         private readonly array $quickSearchSynonyms = [],
         private readonly array $quickSearchExtraItems = [],
         private readonly ?DocumentationLinks $documentation = null,
+        private readonly ?WebsiteConfigManager $websiteManager = null,
+        private readonly ?WebsiteActivityService $activityService = null,
     ) {}
 
     public function getFunctions(): array
@@ -227,6 +231,53 @@ final class NavigationExtension extends AbstractExtension
                     'description' => (string) ($extra['description'] ?? ''),
                     'keywords' => $synonyms,
                 ];
+            }
+        }
+
+        if ($this->websiteManager !== null) {
+            try {
+                $websites = $this->websiteManager->getWebsites();
+                $statuses = $this->activityService?->getStatuses() ?? [];
+
+                foreach ($websites as $site) {
+                    $token = (string) ($site['token'] ?? '');
+                    if ($token === '') {
+                        continue;
+                    }
+                    $name = (string) ($site['name'] ?? 'Unnamed');
+                    $domain = (string) ($site['domain'] ?? '');
+                    $info = $statuses[$token] ?? null;
+
+                    $status = $info['status'] ?? WebsiteActivityService::STATUS_NONE;
+                    $statusLabel = $info['label'] ?? 'Waiting for setup';
+                    $relativeTime = $info['relative_time'] ?? null;
+
+                    $desc = $domain;
+                    if ($relativeTime && $status !== WebsiteActivityService::STATUS_NONE) {
+                        $desc .= ' · ' . $statusLabel . ' (' . $relativeTime . ')';
+                    } else {
+                        $desc .= ' · ' . $statusLabel;
+                    }
+
+                    try {
+                        $url = $this->urls->generate('app_dashboard');
+                    } catch (\Throwable) {
+                        $url = '/dashboard';
+                    }
+
+                    $items[] = [
+                        'title' => $name,
+                        'category' => 'Websites',
+                        'url' => $url,
+                        'icon' => 'fas fa-globe',
+                        'description' => $desc,
+                        'keywords' => $name . ' ' . $domain . ' ' . $token . ' website tracking data events',
+                        'status' => $status,
+                        'status_label' => $statusLabel,
+                        'status_time' => $relativeTime,
+                    ];
+                }
+            } catch (\Throwable) {
             }
         }
 

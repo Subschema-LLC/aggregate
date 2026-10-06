@@ -4,6 +4,151 @@
     overflow-wrap: anywhere;
 }
 
+.website-summary {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    justify-content: space-between;
+    width: 100%;
+}
+
+.website-summary-title {
+    align-items: center;
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+/* Activity status pill in card summary */
+.website-activity-badge {
+    align-items: center;
+    border-radius: 9999px;
+    display: inline-flex;
+    font-size: 0.75rem;
+    font-weight: 500;
+    gap: 0.45rem;
+    line-height: 1.2;
+    padding: 0.25rem 0.65rem;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.website-activity-badge.status-active {
+    background-color: color-mix(in srgb, #10b981 12%, transparent);
+    border: 1px solid color-mix(in srgb, #10b981 35%, transparent);
+    color: #10b981;
+}
+
+.website-activity-badge.status-idle {
+    background-color: color-mix(in srgb, #f59e0b 12%, transparent);
+    border: 1px solid color-mix(in srgb, #f59e0b 35%, transparent);
+    color: #d97706;
+}
+
+.website-activity-badge.status-inactive {
+    background-color: color-mix(in srgb, var(--app-brand-text) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--app-brand-text) 22%, transparent);
+    color: color-mix(in srgb, var(--app-brand-text) 70%, transparent);
+}
+
+.website-activity-badge.status-none {
+    background-color: color-mix(in srgb, var(--app-brand-text) 5%, transparent);
+    border: 1px dashed color-mix(in srgb, var(--app-brand-text) 25%, transparent);
+    color: color-mix(in srgb, var(--app-brand-text) 60%, transparent);
+}
+
+.website-activity-badge .activity-time {
+    color: inherit;
+    opacity: 0.8;
+}
+
+/* Pulsing radar dot */
+.activity-pulse-dot {
+    display: inline-flex;
+    height: 0.5rem;
+    position: relative;
+    width: 0.5rem;
+}
+
+.activity-pulse-dot .pulse-dot {
+    border-radius: 50%;
+    display: block;
+    height: 100%;
+    width: 100%;
+}
+
+.activity-pulse-dot .pulse-ring {
+    border-radius: 50%;
+    display: none;
+    height: 100%;
+    position: absolute;
+    width: 100%;
+}
+
+.status-active .activity-pulse-dot .pulse-dot {
+    background-color: #10b981;
+}
+
+.status-active .activity-pulse-dot .pulse-ring {
+    animation: websiteActivityPing 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+    background-color: #10b981;
+    display: block;
+    opacity: 0.75;
+}
+
+.status-idle .activity-pulse-dot .pulse-dot {
+    background-color: #f59e0b;
+}
+
+.status-inactive .activity-pulse-dot .pulse-dot {
+    background-color: color-mix(in srgb, var(--app-brand-text) 45%, transparent);
+}
+
+.status-none .activity-pulse-dot .pulse-dot {
+    background-color: transparent;
+    border: 1.5px solid color-mix(in srgb, var(--app-brand-text) 45%, transparent);
+}
+
+@keyframes websiteActivityPing {
+    75%, 100% {
+        opacity: 0;
+        transform: scale(2.5);
+    }
+}
+
+/* Detailed activity banner inside card */
+.website-activity-banner {
+    border-radius: var(--bulma-control-radius);
+    padding: 0.65rem 0.85rem;
+}
+
+.website-activity-banner.status-active {
+    background-color: color-mix(in srgb, #10b981 8%, transparent);
+    border: 1px solid color-mix(in srgb, #10b981 25%, transparent);
+}
+
+.website-activity-banner.status-idle {
+    background-color: color-mix(in srgb, #f59e0b 8%, transparent);
+    border: 1px solid color-mix(in srgb, #f59e0b 25%, transparent);
+}
+
+.website-activity-banner.status-inactive {
+    background-color: color-mix(in srgb, var(--app-brand-text) 5%, transparent);
+    border: 1px solid var(--app-brand-border);
+}
+
+.website-activity-banner.status-none {
+    background-color: color-mix(in srgb, var(--app-brand-text) 4%, transparent);
+    border: 1px dashed color-mix(in srgb, var(--app-brand-text) 22%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .status-active .activity-pulse-dot .pulse-ring {
+        animation: none;
+        display: none;
+    }
+}
+
 .website-token-display {
     align-items: center;
     background-color: var(--app-brand-background);
