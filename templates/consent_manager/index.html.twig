@@ -12,6 +12,7 @@
     <h1 class="title">Consent manager lite</h1>
     <p class="subtitle">The built-in privacy banner that loads with the tag manager: whether it shows, its wording, colors and buttons.</p>
     {{ component('Ui:DocsLink', {topic: 'tracking.consent-manager', label: 'Consent manager guide'}) }}
+    {{ component('TagManager:Navigation', {current_page: 'app_consent_manager', selected_site: selected_site}) }}
 
     {% if sites is empty %}
         <p class="notification is-info is-light">Register a website first. Each website has its own consent manager settings.</p>

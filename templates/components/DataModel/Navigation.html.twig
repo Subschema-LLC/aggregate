@@ -1,12 +1,21 @@
 {% props current_model_page %}
 
-<nav class="buttons mb-5" aria-label="Data model pages">
-    {% for route, label in {
-        app_data_model: 'Edit model',
-        app_event_examples: 'Event examples',
-        app_data_model_discovery: 'Observed properties',
-        app_data_model_reporting: 'Reporting views'
-    } %}
-        <a class="button{% if current_model_page == route %} is-link is-light{% endif %}" href="{{ path(route) }}"{% if current_model_page == route %} aria-current="page"{% endif %}>{{ label }}</a>
-    {% endfor %}
+<nav class="section-tabs-nav mb-5" aria-label="Data model pages">
+    <div class="tabs section-underline-tabs">
+        <ul>
+            {% for item in [
+                {route: "app_data_model", label: "Data model", icon: "fas fa-table-columns"},
+                {route: "app_event_examples", label: "Event examples", icon: "fas fa-file-code"},
+                {route: "app_data_model_discovery", label: "Observed properties", icon: "fas fa-binoculars"},
+                {route: "app_data_model_reporting", label: "Reporting views", icon: "fas fa-table"}
+            ] %}
+                <li class="{% if current_model_page == item.route %}is-active{% endif %}">
+                    <a href="{{ path(item.route) }}"{% if current_model_page == item.route %} aria-current="page"{% endif %}>
+                        <span class="icon is-small mr-1"><i class="{{ item.icon }}" aria-hidden="true"></i></span>
+                        <span>{{ item.label }}</span>
+                    </a>
+                </li>
+            {% endfor %}
+        </ul>
+    </div>
 </nav>

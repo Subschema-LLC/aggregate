@@ -1,18 +1,90 @@
 import { Controller } from '@hotwired/stimulus';
 
 export default class extends Controller {
-    static targets = ['propertyRows', 'mappingRows', 'propertyTemplate', 'mappingTemplate', 'reservedDetails'];
+    static targets = ['propertyRows', 'mappingRows', 'propertyTemplate', 'mappingTemplate', 'reservedDetails', 'tabPane'];
     static values = {propertyIndex: Number, mappingIndex: Number, reservedColumns: Array};
 
     connect() {
         this.restoreDraftIfAvailable();
         this.validateAll();
 
-        const form = this.element && typeof this.element.querySelector === 'function' ? this.element.querySelector('form') : null;
+        if (typeof window !== "undefined" && window.location && window.location.hash) {
+            const h = window.location.hash.replace("#", "");
+            if (["properties", "campaigns", "page-depth"].includes(h)) {
+                this.activateTab(h);
+            }
+        }
+
+        if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+            this.boundHashChange = () => {
+                const h = window.location.hash.replace("#", "");
+                if (["properties", "campaigns", "page-depth"].includes(h)) {
+                    this.activateTab(h);
+                }
+            };
+            window.addEventListener("hashchange", this.boundHashChange);
+        }
+
+        const form = this.element && typeof this.element.querySelector === "function" ? this.element.querySelector("form") : null;
         if (form) {
-            form.addEventListener('submit', () => {
+            form.addEventListener("submit", () => {
                 setTimeout(() => this.clearDraft(), 2000);
             });
+        }
+    }
+
+    disconnect() {
+        if (typeof window !== "undefined" && this.boundHashChange && typeof window.removeEventListener === "function") {
+            window.removeEventListener("hashchange", this.boundHashChange);
+        }
+    }
+
+    switchWorkspaceTab(event) {
+        if (event && typeof event.preventDefault === "function") {
+            event.preventDefault();
+        }
+        const target = event && event.currentTarget ? event.currentTarget : null;
+        const link = target && typeof target.closest === "function" ? target.closest("[data-tab-name], a") : target;
+        let tabName = link && link.dataset ? link.dataset.tabName : null;
+        if (!tabName && link && typeof link.getAttribute === "function") {
+            const href = link.getAttribute("href") || "";
+            tabName = href.replace(/^#/, "");
+        }
+        if (tabName) {
+            this.activateTab(tabName);
+        }
+    }
+
+    activateTab(name) {
+        const root = this.element || (typeof document !== "undefined" ? document : null);
+        if (!root) return;
+
+        const tabs = root.querySelectorAll("[data-workspace-tab]");
+        for (const tab of tabs) {
+            const isActive = tab.dataset.workspaceTab === name;
+            tab.classList.toggle("is-active", isActive);
+            const link = tab.querySelector("a");
+            if (link) {
+                link.setAttribute("aria-selected", isActive ? "true" : "false");
+            }
+        }
+
+        const panes = root.querySelectorAll("[data-pane-name]");
+        for (const pane of panes) {
+            const isActive = pane.dataset.paneName === name;
+            pane.classList.toggle("is-active", isActive);
+            pane.hidden = !isActive;
+            if (isActive) {
+                pane.removeAttribute("hidden");
+                pane.style.display = "block";
+            } else {
+                pane.setAttribute("hidden", "");
+                pane.style.display = "none";
+            }
+        }
+
+        if (typeof window !== "undefined" && window.location && window.history) {
+            window.history.replaceState(null, "", "#" + name);
         }
     }
 
