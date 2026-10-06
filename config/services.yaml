@@ -105,6 +105,8 @@ services:
         arguments:
             $quickSearchSynonyms: '%app.quick_search_synonyms%'
             $quickSearchExtraItems: '%app.quick_search_extra_items%'
+            $websiteManager: '@App\Service\WebsiteConfigManager'
+            $activityService: '@App\Service\WebsiteActivityService'
 
     App\Twig\AppBrandingExtension:
         autoconfigure: false

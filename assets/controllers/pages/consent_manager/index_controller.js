@@ -57,6 +57,13 @@ export default class extends Controller {
         for (const label of this.categoriesTarget.querySelectorAll('[data-category]')) {
             label.textContent = this.text(`text[categories][${label.dataset.category}]`);
         }
+        for (const input of this.element.querySelectorAll('[data-precheck-category]')) {
+            const cat = input.dataset.precheckCategory;
+            const previewCb = this.element.querySelector('[data-preview-checkbox="' + cat + '"]');
+            if (previewCb) {
+                previewCb.checked = input.checked;
+            }
+        }
         this.buttonsTarget.replaceChildren(...show.map((button) => {
             const node = document.createElement('button');
             node.type = 'button';

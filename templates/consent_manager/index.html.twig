@@ -94,14 +94,23 @@
                     <div class="control"><input class="input" id="consent-text-categories-legend" name="text[categories_legend]" value="{{ form.text.categories_legend }}" placeholder="{{ default_text.categories_legend }}" maxlength="120" data-default="{{ default_text.categories_legend }}"></div>
                 </div>
                 <div class="field">
-                    <span class="label">Category labels</span>
+                    <span class="label">Category labels and default state</span>
+                    <p class="help mb-3">Categories come from this website’s enabled tags, plus enhanced analytics. Check <strong>Pre-check</strong> if the category’s checkbox should start selected for new visitors.</p>
                     {% for category, label in form.categories %}
-                        <div class="field is-horizontal">
+                        <div class="field is-horizontal mb-2">
                             <div class="field-label is-normal"><label class="label has-text-weight-normal" for="consent-category-{{ category }}"><code>{{ category }}</code></label></div>
-                            <div class="field-body"><div class="control is-expanded"><input class="input" id="consent-category-{{ category }}" name="text[categories][{{ category }}]" value="{{ label }}" placeholder="{{ default_labels[category] }}" maxlength="120" data-default="{{ default_labels[category] }}" data-category="{{ category }}"></div></div>
+                            <div class="field-body">
+                                <div class="control is-expanded"><input class="input" id="consent-category-{{ category }}" name="text[categories][{{ category }}]" value="{{ label }}" placeholder="{{ default_labels[category] }}" maxlength="120" data-default="{{ default_labels[category] }}" data-category="{{ category }}"></div>
+                                <div class="control is-flex is-align-items-center ml-2">
+                                    <label class="checkbox is-size-7" for="consent-precheck-{{ category }}">
+                                        <input type="checkbox" name="precheck_categories[]" value="{{ category }}" id="consent-precheck-{{ category }}"{% if category in form.precheck_categories %} checked{% endif %} data-precheck-category="{{ category }}" data-action="change->pages--consent-manager--index#update">
+                                        Pre-check
+                                    </label>
+                                </div>
+                            </div>
                         </div>
                     {% endfor %}
-                    <p class="help">Categories come from this website’s enabled tags, plus analytics.</p>
+                    <p class="help">Unchecked categories start unselected for new visitors. In regions such as the EU/UK under GDPR, pre-ticked boxes do not constitute valid consent; keep optional categories unselected where opt-in consent is required.</p>
                 </div>
                 <div class="columns is-multiline">
                     {% for key, label in {reject: 'Reject button', accept: 'Accept button', save: 'Save button', reopen: 'Reopen button', privacy_link: 'Privacy notice link'} %}
@@ -174,7 +183,7 @@
                         <p data-pages--consent-manager--index-target="privacy"{% if not form.privacy_policy_url %} hidden{% endif %}><a href="#">{{ form.text.privacy_link }}</a></p>
                         <fieldset data-pages--consent-manager--index-target="categories"{% if 'save' not in form.show %} hidden{% endif %}>
                             <legend data-pages--consent-manager--index-target="legend">{{ form.text.categories_legend }}</legend>
-                            {% for category, label in form.categories %}<label class="ac-consent-category"><input type="checkbox"> <span data-category="{{ category }}">{{ label }}</span></label>{% endfor %}
+                            {% for category, label in form.categories %}<label class="ac-consent-category"><input type="checkbox"{% if category in form.precheck_categories %} checked{% endif %} data-preview-checkbox="{{ category }}"> <span data-category="{{ category }}">{{ label }}</span></label>{% endfor %}
                         </fieldset>
                         <div class="ac-consent-actions" data-pages--consent-manager--index-target="buttons">
                             {% for name in form.show|split(',') %}<button type="button" data-button="{{ name }}">{{ form.text[name] }}</button>{% endfor %}
