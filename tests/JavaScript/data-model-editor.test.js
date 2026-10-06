@@ -92,3 +92,39 @@ test('editing a property updates only its summary as text and an empty key resto
   controller.renameProperty({currentTarget: input});
   assert.equal(first.summary.textContent, 'New property');
 });
+
+test("switchWorkspaceTab activates selected tab and updates pane visibility", () => {
+  const tabs = [
+    {dataset: {workspaceTab: "properties"}, classList: new Set(["is-active"]), querySelector: () => ({setAttribute: () => {}})},
+    {dataset: {workspaceTab: "campaigns"}, classList: new Set(), querySelector: () => ({setAttribute: () => {}})},
+    {dataset: {workspaceTab: "page-depth"}, classList: new Set(), querySelector: () => ({setAttribute: () => {}})},
+  ];
+  for (const t of tabs) {
+    t.classList.toggle = (cls, on) => on ? t.classList.add(cls) : t.classList.delete(cls);
+  }
+
+  const panes = [
+    {dataset: {paneName: "properties"}, classList: new Set(["is-active"]), hidden: false, style: {}, removeAttribute: () => {}, setAttribute: () => {}},
+    {dataset: {paneName: "campaigns"}, classList: new Set(), hidden: true, style: {}, removeAttribute: () => {}, setAttribute: () => {}},
+    {dataset: {paneName: "page-depth"}, classList: new Set(), hidden: true, style: {}, removeAttribute: () => {}, setAttribute: () => {}},
+  ];
+  for (const p of panes) {
+    p.classList.toggle = (cls, on) => on ? p.classList.add(cls) : p.classList.delete(cls);
+  }
+
+  const controller = editor();
+  controller.element.querySelectorAll = (sel) => {
+    if (sel === "[data-workspace-tab]") return tabs;
+    if (sel === "[data-pane-name]") return panes;
+    return [];
+  };
+
+  controller.activateTab("campaigns");
+
+  assert.equal(tabs[0].classList.has("is-active"), false);
+  assert.equal(tabs[1].classList.has("is-active"), true);
+  assert.equal(panes[0].hidden, true);
+  assert.equal(panes[1].hidden, false);
+  assert.equal(panes[1].style.display, "block");
+  assert.equal(panes[0].style.display, "none");
+});

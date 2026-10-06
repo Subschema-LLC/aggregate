@@ -36,6 +36,7 @@ final class RegenerateReportingViewsCommand extends Command
             ->addOption('discover', null, InputOption::VALUE_NONE, 'List property names, types and occurrence counts from a bounded event sample; do not regenerate')
             ->addOption('sample-size', null, InputOption::VALUE_REQUIRED, 'Maximum retained events with custom data to sample with --discover (1–10000)', '1000')
             ->addOption('export-model', null, InputOption::VALUE_NONE, 'Write the shareable YAML model to stdout; do not regenerate')
+            ->addOption('force', 'f', InputOption::VALUE_NONE, 'Drop and recreate views without column-preservation checks (planned schema migration)')
             ->setHelp('The private analytics_custom_* views contain retained raw events and configured scalar JSON columns. They are unsuppressed and require controlled access. Archives do not retain these properties. Existing bi_anonymous_* views are unchanged. Add new aliases at the end of the model to preserve deployed view columns and grants.');
     }
 
@@ -86,14 +87,15 @@ final class RegenerateReportingViewsCommand extends Command
                 return Command::SUCCESS;
             }
 
-            $names = $this->views->regenerate();
+            $force = (bool) $input->getOption('force');
+            $names = $this->views->regenerate($force);
             try {
                 $this->glossary->sync();
             } catch (\Throwable $error) {
                 $io->warning('Reporting views were regenerated, but the BI glossary was not synced. Run app:analytics:glossary:sync after correcting the issue.');
                 throw $error;
             }
-            $io->success('Regenerated '.implode(', ', $names).'.');
+            $io->success(($force ? 'Dropped and regenerated ' : 'Regenerated ').implode(', ', $names).'.');
             $io->note('These private views contain unsuppressed retained events. Grant access only to authorized reporting users. Custom properties are unavailable once raw rows are deleted.');
 
             return Command::SUCCESS;

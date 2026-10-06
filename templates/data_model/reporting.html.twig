@@ -8,7 +8,12 @@
     {{ component('Ui:DocsLink', {topic: 'reporting.custom-views', label: 'Custom reporting views guide'}) }}
     {{ component('DataModel:Navigation', {current_model_page: 'app_data_model_reporting'}) }}
     {% if configuration_error %}<div class="notification is-danger" role="alert">{{ configuration_error }}</div>{% endif %}
-    {% if reporting_error %}<div class="notification is-warning" role="alert">{{ reporting_error }}</div>{% endif %}
+    {% if reporting_error %}
+        <div class="notification is-warning" role="alert">
+            <p>{{ reporting_error }}</p>
+            <p class="is-size-7 mt-2">If this is a planned column addition or reorder, use <strong>Force recreate views</strong> below, or run <code>php bin/console app:analytics:views:regenerate --force</code>.</p>
+        </div>
+    {% endif %}
     <section class="box">
         <p>Regenerate <code>analytics_custom_events_v1</code>, <code>analytics_custom_pageviews_v1</code>, and <code>analytics_custom_goals_v1</code> from the saved model. Text reporting columns preserve scalar values as text. Optional numeric columns support calculations: Integer requires a whole number; Float and Double preserve fractions with approximate precision. Missing, null, structured, or incompatible values become SQL <code>NULL</code>.</p>
         <p class="mt-3">These views contain individual retained events in both privacy modes, without suppression. Restrict access as you would the raw events table. Existing <code>bi_anonymous_*</code> views keep their aggregation and suppression rules. Archives discard custom properties; this reporting detail is lost when raw events are deleted.</p>
@@ -16,10 +21,16 @@
             <details class="mt-4 mb-4"><summary>Preview SQL for the saved model</summary>{% for name, sql in view_sql %}<h3 class="title is-6 mt-4">{{ name }}</h3><pre>{{ sql }}</pre>{% endfor %}</details>
             <form action="{{ path('app_data_model_regenerate') }}" method="post">
                 <input type="hidden" name="_csrf_token" value="{{ csrf_token('data_model_settings') }}">
-                <button class="button is-primary" type="submit">Regenerate views from saved model</button>
+                <div class="is-flex is-align-items-center is-flex-wrap-wrap" style="gap: 0.75rem;">
+                    <button class="button is-primary" type="submit">Regenerate views from saved model</button>
+                    <button class="button is-light" type="submit" name="force" value="1" onclick="return confirm('Are you sure you want to drop and recreate the reporting views? Use this when new text columns were added after numeric columns, or when columns were reordered. Existing event data is untouched.');" title="Drop and recreate views without column-preservation checks (planned schema migration)">
+                        <span class="icon is-small mr-1"><i class="fas fa-arrows-rotate" aria-hidden="true"></i></span>
+                        <span>Force recreate views</span>
+                    </button>
+                </div>
             </form>
         {% endif %}
-        <p class="help mt-3">For headless use: <code>php bin/console app:analytics:views:regenerate --dry-run</code>, then run without <code>--dry-run</code> to apply. The database account needs view-creation privileges. MySQL/MariaDB apply each view separately; if an operation fails, correct the issue and rerun it.</p>
+        <p class="help mt-3">For headless use: <code>php bin/console app:analytics:views:regenerate</code> (or add <code>--force</code> for a planned schema migration). The database account needs view-creation privileges. MySQL/MariaDB apply each view separately; if an operation fails, correct the issue and rerun it.</p>
     </section>
 </div>
 {% endblock %}

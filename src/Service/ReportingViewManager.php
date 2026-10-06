@@ -118,7 +118,7 @@ class ReportingViewManager
      *
      * @return list<string>
      */
-    public function regenerate(): array
+    public function regenerate(bool $force = false): array
     {
         $platform = $this->platform();
         $selects = $this->selectSql($platform);
@@ -127,15 +127,17 @@ class ReportingViewManager
         }
 
         $updated = [];
-        $regenerate = function () use ($platform, $selects, &$updated): array {
-            $this->assertColumnsCanBeReplaced($platform);
+        $regenerate = function () use ($platform, $selects, &$updated, $force): array {
+            if (!$force) {
+                $this->assertColumnsCanBeReplaced($platform);
+            }
             // Resolve every table, column and JSON function before changing any
             // view. Fetch no event data during this schema/permission check.
             foreach ($selects as $select) {
                 $this->connection->executeQuery($select.' AND 1 = 0')->free();
             }
             foreach ($selects as $name => $select) {
-                foreach ($this->viewStatements($platform, $name, $select) as $statement) {
+                foreach ($this->viewStatements($platform, $name, $select, $force) as $statement) {
                     $this->connection->executeStatement($statement);
                 }
                 $updated[] = $name;
@@ -314,7 +316,7 @@ class ReportingViewManager
     }
 
     /** @return list<string> */
-    private function viewStatements(AbstractPlatform $platform, string $name, string $select): array
+    private function viewStatements(AbstractPlatform $platform, string $name, string $select, bool $force = false): array
     {
         if ($platform instanceof SQLitePlatform) {
             $name = $platform->quoteSingleIdentifier('main').'.'.$platform->quoteSingleIdentifier($name);
@@ -322,10 +324,14 @@ class ReportingViewManager
             return ['DROP VIEW IF EXISTS '.$name, 'CREATE VIEW '.$name." AS\n".$select];
         }
 
-        $name = $platform->quoteSingleIdentifier($name);
+        $quoted = $platform->quoteSingleIdentifier($name);
+        if ($force) {
+            return ['DROP VIEW IF EXISTS '.$quoted, 'CREATE VIEW '.$quoted." AS\n".$select];
+        }
+
         $verb = $platform instanceof SQLServerPlatform ? 'CREATE OR ALTER' : 'CREATE OR REPLACE';
 
-        return [$verb.' VIEW '.$name." AS\n".$select];
+        return [$verb.' VIEW '.$quoted." AS\n".$select];
     }
 
     private function assertColumnsCanBeReplaced(AbstractPlatform $platform): void
