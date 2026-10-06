@@ -120,9 +120,10 @@ final class ConsentManagerController extends AbstractController
      */
     private function changesFromForm(array $form, array $saved): array
     {
-        if (array_diff(array_keys($form), ['_csrf_token', 'site', 'enabled', 'name', 'privacy_policy_url', 'text', 'theme', 'buttons']) !== []
+        if (array_diff(array_keys($form), ['_csrf_token', 'site', 'enabled', 'name', 'privacy_policy_url', 'precheck_categories', 'text', 'theme', 'buttons']) !== []
             || !in_array($form['enabled'] ?? null, ['0', '1'], true) || !is_string($form['name'] ?? null)
             || !is_string($form['privacy_policy_url'] ?? '')
+            || (array_key_exists('precheck_categories', $form) && (!is_array($form['precheck_categories']) || array_filter($form['precheck_categories'], 'is_string') !== $form['precheck_categories']))
             || !is_array($form['text'] ?? []) || !is_array($form['theme'] ?? []) || !is_array($form['buttons'] ?? [])) {
             throw new \InvalidArgumentException('The consent manager form contained missing or unexpected settings. Nothing was saved.');
         }
@@ -197,9 +198,18 @@ final class ConsentManagerController extends AbstractController
 
         $privacy = trim($form['privacy_policy_url'] ?? '');
 
+        $precheck = [];
+        foreach ($form['precheck_categories'] ?? [] as $cat) {
+            $cat = trim($cat);
+            if ($cat !== '' && !in_array($cat, $precheck, true)) {
+                $precheck[] = $cat;
+            }
+        }
+
         return [
             'enabled' => $form['enabled'] === '1', 'name' => $form['name'],
             'privacy_policy_url' => $privacy === '' ? null : $privacy,
+            'precheck_categories' => $precheck === [] ? null : $precheck,
             'text' => $text === [] ? null : $text,
             'theme' => $theme === [] ? null : $theme,
             'buttons' => $buttons === [] ? null : $buttons,
@@ -225,6 +235,7 @@ final class ConsentManagerController extends AbstractController
         return [
             'enabled' => $consent['enabled'], 'name' => $consent['name'],
             'privacy_policy_url' => $consent['privacy_policy_url'] ?? '',
+            'precheck_categories' => $consent['precheck_categories'] ?? [],
             'text' => $text,
             'details' => array_pad($consent['text']['details'] ?? $defaults['details'], ConsentAppearance::MAX_DETAILS, ''),
             'categories' => $labels,
@@ -243,6 +254,9 @@ final class ConsentManagerController extends AbstractController
         }
         $form['name'] = $text($submitted['name'] ?? null, $form['name']);
         $form['privacy_policy_url'] = $text($submitted['privacy_policy_url'] ?? null, $form['privacy_policy_url']);
+        if (array_key_exists('precheck_categories', $submitted) && is_array($submitted['precheck_categories'])) {
+            $form['precheck_categories'] = array_values(array_filter($submitted['precheck_categories'], 'is_string'));
+        }
         $wording = is_array($submitted['text'] ?? null) ? $submitted['text'] : [];
         foreach ($form['text'] as $key => $value) {
             $form['text'][$key] = $text($wording[$key] ?? null, $value);

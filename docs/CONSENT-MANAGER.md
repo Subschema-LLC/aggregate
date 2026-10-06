@@ -92,6 +92,7 @@ consent_manager:
 | `enabled` | `true`. A YAML boolean. Disabling it grants no consent; connect your own CMP instead. |
 | `name` | The registered website's name. 1–120 UTF-8 bytes, no control characters. |
 | `privacy_policy_url` | None. Empty or an absolute HTTPS URL without credentials. Adds a link to the banner. |
+| `precheck_categories` | `[]`. A list of category names (e.g. `[analytics]`) whose checkboxes start selected for new visitors. In opt-in jurisdictions like the EU/UK under GDPR, keep optional categories unselected. |
 | `text` | Default wording; see [Wording](#wording). |
 | `theme` | Default colors; see [Colors](#colors). |
 | `buttons` | `show: [reject, accept, save]`, `reopen: bottom-left`; see [Buttons](#buttons). |

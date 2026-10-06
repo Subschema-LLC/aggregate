@@ -2,12 +2,15 @@
 
 <details class="box mb-4"{% if index == 1 %} open{% endif %}>
     <summary class="website-summary has-text-weight-semibold">
-        <span class="icon-text">
-            <span class="icon has-text-primary"><i class="fas fa-globe" aria-hidden="true"></i></span>
-            <span>{{ website.name }} <span class="has-text-weight-normal">— {{ website.domain }}</span></span>
+        <span class="website-summary-title">
+            <span class="icon has-text-primary mr-1"><i class="fas fa-globe" aria-hidden="true"></i></span>
+            <span>{{ website.name }}</span>
+            <span class="website-summary-domain has-text-weight-normal has-text-grey">— {{ website.domain }}</span>
         </span>
+        {% include 'components/Websites/_activity_badge.html.twig' with {activity: website.activity ?? null, token: website.token} only %}
     </summary>
     <div class="content mt-4">
+        {% include 'components/Websites/_activity_banner.html.twig' with {activity: website.activity ?? null, token: website.token, website: website} only %}
         <div class="website-token-display mb-4">
             <div>
                 <span class="is-size-7 has-text-weight-semibold has-text-grey is-uppercase">Website token:</span>

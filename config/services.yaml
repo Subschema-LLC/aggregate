@@ -105,6 +105,8 @@ services:
         arguments:
             $quickSearchSynonyms: '%app.quick_search_synonyms%'
             $quickSearchExtraItems: '%app.quick_search_extra_items%'
+            $websiteManager: '@App\Service\WebsiteConfigManager'
+            $activityService: '@App\Service\WebsiteActivityService'
 
     App\Twig\AppBrandingExtension:
         autoconfigure: false
@@ -127,6 +129,10 @@ services:
     App\Service\BrowserScriptCompactor:
         arguments:
             $cacheDirectory: '%kernel.cache_dir%/browser-scripts'
+
+    App\Service\TrackerScript:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
 
     App\Service\TagManagerSettings:
         arguments:

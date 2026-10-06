@@ -262,6 +262,33 @@ event immediately.
 would allow long caching with instant updates, at the cost of editing every
 site's snippet after each change.
 
+### A smaller tracker for the features settings turn off, on by default
+
+**Decision.** With the page speed setting `tracker_omit_unused_features` on,
+which is the default, the configured `/aggregate.js?min=1` leaves out the code
+for features the served settings make impossible: page depth while it is off,
+and what only the standard profile uses while the strict profile is on. Build
+switches in `public/aggregate.js` mark that code; the Terser build and the
+server's compactor remove it the same way. Every minified build also shortens
+the tracker's internal names. The supplied web server configurations compress
+scripts and styles but not HTML.
+
+**Why.** Page depth is off by default and is a sixth of the tracker; the strict
+profile needs half of it. Pages cannot turn either back on, so the smaller
+build behaves the same, which tests check by running one visit through every
+build. One source keeps a single place to fix and review. Compression is the
+largest saving of all; leaving HTML out keeps dashboard form tokens away from
+compression side channels such as BREACH.
+
+**Trade-off.** Three tracker builds to produce and test instead of one. An
+operator who turns page depth on waits up to five minutes for browsers holding
+the smaller build, as with any setting. Shortened names make the minified
+tracker harder to read; the readable `/aggregate.js` keeps every name and
+feature. Operators who prefer one build for everyone can turn the setting off.
+
+**What would change it.** Per-website collection settings, which would make the
+build depend on the website as well as the deployment.
+
 ### YAML and the command line first; the dashboard is optional
 
 **Decision.** Every setting can be managed in YAML or from the command line, and

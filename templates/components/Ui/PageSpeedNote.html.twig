@@ -1,0 +1,11 @@
+{# A page speed callout beside a setting that changes how much script visitors
+   download. enabled: whether "Leave out unused tracker features" is on. #}
+{% props enabled = true %}
+<p {{ attributes.defaults({class: 'help page-speed-note'}) }}>
+    <span class="icon has-text-success"><i class="fas fa-gauge-high" aria-hidden="true"></i></span>
+    <strong>Page speed:</strong>
+    {% block content %}{% endblock %}
+    {% if not enabled %}
+        <a href="{{ path('app_application_settings') }}#page-speed">Leave out unused tracker features</a> is off, so visitors get the full tracker either way.
+    {% endif %}
+</p>

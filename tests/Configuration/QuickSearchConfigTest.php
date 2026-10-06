@@ -81,4 +81,74 @@ final class QuickSearchConfigTest extends KernelTestCase
         self::assertSame('External Docs', $items[1]['title']);
         self::assertSame('help manual', $items[1]['keywords']);
     }
+
+    public function testQuickSearchItemsIncludesWebsitesWithStatus(): void
+    {
+        $features = new FeatureFlagsExtension($this->createMock(\App\Service\FeatureFlags::class));
+        $auth = $this->createMock(AuthorizationCheckerInterface::class);
+        $urls = $this->createMock(UrlGeneratorInterface::class);
+        $urls->method('generate')->willReturn('/dashboard');
+
+        $websiteManager = $this->createMock(\App\Service\WebsiteConfigManager::class);
+        $websiteManager->method('getWebsites')->willReturn([
+            ['name' => 'Demo Store', 'domain' => 'demo.example.com', 'token' => 'token-demo'],
+        ]);
+
+        $activityService = $this->createMock(\App\Service\WebsiteActivityService::class);
+        // Quick search is on every page, so it never computes statuses itself.
+        $activityService->expects(self::never())->method('getStatuses');
+        $activityService->method('cachedStatuses')->willReturn([
+            'token-demo' => [
+                'token' => 'token-demo',
+                'status' => 'active',
+                'label' => 'Receiving data',
+                'relative_time' => '15m ago',
+            ],
+        ]);
+
+        $extension = new NavigationExtension(
+            $features,
+            $auth,
+            $urls,
+            websiteManager: $websiteManager,
+            activityService: $activityService
+        );
+
+        $items = $extension->quickSearchItems(['items' => []]);
+
+        self::assertCount(1, $items);
+        self::assertSame('Demo Store', $items[0]['title']);
+        self::assertSame('Websites', $items[0]['category']);
+        self::assertSame('active', $items[0]['status']);
+        self::assertSame('Receiving data', $items[0]['status_label']);
+        self::assertSame('15m ago', $items[0]['status_time']);
+        self::assertStringContainsString('demo.example.com', $items[0]['description']);
+        self::assertStringContainsString('Receiving data', $items[0]['description']);
+    }
+
+    public function testQuickSearchListsWebsitesBeforeAnyStatusIsComputed(): void
+    {
+        $urls = $this->createMock(UrlGeneratorInterface::class);
+        $urls->method('generate')->willReturn('/dashboard');
+        $websiteManager = $this->createMock(\App\Service\WebsiteConfigManager::class);
+        $websiteManager->method('getWebsites')->willReturn([
+            ['name' => 'Demo Store', 'domain' => 'demo.example.com', 'token' => 'token-demo'],
+        ]);
+        $activityService = $this->createMock(\App\Service\WebsiteActivityService::class);
+        $activityService->expects(self::never())->method('getStatuses');
+        $activityService->method('cachedStatuses')->willReturn(null);
+
+        $extension = new NavigationExtension(
+            new FeatureFlagsExtension($this->createMock(\App\Service\FeatureFlags::class)),
+            $this->createMock(AuthorizationCheckerInterface::class),
+            $urls,
+            websiteManager: $websiteManager,
+            activityService: $activityService
+        );
+        $items = $extension->quickSearchItems(['items' => []]);
+
+        self::assertCount(1, $items);
+        self::assertSame('Demo Store', $items[0]['title']);
+        self::assertSame('none', $items[0]['status']);
+    }
 }

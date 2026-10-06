@@ -10,15 +10,20 @@ use App\Service\BrandingLogoManager;
 use App\Service\BrandingTheme;
 use App\Service\CollectionProfile;
 use App\Service\DocumentationLinks;
+use App\Service\BrowserScriptCache;
 use App\Service\DropInScripts;
+use App\Service\TrackerBuilds;
+use App\Service\TrackerScript;
 use App\Service\TrackingAttributes;
 use App\Service\WebsiteConfigManager;
 use App\Service\WebsiteDomainPolicy;
+use App\Service\WebsiteActivityService;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
+use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
@@ -39,7 +44,7 @@ class DashboardController extends AbstractController
     ) {}
 
     #[Route('/dashboard', name: 'app_dashboard', methods: ['GET'])]
-    public function index(Request $request, DropInScripts $scripts): Response
+    public function index(Request $request, DropInScripts $scripts, ?WebsiteActivityService $activityService = null): Response
     {
         $this->denyIfDashboardDisabled();
         $query = $request->query->all();
@@ -47,7 +52,7 @@ class DashboardController extends AbstractController
         $withTags = ($query['tags'] ?? null) === '1';
 
         return $this->renderDashboardPage('websites/index.html.twig', [
-            'websites' => array_map(function (array $website) use ($scripts, $format, $withTags): array {
+            'websites' => array_map(function (array $website) use ($scripts, $format, $withTags, $activityService): array {
                 try {
                     $website['domain_settings'] = $this->websiteDomainPolicy->resolve($website);
                     $website['domain_settings_invalid'] = false;
@@ -67,6 +72,9 @@ class DashboardController extends AbstractController
                     // or prevent the operator from repairing its domain rules.
                     $website['integration_code'] = null;
                 }
+                // Only a status already computed: the page never waits on the
+                // events database. The page loads fresh ones from app_website_activity.
+                $website['activity'] = $activityService?->cachedStatusForToken((string) ($website['token'] ?? ''));
 
                 return $website;
             }, $this->websiteManager->getWebsites()),
@@ -77,21 +85,105 @@ class DashboardController extends AbstractController
         ]);
     }
 
+    /**
+     * Each website's data reception status, which the Websites page loads after
+     * it renders. The badge and banner are rendered here from the same Twig
+     * partials the page uses, so the browser only swaps them in.
+     */
+    #[Route('/dashboard/websites/activity', name: 'app_website_activity', methods: ['GET'])]
+    public function websiteActivity(WebsiteActivityService $activityService): JsonResponse
+    {
+        $this->denyIfDashboardDisabled();
+        $headers = ['Cache-Control' => 'private, no-store, max-age=0'];
+
+        try {
+            $statuses = $activityService->getStatuses();
+        } catch (\Throwable $error) {
+            $this->logger->warning('Website activity could not be read from the events table.', ['exception' => $error]);
+
+            return new JsonResponse(['error' => 'Data reception status is unavailable.'], Response::HTTP_SERVICE_UNAVAILABLE, $headers);
+        }
+
+        $websites = [];
+        foreach ($this->websiteManager->getWebsites() as $website) {
+            $token = (string) ($website['token'] ?? '');
+            if ($token === '') {
+                continue;
+            }
+            $activity = $statuses[$token] ?? $activityService->getStatusForToken($token);
+            $websites[$token] = [
+                'status' => $activity['status'],
+                'badge' => $this->renderView('components/Websites/_activity_badge.html.twig', ['activity' => $activity, 'token' => $token]),
+                'banner' => $this->renderView('components/Websites/_activity_banner.html.twig', ['activity' => $activity, 'token' => $token, 'website' => $website]),
+            ];
+        }
+
+        return new JsonResponse(['websites' => $websites], Response::HTTP_OK, $headers);
+    }
+
     #[Route('/dashboard/settings', name: 'app_application_settings', methods: ['GET'])]
-    public function applicationSettings(DocumentationLinks $documentation): Response
+    public function applicationSettings(DocumentationLinks $documentation, TrackerBuilds $trackerBuilds, TrackerScript $tracker): Response
     {
         $this->denyIfDashboardDisabled();
         $this->denyIfNotAdmin();
+
+        try {
+            $sizes = $tracker->sizes();
+        } catch (\Throwable) {
+            // Invalid collection settings stop the tracker from being served;
+            // the page still opens so they can be repaired.
+            $sizes = null;
+        }
 
         return $this->renderDashboardPage('settings/application.html.twig', [
             'app_host' => $this->config->getWithEnvFallback('app_host', 'http://localhost:8000'),
             'js_namespace' => $this->config->getWithEnvFallback('js_namespace', 'Aggregate'),
             'tracking_attributes' => TrackingAttributes::names($this->config->getWithEnvFallback('js_namespace', 'Aggregate')),
             'rate_limit' => $this->config->getWithEnvFallback('rate_limit_per_minute', 100),
+            'website_activity_active_days' => (int) $this->config->getWithEnvFallback('website_activity_active_days', 1),
+            'website_activity_stale_days' => (int) $this->config->getWithEnvFallback('website_activity_stale_days', 3),
             'documentation_url' => $documentation->configuredValue(),
             'documentation_url_overridden' => $documentation->hasEnvironmentOverride(),
             'documentation_default_url' => DocumentationLinks::DEFAULT_URL,
+            'page_speed' => [
+                'omit_unused_features' => $trackerBuilds->enabled(),
+                'omit_unused_features_overridden' => $trackerBuilds->hasEnvironmentOverride(),
+                'tracker' => $sizes,
+                'build_label' => $sizes !== null ? TrackerBuilds::describe($sizes['build']) : null,
+                'cache_minutes' => intdiv(BrowserScriptCache::MAX_AGE, 60),
+            ],
         ]);
+    }
+
+    /** The page speed setting; also YAML tracker_omit_unused_features or the environment. */
+    #[Route('/dashboard/settings/page-speed', name: 'app_page_speed_save', methods: ['POST'])]
+    public function savePageSpeed(Request $request, TrackerBuilds $trackerBuilds): Response
+    {
+        $this->denyIfDashboardDisabled();
+        $this->denyIfNotAdmin();
+
+        if (!$this->isCsrfTokenValid('page_speed', (string) $request->request->get('_csrf_token', ''))) {
+            $this->addFlash('error', 'Invalid security token. Please try again.');
+
+            return $this->redirect($this->generateUrl('app_application_settings').'#page-speed');
+        }
+        if ($trackerBuilds->hasEnvironmentOverride()) {
+            $this->addFlash('error', 'Leave out unused tracker features is set by the TRACKER_OMIT_UNUSED_FEATURES environment variable, which takes precedence over this page.');
+
+            return $this->redirect($this->generateUrl('app_application_settings').'#page-speed');
+        }
+
+        try {
+            $enabled = TrackerBuilds::normalize($request->request->get(TrackerBuilds::CONFIG_KEY, '0'));
+            $this->config->set(TrackerBuilds::CONFIG_KEY, $enabled);
+            $this->addFlash('success', $enabled
+                ? 'Visitors now get the smallest tracker for your settings. Browsers that already have the tracker receive it within five minutes.'
+                : 'Every visitor now gets the full tracker. Browsers that already have the tracker receive it within five minutes.');
+        } catch (\Exception $e) {
+            $this->addFlash('error', 'Failed to save the page speed setting: '.$e->getMessage());
+        }
+
+        return $this->redirect($this->generateUrl('app_application_settings').'#page-speed');
     }
 
     #[Route('/dashboard/branding', name: 'app_branding_settings', methods: ['GET'])]
@@ -127,6 +219,7 @@ class DashboardController extends AbstractController
         return $this->renderDashboardPage('settings/collection.html.twig', [
             'collection_profile' => $collectionProfile->name(),
             'collection_profile_env_override' => $collectionProfile->hasEnvironmentOverride(),
+            'tracker_omit_unused_features' => (new TrackerBuilds($this->config))->enabled(),
             'anonymous_tracking_enabled' => $this->config->getBoolWithEnvFallback('anonymous_tracking_enabled', true),
             'anonymous_excluded_paths' => array_values(array_filter($excludedPaths, 'is_string')),
             'anonymous_geo_enabled' => $this->config->getBoolWithEnvFallback('anonymous_geo_enabled', false),
@@ -299,7 +392,7 @@ class DashboardController extends AbstractController
     }
 
     #[Route('/dashboard/settings/save', name: 'app_settings_save', methods: ['POST'])]
-    public function saveSettings(Request $request, DocumentationLinks $documentation): Response
+    public function saveSettings(Request $request, DocumentationLinks $documentation, ?WebsiteActivityService $activityService = null): Response
     {
         $this->denyIfDashboardDisabled();
         $this->denyIfNotAdmin();
@@ -312,6 +405,8 @@ class DashboardController extends AbstractController
         $appHost = trim($request->request->get('app_host', ''));
         $jsNamespace = trim($request->request->get('js_namespace', 'Aggregate'));
         $rateLimit = (int) $request->request->get('rate_limit', 100);
+        $activeDays = max(1, min(365, (int) $request->request->get('website_activity_active_days', 1)));
+        $staleDays = max($activeDays, min(365, (int) $request->request->get('website_activity_stale_days', 3)));
 
         if (empty($appHost)) {
             $this->addFlash('error', 'App Host is required.');
@@ -322,6 +417,8 @@ class DashboardController extends AbstractController
             'app_host' => $appHost,
             'js_namespace' => $jsNamespace,
             'rate_limit_per_minute' => $rateLimit,
+            'website_activity_active_days' => $activeDays,
+            'website_activity_stale_days' => $staleDays,
         ];
 
         // DOCUMENTATION_URL takes precedence and its field is disabled. Save only a
@@ -340,6 +437,8 @@ class DashboardController extends AbstractController
 
         try {
             $this->config->setMany($settings);
+            // New thresholds apply when the Websites page next loads statuses.
+            $activityService?->forget();
 
             $this->addFlash('success', 'Settings updated successfully in config/aggregate.yaml!');
         } catch (\Exception $e) {

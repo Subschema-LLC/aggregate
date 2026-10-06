@@ -12,4 +12,43 @@ class EventRepository extends ServiceEntityRepository
     {
         parent::__construct($registry, Event::class);
     }
+
+    /**
+     * Database errors are not caught here, so a failed lookup is never cached
+     * or shown as "no events".
+     *
+     * @param string[] $tokens
+     * @return array<string, \DateTimeImmutable> Map of websiteToken => latest createdAt
+     */
+    public function findLastEventDatesByTokens(array $tokens): array
+    {
+        $cleanTokens = array_values(array_filter(array_unique($tokens), static fn (mixed $t): bool => is_string($t) && trim($t) !== ""));
+        if ($cleanTokens === []) {
+            return [];
+        }
+
+        $rows = $this->createQueryBuilder("e")
+            ->select("e.websiteToken AS token, MAX(e.createdAt) AS lastEventAt")
+            ->where("e.websiteToken IN (:tokens)")
+            ->setParameter("tokens", $cleanTokens)
+            ->groupBy("e.websiteToken")
+            ->getQuery()
+            ->getArrayResult();
+
+        $results = [];
+        foreach ($rows as $row) {
+            $token = (string) ($row["token"] ?? "");
+            $date = $row["lastEventAt"] ?? null;
+            if ($token === "" || $date === null) {
+                continue;
+            }
+            if ($date instanceof \DateTimeInterface) {
+                $results[$token] = \DateTimeImmutable::createFromInterface($date);
+            } elseif (is_string($date)) {
+                $results[$token] = new \DateTimeImmutable($date, new \DateTimeZone("UTC"));
+            }
+        }
+
+        return $results;
+    }
 }

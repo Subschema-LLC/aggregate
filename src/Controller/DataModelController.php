@@ -9,6 +9,7 @@ use App\Service\CustomDataSettings;
 use App\Service\Glossary\GlossarySync;
 use App\Service\InternalTrafficSettings;
 use App\Service\ReportingViewManager;
+use App\Service\TrackerBuilds;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
@@ -73,6 +74,7 @@ final class DataModelController extends AbstractController
             'detailed_anonymous_utms' => $this->detailedAnonymousUtms($model),
             'reserved_columns' => CustomDataSettings::RESERVED_COLUMNS,
             'restored_form' => $restoredForm,
+            'tracker_omit_unused_features' => (new TrackerBuilds($this->config))->enabled(),
         ]));
     }
 

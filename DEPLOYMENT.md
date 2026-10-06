@@ -252,7 +252,8 @@ sudo systemctl reload nginx
 **Important settings:**
 - `server_name`: Your domain
 - `root`: Path to `public/` directory
-- `fastcgi_pass`: PHP-FPM socket (usually `/var/run/php/php8.2-fpm.sock`)
+- `fastcgi_pass`: PHP-FPM socket (usually `/var/run/php/php8.2-fpm.sock`), in each location that sets it
+- Compression: the file compresses scripts and styles with gzip, a [page speed saver](docs/PAGE-SPEED.md#turn-on-compression); with the `ngx_brotli` module, uncomment its Brotli lines
 
 ### Apache
 
@@ -260,8 +261,12 @@ sudo systemctl reload nginx
 ```bash
 sudo cp docs/apache/aggregate-analytics.conf /etc/apache2/sites-available/analytics.conf
 sudo a2ensite analytics
-sudo a2enmod rewrite headers
+sudo a2enmod rewrite headers filter deflate brotli
 ```
+
+`public/.htaccess` compresses scripts and styles with Brotli, or gzip for
+browsers without it, when these modules are enabled: a
+[page speed saver](docs/PAGE-SPEED.md#turn-on-compression).
 
 **2. Edit configuration:**
 ```apache
@@ -290,6 +295,12 @@ chmod +x frankenphp
 # Run
 ./frankenphp php-server --root public/
 ```
+
+`php-server` does not compress responses. The Docker image's
+[`frankenphp/Caddyfile`](frankenphp/Caddyfile) compresses scripts and styles, a
+[page speed saver](docs/PAGE-SPEED.md#turn-on-compression); to use it here,
+change its `root` to your `public/` directory and run
+`./frankenphp run --config frankenphp/Caddyfile`.
 
 ---
 
