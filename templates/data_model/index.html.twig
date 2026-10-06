@@ -22,127 +22,170 @@
     {% endif %}
     {% if addition_error %}<div class="notification is-warning" role="alert">{{ addition_error }}</div>{% endif %}
 
-    <div class="notification is-info">
-        <strong>Anonymous UTM recommendation:</strong> use at most <code>utm_medium</code>, with broad values such as <code>email</code>, <code>social</code>, or <code>cpc</code>. All UTM properties require enhanced consent by default.
-        You can override this recommendation by selecting “Allow without consent” for any property. More detailed source, campaign, term, content, or ID values can reveal specific campaigns, searches, or identifiers. Review the actual values and privacy implications before enabling them for anonymous collection. Free-text identifiers can appear even in <code>utm_medium</code>; the setting does not make supplied values anonymous.
-    </div>
-    {% if detailed_anonymous_utms %}
-        <div class="notification is-warning" role="alert"><strong>Anonymous UTM recommendation overridden.</strong> The saved model permits detailed UTM data without consent in: <code>{{ detailed_anonymous_utms|join(', ') }}</code>. Review campaign tagging and disclosures for this additional detail.</div>
-    {% endif %}
-
     {% component 'Ui:Validation' with {action: path('app_data_model_save'), method: 'post', id: 'data-model-form'} %}
     {% block content %}
         <input type="hidden" name="_csrf_token" value="{{ csrf_token('data_model_settings') }}">
-        <section class="box" aria-labelledby="page-depth-heading">
-            <h2 class="title is-4" id="page-depth-heading">Page depth</h2>
-            <div class="field">
-                <label class="label" for="page-sequence-enabled">Include page depth on all events</label>
-                <div class="control">
-                    <div class="select">
-                        <select id="page-sequence-enabled" name="page_sequence_enabled" aria-describedby="page-depth-help page-depth-privacy">
-                            <option value="0"{% if not model.page_sequence_enabled %} selected{% endif %}>Off</option>
-                            <option value="1"{% if model.page_sequence_enabled %} selected{% endif %}>On — count up to 20+</option>
-                        </select>
-                    </div>
-                </div>
-                <p class="help" id="page-depth-help">Adds <code>customData.page_sequence</code>: the first tracked page is 1, the next is 2, and 20 means 20 or more. Interactions and asynchronous events reuse the current page's count. This setting applies to every event type.</p>
-                <p class="help" id="page-depth-privacy">Page depth continues when enhanced analytics is rejected. It adds no visitor identifier or path history. Review the selected method's storage or URL disclosures and applicable consent requirements. Counts do not establish individual journeys. Routine anonymous BI views do not expose page depth.</p>
-                {% component 'Ui:PageSpeedNote' with {enabled: tracker_omit_unused_features} %}
-                    {% block content %}While page depth is off, visitors get a tracker without its code, about a sixth smaller to download. Turning it on sends the full tracker.{% endblock %}
-                {% endcomponent %}
-            </div>
-            <div class="field">
-                <label class="label" for="page-sequence-method">Carry page depth between pages</label>
-                <div class="control">
-                    <div class="select">
-                        <select id="page-sequence-method" name="page_sequence_method" aria-describedby="page-depth-storage page-depth-url">
-                            <option value="session_storage"{% if model.page_sequence_method == 'session_storage' %} selected{% endif %}>Tab session storage (default)</option>
-                            <option value="url_parameter"{% if model.page_sequence_method == 'url_parameter' %} selected{% endif %}>URL parameter passing</option>
-                        </select>
-                    </div>
-                </div>
-                <p class="help" id="page-depth-storage"><strong>Tab session storage:</strong> keeps only a bounded number in browser session storage. Reloads count again. Review storage consent requirements before enabling.</p>
-                <p class="help" id="page-depth-url"><strong>URL parameter passing:</strong> reads <code>aggregate_page_sequence</code>, removes it from the address bar after capture, and adds the next number to ordinary same-origin links when activated. The counter uses no cookies or Web Storage. Reloads of cleaned URLs restart at 1; copied or shared links can carry an inaccurate depth before cleanup. Initial requests, logs or earlier scripts may still see the parameter. Review canonical URLs, SEO, router integrations and whether destinations accept the extra parameter. Links to excluded pages are left alone. Event page information contains no query string even if address-bar cleanup fails.</p>
-            </div>
-            <p class="help">For private reporting columns, add <code>page_sequence</code> as an Integer property with “Allow without consent”. Its collection is controlled by this switch. Supplied event properties and ordinary query mappings cannot override it; only the URL method reads the reserved sequence parameter.</p>
-        </section>
-        <section class="box">
-            <div class="level mb-2">
-                <div class="level-left">
-                    <h2 class="title is-4 mb-0">Custom data configurations</h2>
-                </div>
-                <div class="level-right">
-                    <div class="buttons are-small mb-0">
-                        <button type="button" class="button is-light" data-action="pages--data-model--index#expandAllProperties">
-                            <span class="icon"><i class="fas fa-angles-down" aria-hidden="true"></i></span>
-                            <span>Expand all</span>
-                        </button>
-                        <button type="button" class="button is-light" data-action="pages--data-model--index#collapseAllProperties">
-                            <span class="icon"><i class="fas fa-angles-up" aria-hidden="true"></i></span>
-                            <span>Collapse all</span>
-                        </button>
-                    </div>
-                </div>
-            </div>
-            <p>Expand a custom data JSON property to edit its type, consent, and optional reporting columns. Property names are literal top-level JSON keys. Leave both reporting columns empty to collect a property without exposing it in custom reporting views. Explicitly allowing a property without consent adds it to the server-enforced anonymous whitelist.</p>
-            <p class="help mb-3">Descriptions belong to the shared implementation model. Values must be flat strings, numbers, booleans, or null; nested data is discarded. Unlisted custom properties still require enhanced consent. The organization marker <code>{{ marker_name|default('orgInternalTraffic') }}</code> remains controlled by the browser marker and is always allowed in anonymous mode.</p>
 
-            <details class="reserved-columns-reference box is-light mt-2 mb-4" id="reserved-columns-list" data-pages--data-model--index-target="reservedDetails">
-                <summary class="is-size-7 has-text-info is-clickable py-1">
-                    <span class="icon is-small mr-1"><i class="fas fa-table-columns" aria-hidden="true"></i></span>
-                    <strong class="has-text-info">View {{ (reserved_columns|default([]))|length }} reserved built-in column names</strong>
-                    <span class="has-text-grey"> (cannot be used for custom reporting columns)</span>
-                </summary>
-                <div class="content is-small mt-2 pt-2 border-top">
-                    <p class="mb-2">The following column names are reserved by Aggregate's event schema and reporting views. If entered as a text or numeric reporting column, the form will reject them:</p>
-                    <div class="tags are-small mb-1">
-                        {% for col in reserved_columns|default([]) %}
-                            <span class="tag is-info is-light is-family-monospace">{{ col }}</span>
-                        {% endfor %}
-                    </div>
-                </div>
-            </details>
+        <div class="workspace-tabs-container mb-4">
+            <div class="workspace-subtabs" role="tablist" aria-label="Data model sections">
+                <ul>
+                    <li class="is-active" data-workspace-tab="properties">
+                        <a href="#properties" role="tab" aria-selected="true" aria-controls="pane-properties" data-action="click->pages--data-model--index#switchWorkspaceTab" data-tab-name="properties">
+                            <span class="icon is-small"><i class="fas fa-shapes" aria-hidden="true"></i></span>
+                            <span>Custom properties</span>
+                            <span class="tag is-rounded is-small ml-1">{{ model.custom_data_properties|length }}</span>
+                        </a>
+                    </li>
+                    <li data-workspace-tab="campaigns">
+                        <a href="#campaigns" role="tab" aria-selected="false" aria-controls="pane-campaigns" data-action="click->pages--data-model--index#switchWorkspaceTab" data-tab-name="campaigns">
+                            <span class="icon is-small"><i class="fas fa-bullhorn" aria-hidden="true"></i></span>
+                            <span>Campaigns & UTMs</span>
+                            <span class="tag is-rounded is-small ml-1">{{ model.query_parameter_mappings|length }}</span>
+                        </a>
+                    </li>
+                    <li data-workspace-tab="page-depth">
+                        <a href="#page-depth" role="tab" aria-selected="false" aria-controls="pane-page-depth" data-action="click->pages--data-model--index#switchWorkspaceTab" data-tab-name="page-depth">
+                            <span class="icon is-small"><i class="fas fa-layer-group" aria-hidden="true"></i></span>
+                            <span>Page depth</span>
+                            <span class="tag is-rounded is-small ml-1 {% if model.page_sequence_enabled %}is-success is-light{% else %}is-light{% endif %}">
+                                {{ model.page_sequence_enabled ? 'On' : 'Off' }}
+                            </span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
 
-            {% if model.custom_data_properties|length > 2 %}
-                <div class="field mb-3">
-                    <div class="control has-icons-left">
-                        <input type="search" class="input is-small is-rounded" placeholder="Filter properties..." aria-label="Filter properties" data-action="input->pages--data-model--index#filterProperties">
-                        <span class="icon is-small is-left"><i class="fas fa-search" aria-hidden="true"></i></span>
+        {# PANE 1: Custom data properties #}
+        <div id="pane-properties" class="workspace-pane is-active" role="tabpanel" data-pane-name="properties">
+            <section class="box">
+                <div class="level mb-2">
+                    <div class="level-left">
+                        <h2 class="title is-4 mb-0">Custom data properties</h2>
+                    </div>
+                    <div class="level-right">
+                        <div class="buttons are-small mb-0">
+                            <button type="button" class="button is-light" data-action="pages--data-model--index#expandAllProperties">
+                                <span class="icon"><i class="fas fa-angles-down" aria-hidden="true"></i></span>
+                                <span>Expand all</span>
+                            </button>
+                            <button type="button" class="button is-light" data-action="pages--data-model--index#collapseAllProperties">
+                                <span class="icon"><i class="fas fa-angles-up" aria-hidden="true"></i></span>
+                                <span>Collapse all</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
+                <p>Expand a custom data JSON property to edit its type, consent, and optional reporting columns. Property names are literal top-level JSON keys. Leave both reporting columns empty to collect a property without exposing it in custom reporting views. Explicitly allowing a property without consent adds it to the server-enforced anonymous whitelist.</p>
+                <p class="help mb-3">Descriptions belong to the shared implementation model. Values must be flat strings, numbers, booleans, or null; nested data is discarded. Unlisted custom properties still require enhanced consent. The organization marker <code>{{ marker_name|default('orgInternalTraffic') }}</code> remains controlled by the browser marker and is always allowed in anonymous mode.</p>
+
+                <details class="reserved-columns-reference box is-light mt-2 mb-4" id="reserved-columns-list" data-pages--data-model--index-target="reservedDetails">
+                    <summary class="is-size-7 has-text-info is-clickable py-1">
+                        <span class="icon is-small mr-1"><i class="fas fa-table-columns" aria-hidden="true"></i></span>
+                        <strong class="has-text-info">View {{ (reserved_columns|default([]))|length }} reserved built-in column names</strong>
+                        <span class="has-text-grey"> (cannot be used for custom reporting columns)</span>
+                    </summary>
+                    <div class="content is-small mt-2 pt-2 border-top">
+                        <p class="mb-2">The following column names are reserved by Aggregate's event schema and reporting views. If entered as a text or numeric reporting column, the form will reject them:</p>
+                        <div class="tags are-small mb-1">
+                            {% for col in reserved_columns|default([]) %}
+                                <span class="tag is-info is-light is-family-monospace">{{ col }}</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </details>
+
+                {% if model.custom_data_properties|length > 2 %}
+                    <div class="field mb-3">
+                        <div class="control has-icons-left">
+                            <input type="search" class="input is-small is-rounded" placeholder="Filter properties..." aria-label="Filter properties" data-action="input->pages--data-model--index#filterProperties">
+                            <span class="icon is-small is-left"><i class="fas fa-search" aria-hidden="true"></i></span>
+                        </div>
+                    </div>
+                {% endif %}
+                <div id="property-rows" data-pages--data-model--index-target="propertyRows">
+                    {% for key, property in model.custom_data_properties %}
+                        {{ component('DataModel:PropertyRow', {index: loop.index0, key: key, property: property, open: key == unsaved_property or restored_form|default(false)}) }}
+                    {% endfor %}
+                </div>
+                <div class="add-property-action-wrapper mt-4 mb-4">
+                    <button class="button is-outlined is-primary" type="button" id="add-property" data-action="pages--data-model--index#addProperty">
+                        <span class="icon is-small"><i class="fas fa-plus" aria-hidden="true"></i></span>
+                        <span>Add property</span>
+                    </button>
+                </div>
+                <p class="help">Explicit types reject mismatched values without coercion; null is allowed. Integer values must be whole safe JSON numbers. Float and Double both use approximate double precision for portable reporting. Up to 50 properties. Reporting columns use unique lowercase letters, digits, and underscores, starting with a letter. After views are deployed, keep their aliases and order; append new columns at the end.</p>
+            </section>
+        </div>
+
+        {# PANE 2: Campaigns & UTM parameters #}
+        <div id="pane-campaigns" class="workspace-pane" role="tabpanel" data-pane-name="campaigns" hidden>
+            <div class="notification is-info mb-4">
+                <strong>Anonymous UTM recommendation:</strong> use at most <code>utm_medium</code>, with broad values such as <code>email</code>, <code>social</code>, or <code>cpc</code>. All UTM properties require enhanced consent by default.
+                You can override this recommendation by selecting “Allow without consent” for any property. More detailed source, campaign, term, content, or ID values can reveal specific campaigns, searches, or identifiers. Review the actual values and privacy implications before enabling them for anonymous collection. Free-text identifiers can appear even in <code>utm_medium</code>; the setting does not make supplied values anonymous.
+            </div>
+            {% if detailed_anonymous_utms %}
+                <div class="notification is-warning mb-4" role="alert"><strong>Anonymous UTM recommendation overridden.</strong> The saved model permits detailed UTM data without consent in: <code>{{ detailed_anonymous_utms|join(', ') }}</code>. Review campaign tagging and disclosures for this additional detail.</div>
             {% endif %}
-            <div id="property-rows" data-pages--data-model--index-target="propertyRows">
-                {% for key, property in model.custom_data_properties %}
-                    {{ component('DataModel:PropertyRow', {index: loop.index0, key: key, property: property, open: key == unsaved_property or restored_form|default(false)}) }}
-                {% endfor %}
-            </div>
-            <div class="add-property-action-wrapper mt-4 mb-4">
-                <button class="button is-outlined is-primary" type="button" id="add-property" data-action="pages--data-model--index#addProperty">
-                    <span class="icon is-small"><i class="fas fa-plus" aria-hidden="true"></i></span>
-                    <span>Add property</span>
-                </button>
-            </div>
-            <p class="help">Explicit types reject mismatched values without coercion; null is allowed. Integer values must be whole safe JSON numbers. Float and Double both use approximate double precision for portable reporting. Up to 50 properties. Reporting columns use unique lowercase letters, digits, and underscores, starting with a letter. After views are deployed, keep their aliases and order; append new columns at the end.</p>
-        </section>
-        <section class="box">
-            <h2 class="title is-4">UTM and query parameters</h2>
-            <p>Map selected parameters from the current page URL to defined properties. For aliases sharing a destination, the first configured parameter with a nonblank value wins. Explicit properties passed to <code>emit()</code> take precedence.</p>
-            <p class="help mb-3">Matching is case-sensitive. The tracker does not save attribution to cookies or local storage, carry it across pages, or capture the full query string. Removing a mapping stops automatic capture of that parameter. URL parameters are strings; send numeric and boolean typed values through emit() or JSON requests instead.</p>
-            <div class="table-container">
-                <table class="table is-fullwidth model-mappings">
-                    <thead><tr><th>URL parameter</th><th>Destination JSON key</th><th><span class="is-sr-only">Actions</span></th></tr></thead>
-                    <tbody id="mapping-rows" data-pages--data-model--index-target="mappingRows">
-                        {% for parameter, property in model.query_parameter_mappings %}
-                            {{ component('DataModel:MappingRow', {index: loop.index0, parameter: parameter, property: property}) }}
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            <div class="add-mapping-action-wrapper mt-4 mb-3">
-                <button class="button" type="button" id="add-mapping" data-action="pages--data-model--index#addMapping">Add parameter mapping</button>
-            </div>
-            <p class="help">Up to 100 mappings. Names begin with a letter and may contain letters, digits, underscores, dots, or hyphens (64 characters maximum). The organization marker cannot be set through a query parameter.</p>
-        </section>
+
+            <section class="box">
+                <h2 class="title is-4">UTM and query parameters</h2>
+                <p>Map selected parameters from the current page URL to defined properties. For aliases sharing a destination, the first configured parameter with a nonblank value wins. Explicit properties passed to <code>emit()</code> take precedence.</p>
+                <p class="help mb-3">Matching is case-sensitive. The tracker does not save attribution to cookies or local storage, carry it across pages, or capture the full query string. Removing a mapping stops automatic capture of that parameter. URL parameters are strings; send numeric and boolean typed values through emit() or JSON requests instead.</p>
+                <div class="table-container">
+                    <table class="table is-fullwidth model-mappings">
+                        <thead><tr><th>URL parameter</th><th>Destination JSON key</th><th><span class="is-sr-only">Actions</span></th></tr></thead>
+                        <tbody id="mapping-rows" data-pages--data-model--index-target="mappingRows">
+                            {% for parameter, property in model.query_parameter_mappings %}
+                                {{ component('DataModel:MappingRow', {index: loop.index0, parameter: parameter, property: property}) }}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="add-mapping-action-wrapper mt-4 mb-3">
+                    <button class="button" type="button" id="add-mapping" data-action="pages--data-model--index#addMapping">Add parameter mapping</button>
+                </div>
+                <p class="help">Up to 100 mappings. Names begin with a letter and may contain letters, digits, underscores, dots, or hyphens (64 characters maximum). The organization marker cannot be set through a query parameter.</p>
+            </section>
+        </div>
+
+        {# PANE 3: Page depth sequence #}
+        <div id="pane-page-depth" class="workspace-pane" role="tabpanel" data-pane-name="page-depth" hidden>
+            <section class="box" aria-labelledby="page-depth-heading">
+                <h2 class="title is-4" id="page-depth-heading">Page depth</h2>
+                <div class="field">
+                    <label class="label" for="page-sequence-enabled">Include page depth on all events</label>
+                    <div class="control">
+                        <div class="select">
+                            <select id="page-sequence-enabled" name="page_sequence_enabled" aria-describedby="page-depth-help page-depth-privacy">
+                                <option value="0"{% if not model.page_sequence_enabled %} selected{% endif %}>Off</option>
+                                <option value="1"{% if model.page_sequence_enabled %} selected{% endif %}>On — count up to 20+</option>
+                            </select>
+                        </div>
+                    </div>
+                    <p class="help" id="page-depth-help">Adds <code>customData.page_sequence</code>: the first tracked page is 1, the next is 2, and 20 means 20 or more. Interactions and asynchronous events reuse the current page's count. This setting applies to every event type.</p>
+                    <p class="help" id="page-depth-privacy">Page depth continues when enhanced analytics is rejected. It adds no visitor identifier or path history. Review the selected method's storage or URL disclosures and applicable consent requirements. Counts do not establish individual journeys. Routine anonymous BI views do not expose page depth.</p>
+                    {% component 'Ui:PageSpeedNote' with {enabled: tracker_omit_unused_features} %}
+                        {% block content %}While page depth is off, visitors get a tracker without its code, about a sixth smaller to download. Turning it on sends the full tracker.{% endblock %}
+                    {% endcomponent %}
+                </div>
+                <div class="field">
+                    <label class="label" for="page-sequence-method">Carry page depth between pages</label>
+                    <div class="control">
+                        <div class="select">
+                            <select id="page-sequence-method" name="page_sequence_method" aria-describedby="page-depth-storage page-depth-url">
+                                <option value="session_storage"{% if model.page_sequence_method == 'session_storage' %} selected{% endif %}>Tab session storage (default)</option>
+                                <option value="url_parameter"{% if model.page_sequence_method == 'url_parameter' %} selected{% endif %}>URL parameter passing</option>
+                            </select>
+                        </div>
+                    </div>
+                    <p class="help" id="page-depth-storage"><strong>Tab session storage:</strong> keeps only a bounded number in browser session storage. Reloads count again. Review storage consent requirements before enabling.</p>
+                    <p class="help" id="page-depth-url"><strong>URL parameter passing:</strong> reads <code>aggregate_page_sequence</code>, removes it from the address bar after capture, and adds the next number to ordinary same-origin links when activated. The counter uses no cookies or Web Storage. Reloads of cleaned URLs restart at 1; copied or shared links can carry an inaccurate depth before cleanup. Initial requests, logs or earlier scripts may still see the parameter. Review canonical URLs, SEO, router integrations and whether destinations accept the extra parameter. Links to excluded pages are left alone. Event page information contains no query string even if address-bar cleanup fails.</p>
+                </div>
+                <p class="help">For private reporting columns, add <code>page_sequence</code> as an Integer property with “Allow without consent”. Its collection is controlled by this switch. Supplied event properties and ordinary query mappings cannot override it; only the URL method reads the reserved sequence parameter.</p>
+            </section>
+        </div>
+
         <div class="buttons mt-5">
             <button class="button is-primary" type="submit"{% if configuration_error %} disabled{% endif %}>Save model</button>
             {% if not configuration_error %}<a class="button" href="{{ path('app_data_model_download') }}">Download saved YAML</a>{% endif %}

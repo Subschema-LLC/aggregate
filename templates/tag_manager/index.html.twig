@@ -11,6 +11,7 @@
     <h1 class="title">Tag manager lite</h1>
     <p class="subtitle">Choose a website, configure its tags, and download its YAML. Its consent banner has its own page, <a href="{{ path('app_consent_manager', site ? {site: selected_site} : {}) }}">Consent manager lite</a>.</p>
     {{ component('Ui:DocsLink', {topic: 'tracking.tag-manager', label: 'Tag manager guide'}) }}
+    {{ component('TagManager:Navigation', {current_page: 'app_tag_manager', selected_site: selected_site}) }}
     <form method="get" action="{{ path('app_tag_manager') }}" class="box">
         <div class="field">
             <label class="label" for="tag-manager-site">Website</label>

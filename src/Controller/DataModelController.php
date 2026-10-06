@@ -201,9 +201,13 @@ final class DataModelController extends AbstractController
         if (!$this->validToken($request)) {
             return $this->back('app_data_model_reporting');
         }
+        $force = (bool) $request->request->get('force', false);
         try {
-            $names = $this->views->regenerate();
-            $this->addFlash('success', 'Regenerated '.implode(', ', $names).'.');
+            $names = $this->views->regenerate($force);
+            $msg = $force
+                ? 'Dropped and recreated '.implode(', ', $names).' with the updated column schema.'
+                : 'Regenerated '.implode(', ', $names).'.';
+            $this->addFlash('success', $msg);
             try {
                 $this->glossary->sync();
             } catch (\Throwable $error) {
