@@ -285,7 +285,9 @@ type changes; plan a database/reporting migration when a deployed contract must
 change. Do not change an existing text alias into a numeric alias in place.
 Because generated text aliases precede numeric aliases, adding a text alias
 after numeric aliases are already deployed also requires a planned migration;
-regeneration rejects the resulting reorder.
+routine regeneration rejects the resulting reorder. To apply this planned
+migration, click **Force recreate views** on the Reporting views page, or
+run `php bin/console app:analytics:views:regenerate --force`.
 
 Numeric projections return SQL `NULL` for missing/null values, strings,
 booleans, structured data, and numbers outside their supported range. Integer
@@ -311,6 +313,7 @@ php bin/console app:analytics:views:regenerate --discover --sample-size=1000
 php bin/console app:analytics:views:regenerate --export-model > aggregate-data-model.yaml
 php bin/console app:analytics:views:regenerate --dry-run
 php bin/console app:analytics:views:regenerate
+php bin/console app:analytics:views:regenerate --force
 ```
 
 `--discover`, `--export-model`, and `--dry-run` are mutually exclusive read-only modes. Edit YAML before using the CLI to regenerate.

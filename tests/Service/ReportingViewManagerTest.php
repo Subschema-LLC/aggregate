@@ -496,4 +496,23 @@ SQL;
         return new ReportingViewManager($connection, $settings);
     }
 
+
+    public function testForceRegenerateBypassesReorderCheckAndDropsViewsFirst(): void
+    {
+        $connection = $this->createMock(Connection::class);
+        $connection->method("getDatabasePlatform")->willReturn(new MySQL80Platform());
+        $connection->expects(self::never())->method("fetchFirstColumn");
+        $executed = [];
+        $connection->method("executeStatement")->willReturnCallback(function (string $sql) use (&$executed): int {
+            $executed[] = $sql;
+            return 0;
+        });
+        $connection->method("executeQuery")->willReturn($this->createStub(\Doctrine\DBAL\Result::class));
+
+        $names = $this->manager($connection, ["currency" => "currency"], ["amount_number" => ["property" => "amount", "type" => "double"]])->regenerate(force: true);
+
+        self::assertSame(ReportingViewManager::VIEW_NAMES, $names);
+        self::assertStringStartsWith("DROP VIEW IF EXISTS", $executed[0]);
+        self::assertStringStartsWith("CREATE VIEW", $executed[1]);
+    }
 }

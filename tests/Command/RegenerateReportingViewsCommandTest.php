@@ -140,4 +140,16 @@ final class RegenerateReportingViewsCommandTest extends TestCase
 
         return new CommandTester(new RegenerateReportingViewsCommand($views, $settings ?? $this->createStub(CustomDataSettings::class), $glossary));
     }
+
+    public function testForceOptionPassesForceTrueToRegenerate(): void
+    {
+        $views = $this->createMock(ReportingViewManager::class);
+        $views->expects(self::once())->method("regenerate")->with(true)->willReturn(ReportingViewManager::VIEW_NAMES);
+        $glossary = $this->createMock(GlossarySync::class);
+        $glossary->expects(self::once())->method("sync")->willReturn([]);
+        $tester = $this->tester($views, glossary: $glossary);
+
+        self::assertSame(Command::SUCCESS, $tester->execute(["--force" => true]));
+        self::assertStringContainsString("Dropped and regenerated", $tester->getDisplay());
+    }
 }
