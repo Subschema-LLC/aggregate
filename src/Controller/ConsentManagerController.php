@@ -100,7 +100,7 @@ final class ConsentManagerController extends AbstractController
         try {
             $this->sites->site($siteId);
             $this->sites->saveConsent($siteId, $this->changesFromForm($submitted, $this->sites->consent($siteId)));
-            $this->addFlash('success', 'Consent manager settings saved to YAML. The hosted banner changes on the next page load; download a self-hosted copy again.');
+            $this->addFlash('success', 'Consent manager settings saved to YAML. The hosted banner changes for visitors within five minutes; download a self-hosted copy again.');
         } catch (\InvalidArgumentException $e) {
             $this->addFlash('error', $e->getMessage());
             $this->rememberSubmittedForm($request, $siteId, $submitted);

@@ -65,7 +65,7 @@ instance ID is not an access-control boundary. Install one CMP/tag-manager
 instance per page.
 
 The downloaded `tag-loader.js` retrieves that site's live hosted library. YAML
-changes apply on the next page load without downloading the loader again. The
+changes reach visitors within five minutes ([browser caching](JS-BUILD.md#browser-caching)) without downloading the loader again. The
 downloaded CMP is a snapshot of its categories, namespace, name and instance ID;
 download it again after changing those settings, or use the hosted CMP URL.
 
@@ -369,7 +369,7 @@ The server compiles each custom tag into the website's served tag manager script
 (`lib.js`) as a function, after its checks pass, the way GTM builds its
 container. Nothing is evaluated from text in the browser, so a Content Security
 Policy needs no `'unsafe-eval'` or `'unsafe-inline'`: the policy that allows the
-manager script allows its custom tags. Changes apply on the next page load, with
+manager script allows its custom tags. Changes reach visitors within five minutes, with
 no extra request per tag. Results of the server's checks are remembered in the
 application cache, so serving does not parse unchanged code again.
 
@@ -607,7 +607,8 @@ php bin/console app:assets:build-js
 
 Request the hosted scripts with `?min=1`. Builds contain configuration
 placeholders; the server inserts current site settings on every response.
-Missing, stale or corrupt builds fall back to current source. PHP serves the
+Without a matching build, as on a server updated from Git without Node, the
+server compacts the current source itself. PHP serves the
 same build templates for every website; a YAML edit does not require rebuilding.
 Static `public/tag-manager.js` retains disabled defaults; install the configured
 route or downloaded site loader. See [JavaScript builds](JS-BUILD.md).

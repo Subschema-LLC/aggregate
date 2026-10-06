@@ -241,6 +241,27 @@ choices are limited.
 **What would change it.** A clear benefit that outweighs the install cost, as
 [CONTRIBUTING.md](../CONTRIBUTING.md#design-principles) describes.
 
+### Small browser scripts without a build server, cached for five minutes
+
+**Decision.** The tracker, tag manager and consent scripts are served small on
+every installation: the Terser build when it matches the source, otherwise a
+copy the server compacts itself with its PHP JavaScript parser. Browsers may
+reuse them for five minutes, then confirm them with an `ETag`.
+
+**Why.** Visitors' page speed should not depend on how Aggregate was deployed;
+a server updated from Git has no Node to build with. Re-downloading every
+script on every page view cost visitors bytes for nothing, and five minutes
+matches what tag managers commonly use while keeping changes quick.
+
+**Trade-off.** Saved tag and banner changes take up to five minutes to reach
+returning visitors. The server-compacted copy keeps names, so it is somewhat
+larger than Terser's output. Server-side collection rules still apply to every
+event immediately.
+
+**What would change it.** Versioned script URLs in installation snippets, which
+would allow long caching with instant updates, at the cost of editing every
+site's snippet after each change.
+
 ### YAML and the command line first; the dashboard is optional
 
 **Decision.** Every setting can be managed in YAML or from the command line, and

@@ -101,6 +101,14 @@ jobs:
         run: |
           npm run build:js
           npm run check:js
+      # Committed minified files are served to static and CDN installs; a merge
+      # that keeps an older build would ship code that no longer matches source.
+      - name: Check committed minified scripts match their source
+        run: |
+          if ! git diff --exit-code --stat -- '*.min.js'; then
+            echo "::error::Committed minified scripts are out of date. Run npm run build:js and commit the result."
+            exit 1
+          fi
       - name: Run JavaScript tests
         run: npm run test:js
 

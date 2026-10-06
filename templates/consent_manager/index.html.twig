@@ -29,7 +29,7 @@
     <h2 class="title is-4" id="consent-manager-scope">{{ site.name }}</h2>
     <div class="content">
         <p>Saved in <code>config/tag-manager/sites/{{ selected_site }}.yaml</code> under <code>consent_manager</code>, where you can also edit them directly. The same validation applies to both. Its categories come from this website’s enabled tags on the <a href="{{ path('app_tag_manager', {site: selected_site}) }}">Tag manager</a> page, plus enhanced analytics.</p>
-        <p>The hosted banner changes on the next page load. A banner you downloaded from <a href="{{ path('app_setup', {website: site.token, step: 3, tags: '1'}) }}">Setup</a> to host yourself is a snapshot: download it again after saving. The <a href="{{ path('app_standalone_consent', {siteId: selected_site}) }}">standalone banner</a> is configured separately.</p>
+        <p>The hosted banner changes within five minutes, as browsers reuse it that long. A banner you downloaded from <a href="{{ path('app_setup', {website: site.token, step: 3, tags: '1'}) }}">Setup</a> to host yourself is a snapshot: download it again after saving. The <a href="{{ path('app_standalone_consent', {siteId: selected_site}) }}">standalone banner</a> is configured separately.</p>
     </div>
 
     {% if configuration_error %}

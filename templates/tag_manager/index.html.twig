@@ -125,7 +125,7 @@
                 <tr><td>Window event</td><td>A named event dispatched on the window</td><td><code>account:updated</code></td></tr>
                 <tr><td>dataLayer event</td><td>A new <code>dataLayer.push({event: 'purchase'})</code> entry</td><td><code>purchase</code></td></tr>
             </tbody></table></div><p class="help">Custom names must be emitted by your website. Document/window events and dataLayer entries received before consent are not replayed. Script actions load once per page; method actions can run for each eligible event.</p></details>
-            <p class="help mb-3">Up to {{ max_tags }} tags. Save a new tag to add another row. Hosted scripts and downloaded tag loaders receive saved changes on the next page load.</p>
+            <p class="help mb-3">Up to {{ max_tags }} tags. Save a new tag to add another row. Hosted scripts and downloaded tag loaders receive saved changes within five minutes; browsers reuse a script that long.</p>
             <button class="button is-primary" type="submit">Save script settings</button>
         {% endblock %}
         {% endcomponent %}

@@ -114,7 +114,7 @@ final class TagManagerController extends AbstractController
             }
             // Consent manager settings have their own page and save separately.
             $this->settings->save($tagSettings, $siteId !== '' ? $siteId : null);
-            $this->addFlash('success', 'Script settings saved to YAML. Changes apply on the next page load.');
+            $this->addFlash('success', 'Script settings saved to YAML. Changes reach visitors within five minutes.');
         } catch (\InvalidArgumentException $e) {
             $this->addFlash('error', $e->getMessage());
             $this->rememberSubmittedForm($request, $siteId, $submitted);
