@@ -460,3 +460,48 @@ test('a privacy notice link appears only for an HTTPS URL and sends no referrer'
     assert.equal(runtime({config: {privacyPolicyUrl}}).allNodes.some((node) => node.tagName === 'A'), false, String(privacyPolicyUrl));
   }
 });
+
+test('precheckCategories pre-selects configured category checkboxes for new visitors while keeping consent denied until saved', () => {
+  const categories = ['analytics', 'marketing', 'functional'];
+  const app = runtime({
+    categories,
+    config: {precheckCategories: ['analytics', 'functional']}
+  });
+
+  // Consent starts denied despite precheck
+  assert.equal(app.window.AggregateConsent.getState().analytics, false);
+  assert.equal(app.window.AggregateConsent.getState().marketing, false);
+  assert.equal(app.window.AggregateConsent.getState().functional, false);
+
+  // Checkboxes for prechecked categories are checked, others are not
+  const analyticsBox = app.allNodes.find((node) => node.id === 'ac-consent-analytics');
+  const marketingBox = app.allNodes.find((node) => node.id === 'ac-consent-marketing');
+  const functionalBox = app.allNodes.find((node) => node.id === 'ac-consent-functional');
+
+  assert.equal(analyticsBox.checked, true);
+  assert.equal(marketingBox.checked, false);
+  assert.equal(functionalBox.checked, true);
+
+  // Clicking "Save selected choices" saves the prechecked choices
+  const saveBtn = app.allNodes.find((node) => node.tagName === 'BUTTON' && node.textContent === 'Save selected choices');
+  saveBtn.dispatchEvent({type: 'click'});
+
+  assert.equal(app.window.AggregateConsent.getState().analytics, true);
+  assert.equal(app.window.AggregateConsent.getState().marketing, false);
+  assert.equal(app.window.AggregateConsent.getState().functional, true);
+});
+
+test('precheckCategories does not override an existing visitor saved choice', () => {
+  const categories = ['analytics', 'marketing'];
+  const app = runtime({
+    categories,
+    config: {precheckCategories: ['analytics', 'marketing']},
+    saved: '{"analytics":false,"marketing":true}'
+  });
+
+  const analyticsBox = app.allNodes.find((node) => node.id === 'ac-consent-analytics');
+  const marketingBox = app.allNodes.find((node) => node.id === 'ac-consent-marketing');
+
+  assert.equal(analyticsBox.checked, false);
+  assert.equal(marketingBox.checked, true);
+});

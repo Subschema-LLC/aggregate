@@ -19,7 +19,7 @@ final class ScriptControllerTest extends TestCase
     protected function tearDown(): void
     {
         foreach ($this->temporaryDirectories as $directory) {
-            foreach (['public/aggregate.js', 'var/browser/manifest.json', 'var/browser/aggregate.template.min.js'] as $file) {
+            foreach (['public/aggregate.js', 'var/browser/manifest.json', 'var/browser/aggregate.template.min.js', 'var/browser/aggregate-without-page-depth.template.min.js', 'var/browser/aggregate-strict.template.min.js'] as $file) {
                 if (is_file($directory.'/'.$file)) unlink($directory.'/'.$file);
             }
             foreach (['var/browser', 'var', 'public', ''] as $child) rmdir($directory.'/'.$child);
@@ -132,7 +132,7 @@ final class ScriptControllerTest extends TestCase
         $source = (string) $this->response($settings)->getContent();
         self::assertSame($expected, $this->customDataBrowserConfig($source));
         $minified = (string) $this->response($settings, Request::create('/aggregate.js?min=1'), $this->buildFixture())->getContent();
-        self::assertSame(1, preg_match('/window\.fixture=(.*);/', $minified, $matches));
+        self::assertSame(1, preg_match('/window\.fixture=(.*?);window\.build=/', $minified, $matches));
         self::assertSame($expected, json_decode($matches[1], true, flags: JSON_THROW_ON_ERROR)[2]);
         foreach ([$source, $minified] as $script) {
             foreach (['private typed model notes', 'quantity_text', 'quantity_value', 'revenue_value', 'staff_reporting'] as $private) {
@@ -182,6 +182,9 @@ final class ScriptControllerTest extends TestCase
         $response = $this->response($settings, Request::create('/aggregate.js?min=1'), $directory);
         $script = (string) $response->getContent();
         self::assertSame('minified', $response->headers->get('X-Aggregate-Script'));
+        // Page depth is off, so the build without its code is sent.
+        self::assertSame('without-page-depth', $response->headers->get('X-Aggregate-Build'));
+        self::assertStringContainsString('window.build="without-page-depth";', $script);
         self::assertSame('300', $response->headers->getCacheControlDirective('max-age'));
         self::assertTrue($response->headers->hasCacheControlDirective('public'));
         self::assertNotNull($response->getEtag());
@@ -189,7 +192,7 @@ final class ScriptControllerTest extends TestCase
         self::assertStringNotContainsString('__AGGREGATE_', $script);
         self::assertStringNotContainsString('</script>', $script);
         self::assertStringNotContainsString($settings['internal_traffic_share_token'], $script);
-        self::assertSame(1, preg_match('/window\.fixture=(.*);/', $script, $matches));
+        self::assertSame(1, preg_match('/window\.fixture=(.*?);window\.build=/', $script, $matches));
         $public = json_decode($matches[1], true, flags: JSON_THROW_ON_ERROR);
         self::assertSame($settings['js_namespace'], $public[0]);
         self::assertSame($settings['internal_traffic_value'], $public[1]['value']);
@@ -198,6 +201,56 @@ final class ScriptControllerTest extends TestCase
         $settings['internal_traffic_value'] = 'updated-without-rebuilding';
         self::assertStringContainsString('updated-without-rebuilding', (string) $this->response($settings, Request::create('/aggregate.js?min=1'), $directory)->getContent());
         self::assertSame('source', $this->response($settings, Request::create('/aggregate.js'), $directory)->headers->get('X-Aggregate-Script'));
+    }
+
+    /** @param array<string, mixed> $settings */
+    #[DataProvider('trackerBuildSettings')]
+    public function testSmallerBuildIsSentOnlyWhenTheSettingAllowsItAndTheLeftOutCodeCannotRun(array $settings, string $build): void
+    {
+        $directory = $this->buildFixture();
+        $response = $this->response($settings, Request::create('/aggregate.js?min=1'), $directory);
+        self::assertSame('minified', $response->headers->get('X-Aggregate-Script'));
+        self::assertSame($build, $response->headers->get('X-Aggregate-Build'));
+        self::assertStringContainsString('window.build="'.$build.'";', (string) $response->getContent());
+
+        // The readable script keeps every feature whatever the settings.
+        $readable = $this->response($settings, Request::create('/aggregate.js'), $directory);
+        self::assertSame('full', $readable->headers->get('X-Aggregate-Build'));
+        self::assertStringContainsString('var withPageDepth = true;', (string) $readable->getContent());
+    }
+
+    public static function trackerBuildSettings(): iterable
+    {
+        yield 'page depth off' => [[], 'without-page-depth'];
+        yield 'page depth on' => [['page_sequence_enabled' => true], 'full'];
+        yield 'strict profile' => [['collection_profile' => 'strict', 'page_sequence_enabled' => true], 'strict'];
+        yield 'setting off, page depth off' => [['tracker_omit_unused_features' => false], 'full'];
+        yield 'setting off, strict profile' => [['tracker_omit_unused_features' => false, 'collection_profile' => 'strict'], 'full'];
+    }
+
+    public function testSmallerBuildIsCompactedHereWhenTheTerserBuildHasNone(): void
+    {
+        $directory = $this->buildFixture();
+        unlink($directory.'/var/browser/aggregate-without-page-depth.template.min.js');
+        unlink($directory.'/var/browser/aggregate-strict.template.min.js');
+        $this->writeManifest($directory);
+
+        $withoutPageDepth = $this->response([], Request::create('/aggregate.js?min=1'), $directory);
+        $full = $this->response(['page_sequence_enabled' => true], Request::create('/aggregate.js?min=1'), $directory);
+        $strict = $this->response(['collection_profile' => 'strict'], Request::create('/aggregate.js?min=1'), $directory);
+        self::assertSame(['compact', 'without-page-depth'], [$withoutPageDepth->headers->get('X-Aggregate-Script'), $withoutPageDepth->headers->get('X-Aggregate-Build')]);
+        self::assertSame(['minified', 'full'], [$full->headers->get('X-Aggregate-Script'), $full->headers->get('X-Aggregate-Build')]);
+        self::assertSame(['compact', 'strict'], [$strict->headers->get('X-Aggregate-Script'), $strict->headers->get('X-Aggregate-Build')]);
+
+        $lean = (string) $withoutPageDepth->getContent();
+        self::assertStringNotContainsString('withPageDepth', $lean);
+        self::assertStringNotContainsString('base[target]', $lean, 'link decoration is left out');
+        self::assertStringContainsString("'aggregate_page_sequence:'", $lean, 'removing an earlier counter is kept');
+        self::assertStringContainsString('mastodon.social', $lean);
+        $strictContent = (string) $strict->getContent();
+        self::assertStringNotContainsString('mastodon.social', $strictContent, 'referrer channels are left out');
+        self::assertStringNotContainsString('aggregate_visitor_id', $strictContent, 'identifiers are left out');
+        self::assertLessThan(0.6 * strlen($lean), strlen($strictContent));
     }
 
     public function testTrackerDefaultsToTheStandardCollectionProfile(): void
@@ -224,7 +277,8 @@ final class ScriptControllerTest extends TestCase
 
         $response = $this->response($settings, Request::create('/aggregate.js?min=1'), $this->buildFixture());
         self::assertSame('minified', $response->headers->get('X-Aggregate-Script'));
-        self::assertSame(1, preg_match('/window\.fixture=(.*);/', (string) $response->getContent(), $matches));
+        self::assertSame('strict', $response->headers->get('X-Aggregate-Build'));
+        self::assertSame(1, preg_match('/window\.fixture=(.*?);window\.build=/', (string) $response->getContent(), $matches));
         $public = json_decode($matches[1], true, flags: JSON_THROW_ON_ERROR);
         self::assertSame($withheld, $public[2]);
         self::assertSame(['profile' => 'strict'], $public[3]);
@@ -241,12 +295,13 @@ final class ScriptControllerTest extends TestCase
     {
         foreach (['missing', 'stale-source', 'stale-template', 'malformed-manifest', 'missing-placeholder', 'unparseable'] as $problem) {
             $directory = $this->buildFixture();
-            if ($problem === 'missing') unlink($directory.'/var/browser/aggregate.template.min.js');
+            $templates = glob($directory.'/var/browser/aggregate*.template.min.js');
+            if ($problem === 'missing') array_map('unlink', $templates);
             if ($problem === 'stale-source') file_put_contents($directory.'/public/aggregate.js', "\n// New source version\n", FILE_APPEND);
-            if ($problem === 'stale-template') file_put_contents($directory.'/var/browser/aggregate.template.min.js', 'stale');
+            if ($problem === 'stale-template') foreach ($templates as $template) file_put_contents($template, 'stale');
             if ($problem === 'malformed-manifest') file_put_contents($directory.'/var/browser/manifest.json', '{broken');
             if ($problem === 'missing-placeholder') {
-                file_put_contents($directory.'/var/browser/aggregate.template.min.js', 'window.fixture=__AGGREGATE_NAMESPACE__;');
+                foreach ($templates as $template) file_put_contents($template, 'window.fixture=__AGGREGATE_NAMESPACE__;');
                 $this->writeManifest($directory);
             }
             // Only source the server cannot parse is sent as it is.
@@ -294,7 +349,9 @@ final class ScriptControllerTest extends TestCase
         mkdir($directory.'/var/browser', 0777, true);
         $this->temporaryDirectories[] = $directory;
         copy(dirname(__DIR__, 2).'/public/aggregate.js', $directory.'/public/aggregate.js');
-        file_put_contents($directory.'/var/browser/aggregate.template.min.js', "/*! preserved license */\nwindow.fixture=[__AGGREGATE_NAMESPACE__,__AGGREGATE_INTERNAL_TRAFFIC__,__AGGREGATE_CUSTOM_DATA__,__AGGREGATE_COLLECTION__];\n");
+        foreach (['aggregate.template.min.js' => 'full', 'aggregate-without-page-depth.template.min.js' => 'without-page-depth', 'aggregate-strict.template.min.js' => 'strict'] as $file => $build) {
+            file_put_contents($directory.'/var/browser/'.$file, "/*! preserved license */\nwindow.fixture=[__AGGREGATE_NAMESPACE__,__AGGREGATE_INTERNAL_TRAFFIC__,__AGGREGATE_CUSTOM_DATA__,__AGGREGATE_COLLECTION__];window.build=\"".$build."\";\n");
+        }
         $this->writeManifest($directory);
 
         return $directory;
@@ -302,10 +359,18 @@ final class ScriptControllerTest extends TestCase
 
     private function writeManifest(string $directory): void
     {
+        $builds = [];
+        foreach (['without-page-depth', 'strict'] as $build) {
+            $file = 'aggregate-'.$build.'.template.min.js';
+            if (is_file($directory.'/var/browser/'.$file)) {
+                $builds[$build] = ['file' => $file, 'templateSha256' => hash_file('sha256', $directory.'/var/browser/'.$file)];
+            }
+        }
         file_put_contents($directory.'/var/browser/manifest.json', json_encode([
             'format' => 1,
             'sourceSha256' => hash_file('sha256', $directory.'/public/aggregate.js'),
             'templateSha256' => hash_file('sha256', $directory.'/var/browser/aggregate.template.min.js'),
+            'builds' => $builds,
         ], JSON_THROW_ON_ERROR));
     }
 

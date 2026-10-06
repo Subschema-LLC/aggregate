@@ -1,0 +1,23 @@
+{# A website's data reception status in its card summary. Without a computed
+   status (activity is null), a "Checking" placeholder that the Websites page
+   replaces with the badge from app_website_activity. #}
+{% if activity %}
+    <span class="website-activity-badge status-{{ activity.status }}" data-website-activity-badge="{{ token }}" title="{{ activity.label }}{% if activity.last_event_at %} — Last event received: {{ activity.relative_time }}{% endif %}">
+        <span class="activity-pulse-dot" aria-hidden="true">
+            <span class="pulse-ring"></span>
+            <span class="pulse-dot"></span>
+        </span>
+        <span class="activity-label">{{ activity.label }}</span>
+        {% if activity.relative_time and activity.status != 'none' %}
+            <span class="activity-time">· {{ activity.relative_time }}</span>
+        {% endif %}
+    </span>
+{% else %}
+    <span class="website-activity-badge status-checking" data-website-activity-badge="{{ token }}">
+        <span class="activity-pulse-dot" aria-hidden="true">
+            <span class="pulse-ring"></span>
+            <span class="pulse-dot"></span>
+        </span>
+        <span class="activity-label">Checking data reception…</span>
+    </span>
+{% endif %}

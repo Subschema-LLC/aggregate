@@ -5,7 +5,7 @@
 {% block body %}
 {% set is_admin = is_granted('ROLE_ADMIN') %}
 
-<div class="websites-page" data-controller="pages--websites--index" data-action="turbo:before-cache@document->pages--websites--index#reset">
+<div class="websites-page" data-controller="pages--websites--index pages--websites--activity" data-pages--websites--activity-url-value="{{ path('app_website_activity') }}" data-action="turbo:before-cache@document->pages--websites--index#reset">
 <div class="level mb-5">
     <div class="level-left">
         <div>

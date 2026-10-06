@@ -6,7 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
-const {build, PLACEHOLDERS, DROP_INS} = require('../../scripts/build-js.cjs');
+const {build, PLACEHOLDERS, DROP_INS, TRACKER_BUILDS, trackerPropertyNames} = require('../../scripts/build-js.cjs');
 const projectDir = path.resolve(__dirname, '../..');
 const pinnedVersion = require('../../package.json').devDependencies.terser;
 
@@ -37,6 +37,25 @@ test('optional build preserves licensing, dynamic config and script syntax, and 
       template = template.split(placeholder).join(JSON.stringify(values[index]));
     }
     new vm.Script(template, {filename: 'configured-aggregate.min.js'});
+
+    // Smaller tracker builds for settings that turn features off, listed in the manifest.
+    const manifest = JSON.parse(outputs.get('var/browser/manifest.json'));
+    const digest = (content) => require('node:crypto').createHash('sha256').update(content).digest('hex');
+    assert.deepEqual(Object.keys(manifest.builds).sort(), Object.keys(TRACKER_BUILDS).filter((name) => name !== 'full').sort());
+    for (const [name, entry] of Object.entries(manifest.builds)) {
+      const compiled = outputs.get('var/browser/' + entry.file);
+      assert.equal(entry.file, 'aggregate-' + name + '.template.min.js');
+      assert.equal(entry.templateSha256, digest(compiled));
+      assert.match(compiled, /Redistribution and use in source and binary forms/);
+      for (const placeholder of Object.values(PLACEHOLDERS)) assert.equal(compiled.split(placeholder).length, 2, name + ' ' + placeholder);
+    }
+    // Shorter internal names in every build; names pages and payloads use are kept.
+    for (const content of [tracker, outputs.get('var/browser/aggregate.template.min.js')]) {
+      assert.doesNotMatch(content, /withPageDepth|withStandardProfile|pageSequenceForEvent|customDataForEvent|trackMarkedInteraction/);
+      for (const name of ['emit', 'trackView', 'setConsent', 'configure', 'pageSequenceMethod', 'consentFreeProperties', 'eventName', 'pagePath']) {
+        assert.ok(content.includes(name), name + ' keeps its name');
+      }
+    }
     for (const {name, placeholder, stylesheet, extra} of DROP_INS) {
       const standalone = outputs.get('public/' + name + '.min.js');
       assert.match(standalone, /SPDX-License-Identifier: AGPL-3\.0-only/);
@@ -64,7 +83,6 @@ test('optional build preserves licensing, dynamic config and script syntax, and 
     }
     const standaloneTemplate = outputs.get('var/browser/standalone-consent.template.min.js');
     const standaloneManifest = JSON.parse(outputs.get('var/browser/standalone-consent-manifest.json'));
-    const digest = (content) => require('node:crypto').createHash('sha256').update(content).digest('hex');
     assert.equal(standaloneManifest.adapterSha256, digest(fs.readFileSync(path.join(projectDir, 'micro-consent-dropins/js/aggregate-consent.js'))));
     assert.equal(standaloneManifest.templateSha256, digest(standaloneTemplate));
     const configuredStandalone = standaloneTemplate.replace('__MICRO_CONSENT_CONFIG__', '{}').replace('__MICRO_CONSENT_STYLES__', '"body {}"');
@@ -80,6 +98,18 @@ test('optional build preserves licensing, dynamic config and script syntax, and 
   } finally {
     fs.rmSync(directory, {recursive: true, force: true});
   }
+});
+
+test('only names used solely inside the tracker object are shortened', () => {
+  const acorn = require('node:module').createRequire(require.resolve('terser/package.json'))('acorn');
+  const names = (code) => trackerPropertyNames('(function(){var Analytics = {' + code + '};})();', acorn);
+  assert.deepEqual(names('helper: function(){ return this.helper; }, state: 1'), ['helper', 'state']);
+  assert.deepEqual(names('send: function(){}, x: 1}; navigator.send(); var y = {'), ['x'], 'used on another object');
+  assert.deepEqual(names('field: 1, other: 2}; var payload = {field: 1}; var z = {'), ['other'], 'a key of another object');
+  assert.deepEqual(names("field: 1, other: 2}; var has = Object.prototype.hasOwnProperty.call(o, 'field'); var z = {"), ['other'], 'spelled as a string');
+  assert.deepEqual(names('config: {}, emit: function(){}, run: function(){}'), ['run'], 'kept names');
+  assert.deepEqual(names('run: function(){ var tracker = this; return tracker.state; }, state: 1'), ['run', 'state'], 'the local alias for this');
+  assert.throws(() => names('x: 1}; var tracker = window.other; var z = {'), /may only hold this/);
 });
 
 test('build requires an exact package.json minifier pin', async (t) => {

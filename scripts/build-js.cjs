@@ -13,6 +13,19 @@ const PLACEHOLDERS = {
   customDataDefaults: '__AGGREGATE_CUSTOM_DATA__',
   collectionDefaults: '__AGGREGATE_COLLECTION__'
 };
+// Tracker builds by the code they keep. The server sends a smaller build only
+// when the page speed setting allows it and the served settings mean the left
+// out code could never run: page depth turned off, or the strict profile on.
+// The switches are declared `var withX = true;` in the source and only ever
+// test an if statement; BrowserScriptCompactor prunes the same way in PHP.
+const TRACKER_BUILDS = {
+  full: {withPageDepth: true, withStandardProfile: true},
+  'without-page-depth': {withPageDepth: false, withStandardProfile: true},
+  strict: {withPageDepth: false, withStandardProfile: false}
+};
+// Tracker object members that keep their names in every build: settings a page
+// can also pass in, and the methods exposed on window[namespace].
+const KEPT_TRACKER_PROPERTIES = new Set(['config', 'consent', 'emit', 'trackView', 'setConsent', 'toString', 'valueOf', 'toJSON', 'then', 'handleEvent']);
 const DROP_INS = [
   {name: 'consent', variable: 'consentConfig', placeholder: '__AGGREGATE_CONSENT_CONFIG__',
     stylesheet: {source: 'consent.css', variable: 'consentStyles', placeholder: '__AGGREGATE_CONSENT_STYLES__'}},
@@ -57,10 +70,13 @@ function minifier(projectDir) {
 
   return {
     version,
-    minify: async function (source) {
+    acorn: createRequire(packagePath)('acorn'),
+    // defines: constants that replace free names, for the tracker's build
+    // switches. properties: tracker-only member names to shorten.
+    minify: async function (source, {defines = {}, properties = []} = {}) {
       const result = await terser.minify(source, {
-        compress: true,
-        mangle: true,
+        compress: {global_defs: defines},
+        mangle: properties.length ? {properties: {regex: new RegExp('^(?:' + properties.join('|') + ')$'), builtins: true}} : true,
         ecma: 2018,
         format: {comments: /^!|@preserve|@license|@cc_on/, inline_script: true}
       });
@@ -69,26 +85,92 @@ function minifier(projectDir) {
   };
 }
 
+/** The tracker source without its build-switch declarations; the builds define them. */
+function withoutSwitchDeclarations(source) {
+  for (const name of Object.keys(TRACKER_BUILDS.full)) {
+    const declaration = new RegExp('^  var ' + name + ' = true;\\n', 'm');
+    if (source.split(declaration).length !== 2) throw new Error('Tracker build switch must be declared once as var ' + name + ' = true;');
+    source = source.replace(declaration, '');
+  }
+  return source;
+}
+
+/**
+ * Members of the tracker's internal Analytics object that can take short names
+ * in the minified builds. A name qualifies only when the parsed program uses
+ * it as a member of that object alone (this.name, Analytics.name, or
+ * tracker.name, a local alias for this), never as a key of another object and
+ * never as a string, so no page setting, payload field or other script can
+ * depend on it. Uses acorn, the parser Terser itself depends on.
+ */
+function trackerPropertyNames(source, acorn) {
+  const program = acorn.parse(source, {ecmaVersion: 'latest', sourceType: 'script'});
+  const nodes = [];
+  (function walk(node) {
+    if (Array.isArray(node)) return node.forEach(walk);
+    if (!node || typeof node.type !== 'string') return;
+    nodes.push(node);
+    for (const key of Object.keys(node)) {
+      if (node[key] && typeof node[key] === 'object') walk(node[key]);
+    }
+  })(program);
+  const declaration = nodes.find((node) => node.type === 'VariableDeclarator' && node.id.name === 'Analytics'
+    && node.init && node.init.type === 'ObjectExpression');
+  if (!declaration) throw new Error('Tracker object not found in public/aggregate.js.');
+  if (nodes.some((node) => node.type === 'VariableDeclarator' && node.id.name === 'tracker' && !(node.init && node.init.type === 'ThisExpression'))) {
+    throw new Error('In public/aggregate.js, a variable named tracker may only hold this, the tracker object.');
+  }
+  const own = new Set(declaration.init.properties);
+  const keyName = (node) => node.computed ? null : (node.key.type === 'Identifier' ? node.key.name : String(node.key.value));
+  const excluded = new Set(KEPT_TRACKER_PROPERTIES);
+  for (const node of nodes) {
+    if (node.type === 'Literal' && typeof node.value === 'string') excluded.add(node.value);
+    if (node.type === 'TemplateElement') excluded.add(node.value.cooked);
+    if ((node.type === 'Property' || node.type === 'MethodDefinition') && !own.has(node)) excluded.add(keyName(node));
+    if (node.type === 'MemberExpression' && !node.computed && !(node.object.type === 'ThisExpression'
+      || (node.object.type === 'Identifier' && ['Analytics', 'tracker'].includes(node.object.name)))) excluded.add(node.property.name);
+  }
+  return declaration.init.properties.map(keyName).filter((name) => name !== null && !excluded.has(name));
+}
+
 async function build({projectDir = path.resolve(__dirname, '..'), outputDir = projectDir, check = false, report = console.log} = {}) {
-  const {version, minify} = minifier(projectDir);
+  const {version, minify, acorn} = minifier(projectDir);
   const tracker = fs.readFileSync(path.join(projectDir, 'public', 'aggregate.js'), 'utf8');
-  let template = tracker;
+  const trackerBuildSource = withoutSwitchDeclarations(tracker);
+  const properties = trackerPropertyNames(tracker, acorn);
+  let template = trackerBuildSource;
   for (const [variable, placeholder] of Object.entries(PLACEHOLDERS)) {
     const declaration = new RegExp('^  var ' + variable + ' = .+;$', 'm');
     if (!declaration.test(template)) throw new Error('Tracker configuration declaration not found: ' + variable);
     template = template.replace(declaration, '  var ' + variable + ' = ' + placeholder + ';');
   }
-  const minifiedTemplate = await minify(template);
-  for (const placeholder of Object.values(PLACEHOLDERS)) {
-    if (!minifiedTemplate.includes(placeholder)) throw new Error('Minifier removed a dynamic tracker placeholder: ' + placeholder);
+  const trackerTemplates = new Map();
+  for (const [name, defines] of Object.entries(TRACKER_BUILDS)) {
+    const minifiedTemplate = await minify(template, {defines, properties});
+    for (const placeholder of Object.values(PLACEHOLDERS)) {
+      if (minifiedTemplate.split(placeholder).length !== 2) throw new Error('The ' + name + ' tracker template must contain ' + placeholder + ' exactly once.');
+    }
+    for (const switchName of Object.keys(defines)) {
+      if (minifiedTemplate.includes(switchName)) throw new Error('The ' + name + ' tracker build still refers to ' + switchName + '.');
+    }
+    trackerTemplates.set(name, minifiedTemplate);
   }
+  const minifiedTemplate = trackerTemplates.get('full');
 
   const marker = fs.readFileSync(path.join(projectDir, 'templates', 'internal_traffic', 'marker.js.twig'), 'utf8');
   const outputs = new Map([
-    ['public/aggregate.min.js', await minify(tracker)],
+    // Static copies receive no server settings, so they keep every feature.
+    ['public/aggregate.min.js', await minify(trackerBuildSource, {defines: TRACKER_BUILDS.full, properties})],
     ['var/browser/aggregate.template.min.js', minifiedTemplate],
     ['public/internal-traffic-marker.min.js', await minify(AGPL_NOTICE + marker)]
   ]);
+  const builds = {};
+  for (const [name, content] of trackerTemplates) {
+    if (name === 'full') continue;
+    const file = 'aggregate-' + name + '.template.min.js';
+    outputs.set('var/browser/' + file, content);
+    builds[name] = {file, templateSha256: digest(content)};
+  }
   for (const {name, variable, placeholder, stylesheet, extra} of DROP_INS) {
     const source = fs.readFileSync(path.join(projectDir, 'public', name + '.js'), 'utf8');
     const declaration = new RegExp('^  var ' + variable + ' = .+;$', 'm');
@@ -152,6 +234,7 @@ async function build({projectDir = path.resolve(__dirname, '..'), outputDir = pr
     format: 1,
     sourceSha256: digest(tracker),
     templateSha256: digest(minifiedTemplate),
+    builds,
     minifier: 'terser ' + version
   }, null, 2) + '\n');
 
@@ -185,4 +268,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = {build, PLACEHOLDERS, DROP_INS};
+module.exports = {build, PLACEHOLDERS, DROP_INS, TRACKER_BUILDS, trackerPropertyNames};

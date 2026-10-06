@@ -235,3 +235,54 @@ test('clear button and shortcut badge are mutually exclusive and never overlap',
   assert.equal(clearBtn.style.display, 'none');
   assert.equal(shortcut.style.display, 'inline-flex');
 });
+
+test('quick search renders activity status pill when item has status', () => {
+  const instance = new QuickSearchController();
+  const input = createMockElement('input');
+  const results = createMockElement('div');
+  const wrapper = createMockElement('div');
+
+  instance.element = wrapper;
+  instance.inputTarget = input;
+  instance.resultsTarget = results;
+  instance.hasInputTarget = true;
+  instance.hasResultsTarget = true;
+  instance.hasItemsValue = true;
+  instance.itemsValue = [
+    {
+      title: 'Production Store',
+      category: 'Websites',
+      description: 'store.example.com · Receiving data (5m ago)',
+      url: '/dashboard',
+      status: 'active',
+      status_label: 'Receiving data',
+      status_time: '5m ago'
+    }
+  ];
+
+  input.value = 'store';
+  instance.filter();
+
+  const items = results.querySelectorAll('.quick-search-item');
+  assert.equal(items.length, 1);
+
+  function findByClass(node, cls) {
+    if (!node) return null;
+    if (node.classList && node.classList.contains(cls)) return node;
+    if (node.children) {
+      for (const ch of node.children) {
+        const found = findByClass(ch, cls);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+
+  const statusPill = findByClass(items[0], 'quick-search-item-status');
+  assert.ok(statusPill, 'Status pill element is rendered');
+  assert.ok(statusPill.classList.contains('status-active'), 'Pill has status-active class');
+  assert.equal(statusPill.getAttribute('title'), 'Receiving data · 5m ago');
+
+  const dot = findByClass(statusPill, 'quick-search-status-dot');
+  assert.ok(dot, 'Status dot is rendered inside pill');
+});

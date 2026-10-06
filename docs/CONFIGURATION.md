@@ -226,6 +226,7 @@ environments:
 - `brand_font_family`: Safe comma-separated local/system font stack for application text (default: `system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif`)
 - `brand_heading_font_family`: Safe comma-separated local/system font stack for headings (default: `system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif`)
 - `js_namespace`: JavaScript global variable name (default: `Aggregate`)
+- `tracker_omit_unused_features`: Send a smaller `/aggregate.js?min=1` without the code for features these settings turn off: page depth while it is off, and what only the standard profile uses while the strict profile is on (default: `true`; `TRACKER_OMIT_UNUSED_FEATURES` environment override). Also on **General settings → Page speed**. See [page speed](PAGE-SPEED.md#leave-out-unused-tracker-features)
 - `updates_method`: `release` (signed release ZIPs, recommended), `repository` (Git clone pulls, advanced) or `deployment` (deployed another way, such as a hosting panel's Git deployment or CI/CD); unset until an administrator chooses on the Updates page, with `app:updates:method`, or here. See [the update guide](UPDATES.md#choose-an-update-method)
 - `updates_branch`: GitHub branch used by repository pulls, packaged-release checks and comparisons of deployed commits (default: `master`); also editable on the Updates page, with active-environment precedence
 - `updates_signing_public_key`: Optional base64 Ed25519 public key overriding the packaged `config/release-signing.pub` for offline package verification; never a private key
@@ -651,6 +652,7 @@ App-specific settings from `aggregate.yaml` can be overridden with environment v
 
 ```bash
 export JS_NAMESPACE="MyCustomAnalytics"
+export TRACKER_OMIT_UNUSED_FEATURES="0"
 export DOCUMENTATION_URL="https://docs.example.com/analytics/"
 export BRAND_NAME="Company Analytics"
 export BRAND_LOGO_TEXT="Company Analytics"

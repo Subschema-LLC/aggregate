@@ -252,12 +252,35 @@ export default class extends Controller {
             titleSpan.className = 'quick-search-item-title';
             titleSpan.innerHTML = highlightMatches(item.title, terms);
 
+            const metaDiv = document.createElement('div');
+            metaDiv.className = 'quick-search-item-meta';
+
+            if (item.status) {
+                const statusPill = document.createElement('span');
+                statusPill.className = 'quick-search-item-status status-' + item.status;
+                const statusTitle = (item.status_label || item.status) + (item.status_time ? ' · ' + item.status_time : '');
+                statusPill.setAttribute('title', statusTitle);
+
+                const dot = document.createElement('span');
+                dot.className = 'quick-search-status-dot';
+                dot.setAttribute('aria-hidden', 'true');
+                statusPill.appendChild(dot);
+
+                const statusLabel = document.createElement('span');
+                statusLabel.className = 'quick-search-status-text';
+                statusLabel.textContent = item.status_label || item.status;
+                statusPill.appendChild(statusLabel);
+
+                metaDiv.appendChild(statusPill);
+            }
+
             const catSpan = document.createElement('span');
             catSpan.className = 'tag is-small quick-search-item-category';
             catSpan.textContent = item.category;
+            metaDiv.appendChild(catSpan);
 
             headerDiv.appendChild(titleSpan);
-            headerDiv.appendChild(catSpan);
+            headerDiv.appendChild(metaDiv);
 
             const descDiv = document.createElement('div');
             descDiv.className = 'quick-search-item-desc';

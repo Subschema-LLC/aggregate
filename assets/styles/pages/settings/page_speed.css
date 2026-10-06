@@ -1,0 +1,50 @@
+/* Page speed panel (General settings) and the page speed callouts beside
+   settings that change how much script visitors download. */
+.page-speed-note {
+    margin-top: 0.5rem;
+    padding: 0.4rem 0.65rem;
+    border-left: 3px solid var(--app-status-success-accent);
+    border-radius: 0 4px 4px 0;
+    background: var(--app-status-success-bg);
+    color: var(--app-status-success-text);
+}
+
+.page-speed-note .icon {
+    height: 1em;
+    width: 1.1em;
+    margin-right: 0.2rem;
+    vertical-align: -0.125em;
+}
+
+.page-speed-savers th[scope="row"] {
+    white-space: nowrap;
+    width: 1%;
+}
+
+.page-speed-savers td .tag {
+    margin-right: 0.35rem;
+}
+
+/* On narrow screens each saver becomes a short block: its name, then its status. */
+@media screen and (max-width: 768px) {
+    .page-speed-savers thead {
+        display: none;
+    }
+
+    .page-speed-savers tr,
+    .page-speed-savers th[scope="row"],
+    .page-speed-savers td {
+        display: block;
+        width: auto;
+        white-space: normal;
+    }
+
+    .page-speed-savers th[scope="row"] {
+        border-bottom: 0;
+        padding-bottom: 0.15rem;
+    }
+
+    .page-speed-savers td {
+        padding-top: 0;
+    }
+}

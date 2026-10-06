@@ -84,6 +84,7 @@
     if (typeof category === 'string' && /^[a-z][a-z0-9_-]{0,31}$/.test(category)
       && category !== 'none' && categories.indexOf(category) === -1) categories.push(category);
   });
+  var precheck = Array.isArray(consentConfig.precheckCategories) ? consentConfig.precheckCategories : [];
   var choices = Object.create(null);
   categories.forEach(function (category) { choices[category] = false; });
   var chosen = false;
@@ -94,6 +95,7 @@
   var status;
   var checkboxes = Object.create(null);
   var storageAvailable = true;
+  var savedMap = null;
 
   function readGrant(value, category) {
     try {
@@ -103,7 +105,12 @@
   }
 
   function hasChoice(value, category) {
-    return Object.prototype.hasOwnProperty.call(value, category) && typeof value[category] === 'boolean';
+    return !!(value && typeof value === 'object' && !Array.isArray(value)
+      && Object.prototype.hasOwnProperty.call(value, category) && typeof value[category] === 'boolean');
+  }
+
+  function hasSavedChoice(category) {
+    return savedMap !== null && hasChoice(savedMap, category);
   }
 
   try {
@@ -112,9 +119,11 @@
       // If storage cannot be updated, do not restore an old affirmative choice.
       window.localStorage.setItem(storageKey, JSON.stringify(saved));
       if (typeof saved === 'boolean') {
+        savedMap = {analytics: saved};
         choices.analytics = saved === true;
         chosen = categories.length === 1;
       } else {
+        savedMap = saved;
         categories.forEach(function (category) { choices[category] = readGrant(saved, category); });
         chosen = categories.every(function (category) { return hasChoice(saved, category); });
       }
@@ -150,6 +159,7 @@
       categories.forEach(function (category) { choices[category] = readGrant(value, category); });
     }
     chosen = true;
+    savedMap = state();
     // Apply withdrawal before touching storage or rendering controls.
     notify();
     try {
@@ -176,7 +186,7 @@
   }
 
   function syncCheckboxes() {
-    categories.forEach(function (category) { if (checkboxes[category]) checkboxes[category].checked = choices[category]; });
+    categories.forEach(function (category) { if (checkboxes[category]) checkboxes[category].checked = hasSavedChoice(category) ? choices[category] : (precheck.indexOf(category) !== -1); });
   }
 
   function open() {
@@ -204,6 +214,7 @@
     if (event.key !== storageKey && event.key !== null) return;
     var value = null;
     try { value = JSON.parse(event.newValue); } catch (error) {}
+    savedMap = typeof value === 'boolean' ? {analytics: value} : (value && typeof value === 'object' && !Array.isArray(value) ? value : null);
     categories.forEach(function (category) {
       choices[category] = typeof value === 'boolean' ? category === 'analytics' && value
         : readGrant(value, category);
@@ -272,7 +283,7 @@
         label.className = 'ac-consent-category';
         var checkbox = element('input');
         checkbox.type = 'checkbox';
-        checkbox.checked = choices[category];
+        checkbox.checked = hasSavedChoice(category) ? choices[category] : (precheck.indexOf(category) !== -1);
         checkbox.id = 'ac-consent-' + category;
         checkboxes[category] = checkbox;
         label.appendChild(checkbox);

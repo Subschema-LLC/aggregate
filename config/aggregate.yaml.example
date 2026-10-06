@@ -85,6 +85,12 @@ tag_manager:
 # searches, or identifiers. Review values and disclosures. Even utm_medium
 # can contain identifiers; whitelisting a key does not anonymize its values.
 # Edit via the Data model UI or YAML; see docs/DATA-MODEL.md.
+# Page speed: send a smaller /aggregate.js?min=1 that leaves out the code for
+# features these settings turn off (page depth while off; what only the
+# standard profile uses while the strict profile is on). Behaviour is the same.
+# Also on General settings -> Page speed; TRACKER_OMIT_UNUSED_FEATURES overrides.
+# See docs/PAGE-SPEED.md.
+# tracker_omit_unused_features: true
 # Optional page depth on all events, including anonymous events. Default off.
 # Carries a number (1..20, with 20 meaning 20+) using the method below.
 # Review the method's storage/URL disclosures and consent requirements.
@@ -256,6 +262,12 @@ environments:
 
 # Configuration options:
 #
+# website_activity_active_days (optional, default: 1)
+#   Days without events before a site transitions from Active (pulsing green dot) to Idle.
+#
+# website_activity_stale_days (optional, default: 3)
+#   Days without events before an Idle site transitions to Inactive.
+#
 # rate_limit_per_minute (optional, default: 100)
 #   Maximum API requests per IP per minute.
 #
@@ -320,6 +332,12 @@ environments:
 # js_namespace (optional, default: Aggregate)
 #   JavaScript global variable name: window.{js_namespace}
 #   Examples: Aggregate, MyAnalytics, Tracker
+#
+# tracker_omit_unused_features (optional, default: true)
+#   Page speed: /aggregate.js?min=1 leaves out the code for features these
+#   settings turn off, about a sixth smaller while page depth is off and half
+#   the size with the strict profile. false sends the full tracker to everyone.
+#   Environment override: TRACKER_OMIT_UNUSED_FEATURES.
 #
 # dashboard_enabled (optional, default: true)
 #   Enable dashboard/install/login UI routes.

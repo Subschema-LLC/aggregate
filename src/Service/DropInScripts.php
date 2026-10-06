@@ -123,6 +123,7 @@ final class DropInScripts
             'categories' => $this->tags?->consentCategories($siteId) ?? ['analytics'],
         ] + ($siteId === null ? [] : ['siteId' => $siteId])
             + (($consent['privacy_policy_url'] ?? '') !== '' ? ['privacyPolicyUrl' => $consent['privacy_policy_url']] : [])
+            + (($consent['precheck_categories'] ?? []) !== [] ? ['precheckCategories' => $consent['precheck_categories']] : [])
             + ConsentAppearance::browser($consent));
         if ($minified) {
             $directory = $this->projectDir.'/var/browser';

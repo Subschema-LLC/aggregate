@@ -396,6 +396,16 @@ final class DataModelControllerTest extends TestCase
         self::assertStringContainsString('no cookies or Web Storage', $crawler->filter('#page-depth-url')->text());
         self::assertStringContainsString('copied or shared links', $crawler->filter('#page-depth-url')->text());
         self::assertStringContainsString('enhanced analytics is rejected', $crawler->filter('#page-depth-privacy')->text());
+        $note = $crawler->filter('section[aria-labelledby="page-depth-heading"] .page-speed-note');
+        self::assertStringContainsString('Page speed: While page depth is off, visitors get a tracker without its code', $note->text());
+        self::assertStringNotContainsString('is off, so visitors get the full tracker', $note->text(), 'the setting is on by default');
+
+        $this->config->set('tracker_omit_unused_features', false);
+        $crawler = new Crawler((string) $this->controller($request)->index($request)->getContent());
+        $note = $crawler->filter('section[aria-labelledby="page-depth-heading"] .page-speed-note');
+        self::assertStringContainsString('Leave out unused tracker features is off, so visitors get the full tracker either way.', $note->text());
+        self::assertSame('/dashboard/settings#page-speed', $note->filter('a')->attr('href'));
+        $this->config->set('tracker_omit_unused_features', true);
 
         $before = $this->settings->toArray();
         $request = $this->request([
@@ -669,6 +679,7 @@ final class DataModelControllerTest extends TestCase
             'app_data_model_discovery' => '/dashboard/data-model/discovery',
             'app_data_model_reporting' => '/dashboard/data-model/reporting',
             'app_event_examples' => '/dashboard/data-model/examples',
+            'app_application_settings' => '/dashboard/settings',
         };
 
         return $path.($parameters === [] ? '' : '?'.http_build_query($parameters));

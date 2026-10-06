@@ -9,6 +9,8 @@ use App\Entity\User;
 use App\Service\AggregateConfigLoader;
 use App\Service\DocumentationLinks;
 use App\Service\DropInScripts;
+use App\Service\TrackerBuilds;
+use App\Service\TrackerScript;
 use App\Service\TrackingAttributes;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\DomCrawler\Crawler;
@@ -39,7 +41,7 @@ final class DashboardTrackingAttributesTest extends KernelTestCase
         self::assertCount(1, $link, 'links to the guide through its documentation topic');
         self::assertSame('noopener noreferrer', $link->attr('rel'));
 
-        $settings = new Crawler((string) $controller->applicationSettings($container->get(DocumentationLinks::class))->getContent());
+        $settings = new Crawler((string) $controller->applicationSettings($container->get(DocumentationLinks::class), $container->get(TrackerBuilds::class), $container->get(TrackerScript::class))->getContent());
         self::assertStringContainsString($names['event'], $settings->filter('#js-namespace')->ancestors()->filter('.field')->first()->filter('.help')->text());
     }
 }
