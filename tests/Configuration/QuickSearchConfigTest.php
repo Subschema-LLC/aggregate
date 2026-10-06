@@ -95,7 +95,9 @@ final class QuickSearchConfigTest extends KernelTestCase
         ]);
 
         $activityService = $this->createMock(\App\Service\WebsiteActivityService::class);
-        $activityService->method('getStatuses')->willReturn([
+        // Quick search is on every page, so it never computes statuses itself.
+        $activityService->expects(self::never())->method('getStatuses');
+        $activityService->method('cachedStatuses')->willReturn([
             'token-demo' => [
                 'token' => 'token-demo',
                 'status' => 'active',
@@ -122,5 +124,31 @@ final class QuickSearchConfigTest extends KernelTestCase
         self::assertSame('15m ago', $items[0]['status_time']);
         self::assertStringContainsString('demo.example.com', $items[0]['description']);
         self::assertStringContainsString('Receiving data', $items[0]['description']);
+    }
+
+    public function testQuickSearchListsWebsitesBeforeAnyStatusIsComputed(): void
+    {
+        $urls = $this->createMock(UrlGeneratorInterface::class);
+        $urls->method('generate')->willReturn('/dashboard');
+        $websiteManager = $this->createMock(\App\Service\WebsiteConfigManager::class);
+        $websiteManager->method('getWebsites')->willReturn([
+            ['name' => 'Demo Store', 'domain' => 'demo.example.com', 'token' => 'token-demo'],
+        ]);
+        $activityService = $this->createMock(\App\Service\WebsiteActivityService::class);
+        $activityService->expects(self::never())->method('getStatuses');
+        $activityService->method('cachedStatuses')->willReturn(null);
+
+        $extension = new NavigationExtension(
+            new FeatureFlagsExtension($this->createMock(\App\Service\FeatureFlags::class)),
+            $this->createMock(AuthorizationCheckerInterface::class),
+            $urls,
+            websiteManager: $websiteManager,
+            activityService: $activityService
+        );
+        $items = $extension->quickSearchItems(['items' => []]);
+
+        self::assertCount(1, $items);
+        self::assertSame('Demo Store', $items[0]['title']);
+        self::assertSame('none', $items[0]['status']);
     }
 }

@@ -112,6 +112,52 @@ final class WebsiteActivityServiceTest extends TestCase
         self::assertSame('Sep 1, 2026', $service->formatRelativeTime($now->modify('-34 days'), $now));
     }
 
+    public function testPagesReadOnlyStatusesAlreadyComputed(): void
+    {
+        $eventRepo = $this->createMock(EventRepository::class);
+        $eventRepo->expects(self::once())->method('findLastEventDatesByTokens')
+            ->willReturn(['token-1' => new \DateTimeImmutable('now', new \DateTimeZone('UTC'))]);
+        $websiteManager = $this->createMock(WebsiteConfigManager::class);
+        $websiteManager->method('getWebsites')->willReturn([['name' => 'Site 1', 'domain' => 'site1.com', 'token' => 'token-1']]);
+        $config = $this->createMock(AggregateConfigLoader::class);
+        $config->method('getWithEnvFallback')->willReturnArgument(1);
+        $service = new WebsiteActivityService($eventRepo, $websiteManager, $config, new ArrayAdapter());
+
+        self::assertNull($service->cachedStatuses(), 'nothing computed yet, and nothing queried');
+        self::assertNull($service->cachedStatusForToken('token-1'));
+
+        $service->getStatuses();
+        self::assertSame('active', $service->cachedStatuses()['token-1']['status']);
+        self::assertSame('active', $service->cachedStatusForToken('token-1')['status']);
+        self::assertNull($service->cachedStatusForToken('token-unknown'));
+        self::assertNull($service->cachedStatusForToken(''));
+
+        $service->forget();
+        self::assertNull($service->cachedStatuses());
+    }
+
+    public function testAFailedLookupIsNotCachedAsNoEvents(): void
+    {
+        $eventRepo = $this->createMock(EventRepository::class);
+        $eventRepo->expects(self::exactly(2))->method('findLastEventDatesByTokens')->willReturnOnConsecutiveCalls(
+            self::throwException(new \RuntimeException('Database unavailable')),
+            ['token-1' => new \DateTimeImmutable('now', new \DateTimeZone('UTC'))],
+        );
+        $websiteManager = $this->createMock(WebsiteConfigManager::class);
+        $websiteManager->method('getWebsites')->willReturn([['name' => 'Site 1', 'domain' => 'site1.com', 'token' => 'token-1']]);
+        $config = $this->createMock(AggregateConfigLoader::class);
+        $config->method('getWithEnvFallback')->willReturnArgument(1);
+        $service = new WebsiteActivityService($eventRepo, $websiteManager, $config, new ArrayAdapter());
+
+        try {
+            $service->getStatuses();
+            self::fail('The failure reaches the caller.');
+        } catch (\RuntimeException) {
+        }
+        self::assertNull($service->cachedStatuses());
+        self::assertSame('active', $service->getStatuses()['token-1']['status']);
+    }
+
     public function testRefreshBypassesCache(): void
     {
         $now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));

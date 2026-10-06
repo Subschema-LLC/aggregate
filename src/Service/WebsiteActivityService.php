@@ -5,9 +5,18 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Repository\EventRepository;
+use Psr\Cache\CacheItemPoolInterface;
 use Symfony\Contracts\Cache\CacheInterface;
 use Symfony\Contracts\Cache\ItemInterface;
 
+/**
+ * Data reception status per website, from the latest event each has recorded.
+ *
+ * Statuses are computed from the events table and cached. Dashboard pages read
+ * only the cache (cachedStatuses()), so they render from configuration alone
+ * and never wait on the database; the Websites page then loads fresh statuses
+ * from the app_website_activity endpoint, which computes them when needed.
+ */
 class WebsiteActivityService
 {
     public const DEFAULT_ACTIVE_DAYS = 1;
@@ -65,6 +74,44 @@ class WebsiteActivityService
             $item->expiresAfter(self::CACHE_TTL_SECONDS);
             return $this->computeStatuses();
         });
+    }
+
+    /**
+     * Statuses computed earlier and still cached, or null. Never queries the
+     * database, so any page can show them.
+     *
+     * @return array<string, array<string, mixed>>|null
+     */
+    public function cachedStatuses(): ?array
+    {
+        if (!$this->cache instanceof CacheItemPoolInterface) {
+            return null;
+        }
+
+        try {
+            $item = $this->cache->getItem(self::CACHE_KEY);
+            $statuses = $item->isHit() ? $item->get() : null;
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return is_array($statuses) ? $statuses : null;
+    }
+
+    /**
+     * One website's cached status, or null when none has been computed yet.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function cachedStatusForToken(string $token): ?array
+    {
+        return $token === '' ? null : ($this->cachedStatuses()[$token] ?? null);
+    }
+
+    /** Drops the cached statuses, for example after the thresholds change. */
+    public function forget(): void
+    {
+        $this->cache->delete(self::CACHE_KEY);
     }
 
     /**

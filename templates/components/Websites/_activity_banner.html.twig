@@ -1,0 +1,30 @@
+{# A website's data reception details inside its card. Empty and hidden until
+   a status has been computed; the Websites page fills it from app_website_activity. #}
+{% if activity %}
+    <div class="website-activity-banner status-{{ activity.status }} mb-4" data-website-activity-banner="{{ token }}">
+        <div class="is-flex is-align-items-center is-justify-content-between is-flex-wrap-wrap" style="gap: 0.5rem;">
+            <div class="is-flex is-align-items-center" style="gap: 0.5rem;">
+                <span class="activity-pulse-dot" aria-hidden="true">
+                    <span class="pulse-ring"></span>
+                    <span class="pulse-dot"></span>
+                </span>
+                <span class="has-text-weight-semibold is-size-7 is-uppercase">Data reception:</span>
+                <span class="activity-status-name is-size-7 has-text-weight-bold">{{ activity.label }}</span>
+            </div>
+            <div class="is-size-7">
+                {% if activity.last_event_at %}
+                    <span>Last event received: <strong>{{ activity.relative_time }}</strong> ({{ activity.last_event_at_formatted }})</span>
+                {% else %}
+                    <span>No events received yet</span>
+                {% endif %}
+            </div>
+        </div>
+        {% if activity.status == 'none' %}
+            <p class="is-size-7 mt-2 mb-0" style="opacity: 0.85;">This website token has not recorded any events. Make sure your tracker integration code is installed in the <code>&lt;head&gt;</code> of your website.</p>
+        {% elseif activity.status == 'inactive' %}
+            <p class="is-size-7 mt-2 mb-0" style="opacity: 0.85;">No events have been recorded in the past {{ activity.stale_days }} days. Check if the tracker script is still active on <code>{{ website.domain }}</code>.</p>
+        {% endif %}
+    </div>
+{% else %}
+    <div data-website-activity-banner="{{ token }}" hidden></div>
+{% endif %}

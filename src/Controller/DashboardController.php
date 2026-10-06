@@ -23,6 +23,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
+use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
@@ -71,7 +72,9 @@ class DashboardController extends AbstractController
                     // or prevent the operator from repairing its domain rules.
                     $website['integration_code'] = null;
                 }
-                $website['activity'] = $activityService?->getStatusForToken($website['token']);
+                // Only a status already computed: the page never waits on the
+                // events database. The page loads fresh ones from app_website_activity.
+                $website['activity'] = $activityService?->cachedStatusForToken((string) ($website['token'] ?? ''));
 
                 return $website;
             }, $this->websiteManager->getWebsites()),
@@ -80,6 +83,42 @@ class DashboardController extends AbstractController
             'js_namespace' => $this->config->getWithEnvFallback('js_namespace', 'Aggregate'),
             'tracking_attributes' => TrackingAttributes::names($this->config->getWithEnvFallback('js_namespace', 'Aggregate')),
         ]);
+    }
+
+    /**
+     * Each website's data reception status, which the Websites page loads after
+     * it renders. The badge and banner are rendered here from the same Twig
+     * partials the page uses, so the browser only swaps them in.
+     */
+    #[Route('/dashboard/websites/activity', name: 'app_website_activity', methods: ['GET'])]
+    public function websiteActivity(WebsiteActivityService $activityService): JsonResponse
+    {
+        $this->denyIfDashboardDisabled();
+        $headers = ['Cache-Control' => 'private, no-store, max-age=0'];
+
+        try {
+            $statuses = $activityService->getStatuses();
+        } catch (\Throwable $error) {
+            $this->logger->warning('Website activity could not be read from the events table.', ['exception' => $error]);
+
+            return new JsonResponse(['error' => 'Data reception status is unavailable.'], Response::HTTP_SERVICE_UNAVAILABLE, $headers);
+        }
+
+        $websites = [];
+        foreach ($this->websiteManager->getWebsites() as $website) {
+            $token = (string) ($website['token'] ?? '');
+            if ($token === '') {
+                continue;
+            }
+            $activity = $statuses[$token] ?? $activityService->getStatusForToken($token);
+            $websites[$token] = [
+                'status' => $activity['status'],
+                'badge' => $this->renderView('components/Websites/_activity_badge.html.twig', ['activity' => $activity, 'token' => $token]),
+                'banner' => $this->renderView('components/Websites/_activity_banner.html.twig', ['activity' => $activity, 'token' => $token, 'website' => $website]),
+            ];
+        }
+
+        return new JsonResponse(['websites' => $websites], Response::HTTP_OK, $headers);
     }
 
     #[Route('/dashboard/settings', name: 'app_application_settings', methods: ['GET'])]
@@ -398,7 +437,8 @@ class DashboardController extends AbstractController
 
         try {
             $this->config->setMany($settings);
-            $activityService?->refresh();
+            // New thresholds apply when the Websites page next loads statuses.
+            $activityService?->forget();
 
             $this->addFlash('success', 'Settings updated successfully in config/aggregate.yaml!');
         } catch (\Exception $e) {
