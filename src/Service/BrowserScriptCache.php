@@ -28,8 +28,18 @@ final class BrowserScriptCache
         $response->setPublic();
         $response->setMaxAge(self::MAX_AGE);
         $response->setEtag(substr(hash('sha256', (string) $response->getContent()), 0, 32));
-        if ($request !== null) {
-            $response->isNotModified($request);
+        if ($request === null || !$request->isMethodCacheable()) {
+            return $response;
+        }
+        // A compressing web server changes the tag the browser keeps: nginx
+        // makes it weak (W/"…") and Apache adds -gzip or -br inside the quotes.
+        // Either still names this content, so it is confirmed with a 304.
+        foreach ($request->getETags() as $tag) {
+            $tag = preg_replace('~-(?:gzip|br|zstd|deflate)"$~', '"', str_starts_with($tag, 'W/') ? substr($tag, 2) : $tag);
+            if ($tag === $response->getEtag() || $tag === '*') {
+                $response->setNotModified();
+                break;
+            }
         }
 
         return $response;

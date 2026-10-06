@@ -36,6 +36,7 @@ export const sections = [
       { source: 'micro-consent-dropins/README.md', route: 'tracking/standalone-consent', label: 'Standalone consent banner' },
       { source: 'docs/EVENT-EXAMPLES.md', route: 'tracking/event-examples', label: 'Event examples' },
       { source: 'docs/JS-BUILD.md', route: 'tracking/js-build', label: 'JavaScript build' },
+      { source: 'docs/PAGE-SPEED.md', route: 'tracking/page-speed', label: 'Page speed' },
     ],
   },
   {

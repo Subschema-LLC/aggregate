@@ -111,6 +111,12 @@ jobs:
           fi
       - name: Run JavaScript tests
         run: npm run test:js
+      # The minified tracker shortens internal names; run the tracker's own
+      # behaviour tests against it as well as against the readable source.
+      - name: Run tracker tests against the minified build
+        env:
+          AGGREGATE_SDK_SOURCE: public/aggregate.min.js
+        run: node --test tests/JavaScript/aggregate-consent.test.js tests/JavaScript/aggregate-strict.test.js tests/JavaScript/aggregate-ready.test.js
 
   release-tooling:
     name: Release tooling

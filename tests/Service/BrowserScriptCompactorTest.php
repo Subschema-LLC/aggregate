@@ -73,6 +73,81 @@ final class BrowserScriptCompactorTest extends TestCase
         self::assertNull($compactor->compact('function ('), 'code that cannot be parsed is served as it is');
     }
 
+    public function testBuildSwitchesKeepOnlyTheBranchThatRuns(): void
+    {
+        $source = <<<'JS'
+            /*! License */
+            (function () {
+              var withA = true;
+              var withB = true;
+              var api = {
+                one: function () {
+                  if (withA) {
+                    a();
+                    a2();
+                  }
+                  return 1;
+                },
+                two: function () {
+                  if (!withA) {
+                    fallback();
+                  } else if (withB) {
+                    b();
+                  } else {
+                    neither();
+                  }
+                }
+              };
+              if (withB) {
+                if (ready) start();
+              }
+            })();
+            JS;
+        $compactor = new BrowserScriptCompactor();
+
+        self::assertSame("/*! License */\n(function(){var api={one:function(){{a();a2();}return 1;},two:function(){b();}};if(ready){start();}})();\n", $compactor->compact($source, ['withA' => true, 'withB' => true]));
+        self::assertSame("/*! License */\n(function(){var api={one:function(){return 1;},two:function(){fallback();}};})();\n", $compactor->compact($source, ['withA' => false, 'withB' => false]));
+        self::assertSame("/*! License */\n(function(){var api={one:function(){{a();a2();}return 1;},two:function(){neither();}};})();\n", $compactor->compact($source, ['withA' => true, 'withB' => false]));
+        self::assertNotNull($compactor->compact($source), 'without switches the declarations stay');
+    }
+
+    /** Anything but the documented form could leave an undefined name behind. */
+    public function testBuildSwitchesUsedAnyOtherWayAreRefused(): void
+    {
+        $compactor = new BrowserScriptCompactor();
+        foreach ([
+            'not declared' => 'if (withA) { a(); }',
+            'declared twice' => 'var withA = true; var withA = true; if (withA) { a(); }',
+            'declared false' => 'var withA = false; if (withA) { a(); }',
+            'declared with let' => 'let withA = true; if (withA) { a(); }',
+            'declared with others' => 'var withA = true, other = 1; if (withA) { a(); }',
+            'used in an expression' => 'var withA = true; var on = withA && ready;',
+            'compared' => 'var withA = true; if (withA === true) { a(); }',
+            'reassigned' => 'var withA = true; withA = false;',
+        ] as $case => $code) {
+            self::assertNull($compactor->compact($code, ['withA' => true]), $case);
+        }
+    }
+
+    /** Every tracker build compacts, keeps its license, and never refers to a switch. */
+    public function testEachTrackerBuildCompacts(): void
+    {
+        $source = (string) file_get_contents(dirname(__DIR__, 2).'/public/aggregate.js');
+        $sizes = [];
+        foreach (\App\Service\TrackerBuilds::SWITCHES as $build => $switches) {
+            $compact = (new BrowserScriptCompactor())->compact($source, $switches);
+            self::assertNotNull($compact, $build);
+            self::assertStringStartsWith(self::licenseOf($source), $compact, $build);
+            foreach (array_keys($switches) as $switch) {
+                self::assertStringNotContainsString($switch, $compact, $build);
+            }
+            Peast::latest($compact, ['sourceType' => Peast::SOURCE_TYPE_SCRIPT])->parse();
+            $sizes[$build] = strlen($compact);
+        }
+        self::assertLessThan($sizes['full'], $sizes['without-page-depth']);
+        self::assertLessThan($sizes['without-page-depth'], $sizes['strict']);
+    }
+
     public function testResultsAreRememberedInTheCacheDirectory(): void
     {
         $directory = sys_get_temp_dir().'/aggregate-compact-'.bin2hex(random_bytes(8));

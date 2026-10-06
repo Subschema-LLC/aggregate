@@ -70,6 +70,8 @@ Collection defaults to `false`, and the method defaults to `session_storage`.
 Choose **Carry page depth between pages** in the UI to use either tab session
 storage or URL parameter passing. These deployment-wide settings have no
 environment-variable overrides and use the same validation for UI and YAML.
+While page depth is off, visitors get a tracker without its code, about a sixth
+smaller (see [page speed](PAGE-SPEED.md#leave-out-unused-tracker-features)).
 Unknown methods fail closed. Enabling page depth automatically adds the
 reserved numeric `customData.page_sequence` property to page views, named events
 and goals in both privacy modes. No custom-property definition is needed to

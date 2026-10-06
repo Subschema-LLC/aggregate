@@ -17,6 +17,30 @@ DirectoryIndex index.php
     Options -MultiViews
 </IfModule>
 
+# Page speed: compress scripts, styles and SVG images, including the tracker,
+# tag manager and consent scripts the application builds. Visitors download
+# about a third of the bytes. Brotli is used when mod_brotli is loaded and the
+# browser accepts it, gzip (mod_deflate) otherwise. HTML pages, which carry
+# form tokens, are not compressed, keeping them out of reach of compression
+# side channels such as BREACH. Apache adds -br or -gzip to a compressed copy's
+# ETag; Aggregate still confirms an unchanged script with 304 Not Modified.
+# See docs/PAGE-SPEED.md.
+<IfModule mod_filter.c>
+    <IfModule mod_brotli.c>
+        <IfModule mod_deflate.c>
+            AddOutputFilterByType BROTLI_COMPRESS;DEFLATE application/javascript text/javascript text/css image/svg+xml
+        </IfModule>
+        <IfModule !mod_deflate.c>
+            AddOutputFilterByType BROTLI_COMPRESS application/javascript text/javascript text/css image/svg+xml
+        </IfModule>
+    </IfModule>
+    <IfModule !mod_brotli.c>
+        <IfModule mod_deflate.c>
+            AddOutputFilterByType DEFLATE application/javascript text/javascript text/css image/svg+xml
+        </IfModule>
+    </IfModule>
+</IfModule>
+
 <IfModule mod_rewrite.c>
     RewriteEngine On
 

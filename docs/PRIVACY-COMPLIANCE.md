@@ -416,6 +416,10 @@ Enhanced analytics may use:
 - generalized browser/device information; and
 - an exact server event timestamp.
 
+The visitor and session IDs are random version 4 UUIDs from the browser's
+cryptographic random source. A browser without one sends enhanced events
+without the missing ID rather than a guessable one.
+
 Consent is not a reason to accept arbitrary payloads. Use a documented property allowlist and avoid form contents, emails, account identifiers, search terms, or other free text unless the deployment has a specific, reviewed need and legal basis.
 
 Enable these fields only after an affirmative choice:

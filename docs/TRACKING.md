@@ -82,7 +82,7 @@ window.Aggregate.emit('signup_click', { plan_type: 'pro' }, 'signup');
 window.Aggregate.setConsent(false);
 ```
 
-The tracker is authored directly in [public/aggregate.js](../public/aggregate.js), with no required build step. The configured `/aggregate.js` response uses the same BSD-3-Clause license and retains its notice. [Optional minification](JS-BUILD.md) provides `/aggregate.js?min=1` with the same configuration. Use the supplied server routing so YAML collection settings, marker settings, and the JavaScript namespace reach the browser. [Namespace overrides](CONFIGURATION.md#customizing-the-javascript-namespace) and [organization marker setup](PRIVACY-COMPLIANCE.md#organization-traffic) are documented separately.
+The tracker is authored directly in [public/aggregate.js](../public/aggregate.js), with no required build step. The configured `/aggregate.js` response uses the same BSD-3-Clause license and retains its notice. [Optional minification](JS-BUILD.md) provides `/aggregate.js?min=1` with the same configuration, and [page speed](PAGE-SPEED.md) explains how that script stays small: smaller builds for features your settings turn off, compression and caching. Use the supplied server routing so YAML collection settings, marker settings, and the JavaScript namespace reach the browser. [Namespace overrides](CONFIGURATION.md#customizing-the-javascript-namespace) and [organization marker setup](PRIVACY-COMPLIANCE.md#organization-traffic) are documented separately.
 
 ## Track clicks and forms with data attributes
 
@@ -234,6 +234,8 @@ A static or CDN copy has no injected profile. Opt it into strict before it loads
 ```
 
 `Aggregate.configure({collectionProfile: 'strict'})` switches later events to strict. Page configuration can opt into strict but never out of a strict profile served by the installation.
+
+While the strict profile is on, `/aggregate.js?min=1` is about half the size: it leaves out the code only the standard profile uses. See [Leave out unused tracker features](PAGE-SPEED.md#leave-out-unused-tracker-features).
 
 ## UTM and custom data collection
 

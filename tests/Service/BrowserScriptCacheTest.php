@@ -30,6 +30,21 @@ final class BrowserScriptCacheTest extends TestCase
         self::assertNotSame($etag, $changed->getEtag());
     }
 
+    /** Compressing web servers change the tag the browser keeps. */
+    public function testTagsOfCompressedCopiesAreConfirmed(): void
+    {
+        $etag = (string) BrowserScriptCache::apply(new Response('window.version = 1;'))->getEtag();
+        $hash = trim($etag, '"');
+        foreach (['W/'.$etag, '"'.$hash.'-gzip"', '"'.$hash.'-br"', 'W/"'.$hash.'-gzip"', '"other", "'.$hash.'-br"'] as $sent) {
+            $response = BrowserScriptCache::apply(new Response('window.version = 1;'), Request::create('/aggregate.js', server: ['HTTP_IF_NONE_MATCH' => $sent]));
+            self::assertSame(304, $response->getStatusCode(), $sent);
+        }
+        foreach (['"'.$hash.'-other"', '"'.substr($hash, 0, -1).'-gzip"', '"gzip"'] as $sent) {
+            $response = BrowserScriptCache::apply(new Response('window.version = 1;'), Request::create('/aggregate.js', server: ['HTTP_IF_NONE_MATCH' => $sent]));
+            self::assertSame(200, $response->getStatusCode(), $sent);
+        }
+    }
+
     public function testFailuresAreNeverCached(): void
     {
         $failure = BrowserScriptCache::apply(new Response('/* unavailable */', 503, ['Cache-Control' => 'no-store']), Request::create('/lib.js'));

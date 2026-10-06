@@ -31,6 +31,9 @@
                 <p><strong>Strict</strong> records every event in anonymous mode with only the sanitized page path, event name and approved goal. The tracker reads no screen size or referrer, sends no consent state, organization marker or identifiers, and does not read, write or remove cookies or browser storage. The server ignores any other submitted dimension and performs no geographic lookup. Custom properties, page depth, coarse geography and enhanced analytics stay configured but are not used while strict is selected.</p>
                 <p>Strict limits what this tracker touches on a visitor's device; it does not by itself make collection exempt from consent in every jurisdiction. See the privacy guide before relying on it.</p>
             </div>
+            {% component 'Ui:PageSpeedNote' with {enabled: tracker_omit_unused_features} %}
+                {% block content %}With the strict profile, visitors get a tracker about half the size, without the code only the standard profile uses.{% endblock %}
+            {% endcomponent %}
             {% if collection_profile_env_override %}
                 <p class="help is-warning">The <code>COLLECTION_PROFILE</code> environment variable is set, so the <strong>{{ collection_profile }}</strong> profile is in effect regardless of the value saved here.</p>
             {% endif %}

@@ -136,12 +136,15 @@
                 <div class="buttons mt-3">{{ component('Ui:CopyButton', {'target': 'setup-tags', 'status': 'setup-copy-status', 'label': 'Copy tag loader', 'class': 'button'}) }}<a class="button" href="{{ path('app_setup_download', query|merge({kind: 'tags'})) }}">Download tag loader</a><a class="button" href="{{ path('app_tag_manager', site_id ? {site: site_id} : {}) }}">Configure tags</a></div>
             {% endif %}
         </details>
-        <div class="mt-5">
+        <div class="mt-5" id="build-browser-scripts">
             <h3 class="title is-5">Optional minification</h3>
-            <p class="mb-3">Build smaller browser scripts after editing their source. Current YAML settings are applied when hosted scripts are requested. The CLI equivalent is <code>php bin/console app:assets:build-js</code>. Building needs Node and the pinned Terser dependency; readable scripts work without a build.</p>
+            <p class="mb-3">Build smaller browser scripts after editing their source. Current YAML settings are applied when hosted scripts are requested. The CLI equivalent is <code>php bin/console app:assets:build-js</code>. Building needs Node and the pinned Terser dependency. Without a current build, this server compacts the readable scripts itself.</p>
+            {% component 'Ui:PageSpeedNote' with {class: 'mb-3'} %}
+                {% block content %}The build gives the smallest scripts, with the tracker's internal names shortened. Prepared release packages already include it. See all page speed savers in <a href="{{ path('app_application_settings') }}#page-speed">General settings</a>.{% endblock %}
+            {% endcomponent %}
             <form method="post" action="{{ path('app_setup_build_scripts') }}">
                 <input type="hidden" name="_token" value="{{ csrf_token('build_browser_scripts') }}">
-                <button type="submit" class="button" data-pages--setup--index-target="tip" data-tour-title="Build smaller scripts" data-tour-text="Run the same optional minifier offered by the CLI. If build tools are unavailable, the hosted URLs continue using current readable source.">Build browser scripts</button>
+                <button type="submit" class="button" data-pages--setup--index-target="tip" data-tour-title="Build smaller scripts" data-tour-text="Run the same optional minifier offered by the CLI. If build tools are unavailable, the hosted URLs keep working with scripts this server compacts itself.">Build browser scripts</button>
             </form>
         </div>
         <p id="setup-copy-status" role="status" aria-live="polite" class="mt-3"></p>
