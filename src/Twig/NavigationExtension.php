@@ -237,7 +237,9 @@ final class NavigationExtension extends AbstractExtension
         if ($this->websiteManager !== null) {
             try {
                 $websites = $this->websiteManager->getWebsites();
-                $statuses = $this->activityService?->getStatuses() ?? [];
+                // Only statuses already computed: quick search is on every
+                // page, and pages never wait on the events database.
+                $statuses = $this->activityService?->cachedStatuses() ?? [];
 
                 foreach ($websites as $site) {
                     $token = (string) ($site['token'] ?? '');

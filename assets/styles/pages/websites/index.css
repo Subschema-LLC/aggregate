@@ -62,6 +62,19 @@
     opacity: 0.8;
 }
 
+/* Before the page has loaded a website's status, or when it cannot. */
+.website-activity-badge.status-checking,
+.website-activity-badge.status-unavailable {
+    background-color: color-mix(in srgb, var(--app-brand-text) 5%, transparent);
+    border: 1px solid color-mix(in srgb, var(--app-brand-text) 18%, transparent);
+    color: color-mix(in srgb, var(--app-brand-text) 65%, transparent);
+}
+
+.status-checking .activity-pulse-dot .pulse-dot,
+.status-unavailable .activity-pulse-dot .pulse-dot {
+    background-color: color-mix(in srgb, var(--app-brand-text) 35%, transparent);
+}
+
 /* Pulsing radar dot */
 .activity-pulse-dot {
     display: inline-flex;

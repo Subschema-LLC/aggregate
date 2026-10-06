@@ -7,46 +7,10 @@
             <span>{{ website.name }}</span>
             <span class="website-summary-domain has-text-weight-normal has-text-grey">— {{ website.domain }}</span>
         </span>
-        {% if website.activity is defined and website.activity is not null %}
-            <span class="website-activity-badge status-{{ website.activity.status }}" title="{{ website.activity.label }}{% if website.activity.last_event_at %} — Last event received: {{ website.activity.relative_time }}{% endif %}">
-                <span class="activity-pulse-dot" aria-hidden="true">
-                    <span class="pulse-ring"></span>
-                    <span class="pulse-dot"></span>
-                </span>
-                <span class="activity-label">{{ website.activity.label }}</span>
-                {% if website.activity.relative_time and website.activity.status != 'none' %}
-                    <span class="activity-time">· {{ website.activity.relative_time }}</span>
-                {% endif %}
-            </span>
-        {% endif %}
+        {% include 'components/Websites/_activity_badge.html.twig' with {activity: website.activity ?? null, token: website.token} only %}
     </summary>
     <div class="content mt-4">
-        {% if website.activity is defined and website.activity is not null %}
-            <div class="website-activity-banner status-{{ website.activity.status }} mb-4">
-                <div class="is-flex is-align-items-center is-justify-content-between is-flex-wrap-wrap" style="gap: 0.5rem;">
-                    <div class="is-flex is-align-items-center" style="gap: 0.5rem;">
-                        <span class="activity-pulse-dot" aria-hidden="true">
-                            <span class="pulse-ring"></span>
-                            <span class="pulse-dot"></span>
-                        </span>
-                        <span class="has-text-weight-semibold is-size-7 is-uppercase">Data reception:</span>
-                        <span class="activity-status-name is-size-7 has-text-weight-bold">{{ website.activity.label }}</span>
-                    </div>
-                    <div class="is-size-7">
-                        {% if website.activity.last_event_at %}
-                            <span>Last event received: <strong>{{ website.activity.relative_time }}</strong> ({{ website.activity.last_event_at_formatted }})</span>
-                        {% else %}
-                            <span>No events received yet</span>
-                        {% endif %}
-                    </div>
-                </div>
-                {% if website.activity.status == 'none' %}
-                    <p class="is-size-7 mt-2 mb-0" style="opacity: 0.85;">This website token has not recorded any events. Make sure your tracker integration code is installed in the <code>&lt;head&gt;</code> of your website.</p>
-                {% elseif website.activity.status == 'inactive' %}
-                    <p class="is-size-7 mt-2 mb-0" style="opacity: 0.85;">No events have been recorded in the past {{ website.activity.stale_days }} days. Check if the tracker script is still active on <code>{{ website.domain }}</code>.</p>
-                {% endif %}
-            </div>
-        {% endif %}
+        {% include 'components/Websites/_activity_banner.html.twig' with {activity: website.activity ?? null, token: website.token, website: website} only %}
         <div class="website-token-display mb-4">
             <div>
                 <span class="is-size-7 has-text-weight-semibold has-text-grey is-uppercase">Website token:</span>

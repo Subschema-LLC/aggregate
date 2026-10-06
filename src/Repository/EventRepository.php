@@ -14,6 +14,9 @@ class EventRepository extends ServiceEntityRepository
     }
 
     /**
+     * Database errors are not caught here, so a failed lookup is never cached
+     * or shown as "no events".
+     *
      * @param string[] $tokens
      * @return array<string, \DateTimeImmutable> Map of websiteToken => latest createdAt
      */
@@ -24,32 +27,28 @@ class EventRepository extends ServiceEntityRepository
             return [];
         }
 
-        try {
-            $rows = $this->createQueryBuilder("e")
-                ->select("e.websiteToken AS token, MAX(e.createdAt) AS lastEventAt")
-                ->where("e.websiteToken IN (:tokens)")
-                ->setParameter("tokens", $cleanTokens)
-                ->groupBy("e.websiteToken")
-                ->getQuery()
-                ->getArrayResult();
+        $rows = $this->createQueryBuilder("e")
+            ->select("e.websiteToken AS token, MAX(e.createdAt) AS lastEventAt")
+            ->where("e.websiteToken IN (:tokens)")
+            ->setParameter("tokens", $cleanTokens)
+            ->groupBy("e.websiteToken")
+            ->getQuery()
+            ->getArrayResult();
 
-            $results = [];
-            foreach ($rows as $row) {
-                $token = (string) ($row["token"] ?? "");
-                $date = $row["lastEventAt"] ?? null;
-                if ($token === "" || $date === null) {
-                    continue;
-                }
-                if ($date instanceof \DateTimeInterface) {
-                    $results[$token] = \DateTimeImmutable::createFromInterface($date);
-                } elseif (is_string($date)) {
-                    $results[$token] = new \DateTimeImmutable($date, new \DateTimeZone("UTC"));
-                }
+        $results = [];
+        foreach ($rows as $row) {
+            $token = (string) ($row["token"] ?? "");
+            $date = $row["lastEventAt"] ?? null;
+            if ($token === "" || $date === null) {
+                continue;
             }
-
-            return $results;
-        } catch (\Throwable) {
-            return [];
+            if ($date instanceof \DateTimeInterface) {
+                $results[$token] = \DateTimeImmutable::createFromInterface($date);
+            } elseif (is_string($date)) {
+                $results[$token] = new \DateTimeImmutable($date, new \DateTimeZone("UTC"));
+            }
         }
+
+        return $results;
     }
 }

@@ -48,7 +48,13 @@ final class CheckWebsiteActivityCommand extends Command
         $io->title("Website Activity Check");
         $io->comment(sprintf("Thresholds: Active <= %d day(s), Idle <= %d day(s), Inactive > %d day(s)", $activeDays, $staleDays, $staleDays));
 
-        $statuses = $this->activityService->getStatuses($refresh);
+        try {
+            $statuses = $this->activityService->getStatuses($refresh);
+        } catch (\Throwable $error) {
+            $io->error("Data reception status is unavailable: the events could not be read. ".$error->getMessage());
+
+            return Command::FAILURE;
+        }
         $websites = $this->websiteManager->getWebsites();
 
         if ($websites === []) {

@@ -44,4 +44,16 @@ final class CheckWebsiteActivityCommandTest extends TestCase
         self::assertStringContainsString('Active', $output);
         self::assertStringContainsString('10m ago', $output);
     }
+
+    public function testUnreadableEventsAreReportedAsAFailure(): void
+    {
+        $activityService = $this->createMock(WebsiteActivityService::class);
+        $activityService->method('getStatuses')->willThrowException(new \RuntimeException('Connection refused'));
+        $command = new CheckWebsiteActivityCommand($activityService, $this->createMock(WebsiteConfigManager::class));
+        $tester = new CommandTester($command);
+
+        self::assertSame(1, $tester->execute([]));
+        self::assertStringContainsString('Data reception status is unavailable', $tester->getDisplay());
+        self::assertStringContainsString('Connection refused', $tester->getDisplay());
+    }
 }
