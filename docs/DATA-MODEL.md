@@ -25,7 +25,7 @@ custom_data_properties:
   utm_content: { consent_required: true, column: utm_content }
   utm_id: { consent_required: true, column: utm_id }
   plan: { description: 'Published pricing tier, supplied by emit().', consent_required: true, column: plan_name }
-  orgInternalTraffic: { description: 'Shared organization marker.', consent_required: true, column: organization_traffic }
+  org_internal_traffic: { description: 'Organization traffic: true for a marked browser.', type: boolean, consent_required: false, column: organization_traffic }
 query_parameter_mappings:
   utm_source: utm_source
   utm_medium: utm_medium
@@ -39,7 +39,7 @@ query_parameter_mappings:
 
 Changing `utm_campaign.consent_required` to `false` deliberately overrides the recommendation and allows all its mapped inputs without consent. No additional bypass flag is required.
 
-The organization marker is collected separately as a coarse boolean in either mode. Its `consent_required` setting governs ordinary property collection if that name later stops being the configured marker; it does not restrict the active marker. Keep it `true` so renaming the marker does not implicitly whitelist its former key. Query parameters and submitted event properties cannot set the active marker.
+`org_internal_traffic` is recorded by the server on every standard-profile event, `true` or `false`, from the [organization-traffic marker](PRIVACY-COMPLIANCE.md#organization-traffic) in either mode. Define it only to give it a reporting column; its type must be `boolean` or `scalar`, and its `consent_required` setting has no effect. Query parameters and submitted event properties cannot set it, and the marker's browser name is not a reserved property.
 
 Rules:
 
@@ -181,7 +181,7 @@ consent, a page view on the second tracked page can send:
   "referrerChannel": "direct",
   "deviceClass": "desktop",
   "viewportBucket": "large",
-  "internalTraffic": false,
+  "org_internal_traffic": false,
   "consentState": "denied",
   "customData": {
     "utm_medium": "email",
@@ -200,9 +200,7 @@ The SDK ignores supplied `page_sequence` event properties and ordinary URL mappi
 Only the URL method reads the reserved `aggregate_page_sequence` parameter.
 The server independently strips the property in both modes when disabled and
 accepts only JSON integers from `1` through `20` when enabled. Query mappings to
-it, or from `aggregate_page_sequence` to another property, are invalid; an
-organization marker using `page_sequence` must be renamed before
-enabling page depth. Direct API clients must supply their own bounded number;
+it, or from `aggregate_page_sequence` to another property, are invalid. Direct API clients must supply their own bounded number;
 the server validates its shape and permission, not the claimed navigation history.
 
 Page depth stays in the existing `custom_data` JSON. To add an optional private
@@ -262,8 +260,8 @@ money amounts as integer minor units at the source.
 URL parameters are strings. A parameter mapped to a numeric or boolean typed
 property is therefore omitted unless an explicit correctly typed `emit()` value
 overrides it. Supply numbers/booleans through `emit()` or direct JSON requests;
-use a separate text property when you need the original URL value. The active
-organization marker remains a controlled boolean regardless of model settings.
+use a separate text property when you need the original URL value.
+`org_internal_traffic` remains a controlled boolean regardless of model settings.
 The reserved page-depth URL parameter uses its own bounded integer parser; it
 does not change these ordinary query-mapping rules.
 

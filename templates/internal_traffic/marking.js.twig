@@ -1,0 +1,44 @@
+(function () {
+    'use strict';
+    // Starts the round trip through the websites: the continue page opens
+    // the next one each time a website's tracker sends the browser back.
+    var root = document.querySelector('[data-internal-traffic-websites]');
+    if (!root) return;
+    var expires = Number(root.getAttribute('data-expires')) * 1000;
+
+    function websites(action, only) {
+        return Array.prototype.filter.call(root.querySelectorAll('[data-marking-website]'), function (row) {
+            return !only || row === only;
+        }).map(function (row) {
+            return {domain: row.getAttribute('data-domain'), url: row.getAttribute(action === 'remove' ? 'data-remove-url' : 'data-mark-url')};
+        });
+    }
+
+    function start(action, list) {
+        // Codes close to expiry are renewed by reloading before leaving.
+        if (!list.length) return;
+        if (expires && Date.now() > expires - 120000) {
+            location.reload();
+            return;
+        }
+        try {
+            sessionStorage.setItem('aggregateOrgTrafficMarking', JSON.stringify({
+                action: action, queue: list.slice(1), results: [], back: location.href
+            }));
+        } catch (error) {}
+        location.assign(list[0].url);
+    }
+
+    Array.prototype.forEach.call(root.querySelectorAll('[data-marking-all]'), function (button) {
+        button.addEventListener('click', function () {
+            start(button.getAttribute('data-marking-all'), websites(button.getAttribute('data-marking-all')));
+        });
+    });
+    Array.prototype.forEach.call(root.querySelectorAll('[data-marking-one]'), function (link) {
+        link.addEventListener('click', function (event) {
+            event.preventDefault();
+            var action = link.getAttribute('data-marking-one');
+            start(action, websites(action, link.closest('[data-marking-website]')));
+        });
+    });
+}());

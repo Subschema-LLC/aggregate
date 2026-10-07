@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow,noarchive">
+    <meta name="referrer" content="no-referrer">
+    <title>Organization traffic</title>
+    <link rel="stylesheet" href="{{ asset('styles/internal-traffic.css') }}" referrerpolicy="no-referrer">
+</head>
+<body>
+<main data-marking-continue>
+    <h1>Organization traffic</h1>
+    <p data-marking-status role="status" aria-live="polite">Checking the result…</p>
+    <ul class="marking-results" data-marking-results></ul>
+    <p><a href="#" data-marking-back hidden>Back to the marking page</a></p>
+    <noscript>JavaScript is required to continue to the next website.</noscript>
+</main>
+<script>
+(function () {
+    'use strict';
+    // A website's tracker returns here with #marked=<host> (or removed,
+    // blocked); the next website in this tab's list opens until none is left.
+    var KEY = 'aggregateOrgTrafficMarking';
+    var labels = {
+        marked: 'marked as organization traffic',
+        removed: 'marker removed',
+        blocked: 'not changed; the browser did not accept the change, so check its cookie and site data settings'
+    };
+    var root = document.querySelector('[data-marking-continue]');
+    var status = root.querySelector('[data-marking-status]');
+    var state = null;
+    try {
+        state = JSON.parse(sessionStorage.getItem(KEY) || 'null');
+    } catch (error) {}
+    if (!state || typeof state !== 'object' || !Array.isArray(state.queue) || !Array.isArray(state.results)) {
+        state = {queue: [], results: [], back: null};
+    }
+
+    var match = /^#(marked|removed|blocked)=([^&#]{1,300})$/.exec(location.hash);
+    if (match) {
+        var host = match[2];
+        try { host = decodeURIComponent(host); } catch (error) {}
+        state.results.push({host: host, result: match[1]});
+        try { history.replaceState(null, '', location.pathname); } catch (error) {}
+    }
+
+    var next = state.queue.shift();
+    if (next && typeof next.url === 'string' && /^https?:\/\//.test(next.url)) {
+        try { sessionStorage.setItem(KEY, JSON.stringify(state)); } catch (error) {}
+        status.textContent = 'Opening ' + (next.domain || 'the next website') + '…';
+        location.replace(next.url);
+        return;
+    }
+
+    try { sessionStorage.removeItem(KEY); } catch (error) {}
+    var list = root.querySelector('[data-marking-results]');
+    state.results.forEach(function (entry) {
+        var item = document.createElement('li');
+        item.textContent = String(entry.host) + ': ' + (labels[entry.result] || entry.result);
+        list.appendChild(item);
+    });
+    status.textContent = state.results.length
+        ? 'Done. Reload any of these websites already open in other tabs.'
+        : 'Nothing to report. Open the marking page and choose a website.';
+    var back = root.querySelector('[data-marking-back]');
+    if (typeof state.back === 'string' && state.back.indexOf(location.origin + '/') === 0) {
+        back.href = state.back;
+        back.hidden = false;
+    }
+}());
+</script>
+</body>
+</html>

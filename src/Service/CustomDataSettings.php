@@ -72,7 +72,7 @@ class CustomDataSettings
         $defaultMappings = is_array($properties)
             ? array_intersect_key($defaults[self::MAPPINGS_KEY], $properties)
             : [];
-        unset($defaultMappings[$this->markerName()]);
+        unset($defaultMappings[InternalTrafficSettings::JSON_KEY]);
 
         return $this->validate([
             self::PROPERTIES_KEY => $properties,
@@ -92,17 +92,7 @@ class CustomDataSettings
                 $settings[self::PAGE_SEQUENCE_METHOD_KEY] = array_key_exists(self::PAGE_SEQUENCE_METHOD_KEY, $current)
                     ? $current[self::PAGE_SEQUENCE_METHOD_KEY] : 'session_storage';
             }
-            $validated = $this->validate($settings);
-            // Recheck the related marker setting under the same write lock;
-            // a concurrent marker edit must not create a JSON-key collision.
-            $markerName = $this->config->hasEnvironmentOverride('internal_traffic_name', true)
-                ? $this->config->getWithEnvFallback('internal_traffic_name', 'orgInternalTraffic', true)
-                : ($current['internal_traffic_name'] ?? 'orgInternalTraffic');
-            if ($validated[self::PAGE_SEQUENCE_ENABLED_KEY] && $markerName === self::PAGE_SEQUENCE_PROPERTY) {
-                throw new \InvalidArgumentException('The organization marker name cannot be page_sequence while page sequence collection is enabled.');
-            }
-
-            return $validated;
+            return $this->validate($settings);
         });
     }
 
@@ -162,7 +152,6 @@ class CustomDataSettings
     public function toBrowserConfig(): array
     {
         $settings = $this->toArray();
-        $markerName = $this->markerName();
         $consentFree = [];
         $types = [];
         foreach ($settings[self::PROPERTIES_KEY] as $key => $definition) {
@@ -171,10 +160,10 @@ class CustomDataSettings
             if ($key === self::PAGE_SEQUENCE_PROPERTY) {
                 continue;
             }
-            if (!$definition['consent_required'] && $key !== $markerName) {
+            if (!$definition['consent_required'] && $key !== InternalTrafficSettings::JSON_KEY) {
                 $consentFree[] = $key;
             }
-            if ($key !== $markerName && self::isValidPropertyKey($key) && ($definition['type'] ?? 'scalar') !== 'scalar') {
+            if ($key !== InternalTrafficSettings::JSON_KEY && ($definition['type'] ?? 'scalar') !== 'scalar') {
                 $types[$key] = $definition['type'];
             }
         }
@@ -234,7 +223,6 @@ class CustomDataSettings
     private function filterValidatedEventData(mixed $value, bool $enhancedConsent, array $settings): ?array
     {
         $clean = (new PrivacySanitizer())->sanitizeEventData($value) ?? [];
-        $markerName = $this->markerName();
         foreach ($clean as $key => $item) {
             if ($key === self::PAGE_SEQUENCE_PROPERTY) {
                 $pageSequence = self::sanitizePageSequence($item);
@@ -246,7 +234,7 @@ class CustomDataSettings
                 continue;
             }
             $type = $settings[self::PROPERTIES_KEY][$key]['type'] ?? 'scalar';
-            if ($key === $markerName || !self::isValidPropertyKey($key)
+            if ($key === InternalTrafficSettings::JSON_KEY || !self::isValidPropertyKey($key)
                 || (!$enhancedConsent && ($settings[self::PROPERTIES_KEY][$key]['consent_required'] ?? true))
                 || !self::matchesType($item, $type)) {
                 unset($clean[$key]);
@@ -316,10 +304,6 @@ class CustomDataSettings
             throw new \InvalidArgumentException('The model supports up to 50 properties and 100 query-parameter mappings. Both must be YAML mappings.');
         }
 
-        $markerName = $this->markerName();
-        if ($pageSequenceEnabled && $markerName === self::PAGE_SEQUENCE_PROPERTY) {
-            throw new \InvalidArgumentException('The organization marker name cannot be page_sequence while page sequence collection is enabled.');
-        }
         $normalized = [];
         $columns = [];
         foreach ($properties as $key => $definition) {
@@ -337,21 +321,16 @@ class CustomDataSettings
             if (!is_string($type) || !in_array($type, self::TYPES, true)) {
                 throw new \InvalidArgumentException('Property type must be scalar, string, integer, float, double, or boolean.');
             }
-            // Preserve legacy definitions for historical reporting while the
-            // counter is off, including a renamed organization marker.
-            if ($pageSequenceEnabled && $key === self::PAGE_SEQUENCE_PROPERTY && $key !== $markerName && ($type !== 'integer' || $consentRequired)) {
+            // Preserve a page_sequence definition for historical reporting
+            // while the counter is off.
+            if ($pageSequenceEnabled && $key === self::PAGE_SEQUENCE_PROPERTY && ($type !== 'integer' || $consentRequired)) {
                 throw new \InvalidArgumentException('page_sequence is generated for both consent modes; its optional reporting definition requires type: integer and consent_required: false. Use page_sequence_enabled to control collection.');
             }
-            // Legacy marker keys can outlive a marker rename. Permit their
-            // projection without making them eligible for event properties.
-            $legacyReportingKey = is_string($key) && preg_match('/^[A-Za-z0-9_-]{1,128}$/D', $key) === 1
-                && preg_match('/^-?[0-9]+$/D', $key) !== 1 && !in_array($key, ['__proto__', 'constructor', 'prototype'], true)
-                && $column !== '' && $consentRequired;
-            if (!self::isValidPropertyKey($key) && $key !== $markerName && !$legacyReportingKey) {
-                throw new \InvalidArgumentException('Property names must start with a letter and use up to 64 letters, digits, underscores, dots, or hyphens. Legacy marker names can be retained as consent-required reporting columns.');
+            if (!self::isValidPropertyKey($key)) {
+                throw new \InvalidArgumentException('Property names must start with a letter and use up to 64 letters, digits, underscores, dots, or hyphens.');
             }
-            if (($key === $markerName || !self::isValidPropertyKey($key)) && !in_array($type, ['scalar', 'boolean'], true)) {
-                throw new \InvalidArgumentException('Organization marker properties support only scalar or boolean type; their values remain controlled booleans.');
+            if ($key === InternalTrafficSettings::JSON_KEY && !in_array($type, ['scalar', 'boolean'], true)) {
+                throw new \InvalidArgumentException('org_internal_traffic supports only the scalar or boolean type; its value is always the true or false organization-traffic flag.');
             }
             if ($numericColumn !== '' && !in_array($type, ['integer', 'float', 'double'], true)) {
                 throw new \InvalidArgumentException('A numeric reporting column requires an explicit integer, float, or double property type.');
@@ -366,8 +345,8 @@ class CustomDataSettings
                 }
                 $columns[$alias] = true;
             }
-            // The existing organization marker is always a coarse boolean,
-            // collected separately from submitted properties in either mode.
+            // org_internal_traffic is always the coarse boolean flag, recorded
+            // separately from submitted properties in either mode.
             $normalized[$key] = ['description' => $description, 'consent_required' => $consentRequired, 'column' => $column];
             if (array_key_exists('type', $definition)) {
                 $normalized[$key]['type'] = $type;
@@ -378,7 +357,7 @@ class CustomDataSettings
         }
 
         foreach ($mappings as $parameter => $property) {
-            if (!self::isValidPropertyKey($parameter) || !self::isValidPropertyKey($property) || !isset($normalized[$property]) || $property === $markerName || $property === self::PAGE_SEQUENCE_PROPERTY || $parameter === self::PAGE_SEQUENCE_QUERY_PARAMETER) {
+            if (!self::isValidPropertyKey($parameter) || !self::isValidPropertyKey($property) || !isset($normalized[$property]) || $property === InternalTrafficSettings::JSON_KEY || $property === self::PAGE_SEQUENCE_PROPERTY || $parameter === self::PAGE_SEQUENCE_QUERY_PARAMETER) {
                 throw new \InvalidArgumentException('Each query parameter must map to a defined custom property. The organization marker, page_sequence, and reserved aggregate_page_sequence parameter cannot use query mappings.');
             }
         }
@@ -389,10 +368,5 @@ class CustomDataSettings
             self::PAGE_SEQUENCE_ENABLED_KEY => $pageSequenceEnabled,
             self::PAGE_SEQUENCE_METHOD_KEY => $pageSequenceMethod,
         ];
-    }
-
-    private function markerName(): string
-    {
-        return (new InternalTrafficSettings($this->config))->toBrowserConfig()['name'];
     }
 }

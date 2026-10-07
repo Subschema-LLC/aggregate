@@ -42,15 +42,18 @@ final class DataModelController extends AbstractController
         $additionError = null;
         $key = $request->query->all()['add_property'] ?? null;
         if ($key !== null && $context['configuration_error'] === null) {
-            if (!is_string($key) || (!CustomDataSettings::isValidPropertyKey($key) && $key !== $context['marker_name'])) {
+            if (!is_string($key) || !CustomDataSettings::isValidPropertyKey($key)) {
                 $additionError = 'This property name cannot be added to the model.';
             } elseif (!array_key_exists($key, $model[CustomDataSettings::PROPERTIES_KEY])) {
                 if (count($model[CustomDataSettings::PROPERTIES_KEY]) >= 50) {
                     $additionError = 'The model already contains the maximum of 50 properties.';
                 } else {
-                    $model[CustomDataSettings::PROPERTIES_KEY][$key] = $key === CustomDataSettings::PAGE_SEQUENCE_PROPERTY && $key !== $context['marker_name']
-                        ? ['description' => 'Page depth; 20 means 20 or more.', 'consent_required' => false, 'type' => 'integer', 'column' => '']
-                        : ['description' => '', 'consent_required' => true, 'column' => ''];
+                    $model[CustomDataSettings::PROPERTIES_KEY][$key] = match ($key) {
+                        CustomDataSettings::PAGE_SEQUENCE_PROPERTY => ['description' => 'Page depth; 20 means 20 or more.', 'consent_required' => false, 'type' => 'integer', 'column' => ''],
+                        // Recorded by the server in both modes, never submitted.
+                        InternalTrafficSettings::JSON_KEY => ['description' => 'Organization traffic: true for a marked browser.', 'consent_required' => false, 'type' => 'boolean', 'column' => ''],
+                        default => ['description' => '', 'consent_required' => true, 'column' => ''],
+                    };
                     $model = $this->settings->validate($model);
                     $unsavedProperty = $key;
                 }
@@ -90,7 +93,7 @@ final class DataModelController extends AbstractController
             try {
                 $properties = $this->views->discoverProperties();
                 foreach ($properties as &$property) {
-                    $property['can_add'] = CustomDataSettings::isValidPropertyKey($property['key']) || $property['key'] === $context['marker_name'];
+                    $property['can_add'] = CustomDataSettings::isValidPropertyKey($property['key']);
                 }
                 unset($property);
             } catch (\Throwable $error) {
@@ -135,7 +138,6 @@ final class DataModelController extends AbstractController
         try {
             return [
                 'model' => $this->settings->toArray(),
-                'marker_name' => (new InternalTrafficSettings($this->config))->toBrowserConfig()['name'],
                 'configuration_error' => null,
             ];
         } catch (\Throwable $error) {
@@ -143,7 +145,6 @@ final class DataModelController extends AbstractController
 
             return [
                 'model' => CustomDataSettings::defaults(),
-                'marker_name' => null,
                 'configuration_error' => 'The custom data configuration is invalid. Correct its YAML before saving or regenerating views.',
             ];
         }

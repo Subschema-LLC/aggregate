@@ -319,9 +319,9 @@ developer/contributor instructions.
 
 ## Organization traffic
 
-The default browser marker is `orgInternalTraffic=true`. Configure `internal_traffic_storage`, `internal_traffic_name`, `internal_traffic_value`, `internal_traffic_cookie_domain`, and `internal_traffic_share_token` in the active YAML environment, or use the Organization traffic admin page. A match stores a boolean in the existing event JSON under the configured marker name; no migration is needed.
+Every standard-profile event carries `org_internal_traffic`, `true` when the browser holds the organization marker on that website and `false` otherwise, stored in the existing event JSON under that fixed key; no migration is needed. The browser marker defaults to the cookie `orgInternalTraffic=true`. Configure `internal_traffic_storage`, `internal_traffic_name`, `internal_traffic_value`, `internal_traffic_cookie_domain`, and `internal_traffic_share_token` in the active YAML environment, or use the Organization traffic admin page; the marker's name never changes the JSON key.
 
-See [organization traffic](PRIVACY-COMPLIANCE.md#organization-traffic) for YAML examples, browser scope, installation-generated sharing tokens, downloadable marker pages, and Power BI/Tableau filtering. Existing grouped views and archives omit this JSON flag.
+Team members mark a browser through the marking links on the Organization traffic page or the share page: each link opens a tracked website, whose tracker saves the marker in that website's own storage. See [organization traffic](PRIVACY-COMPLIANCE.md#organization-traffic) for how marking links work, browser scope, installation-generated sharing tokens, downloadable marker pages, and Power BI/Tableau filtering. Existing grouped views and archives omit this JSON flag.
 
 ## BI glossary
 

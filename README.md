@@ -100,7 +100,7 @@ Details:
 - **Consent-based enhanced detail:** visitor/session IDs, properties, and exact dimensions when enabled by your consent manager.
 - **Headless operation:** an ingestion API, YAML configuration, and CLI commands, with an optional admin dashboard.
 - **Server-side collection:** send page views and goals from your backend, with no script on the page. See the [server-side guide](docs/SERVER-SIDE.md) for PHP, Java, .NET, Node.js, Python, Ruby and Go examples.
-- **Organization traffic markers:** mark team browsers with a configurable cookie or local storage entry, defaulting to `orgInternalTraffic=true`, and filter retained event JSON in BI reports.
+- **Organization traffic markers:** mark team browsers on each tracked website through marking links, with a configurable cookie or local storage entry defaulting to `orgInternalTraffic=true`; every event reports `org_internal_traffic` as true or false for filtering in BI reports.
 - **Configurable branding and lifecycle:** dashboard name, logo, colors, fonts, archiving, and retention policies.
 - **Database choice:** PostgreSQL, MySQL, MariaDB, SQL Server, or SQLite. Enhanced ingestion uses Symfony Messenger with synchronous or asynchronous delivery.
 
@@ -247,7 +247,7 @@ Routine BI connections should use approved views:
 | `bi_anonymous_goals_v1` | Daily occurrences of configured goals |
 | `bi_anonymous_geo_events_v1` | Daily coarse geography with additional suppression |
 
-Keep raw `events`, archive tables, and unsuppressed operational views private. Organization markers are stored under their configured name in raw event JSON; the grouped views and archives omit that flag. [Connect BI tools and AI assistants](docs/BI-CONNECTION.md) lists every column, safe query patterns, a connection checklist and how to set up an AI assistant. See the [compliance guide](docs/PRIVACY-COMPLIANCE.md#bi-exposure-and-suppression) for access and disclosure rules, [organization traffic](docs/PRIVACY-COMPLIANCE.md#organization-traffic) for filtering, and the [database guide](docs/DATABASE.md) for connections and schema details.
+Keep raw `events`, archive tables, and unsuppressed operational views private. The organization-traffic flag is stored as `org_internal_traffic` in raw event JSON; the grouped views and archives omit it. [Connect BI tools and AI assistants](docs/BI-CONNECTION.md) lists every column, safe query patterns, a connection checklist and how to set up an AI assistant. See the [compliance guide](docs/PRIVACY-COMPLIANCE.md#bi-exposure-and-suppression) for access and disclosure rules, [organization traffic](docs/PRIVACY-COMPLIANCE.md#organization-traffic) for filtering, and the [database guide](docs/DATABASE.md) for connections and schema details.
 
 The [Data model](docs/DATA-MODEL.md) page provides UTM/query mappings, configurable anonymous property whitelists, downloadable YAML, and UI/CLI regeneration of private custom reporting views. All UTMs require consent by default. Anonymous attribution should use at most a broad `utm_medium`; administrators can override this recommendation with the documented warning about more detailed values.
 

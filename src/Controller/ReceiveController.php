@@ -38,7 +38,6 @@ class ReceiveController
         GeoIpResolverInterface $geoIpResolver,
         AnonymousEventRecorder $anonymousRecorder,
         LoggerInterface $logger,
-        InternalTrafficSettings $internalTrafficSettings,
         CustomDataSettings $customDataSettings,
     ): Response
     {
@@ -124,12 +123,11 @@ class ReceiveController
             );
             $userAgent = $strictCollection ? '' : (string) $request->headers->get('User-Agent', '');
             $enhancedConsent = !$strictCollection && $privacyPolicy->hasEnhancedConsent($payload['consentState'] ?? null);
-            // Accept only the coarse boolean, never a client-supplied marker
-            // name/value or truthy strings that could misclassify traffic.
-            $internalTraffic = !$strictCollection && ($payload['internalTraffic'] ?? false) === true;
-            // The deployment chooses the JSON key, and queued events keep this
-            // name even if settings change before the worker handles them.
-            $internalTrafficName = $internalTrafficSettings->toBrowserConfig()['name'];
+            // Organization traffic: only the literal boolean true counts, never a
+            // marker name or value or a truthy string. Every standard-profile
+            // event records true or false; the strict profile reads no browser
+            // storage, so its events carry no value at all.
+            $internalTraffic = $strictCollection ? null : ($payload[InternalTrafficSettings::JSON_KEY] ?? false) === true;
             // Resolve the deployment's property policy before either storage
             // path. Client-side consent flags never authorize custom keys.
             // customData is the payload's property object; eventData is its
@@ -138,7 +136,7 @@ class ReceiveController
                 ? null
                 : $customDataSettings->filterEventData(CustomDataSettings::submittedProperties($payload), $enhancedConsent);
             if ($eventData !== null) {
-                unset($eventData[$internalTrafficName]);
+                unset($eventData[InternalTrafficSettings::JSON_KEY]);
             }
             $submittedGoal = $payload['goalEvent'] ?? null;
             $goalEvent = $goalEvents->resolve($submittedGoal, anonymousMode: !$enhancedConsent);
@@ -174,7 +172,6 @@ class ReceiveController
                     occurredAt: $occurredAt,
                     goalEvent: $goalEvent,
                     internalTraffic: $internalTraffic,
-                    internalTrafficName: $internalTrafficName,
                     approvedCustomData: $eventData,
                 );
 
@@ -205,7 +202,6 @@ class ReceiveController
                 occurredAt: $occurredAt,
                 geoArea: $geoArea,
                 internalTraffic: $internalTraffic,
-                internalTrafficName: $internalTrafficName,
             ));
 
             $responsePayload = [

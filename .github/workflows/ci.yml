@@ -116,7 +116,7 @@ jobs:
       - name: Run tracker tests against the minified build
         env:
           AGGREGATE_SDK_SOURCE: public/aggregate.min.js
-        run: node --test tests/JavaScript/aggregate-consent.test.js tests/JavaScript/aggregate-strict.test.js tests/JavaScript/aggregate-ready.test.js
+        run: node --test tests/JavaScript/aggregate-consent.test.js tests/JavaScript/aggregate-strict.test.js tests/JavaScript/aggregate-ready.test.js tests/JavaScript/aggregate-org-traffic.test.js
 
   release-tooling:
     name: Release tooling
