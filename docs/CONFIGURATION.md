@@ -14,6 +14,7 @@ Use this guide for application settings and runtime overrides. Run commands from
 - [Standalone consent settings](#standalone-consent-settings)
 - [BI glossary](#bi-glossary)
 - [Archiving and retention](#archiving-and-retention)
+- [BigQuery sync](#bigquery-sync)
 - [Main navigation](#main-navigation)
 - [Conversion goals](#conversion-goals)
 - [Coarse geography](#optional-coarse-geography)
@@ -24,7 +25,8 @@ Use this guide for application settings and runtime overrides. Run commands from
 Configuration has separate sources of truth:
 
 - **Environment files and server variables:** Symfony infrastructure — database connection, message queue, app secret, and explicit proxy trust. Keep deployment values in untracked local files or server configuration.
-- **`config/aggregate.yaml`** (app-level, example committed): Analytics-specific settings — application branding, privacy measurement controls, internal traffic markers and sharing token, lifecycle policy, rate limit, JS namespace, dashboard toggle, and deployment-wide feature flags.
+- **`config/aggregate.yaml`** (app-level, example committed): Analytics-specific settings — application branding, privacy measurement controls, internal traffic markers and sharing token, lifecycle policy, BigQuery sync, rate limit, JS namespace, dashboard toggle, and deployment-wide feature flags.
+- **`config/secrets/`** (untracked): Credentials Aggregate writes for itself, such as the BigQuery service account key and Google sign-in, readable only by the application's user and kept by updates.
 - **`config/goals.yaml`** (app-level, committed): Stable conversion-goal codes and whether each is enabled for anonymous collection. Customize it in `config/goals.local.yaml` (see [Local overrides](#local-overrides-for-shipped-defaults)).
 - **`config/navigation.yaml`** (app-level, committed): Main navigation labels, icons, and link targets. Customize it in `config/navigation.local.yaml`.
 - **`config/quick_search.yaml`** (app-level, committed): Dashboard quick-search synonyms and extra entries. Customize it in `config/quick_search.local.yaml`.
@@ -370,6 +372,20 @@ php bin/console app:analytics:maintain
 
 Archiving creates private, unsuppressed aggregate cells and marks the source rows as archived; it does not itself delete raw rows. Retention deletes raw anonymous, raw enhanced, and archived aggregate data only after their configured periods. Backups, BI extracts, queues, failed messages, logs, and replicas need separate retention controls.
 
+## BigQuery sync
+
+**Reporting → BigQuery sync** at `/dashboard/bigquery` copies selected reporting
+views to a BigQuery dataset on an interval. The `bigquery_*` keys in the active
+YAML environment hold the same settings, with uppercase environment-variable
+overrides that lock the matching fields; `app:bigquery:sync` (scheduled every five
+minutes) and `app:bigquery:check` work with the dashboard disabled. Approved views
+are selected under `bigquery_views`; row-level or unsuppressed views must be
+listed separately under `bigquery_private_views`. Credentials are stored in
+`config/secrets`. Signing in with Google needs the dashboard; headless
+deployments use a service account key or Google Cloud credentials. See
+[Sync to BigQuery](BIGQUERY.md) for every setting, the sign-in methods, column
+types and privacy notes.
+
 ## Main navigation
 
 Associate links with a registered flag using `feature: updates` (or another
@@ -489,6 +505,7 @@ administration. Each settings page loads the data needed for its own task.
 | Event examples | `/dashboard/data-model/examples` | Synthetic JSON generation, copy, download, and ecommerce recipe |
 | Observed properties | `/dashboard/data-model/discovery` | Explicit bounded metadata discovery |
 | Reporting views | `/dashboard/data-model/reporting` | Saved SQL preview and explicit regeneration |
+| BigQuery sync | `/dashboard/bigquery` | Sign-in, views, schedule and status of the BigQuery copy |
 
 Settings, users, and model pages require an administrator. Existing POST paths
 remain available and return to the page that owns the form. The general-settings

@@ -420,6 +420,42 @@ E2E::step('reporting views return the expected cells', static function () use ($
     E2E::$summary['views'] = count($names);
 });
 
+E2E::step('BigQuery dry run exports every syncable view with its schema', static function () use ($root): void {
+    // Reads each view the way a sync would, converting values to BigQuery
+    // types on this engine, without credentials or uploads.
+    $output = $root.'/var/bigquery-dry-run';
+    E2E::check(is_dir($output) || mkdir($output, 0700, true), 'The dry-run folder could not be created.');
+    $views = ['bi_anonymous_events_v1', 'bi_anonymous_goals_v1', 'bi_anonymous_geo_events_v1', 'bi_dim_website_token_v1', 'bi_dim_event_name_v1',
+        'bi_dim_goal_event_v1', 'bi_dim_referrer_channel_v1', 'bi_dim_device_class_v1', 'bi_dim_viewport_bucket_v1', 'bi_dim_geo_area_v1',
+        'bi_glossary_values_v1', 'bi_glossary_columns_v1', 'analytics_custom_events_v1', 'analytics_custom_pageviews_v1', 'analytics_custom_goals_v1',
+        'analytics_archived_events_v1', 'analytics_archived_pageviews_v1', 'analytics_archived_goals_v1'];
+    $results = json_decode(console($root, ['app:bigquery:sync', '--dry-run', '--json', '--output='.$output, ...array_map(static fn (string $view): string => '--view='.$view, $views)]), true);
+    E2E::check(is_array($results) && array_column($results, 'view') === $views, 'The dry run did not export every view: '.json_encode($results));
+    $rows = static function (string $view) use ($output): array {
+        return array_map(static fn (string $line): array => json_decode($line, true, flags: JSON_THROW_ON_ERROR), file($output.'/'.$view.'.ndjson', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: []);
+    };
+    $goals = array_values(array_filter($rows('bi_anonymous_goals_v1'), static fn (array $row): bool => $row['goal_event'] === 'purchase'));
+    E2E::check(array_sum(array_map('intval', array_column($goals, 'event_count'))) === 6, 'Exported goal counts: '.json_encode($goals));
+    foreach ($goals as $goal) {
+        E2E::check(preg_match('/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/D', (string) $goal['event_day']) === 1 && is_string($goal['event_count']), 'Exported goal types: '.json_encode($goal));
+    }
+    foreach ($rows('bi_anonymous_events_v1') as $event) {
+        E2E::check(preg_match('/^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:00:00\.000000$/D', (string) $event['event_hour']) === 1, 'Exported event hour: '.json_encode($event));
+    }
+    $purchases = array_values(array_filter($rows('analytics_custom_goals_v1'), static fn (array $row): bool => $row['goal_event'] === 'purchase'));
+    E2E::check(count($purchases) === 6, 'Exported custom goals: '.count($purchases));
+    foreach ($purchases as $row) {
+        E2E::check($row['total_minor_number'] === '4999' && is_float($row['discount_rate_number']) && abs($row['discount_rate_number'] - 0.1) < 1e-9
+            && preg_match('/^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6}$/D', (string) $row['created_at']) === 1, 'Exported custom values: '.json_encode($row));
+    }
+    $glossary = $rows('bi_glossary_values_v1');
+    E2E::check($glossary !== [] && is_bool($glossary[0]['is_default_locale']) && is_bool($glossary[0]['is_fallback']), 'Exported glossary flags: '.json_encode($glossary[0] ?? null));
+    $schema = json_decode((string) file_get_contents($output.'/bi_anonymous_events_v1.schema.json'), true);
+    E2E::check(array_column($schema, 'type', 'name')['event_count'] === 'INT64', 'Exported schema: '.json_encode($schema));
+    // The status table exists on this engine and the check command reads it.
+    E2E::check(str_contains(console($root, ['app:bigquery:check', '--no-connect']), 'off'), 'app:bigquery:check did not report the settings.');
+});
+
 E2E::step('small cells are suppressed', static function () use ($root, $collect): void {
     $db = connection($root);
     $before = (int) $db->fetchOne('SELECT MAX(id) FROM events');
