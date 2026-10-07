@@ -16,16 +16,19 @@
 <body>
 <main>
     <h1>Mark organization traffic</h1>
-    <p>Use this page to identify your browser as a team member’s browser in analytics reports. Nothing is written until you click the button.</p>
-    {% include 'internal_traffic/marker.html.twig' %}
-    <p>Reports store <code>{{ { (browser_config.name): true }|json_encode }}</code> for this marker. It identifies traffic from your organization, independently of navigation within a website.</p>
-    <p>{% if browser_config.storage == 'cookie' %}The cookie lasts up to one year and applies to {{ browser_config.cookieDomain ? 'the domain ' ~ browser_config.cookieDomain ~ ' and its subdomains' : 'this hostname' }}. Browsers may clear it earlier.{% else %}Local storage applies only to this page’s exact origin (scheme, hostname and port), until it is removed or cleared.{% endif %}</p>
-    <p>A page on the analytics host cannot mark an unrelated website. To mark another website, host this HTML page on that website and open it there. For sibling subdomains, a cookie with their shared parent domain can cover them together. Opening an HTML file directly from your downloads folder cannot mark a website.</p>
-    {% if download_url %}
-        <p><a class="download" href="{{ download_url }}" download="internal-traffic.html" rel="nofollow noreferrer">Download an HTML marker page</a></p>
-        <p>The download contains the marker settings and no share token. Host it on each tracked site’s origin before sharing that site’s URL.</p>
+    <p>Use this page to identify your browser as a team member’s browser, so your own visits can be filtered out of analytics reports. Nothing is written until you choose.</p>
+    {% if marking %}
+        {% include 'internal_traffic/websites.html.twig' %}
+        <h2>This analytics site</h2>
+        <p>These buttons mark only this site{% if browser_config.storage == 'cookie' and browser_config.cookieDomain %} and the other websites under {{ browser_config.cookieDomain }}, which share its cookie{% endif %}. Use the links above for your tracked websites.</p>
     {% endif %}
-    <p>This marker affects reporting only. It does not grant access to any account. Use each browser and device you want to mark.</p>
+    {% include 'internal_traffic/marker.html.twig' %}
+    <p>Every event from a tracked website reports <code>"org_internal_traffic": true</code> when the browser carries the marker on that website, and <code>false</code> otherwise. It identifies traffic from your organization, independently of navigation within a website.</p>
+    <p>{% if browser_config.storage == 'cookie' %}The marker is a cookie that lasts up to one year. Browsers may clear it earlier.{% else %}The marker is kept in local storage, which belongs to one exact origin (scheme, hostname and port), until it is removed or cleared.{% endif %}</p>
+    {% if download_url %}
+        <p>For a website whose home page does not load the tracker, <a href="{{ download_url }}" download="internal-traffic.html" rel="nofollow noreferrer">download an HTML marker page</a>, host it on that website and open it there. The download contains the marker settings and no share token.</p>
+    {% endif %}
+    <p>This marker affects reporting only. It does not grant access to any account. Mark each browser and device you want to exclude.</p>
 </main>
 </body>
 </html>

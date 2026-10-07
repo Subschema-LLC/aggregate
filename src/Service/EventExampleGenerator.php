@@ -80,7 +80,7 @@ final class EventExampleGenerator
             'referrerChannel' => 'direct',
             'deviceClass' => 'desktop',
             'viewportBucket' => 'large',
-            'internalTraffic' => false,
+            InternalTrafficSettings::JSON_KEY => false,
         ];
 
         $bundle = [
@@ -99,7 +99,7 @@ final class EventExampleGenerator
                 'The enhanced example requires an actual explicit analytics consent choice. consentState: granted illustrates that choice; copying it does not obtain consent. Visitor and session identifiers are synthetic placeholders.',
                 'Rejecting or withdrawing enhanced consent removes SDK identifiers and stops future enhanced detail; permitted coarse anonymous collection may continue. Withdrawal does not erase stored history.',
                 'For anonymous attribution, prefer broad utm_medium values. Detailed UTM properties and aliases remain permitted when explicitly allowed, but even an allowed medium can contain identifying text.',
-                'Properties marked not_submittable are omitted from this example: reserved organization-marker or legacy reporting-only keys, page_sequence while disabled, or properties beyond the 50-value payload limit. The tracker supplies internalTraffic separately as a boolean; marker values and sharing tokens are never event properties.',
+                'Properties marked not_submittable are omitted from this example: org_internal_traffic, page_sequence while disabled, or properties beyond the 50-value payload limit. The tracker sends org_internal_traffic on every event, true for a browser marked as organization traffic and false otherwise; marker values and sharing tokens are never event properties.',
                 'The collection kill switch, sensitive-path exclusions, website validation, and server privacy rules still apply. The server sets timestamps and optional coarse geography; those fields are not supplied by the client.',
                 'Goals are omitted because they have a separate allowlist and anonymous-consent policy in config/goals.yaml.',
             ],

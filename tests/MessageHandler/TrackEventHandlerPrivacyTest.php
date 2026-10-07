@@ -7,6 +7,7 @@ namespace App\Tests\MessageHandler;
 use App\Entity\Event;
 use App\Message\TrackEventMessage;
 use App\MessageHandler\TrackEventHandler;
+use App\Service\InternalTrafficSettings;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -41,6 +42,7 @@ final class TrackEventHandlerPrivacyTest extends TestCase
             sessionId: 'session_abc',
             occurredAt: $occurredAt,
             geoArea: 'continent:NA',
+            internalTraffic: false,
         ));
 
         self::assertInstanceOf(Event::class, $persisted);
@@ -55,7 +57,7 @@ final class TrackEventHandlerPrivacyTest extends TestCase
         self::assertSame('Chrome / desktop', $persisted->getGeneralizedUserAgent());
         self::assertSame('visitor_abc', $persisted->getVisitorId());
         self::assertSame('session_abc', $persisted->getSessionId());
-        self::assertSame(['plan' => 'pro'], $persisted->getCustomData());
+        self::assertSame(['plan' => 'pro', InternalTrafficSettings::JSON_KEY => false], $persisted->getCustomData());
         self::assertFalse($persisted->isInternalTraffic());
         self::assertSame('purchase', $persisted->getGoalEvent());
         self::assertSame($occurredAt, $persisted->getCreatedAt());
@@ -66,11 +68,8 @@ final class TrackEventHandlerPrivacyTest extends TestCase
     }
 
     #[DataProvider('internalTrafficMessages')]
-    public function testHandlerOverridesReservedCustomDataWithExplicitTrafficMetadata(
-        bool $internalTraffic,
-        bool $legacyMessage,
-        string $markerName = 'orgInternalTraffic',
-    ): void {
+    public function testHandlerOverridesReservedCustomDataWithExplicitTrafficMetadata(?bool $internalTraffic): void
+    {
         $persisted = null;
         $entityManager = $this->createMock(EntityManagerInterface::class);
         $entityManager->expects(self::once())
@@ -88,39 +87,30 @@ final class TrackEventHandlerPrivacyTest extends TestCase
             viewportBucket: 'large',
             screenWidth: null,
             goalEvent: null,
-            eventData: ['plan' => 'pro', $markerName => !$internalTraffic],
+            eventData: ['plan' => 'pro', InternalTrafficSettings::JSON_KEY => !$internalTraffic],
             generalizedUserAgent: 'Chrome / desktop',
             visitorId: 'visitor-1',
             sessionId: 'session-1',
             occurredAt: new \DateTimeImmutable('2026-07-24T17:00:00+00:00'),
             internalTraffic: $internalTraffic,
-            internalTrafficName: $markerName,
         );
-
-        if ($legacyMessage) {
-            // Previously queued PHP-serialized messages do not have this property.
-            unset($message->internalTraffic);
-            unset($message->internalTrafficName);
-        }
         $message = unserialize(serialize($message));
 
         (new TrackEventHandler($entityManager))($message);
 
         self::assertInstanceOf(Event::class, $persisted);
-        self::assertSame($internalTraffic, $persisted->isInternalTraffic());
+        self::assertSame($internalTraffic === true, $persisted->isInternalTraffic());
         self::assertSame(
-            $internalTraffic ? ['plan' => 'pro', $markerName => true] : ['plan' => 'pro'],
+            $internalTraffic === null ? ['plan' => 'pro'] : ['plan' => 'pro', InternalTrafficSettings::JSON_KEY => $internalTraffic],
             $persisted->getCustomData(),
         );
     }
 
     public static function internalTrafficMessages(): iterable
     {
-        yield 'marked browser overrides false custom property' => [true, false];
-        yield 'unmarked browser removes true custom property' => [false, false];
-        yield 'old queued message removes true custom property' => [false, true];
-        yield 'queued event preserves configured marker name' => [true, false, 'companyStaff'];
-        yield 'queued unmarked event clears configured marker property' => [false, false, 'companyStaff'];
+        yield 'marked browser overrides a false property' => [true];
+        yield 'unmarked browser overrides a true property' => [false];
+        yield 'an event without a flag keeps no forged property' => [null];
     }
 
     public function testEventEntityRejectsNonGrantedConsentStateAtAssignment(): void

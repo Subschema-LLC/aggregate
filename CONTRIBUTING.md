@@ -91,10 +91,11 @@ Treat these as constraints on implementation and documentation:
   and the fixed event-name rules effective on the server as well as in the SDK.
 - **The existing exceptions are narrow.** A goal code may survive anonymous
   ingestion only when its enabled definition in `config/goals.yaml` permits
-  anonymous use. The explicitly installed organization marker is a boolean in
-  `custom_data`, under the configured cookie/local storage name:
-  `{"orgInternalTraffic": true}` by default. Its configured value and sharing
-  token are not event properties. Custom properties may also survive when the
+  anonymous use. The organization-traffic flag is a boolean in
+  `custom_data` under the fixed key `org_internal_traffic`, `true` or `false`
+  on every standard-profile event and absent under the strict profile. Only the
+  tracker's literal `true` sets it; the marker's value, marking codes and the
+  sharing token are not event properties. Custom properties may also survive when the
   deployment model explicitly sets `consent_required: false`; enforce that
   whitelist in the SDK and on the server, and preserve only approved scalar
   values through entity lifecycle callbacks. The optional `page_sequence_enabled`

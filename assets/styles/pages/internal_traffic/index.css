@@ -1,0 +1,19 @@
+/* Organization traffic: the tracked websites with their marking links. */
+.marking-domain {
+    color: color-mix(in srgb, var(--app-brand-text) 65%, transparent);
+    display: block;
+    font-size: 0.85rem;
+    font-weight: normal;
+}
+
+.marking-help {
+    color: color-mix(in srgb, var(--app-brand-text) 70%, transparent);
+    font-size: 0.85rem;
+}
+
+/* Row headers name a website; only the column headers use the table caps. */
+.marking-websites tbody th {
+    font-size: 1rem;
+    letter-spacing: normal;
+    text-transform: none;
+}

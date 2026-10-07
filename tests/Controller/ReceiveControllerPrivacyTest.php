@@ -77,7 +77,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
                 'consentState' => $consentState,
                 'visitorId' => 'private-visitor',
                 'sessionId' => 'private-session',
-                'internalTraffic' => true,
+                InternalTrafficSettings::JSON_KEY => true,
                 'customData' => [
                     'plan' => "pro\0",
                     'zero' => 0,
@@ -86,13 +86,12 @@ final class ReceiveControllerPrivacyTest extends TestCase
                     'nested' => ['private' => 'nested-value'],
                     'email' => 'private@example.com',
                     'unconfigured' => 'private-unconfigured-value',
-                    'companyStaff' => 'private-marker-value',
+                    InternalTrafficSettings::JSON_KEY => 'private-marker-value',
                 ],
             ],
             bus: $bus,
             recorder: new AnonymousEventRecorder($entityManager),
             config: $this->privacyConfig(
-                internalTrafficName: 'companyStaff',
                 customDataProperties: [
                     'plan' => ['consent_required' => false],
                     'zero' => ['consent_required' => false],
@@ -112,7 +111,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
             'zero' => 0,
             'flag' => false,
             'optional' => null,
-            'companyStaff' => true,
+            InternalTrafficSettings::JSON_KEY => true,
         ], $persisted->getCustomData());
         self::assertSame('/pricing', $persisted->getUrl());
         self::assertSame('anonymous', $persisted->getPrivacyMode());
@@ -162,7 +161,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
             self::assertSame($expected, $queued->eventData);
         } else {
             self::assertInstanceOf(Event::class, $persisted);
-            self::assertSame($expected, $persisted->getCustomData());
+            self::assertSame([...($expected ?? []), InternalTrafficSettings::JSON_KEY => false], $persisted->getCustomData());
             self::assertStringNotContainsString('person@example.com', serialize($persisted));
             self::assertStringNotContainsString('unconfigured', serialize($persisted));
         }
@@ -221,7 +220,6 @@ final class ReceiveControllerPrivacyTest extends TestCase
         mixed $submitted,
         bool $includeFlag,
         bool $expected,
-        string $markerName = 'orgInternalTraffic',
     ): void {
         $persisted = null;
         $queued = null;
@@ -249,29 +247,38 @@ final class ReceiveControllerPrivacyTest extends TestCase
             'internalTrafficValue' => 'raw-marker-value-must-not-be-retained',
             'visitorId' => 'enhanced-visitor',
             'sessionId' => 'enhanced-session',
-            'customData' => [$markerName => !$expected, 'plan' => 'pro'],
+            // Neither the browser marker's name nor a property of the same
+            // key can set the flag.
+            'orgInternalTraffic' => true,
+            'internalTraffic' => true,
+            'customData' => [InternalTrafficSettings::JSON_KEY => !$expected, 'orgInternalTraffic' => true, 'plan' => 'pro'],
         ];
+        unset($payload[InternalTrafficSettings::JSON_KEY]);
         if ($includeFlag) {
-            $payload['internalTraffic'] = $submitted;
+            $payload[InternalTrafficSettings::JSON_KEY] = $submitted;
         }
 
         $response = $this->invoke(
             payload: $payload,
             bus: $bus,
             recorder: new AnonymousEventRecorder($entityManager),
-            config: $this->privacyConfig(internalTrafficName: $markerName),
+            config: $this->privacyConfig(customDataProperties: [
+                'plan' => ['consent_required' => false],
+                InternalTrafficSettings::JSON_KEY => ['type' => 'boolean', 'consent_required' => false, 'column' => 'staff'],
+            ]),
         );
 
         self::assertSame(202, $response->getStatusCode());
         if ($enhanced) {
             self::assertInstanceOf(TrackEventMessage::class, $queued);
             self::assertSame($expected, $queued->internalTraffic);
-            self::assertSame($markerName, $queued->internalTrafficName);
-            self::assertSame(['plan' => 'pro'], $queued->eventData);
+            self::assertSame(['orgInternalTraffic' => true, 'plan' => 'pro'], $queued->eventData);
             self::assertStringNotContainsString('raw-marker-', serialize($queued));
         } else {
             self::assertInstanceOf(Event::class, $persisted);
-            self::assertSame($expected ? [$markerName => true] : null, $persisted->getCustomData());
+            $persisted->enforcePrivacyInvariants();
+            self::assertSame(['plan' => 'pro', InternalTrafficSettings::JSON_KEY => $expected], $persisted->getCustomData());
+            self::assertSame($expected, $persisted->isInternalTraffic());
             self::assertNull($persisted->getVisitorId());
             self::assertNull($persisted->getSessionId());
             self::assertNull($persisted->getConsentState());
@@ -283,8 +290,6 @@ final class ReceiveControllerPrivacyTest extends TestCase
     public static function internalTrafficInputs(): iterable
     {
         foreach (['unknown', 'denied', 'granted'] as $consentState) {
-            yield $consentState.' configured organization marker' => [$consentState, true, true, true, 'companyStaff'];
-            yield $consentState.' unmarked configured organization marker' => [$consentState, false, true, false, 'companyStaff'];
             yield $consentState.' missing' => [$consentState, null, false, false];
             foreach ([true, false, 'true', 'false', 1, 0, null, ['name' => 'orgInternalTraffic', 'value' => 'true']] as $index => $value) {
                 yield $consentState.' value '.$index => [$consentState, $value, true, $value === true];
@@ -352,7 +357,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
         self::assertNull($persisted->getSessionId());
         self::assertNull($persisted->getConsentState());
         self::assertSame('purchase', $persisted->getGoalEvent());
-        self::assertNull($persisted->getCustomData());
+        self::assertSame([InternalTrafficSettings::JSON_KEY => false], $persisted->getCustomData());
     }
 
     public function testUnknownNamedEventIsAlsoAcceptedAnonymously(): void
@@ -720,8 +725,8 @@ final class ReceiveControllerPrivacyTest extends TestCase
             'deviceClass' => 'mobile',
             'viewportBucket' => 'small',
             'screenWidth' => 390,
-            'internalTraffic' => true,
-            'customData' => ['utm_medium' => 'private-medium', 'page_sequence' => 3, 'orgInternalTraffic' => true],
+            InternalTrafficSettings::JSON_KEY => true,
+            'customData' => ['utm_medium' => 'private-medium', 'page_sequence' => 3, InternalTrafficSettings::JSON_KEY => true],
         ];
 
         yield 'standard tracker payload with enhanced consent' => [$full, 'Mozilla/5.0 (iPhone) Mobile Safari'];
@@ -818,7 +823,6 @@ final class ReceiveControllerPrivacyTest extends TestCase
             $geoResolver,
             $recorder,
             $logger,
-            new InternalTrafficSettings($config),
             new CustomDataSettings($config),
         );
     }
@@ -826,7 +830,6 @@ final class ReceiveControllerPrivacyTest extends TestCase
     private function privacyConfig(
         bool $enabled = true,
         array $excludedPaths = [],
-        string $internalTrafficName = 'orgInternalTraffic',
         array $customDataProperties = [],
         string $collectionProfile = 'standard',
     ): AggregateConfigLoader
@@ -838,12 +841,9 @@ final class ReceiveControllerPrivacyTest extends TestCase
         ]);
         $config->method('getBoolWithEnvFallback')->willReturn($enabled);
         $config->method('getWithEnvFallback')
-            ->willReturnCallback(static function (string $key, mixed $default = null) use ($excludedPaths, $internalTrafficName, $customDataProperties, $collectionProfile): mixed {
+            ->willReturnCallback(static function (string $key, mixed $default = null) use ($excludedPaths, $customDataProperties, $collectionProfile): mixed {
                 if ($key === 'collection_profile') {
                     return $collectionProfile;
-                }
-                if ($key === 'internal_traffic_name') {
-                    return $internalTrafficName;
                 }
                 if ($key === 'custom_data_properties') {
                     return $customDataProperties;

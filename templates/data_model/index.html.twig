@@ -77,7 +77,7 @@
                     </div>
                 </div>
                 <p>Expand a custom data JSON property to edit its type, consent, and optional reporting columns. Property names are literal top-level JSON keys. Leave both reporting columns empty to collect a property without exposing it in custom reporting views. Explicitly allowing a property without consent adds it to the server-enforced anonymous whitelist.</p>
-                <p class="help mb-3">Descriptions belong to the shared implementation model. Values must be flat strings, numbers, booleans, or null; nested data is discarded. Unlisted custom properties still require enhanced consent. The organization marker <code>{{ marker_name|default('orgInternalTraffic') }}</code> remains controlled by the browser marker and is always allowed in anonymous mode.</p>
+                <p class="help mb-3">Descriptions belong to the shared implementation model. Values must be flat strings, numbers, booleans, or null; nested data is discarded. Unlisted custom properties still require enhanced consent. Every event carries <code>org_internal_traffic</code>, true or false, from the organization-traffic marker in both modes; add it here as a boolean to give it a reporting column.</p>
 
                 <details class="reserved-columns-reference box is-light mt-2 mb-4" id="reserved-columns-list" data-pages--data-model--index-target="reservedDetails">
                     <summary class="is-size-7 has-text-info is-clickable py-1">

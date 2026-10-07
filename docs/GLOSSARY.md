@@ -103,8 +103,10 @@ events, not people.
 website (default `window.Aggregate`).
 
 **Organization traffic marker.** A cookie or local storage flag (default
-`orgInternalTraffic=true`) that marks your own team's browsers, so BI reports can
-filter them out without dropping the data.
+`orgInternalTraffic=true`) that marks your own team's browsers on each tracked
+website. Every event reports it as `org_internal_traffic`, true or false, so BI
+reports can filter that traffic out without dropping the data. Team members set
+it through marking links that open each website.
 
 **Page sequence.** Optional page depth (`page_sequence_enabled`, off by
 default): a number from 1 to 20 (20 meaning 20 or more) carried between pages in

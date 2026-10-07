@@ -151,42 +151,18 @@ final class InternalTrafficSettingsTest extends TestCase
         yield ['internal_traffic_cookie_domain', '..example.com'];
     }
 
-    #[DataProvider('pageSequenceConflicts')]
-    public function testPageSequenceCollisionOrMalformedSettingCannotBeSaved(mixed $enabled, bool $environmentMarker): void
+    public function testBrowserMarkerNameIsIndependentOfTheReportedJsonKey(): void
     {
-        $settings = $this->settings(['page_sequence_enabled' => $enabled, 'unrelated' => 'preserved']);
-        if ($environmentMarker) {
-            $_ENV['INTERNAL_TRAFFIC_NAME'] = 'page_sequence';
-        }
-        $before = file_get_contents($this->projectDir.'/config/aggregate.yaml');
-        try {
-            $settings->saveMarker([...InternalTrafficSettings::DEFAULTS, 'internal_traffic_name' => 'page_sequence']);
-            self::fail('An incompatible marker was saved.');
-        } catch (\InvalidArgumentException) {
-            self::assertSame($before, file_get_contents($this->projectDir.'/config/aggregate.yaml'));
-        }
-    }
+        // The marker name lives only in the browser; events always report
+        // org_internal_traffic, so no name can collide with a property.
+        $settings = $this->settings(['page_sequence_enabled' => true, 'unrelated' => 'preserved']);
+        $settings->saveMarker([...InternalTrafficSettings::DEFAULTS, 'internal_traffic_name' => 'page_sequence']);
 
-    public static function pageSequenceConflicts(): iterable
-    {
-        yield 'enabled collision' => [true, false];
-        yield 'enabled environment collision' => [true, true];
-        yield 'malformed false string' => ['false', false];
-        yield 'malformed null' => [null, false];
-    }
-
-    public function testConcurrentPageSequenceEnablementCannotCreateAMarkerCollision(): void
-    {
-        $settings = $this->settings(['page_sequence_enabled' => false]);
-        $settings->markerSettings();
-        file_put_contents($this->projectDir.'/config/aggregate.yaml', "page_sequence_enabled: true\n");
-        $before = file_get_contents($this->projectDir.'/config/aggregate.yaml');
-        try {
-            $settings->saveMarker([...InternalTrafficSettings::DEFAULTS, 'internal_traffic_name' => 'page_sequence']);
-            self::fail('A concurrently enabled page counter was overwritten.');
-        } catch (\InvalidArgumentException) {
-            self::assertSame($before, file_get_contents($this->projectDir.'/config/aggregate.yaml'));
-        }
+        self::assertSame('page_sequence', $settings->toBrowserConfig()['name']);
+        self::assertSame('org_internal_traffic', InternalTrafficSettings::JSON_KEY);
+        $saved = Yaml::parseFile($this->projectDir.'/config/aggregate.yaml');
+        self::assertTrue($saved['page_sequence_enabled']);
+        self::assertSame('preserved', $saved['unrelated']);
     }
 
     private function settings(array $values): InternalTrafficSettings

@@ -83,7 +83,7 @@ ecommerce properties by default.
   "referrerChannel": "direct",
   "deviceClass": "desktop",
   "viewportBucket": "large",
-  "internalTraffic": false,
+  "org_internal_traffic": false,
   "consentState": "granted",
   "visitorId": "synthetic-visitor",
   "sessionId": "synthetic-session",

@@ -32,7 +32,7 @@ class TrackEventHandler
             ->setConsentState('granted')
             ->setGoalEvent($msg->goalEvent)
             ->setCustomData($msg->eventData)
-            ->setInternalTraffic($msg->internalTraffic ?? false, $msg->internalTrafficName ?? 'orgInternalTraffic')
+            ->setInternalTraffic($msg->internalTraffic)
             ->setCreatedAt($msg->occurredAt);
 
         $this->em->persist($event);

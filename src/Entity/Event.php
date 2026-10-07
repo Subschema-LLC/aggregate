@@ -5,6 +5,7 @@ namespace App\Entity;
 use App\Repository\EventRepository;
 use App\Service\CustomDataSettings;
 use App\Service\GeoIp\GeoArea;
+use App\Service\InternalTrafficSettings;
 use App\Service\PrivacySanitizer;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -70,7 +71,10 @@ class Event
     // have already passed the deployment's consent-free property policy.
     private array $approvedAnonymousCustomData = [];
 
-    private string $internalTrafficName = 'orgInternalTraffic';
+    // The organization-traffic flag recorded by setInternalTraffic() (or read
+    // back from a stored row), kept apart so a later setCustomData() can
+    // neither forge nor drop it on an anonymous event.
+    private ?bool $internalTraffic = null;
 
     #[ORM\Column(type: 'string', length: 191, nullable: true)]
     private ?string $goalEvent = null;
@@ -196,24 +200,27 @@ class Event
         return $this;
     }
 
-    /** Supply the historical marker name when reading rows with custom properties. */
-    public function isInternalTraffic(?string $name = null): bool
+    /** Whether the event came from a browser marked as organization traffic. */
+    public function isInternalTraffic(): bool
     {
-        return ($this->customData[$name ?? $this->internalTrafficName] ?? false) === true;
+        return $this->internalTraffic === true;
     }
 
-    public function setInternalTraffic(bool $internalTraffic, string $name = 'orgInternalTraffic'): self
+    /**
+     * Records the organization-traffic flag under its fixed key,
+     * custom_data.org_internal_traffic: true or false, or no key when the
+     * browser was not asked (the strict profile reads no browser storage).
+     * The flag is controlled only here, never by submitted properties.
+     */
+    public function setInternalTraffic(?bool $internalTraffic): self
     {
-        if (!self::isValidInternalTrafficName($name)) {
-            throw new \InvalidArgumentException('The organization traffic marker must have a valid nonnumeric JSON property name.');
-        }
-        $this->internalTrafficName = $name;
-        // This reserved property is controlled solely by the explicit flag.
-        unset($this->approvedAnonymousCustomData[$name]);
-        if ($internalTraffic) {
-            $this->customData[$name] = true;
-        } else {
-            unset($this->customData[$name]);
+        $this->internalTraffic = $internalTraffic;
+        unset($this->approvedAnonymousCustomData[InternalTrafficSettings::JSON_KEY]);
+        if ($internalTraffic !== null) {
+            $this->customData ??= [];
+            $this->customData[InternalTrafficSettings::JSON_KEY] = $internalTraffic;
+        } elseif ($this->customData !== null) {
+            unset($this->customData[InternalTrafficSettings::JSON_KEY]);
             if ($this->customData === []) {
                 $this->customData = null;
             }
@@ -223,29 +230,16 @@ class Event
     }
 
     #[ORM\PostLoad]
-    public function restoreAnonymousTrafficMarkerName(): void
+    public function restoreApprovedAnonymousCustomData(): void
     {
         // Persisted values were approved at ingestion. Preserve that exact
-        // historical snapshot on updates, including renamed traffic markers,
-        // without authorizing arbitrary properties assigned after hydration.
+        // historical snapshot on updates without authorizing arbitrary
+        // properties assigned after hydration.
         if ($this->privacyMode === 'anonymous') {
             $this->approvedAnonymousCustomData = $this->customData ?? [];
         }
-
-        // Legacy rows contain only a shared boolean marker. Multiple-property
-        // rows require the explicit historical key in isInternalTraffic().
-        if ($this->privacyMode === 'anonymous' && $this->customData !== null && count($this->customData) === 1) {
-            $name = array_key_first($this->customData);
-            if (is_string($name) && self::isValidInternalTrafficName($name) && $this->customData[$name] === true) {
-                $this->internalTrafficName = $name;
-            }
-        }
-    }
-
-    private static function isValidInternalTrafficName(string $name): bool
-    {
-        return preg_match('/^[A-Za-z0-9_-]{1,128}$/D', $name) === 1
-            && preg_match('/^-?[0-9]+$/D', $name) !== 1;
+        $marker = $this->customData[InternalTrafficSettings::JSON_KEY] ?? null;
+        $this->internalTraffic = is_bool($marker) ? $marker : null;
     }
 
     public function getGoalEvent(): ?string { return $this->goalEvent; }
@@ -318,9 +312,9 @@ class Event
         $this->sessionId = null;
         $this->consentState = null;
         $data = $this->approvedAnonymousCustomData;
-        unset($data[$this->internalTrafficName]);
-        if ($this->isInternalTraffic()) {
-            $data[$this->internalTrafficName] = true;
+        unset($data[InternalTrafficSettings::JSON_KEY]);
+        if ($this->internalTraffic !== null) {
+            $data[InternalTrafficSettings::JSON_KEY] = $this->internalTraffic;
         }
         $this->customData = $data ?: null;
     }

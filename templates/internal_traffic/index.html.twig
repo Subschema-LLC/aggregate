@@ -4,7 +4,7 @@
 
 {% block body %}
     <h1 class="title">Organization traffic</h1>
-    <p class="subtitle">Give team members a shared browser marker so their visits can be filtered in Power BI or Tableau.</p>
+    <p class="subtitle">Mark team members’ browsers on your tracked websites so their visits can be filtered in Power BI or Tableau.</p>
     {{ component('Ui:DocsLink', {topic: 'privacy.organization-traffic', label: 'Organization traffic guide'}) }}
 
     {% if configuration_error %}<div class="notification is-danger" role="alert">{{ configuration_error }}</div>{% endif %}
@@ -26,7 +26,7 @@
         {% for field in [
             { key: 'internal_traffic_name', label: 'Cookie or local storage name', maximum: 128, help: 'Default: orgInternalTraffic. Use letters, digits, underscores or hyphens.' },
             { key: 'internal_traffic_value', label: 'Marker value', maximum: 256, help: 'Default: true. This value is shared by team members; it is not a personal identifier.' },
-            { key: 'internal_traffic_cookie_domain', label: 'Cookie domain (optional)', maximum: 253, help: 'Leave empty for this hostname, or use example.com to include its subdomains. Ignored for local storage.' }
+            { key: 'internal_traffic_cookie_domain', label: 'Cookie domain (optional)', maximum: 253, help: 'Leave empty to use each website’s own domain and its subdomains, or use example.com to share one cookie across the websites under it. Ignored for local storage.' }
         ] %}
             <div class="field">
                 <label class="label" for="{{ field.key }}">{{ field.label }}</label>
@@ -38,18 +38,24 @@
         <p class="help mt-3">Saves to the active environment in <code>config/aggregate.yaml</code> or its environment-specific file. Uppercase environment variables take precedence. After changing the name, value or storage, team members must apply the new marker; old markers are not automatically removed.</p>
     </form>
 
+    {% if browser_config and marking %}
+        <section class="box">
+            {% include 'internal_traffic/websites.html.twig' with {heading_class: 'title is-4'} %}
+        </section>
+    {% endif %}
+
     {% if browser_config %}
         <section class="box">
-            <h2 class="title is-4">This browser</h2>
+            <h2 class="title is-4">This analytics site</h2>
             {% include 'internal_traffic/marker.html.twig' %}
-            <p>These buttons use the saved settings. Cookies last up to one year and use <code>Path=/</code>, <code>SameSite=Lax</code> and <code>Secure</code> on HTTPS. Local storage lasts until removed or cleared.</p>
-            <p class="mt-3">An analytics host cannot mark unrelated domains. For sibling subdomains, set their shared parent cookie domain. Local storage requires the exact origin (scheme, hostname and port). For other tracked sites, <a href="{{ path('app_internal_traffic_download') }}" download="internal-traffic.html">download the HTML marker page</a>, host it on each site, and open its URL there. Opening the downloaded file directly cannot mark those sites.</p>
+            <p>These buttons mark only this site{% if browser_config.storage == 'cookie' and browser_config.cookieDomain %} and the other websites under {{ browser_config.cookieDomain }}, which share its cookie{% endif %}; use the links above for tracked websites. Cookies last up to one year and use <code>Path=/</code>, <code>SameSite=Lax</code> and <code>Secure</code> on HTTPS. Local storage lasts until removed or cleared.</p>
+            <p class="mt-3">For a website whose home page does not load the tracker, <a href="{{ path('app_internal_traffic_download') }}" download="internal-traffic.html">download the HTML marker page</a>, host it on that website and open it there. Opening the downloaded file directly cannot mark a website.</p>
         </section>
     {% endif %}
 
     <section class="box">
         <h2 class="title is-4">Share with team members</h2>
-        <p>The public page requires this link’s token and does not require a dashboard account. It asks each visitor to click before saving the marker, and sends noindex, nofollow and no-store instructions.</p>
+        <p>The public page requires this link’s token and does not require a dashboard account. It lists your tracked websites with the same marking links, asks each visitor to choose before anything is saved, and sends noindex, nofollow and no-store instructions.</p>
         {% if share_url %}
             <div class="field mt-4">
                 <label class="label" for="internal-traffic-share-url">Share link</label>
@@ -77,7 +83,7 @@
                 {% if share_url %}<button type="submit" class="button is-danger is-light" name="action" value="revoke">Revoke share link</button>{% endif %}
             </form>
         {% endif %}
-        <p class="help">The token is stored in YAML as <code>internal_traffic_share_token</code>. Rotation or revocation stops old links; it does not remove existing markers or downloaded pages. A downloaded page contains no token and must be protected separately wherever it is hosted.</p>
+        <p class="help">The token is stored in YAML as <code>internal_traffic_share_token</code>. Rotation or revocation stops old links and any marking links not yet used; it does not remove existing markers or downloaded pages. A downloaded page contains no token and must be protected separately wherever it is hosted.</p>
     </section>
     <details class="box mt-5">
         <summary class="has-text-weight-semibold">
@@ -87,10 +93,10 @@
             </span>
         </summary>
         <div class="content mt-3">
-            <p>Matching markers set <code>{{ { (settings.internal_traffic_name): true }|json_encode }}</code> in each event’s existing <code>custom_data</code> JSON. The JSON property name matches the saved cookie or local storage name. In raw-event BI reports, filter out rows where <code>custom_data[{{ settings.internal_traffic_name|json_encode }}] = true</code>. A missing key means unmarked traffic. Existing grouped BI views and archives do not retain this JSON field.</p>
-        <p>To expose the marker as a reporting column, add its configured name in Data model and regenerate the <code>analytics_custom_*_v1</code> views. These views contain individual retained raw rows in both privacy modes and need separate access approval. Archived counts cannot recover this marker after raw rows are deleted.</p>
-        <p>This flag identifies your organization’s traffic. The <code>internal</code> referrer category describes navigation within the website and is independent of this marker. If you rename the marker, historical events keep their original JSON key; update report filters for both names.</p>
-        <p>Use a shared team value, such as <code>orgInternalTraffic=true</code>, on every browser and device you want to mark. The marker is a reporting hint and does not change tracking consent or grant account access.</p>
+            <p>Every event the tracker sends carries <code>"org_internal_traffic": true</code> when the browser holds the marker on that website and <code>false</code> otherwise, and the server stores it in each event’s <code>custom_data</code> JSON under that fixed key, whatever the marker’s name. In raw-event BI reports, filter out rows where <code>custom_data.org_internal_traffic</code> is true. Strict-profile events carry no value, because that profile reads no browser storage. Existing grouped BI views and archives do not retain this JSON field.</p>
+        <p>To expose the flag as a reporting column, add <code>org_internal_traffic</code> as a boolean property in Data model and regenerate the <code>analytics_custom_*_v1</code> views. These views contain individual retained raw rows in both privacy modes and need separate access approval. Archived counts cannot recover the flag after raw rows are deleted.</p>
+        <p>This flag identifies your organization’s traffic. The <code>internal</code> referrer category describes navigation within the website and is independent of this marker.</p>
+        <p>Every team member uses the same marker, so it does not identify a person. It is a reporting hint and does not change tracking consent or grant account access.</p>
         </div>
     </details>
 {% endblock %}
