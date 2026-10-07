@@ -138,6 +138,15 @@ function console(string $root, array $arguments, ?string $input = null): string
     return $process->getOutput();
 }
 
+/** Runs a console command that may fail; returns its exit code, output and error output. */
+function consoleResult(string $root, array $arguments): array
+{
+    $process = new Process(['php', 'bin/console', ...$arguments, '--no-ansi'], $root, cleanEnvironment(), null, 600);
+    $process->run();
+
+    return [(int) $process->getExitCode(), $process->getOutput(), $process->getErrorOutput()];
+}
+
 /** Without real variables, the installation reads .env and .env.local as it would on a web host. */
 function cleanEnvironment(): array
 {
@@ -452,7 +461,7 @@ E2E::step('BigQuery dry run exports every syncable view with its schema', static
     E2E::check($glossary !== [] && is_bool($glossary[0]['is_default_locale']) && is_bool($glossary[0]['is_fallback']), 'Exported glossary flags: '.json_encode($glossary[0] ?? null));
     $schema = json_decode((string) file_get_contents($output.'/bi_anonymous_events_v1.schema.json'), true);
     E2E::check(array_column($schema, 'type', 'name')['event_count'] === 'INT64', 'Exported schema: '.json_encode($schema));
-    // The status table exists on this engine and the check command reads it.
+    // The task tables exist on this engine and the check command reads them.
     E2E::check(str_contains(console($root, ['app:bigquery:check', '--no-connect']), 'off'), 'app:bigquery:check did not report the settings.');
 });
 
@@ -477,6 +486,41 @@ E2E::step('retention deletes expired data', static function () use ($root): void
     E2E::check((int) $db->fetchOne("SELECT COUNT(*) FROM analytics_archive_events WHERE page_path = '/old-page'") === 0, 'Expired archive cells were kept.');
     E2E::check((int) $db->fetchOne("SELECT COUNT(*) FROM analytics_archive_goals WHERE goal_event = 'purchase'") > 0, 'Goals from two days ago were not archived.');
     E2E::check((int) $db->fetchOne("SELECT COUNT(*) FROM events WHERE url = '/pricing'") === 6, 'Recent events were deleted.');
+});
+
+E2E::step('processing tasks and the audit trail record syncs and maintenance, and are purged', static function () use ($root): void {
+    $db = connection($root);
+    // Maintenance runs from the earlier steps were recorded.
+    E2E::check((int) $db->fetchOne("SELECT COUNT(*) FROM processing_tasks WHERE task_type = 'analytics_maintenance' AND status = 'succeeded'") >= 3, 'Maintenance runs were not recorded.');
+    E2E::check((int) $db->fetchOne("SELECT COUNT(*) FROM audit_trail WHERE operation = 'analytics_maintenance' AND outcome = 'succeeded'") >= 3, 'Maintenance runs were not audited.');
+
+    // Sync is on but no key is installed: every due view fails with the reason.
+    $config = Yaml::parseFile($root.'/config/aggregate.yaml');
+    file_put_contents($root.'/config/aggregate.yaml', Yaml::dump(['bigquery_enabled' => true, 'bigquery_project_id' => 'aggregate-e2e', 'bigquery_views' => ['bi_anonymous_events_v1', 'bi_anonymous_goals_v1']] + $config, 4, 2));
+    [$status, $output, $errors] = consoleResult($root, ['app:bigquery:sync', '--json']);
+    E2E::check($status === 1 && str_contains($output, 'No service account key'), 'A sync without a key: '.$output.$errors);
+    $failed = $db->fetchAllAssociative("SELECT subject, status, triggered_by, lock_key, details FROM processing_tasks WHERE task_type = 'bigquery_sync' ORDER BY id");
+    E2E::check(count($failed) === 2 && $failed[0]['status'] === 'failed' && $failed[0]['triggered_by'] === 'schedule' && $failed[0]['lock_key'] === null && str_contains((string) $failed[0]['details'], 'No service account key'), 'Failed syncs: '.json_encode($failed));
+    E2E::check((int) $db->fetchOne("SELECT COUNT(*) FROM audit_trail WHERE operation = 'bigquery_sync' AND outcome = 'failed'") === 2, 'Failed syncs were not audited.');
+
+    // A view another process is syncing is skipped: the unique lock key works here.
+    $db->insert('processing_tasks', ['task_type' => 'bigquery_sync', 'subject' => 'bi_anonymous_events_v1', 'status' => 'running', 'triggered_by' => 'command', 'lock_key' => 'bigquery_sync:bi_anonymous_events_v1', 'started_at' => new \DateTimeImmutable('now', new \DateTimeZone('UTC'))], ['started_at' => Types::DATETIME_IMMUTABLE]);
+    [, $output, $errors] = consoleResult($root, ['app:bigquery:sync', '--force', '--json']);
+    $results = array_column(json_decode($output, true)['results'] ?? [], 'status', 'view');
+    E2E::check($results === ['bi_anonymous_events_v1' => 'busy', 'bi_anonymous_goals_v1' => 'failed'], 'Forced sync with one view locked: '.$output.$errors);
+    E2E::check(str_contains(console($root, ['app:bigquery:check', '--no-connect']), 'running'), 'app:bigquery:check did not show the running sync.');
+
+    // Records older than their periods are purged; each job's latest success
+    // and failure stay. The purge is itself recorded.
+    $old = new \DateTimeImmutable('-400 days', new \DateTimeZone('UTC'));
+    $db->executeStatement("UPDATE processing_tasks SET started_at = :old, finished_at = :old WHERE status <> 'running'", ['old' => $old], ['old' => Types::DATETIME_IMMUTABLE]);
+    $db->executeStatement('UPDATE audit_trail SET occurred_at = :old', ['old' => $old], ['old' => Types::DATETIME_IMMUTABLE]);
+    $kept = (int) $db->fetchOne("SELECT COUNT(*) FROM (SELECT task_type, subject, status FROM processing_tasks WHERE status <> 'running' GROUP BY task_type, subject, status) kept");
+    console($root, ['app:analytics:maintain']);
+    E2E::check((int) $db->fetchOne("SELECT COUNT(*) FROM processing_tasks WHERE started_at < :recent", ['recent' => new \DateTimeImmutable('-1 day')], ['recent' => Types::DATETIME_IMMUTABLE]) === $kept, 'Old processing tasks were not purged down to the latest of each job.');
+    $audit = $db->fetchAllAssociative('SELECT operation, outcome, details FROM audit_trail');
+    E2E::check(count($audit) === 1 && $audit[0]['operation'] === 'analytics_maintenance' && str_contains((string) $audit[0]['details'], 'audit trail entr'), 'Audit trail after the purge: '.json_encode($audit));
+    file_put_contents($root.'/config/aggregate.yaml', Yaml::dump($config, 4, 2));
 });
 
 $version = (string) connection($root)->fetchOne(match ($driver) {

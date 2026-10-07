@@ -90,7 +90,7 @@ never get access to it.
 
 `app:analytics:maintain`
 ([AnalyticsMaintenanceRunner](../src/Service/AnalyticsMaintenanceRunner.php)),
-run on a schedule when archiving or retention is turned on:
+run daily on a schedule:
 
 - **Archives** old rows into counted cells in private archive tables
   ([AnalyticsArchiveService](../src/Service/AnalyticsArchiveService.php)). The raw
@@ -98,10 +98,19 @@ run on a schedule when archiving or retention is turned on:
 - **Deletes** raw rows and archive cells older than the retention periods
   ([AnalyticsRetentionService](../src/Service/AnalyticsRetentionService.php)).
   Enhanced rows have their own, usually shorter, period.
+- **Purges** processing tasks and audit trail entries older than their periods.
 - Holds a database **lease** ([AnalyticsMaintenanceLease](../src/Service/AnalyticsMaintenanceLease.php))
   so two runs never overlap.
 
-Both are off by default; see [archiving and retention](CONFIGURATION.md#archiving-and-retention).
+Archiving and retention are off by default; purging is on. See
+[archiving and retention](CONFIGURATION.md#archiving-and-retention).
+
+Every run that changes data, like every BigQuery view sync, is a row in the
+shared `processing_tasks` table and an entry in `audit_trail`
+([ProcessingTasks](../src/Service/Operations/ProcessingTasks.php),
+[AuditTrail](../src/Service/Operations/AuditTrail.php)). New background jobs use
+the same two tables, including their lock for exclusive runs, rather than adding
+their own.
 
 ### 5. Reporting views publish it
 

@@ -173,7 +173,7 @@ parameters:
         - credentials
         - roles
     'Data lifecycle':
-      description: 'Archiving, retention schedules, and deletion policies'
+      description: 'Archiving, retention schedules, deletion policies, and task and audit record purging'
       synonyms:
         - lifecycle
         - archive
@@ -182,6 +182,9 @@ parameters:
         - maintain
         - cleanup
         - purge
+        - audit trail
+        - processing tasks
+        - jobs
     'Updates':
       description: 'Version status, git updates, and signed release packages'
       synonyms:

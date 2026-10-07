@@ -610,8 +610,11 @@ Define retention separately for:
 - private archived event, pageview, goal, and geography cells;
 - BI extracts and caches;
 - queues and failed messages;
-- logs and traces; and
+- logs and traces;
+- task and audit records (`processing_tasks` and `audit_trail`); and
 - backups.
+
+Task and audit records hold job results and summaries, not event rows, but an audit entry for a job an administrator started from the dashboard names that administrator. Maintenance purges task records after `processing_tasks_retention_days` (default 90) and audit entries after `audit_trail_retention_days` (default 365), keeping the latest success and failure of each job; `0` keeps them. Set these periods to match your staff-data and audit policies.
 
 The built-in lifecycle policy provides separate raw anonymous, raw enhanced, and archive periods. Archiving first rolls older raw rows into private aggregate cells; it does not itself delete raw data. Retention then irreversibly removes eligible raw rows and archived cells when enabled. If both features are enabled, the validator requires each raw retention period to be at least the archive-after period, preserving a window in which rows can be archived before deletion. Whenever retention is enabled, archive retention must be at least the longer raw period so an aggregate cell cannot expire while its marked source row is still excluded from reporting.
 

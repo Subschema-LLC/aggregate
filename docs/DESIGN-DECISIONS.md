@@ -225,7 +225,7 @@ written for every database engine.
 
 **Decision.** [BigQuery sync](BIGQUERY.md) copies selected reporting views, never
 raw tables, to a BigQuery dataset from a scheduled command. Each sync replaces a
-view's table with one load job. Approved views are offered by default; row-level
+view's table with one load job and is recorded as a processing task. Approved views are offered by default; row-level
 or unsuppressed private views must be opted into one by one. Aggregate signs in
 with a service account key, the Google Cloud host's account or an administrator's
 Google sign-in, through Google's REST API rather than the Google Cloud SDK.
@@ -246,6 +246,32 @@ needs the dashboard and each installation's own OAuth client.
 **What would change it.** Views too large to copy whole would call for
 incremental loads of completed time buckets; a need for other warehouses would
 reuse the same export and schedule.
+
+### Two shared tables for job runs and the audit trail
+
+**Decision.** Background jobs record their runs in one `processing_tasks` table
+and their outcomes in one `audit_trail` table, instead of a status table per
+feature. A run is a row with a type, a subject, a status and failure details; an
+exclusive job holds a lock key that a unique index keeps to one running row. The
+audit trail gets an entry for every finished run and is reserved for
+administrator actions. Maintenance purges both after configurable periods,
+keeping each job's latest success and failure. BigQuery sync and analytics
+maintenance use them; BigQuery's own status table was dropped without
+migrating its rows.
+
+**Why.** Each new job (a sync, an export, a cleanup) would otherwise add a table
+with its own columns, lock and cleanup rules, and operators would look in a
+different place for each. A shared shape is easier to query, purge and explain,
+and the next job reuses the locking and auditing instead of reimplementing them.
+
+**Trade-off.** Job-specific results go into generic columns (`row_count`,
+`external_id`, `details`) rather than typed ones, and status pages read the latest
+run per subject instead of a single row. Purging needs a scheduled maintenance
+run, and the kept latest runs mean a purge never empties the table completely.
+
+**What would change it.** A job whose results need typed, queryable columns
+beyond those, or a volume of runs the purge cannot keep small, would get a table
+of its own.
 
 ## Platform
 

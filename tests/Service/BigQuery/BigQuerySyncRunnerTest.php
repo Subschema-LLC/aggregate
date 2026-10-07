@@ -10,20 +10,18 @@ use App\Service\BigQuery\BigQueryCredentialsFactory;
 use App\Service\BigQuery\BigQueryException;
 use App\Service\BigQuery\BigQuerySettings;
 use App\Service\BigQuery\BigQuerySyncRunner;
-use App\Service\BigQuery\BigQuerySyncStateStore;
 use App\Service\BigQuery\BigQueryViewExporter;
 use App\Service\BigQuery\GoogleCredentials;
+use App\Service\Operations\AuditTrail;
+use App\Service\Operations\ProcessingTasks;
+use App\Service\Operations\TaskTrigger;
+use App\Tests\Service\Operations\OperationsDatabase;
 use Doctrine\DBAL\Connection;
-use Doctrine\DBAL\DriverManager;
-use Doctrine\DBAL\Schema\Schema;
-use DoctrineMigrations\Version20261007000000;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\AbstractLogger;
 use Psr\Log\NullLogger;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\Yaml\Yaml;
-
-require_once dirname(__DIR__, 3).'/migrations/Version20261007000000.php';
 
 final class BigQuerySyncRunnerTest extends TestCase
 {
@@ -45,7 +43,7 @@ final class BigQuerySyncRunnerTest extends TestCase
         }
         $this->projectDir = sys_get_temp_dir().'/aggregate-bigquery-runner-'.bin2hex(random_bytes(6));
         mkdir($this->projectDir.'/config', 0700, true);
-        $this->connection = self::database();
+        $this->connection = OperationsDatabase::connection();
         $this->now = new \DateTimeImmutable('2026-10-07 12:00:00', new \DateTimeZone('UTC'));
     }
 
@@ -61,25 +59,14 @@ final class BigQuerySyncRunnerTest extends TestCase
         rmdir($this->projectDir);
     }
 
-    public static function database(): Connection
-    {
-        $connection = DriverManager::getConnection(['driver' => 'pdo_sqlite', 'memory' => true]);
-        $schema = new Schema();
-        (new Version20261007000000($connection, new NullLogger()))->up($schema);
-        foreach ($connection->getDatabasePlatform()->getCreateTablesSQL($schema->getTables()) as $sql) {
-            $connection->executeStatement($sql);
-        }
-
-        return $connection;
-    }
-
     public function testNothingRunsWhileSyncIsOff(): void
     {
         $result = $this->runner(['bigquery_enabled' => false])->run(true);
 
         self::assertSame(['enabled' => false, 'results' => []], $result);
         self::assertSame([], $this->loads);
-        self::assertSame([], (new BigQuerySyncStateStore($this->connection))->all());
+        self::assertSame([], $this->tasks()->latest(BigQuerySyncRunner::TASK_TYPE));
+        self::assertSame(0, (int) $this->connection->fetchOne('SELECT COUNT(*) FROM audit_trail'));
     }
 
     public function testEachSelectedViewReplacesItsTableAndRecordsTheResult(): void
@@ -92,12 +79,18 @@ final class BigQuerySyncRunnerTest extends TestCase
             ['view' => 'analytics_custom_events_v1', 'status' => 'synced', 'rows' => 3, 'message' => 'Replaced my-project.aggregate.analytics_custom_events_v1 with 3 rows.'],
         ], $result['results']);
         self::assertSame([['load', 'bi_anonymous_events_v1'], ['empty', 'bi_dim_device_class_v1'], ['load', 'analytics_custom_events_v1']], $this->loads);
-        $states = (new BigQuerySyncStateStore($this->connection))->all();
-        self::assertSame('success', $states['bi_anonymous_events_v1']['status']);
-        self::assertSame(3, $states['bi_anonymous_events_v1']['row_count']);
-        self::assertEquals($this->now, $states['bi_anonymous_events_v1']['succeeded_at']);
-        self::assertSame('job-bi_anonymous_events_v1', $states['bi_anonymous_events_v1']['job_id']);
-        self::assertEquals($this->now, $states[BigQuerySyncStateStore::RUNNER]['started_at']);
+        $task = $this->tasks()->latest(BigQuerySyncRunner::TASK_TYPE)['bi_anonymous_events_v1']['success'];
+        self::assertSame('succeeded', $task['status']);
+        self::assertSame('schedule', $task['triggered_by']);
+        self::assertSame(3, $task['row_count']);
+        self::assertEquals($this->now, $task['finished_at']);
+        self::assertSame('job-bi_anonymous_events_v1', $task['external_id']);
+        // Each finished view sync is also an audit entry, linked to its task.
+        self::assertSame(
+            ['category' => 'task', 'operation' => 'bigquery_sync', 'subject' => 'bi_anonymous_events_v1', 'outcome' => 'succeeded', 'actor' => null, 'processing_task_id' => $task['id'], 'details' => 'Replaced my-project.aggregate.bi_anonymous_events_v1 with 3 rows.'],
+            $this->audit()[0],
+        );
+        self::assertCount(3, $this->audit());
         // Exports are deleted after each upload.
         self::assertSame([], glob($this->projectDir.'/var/bigquery/export-*') ?: []);
     }
@@ -126,9 +119,11 @@ final class BigQuerySyncRunnerTest extends TestCase
 
         self::assertSame(['synced', 'failed', 'synced'], array_column($result['results'], 'status'));
         self::assertSame('BigQuery refused the request: quota exceeded.', $result['results'][1]['message']);
-        $state = (new BigQuerySyncStateStore($this->connection))->all()['bi_dim_device_class_v1'];
-        self::assertSame('failed', $state['status']);
-        self::assertNull($state['succeeded_at']);
+        $latest = $this->tasks()->latest(BigQuerySyncRunner::TASK_TYPE)['bi_dim_device_class_v1'];
+        self::assertSame('failed', $latest['attempt']['status']);
+        self::assertSame('BigQuery refused the request: quota exceeded.', $latest['attempt']['details']);
+        self::assertNull($latest['success']);
+        self::assertSame(['failed', 'BigQuery refused the request: quota exceeded.'], [$this->audit()[1]['outcome'], $this->audit()[1]['details']]);
 
         $this->now = $this->now->modify('+15 minutes');
         $retry = $this->runner()->run();
@@ -162,16 +157,22 @@ final class BigQuerySyncRunnerTest extends TestCase
 
     public function testAViewAnotherRunHoldsIsSkippedUntilItsLeaseExpires(): void
     {
-        $store = new BigQuerySyncStateStore($this->connection);
-        self::assertNotNull($store->claim('bi_anonymous_events_v1', $this->now));
-        self::assertNull($store->claim('bi_anonymous_events_v1', $this->now->modify('+1 minute')));
+        $tasks = $this->tasks();
+        self::assertNotNull($tasks->start(BigQuerySyncRunner::TASK_TYPE, 'bi_anonymous_events_v1', TaskTrigger::command(), $this->now, BigQuerySyncRunner::LEASE_SECONDS));
 
+        $this->now = $this->now->modify('+1 minute');
         $result = $this->runner()->run(true);
         self::assertSame('busy', $result['results'][0]['status']);
         self::assertSame(['empty', 'bi_dim_device_class_v1'], $this->loads[0]);
 
-        // An abandoned claim (a crashed run) expires after the lease.
-        self::assertNotNull($store->claim('bi_anonymous_events_v1', $this->now->modify('+2 hours +1 second')));
+        // An abandoned run (a crashed process) is marked failed after the lease,
+        // and the next run takes over.
+        $this->now = $this->now->modify('+2 hours');
+        $this->loads = [];
+        self::assertSame('synced', $this->runner()->run(true, ['bi_anonymous_events_v1'])['results'][0]['status']);
+        $abandoned = $this->connection->fetchAssociative("SELECT status, details FROM processing_tasks WHERE id = 1");
+        self::assertSame('failed', $abandoned['status']);
+        self::assertStringContainsString('Stopped without a result', $abandoned['details']);
     }
 
     public function testOnlySelectedViewsCanBeRequestedAndInvalidSettingsStopEverything(): void
@@ -199,7 +200,8 @@ final class BigQuerySyncRunnerTest extends TestCase
         $runner->run();
         $after = $runner->status($settings);
         self::assertFalse($after['scheduler_late']);
-        self::assertSame('success', $after['views'][0]['status']);
+        self::assertSame('succeeded', $after['views'][0]['status']);
+        self::assertEquals($this->now, $after['last_run']);
         self::assertEquals($this->now->modify('+60 minutes'), $after['views'][0]['next_due']);
 
         $this->now = $this->now->modify('+3 hours');
@@ -217,6 +219,30 @@ final class BigQuerySyncRunnerTest extends TestCase
         self::assertSame([], $this->loads);
         array_map('unlink', glob($output.'/*'));
         rmdir($output);
+    }
+
+    public function testTheDashboardRecordsWhoAskedForTheSync(): void
+    {
+        $this->runner()->run(true, null, null, TaskTrigger::dashboard('scott'));
+
+        $task = $this->tasks()->latest(BigQuerySyncRunner::TASK_TYPE)['bi_anonymous_events_v1']['attempt'];
+        self::assertSame(['dashboard', 'scott'], [$task['triggered_by'], $task['requested_by']]);
+        self::assertSame(['scott', 'scott', 'scott'], array_column($this->audit(), 'actor'));
+        $this->runner()->run(true);
+        self::assertSame('command', $this->tasks()->latest(BigQuerySyncRunner::TASK_TYPE)['bi_anonymous_events_v1']['attempt']['triggered_by']);
+    }
+
+    private function tasks(): ProcessingTasks
+    {
+        return new ProcessingTasks($this->connection, new AuditTrail($this->connection));
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function audit(): array
+    {
+        return array_map(static fn (array $row): array => [...$row, 'processing_task_id' => $row['processing_task_id'] === null ? null : (int) $row['processing_task_id']], $this->connection->fetchAllAssociative(
+            'SELECT category, operation, subject, outcome, actor, processing_task_id, details FROM audit_trail ORDER BY id',
+        ));
     }
 
     private function settings(array $values): BigQuerySettings
@@ -276,7 +302,7 @@ final class BigQuerySyncRunnerTest extends TestCase
             $settings,
             $factory,
             $exporter,
-            new BigQuerySyncStateStore($this->connection),
+            $this->tasks(),
             new MockHttpClient(),
             $logger ?? new NullLogger(),
             fn (): \DateTimeImmutable => $this->now,

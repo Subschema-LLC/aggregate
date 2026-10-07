@@ -19,6 +19,12 @@ rows are rolled into when archiving is on (`analytics_archiving_enabled`). The
 reporting views include archived counts. See
 [archiving and retention](CONFIGURATION.md#archiving-and-retention).
 
+**Audit trail.** The private `audit_trail` table: one entry per finished
+processing task, with its outcome and details, and the administrator when one
+started it. Reserved for administrator actions too. Purged after
+`audit_trail_retention_days`. See
+[processing tasks and audit trail](DATABASE.md#processing-tasks-and-audit-trail).
+
 **BI glossary.** Labels and descriptions for codes, websites and columns, declared in
 configuration and published to BI tools through the `bi_dim_*` and
 `bi_glossary_*` views by `app:analytics:glossary:sync`. See
@@ -92,8 +98,9 @@ variables and command-line commands.
 **Kill switch.** `anonymous_tracking_enabled: false`, which stops all collection
 in both modes before anything is derived from a request.
 
-**Maintenance.** `app:analytics:maintain`: archiving and retention, run on a
-schedule. A database lease keeps two runs from overlapping.
+**Maintenance.** `app:analytics:maintain`: archiving, retention and purging of
+old task and audit records, run daily on a schedule. A database lease keeps two
+runs from overlapping.
 
 **Maintenance mode.** The 503 page served while an update replaces files,
 controlled by `app:updates:maintenance`.
@@ -115,6 +122,12 @@ it through marking links that open each website.
 **Page sequence.** Optional page depth (`page_sequence_enabled`, off by
 default): a number from 1 to 20 (20 meaning 20 or more) carried between pages in
 tab storage or a URL parameter. See [optional page depth](DATA-MODEL.md#optional-page-depth).
+
+**Processing task.** One run of a background job, such as a BigQuery view sync
+or a maintenance run, recorded in the private `processing_tasks` table with its
+status (`running`, `succeeded` or `failed`) and details. An exclusive job's lock
+key keeps two runs of it from overlapping. See
+[processing tasks and audit trail](DATABASE.md#processing-tasks-and-audit-trail).
 
 **Referrer channel.** A coarse category for where a visit came from, such as
 `search` or `direct`, instead of the full referring URL.
