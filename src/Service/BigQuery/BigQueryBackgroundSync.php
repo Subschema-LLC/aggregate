@@ -11,7 +11,8 @@ use Symfony\Component\Process\Process;
 /**
  * Starts app:bigquery:sync --force from the admin page in a background
  * process, so a long upload does not hold a web request open. Its output
- * goes to var/bigquery/last-run.log; results appear in the status table.
+ * goes to var/bigquery/last-run.log; results appear in the status table, and
+ * each view's task records the administrator who asked for it.
  */
 class BigQueryBackgroundSync
 {
@@ -43,7 +44,7 @@ class BigQueryBackgroundSync
     }
 
     /** @throws \RuntimeException with a message for the administrator */
-    public function start(): void
+    public function start(string $requestedBy): void
     {
         $problem = $this->problem();
         if ($problem !== null) {
@@ -53,7 +54,7 @@ class BigQueryBackgroundSync
         if (!is_dir($directory) && !@mkdir($directory, 0700, true) && !is_dir($directory)) {
             throw new \RuntimeException('var/bigquery could not be created. Check that var is writable.');
         }
-        $command = [...$this->toolchain->php(), $this->projectDir.'/bin/console', 'app:bigquery:sync', '--force', '--env='.$this->environment, '--no-interaction'];
+        $command = [...$this->toolchain->php(), $this->projectDir.'/bin/console', 'app:bigquery:sync', '--force', '--requested-by='.$requestedBy, '--env='.$this->environment, '--no-interaction'];
         if (!$this->debug) {
             $command[] = '--no-debug';
         }

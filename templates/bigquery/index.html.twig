@@ -29,7 +29,7 @@
         <p>Each sync replaces a BigQuery table with the current contents of its view, so the tables always match Aggregate as of their last sync. Deletions and suppression in Aggregate carry over at the next sync.</p>
         {% if status.scheduler_late %}
             <div class="notification is-warning is-light mt-3" role="status">
-                <p><strong>The scheduled sync is not running.</strong> {% if status.runner and status.runner.started_at %}It last ran {{ status.runner.started_at|date('Y-m-d H:i', 'UTC') }} UTC.{% else %}It has not run yet.{% endif %} Add this line to the web server user’s crontab:</p>
+                <p><strong>The scheduled sync is not running.</strong> {% if status.last_run %}The last view sync started {{ status.last_run|date('Y-m-d H:i', 'UTC') }} UTC.{% else %}No view has synced yet.{% endif %} Add this line to the web server user’s crontab:</p>
                 <pre class="mt-2 bigquery-cron"><code>{{ cron_line }}</code></pre>
             </div>
         {% endif %}
@@ -244,7 +244,7 @@
                         <tr>
                             <th scope="row"><code>{{ view.view }}</code>{% if view.private %} <span class="tag is-warning is-light">private</span>{% endif %}</th>
                             <td>
-                                {% if view.status == 'success' %}<span class="tag is-success is-light">Synced</span>
+                                {% if view.status == 'succeeded' %}<span class="tag is-success is-light">Synced</span>
                                 {% elseif view.status == 'failed' %}<span class="tag is-danger is-light">Failed</span>
                                 {% elseif view.status == 'running' %}<span class="tag is-info is-light">Syncing…</span>
                                 {% else %}<span class="tag is-light">Not synced yet</span>{% endif %}
@@ -259,7 +259,7 @@
                 </table>
             </div>
         {% endif %}
-        <p class="help">From the command line: <code>php bin/console app:bigquery:check</code> shows this status and tests the connection; <code>php bin/console app:bigquery:sync --force</code> syncs now; <code>--dry-run</code> exports locally without uploading.</p>
+        <p class="help">From the command line: <code>php bin/console app:bigquery:check</code> shows this status and tests the connection; <code>php bin/console app:bigquery:sync --force</code> syncs now; <code>--dry-run</code> exports locally without uploading. Every view sync is also recorded in the <code>processing_tasks</code> table and the audit trail.</p>
     </section>
 
     {# Forms submitted by buttons above, which cannot be nested in the settings forms. #}

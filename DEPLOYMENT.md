@@ -584,11 +584,11 @@ Add to crontab:
 
 ### Scheduled commands
 
-Two optional features run from the scheduler of the user that runs Aggregate,
-never from web requests:
+Two commands run from the scheduler of the user that runs Aggregate, never from
+web requests:
 
 ```cron
-# Archiving and retention, when either is turned on
+# Archiving, retention and purging of old task and audit records (on by default)
 15 3 * * * cd /var/www/aggregate && php bin/console app:analytics:maintain --no-interaction
 # BigQuery sync, when it is turned on: each view syncs once per its interval
 */5 * * * * cd /var/www/aggregate && php bin/console app:bigquery:sync --no-interaction

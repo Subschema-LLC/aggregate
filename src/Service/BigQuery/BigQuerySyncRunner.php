@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Service\BigQuery;
 
+use App\Service\Operations\ProcessingTasks;
+use App\Service\Operations\TaskTrigger;
 use Psr\Log\LoggerInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
@@ -12,10 +14,15 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  * a temporary file and replaces its BigQuery table with one load job, so a
  * table always holds a complete copy of the view as of its last sync.
  * app:bigquery:sync runs this every few minutes; a view syncs when its
- * interval has passed (or with --force).
+ * interval has passed (or with --force). Each view sync is a processing task
+ * (type bigquery_sync, subject = view) that holds the view's lock while it
+ * runs and ends in the audit trail.
  */
 class BigQuerySyncRunner
 {
+    public const TASK_TYPE = 'bigquery_sync';
+    /** A sync still running after this long is treated as abandoned. */
+    public const LEASE_SECONDS = 7200;
     /** A scheduled run every five minutes lands within this margin of the interval. */
     private const SCHEDULE_SLACK_MINUTES = 5;
     private const RETRY_AFTER_FAILURE_MINUTES = 15;
@@ -31,7 +38,7 @@ class BigQuerySyncRunner
         private readonly BigQuerySettings $settings,
         private readonly BigQueryCredentialsFactory $credentials,
         private readonly BigQueryViewExporter $exporter,
-        private readonly BigQuerySyncStateStore $states,
+        private readonly ProcessingTasks $tasks,
         private readonly HttpClientInterface $http,
         private readonly LoggerInterface $logger,
         ?\Closure $clock = null,
@@ -44,13 +51,16 @@ class BigQuerySyncRunner
     /**
      * @param list<string>|null $only Views to sync now (they must be selected).
      * @param (callable(string): void)|null $progress
+     * @param TaskTrigger|null $trigger Recorded with each view's task; by default
+     *                                  "schedule", or "command" with --force or views
      *
      * @return array{enabled: bool, results: list<array{view: string, status: string, rows: ?int, message: string}>}
      *
      * @throws \InvalidArgumentException when the settings are invalid
      */
-    public function run(bool $force = false, ?array $only = null, ?callable $progress = null): array
+    public function run(bool $force = false, ?array $only = null, ?callable $progress = null, ?TaskTrigger $trigger = null): array
     {
+        $trigger ??= $force || $only !== null ? TaskTrigger::command() : TaskTrigger::schedule();
         $settings = $this->settings->toArray();
         if (!$settings[BigQuerySettings::KEY_ENABLED]) {
             return ['enabled' => false, 'results' => []];
@@ -63,9 +73,8 @@ class BigQuerySyncRunner
         }
         $views = $only ?? $selected;
         $now = ($this->clock)();
-        $states = $this->states->all();
-        $due = $force ? $views : array_values(array_filter($views, fn (string $view): bool => $this->isDue($states[$view] ?? null, $settings[BigQuerySettings::KEY_INTERVAL], $now)));
-        $this->states->recordRunner($now, $due === [] ? 'Nothing was due.' : 'Synced '.count($due).' view(s).');
+        $latest = $this->tasks->latest(self::TASK_TYPE);
+        $due = $force ? $views : array_values(array_filter($views, fn (string $view): bool => $this->isDue($latest[$view]['attempt'] ?? null, $settings[BigQuerySettings::KEY_INTERVAL], $now)));
         $results = [];
         foreach (array_diff($views, $due) as $view) {
             $results[] = ['view' => $view, 'status' => 'not_due', 'rows' => null, 'message' => 'Not due yet.'];
@@ -90,7 +99,7 @@ class BigQuerySyncRunner
         }
 
         foreach ($due as $view) {
-            $results[] = $this->syncView($view, $settings, $client, $setupError, $progress);
+            $results[] = $this->syncView($view, $settings, $client, $setupError, $progress, $trigger);
         }
         usort($results, static fn (array $a, array $b): int => array_search($a['view'], $views, true) <=> array_search($b['view'], $views, true));
 
@@ -159,44 +168,52 @@ class BigQuerySyncRunner
     }
 
     /**
-     * Status for the admin page and app:bigquery:check.
+     * Status for the admin page and app:bigquery:check, from each view's
+     * latest processing task. The scheduler counts as late when sync is on
+     * and no view sync has started for twice the interval (at least 30
+     * minutes): every view is attempted at least once per interval.
      *
-     * @return array{runner: ?array{started_at: ?\DateTimeImmutable}, views: list<array{view: string, private: bool, description: string, status: string, started_at: ?\DateTimeImmutable, finished_at: ?\DateTimeImmutable, succeeded_at: ?\DateTimeImmutable, row_count: ?int, message: ?string, job_id: ?string, next_due: ?\DateTimeImmutable}>, scheduler_late: bool}
+     * @return array{last_run: ?\DateTimeImmutable, views: list<array{view: string, private: bool, description: string, status: string, started_at: ?\DateTimeImmutable, finished_at: ?\DateTimeImmutable, succeeded_at: ?\DateTimeImmutable, row_count: ?int, message: ?string, job_id: ?string, next_due: ?\DateTimeImmutable}>, scheduler_late: bool}
      */
     public function status(array $settings): array
     {
-        $states = $this->states->all();
+        $latest = $this->tasks->latest(self::TASK_TYPE);
         $now = ($this->clock)();
         $views = [];
         foreach (BigQuerySettings::selectedViews($settings) as $view) {
-            $state = $states[$view] ?? null;
+            $attempt = $latest[$view]['attempt'] ?? null;
+            $success = $latest[$view]['success'] ?? null;
             $views[] = [
                 'view' => $view,
                 'private' => BigQueryViewCatalog::isPrivate($view),
                 'description' => BigQueryViewCatalog::describe($view),
-                'status' => $state['status'] ?? 'never',
-                'started_at' => $state['started_at'] ?? null,
-                'finished_at' => $state['finished_at'] ?? null,
-                'succeeded_at' => $state['succeeded_at'] ?? null,
-                'row_count' => $state['row_count'] ?? null,
-                'message' => $state['message'] ?? null,
-                'job_id' => $state['job_id'] ?? null,
-                'next_due' => $this->nextDue($state, $settings[BigQuerySettings::KEY_INTERVAL]),
+                'status' => $attempt['status'] ?? 'never',
+                'started_at' => $attempt['started_at'] ?? null,
+                'finished_at' => $attempt['finished_at'] ?? null,
+                'succeeded_at' => $success['finished_at'] ?? null,
+                'row_count' => $success['row_count'] ?? null,
+                'message' => $attempt['details'] ?? null,
+                'job_id' => $attempt['external_id'] ?? null,
+                'next_due' => $this->nextDue($attempt, $settings[BigQuerySettings::KEY_INTERVAL]),
             ];
         }
-        $runner = $states[BigQuerySyncStateStore::RUNNER] ?? null;
-        $lastRun = $runner['started_at'] ?? null;
+        $lastRun = null;
+        foreach ($latest as $tasks) {
+            if ($lastRun === null || $tasks['attempt']['started_at'] > $lastRun) {
+                $lastRun = $tasks['attempt']['started_at'];
+            }
+        }
         $late = $settings[BigQuerySettings::KEY_ENABLED]
             && ($lastRun === null || $lastRun < $now->modify('-'.max(30, 2 * $settings[BigQuerySettings::KEY_INTERVAL]).' minutes'));
 
-        return ['runner' => $runner === null ? null : ['started_at' => $lastRun], 'views' => $views, 'scheduler_late' => $late];
+        return ['last_run' => $lastRun, 'views' => $views, 'scheduler_late' => $late];
     }
 
     /** @param array<string, mixed> $settings @return array{view: string, status: string, rows: ?int, message: string} */
-    private function syncView(string $view, array $settings, ?BigQueryClient $client, ?string $setupError, ?callable $progress): array
+    private function syncView(string $view, array $settings, ?BigQueryClient $client, ?string $setupError, ?callable $progress, TaskTrigger $trigger): array
     {
-        $token = $this->states->claim($view, ($this->clock)());
-        if ($token === null) {
+        $task = $this->tasks->start(self::TASK_TYPE, $view, $trigger, ($this->clock)(), self::LEASE_SECONDS);
+        if ($task === null) {
             return ['view' => $view, 'status' => 'busy', 'rows' => null, 'message' => 'Another sync of this view is running.'];
         }
         if ($progress !== null) {
@@ -218,7 +235,7 @@ class BigQuerySyncRunner
                 throw new BigQueryException(sprintf('BigQuery loaded %d of %d rows.', $result['rows'], $export['rows']));
             }
             $message = sprintf('Replaced %s.%s.%s with %d row%s.', $client->project(), $settings[BigQuerySettings::KEY_DATASET], $table, $export['rows'], $export['rows'] === 1 ? '' : 's');
-            $this->states->finish($view, $token, true, $export['rows'], $message, $jobId, ($this->clock)());
+            $this->tasks->succeed($task, ($this->clock)(), $export['rows'], $message, $jobId);
 
             return ['view' => $view, 'status' => 'synced', 'rows' => $export['rows'], 'message' => $message];
         } catch (\Throwable $e) {
@@ -228,7 +245,7 @@ class BigQuerySyncRunner
                 $this->logger->error('BigQuery sync of a view failed.', ['view' => $view, 'exception' => $e]);
                 $message = 'The view could not be synced ('.(new \ReflectionClass($e))->getShortName().'); see the application log.';
             }
-            $this->states->finish($view, $token, false, null, $message, $jobId, ($this->clock)());
+            $this->tasks->fail($task, ($this->clock)(), $message, $jobId);
 
             return ['view' => $view, 'status' => 'failed', 'rows' => null, 'message' => $message];
         } finally {
@@ -238,22 +255,22 @@ class BigQuerySyncRunner
         }
     }
 
-    /** @param array{status: string, started_at: ?\DateTimeImmutable}|null $state */
-    private function isDue(?array $state, int $interval, \DateTimeImmutable $now): bool
+    /** @param array{status: string, started_at: \DateTimeImmutable}|null $attempt */
+    private function isDue(?array $attempt, int $interval, \DateTimeImmutable $now): bool
     {
-        $next = $this->nextDue($state, $interval);
+        $next = $this->nextDue($attempt, $interval);
 
         return $next === null || $now >= $next->modify('-'.min(self::SCHEDULE_SLACK_MINUTES, intdiv($interval, 3)).' minutes');
     }
 
-    /** @param array{status: string, started_at: ?\DateTimeImmutable}|null $state */
-    private function nextDue(?array $state, int $interval): ?\DateTimeImmutable
+    /** @param array{status: string, started_at: \DateTimeImmutable}|null $attempt */
+    private function nextDue(?array $attempt, int $interval): ?\DateTimeImmutable
     {
-        $started = $state['started_at'] ?? null;
-        if ($started === null) {
+        if ($attempt === null) {
             return null;
         }
-        $wait = ($state['status'] ?? '') === 'failed' ? min(self::RETRY_AFTER_FAILURE_MINUTES, $interval) : $interval;
+        $started = $attempt['started_at'];
+        $wait = $attempt['status'] === ProcessingTasks::FAILED ? min(self::RETRY_AFTER_FAILURE_MINUTES, $interval) : $interval;
 
         return $started->modify('+'.$wait.' minutes');
     }

@@ -76,12 +76,12 @@ final class BigQueryController extends AbstractController
             $status = $this->runner->status($settings);
         } catch (\Throwable $e) {
             $this->logger->error('Failed to read BigQuery sync status.', ['exception' => $e]);
-            $status = ['runner' => null, 'views' => [], 'scheduler_late' => false];
+            $status = ['last_run' => null, 'views' => [], 'scheduler_late' => false];
             $error ??= 'The sync status could not be read. Run the database migrations (php bin/console doctrine:migrations:migrate).';
         }
         // After “Sync now”, the page waits for the background run to start and finish.
         $requested = $request->getSession()->get(self::SESSION_SYNC_REQUESTED);
-        $lastRun = $status['runner']['started_at'] ?? null;
+        $lastRun = $status['last_run'];
         if (!is_int($requested) || $requested < time() - 600 || ($lastRun !== null && $lastRun->getTimestamp() >= $requested && !in_array('running', array_column($status['views'], 'status'), true))) {
             $request->getSession()->remove(self::SESSION_SYNC_REQUESTED);
             $requested = null;
@@ -122,7 +122,7 @@ final class BigQueryController extends AbstractController
 
         return new JsonResponse([
             'running' => in_array('running', array_column($status['views'], 'status'), true),
-            'last_run' => ($status['runner']['started_at'] ?? null)?->getTimestamp(),
+            'last_run' => $status['last_run']?->getTimestamp(),
             'views' => array_map(static fn (array $view): array => ['view' => $view['view'], 'status' => $view['status']], $status['views']),
         ], headers: ['Cache-Control' => 'no-store']);
     }
@@ -288,7 +288,7 @@ final class BigQueryController extends AbstractController
             if (!$this->settings->toArray()[BigQuerySettings::KEY_ENABLED]) {
                 throw new \RuntimeException('Turn BigQuery sync on before syncing.');
             }
-            $this->background->start();
+            $this->background->start($this->getUser()?->getUserIdentifier() ?? 'administrator');
             $request->getSession()->set(self::SESSION_SYNC_REQUESTED, time());
             $this->addFlash('success', 'The sync has started. This page shows each view’s result when it finishes.');
         } catch (\RuntimeException|\InvalidArgumentException $e) {

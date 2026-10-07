@@ -40,6 +40,8 @@ services:
             - '../src/Setup/FirstRunSetup.php'
             # BigQuery value objects and per-run clients, built by their factories.
             - '../src/Service/BigQuery/{BigQueryClient,BigQueryException,GoogleCloudCredentials,GoogleSignInCredentials,ServiceAccountCredentials,ServiceAccountKey,TokenCache}.php'
+            # Value object describing what started a processing task.
+            - '../src/Service/Operations/TaskTrigger.php'
 
     App\Controller\HomeController: ~
     App\Controller\ReceiveController:

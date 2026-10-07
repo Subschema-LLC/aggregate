@@ -190,6 +190,8 @@ environments:
     analytics_enhanced_retention_days: 90
     analytics_archive_retention_days: 730
     analytics_maintenance_batch_size: 1000
+    processing_tasks_retention_days: 90
+    audit_trail_retention_days: 365
 
   prod:
     rate_limit_per_minute: 100
@@ -225,6 +227,8 @@ environments:
     analytics_enhanced_retention_days: 90
     analytics_archive_retention_days: 730
     analytics_maintenance_batch_size: 1000
+    processing_tasks_retention_days: 90
+    audit_trail_retention_days: 365
 
   test:
     rate_limit_per_minute: 1000
@@ -259,6 +263,8 @@ environments:
     analytics_enhanced_retention_days: 90
     analytics_archive_retention_days: 730
     analytics_maintenance_batch_size: 1000
+    processing_tasks_retention_days: 90
+    audit_trail_retention_days: 365
 
 # Configuration options:
 #
@@ -430,6 +436,13 @@ environments:
 #
 # analytics_maintenance_batch_size (optional, default: 1000; range: 100..10000)
 #   Maximum raw rows processed in each maintenance batch.
+#
+# processing_tasks_retention_days (optional, default: 90; range: 0..36500)
+#   Purge background job runs (processing_tasks) after this many days, keeping
+#   each job's latest success and failure. 0 keeps them.
+#
+# audit_trail_retention_days (optional, default: 365; range: 0..36500)
+#   Purge audit trail entries after this many days. 0 keeps them.
 #
 # When archiving and retention are both enabled, both raw retention periods
 # must be at least analytics_archive_after_days. Whenever retention is enabled,
