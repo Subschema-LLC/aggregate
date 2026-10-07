@@ -359,7 +359,7 @@ An optional [JavaScript minification build](JS-BUILD.md) produces the tracker an
 
 ## Archiving and retention
 
-Administrators can edit the seven `analytics_*` lifecycle settings at `/dashboard/data-lifecycle`; API-only deployments can manage the same keys in `config/aggregate.yaml`. Uppercase environment variables (for example, `ANALYTICS_RETENTION_ENABLED`) take precedence and lock the corresponding UI controls. Values are validated strictly. When archiving and retention are both enabled, each raw retention period must be at least `analytics_archive_after_days`. Whenever retention is enabled, archive retention must be at least the longer raw retention period so marked source rows cannot disappear from reporting early.
+Administrators can edit the nine lifecycle settings at `/dashboard/data-lifecycle`: the seven `analytics_*` settings below and the two record retention periods. API-only deployments can manage the same keys in `config/aggregate.yaml`. Uppercase environment variables (for example, `ANALYTICS_RETENTION_ENABLED`) take precedence and lock the corresponding UI controls. Values are validated strictly. When archiving and retention are both enabled, each raw retention period must be at least `analytics_archive_after_days`. Whenever retention is enabled, archive retention must be at least the longer raw retention period so marked source rows cannot disappear from reporting early.
 
 Run maintenance outside the web process, normally once per day. Both features are disabled by default; inspect a dry run before enabling irreversible deletion:
 
@@ -371,6 +371,23 @@ php bin/console app:analytics:maintain
 ```
 
 Archiving creates private, unsuppressed aggregate cells and marks the source rows as archived; it does not itself delete raw rows. Retention deletes raw anonymous, raw enhanced, and archived aggregate data only after their configured periods. Backups, BI extracts, queues, failed messages, logs, and replicas need separate retention controls.
+
+### Task and audit records
+
+Background jobs (each BigQuery view sync and each maintenance run) are recorded in
+the private [`processing_tasks` and `audit_trail` tables](DATABASE.md#processing-tasks-and-audit-trail).
+Maintenance purges them after these periods; `0` keeps them indefinitely. The
+latest success and the latest failure of each job are always kept so schedules
+and status pages still know when it last ran.
+
+| Setting | Environment variable | Default | Range |
+| --- | --- | --- | --- |
+| `processing_tasks_retention_days` | `PROCESSING_TASKS_RETENTION_DAYS` | `90` | `0`–`36500` |
+| `audit_trail_retention_days` | `AUDIT_TRAIL_RETENTION_DAYS` | `365` | `0`–`36500` |
+
+Purging is on by default, so schedule `app:analytics:maintain` daily even when
+archiving and retention are off. Its dry run shows how many records would be
+purged, and each run records what it archived, deleted and purged.
 
 ## BigQuery sync
 
@@ -506,6 +523,7 @@ administration. Each settings page loads the data needed for its own task.
 | Observed properties | `/dashboard/data-model/discovery` | Explicit bounded metadata discovery |
 | Reporting views | `/dashboard/data-model/reporting` | Saved SQL preview and explicit regeneration |
 | BigQuery sync | `/dashboard/bigquery` | Sign-in, views, schedule and status of the BigQuery copy |
+| Data lifecycle | `/dashboard/data-lifecycle` | Archiving, retention, task and audit record purging, and the last maintenance run |
 
 Settings, users, and model pages require an administrator. Existing POST paths
 remain available and return to the page that owns the form. The general-settings
@@ -693,4 +711,6 @@ export ANALYTICS_ANONYMOUS_RETENTION_DAYS="365"
 export ANALYTICS_ENHANCED_RETENTION_DAYS="90"
 export ANALYTICS_ARCHIVE_RETENTION_DAYS="730"
 export ANALYTICS_MAINTENANCE_BATCH_SIZE="1000"
+export PROCESSING_TASKS_RETENTION_DAYS="90"
+export AUDIT_TRAIL_RETENTION_DAYS="365"
 ```

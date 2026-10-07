@@ -56,6 +56,12 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   registration manages primary domains, per-token source-domain rules, and ingestion
   tokens separately. Preserve existing deployments and reporting
   contracts through an explicit migration design.
+- **Administrator actions in the audit trail.** The `audit_trail` table records
+  every finished processing task and reserves the `admin` category for
+  administrator actions, such as saving settings, managing users and websites, and
+  installing updates. Record those with the acting username, keeping secrets and
+  submitted values out of the details. Other background jobs, such as glossary
+  sync and updates, can record their runs in `processing_tasks` the same way.
 - **Targeted feature rollout.** Extend
   [deployment-wide feature flags](docs/FEATURE-FLAGS.md) to selected websites or
   administrators where there is a concrete need. Preserve authorization and
@@ -193,6 +199,7 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   preserved brand colors and fonts across modes.
 - [Feature flags](docs/FEATURE-FLAGS.md), with shared YAML/admin UI settings, server and CLI enforcement, and independent navigation visibility. Updates is the first registered capability; developer and contributor guidance explains how to add more.
 - [BigQuery sync](docs/BIGQUERY.md) of selected reporting views on an interval, with service account key, Google Cloud and Google sign-in authentication, explicit opt-in for private views, a status page and headless commands.
+- [Processing tasks and an audit trail](docs/DATABASE.md#processing-tasks-and-audit-trail): two shared private tables for background job runs (status, lock, failure details) and their outcomes, used by BigQuery sync and maintenance, with UI/YAML purge periods.
 - [Organization traffic markers](docs/PRIVACY-COMPLIANCE.md#organization-traffic), with YAML/UI settings, marking links that set the marker on each tracked website, and a fixed `org_internal_traffic` flag on every event. Filtering uses retained event JSON; grouped BI views and archives do not retain the flag.
 - [Custom data models](docs/DATA-MODEL.md), including UTM/query mappings, per-property consent settings, downloadable YAML, and private reporting columns. All UTMs require consent by default; anonymous attribution should use at most broad `utm_medium` values, with documented warnings for overrides.
 - [Optional JavaScript minification](docs/JS-BUILD.md) for tracker, organization-marker, and drop-in scripts.

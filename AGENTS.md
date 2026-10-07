@@ -20,6 +20,9 @@ remain straightforward. Favor understandable designs over feature count.
   Use the existing bounded `custom_data` model for suitable optional scalar
   properties. Do not introduce a table per event type, campaign parameter, or
   custom property. Add tables or abstractions only for a concrete requirement.
+  Background jobs record runs in the shared `processing_tasks` and
+  `audit_trail` tables through `App\Service\Operations`, not in a status table
+  of their own.
 - **Keep the application headless.** Collection, installation, configuration,
   and maintenance must remain usable with the dashboard disabled. The optional
   web UI is for administration: setup, website/user management, configuration,

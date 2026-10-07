@@ -4,7 +4,12 @@ declare(strict_types=1);
 
 namespace App\Service;
 
-/** Validated archive and deletion settings shared by the UI and maintenance command. */
+/**
+ * Validated archive, deletion and record purge settings shared by the Data
+ * lifecycle page, YAML, environment variables and app:analytics:maintain.
+ * The two record settings purge the audit trail and processing tasks after
+ * that many days; 0 keeps them.
+ */
 final class AnalyticsDataLifecyclePolicy
 {
     public const KEY_ARCHIVING_ENABLED = 'analytics_archiving_enabled';
@@ -14,6 +19,8 @@ final class AnalyticsDataLifecyclePolicy
     public const KEY_ENHANCED_RETENTION_DAYS = 'analytics_enhanced_retention_days';
     public const KEY_ARCHIVE_RETENTION_DAYS = 'analytics_archive_retention_days';
     public const KEY_MAINTENANCE_BATCH_SIZE = 'analytics_maintenance_batch_size';
+    public const KEY_AUDIT_TRAIL_RETENTION_DAYS = 'audit_trail_retention_days';
+    public const KEY_PROCESSING_TASKS_RETENTION_DAYS = 'processing_tasks_retention_days';
 
     public const DEFAULT_ARCHIVING_ENABLED = false;
     public const DEFAULT_ARCHIVE_AFTER_DAYS = 90;
@@ -22,8 +29,12 @@ final class AnalyticsDataLifecyclePolicy
     public const DEFAULT_ENHANCED_RETENTION_DAYS = 90;
     public const DEFAULT_ARCHIVE_RETENTION_DAYS = 730;
     public const DEFAULT_MAINTENANCE_BATCH_SIZE = 1000;
+    public const DEFAULT_AUDIT_TRAIL_RETENTION_DAYS = 365;
+    public const DEFAULT_PROCESSING_TASKS_RETENTION_DAYS = 90;
 
     public const MIN_DAYS = 1;
+    /** Record retention may be 0: keep everything. */
+    public const MIN_RECORD_DAYS = 0;
     public const MAX_DAYS = 36_500;
     public const MIN_BATCH_SIZE = 100;
     public const MAX_BATCH_SIZE = 10_000;
@@ -37,6 +48,8 @@ final class AnalyticsDataLifecyclePolicy
         self::KEY_ENHANCED_RETENTION_DAYS => self::DEFAULT_ENHANCED_RETENTION_DAYS,
         self::KEY_ARCHIVE_RETENTION_DAYS => self::DEFAULT_ARCHIVE_RETENTION_DAYS,
         self::KEY_MAINTENANCE_BATCH_SIZE => self::DEFAULT_MAINTENANCE_BATCH_SIZE,
+        self::KEY_AUDIT_TRAIL_RETENTION_DAYS => self::DEFAULT_AUDIT_TRAIL_RETENTION_DAYS,
+        self::KEY_PROCESSING_TASKS_RETENTION_DAYS => self::DEFAULT_PROCESSING_TASKS_RETENTION_DAYS,
     ];
 
     /** @var array<string, string> */
@@ -48,6 +61,8 @@ final class AnalyticsDataLifecyclePolicy
         self::KEY_ENHANCED_RETENTION_DAYS => 'enhanced_retention_days',
         self::KEY_ARCHIVE_RETENTION_DAYS => 'archive_retention_days',
         self::KEY_MAINTENANCE_BATCH_SIZE => 'batch_size',
+        self::KEY_AUDIT_TRAIL_RETENTION_DAYS => 'audit_trail_retention_days',
+        self::KEY_PROCESSING_TASKS_RETENTION_DAYS => 'processing_tasks_retention_days',
     ];
 
     public function __construct(private readonly AggregateConfigLoader $config)
@@ -89,6 +104,16 @@ final class AnalyticsDataLifecyclePolicy
         return $this->toArray()[self::KEY_MAINTENANCE_BATCH_SIZE];
     }
 
+    public function getAuditTrailRetentionDays(): int
+    {
+        return $this->toArray()[self::KEY_AUDIT_TRAIL_RETENTION_DAYS];
+    }
+
+    public function getProcessingTasksRetentionDays(): int
+    {
+        return $this->toArray()[self::KEY_PROCESSING_TASKS_RETENTION_DAYS];
+    }
+
     /**
      * Return effective, typed values using YAML defaults and uppercase
      * environment-variable overrides.
@@ -123,6 +148,8 @@ final class AnalyticsDataLifecyclePolicy
      *     enhanced_retention_days: int,
      *     archive_retention_days: int,
      *     batch_size: int,
+     *     audit_trail_retention_days: int,
+     *     processing_tasks_retention_days: int,
      *     environment_overrides: array<string, bool>
      * }
      */
@@ -220,6 +247,18 @@ final class AnalyticsDataLifecyclePolicy
                 self::KEY_MAINTENANCE_BATCH_SIZE,
                 self::MIN_BATCH_SIZE,
                 self::MAX_BATCH_SIZE,
+            ),
+            self::KEY_AUDIT_TRAIL_RETENTION_DAYS => self::parseInteger(
+                $values[self::KEY_AUDIT_TRAIL_RETENTION_DAYS],
+                self::KEY_AUDIT_TRAIL_RETENTION_DAYS,
+                self::MIN_RECORD_DAYS,
+                self::MAX_DAYS,
+            ),
+            self::KEY_PROCESSING_TASKS_RETENTION_DAYS => self::parseInteger(
+                $values[self::KEY_PROCESSING_TASKS_RETENTION_DAYS],
+                self::KEY_PROCESSING_TASKS_RETENTION_DAYS,
+                self::MIN_RECORD_DAYS,
+                self::MAX_DAYS,
             ),
         ];
 

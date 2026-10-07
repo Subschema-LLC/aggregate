@@ -8,6 +8,7 @@ use App\Service\BigQuery\BigQueryException;
 use App\Service\BigQuery\BigQuerySettings;
 use App\Service\BigQuery\BigQuerySyncRunner;
 use App\Service\BigQuery\BigQueryViewCatalog;
+use App\Service\Operations\TaskTrigger;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -38,6 +39,7 @@ final class BigQuerySyncCommand extends Command
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Export the views locally and report rows and columns; upload nothing and use no credentials')
             ->addOption('output', null, InputOption::VALUE_REQUIRED, 'With --dry-run, keep the exported NDJSON and schema files in this folder')
             ->addOption('json', null, InputOption::VALUE_NONE, 'Print the result as JSON')
+            ->addOption('requested-by', null, InputOption::VALUE_REQUIRED, 'Set by the dashboard’s Sync now: the administrator recorded with each task')
             ->setHelp(<<<'HELP'
 Schedule this command every five minutes, for example with cron:
 
@@ -45,8 +47,9 @@ Schedule this command every five minutes, for example with cron:
 
 Each selected view is copied when the configured interval has passed since its
 last sync. Settings come from the BigQuery admin page, config/aggregate.yaml or
-BIGQUERY_* environment variables. --dry-run reads every selected view (or the
---view names, which may be any syncable view) and uploads nothing.
+BIGQUERY_* environment variables. Every view sync is recorded in the
+processing_tasks table and the audit trail. --dry-run reads every selected view
+(or the --view names, which may be any syncable view) and uploads nothing.
 HELP);
     }
 
@@ -66,9 +69,10 @@ HELP);
         }
 
         try {
+            $requestedBy = $input->getOption('requested-by');
             $result = $this->runner->run((bool) $input->getOption('force'), $views === [] ? null : $views, $json ? null : static function (string $view) use ($io): void {
                 $io->writeln('Syncing '.$view.'…');
-            });
+            }, is_string($requestedBy) && $requestedBy !== '' ? TaskTrigger::dashboard($requestedBy) : null);
         } catch (\InvalidArgumentException $e) {
             $io->error(['The BigQuery settings are invalid; nothing was synced.', $e->getMessage()]);
 

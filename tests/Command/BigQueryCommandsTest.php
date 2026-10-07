@@ -11,6 +11,7 @@ use App\Service\BigQuery\BigQueryBackgroundSync;
 use App\Service\BigQuery\BigQueryException;
 use App\Service\BigQuery\BigQuerySettings;
 use App\Service\BigQuery\BigQuerySyncRunner;
+use App\Service\Operations\TaskTrigger;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
 use Symfony\Component\Console\Command\Command;
@@ -52,6 +53,17 @@ final class BigQueryCommandsTest extends TestCase
         self::assertStringContainsString('BigQuery refused the request.', $tester->getDisplay());
     }
 
+    public function testTheDashboardsSyncNowRecordsTheAdministrator(): void
+    {
+        $runner = $this->createMock(BigQuerySyncRunner::class);
+        $runner->expects(self::once())->method('run')->with(true, null, self::anything(), self::callback(
+            static fn (?TaskTrigger $trigger): bool => $trigger?->source === TaskTrigger::DASHBOARD && $trigger->requestedBy === 'scott',
+        ))->willReturn(['enabled' => true, 'results' => []]);
+        $tester = new CommandTester(new BigQuerySyncCommand($runner, $this->settings([]), new NullLogger()));
+
+        self::assertSame(Command::SUCCESS, $tester->execute(['--force' => true, '--requested-by' => 'scott']));
+    }
+
     public function testSyncExplainsWhenItIsOffOrMisconfigured(): void
     {
         $runner = $this->createStub(BigQuerySyncRunner::class);
@@ -88,8 +100,8 @@ final class BigQueryCommandsTest extends TestCase
     public function testCheckShowsSettingsStatusAndTheConnectionResult(): void
     {
         $runner = $this->createStub(BigQuerySyncRunner::class);
-        $runner->method('status')->willReturn(['runner' => null, 'views' => [[
-            'view' => 'bi_anonymous_events_v1', 'private' => false, 'description' => '', 'status' => 'success',
+        $runner->method('status')->willReturn(['last_run' => null, 'views' => [[
+            'view' => 'bi_anonymous_events_v1', 'private' => false, 'description' => '', 'status' => 'succeeded',
             'started_at' => null, 'finished_at' => null, 'succeeded_at' => new \DateTimeImmutable('2026-10-07 11:00:00'), 'row_count' => 42,
             'message' => 'Replaced it.', 'job_id' => 'j', 'next_due' => new \DateTimeImmutable('2026-10-07 12:00:00'),
         ]], 'scheduler_late' => true]);
