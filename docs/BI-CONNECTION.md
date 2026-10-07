@@ -247,8 +247,16 @@ in them.
 - SQLite has no database users or per-view permissions. Anyone who can read the
   database file can read the private `events` table.
 - Have a trusted process export explicit columns from the approved views instead,
-  and protect the exported files.
+  and protect the exported files. [BigQuery sync](BIGQUERY.md) does this on a
+  schedule, copying the approved views to a BigQuery dataset.
 - Use a server database when a BI tool needs a live connection.
+
+## Copy the views to BigQuery
+
+For Looker Studio, Connected Sheets or other tools that read Google BigQuery,
+[BigQuery sync](BIGQUERY.md) copies the approved views to a BigQuery dataset on a
+schedule, replacing each table at every sync. Private views can be added only by
+an explicit opt-in. The rules on this page apply to the copies too.
 
 ## Model and refresh settings
 

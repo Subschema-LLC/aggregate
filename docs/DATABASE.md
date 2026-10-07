@@ -499,6 +499,7 @@ Current migrations:
 - `migrations/Version20260901000000.php` (private archives, lifecycle maintenance, and combined live/archive BI views)
 - `migrations/Version20260928000000.php` (declared BI glossary table and eight fixed metadata views)
 - `migrations/Version20261001000000.php` (website labels view `bi_dim_website_token_v1`)
+- `migrations/Version20261007000000.php` (private `analytics_bigquery_sync` status table for [BigQuery sync](BIGQUERY.md))
 
 The current schema contains:
 - `events` (private individual rows for both `anonymous` and `enhanced` privacy modes, with optional coarse `geo_area` and allowlisted `goal_event`)
@@ -509,6 +510,7 @@ The current schema contains:
 - `bi_anonymous_goals_v1` (supported completed-day anonymous goal-count BI contract)
 - `bi_anonymous_geo_events_v1` (supported daily, lower-dimensional anonymous geography BI contract)
 - `analytics_custom_events_v1`, `analytics_custom_pageviews_v1`, and `analytics_custom_goals_v1` (optional, generated private views over retained raw rows)
+- `analytics_bigquery_sync` (private BigQuery sync status and per-view lease; no event data)
 - `users` (dashboard auth, optional in API-only mode)
 - `messenger_messages` (used only in async queue mode)
 
@@ -672,7 +674,7 @@ php bin/console app:analytics:maintain --dry-run
 php bin/console app:analytics:maintain
 ```
 
-Run maintenance at least daily when either feature is enabled. Include the archive tables and lifecycle lease state in backups, and enforce separate expiration for database backups, replicas, BI extracts, and exports. On SQLite, file access still bypasses view permissions; use controlled exports or a server database for separate BI access.
+Run maintenance at least daily when either feature is enabled. Include the archive tables and lifecycle lease state in backups, and enforce separate expiration for database backups, replicas, BI extracts, and exports. On SQLite, file access still bypasses view permissions; use controlled exports, such as [BigQuery sync](BIGQUERY.md) of the approved views, or a server database for separate BI access.
 
 ---
 

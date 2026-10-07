@@ -158,7 +158,7 @@ services, so a setting has one validation wherever it is changed.
 - **Command line:** everything an administrator needs without the dashboard,
   in [src/Command](../src/Command). Examples: `app:install`,
   `app:create-website`, `app:user:reset-password`, `app:analytics:maintain`,
-  `app:analytics:glossary:sync` and `app:updates:apply`.
+  `app:analytics:glossary:sync`, `app:bigquery:sync` and `app:updates:apply`.
 - **First run:** a fresh release ZIP starts with a browser setup page,
   [config/setup.php](../config/setup.php) and
   [FirstRunSetup](../src/Setup/FirstRunSetup.php). It loads before Composer,

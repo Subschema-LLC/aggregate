@@ -24,6 +24,10 @@ configuration and published to BI tools through the `bi_dim_*` and
 `bi_glossary_*` views by `app:analytics:glossary:sync`. See
 [BI labels and glossary](BI-GLOSSARY.md).
 
+**BigQuery sync.** An optional copy of selected reporting views to a Google
+BigQuery dataset, replaced at each scheduled sync (`app:bigquery:sync`). Private
+row-level views need an explicit opt-in. See [Sync to BigQuery](BIGQUERY.md).
+
 **Built-in consent banner (CMP).** Consent manager lite: the small self-hosted
 consent manager served at `/cmp-lite/sites/<site-id>/consent.js`, configured per
 website. CMP stands for consent management platform. See the

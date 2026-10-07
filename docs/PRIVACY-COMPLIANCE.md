@@ -17,6 +17,7 @@ per-region example configurations and their limits, see
 - [Optional coarse geography](#optional-coarse-geography)
 - [Stored data and reporting queries](#stored-data-and-reporting-queries)
 - [BI exposure and suppression](#bi-exposure-and-suppression)
+- [BigQuery sync](#bigquery-sync)
 - [Administrative controls](#administrative-controls)
 - [Consent and consent-manager integration](#enhanced-analytics-consent)
 - [Independent consent controls and regional examples](#independent-consent-controls-and-regional-examples)
@@ -383,6 +384,15 @@ undercounts where suppression withheld cells; metadata cannot reconstruct hidden
 counts or establish legal anonymity. Invalid glossary configuration affects only
 metadata save/sync, not tracking, ingestion, or health checks.
 
+## BigQuery sync
+
+[BigQuery sync](BIGQUERY.md) is off by default. When an administrator turns it on, the selected reporting views are copied to a Google BigQuery dataset on a schedule, so their rows are disclosed to Google as a processor and to everyone with access to that dataset. Cover the transfer in your records of processing, data processing terms and notices, and choose a dataset location that fits your requirements.
+
+- Only views can be synced, never raw tables. The approved `bi_anonymous_*`, `bi_dim_*_v1` and glossary views carry their suppression into the copy; the same rules about joining views and threshold limits apply there.
+- Row-level `analytics_custom_*` views and unsuppressed `analytics_archived_*` views must each be listed under `bigquery_private_views`, and the admin page requires a confirmation before saving them. Restrict that dataset as you would the raw `events` table.
+- Each sync replaces the table, so deletions and threshold changes in Aggregate reach the copy at the next sync. BigQuery keeps earlier table versions for its time-travel and fail-safe periods, and tables of views that are no longer synced stay until deleted. Include the dataset in your retention and rights-request procedures.
+- The service account key or Google sign-in token is stored only in `config/secrets`, readable by the application's user, and never logged or shown. Error messages name views and columns; values quoted in BigQuery's own errors are removed.
+
 ## Administrative controls
 
 ```yaml
@@ -638,6 +648,7 @@ See [deployment updates](../DEPLOYMENT.md#updates) and the [database migration g
 - [ ] Dry-run, schedule, and monitor `app:analytics:maintain`; verify backup and downstream deletion separately.
 - [ ] Provide a server-side rights-request process for enhanced data.
 - [ ] Restrict routine BI users to the approved `bi_anonymous_*` fact views and `bi_dim_*`/`bi_glossary_*` metadata views they need; keep raw `events` and `analytics_glossary` private.
+- [ ] If BigQuery sync is on, document the transfer to Google, restrict the dataset's readers, include it in retention and rights-request procedures, and confirm that any private views synced there are approved.
 - [ ] Review glossary codes and text for identifying information, especially declarations for consent-gated properties.
 - [ ] Validate `anonymous_min_cell_count` against event and goal volumes and re-identification risk.
 - [ ] If geography is enabled, document its legal basis and notice, prefer macro-region, and verify that only the local MMDB is used.
