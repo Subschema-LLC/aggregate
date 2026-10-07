@@ -436,3 +436,22 @@ environments:
 # archive retention must be at least the longer raw retention period. Schedule the maintenance command
 # externally (normally daily): php bin/console app:analytics:maintain
 # Uppercase environment variables with the same names override these values.
+#
+# BigQuery sync (optional; see docs/BIGQUERY.md). Copies selected reporting
+# views to a Google BigQuery dataset, replacing each table at every sync.
+# Schedule: */5 * * * * cd /path/to/aggregate && php bin/console app:bigquery:sync --no-interaction
+# Also managed on Reporting → BigQuery sync. Uppercase environment variables
+# with the same names override these values (lists are comma-separated).
+#
+# bigquery_enabled: false
+# bigquery_project_id: ''          # Empty: the key's or Google Cloud host's project
+# bigquery_dataset: aggregate
+# bigquery_location: US             # US, EU or a region such as europe-west2
+# bigquery_auth: service_account    # service_account, google_cloud or google_sign_in
+# bigquery_credentials_file: config/secrets/bigquery-service-account.json
+# bigquery_oauth_client_id: ''      # Sign in with Google; secret in BIGQUERY_OAUTH_CLIENT_SECRET or the admin page
+# bigquery_views:                   # Approved views; default: all of them
+#   - bi_anonymous_events_v1
+#   - bi_anonymous_goals_v1
+# bigquery_private_views: []        # Row-level or unsuppressed views, each by explicit opt-in
+# bigquery_interval_minutes: 60     # 15, 30, 60, 120, 180, 360, 720 or 1440

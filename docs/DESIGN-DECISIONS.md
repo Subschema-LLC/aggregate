@@ -221,6 +221,32 @@ written for every database engine.
 
 **What would change it.** Nothing; this is how the contract stays trustworthy.
 
+### Views copied to BigQuery whole, by scheduled load jobs
+
+**Decision.** [BigQuery sync](BIGQUERY.md) copies selected reporting views, never
+raw tables, to a BigQuery dataset from a scheduled command. Each sync replaces a
+view's table with one load job. Approved views are offered by default; row-level
+or unsuppressed private views must be opted into one by one. Aggregate signs in
+with a service account key, the Google Cloud host's account or an administrator's
+Google sign-in, through Google's REST API rather than the Google Cloud SDK.
+
+**Why.** Many adopters report from Looker Studio or keep their data in BigQuery,
+where a database connection to Aggregate is awkward. Copying the views keeps
+suppression and column meanings intact. Replacing whole tables is simple and
+correct for suppressed views, whose cells change as thresholds are crossed or
+data is archived or deleted, and makes deletions in Aggregate reach the copy at
+the next sync. Load jobs cost nothing, unlike streaming inserts. A few REST calls
+avoid adding the large Google Cloud client libraries to every installation.
+
+**Trade-off.** Each sync re-reads and re-uploads whole views, which grows with
+private row-level views. Data in BigQuery is outside Aggregate's retention, held
+by BigQuery's time travel and by tables no longer synced. Signing in with Google
+needs the dashboard and each installation's own OAuth client.
+
+**What would change it.** Views too large to copy whole would call for
+incremental loads of completed time buckets; a need for other warehouses would
+reuse the same export and schedule.
+
 ## Platform
 
 ### PHP and Symfony

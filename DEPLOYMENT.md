@@ -559,12 +559,13 @@ mysqldump -u dbuser -p dbname > backup_$(date +%Y%m%d).sql
 
 **2. Application backups:**
 Include all active environment files, website registrations, per-site tag/CMP
-YAML under `config/tag-manager/sites/`, and branding uploads. Preserve these
-operator files when replacing application code or deploying a release ZIP.
+YAML under `config/tag-manager/sites/`, credentials under `config/secrets/` (such
+as a BigQuery key), and branding uploads. Preserve these operator files when
+replacing application code or deploying a release ZIP.
 
 ```bash
 # Backup config (include deployment-specific settings — keep secure!)
-tar --ignore-failed-read -czf config_backup_$(date +%Y%m%d).tar.gz .env .env.local config/aggregate*.yaml config/websites.yaml config/*.local.yaml config/tag-manager/sites
+tar --ignore-failed-read -czf config_backup_$(date +%Y%m%d).tar.gz .env .env.local config/aggregate*.yaml config/websites.yaml config/*.local.yaml config/tag-manager/sites config/secrets
 
 # Full backup (exclude vendor and cache)
 tar -czf app_backup_$(date +%Y%m%d).tar.gz \
@@ -580,6 +581,21 @@ Add to crontab:
 # Daily database backup at 2 AM
 0 2 * * * /path/to/backup-script.sh
 ```
+
+### Scheduled commands
+
+Two optional features run from the scheduler of the user that runs Aggregate,
+never from web requests:
+
+```cron
+# Archiving and retention, when either is turned on
+15 3 * * * cd /var/www/aggregate && php bin/console app:analytics:maintain --no-interaction
+# BigQuery sync, when it is turned on: each view syncs once per its interval
+*/5 * * * * cd /var/www/aggregate && php bin/console app:bigquery:sync --no-interaction
+```
+
+See [archiving and retention](docs/CONFIGURATION.md#archiving-and-retention) and
+[Sync to BigQuery](docs/BIGQUERY.md#schedule-the-sync).
 
 ### Updates
 

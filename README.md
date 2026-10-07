@@ -96,6 +96,7 @@ Details:
 - **Privacy-minimized collection:** page views and safe named events, with optional allowlisted goals and coarse local geography.
 - **Reporting views with suppression:** completed hourly or daily aggregates with configurable minimum event counts.
 - **AI-ready reporting:** versioned views and a built-in data dictionary that AI assistants can query with the same read-only account as BI tools.
+- **BigQuery sync:** copy the reporting views to a Google BigQuery dataset on a schedule, signing in with a service account key, the Google Cloud host's account or a Google sign-in. Private row-level views need an explicit opt-in. See [Sync to BigQuery](docs/BIGQUERY.md).
 - **Optional page depth:** a capped page count shared by events on each page, with tab storage or URL parameter passing configured through UI/YAML. See [storage, URL and reporting boundaries](docs/DATA-MODEL.md#optional-page-depth) before enabling it.
 - **Consent-based enhanced detail:** visitor/session IDs, properties, and exact dimensions when enabled by your consent manager.
 - **Headless operation:** an ingestion API, YAML configuration, and CLI commands, with an optional admin dashboard.
@@ -301,6 +302,7 @@ It is built from these files on `master` and describes the current release.
 | [Plesk deployment](PLESK-DEPLOYMENT.md) | Plesk steps for a release ZIP without SSH, Git-based setup, and worker options |
 | [Database](docs/DATABASE.md) | Supported engines, connection strings, migrations, and reporting schema |
 | [Connect BI tools and AI assistants](docs/BI-CONNECTION.md) | Approved reporting views and their columns, safe queries, a connection checklist for Power BI or Tableau, and AI assistant setup |
+| [Sync to BigQuery](docs/BIGQUERY.md) | Copying reporting views to BigQuery on a schedule: sign-in methods, view selection, scheduling, column types and privacy |
 
 ## Contributing
 

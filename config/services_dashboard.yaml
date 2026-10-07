@@ -19,6 +19,7 @@ services:
     App\Controller\EventExamplesController: ~
     App\Controller\FeatureFlagsController: ~
     App\Controller\InternalTrafficController: ~
+    App\Controller\BigQueryController: ~
     App\Controller\UpdatesController: ~
     App\Controller\InstallController: ~
     App\Controller\SecurityController: ~

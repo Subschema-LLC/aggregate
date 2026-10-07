@@ -113,7 +113,10 @@ and must not affect collection or health configuration validation. See
 [BI-GLOSSARY.md](docs/BI-GLOSSARY.md) for locales, grants, and publishing limits.
 
 Raw `events`, archive tables, unsuppressed operational views, and
-`analytics_custom_*` projections are private inputs. Custom-property projections
+`analytics_custom_*` projections are private inputs. [BigQuery sync](docs/BIGQUERY.md)
+copies views, never tables: approved views by default, private views only when
+each is listed under `bigquery_private_views`. Keep its credentials in
+`config/secrets` and out of logs and messages. Custom-property projections
 must not weaken the existing anonymous BI contracts or silently expose new data.
 Keep column names and meanings stable for existing BI connections. Coordinate
 destructive or semantic changes through documented migrations. Do not create
