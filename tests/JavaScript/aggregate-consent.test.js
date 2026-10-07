@@ -213,7 +213,7 @@ test('unmarked anonymous traffic emits false and never creates the marker', () =
 
   runtime.triggerPageView();
 
-  assert.equal(runtime.requests.at(-1).internalTraffic, false);
+  assert.equal(runtime.requests.at(-1).org_internal_traffic, false);
   assert.equal(runtime.requests.at(-1).visitorId, undefined);
   assert.equal(runtime.cookies.has('orgInternalTraffic'), false);
   assert.equal(runtime.localStorage.has('orgInternalTraffic'), false);
@@ -227,7 +227,7 @@ test('the default cookie marks page views and events without exposing its raw na
   runtime.window.Aggregate.emit('button_click', {private: 'ignored'});
 
   for (const payload of runtime.requests) {
-    assert.equal(payload.internalTraffic, true);
+    assert.equal(payload.org_internal_traffic, true);
     assert.equal(payload.consentState, 'unknown');
     assert.equal(payload.customData, undefined);
     assert.equal(payload.visitorId, undefined);
@@ -244,7 +244,7 @@ for (const value of ['false', '1', 'TRUE', ' true', 'true ', 'true-other', '']) 
 
     runtime.window.Aggregate.emit('button_click');
 
-    assert.equal(runtime.requests.at(-1).internalTraffic, false);
+    assert.equal(runtime.requests.at(-1).org_internal_traffic, false);
   });
 }
 
@@ -256,10 +256,10 @@ test('cookie names match exactly and configured values are decoded', () => {
   });
 
   runtime.window.Aggregate.emit('button_click');
-  assert.equal(runtime.requests.at(-1).internalTraffic, true);
+  assert.equal(runtime.requests.at(-1).org_internal_traffic, true);
   runtime.cookies.delete('companyStaff');
   runtime.window.Aggregate.emit('button_click');
-  assert.equal(runtime.requests.at(-1).internalTraffic, false);
+  assert.equal(runtime.requests.at(-1).org_internal_traffic, false);
 });
 
 test('a matching parent-domain cookie works alongside an older or malformed host-only cookie', () => {
@@ -271,7 +271,7 @@ test('a matching parent-domain cookie works alongside an older or malformed host
 
     runtime.window.Aggregate.emit('button_click');
 
-    assert.equal(runtime.requests.at(-1).internalTraffic, true);
+    assert.equal(runtime.requests.at(-1).org_internal_traffic, true);
   }
 });
 
@@ -283,18 +283,18 @@ test('the local storage marker survives consent changes and ignores a cookie wit
   });
 
   runtime.window.Aggregate.emit('button_click');
-  assert.equal(runtime.requests.at(-1).internalTraffic, true);
+  assert.equal(runtime.requests.at(-1).org_internal_traffic, true);
   assert.equal(runtime.requests.at(-1).visitorId, undefined);
   assert.deepEqual(runtime.localStorage.reads, ['teamFlag']);
 
   runtime.window.Aggregate.setConsent(true);
   runtime.window.Aggregate.emit('button_click', {plan: 'pro'});
-  assert.equal(runtime.requests.at(-1).internalTraffic, true);
+  assert.equal(runtime.requests.at(-1).org_internal_traffic, true);
   assert.ok(runtime.requests.at(-1).visitorId);
 
   runtime.window.Aggregate.setConsent(false);
   runtime.window.Aggregate.emit('button_click');
-  assert.equal(runtime.requests.at(-1).internalTraffic, true);
+  assert.equal(runtime.requests.at(-1).org_internal_traffic, true);
   assert.equal(runtime.requests.at(-1).visitorId, undefined);
   assert.equal(runtime.localStorage.getItem('teamFlag'), 'staff');
   assert.equal(runtime.localStorage.has('aggregate_visitor_id'), false);
@@ -308,7 +308,7 @@ test('a cookie marker survives enhanced identifier creation and withdrawal', () 
   runtime.window.Aggregate.setConsent(false);
   runtime.window.Aggregate.emit('button_click');
 
-  assert.equal(runtime.requests.every((payload) => payload.internalTraffic === true), true);
+  assert.equal(runtime.requests.every((payload) => payload.org_internal_traffic === true), true);
   assert.equal(runtime.cookies.get('orgInternalTraffic'), 'true');
   assert.equal(runtime.cookies.has('aggregate_session'), false);
 });
@@ -320,18 +320,18 @@ test('only the selected storage is checked, including after configure changes', 
   });
 
   runtime.window.Aggregate.emit('button_click');
-  assert.equal(runtime.requests.at(-1).internalTraffic, true);
+  assert.equal(runtime.requests.at(-1).org_internal_traffic, true);
   assert.deepEqual(runtime.localStorage.reads, []);
 
   runtime.window.Aggregate.configure({internalTraffic: {storage: 'local_storage'}});
   runtime.window.Aggregate.emit('button_click');
-  assert.equal(runtime.requests.at(-1).internalTraffic, false);
+  assert.equal(runtime.requests.at(-1).org_internal_traffic, false);
   runtime.localStorage.setItem('orgInternalTraffic', 'true');
   runtime.window.Aggregate.emit('button_click');
-  assert.equal(runtime.requests.at(-1).internalTraffic, true);
+  assert.equal(runtime.requests.at(-1).org_internal_traffic, true);
   runtime.localStorage.removeItem('orgInternalTraffic');
   runtime.window.Aggregate.emit('button_click');
-  assert.equal(runtime.requests.at(-1).internalTraffic, false);
+  assert.equal(runtime.requests.at(-1).org_internal_traffic, false);
 });
 
 test('data attributes configure local storage markers under a custom namespace', () => {
@@ -347,7 +347,7 @@ test('data attributes configure local storage markers under a custom namespace',
 
   runtime.window.CompanyAnalytics.emit('button_click');
 
-  assert.equal(runtime.requests.at(-1).internalTraffic, true);
+  assert.equal(runtime.requests.at(-1).org_internal_traffic, true);
 });
 
 test('inline marker settings take precedence over script data attributes', () => {
@@ -359,7 +359,7 @@ test('inline marker settings take precedence over script data attributes', () =>
 
   runtime.window.Aggregate.emit('button_click');
 
-  assert.equal(runtime.requests.at(-1).internalTraffic, true);
+  assert.equal(runtime.requests.at(-1).org_internal_traffic, true);
 });
 
 test('unavailable storage and malformed cookie encodings leave tracking unmarked', () => {
@@ -375,7 +375,7 @@ test('unavailable storage and malformed cookie encodings leave tracking unmarked
 
   for (const runtime of runtimes) {
     assert.equal(runtime.window.Aggregate.emit('button_click'), true);
-    assert.equal(runtime.requests.at(-1).internalTraffic, false);
+    assert.equal(runtime.requests.at(-1).org_internal_traffic, false);
     assert.equal(runtime.requests.at(-1).visitorId, undefined);
   }
 });
@@ -396,7 +396,7 @@ for (const config of [
 
     runtime.window.Aggregate.emit('button_click');
 
-    assert.equal(runtime.requests.at(-1).internalTraffic, false);
+    assert.equal(runtime.requests.at(-1).org_internal_traffic, false);
   });
 }
 
@@ -687,14 +687,14 @@ test('custom property processing rejects inherited, nested, unsafe and organizat
   const runtime = loadSdk({inline: {consent: true}});
   const eventData = Object.assign(Object.create({inherited: 'ignored'}), {
     nested: {private: 'ignored'}, list: ['ignored'], constructor: 'ignored', prototype: 'ignored',
-    'unsafe key': 'ignored', orgInternalTraffic: true, nan: NaN, infinity: Infinity,
+    'unsafe key': 'ignored', org_internal_traffic: true, nan: NaN, infinity: Infinity,
     ' plan ': 'pro\u0000', safe: true
   });
 
   runtime.window.Aggregate.emit('button_click', eventData);
 
   assert.deepEqual(runtime.requests.at(-1).customData, {plan: 'pro', safe: true});
-  assert.equal(runtime.requests.at(-1).internalTraffic, false);
+  assert.equal(runtime.requests.at(-1).org_internal_traffic, false);
 });
 
 test('custom properties and query values have the server scalar count and UTF-8 bounds', () => {
@@ -744,15 +744,15 @@ test('custom-data configuration can replace mappings, disable them and revoke co
 test('malformed browser collection settings fail closed and cannot map the organization marker', () => {
   const runtime = loadSdk({
     inline: {customData: {
-      queryParameters: {campaign: 'orgInternalTraffic', constructor: 'plan', valid: 'prototype', 'invalid source': 'plan'},
-      consentFreeProperties: ['orgInternalTraffic', 'plan', 'prototype']
+      queryParameters: {campaign: 'org_internal_traffic', constructor: 'plan', valid: 'prototype', 'invalid source': 'plan'},
+      consentFreeProperties: ['org_internal_traffic', 'plan', 'prototype']
     }},
     location: {search: '?campaign=true&constructor=private&valid=private&invalid+source=private'}
   });
 
   runtime.window.Aggregate.emit('button_click');
   assert.equal(runtime.requests.at(-1).customData, undefined);
-  assert.equal(runtime.requests.at(-1).internalTraffic, false);
+  assert.equal(runtime.requests.at(-1).org_internal_traffic, false);
 
   runtime.window.Aggregate.configure({customData: {queryParameters: null, consentFreeProperties: 'plan'}});
   runtime.window.Aggregate.emit('button_click', {plan: 'private'});
@@ -819,13 +819,13 @@ test('typed numeric and boolean query mappings never coerce URL strings or block
 test('declaring a type cannot grant consent and withdrawal restores the permitted subset', () => {
   const runtime = loadSdk({inline: {customData: {
     queryParameters: {}, consentFreeProperties: ['quantity'],
-    propertyTypes: {quantity: 'integer', revenue: 'double', orgInternalTraffic: 'boolean'}
+    propertyTypes: {quantity: 'integer', revenue: 'double', org_internal_traffic: 'boolean'}
   }}});
   const sdk = runtime.window.Aggregate;
-  sdk.emit('purchase_completed', {quantity: 2, revenue: 12.5, orgInternalTraffic: true});
+  sdk.emit('purchase_completed', {quantity: 2, revenue: 12.5, org_internal_traffic: true});
   assert.deepEqual(runtime.requests.at(-1).customData, {quantity: 2});
   sdk.setConsent(true);
-  sdk.emit('purchase_completed', {quantity: 2, revenue: 12.5, orgInternalTraffic: true});
+  sdk.emit('purchase_completed', {quantity: 2, revenue: 12.5, org_internal_traffic: true});
   assert.deepEqual(runtime.requests.at(-1).customData, {quantity: 2, revenue: 12.5});
   sdk.setConsent(false);
   sdk.emit('purchase_completed', {quantity: 2, revenue: 12.5});

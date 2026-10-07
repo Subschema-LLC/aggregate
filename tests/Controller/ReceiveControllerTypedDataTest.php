@@ -45,7 +45,8 @@ final class ReceiveControllerTypedDataTest extends TestCase
             'numeric_text' => ['type' => 'double', 'consent_required' => false],
             'boolean_text' => ['type' => 'boolean', 'consent_required' => false],
             'boolean_number' => ['type' => 'float', 'consent_required' => false],
-            'companyStaff' => ['type' => 'boolean', 'consent_required' => false, 'column' => 'staff'],
+            // A reporting column for the flag does not let a request set it.
+            InternalTrafficSettings::JSON_KEY => ['type' => 'boolean', 'consent_required' => false, 'column' => 'staff'],
         ];
         $payload = [
             'websiteToken' => 'example-token',
@@ -55,7 +56,7 @@ final class ReceiveControllerTypedDataTest extends TestCase
             'visitorId' => 'synthetic-visitor',
             'sessionId' => 'synthetic-session',
             'screenWidth' => 1440,
-            'internalTraffic' => true,
+            InternalTrafficSettings::JSON_KEY => true,
             // Forged browser rules cannot expand the saved deployment policy.
             'customData' => ['propertyTypes' => [], 'consentFreeProperties' => ['revenue']],
             'customData' => [
@@ -71,7 +72,7 @@ final class ReceiveControllerTypedDataTest extends TestCase
                 'numeric_text' => '12.5',
                 'boolean_text' => 'true',
                 'boolean_number' => true,
-                'companyStaff' => false,
+                InternalTrafficSettings::JSON_KEY => false,
             ],
         ];
         $expected = [
@@ -86,7 +87,7 @@ final class ReceiveControllerTypedDataTest extends TestCase
             if (!$enhanced) {
                 // Later entity assignments cannot replace approved anonymous
                 // values with wrongly typed or unapproved properties.
-                $event->setCustomData(['quantity' => 'private-text', 'revenue' => 999, 'companyStaff' => true]);
+                $event->setCustomData(['quantity' => 'private-text', 'revenue' => 999, InternalTrafficSettings::JSON_KEY => false]);
             }
             $event->enforcePrivacyInvariants();
             $persisted = $event;
@@ -110,7 +111,8 @@ final class ReceiveControllerTypedDataTest extends TestCase
 
         self::assertSame(202, $response->getStatusCode());
         self::assertInstanceOf(Event::class, $persisted);
-        self::assertSame([...$expected, 'companyStaff' => true], $persisted->getCustomData());
+        self::assertSame([...$expected, InternalTrafficSettings::JSON_KEY => true], $persisted->getCustomData());
+        self::assertTrue($persisted->isInternalTraffic());
         self::assertSame('/shop/confirmation', $persisted->getUrl());
         self::assertSame($enhanced ? 'enhanced' : 'anonymous', $persisted->getPrivacyMode());
         self::assertSame($enhanced ? 'granted' : null, $persisted->getConsentState());
@@ -153,7 +155,7 @@ final class ReceiveControllerTypedDataTest extends TestCase
         $entityManager->expects(self::once())->method('persist')->willReturnCallback(static function (object $event): void {
             self::assertInstanceOf(Event::class, $event);
             $event->enforcePrivacyInvariants();
-            self::assertSame(['quantity' => 1], $event->getCustomData());
+            self::assertSame(['quantity' => 1, InternalTrafficSettings::JSON_KEY => false], $event->getCustomData());
         });
         $entityManager->expects(self::once())->method('flush');
         $bus = $this->createMock(MessageBusInterface::class);
@@ -179,8 +181,9 @@ final class ReceiveControllerTypedDataTest extends TestCase
     public function testPageSequenceDirectRequestsEnforceOptInBoundsAndPreserveTheAcceptedSnapshot(bool $enabled, string $numberJson, ?int $accepted, bool $enhanced, string $method): void
     {
         $expected = ['utm_medium' => 'email', ...($accepted === null ? [] : ['page_sequence' => $accepted]), ...($enhanced ? ['private' => 'detail'] : [])];
+        $stored = [...$expected, InternalTrafficSettings::JSON_KEY => false];
         $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::once())->method('persist')->willReturnCallback(static function (object $event) use ($expected, $enhanced): void {
+        $entityManager->expects(self::once())->method('persist')->willReturnCallback(static function (object $event) use ($stored, $enhanced): void {
             self::assertInstanceOf(Event::class, $event);
             if (!$enhanced) {
                 // The persistence boundary preserves approved values even if
@@ -188,7 +191,7 @@ final class ReceiveControllerTypedDataTest extends TestCase
                 $event->setCustomData(['page_sequence' => 'private-identifier', 'private' => 'detail']);
             }
             $event->enforcePrivacyInvariants();
-            self::assertSame($expected, $event->getCustomData());
+            self::assertSame($stored, $event->getCustomData());
             if (!$enhanced) {
                 self::assertNull($event->getVisitorId());
                 self::assertNull($event->getSessionId());
@@ -265,7 +268,7 @@ final class ReceiveControllerTypedDataTest extends TestCase
             self::assertInstanceOf(Event::class, $event);
             $event->enforcePrivacyInvariants();
             self::assertSame('/example', $event->getUrl());
-            self::assertNull($event->getCustomData());
+            self::assertSame([InternalTrafficSettings::JSON_KEY => false], $event->getCustomData());
         });
         $entityManager->expects(self::once())->method('flush');
         $bus = $this->createMock(MessageBusInterface::class);
@@ -290,7 +293,7 @@ final class ReceiveControllerTypedDataTest extends TestCase
             $event->enforcePrivacyInvariants();
             self::assertSame('/example', $event->getUrl());
             self::assertSame('internal', $event->getReferrer());
-            self::assertSame(['page_sequence' => 2], $event->getCustomData());
+            self::assertSame(['page_sequence' => 2, InternalTrafficSettings::JSON_KEY => false], $event->getCustomData());
             foreach (['aggregate_page_sequence', 'private-query', 'private-fragment'] as $private) {
                 self::assertStringNotContainsString($private, serialize($event));
             }
@@ -336,7 +339,7 @@ final class ReceiveControllerTypedDataTest extends TestCase
 
     private function ingest(array $payload, array $properties, EntityManagerInterface $entityManager, MessageBusInterface $bus, ?string $rawJson = null, array $configValues = []): Response
     {
-        $values = [...$configValues, 'custom_data_properties' => $properties, 'query_parameter_mappings' => [], 'internal_traffic_name' => 'companyStaff'];
+        $values = [...$configValues, 'custom_data_properties' => $properties, 'query_parameter_mappings' => []];
         $config = $this->createStub(AggregateConfigLoader::class);
         $config->method('all')->willReturn($values);
         $config->method('getBoolWithEnvFallback')->willReturn(true);
@@ -355,7 +358,7 @@ final class ReceiveControllerTypedDataTest extends TestCase
             $request, $websites, $bus, $limiter, $sanitizer,
             new GoalEventRegistry($sanitizer, []), new PrivacyPolicy($config), $geo,
             new AnonymousEventRecorder($entityManager), new NullLogger(),
-            new InternalTrafficSettings($config), new CustomDataSettings($config),
+            new CustomDataSettings($config),
         );
     }
 }

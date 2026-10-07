@@ -90,7 +90,7 @@ final class ScriptControllerTest extends TestCase
             'custom_data_properties' => [
                 'campaign' => ['description' => 'private implementation instructions', 'consent_required' => false, 'column' => 'campaign_name'],
                 'plan' => ['consent_required' => true],
-                'orgInternalTraffic' => ['column' => 'organization_traffic'],
+                'org_internal_traffic' => ['type' => 'boolean', 'column' => 'organization_traffic'],
             ],
             'query_parameter_mappings' => ['utm_campaign' => 'campaign', 'campaign_name' => 'campaign'],
         ])->getContent();
@@ -122,7 +122,7 @@ final class ScriptControllerTest extends TestCase
             'custom_data_properties' => [
                 'quantity' => ['type' => 'integer', 'consent_required' => false, 'description' => 'private typed model notes', 'column' => 'quantity_text', 'numeric_column' => 'quantity_value'],
                 'revenue' => ['type' => 'double', 'numeric_column' => 'revenue_value'],
-                'orgInternalTraffic' => ['type' => 'boolean', 'column' => 'staff_reporting'],
+                'org_internal_traffic' => ['type' => 'boolean', 'column' => 'staff_reporting'],
             ],
             'query_parameter_mappings' => [],
         ];

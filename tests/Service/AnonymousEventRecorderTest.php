@@ -6,6 +6,7 @@ namespace App\Tests\Service;
 
 use App\Entity\Event;
 use App\Service\AnonymousEventRecorder;
+use App\Service\InternalTrafficSettings;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -32,16 +33,14 @@ final class AnonymousEventRecorderTest extends TestCase
             deviceClass: 'desktop',
             viewportBucket: 'large',
             internalTraffic: $internalTraffic,
-            internalTrafficName: 'companyStaff',
-            approvedCustomData: ['plan' => 'pro', 'companyStaff' => !$internalTraffic],
+            approvedCustomData: ['plan' => 'pro', InternalTrafficSettings::JSON_KEY => !$internalTraffic],
         );
 
         self::assertInstanceOf(Event::class, $persisted);
+        // A later assignment can neither forge nor drop the flag.
+        $persisted->setCustomData(['plan' => 'pro', InternalTrafficSettings::JSON_KEY => !$internalTraffic]);
         $persisted->enforcePrivacyInvariants();
-        self::assertSame(
-            $internalTraffic ? ['plan' => 'pro', 'companyStaff' => true] : ['plan' => 'pro'],
-            $persisted->getCustomData(),
-        );
+        self::assertSame(['plan' => 'pro', InternalTrafficSettings::JSON_KEY => $internalTraffic], $persisted->getCustomData());
         self::assertSame($internalTraffic, $persisted->isInternalTraffic());
     }
 
@@ -114,13 +113,12 @@ final class AnonymousEventRecorderTest extends TestCase
             deviceClass: 'desktop',
             viewportBucket: 'large',
             internalTraffic: true,
-            internalTrafficName: 'companyStaff',
         );
 
         self::assertInstanceOf(Event::class, $persisted);
         $persisted->enforcePrivacyInvariants();
         self::assertTrue($persisted->isInternalTraffic());
-        self::assertSame(['companyStaff' => true], $persisted->getCustomData());
+        self::assertSame([InternalTrafficSettings::JSON_KEY => true], $persisted->getCustomData());
         self::assertNull($persisted->getVisitorId());
         self::assertNull($persisted->getSessionId());
     }

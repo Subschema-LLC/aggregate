@@ -4,3 +4,8 @@ h1 { line-height: 1.2; } code { overflow-wrap: anywhere; } .buttons { display: f
 button, .download { font: inherit; cursor: pointer; border: 1px solid #38556f; border-radius: .35rem; padding: .65rem 1rem; background: white; color: #193b58; }
 .is-primary { background: #193b58; color: white; } [data-marker-status] { padding: .75rem; background: #edf3f8; }
 a { color: #193b58; } :focus-visible { outline: 3px solid #3d77ce; outline-offset: 3px; }
+.marking { margin: 1.5rem 0; } .marking-websites { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+.marking-websites th, .marking-websites td { text-align: left; padding: .5rem; border-bottom: 1px solid #d5dce4; vertical-align: top; }
+.marking-domain { display: block; font-weight: normal; color: #4a5a6a; font-size: .9rem; } .marking-help { font-size: .9rem; color: #4a5a6a; }
+.is-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.marking-results { padding-left: 1.25rem; }

@@ -290,7 +290,7 @@ still accepted when `customData` is absent, and both pass the same server
 filtering. The `customData` settings above are a different thing: they configure
 which properties the tracker collects, not the properties themselves.
 
-Properties are flat scalars: strings, finite numbers, booleans, or null. At most 50 properties are sent, strings are bounded to 500 UTF-8 bytes, and nested arrays/objects are omitted. Property keys use `[A-Za-z][A-Za-z0-9_.-]{0,63}`; reserved prototype names and the configured organization marker cannot be supplied as custom properties. Dots in keys are literal, not nesting.
+Properties are flat scalars: strings, finite numbers, booleans, or null. At most 50 properties are sent, strings are bounded to 500 UTF-8 bytes, and nested arrays/objects are omitted. Property keys use `[A-Za-z][A-Za-z0-9_.-]{0,63}`; reserved prototype names and `org_internal_traffic`, which the tracker sets from the organization marker, cannot be supplied as custom properties. Dots in keys are literal, not nesting.
 
 Without a declared type, existing scalar behavior is preserved. Declared types omit mismatched values in both the SDK and server; null remains allowed. Integers must be whole numbers within JavaScript's safe-integer range, without fractional truncation. `float` and `double` both accept finite JSON numbers; they do not imply distinct JSON encodings or exact decimal arithmetic. Numeric and boolean strings are not converted. URL parameters are strings, so numeric/boolean typed properties need correctly typed `emit()` values instead of URL capture. Keep a separate text property if the original query value is needed. See the [complete type rules](DATA-MODEL.md#property-types-and-numeric-calculations).
 

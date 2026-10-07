@@ -149,6 +149,7 @@ npm run check:js
 node tests/JavaScript/javascript-build.test.js
 node tests/JavaScript/tracker-builds.test.js
 AGGREGATE_SDK_SOURCE=public/aggregate.min.js node tests/JavaScript/aggregate-consent.test.js
+AGGREGATE_SDK_SOURCE=public/aggregate.min.js node tests/JavaScript/aggregate-org-traffic.test.js
 AGGREGATE_MARKER_SOURCE=public/internal-traffic-marker.min.js node tests/JavaScript/internal-traffic-marker.test.js
 ```
 

@@ -56,8 +56,8 @@ final class EventExampleGeneratorTest extends TestCase
             self::assertArrayNotHasKey($key, $anonymous);
         }
         self::assertSame('synthetic-visitor', $enhanced['visitorId']);
-        self::assertFalse($anonymous['internalTraffic']);
-        self::assertFalse($enhanced['internalTraffic']);
+        self::assertFalse($anonymous[InternalTrafficSettings::JSON_KEY]);
+        self::assertFalse($enhanced[InternalTrafficSettings::JSON_KEY]);
         $decoded = json_decode($generator->exportJson(), flags: JSON_THROW_ON_ERROR);
         self::assertInstanceOf(\stdClass::class, $decoded->examples->anonymous->payload->customData);
         self::assertSame([], get_object_vars($decoded->examples->anonymous->payload->customData));
@@ -85,14 +85,11 @@ final class EventExampleGeneratorTest extends TestCase
         self::assertStringContainsString('Detailed UTM properties and aliases remain permitted', implode(' ', $bundle['notes']));
     }
 
-    #[DataProvider('markerNames')]
-    public function testReservedMarkersAndLegacyReportingOnlyKeysNeverBecomeSampleProperties(string $marker): void
+    public function testOrganizationTrafficReportingColumnNeverBecomesASampleProperty(): void
     {
         $bundle = $this->generator([
-            'internal_traffic_name' => $marker,
             'custom_data_properties' => [
-                $marker => ['column' => 'organization_traffic', 'consent_required' => false],
-                '__Host-formerStaff' => ['column' => 'historical_staff', 'consent_required' => true],
+                InternalTrafficSettings::JSON_KEY => ['type' => 'boolean', 'column' => 'organization_traffic', 'consent_required' => false],
                 'plan' => ['consent_required' => false],
             ],
             'query_parameter_mappings' => [],
@@ -100,18 +97,10 @@ final class EventExampleGeneratorTest extends TestCase
 
         foreach ($bundle['examples'] as $example) {
             self::assertSame(['plan' => 'example'], (array) $example['payload']['customData']);
-            self::assertFalse($example['payload']['internalTraffic']);
+            self::assertFalse($example['payload'][InternalTrafficSettings::JSON_KEY]);
         }
         self::assertSame('not_submittable', $bundle['properties'][0]['collection']);
-        self::assertSame('not_submittable', $bundle['properties'][1]['collection']);
-    }
-
-    public static function markerNames(): iterable
-    {
-        yield ['orgInternalTraffic'];
-        yield ['utm_medium'];
-        yield ['__Host-companyStaff'];
-        yield [str_repeat('s', 128)];
+        self::assertSame('anonymous_and_enhanced', $bundle['properties'][1]['collection']);
     }
 
     public function testReadOnlyExportUsesTheActiveSavedEnvironmentWithoutLeakingOtherSettings(): void
@@ -144,16 +133,18 @@ final class EventExampleGeneratorTest extends TestCase
         self::assertSame(['plan' => 'example'], $bundle['examples']['enhanced']['payload']['customData']);
     }
 
-    public function testEnvironmentSpecificFileAndEnvironmentMarkerNameAreRespected(): void
+    public function testEnvironmentSpecificFileIsRespectedAndTheBrowserMarkerNameIsNotReserved(): void
     {
         $generator = $this->generator(['custom_data_properties' => ['main_only' => []]]);
         file_put_contents($this->projectDir.'/config/aggregate_test.yaml', Yaml::dump([
             'custom_data_properties' => ['staff' => ['consent_required' => false], 'plan' => ['consent_required' => false]],
             'query_parameter_mappings' => [],
         ]));
+        // The marker's browser name is not an event key; only
+        // org_internal_traffic is reserved.
         $_ENV['INTERNAL_TRAFFIC_NAME'] = 'staff';
 
-        self::assertSame(['plan' => 'example'], (array) $generator->generate()['examples']['anonymous']['payload']['customData']);
+        self::assertSame(['staff' => 'example', 'plan' => 'example'], (array) $generator->generate()['examples']['anonymous']['payload']['customData']);
     }
 
     public function testEmptyReplacementModelProducesObjectsInBothModes(): void
@@ -196,7 +187,6 @@ final class EventExampleGeneratorTest extends TestCase
         yield 'unsupported types' => [['custom_data_properties' => ['plan' => ['type' => 'array']]]];
         yield 'null model' => [['custom_data_properties' => null]];
         yield 'unmodeled query destination' => [['query_parameter_mappings' => ['plan' => 'missing']]];
-        yield 'invalid marker' => [['internal_traffic_value' => ['private-marker']]];
         yield 'invalid kill switch' => [['anonymous_tracking_enabled' => 'not-a-boolean']];
         yield 'invalid exclusions' => [['anonymous_excluded_paths' => ['private-path-without-slash']]];
     }
@@ -291,7 +281,7 @@ final class EventExampleGeneratorTest extends TestCase
         self::assertSame('granted', $documented['consentState']);
         self::assertSame(4999, $documented['customData']['total_minor']);
         self::assertSame(0.1, $documented['customData']['discount_rate']);
-        self::assertFalse($documented['internalTraffic']);
+        self::assertFalse($documented[InternalTrafficSettings::JSON_KEY]);
 
         $guide = file_get_contents(dirname(__DIR__, 2).'/docs/EVENT-EXAMPLES.md');
         self::assertSame(1, preg_match('/```json\n(.*?)\n```/s', $guide, $matches));

@@ -129,6 +129,33 @@ attribute names.
 construction, such as an outbound link's host name, if adopters need it. It would
 still need a data-model definition before it is stored.
 
+### Organization traffic marked on each website, reported on every event
+
+**Decision.** Team members mark a browser through [marking links](PRIVACY-COMPLIANCE.md#organization-traffic)
+that open each tracked website with a short-lived signed code; the tracker there
+checks the code with the analytics server and writes the marker in that
+website's own cookie or local storage. Every standard-profile event reports
+`org_internal_traffic`, `true` or `false`, under that fixed key, whatever the
+marker's browser name.
+
+**Why.** Browsers keep each website's storage separate, so a marker saved on the
+analytics server never reaches the tracked websites; only a script running on a
+website can write there. A link that the tracker already on the page follows
+needs no extra script on the website and no third-party cookie. A fixed key keeps
+BI filters working when the marker is renamed, and an explicit `false` tells an
+unmarked browser apart from an event that was never checked (the strict profile
+records no flag).
+
+**Trade-off.** Each website is visited once per browser (the "all websites"
+button chains the visits), and its home page must load the tracker; other sites
+host a downloaded marker page. Every event carries a few more bytes of JSON.
+Rows stored by earlier versions keep the old configured-name key and omit
+`false`; they are not converted.
+
+**What would change it.** A browser mechanism that lets a site share a
+first-party flag with its sibling websites by consent. Recognizing staff by IP
+address is not an option, because anonymous collection keeps no IP-derived data.
+
 ## Data and reporting
 
 ### One events table for both modes

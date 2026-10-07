@@ -134,6 +134,10 @@ services:
         arguments:
             $projectDir: '%kernel.project_dir%'
 
+    App\Service\InternalTrafficMarking:
+        arguments:
+            $secret: '%kernel.secret%'
+
     App\Service\TagManagerSettings:
         arguments:
             # Remembers custom JavaScript that passed its checks; safe to clear.

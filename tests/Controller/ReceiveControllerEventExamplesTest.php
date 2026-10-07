@@ -39,14 +39,16 @@ final class ReceiveControllerEventExamplesTest extends TestCase
         $payload = $bundle['examples'][$mode]['payload'];
         $event = $this->ingestAndPersist($payload, $config, $mode);
 
-        self::assertSame($payload['customData'] ?: null, $event->getCustomData());
+        // Every standard-profile event records the organization-traffic flag.
+        self::assertFalse($payload[InternalTrafficSettings::JSON_KEY]);
+        self::assertSame([...$payload['customData'], InternalTrafficSettings::JSON_KEY => false], $event->getCustomData());
         self::assertSame($payload['eventName'], $event->getEventName());
         self::assertSame($payload['pagePath'], $event->getUrl());
         self::assertSame($payload['referrerChannel'], $event->getReferrer());
         self::assertSame($payload['deviceClass'], $event->getDeviceClass());
         self::assertSame($payload['viewportBucket'], $event->getViewportBucket());
         self::assertNull($event->getGoalEvent());
-        self::assertFalse($event->isInternalTraffic('companyStaff'));
+        self::assertFalse($event->isInternalTraffic());
         self::assertStringNotContainsString('203.0.113.42', serialize($event));
         self::assertStringNotContainsString('Chrome/126.0', serialize($event));
         if ($mode === 'anonymous') {
@@ -65,7 +67,6 @@ final class ReceiveControllerEventExamplesTest extends TestCase
             yield $mode.' defaults' => [$mode, []];
             yield $mode.' empty model' => [$mode, ['custom_data_properties' => [], 'query_parameter_mappings' => []]];
             yield $mode.' explicit scalar model and reserved keys' => [$mode, [
-                'internal_traffic_name' => 'companyStaff',
                 'custom_data_properties' => [
                     'utm_medium' => ['consent_required' => false],
                     'utm_campaign' => ['consent_required' => false],
@@ -74,8 +75,7 @@ final class ReceiveControllerEventExamplesTest extends TestCase
                     'quantity' => ['type' => 'integer', 'consent_required' => false],
                     'amount' => ['type' => 'double'],
                     'flag' => ['type' => 'boolean', 'consent_required' => false],
-                    'companyStaff' => ['consent_required' => false, 'column' => 'organization_traffic'],
-                    '__Host-formerStaff' => ['consent_required' => true, 'column' => 'historical_staff'],
+                    InternalTrafficSettings::JSON_KEY => ['type' => 'boolean', 'consent_required' => false, 'column' => 'organization_traffic'],
                 ],
                 'query_parameter_mappings' => ['channel' => 'utm_medium', 'utm_source' => 'campaign.kind'],
             ]];
@@ -90,7 +90,7 @@ final class ReceiveControllerEventExamplesTest extends TestCase
         foreach (['anonymous', 'enhanced'] as $mode) {
             $payload = $bundle['examples'][$mode]['payload'];
             $event = $this->ingestAndPersist($payload, $adoptedConfig, $mode);
-            self::assertSame((array) $payload['customData'] ?: null, $event->getCustomData());
+            self::assertSame([...(array) $payload['customData'], InternalTrafficSettings::JSON_KEY => false], $event->getCustomData());
             self::assertSame('purchase', $event->getEventName());
             self::assertNull($event->getGoalEvent());
         }
@@ -100,19 +100,18 @@ final class ReceiveControllerEventExamplesTest extends TestCase
     public function testChangingTheEnhancedExampleToNonConsentCannotRetainEnhancedFields(mixed $consent): void
     {
         $config = $this->config([
-            'internal_traffic_name' => 'companyStaff',
             'custom_data_properties' => ['utm_medium' => ['consent_required' => false], 'plan' => []],
             'query_parameter_mappings' => [],
         ]);
         $bundle = (new EventExampleGenerator(new CustomDataSettings($config)))->generate();
         $payload = $bundle['examples']['enhanced']['payload'];
         $payload['consentState'] = $consent;
-        $payload['customData']->companyStaff = 'forged-marker-value';
+        $payload['customData']->{InternalTrafficSettings::JSON_KEY} = 'forged-marker-value';
         $payload['customData']->unmodeled = 'private-property';
         $event = $this->ingestAndPersist($payload, $config, 'anonymous');
 
         $this->assertAnonymous($event);
-        self::assertSame(['utm_medium' => 'email'], $event->getCustomData());
+        self::assertSame(['utm_medium' => 'email', InternalTrafficSettings::JSON_KEY => false], $event->getCustomData());
         self::assertStringNotContainsString('private-property', serialize($event));
         self::assertStringNotContainsString('forged-marker-value', serialize($event));
     }
@@ -219,7 +218,7 @@ final class ReceiveControllerEventExamplesTest extends TestCase
             $request, $websites, $bus, $limiter, $sanitizer,
             new GoalEventRegistry($sanitizer, []), new PrivacyPolicy($config), $geo,
             new AnonymousEventRecorder($entityManager), new NullLogger(),
-            new InternalTrafficSettings($config), new CustomDataSettings($config),
+            new CustomDataSettings($config),
         );
     }
 

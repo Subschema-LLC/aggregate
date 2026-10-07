@@ -1,0 +1,30 @@
+{# Marking links for each tracked website (App\Service\InternalTrafficMarking),
+   on the share page and the dashboard's Organization traffic page. #}
+<section class="marking" data-internal-traffic-websites data-expires="{{ marking.expires }}" aria-labelledby="marking-title">
+    <h2 id="marking-title"{% if heading_class|default(false) %} class="{{ heading_class }}"{% endif %}>Your tracked websites</h2>
+    {% if marking.strict %}
+        <p>The strict collection profile is on. The tracker reads no cookies or browser storage, so it cannot see a marker, and events are recorded without one.</p>
+    {% elseif marking.websites is empty %}
+        <p>No websites are set up yet.</p>
+    {% else %}
+        <p>Each website keeps its own copy of the marker, so mark each website this browser visits. A link opens the website’s home page; its tracker saves or removes the marker there and brings you back. Mark every browser and device you use.</p>
+        <div class="buttons">
+            <button type="button" class="button is-primary" data-marking-all="mark">Mark this browser on all websites</button>
+            <button type="button" class="button" data-marking-all="remove">Remove the marker from all websites</button>
+        </div>
+        <table class="table is-fullwidth marking-websites">
+            <caption class="is-sr-only">Tracked websites</caption>
+            <thead><tr><th scope="col">Website</th><th scope="col">This browser</th></tr></thead>
+            <tbody>
+            {% for website in marking.websites %}
+                <tr data-marking-website data-domain="{{ website.domain }}" data-mark-url="{{ website.mark_url }}" data-remove-url="{{ website.remove_url }}">
+                    <th scope="row">{{ website.name }} <span class="marking-domain">{{ website.domain }}</span></th>
+                    <td><a href="{{ website.mark_url }}" data-marking-one="mark" rel="noreferrer">Mark</a> · <a href="{{ website.remove_url }}" data-marking-one="remove" rel="noreferrer">Remove</a></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        <p class="marking-help">The tracker must load on each website’s home page. If a website does not bring you back, its home page does not load the tracker: go back to this page and use the links for the remaining websites. The links stop working after 30 minutes; this page renews them.</p>
+    {% endif %}
+</section>
+<script>{% include 'internal_traffic/marking.js.twig' %}</script>

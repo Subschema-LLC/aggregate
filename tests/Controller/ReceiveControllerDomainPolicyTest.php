@@ -347,7 +347,6 @@ final class ReceiveControllerDomainPolicyTest extends TestCase
             $geo,
             new AnonymousEventRecorder($entityManager),
             new NullLogger(),
-            new InternalTrafficSettings($config),
             new CustomDataSettings($config),
         );
 
