@@ -6,6 +6,7 @@ namespace App\Controller;
 
 use App\EventSubscriber\InternalTrafficResponseSubscriber;
 use App\Service\AggregateConfigLoader;
+use App\Service\InternalTrafficMarking;
 use App\Service\InternalTrafficSettings;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -22,6 +23,7 @@ final class InternalTrafficController extends AbstractController
         private readonly AggregateConfigLoader $config,
         private readonly InternalTrafficSettings $settings,
         private readonly LoggerInterface $logger,
+        private readonly InternalTrafficMarking $marking,
     ) {
     }
 
@@ -33,9 +35,11 @@ final class InternalTrafficController extends AbstractController
         $shareUrl = null;
         $marker = InternalTrafficSettings::DEFAULTS;
         $browserConfig = null;
+        $marking = null;
         try {
             $marker = $this->settings->markerSettings();
             $browserConfig = $this->settings->toBrowserConfig();
+            $marking = $this->marking->page();
             $token = $this->settings->getShareToken();
             if ($token !== '') {
                 $shareUrl = $this->generateUrl('app_internal_traffic_public', ['token' => $token], UrlGeneratorInterface::ABSOLUTE_URL);
@@ -44,6 +48,7 @@ final class InternalTrafficController extends AbstractController
             $this->logger->error('Failed to load internal traffic settings.', ['exception' => $e]);
             $error = 'The organization traffic configuration is invalid. Correct its YAML or environment values before using it.';
             $browserConfig = null;
+            $marking = null;
         }
 
         return InternalTrafficResponseSubscriber::protect($this->render('internal_traffic/index.html.twig', [
@@ -52,6 +57,7 @@ final class InternalTrafficController extends AbstractController
             'overrides' => $this->settings->getEnvironmentOverrides(),
             'configuration_error' => $error,
             'share_url' => $shareUrl,
+            'marking' => $marking,
         ]));
     }
 
@@ -100,6 +106,7 @@ final class InternalTrafficController extends AbstractController
             'browser_config' => $this->settings->toBrowserConfig(),
             'standalone' => true,
             'download_url' => null,
+            'marking' => null,
         ]);
         $response->headers->set('Content-Disposition', 'attachment; filename="internal-traffic.html"');
 

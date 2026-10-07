@@ -6,6 +6,7 @@ namespace App\Tests\Entity;
 
 use App\Entity\Event;
 use App\Service\CustomDataSettings;
+use App\Service\InternalTrafficSettings;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -15,38 +16,38 @@ final class EventPrivacyInvariantTest extends TestCase
     {
         $event = $this->anonymousEvent()
             ->setApprovedAnonymousCustomData(['plan' => "pro\0", 'active' => false, 'optional' => null, 'nested' => ['ignored']])
-            ->setInternalTraffic(true, 'companyStaff')
+            ->setInternalTraffic(true)
             ->setVisitorId('private-visitor')
             ->setSessionId('private-session');
 
-        $expected = ['plan' => 'pro', 'active' => false, 'optional' => null, 'companyStaff' => true];
+        $expected = ['plan' => 'pro', 'active' => false, 'optional' => null, InternalTrafficSettings::JSON_KEY => true];
         $event->enforcePrivacyInvariants();
         self::assertSame($expected, $event->getCustomData());
         self::assertNull($event->getVisitorId());
         self::assertNull($event->getSessionId());
 
-        $event->setCustomData([...$expected, 'plan' => 'private@example.com', 'email' => 'private@example.com']);
+        $event->setCustomData([...$expected, 'plan' => 'private@example.com', 'email' => 'private@example.com', InternalTrafficSettings::JSON_KEY => false]);
         $event->enforcePrivacyInvariants();
         self::assertSame($expected, $event->getCustomData());
         self::assertStringNotContainsString('private', serialize($event));
     }
 
-    public function testHydrationPreservesHistoricalPropertiesAndRenamedTrafficMarkerOnUpdate(): void
+    public function testHydrationPreservesHistoricalPropertiesAndTheTrafficFlagOnUpdate(): void
     {
-        $persistedData = ['plan' => 'pro', 'optional' => null, 'companyStaff' => true];
+        $persistedData = ['plan' => 'pro', 'optional' => null, InternalTrafficSettings::JSON_KEY => true];
         $loaded = $this->anonymousEvent()->setCustomData($persistedData);
-        $loaded->restoreAnonymousTrafficMarkerName();
-        $loaded->setCustomData([...$persistedData, 'email' => 'private@example.com']);
+        $loaded->restoreApprovedAnonymousCustomData();
+        $loaded->setCustomData([...$persistedData, 'email' => 'private@example.com', InternalTrafficSettings::JSON_KEY => false]);
         $loaded->setArchivedAt(new \DateTimeImmutable('2026-08-01T00:00:00Z'));
         $loaded->enforcePrivacyInvariants();
 
         self::assertSame($persistedData, $loaded->getCustomData());
-        self::assertTrue($loaded->isInternalTraffic('companyStaff'));
+        self::assertTrue($loaded->isInternalTraffic());
         self::assertStringNotContainsString('private', serialize($loaded));
 
-        $loaded->setInternalTraffic(false, 'companyStaff');
+        $loaded->setInternalTraffic(false);
         $loaded->enforcePrivacyInvariants();
-        self::assertSame(['plan' => 'pro', 'optional' => null], $loaded->getCustomData());
+        self::assertSame(['plan' => 'pro', 'optional' => null, InternalTrafficSettings::JSON_KEY => false], $loaded->getCustomData());
     }
 
     #[DataProvider('approvedPageSequences')]
@@ -70,7 +71,7 @@ final class EventPrivacyInvariantTest extends TestCase
     public function testHistoricalPageSequenceValuesAreNotRewrittenByLifecycleUpdates(): void
     {
         $event = $this->anonymousEvent()->setCustomData(['page_sequence' => 'legacy-value']);
-        $event->restoreAnonymousTrafficMarkerName();
+        $event->restoreApprovedAnonymousCustomData();
         $event->setArchivedAt(new \DateTimeImmutable('2026-09-01T00:00:00Z'));
         $event->enforcePrivacyInvariants();
         self::assertSame(['page_sequence' => 'legacy-value'], $event->getCustomData());
@@ -104,40 +105,50 @@ final class EventPrivacyInvariantTest extends TestCase
         $this->assertAnonymousFieldsWereScrubbed($event, '2026-07-25T01:00:00.000000+00:00');
     }
 
-    public function testAnonymousLifecyclePreservesOnlyReservedInternalTrafficMarker(): void
+    public function testAnonymousLifecycleKeepsOnlyTheFlagRecordedBySetInternalTraffic(): void
     {
         $event = $this->anonymousEvent()
-            ->setCustomData(['email' => 'person@example.com', 'orgInternalTraffic' => true])
+            ->setCustomData(['email' => 'person@example.com', InternalTrafficSettings::JSON_KEY => true])
             ->setVisitorId('visitor-1')
             ->setSessionId('session-1')
             ->setCreatedAt(new \DateTimeImmutable('2026-07-24 12:34:56-05:00'));
 
+        // A property of the same name is not the flag.
+        self::assertFalse($event->isInternalTraffic());
         $event->enforcePrivacyInvariants();
-
-        self::assertTrue($event->isInternalTraffic());
-        self::assertSame(['orgInternalTraffic' => true], $event->getCustomData());
+        self::assertNull($event->getCustomData());
         self::assertNull($event->getVisitorId());
         self::assertNull($event->getSessionId());
         self::assertSame('2026-07-24T17:00:00+00:00', $event->getCreatedAt()->format(\DateTimeInterface::ATOM));
 
-        $event->setCustomData([...$event->getCustomData(), 'plan' => 'private']);
+        $event->setInternalTraffic(true);
         $event->enforcePrivacyInvariants();
-        self::assertSame(['orgInternalTraffic' => true], $event->getCustomData());
+        self::assertSame([InternalTrafficSettings::JSON_KEY => true], $event->getCustomData());
+
+        $event->setCustomData(['plan' => 'private', InternalTrafficSettings::JSON_KEY => false]);
+        $event->enforcePrivacyInvariants();
+        self::assertSame([InternalTrafficSettings::JSON_KEY => true], $event->getCustomData());
     }
 
     #[DataProvider('nonBooleanInternalTrafficMarkers')]
     public function testAnonymousLifecycleNeverRetainsArbitraryInternalTrafficValues(mixed $marker): void
     {
-        $event = $this->anonymousEvent()->setCustomData(['orgInternalTraffic' => $marker]);
+        $event = $this->anonymousEvent()->setCustomData([InternalTrafficSettings::JSON_KEY => $marker]);
 
         self::assertFalse($event->isInternalTraffic());
         $event->enforcePrivacyInvariants();
         self::assertNull($event->getCustomData());
+
+        // A stored row whose flag is not a boolean does not gain one either.
+        $loaded = $this->anonymousEvent()->setCustomData([InternalTrafficSettings::JSON_KEY => $marker]);
+        $loaded->restoreApprovedAnonymousCustomData();
+        self::assertFalse($loaded->isInternalTraffic());
+        $loaded->enforcePrivacyInvariants();
+        self::assertNull($loaded->getCustomData());
     }
 
     public static function nonBooleanInternalTrafficMarkers(): iterable
     {
-        yield 'false' => [false];
         yield 'null' => [null];
         yield 'string true' => ['true'];
         yield 'numeric true' => [1];
@@ -145,57 +156,60 @@ final class EventPrivacyInvariantTest extends TestCase
         yield 'object-like data' => [['email' => 'person@example.com']];
     }
 
-    public function testConfiguredOrganizationMarkerSurvivesAnonymousLifecycleAndHydration(): void
+    public function testTrafficFlagSurvivesAnonymousLifecycleAndHydration(): void
     {
         $event = $this->anonymousEvent()
             ->setCustomData(['email' => 'person@example.com'])
-            ->setInternalTraffic(true, 'companyStaff');
+            ->setInternalTraffic(true);
         $event->enforcePrivacyInvariants();
-        self::assertSame(['companyStaff' => true], $event->getCustomData());
+        self::assertSame([InternalTrafficSettings::JSON_KEY => true], $event->getCustomData());
 
         // Doctrine hydrates JSON and invokes PostLoad on a new entity instance.
         $loaded = $this->anonymousEvent()->setCustomData($event->getCustomData());
-        $callback = new \ReflectionMethod(Event::class, 'restoreAnonymousTrafficMarkerName');
+        $callback = new \ReflectionMethod(Event::class, 'restoreApprovedAnonymousCustomData');
         self::assertCount(1, $callback->getAttributes(\Doctrine\ORM\Mapping\PostLoad::class));
-        $loaded->restoreAnonymousTrafficMarkerName();
+        $loaded->restoreApprovedAnonymousCustomData();
         self::assertTrue($loaded->isInternalTraffic());
         $loaded->setCustomData([...$loaded->getCustomData(), 'email' => 'must-be-stripped']);
         $loaded->enforcePrivacyInvariants();
-        self::assertSame(['companyStaff' => true], $loaded->getCustomData());
-        $loaded->setInternalTraffic(false, 'companyStaff');
-        self::assertNull($loaded->getCustomData());
+        self::assertSame([InternalTrafficSettings::JSON_KEY => true], $loaded->getCustomData());
+        $loaded->setInternalTraffic(false);
+        self::assertSame([InternalTrafficSettings::JSON_KEY => false], $loaded->getCustomData());
+        $loaded->enforcePrivacyInvariants();
+        self::assertSame([InternalTrafficSettings::JSON_KEY => false], $loaded->getCustomData());
     }
 
     public function testNewAnonymousEventsDoNotTreatArbitraryBooleanPropertiesAsConfiguredMarkers(): void
     {
-        $event = $this->anonymousEvent()->setCustomData(['arbitraryProperty' => true]);
+        $event = $this->anonymousEvent()->setCustomData(['arbitraryProperty' => true, 'orgInternalTraffic' => true]);
         $event->enforcePrivacyInvariants();
         self::assertNull($event->getCustomData());
     }
 
-    public function testNumericNamesCannotTurnMarkerJsonIntoAnArray(): void
-    {
-        $this->expectException(\InvalidArgumentException::class);
-        (new Event())->setInternalTraffic(true, '0');
-    }
-
-    public function testInternalTrafficDefaultsToFalseAndSetterPreservesOtherCustomProperties(): void
+    public function testFlagIsTrueFalseOrAbsentAndSetterPreservesOtherCustomProperties(): void
     {
         $event = new Event();
 
         self::assertFalse($event->isInternalTraffic());
         $event->setInternalTraffic(false);
+        self::assertSame([InternalTrafficSettings::JSON_KEY => false], $event->getCustomData());
+        // The strict profile records no flag at all.
+        $event->setInternalTraffic(null);
         self::assertNull($event->getCustomData());
 
-        $event->setCustomData(['plan' => 'pro', 'orgInternalTraffic' => 'untrusted']);
+        $event->setCustomData(['plan' => 'pro', InternalTrafficSettings::JSON_KEY => 'untrusted']);
         $event->setInternalTraffic(true);
-        self::assertSame(['plan' => 'pro', 'orgInternalTraffic' => true], $event->getCustomData());
+        self::assertSame(['plan' => 'pro', InternalTrafficSettings::JSON_KEY => true], $event->getCustomData());
+        self::assertTrue($event->isInternalTraffic());
 
         $event->setInternalTraffic(false);
-        self::assertSame(['plan' => 'pro'], $event->getCustomData());
+        self::assertSame(['plan' => 'pro', InternalTrafficSettings::JSON_KEY => false], $event->getCustomData());
         self::assertFalse($event->isInternalTraffic());
 
-        $event->setCustomData(['orgInternalTraffic' => true])->setInternalTraffic(false);
+        $event->setInternalTraffic(null);
+        self::assertSame(['plan' => 'pro'], $event->getCustomData());
+
+        $event->setCustomData([InternalTrafficSettings::JSON_KEY => true])->setInternalTraffic(null);
         self::assertNull($event->getCustomData());
     }
 

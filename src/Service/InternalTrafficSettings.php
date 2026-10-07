@@ -4,9 +4,18 @@ declare(strict_types=1);
 
 namespace App\Service;
 
-/** The shared marker is a reporting hint, never an authentication credential. */
+/**
+ * The organization-traffic marker: a cookie or local-storage entry that a
+ * team member's browser holds on each tracked website. The tracker reports it
+ * on every event as org_internal_traffic (JSON_KEY), true or false; the
+ * browser-side name and value are configured separately. The marker is a
+ * reporting hint, never an authentication credential.
+ */
 final class InternalTrafficSettings
 {
+    /** The fixed key in the tracker's payload and in events.custom_data. */
+    public const JSON_KEY = 'org_internal_traffic';
+
     public const DEFAULTS = [
         'internal_traffic_storage' => 'cookie',
         'internal_traffic_name' => 'orgInternalTraffic',
@@ -80,18 +89,7 @@ final class InternalTrafficSettings
             static fn (string $key): bool => !$overrides[$key],
             ARRAY_FILTER_USE_KEY,
         );
-        $this->config->updateMany(static function (array $current) use ($validated, $updates): array {
-            $enabled = array_key_exists(CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY, $current)
-                ? $current[CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY] : false;
-            if (!is_bool($enabled)) {
-                throw new \InvalidArgumentException('page_sequence_enabled must be a YAML boolean: true or false. Nothing was saved.');
-            }
-            if ($enabled && $validated['internal_traffic_name'] === CustomDataSettings::PAGE_SEQUENCE_PROPERTY) {
-                throw new \InvalidArgumentException('The organization marker name cannot be page_sequence while page sequence collection is enabled. Nothing was saved.');
-            }
-
-            return $updates;
-        });
+        $this->config->setMany($updates);
     }
 
     public function getShareToken(): string

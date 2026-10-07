@@ -166,7 +166,7 @@ the physical type differs between database engines.
 | `visitor_id` | Nullable string (191) | Enhanced only; always null in anonymous mode. |
 | `session_id` | Nullable string (191) | Enhanced only; always null in anonymous mode. |
 | `consent_state` | Nullable string (20) | `granted` for enhanced rows; null in anonymous mode. |
-| `custom_data` | Nullable JSON | Allowed scalar properties, optional `page_sequence`, and the organization-traffic marker. Anonymous rows keep only properties configured for collection without consent. Not included in the approved views or the archives. |
+| `custom_data` | Nullable JSON | Allowed scalar properties, optional `page_sequence`, and the organization-traffic flag `org_internal_traffic` (true or false). Anonymous rows keep only properties configured for collection without consent. Not included in the approved views or the archives. |
 | `goal_event` | Nullable string (191) | An enabled goal code; kept on anonymous rows only when the goal allows anonymous use. |
 | `created_at` | UTC date and time | The UTC hour for anonymous rows; the exact server time for enhanced rows. |
 

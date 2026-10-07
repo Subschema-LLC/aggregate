@@ -184,21 +184,6 @@ final class CustomDataSettingsTest extends TestCase
         self::assertTrue($settings->toArray()['page_sequence_enabled']);
     }
 
-    public function testConcurrentMarkerChangeCannotCreateAPageSequenceCollisionWhenSaving(): void
-    {
-        $settings = $this->settings([]);
-        $model = $settings->toArray();
-        $model['page_sequence_enabled'] = true;
-        file_put_contents($this->projectDir.'/config/aggregate.yaml', "internal_traffic_name: page_sequence\n");
-        $before = file_get_contents($this->projectDir.'/config/aggregate.yaml');
-        try {
-            $settings->save($model);
-            self::fail('A concurrently configured marker collision was accepted.');
-        } catch (\InvalidArgumentException) {
-            self::assertSame($before, file_get_contents($this->projectDir.'/config/aggregate.yaml'));
-        }
-    }
-
     #[DataProvider('invalidPageSequenceConfiguration')]
     public function testPageSequenceConfigurationFailsClosed(array $values): void
     {
@@ -217,7 +202,6 @@ final class CustomDataSettingsTest extends TestCase
                 yield 'invalid method '.$index.' '.($enabled ? 'enabled' : 'disabled') => [['page_sequence_enabled' => $enabled, 'page_sequence_method' => $invalid]];
             }
         }
-        yield 'marker collision' => [['page_sequence_enabled' => true, 'internal_traffic_name' => 'page_sequence']];
         yield 'property without integer declaration' => [['page_sequence_enabled' => true, 'custom_data_properties' => ['page_sequence' => ['consent_required' => false]]]];
         yield 'property with conflicting consent policy' => [['page_sequence_enabled' => true, 'custom_data_properties' => ['page_sequence' => ['type' => 'integer', 'consent_required' => true]]]];
         yield 'query mapping' => [[
@@ -260,27 +244,6 @@ final class CustomDataSettingsTest extends TestCase
         yield 'boolean' => [['type' => 'boolean', 'consent_required' => false]];
         yield 'scalar' => [['type' => 'scalar', 'consent_required' => false]];
         yield 'integer requiring consent' => [['type' => 'integer', 'consent_required' => true]];
-    }
-
-    public function testRenamingALegacyPageSequenceMarkerPreservesItsHistoricalReportingDefinition(): void
-    {
-        $this->settings([
-            'internal_traffic_name' => 'page_sequence',
-            'page_sequence_enabled' => false,
-            'custom_data_properties' => ['page_sequence' => ['type' => 'boolean', 'consent_required' => true, 'column' => 'historical_staff']],
-            'query_parameter_mappings' => [],
-        ]);
-        $config = new AggregateConfigLoader($this->projectDir, 'test');
-        $settings = new CustomDataSettings($config);
-        self::assertSame(['historical_staff' => 'page_sequence'], $settings->reportingColumns());
-
-        (new InternalTrafficSettings($config))->saveMarker([...InternalTrafficSettings::DEFAULTS, 'internal_traffic_name' => 'companyStaff']);
-
-        self::assertSame(['historical_staff' => 'page_sequence'], $settings->reportingColumns());
-        self::assertSame('boolean', $settings->properties()['page_sequence']['type']);
-        self::assertFalse($settings->toBrowserConfig()['pageSequenceEnabled']);
-        self::assertSame([], $settings->toBrowserConfig()['consentFreeProperties']);
-        self::assertNull($settings->filterEventData(['page_sequence' => true], true));
     }
 
     public function testExplicitMediumWhitelistAppliesIndependentlyToBrowserAndServer(): void
@@ -357,14 +320,13 @@ final class CustomDataSettingsTest extends TestCase
                 'legacy' => ['column' => 'legacy_text'],
                 'quantity' => ['type' => 'integer', 'column' => 'quantity_text', 'numeric_column' => 'quantity_value', 'consent_required' => false],
                 'revenue' => ['type' => 'double', 'numeric_column' => 'revenue_value'],
-                'orgInternalTraffic' => ['type' => 'boolean', 'column' => 'staff'],
-                '__Host-formerStaff' => ['type' => 'boolean', 'column' => 'former_staff'],
+                InternalTrafficSettings::JSON_KEY => ['type' => 'boolean', 'column' => 'staff'],
             ],
             'query_parameter_mappings' => ['qty' => 'quantity'],
         ]);
 
         self::assertSame(['description' => '', 'consent_required' => true, 'column' => 'legacy_text'], $settings->properties()['legacy']);
-        self::assertSame(['legacy_text' => 'legacy', 'quantity_text' => 'quantity', 'staff' => 'orgInternalTraffic', 'former_staff' => '__Host-formerStaff'], $settings->reportingColumns());
+        self::assertSame(['legacy_text' => 'legacy', 'quantity_text' => 'quantity', 'staff' => InternalTrafficSettings::JSON_KEY], $settings->reportingColumns());
         self::assertSame([
             'quantity_value' => ['property' => 'quantity', 'type' => 'integer'],
             'revenue_value' => ['property' => 'revenue', 'type' => 'double'],
@@ -433,21 +395,20 @@ final class CustomDataSettingsTest extends TestCase
             'custom_data_properties' => [
                 'quantity' => ['type' => 'integer', 'consent_required' => false],
                 'revenue' => ['type' => 'double'],
-                'orgInternalTraffic' => ['type' => 'boolean', 'consent_required' => false],
+                InternalTrafficSettings::JSON_KEY => ['type' => 'boolean', 'consent_required' => false],
             ],
             'query_parameter_mappings' => [],
         ]);
-        $submitted = ['quantity' => 2, 'revenue' => 12.5, 'orgInternalTraffic' => true, 'unknown' => 12];
+        $submitted = ['quantity' => 2, 'revenue' => 12.5, InternalTrafficSettings::JSON_KEY => true, 'unknown' => 12];
 
         self::assertSame(['quantity' => 2], $settings->filterEventData($submitted, false));
         self::assertSame(['quantity' => 2, 'revenue' => 12.5, 'unknown' => 12], $settings->filterEventData($submitted, true));
-        self::assertSame(['quantity' => 'integer', 'revenue' => 'double', 'orgInternalTraffic' => 'boolean'], $settings->propertyTypes());
+        self::assertSame(['quantity' => 'integer', 'revenue' => 'double', InternalTrafficSettings::JSON_KEY => 'boolean'], $settings->propertyTypes());
     }
 
     public function testPreviewModelUsesSharedConsentTypeAndActiveMarkerRulesWithoutSaving(): void
     {
         $settings = $this->settings([
-            'internal_traffic_name' => 'companyStaff',
             'custom_data_properties' => ['saved_only' => ['consent_required' => false]],
             'query_parameter_mappings' => [],
         ]);
@@ -456,11 +417,11 @@ final class CustomDataSettingsTest extends TestCase
             'custom_data_properties' => [
                 'quantity' => ['type' => 'integer', 'consent_required' => false],
                 'revenue' => ['type' => 'double'],
-                'companyStaff' => ['type' => 'boolean', 'consent_required' => false],
+                InternalTrafficSettings::JSON_KEY => ['type' => 'boolean', 'consent_required' => false],
             ],
             'query_parameter_mappings' => [],
         ];
-        $data = ['quantity' => 2.0, 'revenue' => 12.5, 'companyStaff' => true, 'saved_only' => 'private'];
+        $data = ['quantity' => 2.0, 'revenue' => 12.5, InternalTrafficSettings::JSON_KEY => true, 'saved_only' => 'private'];
 
         self::assertSame(['quantity' => 2], $settings->filterEventDataForModel($data, false, $model));
         self::assertSame(['quantity' => 2, 'revenue' => 12.5, 'saved_only' => 'private'], $settings->filterEventDataForModel($data, true, $model));
@@ -473,35 +434,28 @@ final class CustomDataSettingsTest extends TestCase
         $settings->filterEventDataForModel(null, false, $model);
     }
 
-    #[DataProvider('markerNames')]
-    public function testConfiguredMarkerCanHaveAReportingColumnButCannotBeSubmittedAsCustomData(string $markerName): void
+    public function testOrganizationTrafficFlagCanHaveAReportingColumnButCannotBeSubmittedAsCustomData(): void
     {
         $settings = $this->settings([
-            'internal_traffic_name' => $markerName,
-            'custom_data_properties' => [$markerName => ['consent_required' => true, 'column' => 'organization_traffic'], 'plan' => ['consent_required' => false]],
+            'custom_data_properties' => [
+                InternalTrafficSettings::JSON_KEY => ['type' => 'boolean', 'consent_required' => false, 'column' => 'organization_traffic'],
+                'plan' => ['consent_required' => false],
+            ],
             'query_parameter_mappings' => [],
         ]);
 
-        self::assertTrue($settings->properties()[$markerName]['consent_required']);
-        self::assertSame(['organization_traffic' => $markerName], $settings->reportingColumns());
+        self::assertSame(['organization_traffic' => InternalTrafficSettings::JSON_KEY], $settings->reportingColumns());
         self::assertSame(['plan'], $settings->toBrowserConfig()['consentFreeProperties']);
+        self::assertArrayNotHasKey('propertyTypes', $settings->toBrowserConfig());
         foreach ([false, true] as $enhancedConsent) {
-            self::assertSame(['plan' => 'pro'], $settings->filterEventData([$markerName => true, 'plan' => 'pro'], $enhancedConsent));
+            self::assertSame(['plan' => 'pro'], $settings->filterEventData([InternalTrafficSettings::JSON_KEY => true, 'plan' => 'pro'], $enhancedConsent));
         }
 
         $this->expectException(\InvalidArgumentException::class);
         $settings->save([
-            'custom_data_properties' => [$markerName => ['column' => 'organization_traffic']],
-            'query_parameter_mappings' => ['staff' => $markerName],
+            'custom_data_properties' => [InternalTrafficSettings::JSON_KEY => ['column' => 'organization_traffic']],
+            'query_parameter_mappings' => ['staff' => InternalTrafficSettings::JSON_KEY],
         ]);
-    }
-
-    public static function markerNames(): iterable
-    {
-        yield 'default' => ['orgInternalTraffic'];
-        yield 'renamed' => ['companyStaff'];
-        yield 'cookie prefix outside normal property format' => ['__Host-companyStaff'];
-        yield 'long legacy cookie name' => [str_repeat('s', 128)];
     }
 
     public function testReservedJavascriptPropertyNamesNeverReachStoredCustomData(): void
@@ -513,76 +467,14 @@ final class CustomDataSettingsTest extends TestCase
         ], true));
     }
 
-    public function testLegacyMarkerNamedAfterAUtmParameterDoesNotBreakDefaultConfiguration(): void
+    public function testBrowserMarkerNameDoesNotReserveAPropertyName(): void
     {
+        // The marker's name exists only in the browser; events report the
+        // flag as org_internal_traffic.
         $settings = $this->settings(['internal_traffic_name' => 'utm_medium']);
 
-        self::assertArrayNotHasKey('utm_medium', $settings->toBrowserConfig()['queryParameters']);
-        self::assertSame('utm_source', $settings->toBrowserConfig()['queryParameters']['utm_source']);
-        self::assertNull($settings->filterEventData(['utm_medium' => 'spoofed-marker'], true));
-    }
-
-    public function testNonstandardHistoricalMarkerKeepsItsReportingColumnAfterRenameWithoutEnablingCollection(): void
-    {
-        $this->settings(['internal_traffic_name' => '__Host-companyStaff']);
-        $config = new AggregateConfigLoader($this->projectDir, 'test');
-        $settings = new CustomDataSettings($config);
-        $settings->save([
-            'custom_data_properties' => ['__Host-companyStaff' => ['column' => 'historical_staff']],
-            'query_parameter_mappings' => [],
-        ]);
-
-        (new InternalTrafficSettings($config))->saveMarker(array_replace(
-            InternalTrafficSettings::DEFAULTS,
-            ['internal_traffic_name' => 'staff'],
-        ));
-
-        self::assertSame(['historical_staff' => '__Host-companyStaff'], $settings->reportingColumns());
-        self::assertTrue($settings->properties()['__Host-companyStaff']['consent_required']);
-        self::assertSame([], $settings->toBrowserConfig()['consentFreeProperties']);
-        self::assertSame([], $settings->toBrowserConfig()['queryParameters']);
-        foreach ([false, true] as $enhancedConsent) {
-            self::assertNull($settings->filterEventData([
-                '__Host-companyStaff' => 'untrusted-historical-marker',
-                'staff' => 'untrusted-current-marker',
-            ], $enhancedConsent));
-        }
-
-        $before = file_get_contents($this->projectDir.'/config/aggregate.yaml');
-        try {
-            $settings->save([
-                'custom_data_properties' => $settings->properties(),
-                'query_parameter_mappings' => ['old_staff' => '__Host-companyStaff'],
-            ]);
-            self::fail('A historical reporting-only key was accepted for URL capture.');
-        } catch (\InvalidArgumentException) {
-            self::assertSame($before, file_get_contents($this->projectDir.'/config/aggregate.yaml'));
-        }
-    }
-
-    public function testOrdinaryFormerMarkerStillRequiresConsentAfterRename(): void
-    {
-        $this->settings(['internal_traffic_name' => 'companyStaff']);
-        $config = new AggregateConfigLoader($this->projectDir, 'test');
-        $settings = new CustomDataSettings($config);
-        $settings->save([
-            'custom_data_properties' => ['companyStaff' => ['column' => 'historical_staff']],
-            'query_parameter_mappings' => [],
-        ]);
-        self::assertTrue($settings->properties()['companyStaff']['consent_required']);
-        self::assertNull($settings->filterEventData(['companyStaff' => true], true));
-
-        (new InternalTrafficSettings($config))->saveMarker(array_replace(
-            InternalTrafficSettings::DEFAULTS,
-            ['internal_traffic_name' => 'staff'],
-        ));
-
-        self::assertTrue($settings->properties()['companyStaff']['consent_required']);
-        self::assertSame(['historical_staff' => 'companyStaff'], $settings->reportingColumns());
-        self::assertSame([], $settings->toBrowserConfig()['consentFreeProperties']);
-        self::assertNull($settings->filterEventData(['companyStaff' => 'private', 'staff' => true], false));
-        self::assertSame(['companyStaff' => 'private'], $settings->filterEventData(['companyStaff' => 'private', 'staff' => true], true));
-        self::assertTrue(Yaml::parseFile($this->projectDir.'/config/aggregate.yaml')['custom_data_properties']['companyStaff']['consent_required']);
+        self::assertSame('utm_medium', $settings->toBrowserConfig()['queryParameters']['utm_medium']);
+        self::assertSame(['utm_medium' => 'email'], $settings->filterEventData(['utm_medium' => 'email'], true));
     }
 
     public function testNestedEnvironmentSavePreservesUnrelatedConfigurationAndExportContainsOnlyTheContract(): void
@@ -681,18 +573,15 @@ final class CustomDataSettingsTest extends TestCase
         yield 'text and numeric alias collide' => [array_replace($base, ['custom_data_properties' => ['plan' => ['type' => 'double', 'column' => 'plan_value', 'numeric_column' => 'plan_value']]])];
         yield 'numeric alias collides across properties' => [array_replace($base, ['custom_data_properties' => ['plan' => ['type' => 'integer', 'numeric_column' => 'metric'], 'revenue' => ['column' => 'metric']]])];
         yield 'numeric aliases must be unique' => [array_replace($base, ['custom_data_properties' => ['plan' => ['type' => 'integer', 'numeric_column' => 'metric'], 'revenue' => ['type' => 'float', 'numeric_column' => 'metric']]])];
-        yield 'marker cannot acquire string type' => [array_replace($base, ['custom_data_properties' => ['orgInternalTraffic' => ['type' => 'string']]])];
-        yield 'marker cannot acquire numeric alias' => [array_replace($base, ['custom_data_properties' => ['orgInternalTraffic' => ['type' => 'integer', 'numeric_column' => 'metric']]])];
-        yield 'legacy marker cannot acquire numeric alias' => [array_replace($base, ['custom_data_properties' => ['__Host-formerStaff' => ['type' => 'integer', 'column' => 'old_staff', 'numeric_column' => 'metric']]])];
+        yield 'organization flag cannot acquire string type' => [array_replace($base, ['custom_data_properties' => [InternalTrafficSettings::JSON_KEY => ['type' => 'string']]])];
+        yield 'organization flag cannot acquire numeric alias' => [array_replace($base, ['custom_data_properties' => [InternalTrafficSettings::JSON_KEY => ['type' => 'integer', 'numeric_column' => 'metric']]])];
         foreach (['id', 'event_hour', 'event_count', 'visitor_id', 'custom_data', 'Plan', 'a.b', 'select;drop', str_repeat('a', 64)] as $column) {
             yield 'invalid SQL column '.$column => [array_replace($base, ['custom_data_properties' => ['plan' => ['column' => $column]]])];
         }
         yield 'column collision' => [array_replace($base, ['custom_data_properties' => ['plan' => ['column' => 'tier'], 'level' => ['column' => 'tier']]])];
-        foreach (['-01', '00', 'constructor', 'prototype', '__proto__'] as $key) {
-            yield 'invalid historical marker '.$key => [array_replace($base, ['custom_data_properties' => [$key => ['column' => 'historical_staff']]])];
+        foreach (['-01', '00', 'constructor', 'prototype', '__proto__', '__Host-formerStaff', str_repeat('s', 128)] as $key) {
+            yield 'invalid key with reporting column '.$key => [array_replace($base, ['custom_data_properties' => [$key => ['column' => 'historical_staff']]])];
         }
-        yield 'historical marker without reporting column' => [array_replace($base, ['custom_data_properties' => ['__Host-formerStaff' => []]])];
-        yield 'historical marker cannot enable anonymous collection' => [array_replace($base, ['custom_data_properties' => ['__Host-formerStaff' => ['column' => 'historical_staff', 'consent_required' => false]]])];
         foreach ([['source' => 'missing'], ['source' => null], ['source' => ['plan']], ['constructor' => 'plan'], ['query parameter' => 'plan']] as $index => $mappings) {
             yield 'invalid query mapping '.$index => [array_replace($base, ['query_parameter_mappings' => $mappings])];
         }

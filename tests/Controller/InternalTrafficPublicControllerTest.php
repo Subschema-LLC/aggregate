@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Tests\Controller;
 
 use App\Service\AggregateConfigLoader;
+use App\Service\InternalTrafficMarking;
 use App\Service\InternalTrafficSettings;
+use App\Service\WebsiteConfigManager;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\HttpFoundation\Request;
@@ -33,6 +35,7 @@ final class InternalTrafficPublicControllerTest extends WebTestCase
         parent::tearDown();
         [$_ENV, $_SERVER] = $this->environment;
         @unlink($this->projectDir.'/config/aggregate.yaml');
+        @unlink($this->projectDir.'/config/websites.yaml');
         @rmdir($this->projectDir.'/config');
         @rmdir($this->projectDir);
     }
@@ -46,8 +49,19 @@ final class InternalTrafficPublicControllerTest extends WebTestCase
         self::assertResponseIsSuccessful();
         self::assertSelectorTextContains('h1', 'Mark organization traffic');
         self::assertSelectorExists('[data-marker-set]');
-        self::assertSelectorTextContains('body', '{"companyStaff":true}');
+        self::assertSelectorTextContains('body', '"org_internal_traffic": true');
         self::assertSelectorNotExists('script[src], img, style, [style]');
+        // Each tracked website gets its own marking links: the tracker on that
+        // website saves the marker in the website's own storage.
+        $rows = $crawler->filter('[data-marking-website]');
+        self::assertCount(2, $rows);
+        $mark = $rows->eq(0)->filter('a[data-marking-one="mark"]')->attr('href');
+        self::assertMatchesRegularExpression('{^https://shop\.example\.com/#aggregate-org-traffic=v1\.[0-9]+\.mark\.[A-Za-z0-9_-]{43}$}D', $mark);
+        self::assertStringStartsWith('http://localhost:8001/#aggregate-org-traffic=v1.', $rows->eq(1)->filter('a[data-marking-one="remove"]')->attr('href'));
+        self::assertStringNotContainsString(str_repeat('a', 64), $mark);
+        $marking = self::getContainer()->get(InternalTrafficMarking::class);
+        self::assertSame('mark', $marking->verify(explode('=', $mark, 2)[1]));
+        self::assertSame('remove', $marking->verify(explode('=', (string) $rows->eq(0)->attr('data-remove-url'), 2)[1]));
         $stylesheet = $crawler->filter('link[rel="stylesheet"]');
         self::assertCount(1, $stylesheet);
         self::assertStringStartsWith('/assets/styles/internal-traffic-', $stylesheet->attr('href'));
@@ -68,6 +82,9 @@ final class InternalTrafficPublicControllerTest extends WebTestCase
         self::assertResponseHeaderSame('Content-Disposition', 'attachment; filename="internal-traffic.html"');
         self::assertStringContainsString('companyStaff', (string) $client->getResponse()->getContent());
         self::assertStringNotContainsString(str_repeat('a', 64), (string) $client->getResponse()->getContent());
+        // A downloaded page is hosted on one website and outlives the codes.
+        self::assertStringNotContainsString('aggregate-org-traffic=', (string) $client->getResponse()->getContent());
+        self::assertSelectorNotExists('[data-internal-traffic-websites]');
         self::assertSelectorNotExists('a[download]');
         self::assertSelectorNotExists('link[rel="stylesheet"], script[src]');
         self::assertSelectorTextContains('style', 'system-ui');
@@ -120,7 +137,7 @@ final class InternalTrafficPublicControllerTest extends WebTestCase
         $this->assertProtectedResponse();
     }
 
-    public function testDashboardExplainsTheConfiguredJsonKeyAndTheDistinctReferrerCategory(): void
+    public function testDashboardExplainsTheFixedJsonKeyAndTheDistinctReferrerCategory(): void
     {
         self::createClient();
         $settings = new InternalTrafficSettings($this->configure());
@@ -133,25 +150,135 @@ final class InternalTrafficPublicControllerTest extends WebTestCase
             'overrides' => $settings->getEnvironmentOverrides(),
             'configuration_error' => null,
             'share_url' => null,
+            'marking' => self::getContainer()->get(InternalTrafficMarking::class)->page(),
         ]);
         $text = html_entity_decode(strip_tags($html));
 
         self::assertStringContainsString('Organization traffic', $text);
-        self::assertStringContainsString('{"companyStaff":true}', $text);
-        self::assertStringContainsString('custom_data["companyStaff"] = true', $text);
+        self::assertStringContainsString('"org_internal_traffic": true', $text);
+        self::assertStringContainsString('custom_data.org_internal_traffic', $text);
+        self::assertStringContainsString('whatever the marker’s name', $text);
         self::assertStringContainsString('referrer category describes navigation within the website', $text);
+        self::assertStringContainsString('Mark this browser on all websites', $text);
+        self::assertStringContainsString('shop.example.com', $text);
         self::assertStringNotContainsString('custom_data.internalTraffic', $text);
+        self::assertStringNotContainsString('custom_data["companyStaff"]', $text);
     }
 
-    private function configure(?string $token = null): AggregateConfigLoader
+    public function testStrictProfileExplainsThatNoMarkerCanBeRead(): void
+    {
+        self::createClient();
+        $this->configure(extra: ['collection_profile' => 'strict']);
+        $crawler = self::getClient()->request('GET', '/internal-traffic/'.str_repeat('a', 64));
+
+        self::assertResponseIsSuccessful();
+        self::assertSelectorNotExists('[data-marking-website]');
+        self::assertStringContainsString('strict collection profile is on', $crawler->filter('[data-internal-traffic-websites]')->text());
+    }
+
+    public function testVerifyAnswersTheTrackerWithTheMarkerForAFreshCode(): void
+    {
+        $client = self::createClient();
+        $client->disableReboot();
+        $this->configure(extra: ['internal_traffic_cookie_domain' => 'example.com', 'app_host' => 'https://analytics.example.net']);
+        $marking = self::getContainer()->get(InternalTrafficMarking::class);
+
+        $client->request('GET', '/internal-traffic/verify', ['code' => $marking->code('mark'), 'token' => 'shop-token'], server: ['HTTP_ORIGIN' => 'https://www.shop.example.com']);
+        self::assertResponseIsSuccessful();
+        self::assertResponseHeaderSame('Access-Control-Allow-Origin', '*');
+        self::assertSame([], $client->getResponse()->headers->getCookies());
+        $this->assertProtectedResponse();
+        self::assertSame([
+            'valid' => true,
+            'action' => 'mark',
+            'cookieDomain' => 'example.com',
+            'continueUrl' => 'https://analytics.example.net/internal-traffic/continue',
+        ], json_decode((string) $client->getResponse()->getContent(), true, flags: JSON_THROW_ON_ERROR));
+
+        // Without a covering cookie domain, the website's own domain is used.
+        $this->configure(extra: ['app_host' => 'https://analytics.example.net']);
+        $client->request('GET', '/internal-traffic/verify', ['code' => $marking->code('remove'), 'token' => 'shop-token'], server: ['HTTP_ORIGIN' => 'https://www.shop.example.com']);
+        $body = json_decode((string) $client->getResponse()->getContent(), true, flags: JSON_THROW_ON_ERROR);
+        self::assertSame('remove', $body['action']);
+        self::assertSame('shop.example.com', $body['cookieDomain']);
+    }
+
+    #[DataProvider('rejectedCodes')]
+    public function testVerifyRejectsExpiredForgedAndRevokedCodes(callable $code, array $extra = []): void
+    {
+        $client = self::createClient();
+        $client->disableReboot();
+        $config = $this->configure(extra: $extra);
+        $marking = self::getContainer()->get(InternalTrafficMarking::class);
+
+        $client->request('GET', '/internal-traffic/verify', ['code' => $code($marking, new InternalTrafficSettings($config)), 'token' => 'shop-token']);
+
+        self::assertResponseIsSuccessful();
+        self::assertResponseHeaderSame('Access-Control-Allow-Origin', '*');
+        $body = json_decode((string) $client->getResponse()->getContent(), true, flags: JSON_THROW_ON_ERROR);
+        self::assertFalse($body['valid']);
+        self::assertSame(['valid', 'continueUrl'], array_keys($body));
+        self::assertStringNotContainsString('companyStaff', (string) $client->getResponse()->getContent());
+    }
+
+    public static function rejectedCodes(): iterable
+    {
+        yield 'missing' => [static fn (): string => ''];
+        yield 'malformed' => [static fn (): string => 'v1.123.mark.not-a-signature'];
+        yield 'expired' => [static fn (InternalTrafficMarking $marking): string => $marking->code('mark', time() - InternalTrafficMarking::LIFETIME_SECONDS - 1)];
+        yield 'forged action' => [static fn (InternalTrafficMarking $marking): string => str_replace('.remove.', '.mark.', $marking->code('remove'))];
+        yield 'forged expiry' => [static function (InternalTrafficMarking $marking): string {
+            $parts = explode('.', $marking->code('mark'));
+            $parts[1] = (string) ((int) $parts[1] - 1);
+
+            return implode('.', $parts);
+        }];
+        yield 'rotated share link' => [static function (InternalTrafficMarking $marking, InternalTrafficSettings $settings): string {
+            $code = $marking->code('mark');
+            $settings->rotateShareToken();
+
+            return $code;
+        }];
+        yield 'revoked share link' => [static function (InternalTrafficMarking $marking, InternalTrafficSettings $settings): string {
+            $code = $marking->code('mark');
+            $settings->revokeShareToken();
+
+            return $code;
+        }];
+        yield 'strict profile' => [static fn (InternalTrafficMarking $marking): string => $marking->code('mark'), ['collection_profile' => 'strict']];
+    }
+
+    public function testContinuePageIsPublicAndProtected(): void
+    {
+        $client = self::createClient();
+        $this->configure();
+        $client->request('GET', '/internal-traffic/continue');
+
+        self::assertResponseIsSuccessful();
+        self::assertSelectorExists('[data-marking-continue]');
+        self::assertSelectorNotExists('script[src]');
+        self::assertSame([], $client->getResponse()->headers->getCookies());
+        $this->assertProtectedResponse();
+    }
+
+    private function configure(?string $token = null, array $extra = []): AggregateConfigLoader
     {
         file_put_contents($this->projectDir.'/config/aggregate.yaml', Yaml::dump([
             'internal_traffic_share_token' => $token ?? str_repeat('a', 64),
             'internal_traffic_name' => 'companyStaff',
             'internal_traffic_value' => 'team',
+            ...$extra,
         ]));
+        file_put_contents($this->projectDir.'/config/websites.yaml', Yaml::dump(['websites' => [
+            ['name' => 'Shop', 'domain' => 'shop.example.com', 'token' => 'shop-token'],
+            ['name' => 'Local', 'domain' => 'localhost:8001', 'token' => 'local-token'],
+        ]], 4));
         $config = new AggregateConfigLoader($this->projectDir, 'test');
-        self::getContainer()->set(AggregateConfigLoader::class, $config);
+        $container = self::getContainer();
+        if (!$container->initialized(AggregateConfigLoader::class)) {
+            $container->set(AggregateConfigLoader::class, $config);
+            $container->set(WebsiteConfigManager::class, new WebsiteConfigManager($this->projectDir));
+        }
 
         return $config;
     }

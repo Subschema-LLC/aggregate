@@ -76,8 +76,9 @@ to the deployment's active aggregate configuration.
   do not turn it into a hard ban. Even an allowed medium value can contain
   identifying text. Preserve scalar bounds, sanitization, and alias handling.
 - Keep anonymous goal codes explicitly permitted and the organization-traffic
-  marker a boolean under its configured key. Marker values and sharing tokens
-  are not event properties. Do not let query parameters spoof the reserved marker.
+  flag a boolean under the fixed key `org_internal_traffic`. Marker values,
+  marking codes and sharing tokens are not event properties. Do not let query
+  parameters or submitted properties spoof the flag.
 - Optional `page_sequence` is a bounded page-depth number, enabled only by the
   UI/YAML `page_sequence_enabled` setting. Keep it off by default, capped at 20
   (20+), and free of IDs, path history and timestamps. Kill switches and path

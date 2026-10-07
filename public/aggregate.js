@@ -428,7 +428,7 @@
           && (!settings.propertyTypes || typeof settings.propertyTypes !== 'object' || Array.isArray(settings.propertyTypes))) return null;
         var tracker = this;
         var canInclude = function(key){
-          return tracker.isCustomDataKey(key) && key !== tracker.config.internalTraffic.name && key !== 'page_sequence'
+          return tracker.isCustomDataKey(key) && key !== 'org_internal_traffic' && key !== 'page_sequence'
             && (tracker.consent || settings.consentFreeProperties.indexOf(key) !== -1);
         };
         var cleanValue = function(key, value){
@@ -545,6 +545,99 @@
         } catch(e) {}
       }
 
+      return false;
+    },
+
+    // Marking links from the Organization traffic page open a website with
+    // #aggregate-org-traffic=<code>. Each website keeps its own cookies and
+    // storage, so the marker is written here, by this website's tracker, once
+    // the server confirms the code. Nothing else is read from the link.
+    markingCode: function(){
+      if (withStandardProfile) {
+        if (strictCollection) return null;
+        var match = /^#(?:[^#]*&)?aggregate-org-traffic=([A-Za-z0-9._-]{1,200})(?:&|$)/.exec(location.hash || '');
+        if (match) return match[1];
+      }
+      return null;
+    },
+
+    // Checks the code, writes or removes the marker, and returns the browser
+    // to the Organization traffic page. Resolves to false when it stays.
+    followMarkingLink: function(code, scriptSource){
+      if (withStandardProfile) {
+        var tracker = this;
+        // Take the code out of the address before other scripts can read it.
+        try {
+          var rest = (location.hash || '').replace(/^#/, '').split('&').filter(function(part){
+            return part.indexOf('aggregate-org-traffic=') !== 0;
+          }).join('&');
+          window.history.replaceState(window.history.state, '', location.href.split('#')[0] + (rest ? '#' + rest : ''));
+        } catch(e) {}
+        try {
+          var endpoint = new URL(this.config.endpoint, scriptSource || location.href);
+          var path = /\/api\/receive\/?$/.test(endpoint.pathname) ? endpoint.pathname.replace(/\/api\/receive\/?$/, '') : '';
+          var verify = endpoint.origin + path + '/internal-traffic/verify?code=' + encodeURIComponent(code)
+            + '&token=' + encodeURIComponent(this.config.websiteToken || '');
+          return fetch(verify, {credentials: 'omit', referrerPolicy: 'no-referrer', cache: 'no-store'})
+            .then(function(response){ return response.json(); })
+            .then(function(body){
+              // Only a valid code sends the browser on, to this server's page.
+              if (!body || body.valid !== true || typeof body.continueUrl !== 'string' || !/^https?:\/\/[^#\s]+$/.test(body.continueUrl)) return false;
+              var result = tracker.writeMarker(body.action, body.cookieDomain) ? (body.action === 'remove' ? 'removed' : 'marked') : 'blocked';
+              location.replace(body.continueUrl + '#' + result + '=' + encodeURIComponent(location.host));
+              return true;
+            })
+            .catch(function(){ return false; });
+        } catch(e) {}
+      }
+      return Promise.resolve(false);
+    },
+
+    // Writes or removes this tracker's configured marker in this website's
+    // own cookie or local storage (the same marker every event reads), and
+    // reports whether the browser kept the change. The server only chooses
+    // the cookie domain, which must contain this page's hostname.
+    writeMarker: function(action, cookieDomain){
+      if (withStandardProfile) {
+        try {
+          var marker = this.config.internalTraffic;
+          if ((action !== 'mark' && action !== 'remove') || !marker || typeof marker.name !== 'string'
+            || !/^[A-Za-z0-9_-]{1,128}$/.test(marker.name)
+            || ['aggregate_session', 'aggregate_visitor_id', 'aggregate_session_id'].indexOf(marker.name) !== -1
+            || typeof marker.value !== 'string' || !marker.value
+            || (marker.storage !== 'cookie' && marker.storage !== 'local_storage')) return false;
+          var marking = action === 'mark';
+          if (marker.storage === 'local_storage') {
+            if (marking) localStorage.setItem(marker.name, marker.value);
+            else localStorage.removeItem(marker.name);
+          } else {
+            var host = location.hostname.toLowerCase();
+            var covering = function(domain){
+              domain = typeof domain === 'string' ? domain.replace(/^\./, '').toLowerCase() : '';
+              return /^[a-z0-9.-]+$/.test(domain) && domain.indexOf('.') !== -1
+                && (host === domain || host.slice(-(domain.length + 1)) === '.' + domain) ? domain : '';
+            };
+            var hostOnly = marker.name.indexOf('__Host-') === 0;
+            var attributes = '; Path=/; Max-Age=' + (marking ? 31536000 : 0) + '; SameSite=Lax'
+              + (location.protocol === 'https:' ? '; Secure' : '');
+            if (marking) {
+              var domain = hostOnly ? '' : (covering(cookieDomain) || covering(marker.cookieDomain));
+              if (domain) document.cookie = marker.name + '=' + encodeURIComponent(marker.value) + attributes + '; Domain=' + domain;
+              // Fall back to this hostname when the browser refuses the domain.
+              if (!domain || !this.isInternalTraffic()) document.cookie = marker.name + '=' + encodeURIComponent(marker.value) + attributes;
+            } else {
+              // Remove every copy this page can see: host-only and on each
+              // parent domain, wherever an earlier marker was written.
+              document.cookie = marker.name + '=' + attributes;
+              var labels = hostOnly ? [] : host.split('.');
+              for (var i = 0; i < labels.length - 1; i++) {
+                document.cookie = marker.name + '=' + attributes + '; Domain=' + labels.slice(i).join('.');
+              }
+            }
+          }
+          return this.isInternalTraffic() === marking;
+        } catch(e) {}
+      }
       return false;
     },
 
@@ -819,7 +912,9 @@
       if (withStandardProfile) {
         if (!strictCollection) {
           payload.consentState = this.getConsentState();
-          payload.internalTraffic = this.isInternalTraffic();
+          // Every standard-profile event says whether this browser carries the
+          // organization-traffic marker on this website: true or false.
+          payload.org_internal_traffic = this.isInternalTraffic();
           var ids = this.ensureIds();
           if (ids.visitorId) payload.visitorId = ids.visitorId;
           if (ids.sessionId) payload.sessionId = ids.sessionId;
@@ -1176,9 +1271,19 @@
       document.dispatchEvent(new CustomEvent('aggregate:tracker-ready', {detail: {namespace: namespace}}));
     } catch(e) {}
   };
-  if (document.readyState === 'complete' || document.readyState === 'interactive') {
-    setTimeout(start, 0);
+  var begin = function(){
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+      setTimeout(start, 0);
+    } else {
+      document.addEventListener('DOMContentLoaded', start);
+    }
+  };
+  // A page opened by a marking link only passes the browser on: no page view
+  // is sent unless the browser stays.
+  var markingCode = Analytics.markingCode();
+  if (markingCode) {
+    Analytics.followMarkingLink(markingCode, s && s.src).then(function(left){ if (!left) begin(); }, begin);
   } else {
-    document.addEventListener('DOMContentLoaded', start);
+    begin();
   }
 })();

@@ -6,7 +6,9 @@ namespace App\Tests\Controller;
 
 use App\Controller\InternalTrafficController;
 use App\Service\AggregateConfigLoader;
+use App\Service\InternalTrafficMarking;
 use App\Service\InternalTrafficSettings;
+use App\Service\WebsiteConfigManager;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
@@ -124,7 +126,9 @@ final class InternalTrafficControllerTest extends TestCase
 
     private function controller(Request $request, bool $admin = true, bool $csrfValid = true): InternalTrafficController
     {
-        $controller = new InternalTrafficController($this->config, new InternalTrafficSettings($this->config), new NullLogger());
+        $settings = new InternalTrafficSettings($this->config);
+        $marking = new InternalTrafficMarking($settings, $this->createStub(WebsiteConfigManager::class), $this->config, 'test-secret');
+        $controller = new InternalTrafficController($this->config, $settings, new NullLogger(), $marking);
         $authorization = $this->createStub(AuthorizationCheckerInterface::class);
         $authorization->method('isGranted')->willReturn($admin);
         $csrf = $this->createStub(CsrfTokenManagerInterface::class);

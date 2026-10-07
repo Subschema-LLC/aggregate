@@ -107,7 +107,7 @@ custom_data_properties:
   utm_term: { description: 'Campaign search term.', consent_required: true, column: utm_term }
   utm_content: { description: 'Campaign creative or content variant.', consent_required: true, column: utm_content }
   utm_id: { description: 'Campaign identifier.', consent_required: true, column: utm_id }
-  # orgInternalTraffic: { description: 'Shared organization marker.', consent_required: true, column: organization_traffic }
+  # org_internal_traffic: { description: 'Organization traffic flag.', type: boolean, consent_required: false, column: organization_traffic }
   # Optional typed properties: omit type (or use scalar) to keep existing behavior.
   # Types: scalar, string, integer, float, double, boolean; null is always allowed.
   # column stays text. A separate numeric_column requires integer/float/double.
@@ -344,26 +344,29 @@ environments:
 #   Set to false for API-only headless deployments managed via CLI/YAML.
 #
 # internal_traffic_storage (optional, default: cookie)
-#   cookie or local_storage. Matching markers add a boolean under the configured
-#   name to each raw event's custom_data JSON (default: orgInternalTraffic: true).
-#   Grouped BI/archive views omit this flag. No migration is needed.
+#   cookie or local_storage. Every standard-profile event reports the marker as
+#   org_internal_traffic: true or false in each raw event's custom_data JSON
+#   (a fixed key, whatever the marker's name). Grouped BI/archive views omit
+#   this flag. No migration is needed.
 #
 # internal_traffic_name / internal_traffic_value (defaults: orgInternalTraffic / 'true')
-#   Shared marker name and value. The admin UI can save these settings and mark
-#   the current browser. Names use 1–128 letters, digits, underscores or hyphens;
-#   numeric keys and Aggregate identifier names are reserved. The JSON property
-#   name matches this browser marker name; historical rows keep their old key
-#   after a rename. Values are non-empty strings up to
-#   256 bytes; quote YAML values. Uppercase environment variables take precedence.
+#   Shared browser marker name and value. Team members set the marker on each
+#   tracked website through the marking links on the Organization traffic page
+#   or share page. Names use 1–128 letters, digits, underscores or hyphens;
+#   numeric keys and Aggregate identifier names are reserved. Values are
+#   non-empty strings up to 256 bytes; quote YAML values. Uppercase environment
+#   variables take precedence.
 #
 # internal_traffic_cookie_domain (optional, default: '')
-#   Empty means this hostname. example.com covers its subdomains; ignored for
-#   local storage, which applies only to its exact origin. Cookies last up to one
-#   year. Unrelated domains must host the downloaded HTML marker page themselves.
+#   Empty uses each website's configured domain (covering its subdomains), or the
+#   page's host when that does not apply. example.com shares one cookie across its
+#   subdomains when the page is under it. Ignored for local storage, which applies
+#   only to its exact origin. Cookies last up to one year.
 #
 # internal_traffic_share_token (optional, default: '')
 #   Initial installation generates a random token and persists it to YAML.
 #   Empty disables /internal-traffic/{token}. The page also works in headless mode.
+#   Rotating or revoking it also stops marking links not yet used (they last 30 minutes).
 #   Generate/rotate/revoke via the admin UI, or generate: openssl rand -hex 32
 #   Manual tokens must contain 32–128 URL-safe letters, digits, underscores or hyphens.
 #   The page has noindex/nofollow/no-store headers. Share tokens are never included

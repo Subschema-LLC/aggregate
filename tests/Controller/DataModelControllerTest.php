@@ -441,19 +441,18 @@ final class DataModelControllerTest extends TestCase
         self::assertArrayNotHasKey('page_sequence', $this->settings->properties());
     }
 
-    public function testLegacyPageSequenceMarkerCanBeReviewedWhilePageDepthIsDisabled(): void
+    public function testOrganizationTrafficFlagIsProposedAsABooleanRecordedInBothModes(): void
     {
-        $this->config->set('internal_traffic_name', 'page_sequence');
-        $request = $this->request(['add_property' => 'page_sequence'], 'GET');
+        $request = $this->request(['add_property' => 'org_internal_traffic'], 'GET');
         $response = $this->controller($request)->index($request);
         $crawler = new Crawler((string) $response->getContent());
 
         self::assertSame(200, $response->getStatusCode());
         $row = $crawler->filter('#property-rows [data-property-row]')->last();
-        self::assertSame('scalar', $row->filter('select[name$="[type]"] option[selected]')->attr('value'));
-        self::assertSame('1', $row->filter('select[name$="[consent_required]"] option[selected]')->attr('value'));
-        self::assertFalse($this->settings->toArray()['page_sequence_enabled']);
-        self::assertArrayNotHasKey('page_sequence', $this->settings->properties());
+        self::assertSame('boolean', $row->filter('select[name$="[type]"] option[selected]')->attr('value'));
+        self::assertSame('0', $row->filter('select[name$="[consent_required]"] option[selected]')->attr('value'));
+        self::assertArrayNotHasKey('org_internal_traffic', $this->settings->properties());
+        self::assertStringContainsString('Every event carries org_internal_traffic', $crawler->filter('body')->text());
     }
 
     public function testSavingTypedAndLegacyRowsPreservesTheirSharedValidationAndReportingAliases(): void
