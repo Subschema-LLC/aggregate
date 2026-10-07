@@ -7,10 +7,17 @@ namespace App\Tests\Controller;
 use App\Controller\DataLifecycleController;
 use App\Service\AggregateConfigLoader;
 use App\Service\AnalyticsDataLifecyclePolicy;
+use App\Service\AnalyticsMaintenanceRunner;
+use App\Service\Operations\AuditTrail;
+use App\Service\Operations\ProcessingTasks;
+use App\Service\Operations\TaskTrigger;
+use App\Tests\Service\Operations\OperationsDatabase;
+use App\Tests\Support\TwigComponents;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\Container;
+use Symfony\Component\DomCrawler\Crawler;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\Session\Session;
@@ -22,6 +29,10 @@ use Symfony\Component\Security\Csrf\CsrfToken;
 use Symfony\Component\Security\Csrf\CsrfTokenManagerInterface;
 use Symfony\Component\Yaml\Yaml;
 use Twig\Environment;
+use Twig\Loader\ArrayLoader;
+use Twig\Loader\ChainLoader;
+use Twig\Loader\FilesystemLoader;
+use Twig\TwigFunction;
 
 final class DataLifecycleControllerTest extends TestCase
 {
@@ -33,6 +44,8 @@ final class DataLifecycleControllerTest extends TestCase
         AnalyticsDataLifecyclePolicy::KEY_ENHANCED_RETENTION_DAYS,
         AnalyticsDataLifecyclePolicy::KEY_ARCHIVE_RETENTION_DAYS,
         AnalyticsDataLifecyclePolicy::KEY_MAINTENANCE_BATCH_SIZE,
+        AnalyticsDataLifecyclePolicy::KEY_AUDIT_TRAIL_RETENTION_DAYS,
+        AnalyticsDataLifecyclePolicy::KEY_PROCESSING_TASKS_RETENTION_DAYS,
     ];
 
     private string $projectDir;
@@ -99,6 +112,31 @@ final class DataLifecycleControllerTest extends TestCase
         self::assertSame('lifecycle settings', $response->getContent());
     }
 
+    public function testThePageOffersTheRecordPeriodsAndShowsTheLastMaintenanceRun(): void
+    {
+        $connection = OperationsDatabase::connection();
+        $tasks = new ProcessingTasks($connection, new AuditTrail($connection));
+        $config = $this->config($this->validStoredValues());
+        $twig = new Environment(new ChainLoader([
+            new ArrayLoader(['base.html.twig' => '{% block body %}{% endblock %}']),
+            new FilesystemLoader(dirname(__DIR__, 2).'/templates'),
+        ]), ['strict_variables' => true]);
+        $twig->addGlobal('app_branding', ['name' => 'Aggregate']);
+        $twig->addFunction(new TwigFunction('path', static fn (string $name): string => '/'.$name));
+        $twig->addFunction(new TwigFunction('csrf_token', static fn (string $id): string => 'token'));
+        TwigComponents::register($twig);
+
+        $page = new Crawler((string) $this->controller($config, twig: $twig, tasks: $tasks)->index()->getContent());
+        self::assertSame('90', $page->filter('#processing-tasks-retention-days')->attr('value'));
+        self::assertSame('0', $page->filter('#audit-trail-retention-days')->attr('min'));
+        self::assertStringContainsString('No maintenance run has been recorded yet.', $page->text());
+
+        $run = (int) $tasks->start(AnalyticsMaintenanceRunner::TASK_TYPE, null, TaskTrigger::schedule(), new \DateTimeImmutable('2026-10-07 03:15:00 UTC'));
+        $tasks->fail($run, new \DateTimeImmutable('2026-10-07 03:16:00 UTC'), 'Maintenance stopped with a ConnectionLost; see the application log.');
+        $page = new Crawler((string) $this->controller($config, twig: $twig, tasks: $tasks)->index()->getContent());
+        self::assertStringContainsString('Last run: 2026-10-07 03:15 UTC, failed: Maintenance stopped with a ConnectionLost', preg_replace('/\s+/', ' ', $page->text()));
+    }
+
     public function testInvalidEffectiveConfigurationRendersAnExplicitErrorState(): void
     {
         $stored = $this->validStoredValues();
@@ -135,7 +173,7 @@ final class DataLifecycleControllerTest extends TestCase
 
         self::assertSame('/dashboard/data-lifecycle', $response->getTargetUrl());
         self::assertSame(
-            ['Analytics archiving and retention settings were saved.'],
+            ['Data lifecycle settings were saved.'],
             $session->getFlashBag()->peek('success'),
         );
         self::assertSame([
@@ -146,6 +184,8 @@ final class DataLifecycleControllerTest extends TestCase
             AnalyticsDataLifecyclePolicy::KEY_ENHANCED_RETENTION_DAYS => 180,
             AnalyticsDataLifecyclePolicy::KEY_ARCHIVE_RETENTION_DAYS => 800,
             AnalyticsDataLifecyclePolicy::KEY_MAINTENANCE_BATCH_SIZE => 2500,
+            AnalyticsDataLifecyclePolicy::KEY_AUDIT_TRAIL_RETENTION_DAYS => 0,
+            AnalyticsDataLifecyclePolicy::KEY_PROCESSING_TASKS_RETENTION_DAYS => 30,
         ], Yaml::parseFile($this->projectDir.'/config/aggregate.yaml'));
     }
 
@@ -175,6 +215,10 @@ final class DataLifecycleControllerTest extends TestCase
         $missing = $valid;
         unset($missing[AnalyticsDataLifecyclePolicy::KEY_MAINTENANCE_BATCH_SIZE]);
         yield 'missing setting' => [$missing];
+
+        yield 'negative record retention' => [array_replace($valid, [
+            AnalyticsDataLifecyclePolicy::KEY_AUDIT_TRAIL_RETENTION_DAYS => '-1',
+        ])];
 
         yield 'malformed integer' => [array_replace($valid, [
             AnalyticsDataLifecyclePolicy::KEY_ARCHIVE_AFTER_DAYS => 'ninety',
@@ -269,11 +313,13 @@ final class DataLifecycleControllerTest extends TestCase
         ?bool $expectCsrfCheck = null,
         ?LoggerInterface $logger = null,
         ?Environment $twig = null,
+        ?ProcessingTasks $tasks = null,
     ): DataLifecycleController {
         $controller = new DataLifecycleController(
             $config,
             new AnalyticsDataLifecyclePolicy($config),
             $logger ?? $this->createStub(LoggerInterface::class),
+            $tasks ?? $this->createStub(ProcessingTasks::class),
         );
 
         $authorizationChecker = $this->createStub(AuthorizationCheckerInterface::class);
@@ -330,6 +376,8 @@ final class DataLifecycleControllerTest extends TestCase
             AnalyticsDataLifecyclePolicy::KEY_ENHANCED_RETENTION_DAYS => 90,
             AnalyticsDataLifecyclePolicy::KEY_ARCHIVE_RETENTION_DAYS => 730,
             AnalyticsDataLifecyclePolicy::KEY_MAINTENANCE_BATCH_SIZE => 1000,
+            AnalyticsDataLifecyclePolicy::KEY_AUDIT_TRAIL_RETENTION_DAYS => 365,
+            AnalyticsDataLifecyclePolicy::KEY_PROCESSING_TASKS_RETENTION_DAYS => 90,
         ];
     }
 
@@ -351,6 +399,8 @@ final class DataLifecycleControllerTest extends TestCase
             AnalyticsDataLifecyclePolicy::KEY_ENHANCED_RETENTION_DAYS => '180',
             AnalyticsDataLifecyclePolicy::KEY_ARCHIVE_RETENTION_DAYS => '800',
             AnalyticsDataLifecyclePolicy::KEY_MAINTENANCE_BATCH_SIZE => '2500',
+            AnalyticsDataLifecyclePolicy::KEY_AUDIT_TRAIL_RETENTION_DAYS => '0',
+            AnalyticsDataLifecyclePolicy::KEY_PROCESSING_TASKS_RETENTION_DAYS => '30',
         ];
     }
 }

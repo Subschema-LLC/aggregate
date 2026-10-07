@@ -26,8 +26,11 @@ use Symfony\Component\HttpFoundation\Session\Session;
 use Symfony\Component\HttpFoundation\Session\Storage\MockArraySessionStorage;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
+use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorage;
+use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
 use Symfony\Component\Security\Core\Authorization\AuthorizationCheckerInterface;
 use Symfony\Component\Security\Core\Exception\AccessDeniedException;
+use Symfony\Component\Security\Core\User\InMemoryUser;
 use Symfony\Component\Security\Csrf\CsrfToken;
 use Symfony\Component\Security\Csrf\CsrfTokenManagerInterface;
 use Symfony\Component\Yaml\Yaml;
@@ -57,7 +60,7 @@ final class BigQueryControllerTest extends TestCase
         $this->writeYaml(['admin_token' => 'kept', 'app_host' => 'https://analytics.example.com']);
         $this->runner = $this->createMock(BigQuerySyncRunner::class);
         $this->runner->method('status')->willReturnCallback(static fn (array $settings): array => [
-            'runner' => null,
+            'last_run' => null,
             'views' => array_map(static fn (string $view): array => [
                 'view' => $view, 'private' => str_starts_with($view, 'analytics_'), 'description' => '', 'status' => 'never',
                 'started_at' => null, 'finished_at' => null, 'succeeded_at' => null, 'row_count' => null, 'message' => null, 'job_id' => null, 'next_due' => null,
@@ -222,7 +225,8 @@ final class BigQueryControllerTest extends TestCase
 
     public function testSyncNowStartsTheBackgroundCommandOnlyWhenSyncIsOn(): void
     {
-        $this->background->expects(self::once())->method('start');
+        // The administrator is recorded with each view's task and audit entry.
+        $this->background->expects(self::once())->method('start')->with('scott');
         $request = $this->post();
         $this->controller($request)->syncNow($request);
         self::assertStringContainsString('Turn BigQuery sync on', implode(' ', $this->session->getFlashBag()->get('error')));
@@ -378,6 +382,9 @@ final class BigQueryControllerTest extends TestCase
         $container = new Container();
         $container->set('security.authorization_checker', $authorization);
         $container->set('security.csrf.token_manager', $csrf);
+        $tokens = new TokenStorage();
+        $tokens->setToken(new UsernamePasswordToken(new InMemoryUser('scott', null, ['ROLE_ADMIN']), 'main', ['ROLE_ADMIN']));
+        $container->set('security.token_storage', $tokens);
         $container->set('router', $router);
         $container->set('request_stack', $stack);
         $container->set('twig', $this->twig());

@@ -47,8 +47,13 @@ same [reporting views](BI-CONNECTION.md) your BI tools already read.
 
 Status for each view (last successful sync, rows, next sync and the last message)
 appears on **Reporting → BigQuery sync** and in
-`php bin/console app:bigquery:check`. It is kept in the private
-`analytics_bigquery_sync` table, which holds no event data.
+`php bin/console app:bigquery:check`. Every view sync is a row in the private
+[`processing_tasks` table](DATABASE.md#processing-tasks-and-audit-trail)
+(`task_type` `bigquery_sync`, `subject` the view) with its status, row count,
+BigQuery job ID and any error, and an entry in the `audit_trail`. A sync started
+with **Sync now** records the administrator who asked for it. Neither table
+holds event data; [maintenance](CONFIGURATION.md#task-and-audit-records) purges
+them after their retention periods.
 
 ## Set it up
 

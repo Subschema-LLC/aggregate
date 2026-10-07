@@ -87,6 +87,11 @@ worker or scheduled task is needed: events are recorded as they arrive.
   your configuration and data. See the [update guide](docs/UPDATES.md).
 - **Backups:** include the site's files (at least `.env.local`, `config/` and
   `var/`) and the database, for example with Plesk's **Backup Manager**.
+- **Maintenance:** add a daily Plesk **Scheduled Task** that runs
+  `php bin/console app:analytics:maintain --no-interaction` in the site's folder.
+  It purges old task and audit records, and archives or deletes analytics data
+  when those are turned on. See
+  [archiving and retention](docs/CONFIGURATION.md#archiving-and-retention).
 - **BigQuery sync (optional):** add a Plesk **Scheduled Task** that runs
   `php bin/console app:bigquery:sync --no-interaction` in the site's folder every
   five minutes. See [Sync to BigQuery](docs/BIGQUERY.md#schedule-the-sync).

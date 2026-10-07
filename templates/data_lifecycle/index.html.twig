@@ -10,7 +10,7 @@
         <div class="level-left">
             <div>
                 <h1 class="title">Analytics data lifecycle</h1>
-                <p class="subtitle">Archive older events into aggregate reporting cells and enforce deletion periods.</p>
+                <p class="subtitle">Archive older events into aggregate reporting cells, enforce deletion periods, and purge old task and audit records.</p>
                 {{ component('Ui:DocsLink', {topic: 'configuration.lifecycle', label: 'Archiving and retention guide'}) }}
             </div>
         </div>
@@ -33,6 +33,14 @@
         <p>Schedule this command externally at least once a day:</p>
         <p class="mt-2"><code>php bin/console app:analytics:maintain</code></p>
         <p class="mt-2">Before first enabling deletion, inspect <code>php bin/console app:analytics:maintain --dry-run</code>, then monitor the scheduled job for failures.</p>
+        <p class="mt-2">
+            {% if last_maintenance_run %}
+                Last run: {{ last_maintenance_run.started_at|date('Y-m-d H:i', 'UTC') }} UTC,
+                {% if last_maintenance_run.status == 'succeeded' %}succeeded{% elseif last_maintenance_run.status == 'failed' %}<strong>failed</strong>{% else %}still running{% endif %}{% if last_maintenance_run.details %}: {{ last_maintenance_run.details }}{% endif %}
+            {% else %}
+                No maintenance run has been recorded yet.
+            {% endif %}
+        </p>
     </div>
 
     <form method="post" action="{{ path('app_data_lifecycle_save') }}">
@@ -161,6 +169,52 @@
 
             <div class="column is-full">
                 <div class="box">
+                    <h2 class="title is-4">Task and audit records</h2>
+                    <p class="mb-4">
+                        Every background job run is a row in <code>processing_tasks</code>, and every finished run is an entry in <code>audit_trail</code>.
+                        Maintenance purges both after the periods below; <strong>0</strong> keeps them indefinitely. The latest success and failure of each job are always kept so schedules and status pages still work.
+                    </p>
+                    {% set record_fields = [
+                        {
+                            key: 'processing_tasks_retention_days',
+                            id: 'processing-tasks-retention-days',
+                            label: 'Processing tasks',
+                            env: 'PROCESSING_TASKS_RETENTION_DAYS'
+                        },
+                        {
+                            key: 'audit_trail_retention_days',
+                            id: 'audit-trail-retention-days',
+                            label: 'Audit trail entries',
+                            env: 'AUDIT_TRAIL_RETENTION_DAYS'
+                        }
+                    ] %}
+                    <div class="columns">
+                        {% for field in record_fields %}
+                            <div class="column is-half">
+                                <div class="field">
+                                    <label class="label" for="{{ field.id }}">{{ field.label }}</label>
+                                    <div class="field has-addons">
+                                        <div class="control is-expanded">
+                                            <input class="input" id="{{ field.id }}" name="{{ field.key }}" type="number" min="0" max="36500" step="1" required value="{{ attribute(settings, field.key) }}" aria-describedby="{{ field.id }}-help"{% if attribute(overrides, field.key) %} disabled{% endif %}>
+                                        </div>
+                                        <div class="control"><span class="button is-static">days</span></div>
+                                    </div>
+                                    <p class="help" id="{{ field.id }}-help">
+                                        {% if attribute(overrides, field.key) %}
+                                            Controlled by <code>{{ field.env }}</code>.
+                                        {% else %}
+                                            Purge after this many days (0–36,500; 0 keeps them).
+                                        {% endif %}
+                                    </p>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="column is-full">
+                <div class="box">
                     <h2 class="title is-4">Maintenance batches</h2>
                     <div class="field">
                         <label class="label" for="analytics-maintenance-batch-size">Rows per batch</label>
@@ -210,8 +264,11 @@
             The existing thresholded <code>bi_anonymous_*</code> views transparently combine eligible live and archived anonymous data and remain the supported disclosure-controlled surface for routine anonymous reporting.
         </p>
         <p>
+            <code>processing_tasks</code> and <code>audit_trail</code> are private operational tables. They hold job results and summaries, never event rows; do not grant them to routine BI users.
+        </p>
+        <p>
             This page writes the active environment in <code>config/aggregate.yaml</code> (or its environment-specific file).
-            The same seven settings can be managed directly in YAML. Uppercase environment variables take precedence;
+            The same nine settings can be managed directly in YAML. Uppercase environment variables take precedence;
             controls with an active override are disabled here and omitted from the YAML update.
         </p>
         </div>

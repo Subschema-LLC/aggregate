@@ -499,7 +499,8 @@ Current migrations:
 - `migrations/Version20260901000000.php` (private archives, lifecycle maintenance, and combined live/archive BI views)
 - `migrations/Version20260928000000.php` (declared BI glossary table and eight fixed metadata views)
 - `migrations/Version20261001000000.php` (website labels view `bi_dim_website_token_v1`)
-- `migrations/Version20261007000000.php` (private `analytics_bigquery_sync` status table for [BigQuery sync](BIGQUERY.md))
+- `migrations/Version20261007000000.php` (private `analytics_bigquery_sync` status table for [BigQuery sync](BIGQUERY.md); replaced by the next migration)
+- `migrations/Version20261007210000.php` (generic private `processing_tasks` and `audit_trail` tables; drops `analytics_bigquery_sync` without copying its rows)
 
 The current schema contains:
 - `events` (private individual rows for both `anonymous` and `enhanced` privacy modes, with optional coarse `geo_area` and allowlisted `goal_event`)
@@ -510,7 +511,8 @@ The current schema contains:
 - `bi_anonymous_goals_v1` (supported completed-day anonymous goal-count BI contract)
 - `bi_anonymous_geo_events_v1` (supported daily, lower-dimensional anonymous geography BI contract)
 - `analytics_custom_events_v1`, `analytics_custom_pageviews_v1`, and `analytics_custom_goals_v1` (optional, generated private views over retained raw rows)
-- `analytics_bigquery_sync` (private BigQuery sync status and per-view lease; no event data)
+- `analytics_archive_events`, `analytics_archive_goals`, `analytics_archive_geo_events` and `analytics_maintenance_lock` (private archives and the maintenance lease; see [below](#analytics-archive-and-maintenance))
+- `processing_tasks` and `audit_trail` (private runs of background jobs and the audit trail; no event data; see [below](#processing-tasks-and-audit-trail))
 - `users` (dashboard auth, optional in API-only mode)
 - `messenger_messages` (used only in async queue mode)
 
@@ -674,7 +676,38 @@ php bin/console app:analytics:maintain --dry-run
 php bin/console app:analytics:maintain
 ```
 
-Run maintenance at least daily when either feature is enabled. Include the archive tables and lifecycle lease state in backups, and enforce separate expiration for database backups, replicas, BI extracts, and exports. On SQLite, file access still bypasses view permissions; use controlled exports, such as [BigQuery sync](BIGQUERY.md) of the approved views, or a server database for separate BI access.
+Run maintenance at least daily; it also purges [task and audit records](#processing-tasks-and-audit-trail), which is on by default. Include the archive tables and lifecycle lease state in backups, and enforce separate expiration for database backups, replicas, BI extracts, and exports. On SQLite, file access still bypasses view permissions; use controlled exports, such as [BigQuery sync](BIGQUERY.md) of the approved views, or a server database for separate BI access.
+
+## Processing tasks and audit trail
+
+Two generic, private tables record background work for every feature, instead of a
+status table per feature:
+
+- **`processing_tasks`**: one row per run of a job. `task_type` names the job
+  (`bigquery_sync`, `analytics_maintenance`) and `subject` what it worked on (the
+  view, for BigQuery). `status` is `running`, `succeeded` or `failed`;
+  `triggered_by` is `schedule` (the scheduled command doing what is due),
+  `command` (a person running a command for a specific job) or `dashboard`, with
+  the administrator in `requested_by`. `started_at` and `finished_at` are UTC;
+  `row_count`, `external_id` (such as a BigQuery job ID) and `details` (the result
+  or the failure, redacted) complete the row. While an exclusive job runs, its
+  `lock_key` (`task_type:subject`) is set, and a unique index allows only one
+  running row per key, so two processes never run the same job at once. A run
+  still marked running after its allowed time is marked failed by the next run.
+- **`audit_trail`**: one entry per finished run: `occurred_at` (UTC),
+  `category` (`task`; `admin` is reserved for administrator actions),
+  `operation` (the task type), `subject`, `outcome`, `actor` (the administrator,
+  when there is one), `processing_task_id` and `details`.
+
+Details hold summaries and error messages, never event rows or credentials;
+database errors are recorded by type only, with the full error in the application
+log. Do not grant either table to routine BI users.
+
+`app:analytics:maintain` purges runs that started and ended more than
+`processing_tasks_retention_days` (default 90) ago, keeping the latest success and
+failure of each job, and audit entries older than `audit_trail_retention_days`
+(default 365). `0` keeps them. See
+[task and audit records](CONFIGURATION.md#task-and-audit-records).
 
 ---
 

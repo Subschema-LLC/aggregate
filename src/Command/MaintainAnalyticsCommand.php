@@ -16,7 +16,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 
 #[AsCommand(
     name: 'app:analytics:maintain',
-    description: 'Archive and delete analytics data according to the configured lifecycle policy',
+    description: 'Archive and delete analytics data and purge old task and audit records, according to the data lifecycle settings',
 )]
 final class MaintainAnalyticsCommand extends Command
 {
@@ -58,8 +58,8 @@ final class MaintainAnalyticsCommand extends Command
             return Command::FAILURE;
         }
 
-        if (!$result->archivingEnabled && !$result->retentionEnabled) {
-            $io->success('Analytics archiving and retention are disabled; nothing changed.');
+        if (!$result->hasWork()) {
+            $io->success('Archiving, retention and record purging are all turned off; nothing changed.');
 
             return Command::SUCCESS;
         }
@@ -71,6 +71,8 @@ final class MaintainAnalyticsCommand extends Command
                 ['Raw events to archive', (string) $result->archivedEvents],
                 ['Raw events to delete', (string) $result->deletedRawEvents],
                 ['Archive cells to delete', (string) $result->deletedArchiveCells],
+                ['Processing tasks to purge', (string) $result->purgedProcessingTasks],
+                ['Audit trail entries to purge', (string) $result->purgedAuditEntries],
             ],
         );
         $io->success($result->dryRun

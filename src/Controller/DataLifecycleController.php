@@ -6,6 +6,8 @@ namespace App\Controller;
 
 use App\Service\AggregateConfigLoader;
 use App\Service\AnalyticsDataLifecyclePolicy;
+use App\Service\AnalyticsMaintenanceRunner;
+use App\Service\Operations\ProcessingTasks;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
@@ -20,6 +22,7 @@ final class DataLifecycleController extends AbstractController
         private readonly AggregateConfigLoader $config,
         private readonly AnalyticsDataLifecyclePolicy $policy,
         private readonly LoggerInterface $logger,
+        private readonly ProcessingTasks $tasks,
     ) {
     }
 
@@ -37,10 +40,18 @@ final class DataLifecycleController extends AbstractController
             $configurationError = 'The active lifecycle configuration is invalid. Correct its YAML or environment values before maintenance is run.';
         }
 
+        try {
+            $lastRun = $this->tasks->latest(AnalyticsMaintenanceRunner::TASK_TYPE)['']['attempt'] ?? null;
+        } catch (\Throwable $e) {
+            $this->logger->error('Failed to read the last maintenance run.', ['exception' => $e]);
+            $lastRun = null;
+        }
+
         return $this->render('data_lifecycle/index.html.twig', [
             'lifecycle_settings' => $settings,
             'lifecycle_environment_overrides' => $this->policy->getEnvironmentOverrides(),
             'lifecycle_configuration_error' => $configurationError,
+            'last_maintenance_run' => $lastRun,
         ]);
     }
 
@@ -66,6 +77,8 @@ final class DataLifecycleController extends AbstractController
             AnalyticsDataLifecyclePolicy::KEY_ENHANCED_RETENTION_DAYS => true,
             AnalyticsDataLifecyclePolicy::KEY_ARCHIVE_RETENTION_DAYS => true,
             AnalyticsDataLifecyclePolicy::KEY_MAINTENANCE_BATCH_SIZE => true,
+            AnalyticsDataLifecyclePolicy::KEY_AUDIT_TRAIL_RETENTION_DAYS => true,
+            AnalyticsDataLifecyclePolicy::KEY_PROCESSING_TASKS_RETENTION_DAYS => true,
         ];
         $unknownKeys = array_diff_key($submitted, $allowedKeys);
         if ($unknownKeys !== []) {
@@ -132,7 +145,7 @@ final class DataLifecycleController extends AbstractController
         if (in_array(true, $overrides, true)) {
             $this->addFlash('warning', 'Environment-controlled lifecycle settings were left unchanged.');
         }
-        $this->addFlash('success', 'Analytics archiving and retention settings were saved.');
+        $this->addFlash('success', 'Data lifecycle settings were saved.');
 
         return $this->redirectToRoute('app_data_lifecycle');
     }
