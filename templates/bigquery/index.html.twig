@@ -1,0 +1,272 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}BigQuery sync - {{ app_branding.name }}{% endblock %}
+
+{% macro env_help(overrides, key) %}{% if attribute(overrides, key) %}<p class="help">Controlled by <code>{{ key|upper }}</code>.</p>{% endif %}{% endmacro %}
+
+{% block body %}
+{% import _self as help %}
+{% set running = status.views|filter(view => view.status == 'running')|length > 0 %}
+<div class="bigquery-page"
+     data-controller="pages--bigquery--index"
+     data-pages--bigquery--index-status-url-value="{{ path('app_bigquery_status') }}"
+     data-pages--bigquery--index-running-value="{{ running or sync_requested_at ? 'true' : 'false' }}"
+     data-pages--bigquery--index-since-value="{{ sync_requested_at ?? 0 }}">
+    <h1 class="title">BigQuery sync</h1>
+    <p class="subtitle">Copy reporting views to a Google BigQuery dataset on a schedule, for Looker Studio, Connected Sheets or anything else that reads BigQuery.</p>
+    {{ component('Ui:DocsLink', {topic: 'reporting.bigquery', label: 'BigQuery sync guide'}) }}
+
+    {% if configuration_error %}<div class="notification is-danger" role="alert">{{ configuration_error }}</div>{% endif %}
+
+    <section class="box bigquery-summary" aria-labelledby="bigquery-summary-title">
+        <h2 class="title is-5" id="bigquery-summary-title">
+            {% if settings.bigquery_enabled %}
+                <span class="tag is-success is-medium mr-2">On</span> Syncing {{ status.views|length }} view{{ status.views|length == 1 ? '' : 's' }} every {{ settings.bigquery_interval_minutes >= 60 ? (settings.bigquery_interval_minutes / 60) ~ ' hour' ~ (settings.bigquery_interval_minutes > 60 ? 's' : '') : settings.bigquery_interval_minutes ~ ' minutes' }}
+            {% else %}
+                <span class="tag is-light is-medium mr-2">Off</span> Sync is turned off
+            {% endif %}
+        </h2>
+        <p>Each sync replaces a BigQuery table with the current contents of its view, so the tables always match Aggregate as of their last sync. Deletions and suppression in Aggregate carry over at the next sync.</p>
+        {% if status.scheduler_late %}
+            <div class="notification is-warning is-light mt-3" role="status">
+                <p><strong>The scheduled sync is not running.</strong> {% if status.runner and status.runner.started_at %}It last ran {{ status.runner.started_at|date('Y-m-d H:i', 'UTC') }} UTC.{% else %}It has not run yet.{% endif %} Add this line to the web server user’s crontab:</p>
+                <pre class="mt-2 bigquery-cron"><code>{{ cron_line }}</code></pre>
+            </div>
+        {% endif %}
+        <div class="buttons mt-4">
+            <button class="button" type="submit" form="bigquery-test"{% if configuration_error %} disabled{% endif %}>
+                <span class="icon"><i class="fas fa-plug-circle-check" aria-hidden="true"></i></span><span>Test connection</span>
+            </button>
+            <button class="button is-primary" type="submit" form="bigquery-sync"{% if configuration_error or not settings.bigquery_enabled or background_problem or running or sync_requested_at %} disabled{% endif %}>
+                <span class="icon"><i class="fas fa-cloud-arrow-up" aria-hidden="true"></i></span><span>{{ running or sync_requested_at ? 'Syncing…' : 'Sync now' }}</span>
+            </button>
+        </div>
+        {% if background_problem and settings.bigquery_enabled %}<p class="help">{{ background_problem }}</p>{% endif %}
+    </section>
+
+    {# 1. Connection #}
+    <form method="post" action="{{ path('app_bigquery_connection') }}" enctype="multipart/form-data" class="box" aria-labelledby="bigquery-connection-title">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token('bigquery_settings') }}">
+        <h2 class="title is-4" id="bigquery-connection-title">1. Connect to Google Cloud</h2>
+        {{ component('Ui:DocsLink', {topic: 'reporting.bigquery-sign-in', label: 'Which sign-in to choose'}) }}
+
+        <fieldset class="field mt-4">
+            <legend class="label">How Aggregate signs in</legend>
+            <div class="bigquery-auth-options">
+                {% for value, label in auth_methods %}
+                    <label class="bigquery-auth-option box{% if settings.bigquery_auth == value %} is-selected{% endif %}">
+                        <input type="radio" name="auth" value="{{ value }}" data-pages--bigquery--index-target="auth" data-action="pages--bigquery--index#showAuth"{% if settings.bigquery_auth == value %} checked{% endif %}{% if overrides.bigquery_auth %} disabled{% endif %}>
+                        <span class="has-text-weight-semibold">{{ label }}</span>
+                        <span class="help">
+                            {%- if value == 'service_account' -%}
+                                Upload a JSON key of a service account. Works on any server.
+                            {%- elseif value == 'google_cloud' -%}
+                                No key: uses the service account of the VM, Cloud Run service or GKE workload running Aggregate.
+                            {%- else -%}
+                                An administrator signs in with their Google account. Needs an OAuth client from your Google Cloud project.
+                            {%- endif -%}
+                        </span>
+                    </label>
+                {% endfor %}
+            </div>
+            {{ help.env_help(overrides, 'bigquery_auth') }}
+        </fieldset>
+
+        <div class="bigquery-auth-panel" data-pages--bigquery--index-target="panel" data-auth="service_account">
+            <h3 class="title is-6">Service account key</h3>
+            {% if key %}
+                <p class="notification is-success is-light">Key installed for <strong>{{ key.email }}</strong>{% if key.project %} (project <code>{{ key.project }}</code>){% endif %}.</p>
+            {% elseif key_error %}
+                <p class="notification is-danger is-light" role="alert">{{ key_error }}</p>
+            {% else %}
+                <p class="notification is-warning is-light">No key is installed yet.</p>
+            {% endif %}
+            {% if can_store_key %}
+                <div class="field">
+                    <label class="label" for="bigquery-key-file">{{ key ? 'Replace the key' : 'Key file' }}</label>
+                    <div class="control"><input class="input" type="file" id="bigquery-key-file" name="service_account_key_file" accept="application/json,.json"></div>
+                    <p class="help">In the Google Cloud console: IAM &amp; Admin → Service accounts → your account → Keys → Add key → JSON. Give the account the <strong>BigQuery Job User</strong> role on the project and <strong>BigQuery Data Editor</strong> on the dataset (or on the project, so it can create the dataset). The key is stored in <code>{{ key_path }}</code>, readable only by the application.</p>
+                </div>
+                <details class="mb-3">
+                    <summary>Paste the key instead</summary>
+                    <div class="field mt-2">
+                        <label class="label is-sr-only" for="bigquery-key-json">Key JSON</label>
+                        <textarea class="textarea is-family-monospace" id="bigquery-key-json" name="service_account_key_json" rows="4" autocomplete="off" spellcheck="false" placeholder="{&quot;type&quot;: &quot;service_account&quot;, …}"></textarea>
+                    </div>
+                </details>
+                {% if key %}<button class="button is-small is-danger is-light" type="submit" form="bigquery-remove-key">Remove key from this server</button>{% endif %}
+            {% else %}
+                <p class="help">The key file is managed on the server at <code>{{ key_path }}</code> (set by <code>bigquery_credentials_file</code>).</p>
+            {% endif %}
+        </div>
+
+        <div class="bigquery-auth-panel" data-pages--bigquery--index-target="panel" data-auth="google_cloud">
+            <h3 class="title is-6">Automatic on Google Cloud</h3>
+            <p>Aggregate asks the Google Cloud metadata server for a token of the service account attached to the host. Give that service account the <strong>BigQuery Job User</strong> and <strong>BigQuery Data Editor</strong> roles. On Compute Engine, the VM’s access scopes must include BigQuery or “Allow full access to all Cloud APIs”. Use “Test connection” to see which account is used.</p>
+        </div>
+
+        <div class="bigquery-auth-panel" data-pages--bigquery--index-target="panel" data-auth="google_sign_in">
+            <h3 class="title is-6">Sign in with Google</h3>
+            {% if sign_in %}
+                <p class="notification is-success is-light">Signed in as <strong>{{ sign_in.account ?: 'a Google account' }}</strong>{% if sign_in.connected_at %} since {{ sign_in.connected_at|date('Y-m-d', 'UTC') }}{% endif %}. Sync acts as this account.</p>
+            {% else %}
+                <p class="notification is-warning is-light">No administrator has signed in yet.</p>
+            {% endif %}
+            <p class="mb-3">Create an OAuth client of type <strong>Web application</strong> in your Google Cloud project (APIs &amp; Services → Credentials), add the redirect URI below, and enter its ID and secret. In a Google Workspace organization, set the consent screen’s user type to <strong>Internal</strong>; otherwise publish it, because Google ends sign-ins after 7 days while an app is in “Testing”.</p>
+            <div class="field">
+                <label class="label" for="bigquery-redirect-uri">Authorized redirect URI</label>
+                <div class="field has-addons">
+                    <div class="control is-expanded"><input class="input is-family-monospace" id="bigquery-redirect-uri" type="text" value="{{ redirect_uri }}" readonly></div>
+                    <div class="control">{{ component('Ui:CopyButton', {target: 'bigquery-redirect-uri', status: 'bigquery-redirect-copy-status', label: 'Copy', success: 'Redirect URI copied.'}) }}</div>
+                </div>
+                <p class="help" id="bigquery-redirect-copy-status" role="status" aria-live="polite"></p>
+            </div>
+            <div class="field">
+                <label class="label" for="bigquery-client-id">OAuth client ID</label>
+                <div class="control"><input class="input" id="bigquery-client-id" name="oauth_client_id" type="text" maxlength="255" value="{{ settings.bigquery_oauth_client_id }}" placeholder="1234567890-abc.apps.googleusercontent.com" autocomplete="off"{% if overrides.bigquery_oauth_client_id %} disabled{% endif %}></div>
+                {{ help.env_help(overrides, 'bigquery_oauth_client_id') }}
+            </div>
+            <div class="field">
+                <label class="label" for="bigquery-client-secret">OAuth client secret</label>
+                <div class="control"><input class="input" id="bigquery-client-secret" name="oauth_client_secret" type="password" maxlength="512" autocomplete="new-password" placeholder="{{ has_client_secret ? 'Saved; leave empty to keep it' : '' }}"{% if client_secret_from_environment %} disabled{% endif %}></div>
+                <p class="help">{% if client_secret_from_environment %}Controlled by <code>BIGQUERY_OAUTH_CLIENT_SECRET</code>.{% else %}Stored in <code>config/secrets/bigquery-google-sign-in.json</code>, readable only by the application.{% endif %}</p>
+            </div>
+            <div class="buttons">
+                <button class="button is-link" type="submit" form="bigquery-google-start"{% if not settings.bigquery_oauth_client_id or not has_client_secret %} disabled title="Save the client ID and secret first"{% endif %}>
+                    <span class="icon"><i class="fab fa-google" aria-hidden="true"></i></span><span>{{ sign_in ? 'Sign in again' : 'Sign in with Google' }}</span>
+                </button>
+                {% if sign_in %}<button class="button is-danger is-light" type="submit" form="bigquery-google-disconnect">Disconnect</button>{% endif %}
+            </div>
+        </div>
+
+        <h3 class="title is-6 mt-5">Destination</h3>
+        <div class="columns">
+            <div class="column field">
+                <label class="label" for="bigquery-project">Project ID</label>
+                <div class="control"><input class="input" id="bigquery-project" name="project" type="text" maxlength="94" value="{{ settings.bigquery_project_id }}" placeholder="{{ key and key.project ? key.project : 'my-project-123' }}" autocomplete="off"{% if overrides.bigquery_project_id %} disabled{% endif %}></div>
+                {% if overrides.bigquery_project_id %}{{ help.env_help(overrides, 'bigquery_project_id') }}{% else %}<p class="help">Leave empty to use the key’s or the Google Cloud host’s project.</p>{% endif %}
+            </div>
+            <div class="column field">
+                <label class="label" for="bigquery-dataset">Dataset</label>
+                <div class="control"><input class="input" id="bigquery-dataset" name="dataset" type="text" maxlength="1024" pattern="[A-Za-z0-9_]+" required value="{{ settings.bigquery_dataset }}"{% if overrides.bigquery_dataset %} disabled{% endif %}></div>
+                {% if overrides.bigquery_dataset %}{{ help.env_help(overrides, 'bigquery_dataset') }}{% else %}<p class="help">Created on the first sync if it does not exist.</p>{% endif %}
+            </div>
+            <div class="column field">
+                <label class="label" for="bigquery-location">Location</label>
+                <div class="control"><input class="input" id="bigquery-location" name="location" type="text" maxlength="40" required list="bigquery-locations" value="{{ settings.bigquery_location }}"{% if overrides.bigquery_location %} disabled{% endif %}></div>
+                <datalist id="bigquery-locations">{% for location in ['US', 'EU', 'us-central1', 'us-east1', 'northamerica-northeast1', 'europe-west1', 'europe-west2', 'europe-west3', 'asia-northeast1', 'australia-southeast1'] %}<option value="{{ location }}">{% endfor %}</datalist>
+                {% if overrides.bigquery_location %}{{ help.env_help(overrides, 'bigquery_location') }}{% else %}<p class="help">Where BigQuery stores the data: US, EU or a region. An existing dataset keeps its location.</p>{% endif %}
+            </div>
+        </div>
+        <button class="button is-primary" type="submit"{% if configuration_error %} disabled{% endif %}>Save connection</button>
+    </form>
+
+    {# 2. Views #}
+    <form method="post" action="{{ path('app_bigquery_views') }}" class="box" aria-labelledby="bigquery-views-title">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token('bigquery_settings') }}">
+        <h2 class="title is-4" id="bigquery-views-title">2. Choose the views</h2>
+        {{ component('Ui:DocsLink', {topic: 'reporting.bigquery-views', label: 'What each view contains'}) }}
+        <fieldset class="field mt-4">
+            <legend class="label">Approved views</legend>
+            <p class="help mb-2">Counted anonymous events with small cells withheld, and labels. The same views routine BI users read.</p>
+            {% for view, description in approved_views %}
+                <label class="checkbox bigquery-view">
+                    <input type="checkbox" name="views[]" value="{{ view }}"{% if view in settings.bigquery_views %} checked{% endif %}{% if overrides.bigquery_views %} disabled{% endif %}>
+                    <code>{{ view }}</code> <span class="has-text-grey">{{ description }}</span>
+                </label>
+            {% endfor %}
+            {{ help.env_help(overrides, 'bigquery_views') }}
+        </fieldset>
+        <details class="bigquery-private"{% if settings.bigquery_private_views is not empty %} open{% endif %}>
+            <summary class="has-text-weight-semibold">Private views ({{ settings.bigquery_private_views|length }} selected)</summary>
+            <div class="notification is-warning is-light mt-3">
+                These views hold individual retained events or unsuppressed counts. Copying them gives everyone with access to the BigQuery dataset row-level data, outside Aggregate’s suppression and retention. Select them only with an approved purpose and dataset access limited accordingly.
+            </div>
+            <fieldset class="field">
+                <legend class="is-sr-only">Private views</legend>
+                {% for view, description in private_views %}
+                    <label class="checkbox bigquery-view">
+                        <input type="checkbox" name="private_views[]" value="{{ view }}" data-pages--bigquery--index-target="private" data-action="pages--bigquery--index#togglePrivate" data-saved="{{ view in settings.bigquery_private_views ? '1' : '0' }}"{% if view in settings.bigquery_private_views %} checked{% endif %}{% if overrides.bigquery_private_views %} disabled{% endif %}>
+                        <code>{{ view }}</code> <span class="has-text-grey">{{ description }}</span>
+                    </label>
+                {% endfor %}
+                {{ help.env_help(overrides, 'bigquery_private_views') }}
+            </fieldset>
+            <label class="checkbox bigquery-confirm" data-pages--bigquery--index-target="confirmation">
+                <input type="checkbox" name="private_views_confirmed" value="1">
+                I confirm that the private views I added may be copied to BigQuery, and that access to the dataset is restricted like access to raw events.
+            </label>
+        </details>
+        <button class="button is-primary mt-4" type="submit"{% if configuration_error %} disabled{% endif %}>Save views</button>
+    </form>
+
+    {# 3. Schedule #}
+    <form method="post" action="{{ path('app_bigquery_schedule') }}" class="box" aria-labelledby="bigquery-schedule-title">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token('bigquery_settings') }}">
+        <h2 class="title is-4" id="bigquery-schedule-title">3. Schedule</h2>
+        {{ component('Ui:DocsLink', {topic: 'reporting.bigquery-schedule', label: 'Scheduling and costs'}) }}
+        <div class="columns mt-3">
+            <div class="column field">
+                <label class="label" for="bigquery-enabled">Sync</label>
+                <div class="control"><div class="select"><select id="bigquery-enabled" name="enabled"{% if overrides.bigquery_enabled %} disabled{% endif %}>
+                    <option value="0"{% if not settings.bigquery_enabled %} selected{% endif %}>Off</option>
+                    <option value="1"{% if settings.bigquery_enabled %} selected{% endif %}>On</option>
+                </select></div></div>
+                {{ help.env_help(overrides, 'bigquery_enabled') }}
+            </div>
+            <div class="column field">
+                <label class="label" for="bigquery-interval">Every</label>
+                <div class="control"><div class="select"><select id="bigquery-interval" name="interval"{% if overrides.bigquery_interval_minutes %} disabled{% endif %}>
+                    {% for minutes in intervals %}
+                        <option value="{{ minutes }}"{% if settings.bigquery_interval_minutes == minutes %} selected{% endif %}>{{ minutes < 60 ? minutes ~ ' minutes' : (minutes == 60 ? '1 hour' : (minutes / 60) ~ ' hours') }}</option>
+                    {% endfor %}
+                </select></div></div>
+                {{ help.env_help(overrides, 'bigquery_interval_minutes') }}
+            </div>
+        </div>
+        <p>Aggregate syncs from a scheduled command, not from web requests. Run it every five minutes; each view syncs about once per interval:</p>
+        <pre class="mt-2 mb-3 bigquery-cron"><code>{{ cron_line }}</code></pre>
+        <p class="help mb-3">Load jobs are free in BigQuery; storage and your queries are billed by Google. Most approved views are small, but private row-level views grow with your traffic.</p>
+        <button class="button is-primary" type="submit"{% if configuration_error %} disabled{% endif %}>Save schedule</button>
+    </form>
+
+    {# Status #}
+    <section class="box" aria-labelledby="bigquery-status-title">
+        <h2 class="title is-4" id="bigquery-status-title">Sync status</h2>
+        {% if status.views is empty %}
+            <p>No views are selected.</p>
+        {% else %}
+            <div class="table-container">
+                <table class="table is-fullwidth is-striped bigquery-status">
+                    <thead><tr><th scope="col">View</th><th scope="col">Status</th><th scope="col">Last successful sync</th><th scope="col">Rows</th><th scope="col">Next sync</th><th scope="col">Details</th></tr></thead>
+                    <tbody>
+                    {% for view in status.views %}
+                        <tr>
+                            <th scope="row"><code>{{ view.view }}</code>{% if view.private %} <span class="tag is-warning is-light">private</span>{% endif %}</th>
+                            <td>
+                                {% if view.status == 'success' %}<span class="tag is-success is-light">Synced</span>
+                                {% elseif view.status == 'failed' %}<span class="tag is-danger is-light">Failed</span>
+                                {% elseif view.status == 'running' %}<span class="tag is-info is-light">Syncing…</span>
+                                {% else %}<span class="tag is-light">Not synced yet</span>{% endif %}
+                            </td>
+                            <td>{{ view.succeeded_at ? view.succeeded_at|date('Y-m-d H:i', 'UTC') ~ ' UTC' : '—' }}</td>
+                            <td>{{ view.row_count is not null ? view.row_count|number_format : '—' }}</td>
+                            <td>{{ not settings.bigquery_enabled ? 'Off' : (view.next_due ? view.next_due|date('Y-m-d H:i', 'UTC') ~ ' UTC' : 'Next run') }}</td>
+                            <td class="bigquery-message">{{ view.message ?? '' }}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endif %}
+        <p class="help">From the command line: <code>php bin/console app:bigquery:check</code> shows this status and tests the connection; <code>php bin/console app:bigquery:sync --force</code> syncs now; <code>--dry-run</code> exports locally without uploading.</p>
+    </section>
+
+    {# Forms submitted by buttons above, which cannot be nested in the settings forms. #}
+    <form id="bigquery-test" method="post" action="{{ path('app_bigquery_test') }}" hidden><input type="hidden" name="_csrf_token" value="{{ csrf_token('bigquery_settings') }}"></form>
+    <form id="bigquery-sync" method="post" action="{{ path('app_bigquery_sync') }}" hidden><input type="hidden" name="_csrf_token" value="{{ csrf_token('bigquery_settings') }}"></form>
+    <form id="bigquery-remove-key" method="post" action="{{ path('app_bigquery_key_remove') }}" hidden data-turbo-confirm="Remove the service account key from this server?"><input type="hidden" name="_csrf_token" value="{{ csrf_token('bigquery_settings') }}"></form>
+    <form id="bigquery-google-start" method="post" action="{{ path('app_bigquery_google_start') }}" hidden data-turbo="false"><input type="hidden" name="_csrf_token" value="{{ csrf_token('bigquery_settings') }}"></form>
+    <form id="bigquery-google-disconnect" method="post" action="{{ path('app_bigquery_google_disconnect') }}" hidden><input type="hidden" name="_csrf_token" value="{{ csrf_token('bigquery_settings') }}"></form>
+</div>
+{% endblock %}

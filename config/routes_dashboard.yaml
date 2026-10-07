@@ -46,6 +46,10 @@ internal_traffic_controller:
     resource: ../src/Controller/InternalTrafficController.php
     type: attribute
 
+bigquery_controller:
+    resource: ../src/Controller/BigQueryController.php
+    type: attribute
+
 updates_controller:
     resource: ../src/Controller/UpdatesController.php
     type: attribute

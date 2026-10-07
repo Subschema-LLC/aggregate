@@ -53,6 +53,7 @@ export const sections = [
       { source: 'docs/PRIVACY-COMPLIANCE.md', route: 'privacy/compliance', label: 'Privacy and compliance' },
       { source: 'docs/BI-CONNECTION.md', route: 'reporting/connect-bi', label: 'Connect BI and AI tools' },
       { source: 'docs/BI-GLOSSARY.md', route: 'reporting/bi-glossary', label: 'BI labels and glossary' },
+      { source: 'docs/BIGQUERY.md', route: 'reporting/bigquery', label: 'Sync to BigQuery' },
     ],
   },
   {

@@ -117,6 +117,17 @@ parameters:
         - privacy suppression
         - minimum
         - k-anonymity
+    'BigQuery sync':
+      description: 'Copy reporting views to Google BigQuery on a schedule'
+      synonyms:
+        - bigquery
+        - google cloud
+        - gcp
+        - warehouse
+        - export
+        - sync
+        - looker studio
+        - service account
     'BI connection guide':
       description: 'Database schema, view specifications, and query examples'
       synonyms:

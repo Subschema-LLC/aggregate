@@ -38,6 +38,8 @@ services:
             - '../src/Service/Update/FileTransaction.php'
             # Served by config/setup.php before the kernel exists; never a service.
             - '../src/Setup/FirstRunSetup.php'
+            # BigQuery value objects and per-run clients, built by their factories.
+            - '../src/Service/BigQuery/{BigQueryClient,BigQueryException,GoogleCloudCredentials,GoogleSignInCredentials,ServiceAccountCredentials,ServiceAccountKey,TokenCache}.php'
 
     App\Controller\HomeController: ~
     App\Controller\ReceiveController:
@@ -137,6 +139,24 @@ services:
     App\Service\InternalTrafficMarking:
         arguments:
             $secret: '%kernel.secret%'
+
+    App\Service\BigQuery\BigQuerySettings:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
+    App\Service\BigQuery\BigQuerySecrets:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
+    App\Service\BigQuery\BigQueryViewExporter:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
+    App\Service\BigQuery\BigQueryBackgroundSync:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+            $environment: '%kernel.environment%'
+            $debug: '%kernel.debug%'
 
     App\Service\TagManagerSettings:
         arguments:

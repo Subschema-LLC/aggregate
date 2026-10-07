@@ -1,0 +1,64 @@
+/* BigQuery sync: sign-in method cards, view lists and the status table. */
+.bigquery-auth-options {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+}
+
+.bigquery-auth-option {
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-bottom: 0 !important;
+}
+
+.bigquery-auth-option input {
+    margin-bottom: 0.25rem;
+}
+
+.bigquery-auth-option.is-selected {
+    box-shadow: 0 0 0 2px var(--bulma-link, #485fc7);
+}
+
+.bigquery-auth-panel {
+    border-left: 3px solid color-mix(in srgb, var(--app-brand-text, #363636) 20%, transparent);
+    margin: 1.25rem 0;
+    padding-left: 1rem;
+}
+
+.bigquery-view,
+.bigquery-confirm {
+    display: block;
+    margin: 0.35rem 0;
+}
+
+.bigquery-confirm {
+    font-weight: 600;
+    margin-top: 1rem;
+}
+
+.bigquery-status td,
+.bigquery-status th {
+    vertical-align: top;
+}
+
+.bigquery-status thead th {
+    white-space: nowrap;
+}
+
+.bigquery-status tbody th {
+    font-weight: normal;
+    letter-spacing: normal;
+    text-transform: none;
+}
+
+.bigquery-message {
+    max-width: 28rem;
+    overflow-wrap: anywhere;
+}
+
+.bigquery-cron {
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}

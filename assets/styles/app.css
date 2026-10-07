@@ -9,6 +9,7 @@
 @import './pages/settings/branding.css';
 @import './pages/settings/page_speed.css';
 @import './pages/internal_traffic/index.css';
+@import './pages/bigquery/index.css';
 @import './pages/setup/index.css';
 @import './components/setup/walkthrough.css';
 @import './pages/websites/index.css';
