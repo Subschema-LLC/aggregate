@@ -83,6 +83,10 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   to it through [`documentation_url`](docs/CONFIGURATION.md#documentation-links).
   Publish a copy of the site for each release and link each installation to the
   guides for its own version.
+- **MCP Connector.** An AI connector so agents have ample context and an easy way to integrate and interact with Aggregate.  
+- **Microsoft Fabric Connector.** Similar to the BigQuery Sync connector, but for Microsoft Fabric.
+- **Sendgrid Integration** For transactional emails.
+- **Postmark Integration.** For transactional emails.
 
 ## Proposals to explore
 

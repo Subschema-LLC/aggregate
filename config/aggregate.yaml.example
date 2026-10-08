@@ -77,6 +77,12 @@ tag_manager:
   #     consent: analytics
   #     trigger: {type: data_layer, event: purchase}
 
+# Optional deployment-wide default for the built-in consent banner (cmp-lite).
+# Websites inherit this setting unless overridden in config/tag-manager/sites/<site-id>.yaml.
+# Set enabled to false to omit cmp-lite from default install scripts and disable it by default.
+# consent_manager:
+#   enabled: false
+
 # Shared custom data model; active environments can replace either mapping.
 # All UTMs require enhanced consent by default. For anonymous attribution,
 # prefer only utm_medium with broad channel values (email/social/cpc).
