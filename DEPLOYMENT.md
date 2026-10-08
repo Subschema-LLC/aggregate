@@ -95,7 +95,7 @@ make start-mysql
 make migrate-mysql
 ```
 
-Optional dashboard setup: open `http://localhost/install` to create an admin user. After install, admins can add users and reset passwords from **Administration → Users**.
+Optional dashboard setup: open `http://localhost/install` to create an admin user. After install, admins can add users and reset passwords from **Administration → Users**, or via CLI with `php bin/console app:user:create` and `php bin/console app:user:reset-password`.
 
 If you use generic profile commands (`make start DOCKER_PROFILE=...`), set `DOCKER_DATABASE_URL` to a matching DSN.
 Wrapper targets (`make start-postgres`, `make start-mariadb`) set sensible defaults automatically.
@@ -212,7 +212,8 @@ chown -R www-data:www-data var/
 
 # 7. Optional: open https://your-domain.com/install to create
 #    a dashboard admin user and update dashboard settings.
-#    After install, manage additional users/passwords in Administration -> Users.
+#    After install, manage additional users/passwords in Administration -> Users,
+#    or via CLI with app:user:create and app:user:reset-password.
 #    CLI alternative: php bin/console app:install
 ```
 
