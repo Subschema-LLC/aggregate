@@ -116,8 +116,9 @@ their own.
 
 Migrations in [migrations/](../migrations) create the reporting views. The
 `bi_anonymous_*` views combine live and archived anonymous counts, release only
-completed hours or days, and hide any cell below the minimum count stored in
-`analytics_privacy_settings`
+completed hours or days, and hide any cell below the configured minimum count
+from `anonymous_min_cell_count` / `anonymous_geo_min_cell_count` in
+`config/aggregate*.yaml`
 ([AnalyticsPrivacySettings](../src/Service/AnalyticsPrivacySettings.php)). The
 geography view also pools small areas into "other" so that a hidden area can't
 easily be worked out by subtraction.

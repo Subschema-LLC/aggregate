@@ -170,19 +170,18 @@ the physical type differs between database engines.
 | `goal_event` | Nullable string (191) | An enabled goal code; kept on anonymous rows only when the goal allows anonymous use. |
 | `created_at` | UTC date and time | The UTC hour for anonymous rows; the exact server time for enhanced rows. |
 
-**`analytics_privacy_settings`** holds the thresholds the approved views read, in
-a single row with `id = 1`:
+**`anonymous_min_cell_count`** and **`anonymous_geo_min_cell_count`** in
+`config/aggregate*.yaml` define the thresholds the approved views publish:
 
-| Column | Type | Meaning |
+| Key | Type | Meaning |
 | --- | --- | --- |
-| `id` | Integer | Always 1; the views read this row. |
 | `anonymous_min_cell_count` | Integer | Threshold for the hourly event and daily goal views; default 5, allowed 2–1000. |
 | `anonymous_geo_min_cell_count` | Integer | Threshold for the daily geography view; default 25, allowed 10–1000. |
-| `updated_at` | UTC date and time | When the row last changed. |
 
-If the row is missing or a value is out of range, the affected views return no
-rows. Change the thresholds under **Reporting → BI disclosure**. BI accounts
-should not be able to read this table.
+Dashboard saves under **Reporting → BI disclosure** write YAML and regenerate
+`bi_anonymous_events_v1`, `bi_anonymous_goals_v1`, and `bi_anonymous_geo_events_v1`.
+Environment overrides (`ANONYMOUS_MIN_CELL_COUNT`,
+`ANONYMOUS_GEO_MIN_CELL_COUNT`) take precedence.
 
 **There is no `websites` table.** Website names, domains and tokens live in
 `config/websites.yaml`. If reports need friendly names, keep a token-to-name

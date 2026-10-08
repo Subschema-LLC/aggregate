@@ -5,6 +5,7 @@ namespace App\Controller;
 use App\Entity\User;
 use App\Repository\UserRepository;
 use App\Service\AggregateConfigLoader;
+use App\Service\AnonymousBiViewManager;
 use App\Service\AnalyticsPrivacySettings;
 use App\Service\BrandingLogoManager;
 use App\Service\BrandingTheme;
@@ -40,6 +41,7 @@ class DashboardController extends AbstractController
         private readonly EntityManagerInterface $em,
         private readonly LoggerInterface $logger,
         private readonly BrandingLogoManager $brandingLogoManager,
+        private readonly AnonymousBiViewManager $anonymousBiViewManager,
         private readonly WebsiteDomainPolicy $websiteDomainPolicy = new WebsiteDomainPolicy(),
     ) {}
 
@@ -813,14 +815,22 @@ class DashboardController extends AbstractController
         }
 
         try {
-            $this->analyticsPrivacySettings->saveMinimumCellCounts(
-                $minimumCellCount,
-                $geoMinimumCellCount,
+            $this->analyticsPrivacySettings->saveMinimumCellCounts($minimumCellCount, $geoMinimumCellCount);
+            $effectiveMinimums = $this->analyticsPrivacySettings->getMinimumCellCounts();
+            $this->anonymousBiViewManager->regenerate(
+                $effectiveMinimums['anonymous'],
+                $effectiveMinimums['geo'],
             );
-            $this->addFlash('success', 'BI disclosure thresholds updated successfully.');
+            $this->addFlash('success', 'BI disclosure thresholds were saved to configuration and BI views were regenerated.');
+            if ($this->analyticsPrivacySettings->hasAnonymousMinimumEnvironmentOverride()
+                || $this->analyticsPrivacySettings->hasGeoMinimumEnvironmentOverride()) {
+                $this->addFlash('warning', 'Environment variables override one or more saved BI threshold values.');
+            }
+        } catch (\InvalidArgumentException $e) {
+            $this->addFlash('error', $e->getMessage());
         } catch (\Throwable $e) {
             $this->logger->error('Failed to save BI disclosure thresholds.', ['exception' => $e]);
-            $this->addFlash('error', 'Failed to save BI disclosure thresholds. Check the application logs.');
+            $this->addFlash('error', 'Failed to save BI disclosure thresholds in configuration or regenerate BI views. Check the application logs.');
         }
 
         return $this->redirectToRoute('app_privacy_settings');
