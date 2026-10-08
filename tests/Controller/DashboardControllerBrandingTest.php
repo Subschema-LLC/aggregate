@@ -10,7 +10,6 @@ use App\Service\AggregateConfigLoader;
 use App\Service\AnalyticsPrivacySettings;
 use App\Service\BrandingLogoManager;
 use App\Service\WebsiteConfigManager;
-use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -495,7 +494,7 @@ final class DashboardControllerBrandingTest extends TestCase
         $controller = new DashboardController(
             $this->createStub(WebsiteConfigManager::class),
             $config,
-            new AnalyticsPrivacySettings($this->createStub(Connection::class)),
+            new AnalyticsPrivacySettings($this->createStub(AggregateConfigLoader::class)),
             $this->createStub(UserRepository::class),
             $this->createStub(UserPasswordHasherInterface::class),
             $this->createStub(EntityManagerInterface::class),

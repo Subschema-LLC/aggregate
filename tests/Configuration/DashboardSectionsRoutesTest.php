@@ -14,7 +14,6 @@ use App\Service\BrandingLogoManager;
 use App\Service\DocumentationLinks;
 use App\Service\SiteScriptConfig;
 use App\Service\WebsiteConfigManager;
-use Doctrine\DBAL\Connection;
 use PHPUnit\Framework\TestCase;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
@@ -303,13 +302,14 @@ final class DashboardSectionsRoutesTest extends TestCase
     public function testDisclosureAndUsersHaveIndependentFormsAndPrivateResponses(): void
     {
         $browser = $this->browser('ROLE_ADMIN');
-        $connection = $this->createMock(Connection::class);
-        $connection->expects(self::once())->method('fetchAssociative')->willReturn([
-            'anonymous_min_cell_count' => 12,
-            'anonymous_geo_min_cell_count' => 30,
-        ]);
-        $connection->expects(self::never())->method('executeStatement');
-        $this->container()->set(AnalyticsPrivacySettings::class, new AnalyticsPrivacySettings($connection));
+        $config = $this->createMock(AggregateConfigLoader::class);
+        $config->expects(self::exactly(2))
+            ->method('getWithEnvFallback')
+            ->willReturnMap([
+                [AnalyticsPrivacySettings::ANONYMOUS_MINIMUM_KEY, AnalyticsPrivacySettings::DEFAULT_MINIMUM_CELL_COUNT, false, 12],
+                [AnalyticsPrivacySettings::GEO_MINIMUM_KEY, AnalyticsPrivacySettings::DEFAULT_GEO_MINIMUM_CELL_COUNT, false, 30],
+            ]);
+        $this->container()->set(AnalyticsPrivacySettings::class, new AnalyticsPrivacySettings($config));
         $repository = $this->createMock(UserRepository::class);
         $repository->expects(self::once())->method('findBy')->willReturn([DashboardSectionsTestUserProvider::user('ROLE_USER')]);
         $this->container()->set(UserRepository::class, $repository);
@@ -545,10 +545,9 @@ final class DashboardSectionsRoutesTest extends TestCase
 
     private function preventDatabaseReadsAndWrites(): void
     {
-        $connection = $this->createMock(Connection::class);
-        $connection->expects(self::never())->method('fetchAssociative');
-        $connection->expects(self::never())->method('executeStatement');
-        $this->container()->set(AnalyticsPrivacySettings::class, new AnalyticsPrivacySettings($connection));
+        $config = $this->createMock(AggregateConfigLoader::class);
+        $config->expects(self::never())->method('setMany');
+        $this->container()->set(AnalyticsPrivacySettings::class, new AnalyticsPrivacySettings($config));
         $repository = $this->createMock(UserRepository::class);
         foreach (['findBy', 'findOneBy', 'find'] as $method) {
             $repository->expects(self::never())->method($method);

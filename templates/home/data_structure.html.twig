@@ -428,34 +428,31 @@ LEFT JOIN bi_dim_goal_event_v1 d ON d.goal_event = f.goal_event;</code></pre>
             </div>
 
             <div class="box">
-                <h3 id="privacy-settings-table-heading" class="title is-4"><code>analytics_privacy_settings</code></h3>
+                <h3 id="privacy-settings-table-heading" class="title is-4">BI disclosure thresholds</h3>
                 <p class="mb-4">
-                    A singleton row with <code>id = 1</code> supplies the live disclosure thresholds used by
-                    the three BI views.
+                    Deployment configuration keys in <code>config/aggregate*.yaml</code> supply the disclosure
+                    thresholds used by the three BI views.
                 </p>
 
                 <div class="table-container" role="region" aria-labelledby="privacy-settings-table-heading" tabindex="0">
                     <table class="table is-fullwidth is-striped data-structure-table">
-                        <caption class="is-sr-only">Columns in the analytics privacy settings table</caption>
+                        <caption class="is-sr-only">Configuration keys for BI disclosure thresholds</caption>
                         <thead>
                             <tr>
-                                <th scope="col">Column</th>
+                                <th scope="col">Configuration key</th>
                                 <th scope="col">Logical type</th>
                                 <th scope="col">Meaning</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr><th scope="row"><code>id</code></th><td>Integer</td><td>Primary key; the views read the singleton row whose value is 1.</td></tr>
                             <tr><th scope="row"><code>anonymous_min_cell_count</code></th><td>Integer</td><td>Hourly event and daily goal threshold; default 5, allowed range 2–1000.</td></tr>
                             <tr><th scope="row"><code>anonymous_geo_min_cell_count</code></th><td>Integer</td><td>Daily geography threshold; default 25, allowed range 10–1000.</td></tr>
-                            <tr><th scope="row"><code>updated_at</code></th><td>UTC datetime</td><td>Time the settings row was last changed.</td></tr>
                         </tbody>
                     </table>
                 </div>
 
                 <p class="help">
-                    If row 1 is missing or a threshold is outside its allowed range, the affected view
-                    returns no rows. BI accounts should not receive access to this table.
+                    Saving BI disclosure settings rewrites configuration and regenerates the BI views. Environment overrides still take precedence.
                 </p>
             </div>
 

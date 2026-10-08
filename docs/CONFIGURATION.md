@@ -32,7 +32,7 @@ Configuration has separate sources of truth:
 - **`config/quick_search.yaml`** (app-level, committed): Dashboard quick-search synonyms and extra entries. Customize it in `config/quick_search.local.yaml`.
 - **`config/websites.yaml`** (untracked): Website names, primary domains, allowed event-source domains, and public ingestion tokens, managed through the Websites page, YAML, or `app:create-website`.
 - **`config/tag-manager/sites/<site-id>.yaml`** (untracked): Per-website CMP settings, tags, triggers, and variables, managed through the Tag manager page or YAML. Run `app:tag-manager:sites` to list IDs and paths; see [Tag manager](TAG-MANAGER.md). Analytics collection settings and data models remain deployment-wide.
-- **`analytics_privacy_settings`** (database): BI disclosure thresholds, managed through the dashboard or controlled database administration; these are not mirrored in YAML.
+- **`anonymous_min_cell_count` / `anonymous_geo_min_cell_count`** (deployment config): BI disclosure thresholds in `config/aggregate*.yaml`, managed through the BI disclosure dashboard form, YAML, or environment overrides.
 
 The web installer at `/install` is optional and only needed when you want dashboard-based setup.
 
@@ -284,14 +284,12 @@ ZIPs include them. `app:updates:apply` runs these steps for Git checkouts, and
 (for Plesk, see its [deployment actions](../PLESK-DEPLOYMENT.md#plesk-git-deployment-actions)).
 Saving existing branding settings takes effect without an asset build.
 
-The two BI disclosure thresholds are configured separately in the admin dashboard and stored directly in the singleton `analytics_privacy_settings` database row:
+The two BI disclosure thresholds are deployment configuration values in `config/aggregate*.yaml`:
 
 - `anonymous_min_cell_count`: completed hourly cells in `bi_anonymous_events_v1` and completed daily goal cells in `bi_anonymous_goals_v1` (default `5`, range `2`–`1000`)
 - `anonymous_geo_min_cell_count`: completed daily cells in `bi_anonymous_geo_events_v1` (default `25`, range `10`–`1000`)
 
-Dashboard changes take effect immediately because all three BI views read this row directly. The migrations create it with safe defaults; there is no YAML copy or synchronization command. For an API-only deployment, update the singleton row through controlled database administration and keep routine BI roles read-only.
-
-When upgrading from a version that mirrored these values, the existing database row keeps the last applied thresholds. Remove stale `anonymous_min_cell_count` and `anonymous_geo_min_cell_count` YAML/environment settings after every application instance is upgraded; the new code ignores them.
+Dashboard saves write YAML and regenerate `bi_anonymous_events_v1`, `bi_anonymous_goals_v1`, and `bi_anonymous_geo_events_v1` so SQL view definitions track the effective thresholds. Environment overrides (`ANONYMOUS_MIN_CELL_COUNT`, `ANONYMOUS_GEO_MIN_CELL_COUNT`) still take precedence.
 
 ## Feature flags
 
@@ -516,7 +514,7 @@ administration. Each settings page loads the data needed for its own task.
 | Setup | `/dashboard/setup` | Guided installation, separate built-in/standalone/external consent choice, script copy/download, optional minification |
 | Standalone consent settings | `/dashboard/setup/standalone/<site-id>` | Independent per-site banner settings and optional Formspree request endpoint |
 | Tag manager | `/dashboard/tag-manager` | Per-website CMP, script/method actions, consent, event triggers, variables, and YAML downloads |
-| BI disclosure | `/dashboard/privacy` | Database-backed event and geography thresholds |
+| BI disclosure | `/dashboard/privacy` | YAML-backed event and geography thresholds with BI view regeneration |
 | Users | `/dashboard/users` | User creation and password administration |
 | Data model | `/dashboard/data-model` | Properties, types, consent, query mappings |
 | Event examples | `/dashboard/data-model/examples` | Synthetic JSON generation, copy, download, and ecommerce recipe |
