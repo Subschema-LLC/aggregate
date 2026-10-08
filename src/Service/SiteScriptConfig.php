@@ -13,7 +13,24 @@ final class SiteScriptConfig
         private readonly WebsiteConfigManager $websites,
         private readonly string $projectDir,
         private readonly string $environment,
+        private readonly ?AggregateConfigLoader $appConfig = null,
     ) {
+    }
+
+    public function defaultConsentEnabled(): bool
+    {
+        try {
+            $appConfig = $this->appConfig ?? new AggregateConfigLoader($this->projectDir, $this->environment);
+            if ($appConfig->has('consent_manager')) {
+                $cm = $appConfig->get('consent_manager');
+                if (is_array($cm) && array_key_exists('enabled', $cm) && is_bool($cm['enabled'])) {
+                    return $cm['enabled'];
+                }
+            }
+        } catch (\Throwable) {
+        }
+
+        return true;
     }
 
     public static function idForToken(string $token): string
@@ -63,7 +80,11 @@ final class SiteScriptConfig
         $config->assertHealthy();
         $values = $config->all();
 
-        return self::validateConsent(array_key_exists('consent_manager', $values) ? $values['consent_manager'] : [], $site['name']);
+        return self::validateConsent(
+            array_key_exists('consent_manager', $values) ? $values['consent_manager'] : [],
+            $site['name'],
+            $this->defaultConsentEnabled(),
+        );
     }
 
     /**
@@ -74,12 +95,13 @@ final class SiteScriptConfig
     public function saveConsent(string $id, array $consent): void
     {
         $site = $this->site($id);
-        self::validateConsent(self::withoutRemovals($consent), $site['name']);
+        $defaultEnabled = $this->defaultConsentEnabled();
+        self::validateConsent(self::withoutRemovals($consent), $site['name'], $defaultEnabled);
         $this->ensureDirectory();
-        $this->configuration($id)->updateMany(static function (array $current) use ($consent, $site): array {
+        $this->configuration($id)->updateMany(static function (array $current) use ($consent, $site, $defaultEnabled): array {
             TagManagerSettings::validate(array_key_exists('tag_manager', $current) ? $current['tag_manager'] : TagManagerSettings::DEFAULTS);
 
-            return ['consent_manager' => self::mergeConsent($current, $consent, $site['name'])];
+            return ['consent_manager' => self::mergeConsent($current, $consent, $site['name'], $defaultEnabled)];
         });
     }
 
@@ -91,21 +113,22 @@ final class SiteScriptConfig
     {
         $site = $this->site($id);
         $tags = TagManagerSettings::validate($tags);
-        self::validateConsent(self::withoutRemovals($consent), $site['name']);
+        $defaultEnabled = $this->defaultConsentEnabled();
+        self::validateConsent(self::withoutRemovals($consent), $site['name'], $defaultEnabled);
         $this->ensureDirectory();
-        $this->configuration($id)->updateMany(static function (array $current) use ($tags, $consent, $site): array {
+        $this->configuration($id)->updateMany(static function (array $current) use ($tags, $consent, $site, $defaultEnabled): array {
             TagManagerSettings::validate(array_key_exists('tag_manager', $current) ? $current['tag_manager'] : TagManagerSettings::DEFAULTS);
 
-            return ['tag_manager' => $tags, 'consent_manager' => self::mergeConsent($current, $consent, $site['name'])];
+            return ['tag_manager' => $tags, 'consent_manager' => self::mergeConsent($current, $consent, $site['name'], $defaultEnabled)];
         });
     }
 
     /** The saved consent_manager with $changes applied, validated as a whole. */
-    private static function mergeConsent(array $current, array $changes, string $defaultName): array
+    private static function mergeConsent(array $current, array $changes, string $defaultName, bool $defaultEnabled = true): array
     {
-        $saved = self::validateConsent(array_key_exists('consent_manager', $current) ? $current['consent_manager'] : [], $defaultName);
+        $saved = self::validateConsent(array_key_exists('consent_manager', $current) ? $current['consent_manager'] : [], $defaultName, $defaultEnabled);
 
-        return self::validateConsent(self::withoutRemovals(array_replace($saved, $changes)), $defaultName);
+        return self::validateConsent(self::withoutRemovals(array_replace($saved, $changes)), $defaultName, $defaultEnabled);
     }
 
     /** Drops optional keys set to null; a null enabled or name stays invalid. */
@@ -138,17 +161,17 @@ final class SiteScriptConfig
 
         return Yaml::dump([
             'tag_manager' => TagManagerSettings::validate(array_key_exists('tag_manager', $values) ? $values['tag_manager'] : TagManagerSettings::DEFAULTS),
-            'consent_manager' => self::validateConsent(array_key_exists('consent_manager', $values) ? $values['consent_manager'] : [], $site['name']),
+            'consent_manager' => self::validateConsent(array_key_exists('consent_manager', $values) ? $values['consent_manager'] : [], $site['name'], $this->defaultConsentEnabled()),
         ], 10, 2, Yaml::DUMP_MULTI_LINE_LITERAL_BLOCK);
     }
 
-    private static function validateConsent(mixed $settings, string $defaultName): array
+    private static function validateConsent(mixed $settings, string $defaultName, bool $defaultEnabled = true): array
     {
         $supported = ['enabled', 'name', 'privacy_policy_url', 'precheck_categories', ...ConsentAppearance::KEYS];
         if (!is_array($settings) || ($settings !== [] && array_is_list($settings)) || array_diff(array_keys($settings), $supported) !== []) {
             throw new \InvalidArgumentException('Consent manager settings support only '.implode(', ', $supported).'.');
         }
-        $enabled = array_key_exists('enabled', $settings) ? $settings['enabled'] : true;
+        $enabled = array_key_exists('enabled', $settings) ? $settings['enabled'] : $defaultEnabled;
         $name = array_key_exists('name', $settings) ? $settings['name'] : $defaultName;
         if (!is_bool($enabled) || !is_string($name) || trim($name) === '' || strlen($name) > 120
             || preg_match('//u', $name) !== 1 || preg_match('/[\x00-\x1f\x7f]/', $name) === 1) {

@@ -222,6 +222,65 @@ final class DashboardSectionsRoutesTest extends TestCase
         $this->assertNoDatabaseConnection();
     }
 
+    public function testInstallationCodeConsentToggleSwitchesCmpLite(): void
+    {
+        $browser = $this->browser('ROLE_ADMIN');
+        $this->preventDatabaseReadsAndWrites();
+        $site = SiteScriptConfig::idForToken('example-token');
+
+        // Default: CMP is enabled
+        $crawler = $browser->request('GET', '/dashboard');
+        self::assertSame('Include built-in banner (cmp-lite)', $crawler->filter('nav[aria-labelledby="website-consent-controls"] [aria-current="true"]')->text());
+        self::assertStringContainsString('/cmp-lite/sites/'.$site.'/consent.js', $crawler->filter('#code-1')->text());
+
+        // Switch to without CMP
+        $crawler = $browser->click($crawler->selectLink('Without banner / My own CMP')->link());
+        self::assertSame(200, $browser->getResponse()->getStatusCode());
+        self::assertSame('Without banner / My own CMP', $crawler->filter('nav[aria-labelledby="website-consent-controls"] [aria-current="true"]')->text());
+        self::assertStringNotContainsString('/cmp-lite/', $crawler->filter('#code-1')->text());
+        self::assertStringContainsString('window["ExampleAnalytics"]', $crawler->filter('#code-1')->text());
+        parse_str((string) parse_url($crawler->selectLink('Open setup and downloads for this website')->link()->getUri(), PHP_URL_QUERY), $setup);
+        self::assertSame('external', $setup['consent_option'] ?? null);
+
+        // Switch back to with CMP
+        $crawler = $browser->click($crawler->selectLink('Include built-in banner (cmp-lite)')->link());
+        self::assertSame(200, $browser->getResponse()->getStatusCode());
+        self::assertSame('Include built-in banner (cmp-lite)', $crawler->filter('nav[aria-labelledby="website-consent-controls"] [aria-current="true"]')->text());
+        self::assertStringContainsString('/cmp-lite/sites/'.$site.'/consent.js', $crawler->filter('#code-1')->text());
+        $this->assertNoDatabaseConnection();
+    }
+
+    public function testInstallationCodeRespectsAggregateYamlConsentManagerDefault(): void
+    {
+        file_put_contents($this->temporaryDirectory.'/config/aggregate.yaml', Yaml::dump([
+            'installed' => true,
+            'app_host' => 'https://analytics.example.test',
+            'js_namespace' => 'ExampleAnalytics',
+            'consent_manager' => ['enabled' => false],
+        ]));
+        $browser = $this->browser('ROLE_ADMIN');
+        $this->preventDatabaseReadsAndWrites();
+
+        // When consent_manager.enabled is false in aggregate.yaml, default is without CMP
+        $crawler = $browser->request('GET', '/dashboard');
+        self::assertSame('Without banner / My own CMP', $crawler->filter('nav[aria-labelledby="website-consent-controls"] [aria-current="true"]')->text());
+        self::assertStringNotContainsString('/cmp-lite/', $crawler->filter('#code-1')->text());
+
+        // Site-specific override in tag-manager/sites/<id>.yaml can still enable it
+        $directory = $this->temporaryDirectory.'/config/tag-manager/sites';
+        (new Filesystem())->mkdir($directory);
+        $site = SiteScriptConfig::idForToken('example-token');
+        file_put_contents($directory.'/'.$site.'.yaml', "consent_manager:
+  enabled: true
+");
+
+        $crawler = $browser->request('GET', '/dashboard', ['cmp' => '1']);
+        self::assertSame(200, $browser->getResponse()->getStatusCode());
+        self::assertSame('Include built-in banner (cmp-lite)', $crawler->filter('nav[aria-labelledby="website-consent-controls"] [aria-current="true"]')->text());
+        self::assertStringContainsString('/cmp-lite/sites/'.$site.'/consent.js', $crawler->filter('#code-1')->text());
+        $this->assertNoDatabaseConnection();
+    }
+
     public function testOrdinaryUsersRetainWebsiteAccessWithoutAdministratorForms(): void
     {
         $browser = $this->browser('ROLE_USER');
