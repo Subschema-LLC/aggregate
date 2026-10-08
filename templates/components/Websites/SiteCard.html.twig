@@ -1,4 +1,4 @@
-{% props website, index, include_tags = false, snippet_format = 'window', is_admin = false %}
+{% props website, index, include_tags = false, snippet_format = 'window', is_admin = false, include_cmp = true %}
 
 <details class="box mb-4"{% if index == 1 %} open{% endif %}>
     <summary class="website-summary has-text-weight-semibold">
@@ -71,7 +71,7 @@
         </div>
 
         {% if is_admin %}
-            <p class="mt-4"><a href="{{ path('app_setup', {website: website.token, step: 3, format: snippet_format, tags: include_tags ? '1' : '0'}) }}">Open setup and downloads for this website</a></p>
+            <p class="mt-4"><a href="{{ path('app_setup', {website: website.token, step: 3, format: snippet_format, tags: include_tags ? '1' : '0', consent_option: include_cmp ? null : 'external'}) }}">Open setup and downloads for this website</a></p>
         {% endif %}
 
         {% component 'Ui:Confirm' with {message: 'Delete this website token? Existing tracker installations using it will stop collecting.', action: path('app_website_delete', {token: website.token}), method: 'post', class: 'mt-5'} %}

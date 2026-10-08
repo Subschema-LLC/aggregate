@@ -42,9 +42,9 @@
     <div class="box mb-5">
         <h2 class="title is-5 mb-3" id="website-installation-method">Installation method</h2>
         <nav class="buttons mb-3" aria-labelledby="website-installation-method">
-            <a class="button is-small{% if not include_tags and snippet_format == 'window' %} is-primary{% endif %}" href="{{ path('app_dashboard', {format: 'window'}) }}"{% if not include_tags and snippet_format == 'window' %} aria-current="true"{% endif %}>Window configuration</a>
-            <a class="button is-small{% if not include_tags and snippet_format == 'query' %} is-primary{% endif %}" href="{{ path('app_dashboard', {format: 'query'}) }}"{% if not include_tags and snippet_format == 'query' %} aria-current="true"{% endif %}>URL query parameters</a>
-            <a class="button is-small{% if include_tags %} is-primary{% endif %}" href="{{ path('app_dashboard', {format: 'window', tags: '1'}) }}"{% if include_tags %} aria-current="true"{% endif %}>Tag manager</a>
+            <a class="button is-small{% if not include_tags and snippet_format == 'window' %} is-primary{% endif %}" href="{{ path('app_dashboard', {format: 'window', cmp: include_cmp ? null : '0'}) }}"{% if not include_tags and snippet_format == 'window' %} aria-current="true"{% endif %}>Window configuration</a>
+            <a class="button is-small{% if not include_tags and snippet_format == 'query' %} is-primary{% endif %}" href="{{ path('app_dashboard', {format: 'query', cmp: include_cmp ? null : '0'}) }}"{% if not include_tags and snippet_format == 'query' %} aria-current="true"{% endif %}>URL query parameters</a>
+            <a class="button is-small{% if include_tags %} is-primary{% endif %}" href="{{ path('app_dashboard', {format: 'window', tags: '1', cmp: include_cmp ? null : '0'}) }}"{% if include_tags %} aria-current="true"{% endif %}>Tag manager</a>
         </nav>
         <p class="help">
             {% if include_tags %}
@@ -53,6 +53,21 @@
                 Load the tracker with its public website token, endpoint, and initial denied consent in the script URL.
             {% else %}
                 Configure the tracker through <code>window</code> before loading it. The website's enabled consent controls load first.
+            {% endif %}
+        </p>
+
+        <hr class="my-4">
+
+        <h2 class="title is-5 mb-3" id="website-consent-controls">Consent banner (CMP)</h2>
+        <nav class="buttons mb-3" aria-labelledby="website-consent-controls">
+            <a class="button is-small{% if include_cmp %} is-primary{% endif %}" href="{{ path('app_dashboard', {format: snippet_format, tags: include_tags ? '1' : null, cmp: '1'}) }}"{% if include_cmp %} aria-current="true"{% endif %}>Include built-in banner (cmp-lite)</a>
+            <a class="button is-small{% if not include_cmp %} is-primary{% endif %}" href="{{ path('app_dashboard', {format: snippet_format, tags: include_tags ? '1' : null, cmp: '0'}) }}"{% if not include_cmp %} aria-current="true"{% endif %}>Without banner / My own CMP</a>
+        </nav>
+        <p class="help">
+            {% if include_cmp %}
+                Includes the built-in Consent manager lite script (<code>cmp-lite</code>) for websites where it is enabled.
+            {% else %}
+                Omits <code>cmp-lite</code> from the snippet. Connect your own consent management platform to <code>window.{{ js_namespace }}.setConsent(true)</code> on user consent.
             {% endif %}
         </p>
     </div>
@@ -89,7 +104,7 @@
 {% endif %}
 
 {% for website in websites %}
-    {{ component('Websites:SiteCard', {website: website, index: loop.index, include_tags: include_tags, snippet_format: snippet_format, is_admin: is_admin}) }}
+    {{ component('Websites:SiteCard', {website: website, index: loop.index, include_tags: include_tags, snippet_format: snippet_format, is_admin: is_admin, include_cmp: include_cmp}) }}
 {% endfor %}
 
 <details class="box mt-5">

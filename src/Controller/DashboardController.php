@@ -51,8 +51,25 @@ class DashboardController extends AbstractController
         $format = ($query['format'] ?? null) === 'query' ? 'query' : 'window';
         $withTags = ($query['tags'] ?? null) === '1';
 
+        $defaultCmp = true;
+        if ($this->config->has('consent_manager')) {
+            $cm = $this->config->get('consent_manager');
+            if (is_array($cm) && array_key_exists('enabled', $cm) && is_bool($cm['enabled'])) {
+                $defaultCmp = $cm['enabled'];
+            }
+        }
+        $cmpParam = $query['cmp'] ?? null;
+        if ($cmpParam === '0' || $cmpParam === 'false' || ($query['consent_option'] ?? null) === 'external') {
+            $includeCmp = false;
+        } elseif ($cmpParam === '1' || $cmpParam === 'true' || ($query['consent_option'] ?? null) === 'builtin') {
+            $includeCmp = true;
+        } else {
+            $includeCmp = $defaultCmp;
+        }
+        $consentOption = $includeCmp ? 'builtin' : 'external';
+
         return $this->renderDashboardPage('websites/index.html.twig', [
-            'websites' => array_map(function (array $website) use ($scripts, $format, $withTags, $activityService): array {
+            'websites' => array_map(function (array $website) use ($scripts, $format, $withTags, $consentOption, $activityService): array {
                 try {
                     $website['domain_settings'] = $this->websiteDomainPolicy->resolve($website);
                     $website['domain_settings_invalid'] = false;
@@ -63,7 +80,7 @@ class DashboardController extends AbstractController
                 $website['integration_code'] = null;
                 $website['tracker_url'] = null;
                 try {
-                    $website['integration_code'] = $scripts->snippet($website['token'], $withTags, $format);
+                    $website['integration_code'] = $scripts->snippet($website['token'], $withTags, $format, $consentOption);
                     if ($withTags) {
                         $website['tracker_url'] = $scripts->trackerUrl($website['token']);
                     }
@@ -80,6 +97,7 @@ class DashboardController extends AbstractController
             }, $this->websiteManager->getWebsites()),
             'snippet_format' => $format,
             'include_tags' => $withTags,
+            'include_cmp' => $includeCmp,
             'js_namespace' => $this->config->getWithEnvFallback('js_namespace', 'Aggregate'),
             'tracking_attributes' => TrackingAttributes::names($this->config->getWithEnvFallback('js_namespace', 'Aggregate')),
         ]);
