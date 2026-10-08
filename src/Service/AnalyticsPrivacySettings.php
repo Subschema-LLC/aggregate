@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Service;
 
 /** Config-backed disclosure thresholds used to regenerate anonymous BI views. */
-class AnalyticsPrivacySettings
+final class AnalyticsPrivacySettings
 {
     public const ANONYMOUS_MINIMUM_KEY = 'anonymous_min_cell_count';
     public const GEO_MINIMUM_KEY = 'anonymous_geo_min_cell_count';
