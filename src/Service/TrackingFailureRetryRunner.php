@@ -32,7 +32,7 @@ final class TrackingFailureRetryRunner
         private readonly ProcessingTasks $tasks,
         private readonly TrackingFailureSettings $settings,
         private readonly MessageBusInterface $bus,
-        #[Autowire(service: 'messenger.receiver.failed')]
+        #[Autowire(service: 'messenger.transport.failed')]
         private readonly ListableReceiverInterface $failedReceiver,
         private readonly LoggerInterface $logger,
         ?\Closure $clock = null,
