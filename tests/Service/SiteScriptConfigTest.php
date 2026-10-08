@@ -372,6 +372,26 @@ final class SiteScriptConfigTest extends TestCase
         return $result;
     }
 
+    public function testGlobalConsentManagerInAggregateYamlControlsDefaultEnabled(): void
+    {
+        $appConfigFile = $this->projectDir.'/config/aggregate.yaml';
+        $original = file_get_contents($appConfigFile);
+        try {
+            file_put_contents($appConfigFile, "consent_manager:\n  enabled: false\n");
+            $appConfig = new AggregateConfigLoader($this->projectDir, 'test');
+            $sites = new SiteScriptConfig(new WebsiteConfigManager($this->projectDir), $this->projectDir, 'test', $appConfig);
+            self::assertFalse($sites->defaultConsentEnabled());
+            self::assertFalse($sites->consent($this->firstId)['enabled']);
+
+            // Site-specific setting overrides the global default
+            $sites->saveConsent($this->firstId, ['enabled' => true, 'name' => 'Storefront']);
+            self::assertTrue($sites->consent($this->firstId)['enabled']);
+            self::assertFalse($sites->consent($this->secondId)['enabled']);
+        } finally {
+            file_put_contents($appConfigFile, $original);
+        }
+    }
+
     private static function tagSettings(string $id, string $consent = 'analytics'): array
     {
         return TagManagerSettings::validate(['enabled' => true, 'tags' => [
