@@ -817,11 +817,15 @@ class DashboardController extends AbstractController
         try {
             $this->analyticsPrivacySettings->saveMinimumCellCounts($minimumCellCount, $geoMinimumCellCount);
             $effectiveMinimums = $this->analyticsPrivacySettings->getMinimumCellCounts();
-            $this->anonymousBiViewManager?->regenerate(
-                $effectiveMinimums['anonymous'],
-                $effectiveMinimums['geo'],
-            );
-            $this->addFlash('success', 'BI disclosure thresholds were saved to configuration and BI views were regenerated.');
+            if ($this->anonymousBiViewManager !== null) {
+                $this->anonymousBiViewManager->regenerate(
+                    $effectiveMinimums['anonymous'],
+                    $effectiveMinimums['geo'],
+                );
+                $this->addFlash('success', 'BI disclosure thresholds were saved to configuration and BI views were regenerated.');
+            } else {
+                $this->addFlash('success', 'BI disclosure thresholds were saved to configuration.');
+            }
             if ($this->analyticsPrivacySettings->hasAnonymousMinimumEnvironmentOverride()
                 || $this->analyticsPrivacySettings->hasGeoMinimumEnvironmentOverride()) {
                 $this->addFlash('warning', 'Environment variables override one or more saved BI threshold values.');
