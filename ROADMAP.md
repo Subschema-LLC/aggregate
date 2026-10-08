@@ -87,6 +87,7 @@ checkout, or a small accessibility fix. Keep each PR focused and target
 - **Microsoft Fabric Connector.** Similar to the BigQuery Sync connector, but for Microsoft Fabric.
 - **Sendgrid Integration** For transactional emails.
 - **Postmark Integration.** For transactional emails.
+- **Medallion Architecture.** Add a means to define and generate silver and gold views. Also docs: events table and glossary are bronze.
 
 ## Proposals to explore
 
