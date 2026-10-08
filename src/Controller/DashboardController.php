@@ -41,8 +41,8 @@ class DashboardController extends AbstractController
         private readonly EntityManagerInterface $em,
         private readonly LoggerInterface $logger,
         private readonly BrandingLogoManager $brandingLogoManager,
+        private readonly AnonymousBiViewManager $anonymousBiViewManager,
         private readonly WebsiteDomainPolicy $websiteDomainPolicy = new WebsiteDomainPolicy(),
-        private readonly ?AnonymousBiViewManager $anonymousBiViewManager = null,
     ) {}
 
     #[Route('/dashboard', name: 'app_dashboard', methods: ['GET'])]
@@ -817,15 +817,11 @@ class DashboardController extends AbstractController
         try {
             $this->analyticsPrivacySettings->saveMinimumCellCounts($minimumCellCount, $geoMinimumCellCount);
             $effectiveMinimums = $this->analyticsPrivacySettings->getMinimumCellCounts();
-            if ($this->anonymousBiViewManager !== null) {
-                $this->anonymousBiViewManager->regenerate(
-                    $effectiveMinimums['anonymous'],
-                    $effectiveMinimums['geo'],
-                );
-                $this->addFlash('success', 'BI disclosure thresholds were saved to configuration and BI views were regenerated.');
-            } else {
-                $this->addFlash('success', 'BI disclosure thresholds were saved to configuration.');
-            }
+            $this->anonymousBiViewManager->regenerate(
+                $effectiveMinimums['anonymous'],
+                $effectiveMinimums['geo'],
+            );
+            $this->addFlash('success', 'BI disclosure thresholds were saved to configuration and BI views were regenerated.');
             if ($this->analyticsPrivacySettings->hasAnonymousMinimumEnvironmentOverride()
                 || $this->analyticsPrivacySettings->hasGeoMinimumEnvironmentOverride()) {
                 $this->addFlash('warning', 'Environment variables override one or more saved BI threshold values.');

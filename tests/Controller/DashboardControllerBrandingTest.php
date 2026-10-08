@@ -8,6 +8,7 @@ use App\Controller\DashboardController;
 use App\Repository\UserRepository;
 use App\Service\AggregateConfigLoader;
 use App\Service\AnalyticsPrivacySettings;
+use App\Service\AnonymousBiViewManager;
 use App\Service\BrandingLogoManager;
 use App\Service\WebsiteConfigManager;
 use Doctrine\ORM\EntityManagerInterface;
@@ -500,6 +501,7 @@ final class DashboardControllerBrandingTest extends TestCase
             $this->createStub(EntityManagerInterface::class),
             $this->createStub(LoggerInterface::class),
             new BrandingLogoManager($this->projectDir, 'test'),
+            $this->createStub(AnonymousBiViewManager::class),
         );
 
         $authorizationChecker = $this->createStub(AuthorizationCheckerInterface::class);
