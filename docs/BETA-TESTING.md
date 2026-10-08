@@ -94,8 +94,9 @@ live-deployment thresholds to make a beta screenshot look populated.
   File replacement does not undo database migrations.
 - Custom models, collection controls, and feature flags are deployment-wide.
   Website-specific configuration and rollout targeting are planned.
-- BI disclosure thresholds live in `analytics_privacy_settings`; they currently
-  use the admin UI or controlled database operations, without YAML/CLI parity.
+- BI disclosure thresholds now live in deployment YAML and regenerate BI views on
+  dashboard save. Editing YAML directly requires explicitly regenerating the
+  BI views to apply new SQL thresholds.
 - `float` and `double` are approximate; use integer minor units and a currency
   code for money. Numeric projections do not convert historical numeric strings.
   Database numeric ranges and rounding still apply. The ecommerce recipe adds

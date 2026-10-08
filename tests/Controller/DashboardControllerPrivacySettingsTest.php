@@ -8,9 +8,11 @@ use App\Controller\DashboardController;
 use App\Repository\UserRepository;
 use App\Service\AggregateConfigLoader;
 use App\Service\AnalyticsPrivacySettings;
+use App\Service\AnonymousBiViewManager;
 use App\Service\BrandingLogoManager;
 use App\Service\WebsiteConfigManager;
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Platforms\SQLitePlatform;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -30,21 +32,36 @@ use Twig\Environment;
 
 final class DashboardControllerPrivacySettingsTest extends TestCase
 {
-    public function testAdminSaveWritesBothThresholdsDirectlyToTheDatabase(): void
+    public function testAdminSaveWritesThresholdsToConfigurationAndRegeneratesViews(): void
     {
+        $settingsConfig = $this->createMock(AggregateConfigLoader::class);
+        $settingsConfig->expects(self::once())
+            ->method('setMany')
+            ->with([
+                AnalyticsPrivacySettings::ANONYMOUS_MINIMUM_KEY => 14,
+                AnalyticsPrivacySettings::GEO_MINIMUM_KEY => 40,
+            ]);
+        $settingsConfig->expects(self::exactly(2))
+            ->method('getWithEnvFallback')
+            ->willReturnMap([
+                [AnalyticsPrivacySettings::ANONYMOUS_MINIMUM_KEY, AnalyticsPrivacySettings::DEFAULT_MINIMUM_CELL_COUNT, 14],
+                [AnalyticsPrivacySettings::GEO_MINIMUM_KEY, AnalyticsPrivacySettings::DEFAULT_GEO_MINIMUM_CELL_COUNT, 40],
+            ]);
+        $settingsConfig->expects(self::exactly(2))
+            ->method('hasEnvironmentOverride')
+            ->willReturn(false);
+        $settings = new AnalyticsPrivacySettings($settingsConfig);
+
         $connection = $this->createMock(Connection::class);
-        $connection->expects(self::once())
-            ->method('executeStatement')
-            ->with(
-                self::stringContains('UPDATE analytics_privacy_settings'),
-                self::callback(static fn (array $parameters): bool =>
-                    $parameters['minimum'] === 14
-                    && $parameters['geo_minimum'] === 40),
-                self::anything(),
-            )
-            ->willReturn(1);
+        $connection->expects(self::once())->method('getDatabasePlatform')->willReturn(new SQLitePlatform());
+        $connection->expects(self::once())->method('beginTransaction');
+        $connection->expects(self::exactly(6))->method('executeStatement');
+        $connection->expects(self::once())->method('commit');
+        $connection->expects(self::never())->method('rollBack');
+        $views = new AnonymousBiViewManager($connection);
+
         $session = new Session(new MockArraySessionStorage());
-        $controller = $this->controller($connection, $session);
+        $controller = $this->controller($settings, $views, $session);
 
         $response = $controller->saveAnalyticsPrivacySettings(Request::create(
             '/dashboard/settings/analytics-privacy',
@@ -58,20 +75,24 @@ final class DashboardControllerPrivacySettingsTest extends TestCase
 
         self::assertSame('/dashboard/privacy', $response->getTargetUrl());
         self::assertSame(
-            ['BI disclosure thresholds updated successfully.'],
+            ['BI disclosure thresholds were saved to configuration and BI views were regenerated.'],
             $session->getFlashBag()->peek('success'),
         );
     }
 
     #[DataProvider('invalidThresholds')]
-    public function testInvalidThresholdDoesNotWriteToTheDatabase(
+    public function testInvalidThresholdDoesNotWriteConfiguration(
         mixed $minimum,
         mixed $geoMinimum,
     ): void {
+        $settingsConfig = $this->createMock(AggregateConfigLoader::class);
+        $settingsConfig->expects(self::never())->method('setMany');
+        $settings = new AnalyticsPrivacySettings($settingsConfig);
         $connection = $this->createMock(Connection::class);
-        $connection->expects(self::never())->method('executeStatement');
+        $connection->expects(self::never())->method('getDatabasePlatform');
+        $views = new AnonymousBiViewManager($connection);
         $session = new Session(new MockArraySessionStorage());
-        $controller = $this->controller($connection, $session);
+        $controller = $this->controller($settings, $views, $session);
 
         $response = $controller->saveAnalyticsPrivacySettings(Request::create(
             '/dashboard/settings/analytics-privacy',
@@ -98,12 +119,16 @@ final class DashboardControllerPrivacySettingsTest extends TestCase
         yield 'missing' => [null, null];
     }
 
-    public function testInvalidCsrfTokenDoesNotWriteToTheDatabase(): void
+    public function testInvalidCsrfTokenDoesNotWriteConfiguration(): void
     {
+        $settingsConfig = $this->createMock(AggregateConfigLoader::class);
+        $settingsConfig->expects(self::never())->method('setMany');
+        $settings = new AnalyticsPrivacySettings($settingsConfig);
         $connection = $this->createMock(Connection::class);
-        $connection->expects(self::never())->method('executeStatement');
+        $connection->expects(self::never())->method('getDatabasePlatform');
+        $views = new AnonymousBiViewManager($connection);
         $session = new Session(new MockArraySessionStorage());
-        $controller = $this->controller($connection, $session, csrfValid: false);
+        $controller = $this->controller($settings, $views, $session, csrfValid: false);
 
         $response = $controller->saveAnalyticsPrivacySettings(Request::create(
             '/dashboard/settings/analytics-privacy',
@@ -124,10 +149,15 @@ final class DashboardControllerPrivacySettingsTest extends TestCase
 
     public function testNonAdminCannotSaveThresholds(): void
     {
+        $settingsConfig = $this->createMock(AggregateConfigLoader::class);
+        $settingsConfig->expects(self::never())->method('setMany');
+        $settings = new AnalyticsPrivacySettings($settingsConfig);
         $connection = $this->createMock(Connection::class);
-        $connection->expects(self::never())->method('executeStatement');
+        $connection->expects(self::never())->method('getDatabasePlatform');
+        $views = new AnonymousBiViewManager($connection);
         $controller = $this->controller(
-            $connection,
+            $settings,
+            $views,
             new Session(new MockArraySessionStorage()),
             admin: false,
         );
@@ -145,10 +175,11 @@ final class DashboardControllerPrivacySettingsTest extends TestCase
         ));
     }
 
-    public function testDisclosurePageRendersAnExplicitRepairStateWhenTheSingletonCannotBeRead(): void
+    public function testDisclosurePageRendersRepairStateWhenConfigurationCannotBeRead(): void
     {
-        $connection = $this->createStub(Connection::class);
-        $connection->method('fetchAssociative')->willReturn(false);
+        $settingsConfig = $this->createStub(AggregateConfigLoader::class);
+        $settingsConfig->method('getWithEnvFallback')->willReturn('invalid');
+        $settings = new AnalyticsPrivacySettings($settingsConfig);
         $config = $this->createStub(AggregateConfigLoader::class);
         $config->method('isDashboardEnabled')->willReturn(true);
         $config->method('getWithEnvFallback')->willReturnCallback(
@@ -165,12 +196,13 @@ final class DashboardControllerPrivacySettingsTest extends TestCase
         $controller = new DashboardController(
             $this->createStub(WebsiteConfigManager::class),
             $config,
-            new AnalyticsPrivacySettings($connection),
+            $settings,
             $userRepository,
             $this->createStub(UserPasswordHasherInterface::class),
             $this->createStub(EntityManagerInterface::class),
             $logger,
             new BrandingLogoManager(sys_get_temp_dir(), 'test'),
+            anonymousBiViewManager: new AnonymousBiViewManager($this->createStub(Connection::class)),
         );
         $authorizationChecker = $this->createStub(AuthorizationCheckerInterface::class);
         $authorizationChecker->method('isGranted')->willReturn(true);
@@ -198,7 +230,8 @@ final class DashboardControllerPrivacySettingsTest extends TestCase
     }
 
     private function controller(
-        Connection $connection,
+        AnalyticsPrivacySettings $settings,
+        AnonymousBiViewManager $views,
         Session $session,
         bool $csrfValid = true,
         bool $admin = true,
@@ -209,12 +242,13 @@ final class DashboardControllerPrivacySettingsTest extends TestCase
         $controller = new DashboardController(
             $this->createStub(WebsiteConfigManager::class),
             $config,
-            new AnalyticsPrivacySettings($connection),
+            $settings,
             $this->createStub(UserRepository::class),
             $this->createStub(UserPasswordHasherInterface::class),
             $this->createStub(EntityManagerInterface::class),
             $this->createStub(LoggerInterface::class),
             new BrandingLogoManager(sys_get_temp_dir(), 'test'),
+            anonymousBiViewManager: $views,
         );
 
         $authorizationChecker = $this->createStub(AuthorizationCheckerInterface::class);

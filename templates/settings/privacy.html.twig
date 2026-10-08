@@ -5,15 +5,15 @@
 {% block body %}
 <div class="settings-page">
 <h1 class="title">BI disclosure</h1>
-<p class="subtitle">Control the event-count thresholds for approved anonymous BI views.</p>
+<p class="subtitle">Control the configuration-backed event-count thresholds for approved anonymous BI views.</p>
 {{ component('Ui:DocsLink', {topic: 'privacy.suppression', label: 'How suppression works'}) }}
 <div class="columns is-centered">
 <div class="column is-8-desktop">
 <div class="box">
-<p class="mb-4">Thresholds are stored directly in <code>analytics_privacy_settings</code> and used immediately by the BI views. Headless operators manage this database row through controlled database administration; these values are not synchronized with YAML.</p>
+<p class="mb-4">Thresholds are stored in <code>config/aggregate*.yaml</code>. Saving this form updates configuration and regenerates <code>bi_anonymous_events_v1</code>, <code>bi_anonymous_goals_v1</code>, and <code>bi_anonymous_geo_events_v1</code> with the effective values (environment-variable overrides take precedence).</p>
     {% if analytics_privacy_settings_error %}
         <div class="notification is-danger is-light">
-            The stored thresholds could not be loaded, so safe defaults are shown below. Saving valid values will repair a missing or invalid singleton row. If the table or columns are missing, run the database migrations first.
+            The configured thresholds could not be loaded, so safe defaults are shown below. Check YAML syntax and threshold ranges, then save valid values to rewrite configuration and regenerate BI views.
         </div>
     {% endif %}
 

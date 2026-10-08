@@ -8,6 +8,7 @@ use App\Controller\DashboardController;
 use App\Repository\UserRepository;
 use App\Service\AggregateConfigLoader;
 use App\Service\AnalyticsPrivacySettings;
+use App\Service\AnonymousBiViewManager;
 use App\Service\BrandingLogoManager;
 use App\Service\WebsiteConfigManager;
 use Doctrine\DBAL\Connection;
@@ -495,12 +496,13 @@ final class DashboardControllerBrandingTest extends TestCase
         $controller = new DashboardController(
             $this->createStub(WebsiteConfigManager::class),
             $config,
-            new AnalyticsPrivacySettings($this->createStub(Connection::class)),
+            new AnalyticsPrivacySettings($this->createStub(AggregateConfigLoader::class)),
             $this->createStub(UserRepository::class),
             $this->createStub(UserPasswordHasherInterface::class),
             $this->createStub(EntityManagerInterface::class),
             $this->createStub(LoggerInterface::class),
             new BrandingLogoManager($this->projectDir, 'test'),
+            new AnonymousBiViewManager($this->createStub(Connection::class)),
         );
 
         $authorizationChecker = $this->createStub(AuthorizationCheckerInterface::class);

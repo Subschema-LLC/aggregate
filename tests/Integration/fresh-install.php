@@ -381,7 +381,8 @@ E2E::step('save the BI thresholds from the dashboard', static function () use ($
     $form = $crawler->filter('form[action$="/dashboard/settings/analytics-privacy"]')->form();
     $form['anonymous_min_cell_count'] = '6';
     $browser->submit($form);
-    E2E::check((int) connection($root)->fetchOne('SELECT anonymous_min_cell_count FROM analytics_privacy_settings WHERE id = 1') === 6, 'The thresholds were not saved. '.pageProblem($browser));
+    $config = Yaml::parseFile($root.'/config/aggregate.yaml');
+    E2E::check((int) ($config['anonymous_min_cell_count'] ?? 0) === 6, 'The thresholds were not saved to configuration. '.pageProblem($browser));
 });
 
 E2E::step('glossary sync, reporting view regeneration and archiving', static function () use ($root): void {

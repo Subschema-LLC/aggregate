@@ -186,6 +186,8 @@ environments:
     collection_profile: standard
     anonymous_tracking_enabled: true
     anonymous_excluded_paths: []
+    anonymous_min_cell_count: 5
+    anonymous_geo_min_cell_count: 25
     anonymous_geo_enabled: false
     anonymous_geo_level: "macro_region"
     anonymous_geo_database_path: ""
@@ -223,6 +225,8 @@ environments:
     collection_profile: standard
     anonymous_tracking_enabled: true
     anonymous_excluded_paths: []
+    anonymous_min_cell_count: 5
+    anonymous_geo_min_cell_count: 25
     anonymous_geo_enabled: false
     anonymous_geo_level: "macro_region"
     anonymous_geo_database_path: ""
@@ -259,6 +263,8 @@ environments:
     collection_profile: standard
     anonymous_tracking_enabled: true
     anonymous_excluded_paths: []
+    anonymous_min_cell_count: 5
+    anonymous_geo_min_cell_count: 25
     anonymous_geo_enabled: false
     anonymous_geo_level: "macro_region"
     anonymous_geo_database_path: ""
@@ -401,6 +407,16 @@ environments:
 # anonymous_excluded_paths (optional, default: [])
 #   Paths that must never be collected in either mode. Supports glob patterns
 #   such as /account/*, /checkout/**, and /health.
+#
+# anonymous_min_cell_count (optional, default: 5; range: 2..1000)
+#   Disclosure threshold for published cells in bi_anonymous_events_v1 and
+#   bi_anonymous_goals_v1. Saving this value in the dashboard regenerates those
+#   BI views with the effective threshold.
+#
+# anonymous_geo_min_cell_count (optional, default: 25; range: 10..1000)
+#   Disclosure threshold for published and pooled cells in
+#   bi_anonymous_geo_events_v1. Saving this value in the dashboard regenerates
+#   the geography BI view with the effective threshold.
 #
 # anonymous_geo_enabled (optional, default: false)
 #   Derive a coarse area from the request IP for accepted analytics events. Requires

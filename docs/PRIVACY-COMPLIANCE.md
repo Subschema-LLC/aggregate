@@ -428,16 +428,16 @@ parameters:
 
 Codes must match `[A-Za-z][A-Za-z0-9_.:-]{0,99}` and remain fixed and non-identifying. Set `anonymous: false` for an enhanced-only goal and `enabled: false` to stop future collection without erasing the definition's historical meaning. Restrict write access to this file and clear the production cache after a change, then run `php bin/console app:analytics:glossary:sync --env=prod` to update published goal labels. Disable goals instead of deleting definitions when historical labels should remain available.
 
-The BI disclosure thresholds are stored directly in the singleton `analytics_privacy_settings` database row and have their own CSRF-protected admin form:
+The BI disclosure thresholds are deployment configuration values (`config/aggregate*.yaml`) and have their own CSRF-protected admin form:
 
 - `anonymous_min_cell_count` controls grouped hourly cells in `bi_anonymous_events_v1` and completed daily cells in `bi_anonymous_goals_v1` (default `5`, range `2`–`1000`).
 - `anonymous_geo_min_cell_count` controls completed daily cells in `bi_anonymous_geo_events_v1` (default `25`, range `10`–`1000`).
 
-All three views read the database row directly, so dashboard changes take effect immediately without a YAML mirror or synchronization command. The migrations create the row with safe defaults. API-only operators must use controlled database administration to change it, and routine BI roles must remain read-only.
+Dashboard saves write YAML and regenerate all three BI views so SQL definitions track the effective thresholds. Environment overrides (`ANONYMOUS_MIN_CELL_COUNT` and `ANONYMOUS_GEO_MIN_CELL_COUNT`) still take precedence.
 
 Archiving and deletion policy is separate and can be managed by administrators at `/dashboard/data-lifecycle`, in `config/aggregate.yaml`, or with uppercase environment-variable overrides. Environment-controlled values are read-only in the UI. Both actions are disabled by default, settings are strictly range-checked, and unsafe archive/retention ordering is rejected. Schedule `php bin/console app:analytics:maintain` externally; a saved policy does not run maintenance from a web request.
 
-Malformed YAML, invalid ingestion-control types, or an unrecognized collection profile fail closed: ingestion is disabled and the health endpoint reports a generic configuration error. Out-of-range database thresholds also fail closed because the views require values within their documented ranges.
+Malformed YAML, invalid ingestion-control types, or an unrecognized collection profile fail closed: ingestion is disabled and the health endpoint reports a generic configuration error. Out-of-range BI thresholds also fail closed.
 
 ## Enhanced analytics consent
 
