@@ -29,12 +29,11 @@ final class Version20261008000000 extends AbstractMigration
         [$minimumCellCount, $geoMinimumCellCount] = $this->thresholdsFromDatabaseOrDefaults();
         $sql = new AnonymousBiViewSqlBuilder($this->connection->getDatabasePlatform());
 
-        foreach (['bi_anonymous_events_v1', 'bi_anonymous_goals_v1', 'bi_anonymous_geo_events_v1'] as $viewName) {
-            $this->addSql($sql->dropViewIfExistsSql($viewName));
-        }
-
+        $this->addSql($sql->dropViewIfExistsSql('bi_anonymous_events_v1'));
         $this->addSql($sql->eventViewSql($minimumCellCount));
+        $this->addSql($sql->dropViewIfExistsSql('bi_anonymous_goals_v1'));
         $this->addSql($sql->goalViewSql($minimumCellCount));
+        $this->addSql($sql->dropViewIfExistsSql('bi_anonymous_geo_events_v1'));
         $this->addSql($sql->geoViewSql($geoMinimumCellCount));
 
         if ($schema->hasTable('analytics_privacy_settings')) {
