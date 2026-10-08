@@ -14,10 +14,13 @@ final class AnalyticsPrivacySettingsTest extends TestCase
     public function testReadsBothThresholdsFromConfiguration(): void
     {
         $config = $this->createStub(AggregateConfigLoader::class);
-        $config->method('getWithEnvFallback')->willReturnMap([
-            [AnalyticsPrivacySettings::ANONYMOUS_MINIMUM_KEY, AnalyticsPrivacySettings::DEFAULT_MINIMUM_CELL_COUNT, false, '14'],
-            [AnalyticsPrivacySettings::GEO_MINIMUM_KEY, AnalyticsPrivacySettings::DEFAULT_GEO_MINIMUM_CELL_COUNT, false, 40],
-        ]);
+        $config->method('getWithEnvFallback')->willReturnCallback(
+            static fn (string $key, mixed $default = null): mixed => match ($key) {
+                AnalyticsPrivacySettings::ANONYMOUS_MINIMUM_KEY => '14',
+                AnalyticsPrivacySettings::GEO_MINIMUM_KEY => 40,
+                default => $default,
+            },
+        );
 
         self::assertSame(
             ['anonymous' => 14, 'geo' => 40],
@@ -87,10 +90,7 @@ final class AnalyticsPrivacySettingsTest extends TestCase
         $config = $this->createMock(AggregateConfigLoader::class);
         $config->expects(self::exactly(2))
             ->method('hasEnvironmentOverride')
-            ->willReturnMap([
-                [AnalyticsPrivacySettings::ANONYMOUS_MINIMUM_KEY, false, true],
-                [AnalyticsPrivacySettings::GEO_MINIMUM_KEY, false, false],
-            ]);
+            ->willReturnCallback(static fn (string $key): bool => $key === AnalyticsPrivacySettings::ANONYMOUS_MINIMUM_KEY);
 
         $settings = new AnalyticsPrivacySettings($config);
         self::assertTrue($settings->hasAnonymousMinimumEnvironmentOverride());

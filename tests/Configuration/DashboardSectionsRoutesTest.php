@@ -305,10 +305,11 @@ final class DashboardSectionsRoutesTest extends TestCase
         $config = $this->createMock(AggregateConfigLoader::class);
         $config->expects(self::exactly(2))
             ->method('getWithEnvFallback')
-            ->willReturnMap([
-                [AnalyticsPrivacySettings::ANONYMOUS_MINIMUM_KEY, AnalyticsPrivacySettings::DEFAULT_MINIMUM_CELL_COUNT, false, 12],
-                [AnalyticsPrivacySettings::GEO_MINIMUM_KEY, AnalyticsPrivacySettings::DEFAULT_GEO_MINIMUM_CELL_COUNT, false, 30],
-            ]);
+            ->willReturnCallback(static fn (string $key, mixed $default = null): mixed => match ($key) {
+                AnalyticsPrivacySettings::ANONYMOUS_MINIMUM_KEY => 12,
+                AnalyticsPrivacySettings::GEO_MINIMUM_KEY => 30,
+                default => $default,
+            });
         $this->container()->set(AnalyticsPrivacySettings::class, new AnalyticsPrivacySettings($config));
         $repository = $this->createMock(UserRepository::class);
         $repository->expects(self::once())->method('findBy')->willReturn([DashboardSectionsTestUserProvider::user('ROLE_USER')]);
