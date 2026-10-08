@@ -20,6 +20,7 @@ final class TrackingFailureRetryRunner
 {
     public const TASK_TYPE_FAILURE = 'tracking_event_store';
     public const TASK_TYPE_RETRY = 'tracking_retry';
+    public const TASK_TYPE_INGEST_FAILURE = 'tracking_ingest';
     private const RETRY_SCAN_FACTOR = 10;
 
     private \Closure $clock;
@@ -53,6 +54,28 @@ final class TrackingFailureRetryRunner
         }
         $details = sprintf(
             'An enhanced event could not be written to events (%s). The message remains in the failed transport for retry.',
+            $this->shortClass($error),
+        );
+        $this->tasks->fail($task, $now, $details);
+    }
+
+    public function recordIngestionFailure(string $mode, ?string $websiteToken, \Throwable $error): void
+    {
+        $mode = in_array($mode, ['anonymous', 'enhanced'], true) ? $mode : 'unknown';
+        $now = ($this->clock)();
+        $subject = $mode.':'.($websiteToken ?? 'unknown');
+        $task = $this->tasks->start(
+            self::TASK_TYPE_INGEST_FAILURE,
+            $subject,
+            TaskTrigger::worker(),
+            $now,
+        );
+        if ($task === null) {
+            return;
+        }
+        $details = sprintf(
+            'A %s tracking request failed before completion (%s).',
+            $mode,
             $this->shortClass($error),
         );
         $this->tasks->fail($task, $now, $details);
@@ -170,6 +193,22 @@ final class TrackingFailureRetryRunner
     public function latestRetry(): ?array
     {
         return $this->tasks->latest(self::TASK_TYPE_RETRY)['']['attempt'] ?? null;
+    }
+
+    /** @return array<string, mixed>|null */
+    public function latestIngestionFailure(): ?array
+    {
+        $latest = null;
+        foreach ($this->tasks->latest(self::TASK_TYPE_INGEST_FAILURE) as $item) {
+            if (!isset($item['attempt']) || !is_array($item['attempt'])) {
+                continue;
+            }
+            if ($latest === null || $item['attempt']['started_at'] > $latest['started_at']) {
+                $latest = $item['attempt'];
+            }
+        }
+
+        return $latest;
     }
 
     private function shortClass(\Throwable $error): string

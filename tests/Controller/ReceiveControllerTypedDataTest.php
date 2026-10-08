@@ -342,7 +342,37 @@ final class ReceiveControllerTypedDataTest extends TestCase
         }
     }
 
-    private function ingest(array $payload, array $properties, EntityManagerInterface $entityManager, MessageBusInterface $bus, ?string $rawJson = null, array $configValues = []): Response
+    public function testAnonymousPersistenceFailureIsRecordedAsAnIngestionFailure(): void
+    {
+        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager->expects(self::once())->method('persist');
+        $entityManager->expects(self::once())->method('flush')->willThrowException(new \RuntimeException('write failed'));
+        $bus = $this->createMock(MessageBusInterface::class);
+        $bus->expects(self::never())->method('dispatch');
+        $trackingFailures = $this->createMock(TrackingFailureRetryRunner::class);
+        $trackingFailures->expects(self::once())
+            ->method('recordIngestionFailure')
+            ->with('anonymous', 'example-token', self::isInstanceOf(\Throwable::class));
+
+        $response = $this->ingest([
+            'websiteToken' => 'example-token',
+            'eventName' => 'view',
+            'pagePath' => '/example',
+            'consentState' => 'denied',
+        ], [], $entityManager, $bus, trackingFailures: $trackingFailures);
+
+        self::assertSame(500, $response->getStatusCode());
+    }
+
+    private function ingest(
+        array $payload,
+        array $properties,
+        EntityManagerInterface $entityManager,
+        MessageBusInterface $bus,
+        ?string $rawJson = null,
+        array $configValues = [],
+        ?TrackingFailureRetryRunner $trackingFailures = null,
+    ): Response
     {
         $values = [...$configValues, 'custom_data_properties' => $properties, 'query_parameter_mappings' => []];
         $config = $this->createStub(AggregateConfigLoader::class);
@@ -364,6 +394,7 @@ final class ReceiveControllerTypedDataTest extends TestCase
             new GoalEventRegistry($sanitizer, []), new PrivacyPolicy($config), $geo,
             new AnonymousEventRecorder($entityManager), new NullLogger(),
             new CustomDataSettings($config),
+            $trackingFailures,
         );
     }
 }

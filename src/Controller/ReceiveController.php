@@ -12,6 +12,7 @@ use App\Service\GoalEventRegistry;
 use App\Service\InternalTrafficSettings;
 use App\Service\PrivacyPolicy;
 use App\Service\PrivacySanitizer;
+use App\Service\TrackingFailureRetryRunner;
 use App\Service\WebsiteDomainPolicy;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -39,8 +40,12 @@ class ReceiveController
         AnonymousEventRecorder $anonymousRecorder,
         LoggerInterface $logger,
         CustomDataSettings $customDataSettings,
+        ?TrackingFailureRetryRunner $trackingFailures = null,
     ): Response
     {
+        $failureMode = 'unknown';
+        $failureWebsiteToken = null;
+
         try {
             if (strlen($request->getContent()) > 65_536) {
                 return $this->jsonWithCors($request, ['error' => 'Payload is too large'], Response::HTTP_REQUEST_ENTITY_TOO_LARGE);
@@ -85,6 +90,7 @@ class ReceiveController
             if ($websiteToken === '' || strlen($websiteToken) > 191) {
                 return $this->jsonWithCors($request, ['error' => 'websiteToken is required'], Response::HTTP_BAD_REQUEST);
             }
+            $failureWebsiteToken = $websiteToken;
 
             $website = $websiteManager->findOneByToken($websiteToken);
             if (!$website) {
@@ -158,6 +164,7 @@ class ReceiveController
             unset($ip);
 
             if (!$enhancedConsent) {
+                $failureMode = 'anonymous';
                 // Every safe named event is accepted anonymously, but attached
                 // identifiers are never copied. Properties and goals must be
                 // explicitly approved for collection without consent.
@@ -186,6 +193,7 @@ class ReceiveController
                 return $this->jsonWithCors($request, $responsePayload, Response::HTTP_ACCEPTED);
             }
 
+            $failureMode = 'enhanced';
             $bus->dispatch(new TrackEventMessage(
                 websiteToken: $websiteToken,
                 eventName: $eventName,
@@ -219,6 +227,15 @@ class ReceiveController
                 // transport/SQL exceptions can retain payload values.
                 'exception_class' => $e::class,
             ]);
+            if ($trackingFailures !== null) {
+                try {
+                    $trackingFailures->recordIngestionFailure($failureMode, $failureWebsiteToken, $e);
+                } catch (\Throwable $recordingError) {
+                    $logger->error('Failed to record tracking ingestion failure.', [
+                        'exception_class' => $recordingError::class,
+                    ]);
+                }
+            }
 
             return $this->jsonWithCors($request, ['error' => 'Ingestion failed'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }

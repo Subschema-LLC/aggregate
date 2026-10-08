@@ -246,11 +246,13 @@ class DashboardController extends AbstractController
             TrackingFailureSettings::KEY_BATCH_SIZE => false,
         ];
         $trackingLastFailure = null;
+        $trackingLastIngestionFailure = null;
         $trackingLastRetry = null;
         try {
             $trackingRetrySettings = $this->trackingFailureSettings->toArray();
             $trackingRetryOverrides = $this->trackingFailureSettings->getEnvironmentOverrides();
             $trackingLastFailure = $this->trackingFailureRetryRunner->latestFailure();
+            $trackingLastIngestionFailure = $this->trackingFailureRetryRunner->latestIngestionFailure();
             $trackingLastRetry = $this->trackingFailureRetryRunner->latestRetry();
         } catch (\Throwable $error) {
             $this->logger->error('Failed to load tracking retry settings or status.', ['exception' => $error]);
@@ -268,6 +270,7 @@ class DashboardController extends AbstractController
             'tracking_retry_settings' => $trackingRetrySettings,
             'tracking_retry_environment_overrides' => $trackingRetryOverrides,
             'tracking_last_failure' => $trackingLastFailure,
+            'tracking_last_ingestion_failure' => $trackingLastIngestionFailure,
             'tracking_last_retry' => $trackingLastRetry,
         ]);
     }

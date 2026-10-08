@@ -118,6 +118,13 @@
                 {% endif %}
             </p>
             <p class="mt-2">
+                {% if tracking_last_ingestion_failure %}
+                    Last ingestion failure: {{ tracking_last_ingestion_failure.started_at|date('Y-m-d H:i', 'UTC') }} UTC{% if tracking_last_ingestion_failure.subject %} ({{ tracking_last_ingestion_failure.subject }}){% endif %}{% if tracking_last_ingestion_failure.details %}: {{ tracking_last_ingestion_failure.details }}{% endif %}
+                {% else %}
+                    No anonymous/enhanced ingestion failure has been recorded yet.
+                {% endif %}
+            </p>
+            <p class="mt-2">
                 {% if tracking_last_retry %}
                     Last retry run: {{ tracking_last_retry.started_at|date('Y-m-d H:i', 'UTC') }} UTC, {% if tracking_last_retry.status == 'succeeded' %}succeeded{% elseif tracking_last_retry.status == 'failed' %}<strong>failed</strong>{% else %}running{% endif %}{% if tracking_last_retry.details %}: {{ tracking_last_retry.details }}{% endif %}
                 {% else %}
