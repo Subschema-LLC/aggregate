@@ -50,7 +50,7 @@ class CreateUserCommand extends Command
     {
         $io = new SymfonyStyle($input, $output);
 
-        $username = $this->resolveUsername($input, $output, $io);
+        $username = $this->resolveUsername($input, $io);
         if ($username === null) {
             return Command::FAILURE;
         }
@@ -60,7 +60,7 @@ class CreateUserCommand extends Command
             return Command::FAILURE;
         }
 
-        $roles = $this->resolveRoles($input, $output, $io);
+        $roles = $this->resolveRoles($input, $io);
         if ($roles === null) {
             return Command::FAILURE;
         }
@@ -94,7 +94,7 @@ class CreateUserCommand extends Command
         return Command::SUCCESS;
     }
 
-    private function resolveUsername(InputInterface $input, OutputInterface $output, SymfonyStyle $io): ?string
+    private function resolveUsername(InputInterface $input, SymfonyStyle $io): ?string
     {
         $username = trim((string) $input->getArgument('username'));
 
@@ -104,7 +104,7 @@ class CreateUserCommand extends Command
                 return null;
             }
 
-            $username = $this->promptForUsername($input, $output, $io);
+            $username = $this->promptForUsername($io);
         } else {
             if (strlen($username) > 180) {
                 $io->error('Username must be 180 characters or fewer.');
@@ -118,16 +118,15 @@ class CreateUserCommand extends Command
                 }
 
                 $io->warning(sprintf('User "%s" already exists. Please choose a different username.', $username));
-                $username = $this->promptForUsername($input, $output, $io);
+                $username = $this->promptForUsername($io);
             }
         }
 
         return $username;
     }
 
-    private function promptForUsername(InputInterface $input, OutputInterface $output, SymfonyStyle $io): string
+    private function promptForUsername(SymfonyStyle $io): string
     {
-        $helper = $this->getHelper('question');
         $usernameQuestion = new Question('Username for the new account: ');
         $usernameQuestion->setValidator(function (?string $value): string {
             $username = trim((string) $value);
@@ -145,7 +144,7 @@ class CreateUserCommand extends Command
         });
 
         /** @var string $username */
-        $username = $helper->ask($input, $output, $usernameQuestion);
+        $username = (string) $io->askQuestion($usernameQuestion);
         return $username;
     }
 
@@ -182,7 +181,7 @@ class CreateUserCommand extends Command
     /**
      * @return list<string>|null
      */
-    private function resolveRoles(InputInterface $input, OutputInterface $output, SymfonyStyle $io): ?array
+    private function resolveRoles(InputInterface $input, SymfonyStyle $io): ?array
     {
         $roleInputs = $input->getOption('role');
         $roleInputs = is_array($roleInputs) ? $roleInputs : [];
@@ -194,7 +193,6 @@ class CreateUserCommand extends Command
                 return null;
             }
 
-            $helper = $this->getHelper('question');
             $roleQuestion = new Question('Role(s), comma-separated (for example ROLE_ADMIN,ROLE_EDITOR): ');
             $roleQuestion->setValidator(function (?string $value): string {
                 $normalizedRoles = $this->normalizeRoles(array_map(
@@ -207,7 +205,7 @@ class CreateUserCommand extends Command
 
                 return implode(',', $normalizedRoles);
             });
-            $roleInput = (string) $helper->ask($input, $output, $roleQuestion);
+            $roleInput = (string) $io->askQuestion($roleQuestion);
             $roles = explode(',', $roleInput);
         }
 
