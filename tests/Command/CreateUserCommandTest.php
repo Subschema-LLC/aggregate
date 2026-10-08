@@ -9,6 +9,7 @@ use App\Entity\User;
 use App\Repository\UserRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
@@ -150,7 +151,9 @@ final class CreateUserCommandTest extends TestCase
         $hasher = $this->createStub(UserPasswordHasherInterface::class);
         $hasher->method('hashPassword')->willReturn('hashed-password');
 
-        $tester = new CommandTester(new CreateUserCommand($em, $repo, $hasher));
+        $application = new Application();
+        $application->add(new CreateUserCommand($em, $repo, $hasher));
+        $tester = new CommandTester($application->find('app:user:create'));
         $tester->setInputs(['new-user', 'secure-password', 'ROLE_MANAGER']);
         $status = $tester->execute(['username' => 'existing']);
 
