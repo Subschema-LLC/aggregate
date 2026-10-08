@@ -64,26 +64,24 @@ class CreateUserCommand extends Command
         if ($roles === null) {
             return Command::FAILURE;
         }
+        $roles = $this->normalizeRoles($roles);
+        $roles = array_values(array_filter($roles, static fn (string $role): bool => $role !== 'ROLE_USER'));
+        $roles[] = 'ROLE_USER';
 
-        while (true) {
-            $user = new User();
-            $user->setUsername($username);
-            $user->setRoles($roles);
-            $user->setPassword($this->passwordHasher->hashPassword($user, $password));
+        $user = new User();
+        $user->setUsername($username);
+        $user->setRoles($roles);
+        $user->setPassword($this->passwordHasher->hashPassword($user, $password));
 
-            try {
-                $this->em->persist($user);
-                $this->em->flush();
-                break;
-            } catch (UniqueConstraintViolationException) {
-                if (!$input->isInteractive()) {
-                    $io->error(sprintf('User "%s" already exists.', $username));
-                    return Command::FAILURE;
-                }
-
-                $io->warning(sprintf('User "%s" already exists. Please choose a different username.', $username));
-                $username = $this->promptForUsername($input, $output, $io);
-            }
+        try {
+            $this->em->persist($user);
+            $this->em->flush();
+        } catch (UniqueConstraintViolationException) {
+            $io->error(sprintf('User "%s" already exists.', $username));
+            return Command::FAILURE;
+        } catch (\Throwable) {
+            $io->error('Failed to create user. Check the application logs for details.');
+            return Command::FAILURE;
         }
 
         $io->success(sprintf(
@@ -113,7 +111,7 @@ class CreateUserCommand extends Command
                 return null;
             }
 
-            while ($this->userRepository->findOneBy(['username' => $username]) instanceof User) {
+            if ($this->userRepository->findOneBy(['username' => $username]) instanceof User) {
                 if (!$input->isInteractive()) {
                     $io->error(sprintf('User "%s" already exists.', $username));
                     return null;
@@ -170,7 +168,7 @@ class CreateUserCommand extends Command
 
                 return $password;
             });
-            $password = $io->askQuestion($passwordQuestion);
+            $password = (string) $io->askQuestion($passwordQuestion);
         }
 
         if (strlen($password) < 8) {
@@ -197,17 +195,20 @@ class CreateUserCommand extends Command
             }
 
             $helper = $this->getHelper('question');
-            $roleQuestion = new Question('Role (for example ROLE_ADMIN): ');
-            $roleQuestion->setValidator(static function (?string $value): string {
-                $role = trim((string) $value);
-                if ($role === '') {
-                    throw new \RuntimeException('Role cannot be empty.');
+            $roleQuestion = new Question('Role(s), comma-separated (for example ROLE_ADMIN,ROLE_EDITOR): ');
+            $roleQuestion->setValidator(function (?string $value): string {
+                $normalizedRoles = $this->normalizeRoles(array_map(
+                    static fn (string $role): string => trim($role),
+                    explode(',', (string) $value)
+                ));
+                if ($normalizedRoles === []) {
+                    throw new \RuntimeException('At least one role is required.');
                 }
 
-                return $role;
+                return implode(',', $normalizedRoles);
             });
-            $role = $helper->ask($input, $output, $roleQuestion);
-            $roles = [$role];
+            $roleInput = (string) $helper->ask($input, $output, $roleQuestion);
+            $roles = explode(',', $roleInput);
         }
 
         return $roles;
@@ -221,13 +222,17 @@ class CreateUserCommand extends Command
     {
         $roles = [];
         foreach ($roleInputs as $roleInput) {
-            $role = trim((string) $roleInput);
+            $role = strtoupper(trim((string) $roleInput));
             if ($role !== '') {
                 $roles[$role] = true;
             }
         }
 
-        return array_keys($roles);
+        $normalized = [];
+        foreach (array_keys($roles) as $role) {
+            $normalized[] = (string) $role;
+        }
+
+        return $normalized;
     }
 }
-

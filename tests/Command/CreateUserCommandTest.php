@@ -132,7 +132,7 @@ final class CreateUserCommandTest extends TestCase
         ]);
 
         self::assertSame(Command::SUCCESS, $status);
-        self::assertStringContainsString('User "analyst" created successfully with role: ROLE_ANALYST.', $tester->getDisplay());
+        self::assertStringContainsString('User "analyst" created successfully with roles: ROLE_ANALYST, ROLE_USER.', $tester->getDisplay());
     }
 
     public function testPromptsForDifferentUsernameWhenConflictExists(): void
@@ -156,7 +156,6 @@ final class CreateUserCommandTest extends TestCase
 
         self::assertSame(Command::SUCCESS, $status);
         self::assertStringContainsString('already exists', $tester->getDisplay());
-        self::assertStringContainsString('User "new-user" created successfully with role: ROLE_MANAGER.', $tester->getDisplay());
+        self::assertStringContainsString('User "new-user" created successfully with roles: ROLE_MANAGER, ROLE_USER.', $tester->getDisplay());
     }
 }
-
