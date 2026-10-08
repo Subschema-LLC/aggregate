@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service;
 
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 
 final class AnonymousBiViewManager
 {
@@ -15,13 +16,37 @@ final class AnonymousBiViewManager
 
     public function regenerate(int $minimumCellCount, int $geoMinimumCellCount): void
     {
-        $sql = new AnonymousBiViewSqlBuilder($this->connection->getDatabasePlatform());
-        $this->connection->executeStatement($sql->dropViewIfExistsSql('bi_anonymous_events_v1'));
-        $this->connection->executeStatement($sql->dropViewIfExistsSql('bi_anonymous_goals_v1'));
-        $this->connection->executeStatement($sql->dropViewIfExistsSql('bi_anonymous_geo_events_v1'));
+        $platform = $this->connection->getDatabasePlatform();
+        $sql = new AnonymousBiViewSqlBuilder($platform);
+        $views = [
+            ['bi_anonymous_events_v1', $sql->eventViewSql($minimumCellCount)],
+            ['bi_anonymous_goals_v1', $sql->goalViewSql($minimumCellCount)],
+            ['bi_anonymous_geo_events_v1', $sql->geoViewSql($geoMinimumCellCount)],
+        ];
 
-        $this->connection->executeStatement($sql->eventViewSql($minimumCellCount));
-        $this->connection->executeStatement($sql->goalViewSql($minimumCellCount));
-        $this->connection->executeStatement($sql->geoViewSql($geoMinimumCellCount));
+        if ($platform instanceof AbstractMySQLPlatform) {
+            foreach ($views as [$name, $createSql]) {
+                $this->replaceView($sql, $name, $createSql);
+            }
+
+            return;
+        }
+
+        $this->connection->beginTransaction();
+        try {
+            foreach ($views as [$name, $createSql]) {
+                $this->replaceView($sql, $name, $createSql);
+            }
+            $this->connection->commit();
+        } catch (\Throwable $e) {
+            $this->connection->rollBack();
+            throw $e;
+        }
+    }
+
+    private function replaceView(AnonymousBiViewSqlBuilder $sql, string $name, string $createSql): void
+    {
+        $this->connection->executeStatement($sql->dropViewIfExistsSql($name));
+        $this->connection->executeStatement($createSql);
     }
 }
