@@ -7,7 +7,7 @@ namespace App\Service;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 
-final class AnonymousBiViewManager
+class AnonymousBiViewManager
 {
     public function __construct(
         private readonly Connection $connection,
