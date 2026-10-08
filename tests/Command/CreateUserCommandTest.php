@@ -152,7 +152,7 @@ final class CreateUserCommandTest extends TestCase
         $hasher->method('hashPassword')->willReturn('hashed-password');
 
         $application = new Application();
-        $application->add(new CreateUserCommand($em, $repo, $hasher));
+        $application->addCommand(new CreateUserCommand($em, $repo, $hasher));
         $tester = new CommandTester($application->find('app:user:create'));
         $tester->setInputs(['new-user', 'secure-password', 'ROLE_MANAGER']);
         $status = $tester->execute(['username' => 'existing']);
