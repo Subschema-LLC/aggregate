@@ -79,20 +79,8 @@ CREATE TABLE IF NOT EXISTS `events` (
     KEY `IDX_EVENTS_PRIVACY_SITE_CREATED` (`privacy_mode`, `website_token`, `created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Database-backed BI disclosure thresholds. The admin dashboard updates
--- singleton row 1 directly; the BI views read it at query time.
-CREATE TABLE IF NOT EXISTS `analytics_privacy_settings` (
-    `id`                           INT      NOT NULL,
-    `anonymous_min_cell_count`     INT      NOT NULL DEFAULT 5,
-    `anonymous_geo_min_cell_count` INT      NOT NULL DEFAULT 25,
-    `updated_at`                   DATETIME NOT NULL COMMENT '(DC2Type:datetime_immutable)',
-    PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-INSERT INTO `analytics_privacy_settings`
-    (`id`, `anonymous_min_cell_count`, `anonymous_geo_min_cell_count`, `updated_at`)
-VALUES
-    (1, 5, 25, NOW());
+-- BI disclosure thresholds are deployment configuration values and are inlined
+-- into BI view SQL when those views are regenerated.
 
 -- BI consumers should use this thresholded view instead of raw anonymous rows.
 CREATE VIEW `bi_anonymous_events_v1` AS
@@ -106,10 +94,7 @@ SELECT
     `events`.`viewport_bucket`,
     COUNT(*) AS `event_count`
 FROM `events`
-CROSS JOIN `analytics_privacy_settings` AS `privacy`
-WHERE `privacy`.`id` = 1
-  AND `privacy`.`anonymous_min_cell_count` BETWEEN 2 AND 1000
-  AND `events`.`privacy_mode` = 'anonymous'
+WHERE `events`.`privacy_mode` = 'anonymous'
   AND `events`.`created_at` < DATE_FORMAT(UTC_TIMESTAMP(), '%Y-%m-%d %H:00:00')
 GROUP BY
     `events`.`website_token`,
@@ -118,9 +103,8 @@ GROUP BY
     `events`.`url`,
     COALESCE(`events`.`referrer`, 'unknown'),
     `events`.`device_class`,
-    `events`.`viewport_bucket`,
-    `privacy`.`anonymous_min_cell_count`
-HAVING COUNT(*) >= `privacy`.`anonymous_min_cell_count`;
+    `events`.`viewport_bucket`
+HAVING COUNT(*) >= 5;
 
 -- Approved anonymous goals are exposed only as completed-day, thresholded
 -- counts. The raw events table remains restricted from routine BI consumers.
@@ -131,18 +115,14 @@ SELECT
     `events`.`goal_event`,
     COUNT(*) AS `event_count`
 FROM `events`
-CROSS JOIN `analytics_privacy_settings` AS `privacy`
-WHERE `privacy`.`id` = 1
-  AND `privacy`.`anonymous_min_cell_count` BETWEEN 2 AND 1000
-  AND `events`.`privacy_mode` = 'anonymous'
+WHERE `events`.`privacy_mode` = 'anonymous'
   AND `events`.`goal_event` IS NOT NULL
   AND `events`.`created_at` < UTC_DATE()
 GROUP BY
     `events`.`website_token`,
     CAST(`events`.`created_at` AS DATE),
-    `events`.`goal_event`,
-    `privacy`.`anonymous_min_cell_count`
-HAVING COUNT(*) >= `privacy`.`anonymous_min_cell_count`;
+    `events`.`goal_event`
+HAVING COUNT(*) >= 5;
 
 -- Geography is deliberately exposed through a separate completed-day view
 -- with fewer dimensions, a higher threshold, and complementary suppression.
@@ -158,12 +138,9 @@ WITH `geo_counts` AS (
         END AS `geo_level`,
         `events`.`geo_area`,
         COUNT(*) AS `event_count`,
-        `privacy`.`anonymous_geo_min_cell_count` AS `minimum_cell_count`
+        25 AS `minimum_cell_count`
     FROM `events`
-    CROSS JOIN `analytics_privacy_settings` AS `privacy`
-    WHERE `privacy`.`id` = 1
-      AND `privacy`.`anonymous_geo_min_cell_count` BETWEEN 10 AND 1000
-      AND `events`.`privacy_mode` = 'anonymous'
+    WHERE `events`.`privacy_mode` = 'anonymous'
       AND (
           `events`.`geo_area` LIKE 'country:__'
           OR `events`.`geo_area` LIKE 'continent:__'
@@ -177,8 +154,7 @@ WITH `geo_counts` AS (
             WHEN `events`.`geo_area` LIKE 'country:%' THEN 'country'
             ELSE 'continent'
         END,
-        `events`.`geo_area`,
-        `privacy`.`anonymous_geo_min_cell_count`
+        `events`.`geo_area`
 ),
 `ranked_geo_counts` AS (
     SELECT

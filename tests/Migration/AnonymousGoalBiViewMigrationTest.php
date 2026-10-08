@@ -12,13 +12,14 @@ use Doctrine\DBAL\Platforms\OraclePlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Platforms\SQLitePlatform;
 use Doctrine\DBAL\Platforms\SQLServerPlatform;
+use Doctrine\DBAL\Schema\AbstractSchemaManager;
 use Doctrine\DBAL\Schema\Schema;
-use DoctrineMigrations\Version20260828000000;
+use DoctrineMigrations\Version20261008000000;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 
-require_once dirname(__DIR__, 2).'/migrations/Version20260828000000.php';
+require_once dirname(__DIR__, 2).'/migrations/Version20261008000000.php';
 
 final class AnonymousGoalBiViewMigrationTest extends TestCase
 {
@@ -27,15 +28,14 @@ final class AnonymousGoalBiViewMigrationTest extends TestCase
         $viewSql = $this->viewSqlFor(new MySQL80Platform());
 
         self::assertStringContainsString('CREATE VIEW bi_anonymous_goals_v1', $viewSql);
-        self::assertStringContainsString('CROSS JOIN analytics_privacy_settings privacy', $viewSql);
-        self::assertStringContainsString('privacy.anonymous_min_cell_count BETWEEN 2 AND 1000', $viewSql);
+        self::assertStringNotContainsString('analytics_privacy_settings', $viewSql);
         self::assertStringContainsString("events.privacy_mode = 'anonymous'", $viewSql);
         self::assertStringContainsString('events.goal_event IS NOT NULL', $viewSql);
         self::assertStringContainsString('CAST(events.created_at AS date) AS event_day', $viewSql);
         self::assertStringContainsString('events.goal_event', $viewSql);
-        self::assertStringContainsString('COUNT(*) AS event_count', $viewSql);
+        self::assertStringContainsString('SUM(event_count) AS event_count', $viewSql);
         self::assertStringContainsString(
-            'HAVING COUNT(*) >= privacy.anonymous_min_cell_count',
+            'WHERE goal_counts.event_count >= 5',
             $viewSql,
         );
         self::assertStringNotContainsString('visitor_id', $viewSql);
@@ -101,7 +101,10 @@ final class AnonymousGoalBiViewMigrationTest extends TestCase
     {
         $connection = $this->createStub(Connection::class);
         $connection->method('getDatabasePlatform')->willReturn($platform);
-        $migration = new Version20260828000000(
+        $schemaManager = $this->createMock(AbstractSchemaManager::class);
+        $schemaManager->method('tablesExist')->willReturn(false);
+        $connection->method('createSchemaManager')->willReturn($schemaManager);
+        $migration = new Version20261008000000(
             $connection,
             $this->createStub(LoggerInterface::class),
         );

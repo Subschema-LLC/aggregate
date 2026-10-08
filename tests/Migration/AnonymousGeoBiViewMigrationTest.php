@@ -8,32 +8,28 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\MariaDB1060Platform;
 use Doctrine\DBAL\Platforms\MySQL80Platform;
-use Doctrine\DBAL\Platforms\MySQLPlatform;
 use Doctrine\DBAL\Platforms\OraclePlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Platforms\SQLitePlatform;
 use Doctrine\DBAL\Platforms\SQLServerPlatform;
+use Doctrine\DBAL\Schema\AbstractSchemaManager;
 use Doctrine\DBAL\Schema\Schema;
-use Doctrine\Migrations\Exception\AbortMigration;
-use DoctrineMigrations\Version20260724002000;
+use DoctrineMigrations\Version20261008000000;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 
-require_once dirname(__DIR__, 2).'/migrations/Version20260724002000.php';
+require_once dirname(__DIR__, 2).'/migrations/Version20261008000000.php';
 
 final class AnonymousGeoBiViewMigrationTest extends TestCase
 {
-    public function testGeoViewUsesDailyCoarseCellsAndTheSeparateThreshold(): void
+    public function testGeoViewUsesDailyCoarseCellsAndConfiguredThreshold(): void
     {
         $viewSql = $this->viewSqlFor(new MySQL80Platform());
 
         self::assertStringContainsString('CREATE VIEW bi_anonymous_geo_events_v1', $viewSql);
-        self::assertStringContainsString('CROSS JOIN analytics_privacy_settings privacy', $viewSql);
-        self::assertStringContainsString(
-            'privacy.anonymous_geo_min_cell_count BETWEEN 10 AND 1000',
-            $viewSql,
-        );
+        self::assertStringNotContainsString('analytics_privacy_settings', $viewSql);
+        self::assertStringContainsString('25 AS minimum_cell_count', $viewSql);
         self::assertStringContainsString("events.privacy_mode = 'anonymous'", $viewSql);
         self::assertStringContainsString('CAST(events.created_at AS date) AS event_day', $viewSql);
         self::assertStringContainsString('events.event_name', $viewSql);
@@ -133,38 +129,14 @@ SQL, $viewSql);
         self::assertStringContainsString('AND 1 = 0', $viewSql);
     }
 
-    #[DataProvider('unsupportedMySqlPlatforms')]
-    public function testLegacyOrGenericMySqlAbortsBeforeSchedulingViewSql(
-        AbstractPlatform $platform,
-    ): void
-    {
-        $connection = $this->createStub(Connection::class);
-        $connection->method('getDatabasePlatform')->willReturn($platform);
-        $migration = new Version20260724002000(
-            $connection,
-            $this->createStub(LoggerInterface::class),
-        );
-
-        try {
-            $migration->up(new Schema());
-            self::fail('MySQL 5.7 must not receive unsupported CTE/window-function SQL.');
-        } catch (AbortMigration $exception) {
-            self::assertStringContainsString('requires MySQL 8.0+', $exception->getMessage());
-            self::assertStringContainsString('serverVersion', $exception->getMessage());
-            self::assertSame([], $migration->getSql());
-        }
-    }
-
-    public static function unsupportedMySqlPlatforms(): iterable
-    {
-        yield 'legacy or generic MySQL' => [new MySQLPlatform()];
-    }
-
     private function viewSqlFor(AbstractPlatform $platform): string
     {
         $connection = $this->createStub(Connection::class);
         $connection->method('getDatabasePlatform')->willReturn($platform);
-        $migration = new Version20260724002000(
+        $schemaManager = $this->createMock(AbstractSchemaManager::class);
+        $schemaManager->method('tablesExist')->willReturn(false);
+        $connection->method('createSchemaManager')->willReturn($schemaManager);
+        $migration = new Version20261008000000(
             $connection,
             $this->createStub(LoggerInterface::class),
         );

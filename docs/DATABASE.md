@@ -504,7 +504,6 @@ Current migrations:
 
 The current schema contains:
 - `events` (private individual rows for both `anonymous` and `enhanced` privacy modes, with optional coarse `geo_area` and allowlisted `goal_event`)
-- `analytics_privacy_settings` (database source of truth for hourly event, daily goal, and geographic BI suppression thresholds)
 - `analytics_glossary` (private synchronized metadata table; never granted to routine BI users)
 - `bi_dim_event_name_v1`, `bi_dim_goal_event_v1`, `bi_dim_referrer_channel_v1`, `bi_dim_device_class_v1`, `bi_dim_viewport_bucket_v1`, `bi_dim_geo_area_v1`, `bi_dim_website_token_v1`, `bi_glossary_values_v1`, and `bi_glossary_columns_v1` (approved declared-metadata views)
 - `bi_anonymous_events_v1` (supported grouped anonymous-mode BI contract)
