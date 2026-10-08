@@ -15,6 +15,9 @@ use App\Service\BrowserScriptCache;
 use App\Service\DropInScripts;
 use App\Service\TrackerBuilds;
 use App\Service\TrackerScript;
+use App\Service\Operations\TaskTrigger;
+use App\Service\TrackingFailureRetryRunner;
+use App\Service\TrackingFailureSettings;
 use App\Service\TrackingAttributes;
 use App\Service\WebsiteConfigManager;
 use App\Service\WebsiteDomainPolicy;
@@ -42,6 +45,8 @@ class DashboardController extends AbstractController
         private readonly LoggerInterface $logger,
         private readonly BrandingLogoManager $brandingLogoManager,
         private readonly AnonymousBiViewManager $anonymousBiViewManager,
+        private readonly TrackingFailureSettings $trackingFailureSettings,
+        private readonly TrackingFailureRetryRunner $trackingFailureRetryRunner,
         private readonly WebsiteDomainPolicy $websiteDomainPolicy = new WebsiteDomainPolicy(),
     ) {}
 
@@ -235,6 +240,21 @@ class DashboardController extends AbstractController
         }
         $geoDatabasePath = $this->config->getWithEnvFallback('anonymous_geo_database_path', '');
         $collectionProfile = new CollectionProfile($this->config);
+        $trackingRetrySettings = TrackingFailureSettings::defaults();
+        $trackingRetryOverrides = [
+            TrackingFailureSettings::KEY_ENABLED => false,
+            TrackingFailureSettings::KEY_BATCH_SIZE => false,
+        ];
+        $trackingLastFailure = null;
+        $trackingLastRetry = null;
+        try {
+            $trackingRetrySettings = $this->trackingFailureSettings->toArray();
+            $trackingRetryOverrides = $this->trackingFailureSettings->getEnvironmentOverrides();
+            $trackingLastFailure = $this->trackingFailureRetryRunner->latestFailure();
+            $trackingLastRetry = $this->trackingFailureRetryRunner->latestRetry();
+        } catch (\Throwable $error) {
+            $this->logger->error('Failed to load tracking retry settings or status.', ['exception' => $error]);
+        }
 
         return $this->renderDashboardPage('settings/collection.html.twig', [
             'collection_profile' => $collectionProfile->name(),
@@ -245,6 +265,10 @@ class DashboardController extends AbstractController
             'anonymous_geo_enabled' => $this->config->getBoolWithEnvFallback('anonymous_geo_enabled', false),
             'anonymous_geo_level' => $geoLevel,
             'anonymous_geo_database_path' => is_string($geoDatabasePath) ? trim($geoDatabasePath) : '',
+            'tracking_retry_settings' => $trackingRetrySettings,
+            'tracking_retry_environment_overrides' => $trackingRetryOverrides,
+            'tracking_last_failure' => $trackingLastFailure,
+            'tracking_last_retry' => $trackingLastRetry,
         ]);
     }
 
@@ -698,6 +722,10 @@ class DashboardController extends AbstractController
         $geoEnabled = $request->request->getBoolean('anonymous_geo_enabled');
         $geoLevel = trim((string) $request->request->get('anonymous_geo_level', 'macro_region'));
         $geoDatabasePath = trim((string) $request->request->get('anonymous_geo_database_path', ''));
+        $trackingRetryEnabled = $request->request->has(TrackingFailureSettings::KEY_ENABLED)
+            ? $request->request->getBoolean(TrackingFailureSettings::KEY_ENABLED)
+            : null;
+        $trackingRetryBatchSize = $request->request->get(TrackingFailureSettings::KEY_BATCH_SIZE);
         $collectionProfile = CollectionProfile::normalize($request->request->get(CollectionProfile::KEY, CollectionProfile::STANDARD));
 
         if ($collectionProfile === null) {
@@ -760,6 +788,10 @@ class DashboardController extends AbstractController
                 'anonymous_geo_level' => $geoLevel,
                 'anonymous_geo_database_path' => $geoDatabasePath,
             ]);
+            $this->trackingFailureSettings->save(array_filter([
+                TrackingFailureSettings::KEY_ENABLED => $trackingRetryEnabled,
+                TrackingFailureSettings::KEY_BATCH_SIZE => $trackingRetryBatchSize,
+            ], static fn (mixed $value): bool => $value !== null));
             $effectiveGeoEnabled = $this->config->getBoolWithEnvFallback('anonymous_geo_enabled', false);
             $effectiveGeoPath = $this->config->getWithEnvFallback('anonymous_geo_database_path', '');
             $effectiveProfile = new CollectionProfile($this->config);
@@ -772,6 +804,47 @@ class DashboardController extends AbstractController
             $this->addFlash('success', 'Analytics collection settings updated successfully.');
         } catch (\Exception $e) {
             $this->addFlash('error', 'Failed to save analytics privacy settings: ' . $e->getMessage());
+        }
+
+        return $this->redirectToRoute('app_collection_settings');
+    }
+
+    #[Route('/dashboard/settings/tracking/retry', name: 'app_tracking_retry_now', methods: ['POST'])]
+    public function retryTrackingFailures(Request $request): Response
+    {
+        $this->denyIfDashboardDisabled();
+        $this->denyIfNotAdmin();
+
+        $csrfToken = (string) $request->request->get('_csrf_token', '');
+        if (!$this->isCsrfTokenValid('tracking_retry_now', $csrfToken)) {
+            $this->addFlash('error', 'Invalid security token. Please try again.');
+
+            return $this->redirectToRoute('app_collection_settings');
+        }
+
+        try {
+            $result = $this->trackingFailureRetryRunner->retryNow(
+                TaskTrigger::dashboard($this->getUser()?->getUserIdentifier() ?? 'administrator'),
+            );
+        } catch (\InvalidArgumentException $error) {
+            $this->addFlash('error', $error->getMessage());
+
+            return $this->redirectToRoute('app_collection_settings');
+        } catch (\Throwable $error) {
+            $this->logger->error('Retrying failed tracking messages from the dashboard failed.', ['exception' => $error]);
+            $this->addFlash('error', 'Tracking retries could not start; see the application log.');
+
+            return $this->redirectToRoute('app_collection_settings');
+        }
+
+        if ($result['status'] === 'disabled') {
+            $this->addFlash('warning', $result['message']);
+        } elseif ($result['status'] === 'busy') {
+            $this->addFlash('warning', $result['message']);
+        } elseif ($result['status'] === 'failed') {
+            $this->addFlash('error', $result['message']);
+        } else {
+            $this->addFlash('success', $result['message']);
         }
 
         return $this->redirectToRoute('app_collection_settings');

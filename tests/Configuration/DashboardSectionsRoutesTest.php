@@ -44,6 +44,7 @@ final class DashboardSectionsRoutesTest extends TestCase
         '/dashboard/settings/page-speed' => '/dashboard/settings',
         '/dashboard/settings/branding' => '/dashboard/branding',
         '/dashboard/settings/anonymous' => '/dashboard/collection',
+        '/dashboard/settings/tracking/retry' => '/dashboard/collection',
         '/dashboard/settings/analytics-privacy' => '/dashboard/privacy',
         '/dashboard/users/create' => '/dashboard/users',
         '/dashboard/users/7/password' => '/dashboard/users',
