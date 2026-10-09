@@ -245,18 +245,15 @@ class DashboardController extends AbstractController
             TrackingFailureSettings::KEY_ENABLED => false,
             TrackingFailureSettings::KEY_BATCH_SIZE => false,
         ];
-        $trackingLastFailure = null;
-        $trackingLastIngestionFailure = null;
-        $trackingLastRetry = null;
         try {
             $trackingRetrySettings = $this->trackingFailureSettings->toArray();
             $trackingRetryOverrides = $this->trackingFailureSettings->getEnvironmentOverrides();
-            $trackingLastFailure = $this->trackingFailureRetryRunner->latestFailure();
-            $trackingLastIngestionFailure = $this->trackingFailureRetryRunner->latestIngestionFailure();
-            $trackingLastRetry = $this->trackingFailureRetryRunner->latestRetry();
         } catch (\Throwable $error) {
-            $this->logger->error('Failed to load tracking retry settings or status.', ['exception' => $error]);
+            $this->logger->error('Failed to load tracking retry settings.', ['exception' => $error]);
         }
+        // The failure status comes from the database, so the page loads it
+        // afterwards from app_tracking_failure_status: collection controls,
+        // including the kill switch, must open while the database is down.
 
         return $this->renderDashboardPage('settings/collection.html.twig', [
             'collection_profile' => $collectionProfile->name(),
@@ -269,10 +266,34 @@ class DashboardController extends AbstractController
             'anonymous_geo_database_path' => is_string($geoDatabasePath) ? trim($geoDatabasePath) : '',
             'tracking_retry_settings' => $trackingRetrySettings,
             'tracking_retry_environment_overrides' => $trackingRetryOverrides,
-            'tracking_last_failure' => $trackingLastFailure,
-            'tracking_last_ingestion_failure' => $trackingLastIngestionFailure,
-            'tracking_last_retry' => $trackingLastRetry,
         ]);
+    }
+
+    /**
+     * The last tracking failures and retry run, read from processing tasks
+     * after the Collection controls page has rendered. The status is rendered
+     * here from the Twig partial, so the browser only swaps it in.
+     */
+    #[Route('/dashboard/collection/tracking-status', name: 'app_tracking_failure_status', methods: ['GET'])]
+    public function trackingFailureStatus(): JsonResponse
+    {
+        $this->denyIfDashboardDisabled();
+        $this->denyIfNotAdmin();
+        $headers = ['Cache-Control' => 'private, no-store, max-age=0'];
+
+        try {
+            $status = [
+                'tracking_last_failure' => $this->trackingFailureRetryRunner->latestFailure(),
+                'tracking_last_ingestion_failure' => $this->trackingFailureRetryRunner->latestIngestionFailure(),
+                'tracking_last_retry' => $this->trackingFailureRetryRunner->latestRetry(),
+            ];
+        } catch (\Throwable $error) {
+            $this->logger->warning('Tracking failure status could not be read.', ['exception' => $error]);
+
+            return new JsonResponse(['error' => 'Tracking failure status is unavailable.'], Response::HTTP_SERVICE_UNAVAILABLE, $headers);
+        }
+
+        return new JsonResponse(['html' => $this->renderView('settings/_tracking_failure_status.html.twig', $status)], Response::HTTP_OK, $headers);
     }
 
     #[Route('/dashboard/privacy', name: 'app_privacy_settings', methods: ['GET'])]

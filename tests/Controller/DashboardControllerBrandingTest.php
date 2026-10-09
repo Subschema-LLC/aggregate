@@ -10,6 +10,8 @@ use App\Service\AggregateConfigLoader;
 use App\Service\AnalyticsPrivacySettings;
 use App\Service\AnonymousBiViewManager;
 use App\Service\BrandingLogoManager;
+use App\Service\TrackingFailureRetryRunner;
+use App\Service\TrackingFailureSettings;
 use App\Service\WebsiteConfigManager;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
@@ -503,6 +505,8 @@ final class DashboardControllerBrandingTest extends TestCase
             $this->createStub(LoggerInterface::class),
             new BrandingLogoManager($this->projectDir, 'test'),
             new AnonymousBiViewManager($this->createStub(Connection::class)),
+            new TrackingFailureSettings($this->createStub(AggregateConfigLoader::class)),
+            $this->createStub(TrackingFailureRetryRunner::class),
         );
 
         $authorizationChecker = $this->createStub(AuthorizationCheckerInterface::class);

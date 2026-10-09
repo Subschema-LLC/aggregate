@@ -15,8 +15,9 @@ use Symfony\Component\Messenger\Transport\Receiver\ListableReceiverInterface;
 /**
  * Logs failed enhanced-message persistence attempts and retries failed
  * TrackEventMessage items from the Messenger failure transport on demand.
+ * Not final: ingestion and message-handler tests replace it with a double.
  */
-final class TrackingFailureRetryRunner
+class TrackingFailureRetryRunner
 {
     public const TASK_TYPE_FAILURE = 'tracking_event_store';
     public const TASK_TYPE_RETRY = 'tracking_retry';

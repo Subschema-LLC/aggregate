@@ -95,11 +95,17 @@
         <h2 class="title is-5">Enhanced tracking retry</h2>
         <p class="mb-4">When an enhanced event cannot be stored, Aggregate records a failed task and keeps the message in Messenger&apos;s failed transport for retry.</p>
         <div class="field">
-            <label class="checkbox">
-                <input type="checkbox" name="tracking_retry_enabled" value="1" {% if retry_settings.tracking_retry_enabled %}checked{% endif %}{% if retry_overrides.tracking_retry_enabled %} disabled{% endif %}>
-                Enable manual retries for failed enhanced tracking messages
-            </label>
-            <p class="help">{% if retry_overrides.tracking_retry_enabled %}Controlled by <code>TRACKING_RETRY_ENABLED</code>.{% else %}When disabled, retry actions from the dashboard and CLI are blocked.{% endif %}</p>
+            <label class="label" for="tracking-retry-enabled">Manual retries for failed enhanced tracking messages</label>
+            <div class="control">
+                <div class="select">
+                    {# A select, not a checkbox, so turning retries off is submitted too. #}
+                    <select id="tracking-retry-enabled" name="tracking_retry_enabled" aria-describedby="tracking-retry-enabled-help"{% if retry_overrides.tracking_retry_enabled %} disabled{% endif %}>
+                        <option value="1"{% if retry_settings.tracking_retry_enabled %} selected{% endif %}>Enabled</option>
+                        <option value="0"{% if not retry_settings.tracking_retry_enabled %} selected{% endif %}>Disabled</option>
+                    </select>
+                </div>
+            </div>
+            <p class="help" id="tracking-retry-enabled-help">{% if retry_overrides.tracking_retry_enabled %}Controlled by <code>TRACKING_RETRY_ENABLED</code>.{% else %}When disabled, retry actions from the dashboard and CLI are blocked.{% endif %}</p>
         </div>
         <div class="field">
             <label class="label" for="tracking-retry-batch-size">Retry batch size</label>
@@ -110,27 +116,9 @@
         </div>
         <div class="notification is-light">
             <p class="has-text-weight-semibold">Tracking failure status</p>
-            <p>
-                {% if tracking_last_failure %}
-                    Last failure: {{ tracking_last_failure.started_at|date('Y-m-d H:i', 'UTC') }} UTC{% if tracking_last_failure.subject %} (website token {{ tracking_last_failure.subject }}){% endif %}{% if tracking_last_failure.details %}: {{ tracking_last_failure.details }}{% endif %}
-                {% else %}
-                    No failed enhanced tracking write has been recorded yet.
-                {% endif %}
-            </p>
-            <p class="mt-2">
-                {% if tracking_last_ingestion_failure %}
-                    Last ingestion failure: {{ tracking_last_ingestion_failure.started_at|date('Y-m-d H:i', 'UTC') }} UTC{% if tracking_last_ingestion_failure.subject %} ({{ tracking_last_ingestion_failure.subject }}){% endif %}{% if tracking_last_ingestion_failure.details %}: {{ tracking_last_ingestion_failure.details }}{% endif %}
-                {% else %}
-                    No anonymous/enhanced ingestion failure has been recorded yet.
-                {% endif %}
-            </p>
-            <p class="mt-2">
-                {% if tracking_last_retry %}
-                    Last retry run: {{ tracking_last_retry.started_at|date('Y-m-d H:i', 'UTC') }} UTC, {% if tracking_last_retry.status == 'succeeded' %}succeeded{% elseif tracking_last_retry.status == 'failed' %}<strong>failed</strong>{% else %}running{% endif %}{% if tracking_last_retry.details %}: {{ tracking_last_retry.details }}{% endif %}
-                {% else %}
-                    No retry run has been recorded yet.
-                {% endif %}
-            </p>
+            <div data-controller="pages--settings--tracking-status" data-pages--settings--tracking-status-url-value="{{ path('app_tracking_failure_status') }}" aria-live="polite">
+                <p data-tracking-status-placeholder>Checking for recorded tracking failures…</p>
+            </div>
             <p class="help mt-2">CLI: <code>php bin/console app:tracking:retry-failed</code></p>
             <button type="submit" class="button is-warning mt-3" form="tracking-retry-form" {% if not retry_settings.tracking_retry_enabled %}disabled{% endif %}>
                 <span class="icon"><i class="fas fa-rotate-right"></i></span>
