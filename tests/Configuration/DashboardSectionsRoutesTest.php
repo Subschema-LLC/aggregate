@@ -44,6 +44,7 @@ final class DashboardSectionsRoutesTest extends TestCase
         '/dashboard/settings/page-speed' => '/dashboard/settings',
         '/dashboard/settings/branding' => '/dashboard/branding',
         '/dashboard/settings/anonymous' => '/dashboard/collection',
+        '/dashboard/settings/tracking/retry' => '/dashboard/collection',
         '/dashboard/settings/analytics-privacy' => '/dashboard/privacy',
         '/dashboard/users/create' => '/dashboard/users',
         '/dashboard/users/7/password' => '/dashboard/users',
@@ -365,15 +366,22 @@ final class DashboardSectionsRoutesTest extends TestCase
         // An unchanged documentation address is not written, so the default is not pinned.
         self::assertArrayNotHasKey('documentation_url', $saved);
 
-        $form = $browser->request('GET', '/dashboard/collection')->selectButton('Save Collection Settings')->form([
+        $collection = $browser->request('GET', '/dashboard/collection');
+        // The failure status is read from the database after the page loads.
+        self::assertSame('/dashboard/collection/tracking-status', $collection->filter('[data-controller="pages--settings--tracking-status"]')->attr('data-pages--settings--tracking-status-url-value'));
+        $form = $collection->selectButton('Save Collection Settings')->form([
             'anonymous_excluded_paths' => "/account/**\n/checkout/**",
             'anonymous_geo_level' => 'macro_region',
+            'tracking_retry_enabled' => '0',
+            'tracking_retry_batch_size' => '25',
         ]);
         $form['anonymous_tracking_enabled']->untick();
         $browser->submit($form);
         $this->assertRedirect($browser, '/dashboard/collection');
         $saved = Yaml::parseFile($this->temporaryDirectory.'/config/aggregate.yaml');
         self::assertFalse($saved['anonymous_tracking_enabled']);
+        self::assertFalse($saved['tracking_retry_enabled']);
+        self::assertSame(25, $saved['tracking_retry_batch_size']);
         self::assertSame(['/account/**', '/checkout/**'], $saved['anonymous_excluded_paths']);
         self::assertSame('standard', $saved['collection_profile']);
         self::assertSame('NewAnalytics', $saved['js_namespace']);

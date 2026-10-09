@@ -83,6 +83,11 @@ tag_manager:
 # consent_manager:
 #   enabled: false
 
+# Optional: accept analytics consent from Google Consent Mode signals (analytics_storage: granted).
+# When enabled (the default), the tracker listens for gtag('consent', ...) and dataLayer consent
+# updates in addition to window.Aggregate.setConsent(). Set to false to disable Google consent signals.
+# google_consent_mode: true
+
 # Shared custom data model; active environments can replace either mapping.
 # All UTMs require enhanced consent by default. For anonymous attribution,
 # prefer only utm_medium with broad channel values (email/social/cpc).
@@ -102,6 +107,10 @@ tag_manager:
 # Review the method's storage/URL disclosures and consent requirements.
 page_sequence_enabled: false
 page_sequence_method: session_storage # session_storage (default) or url_parameter
+# Retry failed enhanced tracking messages left in Messenger's failed transport.
+# This does not create new tracking data; it re-dispatches queued failures.
+tracking_retry_enabled: true
+tracking_retry_batch_size: 100
 # url_parameter uses ?aggregate_page_sequence=2 on ordinary internal links,
 # without counter Web Storage, then removes it from the address bar after capture.
 # Clean-URL reloads restart at 1. Initial requests can still log the parameter.
@@ -191,6 +200,8 @@ environments:
     anonymous_geo_enabled: false
     anonymous_geo_level: "macro_region"
     anonymous_geo_database_path: ""
+    tracking_retry_enabled: true
+    tracking_retry_batch_size: 100
     analytics_archiving_enabled: false
     analytics_archive_after_days: 90
     analytics_retention_enabled: false
@@ -230,6 +241,8 @@ environments:
     anonymous_geo_enabled: false
     anonymous_geo_level: "macro_region"
     anonymous_geo_database_path: ""
+    tracking_retry_enabled: true
+    tracking_retry_batch_size: 100
     analytics_archiving_enabled: false
     analytics_archive_after_days: 90
     analytics_retention_enabled: false
@@ -268,6 +281,8 @@ environments:
     anonymous_geo_enabled: false
     anonymous_geo_level: "macro_region"
     anonymous_geo_database_path: ""
+    tracking_retry_enabled: true
+    tracking_retry_batch_size: 100
     analytics_archiving_enabled: false
     analytics_archive_after_days: 90
     analytics_retention_enabled: false

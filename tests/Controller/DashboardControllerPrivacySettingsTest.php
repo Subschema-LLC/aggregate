@@ -10,6 +10,8 @@ use App\Service\AggregateConfigLoader;
 use App\Service\AnalyticsPrivacySettings;
 use App\Service\AnonymousBiViewManager;
 use App\Service\BrandingLogoManager;
+use App\Service\TrackingFailureRetryRunner;
+use App\Service\TrackingFailureSettings;
 use App\Service\WebsiteConfigManager;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\SQLitePlatform;
@@ -203,6 +205,8 @@ final class DashboardControllerPrivacySettingsTest extends TestCase
             $logger,
             new BrandingLogoManager(sys_get_temp_dir(), 'test'),
             anonymousBiViewManager: new AnonymousBiViewManager($this->createStub(Connection::class)),
+            trackingFailureSettings: new TrackingFailureSettings($this->createStub(AggregateConfigLoader::class)),
+            trackingFailureRetryRunner: $this->createStub(TrackingFailureRetryRunner::class),
         );
         $authorizationChecker = $this->createStub(AuthorizationCheckerInterface::class);
         $authorizationChecker->method('isGranted')->willReturn(true);
@@ -249,6 +253,8 @@ final class DashboardControllerPrivacySettingsTest extends TestCase
             $this->createStub(LoggerInterface::class),
             new BrandingLogoManager(sys_get_temp_dir(), 'test'),
             anonymousBiViewManager: $views,
+            trackingFailureSettings: new TrackingFailureSettings($this->createStub(AggregateConfigLoader::class)),
+            trackingFailureRetryRunner: $this->createStub(TrackingFailureRetryRunner::class),
         );
 
         $authorizationChecker = $this->createStub(AuthorizationCheckerInterface::class);
