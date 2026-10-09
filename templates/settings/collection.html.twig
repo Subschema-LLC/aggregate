@@ -4,6 +4,8 @@
 
 {% block body %}
 <div class="settings-page">
+{% set retry_settings = tracking_retry_settings %}
+{% set retry_overrides = tracking_retry_environment_overrides %}
 <h1 class="title">Collection controls</h1>
 <p class="subtitle">Manage collection and local geography for this deployment.</p>
 {{ component('Ui:DocsLink', {topic: 'privacy.controls', label: 'Collection controls in the privacy guide'}) }}
@@ -89,6 +91,41 @@
             <p class="help">Use a local absolute path (recommended) or a path inside the project root to a read-only GeoLite2-Country-compatible <code>.mmdb</code>. URI schemes, project-directory escapes, UNC/network shares, and Windows device paths are rejected. The application does not download a database or call a GeoIP web service.</p>
         </div>
 
+        <hr>
+        <h2 class="title is-5">Enhanced tracking retry</h2>
+        <p class="mb-4">When an enhanced event cannot be stored, Aggregate records a failed task and keeps the message in Messenger&apos;s failed transport for retry.</p>
+        <div class="field">
+            <label class="label" for="tracking-retry-enabled">Manual retries for failed enhanced tracking messages</label>
+            <div class="control">
+                <div class="select">
+                    {# A select, not a checkbox, so turning retries off is submitted too. #}
+                    <select id="tracking-retry-enabled" name="tracking_retry_enabled" aria-describedby="tracking-retry-enabled-help"{% if retry_overrides.tracking_retry_enabled %} disabled{% endif %}>
+                        <option value="1"{% if retry_settings.tracking_retry_enabled %} selected{% endif %}>Enabled</option>
+                        <option value="0"{% if not retry_settings.tracking_retry_enabled %} selected{% endif %}>Disabled</option>
+                    </select>
+                </div>
+            </div>
+            <p class="help" id="tracking-retry-enabled-help">{% if retry_overrides.tracking_retry_enabled %}Controlled by <code>TRACKING_RETRY_ENABLED</code>.{% else %}When disabled, retry actions from the dashboard and CLI are blocked.{% endif %}</p>
+        </div>
+        <div class="field">
+            <label class="label" for="tracking-retry-batch-size">Retry batch size</label>
+            <div class="control">
+                <input class="input" id="tracking-retry-batch-size" name="tracking_retry_batch_size" type="number" min="1" max="1000" step="1" required value="{{ retry_settings.tracking_retry_batch_size }}"{% if retry_overrides.tracking_retry_batch_size %} disabled aria-describedby="tracking-retry-batch-size-help"{% endif %}>
+            </div>
+            <p class="help" id="tracking-retry-batch-size-help">{% if retry_overrides.tracking_retry_batch_size %}Controlled by <code>TRACKING_RETRY_BATCH_SIZE</code>.{% else %}Maximum failed tracking messages retried per run (1–1000).{% endif %}</p>
+        </div>
+        <div class="notification is-light">
+            <p class="has-text-weight-semibold">Tracking failure status</p>
+            <div data-controller="pages--settings--tracking-status" data-pages--settings--tracking-status-url-value="{{ path('app_tracking_failure_status') }}" aria-live="polite">
+                <p data-tracking-status-placeholder>Checking for recorded tracking failures…</p>
+            </div>
+            <p class="help mt-2">CLI: <code>php bin/console app:tracking:retry-failed</code></p>
+            <button type="submit" class="button is-warning mt-3" form="tracking-retry-form" {% if not retry_settings.tracking_retry_enabled %}disabled{% endif %}>
+                <span class="icon"><i class="fas fa-rotate-right"></i></span>
+                <span>Retry failed tracking messages now</span>
+            </button>
+        </div>
+
         <div class="field">
             <div class="control">
                 <button type="submit" class="button is-link">
@@ -111,6 +148,9 @@
             <p>IP geolocation is itself processing of personal data in many jurisdictions, even though the analytics event does not retain the IP. Enable it only after documenting a legal basis and notice appropriate to the deployment.</p>
         </div>
     </details>
+    <form id="tracking-retry-form" action="{{ path('app_tracking_retry_now') }}" method="post">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token('tracking_retry_now') }}">
+    </form>
 </div>
 </div>
 </div>

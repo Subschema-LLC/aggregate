@@ -626,6 +626,28 @@ final class CustomDataSettingsTest extends TestCase
         $settings->filterEventData(['plan' => 'private'], true);
     }
 
+    public function testGoogleConsentModeConfiguration(): void
+    {
+        // When not configured, returns null and omitted from browser config
+        $default = $this->settings([]);
+        self::assertNull($default->googleConsentMode());
+        self::assertArrayNotHasKey('googleConsentMode', $default->toBrowserConfig());
+
+        // Top-level boolean in aggregate.yaml
+        $enabled = $this->settings(['google_consent_mode' => true]);
+        self::assertTrue($enabled->googleConsentMode());
+        self::assertTrue($enabled->toBrowserConfig()['googleConsentMode']);
+
+        $disabled = $this->settings(['google_consent_mode' => false]);
+        self::assertFalse($disabled->googleConsentMode());
+        self::assertFalse($disabled->toBrowserConfig()['googleConsentMode']);
+
+        // Nested under consent_manager
+        $nested = $this->settings(['consent_manager' => ['google_consent_mode' => true]]);
+        self::assertTrue($nested->googleConsentMode());
+        self::assertTrue($nested->toBrowserConfig()['googleConsentMode']);
+    }
+
     private function settings(array $values): CustomDataSettings
     {
         file_put_contents($this->projectDir.'/config/aggregate.yaml', Yaml::dump($values, 6, 2));
