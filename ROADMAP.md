@@ -89,6 +89,8 @@ checkout, or a small accessibility fix. Keep each PR focused and target
 - **Postmark Integration.** For transactional emails.
 - **Medallion Architecture.** Add a means to define and generate silver and gold views. Also docs: events table and glossary are bronze.
 - **Snowflake Integration** Add a Snowflake connector.
+- **Agency Multi-tenancy** Allow multi-tenancy for agencies that want to host on behalf of clients. Determine is separate databases per client or separation in one DB with views being unique to each client.
+- **Per Website View Generation** Allow separate BI views by website for organizations that require this.
 
 ## Proposals to explore
 
