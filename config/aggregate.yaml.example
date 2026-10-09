@@ -83,6 +83,11 @@ tag_manager:
 # consent_manager:
 #   enabled: false
 
+# Optional: accept analytics consent from Google Consent Mode signals (analytics_storage: granted).
+# When enabled (the default), the tracker listens for gtag('consent', ...) and dataLayer consent
+# updates in addition to window.Aggregate.setConsent(). Set to false to disable Google consent signals.
+# google_consent_mode: true
+
 # Shared custom data model; active environments can replace either mapping.
 # All UTMs require enhanced consent by default. For anonymous attribution,
 # prefer only utm_medium with broad channel values (email/social/cpc).

@@ -980,6 +980,7 @@
     },
 
     emit: function(eventName, eventData, goalEvent){
+      this.listenToGoogleConsent();
       var safeEventName = this.sanitizeEventName(eventName);
       if (!safeEventName) return false;
 
@@ -1031,6 +1032,85 @@
         if (!this.consent) {
           this.clearIdentifiers();
         }
+      }
+    },
+
+    extractGoogleAnalyticsConsent: function(entry){
+      if (!entry) return undefined;
+      try {
+        // Array or arguments-like object: ['consent', 'default'|'update', {analytics_storage: ...}]
+        if (typeof entry === 'object' && (Array.isArray(entry) || (typeof entry.length === 'number' && typeof entry[0] !== 'undefined'))) {
+          if (entry[0] === 'consent' && (entry[1] === 'update' || entry[1] === 'default') && entry[2] && typeof entry[2] === 'object') {
+            var storage = entry[2].analytics_storage;
+            if (typeof storage === 'string') {
+              var norm = storage.toLowerCase().trim();
+              if (norm === 'granted') return true;
+              if (norm === 'denied') return false;
+            }
+          }
+        }
+        // Object format: { event: 'consent', analytics_storage: 'granted' } or { consent: { analytics_storage: ... } }
+        if (typeof entry === 'object' && !Array.isArray(entry)) {
+          var target = entry.consent && typeof entry.consent === 'object' ? entry.consent : entry;
+          if (target && typeof target.analytics_storage === 'string') {
+            var s = target.analytics_storage.toLowerCase().trim();
+            if (s === 'granted') return true;
+            if (s === 'denied') return false;
+          }
+        }
+      } catch(e) {}
+      return undefined;
+    },
+
+    listenToGoogleConsent: function(){
+      if (strictCollection) return;
+      if (this.config.customData && this.config.customData.googleConsentMode === false) return;
+      var tracker = this;
+      var handleEntry = function(entry){
+        var signal = tracker.extractGoogleAnalyticsConsent(entry);
+        if (typeof signal === 'boolean') {
+          tracker.setConsent(signal);
+        }
+      };
+
+      if (typeof window === 'undefined') return;
+
+      var hookArray = function(layer){
+        if (!layer || typeof layer.push !== 'function') return;
+        if (layer._aggregateGcmHooked) return;
+        layer._aggregateGcmHooked = true;
+        try {
+          for (var i = 0; i < layer.length; i++) {
+            handleEntry(layer[i]);
+          }
+        } catch(e) {}
+        var origPush = layer.push;
+        layer.push = function(){
+          var res = origPush.apply(this, arguments);
+          try {
+            for (var j = 0; j < arguments.length; j++) {
+              handleEntry(arguments[j]);
+            }
+          } catch(e) {}
+          return res;
+        };
+      };
+
+      if (Array.isArray(window.dataLayer)) {
+        hookArray(window.dataLayer);
+      }
+
+      if (typeof window.gtag === 'function' && !window.gtag._aggregateGcmHooked) {
+        var origGtag = window.gtag;
+        var hookedGtag = function(){
+          var res = origGtag.apply(this, arguments);
+          try {
+            handleEntry(arguments);
+          } catch(e) {}
+          return res;
+        };
+        hookedGtag._aggregateGcmHooked = true;
+        window.gtag = hookedGtag;
       }
     },
 
@@ -1167,6 +1247,12 @@
     Analytics.config.websiteToken = opts && opts.websiteToken || Analytics.config.websiteToken;
     Analytics.configureInternalTraffic(opts && opts.internalTraffic);
     Analytics.configureCustomData(opts && opts.customData);
+    if (opts && typeof opts.googleConsentMode !== 'undefined') {
+      Analytics.config.customData.googleConsentMode = opts.googleConsentMode === true || opts.googleConsentMode === 'true' || opts.googleConsentMode === 1;
+      if (Analytics.config.customData.googleConsentMode) {
+        Analytics.listenToGoogleConsent();
+      }
+    }
     if (opts && typeof opts.consent !== 'undefined') {
       Analytics.setConsent(opts.consent);
     }
@@ -1195,6 +1281,11 @@
           name: s.dataset.internalTrafficName,
           value: s.dataset.internalTrafficValue
         });
+        if (typeof s.dataset.googleConsentMode !== 'undefined') {
+          Analytics.config.customData.googleConsentMode = s.dataset.googleConsentMode === 'true' || s.dataset.googleConsentMode === '1';
+        } else if (typeof s.dataset.google_consent_mode !== 'undefined') {
+          Analytics.config.customData.googleConsentMode = s.dataset.google_consent_mode === 'true' || s.dataset.google_consent_mode === '1';
+        }
         if (typeof s.dataset.consent !== 'undefined') {
           Analytics.setConsent(s.dataset.consent);
         }
@@ -1207,6 +1298,10 @@
           var cs = u.searchParams.get('consent');
           if (ep) Analytics.config.endpoint = ep;
           if (wt) Analytics.config.websiteToken = wt;
+          var gcm = u.searchParams.get('google_consent_mode') || u.searchParams.get('googleConsentMode');
+          if (gcm !== null) {
+            Analytics.config.customData.googleConsentMode = gcm === '1' || gcm === 'true';
+          }
           if (cs !== null) {
             Analytics.setConsent(cs);
           }
@@ -1229,6 +1324,13 @@
       }
     }
   } catch(e) {}
+
+  if (typeof window[namespace].googleConsentMode !== 'undefined') {
+    Analytics.config.customData.googleConsentMode = window[namespace].googleConsentMode === true || window[namespace].googleConsentMode === 'true' || window[namespace].googleConsentMode === 1;
+  } else if (typeof window[namespace].google_consent_mode !== 'undefined') {
+    Analytics.config.customData.googleConsentMode = window[namespace].google_consent_mode === true || window[namespace].google_consent_mode === 'true' || window[namespace].google_consent_mode === 1;
+  }
+  Analytics.listenToGoogleConsent();
 
   // if configured inline, copy values
   if (window[namespace].endpoint) Analytics.config.endpoint = window[namespace].endpoint;
@@ -1264,6 +1366,7 @@
 
   // auto pageview on load
   var start = function(){
+    Analytics.listenToGoogleConsent();
     Analytics.trackView(undefined, initialViewData);
     // Tell a tag manager on the page that events can be sent; one that held
     // events for this tracker sends them now, after the page view.
