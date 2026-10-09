@@ -88,6 +88,7 @@ checkout, or a small accessibility fix. Keep each PR focused and target
 - **Sendgrid Integration** For transactional emails.
 - **Postmark Integration.** For transactional emails.
 - **Medallion Architecture.** Add a means to define and generate silver and gold views. Also docs: events table and glossary are bronze.
+- **Snowflake Integration** Add a Snowflake connector.
 
 ## Proposals to explore
 

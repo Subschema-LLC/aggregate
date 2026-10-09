@@ -17,6 +17,7 @@ class CustomDataSettings
     public const PAGE_SEQUENCE_QUERY_PARAMETER = 'aggregate_page_sequence';
     public const PAGE_SEQUENCE_PROPERTY = 'page_sequence';
     public const PAGE_SEQUENCE_MAXIMUM = 20;
+    public const GOOGLE_CONSENT_MODE_KEY = 'google_consent_mode';
     public const UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'utm_id'];
     public const TYPES = ['scalar', 'string', 'integer', 'float', 'double', 'boolean'];
     /** The collection payload object that carries an event's custom properties. */
@@ -149,6 +150,24 @@ class CustomDataSettings
     }
 
     /** @return array{queryParameters: array<string, string>, consentFreeProperties: list<string>, pageSequenceEnabled: bool, pageSequenceMethod: string, pageSequenceExcludedPaths?: list<string>, propertyTypes?: array<string, string>} */
+    public function googleConsentMode(): ?bool
+    {
+        if ($this->config->has(self::GOOGLE_CONSENT_MODE_KEY)) {
+            $value = $this->config->get(self::GOOGLE_CONSENT_MODE_KEY);
+            if (is_bool($value)) {
+                return $value;
+            }
+        }
+        if ($this->config->has('consent_manager')) {
+            $cm = $this->config->get('consent_manager');
+            if (is_array($cm) && array_key_exists(self::GOOGLE_CONSENT_MODE_KEY, $cm) && is_bool($cm[self::GOOGLE_CONSENT_MODE_KEY])) {
+                return $cm[self::GOOGLE_CONSENT_MODE_KEY];
+            }
+        }
+
+        return null;
+    }
+
     public function toBrowserConfig(): array
     {
         $settings = $this->toArray();
@@ -187,6 +206,10 @@ class CustomDataSettings
         }
         if ($types !== []) {
             $browserConfig['propertyTypes'] = $types;
+        }
+        $gcm = $this->googleConsentMode();
+        if ($gcm !== null) {
+            $browserConfig['googleConsentMode'] = $gcm;
         }
 
         return $browserConfig;

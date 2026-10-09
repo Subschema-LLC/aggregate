@@ -101,6 +101,8 @@ function loadSdk(options) {
 
   const configuredNamespace = (options.dataset && options.dataset.namespace) || 'Aggregate';
   const window = {};
+  if (options.dataLayer) window.dataLayer = options.dataLayer;
+  if (options.gtag) window.gtag = options.gtag;
   window[configuredNamespace] = Object.assign({
     endpoint: 'https://analytics.example/api/receive',
     websiteToken: 'site-token'
@@ -1587,4 +1589,135 @@ test('strict collection and a missing script URL send no cd.* values', () => {
   const inline = loadSdk({inline: {consent: true, customData: {queryParameters: {}}}});
   inline.triggerPageView();
   assert.equal(inline.requests[0].customData, undefined);
+});
+
+
+test('pre-existing Google consent mode update with analytics_storage granted enables enhanced tracking', () => {
+  const dataLayer = [['consent', 'default', {analytics_storage: 'denied'}], ['consent', 'update', {analytics_storage: 'granted'}]];
+  const runtime = loadSdk({dataLayer});
+  runtime.triggerPageView();
+
+  assert.equal(runtime.requests.length, 1);
+  assert.equal(runtime.requests[0].consentState, 'granted');
+  assert.ok(runtime.requests[0].visitorId);
+  assert.ok(runtime.requests[0].sessionId);
+  assert.equal(runtime.requests[0].screenWidth, 1440);
+});
+
+test('pre-existing Google consent mode default with analytics_storage denied keeps tracking anonymous', () => {
+  const dataLayer = [['consent', 'default', {analytics_storage: 'denied'}]];
+  const runtime = loadSdk({dataLayer});
+  runtime.triggerPageView();
+
+  assert.equal(runtime.requests.length, 1);
+  assert.equal(runtime.requests[0].consentState, 'denied');
+  assert.equal(runtime.requests[0].visitorId, undefined);
+  assert.equal(runtime.requests[0].sessionId, undefined);
+  assert.equal(runtime.requests[0].screenWidth, undefined);
+});
+
+test('dynamic Google consent mode update via dataLayer.push activates enhanced tracking and withdrawal clears identifiers', () => {
+  const dataLayer = [];
+  const runtime = loadSdk({dataLayer});
+  runtime.triggerPageView();
+
+  // Initial page view was anonymous
+  assert.equal(runtime.requests[0].consentState, 'unknown');
+  assert.equal(runtime.requests[0].visitorId, undefined);
+
+  // User accepts consent via Google consent signal
+  dataLayer.push(['consent', 'update', {analytics_storage: 'granted'}]);
+
+  // Next event is now enhanced
+  runtime.window.Aggregate.emit('button_click', {plan: 'pro'});
+  assert.equal(runtime.requests.at(-1).consentState, 'granted');
+  assert.ok(runtime.requests.at(-1).visitorId);
+  assert.equal(runtime.requests.at(-1).customData.plan, 'pro');
+
+  // User withdraws consent via Google consent signal
+  dataLayer.push(['consent', 'update', {analytics_storage: 'denied'}]);
+  assert.equal(runtime.localStorage.has('aggregate_visitor_id'), false);
+
+  // Subsequent event returns to anonymous
+  runtime.window.Aggregate.emit('button_click', {plan: 'pro'});
+  assert.equal(runtime.requests.at(-1).consentState, 'denied');
+  assert.equal(runtime.requests.at(-1).visitorId, undefined);
+  assert.equal(runtime.requests.at(-1).customData, undefined);
+});
+
+test('Google consent signals work alongside Aggregate.setConsent', () => {
+  const dataLayer = [];
+  const runtime = loadSdk({dataLayer});
+
+  // Explicit namespace setConsent(true)
+  runtime.window.Aggregate.setConsent(true);
+  runtime.window.Aggregate.emit('button_click');
+  assert.equal(runtime.requests.at(-1).consentState, 'granted');
+  assert.ok(runtime.requests.at(-1).visitorId);
+
+  // Withdrawal via Google consent signal
+  dataLayer.push(['consent', 'update', {analytics_storage: 'denied'}]);
+  runtime.window.Aggregate.emit('button_click');
+  assert.equal(runtime.requests.at(-1).consentState, 'denied');
+  assert.equal(runtime.requests.at(-1).visitorId, undefined);
+
+  // Grant again via Google consent signal
+  dataLayer.push(['consent', 'update', {analytics_storage: 'granted'}]);
+  runtime.window.Aggregate.emit('button_click');
+  assert.equal(runtime.requests.at(-1).consentState, 'granted');
+  assert.ok(runtime.requests.at(-1).visitorId);
+
+  // Withdrawal via Aggregate.setConsent(false)
+  runtime.window.Aggregate.setConsent(false);
+  runtime.window.Aggregate.emit('button_click');
+  assert.equal(runtime.requests.at(-1).consentState, 'denied');
+  assert.equal(runtime.requests.at(-1).visitorId, undefined);
+});
+
+test('dynamic gtag call triggers consent update', () => {
+  const dataLayer = [];
+  const gtag = function() { dataLayer.push(arguments); };
+  const runtime = loadSdk({dataLayer, gtag});
+
+  gtag('consent', 'update', {analytics_storage: 'granted'});
+  runtime.window.Aggregate.emit('button_click');
+  assert.equal(runtime.requests.at(-1).consentState, 'granted');
+  assert.ok(runtime.requests.at(-1).visitorId);
+});
+
+test('late initialization of dataLayer is hooked via property setter', () => {
+  const runtime = loadSdk({});
+  assert.equal(runtime.window.dataLayer, undefined);
+
+  // CMP creates dataLayer after Aggregate has loaded
+  runtime.window.dataLayer = [];
+  runtime.window.dataLayer.push(['consent', 'update', {analytics_storage: 'granted'}]);
+
+  runtime.window.Aggregate.emit('button_click');
+  assert.equal(runtime.requests.at(-1).consentState, 'granted');
+  assert.ok(runtime.requests.at(-1).visitorId);
+});
+
+test('googleConsentMode false disables Google consent signal listening', () => {
+  const dataLayer = [];
+  const runtime = loadSdk({dataLayer, inline: {googleConsentMode: false}});
+
+  dataLayer.push(['consent', 'update', {analytics_storage: 'granted'}]);
+  runtime.window.Aggregate.emit('button_click');
+
+  assert.equal(runtime.requests.at(-1).consentState, 'unknown');
+  assert.equal(runtime.requests.at(-1).visitorId, undefined);
+});
+
+test('strict collection profile ignores Google consent signals', () => {
+  const dataLayer = [['consent', 'update', {analytics_storage: 'granted'}]];
+  const runtime = loadSdk({dataLayer, inline: {collectionProfile: 'strict'}});
+
+  runtime.window.Aggregate.emit('button_click');
+  assert.equal(runtime.requests.at(-1).visitorId, undefined);
+  assert.equal(runtime.requests.at(-1).screenWidth, undefined);
+
+  dataLayer.push(['consent', 'update', {analytics_storage: 'granted'}]);
+  runtime.window.Aggregate.emit('button_click');
+  assert.equal(runtime.requests.at(-1).visitorId, undefined);
 });
