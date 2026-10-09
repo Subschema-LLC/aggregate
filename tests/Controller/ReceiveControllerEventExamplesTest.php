@@ -18,6 +18,7 @@ use App\Service\GoalEventRegistry;
 use App\Service\InternalTrafficSettings;
 use App\Service\PrivacyPolicy;
 use App\Service\PrivacySanitizer;
+use App\Service\TrackingFailureRetryRunner;
 use App\Service\WebsiteConfigManager;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -167,12 +168,13 @@ final class ReceiveControllerEventExamplesTest extends TestCase
         });
         $entityManager->expects(self::once())->method('flush');
         $bus = $this->createMock(MessageBusInterface::class);
+        $trackingFailures = $this->createStub(TrackingFailureRetryRunner::class);
         if ($mode === 'enhanced') {
-            $bus->expects(self::once())->method('dispatch')->willReturnCallback(static function (object $message) use ($entityManager): Envelope {
+            $bus->expects(self::once())->method('dispatch')->willReturnCallback(static function (object $message) use ($entityManager, $trackingFailures): Envelope {
                 self::assertInstanceOf(TrackEventMessage::class, $message);
                 self::assertStringNotContainsString('203.0.113.42', serialize($message));
                 self::assertStringNotContainsString('Chrome/126.0', serialize($message));
-                (new TrackEventHandler($entityManager))($message);
+                (new TrackEventHandler($entityManager, $trackingFailures, new NullLogger()))($message);
 
                 return new Envelope($message);
             });

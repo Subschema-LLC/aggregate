@@ -244,6 +244,8 @@ environments:
 - `anonymous_geo_enabled`: Enable transient, local-IP-to-area lookup for accepted events (default: `false`)
 - `anonymous_geo_level`: Store `macro_region` (continent-level, recommended) or `country` (default: `macro_region`)
 - `anonymous_geo_database_path`: Local GeoLite2-Country-compatible `.mmdb` path (absolute recommended, or contained by the project root); URI/UNC/network-share/device paths are rejected and no database is downloaded automatically
+- `tracking_retry_enabled`: Allow or block manual retry runs for failed enhanced tracking messages in the dashboard and CLI (default: `true`)
+- `tracking_retry_batch_size`: Maximum failed tracking messages retried per run (default: `100`, range: `1`–`1000`)
 - `analytics_archiving_enabled`: Aggregate older raw rows into private event/pageview, goal, and geography cells (default: `false`)
 - `analytics_archive_after_days`: Age at which completed raw data becomes eligible for archiving (default: `90`, range: `1`–`36500`)
 - `analytics_retention_enabled`: Enable irreversible raw-row and archive-cell deletion (default: `false`)
