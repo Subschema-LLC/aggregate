@@ -34,8 +34,8 @@ final class RegenerateBiViewsCommand extends Command
 Reads anonymous_min_cell_count, anonymous_geo_min_cell_count and bi_page_groups
 from the active aggregate YAML (ANONYMOUS_MIN_CELL_COUNT and
 ANONYMOUS_GEO_MIN_CELL_COUNT take precedence) and rebuilds bi_anonymous_events_v1,
-bi_anonymous_goals_v1, bi_anonymous_geo_events_v1 and bi_anonymous_daily_v1 with
-them. Run it after editing those settings in YAML, and once after updating to a
+bi_anonymous_goals_v1, bi_anonymous_geo_events_v1, bi_anonymous_daily_v1,
+bi_anonymous_daily_rollup_v1 and bi_anonymous_coverage_v1 with them. Run it after editing those settings in YAML, and once after updating to a
 release that adds a view; saving the BI disclosure or page groups page in the
 dashboard does the same. Invalid settings stop it before any view changes.
 

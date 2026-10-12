@@ -213,6 +213,12 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   channel and device, releasing far more of a low-traffic site's events, with
   complementary suppression so it cannot be subtracted from the hourly view.
   Page groups are edited on the Page groups page or as `bi_page_groups`.
+- [Daily roll-up](docs/BI-CONNECTION.md#bi_anonymous_daily_rollup_v1) and
+  [coverage](docs/BI-CONNECTION.md#bi_anonymous_coverage_v1) views:
+  `bi_anonymous_daily_rollup_v1` pools the cells the daily view withholds into
+  coarser `(other)` rows, with the same rule against the hourly view, so daily
+  totals add up; `bi_anonymous_coverage_v1` reports, in bands, how much of each
+  day's traffic each event view releases.
 - [Processing tasks and an audit trail](docs/DATABASE.md#processing-tasks-and-audit-trail): two shared private tables for background job runs (status, lock, failure details) and their outcomes, used by BigQuery sync and maintenance, with UI/YAML purge periods.
 - [Organization traffic markers](docs/PRIVACY-COMPLIANCE.md#organization-traffic), with YAML/UI settings, marking links that set the marker on each tracked website, and a fixed `org_internal_traffic` flag on every event. Filtering uses retained event JSON; grouped BI views and archives do not retain the flag.
 - [Custom data models](docs/DATA-MODEL.md), including UTM/query mappings, per-property consent settings, downloadable YAML, and private reporting columns. All UTMs require consent by default; anonymous attribution should use at most broad `utm_medium` values, with documented warnings for overrides.

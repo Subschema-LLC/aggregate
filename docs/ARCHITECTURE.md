@@ -125,7 +125,9 @@ when they change ([AnonymousBiViewManager](../src/Service/AnonymousBiViewManager
 geography view also pools small areas into "other" so that a hidden area can't
 easily be worked out by subtraction, and the daily view by page group withholds
 any day whose hidden hourly remainder would be small, so it can't be subtracted
-from the hourly view either.
+from the hourly view either. The daily roll-up pools what the daily view
+withholds into coarser rows under the same rule, and the coverage view reports,
+in bands, how much each event view releases.
 
 Around them:
 

@@ -154,6 +154,8 @@ without the dashboard uses a service account key or Google Cloud credentials.
 | --- | --- |
 | `bi_anonymous_events_v1` | Hourly anonymous event counts, small cells withheld |
 | `bi_anonymous_daily_v1` | Daily anonymous event counts by page group, small and differencing cells withheld |
+| `bi_anonymous_daily_rollup_v1` | Daily anonymous event counts with withheld cells rolled up into coarser rows |
+| `bi_anonymous_coverage_v1` | Share of each day's anonymous events each event view releases, in bands |
 | `bi_anonymous_goals_v1` | Daily anonymous goal counts, small cells withheld |
 | `bi_anonymous_geo_events_v1` | Daily anonymous geography counts, small areas pooled (needs [optional geography](CONFIGURATION.md#optional-coarse-geography)) |
 | The seven `bi_dim_*_v1` views, `bi_glossary_values_v1`, `bi_glossary_columns_v1` | Labels and column descriptions |

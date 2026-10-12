@@ -26,7 +26,8 @@
             <p>
                 Routine BI credentials should receive <strong>SELECT access only</strong> to
                 <code>bi_anonymous_events_v1</code>, <code>bi_anonymous_goals_v1</code>,
-                <code>bi_anonymous_daily_v1</code>, and, when needed,
+                <code>bi_anonymous_daily_v1</code>, <code>bi_anonymous_daily_rollup_v1</code>,
+                <code>bi_anonymous_coverage_v1</code>, and, when needed,
                 <code>bi_anonymous_geo_events_v1</code>, plus the declared <code>bi_dim_*</code> and
                 <code>bi_glossary_*</code> metadata views needed for labels. Do not grant routine reporting
                 users access to <code>events</code>, <code>analytics_glossary</code>, or other application tables.
@@ -38,6 +39,8 @@
             <a class="button is-small is-light" href="#anonymous-events-view">Hourly event view</a>
             <a class="button is-small is-light" href="#anonymous-goals-view">Daily goal view</a>
             <a class="button is-small is-light" href="#anonymous-daily-view">Daily page group view</a>
+            <a class="button is-small is-light" href="#anonymous-rollup-view">Daily roll-up view</a>
+            <a class="button is-small is-light" href="#anonymous-coverage-view">Coverage view</a>
             <a class="button is-small is-light" href="#anonymous-geography-view">Daily geography view</a>
             <a class="button is-small is-light" href="#bi-glossary">BI labels and definitions</a>
             <a class="button is-small is-light" href="#custom-reporting-views">Custom reporting views</a>
@@ -288,6 +291,145 @@
                             <th scope="row"><code>event_count</code></th>
                             <td>Integer</td>
                             <td>Number of events in the released daily cell, not distinct people.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            </div>
+        </details>
+
+        <details id="anonymous-rollup-view" class="box data-structure-section" open>
+            <summary>
+                <div>
+                    <p class="heading mb-1">Approved BI contract</p>
+                    <h2 id="anonymous-rollup-view-heading" class="title is-4 mb-0"><code>bi_<wbr>anonymous_<wbr>daily_<wbr>rollup_<wbr>v1</code></h2>
+                </div>
+                <div class="tags mb-0">
+                    <span class="tag is-primary is-light">Anonymous only</span>
+                    <span class="tag is-light">Daily grain</span>
+                </div>
+            </summary>
+            <div class="data-structure-content">
+
+            <div class="content">
+                <p>
+                    The daily cells, with the ones too small to release rolled up into coarser rows instead
+                    of dropped: devices pooled first, then channels, then pages, then everything for the event
+                    and day. A pooled value is <code>(other)</code>, meaning the part not shown in more detailed
+                    rows. Every row reaches <code>anonymous_min_cell_count</code> and follows the same rule as the
+                    daily view against the hourly view, and each event is in at most one row, so daily totals
+                    add up. The full-detail rows are exactly the daily view's rows.
+                </p>
+            </div>
+
+            <div class="table-container" role="region" aria-labelledby="anonymous-rollup-view-heading" tabindex="0">
+                <table class="table is-fullwidth is-striped is-hoverable data-structure-table">
+                    <caption class="is-sr-only">Columns exposed by bi_anonymous_daily_rollup_v1</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">Column</th>
+                            <th scope="col">Logical type</th>
+                            <th scope="col">Meaning</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <th scope="row"><code>website_token</code></th>
+                            <td>String</td>
+                            <td>Site key used to partition events.</td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><code>event_day</code></th>
+                            <td>UTC date</td>
+                            <td>A completed UTC calendar day.</td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><code>event_name</code></th>
+                            <td>String</td>
+                            <td>Kept in every row.</td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><code>page_group</code></th>
+                            <td>Text</td>
+                            <td>Page group label, sanitized path, or <code>(other)</code>.</td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><code>referrer_channel</code></th>
+                            <td>Category</td>
+                            <td>Coarse source channel, or <code>(other)</code>.</td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><code>device_class</code></th>
+                            <td>Category</td>
+                            <td>Coarse device category, or <code>(other)</code>.</td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><code>event_count</code></th>
+                            <td>Integer</td>
+                            <td>Number of events in the row, not distinct people.</td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><code>detail_level</code></th>
+                            <td>Category</td>
+                            <td><code>page_channel_device</code>, <code>page_channel</code>, <code>page</code>, <code>channel</code> or <code>day</code>: which dimensions are known.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            </div>
+        </details>
+
+        <details id="anonymous-coverage-view" class="box data-structure-section" open>
+            <summary>
+                <div>
+                    <p class="heading mb-1">Approved BI contract</p>
+                    <h2 id="anonymous-coverage-view-heading" class="title is-4 mb-0"><code>bi_<wbr>anonymous_<wbr>coverage_<wbr>v1</code></h2>
+                </div>
+                <div class="tags mb-0">
+                    <span class="tag is-primary is-light">Anonymous only</span>
+                    <span class="tag is-light">Daily grain</span>
+                </div>
+            </summary>
+            <div class="data-structure-content">
+
+            <div class="content">
+                <p>
+                    How much of each completed day's anonymous traffic each event view releases, per website,
+                    as a band rather than a number, so a report can say how complete it is without revealing the
+                    day's total. Days with fewer events than <code>anonymous_min_cell_count</code> have no rows.
+                </p>
+            </div>
+
+            <div class="table-container" role="region" aria-labelledby="anonymous-coverage-view-heading" tabindex="0">
+                <table class="table is-fullwidth is-striped is-hoverable data-structure-table">
+                    <caption class="is-sr-only">Columns exposed by bi_anonymous_coverage_v1</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">Column</th>
+                            <th scope="col">Logical type</th>
+                            <th scope="col">Meaning</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <th scope="row"><code>website_token</code></th>
+                            <td>String</td>
+                            <td>Site key used to partition events.</td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><code>event_day</code></th>
+                            <td>UTC date</td>
+                            <td>A completed UTC calendar day.</td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><code>view_name</code></th>
+                            <td>String</td>
+                            <td><code>bi_anonymous_events_v1</code>, <code>bi_anonymous_daily_v1</code> or <code>bi_anonymous_daily_rollup_v1</code>.</td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><code>coverage_band</code></th>
+                            <td>Category</td>
+                            <td><code>90-100</code>, <code>50-90</code>, <code>10-50</code> or <code>0-10</code>: percent of the day's events the view releases.</td>
                         </tr>
                     </tbody>
                 </table>

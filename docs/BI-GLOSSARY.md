@@ -320,7 +320,8 @@ PostgreSQL (the view owner needs the underlying table permissions):
 
 ```sql
 GRANT USAGE ON SCHEMA public TO bi_reader;
-GRANT SELECT ON bi_anonymous_events_v1, bi_anonymous_daily_v1, bi_anonymous_goals_v1,
+GRANT SELECT ON bi_anonymous_events_v1, bi_anonymous_daily_v1, bi_anonymous_daily_rollup_v1,
+    bi_anonymous_coverage_v1, bi_anonymous_goals_v1,
     bi_anonymous_geo_events_v1, bi_dim_event_name_v1, bi_dim_goal_event_v1,
     bi_dim_referrer_channel_v1, bi_dim_device_class_v1, bi_dim_viewport_bucket_v1,
     bi_dim_geo_area_v1, bi_dim_website_token_v1, bi_glossary_values_v1,
@@ -333,6 +334,8 @@ needs its underlying table permissions):
 ```sql
 GRANT SELECT ON analytics.bi_anonymous_events_v1 TO 'bi_reader'@'bi-host';
 GRANT SELECT ON analytics.bi_anonymous_daily_v1 TO 'bi_reader'@'bi-host';
+GRANT SELECT ON analytics.bi_anonymous_daily_rollup_v1 TO 'bi_reader'@'bi-host';
+GRANT SELECT ON analytics.bi_anonymous_coverage_v1 TO 'bi_reader'@'bi-host';
 GRANT SELECT ON analytics.bi_anonymous_goals_v1 TO 'bi_reader'@'bi-host';
 GRANT SELECT ON analytics.bi_anonymous_geo_events_v1 TO 'bi_reader'@'bi-host';
 GRANT SELECT ON analytics.bi_dim_event_name_v1 TO 'bi_reader'@'bi-host';
@@ -352,6 +355,8 @@ ownership chain applies):
 ```sql
 GRANT SELECT ON OBJECT::dbo.bi_anonymous_events_v1 TO bi_reader;
 GRANT SELECT ON OBJECT::dbo.bi_anonymous_daily_v1 TO bi_reader;
+GRANT SELECT ON OBJECT::dbo.bi_anonymous_daily_rollup_v1 TO bi_reader;
+GRANT SELECT ON OBJECT::dbo.bi_anonymous_coverage_v1 TO bi_reader;
 GRANT SELECT ON OBJECT::dbo.bi_anonymous_goals_v1 TO bi_reader;
 GRANT SELECT ON OBJECT::dbo.bi_anonymous_geo_events_v1 TO bi_reader;
 GRANT SELECT ON OBJECT::dbo.bi_dim_event_name_v1 TO bi_reader;

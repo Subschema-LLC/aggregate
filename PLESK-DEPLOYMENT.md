@@ -591,7 +591,7 @@ allow their primary domain and all subdomains. Invalid explicit rules reject eve
 - [ ] `APP_DEBUG=0` in `.env`
 - [ ] `.env` is not publicly accessible (it's outside `public/`, so this is automatic)
 - [ ] Database user has minimal required privileges
-- [ ] Routine BI users can query only approved `bi_anonymous_events_v1` / `bi_anonymous_daily_v1` / `bi_anonymous_goals_v1` / `bi_anonymous_geo_events_v1` views, not raw `events`
+- [ ] Routine BI users can query only approved `bi_anonymous_events_v1` / `bi_anonymous_daily_v1` / `bi_anonymous_daily_rollup_v1` / `bi_anonymous_coverage_v1` / `bi_anonymous_goals_v1` / `bi_anonymous_geo_events_v1` views, not raw `events`
 - [ ] File permissions correct (`775` on `var/`, not `777`)
 - [ ] Worker running as non-root user
 - [ ] Regular database backups configured

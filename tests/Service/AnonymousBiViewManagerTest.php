@@ -19,7 +19,7 @@ use PHPUnit\Framework\TestCase;
 
 final class AnonymousBiViewManagerTest extends TestCase
 {
-    private const VIEWS = ['bi_anonymous_events_v1', 'bi_anonymous_goals_v1', 'bi_anonymous_geo_events_v1', 'bi_anonymous_daily_v1'];
+    private const VIEWS = ['bi_anonymous_events_v1', 'bi_anonymous_goals_v1', 'bi_anonymous_geo_events_v1', 'bi_anonymous_daily_v1', 'bi_anonymous_daily_rollup_v1', 'bi_anonymous_coverage_v1'];
 
     public function testSqliteDropsAndRecreatesEachViewInOneTransaction(): void
     {
@@ -30,7 +30,7 @@ final class AnonymousBiViewManagerTest extends TestCase
 
         (new AnonymousBiViewManager($connection))->regenerate(7, 30);
 
-        self::assertCount(8, $executed);
+        self::assertCount(12, $executed);
         foreach (self::VIEWS as $index => $view) {
             self::assertSame('DROP VIEW IF EXISTS '.$view, $executed[$index * 2]);
             self::assertStringStartsWith('CREATE VIEW '.$view.' AS', $executed[$index * 2 + 1]);
@@ -46,7 +46,7 @@ final class AnonymousBiViewManagerTest extends TestCase
 
         (new AnonymousBiViewManager($connection))->regenerate(7, 30);
 
-        self::assertCount(4, $executed);
+        self::assertCount(6, $executed);
         foreach (self::VIEWS as $index => $view) {
             self::assertStringStartsWith($verb.' VIEW '.$view.' AS', $executed[$index]);
             self::assertStringNotContainsString('DROP VIEW', $executed[$index]);
@@ -56,6 +56,13 @@ final class AnonymousBiViewManagerTest extends TestCase
         self::assertStringContainsString('30 AS minimum_cell_count', $executed[2]);
         self::assertStringContainsString('WHERE daily_cells.event_count >= 7', $executed[3]);
         self::assertStringContainsString('daily_cells.event_count - daily_cells.released_hourly_count >= 7', $executed[3]);
+        self::assertStringContainsString('WHEN event_count >= 7', $executed[4]);
+        self::assertStringContainsString('WHERE day_totals.total_count >= 7', $executed[5]);
+    }
+
+    public function testTheCoverageViewIsCreatedAfterTheViewsItReads(): void
+    {
+        self::assertSame('bi_anonymous_coverage_v1', AnonymousBiViewManager::VIEW_NAMES[array_key_last(AnonymousBiViewManager::VIEW_NAMES)]);
     }
 
     public static function serverPlatforms(): iterable
@@ -74,7 +81,7 @@ final class AnonymousBiViewManagerTest extends TestCase
 
         (new AnonymousBiViewManager($connection))->regenerate(5, 25);
 
-        self::assertCount(4, $executed);
+        self::assertCount(6, $executed);
     }
 
     public function testAFailedStatementRollsBackAndRethrows(): void

@@ -413,7 +413,7 @@ E2E::step('reporting views return the expected cells', static function () use ($
         $names[] = $name;
         $db->fetchOne('SELECT COUNT(*) FROM '.$name);
     }
-    foreach (['bi_anonymous_events_v1', 'bi_anonymous_goals_v1', 'bi_anonymous_geo_events_v1', 'bi_anonymous_daily_v1', 'bi_dim_website_token_v1', 'bi_glossary_values_v1', 'bi_glossary_columns_v1', 'analytics_archived_events_v1'] as $required) {
+    foreach (['bi_anonymous_events_v1', 'bi_anonymous_goals_v1', 'bi_anonymous_geo_events_v1', 'bi_anonymous_daily_v1', 'bi_anonymous_daily_rollup_v1', 'bi_anonymous_coverage_v1', 'bi_dim_website_token_v1', 'bi_glossary_values_v1', 'bi_glossary_columns_v1', 'analytics_archived_events_v1'] as $required) {
         E2E::check(in_array($required, $names, true), $required.' is missing; views: '.implode(', ', $names));
     }
     $pages = $db->fetchAllKeyValue("SELECT page_path, SUM(event_count) FROM bi_anonymous_events_v1 WHERE event_name = 'view' GROUP BY page_path");
@@ -439,7 +439,7 @@ E2E::step('BigQuery dry run exports every syncable view with its schema', static
     // types on this engine, without credentials or uploads.
     $output = $root.'/var/bigquery-dry-run';
     E2E::check(is_dir($output) || mkdir($output, 0700, true), 'The dry-run folder could not be created.');
-    $views = ['bi_anonymous_events_v1', 'bi_anonymous_goals_v1', 'bi_anonymous_geo_events_v1', 'bi_anonymous_daily_v1', 'bi_dim_website_token_v1', 'bi_dim_event_name_v1',
+    $views = ['bi_anonymous_events_v1', 'bi_anonymous_goals_v1', 'bi_anonymous_geo_events_v1', 'bi_anonymous_daily_v1', 'bi_anonymous_daily_rollup_v1', 'bi_anonymous_coverage_v1', 'bi_dim_website_token_v1', 'bi_dim_event_name_v1',
         'bi_dim_goal_event_v1', 'bi_dim_referrer_channel_v1', 'bi_dim_device_class_v1', 'bi_dim_viewport_bucket_v1', 'bi_dim_geo_area_v1',
         'bi_glossary_values_v1', 'bi_glossary_columns_v1', 'analytics_custom_events_v1', 'analytics_custom_pageviews_v1', 'analytics_custom_goals_v1',
         'analytics_archived_events_v1', 'analytics_archived_pageviews_v1', 'analytics_archived_goals_v1'];
@@ -508,6 +508,38 @@ E2E::step('the daily view groups pages and withholds cells that would reveal hou
     E2E::check($hourly('/group/') === 0 && $daily('grouped') === 6, 'Grouped pages: hourly rows '.$hourly('/group/').', daily '.json_encode($daily('grouped')));
     E2E::check($hourly('/spread') === 0 && $daily('/spread') === 6, 'Hours combined: hourly rows '.$hourly('/spread').', daily '.json_encode($daily('/spread')));
     E2E::check($hourly('/guard') === 1 && $daily('/guard') === null, 'A daily cell that would reveal a withheld hourly count of 2 was published: '.json_encode($daily('/guard')));
+});
+
+E2E::step('the roll-up view pools withheld cells and the coverage view bands them', static function () use ($root, $collect): void {
+    $db = connection($root);
+    $yesterday = (new \DateTimeImmutable('today', new \DateTimeZone('UTC')))->modify('-1 day');
+    $send = static function (string $path, int $count, int $hour, string $event, string $channel, string $device) use ($db, $collect, $yesterday): void {
+        $before = (int) $db->fetchOne('SELECT MAX(id) FROM events');
+        for ($i = 0; $i < $count; ++$i) {
+            $collect(['eventName' => $event, 'pagePath' => $path, 'referrerChannel' => $channel, 'deviceClass' => $device, 'viewportBucket' => 'large']);
+        }
+        $db->executeStatement('UPDATE events SET created_at = :at WHERE id > :from', ['at' => $yesterday->setTime($hour, 0), 'from' => $before], ['at' => Types::DATETIME_IMMUTABLE, 'from' => Types::INTEGER]);
+    };
+    // Each cell is below the threshold of 6; /pool/a reaches it by page, b-d by channel, e never.
+    $send('/pool/a', 3, 9, 'pool_check', 'search', 'desktop');
+    $send('/pool/a', 3, 9, 'pool_check', 'social', 'desktop');
+    $send('/pool/b', 2, 9, 'pool_check', 'search', 'desktop');
+    $send('/pool/c', 2, 9, 'pool_check', 'search', 'mobile');
+    $send('/pool/d', 2, 9, 'pool_check', 'search', 'tablet');
+    $send('/pool/e', 1, 9, 'pool_check', 'social', 'mobile');
+    $rows = $db->fetchAllAssociative("SELECT page_group, referrer_channel, device_class, detail_level, event_count FROM bi_anonymous_daily_rollup_v1 WHERE event_name = 'pool_check' AND event_day = :day ORDER BY detail_level", ['day' => $yesterday], ['day' => Types::DATE_IMMUTABLE]);
+    $rows = array_map(static fn (array $row): string => implode('|', [$row['page_group'], $row['referrer_channel'], $row['device_class'], $row['detail_level'], (int) $row['event_count']]), $rows);
+    E2E::check($rows === ['(other)|search|(other)|channel|6', '/pool/a|(other)|(other)|page|6'], 'Roll-up rows for pool_check: '.json_encode($rows));
+    E2E::check((int) $db->fetchOne("SELECT COUNT(*) FROM bi_anonymous_daily_rollup_v1 WHERE page_group = '/guard'") === 0, 'The roll-up published a row that would reveal the withheld /guard hour.');
+    $columns = 'website_token, event_day, event_name, page_group, referrer_channel, device_class, event_count';
+    $full = $db->fetchAllAssociative('SELECT '.$columns." FROM bi_anonymous_daily_rollup_v1 WHERE detail_level = 'page_channel_device' ORDER BY event_day, event_name, page_group, referrer_channel, device_class");
+    $daily = $db->fetchAllAssociative('SELECT '.$columns.' FROM bi_anonymous_daily_v1 ORDER BY event_day, event_name, page_group, referrer_channel, device_class');
+    E2E::check(json_encode($full) === json_encode($daily), 'Full-detail roll-up rows differ from the daily view.');
+    $rank = ['0-10' => 0, '10-50' => 1, '50-90' => 2, '90-100' => 3];
+    $bands = $db->fetchAllKeyValue('SELECT view_name, coverage_band FROM bi_anonymous_coverage_v1 WHERE event_day = :day', ['day' => $yesterday], ['day' => Types::DATE_IMMUTABLE]);
+    ksort($bands);
+    E2E::check(array_keys($bands) === ['bi_anonymous_daily_rollup_v1', 'bi_anonymous_daily_v1', 'bi_anonymous_events_v1'] && array_diff($bands, array_keys($rank)) === []
+        && $rank[$bands['bi_anonymous_daily_rollup_v1']] >= $rank[$bands['bi_anonymous_daily_v1']], 'Coverage bands: '.json_encode($bands));
 });
 
 E2E::step('retention deletes expired data', static function () use ($root): void {
