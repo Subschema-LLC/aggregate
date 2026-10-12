@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Service\BotDetection\BotDetector;
+
 final class PrivacyPolicy
 {
     public function __construct(private readonly AggregateConfigLoader $config)
@@ -28,6 +30,27 @@ final class PrivacyPolicy
     public function isStrictCollection(): bool
     {
         return (new CollectionProfile($this->config))->isStrict();
+    }
+
+    /** What happens to bot events: label (default) or drop. See BotTrafficSettings. */
+    public function botTraffic(): string
+    {
+        return (new BotTrafficSettings($this->config))->mode();
+    }
+
+    /**
+     * Whether a request comes from a bot: its User-Agent names a crawler,
+     * monitor or automated browser or matches bot_user_agents, or the tracker
+     * reported an automated browser. A client's report can only add the bot
+     * label; it cannot clear a User-Agent match.
+     */
+    public function isBotRequest(string $userAgent, mixed $submittedDeviceClass): bool
+    {
+        if (is_string($submittedDeviceClass) && strtolower(trim($submittedDeviceClass)) === 'bot') {
+            return true;
+        }
+
+        return BotDetector::isBot($userAgent, (new BotTrafficSettings($this->config))->userAgents());
     }
 
     public function isExcludedPath(string $pagePath): bool

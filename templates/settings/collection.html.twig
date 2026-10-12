@@ -56,6 +56,39 @@
             {% endif %}
         </div>
 
+        <fieldset class="field" aria-describedby="bot-traffic-help">
+            <legend class="label">Bot traffic</legend>
+            <div class="control">
+                <label class="radio">
+                    <input type="radio" name="bot_traffic" value="label" {% if bot_traffic == 'label' %}checked{% endif %}>
+                    Record and label as bots
+                </label>
+                <label class="radio">
+                    <input type="radio" name="bot_traffic" value="drop" {% if bot_traffic == 'drop' %}checked{% endif %}>
+                    Drop bot events
+                </label>
+            </div>
+            <div id="bot-traffic-help" class="help content">
+                <p>Bots are requests whose User-Agent names a crawler, monitor or automation tool from a maintained list, or one of your phrases below, and browsers the tracker reports as automated. <strong>Record and label</strong> stores them with device class <code>bot</code>, so reports can leave them out with <code>device_class &lt;&gt; 'bot'</code>. <strong>Drop</strong> stores nothing for them. The User-Agent is read while the request is handled and never stored. HTTP clients such as curl are not treated as bots, so server-side collection keeps working. The strict profile reads no User-Agent and classifies nothing.{% if docs_url('privacy.bots') %} <a href="{{ docs_url('privacy.bots') }}" target="_blank" rel="noopener noreferrer">How bot filtering works<span class="is-sr-only"> (opens in a new tab)</span></a>{% endif %}</p>
+            </div>
+            {% if bot_traffic_env_override %}
+                <p class="help is-warning">The <code>BOT_TRAFFIC</code> environment variable is set, so bot traffic is <strong>{{ bot_traffic }}</strong> regardless of the value saved here.</p>
+            {% endif %}
+            {% if bot_traffic_invalid %}
+                <p class="help is-danger">The saved <code>bot_traffic</code> or <code>bot_user_agents</code> value is not valid, so collection is stopped until it is corrected or saved here.</p>
+            {% endif %}
+        </fieldset>
+
+        <div class="field">
+            <label class="label" for="bot-user-agents">Additional bot User-Agent phrases</label>
+            <div class="control">
+                <textarea class="textarea is-family-monospace" id="bot-user-agents" name="bot_user_agents" rows="3" placeholder="ExampleUptimeMonitor&#10;internal-load-test" aria-describedby="bot-user-agents-help">{{ bot_user_agents|join('\n') }}</textarea>
+            </div>
+            <p class="help" id="bot-user-agents-help">Optional. One phrase per line, such as your own monitoring or load-testing tool. A request whose User-Agent contains a phrase, ignoring case, is treated as a bot. At most 50 phrases of 3 to 100 characters.</p>
+        </div>
+
+        <hr>
+
         <div class="field">
             <label class="checkbox">
                 <input type="checkbox" name="anonymous_tracking_enabled" value="1" {% if anonymous_tracking_enabled %}checked{% endif %}>

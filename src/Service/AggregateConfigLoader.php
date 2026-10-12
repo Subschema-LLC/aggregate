@@ -425,6 +425,15 @@ class AggregateConfigLoader implements ResetInterface
             }
         }
 
+        // Bot handling is a collection control too: an invalid value stops
+        // ingestion rather than guessing whether bot events should be kept.
+        $botTraffic = $this->hasEnvironmentOverride(BotTrafficSettings::KEY)
+            ? $this->getWithEnvFallback(BotTrafficSettings::KEY, BotTrafficSettings::DEFAULT_MODE)
+            : ($config[BotTrafficSettings::KEY] ?? BotTrafficSettings::DEFAULT_MODE);
+        if (!BotTrafficSettings::isValidConfiguration($botTraffic, $config[BotTrafficSettings::USER_AGENTS_KEY] ?? [])) {
+            return false;
+        }
+
         // An unrecognized profile must not silently fall back to the broader
         // standard collection; treat it like other invalid collection controls.
         $profile = $this->hasEnvironmentOverride(CollectionProfile::KEY)

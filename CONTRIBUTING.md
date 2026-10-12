@@ -130,7 +130,10 @@ Treat these as constraints on implementation and documentation:
 - **Ingestion controls apply to both modes.** The collection kill switch and
   sensitive-path exclusions must also block enhanced events. Configuration load
   failures must fail closed. Disabled or excluded requests must not create local
-  rate-limit buckets, geographic lookups, queue messages, or stored events.
+  rate-limit buckets, geographic lookups, queue messages, or stored events; nor
+  must bot requests when `bot_traffic` is `drop`. The server's bot
+  classification overrides a submitted device class, and the User-Agent it reads
+  is never stored in anonymous rows.
 - **Optional geography stays local and coarse.** Resolve only configured
   country/continent codes from a local MMDB. Do not send IPs to an external lookup
   service or copy addresses or detailed lookup records into events, queues, or
@@ -428,6 +431,7 @@ organization-marker artifacts keep their separate browser delivery paths.
 | [TrackEventMessage](src/Message/TrackEventMessage.php) and [TrackEventHandler](src/MessageHandler/TrackEventHandler.php) | Carry and persist enhanced events through Symfony Messenger |
 | [src/Service](src/Service) | Configuration, privacy policy, sanitization, goals, organization markers, branding, and data lifecycle services |
 | [src/Service/GeoIp](src/Service/GeoIp) | Local MMDB lookup and coarse geographic codes |
+| [src/Service/BotDetection](src/Service/BotDetection) | Bot User-Agent matching; `BotUserAgentPatterns.php` is generated from crawler-user-agents (MIT) by [scripts/update-bot-patterns.py](scripts/update-bot-patterns.py), never edited by hand |
 | [src/Entity](src/Entity), [src/Repository](src/Repository), [migrations](migrations) | Doctrine model, database access, schema, and versioned reporting views |
 | [config](config) | YAML application/website/goal settings, Symfony services, routes, and package configuration |
 | [src/Command](src/Command) | CLI installation, website creation, and analytics maintenance |

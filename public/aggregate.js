@@ -900,6 +900,11 @@
     getDeviceClass: function(){
       if (strictCollection) return 'unknown';
       if (withStandardProfile) {
+        // A browser driven by automation (navigator.webdriver) is reported as a
+        // bot; the server decides whether to label or drop the event.
+        try {
+          if (typeof navigator !== 'undefined' && navigator.webdriver === true) return 'bot';
+        } catch(e) {}
         var viewportBucket = this.getViewportBucket();
         if (viewportBucket === 'small') return 'mobile';
         if (viewportBucket === 'medium') return 'tablet';

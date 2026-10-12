@@ -44,7 +44,7 @@ allowed 2–1000) are absent.
 | `event_name` | String | `view` for page views, or a fixed, safe name for a measured interaction. |
 | `page_path` | Text | Sanitized path: query strings and fragments removed, identifier-like segments redacted. |
 | `referrer_channel` | Category | `direct`, `internal`, `search`, `social`, `email`, `referral` or `unknown`. |
-| `device_class` | Category | `mobile`, `tablet`, `desktop`, `bot` or `unknown`. |
+| `device_class` | Category | `mobile`, `tablet`, `desktop`, `bot` or `unknown`. `bot` marks [recognized bots](PRIVACY-COMPLIANCE.md#bot-traffic); filter `device_class <> 'bot'` to leave them out. |
 | `viewport_bucket` | Category | `small`, `medium`, `large` or `unknown`. |
 | `event_count` | Integer | Number of events in the cell. Not a count of people. |
 
@@ -67,7 +67,7 @@ hourly cells miss. The current UTC day is absent.
 | `event_name` | String | `view` for page views, or a fixed, safe interaction name. |
 | `page_group` | Text | The label of the first matching [page group](#page-groups) rule, or the sanitized page path when no rule matches. Labels never start with `/`. |
 | `referrer_channel` | Category | `direct`, `internal`, `search`, `social`, `email`, `referral` or `unknown`. |
-| `device_class` | Category | `mobile`, `tablet`, `desktop`, `bot` or `unknown`. |
+| `device_class` | Category | `mobile`, `tablet`, `desktop`, `bot` or `unknown`. `bot` marks [recognized bots](PRIVACY-COMPLIANCE.md#bot-traffic); filter `device_class <> 'bot'` to leave them out. |
 | `event_count` | Integer | Number of events in the cell. Not a count of people. |
 
 A cell is released when it reaches `anonymous_min_cell_count` **and** the part

@@ -51,6 +51,7 @@ final class DocumentationLinks
         'privacy.strict' => ['privacy/compliance#strict-collection-profile', 'docs/PRIVACY-COMPLIANCE.md'],
         'privacy.enhanced' => ['privacy/compliance#enhanced-analytics-consent', 'docs/PRIVACY-COMPLIANCE.md'],
         'privacy.utm' => ['privacy/compliance#custom-properties-and-utm-consent', 'docs/PRIVACY-COMPLIANCE.md'],
+        'privacy.bots' => ['privacy/compliance#bot-traffic', 'docs/PRIVACY-COMPLIANCE.md'],
         'privacy.controls' => ['privacy/compliance#administrative-controls', 'docs/PRIVACY-COMPLIANCE.md'],
         'privacy.organization-traffic' => ['privacy/compliance#organization-traffic', 'docs/PRIVACY-COMPLIANCE.md'],
         'privacy.suppression' => ['privacy/compliance#bi-exposure-and-suppression', 'docs/PRIVACY-COMPLIANCE.md'],

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Service;
 
 use App\Service\AggregateConfigLoader;
+use App\Service\BotTrafficSettings;
 use App\Service\CollectionControlsForm;
 use App\Service\CustomDataSettings;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -96,11 +97,60 @@ final class CollectionControlsFormTest extends TestCase
         CollectionControlsForm::fromSubmission(new ParameterBag($values), $this->current());
     }
 
+    public function testBotSettingsAreWrittenOnlyWhenTheyChange(): void
+    {
+        $form = CollectionControlsForm::fromSubmission(
+            new ParameterBag(['bot_traffic' => 'drop', 'bot_user_agents' => " ExampleMonitor \n\nload-test\nexamplemonitor"]),
+            $this->current(),
+            $this->bots(),
+        );
+        self::assertSame('drop', $form['settings']['bot_traffic']);
+        self::assertSame(['ExampleMonitor', 'load-test'], $form['settings']['bot_user_agents']);
+
+        $form = CollectionControlsForm::fromSubmission(new ParameterBag(['bot_traffic' => 'label', 'bot_user_agents' => '']), $this->current(), $this->bots());
+        self::assertArrayNotHasKey('bot_traffic', $form['settings'], 'the default is not pinned');
+        self::assertArrayNotHasKey('bot_user_agents', $form['settings']);
+
+        $form = CollectionControlsForm::fromSubmission(new ParameterBag(['bot_traffic' => 'drop', 'bot_user_agents' => 'ExampleMonitor']), $this->current(), $this->bots(['bot_traffic' => 'drop', 'bot_user_agents' => ['ExampleMonitor']]));
+        self::assertArrayNotHasKey('bot_traffic', $form['settings']);
+        self::assertArrayNotHasKey('bot_user_agents', $form['settings']);
+
+        $form = CollectionControlsForm::fromSubmission(new ParameterBag(['bot_user_agents' => '']), $this->current(), $this->bots(['bot_user_agents' => ['ExampleMonitor']]));
+        self::assertSame([], $form['settings']['bot_user_agents'], 'clearing the phrases is saved');
+    }
+
+    /** @return iterable<string, array{array<string, string>, string}> */
+    public static function invalidBotSubmissions(): iterable
+    {
+        yield 'mode' => [['bot_traffic' => 'block'], 'Bot traffic must be label or drop.'];
+        $phrases = 'Enter at most 50 bot User-Agent phrases, one per line, each 3 to 100 characters without control characters.';
+        yield 'short phrase' => [['bot_user_agents' => 'ab'], $phrases];
+        yield 'long phrase' => [['bot_user_agents' => str_repeat('x', 101)], $phrases];
+        yield 'too many' => [['bot_user_agents' => implode("\n", array_map(static fn (int $i): string => 'phrase-'.$i, range(1, 51)))], $phrases];
+        yield 'too long' => [['bot_user_agents' => str_repeat("phrase\n", 2400)], 'Bot User-Agent phrases are too long.'];
+    }
+
+    /** @param array<string, string> $values */
+    #[DataProvider('invalidBotSubmissions')]
+    public function testInvalidBotSettingsAreRejectedWithThePageMessage(array $values, string $message): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage($message);
+        CollectionControlsForm::fromSubmission(new ParameterBag($values), $this->current(), $this->bots());
+    }
+
     public function testWindowsDrivePathsAreLocal(): void
     {
         CollectionControlsForm::assertLocalGeoDatabasePath('C:\\GeoIP\\GeoLite2-Country.mmdb');
         CollectionControlsForm::assertLocalGeoDatabasePath('');
         $this->addToAssertionCount(2);
+    }
+
+    private function bots(array $config = []): BotTrafficSettings
+    {
+        file_put_contents($this->projectDir.'/config/aggregate.yaml', Yaml::dump($config));
+
+        return new BotTrafficSettings(new AggregateConfigLoader($this->projectDir, 'test'));
     }
 
     private function current(array $config = []): CustomDataSettings

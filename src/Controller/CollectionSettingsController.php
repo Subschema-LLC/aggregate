@@ -3,6 +3,7 @@
 namespace App\Controller;
 
 use App\Service\AggregateConfigLoader;
+use App\Service\BotTrafficSettings;
 use App\Service\CollectionControlsForm;
 use App\Service\CollectionProfile;
 use App\Service\CustomDataSettings;
@@ -50,6 +51,7 @@ class CollectionSettingsController extends AbstractController
         $geoDatabasePath = $this->config->getWithEnvFallback('anonymous_geo_database_path', '');
         $collectionProfile = new CollectionProfile($this->config);
         $customData = new CustomDataSettings($this->config);
+        $bots = new BotTrafficSettings($this->config);
         $trackingRetrySettings = TrackingFailureSettings::defaults();
         $trackingRetryOverrides = [
             TrackingFailureSettings::KEY_ENABLED => false,
@@ -78,6 +80,10 @@ class CollectionSettingsController extends AbstractController
             'tracking_retry_environment_overrides' => $trackingRetryOverrides,
             'google_consent_mode' => $customData->googleConsentMode(),
             'google_consent_mode_invalid' => $customData->hasInvalidGoogleConsentMode(),
+            'bot_traffic' => $bots->mode(),
+            'bot_traffic_env_override' => $bots->hasEnvironmentOverride(),
+            'bot_traffic_invalid' => $bots->isInvalid(),
+            'bot_user_agents' => $bots->userAgents(),
         ]);
     }
 
@@ -121,7 +127,7 @@ class CollectionSettingsController extends AbstractController
         }
 
         try {
-            $form = CollectionControlsForm::fromSubmission($request->request, new CustomDataSettings($this->config));
+            $form = CollectionControlsForm::fromSubmission($request->request, new CustomDataSettings($this->config), new BotTrafficSettings($this->config));
         } catch (\InvalidArgumentException $e) {
             $this->addFlash('error', $e->getMessage());
             return $this->redirectToRoute('app_collection_settings');
@@ -136,6 +142,10 @@ class CollectionSettingsController extends AbstractController
             $effectiveProfile = new CollectionProfile($this->config);
             if ($effectiveProfile->hasEnvironmentOverride() && $effectiveProfile->name() !== $collectionProfile) {
                 $this->addFlash('warning', sprintf('The COLLECTION_PROFILE environment variable keeps the %s profile in effect. The saved YAML value applies only when that variable is removed.', $effectiveProfile->name()));
+            }
+            $effectiveBots = new BotTrafficSettings($this->config);
+            if (isset($form['settings'][BotTrafficSettings::KEY]) && $effectiveBots->hasEnvironmentOverride() && $effectiveBots->mode() !== $form['settings'][BotTrafficSettings::KEY]) {
+                $this->addFlash('warning', sprintf('The BOT_TRAFFIC environment variable keeps bot traffic set to %s. The saved YAML value applies only when that variable is removed.', $effectiveBots->mode()));
             }
             if ($effectiveGeoEnabled && !$effectiveProfile->isStrict() && (!is_string($effectiveGeoPath) || trim($effectiveGeoPath) === '')) {
                 $this->addFlash('warning', 'Coarse geography is enabled without a local GeoIP database path. Events will continue with no geography until one is configured.');

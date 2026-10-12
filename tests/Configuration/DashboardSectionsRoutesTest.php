@@ -402,6 +402,18 @@ final class DashboardSectionsRoutesTest extends TestCase
         self::assertSame('updates', Yaml::parseFile($this->temporaryDirectory.'/config/aggregate.yaml')['google_consent_mode']);
         $collection = $browser->request('GET', '/dashboard/collection');
         self::assertSame('updates', $collection->filter('#google-consent-mode option[selected]')->attr('value'));
+        self::assertSame('label', $collection->filter('input[name="bot_traffic"][checked]')->attr('value'));
+        self::assertArrayNotHasKey('bot_traffic', Yaml::parseFile($this->temporaryDirectory.'/config/aggregate.yaml'), 'the default is not pinned');
+
+        $form = $collection->selectButton('Save Collection Settings')->form(['bot_traffic' => 'drop', 'bot_user_agents' => "ExampleMonitor\nload-test"]);
+        $browser->submit($form);
+        $this->assertRedirect($browser, '/dashboard/collection');
+        $saved = Yaml::parseFile($this->temporaryDirectory.'/config/aggregate.yaml');
+        self::assertSame('drop', $saved['bot_traffic']);
+        self::assertSame(['ExampleMonitor', 'load-test'], $saved['bot_user_agents']);
+        $collection = $browser->request('GET', '/dashboard/collection');
+        self::assertSame('drop', $collection->filter('input[name="bot_traffic"][checked]')->attr('value'));
+        self::assertSame("ExampleMonitor\nload-test", $collection->filter('#bot-user-agents')->text(normalizeWhitespace: false));
         $this->assertNoDatabaseConnection();
     }
 
