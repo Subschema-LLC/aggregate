@@ -408,7 +408,7 @@ sudo certbot --nginx -d analytics.example.com
 - Never commit `.env` (server-specific env file) to version control — it is gitignored by default
 - Keep `config/aggregate.yaml`, environment-specific `config/aggregate_*.yaml`, `config/websites.yaml`, and `config/tag-manager/sites/` private; commit only sanitized example files
 - Use a unique, strong `APP_SECRET` in the server environment
-- Review anonymous path exclusions and configure both database-backed BI minimum-cell thresholds in the admin dashboard before collection (`5` hourly; `25` daily geography defaults)
+- Review anonymous path exclusions and set both BI minimum-cell thresholds before collection (`anonymous_min_cell_count`, default `5`; `anonymous_geo_min_cell_count`, default `25`), on the BI disclosure page or in YAML followed by `php bin/console app:analytics:bi-views:regenerate`
 - Review every code in `config/goals.yaml`; keep values fixed and non-identifying, and set `anonymous: false` where enhanced consent is appropriate
 - Leave coarse geography disabled unless its purpose, legal basis, notice, traffic volume, and local MMDB lifecycle have been reviewed
 - Rotate secrets periodically

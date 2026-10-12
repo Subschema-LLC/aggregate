@@ -179,8 +179,10 @@ the physical type differs between database engines.
 | `anonymous_geo_min_cell_count` | Integer | Threshold for the daily geography view; default 25, allowed 10–1000. |
 
 Dashboard saves under **Reporting → BI disclosure** write YAML and regenerate
-`bi_anonymous_events_v1`, `bi_anonymous_goals_v1`, and `bi_anonymous_geo_events_v1`.
-Environment overrides (`ANONYMOUS_MIN_CELL_COUNT`,
+`bi_anonymous_events_v1`, `bi_anonymous_goals_v1`, and `bi_anonymous_geo_events_v1`;
+after editing YAML directly, run `php bin/console app:analytics:bi-views:regenerate`.
+Server databases replace the views in place, so the reporting account's grants
+are kept. Environment overrides (`ANONYMOUS_MIN_CELL_COUNT`,
 `ANONYMOUS_GEO_MIN_CELL_COUNT`) take precedence.
 
 **There is no `websites` table.** Website names, domains and tokens live in

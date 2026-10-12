@@ -32,7 +32,9 @@ Configuration has separate sources of truth:
 - **`config/quick_search.yaml`** (app-level, committed): Dashboard quick-search synonyms and extra entries. Customize it in `config/quick_search.local.yaml`.
 - **`config/websites.yaml`** (untracked): Website names, primary domains, allowed event-source domains, and public ingestion tokens, managed through the Websites page, YAML, or `app:create-website`.
 - **`config/tag-manager/sites/<site-id>.yaml`** (untracked): Per-website CMP settings, tags, triggers, and variables, managed through the Tag manager page or YAML. Run `app:tag-manager:sites` to list IDs and paths; see [Tag manager](TAG-MANAGER.md). Analytics collection settings and data models remain deployment-wide.
-- **`anonymous_min_cell_count` / `anonymous_geo_min_cell_count`** (deployment config): BI disclosure thresholds in `config/aggregate*.yaml`, managed through the BI disclosure dashboard form, YAML, or environment overrides.
+- **`anonymous_min_cell_count` / `anonymous_geo_min_cell_count`** (deployment config): BI disclosure thresholds in `config/aggregate*.yaml`, managed through the BI disclosure dashboard form, YAML, or environment overrides, and applied with `app:analytics:bi-views:regenerate` (see [BI disclosure thresholds](#bi-disclosure-thresholds)).
+
+The database holds no operator settings: it stores collected events, archives, users and operational records. Tables such as `analytics_glossary` are generated copies of YAML for BI joins.
 
 The web installer at `/install` is optional and only needed when you want dashboard-based setup.
 
@@ -286,12 +288,23 @@ ZIPs include them. `app:updates:apply` runs these steps for Git checkouts, and
 (for Plesk, see its [deployment actions](../PLESK-DEPLOYMENT.md#plesk-git-deployment-actions)).
 Saving existing branding settings takes effect without an asset build.
 
+### BI disclosure thresholds
+
 The two BI disclosure thresholds are deployment configuration values in `config/aggregate*.yaml`:
 
 - `anonymous_min_cell_count`: completed hourly cells in `bi_anonymous_events_v1` and completed daily goal cells in `bi_anonymous_goals_v1` (default `5`, range `2`–`1000`)
 - `anonymous_geo_min_cell_count`: completed daily cells in `bi_anonymous_geo_events_v1` (default `25`, range `10`–`1000`)
 
-Dashboard saves write YAML and regenerate `bi_anonymous_events_v1`, `bi_anonymous_goals_v1`, and `bi_anonymous_geo_events_v1` so SQL view definitions track the effective thresholds. Environment overrides (`ANONYMOUS_MIN_CELL_COUNT`, `ANONYMOUS_GEO_MIN_CELL_COUNT`) still take precedence.
+The thresholds are written into the SQL of the views, so a new value takes effect when the views are regenerated. Saving the **BI disclosure** page writes YAML and regenerates them. After editing YAML directly, or setting an environment override, run:
+
+```bash
+php bin/console app:analytics:bi-views:regenerate --dry-run   # print the SQL
+php bin/console app:analytics:bi-views:regenerate
+```
+
+Environment overrides (`ANONYMOUS_MIN_CELL_COUNT`, `ANONYMOUS_GEO_MIN_CELL_COUNT`) take precedence over YAML. An invalid value stops regeneration and leaves the existing views in place. PostgreSQL, MySQL, MariaDB and SQL Server replace each view in place, so the reporting account's grants are kept; SQLite drops and recreates them and has no grants.
+
+**Upgrading from database-stored thresholds.** Earlier releases kept the thresholds in an `analytics_privacy_settings` table. The migration that removes it rebuilds the views with the values it found there, but it does not write them to YAML. If you had changed either threshold from its default, copy the values into `config/aggregate.yaml` before you next save the BI disclosure page or run the command; otherwise the views return to the YAML values (the defaults when unset).
 
 ## Feature flags
 

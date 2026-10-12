@@ -370,15 +370,22 @@ build depend on the website as well as the deployment.
 
 ### YAML and the command line first; the dashboard is optional
 
-**Decision.** Every setting can be managed in YAML or from the command line, and
-the whole application works with the dashboard turned off.
+**Decision.** Every setting lives in YAML, can be managed from the command line,
+and the whole application works with the dashboard turned off. The database
+holds collected data, users and operational records, never settings; tables that
+publish configuration to BI tools, such as `analytics_glossary`, are generated
+from YAML. The BI disclosure thresholds moved from an `analytics_privacy_settings`
+table into YAML to close the last exception, and
+`app:analytics:bi-views:regenerate` applies them without the dashboard.
 
 **Why.** Operators automate deployments, keep configuration in version control,
-and some want no login page on a collection server.
+and some want no login page on a collection server. Keeping settings out of the
+database keeps the schema small and lets an operator read the whole
+configuration in one place.
 
 **Trade-off.** Each new setting is built twice (file and form) on top of one shared
-validation. BI thresholds are a known exception: they are stored only in the
-database.
+validation. A setting compiled into SQL, like a threshold, only takes effect when
+its views are regenerated, so a YAML edit needs that explicit step.
 
 **What would change it.** Nothing; new exceptions need a documented reason.
 

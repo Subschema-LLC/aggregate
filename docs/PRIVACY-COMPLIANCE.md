@@ -433,7 +433,7 @@ The BI disclosure thresholds are deployment configuration values (`config/aggreg
 - `anonymous_min_cell_count` controls grouped hourly cells in `bi_anonymous_events_v1` and completed daily cells in `bi_anonymous_goals_v1` (default `5`, range `2`–`1000`).
 - `anonymous_geo_min_cell_count` controls completed daily cells in `bi_anonymous_geo_events_v1` (default `25`, range `10`–`1000`).
 
-Dashboard saves write YAML and regenerate all three BI views so SQL definitions track the effective thresholds. Environment overrides (`ANONYMOUS_MIN_CELL_COUNT` and `ANONYMOUS_GEO_MIN_CELL_COUNT`) still take precedence.
+Dashboard saves write YAML and regenerate all three BI views so SQL definitions track the effective thresholds; after editing YAML directly, run `php bin/console app:analytics:bi-views:regenerate`. Until then the views keep their previous thresholds. Environment overrides (`ANONYMOUS_MIN_CELL_COUNT` and `ANONYMOUS_GEO_MIN_CELL_COUNT`) still take precedence. When upgrading from a release that stored thresholds in the database, copy any customized values into YAML first (see [BI disclosure thresholds](CONFIGURATION.md#bi-disclosure-thresholds)).
 
 Archiving and deletion policy is separate and can be managed by administrators at `/dashboard/data-lifecycle`, in `config/aggregate.yaml`, or with uppercase environment-variable overrides. Environment-controlled values are read-only in the UI. Both actions are disabled by default, settings are strictly range-checked, and unsafe archive/retention ordering is rejected. Schedule `php bin/console app:analytics:maintain` externally; a saved policy does not run maintenance from a web request.
 
