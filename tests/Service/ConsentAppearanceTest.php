@@ -139,14 +139,14 @@ final class ConsentAppearanceTest extends TestCase
                 [
                     'id' => 'eu_eea',
                     'name' => 'European Union & EEA',
-                    'consent_type' => 'explicit',
+                    'consent_type' => 'explicit_eu',
                     'default' => true,
                     'text' => ['title' => 'EU Choices', 'description' => 'GDPR requires prior consent.'],
                 ],
                 [
                     'id' => 'us',
                     'name' => 'United States',
-                    'consent_type' => 'implicit',
+                    'consent_type' => 'implicit_us',
                     'default' => false,
                     'text' => ['title' => 'US Notice', 'description' => 'We use cookies. Opt out below.'],
                 ],
@@ -156,18 +156,67 @@ final class ConsentAppearanceTest extends TestCase
         $validated = ConsentAppearance::validate($input, ConsentAppearance::BUILTIN, 'consent_manager');
         self::assertCount(2, $validated['regions']);
         self::assertSame('eu_eea', $validated['regions'][0]['id']);
-        self::assertSame('explicit', $validated['regions'][0]['consent_type']);
+        self::assertSame('explicit_eu', $validated['regions'][0]['consent_type']);
         self::assertTrue($validated['regions'][0]['default']);
         self::assertSame('us', $validated['regions'][1]['id']);
-        self::assertSame('implicit', $validated['regions'][1]['consent_type']);
+        self::assertSame('implicit_us', $validated['regions'][1]['consent_type']);
         self::assertFalse($validated['regions'][1]['default']);
 
         $browser = ConsentAppearance::browser($validated);
         self::assertArrayHasKey('regions', $browser);
         self::assertSame('eu_eea', $browser['regions'][0]['id']);
-        self::assertSame('explicit', $browser['regions'][0]['consentType']);
+        self::assertSame('explicit_eu', $browser['regions'][0]['consentType']);
         self::assertSame('EU Choices', $browser['regions'][0]['text']['title']);
-        self::assertSame('implicit', $browser['regions'][1]['consentType']);
+        self::assertSame('implicit_us', $browser['regions'][1]['consentType']);
+    }
+
+    public function testConsentTypesDefaultToExplicitEuAndOlderNamesAreNormalized(): void
+    {
+        $regions = ConsentAppearance::regions([
+            ['id' => 'none', 'name' => 'No type'],
+            ['id' => 'old-explicit', 'name' => 'Older explicit', 'consent_type' => 'explicit'],
+            ['id' => 'old-implicit', 'name' => 'Older implicit', 'consent_type' => 'implicit'],
+            ['id' => 'us', 'name' => 'United States', 'consent_type' => 'explicit_us'],
+        ], ConsentAppearance::BUILTIN, 'regions');
+
+        self::assertSame(['explicit_eu', 'explicit_eu', 'implicit_us', 'explicit_us'], array_column($regions, 'consent_type'));
+        self::assertSame('explicit_eu', ConsentAppearance::DEFAULT_CONSENT_TYPE);
+        self::assertSame(['implicit_us', 'explicit_us', 'explicit_eu'], ConsentAppearance::CONSENT_TYPES);
+    }
+
+    /** @return iterable<string, array{mixed}> */
+    public static function unknownConsentTypes(): iterable
+    {
+        yield 'unknown name' => ['opt_in'];
+        yield 'empty' => [''];
+        yield 'wrong case' => ['Explicit_EU'];
+        yield 'boolean' => [true];
+        yield 'list' => [['explicit_eu']];
+    }
+
+    #[DataProvider('unknownConsentTypes')]
+    public function testUnknownConsentTypesAreRejectedWithTheAllowedNames(mixed $type): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('regions[0].consent_type must be one of implicit_us, explicit_us, explicit_eu.');
+        ConsentAppearance::regions([['id' => 'x', 'name' => 'X', 'consent_type' => $type]], ConsentAppearance::BUILTIN, 'regions');
+    }
+
+    public function testCloseButtonLabelsAreBannerAndRegionWording(): void
+    {
+        foreach ([ConsentAppearance::BUILTIN, ConsentAppearance::STANDALONE] as $banner) {
+            $validated = ConsentAppearance::validate([
+                'text' => ['dismiss' => 'Hide', 'dismiss_reject' => 'Reject and hide'],
+                'regions' => [['id' => 'us', 'name' => 'US', 'consent_type' => 'explicit_us', 'text' => ['dismiss' => 'Close US notice']]],
+            ], $banner, 'x');
+            $browser = ConsentAppearance::browser($validated);
+            self::assertSame(['dismiss' => 'Hide', 'dismissReject' => 'Reject and hide'], $browser['text'], $banner);
+            self::assertSame(['dismiss' => 'Close US notice'], $browser['regions'][0]['text'], $banner);
+        }
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('x.text.dismiss must be nonempty plain text of at most 120 UTF-8 bytes');
+        ConsentAppearance::validate(['text' => ['dismiss' => str_repeat('x', 121)]], ConsentAppearance::BUILTIN, 'x');
     }
 
     public function testRegionsValidationRejectsInvalidOptions(): void

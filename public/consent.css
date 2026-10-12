@@ -58,6 +58,7 @@
     gap: 0.5rem;
     justify-content: flex-end;
     margin-bottom: 0.75rem;
+    padding-right: 2.25rem;
 }
 
 .ac-consent-region label {
@@ -84,6 +85,12 @@
     letter-spacing: -0.015em;
     line-height: 1.35;
     margin: 0 0 0.5rem;
+    padding-right: 2.25rem;
+}
+
+/* Below the region row the heading is clear of the close button. */
+.ac-consent-region + h2 {
+    padding-right: 0;
 }
 
 .ac-consent p {
@@ -182,6 +189,31 @@
 .ac-consent button:active {
     filter: brightness(0.92);
     transform: translateY(0);
+}
+
+/* The close button (×) in the top-right corner. It is not an action button, so
+   it uses the text color on the banner background rather than button colors. */
+.ac-consent .ac-consent-close {
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    color: var(--ac-text);
+    font-size: 1.5rem;
+    font-weight: 400;
+    height: 2rem;
+    line-height: 1;
+    padding: 0;
+    position: absolute;
+    right: 0.75rem;
+    top: 0.75rem;
+    width: 2rem;
+}
+
+.ac-consent .ac-consent-close:hover {
+    background: color-mix(in srgb, var(--ac-text) 8%, transparent);
+    box-shadow: none;
+    filter: none;
+    transform: none;
 }
 
 .ac-consent a:focus-visible,

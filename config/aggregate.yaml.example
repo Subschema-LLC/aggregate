@@ -82,22 +82,29 @@ tag_manager:
 # Set enabled to false to omit cmp-lite from default install scripts and disable it by default.
 # consent_manager:
 #   enabled: true
+#   # default_region and regions are not read from this file; they show the shape. Set them
+#   # in each website's config/tag-manager/sites/<site-id>.yaml under consent_manager, or on
+#   # Collection -> Consent manager lite.
 #   # Optional default region ID to show on the banner for new visitors before a selection is made.
 #   default_region: eu_eea
 #   # Optional regional consent rules: lets visitors select their region or configures
-#   # region-specific messaging and consent types ('explicit' opt-in vs 'implicit' notice).
-#   # When 2 or more regions are configured, a region dropdown selector is displayed.
+#   # region-specific messaging and consent types. When 2 or more regions are configured,
+#   # a region dropdown selector is displayed. Every type shows a close button (x):
+#   #   explicit_eu  (default) Opt-in; x rejects all optional categories and saves that choice.
+#   #   explicit_us  Opt-in; x hides the banner for the tab session and keeps categories denied.
+#   #   implicit_us  Notice; enhanced analytics starts allowed, x hides the notice for the tab session.
+#   # The older values explicit and implicit still work and mean explicit_eu and implicit_us.
 #   regions:
 #     - id: eu_eea
 #       name: 'European Union & EEA'
-#       consent_type: explicit   # Opt-in: analytics starts denied until affirmative accept
+#       consent_type: explicit_eu   # Opt-in: analytics starts denied until affirmative accept
 #       default: true
 #       text:
 #         title: '{name}: Privacy choices'
 #         description: 'Under GDPR, optional categories start denied.'
 #     - id: us
 #       name: 'United States'
-#       consent_type: implicit   # Notice / Opt-out: analytics is active with opt-out
+#       consent_type: implicit_us   # Notice / Opt-out: analytics is active with opt-out
 #       text:
 #         title: '{name}: Notice of privacy choices'
 #         description: 'We use cookies for analytics. You may opt out at any time.'

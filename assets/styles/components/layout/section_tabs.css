@@ -18,7 +18,13 @@
     margin-bottom: -1px;
 }
 
-.section-underline-tabs li a {
+/*
+ * The selectors include .tabs to outrank the global
+ * a:not(.button):not(.navbar-item) link color, and the active tab uses the
+ * contrast-checked --app-brand-primary-text: the raw brand primary can be a
+ * dark color that disappears on the dark theme's background.
+ */
+.tabs.section-underline-tabs li a {
     align-items: center;
     border-bottom: 2px solid transparent;
     color: color-mix(in srgb, var(--app-brand-text) 70%, transparent);
@@ -32,14 +38,14 @@
     white-space: nowrap;
 }
 
-.section-underline-tabs li a:hover {
-    border-bottom-color: color-mix(in srgb, var(--app-brand-primary) 40%, transparent);
+.tabs.section-underline-tabs li a:hover {
+    border-bottom-color: color-mix(in srgb, var(--app-brand-primary-text) 40%, transparent);
     color: var(--app-brand-text);
 }
 
-.section-underline-tabs li.is-active a {
-    border-bottom-color: var(--app-brand-primary);
-    color: var(--app-brand-primary);
+.tabs.section-underline-tabs li.is-active a {
+    border-bottom-color: var(--app-brand-primary-text);
+    color: var(--app-brand-primary-text);
     font-weight: 600;
 }
 
@@ -49,7 +55,7 @@
 }
 
 .section-underline-tabs li.is-active .icon {
-    color: var(--app-brand-primary);
+    color: var(--app-brand-primary-text);
     opacity: 1;
 }
 
@@ -69,7 +75,7 @@
     padding: 0;
 }
 
-.workspace-subtabs li a {
+.workspace-subtabs li a:not(.button) {
     align-items: center;
     background: color-mix(in srgb, var(--app-brand-text) 4%, transparent);
     border: 1px solid var(--app-brand-border);
@@ -84,20 +90,20 @@
     transition: all 0.15s ease;
 }
 
-.workspace-subtabs li a:hover {
+.workspace-subtabs li a:not(.button):hover {
     background: color-mix(in srgb, var(--app-brand-primary) 8%, transparent);
     border-color: color-mix(in srgb, var(--app-brand-primary) 40%, transparent);
     color: var(--app-brand-text);
 }
 
-.workspace-subtabs li.is-active a {
+.workspace-subtabs li.is-active a:not(.button) {
     background: var(--app-brand-primary);
     border-color: var(--app-brand-primary);
     color: var(--app-brand-primary-contrast, #ffffff);
     font-weight: 600;
 }
 
-.workspace-subtabs li.is-active a .tag {
+.workspace-subtabs li.is-active a:not(.button) .tag {
     background-color: color-mix(in srgb, var(--app-brand-primary-contrast, #ffffff) 20%, transparent);
     color: var(--app-brand-primary-contrast, #ffffff);
 }

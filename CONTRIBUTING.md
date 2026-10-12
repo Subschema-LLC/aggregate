@@ -135,8 +135,15 @@ Treat these as constraints on implementation and documentation:
   country/continent codes from a local MMDB. Do not send IPs to an external lookup
   service or copy addresses or detailed lookup records into events, queues, or
   application logs.
-- **Enhanced collection needs explicit consent.** Parse consent explicitly;
-  truthy values such as the string `"false"` must never grant consent.
+- **Enhanced collection follows the consent signal.** With Aggregate's banners,
+  the region's consent type sets the signal before a choice: denied for
+  `explicit_eu` (the default) and `explicit_us`, granted for `implicit_us`, an
+  operator's choice for notice-and-opt-out regions. With a third-party consent
+  manager, the signal it pushes decides, including a Google Consent Mode
+  default. Do not add other default grants. Parse consent explicitly; missing
+  signals and truthy values such as the string `"false"` must never grant
+  consent, and strict collection overrides every signal. See
+  [which consent signal sets the mode](docs/PRIVACY-COMPLIANCE.md#which-consent-signal-sets-the-mode).
   `setConsent(false)` removes SDK identifiers and
   stops future enhanced details; coarse anonymous collection can continue.
   Withdrawal is prospective and does not erase server history. Documentation

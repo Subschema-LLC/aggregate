@@ -379,13 +379,14 @@ final class SiteScriptConfigTest extends TestCase
             [
                 'id' => 'eu',
                 'name' => 'Europe',
-                'consent_type' => 'explicit',
+                'consent_type' => 'explicit_eu',
                 'default' => true,
-                'text' => ['title' => 'EU Notice'],
+                'text' => ['title' => 'EU Notice', 'dismiss_reject' => 'Reject all and close'],
             ],
             [
                 'id' => 'us',
                 'name' => 'USA',
+                // An older name, saved as the type it now means.
                 'consent_type' => 'implicit',
                 'default' => false,
                 'text' => ['title' => 'US Notice'],
@@ -397,17 +398,18 @@ final class SiteScriptConfigTest extends TestCase
         self::assertArrayHasKey('regions', $saved);
         self::assertCount(2, $saved['regions']);
         self::assertSame('eu', $saved['regions'][0]['id']);
-        self::assertSame('explicit', $saved['regions'][0]['consent_type']);
+        self::assertSame('explicit_eu', $saved['regions'][0]['consent_type']);
+        self::assertSame('Reject all and close', $saved['regions'][0]['text']['dismiss_reject']);
         self::assertSame('us', $saved['regions'][1]['id']);
-        self::assertSame('implicit', $saved['regions'][1]['consent_type']);
+        self::assertSame('implicit_us', $saved['regions'][1]['consent_type']);
         self::assertSame('us', $saved['default_region']);
         self::assertTrue($saved['regions'][1]['default']);
 
         $export = $this->sites->export($siteId);
         self::assertStringContainsString('regions:', $export);
         self::assertStringContainsString('default_region: us', $export);
-        self::assertStringContainsString('consent_type: explicit', $export);
-        self::assertStringContainsString('consent_type: implicit', $export);
+        self::assertStringContainsString('consent_type: explicit_eu', $export);
+        self::assertStringContainsString('consent_type: implicit_us', $export);
     }
 
     public function testGlobalConsentManagerInAggregateYamlControlsDefaultEnabled(): void

@@ -38,6 +38,9 @@ All measurements use the `events` table and are separated explicitly by `privacy
 | Enhanced analytics rejected | `anonymous` | Same anonymous event and goal behavior | Enhanced fields are omitted; existing SDK IDs are removed |
 | Enhanced analytics granted | `enhanced` | One detailed row per event; enabled allowlisted goals may be retained | Visitor/session IDs, custom properties, and exact dimensions may be stored |
 
+Which signal counts as granted depends on how the site collects consent; see
+[Which consent signal sets the mode](#which-consent-signal-sets-the-mode).
+
 There is no visitor-facing "off" mode in the SDK. Coarse page-view and named-event rows, including configured goals and properties permitted anonymously, continue after enhanced analytics is rejected or withdrawn. An administrator can disable collection globally or exclude sensitive paths.
 
 Use consent language that matches this behavior. A button may say **Reject enhanced analytics** or **Use privacy-minimized analytics**. Do not claim that a generic **Reject analytics** button stops all measurement if anonymous-mode events will continue.
@@ -476,7 +479,7 @@ without the missing ID rather than a guessable one.
 
 Consent is not a reason to accept arbitrary payloads. Use a documented property allowlist and avoid form contents, emails, account identifiers, search terms, or other free text unless the deployment has a specific, reviewed need and legal basis.
 
-Enable these fields only after an affirmative choice:
+Where consent is required, enable these fields only after an affirmative choice:
 
 ```javascript
 window.Aggregate.setConsent(true);
@@ -491,6 +494,51 @@ window.Aggregate.setConsent(false);
 That call immediately removes the Aggregate visitor ID, session ID, and session cookie from the browser. Later `emit(...)` calls continue to create coarse, hour-bucketed anonymous-mode rows. Properties requiring consent and exact dimensions are omitted; configured consent-free properties and goals marked `anonymous: true` may continue. It does **not** delete data previously collected by the server. Do not describe it as a deletion request or promise that it erases all data.
 
 The SDK does not persist the consent choice itself. Your consent-management platform should remember and communicate the visitor's current choice.
+
+### Which consent signal sets the mode
+
+The tracker uses enhanced mode while its consent signal is granted, and anonymous
+mode otherwise. Where that signal comes from depends on how the website collects
+consent:
+
+| How consent is collected | Before the visitor chooses | After a choice |
+| --- | --- | --- |
+| Built-in or standalone banner, region type `explicit_eu` (also a banner without regions) or `explicit_us` | Anonymous | Enhanced only after the visitor accepts analytics |
+| Built-in or standalone banner, region type `implicit_us` | Enhanced | Anonymous once the visitor rejects or opts out |
+| A third-party consent manager | Whatever its default signal says; anonymous until it sends a grant | Follows each signal it sends |
+| No consent manager or no signal | Anonymous | Not applicable |
+
+The banners' region types are described in
+[Regions and the close button](CONSENT-MANAGER.md#regions-and-the-close-button).
+A third-party consent manager can signal in any of these ways, and the most
+recent signal applies:
+
+- `window.Aggregate.setConsent(true)` or `setConsent(false)`;
+- a recorded choice supplied before the tracker loads, as `window.Aggregate.consent`,
+  the script's `data-consent` attribute or its `consent=` URL parameter; or
+- Google Consent Mode: `analytics_storage` set to `'granted'` or `'denied'` in
+  `gtag('consent', 'default' | 'update', …)` or an equivalent `dataLayer` push.
+  The tracker reads these unless `google_consent_mode: false` is set in
+  `config/aggregate.yaml` or the script has `data-google-consent-mode="false"`.
+  A `default` of `granted` counts as a grant, so a consent manager that defaults
+  analytics to granted in a region puts visitors there in enhanced mode before
+  they choose, as `implicit_us` does.
+
+Only an explicit grant counts: `true`, `1`, `'true'` or `'1'` from the first two
+kinds of signal, and `'granted'` from Google Consent Mode. A missing, malformed
+or other value, including the string `'false'`, leaves the tracker anonymous. The [strict collection profile](#strict-collection-profile)
+overrides every signal and keeps all events anonymous. With the tag manager's
+`consent: analytics` gate, the tracker does not load until the signal is granted,
+so "anonymous before a choice" becomes no measurement, and under `implicit_us` it
+loads at once.
+
+The server stores enhanced detail only for events whose consent state is
+`granted`, and it cannot check how the browser obtained that signal. Each
+region's consent type and each consent manager's defaults are therefore the
+operator's decision. Enhanced analytics uses browser identifiers: use
+`implicit_us`, or a consent manager that grants analytics by default, only where
+you have decided that notice and opt-out are lawful for it, and keep it off until
+an affirmative choice wherever consent is required.
 
 ## Consent-manager integration
 
@@ -665,6 +713,7 @@ See [deployment updates](../DEPLOYMENT.md#updates) and the [database migration g
 - [ ] Use consent wording that distinguishes privacy-minimized measurement from enhanced analytics.
 - [ ] Make acceptance and rejection of enhanced analytics equally clear.
 - [ ] Do not enable enhanced analytics before affirmative consent where consent is required.
+- [ ] For each market, check what the banner region's consent type, or your consent manager's default signal, grants before the visitor chooses.
 - [ ] Publish retention periods and implement their enforcement.
 - [ ] Dry-run, schedule, and monitor `app:analytics:maintain`; verify backup and downstream deletion separately.
 - [ ] Provide a server-side rights-request process for enhanced data.

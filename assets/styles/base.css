@@ -94,6 +94,16 @@ html[data-theme="dark"] {
     --app-status-success-accent: #4ade80;
 }
 
+/*
+ * Chromium puts the contents of <details> inside a ::details-content box,
+ * which Bulma's `*, ::before, ::after { box-sizing: inherit }` reset does not
+ * select. Everything inside fell back to content-box, so full-width inputs
+ * and textareas grew by their padding and border and overflowed their card.
+ */
+details::details-content {
+    box-sizing: inherit;
+}
+
 html,
 body {
     background-color: var(--app-brand-background);

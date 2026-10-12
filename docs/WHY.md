@@ -33,8 +33,9 @@ review.
   dimensions and the UTC hour it happened in. That's all: no visitor or
   session identifier, no IP address, no User-Agent string, no exact time.
 - More detail (identifiers, custom properties, exact dimensions) is collected
-  only for visitors who make an affirmative choice. It stops when they withdraw
-  that choice.
+  only when the visitor's consent signal allows it: after an affirmative choice
+  wherever opt-in applies, or until they opt out where the operator chooses a
+  notice-style banner. It stops when they withdraw.
 - Reports live in the BI tool the organization already uses, or come from an AI
   assistant querying the same data. Aggregate publishes stable SQL views that
   hide small numbers in the database itself, so every report, extract, user and
