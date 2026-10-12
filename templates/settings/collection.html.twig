@@ -44,6 +44,19 @@
         <hr>
 
         <div class="field">
+            <label class="label" for="google-consent-mode">Google Consent Mode signals</label>
+            <div class="control select"><select id="google-consent-mode" name="google_consent_mode" aria-describedby="google-consent-mode-help">
+                {% for value, label in {all: 'Follow defaults and visitor choices', updates: 'Follow visitor choices only', off: 'Ignore Google consent signals'} %}<option value="{{ value }}"{% if google_consent_mode == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select></div>
+            <div id="google-consent-mode-help" class="help content">
+                <p>The consent signal decides whether events are enhanced or anonymous. If your website’s consent manager sets Google Consent Mode, the tracker can follow its <code>analytics_storage</code> value. <strong>Defaults and visitor choices</strong> follows <code>gtag('consent', 'default', …)</code> too, so a default of granted enables enhanced analytics before a choice. <strong>Visitor choices only</strong> follows just <code>update</code> commands, which consent managers send when a visitor chooses or a saved choice is restored. Choose with your legal team. <code>setConsent()</code> and the built-in banner work regardless.</p>
+            </div>
+            {% if google_consent_mode_invalid %}
+                <p class="help is-danger">The saved <code>google_consent_mode</code> value is not valid, so Google signals are ignored until it is corrected or saved here.</p>
+            {% endif %}
+        </div>
+
+        <div class="field">
             <label class="checkbox">
                 <input type="checkbox" name="anonymous_tracking_enabled" value="1" {% if anonymous_tracking_enabled %}checked{% endif %}>
                 Enable analytics collection

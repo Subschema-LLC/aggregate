@@ -202,6 +202,54 @@ final class ConsentAppearanceTest extends TestCase
         ConsentAppearance::regions([['id' => 'x', 'name' => 'X', 'consent_type' => $type]], ConsentAppearance::BUILTIN, 'regions');
     }
 
+    public function testConsentBehaviorIsNormalizedInheritedAndSentToTheBrowser(): void
+    {
+        $validated = ConsentAppearance::validate([
+            'consent_type' => 'implicit', 'close_button' => 'hidden', 'default_granted' => ['analytics', 'marketing', 'analytics'],
+            'regions' => [
+                ['id' => 'a', 'name' => 'A'],
+                ['id' => 'b', 'name' => 'B', 'consent_type' => 'explicit_eu', 'close_button' => 'dismiss'],
+                ['id' => 'c', 'name' => 'C', 'default_granted' => []],
+            ],
+        ], ConsentAppearance::BUILTIN, 'cm');
+        self::assertSame('implicit_us', $validated['consent_type']);
+        self::assertSame(['analytics', 'marketing'], $validated['default_granted']);
+        self::assertSame(['implicit_us', 'explicit_eu', 'implicit_us'], array_column($validated['regions'], 'consent_type'), 'regions without a type inherit the banner type');
+        self::assertSame([], $validated['regions'][2]['default_granted']);
+
+        $browser = ConsentAppearance::browser($validated);
+        self::assertSame('implicit_us', $browser['consentType']);
+        self::assertSame('hidden', $browser['closeButton']);
+        self::assertSame(['analytics', 'marketing'], $browser['defaultGranted']);
+        self::assertArrayNotHasKey('closeButton', $browser['regions'][0]);
+        self::assertSame('dismiss', $browser['regions'][1]['closeButton']);
+        self::assertSame([], $browser['regions'][2]['defaultGranted']);
+
+        // A banner list is also the default for implicit regions, so an explicit banner may keep one.
+        self::assertSame(['default_granted' => ['marketing']], ConsentAppearance::validate(['default_granted' => ['marketing']], ConsentAppearance::STANDALONE, 'sc'));
+    }
+
+    /** @return iterable<string, array{array, string}> */
+    public static function invalidConsentBehavior(): iterable
+    {
+        yield 'consent type' => [['consent_type' => 'opt_in'], 'cm.consent_type must be one of implicit_us, explicit_us, explicit_eu.'];
+        yield 'close button' => [['close_button' => 'x'], 'cm.close_button must be one of reject, dismiss, hidden.'];
+        yield 'list shape' => [['default_granted' => 'analytics'], 'cm.default_granted must be a list of at most 10 category names; use [] for none.'];
+        yield 'too many' => [['default_granted' => array_map(static fn (int $i): string => 'c'.$i, range(1, 11))], 'cm.default_granted must be a list of at most 10 category names; use [] for none.'];
+        yield 'category name' => [['default_granted' => ['Bad']], 'cm.default_granted entries must be category names of 1–32 lowercase letters, digits, underscores or hyphens, beginning with a letter.'];
+        yield 'reserved name' => [['default_granted' => ['gpc']], 'cm.default_granted entries must be category names of 1–32 lowercase letters, digits, underscores or hyphens, beginning with a letter.'];
+        yield 'explicit region' => [['regions' => [['id' => 'eu', 'name' => 'EU', 'default_granted' => ['analytics']]]], 'cm.regions[0].default_granted applies only to implicit_us regions; explicit consent types start every optional category denied.'];
+        yield 'region close button' => [['regions' => [['id' => 'eu', 'name' => 'EU', 'close_button' => 'nope']]], 'cm.regions[0].close_button must be one of reject, dismiss, hidden.'];
+    }
+
+    #[DataProvider('invalidConsentBehavior')]
+    public function testInvalidConsentBehaviorIsRejectedWithItsPath(array $settings, string $message): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage($message);
+        ConsentAppearance::validate($settings, ConsentAppearance::BUILTIN, 'cm');
+    }
+
     public function testCloseButtonLabelsAreBannerAndRegionWording(): void
     {
         foreach ([ConsentAppearance::BUILTIN, ConsentAppearance::STANDALONE] as $banner) {

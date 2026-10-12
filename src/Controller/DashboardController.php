@@ -10,6 +10,7 @@ use App\Service\AnalyticsPrivacySettings;
 use App\Service\BrandingLogoManager;
 use App\Service\BrandingTheme;
 use App\Service\CollectionProfile;
+use App\Service\CustomDataSettings;
 use App\Service\DocumentationLinks;
 use App\Service\BrowserScriptCache;
 use App\Service\DropInScripts;
@@ -240,6 +241,7 @@ class DashboardController extends AbstractController
         }
         $geoDatabasePath = $this->config->getWithEnvFallback('anonymous_geo_database_path', '');
         $collectionProfile = new CollectionProfile($this->config);
+        $customData = new CustomDataSettings($this->config);
         $trackingRetrySettings = TrackingFailureSettings::defaults();
         $trackingRetryOverrides = [
             TrackingFailureSettings::KEY_ENABLED => false,
@@ -266,6 +268,8 @@ class DashboardController extends AbstractController
             'anonymous_geo_database_path' => is_string($geoDatabasePath) ? trim($geoDatabasePath) : '',
             'tracking_retry_settings' => $trackingRetrySettings,
             'tracking_retry_environment_overrides' => $trackingRetryOverrides,
+            'google_consent_mode' => $customData->googleConsentMode(),
+            'google_consent_mode_invalid' => $customData->hasInvalidGoogleConsentMode(),
         ]);
     }
 
@@ -757,6 +761,21 @@ class DashboardController extends AbstractController
             return $this->redirectToRoute('app_collection_settings');
         }
 
+        // Absent from older forms: the saved value is kept.
+        $googleConsentMode = null;
+        if ($request->request->has(CustomDataSettings::GOOGLE_CONSENT_MODE_KEY)) {
+            $googleConsentMode = CustomDataSettings::normalizeGoogleConsentMode($request->request->get(CustomDataSettings::GOOGLE_CONSENT_MODE_KEY));
+            if ($googleConsentMode === null) {
+                $this->addFlash('error', 'Google Consent Mode signals must be one of '.implode(', ', CustomDataSettings::GOOGLE_CONSENT_MODES).'.');
+                return $this->redirectToRoute('app_collection_settings');
+            }
+            // An unchanged value is not written, so the default is not pinned.
+            $current = new CustomDataSettings($this->config);
+            if ($googleConsentMode === $current->googleConsentMode() && !$current->hasInvalidGoogleConsentMode()) {
+                $googleConsentMode = null;
+            }
+        }
+
         if (!in_array($geoLevel, ['macro_region', 'country'], true)) {
             $this->addFlash('error', 'Geography level must be macro-region or country.');
             return $this->redirectToRoute('app_collection_settings');
@@ -811,7 +830,7 @@ class DashboardController extends AbstractController
                 'anonymous_geo_enabled' => $geoEnabled,
                 'anonymous_geo_level' => $geoLevel,
                 'anonymous_geo_database_path' => $geoDatabasePath,
-            ]);
+            ] + ($googleConsentMode === null ? [] : [CustomDataSettings::GOOGLE_CONSENT_MODE_KEY => $googleConsentMode]));
             $this->trackingFailureSettings->save(array_filter([
                 TrackingFailureSettings::KEY_ENABLED => $trackingRetryEnabled,
                 TrackingFailureSettings::KEY_BATCH_SIZE => $trackingRetryBatchSize,

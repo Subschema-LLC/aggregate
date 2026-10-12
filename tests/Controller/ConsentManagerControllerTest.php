@@ -356,6 +356,67 @@ final class ConsentManagerControllerTest extends TestCase
         self::assertSame(['explicit_eu', 'explicit_us', 'implicit_us'], array_column(Yaml::parseFile($this->sitePath($this->siteId))['consent_manager']['regions'], 'consent_type'), 'nothing was saved');
     }
 
+    public function testConsentBehaviorIsSavedFromTheFormAndShown(): void
+    {
+        $page = new Crawler((string) $this->index(['site' => $this->siteId])->getContent());
+        self::assertSame('explicit_eu', $page->filter('#consent-type option[selected]')->attr('value'));
+        self::assertSame('', $page->filter('#consent-close-button option[selected]')->attr('value'));
+        self::assertNotNull($page->filter('#consent-default-granted-analytics')->attr('checked'));
+        self::assertNull($page->filter('#consent-default-granted-marketing')->attr('checked'));
+        self::assertNotNull($page->filter('#consent-respect-gpc')->attr('checked'));
+
+        $form = $this->defaults();
+        $form['consent_type'] = 'implicit_us';
+        $form['close_button'] = 'hidden';
+        $form['default_granted'] = ['', 'analytics', 'marketing'];
+        $form['respect_gpc'] = '0';
+        $form['regions'] = [
+            ['id' => 'us', 'name' => 'United States', 'consent_type' => 'implicit_us', 'close_button' => 'dismiss', 'default_granted_override' => '1', 'default_granted' => ['']],
+            ['id' => 'eu', 'name' => 'Europe', 'consent_type' => 'explicit_eu', 'close_button' => '', 'default_granted' => ['', 'analytics']],
+        ];
+        $request = $this->post($form);
+        $this->controller($request)->save($request);
+
+        self::assertCount(1, $request->getSession()->getFlashBag()->get('success'));
+        $saved = Yaml::parseFile($this->sitePath($this->siteId))['consent_manager'];
+        self::assertSame('implicit_us', $saved['consent_type']);
+        self::assertSame('hidden', $saved['close_button']);
+        self::assertSame(['analytics', 'marketing'], $saved['default_granted']);
+        self::assertFalse($saved['respect_gpc']);
+        self::assertSame('dismiss', $saved['regions'][0]['close_button']);
+        self::assertSame([], $saved['regions'][0]['default_granted'], 'an override with nothing checked turns everything off');
+        self::assertArrayNotHasKey('close_button', $saved['regions'][1]);
+        self::assertArrayNotHasKey('default_granted', $saved['regions'][1], 'boxes without the override checked are not saved');
+
+        $page = new Crawler((string) $this->index(['site' => $this->siteId])->getContent());
+        self::assertSame('implicit_us', $page->filter('#consent-type option[selected]')->attr('value'));
+        self::assertSame('hidden', $page->filter('#consent-close-button option[selected]')->attr('value'));
+        self::assertNotNull($page->filter('#consent-default-granted-marketing')->attr('checked'));
+        self::assertNull($page->filter('#consent-respect-gpc')->attr('checked'));
+        self::assertSame('dismiss', $page->filter('#region-0-close-button option[selected]')->attr('value'));
+        self::assertNotNull($page->filter('#region-0-default-granted-override')->attr('checked'));
+        self::assertNull($page->filter('#region-1-default-granted-override')->attr('checked'));
+
+        // Defaults remove the keys again.
+        $form['consent_type'] = 'explicit_eu';
+        $form['close_button'] = '';
+        $form['default_granted'] = ['', 'analytics'];
+        $form['respect_gpc'] = '1';
+        unset($form['regions']);
+        $request = $this->post($form);
+        $this->controller($request)->save($request);
+        $saved = Yaml::parseFile($this->sitePath($this->siteId))['consent_manager'];
+        foreach (['consent_type', 'close_button', 'default_granted', 'respect_gpc'] as $key) {
+            self::assertArrayNotHasKey($key, $saved, $key);
+        }
+
+        // An explicit region cannot have default-on categories.
+        $form['regions'] = [['id' => 'eu', 'name' => 'Europe', 'consent_type' => 'explicit_eu', 'default_granted_override' => '1', 'default_granted' => ['', 'analytics']]];
+        $rejected = $this->post($form);
+        $this->controller($rejected)->save($rejected);
+        self::assertSame(['consent_manager.regions[0].default_granted applies only to implicit_us regions; explicit consent types start every optional category denied.'], $rejected->getSession()->getFlashBag()->get('error'));
+    }
+
     public function testSavingTheFormKeepsRegionWordingAndButtonsItDoesNotShow(): void
     {
         $this->sites->saveConsent($this->siteId, ['regions' => [[

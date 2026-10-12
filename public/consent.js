@@ -121,27 +121,53 @@
     return regions[0];
   })();
 
-  // implicit_us: a notice; enhanced analytics starts granted and the close
-  // button hides the notice. explicit_us: categories start denied and the close
-  // button hides the banner. explicit_eu (the default): the close button rejects
-  // every optional category. Older configurations used explicit and implicit.
+  // A region's setting, otherwise the banner's.
+  function setting(key) {
+    var value = currentRegion ? own(currentRegion, key) : undefined;
+    return value === undefined ? own(consentConfig, key) : value;
+  }
+  // implicit_us: a notice; default categories (enhanced analytics unless
+  // configured) start granted. explicit_us and explicit_eu (the default): every
+  // optional category starts denied. Older configurations used explicit and implicit.
   function consentType() {
     var value = currentRegion ? own(currentRegion, 'consentType') : undefined;
     if (value === undefined && currentRegion) value = own(currentRegion, 'consent_type');
+    if (value === undefined) value = own(consentConfig, 'consentType');
     if (value === 'implicit' || value === 'implicit_us') return 'implicit_us';
     return value === 'explicit_us' ? 'explicit_us' : 'explicit_eu';
   }
-  function isImplicit() {
-    return consentType() === 'implicit_us';
+  // What the close button does: configured, or reject for explicit_eu and dismiss otherwise.
+  function closeAction() {
+    var value = setting('closeButton');
+    if (['reject', 'dismiss', 'hidden'].indexOf(value) !== -1) return value;
+    return consentType() === 'explicit_eu' ? 'reject' : 'dismiss';
   }
-  // A US-style close hides the banner for this tab's session without saving a
-  // choice, so the default consent stays in effect and nothing identifies the visitor.
+  function globalPrivacyControl() {
+    try { return own(consentConfig, 'respectGpc') !== false && window.navigator.globalPrivacyControl === true; }
+    catch (error) { return false; }
+  }
+  // Categories granted before a choice: only in implicit_us, and none when the
+  // browser sends Global Privacy Control. A malformed list grants nothing.
+  function defaultGrants() {
+    if (consentType() !== 'implicit_us' || globalPrivacyControl()) return [];
+    var value = setting('defaultGranted');
+    if (value === undefined) return ['analytics'];
+    return Array.isArray(value) ? value.filter(function (category, index) {
+      return typeof category === 'string' && categories.indexOf(category) !== -1 && value.indexOf(category) === index;
+    }) : [];
+  }
+  function applyDefaultGrants() {
+    categories.forEach(function (category) { choices[category] = false; });
+    defaultGrants().forEach(function (category) { choices[category] = true; });
+  }
+  // Closing without a choice hides the banner for this tab's session without
+  // saving anything, so the default consent stays in effect and nothing identifies the visitor.
   var dismissKey = storageKey + ':dismissed';
   var dismissed = (function () {
     try { return window.sessionStorage.getItem(dismissKey) === '1'; } catch (error) { return false; }
   })();
   function dismissedForSession() {
-    return dismissed && consentType() !== 'explicit_eu';
+    return dismissed && closeAction() === 'dismiss';
   }
   var categories = ['analytics'];
   (Array.isArray(consentConfig.categories) ? consentConfig.categories : []).forEach(function (category) {
@@ -193,8 +219,8 @@
         categories.forEach(function (category) { choices[category] = readGrant(saved, category); });
         chosen = categories.every(function (category) { return hasChoice(saved, category); });
       }
-    } else if (isImplicit()) {
-      choices.analytics = true;
+    } else {
+      applyDefaultGrants();
     }
   } catch (error) { storageAvailable = false; }
 
@@ -253,8 +279,13 @@
     preferenceButton.setAttribute('aria-expanded', visible ? 'true' : 'false');
   }
 
+  // A saved choice, otherwise the current default grant or the configured pre-check.
+  function initialCheck(category) {
+    return hasSavedChoice(category) ? choices[category] : (choices[category] === true || precheck.indexOf(category) !== -1);
+  }
+
   function syncCheckboxes() {
-    categories.forEach(function (category) { if (checkboxes[category]) checkboxes[category].checked = hasSavedChoice(category) ? choices[category] : (precheck.indexOf(category) !== -1); });
+    categories.forEach(function (category) { if (checkboxes[category]) checkboxes[category].checked = initialCheck(category); });
   }
 
   function setRegion(id) {
@@ -263,8 +294,9 @@
     currentRegion = reg;
     try { window.localStorage.setItem(regionStorageKey, id); } catch (e) {}
     if (savedMap === null) {
-      choices.analytics = isImplicit();
+      applyDefaultGrants();
       notify();
+      syncCheckboxes();
     }
     updateBannerContent();
   }
@@ -328,10 +360,12 @@
   var actions = {
     reject: function () { setConsent({}); },
     dismiss: function () {
-      if (consentType() === 'explicit_eu') {
+      var action = closeAction();
+      if (action === 'reject') {
         setConsent({});
         return;
       }
+      if (action !== 'dismiss') return;
       dismissed = true;
       try { window.sessionStorage.setItem(dismissKey, '1'); } catch (error) {}
       showPanel(false);
@@ -350,7 +384,9 @@
   };
 
   function labelCloseButton() {
-    var label = text(consentType() === 'explicit_eu' ? 'dismissReject' : 'dismiss');
+    var action = closeAction();
+    closeButton.hidden = action === 'hidden';
+    var label = text(action === 'reject' ? 'dismissReject' : 'dismiss');
     closeButton.setAttribute('aria-label', label);
     closeButton.title = label;
   }
@@ -468,7 +504,7 @@
         label.className = 'ac-consent-category';
         var checkbox = element('input');
         checkbox.type = 'checkbox';
-        checkbox.checked = hasSavedChoice(category) ? choices[category] : (precheck.indexOf(category) !== -1);
+        checkbox.checked = initialCheck(category);
         checkbox.id = 'ac-consent-' + category;
         checkboxes[category] = checkbox;
         label.appendChild(checkbox);

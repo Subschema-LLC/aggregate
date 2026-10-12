@@ -72,16 +72,20 @@ deployment's active aggregate configuration.
   Preserve server-side path sanitization, coarse dimensions, fixed event names,
   and server-generated UTC hour timestamps. Do not retain raw IP addresses,
   User-Agent strings, or exact event timestamps in anonymous rows.
-- Enhanced collection follows the consent signal. With the built-in or
-  standalone banner, the region's consent type sets it before a choice:
-  `explicit_eu` (the default, also without regions) and `explicit_us` stay
-  anonymous until the visitor accepts; `implicit_us`, an operator's choice for
-  notice-and-opt-out regions, starts enhanced until the visitor opts out. With a
-  third-party consent manager, the signal it pushes decides (`setConsent`, a
-  preloaded `consent` value, or Google Consent Mode `analytics_storage`). Only an
+- Enhanced collection follows the consent signal, and administrators decide
+  how that signal is set, with their legal team. With the built-in or
+  standalone banner, the banner's or region's consent type sets it before a
+  choice: `explicit_eu` (the default) and `explicit_us` stay anonymous until the
+  visitor accepts; `implicit_us`, an operator's choice for notice-and-opt-out
+  regions, starts with its configured default-on categories (enhanced analytics
+  unless changed) until the visitor opts out, and a respected Global Privacy
+  Control signal withholds them. With a third-party consent manager, the signal
+  it pushes decides (`setConsent`, a preloaded `consent` value, or Google Consent
+  Mode `analytics_storage` as the `google_consent_mode` setting allows). Only an
   explicit grant counts: a missing or malformed signal, or a truthy string such
   as `"false"`, must not grant consent, and strict collection keeps everything
-  anonymous. Do not add other default grants. Withdrawal removes SDK identifiers
+  anonymous. Do not add default grants outside `implicit_us`. Keep each of these
+  choices available in the dashboard and YAML. Withdrawal removes SDK identifiers
   and stops future enhanced detail; coarse anonymous collection may continue.
   Withdrawal does not erase previously stored history. Describe these
   distinctions honestly. See

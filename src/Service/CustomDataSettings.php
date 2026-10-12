@@ -18,6 +18,12 @@ class CustomDataSettings
     public const PAGE_SEQUENCE_PROPERTY = 'page_sequence';
     public const PAGE_SEQUENCE_MAXIMUM = 20;
     public const GOOGLE_CONSENT_MODE_KEY = 'google_consent_mode';
+    /**
+     * How the tracker follows Google Consent Mode analytics_storage signals:
+     * all (default and update commands, the default), updates (only update
+     * commands, which consent managers send for a visitor's choice) or off.
+     */
+    public const GOOGLE_CONSENT_MODES = ['all', 'updates', 'off'];
     public const UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'utm_id'];
     public const TYPES = ['scalar', 'string', 'integer', 'float', 'double', 'boolean'];
     /** The collection payload object that carries an event's custom properties. */
@@ -149,24 +155,62 @@ class CustomDataSettings
         return $types;
     }
 
-    /** @return array{queryParameters: array<string, string>, consentFreeProperties: list<string>, pageSequenceEnabled: bool, pageSequenceMethod: string, pageSequenceExcludedPaths?: list<string>, propertyTypes?: array<string, string>} */
-    public function googleConsentMode(): ?bool
+    /**
+     * The effective Google Consent Mode setting: the top-level key, otherwise
+     * the older consent_manager.google_consent_mode, otherwise all. YAML true and
+     * false mean all and off; any other value fails closed to off.
+     */
+    public function googleConsentMode(): string
+    {
+        $value = $this->configuredGoogleConsentMode();
+
+        return $value === null ? 'all' : (self::normalizeGoogleConsentMode($value) ?? 'off');
+    }
+
+    /** Whether a configured Google Consent Mode value is invalid, and so treated as off. */
+    public function hasInvalidGoogleConsentMode(): bool
+    {
+        $value = $this->configuredGoogleConsentMode();
+
+        return $value !== null && self::normalizeGoogleConsentMode($value) === null;
+    }
+
+    public static function normalizeGoogleConsentMode(mixed $value): ?string
+    {
+        return match (true) {
+            $value === true => 'all',
+            $value === false => 'off',
+            is_string($value) && in_array($value, self::GOOGLE_CONSENT_MODES, true) => $value,
+            default => null,
+        };
+    }
+
+    /** Saves the top-level setting, which takes precedence over the older nested key. */
+    public function saveGoogleConsentMode(mixed $mode): void
+    {
+        $normalized = self::normalizeGoogleConsentMode($mode);
+        if ($normalized === null) {
+            throw new \InvalidArgumentException('Google Consent Mode signals must be one of '.implode(', ', self::GOOGLE_CONSENT_MODES).'.');
+        }
+        $this->config->setMany([self::GOOGLE_CONSENT_MODE_KEY => $normalized]);
+    }
+
+    private function configuredGoogleConsentMode(): mixed
     {
         if ($this->config->has(self::GOOGLE_CONSENT_MODE_KEY)) {
-            $value = $this->config->get(self::GOOGLE_CONSENT_MODE_KEY);
-            if (is_bool($value)) {
-                return $value;
-            }
+            return $this->config->get(self::GOOGLE_CONSENT_MODE_KEY);
         }
         if ($this->config->has('consent_manager')) {
             $cm = $this->config->get('consent_manager');
-            if (is_array($cm) && array_key_exists(self::GOOGLE_CONSENT_MODE_KEY, $cm) && is_bool($cm[self::GOOGLE_CONSENT_MODE_KEY])) {
+            if (is_array($cm) && array_key_exists(self::GOOGLE_CONSENT_MODE_KEY, $cm)) {
                 return $cm[self::GOOGLE_CONSENT_MODE_KEY];
             }
         }
 
         return null;
     }
+
+    /** @return array{queryParameters: array<string, string>, consentFreeProperties: list<string>, pageSequenceEnabled: bool, pageSequenceMethod: string, googleConsentMode?: string, pageSequenceExcludedPaths?: list<string>, propertyTypes?: array<string, string>} */
 
     public function toBrowserConfig(): array
     {
@@ -207,9 +251,10 @@ class CustomDataSettings
         if ($types !== []) {
             $browserConfig['propertyTypes'] = $types;
         }
-        $gcm = $this->googleConsentMode();
-        if ($gcm !== null) {
-            $browserConfig['googleConsentMode'] = $gcm;
+        // A served tracker keeps a narrower setting; page options cannot widen it.
+        $googleConsentMode = $this->googleConsentMode();
+        if ($googleConsentMode !== 'all') {
+            $browserConfig['googleConsentMode'] = $googleConsentMode;
         }
 
         return $browserConfig;

@@ -503,13 +503,15 @@ consent:
 
 | How consent is collected | Before the visitor chooses | After a choice |
 | --- | --- | --- |
-| Built-in or standalone banner, region type `explicit_eu` (also a banner without regions) or `explicit_us` | Anonymous | Enhanced only after the visitor accepts analytics |
-| Built-in or standalone banner, region type `implicit_us` | Enhanced | Anonymous once the visitor rejects or opts out |
+| Built-in or standalone banner, consent type `explicit_eu` (the default) or `explicit_us` | Anonymous | Enhanced only after the visitor accepts analytics |
+| Built-in or standalone banner, consent type `implicit_us` | Enhanced while `analytics` is a default-on category (the default), unless a respected Global Privacy Control signal withholds it | Anonymous once the visitor rejects or opts out |
 | A third-party consent manager | Whatever its default signal says; anonymous until it sends a grant | Follows each signal it sends |
 | No consent manager or no signal | Anonymous | Not applicable |
 
-The banners' region types are described in
-[Regions and the close button](CONSENT-MANAGER.md#regions-and-the-close-button).
+The banners' settings (consent type, close button, default-on categories and
+Global Privacy Control) are described in
+[Consent behavior](CONSENT-MANAGER.md#consent-behavior); each region can set its
+own.
 A third-party consent manager can signal in any of these ways, and the most
 recent signal applies:
 
@@ -518,11 +520,19 @@ recent signal applies:
   the script's `data-consent` attribute or its `consent=` URL parameter; or
 - Google Consent Mode: `analytics_storage` set to `'granted'` or `'denied'` in
   `gtag('consent', 'default' | 'update', …)` or an equivalent `dataLayer` push.
-  The tracker reads these unless `google_consent_mode: false` is set in
-  `config/aggregate.yaml` or the script has `data-google-consent-mode="false"`.
-  A `default` of `granted` counts as a grant, so a consent manager that defaults
-  analytics to granted in a region puts visitors there in enhanced mode before
-  they choose, as `implicit_us` does.
+  Choose how the tracker follows these under **Collection controls → Google
+  Consent Mode signals**, or with `google_consent_mode` in `config/aggregate.yaml`:
+
+  | Setting | Follows |
+  | --- | --- |
+  | `all` (default) | `default` and `update` commands, and `dataLayer` objects. A `default` of `granted` counts as a grant, so a consent manager that defaults analytics to granted in a region puts visitors there in enhanced mode before they choose, as `implicit_us` does. |
+  | `updates` | Only `update` commands, which consent managers send when a visitor chooses or a saved choice is restored. Defaults and `dataLayer` objects are ignored. |
+  | `off` | No Google signals. |
+
+  YAML `true` and `false` mean `all` and `off`; any other value is treated as
+  `off`. The tracker served by this installation keeps `updates` and `off`, so
+  page options cannot widen them. A static copy reads `data-google-consent-mode`
+  or the `google_consent_mode` URL parameter instead.
 
 Only an explicit grant counts: `true`, `1`, `'true'` or `'1'` from the first two
 kinds of signal, and `'granted'` from Google Consent Mode. A missing, malformed
@@ -534,8 +544,9 @@ loads at once.
 
 The server stores enhanced detail only for events whose consent state is
 `granted`, and it cannot check how the browser obtained that signal. Each
-region's consent type and each consent manager's defaults are therefore the
-operator's decision. Enhanced analytics uses browser identifiers: use
+banner and region setting, the Google Consent Mode setting and each consent
+manager's defaults are therefore the operator's decision, made with their legal
+team. Enhanced analytics uses browser identifiers: use
 `implicit_us`, or a consent manager that grants analytics by default, only where
 you have decided that notice and opt-out are lawful for it, and keep it off until
 an affirmative choice wherever consent is required.
