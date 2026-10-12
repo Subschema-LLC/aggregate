@@ -17,9 +17,11 @@ final class ConsentAppearance
     public const BUILTIN = 'builtin';
     public const STANDALONE = 'standalone';
     /** The mapping keys this class owns inside a banner's settings. */
-    public const KEYS = ['text', 'theme', 'buttons'];
+    public const KEYS = ['text', 'theme', 'buttons', 'regions', 'default_region'];
     public const REOPEN_POSITIONS = ['bottom-left', 'bottom-right', 'hidden'];
     public const MAX_DETAILS = 4;
+    public const MAX_REGIONS = 10;
+    public const CONSENT_TYPES = ['explicit', 'implicit'];
 
     private const LABEL = 120;
     private const PARAGRAPH = 1000;
@@ -160,6 +162,38 @@ final class ConsentAppearance
         if (array_key_exists('buttons', $settings)) {
             $result['buttons'] = self::buttons($settings['buttons'], $banner, $path.'.buttons');
         }
+        if (array_key_exists('default_region', $settings)) {
+            $defReg = $settings['default_region'];
+            if ($defReg === null || $defReg === '') {
+                // null or empty string means not set
+            } elseif (!is_string($defReg) || preg_match('/^[a-z0-9_-]{1,32}$/D', $defReg) !== 1) {
+                throw new \InvalidArgumentException($path.'.default_region must be 1–32 lowercase letters, digits, underscores, or hyphens.');
+            } else {
+                $result['default_region'] = $defReg;
+            }
+        }
+        if (array_key_exists('regions', $settings)) {
+            $result['regions'] = self::regions($settings['regions'], $banner, $path.'.regions', $result['default_region'] ?? null);
+            if (isset($result['default_region'])) {
+                $matched = false;
+                foreach ($result['regions'] as $reg) {
+                    if ($reg['id'] === $result['default_region']) {
+                        $matched = true;
+                        break;
+                    }
+                }
+                if (!$matched) {
+                    throw new \InvalidArgumentException($path.'.default_region "'.$result['default_region'].'" does not match any configured region.');
+                }
+            } else {
+                foreach ($result['regions'] as $reg) {
+                    if ($reg['default']) {
+                        $result['default_region'] = $reg['id'];
+                        break;
+                    }
+                }
+            }
+        }
 
         return $result;
     }
@@ -169,6 +203,7 @@ final class ConsentAppearance
     {
         $browser = [];
         foreach (self::KEYS as $group) {
+            if ($group === 'regions' || $group === 'default_region') continue;
             if (!array_key_exists($group, $validated)) continue;
             $values = [];
             foreach ($validated[$group] as $key => $value) {
@@ -177,10 +212,109 @@ final class ConsentAppearance
             $browser[$group] = $values;
         }
 
+        if (array_key_exists('regions', $validated)) {
+            $browserRegions = [];
+            foreach ($validated['regions'] as $reg) {
+                $item = [
+                    'id' => $reg['id'],
+                    'name' => $reg['name'],
+                    'consentType' => $reg['consent_type'],
+                    'default' => $reg['default'],
+                ];
+                if (isset($reg['text'])) {
+                    $item['text'] = [];
+                    foreach ($reg['text'] as $tk => $tv) {
+                        $item['text'][self::camel($tk)] = $tv;
+                    }
+                }
+                if (isset($reg['buttons'])) {
+                    $item['buttons'] = [];
+                    foreach ($reg['buttons'] as $bk => $bv) {
+                        $item['buttons'][self::camel($bk)] = $bv;
+                    }
+                }
+                $browserRegions[] = $item;
+            }
+            $browser['regions'] = $browserRegions;
+        }
+
+        if (array_key_exists('default_region', $validated) && $validated['default_region'] !== null) {
+            $browser['defaultRegion'] = $validated['default_region'];
+        }
+
         return $browser;
     }
 
     /** Empty, or an absolute HTTPS URL without credentials, spaces or backslashes. */
+    public static function regions(mixed $regions, string $banner, string $path, ?string $defaultRegion = null): array
+    {
+        if (!is_array($regions) || ($regions !== [] && !array_is_list($regions)) || count($regions) > self::MAX_REGIONS) {
+            throw new \InvalidArgumentException($path.' must be a list of at most '.self::MAX_REGIONS.' regions.');
+        }
+        $result = [];
+        $seenIds = [];
+        $hasDefault = false;
+        foreach ($regions as $index => $region) {
+            if (!is_array($region) || array_is_list($region)) {
+                throw new \InvalidArgumentException($path.'['.$index.'] must be a mapping.');
+            }
+            $itemPath = $path.'['.$index.']';
+            $supportedKeys = ['id', 'name', 'consent_type', 'default', 'text', 'buttons'];
+            foreach (array_keys($region) as $k) {
+                if (!in_array($k, $supportedKeys, true)) {
+                    throw new \InvalidArgumentException($itemPath.'.'.$k.' is not a supported region option.');
+                }
+            }
+            $id = $region['id'] ?? null;
+            if (!is_string($id) || preg_match('/^[a-z0-9_-]{1,32}$/D', $id) !== 1) {
+                throw new \InvalidArgumentException($itemPath.'.id must be 1–32 lowercase letters, digits, underscores, or hyphens.');
+            }
+            if (isset($seenIds[$id])) {
+                throw new \InvalidArgumentException($itemPath.'.id "'.$id.'" is duplicated.');
+            }
+            $seenIds[$id] = true;
+
+            $name = $region['name'] ?? null;
+            if (!is_string($name) || trim($name) === '' || strlen(trim($name)) > self::LABEL) {
+                throw new \InvalidArgumentException($itemPath.'.name must be nonempty plain text of at most '.self::LABEL.' bytes.');
+            }
+
+            $consentType = $region['consent_type'] ?? 'explicit';
+            if (!in_array($consentType, self::CONSENT_TYPES, true)) {
+                throw new \InvalidArgumentException($itemPath.'.consent_type must be "explicit" or "implicit".');
+            }
+
+            $isDefault = (bool) ($region['default'] ?? false);
+            if ($defaultRegion !== null) {
+                $isDefault = ($id === $defaultRegion);
+            }
+            if ($isDefault && $hasDefault) {
+                throw new \InvalidArgumentException($path.' may have at most one default region.');
+            }
+            if ($isDefault) {
+                $hasDefault = true;
+            }
+
+            $normalized = [
+                'id' => $id,
+                'name' => trim($name),
+                'consent_type' => $consentType,
+                'default' => $isDefault,
+            ];
+
+            if (array_key_exists('text', $region)) {
+                $normalized['text'] = self::text($region['text'], $banner, $itemPath.'.text');
+            }
+            if (array_key_exists('buttons', $region)) {
+                $normalized['buttons'] = self::buttons($region['buttons'], $banner, $itemPath.'.buttons');
+            }
+
+            $result[] = $normalized;
+        }
+
+        return $result;
+    }
+
     public static function privacyPolicyUrl(mixed $value, string $path): string
     {
         if (!is_string($value) || strlen($value) > 2048 || preg_match('//u', $value) !== 1 || preg_match('/\p{Cc}/u', $value) === 1) {
