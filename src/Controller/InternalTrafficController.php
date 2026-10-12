@@ -17,6 +17,8 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
 final class InternalTrafficController extends AbstractController
 {
+    use DashboardAccess;
+
     public const CSRF_TOKEN_ID = 'internal_traffic_settings';
 
     public function __construct(
@@ -111,13 +113,5 @@ final class InternalTrafficController extends AbstractController
         $response->headers->set('Content-Disposition', 'attachment; filename="internal-traffic.html"');
 
         return InternalTrafficResponseSubscriber::protect($response);
-    }
-
-    private function denyUnlessAvailableToAdmin(): void
-    {
-        if (!$this->config->isDashboardEnabled()) {
-            throw $this->createNotFoundException('Dashboard is disabled.');
-        }
-        $this->denyAccessUnlessGranted('ROLE_ADMIN');
     }
 }

@@ -4,17 +4,9 @@ declare(strict_types=1);
 
 namespace App\Tests\Controller;
 
-use App\Controller\DashboardController;
-use App\Repository\UserRepository;
+use App\Controller\BrandingSettingsController;
 use App\Service\AggregateConfigLoader;
-use App\Service\AnalyticsPrivacySettings;
-use App\Service\AnonymousBiViewManager;
 use App\Service\BrandingLogoManager;
-use App\Service\TrackingFailureRetryRunner;
-use App\Service\TrackingFailureSettings;
-use App\Service\WebsiteConfigManager;
-use Doctrine\DBAL\Connection;
-use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
@@ -24,13 +16,12 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\Session\Session;
 use Symfony\Component\HttpFoundation\Session\Storage\MockArraySessionStorage;
-use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Security\Core\Authorization\AuthorizationCheckerInterface;
 use Symfony\Component\Security\Core\Exception\AccessDeniedException;
 use Symfony\Component\Security\Csrf\CsrfTokenManagerInterface;
 
-final class DashboardControllerBrandingTest extends TestCase
+final class BrandingSettingsControllerTest extends TestCase
 {
     private string $projectDir;
 
@@ -494,19 +485,11 @@ final class DashboardControllerBrandingTest extends TestCase
         Request $request,
         bool $admin = true,
         bool $csrfValid = true,
-    ): DashboardController {
-        $controller = new DashboardController(
-            $this->createStub(WebsiteConfigManager::class),
+    ): BrandingSettingsController {
+        $controller = new BrandingSettingsController(
             $config,
-            new AnalyticsPrivacySettings($this->createStub(AggregateConfigLoader::class)),
-            $this->createStub(UserRepository::class),
-            $this->createStub(UserPasswordHasherInterface::class),
-            $this->createStub(EntityManagerInterface::class),
-            $this->createStub(LoggerInterface::class),
             new BrandingLogoManager($this->projectDir, 'test'),
-            new AnonymousBiViewManager($this->createStub(Connection::class)),
-            new TrackingFailureSettings($this->createStub(AggregateConfigLoader::class)),
-            $this->createStub(TrackingFailureRetryRunner::class),
+            $this->createStub(LoggerInterface::class),
         );
 
         $authorizationChecker = $this->createStub(AuthorizationCheckerInterface::class);

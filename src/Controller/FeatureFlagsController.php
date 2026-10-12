@@ -14,6 +14,8 @@ use Symfony\Component\Routing\Annotation\Route;
 
 final class FeatureFlagsController extends AbstractController
 {
+    use DashboardAccess;
+
     public const CSRF_TOKEN_ID = 'feature_flags_settings';
 
     public function __construct(
@@ -112,13 +114,5 @@ final class FeatureFlagsController extends AbstractController
     private function logFailure(string $operation, \Throwable $error): void
     {
         $this->logger->error('Feature flag configuration operation failed.', ['operation' => $operation, 'exception_class' => $error::class]);
-    }
-
-    private function denyUnlessAvailableToAdmin(): void
-    {
-        if (!$this->config->isDashboardEnabled()) {
-            throw $this->createNotFoundException('Dashboard is disabled.');
-        }
-        $this->denyAccessUnlessGranted('ROLE_ADMIN');
     }
 }

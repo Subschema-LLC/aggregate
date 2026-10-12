@@ -29,6 +29,8 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
  */
 final class BigQueryController extends AbstractController
 {
+    use DashboardAccess;
+
     public const CSRF_TOKEN_ID = 'bigquery_settings';
     private const SESSION_SIGN_IN = 'bigquery_google_sign_in';
     private const SESSION_SYNC_REQUESTED = 'bigquery_sync_requested_at';
@@ -420,13 +422,5 @@ final class BigQueryController extends AbstractController
         }
 
         return null;
-    }
-
-    private function denyUnlessAvailableToAdmin(): void
-    {
-        if (!$this->config->isDashboardEnabled()) {
-            throw $this->createNotFoundException('Dashboard is disabled.');
-        }
-        $this->denyAccessUnlessGranted('ROLE_ADMIN');
     }
 }
