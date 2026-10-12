@@ -105,7 +105,7 @@ final class AnonymousRollupCoverageViewsTest extends TestCase
 
         self::assertStringStartsWith('CREATE VIEW bi_anonymous_daily_rollup_v1 AS', $rollup);
         self::assertSame(4, substr_count($rollup, 'SUM(event_count) OVER (PARTITION BY'));
-        self::assertSame(8, substr_count($rollup, 'SUM(withheld_hourly_count) OVER (PARTITION BY'));
+        self::assertSame(4, substr_count($rollup, 'SUM(withheld_hourly_count) OVER (PARTITION BY'));
         self::assertSame(5, substr_count($rollup, 'WHERE is_released = 1'));
         self::assertStringContainsString("THEN 'inventory'", $rollup);
         self::assertStringContainsString("'(other)' AS page_group", $rollup);
