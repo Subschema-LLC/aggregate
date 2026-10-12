@@ -19,7 +19,7 @@ final class CollectionControlsForm
      *   settings for config/aggregate.yaml, retry for TrackingFailureSettings::save(),
      *   and the submitted collection profile
      */
-    public static function fromSubmission(ParameterBag $values, CustomDataSettings $current): array
+    public static function fromSubmission(ParameterBag $values, CustomDataSettings $current, ?BotTrafficSettings $bots = null): array
     {
         $enabled = $values->getBoolean('anonymous_tracking_enabled');
         $rawPaths = (string) $values->get('anonymous_excluded_paths', '');
@@ -53,6 +53,8 @@ final class CollectionControlsForm
             throw new \InvalidArgumentException('Geography level must be macro-region or country.');
         }
 
+        $botSettings = self::botSettings($values, $bots);
+
         self::assertLocalGeoDatabasePath($geoDatabasePath);
         $paths = self::excludedPaths($rawPaths);
 
@@ -64,13 +66,50 @@ final class CollectionControlsForm
                 'anonymous_geo_enabled' => $geoEnabled,
                 'anonymous_geo_level' => $geoLevel,
                 'anonymous_geo_database_path' => $geoDatabasePath,
-            ] + ($googleConsentMode === null ? [] : [CustomDataSettings::GOOGLE_CONSENT_MODE_KEY => $googleConsentMode]),
+            ] + ($googleConsentMode === null ? [] : [CustomDataSettings::GOOGLE_CONSENT_MODE_KEY => $googleConsentMode]) + $botSettings,
             'retry' => array_filter([
                 TrackingFailureSettings::KEY_ENABLED => $trackingRetryEnabled,
                 TrackingFailureSettings::KEY_BATCH_SIZE => $trackingRetryBatchSize,
             ], static fn (mixed $value): bool => $value !== null),
             'collection_profile' => $collectionProfile,
         ];
+    }
+
+    /**
+     * bot_traffic and bot_user_agents. A field the form did not send, or a value
+     * equal to the saved one, is not written, so saving does not pin defaults.
+     *
+     * @return array<string, mixed>
+     */
+    private static function botSettings(ParameterBag $values, ?BotTrafficSettings $bots): array
+    {
+        $settings = [];
+        if ($values->has(BotTrafficSettings::KEY)) {
+            $mode = BotTrafficSettings::normalizeMode($values->get(BotTrafficSettings::KEY));
+            if ($mode === null) {
+                throw new \InvalidArgumentException('Bot traffic must be label or drop.');
+            }
+            if ($bots === null || $bots->isInvalid() || $mode !== $bots->mode()) {
+                $settings[BotTrafficSettings::KEY] = $mode;
+            }
+        }
+        if ($values->has(BotTrafficSettings::USER_AGENTS_KEY)) {
+            $raw = (string) $values->get(BotTrafficSettings::USER_AGENTS_KEY, '');
+            if (strlen($raw) > 16_384) {
+                throw new \InvalidArgumentException('Bot User-Agent phrases are too long.');
+            }
+            $lines = array_values(array_filter(array_map('trim', preg_split('/\R/', $raw) ?: []), static fn (string $line): bool => $line !== ''));
+            $phrases = BotTrafficSettings::normalizeUserAgents($lines);
+            if ($phrases === null) {
+                throw new \InvalidArgumentException(sprintf('Enter at most %d bot User-Agent phrases, one per line, each %d to %d characters without control characters.',
+                    BotTrafficSettings::MAX_USER_AGENTS, BotTrafficSettings::MIN_PHRASE_LENGTH, BotTrafficSettings::MAX_PHRASE_LENGTH));
+            }
+            if ($bots === null ? $phrases !== [] : ($bots->isInvalid() || $phrases !== $bots->userAgents())) {
+                $settings[BotTrafficSettings::USER_AGENTS_KEY] = $phrases;
+            }
+        }
+
+        return $settings;
     }
 
     /** Empty, or a local filesystem path ending in .mmdb: no URI, stream wrapper, network share or project-root escape. */

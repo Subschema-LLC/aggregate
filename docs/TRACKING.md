@@ -306,6 +306,8 @@ curl http://localhost:9002/api/health
 
 In browser DevTools, look for `/api/receive` requests and inspect the response body as well as its HTTP status. HTTP 202 can indicate a recorded anonymous event, an accepted enhanced event, or intentionally ignored collection on a disabled/excluded route. An enhanced event uses the configured Messenger transport; a worker is needed for asynchronous delivery. See [worker setup](../DEPLOYMENT.md#worker-process-setup).
 
+Bots are recognized from the User-Agent and from automated browsers, which the tracker reports as `deviceClass: 'bot'` when `navigator.webdriver` is set. By default their events are recorded with `device_class = 'bot'`; with `bot_traffic: drop` they are answered `{"status":"ignored"}`. Server-side senders using HTTP libraries such as curl are not treated as bots. See [bot traffic](PRIVACY-COMPLIANCE.md#bot-traffic).
+
 ## Google Tag Manager (GTM) integration
 
 The [Aggregate GTM tag template](https://github.com/Subschema-LLC/aggregate-gtm-tag-template)

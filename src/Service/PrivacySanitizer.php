@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Service\BotDetection\BotDetector;
+
 /**
  * Reduces ingestion data before it can reach Messenger or an analytics table.
  *
@@ -187,7 +189,8 @@ final class PrivacySanitizer
     public function generalizeUserAgent(string $userAgent): string
     {
         $ua = strtolower($this->truncateUtf8($userAgent, 2048));
-        $deviceClass = $this->deviceClassFromUserAgent($ua);
+        // Bot patterns are case-sensitive, so classify the header as sent.
+        $deviceClass = $this->deviceClassFromUserAgent($this->truncateUtf8($userAgent, 2048));
 
         $browser = match (true) {
             str_contains($ua, 'edg/'), str_contains($ua, 'edge/') => 'Edge',
@@ -313,7 +316,7 @@ final class PrivacySanitizer
     {
         $ua = strtolower($userAgent);
 
-        if (preg_match('/bot|crawler|spider|slurp|headless/i', $ua) === 1) {
+        if (BotDetector::isBot($userAgent)) {
             return 'bot';
         }
         if (str_contains($ua, 'ipad') || str_contains($ua, 'tablet') || (str_contains($ua, 'android') && !str_contains($ua, 'mobile'))) {
