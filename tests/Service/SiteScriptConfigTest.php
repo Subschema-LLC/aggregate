@@ -372,6 +372,44 @@ final class SiteScriptConfigTest extends TestCase
         return $result;
     }
 
+    public function testConsentManagerSavesAndExportsRegions(): void
+    {
+        $siteId = $this->firstId;
+        $regions = [
+            [
+                'id' => 'eu',
+                'name' => 'Europe',
+                'consent_type' => 'explicit',
+                'default' => true,
+                'text' => ['title' => 'EU Notice'],
+            ],
+            [
+                'id' => 'us',
+                'name' => 'USA',
+                'consent_type' => 'implicit',
+                'default' => false,
+                'text' => ['title' => 'US Notice'],
+            ],
+        ];
+
+        $this->sites->saveConsent($siteId, ['enabled' => true, 'name' => 'Regional Site', 'default_region' => 'us', 'regions' => $regions]);
+        $saved = $this->sites->consent($siteId);
+        self::assertArrayHasKey('regions', $saved);
+        self::assertCount(2, $saved['regions']);
+        self::assertSame('eu', $saved['regions'][0]['id']);
+        self::assertSame('explicit', $saved['regions'][0]['consent_type']);
+        self::assertSame('us', $saved['regions'][1]['id']);
+        self::assertSame('implicit', $saved['regions'][1]['consent_type']);
+        self::assertSame('us', $saved['default_region']);
+        self::assertTrue($saved['regions'][1]['default']);
+
+        $export = $this->sites->export($siteId);
+        self::assertStringContainsString('regions:', $export);
+        self::assertStringContainsString('default_region: us', $export);
+        self::assertStringContainsString('consent_type: explicit', $export);
+        self::assertStringContainsString('consent_type: implicit', $export);
+    }
+
     public function testGlobalConsentManagerInAggregateYamlControlsDefaultEnabled(): void
     {
         $appConfigFile = $this->projectDir.'/config/aggregate.yaml';

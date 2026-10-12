@@ -166,6 +166,131 @@
                 </div>
             </fieldset></div>
 
+            <div class="box"><fieldset class="consent-settings-fieldset">
+                <legend class="title is-5">Regional consent rules</legend>
+                <p class="help mb-4">Optional. Define visitor regions to customize messaging and consent modes (explicit opt-in vs. implicit notice / opt-out). When 2 or more regions are configured, the banner includes a region dropdown selector. Leave empty for standard global wording.</p>
+
+                <div class="field mb-4">
+                    <label class="label is-small" for="consent-default-region">Default region to show on banner</label>
+                    <div class="control select is-small">
+                        <select id="consent-default-region" name="default_region">
+                            <option value="">First configured region (default)</option>
+                            {% for r in form.regions %}
+                                {% if r.id is defined and r.id %}
+                                    <option value="{{ r.id }}"{% if (form.default_region|default('')) == r.id or (not form.default_region and r.default) %} selected{% endif %}>
+                                        {{ r.name|default(r.id) }} ({{ r.id }})
+                                    </option>
+                                {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <p class="help">The default region shown to new visitors who have not yet selected a region.</p>
+                </div>
+
+                <div id="consent-regions-list">
+                    {% for index, region in form.regions %}
+                        <div class="box is-light mb-3">
+                            <div class="columns is-multiline">
+                                <div class="column is-4">
+                                    <label class="label is-small" for="region-{{ index }}-id">Region ID</label>
+                                    <input class="input is-small" id="region-{{ index }}-id" name="regions[{{ index }}][id]" value="{{ region.id }}" placeholder="e.g. eu_eea, us, global" pattern="[a-z0-9_-]{1,32}">
+                                </div>
+                                <div class="column is-4">
+                                    <label class="label is-small" for="region-{{ index }}-name">Display Name</label>
+                                    <input class="input is-small" id="region-{{ index }}-name" name="regions[{{ index }}][name]" value="{{ region.name }}" placeholder="e.g. European Union" maxlength="120">
+                                </div>
+                                <div class="column is-3">
+                                    <label class="label is-small" for="region-{{ index }}-consent-type">Consent type</label>
+                                    <div class="select is-small is-fullwidth">
+                                        <select id="region-{{ index }}-consent-type" name="regions[{{ index }}][consent_type]">
+                                            <option value="explicit"{% if (region.consent_type|default(region.consentType|default('explicit'))) == 'explicit' %} selected{% endif %}>Explicit (Opt-in)</option>
+                                            <option value="implicit"{% if (region.consent_type|default(region.consentType|default('explicit'))) == 'implicit' %} selected{% endif %}>Implicit (Notice / Opt-out)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="column is-1 is-flex is-align-items-center is-justify-content-center">
+                                    <label class="checkbox is-size-7" title="Default region for new visitors">
+                                        <input type="checkbox" name="regions[{{ index }}][default]" value="1"{% if region.default %} checked{% endif %}>
+                                        Default
+                                    </label>
+                                </div>
+                            </div>
+                            <details class="mt-2">
+                                <summary class="is-size-7 has-text-weight-semibold">Region messaging overrides (optional)</summary>
+                                <div class="columns is-multiline mt-2">
+                                    <div class="column is-12">
+                                        <label class="label is-small" for="region-{{ index }}-title">Title override</label>
+                                        <input class="input is-small" id="region-{{ index }}-title" name="regions[{{ index }}][text][title]" value="{{ region.text.title|default('') }}" placeholder="Leave empty for global title" maxlength="120">
+                                    </div>
+                                    <div class="column is-12">
+                                        <label class="label is-small" for="region-{{ index }}-description">Description override</label>
+                                        <textarea class="textarea is-small" id="region-{{ index }}-description" name="regions[{{ index }}][text][description]" rows="2" placeholder="Leave empty for global description" maxlength="1000">{{ region.text.description|default('') }}</textarea>
+                                    </div>
+                                    <div class="column is-6">
+                                        <label class="label is-small" for="region-{{ index }}-accept">Accept / Acknowledge button</label>
+                                        <input class="input is-small" id="region-{{ index }}-accept" name="regions[{{ index }}][text][accept]" value="{{ region.text.accept|default('') }}" placeholder="Leave empty for default" maxlength="120">
+                                    </div>
+                                    <div class="column is-6">
+                                        <label class="label is-small" for="region-{{ index }}-reject">Reject / Opt-out button</label>
+                                        <input class="input is-small" id="region-{{ index }}-reject" name="regions[{{ index }}][text][reject]" value="{{ region.text.reject|default('') }}" placeholder="Leave empty for default" maxlength="120">
+                                    </div>
+                                </div>
+                            </details>
+                        </div>
+                    {% endfor %}
+                </div>
+
+                <div class="box is-light mb-3">
+                    <h4 class="title is-6 mb-2">Add a region</h4>
+                    <div class="columns is-multiline">
+                        <div class="column is-4">
+                            <label class="label is-small" for="new-region-id">Region ID</label>
+                            <input class="input is-small" id="new-region-id" name="regions[{{ form.regions|length }}][id]" placeholder="e.g. us, ca, global" pattern="[a-z0-9_-]{1,32}">
+                        </div>
+                        <div class="column is-4">
+                            <label class="label is-small" for="new-region-name">Display Name</label>
+                            <input class="input is-small" id="new-region-name" name="regions[{{ form.regions|length }}][name]" placeholder="e.g. United States" maxlength="120">
+                        </div>
+                        <div class="column is-3">
+                            <label class="label is-small" for="new-region-consent-type">Consent type</label>
+                            <div class="select is-small is-fullwidth">
+                                <select id="new-region-consent-type" name="regions[{{ form.regions|length }}][consent_type]">
+                                    <option value="explicit">Explicit (Opt-in)</option>
+                                    <option value="implicit">Implicit (Notice / Opt-out)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="column is-1 is-flex is-align-items-center is-justify-content-center">
+                            <label class="checkbox is-size-7">
+                                <input type="checkbox" name="regions[{{ form.regions|length }}][default]" value="1">
+                                Default
+                            </label>
+                        </div>
+                    </div>
+                    <details class="mt-2">
+                        <summary class="is-size-7 has-text-weight-semibold">Region messaging overrides (optional)</summary>
+                        <div class="columns is-multiline mt-2">
+                            <div class="column is-12">
+                                <label class="label is-small" for="new-region-title">Title override</label>
+                                <input class="input is-small" id="new-region-title" name="regions[{{ form.regions|length }}][text][title]" placeholder="Leave empty for global title" maxlength="120">
+                            </div>
+                            <div class="column is-12">
+                                <label class="label is-small" for="new-region-description">Description override</label>
+                                <textarea class="textarea is-small" id="new-region-description" name="regions[{{ form.regions|length }}][text][description]" rows="2" placeholder="Leave empty for global description" maxlength="1000"></textarea>
+                            </div>
+                            <div class="column is-6">
+                                <label class="label is-small" for="new-region-accept">Accept / Acknowledge button</label>
+                                <input class="input is-small" id="new-region-accept" name="regions[{{ form.regions|length }}][text][accept]" placeholder="Leave empty for default" maxlength="120">
+                            </div>
+                            <div class="column is-6">
+                                <label class="label is-small" for="new-region-reject">Reject / Opt-out button</label>
+                                <input class="input is-small" id="new-region-reject" name="regions[{{ form.regions|length }}][text][reject]" placeholder="Leave empty for default" maxlength="120">
+                            </div>
+                        </div>
+                    </details>
+                </div>
+            </fieldset></div>
+
             <button class="button is-primary" type="submit">Save consent manager settings</button>
         {% endblock %}
         {% endcomponent %}

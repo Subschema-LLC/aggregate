@@ -81,7 +81,28 @@ tag_manager:
 # Websites inherit this setting unless overridden in config/tag-manager/sites/<site-id>.yaml.
 # Set enabled to false to omit cmp-lite from default install scripts and disable it by default.
 # consent_manager:
-#   enabled: false
+#   enabled: true
+#   # Optional default region ID to show on the banner for new visitors before a selection is made.
+#   default_region: eu_eea
+#   # Optional regional consent rules: lets visitors select their region or configures
+#   # region-specific messaging and consent types ('explicit' opt-in vs 'implicit' notice).
+#   # When 2 or more regions are configured, a region dropdown selector is displayed.
+#   regions:
+#     - id: eu_eea
+#       name: 'European Union & EEA'
+#       consent_type: explicit   # Opt-in: analytics starts denied until affirmative accept
+#       default: true
+#       text:
+#         title: '{name}: Privacy choices'
+#         description: 'Under GDPR, optional categories start denied.'
+#     - id: us
+#       name: 'United States'
+#       consent_type: implicit   # Notice / Opt-out: analytics is active with opt-out
+#       text:
+#         title: '{name}: Notice of privacy choices'
+#         description: 'We use cookies for analytics. You may opt out at any time.'
+#         accept: 'Acknowledge'
+#         reject: 'Opt out'
 
 # Optional: accept analytics consent from Google Consent Mode signals (analytics_storage: granted).
 # When enabled (the default), the tracker listens for gtag('consent', ...) and dataLayer consent

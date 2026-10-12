@@ -120,7 +120,7 @@ final class ConsentManagerController extends AbstractController
      */
     private function changesFromForm(array $form, array $saved): array
     {
-        if (array_diff(array_keys($form), ['_csrf_token', 'site', 'enabled', 'name', 'privacy_policy_url', 'precheck_categories', 'text', 'theme', 'buttons']) !== []
+        if (array_diff(array_keys($form), ['_csrf_token', 'site', 'enabled', 'name', 'privacy_policy_url', 'precheck_categories', 'text', 'theme', 'buttons', 'regions', 'default_region']) !== []
             || !in_array($form['enabled'] ?? null, ['0', '1'], true) || !is_string($form['name'] ?? null)
             || !is_string($form['privacy_policy_url'] ?? '')
             || (array_key_exists('precheck_categories', $form) && (!is_array($form['precheck_categories']) || array_filter($form['precheck_categories'], 'is_string') !== $form['precheck_categories']))
@@ -206,6 +206,34 @@ final class ConsentManagerController extends AbstractController
             }
         }
 
+        $regions = [];
+        if (isset($form['regions']) && is_array($form['regions'])) {
+            foreach ($form['regions'] as $reg) {
+                if (!is_array($reg)) continue;
+                $id = trim((string) ($reg['id'] ?? ''));
+                $name = trim((string) ($reg['name'] ?? ''));
+                if ($id === '' && $name === '') continue;
+                $regItem = [
+                    'id' => $id,
+                    'name' => $name,
+                    'consent_type' => in_array($reg['consent_type'] ?? null, ['explicit', 'implicit'], true) ? $reg['consent_type'] : 'explicit',
+                    'default' => ($reg['default'] ?? null) === '1' || ($reg['default'] ?? null) === true,
+                ];
+                if (isset($reg['text']) && is_array($reg['text'])) {
+                    $regText = [];
+                    foreach ($reg['text'] as $tk => $tv) {
+                        if (is_string($tv) && trim($tv) !== '') {
+                            $regText[$tk] = trim($tv);
+                        }
+                    }
+                    if ($regText !== []) {
+                        $regItem['text'] = $regText;
+                    }
+                }
+                $regions[] = $regItem;
+            }
+        }
+
         return [
             'enabled' => $form['enabled'] === '1', 'name' => $form['name'],
             'privacy_policy_url' => $privacy === '' ? null : $privacy,
@@ -213,6 +241,8 @@ final class ConsentManagerController extends AbstractController
             'text' => $text === [] ? null : $text,
             'theme' => $theme === [] ? null : $theme,
             'buttons' => $buttons === [] ? null : $buttons,
+            'regions' => $regions === [] ? null : $regions,
+            'default_region' => isset($form['default_region']) && trim((string) $form['default_region']) !== '' ? trim((string) $form['default_region']) : null,
         ];
     }
 
@@ -242,6 +272,8 @@ final class ConsentManagerController extends AbstractController
             'theme' => array_replace(ConsentAppearance::THEME_DEFAULTS[ConsentAppearance::BUILTIN], $consent['theme'] ?? []),
             'show' => implode(',', $buttons['show']),
             'reopen' => $buttons['reopen'],
+            'regions' => $consent['regions'] ?? [],
+            'default_region' => $consent['default_region'] ?? '',
         ];
     }
 
@@ -280,6 +312,10 @@ final class ConsentManagerController extends AbstractController
         if (in_array($buttons['reopen'] ?? null, ConsentAppearance::REOPEN_POSITIONS, true)) {
             $form['reopen'] = $buttons['reopen'];
         }
+        if (array_key_exists('regions', $submitted) && is_array($submitted['regions'])) {
+            $form['regions'] = array_values(array_filter($submitted['regions'], 'is_array'));
+        }
+        $form['default_region'] = trim((string) ($submitted['default_region'] ?? ''));
 
         return $form;
     }

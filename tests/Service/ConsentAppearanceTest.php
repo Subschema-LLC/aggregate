@@ -131,4 +131,87 @@ final class ConsentAppearanceTest extends TestCase
             }
         }
     }
+
+    public function testRegionsValidationAndBrowserConversion(): void
+    {
+        $input = [
+            'regions' => [
+                [
+                    'id' => 'eu_eea',
+                    'name' => 'European Union & EEA',
+                    'consent_type' => 'explicit',
+                    'default' => true,
+                    'text' => ['title' => 'EU Choices', 'description' => 'GDPR requires prior consent.'],
+                ],
+                [
+                    'id' => 'us',
+                    'name' => 'United States',
+                    'consent_type' => 'implicit',
+                    'default' => false,
+                    'text' => ['title' => 'US Notice', 'description' => 'We use cookies. Opt out below.'],
+                ],
+            ],
+        ];
+
+        $validated = ConsentAppearance::validate($input, ConsentAppearance::BUILTIN, 'consent_manager');
+        self::assertCount(2, $validated['regions']);
+        self::assertSame('eu_eea', $validated['regions'][0]['id']);
+        self::assertSame('explicit', $validated['regions'][0]['consent_type']);
+        self::assertTrue($validated['regions'][0]['default']);
+        self::assertSame('us', $validated['regions'][1]['id']);
+        self::assertSame('implicit', $validated['regions'][1]['consent_type']);
+        self::assertFalse($validated['regions'][1]['default']);
+
+        $browser = ConsentAppearance::browser($validated);
+        self::assertArrayHasKey('regions', $browser);
+        self::assertSame('eu_eea', $browser['regions'][0]['id']);
+        self::assertSame('explicit', $browser['regions'][0]['consentType']);
+        self::assertSame('EU Choices', $browser['regions'][0]['text']['title']);
+        self::assertSame('implicit', $browser['regions'][1]['consentType']);
+    }
+
+    public function testRegionsValidationRejectsInvalidOptions(): void
+    {
+        // Duplicate ID
+        $duplicate = [
+            ['id' => 'eu', 'name' => 'Europe', 'consent_type' => 'explicit'],
+            ['id' => 'eu', 'name' => 'Europe 2', 'consent_type' => 'implicit'],
+        ];
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('is duplicated');
+        ConsentAppearance::regions($duplicate, ConsentAppearance::BUILTIN, 'regions');
+    }
+
+    public function testExplicitDefaultRegionConfiguration(): void
+    {
+        $input = [
+            'default_region' => 'us',
+            'regions' => [
+                ['id' => 'eu', 'name' => 'Europe', 'consent_type' => 'explicit'],
+                ['id' => 'us', 'name' => 'USA', 'consent_type' => 'implicit'],
+            ],
+        ];
+
+        $validated = ConsentAppearance::validate($input, ConsentAppearance::BUILTIN, 'consent_manager');
+        self::assertSame('us', $validated['default_region']);
+        self::assertFalse($validated['regions'][0]['default']);
+        self::assertTrue($validated['regions'][1]['default']);
+
+        $browser = ConsentAppearance::browser($validated);
+        self::assertSame('us', $browser['defaultRegion']);
+    }
+
+    public function testDefaultRegionMustMatchAConfiguredRegion(): void
+    {
+        $input = [
+            'default_region' => 'unknown',
+            'regions' => [
+                ['id' => 'eu', 'name' => 'Europe', 'consent_type' => 'explicit'],
+            ],
+        ];
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('does not match any configured region');
+        ConsentAppearance::validate($input, ConsentAppearance::BUILTIN, 'consent_manager');
+    }
 }
