@@ -23,7 +23,12 @@ class Kernel extends BaseKernel
         }
 
         foreach ([
-            'App\\Controller\\DashboardController',
+            'App\\Controller\\WebsitesController',
+            'App\\Controller\\ApplicationSettingsController',
+            'App\\Controller\\BrandingSettingsController',
+            'App\\Controller\\CollectionSettingsController',
+            'App\\Controller\\PrivacySettingsController',
+            'App\\Controller\\UsersController',
             'App\\Controller\\SetupController',
             'App\\Controller\\TagManagerController',
             'App\\Controller\\BrowserAssetsController',

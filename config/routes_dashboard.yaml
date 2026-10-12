@@ -1,5 +1,25 @@
-dashboard_controller:
-    resource: ../src/Controller/DashboardController.php
+websites_controller:
+    resource: ../src/Controller/WebsitesController.php
+    type: attribute
+
+application_settings_controller:
+    resource: ../src/Controller/ApplicationSettingsController.php
+    type: attribute
+
+branding_settings_controller:
+    resource: ../src/Controller/BrandingSettingsController.php
+    type: attribute
+
+collection_settings_controller:
+    resource: ../src/Controller/CollectionSettingsController.php
+    type: attribute
+
+privacy_settings_controller:
+    resource: ../src/Controller/PrivacySettingsController.php
+    type: attribute
+
+users_controller:
+    resource: ../src/Controller/UsersController.php
     type: attribute
 
 setup_controller:

@@ -16,6 +16,8 @@ use Symfony\Component\Yaml\Yaml;
 
 final class EventExamplesController extends AbstractController
 {
+    use DashboardAccess;
+
     public function __construct(
         private readonly AggregateConfigLoader $config,
         private readonly EventExampleGenerator $examples,
@@ -90,14 +92,6 @@ final class EventExamplesController extends AbstractController
             'Content-Type' => 'application/json; charset=UTF-8',
             'Content-Disposition' => 'attachment; filename="'.$filename.'"',
         ]));
-    }
-
-    private function denyUnlessAvailableToAdmin(): void
-    {
-        if (!$this->config->isDashboardEnabled()) {
-            throw $this->createNotFoundException('Dashboard is disabled.');
-        }
-        $this->denyAccessUnlessGranted('ROLE_ADMIN');
     }
 
     private function privateResponse(Response $response): Response

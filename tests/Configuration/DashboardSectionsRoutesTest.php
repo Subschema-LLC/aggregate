@@ -4,7 +4,12 @@ declare(strict_types=1);
 
 namespace App\Tests\Configuration;
 
-use App\Controller\DashboardController;
+use App\Controller\ApplicationSettingsController;
+use App\Controller\BrandingSettingsController;
+use App\Controller\CollectionSettingsController;
+use App\Controller\PrivacySettingsController;
+use App\Controller\UsersController;
+use App\Controller\WebsitesController;
 use App\Entity\User;
 use App\Kernel;
 use App\Repository\UserRepository;
@@ -528,7 +533,9 @@ final class DashboardSectionsRoutesTest extends TestCase
     public function testHeadlessBootOmitsEveryDashboardSectionAndMutation(): void
     {
         $browser = $this->browser(dashboardEnabled: false);
-        self::assertFalse($this->container()->has(DashboardController::class));
+        foreach ([WebsitesController::class, ApplicationSettingsController::class, BrandingSettingsController::class, CollectionSettingsController::class, PrivacySettingsController::class, UsersController::class] as $controller) {
+            self::assertFalse($this->container()->has($controller), $controller);
+        }
         $routes = $this->container()->get('router')->getRouteCollection();
         foreach (self::PAGES as $name => [$path]) {
             self::assertNull($routes->get($name));

@@ -16,6 +16,8 @@ use Symfony\Component\Routing\Annotation\Route;
 
 final class DataLifecycleController extends AbstractController
 {
+    use DashboardAccess;
+
     public const CSRF_TOKEN_ID = 'data_lifecycle_settings';
 
     public function __construct(
@@ -148,14 +150,5 @@ final class DataLifecycleController extends AbstractController
         $this->addFlash('success', 'Data lifecycle settings were saved.');
 
         return $this->redirectToRoute('app_data_lifecycle');
-    }
-
-    private function denyUnlessAvailableToAdmin(): void
-    {
-        if (!$this->config->isDashboardEnabled()) {
-            throw $this->createNotFoundException('Dashboard is disabled.');
-        }
-
-        $this->denyAccessUnlessGranted('ROLE_ADMIN');
     }
 }

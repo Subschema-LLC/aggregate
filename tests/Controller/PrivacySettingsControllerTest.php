@@ -4,18 +4,12 @@ declare(strict_types=1);
 
 namespace App\Tests\Controller;
 
-use App\Controller\DashboardController;
-use App\Repository\UserRepository;
+use App\Controller\PrivacySettingsController;
 use App\Service\AggregateConfigLoader;
 use App\Service\AnalyticsPrivacySettings;
 use App\Service\AnonymousBiViewManager;
-use App\Service\BrandingLogoManager;
-use App\Service\TrackingFailureRetryRunner;
-use App\Service\TrackingFailureSettings;
-use App\Service\WebsiteConfigManager;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\SQLitePlatform;
-use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
@@ -24,7 +18,6 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\Session\Session;
 use Symfony\Component\HttpFoundation\Session\Storage\MockArraySessionStorage;
-use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Security\Core\Authorization\AuthorizationCheckerInterface;
 use Symfony\Component\Security\Core\Exception\AccessDeniedException;
@@ -32,7 +25,7 @@ use Symfony\Component\Security\Csrf\CsrfToken;
 use Symfony\Component\Security\Csrf\CsrfTokenManagerInterface;
 use Twig\Environment;
 
-final class DashboardControllerPrivacySettingsTest extends TestCase
+final class PrivacySettingsControllerTest extends TestCase
 {
     public function testAdminSaveWritesThresholdsToConfigurationAndRegeneratesViews(): void
     {
@@ -192,21 +185,11 @@ final class DashboardControllerPrivacySettingsTest extends TestCase
         );
         $logger = $this->createMock(LoggerInterface::class);
         $logger->expects(self::once())->method('error');
-        $userRepository = $this->createStub(UserRepository::class);
-        $userRepository->method('findBy')->willReturn([]);
-
-        $controller = new DashboardController(
-            $this->createStub(WebsiteConfigManager::class),
+        $controller = new PrivacySettingsController(
             $config,
             $settings,
-            $userRepository,
-            $this->createStub(UserPasswordHasherInterface::class),
-            $this->createStub(EntityManagerInterface::class),
+            new AnonymousBiViewManager($this->createStub(Connection::class)),
             $logger,
-            new BrandingLogoManager(sys_get_temp_dir(), 'test'),
-            anonymousBiViewManager: new AnonymousBiViewManager($this->createStub(Connection::class)),
-            trackingFailureSettings: new TrackingFailureSettings($this->createStub(AggregateConfigLoader::class)),
-            trackingFailureRetryRunner: $this->createStub(TrackingFailureRetryRunner::class),
         );
         $authorizationChecker = $this->createStub(AuthorizationCheckerInterface::class);
         $authorizationChecker->method('isGranted')->willReturn(true);
@@ -239,22 +222,15 @@ final class DashboardControllerPrivacySettingsTest extends TestCase
         Session $session,
         bool $csrfValid = true,
         bool $admin = true,
-    ): DashboardController {
+    ): PrivacySettingsController {
         $config = $this->createStub(AggregateConfigLoader::class);
         $config->method('isDashboardEnabled')->willReturn(true);
 
-        $controller = new DashboardController(
-            $this->createStub(WebsiteConfigManager::class),
+        $controller = new PrivacySettingsController(
             $config,
             $settings,
-            $this->createStub(UserRepository::class),
-            $this->createStub(UserPasswordHasherInterface::class),
-            $this->createStub(EntityManagerInterface::class),
+            $views,
             $this->createStub(LoggerInterface::class),
-            new BrandingLogoManager(sys_get_temp_dir(), 'test'),
-            anonymousBiViewManager: $views,
-            trackingFailureSettings: new TrackingFailureSettings($this->createStub(AggregateConfigLoader::class)),
-            trackingFailureRetryRunner: $this->createStub(TrackingFailureRetryRunner::class),
         );
 
         $authorizationChecker = $this->createStub(AuthorizationCheckerInterface::class);

@@ -17,6 +17,8 @@ use Symfony\Component\Routing\Attribute\Route;
 /** Page groups for bi_anonymous_daily_v1; YAML and app:analytics:bi-views:regenerate are the headless path. */
 final class BiPageGroupsController extends AbstractController
 {
+    use DashboardAccess;
+
     public const CSRF_TOKEN_ID = 'bi_page_groups';
 
     public function __construct(
@@ -92,13 +94,5 @@ final class BiPageGroupsController extends AbstractController
             'page_groups_error' => $error,
             'max_rules' => BiPageGroups::MAX_RULES,
         ], new Response(status: $status, headers: ['Cache-Control' => 'private, no-store, max-age=0']));
-    }
-
-    private function denyUnlessAvailableToAdmin(): void
-    {
-        if (!$this->config->isDashboardEnabled()) {
-            throw $this->createNotFoundException('Dashboard is disabled.');
-        }
-        $this->denyAccessUnlessGranted('ROLE_ADMIN');
     }
 }
