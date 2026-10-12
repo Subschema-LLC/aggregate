@@ -83,6 +83,34 @@ checkout, or a small accessibility fix. Keep each PR focused and target
 - **Microsoft Fabric Connector.** Similar to the BigQuery Sync connector, but for Microsoft Fabric.
 - **Sendgrid Integration** For transactional emails.
 - **Postmark Integration.** For transactional emails.
+- **Alerts rules engine.** Notify administrators when collection looks wrong, so
+  a broken tag, a removed tracker or a misconfigured consent banner is noticed
+  within hours instead of at the next report. Administrators define rules such
+  as "fewer than 200 events for this website in a completed hour", "no `signup`
+  goal events for 24 hours" or "more than 50 tracking failures in a day", with a
+  threshold, a time window, the websites it covers and its recipients.
+  - **Configuration:** rules live in YAML, like every other operator setting,
+    with an **Alerts** page in the dashboard and command-line equivalents that
+    share one validation service. The page manages rules and recipients, sends
+    a test alert and lists recent alerts; it does not chart traffic, which stays
+    in BI tools.
+  - **Evaluation:** a console command, scheduled externally like
+    `app:analytics:maintain`, evaluates rules on completed time buckets, so
+    hour-bucketed anonymous events and partial hours do not cause false alarms.
+    It works with the dashboard disabled. A cooldown and a recovery notice keep
+    a persistent problem from sending repeated alerts.
+  - **Records:** each evaluation run is recorded in `processing_tasks` and each
+    alert sent, suppressed or failed in `audit_trail`, through
+    `App\Service\Operations`, with no alerts table of its own.
+  - **Delivery:** email through the Postmark and SendGrid integrations above,
+    and SMS through a provider still to be chosen, since Postmark and SendGrid
+    send email only (Twilio, SendGrid's parent company, is one option).
+    Credentials stay in `config/secrets` or the environment, never in YAML,
+    messages or logs.
+  - **Privacy:** an alert carries the rule, website, threshold, window and
+    observed count, never event rows, page paths, custom property values or
+    visitor data. Recipients' email addresses and phone numbers are personal
+    data too; keep them out of logs and the audit trail details.
 - **Medallion Architecture.** Add a means to define and generate silver and gold views. Also docs: events table and glossary are bronze.
 - **Snowflake Integration** Add a Snowflake connector.
 - **Agency Multi-tenancy** Allow multi-tenancy for agencies that want to host on behalf of clients. Determine is separate databases per client or separation in one DB with views being unique to each client.
@@ -111,7 +139,8 @@ checkout, or a small accessibility fix. Keep each PR focused and target
 - **Branding polish.** Improve the default logo and administration presentation
   while preserving configured white labels, accessibility, and license notices.
 - **Operational email integrations.** Explore Postmark/SendGrid support for a
-  concrete administration or maintenance notification need. Keep secrets in
+  concrete administration or maintenance notification need; the alerts rules
+  engine above is the first. Keep secrets in
   deployment configuration and avoid embedding private analytics data in email.
   Analytics report delivery belongs in external reporting tools.
 - **Tag management integrations.** The
