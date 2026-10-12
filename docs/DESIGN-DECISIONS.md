@@ -25,7 +25,7 @@ explain if it cannot follow a person at all.
 funnels. One person can contribute several events to the same count.
 
 **What would change it.** Nothing within anonymous mode. Identity belongs in
-enhanced mode, after consent.
+enhanced mode, when the consent signal grants it.
 
 ### Server-generated UTC hour buckets
 
@@ -87,6 +87,30 @@ blocking of a repeat abuser.
 
 **What would change it.** Sustained abuse would be handled at the web server or
 firewall rather than by storing addresses here.
+
+### Enhanced mode follows the consent signal
+
+**Decision.** The tracker uses enhanced mode while its consent signal is granted
+and anonymous mode otherwise. With Aggregate's banners, the region's consent
+type sets the signal before a choice: denied for `explicit_eu` (the default) and
+`explicit_us`, granted for `implicit_us`. With a third-party consent manager,
+the signal it pushes decides, including a Google Consent Mode default. See
+[Which consent signal sets the mode](PRIVACY-COMPLIANCE.md#which-consent-signal-sets-the-mode).
+
+**Why.** The rules differ by market: opt-in consent in the EU and UK, notice and
+opt-out in much of the US. Operators already make that decision in their consent
+manager; a fixed rule in the tracker would either contradict it or be worked
+around.
+
+**Trade-off.** Aggregate cannot check how a grant was obtained, so a misconfigured
+region or consent manager collects enhanced data without valid consent. The
+defaults stay conservative: a banner without regions is `explicit_eu`, and no
+signal means anonymous mode.
+
+**What would change it.** Adopters needing Aggregate itself to refuse enhanced
+mode regardless of the consent manager. The strict collection profile already
+does that for every visitor; a per-region equivalent would need a reliable way
+to know the visitor's region.
 
 ### Consent banners can be restyled, not tilted toward "accept"
 

@@ -233,9 +233,11 @@ with `:dismissed` appended. It holds only `1`, identifies no one and is never
 sent anywhere; nothing is stored when the EU-style button saves a rejection
 instead. The Escape key hides the banner for the current page in every type.
 
-`implicit_us` allows enhanced analytics, which uses browser identifiers, before
-the visitor has chosen anything. The [privacy guide](PRIVACY-COMPLIANCE.md#enhanced-analytics-consent)
-treats enhanced analytics as consent-based, so use `implicit_us` only for
+The consent type therefore decides the analytics mode before a choice:
+anonymous for `explicit_eu` and `explicit_us`, enhanced for `implicit_us`. The
+privacy guide compares this with third-party consent managers in
+[Which consent signal sets the mode](PRIVACY-COMPLIANCE.md#which-consent-signal-sets-the-mode).
+Enhanced analytics uses browser identifiers, so use `implicit_us` only for
 visitors where you have decided that notice and opt-out are lawful for this
 website. The region selector is the visitor's own statement, not a location
 check.
