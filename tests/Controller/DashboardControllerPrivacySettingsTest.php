@@ -57,7 +57,7 @@ final class DashboardControllerPrivacySettingsTest extends TestCase
         $connection = $this->createMock(Connection::class);
         $connection->expects(self::once())->method('getDatabasePlatform')->willReturn(new SQLitePlatform());
         $connection->expects(self::once())->method('beginTransaction');
-        $connection->expects(self::exactly(6))->method('executeStatement');
+        $connection->expects(self::exactly(8))->method('executeStatement');
         $connection->expects(self::once())->method('commit');
         $connection->expects(self::never())->method('rollBack');
         $views = new AnonymousBiViewManager($connection);

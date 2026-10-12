@@ -424,14 +424,26 @@ environments:
 #   such as /account/*, /checkout/**, and /health.
 #
 # anonymous_min_cell_count (optional, default: 5; range: 2..1000)
-#   Disclosure threshold for published cells in bi_anonymous_events_v1 and
-#   bi_anonymous_goals_v1. Saving this value in the dashboard regenerates those
-#   BI views with the effective threshold.
+#   Disclosure threshold for published cells in bi_anonymous_events_v1,
+#   bi_anonymous_daily_v1 and bi_anonymous_goals_v1. Saving this value in the
+#   dashboard regenerates the BI views with the effective threshold; after
+#   editing it here, run app:analytics:bi-views:regenerate.
 #
 # anonymous_geo_min_cell_count (optional, default: 25; range: 10..1000)
 #   Disclosure threshold for published and pooled cells in
 #   bi_anonymous_geo_events_v1. Saving this value in the dashboard regenerates
 #   the geography BI view with the effective threshold.
+#
+# bi_page_groups (optional, default: [])
+#   Page groups for bi_anonymous_daily_v1: rules that map sanitized paths to a
+#   content label, first match wins; unmatched paths keep their own path.
+#   Wildcards only in the last segment: /dir/** (the directory and everything
+#   below it), /dir/* (one more segment) or /dir/*.pdf (within the segment).
+#   Labels are published to BI users. No environment override. Apply changes
+#   with the Page groups page or app:analytics:bi-views:regenerate.
+#   bi_page_groups:
+#     - { pattern: '/inventory/**', group: inventory }
+#     - { pattern: '/locations/*', group: location }
 #
 # anonymous_geo_enabled (optional, default: false)
 #   Derive a coarse area from the request IP for accepted analytics events. Requires

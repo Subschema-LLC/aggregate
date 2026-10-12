@@ -25,7 +25,8 @@
             <h2 class="title is-5">Use the supported views as the reporting boundary</h2>
             <p>
                 Routine BI credentials should receive <strong>SELECT access only</strong> to
-                <code>bi_anonymous_events_v1</code>, <code>bi_anonymous_goals_v1</code>, and, when needed,
+                <code>bi_anonymous_events_v1</code>, <code>bi_anonymous_goals_v1</code>,
+                <code>bi_anonymous_daily_v1</code>, and, when needed,
                 <code>bi_anonymous_geo_events_v1</code>, plus the declared <code>bi_dim_*</code> and
                 <code>bi_glossary_*</code> metadata views needed for labels. Do not grant routine reporting
                 users access to <code>events</code>, <code>analytics_glossary</code>, or other application tables.
@@ -36,6 +37,7 @@
         <nav class="buttons is-centered mb-6" aria-label="Page sections">
             <a class="button is-small is-light" href="#anonymous-events-view">Hourly event view</a>
             <a class="button is-small is-light" href="#anonymous-goals-view">Daily goal view</a>
+            <a class="button is-small is-light" href="#anonymous-daily-view">Daily page group view</a>
             <a class="button is-small is-light" href="#anonymous-geography-view">Daily geography view</a>
             <a class="button is-small is-light" href="#bi-glossary">BI labels and definitions</a>
             <a class="button is-small is-light" href="#custom-reporting-views">Custom reporting views</a>
@@ -212,6 +214,83 @@
                 and identifiers. Do not join it to the hourly or geography views: they have different grains
                 and independent suppression. A configured goal can still be sensitive in context, and a
                 generic rejection warning is an allowlist result—not sensitive-data detection.
+            </div>
+            </div>
+        </details>
+
+        <details id="anonymous-daily-view" class="box data-structure-section" open>
+            <summary>
+                <div>
+                    <p class="heading mb-1">Approved BI contract</p>
+                    <h2 id="anonymous-daily-view-heading" class="title is-4 mb-0"><code>bi_<wbr>anonymous_<wbr>daily_<wbr>v1</code></h2>
+                </div>
+                <div class="tags mb-0">
+                    <span class="tag is-primary is-light">Anonymous only</span>
+                    <span class="tag is-light">Daily grain</span>
+                </div>
+            </summary>
+            <div class="data-structure-content">
+
+            <div class="content">
+                <p>
+                    Each row is one released daily cell by page group, referrer channel and device class.
+                    Grouping pages and dropping the hour and viewport releases far more of a low-traffic
+                    site's events than the hourly view. A cell is withheld below
+                    <code>anonymous_min_cell_count</code>, and also when the part of it the hourly view
+                    withholds would be smaller than that minimum, so comparing the two views never reveals
+                    a small count. Page groups are configured under <strong>Reporting → Page groups</strong> or as
+                    <code>bi_page_groups</code> in YAML.
+                </p>
+            </div>
+
+            <div class="table-container" role="region" aria-labelledby="anonymous-daily-view-heading" tabindex="0">
+                <table class="table is-fullwidth is-striped is-hoverable data-structure-table">
+                    <caption class="is-sr-only">Columns exposed by bi_anonymous_daily_v1</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">Column</th>
+                            <th scope="col">Logical type</th>
+                            <th scope="col">Meaning</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <th scope="row"><code>website_token</code></th>
+                            <td>String</td>
+                            <td>Site key used to partition events.</td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><code>event_day</code></th>
+                            <td>UTC date</td>
+                            <td>A completed UTC calendar day.</td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><code>event_name</code></th>
+                            <td>String</td>
+                            <td><code>view</code> for page views, or a fixed safe interaction name.</td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><code>page_group</code></th>
+                            <td>Text</td>
+                            <td>The label of the first matching page group rule, or the sanitized path when none matches.</td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><code>referrer_channel</code></th>
+                            <td>Category</td>
+                            <td>Coarse source channel.</td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><code>device_class</code></th>
+                            <td>Category</td>
+                            <td>Coarse device category.</td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><code>event_count</code></th>
+                            <td>Integer</td>
+                            <td>Number of events in the released daily cell, not distinct people.</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
             </div>
         </details>

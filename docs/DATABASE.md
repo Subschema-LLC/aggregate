@@ -507,6 +507,7 @@ The current schema contains:
 - `analytics_glossary` (private synchronized metadata table; never granted to routine BI users)
 - `bi_dim_event_name_v1`, `bi_dim_goal_event_v1`, `bi_dim_referrer_channel_v1`, `bi_dim_device_class_v1`, `bi_dim_viewport_bucket_v1`, `bi_dim_geo_area_v1`, `bi_dim_website_token_v1`, `bi_glossary_values_v1`, and `bi_glossary_columns_v1` (approved declared-metadata views)
 - `bi_anonymous_events_v1` (supported grouped anonymous-mode BI contract)
+- `bi_anonymous_daily_v1` (supported completed-day anonymous event-count BI contract by page group, with complementary suppression against the hourly view)
 - `bi_anonymous_goals_v1` (supported completed-day anonymous goal-count BI contract)
 - `bi_anonymous_geo_events_v1` (supported daily, lower-dimensional anonymous geography BI contract)
 - `analytics_custom_events_v1`, `analytics_custom_pageviews_v1`, and `analytics_custom_goals_v1` (optional, generated private views over retained raw rows)

@@ -94,7 +94,7 @@ IP range.
 Details:
 
 - **Privacy-minimized collection:** page views and safe named events, with optional allowlisted goals and coarse local geography.
-- **Reporting views with suppression:** completed hourly or daily aggregates with configurable minimum event counts.
+- **Reporting views with suppression:** completed hourly or daily aggregates with configurable minimum event counts, plus a daily view by YAML-defined page group that releases far more of a low-traffic site's data without letting the two views be subtracted to reveal small counts.
 - **AI-ready reporting:** versioned views and a built-in data dictionary that AI assistants can query with the same read-only account as BI tools.
 - **BigQuery sync:** copy the reporting views to a Google BigQuery dataset on a schedule, signing in with a service account key, the Google Cloud host's account or a Google sign-in. Private row-level views need an explicit opt-in. See [Sync to BigQuery](docs/BIGQUERY.md).
 - **Optional page depth:** a capped page count shared by events on each page, with tab storage or URL parameter passing configured through UI/YAML. See [storage, URL and reporting boundaries](docs/DATA-MODEL.md#optional-page-depth) before enabling it.
@@ -245,6 +245,7 @@ Routine BI connections should use approved views:
 | View | Reports |
 | --- | --- |
 | `bi_anonymous_events_v1` | Hourly page views and named events |
+| `bi_anonymous_daily_v1` | Daily page views and named events by [page group](docs/BI-CONNECTION.md#page-groups), for sites whose hourly cells are too small to release |
 | `bi_anonymous_goals_v1` | Daily occurrences of configured goals |
 | `bi_anonymous_geo_events_v1` | Daily coarse geography with additional suppression |
 

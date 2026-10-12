@@ -22,9 +22,11 @@ final class RegenerateBiViewsCommandTest extends TestCase
         $tester = $this->tester(['anonymous' => 12, 'geo' => 40], $executed);
 
         self::assertSame(Command::SUCCESS, $tester->execute([]));
-        self::assertCount(3, $executed);
+        self::assertCount(4, $executed);
         self::assertStringContainsString('event_counts.event_count >= 12', $executed[0]);
         self::assertStringContainsString('40 AS minimum_cell_count', $executed[2]);
+        self::assertStringContainsString('CREATE OR REPLACE VIEW bi_anonymous_daily_v1 AS', $executed[3]);
+        self::assertStringContainsString('bi_anonymous_daily_v1', self::display($tester));
         self::assertStringContainsString('12 for events and goals, 40 for geography', self::display($tester));
         self::assertStringNotContainsString('environment override', self::display($tester));
     }

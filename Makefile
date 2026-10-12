@@ -136,6 +136,7 @@ endif
 migrate: ## Run database migrations
 	$(PHP_CMD) bin/console doctrine:migrations:migrate
 	$(PHP_CMD) bin/console app:analytics:glossary:sync
+	$(PHP_CMD) bin/console app:analytics:bi-views:regenerate
 
 test: ## Run PHP and JavaScript privacy regression tests
 	$(PHP_CMD) vendor/bin/phpunit

@@ -12,13 +12,20 @@ use Doctrine\DBAL\Platforms\SQLServerPlatform;
 
 /**
  * Regenerates the approved bi_anonymous_* views from the configured disclosure
- * thresholds. Server databases replace each view in place, which keeps the
- * reporting account's grants; SQLite has no grants and drops and recreates.
+ * thresholds and page groups. Server databases replace each view in place,
+ * which keeps the reporting account's grants; SQLite has no grants and drops
+ * and recreates.
+ *
+ * The hourly and daily event views are always regenerated together with the
+ * same threshold: the daily view's complementary suppression assumes it.
  */
 final class AnonymousBiViewManager
 {
+    public const VIEW_NAMES = ['bi_anonymous_events_v1', 'bi_anonymous_goals_v1', 'bi_anonymous_geo_events_v1', 'bi_anonymous_daily_v1'];
+
     public function __construct(
         private readonly Connection $connection,
+        private readonly ?BiPageGroups $pageGroups = null,
     ) {
     }
 
@@ -61,10 +68,14 @@ final class AnonymousBiViewManager
     private function statements(AbstractPlatform $platform, int $minimumCellCount, int $geoMinimumCellCount): array
     {
         $sql = new AnonymousBiViewSqlBuilder($platform);
+        // Read and validate page groups before any statement runs, so invalid
+        // YAML leaves every existing view in place.
+        $pageGroups = $this->pageGroups?->rules() ?? [];
         $views = [
             ['bi_anonymous_events_v1', $sql->eventViewSql($minimumCellCount)],
             ['bi_anonymous_goals_v1', $sql->goalViewSql($minimumCellCount)],
             ['bi_anonymous_geo_events_v1', $sql->geoViewSql($geoMinimumCellCount)],
+            ['bi_anonymous_daily_v1', $sql->dailyViewSql($minimumCellCount, $pageGroups)],
         ];
 
         $statements = [];
@@ -84,10 +95,11 @@ final class AnonymousBiViewManager
 
     /**
      * Turns the builder's CREATE VIEW into the engine's in-place replacement.
-     * A threshold change alters only a literal, so column names, order and
-     * types stay the same, which CREATE OR REPLACE requires on PostgreSQL.
+     * Threshold and page-group changes alter only literals and CASE branches,
+     * so column names, order and types stay the same, which CREATE OR REPLACE
+     * requires on PostgreSQL.
      */
-    private static function replaceViewSql(AbstractPlatform $platform, string $name, string $createSql): string
+    public static function replaceViewSql(AbstractPlatform $platform, string $name, string $createSql): string
     {
         $prefix = 'CREATE VIEW '.$name.' AS';
         if (!str_starts_with($createSql, $prefix)) {

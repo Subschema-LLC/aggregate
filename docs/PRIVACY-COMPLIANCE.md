@@ -335,6 +335,20 @@ The view groups anonymous-mode rows into hourly cells and exposes a cell only wh
 
 Cell suppression reduces the exposure of rare combinations but does not prove anonymity. Restrict the raw table, review the available dimensions, and consider a higher threshold for low-traffic or sensitive sites.
 
+For low-traffic sites, `bi_anonymous_daily_v1` reports the same events at a coarser grain. It exposes only:
+
+- `website_token`
+- `event_day`
+- `event_name`
+- `page_group`
+- `referrer_channel`
+- `device_class`
+- `event_count`
+
+It groups anonymous-mode rows into completed UTC-day cells, drops the hour and viewport, and replaces paths matched by operator-defined [page groups](BI-CONNECTION.md#page-groups) with their label. A cell is released only when it reaches `anonymous_min_cell_count` and the part of it that `bi_anonymous_events_v1` withholds is zero or at least the same minimum. This complementary suppression means subtracting released hourly rows from a released daily row never yields a count below the threshold; the two views are always regenerated together with one threshold so the rule holds. Page group labels are published to routine BI users and should be non-identifying. Grouping rare paths under a shared label also makes rows less unique.
+
+The rule covers the pair of event views. It does not cover every combination with the goal and geography views or outside data, which can already be compared with the hourly view; the limits in the next paragraphs apply to all of them.
+
 Use `bi_anonymous_goals_v1` for routine anonymous conversion reporting. It exposes only:
 
 - `website_token`
@@ -430,7 +444,7 @@ Codes must match `[A-Za-z][A-Za-z0-9_.:-]{0,99}` and remain fixed and non-identi
 
 The BI disclosure thresholds are deployment configuration values (`config/aggregate*.yaml`) and have their own CSRF-protected admin form:
 
-- `anonymous_min_cell_count` controls grouped hourly cells in `bi_anonymous_events_v1` and completed daily cells in `bi_anonymous_goals_v1` (default `5`, range `2`–`1000`).
+- `anonymous_min_cell_count` controls grouped hourly cells in `bi_anonymous_events_v1`, completed daily cells in `bi_anonymous_daily_v1`, and completed daily cells in `bi_anonymous_goals_v1` (default `5`, range `2`–`1000`).
 - `anonymous_geo_min_cell_count` controls completed daily cells in `bi_anonymous_geo_events_v1` (default `25`, range `10`–`1000`).
 
 Dashboard saves write YAML and regenerate all three BI views so SQL definitions track the effective thresholds; after editing YAML directly, run `php bin/console app:analytics:bi-views:regenerate`. Until then the views keep their previous thresholds. Environment overrides (`ANONYMOUS_MIN_CELL_COUNT` and `ANONYMOUS_GEO_MIN_CELL_COUNT`) still take precedence. When upgrading from a release that stored thresholds in the database, copy any customized values into YAML first (see [BI disclosure thresholds](CONFIGURATION.md#bi-disclosure-thresholds)).
