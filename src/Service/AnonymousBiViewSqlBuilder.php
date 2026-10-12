@@ -318,12 +318,27 @@ SQL, $minimumCellCount);
      */
     public function rollupViewSql(int $minimumCellCount, array $pageGroups = []): string
     {
+        // The group sums are computed in their own step and compared in the
+        // next: MariaDB evaluates several window functions combined in one
+        // boolean expression incorrectly, so no expression mixes them.
         $level = static function (string $name, string $from, string $partition) use ($minimumCellCount): string {
-            $total = 'SUM(event_count) OVER (PARTITION BY '.$partition.')';
-            $withheld = 'SUM(withheld_hourly_count) OVER (PARTITION BY '.$partition.')';
-
             return sprintf(<<<'SQL'
 ,
+%1$s_sums AS (
+    SELECT
+        website_token,
+        event_day,
+        event_name,
+        page_group,
+        referrer_channel,
+        device_class,
+        event_count,
+        withheld_hourly_count,
+        SUM(event_count) OVER (PARTITION BY %3$s) AS group_count,
+        SUM(withheld_hourly_count) OVER (PARTITION BY %3$s) AS group_withheld_count
+    FROM %2$s
+    WHERE is_released = 0
+),
 %1$s AS (
     SELECT
         website_token,
@@ -335,14 +350,13 @@ SQL, $minimumCellCount);
         event_count,
         withheld_hourly_count,
         CASE
-            WHEN %3$s >= %5$d
-             AND (%4$s = 0 OR %4$s >= %5$d)
+            WHEN group_count >= %4$d
+             AND (group_withheld_count = 0 OR group_withheld_count >= %4$d)
             THEN 1 ELSE 0
         END AS is_released
-    FROM %2$s
-    WHERE is_released = 0
+    FROM %1$s_sums
 )
-SQL, $name, $from, $total, $withheld, $minimumCellCount);
+SQL, $name, $from, $partition, $minimumCellCount);
         };
 
         return "CREATE VIEW bi_anonymous_daily_rollup_v1 AS\n"
@@ -371,7 +385,7 @@ SQL, $minimumCellCount)
             .$level('level_page', 'level_page_channel', 'website_token, event_day, event_name, page_group')
             .$level('level_channel', 'level_page', 'website_token, event_day, event_name, referrer_channel')
             .$level('level_day', 'level_channel', 'website_token, event_day, event_name')
-            .<<<'SQL'
+            .sprintf(<<<'SQL'
 
 SELECT
     website_token,
@@ -381,7 +395,7 @@ SELECT
     referrer_channel,
     device_class,
     event_count,
-    'page_channel_device' AS detail_level
+    %1$s AS detail_level
 FROM level_full
 WHERE is_released = 1
 UNION ALL
@@ -393,7 +407,7 @@ SELECT
     referrer_channel,
     '(other)' AS device_class,
     SUM(event_count) AS event_count,
-    'page_channel' AS detail_level
+    %2$s AS detail_level
 FROM level_page_channel
 WHERE is_released = 1
 GROUP BY website_token, event_day, event_name, page_group, referrer_channel
@@ -406,7 +420,7 @@ SELECT
     '(other)' AS referrer_channel,
     '(other)' AS device_class,
     SUM(event_count) AS event_count,
-    'page' AS detail_level
+    %3$s AS detail_level
 FROM level_page
 WHERE is_released = 1
 GROUP BY website_token, event_day, event_name, page_group
@@ -419,7 +433,7 @@ SELECT
     referrer_channel,
     '(other)' AS device_class,
     SUM(event_count) AS event_count,
-    'channel' AS detail_level
+    %4$s AS detail_level
 FROM level_channel
 WHERE is_released = 1
 GROUP BY website_token, event_day, event_name, referrer_channel
@@ -432,11 +446,17 @@ SELECT
     '(other)' AS referrer_channel,
     '(other)' AS device_class,
     SUM(event_count) AS event_count,
-    'day' AS detail_level
+    %5$s AS detail_level
 FROM level_day
 WHERE is_released = 1
 GROUP BY website_token, event_day, event_name
-SQL;
+SQL,
+                $this->label('page_channel_device'),
+                $this->label('page_channel'),
+                $this->label('page'),
+                $this->label('channel'),
+                $this->label('day'),
+            );
     }
 
     /**
@@ -479,15 +499,15 @@ day_totals AS (
         %3$s
 ),
 view_names AS (
-    SELECT 'bi_anonymous_events_v1' AS view_name
+    SELECT 1 AS view_id, %7$s AS view_name
     UNION ALL
-    SELECT 'bi_anonymous_daily_v1' AS view_name
+    SELECT 2 AS view_id, %8$s AS view_name
     UNION ALL
-    SELECT 'bi_anonymous_daily_rollup_v1' AS view_name
+    SELECT 3 AS view_id, %9$s AS view_name
 ),
 released AS (
     SELECT
-        'bi_anonymous_events_v1' AS view_name,
+        1 AS view_id,
         website_token,
         %4$s AS event_day,
         SUM(event_count) AS released_count
@@ -498,7 +518,7 @@ released AS (
         %4$s
     UNION ALL
     SELECT
-        'bi_anonymous_daily_v1' AS view_name,
+        2 AS view_id,
         website_token,
         event_day,
         SUM(event_count) AS released_count
@@ -508,7 +528,7 @@ released AS (
         event_day
     UNION ALL
     SELECT
-        'bi_anonymous_daily_rollup_v1' AS view_name,
+        3 AS view_id,
         website_token,
         event_day,
         SUM(event_count) AS released_count
@@ -522,17 +542,17 @@ SELECT
     day_totals.event_day,
     view_names.view_name,
     CASE
-        WHEN COALESCE(released.released_count, 0) * 10 >= day_totals.total_count * 9 THEN '90-100'
-        WHEN COALESCE(released.released_count, 0) * 2 >= day_totals.total_count THEN '50-90'
-        WHEN COALESCE(released.released_count, 0) * 10 >= day_totals.total_count THEN '10-50'
-        ELSE '0-10'
+        WHEN COALESCE(released.released_count, 0) * 10 >= day_totals.total_count * 9 THEN %10$s
+        WHEN COALESCE(released.released_count, 0) * 2 >= day_totals.total_count THEN %11$s
+        WHEN COALESCE(released.released_count, 0) * 10 >= day_totals.total_count THEN %12$s
+        ELSE %13$s
     END AS coverage_band
 FROM day_totals
 CROSS JOIN view_names
 LEFT JOIN released
     ON released.website_token = day_totals.website_token
    AND released.event_day = day_totals.event_day
-   AND released.view_name = view_names.view_name
+   AND released.view_id = view_names.view_id
 WHERE day_totals.total_count >= %6$d
 SQL,
             $this->completedDayPredicate('archived_events.event_hour'),
@@ -541,7 +561,30 @@ SQL,
             $this->eventDayExpression('bi_anonymous_events_v1.event_hour'),
             $this->completedDayPredicate('bi_anonymous_events_v1.event_hour'),
             $minimumCellCount,
+            $this->label('bi_anonymous_events_v1'),
+            $this->label('bi_anonymous_daily_v1'),
+            $this->label('bi_anonymous_daily_rollup_v1'),
+            $this->label('90-100'),
+            $this->label('50-90'),
+            $this->label('10-50'),
+            $this->label('0-10'),
         );
+    }
+
+    /**
+     * A string literal for a column whose values are all literals. MySQL and
+     * MariaDB give literals stored in a view the character set's default
+     * collation, which can differ from a client's connection collation (MySQL
+     * 8's utf8mb4_0900_ai_ci against PHP's utf8mb4_general_ci), and comparing
+     * the two fails with "Illegal mix of collations". An explicit collation,
+     * the one Doctrine gives the tables, makes such filters work for any
+     * client.
+     */
+    private function label(string $value): string
+    {
+        $literal = $this->platform->quoteStringLiteral($value);
+
+        return $this->platform instanceof AbstractMySQLPlatform ? $literal.' COLLATE utf8mb4_unicode_ci' : $literal;
     }
 
     /**

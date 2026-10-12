@@ -119,6 +119,29 @@ final class AnonymousRollupCoverageViewsTest extends TestCase
         }
     }
 
+    /** MySQL and MariaDB store view literals with a collation a client may not share. */
+    public function testLiteralOnlyColumnsCarryAnExplicitCollationOnMysqlOnly(): void
+    {
+        $mysql = new AnonymousBiViewSqlBuilder(new MySQL80Platform());
+        $postgres = new AnonymousBiViewSqlBuilder(new PostgreSQLPlatform());
+
+        self::assertStringContainsString("'page' COLLATE utf8mb4_unicode_ci AS detail_level", $mysql->rollupViewSql(5));
+        self::assertStringContainsString("'50-90' COLLATE utf8mb4_unicode_ci", $mysql->coverageViewSql(5));
+        self::assertStringContainsString("'page' AS detail_level", $postgres->rollupViewSql(5));
+        self::assertStringNotContainsString('COLLATE', $postgres->coverageViewSql(5));
+        // The coverage view joins on numbers, never on two literals.
+        self::assertStringContainsString('released.view_id = view_names.view_id', $mysql->coverageViewSql(5));
+    }
+
+    /** MariaDB mis-evaluates several window functions combined in one expression. */
+    public function testWindowSumsAreComparedInASeparateStep(): void
+    {
+        $rollup = (new AnonymousBiViewSqlBuilder(new MySQL80Platform()))->rollupViewSql(5);
+
+        self::assertSame(1, preg_match_all('/^level_page_sums AS \(/m', $rollup));
+        self::assertSame(0, preg_match('/CASE\s+WHEN[^\n]*OVER/', $rollup));
+    }
+
     public static function platforms(): iterable
     {
         yield 'SQLite' => [new SQLitePlatform()];

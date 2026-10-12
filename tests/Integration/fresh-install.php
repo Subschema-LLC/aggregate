@@ -538,6 +538,9 @@ E2E::step('the roll-up view pools withheld cells and the coverage view bands the
     $rank = ['0-10' => 0, '10-50' => 1, '50-90' => 2, '90-100' => 3];
     $bands = $db->fetchAllKeyValue('SELECT view_name, coverage_band FROM bi_anonymous_coverage_v1 WHERE event_day = :day', ['day' => $yesterday], ['day' => Types::DATE_IMMUTABLE]);
     ksort($bands);
+    // Filtering literal-only columns works whatever the client's collation.
+    $filtered = (int) $db->fetchOne("SELECT COUNT(*) FROM bi_anonymous_coverage_v1 WHERE view_name = 'bi_anonymous_daily_rollup_v1' AND coverage_band IN ('0-10', '10-50', '50-90', '90-100') AND event_day = :day", ['day' => $yesterday], ['day' => Types::DATE_IMMUTABLE]);
+    E2E::check($filtered === 1, 'Filtering the coverage view by view_name and coverage_band returned '.$filtered.' rows.');
     E2E::check(array_keys($bands) === ['bi_anonymous_daily_rollup_v1', 'bi_anonymous_daily_v1', 'bi_anonymous_events_v1'] && array_diff($bands, array_keys($rank)) === []
         && $rank[$bands['bi_anonymous_daily_rollup_v1']] >= $rank[$bands['bi_anonymous_daily_v1']], 'Coverage bands: '.json_encode($bands));
 });
