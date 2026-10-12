@@ -76,9 +76,9 @@ promised.
 
 **Optional administration UI.** Operate collection, setup, and maintenance through
 YAML and CLI commands; set `DASHBOARD_ENABLED=0` to disable dashboard/login routes.
-BI disclosure thresholds currently require the admin UI or controlled database
-administration; see [configuration sources](docs/CONFIGURATION.md). Visualize
-analytics in your BI tool; the application UI manages the installation and its data contracts.
+Every operator setting, including BI disclosure thresholds, lives in YAML; see
+[configuration sources](docs/CONFIGURATION.md). Visualize analytics in your BI
+tool; the application UI manages the installation and its data contracts.
 
 **Rebrandable without a fork.** Name, logo, colors and fonts are configuration. Contrast
 ratios are validated, so an unreadable palette gets rejected rather than shipped.
@@ -236,9 +236,9 @@ progress and availability. The tracking guide includes GTM Custom HTML examples.
 | Per-website CMP, tags, triggers, and variables | `config/tag-manager/sites/<site-id>.yaml`, managed through the Tag manager admin page or YAML |
 | Conversion-goal definitions | `config/goals.yaml`, customized in `config/goals.local.yaml` |
 | Navigation labels and links | `config/navigation.yaml`, customized in `config/navigation.local.yaml` |
-| BI disclosure thresholds | `analytics_privacy_settings` in the database; dashboard or controlled database administration |
+| BI disclosure thresholds | `config/aggregate.yaml`, managed through the BI disclosure admin page or YAML; apply YAML edits with `app:analytics:bi-views:regenerate` |
 
-For headless deployments, set `dashboard_enabled: false` in the active YAML environment and `DASHBOARD_ENABLED=0`, then clear Symfony's cache. BI thresholds remain database settings; they are not mirrored in YAML. The [configuration reference](docs/CONFIGURATION.md) explains defaults, overrides, branding, goals, organization markers, and retention.
+For headless deployments, set `dashboard_enabled: false` in the active YAML environment and `DASHBOARD_ENABLED=0`, then clear Symfony's cache. After editing the BI disclosure thresholds in YAML, run `php bin/console app:analytics:bi-views:regenerate` to rebuild the reporting views with them. The [configuration reference](docs/CONFIGURATION.md) explains defaults, overrides, branding, goals, organization markers, and retention.
 
 Routine BI connections should use approved views:
 

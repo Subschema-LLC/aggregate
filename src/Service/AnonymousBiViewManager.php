@@ -6,7 +6,15 @@ namespace App\Service;
 
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Platforms\SQLitePlatform;
+use Doctrine\DBAL\Platforms\SQLServerPlatform;
 
+/**
+ * Regenerates the approved bi_anonymous_* views from the configured disclosure
+ * thresholds. Server databases replace each view in place, which keeps the
+ * reporting account's grants; SQLite has no grants and drops and recreates.
+ */
 final class AnonymousBiViewManager
 {
     public function __construct(
@@ -17,16 +25,11 @@ final class AnonymousBiViewManager
     public function regenerate(int $minimumCellCount, int $geoMinimumCellCount): void
     {
         $platform = $this->connection->getDatabasePlatform();
-        $sql = new AnonymousBiViewSqlBuilder($platform);
-        $views = [
-            ['bi_anonymous_events_v1', $sql->eventViewSql($minimumCellCount)],
-            ['bi_anonymous_goals_v1', $sql->goalViewSql($minimumCellCount)],
-            ['bi_anonymous_geo_events_v1', $sql->geoViewSql($geoMinimumCellCount)],
-        ];
+        $statements = $this->statements($platform, $minimumCellCount, $geoMinimumCellCount);
 
         if ($platform instanceof AbstractMySQLPlatform) {
-            foreach ($views as [$name, $createSql]) {
-                $this->replaceView($sql, $name, $createSql);
+            foreach ($statements as $statement) {
+                $this->connection->executeStatement($statement);
             }
 
             return;
@@ -34,8 +37,8 @@ final class AnonymousBiViewManager
 
         $this->connection->beginTransaction();
         try {
-            foreach ($views as [$name, $createSql]) {
-                $this->replaceView($sql, $name, $createSql);
+            foreach ($statements as $statement) {
+                $this->connection->executeStatement($statement);
             }
             $this->connection->commit();
         } catch (\Throwable $e) {
@@ -44,9 +47,55 @@ final class AnonymousBiViewManager
         }
     }
 
-    private function replaceView(AnonymousBiViewSqlBuilder $sql, string $name, string $createSql): void
+    /**
+     * The statements regenerate() runs, in order, without changing the database.
+     *
+     * @return list<string>
+     */
+    public function previewSql(int $minimumCellCount, int $geoMinimumCellCount): array
     {
-        $this->connection->executeStatement($sql->dropViewIfExistsSql($name));
-        $this->connection->executeStatement($createSql);
+        return $this->statements($this->connection->getDatabasePlatform(), $minimumCellCount, $geoMinimumCellCount);
+    }
+
+    /** @return list<string> */
+    private function statements(AbstractPlatform $platform, int $minimumCellCount, int $geoMinimumCellCount): array
+    {
+        $sql = new AnonymousBiViewSqlBuilder($platform);
+        $views = [
+            ['bi_anonymous_events_v1', $sql->eventViewSql($minimumCellCount)],
+            ['bi_anonymous_goals_v1', $sql->goalViewSql($minimumCellCount)],
+            ['bi_anonymous_geo_events_v1', $sql->geoViewSql($geoMinimumCellCount)],
+        ];
+
+        $statements = [];
+        foreach ($views as [$name, $createSql]) {
+            if ($platform instanceof SQLitePlatform) {
+                $statements[] = $sql->dropViewIfExistsSql($name);
+                $statements[] = $createSql;
+
+                continue;
+            }
+
+            $statements[] = self::replaceViewSql($platform, $name, $createSql);
+        }
+
+        return $statements;
+    }
+
+    /**
+     * Turns the builder's CREATE VIEW into the engine's in-place replacement.
+     * A threshold change alters only a literal, so column names, order and
+     * types stay the same, which CREATE OR REPLACE requires on PostgreSQL.
+     */
+    private static function replaceViewSql(AbstractPlatform $platform, string $name, string $createSql): string
+    {
+        $prefix = 'CREATE VIEW '.$name.' AS';
+        if (!str_starts_with($createSql, $prefix)) {
+            throw new \LogicException(sprintf('Unexpected SQL for %s.', $name));
+        }
+
+        $verb = $platform instanceof SQLServerPlatform ? 'CREATE OR ALTER VIEW ' : 'CREATE OR REPLACE VIEW ';
+
+        return $verb.$name.' AS'.substr($createSql, strlen($prefix));
     }
 }

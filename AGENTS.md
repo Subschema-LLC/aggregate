@@ -33,6 +33,13 @@ remain straightforward. Favor understandable designs over feature count.
   intentional integration interface: preserve and improve them. Admin controls
   for defining columns, previewing SQL, and regenerating those views belong in
   the app; displaying analytics reports does not.
+- **Keep configuration in YAML.** Every operator setting lives in YAML files
+  (`config/aggregate*.yaml` and the other files listed in
+  [configuration sources](docs/CONFIGURATION.md)), with environment overrides
+  where documented. Do not store settings in database tables. The database
+  holds collected events, archives, users and operational records; tables that
+  publish configuration to BI tools, such as `analytics_glossary`, are generated
+  from YAML and never edited directly.
 - **Provide both UI and headless configuration.** New operator settings should
   be available in the admin UI and through CLI and/or YAML. Reuse the same
   services and validation across entry points, and keep a single source of truth.
@@ -49,12 +56,14 @@ remain straightforward. Favor understandable designs over feature count.
   dependencies modest; do not assume Docker, a particular hosting panel, or
   build tools on a server installing a prepared release ZIP.
 
-There are existing configuration gaps: BI disclosure thresholds currently live
-in `analytics_privacy_settings` and are managed by the UI or controlled database
-operations, not YAML/CLI synchronization. Do not claim complete parity or silently
-create a competing configuration source. Website-specific collection settings
-and data models are still [planned work](ROADMAP.md); current models are scoped
-to the deployment's active aggregate configuration.
+BI disclosure thresholds (`anonymous_min_cell_count`,
+`anonymous_geo_min_cell_count`) are YAML settings compiled into the
+`bi_anonymous_*` view SQL. The BI disclosure page and
+`app:analytics:bi-views:regenerate` share `AnalyticsPrivacySettings` and
+`AnonymousBiViewManager` to apply them; reuse those services rather than
+regenerating views elsewhere. Website-specific collection settings and data
+models are still [planned work](ROADMAP.md); current models are scoped to the
+deployment's active aggregate configuration.
 
 ## Privacy is an implementation constraint
 
