@@ -38,6 +38,7 @@ final class DocumentationLinks
         'tracking.tag-manager' => ['tracking/tag-manager', 'docs/TAG-MANAGER.md'],
         'tracking.consent-manager' => ['tracking/consent-manager', 'docs/CONSENT-MANAGER.md'],
         'tracking.consent-manager-regions' => ['tracking/consent-manager#regions-and-the-close-button', 'docs/CONSENT-MANAGER.md'],
+        'tracking.consent-behavior' => ['tracking/consent-manager#consent-behavior', 'docs/CONSENT-MANAGER.md'],
         'tracking.event-examples' => ['tracking/event-examples', 'docs/EVENT-EXAMPLES.md'],
         'tracking.strict' => ['tracking/tracker#strict-collection-profile', 'docs/TRACKING.md'],
         'tracking.attributes' => ['tracking/tracker#track-clicks-and-forms-with-data-attributes', 'docs/TRACKING.md'],

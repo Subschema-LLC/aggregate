@@ -628,24 +628,45 @@ final class CustomDataSettingsTest extends TestCase
 
     public function testGoogleConsentModeConfiguration(): void
     {
-        // When not configured, returns null and omitted from browser config
+        // Unset: follow defaults and updates; the default is not sent to the browser.
         $default = $this->settings([]);
-        self::assertNull($default->googleConsentMode());
+        self::assertSame('all', $default->googleConsentMode());
+        self::assertFalse($default->hasInvalidGoogleConsentMode());
         self::assertArrayNotHasKey('googleConsentMode', $default->toBrowserConfig());
 
-        // Top-level boolean in aggregate.yaml
+        // YAML booleans keep their earlier meaning.
         $enabled = $this->settings(['google_consent_mode' => true]);
-        self::assertTrue($enabled->googleConsentMode());
-        self::assertTrue($enabled->toBrowserConfig()['googleConsentMode']);
-
+        self::assertSame('all', $enabled->googleConsentMode());
+        self::assertArrayNotHasKey('googleConsentMode', $enabled->toBrowserConfig());
         $disabled = $this->settings(['google_consent_mode' => false]);
-        self::assertFalse($disabled->googleConsentMode());
-        self::assertFalse($disabled->toBrowserConfig()['googleConsentMode']);
+        self::assertSame('off', $disabled->googleConsentMode());
+        self::assertSame('off', $disabled->toBrowserConfig()['googleConsentMode']);
 
-        // Nested under consent_manager
-        $nested = $this->settings(['consent_manager' => ['google_consent_mode' => true]]);
-        self::assertTrue($nested->googleConsentMode());
-        self::assertTrue($nested->toBrowserConfig()['googleConsentMode']);
+        // Narrower settings are sent, so the served tracker keeps them.
+        $updates = $this->settings(['google_consent_mode' => 'updates']);
+        self::assertSame('updates', $updates->googleConsentMode());
+        self::assertSame('updates', $updates->toBrowserConfig()['googleConsentMode']);
+
+        // The older nested key still works; the top-level key takes precedence.
+        self::assertSame('updates', $this->settings(['consent_manager' => ['google_consent_mode' => 'updates']])->googleConsentMode());
+        self::assertSame('off', $this->settings(['google_consent_mode' => 'off', 'consent_manager' => ['google_consent_mode' => true]])->googleConsentMode());
+
+        // Invalid values fail closed.
+        foreach (['yes', 1, 'Updates', ['all']] as $invalid) {
+            $settings = $this->settings(['google_consent_mode' => $invalid]);
+            self::assertSame('off', $settings->googleConsentMode(), var_export($invalid, true));
+            self::assertTrue($settings->hasInvalidGoogleConsentMode());
+            self::assertSame('off', $settings->toBrowserConfig()['googleConsentMode']);
+        }
+
+        $settings = $this->settings(['unrelated_operator_setting' => 'keep']);
+        $settings->saveGoogleConsentMode('updates');
+        $saved = Yaml::parseFile($this->projectDir.'/config/aggregate.yaml');
+        self::assertSame('updates', $saved['google_consent_mode']);
+        self::assertSame('keep', $saved['unrelated_operator_setting']);
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Google Consent Mode signals must be one of all, updates, off.');
+        $settings->saveGoogleConsentMode('sometimes');
     }
 
     private function settings(array $values): CustomDataSettings

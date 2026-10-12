@@ -1709,6 +1709,63 @@ test('googleConsentMode false disables Google consent signal listening', () => {
   assert.equal(runtime.requests.at(-1).visitorId, undefined);
 });
 
+test('googleConsentMode updates ignores defaults and follows only visitor updates', () => {
+  const dataLayer = [['consent', 'default', {analytics_storage: 'granted'}], {event: 'consent', analytics_storage: 'granted'}];
+  const runtime = loadSdk({dataLayer, inline: {googleConsentMode: 'updates'}});
+
+  runtime.window.Aggregate.emit('button_click');
+  assert.equal(runtime.requests.at(-1).consentState, 'unknown', 'a default of granted is not a visitor choice');
+  assert.equal(runtime.requests.at(-1).visitorId, undefined);
+
+  dataLayer.push(['consent', 'default', {analytics_storage: 'granted'}]);
+  runtime.window.Aggregate.emit('button_click');
+  assert.equal(runtime.requests.at(-1).consentState, 'unknown');
+
+  dataLayer.push(['consent', 'update', {analytics_storage: 'granted'}]);
+  runtime.window.Aggregate.emit('button_click');
+  assert.equal(runtime.requests.at(-1).consentState, 'granted');
+  assert.equal(typeof runtime.requests.at(-1).visitorId, 'string');
+
+  dataLayer.push(['consent', 'update', {analytics_storage: 'denied'}]);
+  runtime.window.Aggregate.emit('button_click');
+  assert.notEqual(runtime.requests.at(-1).consentState, 'granted');
+  assert.equal(runtime.requests.at(-1).visitorId, undefined);
+});
+
+test('googleConsentMode all treats a Google default of granted as a grant', () => {
+  const dataLayer = [['consent', 'default', {analytics_storage: 'granted'}]];
+  const runtime = loadSdk({dataLayer, inline: {googleConsentMode: 'all'}});
+  runtime.window.Aggregate.emit('button_click');
+  assert.equal(runtime.requests.at(-1).consentState, 'granted');
+});
+
+test('unknown googleConsentMode values ignore Google signals', () => {
+  for (const value of ['off', 'yes', 'Updates', 2]) {
+    const dataLayer = [['consent', 'update', {analytics_storage: 'granted'}]];
+    const runtime = loadSdk({dataLayer, inline: {googleConsentMode: value}});
+    runtime.window.Aggregate.emit('button_click');
+    assert.equal(runtime.requests.at(-1).consentState, 'unknown', String(value));
+  }
+});
+
+test('a served narrower googleConsentMode cannot be widened by page options', () => {
+  const dataLayer = [['consent', 'default', {analytics_storage: 'granted'}]];
+  const updates = loadSdk({dataLayer, serverCustomData: {googleConsentMode: 'updates'}, inline: {googleConsentMode: true}, dataset: {googleConsentMode: 'true'}});
+  updates.window.Aggregate.emit('button_click');
+  assert.equal(updates.requests.at(-1).consentState, 'unknown');
+  updates.window.Aggregate.configure({googleConsentMode: true});
+  updates.window.Aggregate.emit('button_click');
+  assert.equal(updates.requests.at(-1).consentState, 'unknown');
+
+  const off = loadSdk({dataLayer: [['consent', 'update', {analytics_storage: 'granted'}]], serverCustomData: {googleConsentMode: 'off'}, inline: {googleConsentMode: 'all'}});
+  off.window.Aggregate.emit('button_click');
+  assert.equal(off.requests.at(-1).consentState, 'unknown');
+  // setConsent still works: the setting covers only Google signals.
+  off.window.Aggregate.setConsent(true);
+  off.window.Aggregate.emit('button_click');
+  assert.equal(off.requests.at(-1).consentState, 'granted');
+});
+
 test('strict collection profile ignores Google consent signals', () => {
   const dataLayer = [['consent', 'update', {analytics_storage: 'granted'}]];
   const runtime = loadSdk({dataLayer, inline: {collectionProfile: 'strict'}});

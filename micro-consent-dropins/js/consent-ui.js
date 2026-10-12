@@ -34,7 +34,7 @@
   var input = own(window, 'MicroConsentConfig');
   if (input === absent) input = {};
   if (!record(input)) { validConfig = false; input = {}; }
-  var keys = ['name', 'privacyPolicyUrl', 'formspreeEndpoint', 'categories', 'respectGpc', 'consentLifetimeDays', 'revision', 'storageKey', 'aggregateNamespace', 'text', 'theme', 'buttons', 'regions', 'defaultRegion'];
+  var keys = ['name', 'privacyPolicyUrl', 'formspreeEndpoint', 'categories', 'respectGpc', 'consentLifetimeDays', 'revision', 'storageKey', 'aggregateNamespace', 'text', 'theme', 'buttons', 'regions', 'defaultRegion', 'consentType', 'closeButton', 'defaultGranted'];
   try {
     Object.getOwnPropertyNames(input).forEach(function (key) {
       if (keys.indexOf(key) === -1 || own(input, key) === absent) validConfig = false;
@@ -154,6 +154,14 @@
   }
   // The first three are current; explicit and implicit are older names.
   var consentTypes = ['implicit_us', 'explicit_us', 'explicit_eu', 'explicit', 'implicit'];
+  var closeButtons = ['reject', 'dismiss', 'hidden'];
+  function validConsentType(value) { return consentTypes.indexOf(value) !== -1; }
+  function validCloseButton(value) { return closeButtons.indexOf(value) !== -1; }
+  function validCategoryList(value) {
+    return Array.isArray(value) && value.length <= 10 && value.every(function (category) {
+      return typeof category === 'string' && /^[a-z][a-z0-9_-]{0,31}$/.test(category) && reserved.indexOf(category) === -1;
+    });
+  }
   function validRegions(value) {
     if (!Array.isArray(value) || value.length > 10) return false;
     var seen = [];
@@ -177,6 +185,12 @@
       if (regText !== absent && !validText(regText)) return false;
       var regButtons = own(reg, 'buttons');
       if (regButtons !== absent && !validButtons(regButtons)) return false;
+      var regClose = own(reg, 'closeButton');
+      if (regClose !== absent && !validCloseButton(regClose)) return false;
+      var regGranted = own(reg, 'defaultGranted');
+      // Default grants belong only to implicit regions, as the server requires.
+      var regType = consentType === absent ? own(input, 'consentType') : consentType;
+      if (regGranted !== absent && (!validCategoryList(regGranted) || (regType !== 'implicit_us' && regType !== 'implicit'))) return false;
       return true;
     });
   }
@@ -201,7 +215,11 @@
     text: option('text', {}, validText),
     theme: option('theme', {}, validTheme),
     buttons: option('buttons', {}, validButtons),
-    regions: option('regions', [], validRegions)
+    regions: option('regions', [], validRegions),
+    defaultRegion: option('defaultRegion', '', function (value) { return typeof value === 'string' && /^[a-z0-9_-]{0,32}$/.test(value); }),
+    consentType: option('consentType', 'explicit_eu', validConsentType),
+    closeButton: option('closeButton', '', validCloseButton),
+    defaultGranted: option('defaultGranted', null, validCategoryList)
   };
   var rawRegions = Array.isArray(config.regions) ? config.regions : [];
   var regions = [];
@@ -234,27 +252,45 @@
     return regions[0];
   })();
 
-  // implicit_us: a notice; analytics starts granted and the close button hides
-  // the notice. explicit_us: categories start denied and the close button hides
-  // the banner. explicit_eu (the default): the close button rejects every
-  // optional category. Older configurations used explicit and implicit.
+  // implicit_us: a notice; default categories (analytics unless configured)
+  // start granted. explicit_us and explicit_eu (the default): every optional
+  // category starts denied. Older configurations used explicit and implicit.
   function consentType() {
     var value = currentRegion ? own(currentRegion, 'consentType') : absent;
     if (value === absent && currentRegion) value = own(currentRegion, 'consent_type');
+    if (value === absent) value = config.consentType;
     if (value === 'implicit' || value === 'implicit_us') return 'implicit_us';
     return value === 'explicit_us' ? 'explicit_us' : 'explicit_eu';
   }
-  function isImplicit() {
-    return consentType() === 'implicit_us';
+  // What the close button does: configured, or reject for explicit_eu and dismiss otherwise.
+  function closeAction() {
+    var value = currentRegion ? own(currentRegion, 'closeButton') : absent;
+    if (value === absent) value = config.closeButton;
+    if (closeButtons.indexOf(value) !== -1) return value;
+    return consentType() === 'explicit_eu' ? 'reject' : 'dismiss';
   }
-  // A US-style close hides the banner for this tab's session without saving a
-  // choice, so the default consent stays in effect and nothing identifies the visitor.
+  // Categories granted before a choice: only in implicit_us, and none when a
+  // respected Global Privacy Control signal is present.
+  function defaultGrants() {
+    if (!validConfig || consentType() !== 'implicit_us' || gpc()) return [];
+    var value = currentRegion ? own(currentRegion, 'defaultGranted') : absent;
+    if (value === absent) value = config.defaultGranted;
+    if (value === null) value = ['analytics'];
+    return value.filter(function (category) { return Object.prototype.hasOwnProperty.call(choices, category); });
+  }
+  function applyDefaultGrants() {
+    config.categories.forEach(function (category) { choices[category] = false; });
+    defaultGrants().forEach(function (category) { choices[category] = true; });
+    enforceSignals();
+  }
+  // Closing without a choice hides the banner for this tab's session without
+  // saving anything, so the default consent stays in effect and nothing identifies the visitor.
   var dismissKey = config.storageKey + ':dismissed';
   var dismissed = (function () {
     try { return window.sessionStorage.getItem(dismissKey) === '1'; } catch (error) { return false; }
   })();
   function dismissedForSession() {
-    return dismissed && consentType() !== 'explicit_eu';
+    return dismissed && closeAction() === 'dismiss';
   }
 
   function t(key) {
@@ -373,10 +409,7 @@
     deny();
     var saved = validConfig ? readSaved(raw) : null;
     if (!saved) {
-      if (isImplicit()) {
-        if (Object.prototype.hasOwnProperty.call(choices, 'analytics')) choices.analytics = true;
-        enforceSignals();
-      }
+      applyDefaultGrants();
       return;
     }
     try {
@@ -465,7 +498,9 @@
   var bannerButtons = {};
 
   function dismiss() {
-    if (consentType() === 'explicit_eu') { setConsent({}); return; }
+    var action = closeAction();
+    if (action === 'reject') { setConsent({}); return; }
+    if (action !== 'dismiss') return;
     dismissed = true;
     try { window.sessionStorage.setItem(dismissKey, '1'); } catch (error) {}
     renderState();
@@ -473,7 +508,9 @@
   }
   function labelCloseButton() {
     if (!closeButton) return;
-    var label = t(consentType() === 'explicit_eu' ? 'dismissReject' : 'dismiss');
+    var action = closeAction();
+    closeButton.hidden = action === 'hidden';
+    var label = t(action === 'reject' ? 'dismissReject' : 'dismiss');
     closeButton.setAttribute('aria-label', label);
     closeButton.title = label;
   }
@@ -496,13 +533,9 @@
     currentRegion = reg;
     try { window.localStorage.setItem(regionStorageKey, id); } catch (e) {}
     if (!chosen && savedAt === 0) {
-      if (isImplicit()) {
-        if (Object.prototype.hasOwnProperty.call(choices, 'analytics')) choices.analytics = true;
-      } else {
-        if (Object.prototype.hasOwnProperty.call(choices, 'analytics')) choices.analytics = false;
-      }
-      enforceSignals();
+      applyDefaultGrants();
       notify();
+      renderState();
     }
     updateUiText();
   }

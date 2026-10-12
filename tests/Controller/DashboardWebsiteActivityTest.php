@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace App\Tests\Controller;
 
-use App\Controller\DashboardController;
+use App\Controller\ApplicationSettingsController;
+use App\Controller\WebsitesController;
 use App\Entity\User;
 use App\Service\DocumentationLinks;
 use App\Service\DropInScripts;
@@ -113,10 +114,10 @@ final class DashboardWebsiteActivityTest extends KernelTestCase
 
     public function testSettingsPageRendersActivityThresholdFields(): void
     {
-        $controller = $this->controller('/dashboard/settings');
+        $this->controller('/dashboard/settings');
         $container = self::getContainer();
 
-        $response = $controller->applicationSettings($container->get(DocumentationLinks::class), $container->get(TrackerBuilds::class), $container->get(TrackerScript::class));
+        $response = $container->get(ApplicationSettingsController::class)->applicationSettings($container->get(DocumentationLinks::class), $container->get(TrackerBuilds::class), $container->get(TrackerScript::class));
         self::assertSame(200, $response->getStatusCode());
 
         $crawler = new Crawler((string) $response->getContent());
@@ -134,8 +135,8 @@ final class DashboardWebsiteActivityTest extends KernelTestCase
         return new Crawler((string) $response->getContent());
     }
 
-    /** The dashboard controller as an administrator, reading this test's websites. */
-    private function controller(string $path = '/dashboard/websites/activity'): DashboardController
+    /** The Websites controller as an administrator, reading this test's websites. */
+    private function controller(string $path = '/dashboard/websites/activity'): WebsitesController
     {
         self::bootKernel();
         $container = self::getContainer();
@@ -146,7 +147,7 @@ final class DashboardWebsiteActivityTest extends KernelTestCase
         $admin = (new User())->setUsername('admin')->setRoles(['ROLE_ADMIN'])->setPassword('unused');
         $container->get('security.token_storage')->setToken(new UsernamePasswordToken($admin, 'main', ['ROLE_ADMIN']));
 
-        return $container->get(DashboardController::class);
+        return $container->get(WebsitesController::class);
     }
 
     /** @return array<string, mixed> */

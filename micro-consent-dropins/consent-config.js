@@ -32,6 +32,20 @@ window.MicroConsentConfig = {
   // The tracker namespace used by the optional js/aggregate-consent.js bridge.
   aggregateNamespace: 'Aggregate',
 
+  // Consent behavior. Choose these with your legal team; see the consent
+  // manager guide's "Consent behavior" section. The consent type is
+  // 'explicit_eu' (every optional category starts denied; the close button
+  // rejects them all), 'explicit_us' (starts denied; the close button only
+  // closes) or 'implicit_us' (a notice; the categories in defaultGranted start
+  // allowed until the visitor opts out).
+  // consentType: 'explicit_eu',
+  // What the close button does: 'reject', 'dismiss' (close without a choice)
+  // or 'hidden'. Left out, it follows the consent type.
+  // closeButton: 'reject',
+  // Categories allowed before a choice in implicit_us. A respected Global
+  // Privacy Control signal withholds them all.
+  // defaultGranted: ['analytics'],
+
   // Wording, as plain text: HTML is shown as typed. Labels allow 120 bytes and
   // paragraphs 1,000, without line breaks. Uncomment a line to change it.
   // {name} in title becomes the name above; {days} in storageNotice the lifetime.

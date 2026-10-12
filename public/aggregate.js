@@ -64,6 +64,9 @@
     || Object.prototype.hasOwnProperty.call(customDataDefaults, 'pageSequenceMethod');
   var pageSequenceMethodDefault = Object.prototype.hasOwnProperty.call(customDataDefaults, 'pageSequenceMethod')
     ? customDataDefaults.pageSequenceMethod : 'session_storage';
+  // A script served with a narrower Google Consent Mode setting (updates or
+  // off) keeps it; page options cannot widen what the installation chose.
+  var googleConsentModeLocked = Object.prototype.hasOwnProperty.call(customDataDefaults, 'googleConsentMode');
   try {
     var s = document.currentScript || (function(){var ss=document.getElementsByTagName('script'); return ss[ss.length-1];})();
     if (s && s.dataset && s.dataset.namespace) {
@@ -1035,12 +1038,30 @@
       }
     },
 
-    extractGoogleAnalyticsConsent: function(entry){
+    // Google Consent Mode setting: 'all' follows default and update commands
+    // (the default), 'updates' only update commands, which consent managers send
+    // for a visitor's choice, and 'off' none. true and false mean all and off;
+    // any other value is off.
+    googleConsentModeSetting: function(value){
+      if (value === true || value === 1 || value === 'true' || value === '1' || value === 'all') return 'all';
+      return value === 'updates' ? 'updates' : 'off';
+    },
+
+    configureGoogleConsentMode: function(value){
+      if (!googleConsentModeLocked) this.config.customData.googleConsentMode = this.googleConsentModeSetting(value);
+    },
+
+    googleConsentModeValue: function(){
+      var value = this.config.customData ? this.config.customData.googleConsentMode : undefined;
+      return typeof value === 'undefined' ? 'all' : this.googleConsentModeSetting(value);
+    },
+
+    extractGoogleAnalyticsConsent: function(entry, updatesOnly){
       if (!entry) return undefined;
       try {
         // Array or arguments-like object: ['consent', 'default'|'update', {analytics_storage: ...}]
         if (typeof entry === 'object' && (Array.isArray(entry) || (typeof entry.length === 'number' && typeof entry[0] !== 'undefined'))) {
-          if (entry[0] === 'consent' && (entry[1] === 'update' || entry[1] === 'default') && entry[2] && typeof entry[2] === 'object') {
+          if (entry[0] === 'consent' && (entry[1] === 'update' || (entry[1] === 'default' && !updatesOnly)) && entry[2] && typeof entry[2] === 'object') {
             var storage = entry[2].analytics_storage;
             if (typeof storage === 'string') {
               var norm = storage.toLowerCase().trim();
@@ -1049,8 +1070,9 @@
             }
           }
         }
-        // Object format: { event: 'consent', analytics_storage: 'granted' } or { consent: { analytics_storage: ... } }
-        if (typeof entry === 'object' && !Array.isArray(entry)) {
+        // Object format: { event: 'consent', analytics_storage: 'granted' } or { consent: { analytics_storage: ... } }.
+        // It does not say whether it is a default or a visitor's update.
+        if (typeof entry === 'object' && !Array.isArray(entry) && !updatesOnly) {
           var target = entry.consent && typeof entry.consent === 'object' ? entry.consent : entry;
           if (target && typeof target.analytics_storage === 'string') {
             var s = target.analytics_storage.toLowerCase().trim();
@@ -1064,10 +1086,13 @@
 
     listenToGoogleConsent: function(){
       if (strictCollection) return;
-      if (this.config.customData && this.config.customData.googleConsentMode === false) return;
+      if (this.googleConsentModeValue() === 'off') return;
       var tracker = this;
       var handleEntry = function(entry){
-        var signal = tracker.extractGoogleAnalyticsConsent(entry);
+        // The setting can change after the data layer is hooked.
+        var mode = tracker.googleConsentModeValue();
+        if (mode === 'off') return;
+        var signal = tracker.extractGoogleAnalyticsConsent(entry, mode === 'updates');
         if (typeof signal === 'boolean') {
           tracker.setConsent(signal);
         }
@@ -1248,8 +1273,8 @@
     Analytics.configureInternalTraffic(opts && opts.internalTraffic);
     Analytics.configureCustomData(opts && opts.customData);
     if (opts && typeof opts.googleConsentMode !== 'undefined') {
-      Analytics.config.customData.googleConsentMode = opts.googleConsentMode === true || opts.googleConsentMode === 'true' || opts.googleConsentMode === 1;
-      if (Analytics.config.customData.googleConsentMode) {
+      Analytics.configureGoogleConsentMode(opts.googleConsentMode);
+      if (Analytics.googleConsentModeValue() !== 'off') {
         Analytics.listenToGoogleConsent();
       }
     }
@@ -1282,9 +1307,9 @@
           value: s.dataset.internalTrafficValue
         });
         if (typeof s.dataset.googleConsentMode !== 'undefined') {
-          Analytics.config.customData.googleConsentMode = s.dataset.googleConsentMode === 'true' || s.dataset.googleConsentMode === '1';
+          Analytics.configureGoogleConsentMode(s.dataset.googleConsentMode);
         } else if (typeof s.dataset.google_consent_mode !== 'undefined') {
-          Analytics.config.customData.googleConsentMode = s.dataset.google_consent_mode === 'true' || s.dataset.google_consent_mode === '1';
+          Analytics.configureGoogleConsentMode(s.dataset.google_consent_mode);
         }
         if (typeof s.dataset.consent !== 'undefined') {
           Analytics.setConsent(s.dataset.consent);
@@ -1300,7 +1325,7 @@
           if (wt) Analytics.config.websiteToken = wt;
           var gcm = u.searchParams.get('google_consent_mode') || u.searchParams.get('googleConsentMode');
           if (gcm !== null) {
-            Analytics.config.customData.googleConsentMode = gcm === '1' || gcm === 'true';
+            Analytics.configureGoogleConsentMode(gcm);
           }
           if (cs !== null) {
             Analytics.setConsent(cs);
@@ -1326,9 +1351,9 @@
   } catch(e) {}
 
   if (typeof window[namespace].googleConsentMode !== 'undefined') {
-    Analytics.config.customData.googleConsentMode = window[namespace].googleConsentMode === true || window[namespace].googleConsentMode === 'true' || window[namespace].googleConsentMode === 1;
+    Analytics.configureGoogleConsentMode(window[namespace].googleConsentMode);
   } else if (typeof window[namespace].google_consent_mode !== 'undefined') {
-    Analytics.config.customData.googleConsentMode = window[namespace].google_consent_mode === true || window[namespace].google_consent_mode === 'true' || window[namespace].google_consent_mode === 1;
+    Analytics.configureGoogleConsentMode(window[namespace].google_consent_mode);
   }
   Analytics.listenToGoogleConsent();
 
