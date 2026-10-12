@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Controller;
 
+use App\Controller\ApplicationSettingsController;
 use App\Controller\WebsitesController;
 use App\Entity\User;
 use App\Service\DocumentationLinks;
@@ -113,10 +114,10 @@ final class DashboardWebsiteActivityTest extends KernelTestCase
 
     public function testSettingsPageRendersActivityThresholdFields(): void
     {
-        $controller = $this->controller('/dashboard/settings');
+        $this->controller('/dashboard/settings');
         $container = self::getContainer();
 
-        $response = $controller->applicationSettings($container->get(DocumentationLinks::class), $container->get(TrackerBuilds::class), $container->get(TrackerScript::class));
+        $response = $container->get(ApplicationSettingsController::class)->applicationSettings($container->get(DocumentationLinks::class), $container->get(TrackerBuilds::class), $container->get(TrackerScript::class));
         self::assertSame(200, $response->getStatusCode());
 
         $crawler = new Crawler((string) $response->getContent());
