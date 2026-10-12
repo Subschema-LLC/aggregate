@@ -31,12 +31,12 @@ final class BiPageGroupsTest extends TestCase
 
     public function testMissingConfigurationMeansNoGroups(): void
     {
-        self::assertSame([], $this->groups([])->rules());
+        self::assertSame([], $this->configuredGroups([])->rules());
     }
 
     public function testSaveWritesYamlAndPreservesOtherSettings(): void
     {
-        $groups = $this->groups(['operator_setting' => 'preserve']);
+        $groups = $this->configuredGroups(['operator_setting' => 'preserve']);
 
         $groups->save([
             ['pattern' => ' /inventory/** ', 'group' => ' inventory '],
@@ -54,7 +54,7 @@ final class BiPageGroupsTest extends TestCase
 
     public function testInvalidYamlFailsClosedWithTheSettingName(): void
     {
-        $groups = $this->groups([BiPageGroups::KEY => [['pattern' => '/a/*/b', 'group' => 'x']]]);
+        $groups = $this->configuredGroups([BiPageGroups::KEY => [['pattern' => '/a/*/b', 'group' => 'x']]]);
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('bi_page_groups is invalid');
@@ -111,13 +111,13 @@ final class BiPageGroupsTest extends TestCase
         BiPageGroups::parseLines("/a a\n/inventory/**");
     }
 
-    #[DataProvider('matches')]
+    #[DataProvider('globCases')]
     public function testMatchingFollowsTheExcludedPathGlobSemantics(string $pattern, string $path, bool $expected): void
     {
         self::assertSame($expected, BiPageGroups::matches($pattern, $path));
     }
 
-    public static function matches(): iterable
+    public static function globCases(): iterable
     {
         yield 'double star includes the directory' => ['/inventory/**', '/inventory', true];
         yield 'double star includes children' => ['/inventory/**', '/inventory/2024-camry', true];
@@ -147,7 +147,7 @@ final class BiPageGroupsTest extends TestCase
         self::assertSame('/contact', BiPageGroups::groupFor('/contact', $rules));
     }
 
-    private function groups(array $config): BiPageGroups
+    private function configuredGroups(array $config): BiPageGroups
     {
         file_put_contents($this->directory.'/config/aggregate.yaml', $config === [] ? "# empty\n" : Yaml::dump($config, 4, 2));
 
