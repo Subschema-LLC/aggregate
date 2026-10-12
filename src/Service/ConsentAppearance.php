@@ -17,7 +17,7 @@ final class ConsentAppearance
     public const BUILTIN = 'builtin';
     public const STANDALONE = 'standalone';
     /** The mapping keys this class owns inside a banner's settings. */
-    public const KEYS = ['text', 'theme', 'buttons', 'regions', 'default_region'];
+    public const KEYS = ['text', 'theme', 'buttons', 'regions', 'default_region', 'consent_type', 'close_button', 'default_granted'];
     public const REOPEN_POSITIONS = ['bottom-left', 'bottom-right', 'hidden'];
     public const MAX_DETAILS = 4;
     public const MAX_REGIONS = 10;
@@ -29,10 +29,19 @@ final class ConsentAppearance
      * - explicit_eu: optional categories start denied, × rejects them all and saves that choice.
      */
     public const CONSENT_TYPES = ['implicit_us', 'explicit_us', 'explicit_eu'];
-    /** The consent type without regions, and for a region that does not name one. */
+    /** The consent type without a banner-wide consent_type, and for regions that name none. */
     public const DEFAULT_CONSENT_TYPE = 'explicit_eu';
     /** Names accepted from earlier releases, and the type each now means. */
     public const LEGACY_CONSENT_TYPES = ['implicit' => 'implicit_us', 'explicit' => 'explicit_eu'];
+    /**
+     * What the close button does when close_button is set: reject every optional
+     * category and save that, close without a choice, or not show it. Unset, it
+     * follows the consent type: reject for explicit_eu, dismiss otherwise.
+     */
+    public const CLOSE_BUTTONS = ['reject', 'dismiss', 'hidden'];
+    /** What implicit_us grants before a choice when default_granted is not set. */
+    public const DEFAULT_GRANTED = ['analytics'];
+    public const MAX_CATEGORIES = 10;
 
     private const LABEL = 120;
     private const PARAGRAPH = 1000;
@@ -157,10 +166,10 @@ final class ConsentAppearance
     ];
 
     /**
-     * Validates the text, theme and buttons mappings present in $settings and
-     * returns only those, normalized. $path prefixes error messages.
+     * Validates the keys in KEYS present in $settings and returns only those,
+     * normalized. $path prefixes error messages.
      *
-     * @return array{text?: array, theme?: array<string, string>, buttons?: array{show?: list<string>, reopen?: string}}
+     * @return array{text?: array, theme?: array<string, string>, buttons?: array{show?: list<string>, reopen?: string}, consent_type?: string, close_button?: string, default_granted?: list<string>, regions?: list<array>, default_region?: string}
      */
     public static function validate(array $settings, string $banner, string $path): array
     {
@@ -177,6 +186,16 @@ final class ConsentAppearance
         if (array_key_exists('buttons', $settings)) {
             $result['buttons'] = self::buttons($settings['buttons'], $banner, $path.'.buttons');
         }
+        if (array_key_exists('consent_type', $settings)) {
+            $result['consent_type'] = self::consentType($settings['consent_type'], $path.'.consent_type');
+        }
+        if (array_key_exists('close_button', $settings)) {
+            $result['close_button'] = self::closeButton($settings['close_button'], $path.'.close_button');
+        }
+        // Used wherever the effective type is implicit_us, the banner's or a region's.
+        if (array_key_exists('default_granted', $settings)) {
+            $result['default_granted'] = self::categoryList($settings['default_granted'], $path.'.default_granted');
+        }
         if (array_key_exists('default_region', $settings)) {
             $defReg = $settings['default_region'];
             if ($defReg === null || $defReg === '') {
@@ -188,7 +207,8 @@ final class ConsentAppearance
             }
         }
         if (array_key_exists('regions', $settings)) {
-            $result['regions'] = self::regions($settings['regions'], $banner, $path.'.regions', $result['default_region'] ?? null);
+            $result['regions'] = self::regions($settings['regions'], $banner, $path.'.regions', $result['default_region'] ?? null,
+                $result['consent_type'] ?? self::DEFAULT_CONSENT_TYPE);
             if (isset($result['default_region'])) {
                 $matched = false;
                 foreach ($result['regions'] as $reg) {
@@ -217,14 +237,18 @@ final class ConsentAppearance
     public static function browser(array $validated): array
     {
         $browser = [];
-        foreach (self::KEYS as $group) {
-            if ($group === 'regions' || $group === 'default_region') continue;
+        foreach (['text', 'theme', 'buttons'] as $group) {
             if (!array_key_exists($group, $validated)) continue;
             $values = [];
             foreach ($validated[$group] as $key => $value) {
                 $values[self::camel($key)] = $value;
             }
             $browser[$group] = $values;
+        }
+        foreach (['consent_type', 'close_button', 'default_granted'] as $key) {
+            if (array_key_exists($key, $validated)) {
+                $browser[self::camel($key)] = $validated[$key];
+            }
         }
 
         if (array_key_exists('regions', $validated)) {
@@ -236,6 +260,11 @@ final class ConsentAppearance
                     'consentType' => $reg['consent_type'],
                     'default' => $reg['default'],
                 ];
+                foreach (['close_button', 'default_granted'] as $key) {
+                    if (array_key_exists($key, $reg)) {
+                        $item[self::camel($key)] = $reg[$key];
+                    }
+                }
                 if (isset($reg['text'])) {
                     $item['text'] = [];
                     foreach ($reg['text'] as $tk => $tv) {
@@ -262,10 +291,11 @@ final class ConsentAppearance
 
     /**
      * Validates a list of regions. Each needs an id and a name; consent_type
-     * defaults to explicit_eu, and the older explicit and implicit are read as
-     * explicit_eu and implicit_us.
+     * defaults to $defaultType (the banner's), and the older explicit and
+     * implicit are read as explicit_eu and implicit_us. close_button and
+     * default_granted override the banner's for that region.
      */
-    public static function regions(mixed $regions, string $banner, string $path, ?string $defaultRegion = null): array
+    public static function regions(mixed $regions, string $banner, string $path, ?string $defaultRegion = null, string $defaultType = self::DEFAULT_CONSENT_TYPE): array
     {
         if (!is_array($regions) || ($regions !== [] && !array_is_list($regions)) || count($regions) > self::MAX_REGIONS) {
             throw new \InvalidArgumentException($path.' must be a list of at most '.self::MAX_REGIONS.' regions.');
@@ -278,7 +308,7 @@ final class ConsentAppearance
                 throw new \InvalidArgumentException($path.'['.$index.'] must be a mapping.');
             }
             $itemPath = $path.'['.$index.']';
-            $supportedKeys = ['id', 'name', 'consent_type', 'default', 'text', 'buttons'];
+            $supportedKeys = ['id', 'name', 'consent_type', 'default', 'text', 'buttons', 'close_button', 'default_granted'];
             foreach (array_keys($region) as $k) {
                 if (!in_array($k, $supportedKeys, true)) {
                     throw new \InvalidArgumentException($itemPath.'.'.$k.' is not a supported region option.');
@@ -298,11 +328,8 @@ final class ConsentAppearance
                 throw new \InvalidArgumentException($itemPath.'.name must be nonempty plain text of at most '.self::LABEL.' bytes.');
             }
 
-            $consentType = $region['consent_type'] ?? self::DEFAULT_CONSENT_TYPE;
-            $consentType = is_string($consentType) ? (self::LEGACY_CONSENT_TYPES[$consentType] ?? $consentType) : $consentType;
-            if (!in_array($consentType, self::CONSENT_TYPES, true)) {
-                throw new \InvalidArgumentException($itemPath.'.consent_type must be one of '.implode(', ', self::CONSENT_TYPES).'.');
-            }
+            $consentType = ($region['consent_type'] ?? null) === null ? $defaultType
+                : self::consentType($region['consent_type'], $itemPath.'.consent_type');
 
             $isDefault = (bool) ($region['default'] ?? false);
             if ($defaultRegion !== null) {
@@ -327,6 +354,15 @@ final class ConsentAppearance
             }
             if (array_key_exists('buttons', $region)) {
                 $normalized['buttons'] = self::buttons($region['buttons'], $banner, $itemPath.'.buttons');
+            }
+            if (array_key_exists('close_button', $region)) {
+                $normalized['close_button'] = self::closeButton($region['close_button'], $itemPath.'.close_button');
+            }
+            if (array_key_exists('default_granted', $region)) {
+                if ($consentType !== 'implicit_us') {
+                    throw new \InvalidArgumentException($itemPath.'.default_granted applies only to implicit_us regions; explicit consent types start every optional category denied.');
+                }
+                $normalized['default_granted'] = self::categoryList($region['default_granted'], $itemPath.'.default_granted');
             }
 
             $result[] = $normalized;
@@ -353,6 +389,46 @@ final class ConsentAppearance
         }
 
         return $value;
+    }
+
+    /** One of CONSENT_TYPES; the older explicit and implicit are read as explicit_eu and implicit_us. */
+    public static function consentType(mixed $value, string $path): string
+    {
+        $type = is_string($value) ? (self::LEGACY_CONSENT_TYPES[$value] ?? $value) : $value;
+        if (!is_string($type) || !in_array($type, self::CONSENT_TYPES, true)) {
+            throw new \InvalidArgumentException($path.' must be one of '.implode(', ', self::CONSENT_TYPES).'.');
+        }
+
+        return $type;
+    }
+
+    private static function closeButton(mixed $value, string $path): string
+    {
+        if (!is_string($value) || !in_array($value, self::CLOSE_BUTTONS, true)) {
+            throw new \InvalidArgumentException($path.' must be one of '.implode(', ', self::CLOSE_BUTTONS).'.');
+        }
+
+        return $value;
+    }
+
+    /** @return list<string> Category names; [] is allowed. */
+    private static function categoryList(mixed $value, string $path): array
+    {
+        if (!is_array($value) || ($value !== [] && !array_is_list($value)) || count($value) > self::MAX_CATEGORIES) {
+            throw new \InvalidArgumentException($path.' must be a list of at most '.self::MAX_CATEGORIES.' category names; use [] for none.');
+        }
+        $result = [];
+        foreach ($value as $category) {
+            if (!is_string($category) || preg_match('/^[a-z][a-z0-9_-]{0,31}$/D', $category) !== 1
+                || in_array($category, ['none', 'gpc', '__proto__', 'prototype', 'constructor'], true)) {
+                throw new \InvalidArgumentException($path.' entries must be category names of 1–32 lowercase letters, digits, underscores or hyphens, beginning with a letter.');
+            }
+            if (!in_array($category, $result, true)) {
+                $result[] = $category;
+            }
+        }
+
+        return $result;
     }
 
     private static function text(mixed $text, string $banner, string $path): array

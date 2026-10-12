@@ -168,16 +168,59 @@
             </fieldset></div>
 
             <div class="box"><fieldset class="consent-settings-fieldset">
+                <legend class="title is-5">Consent behavior</legend>
+                <p class="help mb-4">The banner’s consent signal decides whether the tracker uses enhanced or anonymous analytics. Set these to match your legal team’s advice for the visitors this banner serves; regions below can set their own.{% if docs_url('tracking.consent-behavior') %} <a href="{{ docs_url('tracking.consent-behavior') }}" target="_blank" rel="noopener noreferrer">How consent behavior works<span class="is-sr-only"> (opens in a new tab)</span></a>{% endif %}</p>
+                <div class="columns is-multiline">
+                    <div class="column is-half-tablet">
+                        <label class="label" for="consent-type">Consent type</label>
+                        <div class="control select is-fullwidth"><select id="consent-type" name="consent_type" aria-describedby="consent-types-help">
+                            {% for value, label in consent_types %}<option value="{{ value }}"{% if form.consent_type == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                        </select></div>
+                        <p class="help">Used without regions, and by regions that name no type.</p>
+                    </div>
+                    <div class="column is-half-tablet">
+                        <label class="label" for="consent-close-button">Close button (×)</label>
+                        <div class="control select is-fullwidth"><select id="consent-close-button" name="close_button" aria-describedby="consent-close-help">
+                            <option value=""{% if form.close_button == '' %} selected{% endif %}>Follow the consent type</option>
+                            {% for value, label in close_buttons %}<option value="{{ value }}"{% if form.close_button == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                        </select></div>
+                        <p class="help" id="consent-close-help">By default × rejects all in EU-style and closes without a choice in US-style. Closing without a choice lasts until the visitor’s next browser-tab session.</p>
+                    </div>
+                </div>
+                <fieldset class="field">
+                    <legend class="label">Default-on categories (implicit, US-style only)</legend>
+                    <input type="hidden" name="default_granted[]" value="">
+                    <div class="control">
+                        {% for category in categories %}
+                            <label class="checkbox mr-4" for="consent-default-granted-{{ category }}">
+                                <input type="checkbox" id="consent-default-granted-{{ category }}" name="default_granted[]" value="{{ category }}"{% if category in form.default_granted %} checked{% endif %}>
+                                <code>{{ category }}</code>
+                            </label>
+                        {% endfor %}
+                    </div>
+                    <p class="help">Allowed before the visitor chooses, until they opt out. Explicit types start every optional category off. Enhanced analytics is on by default in implicit mode.</p>
+                </fieldset>
+                <div class="field">
+                    <input type="hidden" name="respect_gpc" value="0">
+                    <label class="checkbox" for="consent-respect-gpc">
+                        <input type="checkbox" id="consent-respect-gpc" name="respect_gpc" value="1"{% if form.respect_gpc %} checked{% endif %}>
+                        Honor Global Privacy Control
+                    </label>
+                    <p class="help">When a visitor’s browser sends this signal, nothing is on by default, even in implicit mode. The visitor can still accept.</p>
+                </div>
+            </fieldset></div>
+
+            <div class="box"><fieldset class="consent-settings-fieldset">
                 <legend class="title is-5">Regional consent rules</legend>
-                <p class="help mb-3">Optional. Define visitor regions to customize messaging and consent modes. When 2 or more regions are configured, the banner includes a region dropdown selector. Leave empty for standard global wording; the banner then behaves as explicit EU-style.</p>
+                <p class="help mb-3">Optional. Define visitor regions to customize messaging and consent behavior. When 2 or more regions are configured, the banner includes a region dropdown selector; visitors pick their own region. Leave empty to use the consent behavior above for everyone.</p>
                 <div class="content is-small mb-4" id="consent-types-help">
-                    <p class="mb-1">Every consent type shows a close button (×) in the banner’s top-right corner:</p>
+                    <p class="mb-1">Consent types:</p>
                     <ul class="mt-1">
-                        <li><strong>Implicit, US-style</strong>: a notice. Enhanced analytics starts allowed until the visitor opts out; × hides the notice for the rest of the browser tab’s session.</li>
-                        <li><strong>Explicit, US-style</strong>: optional categories start denied; × hides the banner for the rest of the tab’s session and keeps them denied. Nothing is saved.</li>
-                        <li><strong>Explicit, EU-style</strong>: optional categories start denied; × rejects them all and saves that choice, like the reject button.</li>
+                        <li><strong>Implicit, US-style</strong>: a notice. The default-on categories (enhanced analytics unless changed) are allowed until the visitor opts out; × closes without a choice.</li>
+                        <li><strong>Explicit, US-style</strong>: optional categories start off; × closes without a choice and keeps them off. Nothing is saved.</li>
+                        <li><strong>Explicit, EU-style</strong>: optional categories start off; × rejects them all and saves that choice, like the reject button.</li>
                     </ul>
-                    <p>Implicit mode allows enhanced analytics before any choice. Use it only where you have decided that opt-out is lawful for this website.{% if docs_url('tracking.consent-manager-regions') %} <a href="{{ docs_url('tracking.consent-manager-regions') }}" target="_blank" rel="noopener noreferrer">How regions and the close button work<span class="is-sr-only"> (opens in a new tab)</span></a>{% endif %}</p>
+                    <p>Implicit mode allows enhanced analytics before any choice. Use it only where your legal team has decided that notice and opt-out are lawful for this website.{% if docs_url('tracking.consent-manager-regions') %} <a href="{{ docs_url('tracking.consent-manager-regions') }}" target="_blank" rel="noopener noreferrer">How regions work<span class="is-sr-only"> (opens in a new tab)</span></a>{% endif %}</p>
                 </div>
 
                 <div class="field mb-4">
@@ -226,7 +269,7 @@
                                 </div>
                             </div>
                             <details class="mt-2">
-                                <summary class="is-size-7 has-text-weight-semibold">Region messaging overrides (optional)</summary>
+                                <summary class="is-size-7 has-text-weight-semibold">Region overrides (optional)</summary>
                                 <div class="columns is-multiline mt-2">
                                     <div class="column is-12">
                                         <label class="label is-small" for="region-{{ index }}-title">Title override</label>
@@ -243,6 +286,24 @@
                                     <div class="column is-6">
                                         <label class="label is-small" for="region-{{ index }}-reject">Reject / Opt-out button</label>
                                         <input class="input is-small" id="region-{{ index }}-reject" name="regions[{{ index }}][text][reject]" value="{{ region.text.reject|default('') }}" placeholder="Leave empty for default" maxlength="120">
+                                    </div>
+                                    <div class="column is-6">
+                                        <label class="label is-small" for="region-{{ index }}-close-button">Close button (×)</label>
+                                        <div class="select is-small is-fullwidth"><select id="region-{{ index }}-close-button" name="regions[{{ index }}][close_button]">
+                                            <option value="">Same as the banner</option>
+                                            {% for value, label in close_buttons %}<option value="{{ value }}"{% if region.close_button|default('') == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                                        </select></div>
+                                    </div>
+                                    <div class="column is-12">
+                                        <fieldset>
+                                            <legend class="label is-small">Default-on categories (implicit, US-style regions only)</legend>
+                                            <label class="checkbox is-size-7 mr-4" for="region-{{ index }}-default-granted-override">
+                                                <input type="checkbox" id="region-{{ index }}-default-granted-override" name="regions[{{ index }}][default_granted_override]" value="1"{% if region.default_granted_override is defined or (region.default_granted is defined and '' not in region.default_granted) %} checked{% endif %}>
+                                                Use these instead of the banner’s:
+                                            </label>
+                                            <input type="hidden" name="regions[{{ index }}][default_granted][]" value="">
+                                            {% for category in categories %}<label class="checkbox is-size-7 mr-3" for="region-{{ index }}-default-granted-{{ category }}"><input type="checkbox" id="region-{{ index }}-default-granted-{{ category }}" name="regions[{{ index }}][default_granted][]" value="{{ category }}"{% if category in region.default_granted|default([]) %} checked{% endif %}> <code>{{ category }}</code></label>{% endfor %}
+                                        </fieldset>
                                     </div>
                                 </div>
                             </details>
@@ -277,7 +338,7 @@
                         </div>
                     </div>
                     <details class="mt-2">
-                        <summary class="is-size-7 has-text-weight-semibold">Region messaging overrides (optional)</summary>
+                        <summary class="is-size-7 has-text-weight-semibold">Region overrides (optional)</summary>
                         <div class="columns is-multiline mt-2">
                             <div class="column is-12">
                                 <label class="label is-small" for="new-region-title">Title override</label>
@@ -294,6 +355,24 @@
                             <div class="column is-6">
                                 <label class="label is-small" for="new-region-reject">Reject / Opt-out button</label>
                                 <input class="input is-small" id="new-region-reject" name="regions[{{ form.regions|length }}][text][reject]" placeholder="Leave empty for default" maxlength="120">
+                            </div>
+                            <div class="column is-6">
+                                <label class="label is-small" for="new-region-close-button">Close button (×)</label>
+                                <div class="select is-small is-fullwidth"><select id="new-region-close-button" name="regions[{{ form.regions|length }}][close_button]">
+                                    <option value="">Same as the banner</option>
+                                    {% for value, label in close_buttons %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                                </select></div>
+                            </div>
+                            <div class="column is-12">
+                                <fieldset>
+                                    <legend class="label is-small">Default-on categories (implicit, US-style regions only)</legend>
+                                    <label class="checkbox is-size-7 mr-4" for="new-region-default-granted-override">
+                                        <input type="checkbox" id="new-region-default-granted-override" name="regions[{{ form.regions|length }}][default_granted_override]" value="1">
+                                        Use these instead of the banner’s:
+                                    </label>
+                                    <input type="hidden" name="regions[{{ form.regions|length }}][default_granted][]" value="">
+                                    {% for category in categories %}<label class="checkbox is-size-7 mr-3" for="new-region-default-granted-{{ category }}"><input type="checkbox" id="new-region-default-granted-{{ category }}" name="regions[{{ form.regions|length }}][default_granted][]" value="{{ category }}"> <code>{{ category }}</code></label>{% endfor %}
+                                </fieldset>
                             </div>
                         </div>
                     </details>

@@ -101,13 +101,19 @@ same rules:
   `'bottom-left'`, or `'hidden'`. If you hide it, link to `MicroConsent.open()`
   from every page, for example in your footer; withdrawing must stay as easy as
   consenting.
-- **The close button (×)** in the banner's top-right corner rejects every
-  optional category and saves that choice, like **Reject**. With `regions`, a
-  region whose `consentType` is `'explicit_us'` or `'implicit_us'` makes it hide
-  the banner for the rest of the browser tab's session instead, saving no choice,
-  so the region's default consent stays in effect. The three types and their
-  wording keys (`dismiss`, `dismissReject`) are described in the
-  [built-in banner's guide](../docs/CONSENT-MANAGER.md#regions-and-the-close-button).
+- **Consent behavior** works as in the built-in banner:
+  - `consentType` is `'explicit_eu'` (the default), `'explicit_us'` or `'implicit_us'`.
+  - `closeButton` is `'reject'`, `'dismiss'` or `'hidden'`.
+  - `defaultGranted` lists the categories allowed before a choice in `implicit_us`.
+  - `defaultRegion` picks the starting region.
+
+  Each region can set its own `consentType`, `closeButton` and `defaultGranted`.
+  By default the close button (×) rejects every optional category in
+  `explicit_eu`, and closes the banner for the browser tab's session without a
+  choice in the US styles. A respected Global Privacy Control signal withholds
+  every default grant. The types and the close button's wording keys (`dismiss`,
+  `dismissReject`) are described in the
+  [built-in banner's guide](../docs/CONSENT-MANAGER.md#consent-behavior).
 
 ## Connect the tracker and tag manager
 

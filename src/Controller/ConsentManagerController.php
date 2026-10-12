@@ -32,6 +32,12 @@ final class ConsentManagerController extends AbstractController
         'explicit_us' => 'Explicit, US-style',
         'explicit_eu' => 'Explicit, EU-style',
     ];
+    /** Labels for ConsentAppearance::CLOSE_BUTTONS. */
+    private const CLOSE_BUTTON_LABELS = [
+        'reject' => 'Reject all and close',
+        'dismiss' => 'Close without a choice',
+        'hidden' => 'Hide the close button',
+    ];
 
     public function __construct(
         private readonly AggregateConfigLoader $config,
@@ -86,6 +92,7 @@ final class ConsentManagerController extends AbstractController
             'default_labels' => array_combine($categories, array_map(self::defaultLabel(...), $categories)),
             'arrangements' => self::arrangements(), 'button_names' => self::BUTTON_NAMES,
             'consent_types' => self::CONSENT_TYPE_LABELS, 'default_consent_type' => ConsentAppearance::DEFAULT_CONSENT_TYPE,
+            'close_buttons' => self::CLOSE_BUTTON_LABELS,
             'reopen_positions' => ['bottom-left' => 'Bottom left', 'bottom-right' => 'Bottom right', 'hidden' => 'Hidden (link to it from your website)'],
             'max_details' => ConsentAppearance::MAX_DETAILS,
         ]));
@@ -127,7 +134,8 @@ final class ConsentManagerController extends AbstractController
      */
     private function changesFromForm(array $form, array $saved): array
     {
-        if (array_diff(array_keys($form), ['_csrf_token', 'site', 'enabled', 'name', 'privacy_policy_url', 'precheck_categories', 'text', 'theme', 'buttons', 'regions', 'default_region']) !== []
+        if (array_diff(array_keys($form), ['_csrf_token', 'site', 'enabled', 'name', 'privacy_policy_url', 'precheck_categories', 'text', 'theme', 'buttons', 'regions', 'default_region',
+            'consent_type', 'close_button', 'default_granted', 'respect_gpc']) !== []
             || !in_array($form['enabled'] ?? null, ['0', '1'], true) || !is_string($form['name'] ?? null)
             || !is_string($form['privacy_policy_url'] ?? '')
             || (array_key_exists('precheck_categories', $form) && (!is_array($form['precheck_categories']) || array_filter($form['precheck_categories'], 'is_string') !== $form['precheck_categories']))
@@ -213,6 +221,28 @@ final class ConsentManagerController extends AbstractController
             }
         }
 
+        // Consent behavior. A field the form did not send keeps its saved value;
+        // a value equal to its default is removed. Unknown values reach validation.
+        $behavior = [];
+        if (array_key_exists('consent_type', $form)) {
+            $behavior['consent_type'] = $form['consent_type'] === ConsentAppearance::DEFAULT_CONSENT_TYPE ? null : $form['consent_type'];
+        }
+        if (array_key_exists('close_button', $form)) {
+            $behavior['close_button'] = $form['close_button'] === '' ? null : $form['close_button'];
+        }
+        if (array_key_exists('default_granted', $form)) {
+            $granted = self::submittedCategories($form['default_granted'], 'Default-on categories');
+            $sorted = $granted;
+            sort($sorted);
+            $behavior['default_granted'] = $sorted === ConsentAppearance::DEFAULT_GRANTED ? null : $granted;
+        }
+        if (array_key_exists('respect_gpc', $form)) {
+            if (!in_array($form['respect_gpc'], ['0', '1'], true)) {
+                throw new \InvalidArgumentException('The Global Privacy Control setting must be on or off. Nothing was saved.');
+            }
+            $behavior['respect_gpc'] = $form['respect_gpc'] === '1' ? null : false;
+        }
+
         $regions = [];
         $savedRegions = array_column($saved['regions'] ?? [], null, 'id');
         if (isset($form['regions']) && is_array($form['regions'])) {
@@ -246,6 +276,12 @@ final class ConsentManagerController extends AbstractController
                 if (isset($previous['buttons'])) {
                     $regItem['buttons'] = $previous['buttons'];
                 }
+                if (($reg['close_button'] ?? '') !== '') {
+                    $regItem['close_button'] = $reg['close_button'];
+                }
+                if (($reg['default_granted_override'] ?? null) === '1') {
+                    $regItem['default_granted'] = self::submittedCategories($reg['default_granted'] ?? [], 'Region default-on categories');
+                }
                 $regions[] = $regItem;
             }
         }
@@ -259,7 +295,17 @@ final class ConsentManagerController extends AbstractController
             'buttons' => $buttons === [] ? null : $buttons,
             'regions' => $regions === [] ? null : $regions,
             'default_region' => isset($form['default_region']) && trim((string) $form['default_region']) !== '' ? trim((string) $form['default_region']) : null,
-        ];
+        ] + $behavior;
+    }
+
+    /** Checked category boxes; an empty value is the marker that makes "none" submittable. */
+    private static function submittedCategories(mixed $value, string $label): array
+    {
+        if (!is_array($value) || array_filter($value, 'is_string') !== $value) {
+            throw new \InvalidArgumentException($label.' must be category names. Nothing was saved.');
+        }
+
+        return array_values(array_unique(array_filter(array_map('trim', $value), static fn (string $category): bool => $category !== '')));
     }
 
     /** Effective values for every field: saved overrides, otherwise defaults. */
@@ -290,6 +336,10 @@ final class ConsentManagerController extends AbstractController
             'reopen' => $buttons['reopen'],
             'regions' => $consent['regions'] ?? [],
             'default_region' => $consent['default_region'] ?? '',
+            'consent_type' => $consent['consent_type'] ?? ConsentAppearance::DEFAULT_CONSENT_TYPE,
+            'close_button' => $consent['close_button'] ?? '',
+            'default_granted' => $consent['default_granted'] ?? ConsentAppearance::DEFAULT_GRANTED,
+            'respect_gpc' => $consent['respect_gpc'] ?? true,
         ];
     }
 
@@ -332,6 +382,18 @@ final class ConsentManagerController extends AbstractController
             $form['regions'] = array_values(array_filter($submitted['regions'], 'is_array'));
         }
         $form['default_region'] = trim((string) ($submitted['default_region'] ?? ''));
+        if (in_array($submitted['consent_type'] ?? null, ConsentAppearance::CONSENT_TYPES, true)) {
+            $form['consent_type'] = $submitted['consent_type'];
+        }
+        if (in_array($submitted['close_button'] ?? null, ['', ...ConsentAppearance::CLOSE_BUTTONS], true)) {
+            $form['close_button'] = $submitted['close_button'];
+        }
+        if (is_array($submitted['default_granted'] ?? null)) {
+            $form['default_granted'] = array_values(array_filter($submitted['default_granted'], static fn (mixed $category): bool => is_string($category) && $category !== ''));
+        }
+        if (in_array($submitted['respect_gpc'] ?? null, ['0', '1'], true)) {
+            $form['respect_gpc'] = $submitted['respect_gpc'] === '1';
+        }
 
         return $form;
     }

@@ -386,6 +386,17 @@ final class DashboardSectionsRoutesTest extends TestCase
         self::assertSame('standard', $saved['collection_profile']);
         self::assertSame('NewAnalytics', $saved['js_namespace']);
         self::assertSame('preserve-me', $saved['unrelated_operator_setting']);
+        // An unchanged Google Consent Mode setting is not written.
+        self::assertArrayNotHasKey('google_consent_mode', $saved);
+
+        $collection = $browser->request('GET', '/dashboard/collection');
+        self::assertSame('all', $collection->filter('#google-consent-mode option[selected]')->attr('value'));
+        $form = $collection->selectButton('Save Collection Settings')->form(['google_consent_mode' => 'updates']);
+        $browser->submit($form);
+        $this->assertRedirect($browser, '/dashboard/collection');
+        self::assertSame('updates', Yaml::parseFile($this->temporaryDirectory.'/config/aggregate.yaml')['google_consent_mode']);
+        $collection = $browser->request('GET', '/dashboard/collection');
+        self::assertSame('updates', $collection->filter('#google-consent-mode option[selected]')->attr('value'));
         $this->assertNoDatabaseConnection();
     }
 
