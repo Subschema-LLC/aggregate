@@ -114,13 +114,14 @@
                     <p class="help">Unchecked categories start unselected for new visitors. In regions such as the EU/UK under GDPR, pre-ticked boxes do not constitute valid consent; keep optional categories unselected where opt-in consent is required.</p>
                 </div>
                 <div class="columns is-multiline">
-                    {% for key, label in {reject: 'Reject button', accept: 'Accept button', save: 'Save button', reopen: 'Reopen button', privacy_link: 'Privacy notice link'} %}
+                    {% for key, label in {reject: 'Reject button', accept: 'Accept button', save: 'Save button', reopen: 'Reopen button', privacy_link: 'Privacy notice link', dismiss: 'Close button (×), US-style', dismiss_reject: 'Close button (×), EU-style'} %}
                         <div class="column is-half">
                             <label class="label" for="consent-text-{{ key }}">{{ label }}</label>
                             <div class="control"><input class="input" id="consent-text-{{ key }}" name="text[{{ key }}]" value="{{ form.text[key] }}" placeholder="{{ default_text[key] }}" maxlength="120" data-default="{{ default_text[key] }}"></div>
                         </div>
                     {% endfor %}
                 </div>
+                <p class="help mb-4">The close button shows only ×; its label is read by screen readers and shown as a tooltip. Which label is used depends on the region’s consent type.</p>
                 <details>
                     <summary class="has-text-weight-semibold">Screen reader announcements</summary>
                     <p class="help mt-2">Announced after a choice, not shown on screen.</p>
@@ -168,7 +169,16 @@
 
             <div class="box"><fieldset class="consent-settings-fieldset">
                 <legend class="title is-5">Regional consent rules</legend>
-                <p class="help mb-4">Optional. Define visitor regions to customize messaging and consent modes (explicit opt-in vs. implicit notice / opt-out). When 2 or more regions are configured, the banner includes a region dropdown selector. Leave empty for standard global wording.</p>
+                <p class="help mb-3">Optional. Define visitor regions to customize messaging and consent modes. When 2 or more regions are configured, the banner includes a region dropdown selector. Leave empty for standard global wording; the banner then behaves as explicit EU-style.</p>
+                <div class="content is-small mb-4" id="consent-types-help">
+                    <p class="mb-1">Every consent type shows a close button (×) in the banner’s top-right corner:</p>
+                    <ul class="mt-1">
+                        <li><strong>Implicit, US-style</strong>: a notice. Enhanced analytics starts allowed until the visitor opts out; × hides the notice for the rest of the browser tab’s session.</li>
+                        <li><strong>Explicit, US-style</strong>: optional categories start denied; × hides the banner for the rest of the tab’s session and keeps them denied. Nothing is saved.</li>
+                        <li><strong>Explicit, EU-style</strong>: optional categories start denied; × rejects them all and saves that choice, like the reject button.</li>
+                    </ul>
+                    <p>Implicit mode allows enhanced analytics before any choice. Use it only where you have decided that opt-out is lawful for this website.{% if docs_url('tracking.consent-manager-regions') %} <a href="{{ docs_url('tracking.consent-manager-regions') }}" target="_blank" rel="noopener noreferrer">How regions and the close button work<span class="is-sr-only"> (opens in a new tab)</span></a>{% endif %}</p>
+                </div>
 
                 <div class="field mb-4">
                     <label class="label is-small" for="consent-default-region">Default region to show on banner</label>
@@ -191,24 +201,24 @@
                     {% for index, region in form.regions %}
                         <div class="box is-light mb-3">
                             <div class="columns is-multiline">
-                                <div class="column is-4">
+                                <div class="column is-half-tablet is-3-widescreen">
                                     <label class="label is-small" for="region-{{ index }}-id">Region ID</label>
                                     <input class="input is-small" id="region-{{ index }}-id" name="regions[{{ index }}][id]" value="{{ region.id }}" placeholder="e.g. eu_eea, us, global" pattern="[a-z0-9_-]{1,32}">
                                 </div>
-                                <div class="column is-4">
+                                <div class="column is-half-tablet is-4-widescreen">
                                     <label class="label is-small" for="region-{{ index }}-name">Display Name</label>
                                     <input class="input is-small" id="region-{{ index }}-name" name="regions[{{ index }}][name]" value="{{ region.name }}" placeholder="e.g. European Union" maxlength="120">
                                 </div>
-                                <div class="column is-3">
+                                <div class="column is-half-tablet is-4-widescreen">
                                     <label class="label is-small" for="region-{{ index }}-consent-type">Consent type</label>
                                     <div class="select is-small is-fullwidth">
-                                        <select id="region-{{ index }}-consent-type" name="regions[{{ index }}][consent_type]">
-                                            <option value="explicit"{% if (region.consent_type|default(region.consentType|default('explicit'))) == 'explicit' %} selected{% endif %}>Explicit (Opt-in)</option>
-                                            <option value="implicit"{% if (region.consent_type|default(region.consentType|default('explicit'))) == 'implicit' %} selected{% endif %}>Implicit (Notice / Opt-out)</option>
+                                        {% set region_type = region.consent_type|default(region.consentType|default(default_consent_type)) %}
+                                        <select id="region-{{ index }}-consent-type" name="regions[{{ index }}][consent_type]" aria-describedby="consent-types-help">
+                                            {% for value, label in consent_types %}<option value="{{ value }}"{% if region_type == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
                                         </select>
                                     </div>
                                 </div>
-                                <div class="column is-1 is-flex is-align-items-center is-justify-content-center">
+                                <div class="column is-half-tablet is-1-widescreen is-flex is-align-items-center is-justify-content-center">
                                     <label class="checkbox is-size-7" title="Default region for new visitors">
                                         <input type="checkbox" name="regions[{{ index }}][default]" value="1"{% if region.default %} checked{% endif %}>
                                         Default
@@ -243,24 +253,23 @@
                 <div class="box is-light mb-3">
                     <h4 class="title is-6 mb-2">Add a region</h4>
                     <div class="columns is-multiline">
-                        <div class="column is-4">
+                        <div class="column is-half-tablet is-3-widescreen">
                             <label class="label is-small" for="new-region-id">Region ID</label>
                             <input class="input is-small" id="new-region-id" name="regions[{{ form.regions|length }}][id]" placeholder="e.g. us, ca, global" pattern="[a-z0-9_-]{1,32}">
                         </div>
-                        <div class="column is-4">
+                        <div class="column is-half-tablet is-4-widescreen">
                             <label class="label is-small" for="new-region-name">Display Name</label>
                             <input class="input is-small" id="new-region-name" name="regions[{{ form.regions|length }}][name]" placeholder="e.g. United States" maxlength="120">
                         </div>
-                        <div class="column is-3">
+                        <div class="column is-half-tablet is-4-widescreen">
                             <label class="label is-small" for="new-region-consent-type">Consent type</label>
                             <div class="select is-small is-fullwidth">
-                                <select id="new-region-consent-type" name="regions[{{ form.regions|length }}][consent_type]">
-                                    <option value="explicit">Explicit (Opt-in)</option>
-                                    <option value="implicit">Implicit (Notice / Opt-out)</option>
+                                <select id="new-region-consent-type" name="regions[{{ form.regions|length }}][consent_type]" aria-describedby="consent-types-help">
+                                    {% for value, label in consent_types %}<option value="{{ value }}"{% if value == default_consent_type %} selected{% endif %}>{{ label }}</option>{% endfor %}
                                 </select>
                             </div>
                         </div>
-                        <div class="column is-1 is-flex is-align-items-center is-justify-content-center">
+                        <div class="column is-half-tablet is-1-widescreen is-flex is-align-items-center is-justify-content-center">
                             <label class="checkbox is-size-7">
                                 <input type="checkbox" name="regions[{{ form.regions|length }}][default]" value="1">
                                 Default
@@ -303,6 +312,7 @@
                 {% set theme_style %}{% for key, color in form.theme %}--ac-{{ key|replace({'_': '-'}) }}: {{ color }};{% endfor %}{% endset %}
                 <div class="consent-preview" inert>
                     <section class="ac-consent" style="{{ theme_style|trim }}" data-pages--consent-manager--index-target="banner">
+                        <button type="button" class="ac-consent-close" aria-label="{{ form.text.dismiss_reject }}" title="{{ form.text.dismiss_reject }}" data-pages--consent-manager--index-target="close">×</button>
                         <h2 data-pages--consent-manager--index-target="title">{{ form.text.title|replace({'{name}': form.name}) }}</h2>
                         <p data-pages--consent-manager--index-target="description">{{ form.text.description }}</p>
                         <div data-pages--consent-manager--index-target="details">{% for paragraph in form.details|filter(p => p|trim is not empty) %}<p>{{ paragraph }}</p>{% endfor %}</div>

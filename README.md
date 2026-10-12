@@ -43,7 +43,7 @@ and goal counts to help paint a picture of what is working. See the
 for examples and current reporting boundaries, and the [roadmap](ROADMAP.md#proposals-to-explore)
 for planned work.
 
-When you need more, enhanced mode adds identifiers, properties and exact dimensions — but only for visitors who have made an affirmative choice, and it stops the moment they withdraw it.
+When you need more, enhanced mode adds identifiers, properties and exact dimensions — but only when the visitor's consent signal grants it: after an affirmative choice wherever you require opt-in, or until they opt out where you choose a notice-style banner. It stops the moment they withdraw.
 
 Once you start collecting data, connect Power BI, Tableau, Looker or an AI assistant to the approved reporting views.
 
@@ -219,7 +219,7 @@ through it, explicitly enable the manager and add the supplied tracker URL as a
 [script action](docs/TAG-MANAGER.md#load-the-tracker-through-the-manager). Remove
 any separate tracker installation to avoid duplicate page views.
 
-Connect your consent manager to `window.Aggregate.setConsent(true)` only after an affirmative choice, and call `setConsent(false)` for rejection or withdrawal. The [tracking and GTM guide](docs/TRACKING.md) covers custom events, tag setup, consent wiring, and troubleshooting.
+Connect your consent manager so that it calls `window.Aggregate.setConsent(true)` when analytics is granted (after an affirmative choice wherever consent is required) and `setConsent(false)` for rejection or withdrawal; Google Consent Mode `analytics_storage` signals also work. The signal it sends decides the analytics mode, as described in [which consent signal sets the mode](docs/PRIVACY-COMPLIANCE.md#which-consent-signal-sets-the-mode). The [tracking and GTM guide](docs/TRACKING.md) covers custom events, tag setup, consent wiring, and troubleshooting.
 
 A dedicated [Aggregate Google Tag Manager tag template](https://github.com/Subschema-LLC/aggregate-gtm-tag-template)
 is under development in a separate repository. Follow that repository for template

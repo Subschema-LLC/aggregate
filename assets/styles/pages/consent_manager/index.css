@@ -24,7 +24,9 @@
 .consent-preview .ac-consent {
     max-height: none;
     max-width: 100%;
-    position: static;
+    /* Relative, not static, so the close button sits in the preview's corner. */
+    position: relative;
+    inset: auto;
     width: 100%;
     z-index: auto;
 }
