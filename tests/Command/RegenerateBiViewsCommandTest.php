@@ -25,9 +25,8 @@ final class RegenerateBiViewsCommandTest extends TestCase
         self::assertCount(3, $executed);
         self::assertStringContainsString('event_counts.event_count >= 12', $executed[0]);
         self::assertStringContainsString('40 AS minimum_cell_count', $executed[2]);
-        self::assertStringContainsString('(minimum 12)', $tester->getDisplay());
-        self::assertStringContainsString('(minimum 40)', $tester->getDisplay());
-        self::assertStringNotContainsString('environment override', $tester->getDisplay());
+        self::assertStringContainsString('12 for events and goals, 40 for geography', self::display($tester));
+        self::assertStringNotContainsString('environment override', self::display($tester));
     }
 
     public function testDryRunPrintsTheSqlWithoutExecutingIt(): void
@@ -37,8 +36,8 @@ final class RegenerateBiViewsCommandTest extends TestCase
 
         self::assertSame(Command::SUCCESS, $tester->execute(['--dry-run' => true]));
         self::assertSame([], $executed);
-        self::assertStringContainsString('CREATE OR REPLACE VIEW bi_anonymous_events_v1 AS', $tester->getDisplay());
-        self::assertStringContainsString('event_counts.event_count >= 6', $tester->getDisplay());
+        self::assertStringContainsString('CREATE OR REPLACE VIEW bi_anonymous_events_v1 AS', self::display($tester));
+        self::assertStringContainsString('event_counts.event_count >= 6', self::display($tester));
     }
 
     public function testInvalidConfigurationFailsWithoutTouchingTheDatabase(): void
@@ -48,8 +47,8 @@ final class RegenerateBiViewsCommandTest extends TestCase
 
         self::assertSame(Command::FAILURE, $tester->execute([]));
         self::assertSame([], $executed);
-        self::assertStringContainsString('The BI views were not regenerated', $tester->getDisplay());
-        self::assertStringContainsString('anonymous_min_cell_count must be between 2 and 1000', $tester->getDisplay());
+        self::assertStringContainsString('The BI views were not regenerated', self::display($tester));
+        self::assertStringContainsString('anonymous_min_cell_count must be between 2 and 1000', self::display($tester));
     }
 
     public function testReportsAnEnvironmentOverride(): void
@@ -58,7 +57,13 @@ final class RegenerateBiViewsCommandTest extends TestCase
         $tester = $this->tester(['anonymous' => 8, 'geo' => 25], $executed, overridden: true);
 
         self::assertSame(Command::SUCCESS, $tester->execute([]));
-        self::assertStringContainsString('environment override', $tester->getDisplay());
+        self::assertStringContainsString('environment override', self::display($tester));
+    }
+
+    /** SymfonyStyle wraps blocks at the terminal width; compare words, not lines. */
+    private static function display(CommandTester $tester): string
+    {
+        return (string) preg_replace('/\s+/', ' ', $tester->getDisplay());
     }
 
     /**

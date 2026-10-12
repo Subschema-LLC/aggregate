@@ -390,6 +390,9 @@ E2E::step('glossary sync, reporting view regeneration and archiving', static fun
     file_put_contents($root.'/config/aggregate.yaml', Yaml::dump(['analytics_archiving_enabled' => true, 'analytics_archive_after_days' => 90] + $config, 4, 2));
     console($root, ['app:analytics:glossary:sync']);
     console($root, ['app:analytics:views:regenerate']);
+    // The headless path replaces the BI views again with the saved thresholds.
+    E2E::check(str_contains(console($root, ['app:analytics:bi-views:regenerate', '--dry-run']), 'event_counts.event_count >= 6'), 'app:analytics:bi-views:regenerate did not use the saved threshold.');
+    console($root, ['app:analytics:bi-views:regenerate']);
     console($root, ['app:analytics:maintain']);
     $db = connection($root);
     E2E::check((int) $db->fetchOne('SELECT COUNT(*) FROM analytics_archive_events') > 0, 'No events were archived.');

@@ -63,11 +63,10 @@ HELP);
             return Command::FAILURE;
         }
 
-        $io->success(sprintf(
-            'Regenerated bi_anonymous_events_v1 and bi_anonymous_goals_v1 (minimum %d) and bi_anonymous_geo_events_v1 (minimum %d).',
-            $thresholds['anonymous'],
-            $thresholds['geo'],
-        ));
+        $io->success([
+            'Regenerated bi_anonymous_events_v1, bi_anonymous_goals_v1 and bi_anonymous_geo_events_v1.',
+            sprintf('Minimum cell counts: %d for events and goals, %d for geography.', $thresholds['anonymous'], $thresholds['geo']),
+        ]);
         if ($this->settings->hasAnonymousMinimumEnvironmentOverride() || $this->settings->hasGeoMinimumEnvironmentOverride()) {
             $io->note('An environment override set at least one threshold; it takes precedence over YAML.');
         }
