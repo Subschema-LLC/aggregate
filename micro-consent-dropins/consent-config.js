@@ -47,6 +47,12 @@ window.MicroConsentConfig = {
     // accept: 'Accept optional categories',
     // manage: 'Manage choices',
     // reopen: 'Privacy choices',
+    // Accessible name of the banner's close button (×). Regions whose
+    // consentType is 'explicit_us' or 'implicit_us' use dismiss; the close button
+    // hides the banner for the tab session. Otherwise it rejects optional
+    // categories and uses dismissReject.
+    // dismiss: 'Close this notice',
+    // dismissReject: 'Reject optional categories and close',
     // Preferences dialog.
     // settingsLabel: 'Privacy settings',
     // preferencesTab: 'Preferences',

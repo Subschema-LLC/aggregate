@@ -106,6 +106,27 @@ and some brand palettes are rejected until a darker or lighter shade is chosen.
 acceptable in the regions adopters serve, and a way to apply it equally to every
 choice.
 
+### The banner's close button rejects unless a region says otherwise
+
+**Decision.** Both consent banners have a close button (×). By default, and in
+`explicit_eu` regions, it rejects every optional category and saves that
+choice. In `explicit_us` and `implicit_us` regions it hides the banner for the
+browser tab's session without saving a choice, so the region's default consent
+stays in effect. See [Regions and the close button](CONSENT-MANAGER.md#regions-and-the-close-button).
+
+**Why.** Visitors expect to be able to close a banner. Where consent must be
+given actively, closing cannot count as agreement, and a close that only hides
+the banner would bring it back on every page; treating it as a rejection is
+the safe reading. US-style notices are commonly dismissed without a decision.
+
+**Trade-off.** An EU-style close records a rejection the visitor may not have
+meant, and they must reopen the banner to accept. A US-style dismissal lasts one
+tab session, so a new tab shows the banner again, and it needs a session-storage
+flag (the value `1`, no identifier).
+
+**What would change it.** Guidance that treats closing differently in the regions
+adopters serve, or operators needing a dismissal that lasts across sessions.
+
 ### Clicks and forms tracked only where the page marks them
 
 **Decision.** The tracker sends click and form events only for elements a site

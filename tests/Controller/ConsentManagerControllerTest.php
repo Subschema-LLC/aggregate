@@ -320,6 +320,70 @@ final class ConsentManagerControllerTest extends TestCase
     }
 
 
+    public function testRegionConsentTypesAreSavedListedAndValidated(): void
+    {
+        $form = $this->defaults();
+        $form['regions'] = [
+            ['id' => 'eu', 'name' => 'Europe', 'consent_type' => 'explicit_eu', 'default' => '1'],
+            ['id' => 'us', 'name' => 'United States', 'consent_type' => 'explicit_us'],
+            ['id' => 'ca', 'name' => 'Canada', 'consent_type' => 'implicit_us'],
+            // The "Add a region" row, left empty, is ignored.
+            ['id' => '', 'name' => '', 'consent_type' => 'explicit_eu'],
+        ];
+        $form['text']['dismiss'] = 'Hide this notice';
+        $request = $this->post($form);
+        $this->controller($request)->save($request);
+
+        self::assertCount(1, $request->getSession()->getFlashBag()->get('success'));
+        $saved = Yaml::parseFile($this->sitePath($this->siteId))['consent_manager'];
+        self::assertSame(['explicit_eu', 'explicit_us', 'implicit_us'], array_column($saved['regions'], 'consent_type'));
+        self::assertSame(['dismiss' => 'Hide this notice'], $saved['text'], 'only the changed close label is stored');
+
+        $page = new Crawler((string) $this->index(['site' => $this->siteId])->getContent());
+        self::assertSame(['implicit_us', 'explicit_us', 'explicit_eu'], $page->filter('#region-0-consent-type option')->each(static fn (Crawler $option): string => $option->attr('value')));
+        self::assertSame('explicit_us', $page->filter('#region-1-consent-type option[selected]')->attr('value'));
+        self::assertSame('implicit_us', $page->filter('#region-2-consent-type option[selected]')->attr('value'));
+        self::assertSame('explicit_eu', $page->filter('#new-region-consent-type option[selected]')->attr('value'));
+        self::assertSame('Hide this notice', $page->filter('#consent-text-dismiss')->attr('value'));
+        self::assertSame('Reject all optional categories and close', $page->filter('#consent-text-dismiss_reject')->attr('value'));
+        self::assertSame('Reject all optional categories and close', $page->filter('.consent-preview .ac-consent-close')->attr('aria-label'));
+        self::assertSame('×', $page->filter('.consent-preview .ac-consent-close')->text());
+
+        $form['regions'] = [['id' => 'eu', 'name' => 'Europe', 'consent_type' => 'opt_in']];
+        $rejected = $this->post($form);
+        $this->controller($rejected)->save($rejected);
+        self::assertSame(['consent_manager.regions[0].consent_type must be one of implicit_us, explicit_us, explicit_eu.'], $rejected->getSession()->getFlashBag()->get('error'));
+        self::assertSame(['explicit_eu', 'explicit_us', 'implicit_us'], array_column(Yaml::parseFile($this->sitePath($this->siteId))['consent_manager']['regions'], 'consent_type'), 'nothing was saved');
+    }
+
+    public function testSavingTheFormKeepsRegionWordingAndButtonsItDoesNotShow(): void
+    {
+        $this->sites->saveConsent($this->siteId, ['regions' => [[
+            'id' => 'us', 'name' => 'United States', 'consent_type' => 'explicit_us',
+            'text' => ['title' => 'US notice', 'dismiss' => 'Close US notice', 'details' => ['US paragraph.']],
+            'buttons' => ['show' => ['reject', 'accept']],
+        ]]]);
+
+        $form = $this->defaults();
+        $form['regions'] = [['id' => 'us', 'name' => 'United States', 'consent_type' => 'explicit_us', 'text' => [
+            'title' => 'Changed US notice', 'description' => '', 'accept' => '', 'reject' => '',
+        ]]];
+        $request = $this->post($form);
+        $this->controller($request)->save($request);
+
+        self::assertCount(1, $request->getSession()->getFlashBag()->get('success'));
+        $region = Yaml::parseFile($this->sitePath($this->siteId))['consent_manager']['regions'][0];
+        self::assertSame(['title' => 'Changed US notice', 'dismiss' => 'Close US notice', 'details' => ['US paragraph.']], $region['text']);
+        self::assertSame(['show' => ['reject', 'accept']], $region['buttons']);
+
+        // A field the form shows and the operator cleared falls back to the website's wording.
+        $form['regions'][0]['text']['title'] = '';
+        $request = $this->post($form);
+        $this->controller($request)->save($request);
+        $region = Yaml::parseFile($this->sitePath($this->siteId))['consent_manager']['regions'][0];
+        self::assertSame(['dismiss' => 'Close US notice', 'details' => ['US paragraph.']], $region['text']);
+    }
+
     public function testPrecheckCategoriesAreSavedAndRenderedInFormAndPreview(): void
     {
         $form = $this->defaults();

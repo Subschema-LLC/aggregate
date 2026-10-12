@@ -26,6 +26,12 @@ final class ConsentManagerController extends AbstractController
     /** A rejected form, kept for one page load of the same website. */
     public const SUBMITTED_FORM_KEY = 'consent_manager_submitted_form';
     private const BUTTON_NAMES = ['reject' => 'Reject', 'accept' => 'Accept all', 'save' => 'Save selection'];
+    /** Labels for ConsentAppearance::CONSENT_TYPES, in the order the form lists them. */
+    private const CONSENT_TYPE_LABELS = [
+        'implicit_us' => 'Implicit, US-style',
+        'explicit_us' => 'Explicit, US-style',
+        'explicit_eu' => 'Explicit, EU-style',
+    ];
 
     public function __construct(
         private readonly AggregateConfigLoader $config,
@@ -79,6 +85,7 @@ final class ConsentManagerController extends AbstractController
             'default_buttons' => ConsentAppearance::BUTTON_DEFAULTS[ConsentAppearance::BUILTIN],
             'default_labels' => array_combine($categories, array_map(self::defaultLabel(...), $categories)),
             'arrangements' => self::arrangements(), 'button_names' => self::BUTTON_NAMES,
+            'consent_types' => self::CONSENT_TYPE_LABELS, 'default_consent_type' => ConsentAppearance::DEFAULT_CONSENT_TYPE,
             'reopen_positions' => ['bottom-left' => 'Bottom left', 'bottom-right' => 'Bottom right', 'hidden' => 'Hidden (link to it from your website)'],
             'max_details' => ConsentAppearance::MAX_DETAILS,
         ]));
@@ -207,6 +214,7 @@ final class ConsentManagerController extends AbstractController
         }
 
         $regions = [];
+        $savedRegions = array_column($saved['regions'] ?? [], null, 'id');
         if (isset($form['regions']) && is_array($form['regions'])) {
             foreach ($form['regions'] as $reg) {
                 if (!is_array($reg)) continue;
@@ -216,19 +224,27 @@ final class ConsentManagerController extends AbstractController
                 $regItem = [
                     'id' => $id,
                     'name' => $name,
-                    'consent_type' => in_array($reg['consent_type'] ?? null, ['explicit', 'implicit'], true) ? $reg['consent_type'] : 'explicit',
+                    // An unknown type reaches validation, which names the allowed ones.
+                    'consent_type' => is_string($reg['consent_type'] ?? null) && $reg['consent_type'] !== '' ? $reg['consent_type'] : ConsentAppearance::DEFAULT_CONSENT_TYPE,
                     'default' => ($reg['default'] ?? null) === '1' || ($reg['default'] ?? null) === true,
                 ];
-                if (isset($reg['text']) && is_array($reg['text'])) {
-                    $regText = [];
-                    foreach ($reg['text'] as $tk => $tv) {
-                        if (is_string($tv) && trim($tv) !== '') {
-                            $regText[$tk] = trim($tv);
-                        }
+                // The form shows only some region wording. Keep the region's other
+                // YAML wording (details, close labels...) and its buttons as saved.
+                $previous = $savedRegions[$id] ?? [];
+                $submittedRegionText = isset($reg['text']) && is_array($reg['text']) ? $reg['text'] : [];
+                $regText = $previous['text'] ?? [];
+                foreach ($submittedRegionText as $tk => $tv) {
+                    if (is_string($tv) && trim($tv) !== '') {
+                        $regText[$tk] = trim($tv);
+                    } else {
+                        unset($regText[$tk]);
                     }
-                    if ($regText !== []) {
-                        $regItem['text'] = $regText;
-                    }
+                }
+                if ($regText !== []) {
+                    $regItem['text'] = $regText;
+                }
+                if (isset($previous['buttons'])) {
+                    $regItem['buttons'] = $previous['buttons'];
                 }
                 $regions[] = $regItem;
             }

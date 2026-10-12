@@ -21,7 +21,18 @@ final class ConsentAppearance
     public const REOPEN_POSITIONS = ['bottom-left', 'bottom-right', 'hidden'];
     public const MAX_DETAILS = 4;
     public const MAX_REGIONS = 10;
-    public const CONSENT_TYPES = ['explicit', 'implicit'];
+    /**
+     * How a region's banner treats visitors who have not chosen yet, and what its
+     * close button (×) does:
+     * - implicit_us: a notice; enhanced analytics starts granted, × hides the notice.
+     * - explicit_us: optional categories start denied, × hides the banner and keeps them denied.
+     * - explicit_eu: optional categories start denied, × rejects them all and saves that choice.
+     */
+    public const CONSENT_TYPES = ['implicit_us', 'explicit_us', 'explicit_eu'];
+    /** The consent type without regions, and for a region that does not name one. */
+    public const DEFAULT_CONSENT_TYPE = 'explicit_eu';
+    /** Names accepted from earlier releases, and the type each now means. */
+    public const LEGACY_CONSENT_TYPES = ['implicit' => 'implicit_us', 'explicit' => 'explicit_eu'];
 
     private const LABEL = 120;
     private const PARAGRAPH = 1000;
@@ -36,14 +47,14 @@ final class ConsentAppearance
             'title' => self::LABEL, 'description' => self::PARAGRAPH, 'details' => self::PARAGRAPH,
             'categories_legend' => self::LABEL, 'categories' => self::LABEL,
             'reject' => self::LABEL, 'accept' => self::LABEL, 'save' => self::LABEL, 'reopen' => self::LABEL,
-            'privacy_link' => self::LABEL,
+            'dismiss' => self::LABEL, 'dismiss_reject' => self::LABEL, 'privacy_link' => self::LABEL,
             'status_applied' => self::PARAGRAPH, 'status_not_saved' => self::PARAGRAPH, 'status_other_tab' => self::PARAGRAPH,
         ],
         self::STANDALONE => [
             'title' => self::LABEL, 'description' => self::PARAGRAPH, 'details' => self::PARAGRAPH,
             'privacy_link' => self::LABEL,
             'reject' => self::LABEL, 'accept' => self::LABEL, 'manage' => self::LABEL, 'save' => self::LABEL,
-            'reopen' => self::LABEL, 'close' => self::LABEL,
+            'reopen' => self::LABEL, 'close' => self::LABEL, 'dismiss' => self::LABEL, 'dismiss_reject' => self::LABEL,
             'settings_label' => self::LABEL, 'preferences_tab' => self::LABEL, 'requests_tab' => self::LABEL,
             'preferences_intro' => self::PARAGRAPH, 'categories_legend' => self::LABEL, 'categories' => self::LABEL,
             'opt_out' => self::PARAGRAPH, 'opt_out_help' => self::PARAGRAPH, 'gpc_notice' => self::PARAGRAPH,
@@ -75,6 +86,8 @@ final class ConsentAppearance
             'accept' => 'Accept all optional categories',
             'save' => 'Save selected choices',
             'reopen' => 'Privacy choices',
+            'dismiss' => 'Close this notice',
+            'dismiss_reject' => 'Reject all optional categories and close',
             'privacy_link' => 'Read this website’s privacy notice',
             'status_applied' => 'Your privacy choices have been applied.',
             'status_not_saved' => 'This choice could not be saved; choose again on your next visit.',
@@ -93,6 +106,8 @@ final class ConsentAppearance
             'save' => 'Save selected choices',
             'reopen' => 'Privacy choices',
             'close' => 'Close privacy settings',
+            'dismiss' => 'Close this notice',
+            'dismiss_reject' => 'Reject optional categories and close',
             'settings_label' => 'Privacy settings',
             'preferences_tab' => 'Preferences',
             'requests_tab' => 'Privacy request',
@@ -245,7 +260,11 @@ final class ConsentAppearance
         return $browser;
     }
 
-    /** Empty, or an absolute HTTPS URL without credentials, spaces or backslashes. */
+    /**
+     * Validates a list of regions. Each needs an id and a name; consent_type
+     * defaults to explicit_eu, and the older explicit and implicit are read as
+     * explicit_eu and implicit_us.
+     */
     public static function regions(mixed $regions, string $banner, string $path, ?string $defaultRegion = null): array
     {
         if (!is_array($regions) || ($regions !== [] && !array_is_list($regions)) || count($regions) > self::MAX_REGIONS) {
@@ -279,9 +298,10 @@ final class ConsentAppearance
                 throw new \InvalidArgumentException($itemPath.'.name must be nonempty plain text of at most '.self::LABEL.' bytes.');
             }
 
-            $consentType = $region['consent_type'] ?? 'explicit';
+            $consentType = $region['consent_type'] ?? self::DEFAULT_CONSENT_TYPE;
+            $consentType = is_string($consentType) ? (self::LEGACY_CONSENT_TYPES[$consentType] ?? $consentType) : $consentType;
             if (!in_array($consentType, self::CONSENT_TYPES, true)) {
-                throw new \InvalidArgumentException($itemPath.'.consent_type must be "explicit" or "implicit".');
+                throw new \InvalidArgumentException($itemPath.'.consent_type must be one of '.implode(', ', self::CONSENT_TYPES).'.');
             }
 
             $isDefault = (bool) ($region['default'] ?? false);
@@ -315,6 +335,7 @@ final class ConsentAppearance
         return $result;
     }
 
+    /** Empty, or an absolute HTTPS URL without credentials, spaces or backslashes. */
     public static function privacyPolicyUrl(mixed $value, string $path): string
     {
         if (!is_string($value) || strlen($value) > 2048 || preg_match('//u', $value) !== 1 || preg_match('/\p{Cc}/u', $value) === 1) {
