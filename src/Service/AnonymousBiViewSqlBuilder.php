@@ -282,8 +282,322 @@ SQL, $this->completedDayPredicate('archived_geo.event_day'), $this->eventDayExpr
      */
     public function dailyViewSql(int $minimumCellCount, array $pageGroups = []): string
     {
+        return "CREATE VIEW bi_anonymous_daily_v1 AS\n".$this->dailyCellsSql($minimumCellCount, $pageGroups).sprintf(<<<'SQL'
+
+SELECT
+    daily_cells.website_token,
+    daily_cells.event_day,
+    daily_cells.event_name,
+    daily_cells.page_group,
+    daily_cells.referrer_channel,
+    daily_cells.device_class,
+    daily_cells.event_count
+FROM daily_cells
+WHERE daily_cells.event_count >= %1$d
+  AND (
+      daily_cells.event_count = daily_cells.released_hourly_count
+      OR daily_cells.event_count - daily_cells.released_hourly_count >= %1$d
+  )
+SQL, $minimumCellCount);
+    }
+
+    /**
+     * The daily cells, then the cells the daily view withholds rolled up
+     * through coarser rows instead of dropped: devices pooled, then channels,
+     * then pages (keeping the channel), then everything for the event and day.
+     * A pooled value is "(other)": the part not shown in more detailed rows.
+     *
+     * Every released row, at every level, reaches the threshold and contains
+     * an hourly-withheld part that is zero or at least the threshold. Each
+     * daily cell lands in exactly one row, so rows never overlap, and any set
+     * of rows minus the released hourly cells inside it leaves zero or at least
+     * the threshold. The most detailed rows are exactly bi_anonymous_daily_v1.
+     * Whatever is still below the threshold after the last level is dropped.
+     *
+     * @param list<array{pattern: string, group: string}> $pageGroups
+     */
+    public function rollupViewSql(int $minimumCellCount, array $pageGroups = []): string
+    {
+        // The group sums are computed in their own step and compared in the
+        // next: MariaDB evaluates several window functions combined in one
+        // boolean expression incorrectly, so no expression mixes them.
+        $level = static function (string $name, string $from, string $partition) use ($minimumCellCount): string {
+            return sprintf(<<<'SQL'
+,
+%1$s_sums AS (
+    SELECT
+        website_token,
+        event_day,
+        event_name,
+        page_group,
+        referrer_channel,
+        device_class,
+        event_count,
+        withheld_hourly_count,
+        SUM(event_count) OVER (PARTITION BY %3$s) AS group_count,
+        SUM(withheld_hourly_count) OVER (PARTITION BY %3$s) AS group_withheld_count
+    FROM %2$s
+    WHERE is_released = 0
+),
+%1$s AS (
+    SELECT
+        website_token,
+        event_day,
+        event_name,
+        page_group,
+        referrer_channel,
+        device_class,
+        event_count,
+        withheld_hourly_count,
+        CASE
+            WHEN group_count >= %4$d
+             AND (group_withheld_count = 0 OR group_withheld_count >= %4$d)
+            THEN 1 ELSE 0
+        END AS is_released
+    FROM %1$s_sums
+)
+SQL, $name, $from, $partition, $minimumCellCount);
+        };
+
+        return "CREATE VIEW bi_anonymous_daily_rollup_v1 AS\n"
+            .$this->dailyCellsSql($minimumCellCount, $pageGroups)
+            .sprintf(<<<'SQL'
+,
+level_full AS (
+    SELECT
+        website_token,
+        event_day,
+        event_name,
+        page_group,
+        referrer_channel,
+        device_class,
+        event_count,
+        event_count - released_hourly_count AS withheld_hourly_count,
+        CASE
+            WHEN event_count >= %1$d
+             AND (event_count = released_hourly_count OR event_count - released_hourly_count >= %1$d)
+            THEN 1 ELSE 0
+        END AS is_released
+    FROM daily_cells
+)
+SQL, $minimumCellCount)
+            .$level('level_page_channel', 'level_full', 'website_token, event_day, event_name, page_group, referrer_channel')
+            .$level('level_page', 'level_page_channel', 'website_token, event_day, event_name, page_group')
+            .$level('level_channel', 'level_page', 'website_token, event_day, event_name, referrer_channel')
+            .$level('level_day', 'level_channel', 'website_token, event_day, event_name')
+            .sprintf(<<<'SQL'
+
+SELECT
+    website_token,
+    event_day,
+    event_name,
+    page_group,
+    referrer_channel,
+    device_class,
+    event_count,
+    %1$s AS detail_level
+FROM level_full
+WHERE is_released = 1
+UNION ALL
+SELECT
+    website_token,
+    event_day,
+    event_name,
+    page_group,
+    referrer_channel,
+    '(other)' AS device_class,
+    SUM(event_count) AS event_count,
+    %2$s AS detail_level
+FROM level_page_channel
+WHERE is_released = 1
+GROUP BY website_token, event_day, event_name, page_group, referrer_channel
+UNION ALL
+SELECT
+    website_token,
+    event_day,
+    event_name,
+    page_group,
+    '(other)' AS referrer_channel,
+    '(other)' AS device_class,
+    SUM(event_count) AS event_count,
+    %3$s AS detail_level
+FROM level_page
+WHERE is_released = 1
+GROUP BY website_token, event_day, event_name, page_group
+UNION ALL
+SELECT
+    website_token,
+    event_day,
+    event_name,
+    '(other)' AS page_group,
+    referrer_channel,
+    '(other)' AS device_class,
+    SUM(event_count) AS event_count,
+    %4$s AS detail_level
+FROM level_channel
+WHERE is_released = 1
+GROUP BY website_token, event_day, event_name, referrer_channel
+UNION ALL
+SELECT
+    website_token,
+    event_day,
+    event_name,
+    '(other)' AS page_group,
+    '(other)' AS referrer_channel,
+    '(other)' AS device_class,
+    SUM(event_count) AS event_count,
+    %5$s AS detail_level
+FROM level_day
+WHERE is_released = 1
+GROUP BY website_token, event_day, event_name
+SQL,
+                $this->label('page_channel_device'),
+                $this->label('page_channel'),
+                $this->label('page'),
+                $this->label('channel'),
+                $this->label('day'),
+            );
+    }
+
+    /**
+     * For each website and completed UTC day with at least the threshold of
+     * anonymous events, the share of those events each event view releases,
+     * as a band rather than a number: an exact share would reveal the day's
+     * total and so the withheld remainder. It reads the published views, so it
+     * reports exactly what they release, and is created after them.
+     */
+    public function coverageViewSql(int $minimumCellCount): string
+    {
         return sprintf(<<<'SQL'
-CREATE VIEW bi_anonymous_daily_v1 AS
+CREATE VIEW bi_anonymous_coverage_v1 AS
+WITH combined_event_cells AS (
+    SELECT
+        archived_events.website_token,
+        archived_events.event_hour,
+        archived_events.event_count
+    FROM analytics_archive_events archived_events
+    WHERE archived_events.privacy_mode = 'anonymous'
+      AND %1$s
+    UNION ALL
+    SELECT
+        events.website_token,
+        events.created_at AS event_hour,
+        1 AS event_count
+    FROM events
+    WHERE events.archived_at IS NULL
+      AND events.privacy_mode = 'anonymous'
+      AND %2$s
+),
+day_totals AS (
+    SELECT
+        website_token,
+        %3$s AS event_day,
+        SUM(event_count) AS total_count
+    FROM combined_event_cells
+    GROUP BY
+        website_token,
+        %3$s
+),
+view_names AS (
+    SELECT 1 AS view_id, %7$s AS view_name
+    UNION ALL
+    SELECT 2 AS view_id, %8$s AS view_name
+    UNION ALL
+    SELECT 3 AS view_id, %9$s AS view_name
+),
+released AS (
+    SELECT
+        1 AS view_id,
+        website_token,
+        %4$s AS event_day,
+        SUM(event_count) AS released_count
+    FROM bi_anonymous_events_v1
+    WHERE %5$s
+    GROUP BY
+        website_token,
+        %4$s
+    UNION ALL
+    SELECT
+        2 AS view_id,
+        website_token,
+        event_day,
+        SUM(event_count) AS released_count
+    FROM bi_anonymous_daily_v1
+    GROUP BY
+        website_token,
+        event_day
+    UNION ALL
+    SELECT
+        3 AS view_id,
+        website_token,
+        event_day,
+        SUM(event_count) AS released_count
+    FROM bi_anonymous_daily_rollup_v1
+    GROUP BY
+        website_token,
+        event_day
+)
+SELECT
+    day_totals.website_token,
+    day_totals.event_day,
+    view_names.view_name,
+    CASE
+        WHEN COALESCE(released.released_count, 0) * 10 >= day_totals.total_count * 9 THEN %10$s
+        WHEN COALESCE(released.released_count, 0) * 2 >= day_totals.total_count THEN %11$s
+        WHEN COALESCE(released.released_count, 0) * 10 >= day_totals.total_count THEN %12$s
+        ELSE %13$s
+    END AS coverage_band
+FROM day_totals
+CROSS JOIN view_names
+LEFT JOIN released
+    ON released.website_token = day_totals.website_token
+   AND released.event_day = day_totals.event_day
+   AND released.view_id = view_names.view_id
+WHERE day_totals.total_count >= %6$d
+SQL,
+            $this->completedDayPredicate('archived_events.event_hour'),
+            $this->completedDayPredicate('events.created_at'),
+            $this->eventDayExpression('event_hour'),
+            $this->eventDayExpression('bi_anonymous_events_v1.event_hour'),
+            $this->completedDayPredicate('bi_anonymous_events_v1.event_hour'),
+            $minimumCellCount,
+            $this->label('bi_anonymous_events_v1'),
+            $this->label('bi_anonymous_daily_v1'),
+            $this->label('bi_anonymous_daily_rollup_v1'),
+            $this->label('90-100'),
+            $this->label('50-90'),
+            $this->label('10-50'),
+            $this->label('0-10'),
+        );
+    }
+
+    /**
+     * A string literal for a column whose values are all literals. MySQL and
+     * MariaDB give literals stored in a view the character set's default
+     * collation, which can differ from a client's connection collation (MySQL
+     * 8's utf8mb4_0900_ai_ci against PHP's utf8mb4_general_ci), and comparing
+     * the two fails with "Illegal mix of collations". An explicit collation,
+     * the one Doctrine gives the tables, makes such filters work for any
+     * client.
+     */
+    private function label(string $value): string
+    {
+        $literal = $this->platform->quoteStringLiteral($value);
+
+        return $this->platform instanceof AbstractMySQLPlatform ? $literal.' COLLATE utf8mb4_unicode_ci' : $literal;
+    }
+
+    /**
+     * The shared CTEs of the daily views, from the WITH clause through
+     * daily_cells: the hourly cells rebuilt exactly as bi_anonymous_events_v1
+     * builds them, mapped to page groups and summed by completed UTC day, with
+     * the part the hourly view releases at this threshold.
+     *
+     * @param list<array{pattern: string, group: string}> $pageGroups
+     */
+    private function dailyCellsSql(int $minimumCellCount, array $pageGroups): string
+    {
+        return sprintf(<<<'SQL'
 WITH combined_event_cells AS (
     SELECT
         archived_events.website_token,
@@ -363,20 +677,6 @@ daily_cells AS (
         referrer_channel,
         device_class
 )
-SELECT
-    daily_cells.website_token,
-    daily_cells.event_day,
-    daily_cells.event_name,
-    daily_cells.page_group,
-    daily_cells.referrer_channel,
-    daily_cells.device_class,
-    daily_cells.event_count
-FROM daily_cells
-WHERE daily_cells.event_count >= %5$d
-  AND (
-      daily_cells.event_count = daily_cells.released_hourly_count
-      OR daily_cells.event_count - daily_cells.released_hourly_count >= %5$d
-  )
 SQL,
             $this->completedDayPredicate('archived_events.event_hour'),
             $this->completedDayPredicate('events.created_at'),

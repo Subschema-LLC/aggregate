@@ -292,7 +292,7 @@ Saving existing branding settings takes effect without an asset build.
 
 The two BI disclosure thresholds are deployment configuration values in `config/aggregate*.yaml`:
 
-- `anonymous_min_cell_count`: completed hourly cells in `bi_anonymous_events_v1`, completed daily cells in `bi_anonymous_daily_v1`, and completed daily goal cells in `bi_anonymous_goals_v1` (default `5`, range `2`–`1000`)
+- `anonymous_min_cell_count`: completed hourly cells in `bi_anonymous_events_v1`, completed daily cells in `bi_anonymous_daily_v1` and `bi_anonymous_daily_rollup_v1`, completed daily goal cells in `bi_anonymous_goals_v1`, and the smallest day `bi_anonymous_coverage_v1` reports (default `5`, range `2`–`1000`)
 - `anonymous_geo_min_cell_count`: completed daily cells in `bi_anonymous_geo_events_v1` (default `25`, range `10`–`1000`)
 
 The thresholds are written into the SQL of the views, so a new value takes effect when the views are regenerated. Saving the **BI disclosure** page writes YAML and regenerates them. After editing YAML directly, or setting an environment override, run:
@@ -304,7 +304,7 @@ php bin/console app:analytics:bi-views:regenerate
 
 Environment overrides (`ANONYMOUS_MIN_CELL_COUNT`, `ANONYMOUS_GEO_MIN_CELL_COUNT`) take precedence over YAML. An invalid value stops regeneration and leaves the existing views in place. PostgreSQL, MySQL, MariaDB and SQL Server replace each view in place, so the reporting account's grants are kept; SQLite drops and recreates them and has no grants.
 
-`bi_page_groups` (no environment override) lists the [page groups](BI-CONNECTION.md#page-groups) used by `bi_anonymous_daily_v1`. It is managed on **Reporting → Page groups** or in YAML, and applied by the same regeneration.
+`bi_page_groups` (no environment override) lists the [page groups](BI-CONNECTION.md#page-groups) used by `bi_anonymous_daily_v1` and `bi_anonymous_daily_rollup_v1`. It is managed on **Reporting → Page groups** or in YAML, and applied by the same regeneration.
 
 **Upgrading from database-stored thresholds.** Earlier releases kept the thresholds in an `analytics_privacy_settings` table. The migration that removes it rebuilds the views with the values it found there, but it does not write them to YAML. If you had changed either threshold from its default, copy the values into `config/aggregate.yaml` before you next save the BI disclosure page or run the command; otherwise the views return to the YAML values (the defaults when unset).
 

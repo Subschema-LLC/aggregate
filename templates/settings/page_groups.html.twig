@@ -10,7 +10,7 @@
 <div class="columns is-centered">
 <div class="column is-8-desktop">
 <div class="box">
-    <p class="mb-4"><code>bi_anonymous_daily_v1</code> counts completed UTC days by page group, referrer channel and device class. Grouping many small pages, such as one page per product or location, lets their traffic reach the minimum cell count instead of being withheld. Rules are stored as <code>bi_page_groups</code> in <code>config/aggregate*.yaml</code>; saving regenerates the BI views.</p>
+    <p class="mb-4"><code>bi_anonymous_daily_v1</code> and <code>bi_anonymous_daily_rollup_v1</code> count completed UTC days by page group, referrer channel and device class. Grouping many small pages, such as one page per product or location, lets their traffic reach the minimum cell count instead of being withheld. Rules are stored as <code>bi_page_groups</code> in <code>config/aggregate*.yaml</code>; saving regenerates the BI views.</p>
 
     {% if page_groups_error %}
         <div class="notification is-danger is-light" role="alert">{{ page_groups_error }}</div>

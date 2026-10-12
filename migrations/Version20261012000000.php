@@ -10,9 +10,7 @@ use App\Service\AnonymousBiViewManager;
 use App\Service\AnonymousBiViewSqlBuilder;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
-use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Platforms\SQLitePlatform;
-use Doctrine\DBAL\Platforms\SQLServerPlatform;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\Migrations\AbstractMigration;
 
@@ -42,7 +40,7 @@ final class Version20261012000000 extends AbstractMigration
     {
         $platform = $this->connection->getDatabasePlatform();
         $sql = new AnonymousBiViewSqlBuilder($platform);
-        $threshold = self::thresholdFromDefinition($this->hourlyViewDefinition($platform));
+        $threshold = (new AnonymousBiViewManager($this->connection))->compiledEventThreshold();
 
         if ($threshold === null) {
             $threshold = $this->configuredThreshold();
@@ -58,42 +56,10 @@ final class Version20261012000000 extends AbstractMigration
         $this->addSql((new AnonymousBiViewSqlBuilder($this->connection->getDatabasePlatform()))->dropViewIfExistsSql('bi_anonymous_daily_v1'));
     }
 
-    /**
-     * The threshold compiled into the hourly view, from the definition each
-     * engine reports (MySQL and MariaDB rewrite it with backticks and
-     * parentheses). Null unless exactly one valid threshold comparison is found.
-     */
+    /** Kept for compatibility; the parsing lives in AnonymousBiViewManager. */
     public static function thresholdFromDefinition(?string $definition): ?int
     {
-        if ($definition === null
-            || preg_match_all('/event_count`?\s*\)?\s*>=\s*\(?\s*([0-9]{1,4})\b/i', $definition, $matches) !== 1) {
-            return null;
-        }
-        $value = (int) $matches[1][0];
-
-        return $value >= AnalyticsPrivacySettings::MINIMUM_CELL_COUNT && $value <= AnalyticsPrivacySettings::MAXIMUM_CELL_COUNT ? $value : null;
-    }
-
-    private function hourlyViewDefinition(AbstractPlatform $platform): ?string
-    {
-        $query = match (true) {
-            $platform instanceof SQLitePlatform => "SELECT sql FROM sqlite_master WHERE type = 'view' AND name = 'bi_anonymous_events_v1'",
-            $platform instanceof PostgreSQLPlatform => "SELECT pg_get_viewdef(c.oid) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relname = 'bi_anonymous_events_v1' AND c.relkind = 'v' AND n.nspname = current_schema()",
-            $platform instanceof SQLServerPlatform => "SELECT OBJECT_DEFINITION(OBJECT_ID('bi_anonymous_events_v1', 'V'))",
-            $platform instanceof AbstractMySQLPlatform => "SELECT VIEW_DEFINITION FROM information_schema.VIEWS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bi_anonymous_events_v1'",
-            default => null,
-        };
-        if ($query === null) {
-            return null;
-        }
-
-        try {
-            $definition = $this->connection->fetchOne($query);
-        } catch (\Throwable) {
-            return null;
-        }
-
-        return is_string($definition) ? $definition : null;
+        return AnonymousBiViewManager::thresholdFromDefinition($definition);
     }
 
     private function configuredThreshold(): int

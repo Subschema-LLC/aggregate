@@ -93,7 +93,7 @@ final class BiPageGroupsControllerTest extends TestCase
             ['pattern' => '/inventory/**', 'group' => 'inventory'],
             ['pattern' => '/locations/*', 'group' => 'location page'],
         ], $saved[BiPageGroups::KEY]);
-        self::assertCount(8, $this->executed);
+        self::assertCount(12, $this->executed);
         $daily = implode("\n", array_filter($this->executed, static fn (string $sql): bool => str_contains($sql, 'CREATE VIEW bi_anonymous_daily_v1')));
         self::assertStringContainsString("THEN 'location page'", $daily);
         self::assertStringContainsString('WHERE daily_cells.event_count >= 6', $daily);

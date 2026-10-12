@@ -48,6 +48,8 @@ class BuiltinGlossaryCatalog
             'bi_anonymous_goals_v1' => ['website_token', 'event_day', 'goal_event', 'event_count'],
             'bi_anonymous_geo_events_v1' => ['website_token', 'event_day', 'event_name', 'geo_area', 'event_count'],
             'bi_anonymous_daily_v1' => ['website_token', 'event_day', 'event_name', 'page_group', 'referrer_channel', 'device_class', 'event_count'],
+            'bi_anonymous_daily_rollup_v1' => ['website_token', 'event_day', 'event_name', 'page_group', 'referrer_channel', 'device_class', 'event_count', 'detail_level'],
+            'bi_anonymous_coverage_v1' => ['website_token', 'event_day', 'view_name', 'coverage_band'],
         ];
         foreach (self::DIMENSIONS as $dimension) {
             $views['bi_dim_'.$dimension.'_v1'] = [$dimension, $dimension.'_label', $dimension.'_group', $dimension.'_description', $dimension.'_sort'];
