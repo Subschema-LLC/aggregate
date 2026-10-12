@@ -62,7 +62,7 @@ function runtime(options = {}) {
       else cookies.set(key, entry);
     }
   });
-  const window = eventTarget({localStorage: storage, sessionStorage, innerWidth: 1280});
+  const window = eventTarget({localStorage: storage, sessionStorage, innerWidth: 1280, navigator: {globalPrivacyControl: options.gpc === true}});
   window[namespace] = {endpoint: 'https://analytics.example.test/api/receive', websiteToken: 'public-site-token'};
   const tagChoices = [];
   if (options.tags !== false) window.AggregateTags = {setConsent: (value) => tagChoices.push(JSON.parse(JSON.stringify(value)))};
@@ -695,4 +695,93 @@ test('configured close labels replace the defaults', () => {
   assert.equal(closeButtonOf(eu).attributes['aria-label'], 'Nein danke');
   const us = runtime({config: Object.assign({text: {dismiss: 'Hide'}}, oneRegion('explicit_us'))});
   assert.equal(closeButtonOf(us).attributes['aria-label'], 'Hide');
+});
+
+const stateOf = (app) => JSON.parse(JSON.stringify(app.window.AggregateConsent.getState()));
+const checkbox = (app, category) => app.allNodes.find((node) => node.id === 'ac-consent-' + category);
+
+test('a banner-wide consent type applies without regions and to regions that name none', () => {
+  const implicit = runtime({categories: ['analytics', 'marketing'], config: {consentType: 'implicit_us'}});
+  assert.deepEqual(stateOf(implicit), {analytics: true, marketing: false});
+  assert.equal(implicit.window.Aggregate.consent, true, 'the tracker receives the grant');
+  assert.equal(closeButtonOf(implicit).attributes['aria-label'], 'Close this notice');
+  assert.equal(checkbox(implicit, 'analytics').checked, true, 'the checkbox shows the default grant');
+  assert.equal(checkbox(implicit, 'marketing').checked, false);
+
+  const explicitUs = runtime({config: {consentType: 'explicit_us'}});
+  assert.equal(stateOf(explicitUs).analytics, false);
+  assert.equal(closeButtonOf(explicitUs).attributes['aria-label'], 'Close this notice');
+
+  const inherited = runtime({config: {consentType: 'implicit_us', regions: [{id: 'a', name: 'A'}, {id: 'b', name: 'B', consentType: 'explicit_eu'}]}});
+  assert.equal(stateOf(inherited).analytics, true, 'region a has no type and inherits implicit_us');
+  inherited.window.AggregateConsent.setRegion('b');
+  assert.equal(stateOf(inherited).analytics, false);
+});
+
+test('the close button setting overrides the consent type, per banner and per region', () => {
+  const hidden = runtime({config: {closeButton: 'hidden'}});
+  assert.equal(closeButtonOf(hidden).hidden, true);
+  closeButtonOf(hidden).dispatchEvent({type: 'click'});
+  assert.equal(hidden.panel().hidden, false, 'a hidden close button does nothing');
+  assert.equal(hidden.values.size, 0);
+
+  const dismissEu = runtime({config: {closeButton: 'dismiss'}});
+  assert.equal(closeButtonOf(dismissEu).attributes['aria-label'], 'Close this notice');
+  closeButtonOf(dismissEu).dispatchEvent({type: 'click'});
+  assert.equal(dismissEu.panel().hidden, true);
+  assert.equal(dismissEu.values.has('analytics_consent_v1:Aggregate'), false, 'closing without a choice saves nothing');
+
+  const regions = [
+    {id: 'us', name: 'United States', consentType: 'implicit_us', default: true, closeButton: 'reject'},
+    {id: 'eu', name: 'Europe', consentType: 'explicit_eu'}
+  ];
+  const app = runtime({config: {closeButton: 'hidden', regions}});
+  assert.equal(closeButtonOf(app).hidden, false, 'the region setting wins');
+  assert.equal(closeButtonOf(app).attributes['aria-label'], 'Reject all optional categories and close');
+  app.window.AggregateConsent.setRegion('eu');
+  assert.equal(closeButtonOf(app).hidden, true, 'a region without a setting uses the banner setting');
+  app.window.AggregateConsent.setRegion('us');
+  assert.equal(stateOf(app).analytics, true);
+  closeButtonOf(app).dispatchEvent({type: 'click'});
+  assert.equal(stateOf(app).analytics, false, 'reject withdraws the implicit grant');
+  assert.deepEqual(JSON.parse(app.values.get('analytics_consent_v1:Aggregate')), {analytics: false});
+});
+
+test('default-on categories are configurable for implicit_us and never apply to explicit types', () => {
+  const marketing = runtime({categories: ['analytics', 'marketing', 'functional'], config: {consentType: 'implicit_us', defaultGranted: ['analytics', 'marketing', 'unknown']}});
+  assert.deepEqual(stateOf(marketing), {analytics: true, marketing: true, functional: false});
+  assert.deepEqual(marketing.tagChoices.at(-1), {analytics: true, marketing: true, functional: false});
+
+  const none = runtime({categories: ['analytics', 'marketing'], config: {consentType: 'implicit_us', defaultGranted: []}});
+  assert.deepEqual(stateOf(none), {analytics: false, marketing: false});
+
+  const malformed = runtime({config: {consentType: 'implicit_us', defaultGranted: 'analytics'}});
+  assert.equal(stateOf(malformed).analytics, false, 'a malformed list grants nothing');
+
+  const explicit = runtime({categories: ['analytics', 'marketing'], config: {consentType: 'explicit_us', defaultGranted: ['analytics', 'marketing']}});
+  assert.deepEqual(stateOf(explicit), {analytics: false, marketing: false});
+
+  const regional = runtime({categories: ['analytics', 'marketing'], config: {defaultGranted: ['marketing'], regions: [
+    {id: 'us', name: 'United States', consentType: 'implicit_us', default: true, defaultGranted: ['analytics']},
+    {id: 'ca', name: 'California', consentType: 'implicit_us'}
+  ]}});
+  assert.deepEqual(stateOf(regional), {analytics: true, marketing: false}, 'the region list wins');
+  regional.window.AggregateConsent.setRegion('ca');
+  assert.deepEqual(stateOf(regional), {analytics: false, marketing: true}, 'a region without a list uses the banner list');
+});
+
+test('Global Privacy Control withholds default-on categories unless the banner is told not to respect it', () => {
+  const app = runtime({gpc: true, categories: ['analytics', 'marketing'], config: {consentType: 'implicit_us', defaultGranted: ['analytics', 'marketing']}});
+  assert.deepEqual(stateOf(app), {analytics: false, marketing: false});
+  app.findText('Accept all optional categories').dispatchEvent({type: 'click'});
+  assert.deepEqual(stateOf(app), {analytics: true, marketing: true}, 'the visitor can still accept');
+
+  const ignored = runtime({gpc: true, config: {consentType: 'implicit_us', respectGpc: false}});
+  assert.equal(stateOf(ignored).analytics, true);
+});
+
+test('a saved choice always wins over default-on categories', () => {
+  const app = runtime({saved: '{"analytics":false}', config: {consentType: 'implicit_us'}});
+  assert.equal(stateOf(app).analytics, false);
+  assert.equal(app.panel().hidden, true);
 });

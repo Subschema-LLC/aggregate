@@ -130,17 +130,22 @@ Treat these as constraints on implementation and documentation:
 - **Ingestion controls apply to both modes.** The collection kill switch and
   sensitive-path exclusions must also block enhanced events. Configuration load
   failures must fail closed. Disabled or excluded requests must not create local
-  rate-limit buckets, geographic lookups, queue messages, or stored events.
+  rate-limit buckets, geographic lookups, queue messages, or stored events; nor
+  must bot requests when `bot_traffic` is `drop`. The server's bot
+  classification overrides a submitted device class, and the User-Agent it reads
+  is never stored in anonymous rows.
 - **Optional geography stays local and coarse.** Resolve only configured
   country/continent codes from a local MMDB. Do not send IPs to an external lookup
   service or copy addresses or detailed lookup records into events, queues, or
   application logs.
 - **Enhanced collection follows the consent signal.** With Aggregate's banners,
-  the region's consent type sets the signal before a choice: denied for
-  `explicit_eu` (the default) and `explicit_us`, granted for `implicit_us`, an
-  operator's choice for notice-and-opt-out regions. With a third-party consent
-  manager, the signal it pushes decides, including a Google Consent Mode
-  default. Do not add other default grants. Parse consent explicitly; missing
+  the consent type sets the signal before a choice: denied for `explicit_eu`
+  (the default) and `explicit_us`; for `implicit_us`, an operator's choice for
+  notice-and-opt-out regions, the configured default-on categories, withheld
+  when a respected Global Privacy Control signal is present. With a third-party
+  consent manager, the signal it pushes decides, including a Google Consent Mode
+  default unless `google_consent_mode` is `updates` or `off`. Do not add default
+  grants outside `implicit_us`. Parse consent explicitly; missing
   signals and truthy values such as the string `"false"` must never grant
   consent, and strict collection overrides every signal. See
   [which consent signal sets the mode](docs/PRIVACY-COMPLIANCE.md#which-consent-signal-sets-the-mode).
@@ -426,6 +431,7 @@ organization-marker artifacts keep their separate browser delivery paths.
 | [TrackEventMessage](src/Message/TrackEventMessage.php) and [TrackEventHandler](src/MessageHandler/TrackEventHandler.php) | Carry and persist enhanced events through Symfony Messenger |
 | [src/Service](src/Service) | Configuration, privacy policy, sanitization, goals, organization markers, branding, and data lifecycle services |
 | [src/Service/GeoIp](src/Service/GeoIp) | Local MMDB lookup and coarse geographic codes |
+| [src/Service/BotDetection](src/Service/BotDetection) | Bot User-Agent matching; `BotUserAgentPatterns.php` is generated from crawler-user-agents (MIT) by [scripts/update-bot-patterns.py](scripts/update-bot-patterns.py), never edited by hand |
 | [src/Entity](src/Entity), [src/Repository](src/Repository), [migrations](migrations) | Doctrine model, database access, schema, and versioned reporting views |
 | [config](config) | YAML application/website/goal settings, Symfony services, routes, and package configuration |
 | [src/Command](src/Command) | CLI installation, website creation, and analytics maintenance |

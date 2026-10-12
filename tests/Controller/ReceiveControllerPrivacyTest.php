@@ -740,6 +740,134 @@ final class ReceiveControllerPrivacyTest extends TestCase
         ];
     }
 
+    public function testBotsAreLabelledByDefaultEvenWhenTheClientSendsADesktopClass(): void
+    {
+        $persisted = null;
+        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager->expects(self::once())->method('persist')
+            ->willReturnCallback(static function (object $event) use (&$persisted): void {
+                $persisted = $event;
+            });
+        $bus = $this->createMock(MessageBusInterface::class);
+        $bus->expects(self::never())->method('dispatch');
+
+        $response = $this->invoke(
+            payload: ['websiteToken' => 'public-site-token', 'pagePath' => '/pricing', 'eventName' => 'page_view', 'deviceClass' => 'desktop', 'viewportBucket' => 'large'],
+            bus: $bus,
+            recorder: new AnonymousEventRecorder($entityManager),
+            userAgent: 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Googlebot/2.1; +http://www.google.com/bot.html) Chrome/129.0.6668.70 Safari/537.36',
+        );
+
+        self::assertSame(['status' => 'recorded', 'mode' => 'anonymous'], json_decode((string) $response->getContent(), true));
+        self::assertInstanceOf(Event::class, $persisted);
+        self::assertSame('bot', $persisted->getDeviceClass());
+        self::assertSame('large', $persisted->getViewportBucket());
+        self::assertNull($persisted->getGeneralizedUserAgent(), 'the User-Agent is never stored in anonymous rows');
+    }
+
+    public function testEnhancedEventsFromAutomatedBrowsersAreLabelledToo(): void
+    {
+        $queued = null;
+        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager->expects(self::never())->method('persist');
+        $bus = $this->createMock(MessageBusInterface::class);
+        $bus->expects(self::once())->method('dispatch')
+            ->willReturnCallback(static function (object $message) use (&$queued): Envelope {
+                $queued = $message;
+
+                return new Envelope($message);
+            });
+
+        $this->invoke(
+            payload: ['websiteToken' => 'public-site-token', 'pagePath' => '/pricing', 'eventName' => 'page_view', 'deviceClass' => 'bot', 'consentState' => 'granted', 'visitorId' => 'visitor_abc'],
+            bus: $bus,
+            recorder: new AnonymousEventRecorder($entityManager),
+        );
+
+        self::assertInstanceOf(TrackEventMessage::class, $queued);
+        self::assertSame('bot', $queued->deviceClass, 'the tracker reports navigator.webdriver as a bot');
+    }
+
+    /** @return iterable<string, array{array<string, mixed>, string}> */
+    public static function botRequests(): iterable
+    {
+        $event = ['websiteToken' => 'public-site-token', 'pagePath' => '/pricing', 'eventName' => 'page_view'];
+        $browser = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36';
+        yield 'listed crawler claiming a desktop' => [$event + ['deviceClass' => 'desktop'], 'Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)'];
+        yield 'headless browser with enhanced consent' => [$event + ['consentState' => 'granted', 'visitorId' => 'visitor_abc'], 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/129.0.0.0 Safari/537.36'];
+        yield 'automated browser reported by the tracker' => [$event + ['deviceClass' => 'bot'], $browser];
+        yield 'operator phrase' => [$event + ['deviceClass' => 'desktop'], $browser.' ExampleUptimeMonitor/3.1'];
+        yield 'invalid token from a bot' => [['websiteToken' => 'unknown', 'pagePath' => '/', 'eventName' => 'page_view'], 'Mozilla/5.0 (compatible; Googlebot/2.1)'];
+    }
+
+    /** @param array<string, mixed> $payload */
+    #[DataProvider('botRequests')]
+    public function testDroppedBotEventsCreateNoRowMessageBucketOrLookup(array $payload, string $userAgent): void
+    {
+        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager->expects(self::never())->method('persist');
+        $bus = $this->createMock(MessageBusInterface::class);
+        $bus->expects(self::never())->method('dispatch');
+        $rateLimiter = $this->createMock(IpRateLimiter::class);
+        $rateLimiter->expects(self::never())->method('allow');
+        $geoResolver = $this->createMock(GeoIpResolverInterface::class);
+        $geoResolver->expects(self::never())->method('resolve');
+
+        $response = $this->invoke(
+            payload: $payload,
+            bus: $bus,
+            recorder: new AnonymousEventRecorder($entityManager),
+            config: $this->privacyConfig(botTraffic: 'drop', botUserAgents: ['exampleuptimemonitor']),
+            rateLimiter: $rateLimiter,
+            geoResolver: $geoResolver,
+            userAgent: $userAgent,
+        );
+
+        self::assertSame(202, $response->getStatusCode());
+        self::assertSame(['status' => 'ignored'], json_decode((string) $response->getContent(), true));
+    }
+
+    public function testHttpClientsAreNotBotsSoServerSideCollectionContinues(): void
+    {
+        $persisted = null;
+        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager->expects(self::once())->method('persist')
+            ->willReturnCallback(static function (object $event) use (&$persisted): void {
+                $persisted = $event;
+            });
+
+        $response = $this->invoke(
+            payload: ['websiteToken' => 'public-site-token', 'pagePath' => '/checkout', 'eventName' => 'order_completed'],
+            bus: $this->createStub(MessageBusInterface::class),
+            recorder: new AnonymousEventRecorder($entityManager),
+            config: $this->privacyConfig(botTraffic: 'drop'),
+            userAgent: 'curl/8.5.0',
+        );
+
+        self::assertSame(['status' => 'recorded', 'mode' => 'anonymous'], json_decode((string) $response->getContent(), true));
+        self::assertSame('desktop', $persisted->getDeviceClass(), 'curl reads as a desktop User-Agent, not a bot');
+    }
+
+    public function testTheStrictProfileClassifiesNoBots(): void
+    {
+        $persisted = null;
+        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager->expects(self::once())->method('persist')
+            ->willReturnCallback(static function (object $event) use (&$persisted): void {
+                $persisted = $event;
+            });
+
+        $this->invoke(
+            payload: ['websiteToken' => 'public-site-token', 'pagePath' => '/pricing', 'eventName' => 'page_view', 'deviceClass' => 'bot'],
+            bus: $this->createStub(MessageBusInterface::class),
+            recorder: new AnonymousEventRecorder($entityManager),
+            config: $this->privacyConfig(collectionProfile: 'strict', botTraffic: 'drop'),
+            userAgent: 'Mozilla/5.0 (compatible; Googlebot/2.1)',
+        );
+
+        self::assertSame('unknown', $persisted->getDeviceClass());
+    }
+
     public function testStrictProfileStillAppliesTheKillSwitchAndPathExclusions(): void
     {
         $entityManager = $this->createMock(EntityManagerInterface::class);
@@ -832,18 +960,24 @@ final class ReceiveControllerPrivacyTest extends TestCase
         array $excludedPaths = [],
         array $customDataProperties = [],
         string $collectionProfile = 'standard',
+        string $botTraffic = 'label',
+        array $botUserAgents = [],
     ): AggregateConfigLoader
     {
         $config = $this->createStub(AggregateConfigLoader::class);
+        $config->method('get')->willReturnCallback(static fn (string $key): mixed => $key === 'bot_user_agents' ? $botUserAgents : null);
         $config->method('all')->willReturn([
             'custom_data_properties' => $customDataProperties,
             'query_parameter_mappings' => [],
         ]);
         $config->method('getBoolWithEnvFallback')->willReturn($enabled);
         $config->method('getWithEnvFallback')
-            ->willReturnCallback(static function (string $key, mixed $default = null) use ($excludedPaths, $customDataProperties, $collectionProfile): mixed {
+            ->willReturnCallback(static function (string $key, mixed $default = null) use ($excludedPaths, $customDataProperties, $collectionProfile, $botTraffic): mixed {
                 if ($key === 'collection_profile') {
                     return $collectionProfile;
+                }
+                if ($key === 'bot_traffic') {
+                    return $botTraffic;
                 }
                 if ($key === 'custom_data_properties') {
                     return $customDataProperties;

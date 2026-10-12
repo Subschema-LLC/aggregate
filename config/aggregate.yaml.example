@@ -82,17 +82,22 @@ tag_manager:
 # Set enabled to false to omit cmp-lite from default install scripts and disable it by default.
 # consent_manager:
 #   enabled: true
-#   # default_region and regions are not read from this file; they show the shape. Set them
-#   # in each website's config/tag-manager/sites/<site-id>.yaml under consent_manager, or on
-#   # Collection -> Consent manager lite.
+#   # default_region, regions and the consent behavior keys below are not read from this file;
+#   # they show the shape. Set them in each website's config/tag-manager/sites/<site-id>.yaml
+#   # under consent_manager, or on Collection -> Consent manager lite.
+#   # Consent behavior for the whole banner; regions can set their own.
+#   consent_type: explicit_eu      # explicit_eu (default), explicit_us or implicit_us
+#   close_button: reject           # reject, dismiss or hidden; omit to follow consent_type
+#   default_granted: [analytics]   # allowed before a choice, implicit_us only
+#   respect_gpc: true              # Global Privacy Control withholds default_granted
 #   # Optional default region ID to show on the banner for new visitors before a selection is made.
 #   default_region: eu_eea
 #   # Optional regional consent rules: lets visitors select their region or configures
-#   # region-specific messaging and consent types. When 2 or more regions are configured,
-#   # a region dropdown selector is displayed. Every type shows a close button (x):
-#   #   explicit_eu  (default) Opt-in; x rejects all optional categories and saves that choice.
+#   # region-specific messaging and consent behavior. When 2 or more regions are configured,
+#   # a region dropdown selector is displayed. By default the close button (x):
+#   #   explicit_eu  Opt-in; x rejects all optional categories and saves that choice.
 #   #   explicit_us  Opt-in; x hides the banner for the tab session and keeps categories denied.
-#   #   implicit_us  Notice; enhanced analytics starts allowed, x hides the notice for the tab session.
+#   #   implicit_us  Notice; default_granted starts allowed, x hides the notice for the tab session.
 #   # The older values explicit and implicit still work and mean explicit_eu and implicit_us.
 #   regions:
 #     - id: eu_eea
@@ -111,10 +116,14 @@ tag_manager:
 #         accept: 'Acknowledge'
 #         reject: 'Opt out'
 
-# Optional: accept analytics consent from Google Consent Mode signals (analytics_storage: granted).
-# When enabled (the default), the tracker listens for gtag('consent', ...) and dataLayer consent
-# updates in addition to window.Aggregate.setConsent(). Set to false to disable Google consent signals.
-# google_consent_mode: true
+# Optional: how the tracker follows Google Consent Mode analytics_storage signals, in addition to
+# window.Aggregate.setConsent(). Also on Collection controls in the dashboard.
+#   all      (default) gtag('consent', 'default' | 'update', ...) and dataLayer objects. A default
+#            of granted enables enhanced analytics before the visitor chooses.
+#   updates  Only 'update' commands, sent when a visitor chooses or a saved choice is restored.
+#   off      Ignore Google consent signals.
+# true and false still mean all and off; any other value is treated as off.
+# google_consent_mode: all
 
 # Shared custom data model; active environments can replace either mapping.
 # All UTMs require enhanced consent by default. For anonymous attribution,
@@ -450,6 +459,17 @@ environments:
 # anonymous_excluded_paths (optional, default: [])
 #   Paths that must never be collected in either mode. Supports glob patterns
 #   such as /account/*, /checkout/**, and /health.
+#
+# bot_traffic (optional, default: label; env: BOT_TRAFFIC)
+#   label records events from crawlers, monitors and automated browsers with
+#   device_class 'bot', so reports can filter device_class <> 'bot'. drop ignores
+#   them before rate limiting, lookups or storage. HTTP client libraries such as
+#   curl are not treated as bots. Unrecognized values stop ingestion.
+#
+# bot_user_agents (optional, default: [])
+#   Extra phrases that mark a request as a bot when its User-Agent contains one,
+#   ignoring case, such as your own monitoring tool. Up to 50 phrases of 3 to 100
+#   characters. Invalid lists stop ingestion.
 #
 # anonymous_min_cell_count (optional, default: 5; range: 2..1000)
 #   Disclosure threshold for published cells in bi_anonymous_events_v1,

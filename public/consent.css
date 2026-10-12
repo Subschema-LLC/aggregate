@@ -209,6 +209,10 @@
     width: 2rem;
 }
 
+.ac-consent .ac-consent-close[hidden] {
+    display: none;
+}
+
 .ac-consent .ac-consent-close:hover {
     background: color-mix(in srgb, var(--ac-text) 8%, transparent);
     box-shadow: none;

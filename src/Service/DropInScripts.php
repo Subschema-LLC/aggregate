@@ -124,6 +124,7 @@ final class DropInScripts
         ] + ($siteId === null ? [] : ['siteId' => $siteId])
             + (($consent['privacy_policy_url'] ?? '') !== '' ? ['privacyPolicyUrl' => $consent['privacy_policy_url']] : [])
             + (($consent['precheck_categories'] ?? []) !== [] ? ['precheckCategories' => $consent['precheck_categories']] : [])
+            + (($consent['respect_gpc'] ?? true) === false ? ['respectGpc' => false] : [])
             + ConsentAppearance::browser($consent));
         if ($minified) {
             $directory = $this->projectDir.'/var/browser';

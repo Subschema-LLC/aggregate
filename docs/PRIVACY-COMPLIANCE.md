@@ -275,6 +275,42 @@ Earlier versions stored the flag under the configured marker name (default `orgI
 
 Keep raw-event access within your existing reporting policy. To expose the flag as a column, add `org_internal_traffic` as a boolean property in the [data model](DATA-MODEL.md) and regenerate the private `analytics_custom_*_v1` views. For anonymous reporting, apply the internal-traffic filter before aggregation and disclosure thresholds in a controlled export. Existing `bi_anonymous_*` views and archive tables do not expose `custom_data` and cannot distinguish internal traffic. Archives continue to combine both traffic types; once raw rows are deleted, this flag cannot be recovered from archives. Prepare filtered reporting datasets while the raw JSON is retained. This browser-supplied label is for reporting, not authorization.
 
+## Bot traffic
+
+Crawlers, uptime monitors, SEO tools and automated browsers that run the tracker
+would otherwise be counted as visitors. The collection endpoint recognizes them
+and, by default, labels their events:
+
+- A request is a bot when its User-Agent names a crawler, monitor or automation
+  tool from a maintained list (a pinned copy of
+  [crawler-user-agents](https://github.com/monperrus/crawler-user-agents)), uses a
+  common bot word such as `bot`, `crawler`, `spider` or `headless`, or contains
+  one of the operator's `bot_user_agents` phrases; or when the tracker reports an
+  automated browser (`navigator.webdriver`).
+- The server's classification wins over the device class a client submits, so a
+  page cannot relabel a known bot as a desktop. A client can only add the label.
+- HTTP client libraries such as curl, python-requests and Go's client are not
+  treated as bots: they cannot run the browser tracker, and they are how
+  websites send [server-side events](EVENT-EXAMPLES.md).
+
+**Collection controls → Bot traffic** (`bot_traffic`) decides what happens next:
+
+| Setting | Result |
+| --- | --- |
+| `label` (default) | The event is recorded as usual with `device_class = 'bot'`. Reports leave bots out with `device_class <> 'bot'`, or show how much bot traffic a website gets. |
+| `drop` | The event is ignored with status `ignored`, before an IP rate-limit bucket, website lookup, geography lookup, queue message or row is created. |
+
+The User-Agent is read only while the request is handled. It is not stored in
+anonymous rows, and enhanced rows keep only the existing generalized browser
+and device class. The [strict collection profile](#strict-collection-profile)
+reads no User-Agent and the tracker reports no automation there, so strict
+deployments classify no bots.
+
+This filtering cannot catch a bot that copies a real browser's User-Agent and
+hides automation. Pair it with the rate limit, [website domain rules](CONFIGURATION.md#website-domains)
+and the BI views' minimum event counts. The `bi_anonymous_*` views do not
+exclude `bot` rows; filter them in reports where bots should not count.
+
 ## Optional coarse geography
 
 Geography is disabled by default. When enabled, the ingestion boundary uses the request IP transiently with a local GeoLite2-Country-compatible MMDB and retains only one normalized value:
@@ -503,13 +539,15 @@ consent:
 
 | How consent is collected | Before the visitor chooses | After a choice |
 | --- | --- | --- |
-| Built-in or standalone banner, region type `explicit_eu` (also a banner without regions) or `explicit_us` | Anonymous | Enhanced only after the visitor accepts analytics |
-| Built-in or standalone banner, region type `implicit_us` | Enhanced | Anonymous once the visitor rejects or opts out |
+| Built-in or standalone banner, consent type `explicit_eu` (the default) or `explicit_us` | Anonymous | Enhanced only after the visitor accepts analytics |
+| Built-in or standalone banner, consent type `implicit_us` | Enhanced while `analytics` is a default-on category (the default), unless a respected Global Privacy Control signal withholds it | Anonymous once the visitor rejects or opts out |
 | A third-party consent manager | Whatever its default signal says; anonymous until it sends a grant | Follows each signal it sends |
 | No consent manager or no signal | Anonymous | Not applicable |
 
-The banners' region types are described in
-[Regions and the close button](CONSENT-MANAGER.md#regions-and-the-close-button).
+The banners' settings (consent type, close button, default-on categories and
+Global Privacy Control) are described in
+[Consent behavior](CONSENT-MANAGER.md#consent-behavior); each region can set its
+own.
 A third-party consent manager can signal in any of these ways, and the most
 recent signal applies:
 
@@ -518,11 +556,19 @@ recent signal applies:
   the script's `data-consent` attribute or its `consent=` URL parameter; or
 - Google Consent Mode: `analytics_storage` set to `'granted'` or `'denied'` in
   `gtag('consent', 'default' | 'update', …)` or an equivalent `dataLayer` push.
-  The tracker reads these unless `google_consent_mode: false` is set in
-  `config/aggregate.yaml` or the script has `data-google-consent-mode="false"`.
-  A `default` of `granted` counts as a grant, so a consent manager that defaults
-  analytics to granted in a region puts visitors there in enhanced mode before
-  they choose, as `implicit_us` does.
+  Choose how the tracker follows these under **Collection controls → Google
+  Consent Mode signals**, or with `google_consent_mode` in `config/aggregate.yaml`:
+
+  | Setting | Follows |
+  | --- | --- |
+  | `all` (default) | `default` and `update` commands, and `dataLayer` objects. A `default` of `granted` counts as a grant, so a consent manager that defaults analytics to granted in a region puts visitors there in enhanced mode before they choose, as `implicit_us` does. |
+  | `updates` | Only `update` commands, which consent managers send when a visitor chooses or a saved choice is restored. Defaults and `dataLayer` objects are ignored. |
+  | `off` | No Google signals. |
+
+  YAML `true` and `false` mean `all` and `off`; any other value is treated as
+  `off`. The tracker served by this installation keeps `updates` and `off`, so
+  page options cannot widen them. A static copy reads `data-google-consent-mode`
+  or the `google_consent_mode` URL parameter instead.
 
 Only an explicit grant counts: `true`, `1`, `'true'` or `'1'` from the first two
 kinds of signal, and `'granted'` from Google Consent Mode. A missing, malformed
@@ -534,8 +580,9 @@ loads at once.
 
 The server stores enhanced detail only for events whose consent state is
 `granted`, and it cannot check how the browser obtained that signal. Each
-region's consent type and each consent manager's defaults are therefore the
-operator's decision. Enhanced analytics uses browser identifiers: use
+banner and region setting, the Google Consent Mode setting and each consent
+manager's defaults are therefore the operator's decision, made with their legal
+team. Enhanced analytics uses browser identifiers: use
 `implicit_us`, or a consent manager that grants analytics by default, only where
 you have decided that notice and opt-out are lawful for it, and keep it off until
 an affirmative choice wherever consent is required.

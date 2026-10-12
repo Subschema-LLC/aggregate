@@ -339,6 +339,15 @@ final class DropInScriptsTest extends TestCase
         self::assertStringContainsString('"privacyPolicyUrl":"https://www.example.test/privacy","text":{"privacyLink":"Notice"},"theme":{"buttonBackground":"#FFFFFF"},"buttons":{"reopen":"hidden"}', $builtIn);
         $sites->saveConsent($siteId, ['privacy_policy_url' => '']);
         self::assertStringNotContainsString('"privacyPolicyUrl":', $scripts->consentScript(false, $siteId)['content']);
+        // Consent behavior reaches both banners.
+        $sites->saveConsent($siteId, ['consent_type' => 'implicit_us', 'close_button' => 'dismiss', 'default_granted' => ['analytics', 'marketing'], 'respect_gpc' => false]);
+        $builtIn = $scripts->consentScript(false, $siteId)['content'];
+        self::assertStringContainsString('"respectGpc":false', $builtIn);
+        self::assertStringContainsString('"consentType":"implicit_us","closeButton":"dismiss","defaultGranted":["analytics","marketing"]', $builtIn);
+        $sites->saveConsent($siteId, ['respect_gpc' => null]);
+        self::assertStringNotContainsString('"respectGpc"', $scripts->consentScript(false, $siteId)['content'], 'the default is not sent');
+        $settings->save($siteId, ['name' => 'Choices', 'consent_type' => 'explicit_us', 'close_button' => 'hidden']);
+        self::assertStringContainsString('"consentType":"explicit_us","closeButton":"hidden"', $scripts->standaloneConsentScript(false, $siteId)['content']);
         $settings->save($siteId, ['name' => 'Choices </script>']);
         // Invalid built-in controls cannot block the independent option.
         $sites->configuration($siteId)->updateMany(static fn (): array => ['consent_manager' => ['enabled' => 'invalid']]);

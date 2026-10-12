@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Configuration;
 
-use App\Controller\DashboardController;
+use App\Controller\WebsitesController;
 use App\Entity\User;
 use App\Kernel;
 use App\Service\AggregateConfigLoader;
@@ -335,7 +335,7 @@ final class WebsiteDomainRulesRoutesTest extends TestCase
     {
         $browser = $this->browser(authenticated: false, dashboardEnabled: false);
         $before = $this->websitesContents();
-        self::assertFalse($this->container()->has(DashboardController::class));
+        self::assertFalse($this->container()->has(WebsitesController::class));
         self::assertNull($this->container()->get('router')->getRouteCollection()->get('app_website_domains'));
         foreach ([['GET', '/dashboard'], ['GET', self::SAVE_PATH], ['POST', self::SAVE_PATH]] as [$method, $path]) {
             $browser->request($method, $path, ['domain_mode' => 'all', '_csrf_token' => 'forged']);

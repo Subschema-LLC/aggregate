@@ -4,7 +4,12 @@ declare(strict_types=1);
 
 namespace App\Tests\Configuration;
 
-use App\Controller\DashboardController;
+use App\Controller\ApplicationSettingsController;
+use App\Controller\BrandingSettingsController;
+use App\Controller\CollectionSettingsController;
+use App\Controller\PrivacySettingsController;
+use App\Controller\UsersController;
+use App\Controller\WebsitesController;
 use App\Entity\User;
 use App\Kernel;
 use App\Repository\UserRepository;
@@ -386,6 +391,29 @@ final class DashboardSectionsRoutesTest extends TestCase
         self::assertSame('standard', $saved['collection_profile']);
         self::assertSame('NewAnalytics', $saved['js_namespace']);
         self::assertSame('preserve-me', $saved['unrelated_operator_setting']);
+        // An unchanged Google Consent Mode setting is not written.
+        self::assertArrayNotHasKey('google_consent_mode', $saved);
+
+        $collection = $browser->request('GET', '/dashboard/collection');
+        self::assertSame('all', $collection->filter('#google-consent-mode option[selected]')->attr('value'));
+        $form = $collection->selectButton('Save Collection Settings')->form(['google_consent_mode' => 'updates']);
+        $browser->submit($form);
+        $this->assertRedirect($browser, '/dashboard/collection');
+        self::assertSame('updates', Yaml::parseFile($this->temporaryDirectory.'/config/aggregate.yaml')['google_consent_mode']);
+        $collection = $browser->request('GET', '/dashboard/collection');
+        self::assertSame('updates', $collection->filter('#google-consent-mode option[selected]')->attr('value'));
+        self::assertSame('label', $collection->filter('input[name="bot_traffic"][checked]')->attr('value'));
+        self::assertArrayNotHasKey('bot_traffic', Yaml::parseFile($this->temporaryDirectory.'/config/aggregate.yaml'), 'the default is not pinned');
+
+        $form = $collection->selectButton('Save Collection Settings')->form(['bot_traffic' => 'drop', 'bot_user_agents' => "ExampleMonitor\nload-test"]);
+        $browser->submit($form);
+        $this->assertRedirect($browser, '/dashboard/collection');
+        $saved = Yaml::parseFile($this->temporaryDirectory.'/config/aggregate.yaml');
+        self::assertSame('drop', $saved['bot_traffic']);
+        self::assertSame(['ExampleMonitor', 'load-test'], $saved['bot_user_agents']);
+        $collection = $browser->request('GET', '/dashboard/collection');
+        self::assertSame('drop', $collection->filter('input[name="bot_traffic"][checked]')->attr('value'));
+        self::assertSame("ExampleMonitor\nload-test", $collection->filter('#bot-user-agents')->text(normalizeWhitespace: false));
         $this->assertNoDatabaseConnection();
     }
 
@@ -517,7 +545,9 @@ final class DashboardSectionsRoutesTest extends TestCase
     public function testHeadlessBootOmitsEveryDashboardSectionAndMutation(): void
     {
         $browser = $this->browser(dashboardEnabled: false);
-        self::assertFalse($this->container()->has(DashboardController::class));
+        foreach ([WebsitesController::class, ApplicationSettingsController::class, BrandingSettingsController::class, CollectionSettingsController::class, PrivacySettingsController::class, UsersController::class] as $controller) {
+            self::assertFalse($this->container()->has($controller), $controller);
+        }
         $routes = $this->container()->get('router')->getRouteCollection();
         foreach (self::PAGES as $name => [$path]) {
             self::assertNull($routes->get($name));

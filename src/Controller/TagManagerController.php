@@ -19,6 +19,8 @@ use Symfony\Component\Yaml\Yaml;
 
 final class TagManagerController extends AbstractController
 {
+    use DashboardAccess;
+
     public const CSRF_TOKEN_ID = 'tag_manager_settings';
     /** Session key for a form that failed validation, so the next page load can show it again. */
     public const SUBMITTED_FORM_KEY = 'tag_manager_submitted_form';
@@ -379,11 +381,5 @@ final class TagManagerController extends AbstractController
     private function logFailure(string $operation, \Throwable $error): void
     {
         $this->logger->error('Tag manager configuration operation failed.', ['operation' => $operation, 'exception_class' => $error::class]);
-    }
-
-    private function denyUnlessAvailableToAdmin(): void
-    {
-        if (!$this->config->isDashboardEnabled()) throw $this->createNotFoundException('Dashboard is disabled.');
-        $this->denyAccessUnlessGranted('ROLE_ADMIN');
     }
 }

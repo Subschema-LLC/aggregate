@@ -306,6 +306,8 @@ curl http://localhost:9002/api/health
 
 In browser DevTools, look for `/api/receive` requests and inspect the response body as well as its HTTP status. HTTP 202 can indicate a recorded anonymous event, an accepted enhanced event, or intentionally ignored collection on a disabled/excluded route. An enhanced event uses the configured Messenger transport; a worker is needed for asynchronous delivery. See [worker setup](../DEPLOYMENT.md#worker-process-setup).
 
+Bots are recognized from the User-Agent and from automated browsers, which the tracker reports as `deviceClass: 'bot'` when `navigator.webdriver` is set. By default their events are recorded with `device_class = 'bot'`; with `bot_traffic: drop` they are answered `{"status":"ignored"}`. Server-side senders using HTTP libraries such as curl are not treated as bots. See [bot traffic](PRIVACY-COMPLIANCE.md#bot-traffic).
+
 ## Google Tag Manager (GTM) integration
 
 The [Aggregate GTM tag template](https://github.com/Subschema-LLC/aggregate-gtm-tag-template)
@@ -421,7 +423,7 @@ Named custom events may be stored in anonymous mode. Before `setConsent(true)`, 
 
 Use your consent manager to control enhanced analytics. The signal it sends decides the mode: enhanced while it grants analytics, anonymous otherwise. Coarse page-view and named-event rows continue after rejection unless an administrator disables collection or excludes the current path.
 
-If your consent manager already sets Google Consent Mode, the tracker follows its `analytics_storage` value from `gtag('consent', 'default' | 'update', …)` and `dataLayer` without the tags below, unless `google_consent_mode: false` is set. A `default` of `granted` counts as a grant, so check what your consent manager defaults to in each region. See [which consent signal sets the mode](PRIVACY-COMPLIANCE.md#which-consent-signal-sets-the-mode).
+If your consent manager already sets Google Consent Mode, the tracker follows its `analytics_storage` value from `gtag('consent', 'default' | 'update', …)` and `dataLayer` without the tags below. A `default` of `granted` counts as a grant; to follow only visitors' choices, set **Collection controls → Google Consent Mode signals** to **Follow visitor choices only** (`google_consent_mode: updates`), or turn the signals off. See [which consent signal sets the mode](PRIVACY-COMPLIANCE.md#which-consent-signal-sets-the-mode).
 
 Initialize a previously recorded choice before loading the tracker when possible, so its first page view uses that choice. Later consent tags must run after the SDK is available; a guard such as `if (window.Aggregate)` otherwise skips the call. GTM finishing a Custom HTML tag that injects an `async` script is not proof that the downloaded SDK has loaded. See the [consent-manager integration example](PRIVACY-COMPLIANCE.md#consent-manager-integration) for the intended lifecycle.
 

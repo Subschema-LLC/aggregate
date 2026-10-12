@@ -4,28 +4,20 @@ declare(strict_types=1);
 
 namespace App\Tests\Controller;
 
-use App\Controller\DashboardController;
-use App\Repository\UserRepository;
+use App\Controller\CollectionSettingsController;
 use App\Service\AggregateConfigLoader;
-use App\Service\AnalyticsPrivacySettings;
-use App\Service\AnonymousBiViewManager;
-use App\Service\BrandingLogoManager;
 use App\Service\TrackingFailureRetryRunner;
 use App\Service\TrackingFailureSettings;
-use App\Service\WebsiteConfigManager;
-use Doctrine\DBAL\Connection;
-use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\Container;
-use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 use Symfony\Component\Security\Core\Authorization\AuthorizationCheckerInterface;
 use Symfony\Component\Security\Core\Exception\AccessDeniedException;
 use Twig\Environment;
 use Twig\Loader\FilesystemLoader;
 
 /** The Collection controls page loads its tracking failure status from this endpoint. */
-final class DashboardTrackingFailureStatusTest extends TestCase
+final class CollectionSettingsControllerTest extends TestCase
 {
     public function testTheLatestFailuresAndRetryAreRenderedForTheCollectionPage(): void
     {
@@ -74,22 +66,15 @@ final class DashboardTrackingFailureStatusTest extends TestCase
         $this->controller($runner, admin: false)->trackingFailureStatus();
     }
 
-    private function controller(TrackingFailureRetryRunner $runner, bool $admin = true, ?LoggerInterface $logger = null): DashboardController
+    private function controller(TrackingFailureRetryRunner $runner, bool $admin = true, ?LoggerInterface $logger = null): CollectionSettingsController
     {
         $config = $this->createStub(AggregateConfigLoader::class);
         $config->method('isDashboardEnabled')->willReturn(true);
-        $controller = new DashboardController(
-            $this->createStub(WebsiteConfigManager::class),
+        $controller = new CollectionSettingsController(
             $config,
-            new AnalyticsPrivacySettings($this->createStub(AggregateConfigLoader::class)),
-            $this->createStub(UserRepository::class),
-            $this->createStub(UserPasswordHasherInterface::class),
-            $this->createStub(EntityManagerInterface::class),
-            $logger ?? $this->createStub(LoggerInterface::class),
-            new BrandingLogoManager(sys_get_temp_dir(), 'test'),
-            new AnonymousBiViewManager($this->createStub(Connection::class)),
             new TrackingFailureSettings($config),
             $runner,
+            $logger ?? $this->createStub(LoggerInterface::class),
         );
         $authorization = $this->createStub(AuthorizationCheckerInterface::class);
         $authorization->method('isGranted')->willReturn($admin);

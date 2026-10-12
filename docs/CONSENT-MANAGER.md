@@ -21,13 +21,14 @@ only one banner per page.
 - [Wording](#wording)
 - [Colors](#colors)
 - [Buttons](#buttons)
+- [Consent behavior](#consent-behavior)
 - [Regions and the close button](#regions-and-the-close-button)
 - [Behavior and limits](#behavior-and-limits)
 
 ## Configure it in the dashboard
 
 Open **Collection → Consent manager lite** and choose a website. The page has
-five parts, and a preview that updates as you edit:
+six parts, and a preview that updates as you edit:
 
 - **Banner**: whether the built-in banner is enabled, the name shown in its
   title, and an optional link to your privacy notice.
@@ -38,8 +39,11 @@ five parts, and a preview that updates as you edit:
   when you save.
 - **Buttons**: which buttons appear, in what order, and where the button that
   reopens the banner sits.
-- **Regional consent rules**: optional regions, each with a consent type and its
-  own wording; see [Regions and the close button](#regions-and-the-close-button).
+- **Consent behavior**: the consent type, what the close button does, the
+  categories allowed by default in implicit mode, and Global Privacy Control;
+  see [Consent behavior](#consent-behavior).
+- **Regional consent rules**: optional regions, each with its own consent
+  behavior and wording; see [Regions and the close button](#regions-and-the-close-button).
 
 Fields start with their current wording. Text that matches the default is not
 saved, so later improvements to the default wording still reach your banner;
@@ -99,6 +103,10 @@ consent_manager:
 | `text` | Default wording; see [Wording](#wording). |
 | `theme` | Default colors; see [Colors](#colors). |
 | `buttons` | `show: [reject, accept, save]`, `reopen: bottom-left`; see [Buttons](#buttons). |
+| `consent_type` | `explicit_eu`. `explicit_eu`, `explicit_us` or `implicit_us`; see [Consent behavior](#consent-behavior). |
+| `close_button` | Follows the consent type. `reject`, `dismiss` or `hidden`. |
+| `default_granted` | `[analytics]`. Categories allowed before a choice, in `implicit_us` only. |
+| `respect_gpc` | `true`. A YAML boolean. When true, Global Privacy Control withholds `default_granted`. |
 | `regions` | None. Up to 10 regions; see [Regions and the close button](#regions-and-the-close-button). |
 | `default_region` | The region marked `default: true`, otherwise the first. The region shown to visitors who have not picked one. |
 
@@ -125,8 +133,8 @@ characters.
 | `accept` | Accept all optional categories |
 | `save` | Save selected choices |
 | `reopen` | Privacy choices |
-| `dismiss` | Close this notice (the close button’s label in US-style regions) |
-| `dismiss_reject` | Reject all optional categories and close (the close button’s label in EU-style regions and without regions) |
+| `dismiss` | Close this notice (the close button’s label when it closes without a choice) |
+| `dismiss_reject` | Reject all optional categories and close (its label when it rejects) |
 | `privacy_link` | Read this website’s privacy notice |
 | `status_applied` | Your privacy choices have been applied. |
 | `status_not_saved` | This choice could not be saved; choose again on your next visit. |
@@ -190,14 +198,59 @@ page, for example in your footer:
 </script>
 ```
 
+## Consent behavior
+
+The banner's consent signal decides whether the tracker records enhanced or
+anonymous analytics: enhanced while analytics is allowed, anonymous otherwise.
+Four settings shape that signal. Set them with your legal team for the visitors
+this banner serves; Aggregate's defaults are the conservative choice. Each is on
+the dashboard's **Consent behavior** panel and in YAML:
+
+```yaml
+consent_manager:
+  consent_type: implicit_us
+  close_button: dismiss
+  default_granted: [analytics]
+  respect_gpc: true
+```
+
+| `consent_type` | Before a choice | Close button (×) by default |
+| --- | --- | --- |
+| `explicit_eu` (default) | Every optional category is denied: anonymous analytics. | Rejects every optional category and saves that choice, like the reject button. |
+| `explicit_us` | Every optional category is denied: anonymous analytics. | Closes without a choice; categories stay denied. |
+| `implicit_us` | The `default_granted` categories are allowed until the visitor opts out: enhanced analytics while `analytics` is among them. | Closes without a choice; the default grant stays. |
+
+- **`close_button`** replaces the default action: `reject` (reject every optional
+  category and save that), `dismiss` (close without a choice) or `hidden` (no
+  close button). Closing without a choice keeps the banner closed for the rest of
+  the visitor's browser-tab session; a new tab session shows it again.
+- **`default_granted`** lists the categories allowed before a choice in
+  `implicit_us`, for example `[analytics, marketing]` where opt-out rules apply
+  to both, or `[]` for a notice that allows nothing. Explicit types ignore it:
+  they always start every optional category denied. Categories the website does
+  not use are ignored.
+- **`respect_gpc`**: while true, a browser that sends Global Privacy Control gets
+  no default grants, even in `implicit_us`. The visitor can still accept.
+  Set it to false only if your legal team says the signal does not apply.
+
+A saved choice always replaces these defaults. The privacy guide compares this
+with third-party consent managers in
+[Which consent signal sets the mode](PRIVACY-COMPLIANCE.md#which-consent-signal-sets-the-mode).
+Enhanced analytics uses browser identifiers, so use `implicit_us` only for
+visitors where you have decided that notice and opt-out are lawful for this
+website.
+
 ## Regions and the close button
 
 Regions let one banner carry different wording and consent behavior. The
 banner does not detect where a visitor is: with two or more regions it shows a
 region selector, starting on `default_region`, and remembers the visitor's pick
-in the browser. Each region has an `id` (1–32 lowercase letters, digits,
-underscores or hyphens), a `name`, a `consent_type`, and optional `text` and
-`buttons` that replace the website's own for that region.
+in the browser. The region selector is the visitor's own statement, not a
+location check. Each region has an `id` (1–32 lowercase letters, digits,
+underscores or hyphens) and a `name`. Its optional `consent_type`,
+`close_button`, `default_granted`, `text` and `buttons` replace the banner's for
+that region; a region without one uses the banner's. `default_granted` is
+accepted only in `implicit_us` regions.
 
 ```yaml
 consent_manager:
@@ -208,44 +261,32 @@ consent_manager:
       consent_type: explicit_eu
     - id: us
       name: United States
-      consent_type: explicit_us
+      consent_type: implicit_us
+      default_granted: [analytics, marketing]
       text:
         title: 'Your privacy choices at {name}'
         dismiss: Close this notice
 ```
 
-Every banner has a close button (×) in its top-right corner. What it does depends
-on the consent type:
+Every banner has a close button (×) in its top-right corner unless
+`close_button` is `hidden`; the [table above](#consent-behavior) lists what it
+does by default. Its accessible name is `dismiss_reject` when it rejects and
+`dismiss` when it closes without a choice.
 
-| `consent_type` | Before a choice | The close button (×) |
-| --- | --- | --- |
-| `explicit_eu` (default) | Every optional category is denied. | Rejects every optional category and saves that choice, exactly like the reject button. The banner stays closed on later visits. |
-| `explicit_us` | Every optional category is denied. | Hides the banner without saving a choice, so categories stay denied. The banner stays closed for the rest of that browser tab's session and returns in a new one. |
-| `implicit_us` | Enhanced analytics is allowed; other categories are denied. | Hides the notice without saving a choice, so enhanced analytics stays allowed. Like `explicit_us`, it returns in a new tab session. |
+A banner without `consent_type`, and a region without one, use the banner's
+type, which defaults to `explicit_eu`. The values `explicit` and `implicit` from
+earlier releases are still accepted and mean `explicit_eu` and `implicit_us`;
+saving the dashboard page writes the new names.
 
-A banner without regions, and a region without `consent_type`, use
-`explicit_eu`. The values `explicit` and `implicit` from earlier releases are
-still accepted and mean `explicit_eu` and `implicit_us`; saving the dashboard
-page writes the new names.
-
-A US-style dismissal is kept in the tab's session storage under the consent key
-with `:dismissed` appended. It holds only `1`, identifies no one and is never
-sent anywhere; nothing is stored when the EU-style button saves a rejection
+Closing without a choice is kept in the tab's session storage under the consent
+key with `:dismissed` appended. It holds only `1`, identifies no one and is
+never sent anywhere; nothing is stored when the close button saves a rejection
 instead. The Escape key hides the banner for the current page in every type.
-
-The consent type therefore decides the analytics mode before a choice:
-anonymous for `explicit_eu` and `explicit_us`, enhanced for `implicit_us`. The
-privacy guide compares this with third-party consent managers in
-[Which consent signal sets the mode](PRIVACY-COMPLIANCE.md#which-consent-signal-sets-the-mode).
-Enhanced analytics uses browser identifiers, so use `implicit_us` only for
-visitors where you have decided that notice and opt-out are lawful for this
-website. The region selector is the visitor's own statement, not a location
-check.
 
 ## Behavior and limits
 
-Every optional category starts denied, except enhanced analytics in an
-`implicit_us` region. Choices are stored in the browser's local
+Every optional category starts denied, except the `default_granted` categories
+in `implicit_us`. Choices are stored in the browser's local
 storage for that origin, tracker namespace and website, and apply across tabs. The
 banner sends nothing to the server; the tracker and tag manager receive the choice
 through `AggregateConsent`, documented with the
@@ -254,7 +295,7 @@ through `AggregateConsent`, documented with the
 This is a lightweight category chooser, not a consent-records system. It does not
 detect a visitor's region, implement Google Consent Mode or IAB TCF, keep
 provider-level consent, or block scripts that were not loaded through the tag
-manager. For Global Privacy Control, a request form, or regional examples, see the
+manager. For a Global Privacy Control advertising opt-out, a request form, or regional examples, see the
 [standalone banner](../micro-consent-dropins/README.md) and the
 [regional consent examples](CONSENT-REGIONS.md). These are engineering notes, not
 legal advice.

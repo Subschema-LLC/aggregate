@@ -412,6 +412,42 @@ final class SiteScriptConfigTest extends TestCase
         self::assertStringContainsString('consent_type: implicit_us', $export);
     }
 
+    public function testConsentBehaviorIsSavedRemovedAndValidated(): void
+    {
+        $siteId = $this->firstId;
+        $this->sites->saveConsent($siteId, ['consent_type' => 'implicit', 'close_button' => 'hidden', 'default_granted' => ['analytics', 'marketing'], 'respect_gpc' => false,
+            'regions' => [['id' => 'us', 'name' => 'United States'], ['id' => 'eu', 'name' => 'Europe', 'consent_type' => 'explicit_eu', 'close_button' => 'reject']]]);
+        $saved = $this->sites->consent($siteId);
+        self::assertSame('implicit_us', $saved['consent_type'], 'the older name is saved as the type it means');
+        self::assertSame('hidden', $saved['close_button']);
+        self::assertSame(['analytics', 'marketing'], $saved['default_granted']);
+        self::assertFalse($saved['respect_gpc']);
+        self::assertSame('implicit_us', $saved['regions'][0]['consent_type'], 'a region without a type inherits the banner type');
+        self::assertSame('reject', $saved['regions'][1]['close_button']);
+        self::assertStringContainsString('respect_gpc: false', $this->sites->export($siteId));
+
+        // null restores each default.
+        $this->sites->saveConsent($siteId, ['consent_type' => null, 'close_button' => null, 'default_granted' => null, 'respect_gpc' => null, 'regions' => null]);
+        $saved = $this->sites->consent($siteId);
+        foreach (['consent_type', 'close_button', 'default_granted', 'respect_gpc', 'regions'] as $key) {
+            self::assertArrayNotHasKey($key, $saved, $key);
+        }
+
+        foreach ([
+            [['respect_gpc' => 'no'], 'consent_manager.respect_gpc must be a YAML boolean (true or false).'],
+            [['consent_type' => 'opt_out'], 'consent_manager.consent_type must be one of implicit_us, explicit_us, explicit_eu.'],
+            [['regions' => [['id' => 'eu', 'name' => 'Europe', 'consent_type' => 'explicit_eu', 'default_granted' => ['analytics']]]],
+                'consent_manager.regions[0].default_granted applies only to implicit_us regions; explicit consent types start every optional category denied.'],
+        ] as [$consent, $message]) {
+            try {
+                $this->sites->saveConsent($siteId, $consent);
+                self::fail('Expected rejection: '.$message);
+            } catch (\InvalidArgumentException $e) {
+                self::assertSame($message, $e->getMessage());
+            }
+        }
+    }
+
     public function testGlobalConsentManagerInAggregateYamlControlsDefaultEnabled(): void
     {
         $appConfigFile = $this->projectDir.'/config/aggregate.yaml';

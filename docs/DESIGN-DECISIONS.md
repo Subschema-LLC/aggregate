@@ -91,10 +91,13 @@ firewall rather than by storing addresses here.
 ### Enhanced mode follows the consent signal
 
 **Decision.** The tracker uses enhanced mode while its consent signal is granted
-and anonymous mode otherwise. With Aggregate's banners, the region's consent
-type sets the signal before a choice: denied for `explicit_eu` (the default) and
-`explicit_us`, granted for `implicit_us`. With a third-party consent manager,
-the signal it pushes decides, including a Google Consent Mode default. See
+and anonymous mode otherwise. With Aggregate's banners, the consent type sets
+the signal before a choice: denied for `explicit_eu` (the default) and
+`explicit_us`, and the configured default-on categories for `implicit_us`. With a
+third-party consent manager, the signal it pushes decides. Administrators
+control each step in the dashboard and YAML: the consent type, close button and
+default-on categories per banner and region, Global Privacy Control, and whether
+Google Consent Mode defaults count or only visitors' updates. See
 [Which consent signal sets the mode](PRIVACY-COMPLIANCE.md#which-consent-signal-sets-the-mode).
 
 **Why.** The rules differ by market: opt-in consent in the EU and UK, notice and
@@ -104,8 +107,9 @@ around.
 
 **Trade-off.** Aggregate cannot check how a grant was obtained, so a misconfigured
 region or consent manager collects enhanced data without valid consent. The
-defaults stay conservative: a banner without regions is `explicit_eu`, and no
-signal means anonymous mode.
+defaults stay conservative: banners are `explicit_eu`, Global Privacy Control
+withholds default grants, and no signal means anonymous mode. Explicit types
+never apply default grants.
 
 **What would change it.** Adopters needing Aggregate itself to refuse enhanced
 mode regardless of the consent manager. The strict collection profile already
@@ -130,13 +134,14 @@ and some brand palettes are rejected until a darker or lighter shade is chosen.
 acceptable in the regions adopters serve, and a way to apply it equally to every
 choice.
 
-### The banner's close button rejects unless a region says otherwise
+### The banner's close button rejects unless configured otherwise
 
 **Decision.** Both consent banners have a close button (×). By default, and in
-`explicit_eu` regions, it rejects every optional category and saves that
-choice. In `explicit_us` and `implicit_us` regions it hides the banner for the
-browser tab's session without saving a choice, so the region's default consent
-stays in effect. See [Regions and the close button](CONSENT-MANAGER.md#regions-and-the-close-button).
+`explicit_eu`, it rejects every optional category and saves that choice. In
+`explicit_us` and `implicit_us` it hides the banner for the browser tab's session
+without saving a choice, so the default consent stays in effect. Administrators
+can choose reject, close without a choice, or no close button for the banner
+and for each region. See [Consent behavior](CONSENT-MANAGER.md#consent-behavior).
 
 **Why.** Visitors expect to be able to close a banner. Where consent must be
 given actively, closing cannot count as agreement, and a close that only hides
@@ -200,6 +205,36 @@ Rows stored by earlier versions keep the old configured-name key and omit
 **What would change it.** A browser mechanism that lets a site share a
 first-party flag with its sibling websites by consent. Recognizing staff by IP
 address is not an option, because anonymous collection keeps no IP-derived data.
+
+### Bots labelled by the server, kept unless the operator drops them
+
+**Decision.** The collection endpoint classifies a request as a bot from its
+User-Agent, using a pinned copy of the MIT-licensed
+[crawler-user-agents](https://github.com/monperrus/crawler-user-agents) list,
+common bot words and the operator's own phrases, or from the tracker's report of
+an automated browser. That classification overrides the device class a client
+submits. By default (`bot_traffic: label`) bot events are recorded with
+`device_class = 'bot'`; `drop` ignores them before rate limiting, lookups or
+storage. HTTP client libraries are not on the list, and the strict profile
+classifies nothing. See [bot traffic](PRIVACY-COMPLIANCE.md#bot-traffic).
+
+**Why.** A client-supplied device class is a claim the server cannot trust, so a
+known crawler running the tracker was counted as a desktop visitor. Labelling
+keeps every event, lets reports show or exclude bot traffic with one filter, and
+makes a wrong classification visible rather than losing data. Server-side events
+are commonly sent with curl or a language's HTTP client, and those cannot run the
+browser tracker, so treating them as bots would drop legitimate collection.
+
+**Trade-off.** With the default, reports count bots until they filter
+`device_class <> 'bot'`; the `bi_anonymous_*` views keep bot rows so existing
+connections do not change meaning. Matching the list costs a fraction of a
+millisecond per request. A bot that copies a real browser's User-Agent and hides
+automation is not caught, and the pinned list needs regenerating
+(`scripts/update-bot-patterns.py`) to learn new crawlers.
+
+**What would change it.** Adopters wanting the anonymous views to exclude bots by
+default, which would be a new view version rather than a change in meaning; or a
+reliable, privacy-preserving bot signal that does not depend on the User-Agent.
 
 ## Data and reporting
 

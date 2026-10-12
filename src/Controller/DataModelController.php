@@ -18,6 +18,8 @@ use Symfony\Component\Routing\Annotation\Route;
 
 final class DataModelController extends AbstractController
 {
+    use DashboardAccess;
+
     public const CSRF_TOKEN_ID = 'data_model_settings';
 
     public function __construct(
@@ -346,14 +348,6 @@ final class DataModelController extends AbstractController
         $this->logger->error('Custom data model operation failed.', ['operation' => $operation, 'exception_class' => $error::class]);
     }
 
-    private function denyUnlessAvailableToAdmin(): void
-    {
-        if (!$this->config->isDashboardEnabled()) {
-            throw $this->createNotFoundException('Dashboard is disabled.');
-        }
-        $this->denyAccessUnlessGranted('ROLE_ADMIN');
-    }
-
     /**
      * Rehydrates user-submitted property rows, descriptions, types, and column names
      * when validation fails so that keyed-in values are not lost on refresh/redirect.
@@ -411,5 +405,4 @@ final class DataModelController extends AbstractController
             CustomDataSettings::PAGE_SEQUENCE_METHOD_KEY => (string) ($submitted[CustomDataSettings::PAGE_SEQUENCE_METHOD_KEY] ?? $currentModel[CustomDataSettings::PAGE_SEQUENCE_METHOD_KEY]),
         ];
     }
-
 }

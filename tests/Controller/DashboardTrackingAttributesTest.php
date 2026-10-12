@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace App\Tests\Controller;
 
-use App\Controller\DashboardController;
+use App\Controller\ApplicationSettingsController;
+use App\Controller\WebsitesController;
 use App\Entity\User;
 use App\Service\AggregateConfigLoader;
 use App\Service\DocumentationLinks;
@@ -31,9 +32,7 @@ final class DashboardTrackingAttributesTest extends KernelTestCase
         $admin = (new User())->setUsername('admin')->setRoles(['ROLE_ADMIN'])->setPassword('unused');
         $container->get('security.token_storage')->setToken(new UsernamePasswordToken($admin, 'main', ['ROLE_ADMIN']));
         $names = TrackingAttributes::names($container->get(AggregateConfigLoader::class)->getWithEnvFallback('js_namespace', 'Aggregate'));
-        $controller = $container->get(DashboardController::class);
-
-        $websites = new Crawler((string) $controller->index($request, $container->get(DropInScripts::class))->getContent());
+        $websites = new Crawler((string) $container->get(WebsitesController::class)->index($request, $container->get(DropInScripts::class))->getContent());
         $reference = $websites->filter('details.box')->reduce(static fn (Crawler $box): bool => str_contains($box->text(), 'Custom events and consent reference'));
         self::assertStringContainsString('<button '.$names['event'].'="plan_click" '.$names['prop'].'plan="pro" '.$names['goal'].'="signup">', $reference->filter('pre')->eq(1)->text());
         self::assertStringContainsString('never the element\'s text, link addresses or form fields', $reference->text());
@@ -41,7 +40,7 @@ final class DashboardTrackingAttributesTest extends KernelTestCase
         self::assertCount(1, $link, 'links to the guide through its documentation topic');
         self::assertSame('noopener noreferrer', $link->attr('rel'));
 
-        $settings = new Crawler((string) $controller->applicationSettings($container->get(DocumentationLinks::class), $container->get(TrackerBuilds::class), $container->get(TrackerScript::class))->getContent());
+        $settings = new Crawler((string) $container->get(ApplicationSettingsController::class)->applicationSettings($container->get(DocumentationLinks::class), $container->get(TrackerBuilds::class), $container->get(TrackerScript::class))->getContent());
         self::assertStringContainsString($names['event'], $settings->filter('#js-namespace')->ancestors()->filter('.field')->first()->filter('.help')->text());
     }
 }

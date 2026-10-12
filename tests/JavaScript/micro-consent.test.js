@@ -465,3 +465,45 @@ test('standalone regions accept the three consent types and the older names, and
     assert.equal(runtime({config: region(type)}).all.some(node => node.className === 'mc-error'), true, String(type));
   }
 });
+
+test('standalone banner-wide consent type, close button and default-on categories', () => {
+  const implicit = runtime({config: {consentType: 'implicit_us', defaultGranted: ['analytics', 'functional']}});
+  assert.equal(implicit.all.some(node => node.className === 'mc-error'), false);
+  assert.deepEqual(implicit.state(), {analytics: true, functional: true, marketing: false, doNotSell: false, gpc: false});
+  assert.equal(closeOf(implicit).attributes['aria-label'], 'Close this notice');
+
+  const hidden = runtime({config: {closeButton: 'hidden'}});
+  assert.equal(closeOf(hidden).hidden, true);
+  closeOf(hidden).dispatchEvent({type: 'click'});
+  assert.equal(bannerOf(hidden).hidden, false);
+  assert.equal(hidden.shared.values.size, 0);
+
+  const regional = runtime({config: {closeButton: 'dismiss', regions: [
+    {id: 'us', name: 'United States', consentType: 'implicit_us', default: true, closeButton: 'reject'},
+    {id: 'eu', name: 'Europe', consentType: 'explicit_eu'}
+  ]}});
+  assert.equal(closeOf(regional).attributes['aria-label'], 'Reject optional categories and close');
+  regional.window.MicroConsent.setRegion('eu');
+  assert.equal(closeOf(regional).attributes['aria-label'], 'Close this notice', 'a region without a setting uses the banner setting');
+});
+
+test('standalone default-on categories respect GPC and never apply to explicit regions', () => {
+  const gpc = runtime({gpc: true, config: {consentType: 'implicit_us', defaultGranted: ['analytics', 'marketing']}});
+  assert.deepEqual(gpc.state(), {analytics: false, functional: false, marketing: false, doNotSell: true, gpc: true});
+  const ignored = runtime({gpc: true, config: {consentType: 'implicit_us', respectGpc: false}});
+  assert.equal(ignored.state().analytics, true);
+
+  // The server rejects default grants on explicit regions; a hand-edited copy fails closed.
+  const invalid = runtime({config: {regions: [{id: 'eu', name: 'Europe', consentType: 'explicit_eu', defaultGranted: ['analytics']}]}});
+  assert.equal(invalid.all.some(node => node.className === 'mc-error'), true);
+  assert.equal(invalid.state().analytics, false);
+  for (const config of [{consentType: 'opt_out'}, {closeButton: 'x'}, {defaultGranted: 'analytics'}, {defaultGranted: ['none']}, {defaultRegion: 'Bad Id'}]) {
+    const app = runtime({config});
+    assert.equal(app.all.some(node => node.className === 'mc-error'), true, JSON.stringify(config));
+  }
+});
+
+test('standalone defaultRegion picks the starting region', () => {
+  const app = runtime({config: {defaultRegion: 'eu', regions: [{id: 'us', name: 'United States', consentType: 'explicit_us'}, {id: 'eu', name: 'Europe'}]}});
+  assert.equal(app.window.MicroConsent.getRegion(), 'eu');
+});

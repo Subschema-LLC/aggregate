@@ -134,7 +134,7 @@ final class SiteScriptConfig
     /** Drops optional keys set to null; a null enabled or name stays invalid. */
     private static function withoutRemovals(array $consent): array
     {
-        foreach (['privacy_policy_url', 'precheck_categories', ...ConsentAppearance::KEYS] as $key) {
+        foreach (['privacy_policy_url', 'precheck_categories', 'respect_gpc', ...ConsentAppearance::KEYS] as $key) {
             if (array_key_exists($key, $consent) && $consent[$key] === null) {
                 unset($consent[$key]);
             }
@@ -167,7 +167,7 @@ final class SiteScriptConfig
 
     private static function validateConsent(mixed $settings, string $defaultName, bool $defaultEnabled = true): array
     {
-        $supported = ['enabled', 'name', 'privacy_policy_url', 'precheck_categories', ...ConsentAppearance::KEYS];
+        $supported = ['enabled', 'name', 'privacy_policy_url', 'precheck_categories', 'respect_gpc', ...ConsentAppearance::KEYS];
         if (!is_array($settings) || ($settings !== [] && array_is_list($settings)) || array_diff(array_keys($settings), $supported) !== []) {
             throw new \InvalidArgumentException('Consent manager settings support only '.implode(', ', $supported).'.');
         }
@@ -198,6 +198,15 @@ final class SiteScriptConfig
             }
             if ($clean !== []) {
                 $result['precheck_categories'] = $clean;
+            }
+        }
+        // Global Privacy Control withholds the categories implicit_us grants by default.
+        if (array_key_exists('respect_gpc', $settings)) {
+            if (!is_bool($settings['respect_gpc'])) {
+                throw new \InvalidArgumentException('consent_manager.respect_gpc must be a YAML boolean (true or false).');
+            }
+            if ($settings['respect_gpc'] === false) {
+                $result['respect_gpc'] = false;
             }
         }
 
