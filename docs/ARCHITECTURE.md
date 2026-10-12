@@ -123,7 +123,9 @@ from `anonymous_min_cell_count` / `anonymous_geo_min_cell_count` in
 BI disclosure page and `app:analytics:bi-views:regenerate` rebuild the views
 when they change ([AnonymousBiViewManager](../src/Service/AnonymousBiViewManager.php)). The
 geography view also pools small areas into "other" so that a hidden area can't
-easily be worked out by subtraction.
+easily be worked out by subtraction, and the daily view by page group withholds
+any day whose hidden hourly remainder would be small, so it can't be subtracted
+from the hourly view either.
 
 Around them:
 

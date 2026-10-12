@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Tests\Service;
 
+use App\Service\AggregateConfigLoader;
 use App\Service\AnonymousBiViewManager;
+use App\Service\BiPageGroups;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\MariaDB1060Platform;
@@ -17,7 +19,7 @@ use PHPUnit\Framework\TestCase;
 
 final class AnonymousBiViewManagerTest extends TestCase
 {
-    private const VIEWS = ['bi_anonymous_events_v1', 'bi_anonymous_goals_v1', 'bi_anonymous_geo_events_v1'];
+    private const VIEWS = ['bi_anonymous_events_v1', 'bi_anonymous_goals_v1', 'bi_anonymous_geo_events_v1', 'bi_anonymous_daily_v1'];
 
     public function testSqliteDropsAndRecreatesEachViewInOneTransaction(): void
     {
@@ -28,7 +30,7 @@ final class AnonymousBiViewManagerTest extends TestCase
 
         (new AnonymousBiViewManager($connection))->regenerate(7, 30);
 
-        self::assertCount(6, $executed);
+        self::assertCount(8, $executed);
         foreach (self::VIEWS as $index => $view) {
             self::assertSame('DROP VIEW IF EXISTS '.$view, $executed[$index * 2]);
             self::assertStringStartsWith('CREATE VIEW '.$view.' AS', $executed[$index * 2 + 1]);
@@ -44,7 +46,7 @@ final class AnonymousBiViewManagerTest extends TestCase
 
         (new AnonymousBiViewManager($connection))->regenerate(7, 30);
 
-        self::assertCount(3, $executed);
+        self::assertCount(4, $executed);
         foreach (self::VIEWS as $index => $view) {
             self::assertStringStartsWith($verb.' VIEW '.$view.' AS', $executed[$index]);
             self::assertStringNotContainsString('DROP VIEW', $executed[$index]);
@@ -52,6 +54,8 @@ final class AnonymousBiViewManagerTest extends TestCase
         self::assertStringContainsString('event_counts.event_count >= 7', $executed[0]);
         self::assertStringContainsString('goal_counts.event_count >= 7', $executed[1]);
         self::assertStringContainsString('30 AS minimum_cell_count', $executed[2]);
+        self::assertStringContainsString('WHERE daily_cells.event_count >= 7', $executed[3]);
+        self::assertStringContainsString('daily_cells.event_count - daily_cells.released_hourly_count >= 7', $executed[3]);
     }
 
     public static function serverPlatforms(): iterable
@@ -70,7 +74,7 @@ final class AnonymousBiViewManagerTest extends TestCase
 
         (new AnonymousBiViewManager($connection))->regenerate(5, 25);
 
-        self::assertCount(3, $executed);
+        self::assertCount(4, $executed);
     }
 
     public function testAFailedStatementRollsBackAndRethrows(): void
@@ -97,6 +101,54 @@ final class AnonymousBiViewManagerTest extends TestCase
 
         $manager->regenerate(9, 40);
         self::assertSame($preview, $executed);
+    }
+
+    public function testHourlyAndDailyViewsAlwaysShareOneThreshold(): void
+    {
+        $executed = [];
+        (new AnonymousBiViewManager($this->connection(new PostgreSQLPlatform(), $executed)))->regenerate(11, 40);
+
+        self::assertStringContainsString('event_counts.event_count >= 11', $executed[0]);
+        self::assertStringContainsString('THEN event_count ELSE 0 END AS released_hourly_count', $executed[3]);
+        self::assertStringContainsString('CASE WHEN event_count >= 11 THEN', $executed[3]);
+    }
+
+    public function testConfiguredPageGroupsReachTheDailyViewOnly(): void
+    {
+        $executed = [];
+        $manager = new AnonymousBiViewManager($this->connection(new PostgreSQLPlatform(), $executed), $this->pageGroups([
+            ['pattern' => '/inventory/**', 'group' => 'inventory'],
+        ]));
+
+        $manager->regenerate(5, 25);
+
+        self::assertStringNotContainsString('inventory', $executed[0]);
+        self::assertStringContainsString("THEN 'inventory'", $executed[3]);
+    }
+
+    public function testInvalidPageGroupsStopRegenerationBeforeAnyStatement(): void
+    {
+        $executed = [];
+        $connection = $this->connection(new PostgreSQLPlatform(), $executed);
+        $connection->expects(self::never())->method('beginTransaction');
+        $manager = new AnonymousBiViewManager($connection, $this->pageGroups([['pattern' => 'inventory', 'group' => 'x']]));
+
+        try {
+            $manager->regenerate(5, 25);
+            self::fail('Invalid page groups were accepted.');
+        } catch (\RuntimeException $e) {
+            self::assertStringContainsString('bi_page_groups is invalid', $e->getMessage());
+        }
+        self::assertSame([], $executed);
+    }
+
+    /** @param list<array<string, string>> $rules */
+    private function pageGroups(array $rules): BiPageGroups
+    {
+        $config = $this->createMock(AggregateConfigLoader::class);
+        $config->method('get')->willReturnCallback(static fn (string $key, mixed $default = null): mixed => $key === BiPageGroups::KEY ? $rules : $default);
+
+        return new BiPageGroups($config);
     }
 
     /** @param list<string> $executed */

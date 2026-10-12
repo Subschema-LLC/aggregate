@@ -208,6 +208,11 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   aggregate YAML with environment overrides, are edited on the BI disclosure page
   or in YAML, and are applied by `app:analytics:bi-views:regenerate`, which keeps
   reporting grants on server databases.
+- [Daily view by page group](docs/BI-CONNECTION.md#bi_anonymous_daily_v1):
+  `bi_anonymous_daily_v1` counts completed days by YAML-defined page group,
+  channel and device, releasing far more of a low-traffic site's events, with
+  complementary suppression so it cannot be subtracted from the hourly view.
+  Page groups are edited on the Page groups page or as `bi_page_groups`.
 - [Processing tasks and an audit trail](docs/DATABASE.md#processing-tasks-and-audit-trail): two shared private tables for background job runs (status, lock, failure details) and their outcomes, used by BigQuery sync and maintenance, with UI/YAML purge periods.
 - [Organization traffic markers](docs/PRIVACY-COMPLIANCE.md#organization-traffic), with YAML/UI settings, marking links that set the marker on each tracked website, and a fixed `org_internal_traffic` flag on every event. Filtering uses retained event JSON; grouped BI views and archives do not retain the flag.
 - [Custom data models](docs/DATA-MODEL.md), including UTM/query mappings, per-property consent settings, downloadable YAML, and private reporting columns. All UTMs require consent by default; anonymous attribution should use at most broad `utm_medium` values, with documented warnings for overrides.

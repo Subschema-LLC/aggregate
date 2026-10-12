@@ -387,7 +387,8 @@ E2E::step('save the BI thresholds from the dashboard', static function () use ($
 
 E2E::step('glossary sync, reporting view regeneration and archiving', static function () use ($root): void {
     $config = Yaml::parseFile($root.'/config/aggregate.yaml');
-    file_put_contents($root.'/config/aggregate.yaml', Yaml::dump(['analytics_archiving_enabled' => true, 'analytics_archive_after_days' => 90] + $config, 4, 2));
+    file_put_contents($root.'/config/aggregate.yaml', Yaml::dump(['analytics_archiving_enabled' => true, 'analytics_archive_after_days' => 90,
+        'bi_page_groups' => [['pattern' => '/group/**', 'group' => 'grouped']]] + $config, 4, 2));
     console($root, ['app:analytics:glossary:sync']);
     console($root, ['app:analytics:views:regenerate']);
     // The headless path replaces the BI views again with the saved thresholds.
@@ -412,7 +413,7 @@ E2E::step('reporting views return the expected cells', static function () use ($
         $names[] = $name;
         $db->fetchOne('SELECT COUNT(*) FROM '.$name);
     }
-    foreach (['bi_anonymous_events_v1', 'bi_anonymous_goals_v1', 'bi_anonymous_geo_events_v1', 'bi_dim_website_token_v1', 'bi_glossary_values_v1', 'bi_glossary_columns_v1', 'analytics_archived_events_v1'] as $required) {
+    foreach (['bi_anonymous_events_v1', 'bi_anonymous_goals_v1', 'bi_anonymous_geo_events_v1', 'bi_anonymous_daily_v1', 'bi_dim_website_token_v1', 'bi_glossary_values_v1', 'bi_glossary_columns_v1', 'analytics_archived_events_v1'] as $required) {
         E2E::check(in_array($required, $names, true), $required.' is missing; views: '.implode(', ', $names));
     }
     $pages = $db->fetchAllKeyValue("SELECT page_path, SUM(event_count) FROM bi_anonymous_events_v1 WHERE event_name = 'view' GROUP BY page_path");
@@ -438,7 +439,7 @@ E2E::step('BigQuery dry run exports every syncable view with its schema', static
     // types on this engine, without credentials or uploads.
     $output = $root.'/var/bigquery-dry-run';
     E2E::check(is_dir($output) || mkdir($output, 0700, true), 'The dry-run folder could not be created.');
-    $views = ['bi_anonymous_events_v1', 'bi_anonymous_goals_v1', 'bi_anonymous_geo_events_v1', 'bi_dim_website_token_v1', 'bi_dim_event_name_v1',
+    $views = ['bi_anonymous_events_v1', 'bi_anonymous_goals_v1', 'bi_anonymous_geo_events_v1', 'bi_anonymous_daily_v1', 'bi_dim_website_token_v1', 'bi_dim_event_name_v1',
         'bi_dim_goal_event_v1', 'bi_dim_referrer_channel_v1', 'bi_dim_device_class_v1', 'bi_dim_viewport_bucket_v1', 'bi_dim_geo_area_v1',
         'bi_glossary_values_v1', 'bi_glossary_columns_v1', 'analytics_custom_events_v1', 'analytics_custom_pageviews_v1', 'analytics_custom_goals_v1',
         'analytics_archived_events_v1', 'analytics_archived_pageviews_v1', 'analytics_archived_goals_v1'];
@@ -477,6 +478,36 @@ E2E::step('small cells are suppressed', static function () use ($root, $collect)
     }
     $db->executeStatement('UPDATE events SET created_at = :at WHERE id > :from', ['at' => hourAgo(5), 'from' => $before], ['at' => Types::DATETIME_IMMUTABLE, 'from' => Types::INTEGER]);
     E2E::check((int) $db->fetchOne("SELECT COUNT(*) FROM bi_anonymous_events_v1 WHERE page_path = '/rare'") === 0, 'A cell below the threshold was published.');
+});
+
+E2E::step('the daily view groups pages and withholds cells that would reveal hourly counts', static function () use ($root, $collect): void {
+    $db = connection($root);
+    // Completed hours of yesterday (UTC); the saved threshold is 6.
+    $yesterday = (new \DateTimeImmutable('today', new \DateTimeZone('UTC')))->modify('-1 day');
+    $send = static function (string $path, int $count, int $hour) use ($db, $collect, $yesterday): void {
+        $before = (int) $db->fetchOne('SELECT MAX(id) FROM events');
+        for ($i = 0; $i < $count; ++$i) {
+            $collect(['eventName' => 'view', 'pagePath' => $path, 'referrerChannel' => 'search', 'deviceClass' => 'desktop', 'viewportBucket' => 'large']);
+        }
+        $db->executeStatement('UPDATE events SET created_at = :at WHERE id > :from', ['at' => $yesterday->setTime($hour, 0), 'from' => $before], ['at' => Types::DATETIME_IMMUTABLE, 'from' => Types::INTEGER]);
+    };
+    $send('/group/a', 3, 10);
+    $send('/group/b', 3, 10);
+    $send('/guard', 7, 11);
+    $send('/guard', 2, 12);
+    foreach ([13, 14, 15] as $hour) {
+        $send('/spread', 2, $hour);
+    }
+    $day = $yesterday;
+    $daily = static function (string $group) use ($db, $day): ?int {
+        $count = $db->fetchOne('SELECT SUM(event_count) FROM bi_anonymous_daily_v1 WHERE page_group = :group AND event_day = :day', ['group' => $group, 'day' => $day], ['day' => Types::DATE_IMMUTABLE]);
+
+        return $count === null || $count === false ? null : (int) $count;
+    };
+    $hourly = static fn (string $prefix): int => (int) $db->fetchOne('SELECT COUNT(*) FROM bi_anonymous_events_v1 WHERE page_path LIKE :prefix', ['prefix' => $prefix.'%']);
+    E2E::check($hourly('/group/') === 0 && $daily('grouped') === 6, 'Grouped pages: hourly rows '.$hourly('/group/').', daily '.json_encode($daily('grouped')));
+    E2E::check($hourly('/spread') === 0 && $daily('/spread') === 6, 'Hours combined: hourly rows '.$hourly('/spread').', daily '.json_encode($daily('/spread')));
+    E2E::check($hourly('/guard') === 1 && $daily('/guard') === null, 'A daily cell that would reveal a withheld hourly count of 2 was published: '.json_encode($daily('/guard')));
 });
 
 E2E::step('retention deletes expired data', static function () use ($root): void {

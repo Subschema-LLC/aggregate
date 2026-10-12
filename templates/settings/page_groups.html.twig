@@ -1,0 +1,52 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Page groups | {{ app_branding.name }}{% endblock %}
+
+{% block body %}
+<div class="settings-page">
+<h1 class="title">Page groups</h1>
+<p class="subtitle">Group page paths into content labels for the daily reporting view.</p>
+{{ component('Ui:DocsLink', {topic: 'reporting.page-groups', label: 'How page groups work'}) }}
+<div class="columns is-centered">
+<div class="column is-8-desktop">
+<div class="box">
+    <p class="mb-4"><code>bi_anonymous_daily_v1</code> counts completed UTC days by page group, referrer channel and device class. Grouping many small pages, such as one page per product or location, lets their traffic reach the minimum cell count instead of being withheld. Rules are stored as <code>bi_page_groups</code> in <code>config/aggregate*.yaml</code>; saving regenerates the BI views.</p>
+
+    {% if page_groups_error %}
+        <div class="notification is-danger is-light" role="alert">{{ page_groups_error }}</div>
+    {% endif %}
+
+    <form action="{{ path('app_bi_page_groups_save') }}" method="post">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token('bi_page_groups') }}">
+
+        <div class="field">
+            <label class="label" for="page-groups">Rules, one per line</label>
+            <div class="control">
+                <textarea class="textarea is-family-monospace" id="page-groups" name="page_groups" rows="10" spellcheck="false" aria-describedby="page-groups-help" placeholder="/inventory/** inventory&#10;/locations/* location page">{{ page_groups }}</textarea>
+            </div>
+            <div class="help content" id="page-groups-help">
+                <p>Write a pattern, a space, then the group label. The first matching rule wins; a page that matches none keeps its own path. Up to {{ max_rules }} rules; lines starting with <code>#</code> are ignored.</p>
+                <ul>
+                    <li><code>/inventory/**</code> matches <code>/inventory</code> and every page below it.</li>
+                    <li><code>/locations/*</code> matches one more segment, such as <code>/locations/dallas</code>, but not <code>/locations/dallas/hours</code>.</li>
+                    <li><code>/files/*.pdf</code> matches within the last segment only. Wildcards are allowed only in the last segment.</li>
+                </ul>
+                <p>Labels start with a letter or digit and never with <code>/</code>. Matching follows the database collation: case-insensitive on MySQL, MariaDB, SQL Server and SQLite by default, case-sensitive on PostgreSQL.</p>
+            </div>
+        </div>
+
+        <div class="field">
+            <div class="control">
+                <button type="submit" class="button is-link">
+                    <span class="icon"><i class="fas fa-layer-group" aria-hidden="true"></i></span>
+                    <span>Save page groups</span>
+                </button>
+            </div>
+        </div>
+    </form>
+    <p class="help mt-4">Daily cells are withheld below the minimum BI cell count, and also when the part the hourly view withholds would be smaller than that minimum, so comparing the two views never reveals a small count. Group labels are published to routine BI users; keep them non-identifying.</p>
+</div>
+</div>
+</div>
+</div>
+{% endblock %}

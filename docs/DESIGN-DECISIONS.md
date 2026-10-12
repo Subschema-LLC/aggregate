@@ -189,6 +189,32 @@ exposure but do not guarantee anonymity.
 **What would change it.** Stronger techniques could be added, but only on top of
 this contract, not instead of it.
 
+### A daily view by page group, with complementary suppression
+
+**Decision.** `bi_anonymous_daily_v1` counts completed UTC days by YAML-defined
+page group, referrer channel and device class. A daily cell is released only
+when it reaches the threshold and the part the hourly view withholds is zero or
+at least the threshold. Both views are regenerated together with one threshold.
+
+**Why.** Hourly cells split across path, channel, device and viewport are too
+small on low-traffic sites: with the default threshold, a site with about a
+thousand page views a day can see almost all of them withheld. Lowering the
+threshold weakens protection for every site and still releases little. A
+coarser grain releases most of the same traffic. Publishing a second, coarser
+view next to the hourly one would let a BI user subtract released hourly rows
+from a daily row and recover a withheld count, so the daily view withholds any
+cell where that remainder would be small.
+
+**Trade-off.** On busy sites, where most hourly cells are released, the rule
+withholds more daily cells; those sites have the hourly view. Page groups are
+compiled into SQL, so a change needs regeneration, and patterns are limited to
+what every supported database matches exactly with `LIKE`. Comparisons with the
+goal and geography views are not covered, as they are not for the hourly view.
+
+**What would change it.** Pooling small cells into coarser rows within one view
+(rolling detail up instead of dropping it) would keep totals intact without any
+cross-view rule; it needs more involved SQL on five engines.
+
 ### The BI tool is the front end
 
 **Decision.** Aggregate never draws charts or builds reports. It publishes

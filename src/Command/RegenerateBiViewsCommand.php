@@ -15,7 +15,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 
 #[AsCommand(
     name: 'app:analytics:bi-views:regenerate',
-    description: 'Regenerate the approved bi_anonymous_* views from the configured disclosure thresholds',
+    description: 'Regenerate the approved bi_anonymous_* views from the configured disclosure thresholds and page groups',
 )]
 final class RegenerateBiViewsCommand extends Command
 {
@@ -31,11 +31,13 @@ final class RegenerateBiViewsCommand extends Command
         $this
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Print the SQL without changing the database')
             ->setHelp(<<<'HELP'
-Reads anonymous_min_cell_count and anonymous_geo_min_cell_count from the active
-aggregate YAML (ANONYMOUS_MIN_CELL_COUNT and ANONYMOUS_GEO_MIN_CELL_COUNT take
-precedence) and rebuilds bi_anonymous_events_v1, bi_anonymous_goals_v1 and
-bi_anonymous_geo_events_v1 with them. Run it after editing the thresholds in
-YAML; saving the BI disclosure page in the dashboard does the same.
+Reads anonymous_min_cell_count, anonymous_geo_min_cell_count and bi_page_groups
+from the active aggregate YAML (ANONYMOUS_MIN_CELL_COUNT and
+ANONYMOUS_GEO_MIN_CELL_COUNT take precedence) and rebuilds bi_anonymous_events_v1,
+bi_anonymous_goals_v1, bi_anonymous_geo_events_v1 and bi_anonymous_daily_v1 with
+them. Run it after editing those settings in YAML, and once after updating to a
+release that adds a view; saving the BI disclosure or page groups page in the
+dashboard does the same. Invalid settings stop it before any view changes.
 
 View names and columns do not change. PostgreSQL, MySQL, MariaDB and SQL Server
 replace each view in place, so grants to the reporting account are kept.
@@ -64,7 +66,7 @@ HELP);
         }
 
         $io->success([
-            'Regenerated bi_anonymous_events_v1, bi_anonymous_goals_v1 and bi_anonymous_geo_events_v1.',
+            'Regenerated '.implode(', ', AnonymousBiViewManager::VIEW_NAMES).'.',
             sprintf('Minimum cell counts: %d for events and goals, %d for geography.', $thresholds['anonymous'], $thresholds['geo']),
         ]);
         if ($this->settings->hasAnonymousMinimumEnvironmentOverride() || $this->settings->hasGeoMinimumEnvironmentOverride()) {
