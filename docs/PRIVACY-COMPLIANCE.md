@@ -335,6 +335,24 @@ The view groups anonymous-mode rows into hourly cells and exposes a cell only wh
 
 Cell suppression reduces the exposure of rare combinations but does not prove anonymity. Restrict the raw table, review the available dimensions, and consider a higher threshold for low-traffic or sensitive sites.
 
+For low-traffic sites, `bi_anonymous_daily_v1` reports the same events at a coarser grain. It exposes only:
+
+- `website_token`
+- `event_day`
+- `event_name`
+- `page_group`
+- `referrer_channel`
+- `device_class`
+- `event_count`
+
+It groups anonymous-mode rows into completed UTC-day cells, drops the hour and viewport, and replaces paths matched by operator-defined [page groups](BI-CONNECTION.md#page-groups) with their label. A cell is released only when it reaches `anonymous_min_cell_count` and the part of it that `bi_anonymous_events_v1` withholds is zero or at least the same minimum. This complementary suppression means subtracting released hourly rows from a released daily row never yields a count below the threshold; the two views are always regenerated together with one threshold so the rule holds. Page group labels are published to routine BI users and should be non-identifying. Grouping rare paths under a shared label also makes rows less unique.
+
+`bi_anonymous_daily_rollup_v1` keeps the daily view's rows and pools the cells it withholds into coarser rows, where a pooled page, channel or device is `(other)`. It exposes the daily view's columns plus `detail_level`. Every row, pooled or not, reaches `anonymous_min_cell_count` and contains an hourly-withheld part that is zero or at least the same minimum. Each daily cell lands in at most one row, so rows never overlap and any set of rows minus the released hourly cells inside it leaves zero or at least the threshold. Its most detailed rows are exactly the daily view's rows, so comparing the two views adds nothing. A remainder still below the threshold after pooling is left out.
+
+`bi_anonymous_coverage_v1` reports, per website and completed day with at least `anonymous_min_cell_count` anonymous events, which band of the day's events each event view releases: `90-100`, `50-90`, `10-50` or `0-10` percent. A band rather than a share keeps the day's total from being worked out, but it still bounds the withheld remainder to a range. For example, a day in the top band with 20 released events had at most 2 withheld, without saying in which cells. Leave this view out of routine grants if that range is too precise for your audience.
+
+The rule covers the hourly view and the daily, roll-up and coverage views together. It does not cover every combination with the goal and geography views or outside data, which can already be compared with the hourly view; the limits in the next paragraphs apply to all of them.
+
 Use `bi_anonymous_goals_v1` for routine anonymous conversion reporting. It exposes only:
 
 - `website_token`
@@ -430,10 +448,10 @@ Codes must match `[A-Za-z][A-Za-z0-9_.:-]{0,99}` and remain fixed and non-identi
 
 The BI disclosure thresholds are deployment configuration values (`config/aggregate*.yaml`) and have their own CSRF-protected admin form:
 
-- `anonymous_min_cell_count` controls grouped hourly cells in `bi_anonymous_events_v1` and completed daily cells in `bi_anonymous_goals_v1` (default `5`, range `2`–`1000`).
+- `anonymous_min_cell_count` controls grouped hourly cells in `bi_anonymous_events_v1`, completed daily cells in `bi_anonymous_daily_v1`, and completed daily cells in `bi_anonymous_goals_v1` (default `5`, range `2`–`1000`).
 - `anonymous_geo_min_cell_count` controls completed daily cells in `bi_anonymous_geo_events_v1` (default `25`, range `10`–`1000`).
 
-Dashboard saves write YAML and regenerate all three BI views so SQL definitions track the effective thresholds. Environment overrides (`ANONYMOUS_MIN_CELL_COUNT` and `ANONYMOUS_GEO_MIN_CELL_COUNT`) still take precedence.
+Dashboard saves write YAML and regenerate all three BI views so SQL definitions track the effective thresholds; after editing YAML directly, run `php bin/console app:analytics:bi-views:regenerate`. Until then the views keep their previous thresholds. Environment overrides (`ANONYMOUS_MIN_CELL_COUNT` and `ANONYMOUS_GEO_MIN_CELL_COUNT`) still take precedence. When upgrading from a release that stored thresholds in the database, copy any customized values into YAML first (see [BI disclosure thresholds](CONFIGURATION.md#bi-disclosure-thresholds)).
 
 Archiving and deletion policy is separate and can be managed by administrators at `/dashboard/data-lifecycle`, in `config/aggregate.yaml`, or with uppercase environment-variable overrides. Environment-controlled values are read-only in the UI. Both actions are disabled by default, settings are strictly range-checked, and unsafe archive/retention ordering is rejected. Schedule `php bin/console app:analytics:maintain` externally; a saved policy does not run maintenance from a web request.
 

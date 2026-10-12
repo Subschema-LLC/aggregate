@@ -34,6 +34,10 @@ bi_glossary_controller:
     resource: ../src/Controller/BiGlossaryController.php
     type: attribute
 
+bi_page_groups_controller:
+    resource: ../src/Controller/BiPageGroupsController.php
+    type: attribute
+
 event_examples_controller:
     resource: ../src/Controller/EventExamplesController.php
     type: attribute

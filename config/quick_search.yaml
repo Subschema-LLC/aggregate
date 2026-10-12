@@ -117,6 +117,14 @@ parameters:
         - privacy suppression
         - minimum
         - k-anonymity
+    'Page groups':
+      description: 'Group page paths for the daily reporting view'
+      synonyms:
+        - page groups
+        - content groups
+        - daily view
+        - path patterns
+        - coarser reporting
     'BigQuery sync':
       description: 'Copy reporting views to Google BigQuery on a schedule'
       synonyms:

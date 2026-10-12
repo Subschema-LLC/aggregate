@@ -505,3 +505,76 @@ test('precheckCategories does not override an existing visitor saved choice', ()
   assert.equal(analyticsBox.checked, false);
   assert.equal(marketingBox.checked, true);
 });
+
+test('multiple regions render region selector and update wording on change', () => {
+  const regions = [
+    {
+      id: 'eu',
+      name: 'European Union & EEA',
+      consentType: 'explicit',
+      default: true,
+      text: {title: 'EU Privacy Choices', description: 'Under GDPR, cookies start denied.', accept: 'Accept EU'}
+    },
+    {
+      id: 'us',
+      name: 'United States',
+      consentType: 'implicit',
+      default: false,
+      text: {title: 'US Privacy Notice', description: 'We use cookies. Opt out anytime.', accept: 'Acknowledge US', reject: 'Opt Out US'}
+    }
+  ];
+
+  const app = runtime({
+    config: {regions}
+  });
+
+  const select = app.allNodes.find((node) => node.id === 'ac-consent-region-select');
+  assert.ok(select, 'Region dropdown must be rendered');
+  assert.equal(select.children.length, 2);
+  assert.equal(app.window.AggregateConsent.getRegion(), 'eu');
+
+  const title = app.allNodes.find((node) => node.id === 'ac-consent-title');
+  const desc = app.allNodes.find((node) => node.id === 'ac-consent-description');
+  assert.equal(title.textContent, 'EU Privacy Choices');
+  assert.equal(desc.textContent, 'Under GDPR, cookies start denied.');
+  assert.equal(app.window.AggregateConsent.getState().analytics, false, 'Explicit mode starts denied');
+
+  // Switch region to US (implicit mode)
+  select.value = 'us';
+  select.dispatchEvent({type: 'change'});
+
+  assert.equal(app.window.AggregateConsent.getRegion(), 'us');
+  assert.equal(title.textContent, 'US Privacy Notice');
+  assert.equal(desc.textContent, 'We use cookies. Opt out anytime.');
+  assert.equal(app.window.AggregateConsent.getState().analytics, true, 'Implicit mode starts granted');
+
+  // Switch back to EU
+  select.value = 'eu';
+  select.dispatchEvent({type: 'change'});
+  assert.equal(app.window.AggregateConsent.getState().analytics, false, 'Switching back to explicit mode sets denied');
+});
+
+test('implicit consent mode activates analytics by default but allows opt-out', () => {
+  const regions = [
+    {
+      id: 'us',
+      name: 'United States',
+      consentType: 'implicit',
+      default: true,
+      text: {title: 'US Notice', reject: 'Opt out'}
+    }
+  ];
+
+  const app = runtime({
+    config: {regions}
+  });
+
+  // Since only 1 region is configured, no dropdown is needed
+  assert.equal(app.allNodes.some((node) => node.id === 'ac-consent-region-select'), false);
+  assert.equal(app.window.AggregateConsent.getState().analytics, true, 'Implicit mode grants analytics without choice');
+
+  // Clicking Reject / Opt out withdraws consent
+  const rejectBtn = app.allNodes.find((node) => node.tagName === 'BUTTON' && node.textContent === 'Opt out');
+  rejectBtn.dispatchEvent({type: 'click'});
+  assert.equal(app.window.AggregateConsent.getState().analytics, false, 'Opting out denies analytics');
+});

@@ -408,7 +408,7 @@ sudo certbot --nginx -d analytics.example.com
 - Never commit `.env` (server-specific env file) to version control — it is gitignored by default
 - Keep `config/aggregate.yaml`, environment-specific `config/aggregate_*.yaml`, `config/websites.yaml`, and `config/tag-manager/sites/` private; commit only sanitized example files
 - Use a unique, strong `APP_SECRET` in the server environment
-- Review anonymous path exclusions and configure both database-backed BI minimum-cell thresholds in the admin dashboard before collection (`5` hourly; `25` daily geography defaults)
+- Review anonymous path exclusions and set both BI minimum-cell thresholds before collection (`anonymous_min_cell_count`, default `5`; `anonymous_geo_min_cell_count`, default `25`), on the BI disclosure page or in YAML followed by `php bin/console app:analytics:bi-views:regenerate`
 - Review every code in `config/goals.yaml`; keep values fixed and non-identifying, and set `anonymous: false` where enhanced consent is appropriate
 - Leave coarse geography disabled unless its purpose, legal basis, notice, traffic volume, and local MMDB lifecycle have been reviewed
 - Rotate secrets periodically
@@ -416,7 +416,7 @@ sudo certbot --nginx -d analytics.example.com
 **3. Database access:**
 - Use strong database passwords
 - Restrict database access to localhost if possible
-- On PostgreSQL/MySQL/MariaDB/SQL Server, grant routine BI users access only to the approved `bi_anonymous_events_v1`, `bi_anonymous_goals_v1`, and, when needed, `bi_anonymous_geo_events_v1` views—not the private raw `events` table
+- On PostgreSQL/MySQL/MariaDB/SQL Server, grant routine BI users access only to the approved `bi_anonymous_events_v1`, `bi_anonymous_daily_v1`, `bi_anonymous_daily_rollup_v1`, `bi_anonymous_coverage_v1`, `bi_anonymous_goals_v1`, and, when needed, `bi_anonymous_geo_events_v1` views—not the private raw `events` table
 - SQLite cannot enforce view-only grants; never distribute its database file to routine BI users—export approved view results or use a server database for direct BI access
 - Regular backups
 

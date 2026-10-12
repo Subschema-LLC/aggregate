@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Controller;
 
 use App\Controller\BigQueryController;
+use App\Service\BigQuery\BigQueryViewCatalog;
 use App\Service\AggregateConfigLoader;
 use App\Service\BigQuery\BigQueryBackgroundSync;
 use App\Service\BigQuery\BigQueryException;
@@ -92,7 +93,7 @@ final class BigQueryControllerTest extends TestCase
         self::assertSame('BigQuery sync', $crawler->filter('h1')->text());
         self::assertCount(3, $crawler->filter('input[name="auth"]'));
         self::assertSame('service_account', $crawler->filter('input[name="auth"][checked]')->attr('value'));
-        self::assertCount(12, $crawler->filter('input[name="views[]"][checked]'));
+        self::assertCount(count(BigQueryViewCatalog::APPROVED), $crawler->filter('input[name="views[]"][checked]'));
         self::assertCount(6, $crawler->filter('input[name="private_views[]"]'));
         self::assertCount(0, $crawler->filter('input[name="private_views[]"][checked]'));
         self::assertSame('https://analytics.example.com/dashboard/bigquery/google/callback', $crawler->filter('#bigquery-redirect-uri')->attr('value'));
@@ -320,7 +321,7 @@ final class BigQueryControllerTest extends TestCase
         $body = json_decode((string) $this->controller()->status()->getContent(), true);
         self::assertFalse($body['running']);
         self::assertNull($body['last_run']);
-        self::assertCount(12, $body['views']);
+        self::assertCount(count(BigQueryViewCatalog::APPROVED), $body['views']);
     }
 
     private function page(): \Symfony\Component\HttpFoundation\Response
