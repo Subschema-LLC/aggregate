@@ -460,6 +460,17 @@ environments:
 #   Paths that must never be collected in either mode. Supports glob patterns
 #   such as /account/*, /checkout/**, and /health.
 #
+# bot_traffic (optional, default: label; env: BOT_TRAFFIC)
+#   label records events from crawlers, monitors and automated browsers with
+#   device_class 'bot', so reports can filter device_class <> 'bot'. drop ignores
+#   them before rate limiting, lookups or storage. HTTP client libraries such as
+#   curl are not treated as bots. Unrecognized values stop ingestion.
+#
+# bot_user_agents (optional, default: [])
+#   Extra phrases that mark a request as a bot when its User-Agent contains one,
+#   ignoring case, such as your own monitoring tool. Up to 50 phrases of 3 to 100
+#   characters. Invalid lists stop ingestion.
+#
 # anonymous_min_cell_count (optional, default: 5; range: 2..1000)
 #   Disclosure threshold for published cells in bi_anonymous_events_v1,
 #   bi_anonymous_daily_v1, bi_anonymous_daily_rollup_v1 and bi_anonymous_goals_v1,

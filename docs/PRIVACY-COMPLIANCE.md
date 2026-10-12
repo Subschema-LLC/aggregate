@@ -275,6 +275,42 @@ Earlier versions stored the flag under the configured marker name (default `orgI
 
 Keep raw-event access within your existing reporting policy. To expose the flag as a column, add `org_internal_traffic` as a boolean property in the [data model](DATA-MODEL.md) and regenerate the private `analytics_custom_*_v1` views. For anonymous reporting, apply the internal-traffic filter before aggregation and disclosure thresholds in a controlled export. Existing `bi_anonymous_*` views and archive tables do not expose `custom_data` and cannot distinguish internal traffic. Archives continue to combine both traffic types; once raw rows are deleted, this flag cannot be recovered from archives. Prepare filtered reporting datasets while the raw JSON is retained. This browser-supplied label is for reporting, not authorization.
 
+## Bot traffic
+
+Crawlers, uptime monitors, SEO tools and automated browsers that run the tracker
+would otherwise be counted as visitors. The collection endpoint recognizes them
+and, by default, labels their events:
+
+- A request is a bot when its User-Agent names a crawler, monitor or automation
+  tool from a maintained list (a pinned copy of
+  [crawler-user-agents](https://github.com/monperrus/crawler-user-agents)), uses a
+  common bot word such as `bot`, `crawler`, `spider` or `headless`, or contains
+  one of the operator's `bot_user_agents` phrases; or when the tracker reports an
+  automated browser (`navigator.webdriver`).
+- The server's classification wins over the device class a client submits, so a
+  page cannot relabel a known bot as a desktop. A client can only add the label.
+- HTTP client libraries such as curl, python-requests and Go's client are not
+  treated as bots: they cannot run the browser tracker, and they are how
+  websites send [server-side events](EVENT-EXAMPLES.md).
+
+**Collection controls → Bot traffic** (`bot_traffic`) decides what happens next:
+
+| Setting | Result |
+| --- | --- |
+| `label` (default) | The event is recorded as usual with `device_class = 'bot'`. Reports leave bots out with `device_class <> 'bot'`, or show how much bot traffic a website gets. |
+| `drop` | The event is ignored with status `ignored`, before an IP rate-limit bucket, website lookup, geography lookup, queue message or row is created. |
+
+The User-Agent is read only while the request is handled. It is not stored in
+anonymous rows, and enhanced rows keep only the existing generalized browser
+and device class. The [strict collection profile](#strict-collection-profile)
+reads no User-Agent and the tracker reports no automation there, so strict
+deployments classify no bots.
+
+This filtering cannot catch a bot that copies a real browser's User-Agent and
+hides automation. Pair it with the rate limit, [website domain rules](CONFIGURATION.md#website-domains)
+and the BI views' minimum event counts. The `bi_anonymous_*` views do not
+exclude `bot` rows; filter them in reports where bots should not count.
+
 ## Optional coarse geography
 
 Geography is disabled by default. When enabled, the ingestion boundary uses the request IP transiently with a local GeoLite2-Country-compatible MMDB and retains only one normalized value:

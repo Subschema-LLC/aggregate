@@ -206,6 +206,36 @@ Rows stored by earlier versions keep the old configured-name key and omit
 first-party flag with its sibling websites by consent. Recognizing staff by IP
 address is not an option, because anonymous collection keeps no IP-derived data.
 
+### Bots labelled by the server, kept unless the operator drops them
+
+**Decision.** The collection endpoint classifies a request as a bot from its
+User-Agent, using a pinned copy of the MIT-licensed
+[crawler-user-agents](https://github.com/monperrus/crawler-user-agents) list,
+common bot words and the operator's own phrases, or from the tracker's report of
+an automated browser. That classification overrides the device class a client
+submits. By default (`bot_traffic: label`) bot events are recorded with
+`device_class = 'bot'`; `drop` ignores them before rate limiting, lookups or
+storage. HTTP client libraries are not on the list, and the strict profile
+classifies nothing. See [bot traffic](PRIVACY-COMPLIANCE.md#bot-traffic).
+
+**Why.** A client-supplied device class is a claim the server cannot trust, so a
+known crawler running the tracker was counted as a desktop visitor. Labelling
+keeps every event, lets reports show or exclude bot traffic with one filter, and
+makes a wrong classification visible rather than losing data. Server-side events
+are commonly sent with curl or a language's HTTP client, and those cannot run the
+browser tracker, so treating them as bots would drop legitimate collection.
+
+**Trade-off.** With the default, reports count bots until they filter
+`device_class <> 'bot'`; the `bi_anonymous_*` views keep bot rows so existing
+connections do not change meaning. Matching the list costs a fraction of a
+millisecond per request. A bot that copies a real browser's User-Agent and hides
+automation is not caught, and the pinned list needs regenerating
+(`scripts/update-bot-patterns.py`) to learn new crawlers.
+
+**What would change it.** Adopters wanting the anonymous views to exclude bots by
+default, which would be a new view version rather than a change in meaning; or a
+reliable, privacy-preserving bot signal that does not depend on the User-Agent.
+
 ## Data and reporting
 
 ### One events table for both modes

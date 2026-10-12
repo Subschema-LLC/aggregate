@@ -243,6 +243,8 @@ environments:
 - `collection_profile`: `standard` (default) or `strict`, with an uppercase `COLLECTION_PROFILE` environment override. Strict records every event anonymously with only the sanitized path, event name and an approved goal, and the served tracker reads no screen size or referrer and does not touch cookies or browser storage. Other collection settings are kept but unused while strict is selected. See the [strict collection profile](PRIVACY-COMPLIANCE.md#strict-collection-profile).
 - `anonymous_tracking_enabled`: Administrative collection kill switch; `false` rejects anonymous and enhanced events (default: `true`)
 - `anonymous_excluded_paths`: Paths/globs excluded from anonymous and enhanced collection (default: `[]`)
+- `bot_traffic`: `label` (default) records bot events with `device_class = 'bot'`; `drop` ignores them before any other processing. Uppercase `BOT_TRAFFIC` environment override. See [bot traffic](PRIVACY-COMPLIANCE.md#bot-traffic).
+- `bot_user_agents`: Extra phrases, matched in the User-Agent ignoring case, that mark a request as a bot, such as your own monitoring tool (default: `[]`; up to 50 phrases of 3–100 characters; YAML or dashboard only, no environment override)
 - `anonymous_geo_enabled`: Enable transient, local-IP-to-area lookup for accepted events (default: `false`)
 - `anonymous_geo_level`: Store `macro_region` (continent-level, recommended) or `country` (default: `macro_region`)
 - `anonymous_geo_database_path`: Local GeoLite2-Country-compatible `.mmdb` path (absolute recommended, or contained by the project root); URI/UNC/network-share/device paths are rejected and no database is downloaded automatically
@@ -257,7 +259,7 @@ environments:
 - `analytics_maintenance_batch_size`: Raw rows processed per maintenance batch (default: `1000`, range: `100`–`10000`)
 - `DASHBOARD_ENABLED` (env var): Boot-time dashboard feature boundary for loading dashboard routes/services. Set `0` for API-only deploys.
 - After changing dashboard feature settings (`dashboard_enabled` or `DASHBOARD_ENABLED`) in production, run `php bin/console cache:clear`.
-- Malformed YAML or invalid collection-kill-switch/path/profile settings fail closed: ingestion stops and `/api/health` reports a generic configuration error. Invalid optional GeoIP lookup settings instead produce no `geo_area`.
+- Malformed YAML or invalid collection-kill-switch/path/profile/bot-traffic settings fail closed: ingestion stops and `/api/health` reports a generic configuration error. Invalid optional GeoIP lookup settings instead produce no `geo_area`.
 
 Logo images may be at most 2 MiB, 4096 pixels per axis, and 16 megapixels in total. The settings UI validates and copies uploaded logos below `var/branding` in an environment-specific directory; keep `var/branding` on persistent storage shared by all application replicas, make it writable by the PHP process, and include it in backups. Replicas that use the settings UI must also share the active `aggregate.yaml` file (or otherwise coordinate and deploy each saved revision) so every replica switches logo references together. Uploaded bytes are served as supplied, so remove EXIF/XMP or other embedded metadata before uploading. A configured `brand_logo_path` is resolved from the project root when relative, while absolute local filesystem paths are also supported. Leave it empty for a text-only identity.
 
@@ -717,6 +719,7 @@ export BRAND_FONT_FAMILY="system-ui, -apple-system, BlinkMacSystemFont, Segoe UI
 export BRAND_HEADING_FONT_FAMILY="system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
 export DASHBOARD_ENABLED="0"
 export COLLECTION_PROFILE="strict"
+export BOT_TRAFFIC="drop"
 export ANONYMOUS_TRACKING_ENABLED="0"
 export ANONYMOUS_GEO_ENABLED="0"
 export ANALYTICS_ARCHIVING_ENABLED="1"

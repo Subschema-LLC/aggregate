@@ -127,6 +127,7 @@ function loadSdk(options) {
       search: ''
     }, options.location || {}),
     screen: {width: 1440},
+    ...(options.navigator ? {navigator: options.navigator} : {}),
     self: options.self || {crypto: {randomUUID: () => '00000000-0000-4000-8000-000000000001'}},
     sessionStorage,
     setTimeout: () => {},
@@ -1696,6 +1697,20 @@ test('late initialization of dataLayer is hooked via property setter', () => {
   runtime.window.Aggregate.emit('button_click');
   assert.equal(runtime.requests.at(-1).consentState, 'granted');
   assert.ok(runtime.requests.at(-1).visitorId);
+});
+
+test('an automated browser is reported as a bot device; other browsers keep their viewport class', () => {
+  const automated = loadSdk({navigator: {webdriver: true}});
+  automated.window.Aggregate.emit('button_click');
+  assert.equal(automated.requests.at(-1).deviceClass, 'bot');
+  automated.window.Aggregate.trackView();
+  assert.equal(automated.requests.at(-1).deviceClass, 'bot');
+
+  for (const navigator of [undefined, {webdriver: false}, {webdriver: 'true'}]) {
+    const browser = loadSdk(navigator ? {navigator} : {});
+    browser.window.Aggregate.emit('button_click');
+    assert.equal(browser.requests.at(-1).deviceClass, 'desktop', JSON.stringify(navigator));
+  }
 });
 
 test('googleConsentMode false disables Google consent signal listening', () => {

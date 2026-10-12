@@ -6,6 +6,7 @@ use App\Message\TrackEventMessage;
 use App\Service\WebsiteConfigManager;
 use App\Security\IpRateLimiter;
 use App\Service\AnonymousEventRecorder;
+use App\Service\BotTrafficSettings;
 use App\Service\CustomDataSettings;
 use App\Service\GeoIp\GeoIpResolverInterface;
 use App\Service\GoalEventRegistry;
@@ -74,6 +75,18 @@ class ReceiveController
                 return $this->jsonWithCors($request, ['status' => 'ignored'], Response::HTTP_ACCEPTED);
             }
 
+            // Bots are classified from the User-Agent header and the tracker's
+            // automation report while this request is handled; neither is
+            // stored. The strict profile reads no User-Agent and classifies
+            // nothing. With bot_traffic: drop, bot events end here, before an
+            // IP bucket, website lookup, geography lookup or queue message.
+            $strictCollection = $privacyPolicy->isStrictCollection();
+            $userAgent = $strictCollection ? '' : (string) $request->headers->get('User-Agent', '');
+            $isBot = !$strictCollection && $privacyPolicy->isBotRequest($userAgent, $payload['deviceClass'] ?? null);
+            if ($isBot && $privacyPolicy->botTraffic() === BotTrafficSettings::DROP) {
+                return $this->jsonWithCors($request, ['status' => 'ignored'], Response::HTTP_ACCEPTED);
+            }
+
             // Apply the rate limiter only after the zero-collection controls.
             // Excluded/disabled requests therefore create no local IP bucket.
             // Other valid and invalid requests use a short-lived rotating HMAC
@@ -121,13 +134,11 @@ class ReceiveController
             // The strict profile keeps only what reporting a page view or named
             // event requires. Every other dimension a client submits is ignored,
             // including values sent by stale scripts or direct API requests.
-            $strictCollection = $privacyPolicy->isStrictCollection();
             $referrerChannel = $strictCollection ? 'unknown' : $sanitizer->sanitizeReferrerChannel(
                 $payload['referrerChannel'] ?? null,
                 $payload['referrer'] ?? null,
                 (string) $website['domain'],
             );
-            $userAgent = $strictCollection ? '' : (string) $request->headers->get('User-Agent', '');
             $enhancedConsent = !$strictCollection && $privacyPolicy->hasEnhancedConsent($payload['consentState'] ?? null);
             // Organization traffic: only the literal boolean true counts, never a
             // marker name or value or a truthy string. Every standard-profile
@@ -148,9 +159,13 @@ class ReceiveController
             $goalEvent = $goalEvents->resolve($submittedGoal, anonymousMode: !$enhancedConsent);
             $goalWasRejected = $goalEvents->wasSubmitted($submittedGoal) && $goalEvent === null;
             unset($submittedGoal);
-            $deviceClass = $strictCollection
-                ? 'unknown'
-                : $sanitizer->sanitizeDeviceClass($payload['deviceClass'] ?? null, $userAgent);
+            // The server's bot classification wins over the device class a
+            // client submits, so a page cannot relabel a known bot.
+            $deviceClass = match (true) {
+                $strictCollection => 'unknown',
+                $isBot => 'bot',
+                default => $sanitizer->sanitizeDeviceClass($payload['deviceClass'] ?? null, $userAgent),
+            };
             $viewportBucket = $strictCollection ? 'unknown' : $sanitizer->sanitizeViewportBucket(
                 $payload['viewportBucket'] ?? null,
                 $payload['screenWidth'] ?? null,
