@@ -20,7 +20,12 @@
 .mc-root :focus-visible { outline: 3px solid var(--mc-accent); outline-offset: 3px; }
 .mc-banner, .mc-dialog { background: var(--mc-background); border: 1px solid var(--mc-border); border-radius: .6rem; box-shadow: 0 8px 32px rgb(0 0 0 / 22%); padding: 1.25rem; }
 .mc-banner { position: fixed; z-index: 2147483000; inset: auto 1rem 4.75rem; max-height: min(70vh, 38rem); overflow-y: auto; margin: auto; width: auto; max-width: 60rem; }
-.mc-region { align-items: center; display: flex; gap: .5rem; justify-content: flex-end; margin-bottom: .75rem; }
+.mc-region { align-items: center; display: flex; gap: .5rem; justify-content: flex-end; margin-bottom: .75rem; padding-right: 2.5rem; }
+.mc-banner h2 { padding-right: 2.5rem; }
+.mc-banner .mc-region + h2 { padding-right: 0; }
+/* The close button (×) in the banner's top-right corner; not an action button. */
+.mc-close { appearance: none; background: transparent; border: 0; border-radius: .35rem; color: var(--mc-text); cursor: pointer; font: inherit; font-size: 1.6rem; height: 2.25rem; line-height: 1; padding: 0; position: absolute; right: .75rem; top: .75rem; width: 2.25rem; }
+.mc-close:hover { background: rgb(0 0 0 / 6%); background: color-mix(in srgb, var(--mc-text) 8%, transparent); }
 .mc-region label { font-size: .8rem; font-weight: 600; opacity: .8; text-transform: uppercase; }
 .mc-region select { background: var(--mc-background); border: 1px solid var(--mc-border); border-radius: .35rem; color: var(--mc-text); font: inherit; font-size: .875rem; padding: .25rem .5rem; }
 .mc-button { appearance: none; background: var(--mc-button-background); border: 1px solid var(--mc-button-border); border-radius: .35rem; color: var(--mc-button-text); cursor: pointer; font: inherit; font-weight: 600; line-height: 1.35; min-height: 44px; padding: .65rem .9rem; text-align: center; }

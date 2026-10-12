@@ -25,7 +25,7 @@ function eventTarget(object = {}) {
 function runtime(options = {}) {
   const namespace = options.namespace || 'Aggregate';
   const values = options.sharedValues || new Map(options.saved === undefined ? [] : [['analytics_consent_v1:' + namespace, options.saved]]);
-  const sessionValues = new Map();
+  const sessionValues = options.sharedSession || new Map();
   const cookies = new Map();
   const allNodes = [];
   const requests = [];
@@ -62,7 +62,7 @@ function runtime(options = {}) {
       else cookies.set(key, entry);
     }
   });
-  const window = eventTarget({localStorage: storage, innerWidth: 1280});
+  const window = eventTarget({localStorage: storage, sessionStorage, innerWidth: 1280});
   window[namespace] = {endpoint: 'https://analytics.example.test/api/receive', websiteToken: 'public-site-token'};
   const tagChoices = [];
   if (options.tags !== false) window.AggregateTags = {setConsent: (value) => tagChoices.push(JSON.parse(JSON.stringify(value)))};
@@ -379,7 +379,7 @@ test('static CMP sources load their adjacent stylesheet without copying query pa
 });
 
 const texts = (app) => app.allNodes.filter((node) => node.textContent).map((node) => node.tagName + ':' + node.textContent);
-const buttonsIn = (app) => app.allNodes.filter((node) => node.tagName === 'BUTTON' && node.className !== 'ac-consent-open' && !String(node.className).startsWith('ac-consent-open')).map((node) => node.textContent);
+const buttonsIn = (app) => app.allNodes.filter((node) => node.tagName === 'BUTTON' && !String(node.className).startsWith('ac-consent-open') && node.className !== 'ac-consent-close').map((node) => node.textContent);
 
 test('configured wording replaces every default string, with {name} in the title and per-category labels', () => {
   const app = runtime({categories: ['analytics', 'ad-tools'], name: 'Shop', config: {text: {
@@ -577,4 +577,122 @@ test('implicit consent mode activates analytics by default but allows opt-out', 
   const rejectBtn = app.allNodes.find((node) => node.tagName === 'BUTTON' && node.textContent === 'Opt out');
   rejectBtn.dispatchEvent({type: 'click'});
   assert.equal(app.window.AggregateConsent.getState().analytics, false, 'Opting out denies analytics');
+});
+
+const closeButtonOf = (app) => app.allNodes.find((node) => node.className === 'ac-consent-close');
+const oneRegion = (consentType) => ({regions: [{id: 'here', name: 'Here', consentType, default: true}]});
+
+test('without regions the close button is EU-style: it rejects every optional category and saves that choice', () => {
+  const app = runtime({categories: ['analytics', 'marketing']});
+  const close = closeButtonOf(app);
+  assert.equal(close.tagName, 'BUTTON');
+  assert.equal(close.type, 'button');
+  assert.equal(close.textContent, '×');
+  assert.equal(close.attributes['aria-label'], 'Reject all optional categories and close');
+  assert.equal(close.title, 'Reject all optional categories and close');
+  assert.equal(app.panel().children[0], close, 'the close button is the first control in the banner');
+
+  close.dispatchEvent({type: 'click'});
+  assert.equal(app.panel().hidden, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(app.window.AggregateConsent.getState())), {analytics: false, marketing: false});
+  assert.deepEqual(JSON.parse(app.values.get('analytics_consent_v1:Aggregate')), {analytics: false, marketing: false});
+  assert.equal(app.sessionValues.size, 0, 'a rejection is a saved choice, not a dismissal');
+  assert.equal(app.allNodes.find((node) => node.className === 'ac-consent-status').textContent, 'Your privacy choices have been applied.');
+
+  // The rejection is remembered on the next page, like the reject button's.
+  const next = runtime({categories: ['analytics', 'marketing'], sharedValues: app.values});
+  assert.equal(next.panel().hidden, true);
+  assert.equal(next.window.AggregateConsent.getState().analytics, false);
+});
+
+test('an EU-style close also rejects after a visitor accepted earlier and reopened the banner', () => {
+  const app = runtime({saved: '{"analytics":true}', config: oneRegion('explicit_eu')});
+  assert.equal(app.window.AggregateConsent.getState().analytics, true);
+  app.window.AggregateConsent.open();
+  closeButtonOf(app).dispatchEvent({type: 'click'});
+  assert.equal(app.window.AggregateConsent.getState().analytics, false);
+  assert.equal(app.window.Aggregate.consent, false);
+  assert.deepEqual(JSON.parse(app.values.get('analytics_consent_v1:Aggregate')), {analytics: false});
+});
+
+test('the older consent type explicit behaves as explicit_eu', () => {
+  const app = runtime({config: oneRegion('explicit')});
+  assert.equal(closeButtonOf(app).attributes['aria-label'], 'Reject all optional categories and close');
+  closeButtonOf(app).dispatchEvent({type: 'click'});
+  assert.deepEqual(JSON.parse(app.values.get('analytics_consent_v1:Aggregate')), {analytics: false});
+});
+
+test('an explicit US-style close hides the banner for the tab session, saves nothing and keeps categories denied', () => {
+  const app = runtime({categories: ['analytics', 'marketing'], config: oneRegion('explicit_us')});
+  const close = closeButtonOf(app);
+  assert.equal(close.attributes['aria-label'], 'Close this notice');
+  assert.equal(app.window.AggregateConsent.getState().analytics, false);
+  const notifications = app.tagChoices.length;
+
+  close.dispatchEvent({type: 'click'});
+  assert.equal(app.panel().hidden, true);
+  assert.equal(app.allNodes.find((node) => node.className === 'ac-consent-open').hidden, false, 'the reopen button appears');
+  assert.equal(app.document.activeElement.className, 'ac-consent-open');
+  assert.deepEqual(JSON.parse(JSON.stringify(app.window.AggregateConsent.getState())), {analytics: false, marketing: false});
+  assert.equal(app.tagChoices.length, notifications, 'dismissing changes no consent state');
+  assert.equal(app.values.has('analytics_consent_v1:Aggregate'), false, 'no choice is saved');
+  assert.deepEqual([...app.sessionValues], [['analytics_consent_v1:Aggregate:dismissed', '1']]);
+
+  // Later pages in the same tab start with the banner closed and consent still denied.
+  const sameTab = runtime({categories: ['analytics', 'marketing'], config: oneRegion('explicit_us'), sharedValues: app.values, sharedSession: app.sessionValues});
+  assert.equal(sameTab.panel().hidden, true);
+  assert.equal(sameTab.window.AggregateConsent.getState().analytics, false);
+  sameTab.window.AggregateConsent.open();
+  assert.equal(sameTab.panel().hidden, false, 'the visitor can still reopen it');
+
+  // A new tab session shows it again.
+  assert.equal(runtime({categories: ['analytics', 'marketing'], config: oneRegion('explicit_us'), sharedValues: app.values}).panel().hidden, false);
+});
+
+test('an implicit US-style close hides the notice and keeps the default grant', () => {
+  const app = runtime({config: oneRegion('implicit_us')});
+  assert.equal(app.window.AggregateConsent.getState().analytics, true);
+  assert.equal(closeButtonOf(app).attributes['aria-label'], 'Close this notice');
+  closeButtonOf(app).dispatchEvent({type: 'click'});
+  assert.equal(app.panel().hidden, true);
+  assert.equal(app.window.AggregateConsent.getState().analytics, true);
+  assert.equal(app.values.has('analytics_consent_v1:Aggregate'), false);
+  assert.equal(runtime({config: oneRegion('implicit'), sharedValues: app.values, sharedSession: app.sessionValues}).panel().hidden, true,
+    'the older name implicit behaves the same');
+});
+
+test('a US-style dismissal does not hide an EU-style banner, and the close label follows the region', () => {
+  const regions = [
+    {id: 'us', name: 'United States', consentType: 'explicit_us', default: true, text: {dismiss: 'Close US notice'}},
+    {id: 'eu', name: 'European Union', consentType: 'explicit_eu', text: {dismissReject: 'Reject and close (EU)'}}
+  ];
+  const app = runtime({config: {regions}});
+  const close = closeButtonOf(app);
+  assert.equal(close.attributes['aria-label'], 'Close US notice');
+  close.dispatchEvent({type: 'click'});
+  assert.equal(app.panel().hidden, true);
+
+  app.window.AggregateConsent.setRegion('eu');
+  assert.equal(close.attributes['aria-label'], 'Reject and close (EU)');
+  assert.equal(close.title, 'Reject and close (EU)');
+  const reloaded = runtime({config: {regions}, sharedValues: app.values, sharedSession: app.sessionValues});
+  assert.equal(reloaded.window.AggregateConsent.getRegion(), 'eu');
+  assert.equal(reloaded.panel().hidden, false, 'an EU-style banner ignores a US-style dismissal');
+  closeButtonOf(reloaded).dispatchEvent({type: 'click'});
+  assert.deepEqual(JSON.parse(reloaded.values.get('analytics_consent_v1:Aggregate')), {analytics: false});
+});
+
+test('blocked session storage still lets a US-style close hide the banner on this page', () => {
+  const app = runtime({config: oneRegion('explicit_us')});
+  app.window.sessionStorage = {getItem() { throw new Error('Blocked'); }, setItem() { throw new Error('Blocked'); }};
+  closeButtonOf(app).dispatchEvent({type: 'click'});
+  assert.equal(app.panel().hidden, true);
+  assert.equal(app.window.AggregateConsent.getState().analytics, false);
+});
+
+test('configured close labels replace the defaults', () => {
+  const eu = runtime({config: {text: {dismissReject: 'Nein danke'}}});
+  assert.equal(closeButtonOf(eu).attributes['aria-label'], 'Nein danke');
+  const us = runtime({config: Object.assign({text: {dismiss: 'Hide'}}, oneRegion('explicit_us'))});
+  assert.equal(closeButtonOf(us).attributes['aria-label'], 'Hide');
 });

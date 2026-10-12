@@ -24,6 +24,8 @@
     "accept": "Accept all optional categories",
     "save": "Save selected choices",
     "reopen": "Privacy choices",
+    "dismiss": "Close this notice",
+    "dismissReject": "Reject all optional categories and close",
     "privacyLink": "Read this website’s privacy notice",
     "statusApplied": "Your privacy choices have been applied.",
     "statusNotSaved": "This choice could not be saved; choose again on your next visit.",
@@ -119,8 +121,27 @@
     return regions[0];
   })();
 
+  // implicit_us: a notice; enhanced analytics starts granted and the close
+  // button hides the notice. explicit_us: categories start denied and the close
+  // button hides the banner. explicit_eu (the default): the close button rejects
+  // every optional category. Older configurations used explicit and implicit.
+  function consentType() {
+    var value = currentRegion ? own(currentRegion, 'consentType') : undefined;
+    if (value === undefined && currentRegion) value = own(currentRegion, 'consent_type');
+    if (value === 'implicit' || value === 'implicit_us') return 'implicit_us';
+    return value === 'explicit_us' ? 'explicit_us' : 'explicit_eu';
+  }
   function isImplicit() {
-    return !!(currentRegion && (currentRegion.consentType === 'implicit' || currentRegion.consent_type === 'implicit'));
+    return consentType() === 'implicit_us';
+  }
+  // A US-style close hides the banner for this tab's session without saving a
+  // choice, so the default consent stays in effect and nothing identifies the visitor.
+  var dismissKey = storageKey + ':dismissed';
+  var dismissed = (function () {
+    try { return window.sessionStorage.getItem(dismissKey) === '1'; } catch (error) { return false; }
+  })();
+  function dismissedForSession() {
+    return dismissed && consentType() !== 'explicit_eu';
   }
   var categories = ['analytics'];
   (Array.isArray(consentConfig.categories) ? consentConfig.categories : []).forEach(function (category) {
@@ -133,6 +154,7 @@
   var chosen = false;
   var subscribers = [];
   var panel;
+  var closeButton;
   var preferenceButton;
   var heading;
   var status;
@@ -305,6 +327,16 @@
   var regionSelect;
   var actions = {
     reject: function () { setConsent({}); },
+    dismiss: function () {
+      if (consentType() === 'explicit_eu') {
+        setConsent({});
+        return;
+      }
+      dismissed = true;
+      try { window.sessionStorage.setItem(dismissKey, '1'); } catch (error) {}
+      showPanel(false);
+      preferenceButton.focus();
+    },
     accept: function () {
       var values = {};
       categories.forEach(function (category) { values[category] = true; });
@@ -317,8 +349,15 @@
     }
   };
 
+  function labelCloseButton() {
+    var label = text(consentType() === 'explicit_eu' ? 'dismissReject' : 'dismiss');
+    closeButton.setAttribute('aria-label', label);
+    closeButton.title = label;
+  }
+
   function updateBannerContent() {
     if (!panel) return;
+    labelCloseButton();
     heading.textContent = text('title');
     description.textContent = text('description');
     if (detailParagraphsContainer) {
@@ -370,6 +409,13 @@
     panel.setAttribute('aria-labelledby', 'ac-consent-title');
     panel.setAttribute('aria-describedby', 'ac-consent-description');
     applyTheme(panel);
+    // The visible × is not announced; the label says what closing does.
+    closeButton = element('button', '\u00D7');
+    closeButton.type = 'button';
+    closeButton.className = 'ac-consent-close';
+    closeButton.addEventListener('click', actions.dismiss);
+    labelCloseButton();
+    panel.appendChild(closeButton);
 
     if (regions.length >= 2) {
       var regionContainer = element('div');
@@ -457,7 +503,7 @@
     status.className = 'ac-consent-status';
     status.setAttribute('role', 'status');
     status.setAttribute('aria-live', 'polite');
-    showPanel(!chosen);
+    showPanel(!chosen && !dismissedForSession());
     document.body.appendChild(preferenceButton);
     document.body.appendChild(panel);
     document.body.appendChild(status);

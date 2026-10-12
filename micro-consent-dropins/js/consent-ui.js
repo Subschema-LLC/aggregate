@@ -60,6 +60,8 @@
     "save": "Save selected choices",
     "reopen": "Privacy choices",
     "close": "Close privacy settings",
+    "dismiss": "Close this notice",
+    "dismissReject": "Reject optional categories and close",
     "settingsLabel": "Privacy settings",
     "preferencesTab": "Preferences",
     "requestsTab": "Privacy request",
@@ -91,7 +93,7 @@
     "requestSent": "Your request was submitted to Formspree for this website’s operator. The operator must review and process it; submission does not erase stored data."
   };
   // Labels allow 120 UTF-8 bytes; paragraphs and messages allow 1,000.
-  var labelKeys = ["title", "privacyLink", "reject", "accept", "manage", "save", "reopen", "close", "settingsLabel", "preferencesTab", "requestsTab", "categoriesLegend", "categories", "requestEmail", "requestType", "requestAccess", "requestDelete", "requestCorrect", "requestOptOut", "requestMessage", "requestSubmit"];
+  var labelKeys = ["title", "privacyLink", "reject", "accept", "manage", "save", "reopen", "close", "dismiss", "dismissReject", "settingsLabel", "preferencesTab", "requestsTab", "categoriesLegend", "categories", "requestEmail", "requestType", "requestAccess", "requestDelete", "requestCorrect", "requestOptOut", "requestMessage", "requestSubmit"];
   var themeDefaults = {background: '#FFFFFF', text: '#17212D', accent: '#174F85', border: '#B7C1CE', buttonBackground: '#FFFFFF', buttonText: '#174F85', buttonBorder: '#174F85'};
   var buttonNames = ['reject', 'accept', 'manage'];
   var reopenPositions = ['bottom-left', 'bottom-right', 'hidden'];
@@ -150,6 +152,8 @@
         && show.every(function (button, index) { return buttonNames.indexOf(button) !== -1 && show.indexOf(button) === index; })))
       && (reopen === absent || reopenPositions.indexOf(reopen) !== -1);
   }
+  // The first three are current; explicit and implicit are older names.
+  var consentTypes = ['implicit_us', 'explicit_us', 'explicit_eu', 'explicit', 'implicit'];
   function validRegions(value) {
     if (!Array.isArray(value) || value.length > 10) return false;
     var seen = [];
@@ -163,7 +167,7 @@
       if (typeof id !== 'string' || !/^[a-z0-9_-]{1,32}$/.test(id) || seen.indexOf(id) !== -1) return false;
       seen.push(id);
       if (!boundedText(name, 120, false)) return false;
-      if (consentType !== absent && ['explicit', 'implicit'].indexOf(consentType) === -1) return false;
+      if (consentType !== absent && consentTypes.indexOf(consentType) === -1) return false;
       if (isDefault !== absent && typeof isDefault !== 'boolean') return false;
       if (isDefault === true) {
         if (hasDefault) return false;
@@ -230,8 +234,27 @@
     return regions[0];
   })();
 
+  // implicit_us: a notice; analytics starts granted and the close button hides
+  // the notice. explicit_us: categories start denied and the close button hides
+  // the banner. explicit_eu (the default): the close button rejects every
+  // optional category. Older configurations used explicit and implicit.
+  function consentType() {
+    var value = currentRegion ? own(currentRegion, 'consentType') : absent;
+    if (value === absent && currentRegion) value = own(currentRegion, 'consent_type');
+    if (value === 'implicit' || value === 'implicit_us') return 'implicit_us';
+    return value === 'explicit_us' ? 'explicit_us' : 'explicit_eu';
+  }
   function isImplicit() {
-    return !!(currentRegion && (currentRegion.consentType === 'implicit' || currentRegion.consent_type === 'implicit'));
+    return consentType() === 'implicit_us';
+  }
+  // A US-style close hides the banner for this tab's session without saving a
+  // choice, so the default consent stays in effect and nothing identifies the visitor.
+  var dismissKey = config.storageKey + ':dismissed';
+  var dismissed = (function () {
+    try { return window.sessionStorage.getItem(dismissKey) === '1'; } catch (error) { return false; }
+  })();
+  function dismissedForSession() {
+    return dismissed && consentType() !== 'explicit_eu';
   }
 
   function t(key) {
@@ -277,7 +300,7 @@
   var savedAt = 0;
   var expiryTimer = null;
   var subscribers = [];
-  var root, banner, dialog, opener, heading, status, preferences, requests, requestTab, preferenceTab, optOutControl, gpcNotice;
+  var root, banner, closeButton, dialog, opener, heading, status, preferences, requests, requestTab, preferenceTab, optOutControl, gpcNotice;
   var checkboxes = Object.create(null);
   var pendingOpen = null;
   var priorFocus;
@@ -385,7 +408,7 @@
   function renderState() {
     if (!root) return;
     var state = snapshot();
-    banner.hidden = chosen;
+    banner.hidden = chosen || dismissedForSession();
     config.categories.forEach(function (category) {
       checkboxes[category].checked = state[category];
       checkboxes[category].disabled = !validConfig || (category === 'marketing' && state.doNotSell);
@@ -441,7 +464,22 @@
   var bannerTitle, bannerDescription, regionSelect;
   var bannerButtons = {};
 
+  function dismiss() {
+    if (consentType() === 'explicit_eu') { setConsent({}); return; }
+    dismissed = true;
+    try { window.sessionStorage.setItem(dismissKey, '1'); } catch (error) {}
+    renderState();
+    if (!opener.hidden) opener.focus();
+  }
+  function labelCloseButton() {
+    if (!closeButton) return;
+    var label = t(consentType() === 'explicit_eu' ? 'dismissReject' : 'dismiss');
+    closeButton.setAttribute('aria-label', label);
+    closeButton.title = label;
+  }
+
   function updateUiText() {
+    labelCloseButton();
     if (bannerTitle) bannerTitle.textContent = t('title');
     if (bannerDescription) bannerDescription.textContent = t('description');
     if (bannerButtons.reject) bannerButtons.reject.textContent = t('reject');
@@ -626,6 +664,9 @@
       }
     });
     banner = element('section', null, 'mc-banner'); banner.setAttribute('aria-labelledby', 'mc-banner-title');
+    // The visible × is not announced; the label says what closing does.
+    closeButton = element('button', '\u00D7', 'mc-close'); closeButton.type = 'button';
+    closeButton.addEventListener('click', dismiss); labelCloseButton(); banner.appendChild(closeButton);
 
     if (regions.length >= 2) {
       var regionRow = element('div', null, 'mc-region');

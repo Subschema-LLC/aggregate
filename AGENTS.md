@@ -72,10 +72,20 @@ deployment's active aggregate configuration.
   Preserve server-side path sanitization, coarse dimensions, fixed event names,
   and server-generated UTC hour timestamps. Do not retain raw IP addresses,
   User-Agent strings, or exact event timestamps in anonymous rows.
-- Enhanced collection requires explicit consent. A truthy string such as
-  `"false"` must not grant consent. Withdrawal removes SDK identifiers and stops
-  future enhanced detail; coarse anonymous collection may continue. Withdrawal
-  does not erase previously stored history. Describe these distinctions honestly.
+- Enhanced collection follows the consent signal. With the built-in or
+  standalone banner, the region's consent type sets it before a choice:
+  `explicit_eu` (the default, also without regions) and `explicit_us` stay
+  anonymous until the visitor accepts; `implicit_us`, an operator's choice for
+  notice-and-opt-out regions, starts enhanced until the visitor opts out. With a
+  third-party consent manager, the signal it pushes decides (`setConsent`, a
+  preloaded `consent` value, or Google Consent Mode `analytics_storage`). Only an
+  explicit grant counts: a missing or malformed signal, or a truthy string such
+  as `"false"`, must not grant consent, and strict collection keeps everything
+  anonymous. Do not add other default grants. Withdrawal removes SDK identifiers
+  and stops future enhanced detail; coarse anonymous collection may continue.
+  Withdrawal does not erase previously stored history. Describe these
+  distinctions honestly. See
+  [which consent signal sets the mode](docs/PRIVACY-COMPLIANCE.md#which-consent-signal-sets-the-mode).
 - Enforce collection rules on the server as well as in the SDK and persistence
   boundaries. Browser overrides cannot expand server permissions. Invalid
   collection-control or consent configuration must fail closed. Kill switches

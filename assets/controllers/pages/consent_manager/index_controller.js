@@ -18,7 +18,7 @@ export function contrastRatio(first, second) {
 
 /** Live preview of the built-in banner. Nothing here is saved; the form is. */
 export default class extends Controller {
-    static targets = ['banner', 'title', 'description', 'details', 'privacy', 'categories', 'legend', 'buttons', 'reopen', 'contrast', 'colorValue', 'nameInput'];
+    static targets = ['banner', 'close', 'title', 'description', 'details', 'privacy', 'categories', 'legend', 'buttons', 'reopen', 'contrast', 'colorValue', 'nameInput'];
 
     connect() {
         this.update();
@@ -39,6 +39,12 @@ export default class extends Controller {
         const document = this.element.ownerDocument;
         const name = this.hasNameInputTarget ? this.nameInputTarget.value.trim() : '';
         this.titleTarget.textContent = this.text('text[title]').split('{name}').join(name);
+        if (this.hasCloseTarget) {
+            // The preview shows the banner without regions, which is EU-style.
+            const label = this.text('text[dismiss_reject]');
+            this.closeTarget.setAttribute('aria-label', label);
+            this.closeTarget.title = label;
+        }
         this.descriptionTarget.textContent = this.text('text[description]');
         const paragraphs = Array.from(this.element.querySelectorAll('[name="text[details][]"]'), (input) => input.value.trim()).filter(Boolean);
         this.detailsTarget.replaceChildren(...paragraphs.map((paragraph) => {

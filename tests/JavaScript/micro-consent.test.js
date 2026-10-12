@@ -26,7 +26,7 @@ function target(object = {}) {
 }
 
 function runtime(options = {}) {
-  const all = [], requests = [], operations = [], timers = new Map(), session = new Map(), cookies = new Map();
+  const all = [], requests = [], operations = [], timers = new Map(), session = options.session || new Map(), cookies = new Map();
   const clock = {now: 1800000000000};
   let timerId = 0;
   const shared = options.shared || {values: new Map(), tabs: [], queue: []};
@@ -73,6 +73,7 @@ function runtime(options = {}) {
   };
   window.localStorage = storage;
   const sessionStorage = {getItem: key => session.get(key) ?? null, setItem: (key, value) => session.set(key, String(value)), removeItem: key => session.delete(key)};
+  window.sessionStorage = sessionStorage;
   window.location = {origin: 'https://site.example', pathname: '/private-context', search: '?email=not-to-be-sent@example.test', protocol: 'https:'};
   window.fetch = (url, request) => {
     requests.push({url, ...request, payload: typeof request.body === 'string' ? JSON.parse(request.body) : Object.fromEntries(request.body.entries())});
@@ -294,7 +295,7 @@ test('the shipped config file is valid, and uncommenting every option reproduces
   assert.equal(plain.text('Example website: privacy choices').tagName, 'H2');
 
   const everything = configFrom(configFile.replace(/^(\s*)\/\/ (\w+: .*)$/gm, '$1$2'));
-  assert.ok(Object.keys(everything.text).length >= 37, 'every wording key is listed in the file');
+  assert.ok(Object.keys(everything.text).length >= 39, 'every wording key is listed in the file');
   assert.deepEqual(Object.keys(everything.theme).length, 7);
   assert.deepEqual(everything.buttons, {show: ['reject', 'accept', 'manage'], reopen: 'bottom-right'});
   const explicit = runtime({config: everything});
@@ -316,7 +317,8 @@ test('configured wording, colors, button order and reopen position are applied a
   assert.equal(app.all.some(node => node.className === 'mc-error'), false);
   const banner = app.all.find(node => node.className === 'mc-banner');
   assert.deepEqual(banner.children.filter(node => node.tagName === 'P').map(node => node.textContent), ['<b>Not markup</b>']);
-  assert.equal(banner.children[0].textContent, 'Cookies at Shop');
+  assert.equal(banner.children[0].className, 'mc-close', 'the close button comes first');
+  assert.equal(banner.children[1].textContent, 'Cookies at Shop');
   assert.deepEqual(buttonsIn(app, banner), ['Choose', 'Yes', 'No']);
   assert.deepEqual(buttonsIn(app, app.byId('mc-preferences')), ['Keep', 'Yes', 'No'], 'manage becomes save in the dialog');
   assert.ok(app.text('Kept 30 days.'));
@@ -395,4 +397,71 @@ test('multiple regions render region selector, switch wording and handle implici
   assert.ok(optOutBtn);
   optOutBtn.dispatchEvent({type: 'click'});
   assert.equal(app.state().analytics, false, 'Opting out in implicit mode withdraws consent');
+});
+
+const closeOf = app => app.all.find(node => node.className === 'mc-close');
+const bannerOf = app => app.all.find(node => node.className === 'mc-banner');
+const region = consentType => ({regions: [{id: 'here', name: 'Here', consentType, default: true}]});
+
+test('without regions the standalone close button rejects every optional category and saves that choice', () => {
+  const app = runtime();
+  const close = closeOf(app);
+  assert.equal(close.tagName, 'BUTTON');
+  assert.equal(close.type, 'button');
+  assert.equal(close.textContent, '×');
+  assert.equal(close.attributes['aria-label'], 'Reject optional categories and close');
+  assert.equal(close.title, 'Reject optional categories and close');
+  close.dispatchEvent({type: 'click'});
+  assert.equal(bannerOf(app).hidden, true);
+  assert.deepEqual(app.state(), {analytics: false, functional: false, marketing: false, doNotSell: false, gpc: false});
+  const record = JSON.parse(app.shared.values.get('micro_consent_v2'));
+  assert.deepEqual(record.choices, {analytics: false, functional: false, marketing: false});
+  assert.equal(app.session.size, 0);
+  assert.equal(bannerOf(runtime({shared: app.shared})).hidden, true, 'the rejection is remembered');
+});
+
+test('standalone explicit_us and implicit_us closes hide the banner for the tab session without saving', () => {
+  for (const [type, analytics] of [['explicit_us', false], ['implicit_us', true], ['implicit', true]]) {
+    const app = runtime({config: region(type)});
+    assert.equal(closeOf(app).attributes['aria-label'], 'Close this notice', type);
+    assert.equal(app.state().analytics, analytics, type);
+    closeOf(app).dispatchEvent({type: 'click'});
+    assert.equal(bannerOf(app).hidden, true, type);
+    assert.equal(app.state().analytics, analytics, type + ' keeps its default consent');
+    assert.equal(app.shared.values.has('micro_consent_v2'), false, type + ' saves no choice');
+    assert.deepEqual([...app.session], [['micro_consent_v2:dismissed', '1']]);
+    assert.equal(app.document.activeElement, app.all.find(node => String(node.className).includes('mc-open')));
+    app.window.dispatchEvent({type: 'focus'});
+    assert.equal(bannerOf(app).hidden, true, type + ' stays hidden when the state is rendered again');
+
+    const sameTab = runtime({config: region(type), session: app.session});
+    assert.equal(bannerOf(sameTab).hidden, true, type + ' stays closed in the same tab');
+    sameTab.window.MicroConsent.open();
+    assert.equal(sameTab.byId('mc-dialog').open, true, 'preferences still open');
+    assert.equal(bannerOf(runtime({config: region(type)})).hidden, false, type + ' returns in a new tab session');
+  }
+});
+
+test('a standalone US-style dismissal does not hide an EU-style banner', () => {
+  const regions = [
+    {id: 'us', name: 'United States', consentType: 'explicit_us', default: true},
+    {id: 'eu', name: 'Europe', consentType: 'explicit_eu', text: {dismissReject: 'Reject and close (EU)'}}
+  ];
+  const app = runtime({config: {regions}});
+  closeOf(app).dispatchEvent({type: 'click'});
+  assert.equal(bannerOf(app).hidden, true);
+  app.window.MicroConsent.setRegion('eu');
+  assert.equal(closeOf(app).attributes['aria-label'], 'Reject and close (EU)');
+  const reloaded = runtime({config: {regions}, shared: {values: app.shared.values, tabs: [], queue: []}, session: app.session});
+  assert.equal(reloaded.window.MicroConsent.getRegion(), 'eu');
+  assert.equal(bannerOf(reloaded).hidden, false);
+});
+
+test('standalone regions accept the three consent types and the older names, and reject others', () => {
+  for (const type of ['implicit_us', 'explicit_us', 'explicit_eu', 'explicit', 'implicit']) {
+    assert.equal(runtime({config: region(type)}).all.some(node => node.className === 'mc-error'), false, type);
+  }
+  for (const type of ['eu', 'opt_in', '', true]) {
+    assert.equal(runtime({config: region(type)}).all.some(node => node.className === 'mc-error'), true, String(type));
+  }
 });

@@ -314,8 +314,8 @@ template's progress, availability, and setup guidance as it becomes available.
 Repository access is currently required because it is private.
 
 The following steps cover page views and custom events using GTM Custom HTML
-tags. Connect enhanced analytics to an affirmative consent choice as described
-in [Step 3](#step-3-consent-management-integration).
+tags. Connect enhanced analytics to your consent manager's analytics choice as
+described in [Step 3](#step-3-consent-management-integration).
 
 ### Step 1: Install the Tracking Pixel in GTM
 
@@ -419,7 +419,9 @@ Named custom events may be stored in anonymous mode. Before `setConsent(true)`, 
 
 ### Step 3: Consent Management Integration
 
-Use your consent manager to control enhanced analytics. Coarse page-view and named-event rows continue after rejection unless an administrator disables collection or excludes the current path.
+Use your consent manager to control enhanced analytics. The signal it sends decides the mode: enhanced while it grants analytics, anonymous otherwise. Coarse page-view and named-event rows continue after rejection unless an administrator disables collection or excludes the current path.
+
+If your consent manager already sets Google Consent Mode, the tracker follows its `analytics_storage` value from `gtag('consent', 'default' | 'update', …)` and `dataLayer` without the tags below, unless `google_consent_mode: false` is set. A `default` of `granted` counts as a grant, so check what your consent manager defaults to in each region. See [which consent signal sets the mode](PRIVACY-COMPLIANCE.md#which-consent-signal-sets-the-mode).
 
 Initialize a previously recorded choice before loading the tracker when possible, so its first page view uses that choice. Later consent tags must run after the SDK is available; a guard such as `if (window.Aggregate)` otherwise skips the call. GTM finishing a Custom HTML tag that injects an `async` script is not proof that the downloaded SDK has loaded. See the [consent-manager integration example](PRIVACY-COMPLIANCE.md#consent-manager-integration) for the intended lifecycle.
 
