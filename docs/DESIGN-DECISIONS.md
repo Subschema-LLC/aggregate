@@ -176,8 +176,8 @@ cannot meet.
 ### Suppression inside the database views
 
 **Decision.** The `bi_anonymous_*` views release only completed hours or days and
-hide any cell below a minimum event count. The thresholds are stored in the
-database.
+hide any cell below a minimum event count. The thresholds are YAML settings
+compiled into the view SQL when the views are regenerated.
 
 **Why.** Suppression in a dashboard protects only that dashboard. In the view, it
 applies to every BI report, extract and user, and a BI tool cannot turn it off.
