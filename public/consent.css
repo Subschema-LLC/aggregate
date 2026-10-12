@@ -52,6 +52,31 @@
     display: none;
 }
 
+.ac-consent-region {
+    align-items: center;
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+    margin-bottom: 0.75rem;
+}
+
+.ac-consent-region label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    opacity: 0.8;
+    text-transform: uppercase;
+}
+
+.ac-consent-region select {
+    background: var(--ac-background);
+    border: 1px solid color-mix(in srgb, var(--ac-border) 30%, transparent);
+    border-radius: 6px;
+    color: var(--ac-text);
+    font: inherit;
+    font-size: 0.8125rem;
+    padding: 0.25rem 0.5rem;
+}
+
 .ac-consent h2 {
     color: inherit;
     font-size: 1.15rem;

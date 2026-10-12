@@ -425,11 +425,13 @@ organization-marker artifacts keep their separate browser delivery paths.
 | [templates](templates/README.md) and [assets](assets) | Twig pages and partials grouped by feature; AssetMapper dashboard assets |
 | [tests](tests) | PHP regressions by component and Node browser/storage regressions |
 
-BI thresholds are currently stored in `analytics_privacy_settings` and managed in
-the dashboard. They are not YAML settings. Other application configuration is
-loaded by `AggregateConfigLoader`; website registrations live in an untracked
-`config/websites.yaml` file. Preserve environment override behavior and avoid
-overwriting unrelated configuration when adding settings.
+Operator configuration lives in YAML. Application settings, including the BI
+disclosure thresholds, are loaded by `AggregateConfigLoader`; website
+registrations live in an untracked `config/websites.yaml` file. Do not add
+settings to database tables: the database holds collected events, archives,
+users and operational records, and tables such as `analytics_glossary` are
+generated copies of YAML for BI joins. Preserve environment override behavior
+and avoid overwriting unrelated configuration when adding settings.
 
 ## Make shortcuts
 

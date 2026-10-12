@@ -35,13 +35,36 @@
     } catch (error) { return undefined; }
   }
   var configuredText = own(consentConfig, 'text');
+  var rawRegions = Array.isArray(consentConfig.regions) ? consentConfig.regions : [];
+  var regions = [];
+  rawRegions.forEach(function (r) {
+    if (r && typeof r === 'object' && typeof r.id === 'string' && typeof r.name === 'string') {
+      regions.push(r);
+    }
+  });
+
+  function getRegion(id) {
+    for (var i = 0; i < regions.length; i++) {
+      if (regions[i].id === id) return regions[i];
+    }
+    return null;
+  }
+
   function text(key) {
-    var value = own(configuredText, key);
+    var regText = currentRegion && own(currentRegion, 'text');
+    var value = regText ? own(regText, key) : undefined;
+    if (typeof value !== 'string' || value.trim() === '') {
+      value = own(configuredText, key);
+    }
     var result = typeof value === 'string' && value.trim() !== '' ? value : defaultText[key];
     return key === 'title' ? result.split('{name}').join(consentConfig.name) : result;
   }
   function paragraphs() {
-    var value = own(configuredText, 'details');
+    var regText = currentRegion && own(currentRegion, 'text');
+    var value = regText ? own(regText, 'details') : undefined;
+    if (!Array.isArray(value)) {
+      value = own(configuredText, 'details');
+    }
     return Array.isArray(value) && value.length <= 4 && value.every(function (entry) { return typeof entry === 'string' && entry.trim() !== ''; })
       ? value : defaultText.details;
   }
@@ -52,14 +75,16 @@
       : category.replace(/[-_]/g, ' ').replace(/^./, function (letter) { return letter.toUpperCase(); });
   }
   var buttonOptions = own(consentConfig, 'buttons');
-  var shownButtons = (function () {
-    var value = own(buttonOptions, 'show');
+  function getShownButtons() {
+    var regButtons = currentRegion && own(currentRegion, 'buttons');
+    var value = regButtons ? own(regButtons, 'show') : own(buttonOptions, 'show');
     var known = ['reject', 'accept', 'save'];
     if (!Array.isArray(value) || value.indexOf('reject') === -1
       || (value.indexOf('accept') === -1 && value.indexOf('save') === -1)
       || !value.every(function (entry, index) { return known.indexOf(entry) !== -1 && value.indexOf(entry) === index; })) return known;
     return value;
-  })();
+  }
+  var shownButtons = getShownButtons();
   var reopenPosition = ['bottom-left', 'bottom-right', 'hidden'].indexOf(own(buttonOptions, 'reopen')) !== -1
     ? own(buttonOptions, 'reopen') : 'bottom-left';
   var privacyPolicyUrl = (function () {
@@ -79,6 +104,24 @@
   }
 
   var storageKey = 'analytics_consent_v1:' + consentConfig.namespace + (consentConfig.siteId ? ':' + consentConfig.siteId : '');
+  var regionStorageKey = storageKey + ':region';
+  var savedRegionId = (function () {
+    try { return window.localStorage.getItem(regionStorageKey); } catch (e) { return null; }
+  })();
+  var currentRegion = (function () {
+    if (regions.length === 0) return null;
+    if (savedRegionId && getRegion(savedRegionId)) return getRegion(savedRegionId);
+    var defId = typeof consentConfig.defaultRegion === 'string' ? consentConfig.defaultRegion : consentConfig.default_region;
+    if (defId && getRegion(defId)) return getRegion(defId);
+    for (var j = 0; j < regions.length; j++) {
+      if (regions[j].default === true) return regions[j];
+    }
+    return regions[0];
+  })();
+
+  function isImplicit() {
+    return !!(currentRegion && (currentRegion.consentType === 'implicit' || currentRegion.consent_type === 'implicit'));
+  }
   var categories = ['analytics'];
   (Array.isArray(consentConfig.categories) ? consentConfig.categories : []).forEach(function (category) {
     if (typeof category === 'string' && /^[a-z][a-z0-9_-]{0,31}$/.test(category)
@@ -93,6 +136,7 @@
   var preferenceButton;
   var heading;
   var status;
+  var description;
   var checkboxes = Object.create(null);
   var storageAvailable = true;
   var savedMap = null;
@@ -127,6 +171,8 @@
         categories.forEach(function (category) { choices[category] = readGrant(saved, category); });
         chosen = categories.every(function (category) { return hasChoice(saved, category); });
       }
+    } else if (isImplicit()) {
+      choices.analytics = true;
     }
   } catch (error) { storageAvailable = false; }
 
@@ -189,6 +235,18 @@
     categories.forEach(function (category) { if (checkboxes[category]) checkboxes[category].checked = hasSavedChoice(category) ? choices[category] : (precheck.indexOf(category) !== -1); });
   }
 
+  function setRegion(id) {
+    var reg = getRegion(id);
+    if (!reg) return;
+    currentRegion = reg;
+    try { window.localStorage.setItem(regionStorageKey, id); } catch (e) {}
+    if (savedMap === null) {
+      choices.analytics = isImplicit();
+      notify();
+    }
+    updateBannerContent();
+  }
+
   function open() {
     if (!panel) return;
     showPanel(true);
@@ -200,6 +258,8 @@
     getState: state,
     setConsent: setConsent,
     open: open,
+    getRegion: function () { return currentRegion ? currentRegion.id : null; },
+    setRegion: setRegion,
     subscribe: function (callback) {
       if (typeof callback !== 'function') return function () {};
       subscribers.push(callback);
@@ -211,6 +271,10 @@
 
   // Choices in another tab apply immediately; malformed or removed choices deny.
   window.addEventListener('storage', function (event) {
+    if (event.key === regionStorageKey && event.newValue) {
+      setRegion(event.newValue);
+      return;
+    }
     if (event.key !== storageKey && event.key !== null) return;
     var value = null;
     try { value = JSON.parse(event.newValue); } catch (error) {}
@@ -236,6 +300,54 @@
     return node;
   }
 
+  var detailParagraphsContainer;
+  var actionsRow;
+  var regionSelect;
+  var actions = {
+    reject: function () { setConsent({}); },
+    accept: function () {
+      var values = {};
+      categories.forEach(function (category) { values[category] = true; });
+      setConsent(values);
+    },
+    save: function () {
+      var values = {};
+      categories.forEach(function (category) { values[category] = checkboxes[category].checked === true; });
+      setConsent(values);
+    }
+  };
+
+  function updateBannerContent() {
+    if (!panel) return;
+    heading.textContent = text('title');
+    description.textContent = text('description');
+    if (detailParagraphsContainer) {
+      while (detailParagraphsContainer.firstChild) {
+        detailParagraphsContainer.removeChild(detailParagraphsContainer.firstChild);
+      }
+      paragraphs().forEach(function (p) {
+        detailParagraphsContainer.appendChild(element('p', p));
+      });
+    }
+    if (actionsRow) {
+      while (actionsRow.firstChild) {
+        actionsRow.removeChild(actionsRow.firstChild);
+      }
+      getShownButtons().forEach(function (name) {
+        var btn = element('button', text(name));
+        btn.type = 'button';
+        btn.addEventListener('click', actions[name]);
+        actionsRow.appendChild(btn);
+      });
+    }
+    if (preferenceButton) {
+      preferenceButton.textContent = text('reopen');
+    }
+    if (regionSelect && currentRegion) {
+      regionSelect.value = currentRegion.id;
+    }
+  }
+
   function mount() {
     if (!document.body || panel) return;
     // Configured scripts embed the shared CSS source. Static source files load
@@ -258,14 +370,41 @@
     panel.setAttribute('aria-labelledby', 'ac-consent-title');
     panel.setAttribute('aria-describedby', 'ac-consent-description');
     applyTheme(panel);
+
+    if (regions.length >= 2) {
+      var regionContainer = element('div');
+      regionContainer.className = 'ac-consent-region';
+      var regionLabel = element('label', 'Region');
+      regionLabel.setAttribute('for', 'ac-consent-region-select');
+      regionSelect = element('select');
+      regionSelect.id = 'ac-consent-region-select';
+      regionSelect.className = 'ac-consent-region-select';
+      regions.forEach(function (r) {
+        var opt = element('option', r.name);
+        opt.value = r.id;
+        if (currentRegion && currentRegion.id === r.id) opt.selected = true;
+        regionSelect.appendChild(opt);
+      });
+      regionSelect.addEventListener('change', function (event) {
+        setRegion((event && event.target && event.target.value) || (this && this.value) || regionSelect.value);
+      });
+      regionContainer.appendChild(regionLabel);
+      regionContainer.appendChild(regionSelect);
+      panel.appendChild(regionContainer);
+    }
+
     heading = element('h2', text('title'));
     heading.id = 'ac-consent-title';
     heading.tabIndex = -1;
     panel.appendChild(heading);
-    var description = element('p', text('description'));
+    description = element('p', text('description'));
     description.id = 'ac-consent-description';
     panel.appendChild(description);
-    paragraphs().forEach(function (paragraph) { panel.appendChild(element('p', paragraph)); });
+    detailParagraphsContainer = element('div');
+    detailParagraphsContainer.className = 'ac-consent-details';
+    paragraphs().forEach(function (paragraph) { detailParagraphsContainer.appendChild(element('p', paragraph)); });
+    panel.appendChild(detailParagraphsContainer);
+
     if (privacyPolicyUrl) {
       var notice = element('p');
       var link = element('a', text('privacyLink'));
@@ -275,7 +414,7 @@
       panel.appendChild(notice);
     }
     // Without a save button there is nothing to select, so the choice is all or nothing.
-    if (shownButtons.indexOf('save') !== -1) {
+    if (getShownButtons().indexOf('save') !== -1) {
       var fieldset = element('fieldset');
       fieldset.appendChild(element('legend', text('categoriesLegend')));
       categories.forEach(function (category) {
@@ -292,29 +431,16 @@
       });
       panel.appendChild(fieldset);
     }
-    var actions = {
-      reject: function () { setConsent({}); },
-      accept: function () {
-        var values = {};
-        categories.forEach(function (category) { values[category] = true; });
-        setConsent(values);
-      },
-      save: function () {
-        var values = {};
-        categories.forEach(function (category) { values[category] = checkboxes[category].checked === true; });
-        setConsent(values);
-      }
-    };
     // Every action button shares one style, so no choice is visually favored.
-    var row = element('div');
-    row.className = 'ac-consent-actions';
-    shownButtons.forEach(function (name) {
+    actionsRow = element('div');
+    actionsRow.className = 'ac-consent-actions';
+    getShownButtons().forEach(function (name) {
       var button = element('button', text(name));
       button.type = 'button';
       button.addEventListener('click', actions[name]);
-      row.appendChild(button);
+      actionsRow.appendChild(button);
     });
-    panel.appendChild(row);
+    panel.appendChild(actionsRow);
     panel.addEventListener('keydown', function (event) {
       if (event.key !== 'Escape') return;
       showPanel(false);

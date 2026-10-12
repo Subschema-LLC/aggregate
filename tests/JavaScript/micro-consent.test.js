@@ -354,3 +354,45 @@ test('invalid wording, colors or buttons fail closed like any other invalid sett
     assert.equal(app.state().analytics, false, JSON.stringify(config));
   }
 });
+
+test('multiple regions render region selector, switch wording and handle implicit vs explicit consent', () => {
+  const regions = [
+    {
+      id: 'eu',
+      name: 'Europe',
+      consentType: 'explicit',
+      default: true,
+      text: {title: 'EU Cookies', description: 'Under GDPR, cookies start denied.', accept: 'Accept EU'}
+    },
+    {
+      id: 'us',
+      name: 'United States',
+      consentType: 'implicit',
+      default: false,
+      text: {title: 'US Cookies', description: 'Notice of tracking.', accept: 'Got it US', reject: 'Opt out US'}
+    }
+  ];
+
+  const app = runtime({config: {name: 'Test Store', regions}});
+  const select = app.all.find(node => node.id === 'mc-region-select');
+  assert.ok(select, 'Region select dropdown rendered');
+  assert.equal(select.children.length, 2);
+  assert.equal(app.window.MicroConsent.getRegion(), 'eu');
+
+  const banner = app.all.find(node => node.className === 'mc-banner');
+  assert.equal(banner.children.find(node => node.tagName === 'H2').textContent, 'EU Cookies');
+  assert.equal(app.state().analytics, false, 'Explicit mode starts denied');
+
+  // Switch to US (implicit mode)
+  select.value = 'us';
+  select.dispatchEvent({type: 'change'});
+  assert.equal(app.window.MicroConsent.getRegion(), 'us');
+  assert.equal(banner.children.find(node => node.tagName === 'H2').textContent, 'US Cookies');
+  assert.equal(app.state().analytics, true, 'Implicit mode starts granted');
+
+  // Opt out in US mode
+  const optOutBtn = app.text('Opt out US');
+  assert.ok(optOutBtn);
+  optOutBtn.dispatchEvent({type: 'click'});
+  assert.equal(app.state().analytics, false, 'Opting out in implicit mode withdraws consent');
+});

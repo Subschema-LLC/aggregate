@@ -176,8 +176,8 @@ cannot meet.
 ### Suppression inside the database views
 
 **Decision.** The `bi_anonymous_*` views release only completed hours or days and
-hide any cell below a minimum event count. The thresholds are stored in the
-database.
+hide any cell below a minimum event count. The thresholds are YAML settings
+compiled into the view SQL when the views are regenerated.
 
 **Why.** Suppression in a dashboard protects only that dashboard. In the view, it
 applies to every BI report, extract and user, and a BI tool cannot turn it off.
@@ -188,6 +188,57 @@ exposure but do not guarantee anonymity.
 
 **What would change it.** Stronger techniques could be added, but only on top of
 this contract, not instead of it.
+
+### A daily view by page group, with complementary suppression
+
+**Decision.** `bi_anonymous_daily_v1` counts completed UTC days by YAML-defined
+page group, referrer channel and device class. A daily cell is released only
+when it reaches the threshold and the part the hourly view withholds is zero or
+at least the threshold. Both views are regenerated together with one threshold.
+
+**Why.** Hourly cells split across path, channel, device and viewport are too
+small on low-traffic sites: with the default threshold, a site with about a
+thousand page views a day can see almost all of them withheld. Lowering the
+threshold weakens protection for every site and still releases little. A
+coarser grain releases most of the same traffic. Publishing a second, coarser
+view next to the hourly one would let a BI user subtract released hourly rows
+from a daily row and recover a withheld count, so the daily view withholds any
+cell where that remainder would be small.
+
+**Trade-off.** On busy sites, where most hourly cells are released, the rule
+withholds more daily cells; those sites have the hourly view. Page groups are
+compiled into SQL, so a change needs regeneration, and patterns are limited to
+what every supported database matches exactly with `LIKE`. Comparisons with the
+goal and geography views are not covered, as they are not for the hourly view.
+
+**What would change it.** Nothing planned; the roll-up below extends it rather
+than replacing it.
+
+### Withheld daily cells rolled up, and coverage in bands
+
+**Decision.** `bi_anonymous_daily_rollup_v1` keeps the daily view's rows and
+pools the cells it withholds through coarser levels (devices, then channels,
+then pages keeping the channel, then the event and day), each row labelled with
+`(other)` values and a `detail_level`. Every row meets the threshold and the
+same rule against the hourly view. `bi_anonymous_coverage_v1` reports, per
+website and day, a band for the share of events each event view releases.
+
+**Why.** Dropping small cells makes daily totals undercount in a way a BI user
+cannot see, and pilots compare those totals with other tools. Pooling keeps
+nearly every event in some row while publishing no row smaller than the
+threshold. Making the most detailed rows identical to the daily view's means the
+two views cannot be compared to learn anything new. Coverage tells a report how
+complete it is; a band instead of a number avoids revealing the day's total.
+
+**Trade-off.** Pooled rows lose detail in an order that suits page and channel
+reports; a device report has to show the `(other)` remainder. The SQL is a chain
+of window functions over five levels. The coverage band bounds the withheld
+remainder to a range, and the coverage view depends on the event views, so it
+is created after them and engines that track view dependencies need them
+replaced in place, never dropped.
+
+**What would change it.** A need for a different pooling order, which would be a
+separate view rather than a change to this one.
 
 ### The BI tool is the front end
 
@@ -370,15 +421,22 @@ build depend on the website as well as the deployment.
 
 ### YAML and the command line first; the dashboard is optional
 
-**Decision.** Every setting can be managed in YAML or from the command line, and
-the whole application works with the dashboard turned off.
+**Decision.** Every setting lives in YAML, can be managed from the command line,
+and the whole application works with the dashboard turned off. The database
+holds collected data, users and operational records, never settings; tables that
+publish configuration to BI tools, such as `analytics_glossary`, are generated
+from YAML. The BI disclosure thresholds moved from an `analytics_privacy_settings`
+table into YAML to close the last exception, and
+`app:analytics:bi-views:regenerate` applies them without the dashboard.
 
 **Why.** Operators automate deployments, keep configuration in version control,
-and some want no login page on a collection server.
+and some want no login page on a collection server. Keeping settings out of the
+database keeps the schema small and lets an operator read the whole
+configuration in one place.
 
 **Trade-off.** Each new setting is built twice (file and form) on top of one shared
-validation. BI thresholds are a known exception: they are stored only in the
-database.
+validation. A setting compiled into SQL, like a threshold, only takes effect when
+its views are regenerated, so a YAML edit needs that explicit step.
 
 **What would change it.** Nothing; new exceptions need a documented reason.
 

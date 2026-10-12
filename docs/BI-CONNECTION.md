@@ -15,7 +15,8 @@ Routine BI users get `SELECT` on the approved views and nothing else:
 
 | Views | Contents |
 | --- | --- |
-| `bi_anonymous_events_v1`, `bi_anonymous_goals_v1`, `bi_anonymous_geo_events_v1` | Counted anonymous events, with small cells withheld |
+| `bi_anonymous_events_v1`, `bi_anonymous_daily_v1`, `bi_anonymous_daily_rollup_v1`, `bi_anonymous_goals_v1`, `bi_anonymous_geo_events_v1` | Counted anonymous events, with small cells withheld or pooled |
+| `bi_anonymous_coverage_v1` | How much of each day's events the event views release, in bands |
 | The seven `bi_dim_*_v1` views, `bi_glossary_values_v1`, `bi_glossary_columns_v1` | Labels and definitions for codes, columns and websites; no traffic |
 
 Do not grant them the raw `events` table, the archive tables, the
@@ -50,6 +51,122 @@ allowed 2–1000) are absent.
 Use `SUM(event_count)` when a report drops a dimension. The total covers released
 cells only: summing does not re-apply suppression at the broader level or bring
 back withheld cells.
+
+### `bi_anonymous_daily_v1`
+
+One row per released daily cell by page group, referrer channel and device
+class. It answers the same questions as the hourly view at a coarser grain, so a
+low-traffic site keeps far more of its events: dropping the hour and the
+viewport, and grouping many small pages, lets cells reach the threshold that
+hourly cells miss. The current UTC day is absent.
+
+| Column | Type | Meaning |
+| --- | --- | --- |
+| `website_token` | String | The website the events belong to. |
+| `event_day` | UTC date | A completed UTC day. |
+| `event_name` | String | `view` for page views, or a fixed, safe interaction name. |
+| `page_group` | Text | The label of the first matching [page group](#page-groups) rule, or the sanitized page path when no rule matches. Labels never start with `/`. |
+| `referrer_channel` | Category | `direct`, `internal`, `search`, `social`, `email`, `referral` or `unknown`. |
+| `device_class` | Category | `mobile`, `tablet`, `desktop`, `bot` or `unknown`. |
+| `event_count` | Integer | Number of events in the cell. Not a count of people. |
+
+A cell is released when it reaches `anonymous_min_cell_count` **and** the part
+of it that the hourly view withholds is either zero or at least that minimum.
+Without the second rule, subtracting the released hourly rows of a day from its
+daily row would reveal the withheld remainder, which could be a count of one or
+two. The view rebuilds the hourly cells with the hourly view's own grouping and
+threshold to apply it, and the two views are always regenerated together with
+one threshold.
+
+So a page with seven views in one hour and two in another publishes the hourly
+row of seven and no daily row, while a page with two views in each of three
+hours publishes no hourly row and a daily row of six. On a busy site, where most
+hourly cells are released, more daily cells are withheld by the second rule; use
+the hourly view there. To keep withheld cells in coarser rows instead, use
+[`bi_anonymous_daily_rollup_v1`](#bi_anonymous_daily_rollup_v1).
+
+#### Page groups
+
+Page groups map sanitized paths to content labels, such as every vehicle page to
+`inventory` or every branch page to `location`. They live in YAML as
+`bi_page_groups`, or on **Reporting → Page groups** in the dashboard:
+
+```yaml
+bi_page_groups:
+  - { pattern: '/inventory/**', group: inventory }
+  - { pattern: '/locations/*', group: location }
+  - { pattern: '/files/*.pdf', group: download }
+```
+
+- The first matching rule wins. A path that matches no rule keeps its own path.
+- `/inventory/**` matches `/inventory` and every page below it; `/locations/*`
+  matches exactly one more segment; `*` inside the last segment, as in
+  `/files/*.pdf`, matches within that segment only. Wildcards are allowed only in
+  the last segment, the same meanings as in `anonymous_excluded_paths`, limited to
+  what every supported database matches exactly with `LIKE`.
+- Labels are 1–64 characters, start with a letter or digit, and never start with
+  `/`. They are published to routine BI users, so keep them non-identifying.
+- Matching follows the database collation: case-insensitive on MySQL, MariaDB,
+  SQL Server and SQLite with their default collations, case-sensitive on
+  PostgreSQL. Write patterns in the case your paths use.
+- Rules are compiled into the view's SQL. Saving the Page groups page
+  regenerates the BI views; after editing YAML, run
+  `php bin/console app:analytics:bi-views:regenerate`. Invalid rules stop
+  regeneration and leave the existing views in place.
+
+Grouping changes only the daily views. The hourly view keeps its paths, so
+grouping does not reduce what the hourly view withholds.
+
+### `bi_anonymous_daily_rollup_v1`
+
+The daily cells, with the ones `bi_anonymous_daily_v1` withholds rolled up into
+coarser rows instead of dropped. Use it when a report needs daily totals that
+add up, such as page views per day for a small site.
+
+| Column | Type | Meaning |
+| --- | --- | --- |
+| `website_token` | String | The website the events belong to. |
+| `event_day` | UTC date | A completed UTC day. |
+| `event_name` | String | `view` or a fixed, safe interaction name. Every row keeps it. |
+| `page_group` | Text | Page group label, sanitized path, or `(other)`. |
+| `referrer_channel` | Category | Coarse source channel, or `(other)`. |
+| `device_class` | Category | Coarse device category, or `(other)`. |
+| `event_count` | Integer | Number of events in the row. Not a count of people. |
+| `detail_level` | Category | Which dimensions are known: `page_channel_device`, `page_channel`, `page`, `channel` or `day`. |
+
+Cells that cannot be released in full are pooled step by step, each step only
+over what the previous one left: devices (`page_channel`), then channels
+(`page`), then pages while keeping the channel (`channel`), then everything for
+the event and day (`day`). A pooled value is `(other)`, meaning the part not
+shown in more detailed rows, not every value. Whatever is still below the
+threshold after the last step is left out.
+
+- The `page_channel_device` rows are exactly the rows of `bi_anonymous_daily_v1`.
+- Each event is in at most one row, so `SUM(event_count)` by day adds up to the
+  day's released events, usually nearly all of them.
+- Every row reaches `anonymous_min_cell_count` and follows the daily view's rule
+  against the hourly view: the part of the row the hourly view withholds is zero
+  or at least the threshold, so no subtraction reveals a small count.
+- Filter on `detail_level` for detail. A device report should keep the
+  `(other)` rows or note that some events have no device breakdown.
+
+### `bi_anonymous_coverage_v1`
+
+How complete each event view is. One row per website, completed UTC day and
+event view, for days with at least `anonymous_min_cell_count` anonymous events.
+
+| Column | Type | Meaning |
+| --- | --- | --- |
+| `website_token` | String | The website. |
+| `event_day` | UTC date | A completed UTC day. |
+| `view_name` | String | `bi_anonymous_events_v1`, `bi_anonymous_daily_v1` or `bi_anonymous_daily_rollup_v1`. |
+| `coverage_band` | Category | Percent of the day's anonymous events the view releases: `90-100`, `50-90`, `10-50` or `0-10`. |
+
+It reports a band, not a number: an exact share would reveal the day's total
+and so the withheld remainder. Show it next to a report so a low number reads as
+"withheld" rather than "broken", or use it to choose the view for a site. The
+band still narrows the withheld remainder to a range, which is why days below the
+threshold are left out.
 
 ### `bi_anonymous_goals_v1`
 
@@ -90,9 +207,10 @@ subtraction. Path, referrer, device, viewport and identifiers are not in this
 view, and events without a geography value are left out, so its totals will not
 match the hourly view.
 
-**Keep the three views separate.** They have different grains and are suppressed
+**Keep the views separate.** They have different grains and are suppressed
 independently. Joining them to each other, or to anything else, does not recover
-withheld detail, and it can produce wrong totals.
+withheld detail, and it can produce wrong totals. Choose the hourly or the daily
+event view for a report rather than combining them.
 
 ## Labels and definitions
 
@@ -175,12 +293,15 @@ the physical type differs between database engines.
 
 | Key | Type | Meaning |
 | --- | --- | --- |
-| `anonymous_min_cell_count` | Integer | Threshold for the hourly event and daily goal views; default 5, allowed 2–1000. |
+| `anonymous_min_cell_count` | Integer | Threshold for the hourly, daily and roll-up event views, the daily goal view, and the coverage view's minimum day; default 5, allowed 2–1000. |
 | `anonymous_geo_min_cell_count` | Integer | Threshold for the daily geography view; default 25, allowed 10–1000. |
 
 Dashboard saves under **Reporting → BI disclosure** write YAML and regenerate
-`bi_anonymous_events_v1`, `bi_anonymous_goals_v1`, and `bi_anonymous_geo_events_v1`.
-Environment overrides (`ANONYMOUS_MIN_CELL_COUNT`,
+`bi_anonymous_events_v1`, `bi_anonymous_goals_v1`, `bi_anonymous_geo_events_v1`,
+`bi_anonymous_daily_v1`, `bi_anonymous_daily_rollup_v1` and `bi_anonymous_coverage_v1`;
+after editing YAML directly, run `php bin/console app:analytics:bi-views:regenerate`.
+Server databases replace the views in place, so the reporting account's grants
+are kept. Environment overrides (`ANONYMOUS_MIN_CELL_COUNT`,
 `ANONYMOUS_GEO_MIN_CELL_COUNT`) take precedence.
 
 **There is no `websites` table.** Website names, domains and tokens live in
@@ -320,6 +441,16 @@ You can query these read-only SQL views about website traffic:
 - bi_anonymous_events_v1: one row per completed UTC hour and combination of
   website_token, event_name, page_path, referrer_channel, device_class and
   viewport_bucket, with event_count.
+- bi_anonymous_daily_v1: one row per completed UTC day and combination of
+  website_token, event_name, page_group, referrer_channel and device_class,
+  with event_count. page_group is a content label, or a page path when it
+  starts with /.
+- bi_anonymous_daily_rollup_v1: like bi_anonymous_daily_v1, plus rows where
+  page_group, referrer_channel or device_class is (other): events pooled
+  because their own rows were too small. detail_level says which dimensions are
+  known. Each event is in at most one row, so daily totals add up.
+- bi_anonymous_coverage_v1: per website and day, the band of events each view
+  releases (90-100, 50-90, 10-50 or 0-10 percent). Mention it when totals look low.
 - bi_anonymous_goals_v1: one row per completed UTC day, website_token and
   goal_event, with event_count.
 - bi_anonymous_geo_events_v1: one row per completed UTC day, website_token,
@@ -329,9 +460,12 @@ Rules:
 - Total with SUM(event_count), never COUNT(*).
 - event_count counts events or goal occurrences, not people, visitors or visits.
 - A missing row means the count was withheld or unavailable, not zero.
-- Never join the three views to each other; each is counted separately.
-- All times are UTC. The current hour (events) and day (goals, geography) are
-  not included yet.
+- Never join the views to each other; each is counted separately. Use the
+  daily view for day-level questions, the roll-up for daily totals, and the
+  hourly view for hour-level ones. (other) is a remainder, never a page,
+  channel or device name.
+- All times are UTC. The current hour (events) and day (daily events, goals,
+  geography) are not included yet.
 - Filter by website_token to report on one website.
 ```
 

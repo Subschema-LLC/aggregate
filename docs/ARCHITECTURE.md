@@ -119,9 +119,15 @@ Migrations in [migrations/](../migrations) create the reporting views. The
 completed hours or days, and hide any cell below the configured minimum count
 from `anonymous_min_cell_count` / `anonymous_geo_min_cell_count` in
 `config/aggregate*.yaml`
-([AnalyticsPrivacySettings](../src/Service/AnalyticsPrivacySettings.php)). The
+([AnalyticsPrivacySettings](../src/Service/AnalyticsPrivacySettings.php)); the
+BI disclosure page and `app:analytics:bi-views:regenerate` rebuild the views
+when they change ([AnonymousBiViewManager](../src/Service/AnonymousBiViewManager.php)). The
 geography view also pools small areas into "other" so that a hidden area can't
-easily be worked out by subtraction.
+easily be worked out by subtraction, and the daily view by page group withholds
+any day whose hidden hourly remainder would be small, so it can't be subtracted
+from the hourly view either. The daily roll-up pools what the daily view
+withholds into coarser rows under the same rule, and the coverage view reports,
+in bands, how much each event view releases.
 
 Around them:
 
@@ -152,8 +158,10 @@ Settings have one source of truth each (listed in
   and each site's consent banner and tags.
 - **Shipped defaults** (`goals.yaml`, `navigation.yaml`, `quick_search.yaml`),
   customized through untracked `*.local.yaml` overrides.
-- **The database:** BI thresholds only, an existing exception to the rule that
-  every setting also exists in YAML.
+
+The database holds collected events, archives, users and operational records,
+not settings. Tables such as `analytics_glossary` are generated from YAML so BI
+tools can join to them; they are never edited directly.
 
 When privacy configuration is invalid, the services fail closed: collection stops
 rather than guessing. The dashboard and command line write through the same

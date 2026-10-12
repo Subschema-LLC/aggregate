@@ -107,8 +107,8 @@ controlled by `app:updates:maintenance`.
 
 **Minimum cell count.** The suppression threshold: `anonymous_min_cell_count`
 (default 5) for events and goals, and `anonymous_geo_min_cell_count` (default 25)
-for geography. Stored in the database and managed in the dashboard. They count
-events, not people.
+for geography. Set in YAML or on the BI disclosure page and applied to the views
+by regenerating them. They count events, not people.
 
 **Namespace.** `js_namespace`: the global JavaScript name the tracker uses on a
 website (default `window.Aggregate`).

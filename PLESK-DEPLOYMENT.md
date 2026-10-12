@@ -242,7 +242,7 @@ environments:
     anonymous_geo_database_path: ""
 ```
 
-The two BI disclosure thresholds are configured in the admin dashboard and stored directly in `analytics_privacy_settings`, not in this YAML file.
+The two BI disclosure thresholds, `anonymous_min_cell_count` (default `5`) and `anonymous_geo_min_cell_count` (default `25`), can also be set in this file. Saving them on the BI disclosure page applies them to the reporting views; after editing the YAML directly, run `php bin/console app:analytics:bi-views:regenerate` (in a scheduled task if you have no SSH access).
 
 Optional coarse geography requires a locally managed GeoLite2-Country-compatible MMDB. Keep it on the local filesystem outside the document root, for example `/var/www/vhosts/your-domain.com/private/GeoLite2-Country.mmdb`, and make it read-only but readable by the domain's PHP process. Direct UNC/network-share and Windows device paths are rejected. Aggregate never downloads the file or calls a GeoIP web service. After installing it, set `anonymous_geo_enabled: true` and its absolute path above. Missing/unreadable/invalid databases leave `geo_area` empty without stopping ingestion.
 
@@ -585,13 +585,13 @@ allow their primary domain and all subdomains. Invalid explicit rules reject eve
 - [ ] Strong `APP_SECRET` in `.env` (`openssl rand -hex 32`)
 - [ ] Sensitive routes listed in `anonymous_excluded_paths`
 - [ ] Every `config/goals.yaml` code is fixed and non-identifying; enhanced-only goals use `anonymous: false`
-- [ ] Database-backed `anonymous_min_cell_count` reviewed in the admin dashboard for your traffic volume (default `5`, range `2`–`1000`)
+- [ ] `anonymous_min_cell_count` reviewed for your traffic volume and applied to the views (default `5`, range `2`–`1000`)
 - [ ] If coarse geography is enabled: local MMDB is current/read-only, macro-region is preferred, and the processing purpose/legal basis/notice are documented
-- [ ] Database-backed `anonymous_geo_min_cell_count` reviewed in the admin dashboard for geography traffic volume (default `25`, range `10`–`1000`; counts events, not people)
+- [ ] `anonymous_geo_min_cell_count` reviewed for geography traffic volume and applied to the views (default `25`, range `10`–`1000`; counts events, not people)
 - [ ] `APP_DEBUG=0` in `.env`
 - [ ] `.env` is not publicly accessible (it's outside `public/`, so this is automatic)
 - [ ] Database user has minimal required privileges
-- [ ] Routine BI users can query only approved `bi_anonymous_events_v1` / `bi_anonymous_goals_v1` / `bi_anonymous_geo_events_v1` views, not raw `events`
+- [ ] Routine BI users can query only approved `bi_anonymous_events_v1` / `bi_anonymous_daily_v1` / `bi_anonymous_daily_rollup_v1` / `bi_anonymous_coverage_v1` / `bi_anonymous_goals_v1` / `bi_anonymous_geo_events_v1` views, not raw `events`
 - [ ] File permissions correct (`775` on `var/`, not `777`)
 - [ ] Worker running as non-root user
 - [ ] Regular database backups configured

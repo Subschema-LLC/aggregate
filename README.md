@@ -76,9 +76,9 @@ promised.
 
 **Optional administration UI.** Operate collection, setup, and maintenance through
 YAML and CLI commands; set `DASHBOARD_ENABLED=0` to disable dashboard/login routes.
-BI disclosure thresholds currently require the admin UI or controlled database
-administration; see [configuration sources](docs/CONFIGURATION.md). Visualize
-analytics in your BI tool; the application UI manages the installation and its data contracts.
+Every operator setting, including BI disclosure thresholds, lives in YAML; see
+[configuration sources](docs/CONFIGURATION.md). Visualize analytics in your BI
+tool; the application UI manages the installation and its data contracts.
 
 **Rebrandable without a fork.** Name, logo, colors and fonts are configuration. Contrast
 ratios are validated, so an unreadable palette gets rejected rather than shipped.
@@ -94,7 +94,7 @@ IP range.
 Details:
 
 - **Privacy-minimized collection:** page views and safe named events, with optional allowlisted goals and coarse local geography.
-- **Reporting views with suppression:** completed hourly or daily aggregates with configurable minimum event counts.
+- **Reporting views with suppression:** completed hourly or daily aggregates with configurable minimum event counts, plus a daily view by YAML-defined page group that releases far more of a low-traffic site's data without letting the views be subtracted to reveal small counts, a roll-up that pools withheld cells into coarser rows instead of dropping them, and a coverage view that says how complete each view is.
 - **AI-ready reporting:** versioned views and a built-in data dictionary that AI assistants can query with the same read-only account as BI tools.
 - **BigQuery sync:** copy the reporting views to a Google BigQuery dataset on a schedule, signing in with a service account key, the Google Cloud host's account or a Google sign-in. Private row-level views need an explicit opt-in. See [Sync to BigQuery](docs/BIGQUERY.md).
 - **Optional page depth:** a capped page count shared by events on each page, with tab storage or URL parameter passing configured through UI/YAML. See [storage, URL and reporting boundaries](docs/DATA-MODEL.md#optional-page-depth) before enabling it.
@@ -236,15 +236,18 @@ progress and availability. The tracking guide includes GTM Custom HTML examples.
 | Per-website CMP, tags, triggers, and variables | `config/tag-manager/sites/<site-id>.yaml`, managed through the Tag manager admin page or YAML |
 | Conversion-goal definitions | `config/goals.yaml`, customized in `config/goals.local.yaml` |
 | Navigation labels and links | `config/navigation.yaml`, customized in `config/navigation.local.yaml` |
-| BI disclosure thresholds | `analytics_privacy_settings` in the database; dashboard or controlled database administration |
+| BI disclosure thresholds | `config/aggregate.yaml`, managed through the BI disclosure admin page or YAML; apply YAML edits with `app:analytics:bi-views:regenerate` |
 
-For headless deployments, set `dashboard_enabled: false` in the active YAML environment and `DASHBOARD_ENABLED=0`, then clear Symfony's cache. BI thresholds remain database settings; they are not mirrored in YAML. The [configuration reference](docs/CONFIGURATION.md) explains defaults, overrides, branding, goals, organization markers, and retention.
+For headless deployments, set `dashboard_enabled: false` in the active YAML environment and `DASHBOARD_ENABLED=0`, then clear Symfony's cache. After editing the BI disclosure thresholds in YAML, run `php bin/console app:analytics:bi-views:regenerate` to rebuild the reporting views with them. The [configuration reference](docs/CONFIGURATION.md) explains defaults, overrides, branding, goals, organization markers, and retention.
 
 Routine BI connections should use approved views:
 
 | View | Reports |
 | --- | --- |
 | `bi_anonymous_events_v1` | Hourly page views and named events |
+| `bi_anonymous_daily_v1` | Daily page views and named events by [page group](docs/BI-CONNECTION.md#page-groups), for sites whose hourly cells are too small to release |
+| `bi_anonymous_daily_rollup_v1` | The daily view plus withheld cells rolled up into coarser `(other)` rows, so daily totals add up |
+| `bi_anonymous_coverage_v1` | How much of each day's events each event view releases, in bands |
 | `bi_anonymous_goals_v1` | Daily occurrences of configured goals |
 | `bi_anonymous_geo_events_v1` | Daily coarse geography with additional suppression |
 

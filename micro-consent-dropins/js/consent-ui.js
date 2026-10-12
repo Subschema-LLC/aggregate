@@ -34,7 +34,7 @@
   var input = own(window, 'MicroConsentConfig');
   if (input === absent) input = {};
   if (!record(input)) { validConfig = false; input = {}; }
-  var keys = ['name', 'privacyPolicyUrl', 'formspreeEndpoint', 'categories', 'respectGpc', 'consentLifetimeDays', 'revision', 'storageKey', 'aggregateNamespace', 'text', 'theme', 'buttons'];
+  var keys = ['name', 'privacyPolicyUrl', 'formspreeEndpoint', 'categories', 'respectGpc', 'consentLifetimeDays', 'revision', 'storageKey', 'aggregateNamespace', 'text', 'theme', 'buttons', 'regions', 'defaultRegion'];
   try {
     Object.getOwnPropertyNames(input).forEach(function (key) {
       if (keys.indexOf(key) === -1 || own(input, key) === absent) validConfig = false;
@@ -150,6 +150,32 @@
         && show.every(function (button, index) { return buttonNames.indexOf(button) !== -1 && show.indexOf(button) === index; })))
       && (reopen === absent || reopenPositions.indexOf(reopen) !== -1);
   }
+  function validRegions(value) {
+    if (!Array.isArray(value) || value.length > 10) return false;
+    var seen = [];
+    var hasDefault = false;
+    return value.every(function (reg) {
+      if (!record(reg)) return false;
+      var id = own(reg, 'id');
+      var name = own(reg, 'name');
+      var consentType = own(reg, 'consentType') === absent ? own(reg, 'consent_type') : own(reg, 'consentType');
+      var isDefault = own(reg, 'default');
+      if (typeof id !== 'string' || !/^[a-z0-9_-]{1,32}$/.test(id) || seen.indexOf(id) !== -1) return false;
+      seen.push(id);
+      if (!boundedText(name, 120, false)) return false;
+      if (consentType !== absent && ['explicit', 'implicit'].indexOf(consentType) === -1) return false;
+      if (isDefault !== absent && typeof isDefault !== 'boolean') return false;
+      if (isDefault === true) {
+        if (hasDefault) return false;
+        hasDefault = true;
+      }
+      var regText = own(reg, 'text');
+      if (regText !== absent && !validText(regText)) return false;
+      var regButtons = own(reg, 'buttons');
+      if (regButtons !== absent && !validButtons(regButtons)) return false;
+      return true;
+    });
+  }
   var config = {
     name: option('name', 'Privacy choices', function (value) { return boundedText(value, 120, false); }),
     privacyPolicyUrl: option('privacyPolicyUrl', '', policyUrl),
@@ -170,17 +196,61 @@
     aggregateNamespace: option('aggregateNamespace', 'Aggregate', function (value) { return boundedText(value, 120, false) && reserved.indexOf(value) === -1; }),
     text: option('text', {}, validText),
     theme: option('theme', {}, validTheme),
-    buttons: option('buttons', {}, validButtons)
+    buttons: option('buttons', {}, validButtons),
+    regions: option('regions', [], validRegions)
   };
+  var rawRegions = Array.isArray(config.regions) ? config.regions : [];
+  var regions = [];
+  rawRegions.forEach(function (r) {
+    if (r && typeof r === 'object' && typeof r.id === 'string' && typeof r.name === 'string') {
+      regions.push(r);
+    }
+  });
+
+  function getRegion(id) {
+    for (var i = 0; i < regions.length; i++) {
+      if (regions[i].id === id) return regions[i];
+    }
+    return null;
+  }
+
+  var regionStorageKey = config.storageKey + ':region';
+  var savedRegionId = (function () {
+    try { return window.localStorage.getItem(regionStorageKey); } catch (e) { return null; }
+  })();
+
+  var currentRegion = (function () {
+    if (regions.length === 0) return null;
+    if (savedRegionId && getRegion(savedRegionId)) return getRegion(savedRegionId);
+    var defId = typeof config.defaultRegion === 'string' ? config.defaultRegion : config.default_region;
+    if (defId && getRegion(defId)) return getRegion(defId);
+    for (var j = 0; j < regions.length; j++) {
+      if (regions[j].default === true) return regions[j];
+    }
+    return regions[0];
+  })();
+
+  function isImplicit() {
+    return !!(currentRegion && (currentRegion.consentType === 'implicit' || currentRegion.consent_type === 'implicit'));
+  }
+
   function t(key) {
-    var value = own(config.text, key);
+    var regText = currentRegion && own(currentRegion, 'text');
+    var value = regText !== absent && regText ? own(regText, key) : absent;
+    if (value === absent) {
+      value = own(config.text, key);
+    }
     var result = typeof value === 'string' ? value.trim() : defaultText[key];
     if (key === 'title') result = result.split('{name}').join(config.name.trim());
     if (key === 'storageNotice') result = result.split('{days}').join(String(config.consentLifetimeDays));
     return result;
   }
   function details() {
-    var value = own(config.text, 'details');
+    var regText = currentRegion && own(currentRegion, 'text');
+    var value = regText !== absent && regText ? own(regText, 'details') : absent;
+    if (value === absent || !Array.isArray(value)) {
+      value = own(config.text, 'details');
+    }
     return (value === absent ? defaultText.details : value).map(function (paragraph) { return paragraph.trim(); });
   }
   function categoryLabel(category) {
@@ -189,7 +259,13 @@
     return own(defaultText.categories, category) !== absent ? defaultText.categories[category]
       : category.replace(/[-_]/g, ' ').replace(/^./, function (letter) { return letter.toUpperCase(); });
   }
-  var shownButtons = own(config.buttons, 'show') === absent ? buttonNames.slice() : own(config.buttons, 'show').slice();
+  function currentShownButtons() {
+    var regButtons = currentRegion && own(currentRegion, 'buttons');
+    var show = regButtons !== absent && regButtons ? own(regButtons, 'show') : absent;
+    if (show !== absent && Array.isArray(show)) return show.slice();
+    return own(config.buttons, 'show') === absent ? buttonNames.slice() : own(config.buttons, 'show').slice();
+  }
+  var shownButtons = currentShownButtons();
   var reopenPosition = own(config.buttons, 'reopen') === absent ? 'bottom-right' : own(config.buttons, 'reopen');
   config.name = config.name.trim();
   config.revision = config.revision.trim();
@@ -273,7 +349,13 @@
   function restore(raw) {
     deny();
     var saved = validConfig ? readSaved(raw) : null;
-    if (!saved) return;
+    if (!saved) {
+      if (isImplicit()) {
+        if (Object.prototype.hasOwnProperty.call(choices, 'analytics')) choices.analytics = true;
+        enforceSignals();
+      }
+      return;
+    }
     try {
       // Probe writability without rewriting a possibly stale preference record.
       window.localStorage.setItem(config.storageKey + ':probe', '1');
@@ -356,9 +438,42 @@
     opener.setAttribute('aria-expanded', 'true');
     heading.focus();
   }
+  var bannerTitle, bannerDescription, regionSelect;
+  var bannerButtons = {};
+
+  function updateUiText() {
+    if (bannerTitle) bannerTitle.textContent = t('title');
+    if (bannerDescription) bannerDescription.textContent = t('description');
+    if (bannerButtons.reject) bannerButtons.reject.textContent = t('reject');
+    if (bannerButtons.accept) bannerButtons.accept.textContent = t('accept');
+    if (bannerButtons.manage) bannerButtons.manage.textContent = t('manage');
+    if (opener) opener.textContent = t('reopen');
+    if (heading) heading.textContent = t('title');
+    if (regionSelect && currentRegion) regionSelect.value = currentRegion.id;
+  }
+
+  function setRegion(id) {
+    var reg = getRegion(id);
+    if (!reg) return;
+    currentRegion = reg;
+    try { window.localStorage.setItem(regionStorageKey, id); } catch (e) {}
+    if (!chosen && savedAt === 0) {
+      if (isImplicit()) {
+        if (Object.prototype.hasOwnProperty.call(choices, 'analytics')) choices.analytics = true;
+      } else {
+        if (Object.prototype.hasOwnProperty.call(choices, 'analytics')) choices.analytics = false;
+      }
+      enforceSignals();
+      notify();
+    }
+    updateUiText();
+  }
+
   window.MicroConsent = {
     getState: getState,
     setConsent: setConsent,
+    getRegion: function () { return currentRegion ? currentRegion.id : null; },
+    setRegion: setRegion,
     subscribe: function (callback) {
       if (typeof callback !== 'function') return function () {};
       subscribers.push(callback);
@@ -370,6 +485,10 @@
   notify();
   document.dispatchEvent(new CustomEvent('micro-consent-ready'));
   window.addEventListener('storage', function (event) {
+    if (event.key === regionStorageKey && event.newValue) {
+      setRegion(event.newValue);
+      return;
+    }
     if (event.key !== config.storageKey && event.key !== null) return;
     // Storage events may be delivered after a newer choice. Read the latest
     // shared value, never rewrite an old event payload or resurrect its grant.
@@ -405,13 +524,20 @@
   // manage with save. Every action button shares one style.
   function actions(parent, withSave) {
     var row = element('div', null, 'mc-actions');
-    var list = shownButtons.map(function (name) { return withSave && name === 'manage' ? 'save' : name; });
+    var list = currentShownButtons().map(function (name) { return withSave && name === 'manage' ? 'save' : name; });
     if (withSave && list.indexOf('save') === -1) list.push('save');
     list.forEach(function (name) {
       var node;
-      if (name === 'reject') node = button(t('reject'), function () { setConsent({}); });
-      else if (name === 'manage') node = button(t('manage'), function () { open(false); });
-      else if (name === 'accept') { node = button(t('accept'), accept); node.disabled = !validConfig; }
+      if (name === 'reject') {
+        node = button(t('reject'), function () { setConsent({}); });
+        if (!withSave) bannerButtons.reject = node;
+      } else if (name === 'manage') {
+        node = button(t('manage'), function () { open(false); });
+        if (!withSave) bannerButtons.manage = node;
+      } else if (name === 'accept') {
+        node = button(t('accept'), accept); node.disabled = !validConfig;
+        if (!withSave) bannerButtons.accept = node;
+      }
       else {
         node = button(t('save'), function () {
           var selected = {};
@@ -500,8 +626,29 @@
       }
     });
     banner = element('section', null, 'mc-banner'); banner.setAttribute('aria-labelledby', 'mc-banner-title');
-    var title = element('h2', t('title')); title.id = 'mc-banner-title'; banner.appendChild(title);
-    banner.appendChild(element('p', t('description')));
+
+    if (regions.length >= 2) {
+      var regionRow = element('div', null, 'mc-region');
+      var regLabel = element('label', 'Region', 'mc-region-label');
+      regLabel.setAttribute('for', 'mc-region-select');
+      regionSelect = element('select', null, 'mc-region-select');
+      regionSelect.id = 'mc-region-select';
+      regions.forEach(function (r) {
+        var opt = element('option', r.name);
+        opt.value = r.id;
+        if (currentRegion && currentRegion.id === r.id) opt.selected = true;
+        regionSelect.appendChild(opt);
+      });
+      regionSelect.addEventListener('change', function (event) {
+        setRegion((event && event.target && event.target.value) || (this && this.value) || (regionSelect && regionSelect.value));
+      });
+      regionRow.appendChild(regLabel);
+      regionRow.appendChild(regionSelect);
+      banner.appendChild(regionRow);
+    }
+
+    bannerTitle = element('h2', t('title')); bannerTitle.id = 'mc-banner-title'; banner.appendChild(bannerTitle);
+    bannerDescription = element('p', t('description')); banner.appendChild(bannerDescription);
     details().forEach(function (paragraph) { banner.appendChild(element('p', paragraph)); });
     if (!validConfig) banner.appendChild(element('p', 'Privacy controls are misconfigured. Optional categories remain denied. Contact this website’s operator.', 'mc-error'));
     policyLink(banner); actions(banner, false);

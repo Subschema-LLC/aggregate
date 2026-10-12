@@ -55,6 +55,7 @@ final class DocumentationLinks
         'reporting.connect' => ['reporting/connect-bi', 'docs/BI-CONNECTION.md'],
         'reporting.custom-views' => ['reporting/connect-bi#custom-reporting-views', 'docs/BI-CONNECTION.md'],
         'reporting.checklist' => ['reporting/connect-bi#connection-checklist', 'docs/BI-CONNECTION.md'],
+        'reporting.page-groups' => ['reporting/connect-bi#page-groups', 'docs/BI-CONNECTION.md'],
         'reporting.glossary' => ['reporting/bi-glossary', 'docs/BI-GLOSSARY.md'],
         'reporting.glossary-relationships' => ['reporting/bi-glossary#views-and-bi-relationships', 'docs/BI-GLOSSARY.md'],
         'reporting.bigquery' => ['reporting/bigquery', 'docs/BIGQUERY.md'],
