@@ -25,6 +25,11 @@ final class ConsentManagerForm
         'dismiss' => 'Close without a choice',
         'hidden' => 'Hide the close button',
     ];
+    /** Labels for ConsentAppearance::LAYOUTS. */
+    public const LAYOUT_LABELS = [
+        'card' => 'Card in the corner',
+        'bar' => 'Bar across the bottom of the window',
+    ];
 
     /**
      * Turns the page's fields into consent_manager changes. A value equal to
@@ -34,7 +39,7 @@ final class ConsentManagerForm
     public static function changes(array $form, array $saved): array
     {
         if (array_diff(array_keys($form), ['_csrf_token', 'site', 'enabled', 'name', 'privacy_policy_url', 'precheck_categories', 'text', 'theme', 'buttons', 'regions', 'default_region',
-            'consent_type', 'close_button', 'default_granted', 'respect_gpc']) !== []
+            'consent_type', 'close_button', 'default_granted', 'respect_gpc', 'layout', 'categories', 'external_tags']) !== []
             || !in_array($form['enabled'] ?? null, ['0', '1'], true) || !is_string($form['name'] ?? null)
             || !is_string($form['privacy_policy_url'] ?? '')
             || (array_key_exists('precheck_categories', $form) && (!is_array($form['precheck_categories']) || array_filter($form['precheck_categories'], 'is_string') !== $form['precheck_categories']))
@@ -111,6 +116,19 @@ final class ConsentManagerForm
         }
 
         $privacy = trim($form['privacy_policy_url'] ?? '');
+
+        // Layout and the website's categories and other tags. A field the form did
+        // not send keeps its saved value; unknown values reach validation.
+        $extras = [];
+        if (array_key_exists('layout', $form)) {
+            $extras['layout'] = in_array($form['layout'], ['', ConsentAppearance::DEFAULT_LAYOUT], true) ? null : $form['layout'];
+        }
+        if (array_key_exists('categories', $form)) {
+            $extras['categories'] = self::categoryNames($form['categories']);
+        }
+        if (array_key_exists('external_tags', $form)) {
+            $extras['external_tags'] = self::externalTagRows($form['external_tags']);
+        }
 
         $precheck = [];
         foreach ($form['precheck_categories'] ?? [] as $cat) {
@@ -194,7 +212,42 @@ final class ConsentManagerForm
             'buttons' => $buttons === [] ? null : $buttons,
             'regions' => $regions === [] ? null : $regions,
             'default_region' => isset($form['default_region']) && trim((string) $form['default_region']) !== '' ? trim((string) $form['default_region']) : null,
-        ] + $behavior;
+        ] + $behavior + $extras;
+    }
+
+    /** Additional categories typed as a comma- or space-separated list; null for none. */
+    private static function categoryNames(mixed $value): ?array
+    {
+        if (!is_string($value) || strlen($value) > 1024) {
+            throw new \InvalidArgumentException('Additional categories must be a short list of names. Nothing was saved.');
+        }
+        $names = array_values(array_unique(array_filter(preg_split('/[\s,]+/', trim($value)) ?: [], static fn (string $name): bool => $name !== '')));
+
+        return $names === [] ? null : $names;
+    }
+
+    /**
+     * The other-tags rows; a row whose fields are all empty is skipped, so
+     * clearing a row removes that tag. Null for none.
+     */
+    private static function externalTagRows(mixed $rows): ?array
+    {
+        if (!is_array($rows) || count($rows) > ConsentAppearance::MAX_EXTERNAL_TAGS + 5) {
+            throw new \InvalidArgumentException('The other tags list was malformed. Nothing was saved.');
+        }
+        $tags = [];
+        foreach ($rows as $row) {
+            if (!is_array($row) || array_diff(array_keys($row), ['id', 'name', 'category']) !== []
+                || array_filter($row, 'is_string') !== $row) {
+                throw new \InvalidArgumentException('Each other tag needs an ID, a name and a category as text. Nothing was saved.');
+            }
+            $tag = ['id' => trim($row['id'] ?? ''), 'name' => trim($row['name'] ?? ''), 'category' => trim($row['category'] ?? '')];
+            if ($tag !== ['id' => '', 'name' => '', 'category' => '']) {
+                $tags[] = $tag;
+            }
+        }
+
+        return $tags === [] ? null : $tags;
     }
 
     /** Checked category boxes; an empty value is the marker that makes "none" submittable. */
@@ -239,7 +292,22 @@ final class ConsentManagerForm
             'close_button' => $consent['close_button'] ?? '',
             'default_granted' => $consent['default_granted'] ?? ConsentAppearance::DEFAULT_GRANTED,
             'respect_gpc' => $consent['respect_gpc'] ?? true,
+            'layout' => $consent['layout'] ?? ConsentAppearance::DEFAULT_LAYOUT,
+            'extra_categories' => implode(', ', $consent['categories'] ?? []),
+            'external_tags' => $consent['external_tags'] ?? [],
+            'category_tags' => self::tagNamesByCategory($consent['external_tags'] ?? []),
         ];
+    }
+
+    /** @return array<string, string> Category => its external tags' names, comma-separated, for the preview. */
+    private static function tagNamesByCategory(array $tags): array
+    {
+        $names = [];
+        foreach ($tags as $tag) {
+            $names[$tag['category']][] = $tag['name'];
+        }
+
+        return array_map(static fn (array $list): string => implode(', ', $list), $names);
     }
 
     /** The rejected form exactly as typed, bounded, over the effective values. */
@@ -292,6 +360,22 @@ final class ConsentManagerForm
         }
         if (in_array($submitted['respect_gpc'] ?? null, ['0', '1'], true)) {
             $form['respect_gpc'] = $submitted['respect_gpc'] === '1';
+        }
+        if (in_array($submitted['layout'] ?? null, ConsentAppearance::LAYOUTS, true)) {
+            $form['layout'] = $submitted['layout'];
+        }
+        $form['extra_categories'] = $text($submitted['categories'] ?? null, $form['extra_categories'], 1024);
+        if (is_array($submitted['external_tags'] ?? null)) {
+            $form['external_tags'] = [];
+            foreach (array_slice(array_values(array_filter($submitted['external_tags'], 'is_array')), 0, ConsentAppearance::MAX_EXTERNAL_TAGS) as $row) {
+                $tag = [];
+                foreach (['id', 'name', 'category'] as $field) {
+                    $tag[$field] = $text($row[$field] ?? null, '', 256);
+                }
+                if (implode('', $tag) !== '') {
+                    $form['external_tags'][] = $tag;
+                }
+            }
         }
 
         return $form;

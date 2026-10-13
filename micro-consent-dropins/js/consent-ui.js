@@ -34,7 +34,7 @@
   var input = own(window, 'MicroConsentConfig');
   if (input === absent) input = {};
   if (!record(input)) { validConfig = false; input = {}; }
-  var keys = ['name', 'privacyPolicyUrl', 'formspreeEndpoint', 'categories', 'respectGpc', 'consentLifetimeDays', 'revision', 'storageKey', 'aggregateNamespace', 'text', 'theme', 'buttons', 'regions', 'defaultRegion', 'consentType', 'closeButton', 'defaultGranted'];
+  var keys = ['name', 'privacyPolicyUrl', 'formspreeEndpoint', 'categories', 'respectGpc', 'consentLifetimeDays', 'revision', 'storageKey', 'aggregateNamespace', 'text', 'theme', 'buttons', 'layout', 'externalTags', 'regions', 'defaultRegion', 'consentType', 'closeButton', 'defaultGranted'];
   try {
     Object.getOwnPropertyNames(input).forEach(function (key) {
       if (keys.indexOf(key) === -1 || own(input, key) === absent) validConfig = false;
@@ -70,6 +70,7 @@
     "categories": {
       "analytics": "Analytics (enhanced details when connected to the analytics tracker)"
     },
+    "categoryTags": "Includes: {tags}",
     "optOut": "Opt out of sale, sharing, or targeted advertising in connected tools",
     "optOutHelp": "This opt-out disables the marketing category and signals connected providers. It cannot enforce choices for tools that are not connected or process an organization-wide privacy request.",
     "gpcNotice": "Your browser sends Global Privacy Control. We keep the advertising opt-out on and marketing denied. This signal does not grant analytics consent.",
@@ -93,7 +94,7 @@
     "requestSent": "Your request was submitted to Formspree for this website’s operator. The operator must review and process it; submission does not erase stored data."
   };
   // Labels allow 120 UTF-8 bytes; paragraphs and messages allow 1,000.
-  var labelKeys = ["title", "privacyLink", "reject", "accept", "manage", "save", "reopen", "close", "dismiss", "dismissReject", "settingsLabel", "preferencesTab", "requestsTab", "categoriesLegend", "categories", "requestEmail", "requestType", "requestAccess", "requestDelete", "requestCorrect", "requestOptOut", "requestMessage", "requestSubmit"];
+  var labelKeys = ["title", "privacyLink", "reject", "accept", "manage", "save", "reopen", "close", "dismiss", "dismissReject", "settingsLabel", "preferencesTab", "requestsTab", "categoriesLegend", "categories", "categoryTags", "requestEmail", "requestType", "requestAccess", "requestDelete", "requestCorrect", "requestOptOut", "requestMessage", "requestSubmit"];
   var themeDefaults = {background: '#FFFFFF', text: '#17212D', accent: '#174F85', border: '#B7C1CE', buttonBackground: '#FFFFFF', buttonText: '#174F85', buttonBorder: '#174F85'};
   var buttonNames = ['reject', 'accept', 'manage'];
   var reopenPositions = ['bottom-left', 'bottom-right', 'hidden'];
@@ -131,6 +132,7 @@
           return /^[a-z][a-z0-9_-]{0,31}$/.test(category) && reserved.indexOf(category) === -1 && boundedText(own(entry, category), 120, false);
         });
       }
+      if (key === 'categoryTags' && (typeof entry !== 'string' || entry.indexOf('{tags}') === -1)) return false;
       return boundedText(entry, labelKeys.indexOf(key) === -1 ? 1000 : 120, false);
     });
   }
@@ -151,6 +153,21 @@
         && (show.indexOf('accept') !== -1 || show.indexOf('manage') !== -1)
         && show.every(function (button, index) { return buttonNames.indexOf(button) !== -1 && show.indexOf(button) === index; })))
       && (reopen === absent || reopenPositions.indexOf(reopen) !== -1);
+  }
+  // Tags the website loads itself: a unique id the markup refers to, a name and
+  // a category, as the server's ConsentAppearance::externalTags() requires.
+  function validExternalTags(value) {
+    if (!Array.isArray(value) || value.length > 30) return false;
+    var seen = [];
+    return value.every(function (tag) {
+      var entries = record(tag) ? names(tag) : null;
+      if (!entries || !entries.every(function (key) { return key === 'id' || key === 'name' || key === 'category'; })) return false;
+      var id = own(tag, 'id'), category = own(tag, 'category');
+      if (typeof id !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(id) || seen.indexOf(id) !== -1) return false;
+      seen.push(id);
+      return boundedText(own(tag, 'name'), 120, false) && typeof category === 'string'
+        && /^[a-z][a-z0-9_-]{0,31}$/.test(category) && reserved.indexOf(category) === -1;
+    });
   }
   // The first three are current; explicit and implicit are older names.
   var consentTypes = ['implicit_us', 'explicit_us', 'explicit_eu', 'explicit', 'implicit'];
@@ -215,12 +232,18 @@
     text: option('text', {}, validText),
     theme: option('theme', {}, validTheme),
     buttons: option('buttons', {}, validButtons),
+    layout: option('layout', 'card', function (value) { return value === 'card' || value === 'bar'; }),
+    externalTags: option('externalTags', [], validExternalTags),
     regions: option('regions', [], validRegions),
     defaultRegion: option('defaultRegion', '', function (value) { return typeof value === 'string' && /^[a-z0-9_-]{0,32}$/.test(value); }),
     consentType: option('consentType', 'explicit_eu', validConsentType),
     closeButton: option('closeButton', '', validCloseButton),
     defaultGranted: option('defaultGranted', null, validCategoryList)
   };
+  // A tag waiting for a category the banner does not ask about could never run.
+  if (!config.externalTags.every(function (tag) { return config.categories.indexOf(tag.category) !== -1; })) validConfig = false;
+  // Invalid settings deny everything, so no tag is listed or started.
+  if (!validConfig) config.externalTags = [];
   var rawRegions = Array.isArray(config.regions) ? config.regions : [];
   var regions = [];
   rawRegions.forEach(function (r) {
@@ -312,6 +335,13 @@
     }
     return (value === absent ? defaultText.details : value).map(function (paragraph) { return paragraph.trim(); });
   }
+  function tagNames(category) {
+    return config.externalTags.filter(function (tag) { return tag.category === category; }).map(function (tag) { return tag.name.trim(); });
+  }
+  function tagCategory(id) {
+    for (var i = 0; i < config.externalTags.length; i++) if (config.externalTags[i].id === id) return config.externalTags[i].category;
+    return null;
+  }
   function categoryLabel(category) {
     var value = own(own(config.text, 'categories'), category);
     if (typeof value === 'string') return value.trim();
@@ -390,6 +420,62 @@
     enforceSignals();
     subscribers.slice().forEach(function (callback) { try { callback(snapshot()); } catch (error) {} });
     window.dispatchEvent(new CustomEvent('privacy_update', {detail: snapshot()}));
+    pushDataLayer();
+    activateTags();
+  }
+  // A tag manager that already keeps a dataLayer (Google Tag Manager, for one)
+  // hears each change of choices; none is created when the page has none.
+  var lastPushed = null;
+  function pushDataLayer() {
+    var layer = own(window, 'dataLayer');
+    if (!Array.isArray(layer)) return;
+    var current = snapshot();
+    var serialized = JSON.stringify(current);
+    if (serialized === lastPushed) return;
+    lastPushed = serialized;
+    try { layer.push({event: 'micro_consent_update', micro_consent: current}); } catch (error) {}
+  }
+  // Start the website's waiting tags whose category is allowed, one at a time in
+  // page order: a script with src and no async attribute loads before the next
+  // starts. Only listed tag IDs run, and only after an explicit grant (or an
+  // implicit_us default grant). Withdrawal cannot stop a tag that already ran.
+  var pendingTags = [];
+  var tagRunning = false;
+  function activateTags() {
+    var found;
+    try { found = document.querySelectorAll('script[type="text/plain"][data-consent-tag]'); } catch (error) { return; }
+    var granted = snapshot();
+    Array.prototype.forEach.call(found || [], function (node) {
+      var category = tagCategory(node.getAttribute('data-consent-tag'));
+      if (category && granted[category] === true && !pendingTags.some(function (entry) { return entry.node === node; })) {
+        pendingTags.push({node: node, category: category});
+      }
+    });
+    runNextTag();
+  }
+  function runNextTag() {
+    if (tagRunning || !pendingTags.length) return;
+    var entry = pendingTags.shift();
+    var placeholder = entry.node;
+    var parent = placeholder.parentNode;
+    // A grant withdrawn while the tag waited leaves it inert.
+    if (!parent || snapshot()[entry.category] !== true) { runNextTag(); return; }
+    var script = document.createElement('script');
+    Array.prototype.forEach.call(placeholder.attributes, function (attribute) {
+      if (attribute.name !== 'type' && attribute.name !== 'data-consent-tag') script.setAttribute(attribute.name, attribute.value);
+    });
+    if (placeholder.nonce) script.nonce = placeholder.nonce;
+    var external = !!script.getAttribute('src');
+    if (!external) script.text = placeholder.text;
+    var wait = external && !placeholder.hasAttribute('async');
+    if (wait) {
+      tagRunning = true;
+      var next = function () { if (!tagRunning) return; tagRunning = false; runNextTag(); };
+      script.addEventListener('load', next);
+      script.addEventListener('error', next);
+    }
+    try { parent.replaceChild(script, placeholder); } catch (error) { tagRunning = false; }
+    if (!wait || !tagRunning) runNextTag();
   }
   function readSaved(raw) {
     try {
@@ -442,6 +528,8 @@
     if (!root) return;
     var state = snapshot();
     banner.hidden = chosen || dismissedForSession();
+    // The bar covers the reopen button's corner, so it shows only once the bar is closed.
+    opener.hidden = reopenPosition === 'hidden' || (config.layout === 'bar' && !banner.hidden);
     config.categories.forEach(function (category) {
       checkboxes[category].checked = state[category];
       checkboxes[category].disabled = !validConfig || (category === 'marketing' && state.doNotSell);
@@ -696,7 +784,7 @@
         root.style.setProperty('--mc-' + key.replace(/[A-Z]/g, function (letter) { return '-' + letter.toLowerCase(); }), hexColor(config.theme[key]));
       }
     });
-    banner = element('section', null, 'mc-banner'); banner.setAttribute('aria-labelledby', 'mc-banner-title');
+    banner = element('section', null, 'mc-banner' + (config.layout === 'bar' ? ' mc-banner--bar' : '')); banner.setAttribute('aria-labelledby', 'mc-banner-title');
     // The visible × is not announced; the label says what closing does.
     closeButton = element('button', '\u00D7', 'mc-close'); closeButton.type = 'button';
     closeButton.addEventListener('click', dismiss); labelCloseButton(); banner.appendChild(closeButton);
@@ -754,6 +842,8 @@
       var row = element('label', null, 'mc-category'); var checkbox = element('input');
       checkbox.type = 'checkbox'; checkbox.id = 'mc-category-' + category; row.htmlFor = checkbox.id; checkboxes[category] = checkbox; row.appendChild(checkbox);
       row.appendChild(element('span', categoryLabel(category)));
+      var tagList = tagNames(category);
+      if (tagList.length) row.appendChild(element('span', t('categoryTags').split('{tags}').join(tagList.join(', ')), 'mc-category-tags'));
       fields.appendChild(row);
     });
     preferences.appendChild(fields);

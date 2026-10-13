@@ -31,6 +31,16 @@ window.MicroConsentConfig = {
   storageKey: 'micro_consent_v2',
   // The tracker namespace used by the optional js/aggregate-consent.js bridge.
   aggregateNamespace: 'Aggregate',
+  // 'card' (a panel above the reopen button) or 'bar' (a full-width bar across
+  // the bottom of the window, with the buttons on the right on wide screens).
+  // layout: 'card',
+  // Tags your website loads itself, outside any tag manager. Each is named under
+  // its category in the preferences and starts once that category is allowed.
+  // Mark it in the page with type="text/plain" and its id, for example
+  //   <script type="text/plain" data-consent-tag="meta-pixel" src="https://...">
+  // and list it here, with a category from categories above:
+  //   {id: 'meta-pixel', name: 'Meta Pixel', category: 'marketing'}
+  // externalTags: [],
 
   // Consent behavior. Choose these with your legal team; see the consent
   // manager guide's "Consent behavior" section. The consent type is
@@ -74,6 +84,8 @@ window.MicroConsentConfig = {
     // preferencesIntro: 'Allow only the categories you choose. Rejection and withdrawal stop future actions in connected tools. Scripts already loaded may continue until you reload, and their cookies and stored history are not automatically erased.',
     // categoriesLegend: 'Optional categories',
     // categories: {analytics: 'Analytics (enhanced details when connected to the analytics tracker)'},
+    // The line naming a category's tags from externalTags; must contain {tags}.
+    // categoryTags: 'Includes: {tags}',
     // optOut: 'Opt out of sale, sharing, or targeted advertising in connected tools',
     // optOutHelp: 'This opt-out disables the marketing category and signals connected providers. It cannot enforce choices for tools that are not connected or process an organization-wide privacy request.',
     // gpcNotice: 'Your browser sends Global Privacy Control. We keep the advertising opt-out on and marketing denied. This signal does not grant analytics consent.',

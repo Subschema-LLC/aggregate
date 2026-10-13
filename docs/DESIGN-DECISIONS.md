@@ -156,6 +156,35 @@ flag (the value `1`, no identifier).
 **What would change it.** Guidance that treats closing differently in the regions
 adopters serve, or operators needing a dismissal that lasts across sessions.
 
+### Tags outside the tag manager run only when the banner names them
+
+**Decision.** Both consent banners can hold back scripts a website loads itself.
+The operator lists each as an external tag (an ID, the name visitors see and a
+category); the page marks its scripts `type="text/plain"` with
+`data-consent-tag` set to that ID, and the banner starts them, in page order,
+once that category is allowed. A script whose ID is not listed never starts.
+Each change of choices is also pushed to a `dataLayer` the page already has.
+See [Categories and other tags](CONSENT-MANAGER.md#categories-and-other-tags).
+
+**Why.** Many sites load pixels and widgets through their theme, a plugin or
+Google Tag Manager rather than Aggregate's tag manager, and a banner that only
+governs its own tags leaves those running regardless of the choice. Requiring a
+listed ID ties every script the banner starts to a name visitors can see under
+its category, and lets an operator move a tag to another category without
+editing the page. An inert script element is the established pattern for
+this, needs no proxying or rewriting of third-party code, and keeps the page's
+nonce-based Content Security Policy in force.
+
+**Trade-off.** The website has to mark each script, and anything it forgets
+runs unchecked. Scripts that already ran keep running until a reload after
+withdrawal, embedded frames are not covered, and a placeholder runs with full
+page privileges, so only markup the site controls should carry the attribute.
+The `dataLayer` event is pushed only to an existing array, so Google Tag Manager
+must load before the banner to see the first state.
+
+**What would change it.** Demand for frames and other embeds, which would use
+the same listed IDs, or for gating scripts that other code inserts later.
+
 ### Clicks and forms tracked only where the page marks them
 
 **Decision.** The tracker sends click and form events only for elements a site

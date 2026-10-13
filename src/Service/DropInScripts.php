@@ -120,7 +120,7 @@ final class DropInScripts
         }
         $configuration = $this->json([
             'namespace' => $this->namespace(), 'name' => $consent['name'],
-            'categories' => $this->tags?->consentCategories($siteId) ?? ['analytics'],
+            'categories' => ConsentCategories::builtin($this->tags?->consentCategories($siteId) ?? ['analytics'], $consent),
         ] + ($siteId === null ? [] : ['siteId' => $siteId])
             + (($consent['privacy_policy_url'] ?? '') !== '' ? ['privacyPolicyUrl' => $consent['privacy_policy_url']] : [])
             + (($consent['precheck_categories'] ?? []) !== [] ? ['precheckCategories' => $consent['precheck_categories']] : [])

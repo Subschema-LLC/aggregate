@@ -29,7 +29,7 @@
 
     <h2 class="title is-4" id="consent-manager-scope">{{ site.name }}</h2>
     <div class="content">
-        <p>Saved in <code>config/tag-manager/sites/{{ selected_site }}.yaml</code> under <code>consent_manager</code>, where you can also edit them directly. The same validation applies to both. Its categories come from this website’s enabled tags on the <a href="{{ path('app_tag_manager', {site: selected_site}) }}">Tag manager</a> page, plus enhanced analytics.</p>
+        <p>Saved in <code>config/tag-manager/sites/{{ selected_site }}.yaml</code> under <code>consent_manager</code>, where you can also edit them directly. The same validation applies to both. Its categories are enhanced analytics, the ones you add below, and those this website’s enabled tags use on the <a href="{{ path('app_tag_manager', {site: selected_site}) }}">Tag manager</a> page.</p>
         <p>The hosted banner changes within five minutes, as browsers reuse it that long. A banner you downloaded from <a href="{{ path('app_setup', {website: site.token, step: 3, tags: '1'}) }}">Setup</a> to host yourself is a snapshot: download it again after saving. The <a href="{{ path('app_standalone_consent', {siteId: selected_site}) }}">standalone banner</a> is configured separately.</p>
     </div>
 
@@ -73,6 +73,39 @@
             </fieldset></div>
 
             <div class="box"><fieldset class="consent-settings-fieldset">
+                <legend class="title is-5">Categories and other tags</legend>
+                <p class="help mb-4">The banner always asks about enhanced analytics and the categories this website’s enabled tag manager tags use. Add categories and tags here for scripts your website loads another way, such as an advertising pixel in your theme or a tag in Google Tag Manager.{% if docs_url('tracking.consent-manager-tags') %} <a href="{{ docs_url('tracking.consent-manager-tags') }}" target="_blank" rel="noopener noreferrer">How other tags work<span class="is-sr-only"> (opens in a new tab)</span></a>{% endif %}</p>
+                <div class="field">
+                    <label class="label" for="consent-categories">Additional categories</label>
+                    <div class="control"><input class="input" id="consent-categories" name="categories" value="{{ form.extra_categories }}" maxlength="1024" placeholder="functional, preferences" autocomplete="off" aria-describedby="consent-categories-help"></div>
+                    <p class="help" id="consent-categories-help">Up to 10, separated by commas: lowercase letters, digits, underscores or hyphens, beginning with a letter. The banner asks about them even when no tag uses them. Save to set their labels under <strong>Wording</strong>.</p>
+                </div>
+                <fieldset class="field">
+                    <legend class="label">Tags loaded another way</legend>
+                    <p class="help mb-3" id="consent-tags-help">Each tag is named to visitors under its category and starts only once that category is allowed. In your page, give each of its scripts <code>type="text/plain"</code> and the tag’s ID, for example <code>&lt;script type="text/plain" data-consent-tag="meta-pixel" src="https://…"&gt;&lt;/script&gt;</code>. A category not listed above is added. Clear a row to remove its tag.</p>
+                    <div class="table-container">
+                        <table class="table is-fullwidth is-narrow consent-tags-table">
+                            <thead><tr><th scope="col" id="consent-tags-id">ID</th><th scope="col" id="consent-tags-name">Name shown to visitors</th><th scope="col" id="consent-tags-category">Category</th></tr></thead>
+                            <tbody>
+                                {% set blank_rows = min(3, max_external_tags - form.external_tags|length) %}
+                                {% set rows = form.external_tags %}
+                                {% if blank_rows > 0 %}{% for i in 1..blank_rows %}{% set rows = rows|merge([{id: '', name: '', category: ''}]) %}{% endfor %}{% endif %}
+                                {% for tag in rows %}
+                                    <tr>
+                                        <td><input class="input is-small" id="consent-tag-{{ loop.index0 }}-id" name="external_tags[{{ loop.index0 }}][id]" value="{{ tag.id }}" maxlength="64" pattern="[A-Za-z][A-Za-z0-9_\-]{0,63}" autocomplete="off" aria-labelledby="consent-tags-id consent-tag-{{ loop.index0 }}-number"></td>
+                                        <td><input class="input is-small" id="consent-tag-{{ loop.index0 }}-name" name="external_tags[{{ loop.index0 }}][name]" value="{{ tag.name }}" maxlength="120" autocomplete="off" aria-labelledby="consent-tags-name consent-tag-{{ loop.index0 }}-number"></td>
+                                        <td><input class="input is-small" id="consent-tag-{{ loop.index0 }}-category" name="external_tags[{{ loop.index0 }}][category]" value="{{ tag.category }}" maxlength="32" list="consent-category-options" pattern="[a-z][a-z0-9_\-]{0,31}" autocomplete="off" aria-labelledby="consent-tags-category consent-tag-{{ loop.index0 }}-number"><span class="is-sr-only" id="consent-tag-{{ loop.index0 }}-number">tag {{ loop.index }}</span></td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <datalist id="consent-category-options">{% for category in categories %}<option value="{{ category }}"></option>{% endfor %}</datalist>
+                    <p class="help">Up to {{ max_external_tags }} tags; save to get more empty rows. Only listed IDs ever start. A tag that already ran keeps running until the visitor reloads the page, even after they withdraw.</p>
+                </fieldset>
+            </fieldset></div>
+
+            <div class="box"><fieldset class="consent-settings-fieldset">
                 <legend class="title is-5">Wording</legend>
                 <p class="help mb-4">Each field starts with its current wording. Text that matches the default is not saved, so later improvements to the default wording still reach your banner. Clear a field to restore its default. Text is shown as plain text; HTML is not interpreted.</p>
                 <div class="field">
@@ -96,7 +129,7 @@
                 </div>
                 <div class="field">
                     <span class="label">Category labels and default state</span>
-                    <p class="help mb-3">Categories come from this website’s enabled tags, plus enhanced analytics. Check <strong>Pre-check</strong> if the category’s checkbox should start selected for new visitors.</p>
+                    <p class="help mb-3">Enhanced analytics, the categories added above, and those this website’s tags use. Check <strong>Pre-check</strong> if the category’s checkbox should start selected for new visitors.</p>
                     {% for category, label in form.categories %}
                         <div class="field is-horizontal mb-2">
                             <div class="field-label is-normal"><label class="label has-text-weight-normal" for="consent-category-{{ category }}"><code>{{ category }}</code></label></div>
@@ -114,10 +147,11 @@
                     <p class="help">Unchecked categories start unselected for new visitors. In regions such as the EU/UK under GDPR, pre-ticked boxes do not constitute valid consent; keep optional categories unselected where opt-in consent is required.</p>
                 </div>
                 <div class="columns is-multiline">
-                    {% for key, label in {reject: 'Reject button', accept: 'Accept button', save: 'Save button', reopen: 'Reopen button', privacy_link: 'Privacy notice link', dismiss: 'Close button (×), US-style', dismiss_reject: 'Close button (×), EU-style'} %}
+                    {% for key, label in {reject: 'Reject button', accept: 'Accept button', save: 'Save button', reopen: 'Reopen button', privacy_link: 'Privacy notice link', dismiss: 'Close button (×), US-style', dismiss_reject: 'Close button (×), EU-style', category_tags: 'Tag list under a category'} %}
                         <div class="column is-half">
                             <label class="label" for="consent-text-{{ key }}">{{ label }}</label>
-                            <div class="control"><input class="input" id="consent-text-{{ key }}" name="text[{{ key }}]" value="{{ form.text[key] }}" placeholder="{{ default_text[key] }}" maxlength="120" data-default="{{ default_text[key] }}"></div>
+                            <div class="control"><input class="input" id="consent-text-{{ key }}" name="text[{{ key }}]" value="{{ form.text[key] }}" placeholder="{{ default_text[key] }}" maxlength="120" data-default="{{ default_text[key] }}"{% if key == 'category_tags' %} pattern=".*\{tags\}.*" title="Keep {tags} where the tag names go." aria-describedby="consent-category-tags-help"{% endif %}></div>
+                            {% if key == 'category_tags' %}<p class="help" id="consent-category-tags-help"><code>{tags}</code> becomes the names of the category’s other tags.</p>{% endif %}
                         </div>
                     {% endfor %}
                 </div>
@@ -150,7 +184,14 @@
             </fieldset></div>
 
             <div class="box"><fieldset class="consent-settings-fieldset">
-                <legend class="title is-5">Buttons</legend>
+                <legend class="title is-5">Layout and buttons</legend>
+                <div class="field">
+                    <label class="label" for="consent-layout">Layout</label>
+                    <div class="control select"><select id="consent-layout" name="layout" aria-describedby="consent-layout-help">
+                        {% for value, label in layouts %}<option value="{{ value }}"{% if form.layout == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                    </select></div>
+                    <p class="help" id="consent-layout-help">The card sits in the bottom-right corner. The bar spans the bottom of the window, with its buttons to the right of the text on wide screens and below it on phones.</p>
+                </div>
                 <div class="field">
                     <label class="label" for="consent-buttons-show">Buttons and order</label>
                     <div class="control select"><select id="consent-buttons-show" name="buttons[show]" aria-describedby="consent-buttons-help">
@@ -388,9 +429,10 @@
             <figure class="consent-preview-figure">
                 <figcaption class="has-text-weight-semibold mb-2">Preview</figcaption>
                 <p class="help mb-3">How the banner looks to a visitor who has not chosen yet. It updates as you edit; nothing here is saved or sent.</p>
+                <div data-pages--consent-manager--index-target="barNote"{% if form.layout != 'bar' %} hidden{% endif %}><p class="help mb-3">On the website the bar spans the bottom of the window, with the buttons to the right of the text on wide screens.</p></div>
                 {% set theme_style %}{% for key, color in form.theme %}--ac-{{ key|replace({'_': '-'}) }}: {{ color }};{% endfor %}{% endset %}
                 <div class="consent-preview" inert>
-                    <section class="ac-consent" style="{{ theme_style|trim }}" data-pages--consent-manager--index-target="banner">
+                    <section class="ac-consent{% if form.layout == 'bar' %} ac-consent--bar{% endif %}" style="{{ theme_style|trim }}" data-pages--consent-manager--index-target="banner">
                         <button type="button" class="ac-consent-close" aria-label="{{ form.text.dismiss_reject }}" title="{{ form.text.dismiss_reject }}" data-pages--consent-manager--index-target="close">×</button>
                         <h2 data-pages--consent-manager--index-target="title">{{ form.text.title|replace({'{name}': form.name}) }}</h2>
                         <p data-pages--consent-manager--index-target="description">{{ form.text.description }}</p>
@@ -398,7 +440,7 @@
                         <p data-pages--consent-manager--index-target="privacy"{% if not form.privacy_policy_url %} hidden{% endif %}><a href="#">{{ form.text.privacy_link }}</a></p>
                         <fieldset data-pages--consent-manager--index-target="categories"{% if 'save' not in form.show %} hidden{% endif %}>
                             <legend data-pages--consent-manager--index-target="legend">{{ form.text.categories_legend }}</legend>
-                            {% for category, label in form.categories %}<label class="ac-consent-category"><input type="checkbox"{% if category in form.precheck_categories %} checked{% endif %} data-preview-checkbox="{{ category }}"> <span data-category="{{ category }}">{{ label }}</span></label>{% endfor %}
+                            {% for category, label in form.categories %}<label class="ac-consent-category"><input type="checkbox"{% if category in form.precheck_categories %} checked{% endif %} data-preview-checkbox="{{ category }}"> <span data-category="{{ category }}">{{ label }}</span>{% if form.category_tags[category] is defined %}<span class="ac-consent-category-tags" data-category-tags="{{ form.category_tags[category] }}">{{ form.text.category_tags|replace({'{tags}': form.category_tags[category]}) }}</span>{% endif %}</label>{% endfor %}
                         </fieldset>
                         <div class="ac-consent-actions" data-pages--consent-manager--index-target="buttons">
                             {% for name in form.show|split(',') %}<button type="button" data-button="{{ name }}">{{ form.text[name] }}</button>{% endfor %}

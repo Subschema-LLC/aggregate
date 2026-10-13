@@ -320,6 +320,57 @@ final class ConsentManagerControllerTest extends TestCase
     }
 
 
+    public function testLayoutCategoriesAndOtherTagsAreSavedShownAndRestoredAfterAnError(): void
+    {
+        $form = $this->defaults();
+        $form['layout'] = 'bar';
+        $form['categories'] = 'functional, preferences functional';
+        $form['external_tags'] = [
+            ['id' => 'meta-pixel', 'name' => ' Meta Pixel ', 'category' => 'marketing'],
+            ['id' => 'chat', 'name' => 'Support chat', 'category' => 'social'],
+            // Empty rows are the page's spare rows and are ignored.
+            ['id' => '', 'name' => '', 'category' => ''],
+        ];
+        $request = $this->post($form);
+        $this->controller($request)->save($request);
+        self::assertSame([], $request->getSession()->getFlashBag()->get('error'));
+        $saved = Yaml::parseFile($this->sitePath($this->siteId))['consent_manager'];
+        self::assertSame('bar', $saved['layout']);
+        self::assertSame(['functional', 'preferences'], $saved['categories']);
+        self::assertSame([['id' => 'meta-pixel', 'name' => 'Meta Pixel', 'category' => 'marketing'], ['id' => 'chat', 'name' => 'Support chat', 'category' => 'social']], $saved['external_tags']);
+
+        $page = $this->view($request, $this->siteId);
+        self::assertSame('bar', $page->filter('#consent-layout option[selected]')->attr('value'));
+        self::assertSame('functional, preferences', $page->filter('#consent-categories')->attr('value'));
+        self::assertSame('chat', $page->filter('#consent-tag-1-id')->attr('value'));
+        self::assertSame('', $page->filter('#consent-tag-2-id')->attr('value'), 'spare rows follow the saved tags');
+        // Every category the banner asks about can be labelled: configured, from other tags, and from enabled tags.
+        foreach (['analytics', 'functional', 'preferences', 'marketing', 'social'] as $category) {
+            self::assertCount(1, $page->filter('#consent-category-'.$category), $category);
+        }
+        self::assertSame('Includes: Meta Pixel', $page->filter('.consent-preview [data-category-tags="Meta Pixel"]')->text());
+        self::assertStringContainsString('ac-consent--bar', $page->filter('.consent-preview .ac-consent')->attr('class'));
+
+        // A tag that would never wait for consent is rejected; the rows are shown again.
+        $before = file_get_contents($this->sitePath($this->siteId));
+        $form['external_tags'][] = ['id' => 'bad', 'name' => 'Bad', 'category' => 'none'];
+        $request = $this->post($form);
+        $this->controller($request)->save($request);
+        $errors = $request->getSession()->getFlashBag()->get('error');
+        self::assertCount(1, $errors);
+        self::assertStringContainsString('consent_manager.external_tags[2].category', $errors[0]);
+        self::assertSame($before, file_get_contents($this->sitePath($this->siteId)));
+        $page = $this->view($request, $this->siteId);
+        self::assertStringContainsString('Values preserved', $page->text());
+        self::assertSame('none', $page->filter('#consent-tag-2-category')->attr('value'));
+
+        // The card layout and empty lists remove the keys again.
+        $form = $this->defaults() + ['layout' => 'card', 'categories' => '', 'external_tags' => [['id' => '', 'name' => '', 'category' => '']]];
+        $request = $this->post($form);
+        $this->controller($request)->save($request);
+        self::assertSame(['enabled' => true, 'name' => 'First shop'], Yaml::parseFile($this->sitePath($this->siteId))['consent_manager']);
+    }
+
     public function testRegionConsentTypesAreSavedListedAndValidated(): void
     {
         $form = $this->defaults();

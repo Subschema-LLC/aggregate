@@ -366,4 +366,28 @@ final class DropInScriptsTest extends TestCase
 
         return new DropInScripts($loader, new WebsiteConfigManager($this->directory), new AppBranding($loader, $this->directory), $this->directory, new TagManagerSettings($loader));
     }
+
+    public function testSiteConsentScriptAsksAboutConfiguredAndOtherTagCategoriesAndListsTheTags(): void
+    {
+        $this->scripts();
+        $loader = new AggregateConfigLoader($this->directory, 'test');
+        $websites = new WebsiteConfigManager($this->directory);
+        $sites = new SiteScriptConfig($websites, $this->directory, 'test');
+        $siteId = SiteScriptConfig::idForToken('public-website-token');
+        $sites->save($siteId, ['enabled' => true, 'tags' => [
+            ['id' => 'ads', 'src' => 'https://private-provider.example.test/ads.js', 'consent' => 'marketing'],
+        ]], [
+            'categories' => ['preferences'], 'layout' => 'bar',
+            'external_tags' => [['id' => 'chat', 'name' => 'Chat </script><script>alert(1)</script>', 'category' => 'functional']],
+        ]);
+        $scripts = new DropInScripts($loader, $websites, new AppBranding($loader, $this->directory), $this->directory, new TagManagerSettings($loader, $sites), $sites);
+        $content = $scripts->consentScript(false, $siteId)['content'];
+        self::assertSame(1, preg_match('/var consentConfig = (\{.*?\});\n/', $content, $match));
+        $configuration = json_decode($match[1], true, flags: JSON_THROW_ON_ERROR);
+        self::assertSame(['analytics', 'preferences', 'functional', 'marketing'], $configuration['categories']);
+        self::assertSame('bar', $configuration['layout']);
+        self::assertSame([['id' => 'chat', 'name' => 'Chat </script><script>alert(1)</script>', 'category' => 'functional']], $configuration['externalTags']);
+        self::assertStringNotContainsString('</script>', $content, 'tag names cannot end an inline script');
+        self::assertStringNotContainsString('private-provider', $content);
+    }
 }

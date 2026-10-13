@@ -20,6 +20,7 @@
     ],
     "categoriesLegend": "Optional categories",
     "categories": {"analytics": "Enhanced analytics"},
+    "categoryTags": "Includes: {tags}",
     "reject": "Reject all optional categories",
     "accept": "Accept all optional categories",
     "save": "Save selected choices",
@@ -75,6 +76,32 @@
     if (typeof value === 'string' && value.trim() !== '') return value;
     return category === 'analytics' ? defaultText.categories.analytics
       : category.replace(/[-_]/g, ' ').replace(/^./, function (letter) { return letter.toUpperCase(); });
+  }
+  // The line under a category naming the website's other tags in it.
+  function tagsLine(names) {
+    var template = own(configuredText, 'categoryTags');
+    if (typeof template !== 'string' || template.indexOf('{tags}') === -1) template = defaultText.categoryTags;
+    return template.split('{tags}').join(names.join(', '));
+  }
+  var layout = own(consentConfig, 'layout') === 'bar' ? 'bar' : 'card';
+  // Tags the website loads itself, outside the tag manager. Each waits in inert
+  // markup until its category is allowed:
+  // a script element with type="text/plain", data-consent-tag="ID" and its src or code.
+  var externalTags = [];
+  (Array.isArray(own(consentConfig, 'externalTags')) ? consentConfig.externalTags : []).forEach(function (tag) {
+    var id = own(tag, 'id'), name = own(tag, 'name'), category = own(tag, 'category');
+    if (typeof id === 'string' && /^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(id) && typeof name === 'string' && name.trim() !== ''
+      && typeof category === 'string' && /^[a-z][a-z0-9_-]{0,31}$/.test(category) && category !== 'none'
+      && !externalTags.some(function (entry) { return entry.id === id; })) {
+      externalTags.push({id: id, name: name.trim(), category: category});
+    }
+  });
+  function tagCategory(id) {
+    for (var i = 0; i < externalTags.length; i++) if (externalTags[i].id === id) return externalTags[i].category;
+    return null;
+  }
+  function tagNames(category) {
+    return externalTags.filter(function (tag) { return tag.category === category; }).map(function (tag) { return tag.name; });
   }
   var buttonOptions = own(consentConfig, 'buttons');
   function getShownButtons() {
@@ -243,6 +270,65 @@
     subscribers.slice().forEach(function (callback) {
       try { callback(state()); } catch (error) {}
     });
+    pushDataLayer();
+    activateTags();
+  }
+
+  // A tag manager that already keeps a dataLayer (Google Tag Manager, for one)
+  // hears each change of choices; none is created when the page has none.
+  var lastPushed = null;
+  function pushDataLayer() {
+    var layer;
+    try { layer = window.dataLayer; } catch (error) { return; }
+    if (!Array.isArray(layer)) return;
+    var current = state();
+    var serialized = JSON.stringify(current);
+    if (serialized === lastPushed) return;
+    lastPushed = serialized;
+    try { layer.push({event: 'aggregate_consent_update', aggregate_consent: current}); } catch (error) {}
+  }
+
+  // Start the website's waiting tags whose category is allowed, one at a time in
+  // page order: a script with src and no async attribute loads before the next
+  // starts. Only listed tag IDs run, and only after an explicit grant (or an
+  // implicit_us default grant). Withdrawal cannot stop a tag that already ran.
+  var pendingTags = [];
+  var tagRunning = false;
+  function activateTags() {
+    var found;
+    try { found = document.querySelectorAll('script[type="text/plain"][data-consent-tag]'); } catch (error) { return; }
+    var granted = state();
+    Array.prototype.forEach.call(found || [], function (node) {
+      var category = tagCategory(node.getAttribute('data-consent-tag'));
+      if (category && granted[category] === true && !pendingTags.some(function (entry) { return entry.node === node; })) {
+        pendingTags.push({node: node, category: category});
+      }
+    });
+    runNextTag();
+  }
+  function runNextTag() {
+    if (tagRunning || !pendingTags.length) return;
+    var entry = pendingTags.shift();
+    var placeholder = entry.node;
+    var parent = placeholder.parentNode;
+    // A grant withdrawn while the tag waited leaves it inert.
+    if (!parent || choices[entry.category] !== true) { runNextTag(); return; }
+    var script = document.createElement('script');
+    Array.prototype.forEach.call(placeholder.attributes, function (attribute) {
+      if (attribute.name !== 'type' && attribute.name !== 'data-consent-tag') script.setAttribute(attribute.name, attribute.value);
+    });
+    if (placeholder.nonce) script.nonce = placeholder.nonce;
+    var external = !!script.getAttribute('src');
+    if (!external) script.text = placeholder.text;
+    var wait = external && !placeholder.hasAttribute('async');
+    if (wait) {
+      tagRunning = true;
+      var next = function () { if (!tagRunning) return; tagRunning = false; runNextTag(); };
+      script.addEventListener('load', next);
+      script.addEventListener('error', next);
+    }
+    try { parent.replaceChild(script, placeholder); } catch (error) { tagRunning = false; }
+    if (!wait || !tagRunning) runNextTag();
   }
 
   function setConsent(value) {
@@ -439,7 +525,7 @@
       document.head.appendChild(style);
     }
     panel = element('section');
-    panel.className = 'ac-consent';
+    panel.className = 'ac-consent' + (layout === 'bar' ? ' ac-consent--bar' : '');
     panel.id = 'ac-consent-panel';
     panel.setAttribute('role', 'dialog');
     panel.setAttribute('aria-labelledby', 'ac-consent-title');
@@ -509,6 +595,12 @@
         checkboxes[category] = checkbox;
         label.appendChild(checkbox);
         label.appendChild(element('span', ' ' + categoryLabel(category)));
+        var names = tagNames(category);
+        if (names.length) {
+          var tags = element('span', tagsLine(names));
+          tags.className = 'ac-consent-category-tags';
+          label.appendChild(tags);
+        }
         fieldset.appendChild(label);
       });
       panel.appendChild(fieldset);
