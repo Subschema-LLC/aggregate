@@ -301,4 +301,26 @@ final class StandaloneConsentSettingsTest extends TestCase
     {
         return $this->projectDir.'/config/tag-manager/sites/'.$id.$suffix.'.yaml';
     }
+
+    public function testLayoutAndOtherTagsMustUseListedCategoriesAndReachTheBrowser(): void
+    {
+        $saved = $this->settings->save($this->firstId, [
+            'categories' => ['analytics', 'functional', 'marketing'],
+            'layout' => 'bar',
+            'external_tags' => [['id' => 'chat', 'name' => 'Support chat', 'category' => 'functional']],
+        ]);
+        self::assertSame('bar', $saved['layout']);
+        $browser = $this->settings->browserConfig($this->firstId);
+        self::assertSame('bar', $browser['layout']);
+        self::assertSame([['id' => 'chat', 'name' => 'Support chat', 'category' => 'functional']], $browser['externalTags']);
+        self::assertSame(['analytics', 'functional', 'marketing'], $browser['categories'], 'this banner asks about exactly the listed categories');
+
+        try {
+            $this->settings->save($this->firstId, ['external_tags' => [['id' => 'share', 'name' => 'Share buttons', 'category' => 'social']]]);
+            self::fail('A tag waiting for a category the banner does not ask about must be rejected.');
+        } catch (\InvalidArgumentException $e) {
+            self::assertSame('standalone_consent.external_tags[0].category "social" is not in standalone_consent.categories; add it there first.', $e->getMessage());
+        }
+        self::assertSame('bar', $this->settings->get($this->firstId)['layout'], 'a rejected save changes nothing');
+    }
 }

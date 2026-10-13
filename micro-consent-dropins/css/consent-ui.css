@@ -45,6 +45,9 @@
 .mc-root legend { font-weight: 600; padding: 0 .3rem; }
 .mc-category { align-items: flex-start; display: flex; gap: .65rem; padding: .6rem 0; cursor: pointer; }
 .mc-category input { accent-color: var(--mc-accent); flex: 0 0 auto; width: 1.2rem; height: 1.2rem; margin: .2rem 0 0; }
+/* The website's other tags in a category, on their own line under its label. */
+.mc-category { flex-wrap: wrap; }
+.mc-category-tags { flex-basis: 100%; font-size: .875rem; opacity: .85; padding-left: 1.85rem; }
 .mc-field { margin: 1rem 0; }
 .mc-field label { display: block; font-weight: 600; margin-bottom: .35rem; }
 .mc-field input, .mc-field select, .mc-field textarea { width: 100%; background: var(--mc-background); border: 1px solid var(--mc-border); border-radius: .3rem; color: var(--mc-text); font: inherit; padding: .6rem; }
@@ -53,5 +56,14 @@
 .mc-error { color: #9e1f17 !important; font-weight: 600; }
 .mc-request-status { color: var(--mc-text); }
 .mc-status { position: fixed; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* layout: bar. A full-width bar across the bottom of the window; on wide
+   screens the text sits on the left and the buttons on the right. */
+.mc-banner.mc-banner--bar { border-radius: 0; border-width: 1px 0 0; inset: auto 0 0 0; margin: 0; max-height: min(75vh, 36rem); max-width: none; padding: 1rem 1.25rem; width: 100%; }
+@media (min-width: 48rem) {
+  .mc-banner.mc-banner--bar { align-items: start; column-gap: 2rem; display: grid; grid-template-columns: minmax(0, 1fr) minmax(12rem, 18rem); padding: 1.1rem max(3.5rem, calc((100% - 72rem) / 2)) 1.1rem max(1.5rem, calc((100% - 72rem) / 2)); }
+  .mc-banner--bar > * { grid-column: 1; }
+  .mc-banner--bar > .mc-actions { align-self: center; flex-direction: column; grid-column: 2; grid-row: 1 / span 9; margin: 0; }
+  .mc-banner--bar > .mc-actions .mc-button { flex: 0 0 auto; width: 100%; }
+}
 @media (max-width: 36rem) { .mc-banner, .mc-dialog { padding: 1rem; } .mc-actions { flex-direction: column; } .mc-actions .mc-button { flex-basis: auto; width: 100%; } }
 @media (prefers-reduced-motion: reduce) { .mc-root * { scroll-behavior: auto; } }

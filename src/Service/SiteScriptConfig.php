@@ -72,7 +72,7 @@ final class SiteScriptConfig
         return new AggregateConfigLoader($this->projectDir, $this->environment, 'tag-manager/sites/'.$id);
     }
 
-    /** @return array{enabled: bool, name: string, privacy_policy_url?: string, text?: array, theme?: array, buttons?: array} */
+    /** @return array{enabled: bool, name: string, privacy_policy_url?: string, categories?: list<string>, text?: array, theme?: array, buttons?: array, layout?: string, external_tags?: list<array>} */
     public function consent(string $id): array
     {
         $site = $this->site($id);
@@ -134,7 +134,7 @@ final class SiteScriptConfig
     /** Drops optional keys set to null; a null enabled or name stays invalid. */
     private static function withoutRemovals(array $consent): array
     {
-        foreach (['privacy_policy_url', 'precheck_categories', 'respect_gpc', ...ConsentAppearance::KEYS] as $key) {
+        foreach (['privacy_policy_url', 'precheck_categories', 'respect_gpc', 'categories', ...ConsentAppearance::KEYS] as $key) {
             if (array_key_exists($key, $consent) && $consent[$key] === null) {
                 unset($consent[$key]);
             }
@@ -167,7 +167,7 @@ final class SiteScriptConfig
 
     private static function validateConsent(mixed $settings, string $defaultName, bool $defaultEnabled = true): array
     {
-        $supported = ['enabled', 'name', 'privacy_policy_url', 'precheck_categories', 'respect_gpc', ...ConsentAppearance::KEYS];
+        $supported = ['enabled', 'name', 'privacy_policy_url', 'precheck_categories', 'respect_gpc', 'categories', ...ConsentAppearance::KEYS];
         if (!is_array($settings) || ($settings !== [] && array_is_list($settings)) || array_diff(array_keys($settings), $supported) !== []) {
             throw new \InvalidArgumentException('Consent manager settings support only '.implode(', ', $supported).'.');
         }
@@ -198,6 +198,13 @@ final class SiteScriptConfig
             }
             if ($clean !== []) {
                 $result['precheck_categories'] = $clean;
+            }
+        }
+        // Categories the banner asks about even when no enabled tag uses them.
+        if (array_key_exists('categories', $settings)) {
+            $categories = ConsentAppearance::categoryList($settings['categories'], 'consent_manager.categories');
+            if ($categories !== []) {
+                $result['categories'] = $categories;
             }
         }
         // Global Privacy Control withholds the categories implicit_us grants by default.
