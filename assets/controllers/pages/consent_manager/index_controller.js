@@ -18,7 +18,7 @@ export function contrastRatio(first, second) {
 
 /** Live preview of the built-in banner. Nothing here is saved; the form is. */
 export default class extends Controller {
-    static targets = ['banner', 'close', 'title', 'description', 'details', 'privacy', 'categories', 'legend', 'buttons', 'reopen', 'contrast', 'colorValue', 'nameInput'];
+    static targets = ['banner', 'close', 'title', 'description', 'details', 'privacy', 'categories', 'legend', 'buttons', 'reopen', 'contrast', 'colorValue', 'nameInput', 'barNote'];
 
     connect() {
         this.update();
@@ -63,6 +63,15 @@ export default class extends Controller {
         for (const label of this.categoriesTarget.querySelectorAll('[data-category]')) {
             label.textContent = this.text(`text[categories][${label.dataset.category}]`);
         }
+        // The banner falls back to its default wording when {tags} is missing.
+        let tagsTemplate = this.text('text[category_tags]');
+        if (!tagsTemplate.includes('{tags}')) tagsTemplate = this.field('text[category_tags]')?.dataset.default || '{tags}';
+        for (const line of this.categoriesTarget.querySelectorAll('[data-category-tags]')) {
+            line.textContent = tagsTemplate.split('{tags}').join(line.dataset.categoryTags);
+        }
+        const bar = this.field('layout')?.value === 'bar';
+        this.bannerTarget.classList.toggle('ac-consent--bar', bar);
+        if (this.hasBarNoteTarget) this.barNoteTarget.hidden = !bar;
         for (const input of this.element.querySelectorAll('[data-precheck-category]')) {
             const cat = input.dataset.precheckCategory;
             const previewCb = this.element.querySelector('[data-preview-checkbox="' + cat + '"]');

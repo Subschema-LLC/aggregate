@@ -147,6 +147,18 @@
     background-color: color-mix(in srgb, var(--ac-accent) 8%, transparent);
 }
 
+/* The website's other tags in a category, on their own line under its label. */
+.ac-consent-category {
+    flex-wrap: wrap;
+}
+
+.ac-consent-category-tags {
+    flex-basis: 100%;
+    font-size: 0.8125rem;
+    opacity: 0.85;
+    padding-left: 1.65rem;
+}
+
 .ac-consent input[type="checkbox"] {
     accent-color: var(--ac-accent);
     cursor: pointer;
@@ -263,6 +275,72 @@
 .ac-consent-open--right {
     left: auto;
     right: 1rem;
+}
+
+/* layout: bar. A full-width bar across the bottom of the window; on wide
+   screens the text and categories sit on the left and the buttons on the right. */
+.ac-consent.ac-consent--bar {
+    animation-name: acConsentBarUp;
+    border-radius: 0;
+    border-width: 1px 0 0;
+    bottom: 0;
+    left: 0;
+    max-height: min(75vh, 36rem);
+    max-width: none;
+    padding: 1rem 1.25rem;
+    right: 0;
+    width: 100%;
+}
+
+@keyframes acConsentBarUp {
+    from {
+        opacity: 0;
+        transform: translateY(100%);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.ac-consent--bar .ac-consent-actions button {
+    flex: 1 1 auto;
+}
+
+@media (min-width: 48rem) {
+    .ac-consent.ac-consent--bar {
+        align-items: start;
+        column-gap: 2rem;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(12rem, 18rem);
+        /* Content stays within 72rem, centered, with room for the close button. */
+        padding: 1.1rem max(3.5rem, calc((100% - 72rem) / 2)) 1.1rem max(1.5rem, calc((100% - 72rem) / 2));
+    }
+
+    .ac-consent--bar > * {
+        grid-column: 1;
+    }
+
+    .ac-consent--bar > .ac-consent-actions {
+        align-self: center;
+        flex-direction: column;
+        grid-column: 2;
+        grid-row: 1 / span 9;
+        margin-top: 0;
+    }
+
+    .ac-consent--bar > .ac-consent-actions button {
+        flex: 0 0 auto;
+        width: 100%;
+    }
+
+    /* Categories in even columns, so a tag line under one does not misalign the rest. */
+    .ac-consent--bar fieldset {
+        align-items: start;
+        display: grid;
+        gap: 0 1.25rem;
+        grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+    }
 }
 
 .ac-consent-status {

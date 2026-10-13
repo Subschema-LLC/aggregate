@@ -1,10 +1,12 @@
 # Consent manager lite
 
 Consent manager lite is the small built-in consent banner (CMP) that loads next to
-the [tag manager](TAG-MANAGER.md). It asks visitors about enhanced analytics and
-every consent category used by the website's enabled tags, remembers the choice
-in the browser, and passes it to the tracker and tag manager. It makes no network
-requests of its own. Each registered website has its own settings and its own
+the [tag manager](TAG-MANAGER.md). It asks visitors about enhanced analytics,
+every consent category used by the website's enabled tags, and any categories
+and [other tags](#categories-and-other-tags) you add. It remembers the choice in
+the browser, passes it to the tracker and tag manager, and starts the scripts
+your website marks once their category is allowed. It makes no network requests
+of its own. Each registered website has its own settings and its own
 hosted script:
 
 ```text
@@ -18,8 +20,10 @@ only one banner per page.
 
 - [Configure it in the dashboard](#configure-it-in-the-dashboard)
 - [YAML reference](#yaml-reference)
+- [Categories and other tags](#categories-and-other-tags)
 - [Wording](#wording)
 - [Colors](#colors)
+- [Layout](#layout)
 - [Buttons](#buttons)
 - [Consent behavior](#consent-behavior)
 - [Regions and the close button](#regions-and-the-close-button)
@@ -28,17 +32,21 @@ only one banner per page.
 ## Configure it in the dashboard
 
 Open **Collection → Consent manager lite** and choose a website. The page has
-six parts, and a preview that updates as you edit:
+seven parts, and a preview that updates as you edit:
 
 - **Banner**: whether the built-in banner is enabled, the name shown in its
   title, and an optional link to your privacy notice.
+- **Categories and other tags**: categories to ask about even when no tag uses
+  them, and the scripts your website loads itself; see
+  [Categories and other tags](#categories-and-other-tags).
 - **Wording**: the title, description, additional paragraphs, category list
   heading and labels, button labels, privacy-link text, and the announcements
   screen readers hear after a choice.
 - **Colors**: seven colors, checked for readable contrast as you edit and again
   when you save.
-- **Buttons**: which buttons appear, in what order, and where the button that
-  reopens the banner sits.
+- **Layout and buttons**: a card in the corner or a bar across the bottom of the
+  window, which buttons appear, in what order, and where the button that reopens
+  the banner sits.
 - **Consent behavior**: the consent type, what the close button does, the
   categories allowed by default in implicit mode, and Global Privacy Control;
   see [Consent behavior](#consent-behavior).
@@ -71,6 +79,11 @@ consent_manager:
   enabled: true
   name: Example shop
   privacy_policy_url: 'https://www.example.com/privacy'
+  layout: bar
+  categories: [functional]
+  external_tags:
+    - {id: meta-pixel, name: Meta Pixel, category: marketing}
+    - {id: chat, name: Support chat, category: functional}
   text:
     title: 'Your privacy choices at {name}'
     description: 'We use optional cookies only with your permission.'
@@ -99,6 +112,9 @@ consent_manager:
 | `enabled` | `true`. A YAML boolean. Disabling it grants no consent; connect your own CMP instead. |
 | `name` | The registered website's name. 1–120 UTF-8 bytes, no control characters. |
 | `privacy_policy_url` | None. Empty or an absolute HTTPS URL without credentials. Adds a link to the banner. |
+| `categories` | None. Up to 10 category names asked about even when no enabled tag uses them; see [Categories and other tags](#categories-and-other-tags). |
+| `external_tags` | None. Up to 30 tags the website loads itself, each with an `id`, a `name` and a `category`; see [Categories and other tags](#categories-and-other-tags). |
+| `layout` | `card`. `card` or `bar`; see [Layout](#layout). |
 | `precheck_categories` | `[]`. A list of category names (e.g. `[analytics]`) whose checkboxes start selected for new visitors. In opt-in jurisdictions like the EU/UK under GDPR, keep optional categories unselected. |
 | `text` | Default wording; see [Wording](#wording). |
 | `theme` | Default colors; see [Colors](#colors). |
@@ -116,6 +132,66 @@ dashboard reports it, and the website's scripts are not served until it is
 corrected. There are no environment-variable overrides; the
 [environment precedence](TAG-MANAGER.md#yaml-configuration) of site files applies.
 
+## Categories and other tags
+
+The banner asks about `analytics` (enhanced analytics), then the categories in
+`categories`, those of your `external_tags`, and those your enabled
+[tag manager](TAG-MANAGER.md) tags use. Category names have 1–32 lowercase
+letters, digits, underscores or hyphens, beginning with a letter; `none` and
+`gpc` are reserved. Label each under [Wording](#wording) (`text.categories`).
+
+`external_tags` lists scripts your website loads itself rather than through the
+tag manager: an advertising pixel in your theme, a chat widget, a script a
+plugin adds, or a tag you manage in Google Tag Manager. Each has an `id` (1–64
+letters, digits, underscores or hyphens, beginning with a letter), the `name`
+visitors see, and the `category` that must be allowed before it runs. The
+banner names each tag under its category in the category list, using the
+`category_tags` wording, and a category it does not already ask about is added.
+The list appears with the category checkboxes, so it is not shown when the
+banner has no **Save** button.
+
+To hold a script back until its category is allowed, change its `type` to
+`text/plain` and add the tag's ID:
+
+```html
+<script type="text/plain" data-consent-tag="meta-pixel" src="https://connect.facebook.net/en_US/fbevents.js"></script>
+<script type="text/plain" data-consent-tag="meta-pixel" nonce="YOUR_NONCE">fbq('init', '123');</script>
+```
+
+The browser does not run a `text/plain` script. Once the visitor allows the
+category, or an `implicit_us` default grant allows it, the banner replaces each
+waiting script with a real one:
+
+- in page order, keeping its attributes and its nonce, so a strict Content
+  Security Policy still applies;
+- a script with `src` and no `async` attribute finishes loading (or fails)
+  before the next one starts, so a loader runs before the code that uses it;
+- once per page: each script runs at most once;
+- only for IDs listed in `external_tags`; a script with any other ID never runs.
+
+Withdrawal stops scripts that have not run yet. It cannot stop one that already
+ran: that keeps running until the visitor reloads the page, and its cookies stay
+until the provider or your site removes them. The banner holds back only
+`script` elements you mark. Embedded frames such as videos and maps, and scripts
+other code adds later, are not covered.
+
+### Google Tag Manager
+
+If the page already has a `window.dataLayer` array, as Google Tag Manager
+creates, the banner pushes the visitor's choices to it when the page loads and
+whenever they change:
+
+```javascript
+{event: 'aggregate_consent_update', aggregate_consent: {analytics: true, functional: false, marketing: false}}
+```
+
+In GTM, fire a tag on a Custom Event trigger for `aggregate_consent_update` with
+a condition on a Data Layer Variable such as `aggregate_consent.marketing`, and
+list the tag in `external_tags` so visitors see it. An unchanged state is not
+pushed again. No `dataLayer` is created when the page has none, so load GTM's
+snippet before the banner. This is an event, not Google Consent Mode; see
+[Behavior and limits](#behavior-and-limits).
+
 ## Wording
 
 All text is plain text: HTML is shown as typed, never interpreted. Labels allow
@@ -129,6 +205,7 @@ characters.
 | `details` | Two paragraphs on anonymous measurement after rejection, withdrawal, and reloading. A list of up to four paragraphs; `[]` shows none. |
 | `categories_legend` | Optional categories |
 | `categories` | `analytics: Enhanced analytics`; other categories show their name, capitalized. Maps category names to labels. |
+| `category_tags` | Includes: {tags} (the line under a category naming its [other tags](#categories-and-other-tags); must contain `{tags}`) |
 | `reject` | Reject all optional categories |
 | `accept` | Accept all optional categories |
 | `save` | Save selected choices |
@@ -171,6 +248,15 @@ must reach 3:1 against `background`. The error names the colors and the ratio.
 All action buttons share one set of colors on purpose, so no choice is styled to
 look preferred. Regulators in several regions treat a highlighted "Accept" next to
 a muted "Reject" as steering visitors toward consent.
+
+## Layout
+
+`layout` is `card` (the default), a card in the bottom-right corner, or `bar`, a
+full-width bar across the bottom of the window. On wide screens the bar keeps
+its text and categories on the left and its buttons on the right, with the
+content no wider than 72rem; on phones the buttons sit below the text. Both
+use the same wording, colors and buttons, and the reopen button appears once
+the banner is closed.
 
 ## Buttons
 
@@ -294,8 +380,8 @@ through `AggregateConsent`, documented with the
 
 This is a lightweight category chooser, not a consent-records system. It does not
 detect a visitor's region, implement Google Consent Mode or IAB TCF, keep
-provider-level consent, or block scripts that were not loaded through the tag
-manager. For a Global Privacy Control advertising opt-out, a request form, or regional examples, see the
+provider-level consent, or hold back scripts that are neither loaded through the
+tag manager nor [marked for it](#categories-and-other-tags). For a Global Privacy Control advertising opt-out, a request form, or regional examples, see the
 [standalone banner](../micro-consent-dropins/README.md) and the
 [regional consent examples](CONSENT-REGIONS.md). These are engineering notes, not
 legal advice.

@@ -34,3 +34,15 @@
 .consent-preview .ac-consent-open--right:not([hidden]) { float: right; }
 /* The admin's link color rule is more specific than the banner's own. */
 .consent-preview .ac-consent a[href] { color: var(--ac-accent); }
+/* The bar is shown stacked here; on the website it spans the bottom of the window. */
+.consent-preview .ac-consent.ac-consent--bar {
+    animation: none;
+    border-radius: 0;
+    display: block;
+    inset: auto;
+    max-height: none;
+    padding: 1rem;
+    position: relative;
+}
+.consent-preview .ac-consent--bar .ac-consent-actions { flex-direction: row; }
+.consent-tags-table td { min-width: 9rem; vertical-align: middle; }

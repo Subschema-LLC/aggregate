@@ -37,6 +37,7 @@ function runtime(options = {}) {
     const value = target({tagName: tag.toUpperCase(), children: [], attributes: {}, style: {properties, setProperty: (name, entry) => { properties[name] = entry; }}, hidden: false, disabled: false, checked: false, value: '', tabIndex: 0, textContent: ''});
     value.appendChild = child => { value.children.push(child); child.parentElement = value; return child; };
     value.setAttribute = (name, entry) => { value.attributes[name] = String(entry); if (name === 'open') value.open = true; };
+    value.getAttribute = name => Object.prototype.hasOwnProperty.call(value.attributes, name) ? value.attributes[name] : null;
     value.removeAttribute = name => { delete value.attributes[name]; if (name === 'open') value.open = false; };
     value.focus = () => { document.activeElement = value; };
     value.closest = selector => { assert.equal(selector, '[hidden]'); for (let current = value; current; current = current.parentElement) if (current.hidden) return current; return null; };
@@ -227,10 +228,13 @@ test('Google adapter synchronously denies before initialization, updates only st
     const app = runtime({load: false, gpc: true});
     if (before) app.google(); else app.load();
     if (before) app.load(); else app.google();
-    const commands = () => Array.from(app.window.dataLayer, entry => Array.from(entry));
+    // gtag() commands; the banner's own change events are plain objects in between.
+    const commands = () => Array.from(app.window.dataLayer).filter(entry => !entry.event).map(entry => Array.from(entry));
     assert.equal(commands()[0][1], 'default'); assert.ok(Object.values(commands()[0][2]).every(value => value === 'denied'));
     app.window.MicroConsent.setConsent({analytics: true, marketing: true});
     assert.deepEqual(clean(commands().at(-1)[2]), {analytics_storage: 'granted', ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied'});
+    // The consent update comes before the event, so tags it triggers see the new state.
+    assert.deepEqual(clean(app.window.dataLayer.at(-1)), {event: 'micro_consent_update', micro_consent: {analytics: true, functional: false, marketing: false, doNotSell: true, gpc: true}});
     app.window.MicroConsent.setConsent({analytics: 'true', marketing: 'true'});
     assert.ok(Object.values(commands().at(-1)[2]).every(value => value === 'denied'));
     assert.equal(app.all.some(node => node.tagName === 'SCRIPT'), false); assert.equal(app.requests.length, 0);
@@ -506,4 +510,107 @@ test('standalone default-on categories respect GPC and never apply to explicit r
 test('standalone defaultRegion picks the starting region', () => {
   const app = runtime({config: {defaultRegion: 'eu', regions: [{id: 'us', name: 'United States', consentType: 'explicit_us'}, {id: 'eu', name: 'Europe'}]}});
   assert.equal(app.window.MicroConsent.getRegion(), 'eu');
+});
+
+function waitingTag(attributes, text = '', nonce = '') {
+  const list = Object.entries(attributes).map(([name, value]) => ({name, value}));
+  return {attributes: list, text, nonce,
+    getAttribute: name => { const entry = list.find(item => item.name === name); return entry ? entry.value : null; },
+    hasAttribute: name => list.some(item => item.name === name)};
+}
+function pageWith(document, nodes) {
+  const parent = {children: nodes.slice(), inserted: [], replaceChild(next, old) {
+    const index = this.children.indexOf(old); if (index === -1) throw Error('Not a child');
+    this.children[index] = next; next.parentNode = this; old.parentNode = null; this.inserted.push(next); return old;
+  }};
+  for (const node of nodes) node.parentNode = parent;
+  document.querySelectorAll = selector => {
+    assert.equal(selector, 'script[type="text/plain"][data-consent-tag]');
+    return parent.children.filter(node => node.getAttribute('type') === 'text/plain' && node.getAttribute('data-consent-tag') !== null);
+  };
+  return parent;
+}
+const otherTags = [{id: 'meta-pixel', name: 'Meta Pixel', category: 'marketing'}, {id: 'chat', name: 'Support chat', category: 'functional'}];
+
+test('standalone bar layout covers the bottom and hides the reopen button until it closes', () => {
+  const card = runtime({config: {}});
+  assert.equal(card.all.find(node => node.tagName === 'SECTION').className, 'mc-banner');
+  assert.equal(card.all.find(node => /mc-open/.test(node.className)).hidden, false);
+  const bar = runtime({config: {layout: 'bar'}});
+  const banner = bar.all.find(node => node.tagName === 'SECTION');
+  const opener = bar.all.find(node => /mc-open/.test(node.className));
+  assert.equal(banner.className, 'mc-banner mc-banner--bar');
+  assert.equal(opener.hidden, true);
+  bar.text('Reject optional categories').dispatchEvent({type: 'click'});
+  assert.equal(banner.hidden, true); assert.equal(opener.hidden, false);
+  const hidden = runtime({config: {layout: 'bar', buttons: {reopen: 'hidden'}}});
+  hidden.text('Reject optional categories').dispatchEvent({type: 'click'});
+  assert.equal(hidden.all.find(node => /mc-open/.test(node.className)).hidden, true);
+  const invalid = runtime({config: {layout: 'side'}});
+  assert.ok(invalid.all.some(node => node.className === 'mc-error'));
+});
+
+test('standalone other tags are named in the preferences, and must use listed categories', () => {
+  const app = runtime({config: {externalTags: otherTags}});
+  assert.equal(app.text('Includes: Meta Pixel').className, 'mc-category-tags');
+  assert.equal(app.text('Includes: Support chat').className, 'mc-category-tags');
+  const custom = runtime({config: {externalTags: otherTags, text: {categoryTags: 'Tags: {tags}'}}});
+  assert.ok(custom.text('Tags: Meta Pixel'));
+  for (const config of [
+    {externalTags: [{id: 'x', name: 'X', category: 'social'}]},
+    {externalTags: [{id: 'x', name: 'X', category: 'marketing'}, {id: 'x', name: 'Y', category: 'marketing'}]},
+    {externalTags: [{id: 'x', name: 'X', category: 'marketing', src: 'https://evil.example'}]},
+    {externalTags: [{id: 'x', name: 'X', category: 'none'}]},
+    {externalTags: otherTags, text: {categoryTags: 'No list'}}
+  ]) {
+    const broken = runtime({config});
+    assert.ok(broken.all.some(node => node.className === 'mc-error'), JSON.stringify(config));
+    assert.equal(broken.all.some(node => node.className === 'mc-category-tags'), false);
+  }
+});
+
+test('standalone waiting tags start only once their category is allowed, in order, never under GPC for marketing', () => {
+  const loader = waitingTag({type: 'text/plain', 'data-consent-tag': 'meta-pixel', src: 'https://connect.example/fbevents.js'}, '', 'page-nonce');
+  const init = waitingTag({type: 'text/plain', 'data-consent-tag': 'meta-pixel'}, "fbq('init', '1');", 'page-nonce');
+  const chat = waitingTag({type: 'text/plain', 'data-consent-tag': 'chat', src: 'https://chat.example/c.js', async: ''});
+  const app = runtime({load: false, config: {externalTags: otherTags}});
+  const page = pageWith(app.document, [loader, init, chat]);
+  app.load();
+  assert.deepEqual(page.inserted, []);
+  app.window.MicroConsent.setConsent({functional: 'true', marketing: 1});
+  assert.deepEqual(page.inserted, []);
+  app.window.MicroConsent.setConsent({marketing: true});
+  assert.equal(page.inserted.length, 1);
+  assert.deepEqual(page.inserted[0].attributes, {src: 'https://connect.example/fbevents.js'});
+  assert.equal(page.inserted[0].nonce, 'page-nonce');
+  page.inserted[0].dispatchEvent({type: 'load'});
+  assert.equal(page.inserted[1].text, "fbq('init', '1');");
+  app.window.MicroConsent.setConsent({marketing: true, functional: true});
+  assert.equal(page.inserted.length, 3);
+  app.window.dispatchEvent({type: 'focus'});
+  assert.equal(page.inserted.length, 3, 'each tag runs once');
+
+  const gpc = runtime({load: false, gpc: true, config: {externalTags: otherTags}});
+  const gpcPage = pageWith(gpc.document, [waitingTag({type: 'text/plain', 'data-consent-tag': 'meta-pixel', src: 'https://connect.example/a.js', async: ''})]);
+  gpc.load();
+  gpc.window.MicroConsent.setConsent({marketing: true});
+  assert.deepEqual(gpcPage.inserted, [], 'GPC keeps marketing denied');
+
+  const invalid = runtime({load: false, config: {externalTags: otherTags, layout: 'side'}});
+  const invalidPage = pageWith(invalid.document, [waitingTag({type: 'text/plain', 'data-consent-tag': 'chat', src: 'https://chat.example/c.js', async: ''})]);
+  invalid.load();
+  invalid.window.MicroConsent.setConsent({functional: true});
+  assert.deepEqual(invalidPage.inserted, [], 'invalid settings start nothing');
+});
+
+test('standalone pushes deduplicated changes to an existing dataLayer and creates none', () => {
+  const app = runtime({load: false, config: {}});
+  app.window.dataLayer = [];
+  app.load();
+  assert.deepEqual(clean(app.window.dataLayer), [{event: 'micro_consent_update', micro_consent: {analytics: false, functional: false, marketing: false, doNotSell: false, gpc: false}}]);
+  app.window.dispatchEvent({type: 'focus'});
+  assert.equal(app.window.dataLayer.length, 1);
+  app.window.MicroConsent.setConsent({analytics: true});
+  assert.equal(clean(app.window.dataLayer.at(-1)).micro_consent.analytics, true);
+  assert.equal(runtime().window.dataLayer, undefined);
 });

@@ -311,4 +311,59 @@ final class ConsentAppearanceTest extends TestCase
         $this->expectExceptionMessage('does not match any configured region');
         ConsentAppearance::validate($input, ConsentAppearance::BUILTIN, 'consent_manager');
     }
+
+    public function testLayoutAndOtherTagsAreValidatedAndSentToTheBrowserForBothBanners(): void
+    {
+        foreach ([ConsentAppearance::BUILTIN, ConsentAppearance::STANDALONE] as $banner) {
+            $validated = ConsentAppearance::validate([
+                'layout' => 'bar',
+                'external_tags' => [
+                    ['id' => 'meta-pixel', 'name' => '  Meta Pixel ', 'category' => 'marketing'],
+                    ['id' => 'Chat_2', 'name' => 'Support chat', 'category' => 'functional'],
+                    ['id' => 'linkedin', 'name' => 'LinkedIn', 'category' => 'marketing'],
+                ],
+                'text' => ['category_tags' => 'Tags: {tags}'],
+            ], $banner, 'x');
+            self::assertSame('bar', $validated['layout']);
+            self::assertSame(['id' => 'meta-pixel', 'name' => 'Meta Pixel', 'category' => 'marketing'], $validated['external_tags'][0]);
+            self::assertSame(['marketing', 'functional'], ConsentAppearance::externalTagCategories($validated));
+            $browser = ConsentAppearance::browser($validated);
+            self::assertSame('bar', $browser['layout']);
+            self::assertSame($validated['external_tags'], $browser['externalTags']);
+            self::assertSame('Tags: {tags}', $browser['text']['categoryTags']);
+        }
+        self::assertSame(['external_tags' => []], ConsentAppearance::validate(['external_tags' => []], ConsentAppearance::BUILTIN, 'x'));
+        self::assertArrayNotHasKey('externalTags', ConsentAppearance::browser(['external_tags' => []]), 'an empty list sends nothing');
+        self::assertSame(['card', 'bar'], ConsentAppearance::LAYOUTS);
+    }
+
+    /** @return iterable<string, array{array, string}> */
+    public static function invalidLayoutsAndTags(): iterable
+    {
+        yield 'unknown layout' => [['layout' => 'side'], 'x.layout must be one of card, bar.'];
+        yield 'layout not text' => [['layout' => true], 'x.layout must be one of card, bar.'];
+        yield 'tags not a list' => [['external_tags' => ['a' => ['id' => 'a', 'name' => 'A', 'category' => 'marketing']]], 'x.external_tags must be a list of at most 30 tags; use [] for none.'];
+        yield 'too many tags' => [['external_tags' => array_map(static fn (int $i): array => ['id' => 't'.$i, 'name' => 'T', 'category' => 'marketing'], range(1, 31))], 'x.external_tags must be a list of at most 30 tags; use [] for none.'];
+        yield 'unknown tag key' => [['external_tags' => [['id' => 'a', 'name' => 'A', 'category' => 'marketing', 'src' => 'https://evil.example/x.js']]], 'x.external_tags[0] must be a mapping with only id, name and category.'];
+        yield 'missing name' => [['external_tags' => [['id' => 'a', 'category' => 'marketing']]], 'x.external_tags[0].name must be nonempty plain text'];
+        yield 'bad id' => [['external_tags' => [['id' => '1a', 'name' => 'A', 'category' => 'marketing']]], 'x.external_tags[0].id must be 1–64 letters'];
+        yield 'duplicate id' => [['external_tags' => [['id' => 'a', 'name' => 'A', 'category' => 'marketing'], ['id' => 'a', 'name' => 'B', 'category' => 'functional']]], 'x.external_tags[1].id "a" is duplicated.'];
+        yield 'reserved none' => [['external_tags' => [['id' => 'a', 'name' => 'A', 'category' => 'none']]], 'x.external_tags[0].category must be a category name'];
+        yield 'uppercase category' => [['external_tags' => [['id' => 'a', 'name' => 'A', 'category' => 'Marketing']]], 'x.external_tags[0].category must be a category name'];
+        yield 'markup in a name is fine but control characters are not' => [['external_tags' => [['id' => 'a', 'name' => "A\nB", 'category' => 'marketing']]], 'x.external_tags[0].name must be nonempty plain text'];
+        yield 'tag list wording without {tags}' => [['text' => ['category_tags' => 'Includes these']], 'x.text.category_tags must contain {tags}, where the tag names go.'];
+    }
+
+    #[DataProvider('invalidLayoutsAndTags')]
+    public function testInvalidLayoutsAndTagsAreRejectedWithTheirPath(array $settings, string $message): void
+    {
+        foreach ([ConsentAppearance::BUILTIN, ConsentAppearance::STANDALONE] as $banner) {
+            try {
+                ConsentAppearance::validate($settings, $banner, 'x');
+                self::fail('Expected rejection for '.$banner);
+            } catch (\InvalidArgumentException $e) {
+                self::assertStringStartsWith($message, $e->getMessage());
+            }
+        }
+    }
 }
