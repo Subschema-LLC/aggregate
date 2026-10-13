@@ -45,6 +45,7 @@ function runtime(options = {}) {
     const node = eventTarget({tagName: tag.toUpperCase(), textContent: '', children: [], attributes: {}, hidden: false,
       style: {properties, setProperty: (name, value) => { properties[name] = value; }}});
     node.setAttribute = (key, value) => { node.attributes[key] = String(value); };
+    node.getAttribute = (key) => Object.prototype.hasOwnProperty.call(node.attributes, key) ? node.attributes[key] : null;
     node.appendChild = (child) => { node.children.push(child); return child; };
     node.focus = () => { document.activeElement = node; };
     allNodes.push(node);
@@ -82,6 +83,7 @@ function runtime(options = {}) {
     .replaceAll('__AGGREGATE_CONSENT_CONFIG__', configuration)
     .replace('var consentStyles = null;', 'var consentStyles = ' + styles + ';')
     .replaceAll('__AGGREGATE_CONSENT_STYLES__', styles);
+  if (options.before) options.before({window, document});
   const load = () => vm.runInContext(configured, context);
   if (options.trackerFirst) vm.runInContext(tracker, context);
   let ready = 0;
@@ -784,4 +786,123 @@ test('a saved choice always wins over default-on categories', () => {
   const app = runtime({saved: '{"analytics":false}', config: {consentType: 'implicit_us'}});
   assert.equal(stateOf(app).analytics, false);
   assert.equal(app.panel().hidden, true);
+});
+
+// A page with waiting tags: <script type="text/plain" data-consent-tag="..."> elements.
+function waitingTag(attributes, text = '', nonce = '') {
+  const list = Object.entries(attributes).map(([name, value]) => ({name, value}));
+  return {attributes: list, text, nonce,
+    getAttribute: (name) => { const entry = list.find((item) => item.name === name); return entry ? entry.value : null; },
+    hasAttribute: (name) => list.some((item) => item.name === name)};
+}
+function pageWith(document, nodes) {
+  const parent = {children: nodes.slice(), inserted: [],
+    replaceChild(next, old) {
+      const index = this.children.indexOf(old);
+      if (index === -1) throw new Error('Not a child');
+      this.children[index] = next; next.parentNode = this; old.parentNode = null; this.inserted.push(next);
+      return old;
+    }};
+  for (const node of nodes) node.parentNode = parent;
+  document.querySelectorAll = (selector) => {
+    assert.equal(selector, 'script[type="text/plain"][data-consent-tag]');
+    return parent.children.filter((node) => node.getAttribute('type') === 'text/plain' && node.getAttribute('data-consent-tag') !== null);
+  };
+  return parent;
+}
+const otherTags = [
+  {id: 'meta-pixel', name: 'Meta Pixel', category: 'marketing'},
+  {id: 'linkedin', name: 'LinkedIn Insight Tag', category: 'marketing'},
+  {id: 'hotjar', name: 'Hotjar', category: 'analytics'}
+];
+
+test('the bar layout adds its class; anything else keeps the card', () => {
+  assert.equal(runtime().panel().className, 'ac-consent');
+  assert.equal(runtime({config: {layout: 'bar'}}).panel().className, 'ac-consent ac-consent--bar');
+  assert.equal(runtime({config: {layout: 'side'}}).panel().className, 'ac-consent');
+  assert.match(stylesheet, /\.ac-consent\.ac-consent--bar \{[^}]*bottom: 0;[^}]*left: 0;/s);
+});
+
+test('other tags are named under their category, with configurable wording that must keep {tags}', () => {
+  const app = runtime({categories: ['analytics', 'marketing'], config: {externalTags: otherTags}});
+  assert.equal(app.findText('Includes: Meta Pixel, LinkedIn Insight Tag').className, 'ac-consent-category-tags');
+  assert.equal(app.findText('Includes: Hotjar').className, 'ac-consent-category-tags');
+  const custom = runtime({categories: ['analytics', 'marketing'], config: {externalTags: otherTags, text: {categoryTags: 'Tags: {tags}.'}}});
+  assert.ok(custom.findText('Tags: Meta Pixel, LinkedIn Insight Tag.'));
+  const broken = runtime({categories: ['analytics', 'marketing'], config: {externalTags: otherTags, text: {categoryTags: 'No list'}}});
+  assert.ok(broken.findText('Includes: Hotjar'));
+  // Malformed entries are ignored rather than shown.
+  const malformed = runtime({categories: ['analytics', 'marketing'], config: {externalTags: [{id: '1bad', name: 'Bad', category: 'marketing'}, {id: 'x', name: 'X', category: 'none'}, {id: 'ok', name: '  ', category: 'marketing'}]}});
+  assert.equal(malformed.allNodes.some((node) => node.className === 'ac-consent-category-tags'), false);
+});
+
+test('waiting tags start only after their category is explicitly allowed, in page order, with the nonce', () => {
+  let page;
+  const loader = waitingTag({type: 'text/plain', 'data-consent-tag': 'meta-pixel', src: 'https://connect.example/fbevents.js', crossorigin: 'anonymous'}, '', 'page-nonce');
+  const init = waitingTag({type: 'text/plain', 'data-consent-tag': 'meta-pixel'}, "fbq('init', '123');", 'page-nonce');
+  const unknown = waitingTag({type: 'text/plain', 'data-consent-tag': 'not-listed', src: 'https://unknown.example/x.js'});
+  const hotjar = waitingTag({type: 'text/plain', 'data-consent-tag': 'hotjar', src: 'https://hotjar.example/h.js', async: ''});
+  const app = runtime({categories: ['analytics', 'marketing'], config: {externalTags: otherTags},
+    before: ({document}) => { page = pageWith(document, [loader, init, unknown, hotjar]); }});
+  assert.deepEqual(page.inserted, [], 'nothing runs before a choice');
+  for (const value of [{marketing: 'true'}, {marketing: 1}, {marketing: null}]) {
+    app.window.AggregateConsent.setConsent(value);
+    assert.deepEqual(page.inserted, [], 'only boolean true grants');
+  }
+  app.window.AggregateConsent.setConsent({marketing: true});
+  assert.equal(page.inserted.length, 1, 'the next tag waits for the external script');
+  const first = page.inserted[0];
+  assert.equal(first.tagName, 'SCRIPT');
+  assert.deepEqual(first.attributes, {src: 'https://connect.example/fbevents.js', crossorigin: 'anonymous'});
+  assert.equal(first.nonce, 'page-nonce');
+  first.dispatchEvent({type: 'load'});
+  assert.equal(page.inserted.length, 2);
+  assert.equal(page.inserted[1].text, "fbq('init', '123');");
+  assert.equal(page.inserted[1].nonce, 'page-nonce');
+  assert.ok(page.children.includes(unknown), 'an unlisted tag ID never runs');
+  assert.ok(page.children.includes(hotjar), 'analytics is still denied');
+  app.window.AggregateConsent.setConsent({marketing: true, analytics: true});
+  assert.equal(page.inserted.length, 3, 'an async script does not hold the queue');
+  assert.deepEqual(page.inserted[2].attributes, {src: 'https://hotjar.example/h.js', async: ''});
+  app.window.AggregateConsent.setConsent({});
+  app.window.AggregateConsent.setConsent({marketing: true, analytics: true});
+  assert.equal(page.inserted.length, 3, 'each tag runs once');
+});
+
+test('a grant withdrawn while a tag waits leaves it inert', () => {
+  let page;
+  const nodes = [
+    waitingTag({type: 'text/plain', 'data-consent-tag': 'meta-pixel', src: 'https://connect.example/a.js'}),
+    waitingTag({type: 'text/plain', 'data-consent-tag': 'linkedin', src: 'https://linkedin.example/b.js'})
+  ];
+  const app = runtime({categories: ['analytics', 'marketing'], config: {externalTags: otherTags},
+    before: ({document}) => { page = pageWith(document, nodes); }});
+  app.window.AggregateConsent.setConsent({marketing: true});
+  assert.equal(page.inserted.length, 1);
+  app.window.AggregateConsent.setConsent({});
+  page.inserted[0].dispatchEvent({type: 'error'});
+  assert.equal(page.inserted.length, 1);
+  assert.ok(page.children.includes(nodes[1]));
+});
+
+test('implicit_us default grants start their tags before a choice, but not under Global Privacy Control', () => {
+  for (const gpc of [false, true]) {
+    let page;
+    const node = waitingTag({type: 'text/plain', 'data-consent-tag': 'linkedin', src: 'https://linkedin.example/b.js', async: ''});
+    runtime({gpc, categories: ['analytics', 'marketing'], config: {externalTags: otherTags, consentType: 'implicit_us', defaultGranted: ['marketing']},
+      before: ({document}) => { page = pageWith(document, [node]); }});
+    assert.equal(page.inserted.length, gpc ? 0 : 1, gpc ? 'GPC withholds the default' : 'the notice grants marketing');
+  }
+});
+
+test('an existing dataLayer hears each change of choices once; none is created otherwise', () => {
+  const app = runtime({categories: ['analytics', 'marketing'], before: ({window}) => { window.dataLayer = []; }});
+  assert.deepEqual(JSON.parse(JSON.stringify(app.window.dataLayer)), [{event: 'aggregate_consent_update', aggregate_consent: {analytics: false, marketing: false}}]);
+  app.window.AggregateConsent.setConsent({});
+  assert.equal(app.window.dataLayer.length, 1, 'an unchanged state is not pushed again');
+  app.window.AggregateConsent.setConsent({marketing: true});
+  assert.deepEqual(JSON.parse(JSON.stringify(app.window.dataLayer.at(-1))), {event: 'aggregate_consent_update', aggregate_consent: {analytics: false, marketing: true}});
+  assert.equal(runtime().window.dataLayer, undefined);
+  const object = runtime({before: ({window}) => { window.dataLayer = {push: () => assert.fail('not an array')}; }});
+  assert.equal(typeof object.window.dataLayer.push, 'function');
 });

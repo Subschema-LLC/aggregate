@@ -57,6 +57,8 @@ its nonce. If embedding the JavaScript inline, include the stylesheet explicitly
 | `text` | Default wording. Each key replaces one piece of text; see [wording, colors and buttons](#wording-colors-and-buttons). |
 | `theme` | Default colors. |
 | `buttons` | `{show: ['reject', 'accept', 'manage'], reopen: 'bottom-right'}`. |
+| `layout` | `'card'`. Or `'bar'`; see [layout and other tags](#layout-and-other-tags). |
+| `externalTags` | `[]`. Tags your website loads itself; see [layout and other tags](#layout-and-other-tags). |
 
 An unknown or invalid setting keeps every optional category denied and shows a
 configuration error in the banner, so check the page after editing.
@@ -69,7 +71,7 @@ Increase `revision` when purposes or the notice change so earlier permission is
 not silently reused. Use a unique storage key for independent website instances.
 Storage failure does not turn missing permission into a grant.
 
-The core does not install trackers, block unrelated scripts, or infer a person's
+The core does not install trackers, block scripts you have not marked, or infer a person's
 country from their IP address or browser language. Its GPC support forces
 `marketing: false` and `doNotSell: true` while a respected browser signal is active.
 Neither the signal nor its absence grants analytics consent. Connect relevant
@@ -114,6 +116,63 @@ same rules:
   every default grant. The types and the close button's wording keys (`dismiss`,
   `dismissReject`) are described in the
   [built-in banner's guide](../docs/CONSENT-MANAGER.md#consent-behavior).
+
+## Layout and other tags
+
+**`layout`** is `'card'` (the default), a panel above the reopen button, or
+`'bar'`, a full-width bar across the bottom of the window. On wide screens the
+bar puts the buttons to the right of the text; on phones they sit below it. The
+reopen button appears once the bar is closed.
+
+**`externalTags`** lists scripts your website loads itself, outside a tag
+manager: an advertising pixel in your theme, a chat widget, a script a plugin
+adds. Each has an `id` (1–64 letters, digits, underscores or hyphens, beginning
+with a letter), the `name` visitors see, and a `category` from `categories`. Up
+to 30 are allowed.
+
+```javascript
+categories: ['analytics', 'functional', 'marketing'],
+externalTags: [
+  {id: 'meta-pixel', name: 'Meta Pixel', category: 'marketing'},
+  {id: 'chat', name: 'Support chat', category: 'functional'}
+],
+```
+
+The preferences dialog names each tag under its category, using the
+`categoryTags` wording (`'Includes: {tags}'`, which must keep `{tags}`). To hold
+a script back until its category is allowed, change its `type` to `text/plain`
+and add the tag's ID:
+
+```html
+<script type="text/plain" data-consent-tag="meta-pixel" src="https://connect.facebook.net/en_US/fbevents.js"></script>
+<script type="text/plain" data-consent-tag="meta-pixel" nonce="YOUR_NONCE">fbq('init', '123');</script>
+```
+
+The browser does not run a `text/plain` script. Once the visitor allows the
+category (or an `implicit_us` default allows it), the banner replaces each
+waiting script with a real one, in page order, keeping its attributes and
+nonce. A script with `src` and no `async` attribute finishes loading before the
+next one starts, so a loader runs before the code that uses it. Only IDs listed
+in `externalTags` ever start; a listed tag in a category the banner does not ask
+about is a configuration error. Marketing stays held back while a respected
+Global Privacy Control signal or the visitor's opt-out is active.
+
+Withdrawal cannot stop a script that already ran: it keeps running until the
+visitor reloads the page, and its cookies stay until the provider or your site
+removes them. The banner holds back only `script` elements you mark; embedded
+frames such as videos and maps, and scripts other code adds later, are not
+covered.
+
+If the page already has a `window.dataLayer` array, as Google Tag Manager
+creates, each change of choices is pushed to it once, after any consent signals:
+
+```javascript
+{event: 'micro_consent_update', micro_consent: {analytics: true, functional: false, marketing: false, doNotSell: false, gpc: false}}
+```
+
+In GTM, a Custom Event trigger on `micro_consent_update` with a Data Layer
+Variable such as `micro_consent.marketing` can fire tags managed there. No
+`dataLayer` is created when the page has none, so load GTM's snippet first.
 
 ## Connect the tracker and tag manager
 
@@ -231,8 +290,9 @@ the old prototype should migrate to the API above.
 built-in CMP and can save/download its settings. The source is
 `standalone_consent` in `config/tag-manager/sites/<site-id>.yaml`; see the
 [configuration reference](../docs/CONFIGURATION.md#standalone-consent-settings).
-The YAML accepts the same `text`, `theme` and `buttons` settings, with snake_case
-keys (`privacy_link`, `button_background`). The hosted
+The YAML accepts the same `text`, `theme`, `buttons`, `layout` and
+`external_tags` settings, with snake_case keys (`privacy_link`,
+`button_background`, `category_tags`). The hosted
 `/standalone-cmp/sites/<site-id>/consent.js?min=1` response and Setup
 JavaScript download bundle the UI, CSS, Aggregate adapter and your settings; do
 not add `consent-config.js` or a second copy of that adapter when using the

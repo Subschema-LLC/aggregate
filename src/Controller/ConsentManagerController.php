@@ -6,6 +6,7 @@ namespace App\Controller;
 
 use App\Service\AggregateConfigLoader;
 use App\Service\ConsentAppearance;
+use App\Service\ConsentCategories;
 use App\Service\ConsentManagerForm;
 use App\Service\SiteScriptConfig;
 use App\Service\TagManagerSettings;
@@ -59,7 +60,7 @@ final class ConsentManagerController extends AbstractController
         if ($site !== null) {
             try {
                 $consent = $this->sites->consent($siteId);
-                $categories = $this->tags->consentCategories($siteId);
+                $categories = ConsentCategories::builtin($this->tags->consentCategories($siteId), $consent);
                 $form = ConsentManagerForm::values($consent, $categories);
                 $submitted = $this->takeSubmittedForm($request, $siteId);
                 if ($submitted !== null) {
@@ -84,6 +85,8 @@ final class ConsentManagerController extends AbstractController
             'close_buttons' => ConsentManagerForm::CLOSE_BUTTON_LABELS,
             'reopen_positions' => ['bottom-left' => 'Bottom left', 'bottom-right' => 'Bottom right', 'hidden' => 'Hidden (link to it from your website)'],
             'max_details' => ConsentAppearance::MAX_DETAILS,
+            'layouts' => ConsentManagerForm::LAYOUT_LABELS,
+            'max_external_tags' => ConsentAppearance::MAX_EXTERNAL_TAGS,
         ]));
     }
 

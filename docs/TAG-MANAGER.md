@@ -507,6 +507,13 @@ categories, but cannot undo executed code, cancel requests already sent, stop a
 running provider, remove its cookies, or erase history. Integrate provider
 withdrawal controls and reload as appropriate. `none` actions remain eligible.
 
+Scripts your website loads itself, outside the manager, can wait for the same
+choices: list them as `external_tags` in the banner's settings and mark them
+`type="text/plain" data-consent-tag="ID"`, and the banner names them to visitors
+and starts them once their category is allowed. Both banners also push each
+change of choices to an existing `window.dataLayer` for Google Tag Manager. See
+[categories and other tags](CONSENT-MANAGER.md#categories-and-other-tags).
+
 The built-in integration uses `AggregateConsent.getState()` and
 `AggregateConsent.subscribe(callback)`. A later CMP announces readiness with
 `document.dispatchEvent(new Event('aggregate:consent-ready'))`. The CMP stores

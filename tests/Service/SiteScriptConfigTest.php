@@ -474,4 +474,43 @@ final class SiteScriptConfigTest extends TestCase
             ['id' => $id, 'src' => 'https://scripts.example/'.$id.'.js', 'consent' => $consent],
         ]]);
     }
+
+    public function testAdditionalCategoriesOtherTagsAndLayoutAreSavedExportedAndRemoved(): void
+    {
+        $siteId = $this->firstId;
+        $this->sites->saveConsent($siteId, [
+            'categories' => ['functional', 'preferences', 'functional'],
+            'layout' => 'bar',
+            'external_tags' => [['id' => 'meta-pixel', 'name' => 'Meta Pixel', 'category' => 'marketing']],
+        ]);
+        $saved = $this->sites->consent($siteId);
+        self::assertSame(['functional', 'preferences'], $saved['categories']);
+        self::assertSame('bar', $saved['layout']);
+        self::assertSame([['id' => 'meta-pixel', 'name' => 'Meta Pixel', 'category' => 'marketing']], $saved['external_tags']);
+        self::assertStringContainsString('meta-pixel', $this->sites->export($siteId));
+        self::assertArrayNotHasKey('categories', $this->sites->consent($this->secondId), 'another website keeps its own settings');
+
+        // Saving an unrelated key keeps them; null removes each.
+        $this->sites->saveConsent($siteId, ['name' => 'Renamed']);
+        self::assertSame('bar', $this->sites->consent($siteId)['layout']);
+        $this->sites->saveConsent($siteId, ['categories' => null, 'layout' => null, 'external_tags' => null]);
+        $saved = $this->sites->consent($siteId);
+        foreach (['categories', 'layout', 'external_tags'] as $key) {
+            self::assertArrayNotHasKey($key, $saved, $key);
+        }
+
+        foreach ([
+            [['categories' => ['none']], 'consent_manager.categories entries must be category names'],
+            [['categories' => 'functional'], 'consent_manager.categories must be a list of at most 10 category names'],
+            [['layout' => 'top'], 'consent_manager.layout must be one of card, bar.'],
+            [['external_tags' => [['id' => 'x', 'name' => 'X', 'category' => 'gpc']]], 'consent_manager.external_tags[0].category must be a category name'],
+        ] as [$consent, $message]) {
+            try {
+                $this->sites->saveConsent($siteId, $consent);
+                self::fail('Expected rejection: '.$message);
+            } catch (\InvalidArgumentException $e) {
+                self::assertStringStartsWith($message, $e->getMessage());
+            }
+        }
+    }
 }

@@ -63,4 +63,40 @@ final class ConsentManagerFormTest extends TestCase
             self::assertContains('reject', explode(',', $arrangement));
         }
     }
+
+    public function testLayoutCategoriesAndOtherTagRowsAreMappedAndMalformedRowsRejected(): void
+    {
+        $form = ['site' => 'x', 'enabled' => '1', 'name' => 'Shop', 'layout' => 'bar', 'categories' => " functional,preferences\nfunctional ",
+            'external_tags' => [['id' => ' chat ', 'name' => ' Chat ', 'category' => 'functional'], ['id' => '', 'name' => '', 'category' => '']]];
+        $changes = ConsentManagerForm::changes($form, []);
+        self::assertSame('bar', $changes['layout']);
+        self::assertSame(['functional', 'preferences'], $changes['categories']);
+        self::assertSame([['id' => 'chat', 'name' => 'Chat', 'category' => 'functional']], $changes['external_tags']);
+
+        $defaults = ConsentManagerForm::changes(['layout' => 'card', 'categories' => '', 'external_tags' => [['id' => '', 'name' => '', 'category' => '']]] + $form, []);
+        self::assertNull($defaults['layout']);
+        self::assertNull($defaults['categories']);
+        self::assertNull($defaults['external_tags']);
+        self::assertArrayNotHasKey('layout', ConsentManagerForm::changes(array_diff_key($form, ['layout' => true]), []), 'a field the form did not send keeps its saved value');
+
+        $values = ConsentManagerForm::values(['enabled' => true, 'name' => 'Shop', 'layout' => 'bar', 'categories' => ['functional'],
+            'external_tags' => [['id' => 'a', 'name' => 'A', 'category' => 'marketing'], ['id' => 'b', 'name' => 'B', 'category' => 'marketing']]], ['analytics']);
+        self::assertSame('bar', $values['layout']);
+        self::assertSame('functional', $values['extra_categories']);
+        self::assertSame(['marketing' => 'A, B'], $values['category_tags']);
+
+        foreach ([
+            ['external_tags' => 'chat'],
+            ['external_tags' => [['id' => 'a', 'name' => 'A', 'category' => 'marketing', 'src' => 'https://x.example']]],
+            ['external_tags' => [['id' => ['a'], 'name' => 'A', 'category' => 'marketing']]],
+            ['categories' => ['functional']],
+        ] as $malformed) {
+            try {
+                ConsentManagerForm::changes($malformed + $form, []);
+                self::fail('Expected rejection: '.json_encode($malformed));
+            } catch (\InvalidArgumentException $e) {
+                self::assertStringEndsWith('Nothing was saved.', $e->getMessage());
+            }
+        }
+    }
 }

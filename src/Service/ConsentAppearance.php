@@ -17,8 +17,17 @@ final class ConsentAppearance
     public const BUILTIN = 'builtin';
     public const STANDALONE = 'standalone';
     /** The mapping keys this class owns inside a banner's settings. */
-    public const KEYS = ['text', 'theme', 'buttons', 'regions', 'default_region', 'consent_type', 'close_button', 'default_granted'];
+    public const KEYS = ['text', 'theme', 'buttons', 'layout', 'regions', 'default_region', 'consent_type', 'close_button', 'default_granted', 'external_tags'];
     public const REOPEN_POSITIONS = ['bottom-left', 'bottom-right', 'hidden'];
+    /** card: each banner's floating panel (the default). bar: a full-width bar across the bottom of the window. */
+    public const LAYOUTS = ['card', 'bar'];
+    public const DEFAULT_LAYOUT = 'card';
+    /**
+     * Tags the website loads itself, outside the tag manager: each has an id the
+     * page's markup refers to (data-consent-tag), a name visitors see under its
+     * category, and the category that must be allowed before it runs.
+     */
+    public const MAX_EXTERNAL_TAGS = 30;
     public const MAX_DETAILS = 4;
     public const MAX_REGIONS = 10;
     /**
@@ -49,12 +58,13 @@ final class ConsentAppearance
     /**
      * Text keys and their limits in UTF-8 bytes. `details` is a list of extra
      * paragraphs and `categories` maps category names to labels. `title` may
-     * contain {name}; the standalone `storage_notice` may contain {days}.
+     * contain {name}; the standalone `storage_notice` may contain {days};
+     * `category_tags`, the line naming a category's external tags, must contain {tags}.
      */
     public const TEXT = [
         self::BUILTIN => [
             'title' => self::LABEL, 'description' => self::PARAGRAPH, 'details' => self::PARAGRAPH,
-            'categories_legend' => self::LABEL, 'categories' => self::LABEL,
+            'categories_legend' => self::LABEL, 'categories' => self::LABEL, 'category_tags' => self::LABEL,
             'reject' => self::LABEL, 'accept' => self::LABEL, 'save' => self::LABEL, 'reopen' => self::LABEL,
             'dismiss' => self::LABEL, 'dismiss_reject' => self::LABEL, 'privacy_link' => self::LABEL,
             'status_applied' => self::PARAGRAPH, 'status_not_saved' => self::PARAGRAPH, 'status_other_tab' => self::PARAGRAPH,
@@ -66,7 +76,7 @@ final class ConsentAppearance
             'reopen' => self::LABEL, 'close' => self::LABEL, 'dismiss' => self::LABEL, 'dismiss_reject' => self::LABEL,
             'settings_label' => self::LABEL, 'preferences_tab' => self::LABEL, 'requests_tab' => self::LABEL,
             'preferences_intro' => self::PARAGRAPH, 'categories_legend' => self::LABEL, 'categories' => self::LABEL,
-            'opt_out' => self::PARAGRAPH, 'opt_out_help' => self::PARAGRAPH, 'gpc_notice' => self::PARAGRAPH,
+            'category_tags' => self::LABEL, 'opt_out' => self::PARAGRAPH, 'opt_out_help' => self::PARAGRAPH, 'gpc_notice' => self::PARAGRAPH,
             'storage_notice' => self::PARAGRAPH,
             'status_applied' => self::PARAGRAPH, 'status_not_saved' => self::PARAGRAPH, 'status_other_tab' => self::PARAGRAPH,
             'request_disclosure' => self::PARAGRAPH, 'request_email' => self::LABEL, 'request_type' => self::LABEL,
@@ -91,6 +101,7 @@ final class ConsentAppearance
             ],
             'categories_legend' => 'Optional categories',
             'categories' => ['analytics' => 'Enhanced analytics'],
+            'category_tags' => 'Includes: {tags}',
             'reject' => 'Reject all optional categories',
             'accept' => 'Accept all optional categories',
             'save' => 'Save selected choices',
@@ -123,6 +134,7 @@ final class ConsentAppearance
             'preferences_intro' => 'Allow only the categories you choose. Rejection and withdrawal stop future actions in connected tools. Scripts already loaded may continue until you reload, and their cookies and stored history are not automatically erased.',
             'categories_legend' => 'Optional categories',
             'categories' => ['analytics' => 'Analytics (enhanced details when connected to the analytics tracker)'],
+            'category_tags' => 'Includes: {tags}',
             'opt_out' => 'Opt out of sale, sharing, or targeted advertising in connected tools',
             'opt_out_help' => 'This opt-out disables the marketing category and signals connected providers. It cannot enforce choices for tools that are not connected or process an organization-wide privacy request.',
             'gpc_notice' => 'Your browser sends Global Privacy Control. We keep the advertising opt-out on and marketing denied. This signal does not grant analytics consent.',
@@ -169,7 +181,7 @@ final class ConsentAppearance
      * Validates the keys in KEYS present in $settings and returns only those,
      * normalized. $path prefixes error messages.
      *
-     * @return array{text?: array, theme?: array<string, string>, buttons?: array{show?: list<string>, reopen?: string}, consent_type?: string, close_button?: string, default_granted?: list<string>, regions?: list<array>, default_region?: string}
+     * @return array{text?: array, theme?: array<string, string>, buttons?: array{show?: list<string>, reopen?: string}, layout?: string, external_tags?: list<array{id: string, name: string, category: string}>, consent_type?: string, close_button?: string, default_granted?: list<string>, regions?: list<array>, default_region?: string}
      */
     public static function validate(array $settings, string $banner, string $path): array
     {
@@ -185,6 +197,15 @@ final class ConsentAppearance
         }
         if (array_key_exists('buttons', $settings)) {
             $result['buttons'] = self::buttons($settings['buttons'], $banner, $path.'.buttons');
+        }
+        if (array_key_exists('layout', $settings)) {
+            if (!is_string($settings['layout']) || !in_array($settings['layout'], self::LAYOUTS, true)) {
+                throw new \InvalidArgumentException($path.'.layout must be one of '.implode(', ', self::LAYOUTS).'.');
+            }
+            $result['layout'] = $settings['layout'];
+        }
+        if (array_key_exists('external_tags', $settings)) {
+            $result['external_tags'] = self::externalTags($settings['external_tags'], $path.'.external_tags');
         }
         if (array_key_exists('consent_type', $settings)) {
             $result['consent_type'] = self::consentType($settings['consent_type'], $path.'.consent_type');
@@ -245,10 +266,13 @@ final class ConsentAppearance
             }
             $browser[$group] = $values;
         }
-        foreach (['consent_type', 'close_button', 'default_granted'] as $key) {
+        foreach (['layout', 'consent_type', 'close_button', 'default_granted'] as $key) {
             if (array_key_exists($key, $validated)) {
                 $browser[self::camel($key)] = $validated[$key];
             }
+        }
+        if (($validated['external_tags'] ?? []) !== []) {
+            $browser['externalTags'] = $validated['external_tags'];
         }
 
         if (array_key_exists('regions', $validated)) {
@@ -371,6 +395,50 @@ final class ConsentAppearance
         return $result;
     }
 
+    /**
+     * Validates external_tags: up to MAX_EXTERNAL_TAGS mappings of a unique id
+     * (1–64 letters, digits, underscores or hyphens, beginning with a letter, as
+     * tag manager IDs), a name of plain text and a consent category.
+     *
+     * @return list<array{id: string, name: string, category: string}>
+     */
+    public static function externalTags(mixed $tags, string $path): array
+    {
+        if (!is_array($tags) || ($tags !== [] && !array_is_list($tags)) || count($tags) > self::MAX_EXTERNAL_TAGS) {
+            throw new \InvalidArgumentException($path.' must be a list of at most '.self::MAX_EXTERNAL_TAGS.' tags; use [] for none.');
+        }
+        $result = [];
+        $ids = [];
+        foreach ($tags as $index => $tag) {
+            $itemPath = $path.'['.$index.']';
+            if (!is_array($tag) || array_is_list($tag) || array_diff(array_keys($tag), ['id', 'name', 'category']) !== []) {
+                throw new \InvalidArgumentException($itemPath.' must be a mapping with only id, name and category.');
+            }
+            $id = $tag['id'] ?? null;
+            if (!is_string($id) || preg_match('/^[A-Za-z][A-Za-z0-9_-]{0,63}$/D', $id) !== 1) {
+                throw new \InvalidArgumentException($itemPath.'.id must be 1–64 letters, digits, underscores or hyphens, beginning with a letter.');
+            }
+            if (isset($ids[$id])) {
+                throw new \InvalidArgumentException($itemPath.'.id "'.$id.'" is duplicated.');
+            }
+            $ids[$id] = true;
+            $category = $tag['category'] ?? null;
+            if (!is_string($category) || preg_match('/^[a-z][a-z0-9_-]{0,31}$/D', $category) !== 1
+                || in_array($category, ['none', 'gpc', '__proto__', 'prototype', 'constructor'], true)) {
+                throw new \InvalidArgumentException($itemPath.'.category must be a category name of 1–32 lowercase letters, digits, underscores or hyphens, beginning with a letter; none and gpc are reserved, so every listed tag waits for consent.');
+            }
+            $result[] = ['id' => $id, 'name' => self::wording($tag['name'] ?? null, self::LABEL, $itemPath.'.name'), 'category' => $category];
+        }
+
+        return $result;
+    }
+
+    /** @return list<string> The categories validated external_tags use, in first-use order. */
+    public static function externalTagCategories(array $validated): array
+    {
+        return array_values(array_unique(array_column($validated['external_tags'] ?? [], 'category')));
+    }
+
     /** Empty, or an absolute HTTPS URL without credentials, spaces or backslashes. */
     public static function privacyPolicyUrl(mixed $value, string $path): string
     {
@@ -412,7 +480,7 @@ final class ConsentAppearance
     }
 
     /** @return list<string> Category names; [] is allowed. */
-    private static function categoryList(mixed $value, string $path): array
+    public static function categoryList(mixed $value, string $path): array
     {
         if (!is_array($value) || ($value !== [] && !array_is_list($value)) || count($value) > self::MAX_CATEGORIES) {
             throw new \InvalidArgumentException($path.' must be a list of at most '.self::MAX_CATEGORIES.' category names; use [] for none.');
@@ -463,6 +531,9 @@ final class ConsentAppearance
                 $result[$key] = $labels;
             } else {
                 $result[$key] = self::wording($value, $limits[$key], $path.'.'.$key);
+                if ($key === 'category_tags' && !str_contains($result[$key], '{tags}')) {
+                    throw new \InvalidArgumentException($path.'.category_tags must contain {tags}, where the tag names go.');
+                }
             }
         }
 

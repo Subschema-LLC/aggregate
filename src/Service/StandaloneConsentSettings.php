@@ -116,6 +116,13 @@ class StandaloneConsentSettings
         if (!isset($seen['analytics'])) {
             throw new \InvalidArgumentException('standalone_consent.categories must include analytics.');
         }
+        // This banner asks about exactly the listed categories, so a tag waiting
+        // for one that is not listed could never run.
+        foreach ($appearance['external_tags'] ?? [] as $index => $tag) {
+            if (!isset($seen[$tag['category']])) {
+                throw new \InvalidArgumentException('standalone_consent.external_tags['.$index.'].category "'.$tag['category'].'" is not in standalone_consent.categories; add it there first.');
+            }
+        }
 
         return $settings + $appearance;
     }

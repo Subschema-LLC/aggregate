@@ -498,6 +498,8 @@ standalone_consent:
 | `text` | Optional wording overrides, as plain text; keys and limits in the [standalone guide](../micro-consent-dropins/README.md#wording-colors-and-buttons) |
 | `theme` | Optional `#RRGGBB` colors: `background`, `text`, `accent`, `border`, `button_background`, `button_text`, `button_border`; contrast is checked |
 | `buttons` | Optional `show` (from `reject`, `accept`, `manage`; `reject` required) and `reopen` (`bottom-right`, `bottom-left` or `hidden`) |
+| `layout` | `card` (default) or `bar`, a full-width bar across the bottom of the window |
+| `external_tags` | Optional list of up to 30 tags the website loads itself: a unique `id`, the `name` visitors see and a `category` from `categories`; see [layout and other tags](../micro-consent-dropins/README.md#layout-and-other-tags) |
 
 Text is trimmed and rejects control characters. The built-in banner's
 equivalent settings are `consent_manager` in the same file, edited on the
