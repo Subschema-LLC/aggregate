@@ -12,7 +12,7 @@ on:
     inputs:
       rates:
         description: Requests per second for each stage, comma-separated
-        default: '25,50,100,200,300,400,500,650,800,1000'
+        default: '50,100,125,150,175,200,225,250,300,350'
       stage_seconds:
         description: Seconds per stage
         default: '30'
@@ -71,7 +71,7 @@ jobs:
     env:
       APP_ROOT: /srv/aggregate
       K6_VERSION: v1.0.0
-      RATES: ${{ inputs.rates || '25,50,100,200,300,400,500,650,800,1000' }}
+      RATES: ${{ inputs.rates || '50,100,125,150,175,200,225,250,300,350' }}
       STAGE_SECONDS: ${{ inputs.stage_seconds || '30' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -81,7 +81,7 @@ jobs:
       - name: Install Nginx and PHP 8.3 with PHP-FPM
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq nginx php8.3-fpm php8.3-cli php8.3-common php8.3-intl \
+          sudo apt-get install -y -qq time nginx php8.3-fpm php8.3-cli php8.3-common php8.3-intl \
             php8.3-mbstring php8.3-xml php8.3-curl php8.3-zip php8.3-sqlite3 php8.3-pgsql php8.3-mysql php8.3-opcache
           sudo update-alternatives --set php /usr/bin/php8.3
           php -v
@@ -182,11 +182,14 @@ jobs:
 
       - name: Run the step test
         run: |
+          database_image='${{ matrix.db.image }}'
+          snapshot() { python3 tests/Load/cpu_snapshot.py --php php-fpm --web nginx ${database_image:+--database-image "$database_image"}; }
           (cd "$APP_ROOT" && php tests/Load/count-events.php) > before.json
+          snapshot > cpu-before.json
           vmstat -n -t 1 > vmstat.log &
           vmstat_pid=$!
           ulimit -n "$(ulimit -Hn)"
-          k6 run --quiet \
+          /usr/bin/time -f '%U %S %e' -o k6-time.txt k6 run --quiet \
             -e BASE_URL=http://127.0.0.1 \
             -e WEBSITE_TOKEN="$WEBSITE_TOKEN" \
             -e ORIGIN=https://loadtest.example \
@@ -196,6 +199,7 @@ jobs:
             -e SUMMARY_FILE=k6-summary.json \
             tests/Load/receive.js
           kill "$vmstat_pid"
+          snapshot > cpu-after.json
           (cd "$APP_ROOT" && php tests/Load/count-events.php) > after.json
           python3 - <<'EOF'
           import json
@@ -215,4 +219,5 @@ jobs:
             --label "${{ matrix.db.name }}, ${{ matrix.mode }}" \
             --server "$(nproc) vCPU, ${memory} GB RAM, Nginx, PHP $(php -r 'echo PHP_VERSION;') FPM with ${FPM_WORKERS} workers, k6 on the same machine" \
             --vmstat vmstat.log --stored stored.json --php-log php-fpm.log \
+            --cpu-before cpu-before.json --cpu-after cpu-after.json --k6-time k6-time.txt \
             --json-out load-result.json

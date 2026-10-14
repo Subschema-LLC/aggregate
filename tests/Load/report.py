@@ -102,8 +102,9 @@ def add_cpu(rows: list[dict], summary: dict, samples: list[tuple[float, dict]]) 
     period = meta["stage_seconds"] + meta["gap_seconds"]
     for row in rows:
         # Skip the first seconds of each stage while the rate ramps in.
-        begin = start + row["index"] * period + 3
-        end = start + row["index"] * period + meta["stage_seconds"]
+        stage_start = start + meta.get("offset_seconds", 0) + row["index"] * period
+        begin = stage_start + 3
+        end = stage_start + meta["stage_seconds"]
         window = [values for stamp, values in samples if begin <= stamp <= end]
         if not window:
             continue
@@ -125,6 +126,43 @@ def log_problems(path: Path | None, limit: int = 3) -> list[tuple[int, str]]:
         text = re.sub(r"\b\d+\b", "N", text)
         messages[text[:240]] += 1
     return messages.most_common(limit)
+
+
+def cpu_split(args: argparse.Namespace, stored_events: int) -> tuple[list[str], dict]:
+    """How the machine's CPU time was divided, and server CPU per stored event."""
+    paths = [args.cpu_before, args.cpu_after]
+    if not all(path and Path(path).is_file() for path in paths):
+        return [], {}
+    before, after = (json.loads(Path(path).read_text()) for path in paths)
+    used = {
+        key: after[key] - before[key]
+        for key in ("php", "web", "database")
+        if after.get(key) is not None and before.get(key) is not None
+    }
+    if args.k6_time and Path(args.k6_time).is_file():
+        user, system = (float(value) for value in Path(args.k6_time).read_text().split()[:2])
+        used["k6"] = user + system
+    total = sum(used.values())
+    if total <= 0:
+        return [], {}
+
+    labels = {"php": "PHP", "database": "database", "web": "Nginx", "k6": "k6"}
+    lines = ["CPU time during the run: " + ", ".join(
+        f"{labels[key]} {seconds:,.0f} s ({seconds / total * 100:.0f}%)" for key, seconds in used.items()
+    )]
+    result = {"cpu_seconds": used}
+    server = {key: used[key] for key in ("php", "database", "web") if key in used}
+    if stored_events > 0 and server:
+        per_event = {key: seconds * 1000 / stored_events for key, seconds in server.items()}
+        server_ms = sum(per_event.values())
+        result["server_cpu_ms_per_event"] = per_event
+        lines.append(
+            "Server CPU per stored event: "
+            + ", ".join(f"{labels[key]} {value:.1f} ms" for key, value in per_event.items())
+            + f"; {server_ms:.1f} ms in all, so roughly {1000 / server_ms:,.0f} events per second for each CPU core given"
+            " entirely to Aggregate and its database (an estimate that ignores locking, I/O and network latency)"
+        )
+    return lines, result
 
 
 def fmt_ms(value: float | None) -> str:
@@ -155,6 +193,7 @@ def build_report(args: argparse.Namespace) -> tuple[str, str, dict]:
         if name.startswith("status_") and values.get("values", {}).get("count", 0)
     }
     problems = log_problems(Path(args.php_log) if args.php_log else None)
+    cpu_lines, cpu_result = cpu_split(args, (stored_db or {}).get("total", stored_total))
 
     header = "| Target rps | Achieved rps | Failed | Dropped | p50 ms | p95 ms | p99 ms | CPU busy | Sustained |"
     lines = [header, "| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | :---: |"]
@@ -188,6 +227,7 @@ def build_report(args: argparse.Namespace) -> tuple[str, str, dict]:
         )
     if statuses:
         context.append("- Responses: " + ", ".join(f"{name}: {count:,}" for name, count in sorted(statuses.items())))
+    context.extend(f"- {line}" for line in cpu_lines)
     for count, message in [(c, m) for m, c in problems]:
         context.append(f"- PHP log ({count:,}×): `{message}`")
 
@@ -211,12 +251,18 @@ def build_report(args: argparse.Namespace) -> tuple[str, str, dict]:
         "stages": rows,
         "stored_in_database": stored_db,
         "statuses": statuses,
+        **cpu_result,
     }
     return markdown, plain, result
 
 
 def annotation_escape(text: str) -> str:
     return text.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+
+
+def property_escape(text: str) -> str:
+    """Escapes an annotation property, such as the title, where , and : are separators."""
+    return annotation_escape(text).replace(":", "%3A").replace(",", "%2C")
 
 
 def main() -> None:
@@ -227,6 +273,9 @@ def main() -> None:
     parser.add_argument("--vmstat", help="Output of `vmstat -n -t 1` recorded during the run")
     parser.add_argument("--stored", help="JSON with the stored row counts")
     parser.add_argument("--php-log", help="PHP-FPM log to scan for errors")
+    parser.add_argument("--cpu-before", help="cpu_snapshot.py output from before the run")
+    parser.add_argument("--cpu-after", help="cpu_snapshot.py output from after the run")
+    parser.add_argument("--k6-time", help="GNU time output for k6: user and system seconds")
     parser.add_argument("--json-out", help="Write the per-stage results as JSON here")
     parser.add_argument("--github", action="store_true", help="Append to the job summary and emit a notice")
     args = parser.parse_args()
@@ -240,7 +289,7 @@ def main() -> None:
         if summary_path:
             with open(summary_path, "a", encoding="utf-8") as handle:
                 handle.write(markdown + "\n")
-        print(f"::notice title=Load test: {annotation_escape(args.label)}::{annotation_escape(plain)}")
+        print(f"::notice title={property_escape('Load test: ' + args.label)}::{annotation_escape(plain)}")
 
 
 if __name__ == "__main__":

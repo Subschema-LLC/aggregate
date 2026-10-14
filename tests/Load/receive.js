@@ -16,6 +16,9 @@
 //   RATES          Comma-separated requests per second, one stage each.
 //   STAGE_SECONDS  Length of each stage (default 30).
 //   GAP_SECONDS    Pause between stages so a backlog can drain (default 10).
+//   WARMUP_SECONDS Unreported warm-up at 20 requests per second before the
+//                  first stage, so every PHP worker has served a request and
+//                  opened its database connection (default 10; 0 skips it).
 //   VISITORS       Simulated client addresses (default 20000, at most 131072).
 //   SPOOF_CLIENTS  1 (default) sends X-Forwarded-For from the benchmarking
 //                  range 198.18.0.0/15, so per-address rate limiting behaves as
@@ -33,12 +36,14 @@ const BASE_URL = (__ENV.BASE_URL || 'http://127.0.0.1').replace(/\/+$/, '');
 const TOKEN = __ENV.WEBSITE_TOKEN || '';
 const ORIGIN = __ENV.ORIGIN || 'https://loadtest.example';
 const MODE = __ENV.MODE || 'anonymous';
-const RATES = (__ENV.RATES || '25,50,100,200,300,400,500,650,800,1000')
+const RATES = (__ENV.RATES || '50,100,125,150,175,200,225,250,300,350')
   .split(',')
   .map((value) => Number(value.trim()))
   .filter((value) => Number.isFinite(value) && value > 0);
 const STAGE_SECONDS = Number(__ENV.STAGE_SECONDS || 30);
 const GAP_SECONDS = Number(__ENV.GAP_SECONDS || 10);
+const WARMUP_SECONDS = Number(__ENV.WARMUP_SECONDS ?? 10);
+const OFFSET_SECONDS = WARMUP_SECONDS > 0 ? WARMUP_SECONDS + GAP_SECONDS : 0;
 const VISITORS = Math.min(Number(__ENV.VISITORS || 20000), 131072);
 const SPOOF_CLIENTS = (__ENV.SPOOF_CLIENTS || '1') === '1';
 const MAX_VUS = Number(__ENV.MAX_VUS || 1000);
@@ -73,6 +78,19 @@ function stageName(index, rate) {
 
 const scenarios = {};
 const thresholds = {};
+if (WARMUP_SECONDS > 0) {
+  scenarios.warmup = {
+    executor: 'constant-arrival-rate',
+    exec: 'send',
+    rate: 20,
+    timeUnit: '1s',
+    duration: `${WARMUP_SECONDS}s`,
+    preAllocatedVUs: 20,
+    maxVUs: Math.min(100, MAX_VUS),
+    startTime: '0s',
+    gracefulStop: `${GAP_SECONDS}s`,
+  };
+}
 RATES.forEach((rate, index) => {
   const name = stageName(index, rate);
   scenarios[name] = {
@@ -81,9 +99,10 @@ RATES.forEach((rate, index) => {
     rate,
     timeUnit: '1s',
     duration: `${STAGE_SECONDS}s`,
-    preAllocatedVUs: Math.min(Math.max(Math.ceil(rate / 4), 10), MAX_VUS),
+    // k6 reuses VUs across stages that do not overlap, so this is cheap.
+    preAllocatedVUs: Math.min(Math.max(rate, 20), MAX_VUS),
     maxVUs: MAX_VUS,
-    startTime: `${index * (STAGE_SECONDS + GAP_SECONDS)}s`,
+    startTime: `${OFFSET_SECONDS + index * (STAGE_SECONDS + GAP_SECONDS)}s`,
     gracefulStop: `${GAP_SECONDS}s`,
   };
   // Always-true thresholds make k6 keep per-stage results in the summary.
@@ -175,6 +194,7 @@ export function handleSummary(data) {
       rates: RATES,
       stage_seconds: STAGE_SECONDS,
       gap_seconds: GAP_SECONDS,
+      offset_seconds: OFFSET_SECONDS,
       visitors: VISITORS,
       spoof_clients: SPOOF_CLIENTS,
       max_vus: MAX_VUS,
