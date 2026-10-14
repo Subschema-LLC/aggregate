@@ -10,15 +10,18 @@ class AggregateConfigLoader implements ResetInterface
     private array $config = [];
     private bool $loaded = false;
     private bool $loadFailed = false;
+    private readonly ParsedYamlCache $parsedYaml;
 
     public function __construct(
         private readonly string $projectDir,
         private readonly string $environment,
         private readonly string $configurationName = 'aggregate',
+        ?ParsedYamlCache $parsedYaml = null,
     ) {
         if (preg_match('~^(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_-]+$~D', $configurationName) !== 1) {
             throw new \InvalidArgumentException('Configuration names must use safe relative path components.');
         }
+        $this->parsedYaml = $parsedYaml ?? ParsedYamlCache::forProject($projectDir, $environment);
     }
 
     private function load(): void
@@ -91,7 +94,13 @@ class AggregateConfigLoader implements ResetInterface
                 throw new \RuntimeException('The application configuration could not be read.');
             }
 
-            return $this->parseDocument($yaml);
+            // The file is read on every request; only parsing an unchanged
+            // document is skipped.
+            return $this->parsedYaml->remember(
+                'config-'.preg_replace('~\\.yaml$~', '', substr($path, strlen($this->projectDir.'/config/'))),
+                $yaml,
+                fn (string $document): array => $this->parseDocument($document),
+            );
         } finally {
             @flock($handle, LOCK_UN);
             fclose($handle);

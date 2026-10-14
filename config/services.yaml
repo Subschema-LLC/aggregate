@@ -63,6 +63,10 @@ services:
     App\Controller\InternalTrafficPublicController:
         tags: ['controller.service_arguments']
 
+    App\Service\ParsedYamlCache:
+        arguments:
+            $directory: '%kernel.cache_dir%/parsed-yaml'
+
     App\Service\AggregateConfigLoader:
         public: true
         arguments:

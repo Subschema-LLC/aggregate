@@ -159,6 +159,12 @@ Settings have one source of truth each (listed in
 - **Shipped defaults** (`goals.yaml`, `navigation.yaml`, `quick_search.yaml`),
   customized through untracked `*.local.yaml` overrides.
 
+Every request reads these files. To save parsing them each time,
+[ParsedYamlCache](../src/Service/ParsedYamlCache.php) keeps the parsed result of
+an unchanged file in `var/cache/<environment>/parsed-yaml`, keyed by the file's
+exact contents, so any edit takes effect on the next request and an invalid
+edit still fails closed.
+
 The database holds collected events, archives, users and operational records,
 not settings. Tables such as `analytics_glossary` are generated from YAML so BI
 tools can join to them; they are never edited directly.
