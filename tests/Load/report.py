@@ -235,6 +235,7 @@ def build_report(args: argparse.Namespace) -> tuple[str, str, dict]:
     if statuses:
         context.append("- Responses: " + ", ".join(f"{name}: {count:,}" for name, count in sorted(statuses.items())))
     context.extend(f"- {line}" for line in cpu_lines)
+    context.extend(f"- {line}" for line in args.note)
     steal = [row["cpu_steal_pct"] for row in rows if "cpu_steal_pct" in row]
     if steal:
         context.append(f"- CPU steal (time given to other virtual machines): {sum(steal) / len(steal):.1f}% on average, {max(steal):.1f}% in the worst stage")
@@ -291,6 +292,7 @@ def main() -> None:
     parser.add_argument("--cpu-after", help="cpu_snapshot.py output from after the run")
     parser.add_argument("--k6-time", help="GNU time output for k6: user and system seconds")
     parser.add_argument("--json-out", help="Write the per-stage results as JSON here")
+    parser.add_argument("--note", action="append", default=[], help="A line to add to the report; repeatable")
     parser.add_argument("--github", action="store_true", help="Append to the job summary and emit a notice")
     args = parser.parse_args()
 

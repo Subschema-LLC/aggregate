@@ -4,20 +4,26 @@ name: Load test
 # style site: Nginx with the documented configuration, PHP 8.3 FPM with
 # OPcache, and SQLite, PostgreSQL 16 or MySQL 8.0, in anonymous and enhanced
 # mode. The load generator, k6, runs on the same machine, so numbers describe
-# this runner, not a production server. Three suites:
+# this runner, not a production server. Four suites:
 #
-#   load     Step test at rising rates; reports the sustained capacity.
+#   load     Step test at rising rates; reports the sustained capacity. The
+#            tuned variant adds OPcache preloading and, except on SQLite,
+#            persistent database connections.
 #   profile  xhprof call profiles of requests at a low, steady rate.
 #   compare  The pull request's code against its base on the same machine,
 #            alternating base, head, head, base at a fixed rate; reports the
 #            change in server CPU per event and response times. Variants
 #            compare the same code with a server setting changed on the head
 #            side: persistent database connections, or OPcache preloading.
+#   cache    Steady traffic while the Symfony cache is cleared, with and
+#            without a PHP-FPM reload, and while PHP-FPM restarts; reports
+#            failures and response times in each stage.
 #
 # Start one from Actions -> Load test -> Run workflow, or add a label to a
-# pull request: load-test, profile, compare, compare-persistent or
-# compare-preload. A load run uses about 50 minutes of runner time, profile
-# about 25 and each compare about 60.
+# pull request: load-test, load-test-tuned, profile, compare,
+# compare-persistent, compare-preload or cache-clear. A load run uses about
+# 60 minutes of runner time, profile about 25, each compare about 60 and
+# cache about 30.
 # See docs/LOAD-TESTING.md.
 
 on:
@@ -26,11 +32,11 @@ on:
       suite:
         description: Which measurement to run
         type: choice
-        options: [load, profile, compare]
+        options: [load, profile, compare, cache]
         default: load
       rates:
         description: 'load: requests per second for each stage, comma-separated'
-        default: '50,100,125,150,175,200,225,250,300,350'
+        default: '50,100,150,200,250,300,350,400,500,600'
       stage_seconds:
         description: 'load: seconds per stage'
         default: '30'
@@ -38,9 +44,9 @@ on:
         description: 'compare (code): branch, tag or commit to compare against'
         default: development
       variant:
-        description: 'compare: what differs on the head side'
+        description: 'compare: what differs on the head side (code, persistent, preload); load: default or tuned'
         type: choice
-        options: [code, persistent, preload]
+        options: [code, persistent, preload, tuned]
         default: code
   pull_request:
     types: [labeled]
@@ -54,8 +60,8 @@ concurrency:
 
 jobs:
   measure:
-    name: ${{ github.event_name == 'workflow_dispatch' && inputs.suite || (github.event.label.name == 'load-test' && 'load' || github.event.label.name) }} - ${{ matrix.db.name }}, ${{ matrix.mode }}
-    if: github.event_name == 'workflow_dispatch' || contains(fromJSON('["load-test", "profile", "compare", "compare-persistent", "compare-preload"]'), github.event.label.name)
+    name: ${{ github.event_name == 'workflow_dispatch' && inputs.suite || github.event.label.name }} - ${{ matrix.db.name }}, ${{ matrix.mode }}
+    if: github.event_name == 'workflow_dispatch' || contains(fromJSON('["load-test", "load-test-tuned", "profile", "compare", "compare-persistent", "compare-preload", "cache-clear"]'), github.event.label.name)
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     strategy:
@@ -94,14 +100,15 @@ jobs:
           POSTGRES_PASSWORD: load-test
         options: ${{ matrix.db.health }}
     env:
-      SUITE: ${{ github.event_name == 'workflow_dispatch' && inputs.suite || (github.event.label.name == 'load-test' && 'load' || (startsWith(github.event.label.name, 'compare') && 'compare' || github.event.label.name)) }}
-      # code: the pull request against its base. persistent, preload: the
-      # same code on both sides, with that setting on the head side only.
-      VARIANT: ${{ github.event_name == 'workflow_dispatch' && inputs.variant || (github.event.label.name == 'compare-persistent' && 'persistent' || (github.event.label.name == 'compare-preload' && 'preload' || 'code')) }}
+      SUITE: ${{ github.event_name == 'workflow_dispatch' && inputs.suite || (startsWith(github.event.label.name, 'load-test') && 'load' || (startsWith(github.event.label.name, 'compare') && 'compare' || (github.event.label.name == 'cache-clear' && 'cache' || github.event.label.name))) }}
+      # compare: code is the pull request against its base; persistent and
+      # preload run the same code on both sides with that setting on the head
+      # side only. load: tuned adds both settings.
+      VARIANT: ${{ github.event_name == 'workflow_dispatch' && inputs.variant || (github.event.label.name == 'compare-persistent' && 'persistent' || (github.event.label.name == 'compare-preload' && 'preload' || (github.event.label.name == 'load-test-tuned' && 'tuned' || 'code'))) }}
       HEAD_ROOT: /srv/head
       BASE_ROOT: /srv/base
       K6_VERSION: v1.0.0
-      RATES: ${{ inputs.rates || '50,100,125,150,175,200,225,250,300,350' }}
+      RATES: ${{ inputs.rates || '50,100,150,200,250,300,350,400,500,600' }}
       STAGE_SECONDS: ${{ inputs.stage_seconds || '30' }}
       DATABASE_IMAGE: ${{ matrix.db.image }}
       LABEL: ${{ matrix.db.name }}, ${{ matrix.mode }}
@@ -130,7 +137,8 @@ jobs:
       - name: Install the application
         run: |
           url='${{ matrix.db.url }}'
-          if [ "$SUITE" = compare ] && [ "$VARIANT" = persistent ]; then
+          if { [ "$SUITE" = compare ] && [ "$VARIANT" = persistent ]; } \
+             || { [ "$SUITE" = load ] && [ "$VARIANT" = tuned ] && [ -n "$DATABASE_IMAGE" ]; }; then
             case "$url" in *\?*) url="${url}&persistent=true" ;; *) url="${url}?persistent=true" ;; esac
           fi
           tests/Load/server/install.sh "$GITHUB_WORKSPACE" "$HEAD_ROOT" "$url"
@@ -151,6 +159,8 @@ jobs:
         run: |
           if [ "$SUITE" = profile ]; then
             tests/Load/server/configure-php.sh --profile /srv/profile
+          elif [ "$SUITE" = load ] && [ "$VARIANT" = tuned ]; then
+            tests/Load/server/configure-php.sh --preload "$HEAD_ROOT"
           else
             tests/Load/server/configure-php.sh
           fi
@@ -174,6 +184,10 @@ jobs:
         if: env.SUITE == 'load'
         run: |
           tests/Load/server/measure.sh run http://127.0.0.1 "$HEAD_ROOT" ${{ matrix.mode }} "$RATES" "$STAGE_SECONDS" "$DATABASE_IMAGE"
+          if [ "$VARIANT" = tuned ]; then
+            LABEL="$LABEL, tuned"
+            SERVER="$SERVER, OPcache preloading$([ -n "$DATABASE_IMAGE" ] && echo ', persistent database connections')"
+          fi
           python3 tests/Load/report.py --github --summary run/k6-summary.json --label "$LABEL" --server "$SERVER" \
             --vmstat run/vmstat.log --stored run/stored.json --php-log run/php-fpm.log --web-log run/nginx-error.log \
             --cpu-before run/cpu-before.json --cpu-after run/cpu-after.json --k6-time run/k6-time.txt \
@@ -201,3 +215,30 @@ jobs:
           [ "$VARIANT" = code ] || LABEL="$LABEL, $VARIANT"
           python3 tests/Load/compare.py --github --label "$LABEL" --server "$SERVER" --json-out compare-result.json \
             base=phases/1-base head=phases/2-head head=phases/3-head base=phases/4-base
+
+      - name: Clear the cache under load
+        if: env.SUITE == 'cache'
+        run: |
+          # Four stages of 30 s at 100 requests per second, 10 s apart (k6
+          # starts them 15 s, 55 s, 95 s and 135 s after it begins). In the
+          # middle of stages 2 to 4: cache:clear alone; cache:clear followed
+          # by a graceful PHP-FPM reload; a PHP-FPM restart, for contrast.
+          start=$(date +%s)
+          WARMUP_SECONDS=5 tests/Load/server/measure.sh run http://127.0.0.1 "$HEAD_ROOT" ${{ matrix.mode }} 100,100,100,100 30 "$DATABASE_IMAGE" &
+          k6_pid=$!
+          at() { local wait=$(( start + $1 - $(date +%s) )); if [ "$wait" -gt 0 ]; then sleep "$wait"; fi; }
+          timed() {
+            local t0=$EPOCHREALTIME status=ok
+            "$@" > /dev/null 2>&1 || status=failed
+            awk -v a="$t0" -v b="$EPOCHREALTIME" -v s="$status" 'BEGIN { printf "%s in %.1f s", s, b - a }'
+          }
+          at 70;  clear1=$(cd "$HEAD_ROOT" && timed php bin/console cache:clear)
+          at 110; clear2=$(cd "$HEAD_ROOT" && timed php bin/console cache:clear); reload=$(timed sudo systemctl reload php8.3-fpm)
+          at 150; restart=$(timed sudo systemctl restart php8.3-fpm)
+          wait "$k6_pid"
+          python3 tests/Load/report.py --github --summary run/k6-summary.json --label "$LABEL, cache clearing" --server "$SERVER" \
+            --vmstat run/vmstat.log --stored run/stored.json --php-log run/php-fpm.log --web-log run/nginx-error.log \
+            --note "Stage 1 (first row): steady traffic, no action." \
+            --note "Stage 2: cache:clear without a PHP-FPM reload (${clear1})." \
+            --note "Stage 3: cache:clear (${clear2}), then a graceful PHP-FPM reload (${reload})." \
+            --note "Stage 4: a PHP-FPM restart (${restart})."
