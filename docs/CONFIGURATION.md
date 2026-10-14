@@ -42,7 +42,7 @@ Edits to `config/aggregate.yaml`, `config/websites.yaml` and the tag manager's s
 
 A few settings are built into Symfony's compiled container or into SQL, and need a step after an edit:
 
-- `dashboard_enabled` or `DASHBOARD_ENABLED`, and Symfony's own files under `config/packages/` and the `services*.yaml` and `routes*.yaml` files: run `php bin/console cache:clear`. Clearing the cache also removes the parsed-YAML entries, which are rebuilt on the next request.
+- `dashboard_enabled` or `DASHBOARD_ENABLED`, and Symfony's own files under `config/packages/` and the `services*.yaml` and `routes*.yaml` files: run `php bin/console cache:clear`, then reload PHP-FPM gracefully. Clearing the cache also removes the parsed-YAML entries, which are rebuilt on the next request. Measured during live traffic, this fails no collection requests when PHP-FPM lets busy workers finish; see [clearing the cache under traffic](LOAD-TESTING.md#clearing-the-cache-under-traffic).
 - The BI disclosure thresholds: run `php bin/console app:analytics:bi-views:regenerate` (see [BI disclosure thresholds](#bi-disclosure-thresholds)).
 
 The web installer at `/install` is optional and only needed when you want dashboard-based setup.

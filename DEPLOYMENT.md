@@ -457,13 +457,12 @@ migrations, run `php bin/console app:analytics:glossary:sync`, then use
 
 ### Performance
 
-For measured capacity and how to test your own server, see
+For measured capacity, sizing per vCPU and how to test your own server, see
 [load testing and capacity](docs/LOAD-TESTING.md). On a 4-vCPU test machine
-running everything, including the database, collection sustained 150–300
-requests per second with MySQL and 50–175 with PostgreSQL; the limit was
-PHP's CPU time. The settings below were measured there too: preloading cut
-server CPU per collection request by 9–15%, and persistent connections by
-44–51% with PostgreSQL.
+running everything, including the database, collection sustained about 200
+requests per second with MySQL and 100 with PostgreSQL as installed, and
+250–300 with MySQL and 250–500 with PostgreSQL with preloading (item 3) and
+persistent connections (item 4). The limit was PHP's CPU time.
 
 **1. Use production environment:**
 ```bash
@@ -489,10 +488,22 @@ start-up instead of on every request:
 opcache.preload=/var/www/aggregate-sy/config/preload.php
 opcache.preload_user=www-data   ; the PHP-FPM pool's user
 ```
-Preloaded classes stay in memory until PHP-FPM restarts, so restart it after
-every update, including updates from the dashboard's **Install update** button
-or `app:updates:apply`, which cannot restart it for you. Leave preloading off
-if your deployment cannot do that.
+Preloaded classes stay in memory until PHP-FPM reloads, so reload it
+(`sudo systemctl reload php8.3-fpm`) after every update, including updates from
+the dashboard's **Install update** button or `app:updates:apply`, which cannot
+reload it for you. A reload preloads again; a restart is not needed. Leave
+preloading off if your deployment cannot reload PHP-FPM.
+
+**Reload PHP-FPM without dropping requests:** by default a PHP-FPM reload stops
+busy workers at once, which failed about 0.1% of collection requests in the
+[load test](docs/LOAD-TESTING.md#clearing-the-cache-under-traffic). Let them
+finish instead:
+```ini
+; php-fpm.conf, [global] section (on Ubuntu: /etc/php/8.3/fpm/php-fpm.conf)
+process_control_timeout = 10s
+```
+With it, reloads during traffic failed no requests. Prefer a reload to a
+restart, which always dropped some.
 
 **4. Use PostgreSQL or MySQL:**
 SQLite is fine for small deployments, but use PostgreSQL or MySQL for production.
@@ -843,7 +854,8 @@ php bin/console asset-map:compile
 sudo systemctl restart aggregate-worker
 ```
 
-Reload PHP/OPcache as required by your host, verify `/api/health`, then resume
+Reload PHP/OPcache as required by your host (for PHP-FPM, a graceful
+`sudo systemctl reload php8.3-fpm`; see [Performance](#performance)), verify `/api/health`, then resume
 the collection endpoint. In Docker, run PHP/Composer commands in the application
 container and Git commands as the owner of the mounted checkout; use the
 equivalent Compose worker restart.
