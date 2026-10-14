@@ -232,6 +232,12 @@ def build_report(args: argparse.Namespace) -> tuple[str, str, dict]:
             f"- Stored rows: {stored_db.get('total', 0):,} in the database for {stored_total:,} requests reported as stored "
             f"({', '.join(f'{k}: {v:,}' for k, v in sorted(stored_db.get('by_mode', {}).items()))})"
         )
+        size, events = stored_db.get("bytes"), stored_db.get("total", 0)
+        if isinstance(size, int) and size > 0 and events > 0:
+            context.append(
+                f"- Storage: the events table grew by {size / 1024 ** 2:,.1f} MB with its indexes, about {size / events:,.0f} bytes "
+                f"per event, or {size / events * 1_000_000 / 1024 ** 3:,.2f} GB per million events"
+            )
     if statuses:
         context.append("- Responses: " + ", ".join(f"{name}: {count:,}" for name, count in sorted(statuses.items())))
     context.extend(f"- {line}" for line in cpu_lines)

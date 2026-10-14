@@ -226,6 +226,8 @@ E2E::step('setup page: connect the database', static function () use ($browser, 
     }
     $browser->submit($form);
     E2E::check(is_file($root.'/.env.local'), 'The setup page did not write .env.local. '.pageProblem($browser));
+    // PostgreSQL keeps connections open between requests unless unticked.
+    E2E::check(($driver === 'pgsql') === str_contains((string) file_get_contents($root.'/.env.local'), '&persistent=true'), 'Persistent connections in .env.local do not match the default for '.$driver.'.');
     E2E::check(str_ends_with((string) $browser->getHistory()->current()->getUri(), '/install'), 'Expected /install next. '.pageProblem($browser));
 });
 

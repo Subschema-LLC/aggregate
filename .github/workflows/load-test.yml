@@ -6,9 +6,10 @@ name: Load test
 # mode. The load generator, k6, runs on the same machine, so numbers describe
 # this runner, not a production server. Four suites:
 #
-#   load     Step test at rising rates; reports the sustained capacity. The
-#            tuned variant adds OPcache preloading and, except on SQLite,
-#            persistent database connections.
+#   load     Step test at rising rates; reports the sustained capacity.
+#            PostgreSQL installs keep connections open between requests, as
+#            the setup page writes them. The tuned variant adds OPcache
+#            preloading and, on MySQL, persistent connections too.
 #   profile  xhprof call profiles of requests at a low, steady rate.
 #   compare  The pull request's code against its base on the same machine,
 #            alternating base, head, head, base at a fixed rate; reports the
@@ -137,8 +138,16 @@ jobs:
       - name: Install the application
         run: |
           url='${{ matrix.db.url }}'
+          # As the setup page writes them, PostgreSQL connections stay open
+          # between requests. The persistent variant compares a base without
+          # them and a head with them; tuned adds them for MySQL too.
+          persistent=false
+          case "$url" in postgresql://*) [ "$VARIANT" = persistent ] || persistent=true ;; esac
           if { [ "$SUITE" = compare ] && [ "$VARIANT" = persistent ]; } \
              || { [ "$SUITE" = load ] && [ "$VARIANT" = tuned ] && [ -n "$DATABASE_IMAGE" ]; }; then
+            persistent=true
+          fi
+          if [ "$persistent" = true ]; then
             case "$url" in *\?*) url="${url}&persistent=true" ;; *) url="${url}?persistent=true" ;; esac
           fi
           tests/Load/server/install.sh "$GITHUB_WORKSPACE" "$HEAD_ROOT" "$url"
@@ -153,6 +162,7 @@ jobs:
             mysql*) docker exec "$cid" mysql -uroot -proot-load -e "CREATE DATABASE aggregate_base; GRANT ALL PRIVILEGES ON aggregate_base.* TO 'aggregate'@'%';" ;;
           esac
           base_url=${url/\/aggregate\?/\/aggregate_base?}
+          case "$base_url" in postgresql://*) [ "$VARIANT" = persistent ] || base_url="${base_url}&persistent=true" ;; esac
           tests/Load/server/install.sh "$GITHUB_WORKSPACE/base-src" "$BASE_ROOT" "$base_url"
 
       - name: Configure and start PHP-FPM and Nginx
@@ -187,6 +197,8 @@ jobs:
           if [ "$VARIANT" = tuned ]; then
             LABEL="$LABEL, tuned"
             SERVER="$SERVER, OPcache preloading${DATABASE_IMAGE:+, persistent database connections}"
+          elif [[ '${{ matrix.db.url }}' == postgresql://* ]]; then
+            SERVER="$SERVER, persistent database connections (the PostgreSQL default)"
           fi
           python3 tests/Load/report.py --github --summary run/k6-summary.json --label "$LABEL" --server "$SERVER" \
             --vmstat run/vmstat.log --stored run/stored.json --php-log run/php-fpm.log --web-log run/nginx-error.log \

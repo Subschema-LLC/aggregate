@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Setup;
 
 use App\Service\AppBranding;
+use App\Service\PersistentConnectionMiddleware;
 use App\Service\PhpRequirementResolver;
 use App\Service\ProjectDirEnvVarProcessor;
 use App\Setup\FirstRunSetup;
@@ -302,6 +303,21 @@ final class FirstRunSetupTest extends TestCase
         self::assertStringNotContainsString('TrustServerCertificate', FirstRunSetup::serverDatabaseUrl('mysql', 'localhost', 3306, 'a', 'u', 'p', '8.0.39', trustCertificate: true));
     }
 
+    public function testPostgresqlConnectionsCanStayOpenBetweenRequests(): void
+    {
+        $url = FirstRunSetup::serverDatabaseUrl('pgsql', 'db.example.test', 5432, 'aggregate', 'u', 'p', '16', persistent: true);
+        $parsed = (new Dotenv())->parse(FirstRunSetup::environmentFile(str_repeat('ef', 32), $url, new \DateTimeImmutable('2026-10-14 12:00')))['DATABASE_URL'];
+        $params = (new DsnParser(ConnectionFactory::DEFAULT_SCHEME_MAP))->parse($parsed);
+
+        self::assertStringEndsWith('?serverVersion=16&persistent=true', $url);
+        self::assertSame('pdo_pgsql', $params['driver']);
+        self::assertTrue(PersistentConnectionMiddleware::normalize($params)['persistent']);
+        self::assertStringNotContainsString('persistent', FirstRunSetup::serverDatabaseUrl('pgsql', 'localhost', 5432, 'a', 'u', 'p', '16'));
+        // Only PostgreSQL gains it: MySQL's connections are cheap to open.
+        self::assertStringNotContainsString('persistent', FirstRunSetup::serverDatabaseUrl('mysql', 'localhost', 3306, 'a', 'u', 'p', '8.0.39', persistent: true));
+        self::assertStringNotContainsString('persistent', FirstRunSetup::serverDatabaseUrl('sqlsrv', 'localhost', 1433, 'a', 'u', 'p', '2022', persistent: true));
+    }
+
     public function testSqlServerVersionsMapToReleaseYears(): void
     {
         self::assertSame('2017', FirstRunSetup::sqlServerVersion(14, 3));
@@ -387,6 +403,8 @@ final class FirstRunSetupTest extends TestCase
         self::assertStringContainsString('HANDLED:true', $output);
         self::assertStringContainsString(FirstRunSetup::PRODUCT_NAME, $output);
         self::assertStringContainsString('PHP version', $output);
+        // Persistent PostgreSQL connections are on unless the administrator unticks them.
+        self::assertMatchesRegularExpression('/<input type="checkbox" name="persistent_connections" value="1" checked/', $output);
     }
 
     /** The setup page reads the PHP minimum without Composer, the same way as the service. */

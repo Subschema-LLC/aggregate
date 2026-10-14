@@ -52,7 +52,8 @@ out = sys.argv[1]
 before, after = (json.load(open(f"{out}/{name}.json")) for name in ("before", "after"))
 modes = set(before["by_mode"]) | set(after["by_mode"])
 by_mode = {m: after["by_mode"].get(m, 0) - before["by_mode"].get(m, 0) for m in modes}
-json.dump({"total": after["total"] - before["total"], "by_mode": by_mode}, open(f"{out}/stored.json", "w"))
+size = None if before.get("bytes") is None or after.get("bytes") is None else after["bytes"] - before["bytes"]
+json.dump({"total": after["total"] - before["total"], "by_mode": by_mode, "bytes": size}, open(f"{out}/stored.json", "w"))
 PY
 
 sudo cat /var/log/php8.3-fpm.log > "$out/php-fpm.log" 2>/dev/null || true
