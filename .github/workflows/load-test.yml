@@ -186,7 +186,7 @@ jobs:
           tests/Load/server/measure.sh run http://127.0.0.1 "$HEAD_ROOT" ${{ matrix.mode }} "$RATES" "$STAGE_SECONDS" "$DATABASE_IMAGE"
           if [ "$VARIANT" = tuned ]; then
             LABEL="$LABEL, tuned"
-            SERVER="$SERVER, OPcache preloading$([ -n "$DATABASE_IMAGE" ] && echo ', persistent database connections')"
+            SERVER="$SERVER, OPcache preloading${DATABASE_IMAGE:+, persistent database connections}"
           fi
           python3 tests/Load/report.py --github --summary run/k6-summary.json --label "$LABEL" --server "$SERVER" \
             --vmstat run/vmstat.log --stored run/stored.json --php-log run/php-fpm.log --web-log run/nginx-error.log \
