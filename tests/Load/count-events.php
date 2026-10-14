@@ -2,15 +2,15 @@
 
 /*
  * Prints the number of stored events by privacy mode as JSON, for the load
- * test report. Run from the installation's root after a load test:
+ * test report. Pass the installation's root, or run it from inside one:
  *
- *     php tests/Load/count-events.php > stored.json
+ *     php tests/Load/count-events.php [/srv/aggregate] > stored.json
  */
 
 use App\Kernel;
 use Symfony\Component\Dotenv\Dotenv;
 
-$root = dirname(__DIR__, 2);
+$root = rtrim($argv[1] ?? dirname(__DIR__, 2), '/');
 require $root.'/vendor/autoload.php';
 
 (new Dotenv())->bootEnv($root.'/.env');
