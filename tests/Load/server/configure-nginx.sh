@@ -23,8 +23,8 @@ for site in "$@"; do
       -e 's#php8.2-fpm.sock#php8.3-fpm.sock#g' \
       -e "s#listen 80;#listen ${port}${default};#" \
       -e 's#server_name analytics.example.com;#server_name _;#' \
-      -e "s#aggregate_error.log#aggregate_error_${port}.log#" \
-      -e "s#aggregate_access.log#aggregate_access_${port}.log#" \
+      -e "s#aggregate_error\.log#aggregate_error_${port}.log#" \
+      -e "s#aggregate_access\.log#aggregate_access_${port}.log#" \
       "$template" > "/tmp/aggregate-${port}.conf"
   if [ "$first" = 0 ]; then
     # Drop the map block from later sites; nginx allows one per variable.
@@ -41,5 +41,8 @@ done
 
 sudo sed -i -e 's/worker_connections [0-9]*;/worker_connections 8192;/' /etc/nginx/nginx.conf
 grep -q worker_rlimit_nofile /etc/nginx/nginx.conf || sudo sed -i '1i worker_rlimit_nofile 32768;' /etc/nginx/nginx.conf
-sudo nginx -t
+if ! test_output=$(sudo nginx -t 2>&1); then
+  echo "::error title=Nginx configuration::$(echo "$test_output" | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')"
+  exit 1
+fi
 sudo systemctl restart nginx
