@@ -365,7 +365,12 @@ final class SiteScriptConfigTest extends TestCase
         $result = [];
         $files = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($this->projectDir, \FilesystemIterator::SKIP_DOTS));
         foreach ($files as $file) {
-            $result[substr($file->getPathname(), strlen($this->projectDir))] = hash_file('sha256', $file->getPathname());
+            $relative = substr($file->getPathname(), strlen($this->projectDir));
+            // Reads may fill the parsed-YAML cache; operator files are what must not change.
+            if (str_starts_with($relative, '/var/cache/')) {
+                continue;
+            }
+            $result[$relative] = hash_file('sha256', $file->getPathname());
         }
         ksort($result);
 

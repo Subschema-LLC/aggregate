@@ -368,8 +368,19 @@ in them.
   database file can read the private `events` table.
 - Have a trusted process export explicit columns from the approved views instead,
   and protect the exported files. [BigQuery sync](BIGQUERY.md) does this on a
-  schedule, copying the approved views to a BigQuery dataset.
+  schedule, copying the approved views to a BigQuery dataset, and the
+  [reporting database](REPORTING-DATABASE.md) copies them into a server
+  database such as PostgreSQL or MySQL, where BI users get their own logins.
 - Use a server database when a BI tool needs a live connection.
+
+## Copy the views to a reporting database
+
+The [reporting database](REPORTING-DATABASE.md) sync copies selected views into
+same-named tables of a second database on a schedule. BI users then connect
+there, with logins that cannot reach the application database, and their
+queries run against plain tables, on another server if you like. The copies are
+as fresh as their last sync. Private views can be added only by an explicit
+opt-in, and the rules on this page apply to the copies too.
 
 ## Copy the views to BigQuery
 

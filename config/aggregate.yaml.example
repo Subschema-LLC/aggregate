@@ -566,3 +566,18 @@ environments:
 #   - bi_anonymous_goals_v1
 # bigquery_private_views: []        # Row-level or unsuppressed views, each by explicit opt-in
 # bigquery_interval_minutes: 60     # 15, 30, 60, 120, 180, 360, 720 or 1440
+#
+# Reporting database (optional; see docs/REPORTING-DATABASE.md). Copies selected
+# reporting views into same-named tables of a second database, replacing each
+# table at every sync. The connection is REPORTING_DATABASE_URL in .env.local or
+# the server environment, never YAML, because it holds a password.
+# Schedule: */5 * * * * cd /path/to/aggregate && php bin/console app:reporting-database:sync --no-interaction
+# Also managed on Reporting → Reporting database. Uppercase environment
+# variables with the same names override these values (lists are comma-separated).
+#
+# reporting_database_enabled: false
+# reporting_database_views:                  # Approved views; default: all of them
+#   - bi_anonymous_events_v1
+#   - bi_anonymous_goals_v1
+# reporting_database_private_views: []       # Row-level or unsuppressed views, each by explicit opt-in
+# reporting_database_interval_minutes: 60    # 15, 30, 60, 120, 180, 360, 720 or 1440

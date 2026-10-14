@@ -212,9 +212,11 @@ final class FirstRunSetup
     /**
      * The DATABASE_URL for a tested server connection. Credentials and the
      * database name are percent-encoded, so the result never contains quotes,
-     * whitespace or a literal "%kernel.project_dir%".
+     * whitespace or a literal "%kernel.project_dir%". With $persistent, a
+     * PostgreSQL connection stays open between requests: opening one for every
+     * request was PostgreSQL's largest cost in the load test.
      */
-    public static function serverDatabaseUrl(string $driver, string $host, int $port, string $name, string $user, string $password, string $serverVersion, bool $trustCertificate = false): string
+    public static function serverDatabaseUrl(string $driver, string $host, int $port, string $name, string $user, string $password, string $serverVersion, bool $trustCertificate = false, bool $persistent = false): string
     {
         $scheme = match ($driver) {
             'mysql' => 'mysql',
@@ -226,7 +228,7 @@ final class FirstRunSetup
         $hostPart = str_contains($host, ':') ? '['.$host.']' : $host;
 
         return sprintf(
-            '%s://%s:%s@%s:%d/%s?serverVersion=%s%s',
+            '%s://%s:%s@%s:%d/%s?serverVersion=%s%s%s',
             $scheme,
             rawurlencode($user),
             rawurlencode($password),
@@ -236,6 +238,7 @@ final class FirstRunSetup
             rawurlencode($serverVersion),
             // Becomes TrustServerCertificate=1 in the driver's connection string.
             $driver === 'sqlsrv' && $trustCertificate ? '&driverOptions[TrustServerCertificate]=1' : '',
+            $driver === 'pgsql' && $persistent ? '&persistent=true' : '',
         );
     }
 
@@ -372,6 +375,7 @@ final class FirstRunSetup
         }
 
         $trustCertificate = $driver === 'sqlsrv' && $values['trust_certificate'] !== '';
+        $persistent = $driver === 'pgsql' && $values['persistent_connections'] !== '';
         if ($driver === 'sqlsrv' && preg_match('/[{}]/', $name.$host) === 1) {
             throw new \RuntimeException('Enter the database name without braces.');
         }
@@ -406,7 +410,7 @@ final class FirstRunSetup
         $this->assertUsableTables(array_map('strval', $tables));
         $this->assertCanCreateTablesAndViews($pdo);
 
-        return self::serverDatabaseUrl($driver, $host, $port, $name, $user, $password, $serverVersion, $trustCertificate);
+        return self::serverDatabaseUrl($driver, $host, $port, $name, $user, $password, $serverVersion, $trustCertificate, $persistent);
     }
 
     private function prepareSqlite(): void
@@ -651,6 +655,8 @@ final class FirstRunSetup
             'user' => '',
             'password' => '',
             'trust_certificate' => '',
+            // Checked when the page opens; a submitted form sends it only when it stays checked.
+            'persistent_connections' => '1',
             'setup_code' => '',
         ];
     }
@@ -817,6 +823,7 @@ final class FirstRunSetup
         $marker = self::MARKER_HEADER;
         $sqliteSelected = $values['driver'] === 'sqlite' ? ' hidden' : '';
         $trustChecked = $values['trust_certificate'] !== '' ? ' checked' : '';
+        $persistentChecked = $values['persistent_connections'] !== '' ? ' checked' : '';
 
         return <<<HTML
 <!doctype html>
@@ -913,6 +920,10 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .
 <label class="check-label"><input type="checkbox" name="trust_certificate" value="1"{$trustChecked} aria-describedby="trust-help"> Trust the server certificate <span class="muted">(SQL Server only)</span></label>
 <p class="help" id="trust-help">Needed when SQL Server uses a self-signed certificate, which is common on servers you run yourself. The connection is still encrypted.</p>
 </div>
+<div id="persistent-field">
+<label class="check-label"><input type="checkbox" name="persistent_connections" value="1"{$persistentChecked} aria-describedby="persistent-help"> Keep database connections open between requests <span class="muted">(PostgreSQL only, recommended)</span></label>
+<p class="help" id="persistent-help">Each PHP worker reuses its connection instead of opening a new one for every page view, which more than doubled how much traffic a server handled in testing. Each worker holds one connection, so turn this off if your database host allows only a few connections.</p>
+</div>
 </div>
 <p class="help">Saving tests the connection, detects the server version and stores the settings, with a newly generated application secret, in <code>.env.local</code>.</p>
 <button type="submit">Save and continue</button>
@@ -925,10 +936,12 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .
 (function () {
   var fields = document.getElementById('server-fields');
   var trust = document.getElementById('trust-field');
+  var persistent = document.getElementById('persistent-field');
   function sync() {
     var chosen = document.querySelector('input[name=driver]:checked');
     fields.hidden = !!chosen && chosen.value === 'sqlite';
     trust.hidden = !chosen || chosen.value !== 'sqlsrv';
+    persistent.hidden = !chosen || chosen.value !== 'pgsql';
   }
   document.querySelectorAll('input[name=driver]').forEach(function (input) { input.addEventListener('change', sync); });
   sync();

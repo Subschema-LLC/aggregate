@@ -1,0 +1,289 @@
+name: Load test
+
+# Measures the collection endpoint, /api/receive, on a disposable production-
+# style site: Nginx with the documented configuration, PHP 8.3 FPM with
+# OPcache, and SQLite, PostgreSQL 16 or MySQL 8.0, in anonymous and enhanced
+# mode. The load generator, k6, runs on the same machine, so numbers describe
+# this runner, not a production server. Four suites:
+#
+#   load     Step test at rising rates; reports the sustained capacity.
+#            PostgreSQL installs keep connections open between requests, as
+#            the setup page writes them. The tuned variant adds OPcache
+#            preloading and, on MySQL, persistent connections too.
+#   profile  xhprof call profiles of requests at a low, steady rate.
+#   compare  The pull request's code against its base on the same machine,
+#            alternating base, head, head, base at a fixed rate; reports the
+#            change in server CPU per event and response times. Variants
+#            compare the same code with a server setting changed on the head
+#            side: persistent database connections, or OPcache preloading.
+#   cache    Steady traffic while the Symfony cache is cleared, with and
+#            without a PHP-FPM reload, and while PHP-FPM restarts; reports
+#            failures and response times in each stage.
+#
+# Start one from Actions -> Load test -> Run workflow, or add a label to a
+# pull request: load-test, load-test-tuned, profile, compare,
+# compare-persistent, compare-preload or cache-clear. A load run uses about
+# 60 minutes of runner time, profile about 25, each compare about 60 and
+# cache about 30.
+# See docs/LOAD-TESTING.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Which measurement to run
+        type: choice
+        options: [load, profile, compare, cache]
+        default: load
+      rates:
+        description: 'load: requests per second for each stage, comma-separated'
+        default: '50,100,150,200,250,300,350,400,500,600'
+      stage_seconds:
+        description: 'load: seconds per stage'
+        default: '30'
+      base_ref:
+        description: 'compare (code): branch, tag or commit to compare against'
+        default: development
+      variant:
+        description: 'compare: what differs on the head side (code, persistent, preload); load: default or tuned'
+        type: choice
+        options: [code, persistent, preload, tuned]
+        default: code
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: load-test-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.suite || github.event.label.name }}
+  cancel-in-progress: true
+
+jobs:
+  measure:
+    name: ${{ github.event_name == 'workflow_dispatch' && inputs.suite || github.event.label.name }} - ${{ matrix.db.name }}, ${{ matrix.mode }}
+    if: github.event_name == 'workflow_dispatch' || contains(fromJSON('["load-test", "load-test-tuned", "profile", "compare", "compare-persistent", "compare-preload", "cache-clear"]'), github.event.label.name)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [anonymous, enhanced]
+        db:
+          - name: SQLite
+            image: ''
+            port: 1
+            health: ''
+            url: 'sqlite:///%kernel.project_dir%/var/data.db'
+          - name: PostgreSQL 16
+            image: postgres:16
+            port: 5432
+            health: --health-cmd="pg_isready -U aggregate" --health-interval=5s --health-timeout=5s --health-retries=30
+            url: 'postgresql://aggregate:load-test@127.0.0.1:5432/aggregate?serverVersion=16'
+          - name: MySQL 8.0
+            image: mysql:8.0
+            port: 3306
+            health: --health-cmd="mysqladmin ping -h 127.0.0.1 -proot-load" --health-interval=5s --health-timeout=5s --health-retries=30
+            url: 'mysql://aggregate:load-test@127.0.0.1:3306/aggregate?serverVersion=8.0.0'
+    services:
+      database:
+        # An empty image skips the service (SQLite needs none).
+        image: ${{ matrix.db.image }}
+        ports:
+          - ${{ matrix.db.port }}:${{ matrix.db.port }}
+        env:
+          MYSQL_ROOT_PASSWORD: root-load
+          MYSQL_DATABASE: aggregate
+          MYSQL_USER: aggregate
+          MYSQL_PASSWORD: load-test
+          POSTGRES_DB: aggregate
+          POSTGRES_USER: aggregate
+          POSTGRES_PASSWORD: load-test
+        options: ${{ matrix.db.health }}
+    env:
+      SUITE: ${{ github.event_name == 'workflow_dispatch' && inputs.suite || (startsWith(github.event.label.name, 'load-test') && 'load' || (startsWith(github.event.label.name, 'compare') && 'compare' || (github.event.label.name == 'cache-clear' && 'cache' || github.event.label.name))) }}
+      # compare: code is the pull request against its base; persistent and
+      # preload run the same code on both sides with that setting on the head
+      # side only. load: tuned adds both settings.
+      VARIANT: ${{ github.event_name == 'workflow_dispatch' && inputs.variant || (github.event.label.name == 'compare-persistent' && 'persistent' || (github.event.label.name == 'compare-preload' && 'preload' || (github.event.label.name == 'load-test-tuned' && 'tuned' || 'code'))) }}
+      HEAD_ROOT: /srv/head
+      BASE_ROOT: /srv/base
+      K6_VERSION: v1.0.0
+      RATES: ${{ inputs.rates || '50,100,150,200,250,300,350,400,500,600' }}
+      STAGE_SECONDS: ${{ inputs.stage_seconds || '30' }}
+      DATABASE_IMAGE: ${{ matrix.db.image }}
+      LABEL: ${{ matrix.db.name }}, ${{ matrix.mode }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out the comparison base
+        if: env.SUITE == 'compare'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ env.VARIANT == 'code' && (github.event.pull_request.base.sha || inputs.base_ref) || github.sha }}
+          path: base-src
+
+      - name: Install Nginx and PHP 8.3 with PHP-FPM
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq time nginx php8.3-fpm php8.3-cli php8.3-common php8.3-intl \
+            php8.3-mbstring php8.3-xml php8.3-curl php8.3-zip php8.3-sqlite3 php8.3-pgsql php8.3-mysql php8.3-opcache
+          sudo update-alternatives --set php /usr/bin/php8.3
+          php -v
+          composer --version
+
+      - name: Install the application
+        run: |
+          url='${{ matrix.db.url }}'
+          # As the setup page writes them, PostgreSQL connections stay open
+          # between requests. The persistent variant compares a base without
+          # them and a head with them; tuned adds them for MySQL too.
+          persistent=false
+          case "$url" in postgresql://*) [ "$VARIANT" = persistent ] || persistent=true ;; esac
+          if { [ "$SUITE" = compare ] && [ "$VARIANT" = persistent ]; } \
+             || { [ "$SUITE" = load ] && [ "$VARIANT" = tuned ] && [ -n "$DATABASE_IMAGE" ]; }; then
+            persistent=true
+          fi
+          if [ "$persistent" = true ]; then
+            case "$url" in *\?*) url="${url}&persistent=true" ;; *) url="${url}?persistent=true" ;; esac
+          fi
+          tests/Load/server/install.sh "$GITHUB_WORKSPACE" "$HEAD_ROOT" "$url"
+
+      - name: Install the comparison base
+        if: env.SUITE == 'compare'
+        run: |
+          url='${{ matrix.db.url }}'
+          cid=$(docker ps -q --filter "ancestor=${DATABASE_IMAGE}" 2>/dev/null | head -n 1 || true)
+          case "$DATABASE_IMAGE" in
+            postgres*) docker exec "$cid" psql -U aggregate -d aggregate -c 'CREATE DATABASE aggregate_base' ;;
+            mysql*) docker exec "$cid" mysql -uroot -proot-load -e "CREATE DATABASE aggregate_base; GRANT ALL PRIVILEGES ON aggregate_base.* TO 'aggregate'@'%';" ;;
+          esac
+          base_url=${url/\/aggregate\?/\/aggregate_base?}
+          case "$base_url" in postgresql://*) [ "$VARIANT" = persistent ] || base_url="${base_url}&persistent=true" ;; esac
+          tests/Load/server/install.sh "$GITHUB_WORKSPACE/base-src" "$BASE_ROOT" "$base_url"
+
+      - name: Configure and start PHP-FPM and Nginx
+        run: |
+          if [ "$SUITE" = profile ]; then
+            tests/Load/server/configure-php.sh --profile /srv/profile
+          elif [ "$SUITE" = load ] && [ "$VARIANT" = tuned ]; then
+            tests/Load/server/configure-php.sh --preload "$HEAD_ROOT"
+          else
+            tests/Load/server/configure-php.sh
+          fi
+          workers=$(sed -n 's/^FPM_WORKERS=//p' "$GITHUB_ENV" | tail -n 1)
+          if [ "$SUITE" = compare ]; then
+            tests/Load/server/configure-nginx.sh "8081:$BASE_ROOT" "8082:$HEAD_ROOT"
+            tests/Load/server/smoke.sh http://127.0.0.1:8081 "$(cat "$BASE_ROOT/var/load-test-token")"
+            tests/Load/server/smoke.sh http://127.0.0.1:8082 "$(cat "$HEAD_ROOT/var/load-test-token")"
+          else
+            tests/Load/server/configure-nginx.sh "80:$HEAD_ROOT"
+            tests/Load/server/smoke.sh http://127.0.0.1 "$(cat "$HEAD_ROOT/var/load-test-token")"
+          fi
+          memory=$(free -g | awk '/^Mem:/ {print $2}')
+          model=$(lscpu | sed -n 's/^Model name: *//p' | head -n 1)
+          echo "SERVER=$(nproc) vCPU (${model}), ${memory} GB RAM, Nginx, PHP $(php -r 'echo PHP_VERSION;') FPM with ${workers} workers, k6 on the same machine" >> "$GITHUB_ENV"
+
+      - name: Install k6
+        run: tests/Load/server/install-k6.sh
+
+      - name: Step test
+        if: env.SUITE == 'load'
+        run: |
+          tests/Load/server/measure.sh run http://127.0.0.1 "$HEAD_ROOT" ${{ matrix.mode }} "$RATES" "$STAGE_SECONDS" "$DATABASE_IMAGE"
+          if [ "$VARIANT" = tuned ]; then
+            LABEL="$LABEL, tuned"
+            SERVER="$SERVER, OPcache preloading${DATABASE_IMAGE:+, persistent database connections}"
+          elif [[ '${{ matrix.db.url }}' == postgresql://* ]]; then
+            SERVER="$SERVER, persistent database connections (the PostgreSQL default)"
+          fi
+          python3 tests/Load/report.py --github --summary run/k6-summary.json --label "$LABEL" --server "$SERVER" \
+            --vmstat run/vmstat.log --stored run/stored.json --php-log run/php-fpm.log --web-log run/nginx-error.log \
+            --cpu-before run/cpu-before.json --cpu-after run/cpu-after.json --k6-time run/k6-time.txt \
+            --json-out run/load-result.json
+
+      - name: Profile
+        if: env.SUITE == 'profile'
+        run: |
+          WARMUP_SECONDS=5 tests/Load/server/measure.sh run http://127.0.0.1 "$HEAD_ROOT" ${{ matrix.mode }} 20 40 "$DATABASE_IMAGE"
+          python3 tests/Load/profile_summary.py /srv/profile --github --label "$LABEL"
+
+      - name: Compare with the base
+        if: env.SUITE == 'compare'
+        run: |
+          # Alternate sides so drift on the shared machine affects both alike.
+          for phase in 1:base:8081 2:head:8082 3:head:8082 4:base:8081; do
+            IFS=: read -r number side port <<< "$phase"
+            root=$HEAD_ROOT; [ "$side" = base ] && root=$BASE_ROOT
+            if [ "$VARIANT" = preload ]; then
+              # Preloading is per PHP-FPM process, so restart it for each side.
+              if [ "$side" = head ]; then tests/Load/server/configure-php.sh --preload "$HEAD_ROOT"; else tests/Load/server/configure-php.sh; fi
+            fi
+            tests/Load/server/measure.sh "phases/${number}-${side}" "http://127.0.0.1:${port}" "$root" ${{ matrix.mode }} 40 60 "$DATABASE_IMAGE"
+          done
+          [ "$VARIANT" = code ] || LABEL="$LABEL, $VARIANT"
+          python3 tests/Load/compare.py --github --label "$LABEL" --server "$SERVER" --json-out compare-result.json \
+            base=phases/1-base head=phases/2-head head=phases/3-head base=phases/4-base
+
+      - name: Clear the cache under load
+        if: env.SUITE == 'cache'
+        run: |
+          # Five stages of 30 s at 100 requests per second, 10 s apart (k6
+          # starts them 15 s, 55 s, 95 s, 135 s and 175 s after it begins). In
+          # the middle of stages 2 to 5: cache:clear alone; cache:clear and a
+          # PHP-FPM reload with the packaged process_control_timeout of 0,
+          # which ends busy workers at once; the same with a 10 s timeout,
+          # which lets them finish their requests; a PHP-FPM restart, for
+          # contrast. The timeout is read when PHP-FPM starts, so it is set
+          # before the first reload and used by the second.
+          start=$(date +%s)
+          WARMUP_SECONDS=5 tests/Load/server/measure.sh run http://127.0.0.1 "$HEAD_ROOT" ${{ matrix.mode }} 100,100,100,100,100 30 "$DATABASE_IMAGE" &
+          k6_pid=$!
+          at() { local wait=$(( start + $1 - $(date +%s) )); if [ "$wait" -gt 0 ]; then sleep "$wait"; fi; }
+          timed() {
+            local t0=$EPOCHREALTIME status=ok output
+            output=$(mktemp)
+            if ! "$@" > "$output" 2>&1; then
+              status="failed: $(grep -v '^[[:space:]]*$' "$output" | tail -n 1 | tr -d '\r' | cut -c 1-200)"
+            fi
+            awk -v a="$t0" -v b="$EPOCHREALTIME" -v s="$status" 'BEGIN { printf "%s, %.1f s", s, b - a }'
+          }
+          fpm_conf=/etc/php/8.3/fpm/php-fpm.conf
+          at 70;  clear1=$(cd "$HEAD_ROOT" && timed php bin/console cache:clear)
+          at 110; clear2=$(cd "$HEAD_ROOT" && timed php bin/console cache:clear)
+                  sudo sed -i -E '/^[;[:space:]]*process_control_timeout[[:space:]]*=/d' "$fpm_conf"
+                  sudo sed -i -E 's/^\[global\][[:space:]]*$/[global]\nprocess_control_timeout = 10s/' "$fpm_conf"
+                  grep -q '^process_control_timeout = 10s$' "$fpm_conf"
+                  reload1=$(timed sudo systemctl reload php8.3-fpm)
+          at 150; clear3=$(cd "$HEAD_ROOT" && timed php bin/console cache:clear); reload2=$(timed sudo systemctl reload php8.3-fpm)
+          at 190; restart=$(timed sudo systemctl restart php8.3-fpm)
+          wait "$k6_pid"
+          # Errors the application logged (a 500 response, for example), most frequent first.
+          app_errors=$(python3 - "$HEAD_ROOT/var/log/prod.log" <<'PY'
+          import collections, json, sys
+          counts = collections.Counter()
+          try:
+              with open(sys.argv[1], encoding="utf-8", errors="replace") as log:
+                  for line in log:
+                      try:
+                          record = json.loads(line)
+                      except ValueError:
+                          continue
+                      if isinstance(record, dict) and int(record.get("level") or 0) >= 400:
+                          counts[" ".join(str(record.get("message", "")).split())[:200]] += 1
+          except FileNotFoundError:
+              pass
+          print("; ".join(f"{count}x {message}" for message, count in counts.most_common(3)) or "none")
+          PY
+          )
+          python3 tests/Load/report.py --github --summary run/k6-summary.json --label "$LABEL, cache clearing" --server "$SERVER" \
+            --vmstat run/vmstat.log --stored run/stored.json --php-log run/php-fpm.log --web-log run/nginx-error.log \
+            --note "Stage 1 (first row): steady traffic, no action." \
+            --note "Stage 2: cache:clear without a PHP-FPM reload (${clear1})." \
+            --note "Stage 3: cache:clear (${clear2}), then a PHP-FPM reload with process_control_timeout 0, the packaged default (${reload1})." \
+            --note "Stage 4: cache:clear (${clear3}), then a PHP-FPM reload with process_control_timeout 10s (${reload2})." \
+            --note "Stage 5: a PHP-FPM restart (${restart})." \
+            --note "Application errors logged: ${app_errors}."

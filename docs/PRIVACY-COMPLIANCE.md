@@ -18,6 +18,7 @@ per-region example configurations and their limits, see
 - [Stored data and reporting queries](#stored-data-and-reporting-queries)
 - [BI exposure and suppression](#bi-exposure-and-suppression)
 - [BigQuery sync](#bigquery-sync)
+- [Reporting database](#reporting-database)
 - [Administrative controls](#administrative-controls)
 - [Consent and consent-manager integration](#enhanced-analytics-consent)
 - [Independent consent controls and regional examples](#independent-consent-controls-and-regional-examples)
@@ -449,6 +450,15 @@ metadata save/sync, not tracking, ingestion, or health checks.
 - Row-level `analytics_custom_*` views and unsuppressed `analytics_archived_*` views must each be listed under `bigquery_private_views`, and the admin page requires a confirmation before saving them. Restrict that dataset as you would the raw `events` table.
 - Each sync replaces the table, so deletions and threshold changes in Aggregate reach the copy at the next sync. BigQuery keeps earlier table versions for its time-travel and fail-safe periods, and tables of views that are no longer synced stay until deleted. Include the dataset in your retention and rights-request procedures.
 - The service account key or Google sign-in token is stored only in `config/secrets`, readable by the application's user, and never logged or shown. Error messages name views and columns; values quoted in BigQuery's own errors are removed.
+
+## Reporting database
+
+The [reporting database](REPORTING-DATABASE.md) sync is off by default. When an administrator turns it on, the selected reporting views are copied into tables of a second database that the operator runs, so their rows are disclosed to everyone with access to that database.
+
+- Only views can be copied, never raw tables. The approved `bi_anonymous_*`, `bi_dim_*_v1` and glossary views carry their suppression into the copy; the same rules about joining views and threshold limits apply there.
+- Row-level `analytics_custom_*` views and unsuppressed `analytics_archived_*` views must each be listed under `reporting_database_private_views`, and the admin page requires a confirmation before saving them. Protect a reporting database that holds them as you would the application database.
+- Each sync replaces the tables, so deletions and threshold changes in Aggregate reach the copy at the next sync. Tables of views that are no longer copied, and the reporting database's own backups, stay until deleted. Include them in your retention and rights-request procedures.
+- The connection, `REPORTING_DATABASE_URL`, is kept in the server environment and never shown or logged. Error messages name views, columns and SQL states, never a rejected value.
 
 ## Administrative controls
 

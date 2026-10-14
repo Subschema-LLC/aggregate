@@ -11,12 +11,15 @@ use Symfony\Component\Yaml\Yaml;
 class WebsiteConfigManager
 {
     private string $configPath;
+    private readonly ParsedYamlCache $parsedYaml;
 
     public function __construct(
         string $projectDir,
         private readonly WebsiteDomainPolicy $domainPolicy = new WebsiteDomainPolicy(),
+        ?ParsedYamlCache $parsedYaml = null,
     ) {
         $this->configPath = $projectDir . '/config/websites.yaml';
+        $this->parsedYaml = $parsedYaml ?? ParsedYamlCache::forProject($projectDir);
     }
 
     public function getWebsites(): array
@@ -34,7 +37,8 @@ class WebsiteConfigManager
             if (!is_string($yaml)) {
                 return [];
             }
-            $config = $this->parseDocument($yaml);
+            // Read on every call; only parsing an unchanged document is skipped.
+            $config = $this->parsedYaml->remember('websites', $yaml, fn (string $document): array => $this->parseDocument($document));
 
             return array_map(static function (array $site): array {
                 $website = [

@@ -1,0 +1,36 @@
+/* Reporting database sync: connection steps, view lists and the status table. */
+.reporting-database-view,
+.reporting-database-confirm {
+    display: block;
+    margin: 0.35rem 0;
+}
+
+.reporting-database-confirm {
+    font-weight: 600;
+    margin-top: 1rem;
+}
+
+.reporting-database-status td,
+.reporting-database-status th {
+    vertical-align: top;
+}
+
+.reporting-database-status thead th {
+    white-space: nowrap;
+}
+
+.reporting-database-status tbody th {
+    font-weight: normal;
+    letter-spacing: normal;
+    text-transform: none;
+}
+
+.reporting-database-message {
+    max-width: 28rem;
+    overflow-wrap: anywhere;
+}
+
+.reporting-database-code {
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
