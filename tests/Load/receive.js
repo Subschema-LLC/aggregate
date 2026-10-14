@@ -29,6 +29,7 @@
 //   SUMMARY_FILE   Where to write the JSON summary (default k6-summary.json).
 
 import http from 'k6/http';
+import exec from 'k6/execution';
 import { check } from 'k6';
 import { Counter } from 'k6/metrics';
 
@@ -126,6 +127,13 @@ function pick(list) {
   return list[Math.floor(Math.random() * list.length)];
 }
 
+// Spreads iterations over the simulated visitors with a multiplicative hash of
+// the iteration number: deterministic, evenly spread, and with no random
+// source behind the synthetic visitor and session IDs.
+function visitorFor(iteration) {
+  return (Math.imul(iteration + 1, 2654435761) >>> 0) % VISITORS;
+}
+
 function clientAddress(visitor) {
   return `198.${18 + (visitor >> 16)}.${(visitor >> 8) & 255}.${visitor & 255}`;
 }
@@ -148,7 +156,7 @@ function statusClass(status) {
 }
 
 export function send() {
-  const visitor = Math.floor(Math.random() * VISITORS);
+  const visitor = visitorFor(exec.scenario.iterationInTest);
   const [deviceClass, viewportBucket, screenWidth] = pick(DEVICES);
   const granted = MODE === 'enhanced' || (MODE === 'mixed' && Math.random() < 0.3);
 
