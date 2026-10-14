@@ -36,6 +36,15 @@ Configuration has separate sources of truth:
 
 The database holds no operator settings: it stores collected events, archives, users and operational records. Tables such as `analytics_glossary` are generated copies of YAML for BI joins.
 
+### When an edit takes effect
+
+Edits to `config/aggregate.yaml`, `config/websites.yaml` and the tag manager's site files take effect on the next request, whether they come from the dashboard, the command line or an editor. Aggregate reads these files on every request and keeps only the parsed result of an unchanged file in `var/cache/<environment>/parsed-yaml`, keyed by the file's exact contents, so there is no cache to clear after an edit. An edit that is not valid YAML, or not a valid configuration, stops collection until it is fixed rather than falling back to the previous settings.
+
+A few settings are built into Symfony's compiled container or into SQL, and need a step after an edit:
+
+- `dashboard_enabled` or `DASHBOARD_ENABLED`, and Symfony's own files under `config/packages/` and the `services*.yaml` and `routes*.yaml` files: run `php bin/console cache:clear`. Clearing the cache also removes the parsed-YAML entries, which are rebuilt on the next request.
+- The BI disclosure thresholds: run `php bin/console app:analytics:bi-views:regenerate` (see [BI disclosure thresholds](#bi-disclosure-thresholds)).
+
 The web installer at `/install` is optional and only needed when you want dashboard-based setup.
 
 ## Local overrides for shipped defaults
