@@ -113,11 +113,74 @@ checkout, or a small accessibility fix. Keep each PR focused and target
     data too; keep them out of logs and the audit trail details.
 - **Medallion Architecture.** Add a means to define and generate silver and gold views. Also docs: events table and glossary are bronze.
 - **Snowflake Integration** Add a Snowflake connector.
-- **Agency Multi-tenancy** Allow multi-tenancy for agencies that want to host on behalf of clients. Determine is separate databases per client or separation in one DB with views being unique to each client.
-- **Per Website View Generation** Allow separate BI views by website for organizations that require this.
+- **Agency deployments.** Agencies serve each client with a separate Aggregate
+  installation rather than one shared multi-tenant application. Each client's
+  settings, retention, data model and database stay apart, and the client can
+  own the database. Aggregate does not model agencies, clients or hierarchies,
+  and clients do not sign in to it: they read their data in a BI tool or an AI
+  assistant. Tenant hierarchies, per-client logins and per-client theming inside
+  one installation are not planned; white labeling stays per installation. What
+  is missing is making a new installation quick to repeat:
+  - **Provisioning:** one non-interactive, rerunnable command that reads a
+    provisioning file (administrator, websites and their domain rules, BI
+    scopes) and runs the existing steps: `doctrine:migrations:migrate`,
+    `app:install`, `app:create-website`, `app:user:create`,
+    `app:analytics:glossary:sync` and `app:analytics:bi-views:regenerate`.
+    It prints the view-only grant SQL for the reporting account instead of
+    creating database users. The database URL, passwords and other secrets come
+    from the environment or `config/secrets`, never from the provisioning file.
+  - **Starting configuration:** a reusable set of YAML files (consent banner,
+    data model, goals, branding) that an agency copies into each installation.
+    Copies are independent; nothing is shared live between installations.
+  - **Updates across installations:** document how to script
+    `app:updates:apply` and the deployed-code commands over many installations.
+  - **Guide:** an agency deployment guide covering when to use a separate
+    installation and when per-website views in one installation are enough (see
+    below), the client's role as data controller and the agency's as processor,
+    and handover when a client leaves with its database and YAML files.
+- **Per-website and website-group BI views.** Within one installation, give a
+  brand, a location or a small client read-only access to only its own
+  websites. This fits one organization with several brands, or clients content
+  to share one configuration. Every approved view already has a `website_token`
+  column, but [filtering in a BI tool is not separation](docs/BI-CONNECTION.md#postgresql-mysql-mariadb-and-sql-server).
+  - **Scopes:** a scope is a name and a list of website tokens, declared in YAML
+    and managed in the dashboard and the command line with one validation.
+  - **Views:** for each scope, generate copies of the approved `bi_anonymous_*`
+    views filtered to its websites, with the same columns, so a report built on
+    one can be repointed to another. Build them over the approved views, never
+    over raw `events`, archive tables or `analytics_custom_*` projections. A
+    group's views filter rows; they never recompute suppression over the
+    combined websites, which could let them be subtracted from the per-website
+    views. Confirm first that every pooled `(other)` and geography row is
+    computed within one website, so filtering keeps each row whole.
+  - **Metadata:** scoped copies of `bi_dim_website_token_v1` and the glossary
+    values, so a scope's account cannot see other websites' names. Labels that
+    are deployment-wide, such as goal and event names, stay shared; when those
+    are confidential, use a separate installation.
+  - **Operation:** `AnonymousBiViewManager` and
+    `app:analytics:bi-views:regenerate` create and regenerate scoped views with
+    the approved ones, and print the [grant statements](docs/BI-GLOSSARY.md#view-only-grants)
+    for each scope's reporting account. SQLite has no database users or
+    per-view permissions, so scopes need a server database.
+  - **When to use a separate installation instead:** the client needs a
+    different retention period, consent default, data model or disclosure
+    threshold, or must own its database.
+- **Implementation partners.** Give agencies and consultants a supported way to
+  install and run Aggregate for their clients, so adoption grows without the
+  application taking on hosting or tenant features. Subschema can be the first
+  partner, including hosting installations for clients who want that.
+  - An installation and acceptance checklist that builds on the
+    [beta checklist](docs/BETA-TESTING.md#test-checklist): fresh install, consent
+    boundaries, headless operation, BI grants, backups and updates.
+  - A partner guide covering agency deployments, handover and support
+    boundaries.
+  - A partners page listing implementers and the criteria for being listed. A
+    listing does not certify any deployment's legal compliance.
+  - Partner names and offerings stay out of the application; each installation
+    keeps its operator's white label.
 - **Load testing and capacity limits.** Measure how much traffic one
-  installation handles, so sites and hosting plans are sized on numbers rather
-  than guesses, and the [scale-out proposal](#proposals-to-explore) below starts
+  installation handles, so installations are sized on numbers rather than
+  guesses, and the [scale-out proposal](#proposals-to-explore) below starts
   from a measured limit. Every collection request runs its checks in PHP, and
   anonymous events are written to the database during the request, so PHP
   workers and the database set today's ceiling.
@@ -254,75 +317,15 @@ checkout, or a small accessibility fix. Keep each PR focused and target
     names as the change that would revisit it. Kill switches, path exclusions and
     rate limits still run before anything is queued; update the design decision
     in the same change.
-  - **Publish/subscribe:** a RabbitMQ topic exchange or Redis Streams could fan
-    accepted events out to several consumers: storage, the alerts rules engine,
-    and streaming exports such as BigQuery, Fabric or Snowflake. Publish only
-    what storage would accept, after sanitization and the consent decision; send
-    enhanced payloads only to consumers allowed to have them; never publish IP
-    addresses, User-Agent strings or exact anonymous timestamps; and keep broker
-    credentials in `config/secrets`. Delivery is at least once, so consumers must
-    tolerate a redelivered message without counting it twice.
-- **Managed cloud hosting with bring-your-own database.** Subschema hosts the
-  application and dashboard for customers who don't want to run servers, while
-  every collected event stays in a database the customer owns and operates.
-  - **One instance per customer:** an installation already has exactly one
-    database and one set of YAML files, so start with an isolated instance (its
-    own code, YAML and `config/secrets`) per customer. Self-hosted behavior stays
-    unchanged; a shared multi-tenant application remains the separate
-    [agency multi-tenancy](#after-beta-feedback) design.
-  - **Bring your own database:** the customer provisions PostgreSQL, MySQL,
-    MariaDB, SQL Server or Azure SQL at a documented version, creates an
-    application user and a separate read-only BI user, requires TLS, and allows
-    connections from the platform's fixed outbound addresses (or a private
-    connection where their cloud supports one). SQLite is not offered, because
-    the file would sit on Subschema's servers. Backups, database retention and BI
-    access stay with the customer.
-  - **Placement and latency:** anonymous events are written during the request,
-    so every collection request waits on a round trip to the customer's
-    database. Run each instance in the same cloud region as its database, and set
-    plan limits from the load-testing results. A queue stays in the customer's
-    database (`doctrine://`) or their own broker, so enhanced visitor data never
-    waits in Subschema's infrastructure.
-  - **Onboarding:** build on the setup page, which already tests the database
-    connection and writes `.env.local`: a checklist per engine and cloud
-    (database, users, grants, firewall rules, TLS), a connection and permission
-    check that names what is missing, then migrations and the first
-    administrator. Onboarding will take longer than a self-install, so publish
-    guides for the common managed databases, such as Amazon RDS, Azure SQL and
-    Google Cloud SQL.
-  - **Updates and offboarding:** Subschema updates instances, and migrations run
-    against customer databases, so updates need notice, a maintenance window and
-    a check that the application user can still migrate. The updater never
-    reverses migrations, so customers back up before an upgrade. When a customer
-    leaves, they keep the database and receive an export of their YAML
-    configuration; the instance is then deleted.
-  - **Custom domains:** a customer points a hostname such as
-    `analytics.example.com` at their instance with a CNAME. The platform checks
-    the record, issues and renews a TLS certificate (for example through ACME),
-    and sets `app_host` so new snippets use it. The original hosted address keeps
-    working, so installed snippets don't break.
-  - **DNS-verified website domains:** on a shared platform, one customer must not
-    claim another's domain. A domain added to a website's
-    [domain rules](docs/CONFIGURATION.md#website-domains) stays pending until a
-    DNS TXT record with an instance-specific token is found (for example at
-    `_aggregate-verification.example.com`); only then does the server accept
-    events for it. A wildcard rule is verified at its parent domain, and **Allow
-    all domains**, IP literals and `localhost` are unavailable on hosted
-    instances. Re-check on a schedule, recorded in `processing_tasks`; after
-    repeated failures, warn administrators and then stop accepting, so a DNS
-    hiccup doesn't silently drop collection. Decide where verification status
-    lives: the domain list is YAML configuration, the check result is an
-    operational record, and the collection path needs a fast read of it.
-    Verification proves control of a domain; it does not authenticate requests,
-    since non-browser clients can send any `Origin` header. Self-hosted
-    installations could opt in, which also suits agencies.
-  - **Privacy and contracts:** visitor requests pass through Subschema's servers
-    even though no event is stored there. IP addresses are used for rate limiting
-    and optional geography, then discarded, so Subschema acts as a processor and
-    needs a data processing agreement, a subprocessor list and a choice of
-    regions. Load balancer, CDN and web server access logs record client
-    addresses by default; turn that off or keep the shortest retention, and say
-    what is kept.
+  - **Feeding exports:** when the alerts rules engine or a streaming export on
+    this roadmap (BigQuery, Fabric or Snowflake) needs events as they arrive, a
+    RabbitMQ topic exchange or Redis Streams could deliver accepted events to it
+    alongside storage. Add this only for one of those consumers, not as a general
+    event bus. Publish only what storage would accept, after sanitization and the
+    consent decision; send enhanced payloads only to consumers allowed to have
+    them; never publish IP addresses, User-Agent strings or exact anonymous
+    timestamps; and keep broker credentials in `config/secrets`. Delivery is at
+    least once, so consumers must not count a redelivered message twice.
 
 ## Available foundations
 
