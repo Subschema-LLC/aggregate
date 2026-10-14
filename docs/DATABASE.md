@@ -111,6 +111,29 @@ php bin/console app:analytics:glossary:sync
 - `events.consent_state`
 - `events (privacy_mode, website_token, created_at)`
 
+**Persistent connections (on by default):** without them, PHP opens a new
+database connection for every request, and PostgreSQL starts a server process
+and checks the password for each one. With `persistent=true` in
+`DATABASE_URL`, each PHP-FPM worker keeps its connection open between
+requests. The setup page writes it for PostgreSQL unless you untick **Keep
+database connections open between requests**; add it yourself to an
+installation configured by hand or set up before this default:
+
+```bash
+DATABASE_URL="postgresql://aggregate:password@127.0.0.1:5432/aggregate?serverVersion=16&persistent=true"
+```
+
+In the [load tests](LOAD-TESTING.md#optimizations) this cut PostgreSQL's CPU per
+collection request by 83% and the server's total by 44–51%, and more than
+doubled the requests a server sustained. Each PHP-FPM worker then holds one
+connection, so keep the workers on all servers, plus scheduled commands and BI
+users, below `max_connections` (100 by default), and reload PHP-FPM after
+changing database credentials. Where connections are limited, such as on
+shared hosting, turn it off with `persistent=false` (or remove the option), or
+put a connection pooler such as PgBouncer in front of PostgreSQL. With MySQL,
+whose connections are cheap, the setting made little difference, so the setup
+page leaves it off there; MariaDB was not tested.
+
 **Recommended settings for analytics workload:**
 ```ini
 # postgresql.conf
@@ -678,7 +701,7 @@ php bin/console app:analytics:maintain --dry-run
 php bin/console app:analytics:maintain
 ```
 
-Run maintenance at least daily; it also purges [task and audit records](#processing-tasks-and-audit-trail), which is on by default. Include the archive tables and lifecycle lease state in backups, and enforce separate expiration for database backups, replicas, BI extracts, and exports. On SQLite, file access still bypasses view permissions; use controlled exports, such as [BigQuery sync](BIGQUERY.md) of the approved views, or a server database for separate BI access.
+Run maintenance at least daily; it also purges [task and audit records](#processing-tasks-and-audit-trail), which is on by default. Include the archive tables and lifecycle lease state in backups, and enforce separate expiration for database backups, replicas, BI extracts, and exports. On SQLite, file access still bypasses view permissions; use controlled exports, such as [BigQuery sync](BIGQUERY.md) of the approved views, or a server database for separate BI access, which the [reporting database](REPORTING-DATABASE.md) sync can fill with copies of the views.
 
 ## Processing tasks and audit trail
 
@@ -686,8 +709,8 @@ Two generic, private tables record background work for every feature, instead of
 status table per feature:
 
 - **`processing_tasks`**: one row per run of a job. `task_type` names the job
-  (`bigquery_sync`, `analytics_maintenance`) and `subject` what it worked on (the
-  view, for BigQuery). `status` is `running`, `succeeded` or `failed`;
+  (`bigquery_sync`, `reporting_database_sync`, `analytics_maintenance`) and
+  `subject` what it worked on (the view, for the syncs). `status` is `running`, `succeeded` or `failed`;
   `triggered_by` is `schedule` (the scheduled command doing what is due),
   `command` (a person running a command for a specific job) or `dashboard`, with
   the administrator in `requested_by`. `started_at` and `finished_at` are UTC;

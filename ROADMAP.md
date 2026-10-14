@@ -113,8 +113,101 @@ checkout, or a small accessibility fix. Keep each PR focused and target
     data too; keep them out of logs and the audit trail details.
 - **Medallion Architecture.** Add a means to define and generate silver and gold views. Also docs: events table and glossary are bronze.
 - **Snowflake Integration** Add a Snowflake connector.
-- **Agency Multi-tenancy** Allow multi-tenancy for agencies that want to host on behalf of clients. Determine is separate databases per client or separation in one DB with views being unique to each client.
-- **Per Website View Generation** Allow separate BI views by website for organizations that require this.
+- **Agency deployments.** Agencies serve each client with a separate Aggregate
+  installation rather than one shared multi-tenant application. Each client's
+  settings, retention, data model and database stay apart, and the client can
+  own the database. Aggregate does not model agencies, clients or hierarchies,
+  and clients do not sign in to it: they read their data in a BI tool or an AI
+  assistant. Tenant hierarchies, per-client logins and per-client theming inside
+  one installation are not planned; white labeling stays per installation. What
+  is missing is making a new installation quick to repeat:
+  - **Provisioning:** one non-interactive, rerunnable command that reads a
+    provisioning file (administrator, websites and their domain rules, BI
+    scopes) and runs the existing steps: `doctrine:migrations:migrate`,
+    `app:install`, `app:create-website`, `app:user:create`,
+    `app:analytics:glossary:sync` and `app:analytics:bi-views:regenerate`.
+    It prints the view-only grant SQL for the reporting account instead of
+    creating database users. The database URL, passwords and other secrets come
+    from the environment or `config/secrets`, never from the provisioning file.
+  - **Starting configuration:** a reusable set of YAML files (consent banner,
+    data model, goals, branding) that an agency copies into each installation.
+    Copies are independent; nothing is shared live between installations.
+  - **Updates across installations:** document how to script
+    `app:updates:apply` and the deployed-code commands over many installations.
+  - **Guide:** an agency deployment guide covering when to use a separate
+    installation and when per-website views in one installation are enough (see
+    below), the client's role as data controller and the agency's as processor,
+    and handover when a client leaves with its database and YAML files.
+- **Per-website and website-group BI views.** Within one installation, give a
+  brand, a location or a small client read-only access to only its own
+  websites. This fits one organization with several brands, or clients content
+  to share one configuration. Every approved view already has a `website_token`
+  column, but [filtering in a BI tool is not separation](docs/BI-CONNECTION.md#postgresql-mysql-mariadb-and-sql-server).
+  - **Scopes:** a scope is a name and a list of website tokens, declared in YAML
+    and managed in the dashboard and the command line with one validation.
+  - **Views:** for each scope, generate copies of the approved `bi_anonymous_*`
+    views filtered to its websites, with the same columns, so a report built on
+    one can be repointed to another. Build them over the approved views, never
+    over raw `events`, archive tables or `analytics_custom_*` projections. A
+    group's views filter rows; they never recompute suppression over the
+    combined websites, which could let them be subtracted from the per-website
+    views. Confirm first that every pooled `(other)` and geography row is
+    computed within one website, so filtering keeps each row whole.
+  - **Metadata:** scoped copies of `bi_dim_website_token_v1` and the glossary
+    values, so a scope's account cannot see other websites' names. Labels that
+    are deployment-wide, such as goal and event names, stay shared; when those
+    are confidential, use a separate installation.
+  - **Operation:** `AnonymousBiViewManager` and
+    `app:analytics:bi-views:regenerate` create and regenerate scoped views with
+    the approved ones, and print the [grant statements](docs/BI-GLOSSARY.md#view-only-grants)
+    for each scope's reporting account. SQLite has no database users or
+    per-view permissions, so scopes need a server database.
+  - **When to use a separate installation instead:** the client needs a
+    different retention period, consent default, data model or disclosure
+    threshold, or must own its database.
+- **Implementation partners.** Give agencies and consultants a supported way to
+  install and run Aggregate for their clients, so adoption grows without the
+  application taking on hosting or tenant features. Subschema can be the first
+  partner, including hosting installations for clients who want that.
+  - An installation and acceptance checklist that builds on the
+    [beta checklist](docs/BETA-TESTING.md#test-checklist): fresh install, consent
+    boundaries, headless operation, BI grants, backups and updates.
+  - A partner guide covering agency deployments, handover and support
+    boundaries.
+  - A partners page listing implementers and the criteria for being listed. A
+    listing does not certify any deployment's legal compliance.
+  - Partner names and offerings stay out of the application; each installation
+    keeps its operator's white label.
+- **Load testing and capacity limits.** Measure how much traffic one
+  installation handles, so installations are sized on numbers rather than
+  guesses, and the [scale-out proposal](#proposals-to-explore) below starts
+  from a measured limit. Every collection request runs its checks in PHP, and
+  anonymous events are written to the database during the request, so PHP
+  workers and the database set today's ceiling.
+  - **Harness:** repeatable load scripts in the repository (k6 is a good fit:
+    open source, scriptable, and runs from a laptop or CI) that send anonymous
+    and enhanced `/api/receive` traffic with synthetic payloads, requests for the
+    tracker, consent and tag manager scripts, and dashboard use at the same
+    time. Run them against disposable installations only, never production data.
+  - **Matrix:** PHP-FPM behind Nginx and FrankenPHP; SQLite, MySQL or MariaDB,
+    PostgreSQL and, where possible, SQL Server; `sync://` and `doctrine://` with
+    one and several workers; and `app:analytics:maintain` running during load.
+  - **Measurements:** sustained events per second and per minute at a stated p95
+    and p99 latency and error rate; the point where latency or errors start to
+    climb; database CPU, connections and lock waits; and queue depth from
+    `messenger:stats` and worker lag.
+  - **Rate limiting:** `rate_limit_per_minute` counts per client address, so a
+    test from a few machines is throttled before anything else. Test runs need a
+    test-only limit, or synthetic client addresses through `TRUSTED_PROXIES` in
+    the disposable environment, and should report the limiter's own cost
+    separately.
+  - **Results:** a published capacity page with the hardware, versions, settings
+    and numbers of each run, linked from the deployment guide for sizing. The
+    figures describe the tested setup; they are not a guarantee.
+  - **Known gap:** the [performance advice](DEPLOYMENT.md#performance) suggests
+    AMQP and Redis transports, but only `symfony/doctrine-messenger` is installed,
+    so `amqp://` and `redis://` DSNs fail today. Add those transports (see below)
+    or correct the guide.
 
 ## Proposals to explore
 
@@ -190,6 +283,49 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   limits that don't depend on `TRUSTED_PROXIES`. Keep path sanitization, kill
   switches, path exclusions and anonymous-mode rules identical to browser
   collection. GDPR still applies to the processing.
+- **Scale-out architecture.** Once load testing shows where one server stops,
+  explore running Aggregate as separate roles that share one database. Keep the
+  single-server install as the default, and make every step optional.
+  - **Roles:** an administration server with the dashboard, setup and updates;
+    collection servers behind a load balancer, serving `/api/receive` and the
+    browser scripts with `DASHBOARD_ENABLED=0`; and worker servers running
+    `messenger:consume` and the scheduled commands. The YAML-first design already
+    lets a collection server run without a login page.
+  - **Shared state to solve first:**
+    - *Configuration.* YAML lives on each server's disk, and the dashboard writes
+      it locally. Collection servers need identical files with one writer:
+      deployed from version control, a read-only shared mount, or a sync from the
+      administration server.
+    - *Rate limiting.* Buckets are files under `var/rate_limit`, so each server
+      counts on its own and a load balancer multiplies the effective limit. Use a
+      shared store with the same HMAC keys, or limit at the load balancer.
+    - *Updates.* Servers must not serve different releases' tracker and schema
+      against one database. Run migrations once, from one server, and roll the
+      code across the others.
+    - *Scheduled jobs.* Maintenance already holds a database lease, and jobs lock
+      through `processing_tasks`, so they should run safely from any worker;
+      confirm that under load.
+  - **Queues and brokers:** enhanced events already go through Messenger. Add
+    `symfony/amqp-messenger` (RabbitMQ) and `symfony/redis-messenger` as optional
+    transports, documented with the PHP extensions they need, while `sync://` and
+    `doctrine://` keep working on shared hosting.
+  - **Anonymous events off the request path:** anonymous rows are written during
+    the request so that nothing more detailed than the stored row is ever kept,
+    not even in a queue. Queueing or batching only the already-sanitized,
+    hour-bucketed row keeps that guarantee, and is what the
+    [design decision](docs/DESIGN-DECISIONS.md#anonymous-events-written-immediately-enhanced-events-through-messenger)
+    names as the change that would revisit it. Kill switches, path exclusions and
+    rate limits still run before anything is queued; update the design decision
+    in the same change.
+  - **Feeding exports:** when the alerts rules engine or a streaming export on
+    this roadmap (BigQuery, Fabric or Snowflake) needs events as they arrive, a
+    RabbitMQ topic exchange or Redis Streams could deliver accepted events to it
+    alongside storage. Add this only for one of those consumers, not as a general
+    event bus. Publish only what storage would accept, after sanitization and the
+    consent decision; send enhanced payloads only to consumers allowed to have
+    them; never publish IP addresses, User-Agent strings or exact anonymous
+    timestamps; and keep broker credentials in `config/secrets`. Delivery is at
+    least once, so consumers must not count a redelivered message twice.
 
 ## Available foundations
 
@@ -232,6 +368,7 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   preserved brand colors and fonts across modes.
 - [Feature flags](docs/FEATURE-FLAGS.md), with shared YAML/admin UI settings, server and CLI enforcement, and independent navigation visibility. Updates is the first registered capability; developer and contributor guidance explains how to add more.
 - [BigQuery sync](docs/BIGQUERY.md) of selected reporting views on an interval, with service account key, Google Cloud and Google sign-in authentication, explicit opt-in for private views, a status page and headless commands.
+- [Reporting database](docs/REPORTING-DATABASE.md): selected reporting views copied into same-named tables of a second database on any supported engine, swapped in whole at each sync, so BI users connect without access to the application database. Same view opt-ins, schedule, status page and headless commands as BigQuery sync.
 - [YAML disclosure thresholds](docs/CONFIGURATION.md#bi-disclosure-thresholds):
   `anonymous_min_cell_count` and `anonymous_geo_min_cell_count` live in the
   aggregate YAML with environment overrides, are edited on the BI disclosure page
@@ -248,7 +385,7 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   coarser `(other)` rows, with the same rule against the hourly view, so daily
   totals add up; `bi_anonymous_coverage_v1` reports, in bands, how much of each
   day's traffic each event view releases.
-- [Processing tasks and an audit trail](docs/DATABASE.md#processing-tasks-and-audit-trail): two shared private tables for background job runs (status, lock, failure details) and their outcomes, used by BigQuery sync and maintenance, with UI/YAML purge periods.
+- [Processing tasks and an audit trail](docs/DATABASE.md#processing-tasks-and-audit-trail): two shared private tables for background job runs (status, lock, failure details) and their outcomes, used by BigQuery sync, the reporting database sync and maintenance, with UI/YAML purge periods.
 - [Organization traffic markers](docs/PRIVACY-COMPLIANCE.md#organization-traffic), with YAML/UI settings, marking links that set the marker on each tracked website, and a fixed `org_internal_traffic` flag on every event. Filtering uses retained event JSON; grouped BI views and archives do not retain the flag.
 - [Custom data models](docs/DATA-MODEL.md), including UTM/query mappings, per-property consent settings, downloadable YAML, and private reporting columns. All UTMs require consent by default; anonymous attribution should use at most broad `utm_medium` values, with documented warnings for overrides.
 - [Optional JavaScript minification](docs/JS-BUILD.md) for tracker, organization-marker, and drop-in scripts.

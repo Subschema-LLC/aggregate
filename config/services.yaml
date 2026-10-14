@@ -42,6 +42,8 @@ services:
             - '../src/Service/BigQuery/{BigQueryClient,BigQueryException,GoogleCloudCredentials,GoogleSignInCredentials,ServiceAccountCredentials,ServiceAccountKey,TokenCache}.php'
             # Value object describing what started a processing task.
             - '../src/Service/Operations/TaskTrigger.php'
+            # Built by the sync runner for the reporting database's connection.
+            - '../src/Service/ReportingDatabase/{ReportingDatabaseException,ReportingTableWriter}.php'
 
     App\Controller\HomeController: ~
     App\Controller\ReceiveController:
@@ -62,6 +64,10 @@ services:
         tags: ['controller.service_arguments']
     App\Controller\InternalTrafficPublicController:
         tags: ['controller.service_arguments']
+
+    App\Service\ParsedYamlCache:
+        arguments:
+            $directory: '%kernel.cache_dir%/parsed-yaml'
 
     App\Service\AggregateConfigLoader:
         public: true
@@ -155,6 +161,19 @@ services:
             $projectDir: '%kernel.project_dir%'
 
     App\Service\BigQuery\BigQueryBackgroundSync:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+            $environment: '%kernel.environment%'
+            $debug: '%kernel.debug%'
+
+    App\Service\ReportingDatabase\ReportingDatabaseConnection:
+        arguments:
+            # Infrastructure, like DATABASE_URL; it holds a password, so it is
+            # never a YAML setting. See docs/REPORTING-DATABASE.md.
+            $url: '%env(default::REPORTING_DATABASE_URL)%'
+            $projectDir: '%kernel.project_dir%'
+
+    App\Service\ReportingDatabase\ReportingDatabaseBackgroundSync:
         arguments:
             $projectDir: '%kernel.project_dir%'
             $environment: '%kernel.environment%'

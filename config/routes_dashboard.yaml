@@ -74,6 +74,10 @@ bigquery_controller:
     resource: ../src/Controller/BigQueryController.php
     type: attribute
 
+reporting_database_controller:
+    resource: ../src/Controller/ReportingDatabaseController.php
+    type: attribute
+
 updates_controller:
     resource: ../src/Controller/UpdatesController.php
     type: attribute

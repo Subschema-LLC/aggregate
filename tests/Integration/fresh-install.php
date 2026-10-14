@@ -14,6 +14,10 @@ declare(strict_types=1);
  *   AGGREGATE_E2E_DB_HOST=127.0.0.1 AGGREGATE_E2E_DB_PORT=3306 \
  *   AGGREGATE_E2E_DB_NAME=aggregate AGGREGATE_E2E_DB_USER=... AGGREGATE_E2E_DB_PASSWORD=... \
  *   [AGGREGATE_E2E_TRUST_CERTIFICATE=1] php tests/Integration/fresh-install.php
+ *
+ * On a database server, the reporting database sync step also needs an empty
+ * database named like AGGREGATE_E2E_DB_NAME plus "_reporting", on the same
+ * server, in which the same user can create, fill and drop tables.
  */
 
 use Doctrine\DBAL\Connection;
@@ -226,6 +230,8 @@ E2E::step('setup page: connect the database', static function () use ($browser, 
     }
     $browser->submit($form);
     E2E::check(is_file($root.'/.env.local'), 'The setup page did not write .env.local. '.pageProblem($browser));
+    // PostgreSQL keeps connections open between requests unless unticked.
+    E2E::check(($driver === 'pgsql') === str_contains((string) file_get_contents($root.'/.env.local'), '&persistent=true'), 'Persistent connections in .env.local do not match the default for '.$driver.'.');
     E2E::check(str_ends_with((string) $browser->getHistory()->current()->getUri(), '/install'), 'Expected /install next. '.pageProblem($browser));
 });
 
@@ -468,6 +474,88 @@ E2E::step('BigQuery dry run exports every syncable view with its schema', static
     E2E::check(array_column($schema, 'type', 'name')['event_count'] === 'INT64', 'Exported schema: '.json_encode($schema));
     // The task tables exist on this engine and the check command reads them.
     E2E::check(str_contains(console($root, ['app:bigquery:check', '--no-connect']), 'off'), 'app:bigquery:check did not report the settings.');
+});
+
+E2E::step('reporting database sync copies every syncable view to a second database', static function () use ($root, $driver, $browser, $base): void {
+    // The same server and user, another database: CI creates aggregate_reporting
+    // beforehand; SQLite needs only a file.
+    $environment = rtrim((string) file_get_contents($root.'/.env.local'))."\n";
+    $applicationUrl = (new Dotenv())->parse($environment)['DATABASE_URL'];
+    $reportingUrl = $driver === 'sqlite'
+        ? 'sqlite:///%kernel.project_dir%/var/reporting.db'
+        : (string) preg_replace('~(@[^/?#]+)/aggregate(?=\?|$)~', '$1/aggregate_reporting', $applicationUrl, 1, $replaced);
+    E2E::check($driver === 'sqlite' || $replaced === 1, 'The reporting database URL could not be derived from DATABASE_URL.');
+    $config = Yaml::parseFile($root.'/config/aggregate.yaml');
+    $views = ['bi_anonymous_events_v1', 'bi_anonymous_goals_v1', 'bi_anonymous_geo_events_v1', 'bi_anonymous_daily_v1', 'bi_anonymous_daily_rollup_v1', 'bi_anonymous_coverage_v1', 'bi_dim_website_token_v1', 'bi_dim_event_name_v1',
+        'bi_dim_goal_event_v1', 'bi_dim_referrer_channel_v1', 'bi_dim_device_class_v1', 'bi_dim_viewport_bucket_v1', 'bi_dim_geo_area_v1', 'bi_glossary_values_v1', 'bi_glossary_columns_v1'];
+    $private = ['analytics_custom_events_v1', 'analytics_custom_pageviews_v1', 'analytics_custom_goals_v1', 'analytics_archived_events_v1', 'analytics_archived_pageviews_v1', 'analytics_archived_goals_v1'];
+    file_put_contents($root.'/config/aggregate.yaml', Yaml::dump(['reporting_database_enabled' => true, 'reporting_database_views' => $views, 'reporting_database_private_views' => $private] + $config, 4, 2));
+
+    // A URL that leads back to the application database is refused.
+    file_put_contents($root.'/.env.local', $environment."REPORTING_DATABASE_URL='".str_replace('%kernel.project_dir%/var/data.db', '%kernel.project_dir%/var/./data.db', $applicationUrl)."'\n");
+    [$status, $output, $errors] = consoleResult($root, ['app:reporting-database:check']);
+    E2E::check($status === 1 && str_contains((string) preg_replace('/\s+/', ' ', $output.$errors), 'names the application database'), 'The application database was accepted as the reporting database: '.$output.$errors);
+
+    file_put_contents($root.'/.env.local', $environment."REPORTING_DATABASE_URL='".$reportingUrl."'\n");
+    // SymfonyStyle wraps long lines.
+    $check = (string) preg_replace('/\s+/', ' ', console($root, ['app:reporting-database:check']));
+    E2E::check(str_contains($check, 'can create and drop tables') && str_contains($check, 'No views have been copied yet'), 'app:reporting-database:check: '.$check);
+
+    $reporting = static function () use ($root, $reportingUrl): Connection {
+        $scheme = ['mssql' => 'pdo_sqlsrv', 'mysql' => 'pdo_mysql', 'postgresql' => 'pdo_pgsql', 'sqlite' => 'pdo_sqlite'];
+
+        return DriverManager::getConnection((new DsnParser($scheme))->parse(str_replace('%kernel.project_dir%', $root, $reportingUrl)));
+    };
+    $application = connection($root);
+    // Twice: the first run creates each table, the second replaces it.
+    foreach (['create', 'replace'] as $round) {
+        $result = json_decode(console($root, ['app:reporting-database:sync', '--force', '--json']), true);
+        $statuses = array_column($result['results'] ?? [], 'status', 'view');
+        E2E::check($statuses === array_fill_keys([...$views, ...$private], 'synced'), $round.': '.json_encode($result));
+        $copy = $reporting();
+        foreach ([...$views, ...$private] as $view) {
+            $expected = (int) $application->fetchOne('SELECT COUNT(*) FROM '.$view);
+            $copied = (int) $copy->fetchOne('SELECT COUNT(*) FROM '.$view);
+            E2E::check($copied === $expected && ($statuses[$view] ?? null) === 'synced' && ($result['results'][array_search($view, array_column($result['results'], 'view'), true)]['rows'] ?? null) === $expected, sprintf('%s %s: %d rows copied, %d in the view.', $round, $view, $copied, $expected));
+        }
+        $copy->close();
+    }
+
+    $copy = $reporting();
+    // Staging and previous tables are gone; only the copies remain.
+    $tables = array_map(static fn ($name): string => strtolower($name->getUnqualifiedName()->getValue()), $copy->createSchemaManager()->introspectTableNames());
+    sort($tables);
+    $expectedTables = [...$views, ...$private];
+    sort($expectedTables);
+    E2E::check($tables === $expectedTables, 'Tables in the reporting database: '.implode(', ', $tables));
+    // Values keep their types on this engine.
+    E2E::check((int) $copy->fetchOne("SELECT SUM(event_count) FROM bi_anonymous_goals_v1 WHERE goal_event = 'purchase'") === 6, 'Copied goal counts differ.');
+    $purchases = $copy->fetchAllAssociative("SELECT plan_name, total_minor_number, discount_rate_number, created_at FROM analytics_custom_goals_v1 WHERE goal_event = 'purchase'");
+    E2E::check(count($purchases) === 6, 'Copied custom goals: '.json_encode($purchases));
+    foreach ($purchases as $row) {
+        E2E::check($row['plan_name'] === 'pro' && (int) $row['total_minor_number'] === 4999 && abs((float) $row['discount_rate_number'] - 0.1) < 1e-12
+            && preg_match('/^[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}:[0-9]{2}/', (string) $row['created_at']) === 1, 'Copied custom values: '.json_encode($row));
+    }
+    // Sorted here: the two databases may collate text differently.
+    $labels = static function (Connection $db): array {
+        $rows = array_map(static fn (array $row): string => json_encode(array_map(static fn (mixed $value): ?string => $value === null ? null : (string) $value, $row), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE), $db->fetchAllNumeric('SELECT dimension, code, locale, label FROM bi_glossary_values_v1'));
+        sort($rows);
+
+        return $rows;
+    };
+    E2E::check($labels($copy) === $labels($application), 'Copied glossary labels differ from the view.');
+    $flags = $copy->fetchAssociative("SELECT is_fallback, is_default_locale FROM bi_glossary_values_v1 WHERE dimension = 'goal_event' AND code = 'purchase'");
+    E2E::check(is_array($flags) && in_array($flags['is_default_locale'], [true, 1, '1'], true), 'Copied glossary flags: '.json_encode($flags));
+    $copy->close();
+
+    E2E::check((int) $application->fetchOne("SELECT COUNT(*) FROM processing_tasks WHERE task_type = 'reporting_database_sync' AND status = 'succeeded'") === 2 * (count($views) + count($private)), 'Reporting database syncs were not recorded.');
+    $check = (string) preg_replace('/\s+/', ' ', console($root, ['app:reporting-database:check']));
+    E2E::check(str_contains($check, (count($views) + count($private)).' copied views found'), 'app:reporting-database:check after the sync: '.$check);
+    $page = $browser->request('GET', $base.'/dashboard/reporting-database');
+    E2E::check($page->filter('.reporting-database-status .tag.is-success')->count() === count($views) + count($private) && str_contains($page->text(), $driver === 'sqlite' ? 'var/reporting.db' : 'aggregate_reporting'), 'The reporting database page: '.pageProblem($browser));
+
+    file_put_contents($root.'/config/aggregate.yaml', Yaml::dump($config, 4, 2));
+    file_put_contents($root.'/.env.local', $environment);
 });
 
 E2E::step('small cells are suppressed', static function () use ($root, $collect): void {

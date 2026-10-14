@@ -26,6 +26,25 @@ class BigQueryViewExporter
     }
 
     /**
+     * A syncable view's columns, with their catalog types, and its rows in
+     * that column order, read lazily in batches. The reporting database sync
+     * reads views through this, so both syncs see the same rows and types.
+     *
+     * @return array{fields: list<array{name: string, type: string}>, rows: iterable<list<mixed>>}
+     *
+     * @throws BigQueryException when the view is not syncable or cannot be read
+     */
+    public function read(string $view): array
+    {
+        if (!BigQueryViewCatalog::isKnown($view)) {
+            throw new BigQueryException($view.' is not a reporting view that can be synced.');
+        }
+        $sql = 'SELECT * FROM '.$this->connection->getDatabasePlatform()->quoteSingleIdentifier($view);
+
+        return ['fields' => $this->fields($view, $sql), 'rows' => $this->rows($sql)];
+    }
+
+    /**
      * @return array{file: string, rows: int, bytes: int, fields: list<array{name: string, type: string}>}
      *
      * @throws BigQueryException

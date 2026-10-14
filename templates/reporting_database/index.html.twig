@@ -1,0 +1,172 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Reporting database - {{ app_branding.name }}{% endblock %}
+
+{% macro env_help(overrides, key) %}{% if attribute(overrides, key) %}<p class="help">Controlled by <code>{{ key|upper }}</code>.</p>{% endif %}{% endmacro %}
+
+{% block body %}
+{% import _self as help %}
+{% set running = status.views|filter(view => view.status == 'running')|length > 0 %}
+{% set interval = settings.reporting_database_interval_minutes %}
+<div class="reporting-database-page"
+     data-controller="pages--reporting-database--index"
+     data-pages--reporting-database--index-status-url-value="{{ path('app_reporting_database_status') }}"
+     data-pages--reporting-database--index-running-value="{{ running or sync_requested_at ? 'true' : 'false' }}"
+     data-pages--reporting-database--index-since-value="{{ sync_requested_at ?? 0 }}">
+    <h1 class="title">Reporting database</h1>
+    <p class="subtitle">Copy reporting views into tables of a separate database on a schedule, so Power BI, Tableau and other BI tools connect there instead of to the application database.</p>
+    {{ component('Ui:DocsLink', {topic: 'reporting.reporting-database', label: 'Reporting database guide'}) }}
+
+    {% if configuration_error %}<div class="notification is-danger" role="alert">{{ configuration_error }}</div>{% endif %}
+
+    <section class="box" aria-labelledby="reporting-database-summary-title">
+        <h2 class="title is-5" id="reporting-database-summary-title">
+            {% if settings.reporting_database_enabled %}
+                <span class="tag is-success is-medium mr-2">On</span> Copying {{ status.views|length }} view{{ status.views|length == 1 ? '' : 's' }} every {{ interval >= 60 ? (interval / 60) ~ ' hour' ~ (interval > 60 ? 's' : '') : interval ~ ' minutes' }}
+            {% else %}
+                <span class="tag is-light is-medium mr-2">Off</span> Sync is turned off
+            {% endif %}
+        </h2>
+        <p>Each sync replaces a table with the current contents of its view in one step, so BI users always read a complete copy as of the last sync. Deletions and suppression in Aggregate carry over at the next sync.</p>
+        {% if status.scheduler_late %}
+            <div class="notification is-warning is-light mt-3" role="status">
+                <p><strong>The scheduled sync is not running.</strong> {% if status.last_run %}The last view sync started {{ status.last_run|date('Y-m-d H:i', 'UTC') }} UTC.{% else %}No view has been copied yet.{% endif %} Add this line to the web server user’s crontab:</p>
+                <pre class="mt-2 reporting-database-code"><code>{{ cron_line }}</code></pre>
+            </div>
+        {% endif %}
+        <div class="buttons mt-4">
+            <button class="button" type="submit" form="reporting-database-test"{% if connection_error %} disabled{% endif %}>
+                <span class="icon"><i class="fas fa-plug-circle-check" aria-hidden="true"></i></span><span>Test connection</span>
+            </button>
+            <button class="button is-primary" type="submit" form="reporting-database-sync"{% if configuration_error or connection_error or not settings.reporting_database_enabled or background_problem or running or sync_requested_at %} disabled{% endif %}>
+                <span class="icon"><i class="fas fa-database" aria-hidden="true"></i></span><span>{{ running or sync_requested_at ? 'Syncing…' : 'Sync now' }}</span>
+            </button>
+        </div>
+        {% if background_problem and settings.reporting_database_enabled %}<p class="help">{{ background_problem }}</p>{% endif %}
+    </section>
+
+    {# 1. Connection #}
+    <section class="box" aria-labelledby="reporting-database-connection-title">
+        <h2 class="title is-4" id="reporting-database-connection-title">1. Connect the reporting database</h2>
+        {{ component('Ui:DocsLink', {topic: 'reporting.reporting-database-setup', label: 'Create the database and its users'}) }}
+        {% if location %}
+            <p class="notification is-success is-light mt-4">Reporting database: <strong>{{ location }}</strong>.</p>
+        {% else %}
+            <p class="notification is-warning is-light mt-4">{{ connection_error }}</p>
+        {% endif %}
+        <ol class="ml-5">
+            <li>Create an empty database for reporting, on the same server as the application database or another one, and a user that can create and drop tables in it.</li>
+            <li>Add its address to <code>.env.local</code> on the server, written like <code>DATABASE_URL</code>:
+                <pre class="mt-2 mb-2 reporting-database-code"><code>REPORTING_DATABASE_URL="postgresql://aggregate_sync:password@localhost:5432/aggregate_reporting?serverVersion=16"</code></pre>
+            </li>
+            <li>Give BI users read-only access to the reporting database only, then use <strong>Test connection</strong>.</li>
+        </ol>
+        <p class="help mt-3">The address holds a password, so it is set on the server like <code>DATABASE_URL</code> and never shown or saved from this page.</p>
+    </section>
+
+    {# 2. Views #}
+    <form method="post" action="{{ path('app_reporting_database_views') }}" class="box" aria-labelledby="reporting-database-views-title">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token('reporting_database_settings') }}">
+        <h2 class="title is-4" id="reporting-database-views-title">2. Choose the views</h2>
+        {{ component('Ui:DocsLink', {topic: 'reporting.reporting-database-views', label: 'What each view contains'}) }}
+        <fieldset class="field mt-4">
+            <legend class="label">Approved views</legend>
+            <p class="help mb-2">Counted anonymous events with small cells withheld, and labels. The same views routine BI users read.</p>
+            {% for view, description in approved_views %}
+                <label class="checkbox reporting-database-view">
+                    <input type="checkbox" name="views[]" value="{{ view }}"{% if view in settings.reporting_database_views %} checked{% endif %}{% if overrides.reporting_database_views %} disabled{% endif %}>
+                    <code>{{ view }}</code> <span class="has-text-grey">{{ description }}</span>
+                </label>
+            {% endfor %}
+            {{ help.env_help(overrides, 'reporting_database_views') }}
+        </fieldset>
+        <details{% if settings.reporting_database_private_views is not empty %} open{% endif %}>
+            <summary class="has-text-weight-semibold">Private views ({{ settings.reporting_database_private_views|length }} selected)</summary>
+            <div class="notification is-warning is-light mt-3">
+                These views hold individual retained events or unsuppressed counts. Copying them gives everyone who can read the reporting database row-level data, outside Aggregate’s suppression. Select them only with an approved purpose, and restrict access to their tables as you would to raw events.
+            </div>
+            <fieldset class="field">
+                <legend class="is-sr-only">Private views</legend>
+                {% for view, description in private_views %}
+                    <label class="checkbox reporting-database-view">
+                        <input type="checkbox" name="private_views[]" value="{{ view }}" data-pages--reporting-database--index-target="private" data-action="pages--reporting-database--index#togglePrivate" data-saved="{{ view in settings.reporting_database_private_views ? '1' : '0' }}"{% if view in settings.reporting_database_private_views %} checked{% endif %}{% if overrides.reporting_database_private_views %} disabled{% endif %}>
+                        <code>{{ view }}</code> <span class="has-text-grey">{{ description }}</span>
+                    </label>
+                {% endfor %}
+                {{ help.env_help(overrides, 'reporting_database_private_views') }}
+            </fieldset>
+            <label class="checkbox reporting-database-confirm" data-pages--reporting-database--index-target="confirmation">
+                <input type="checkbox" name="private_views_confirmed" value="1">
+                I confirm that the private views I added may be copied to the reporting database, and that access to their tables is restricted like access to raw events.
+            </label>
+        </details>
+        <button class="button is-primary mt-4" type="submit"{% if configuration_error %} disabled{% endif %}>Save views</button>
+    </form>
+
+    {# 3. Schedule #}
+    <form method="post" action="{{ path('app_reporting_database_schedule') }}" class="box" aria-labelledby="reporting-database-schedule-title">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token('reporting_database_settings') }}">
+        <h2 class="title is-4" id="reporting-database-schedule-title">3. Schedule</h2>
+        {{ component('Ui:DocsLink', {topic: 'reporting.reporting-database-schedule', label: 'Scheduling'}) }}
+        <div class="columns mt-3">
+            <div class="column field">
+                <label class="label" for="reporting-database-enabled">Sync</label>
+                <div class="control"><div class="select"><select id="reporting-database-enabled" name="enabled"{% if overrides.reporting_database_enabled %} disabled{% endif %}>
+                    <option value="0"{% if not settings.reporting_database_enabled %} selected{% endif %}>Off</option>
+                    <option value="1"{% if settings.reporting_database_enabled %} selected{% endif %}>On</option>
+                </select></div></div>
+                {{ help.env_help(overrides, 'reporting_database_enabled') }}
+            </div>
+            <div class="column field">
+                <label class="label" for="reporting-database-interval">Every</label>
+                <div class="control"><div class="select"><select id="reporting-database-interval" name="interval"{% if overrides.reporting_database_interval_minutes %} disabled{% endif %}>
+                    {% for minutes in intervals %}
+                        <option value="{{ minutes }}"{% if interval == minutes %} selected{% endif %}>{{ minutes < 60 ? minutes ~ ' minutes' : (minutes == 60 ? '1 hour' : (minutes / 60) ~ ' hours') }}</option>
+                    {% endfor %}
+                </select></div></div>
+                {{ help.env_help(overrides, 'reporting_database_interval_minutes') }}
+            </div>
+        </div>
+        <p>Aggregate syncs from a scheduled command, not from web requests. Run it every five minutes; each view is copied about once per interval:</p>
+        <pre class="mt-2 mb-3 reporting-database-code"><code>{{ cron_line }}</code></pre>
+        <p class="help mb-3">A sync reads each whole view from the application database. Approved views are small; private row-level views grow with your traffic, so give them a longer interval or run the sync outside busy hours.</p>
+        <button class="button is-primary" type="submit"{% if configuration_error %} disabled{% endif %}>Save schedule</button>
+    </form>
+
+    {# Status #}
+    <section class="box" aria-labelledby="reporting-database-status-title">
+        <h2 class="title is-4" id="reporting-database-status-title">Sync status</h2>
+        {% if status.views is empty %}
+            <p>No views are selected.</p>
+        {% else %}
+            <div class="table-container">
+                <table class="table is-fullwidth is-striped reporting-database-status">
+                    <thead><tr><th scope="col">View</th><th scope="col">Status</th><th scope="col">Last successful sync</th><th scope="col">Rows</th><th scope="col">Next sync</th><th scope="col">Details</th></tr></thead>
+                    <tbody>
+                    {% for view in status.views %}
+                        <tr>
+                            <th scope="row"><code>{{ view.view }}</code>{% if view.private %} <span class="tag is-warning is-light">private</span>{% endif %}</th>
+                            <td>
+                                {% if view.status == 'succeeded' %}<span class="tag is-success is-light">Copied</span>
+                                {% elseif view.status == 'failed' %}<span class="tag is-danger is-light">Failed</span>
+                                {% elseif view.status == 'running' %}<span class="tag is-info is-light">Copying…</span>
+                                {% else %}<span class="tag is-light">Not copied yet</span>{% endif %}
+                            </td>
+                            <td>{{ view.succeeded_at ? view.succeeded_at|date('Y-m-d H:i', 'UTC') ~ ' UTC' : '—' }}</td>
+                            <td>{{ view.row_count is not null ? view.row_count|number_format : '—' }}</td>
+                            <td>{{ not settings.reporting_database_enabled ? 'Off' : (view.next_due ? view.next_due|date('Y-m-d H:i', 'UTC') ~ ' UTC' : 'Next run') }}</td>
+                            <td class="reporting-database-message">{{ view.message ?? '' }}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endif %}
+        <p class="help">From the command line: <code>php bin/console app:reporting-database:check</code> shows this status and tests the connection; <code>php bin/console app:reporting-database:sync --force</code> copies the views now. Every view sync is also recorded in the <code>processing_tasks</code> table and the audit trail.</p>
+    </section>
+
+    {# Forms submitted by buttons above. #}
+    <form id="reporting-database-test" method="post" action="{{ path('app_reporting_database_test') }}" hidden><input type="hidden" name="_csrf_token" value="{{ csrf_token('reporting_database_settings') }}"></form>
+    <form id="reporting-database-sync" method="post" action="{{ path('app_reporting_database_sync') }}" hidden><input type="hidden" name="_csrf_token" value="{{ csrf_token('reporting_database_settings') }}"></form>
+</div>
+{% endblock %}
