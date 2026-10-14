@@ -407,6 +407,39 @@ needs the dashboard and each installation's own OAuth client.
 incremental loads of completed time buckets; a need for other warehouses would
 reuse the same export and schedule.
 
+### Views copied whole into a separate reporting database
+
+**Decision.** The [reporting database](REPORTING-DATABASE.md) sync copies
+selected reporting views, never raw tables, into same-named tables of a second
+database that `REPORTING_DATABASE_URL` names. Each sync fills a staging table and
+then swaps it in (one `RENAME TABLE` on MySQL and MariaDB; drop and rename in one
+transaction elsewhere), so readers always see a complete copy. It reuses the
+BigQuery sync's view catalog, value conversion, private-view opt-in, schedule
+and processing tasks. The connection is an environment variable, not a YAML
+setting, and a URL that names the application database is refused.
+
+**Why.** Operators asked for BI access that cannot reach the application
+database and for BI queries that do not load the collection server. A full
+read replica copies raw tables and needs database-specific setup; copying the
+views needs only a second database on any supported engine, keeps the BI
+contract (names, columns, suppression) intact, and gives SQLite installations a
+server database for BI logins. Replacing whole tables makes deletions,
+threshold changes and new custom columns reach the copy at the next sync, with
+no incremental bookkeeping. The connection string holds a password, so it
+belongs with `DATABASE_URL` in the server environment rather than in YAML that
+the dashboard edits.
+
+**Trade-off.** Copies are only as fresh as their interval. Each sync re-reads
+whole views from the application database, which grows with private row-level
+views. Recreated tables lose per-table grants, so BI access must be granted on
+the database or schema. The tables have no indexes. Tables of deselected views
+stay until an administrator drops them.
+
+**What would change it.** Views too large to copy whole would call for
+incremental copies of completed time buckets, as for BigQuery; a need for
+indexes or live data would favor database-native replication of the views'
+source tables to a reporting server that hosts the views itself.
+
 ### Two shared tables for job runs and the audit trail
 
 **Decision.** Background jobs record their runs in one `processing_tasks` table
@@ -416,7 +449,7 @@ exclusive job holds a lock key that a unique index keeps to one running row. The
 audit trail gets an entry for every finished run and is reserved for
 administrator actions. Maintenance purges both after configurable periods,
 keeping each job's latest success and failure. BigQuery sync and analytics
-maintenance use them; BigQuery's own status table was dropped without
+maintenance use them, as does the reporting database sync; BigQuery's own status table was dropped without
 migrating its rows.
 
 **Why.** Each new job (a sync, an export, a cleanup) would otherwise add a table

@@ -277,8 +277,35 @@ jobs:
               $server->exec('CREATE DATABASE aggregate');
               $server->exec("CREATE LOGIN aggregate WITH PASSWORD = 'E2e p@ss''%w0rd', CHECK_POLICY = OFF");
               $server->exec('ALTER AUTHORIZATION ON DATABASE::aggregate TO aggregate');
+              // The reporting database sync copies views into this one.
+              $server->exec('CREATE DATABASE aggregate_reporting');
+              $server->exec('ALTER AUTHORIZATION ON DATABASE::aggregate_reporting TO aggregate');
           } catch (Throwable $e) {
               echo '::error title=SQL Server preparation::', str_replace("\n", '%0A', get_class($e).': '.$e->getMessage()), "\n";
+              exit(1);
+          }
+          PHP
+      - name: Create the reporting database
+        # The reporting database sync copies views into a second database on
+        # the same server. MySQL and MariaDB get only the privileges the
+        # reporting database guide lists for the sync user.
+        if: matrix.driver == 'mysql' || matrix.driver == 'pgsql'
+        env:
+          DRIVER: ${{ matrix.driver }}
+        run: |
+          php <<'PHP'
+          <?php
+          try {
+              if (getenv('DRIVER') === 'mysql') {
+                  $server = new PDO('mysql:host=127.0.0.1;port=3306', 'root', 'root-e2e', [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+                  $server->exec('CREATE DATABASE aggregate_reporting CHARACTER SET utf8mb4');
+                  $server->exec("GRANT SELECT, INSERT, CREATE, DROP, ALTER ON aggregate_reporting.* TO 'aggregate'@'%'");
+              } else {
+                  $server = new PDO('pgsql:host=127.0.0.1;port=5432;dbname=aggregate', 'aggregate', 'E2e-p@ss%w0rd', [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+                  $server->exec('CREATE DATABASE aggregate_reporting');
+              }
+          } catch (Throwable $e) {
+              echo '::error title=Reporting database::', str_replace("\n", '%0A', get_class($e).': '.$e->getMessage()), "\n";
               exit(1);
           }
           PHP

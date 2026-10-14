@@ -136,6 +136,17 @@ parameters:
         - sync
         - looker studio
         - service account
+    'Reporting database':
+      description: 'Copy reporting views to a separate database for BI tools'
+      synonyms:
+        - reporting database
+        - second database
+        - read replica
+        - bi database
+        - power bi
+        - tableau
+        - copy views
+        - sync
     'BI connection guide':
       description: 'Database schema, view specifications, and query examples'
       synonyms:

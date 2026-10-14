@@ -144,13 +144,23 @@ A BI tool connects with a database user that can read only the approved views
 in [Connect BI tools and AI assistants](BI-CONNECTION.md), and the suppression rules in the
 [privacy guide](PRIVACY-COMPLIANCE.md#bi-exposure-and-suppression).
 
+Two scheduled syncs copy selected views elsewhere, whole, at each run: to
+BigQuery ([BigQuerySyncRunner](../src/Service/BigQuery/BigQuerySyncRunner.php))
+and to tables of a second database, for BI users who should not connect to the
+application database
+([ReportingDatabaseSyncRunner](../src/Service/ReportingDatabase/ReportingDatabaseSyncRunner.php),
+see [Reporting database](REPORTING-DATABASE.md)). Both read the views through
+[BigQueryViewExporter](../src/Service/BigQuery/BigQueryViewExporter.php), so the
+copies have the same rows and column types.
+
 ## Configuration
 
 Settings have one source of truth each (listed in
 [configuration sources](CONFIGURATION.md)):
 
 - **`.env.local` or server variables:** infrastructure, such as the database,
-  the application secret and the message transport.
+  the optional reporting database, the application secret and the message
+  transport.
 - **`config/aggregate.yaml`:** application settings, read by
   [AggregateConfigLoader](../src/Service/AggregateConfigLoader.php). Many can be
   overridden by an uppercase environment variable of the same name.
@@ -176,7 +186,8 @@ services, so a setting has one validation wherever it is changed.
 - **Command line:** everything an administrator needs without the dashboard,
   in [src/Command](../src/Command). Examples: `app:install`,
   `app:create-website`, `app:user:create`, `app:user:reset-password`, `app:analytics:maintain`,
-  `app:analytics:glossary:sync`, `app:bigquery:sync` and `app:updates:apply`.
+  `app:analytics:glossary:sync`, `app:bigquery:sync`, `app:reporting-database:sync`
+  and `app:updates:apply`.
 - **First run:** a fresh release ZIP starts with a browser setup page,
   [config/setup.php](../config/setup.php) and
   [FirstRunSetup](../src/Setup/FirstRunSetup.php). It loads before Composer,
