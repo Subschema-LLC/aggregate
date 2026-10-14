@@ -115,6 +115,36 @@ checkout, or a small accessibility fix. Keep each PR focused and target
 - **Snowflake Integration** Add a Snowflake connector.
 - **Agency Multi-tenancy** Allow multi-tenancy for agencies that want to host on behalf of clients. Determine is separate databases per client or separation in one DB with views being unique to each client.
 - **Per Website View Generation** Allow separate BI views by website for organizations that require this.
+- **Load testing and capacity limits.** Measure how much traffic one
+  installation handles, so sites and hosting plans are sized on numbers rather
+  than guesses, and the [scale-out proposal](#proposals-to-explore) below starts
+  from a measured limit. Every collection request runs its checks in PHP, and
+  anonymous events are written to the database during the request, so PHP
+  workers and the database set today's ceiling.
+  - **Harness:** repeatable load scripts in the repository (k6 is a good fit:
+    open source, scriptable, and runs from a laptop or CI) that send anonymous
+    and enhanced `/api/receive` traffic with synthetic payloads, requests for the
+    tracker, consent and tag manager scripts, and dashboard use at the same
+    time. Run them against disposable installations only, never production data.
+  - **Matrix:** PHP-FPM behind Nginx and FrankenPHP; SQLite, MySQL or MariaDB,
+    PostgreSQL and, where possible, SQL Server; `sync://` and `doctrine://` with
+    one and several workers; and `app:analytics:maintain` running during load.
+  - **Measurements:** sustained events per second and per minute at a stated p95
+    and p99 latency and error rate; the point where latency or errors start to
+    climb; database CPU, connections and lock waits; and queue depth from
+    `messenger:stats` and worker lag.
+  - **Rate limiting:** `rate_limit_per_minute` counts per client address, so a
+    test from a few machines is throttled before anything else. Test runs need a
+    test-only limit, or synthetic client addresses through `TRUSTED_PROXIES` in
+    the disposable environment, and should report the limiter's own cost
+    separately.
+  - **Results:** a published capacity page with the hardware, versions, settings
+    and numbers of each run, linked from the deployment guide for sizing. The
+    figures describe the tested setup; they are not a guarantee.
+  - **Known gap:** the [performance advice](DEPLOYMENT.md#performance) suggests
+    AMQP and Redis transports, but only `symfony/doctrine-messenger` is installed,
+    so `amqp://` and `redis://` DSNs fail today. Add those transports (see below)
+    or correct the guide.
 
 ## Proposals to explore
 
@@ -190,6 +220,109 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   limits that don't depend on `TRUSTED_PROXIES`. Keep path sanitization, kill
   switches, path exclusions and anonymous-mode rules identical to browser
   collection. GDPR still applies to the processing.
+- **Scale-out architecture.** Once load testing shows where one server stops,
+  explore running Aggregate as separate roles that share one database. Keep the
+  single-server install as the default, and make every step optional.
+  - **Roles:** an administration server with the dashboard, setup and updates;
+    collection servers behind a load balancer, serving `/api/receive` and the
+    browser scripts with `DASHBOARD_ENABLED=0`; and worker servers running
+    `messenger:consume` and the scheduled commands. The YAML-first design already
+    lets a collection server run without a login page.
+  - **Shared state to solve first:**
+    - *Configuration.* YAML lives on each server's disk, and the dashboard writes
+      it locally. Collection servers need identical files with one writer:
+      deployed from version control, a read-only shared mount, or a sync from the
+      administration server.
+    - *Rate limiting.* Buckets are files under `var/rate_limit`, so each server
+      counts on its own and a load balancer multiplies the effective limit. Use a
+      shared store with the same HMAC keys, or limit at the load balancer.
+    - *Updates.* Servers must not serve different releases' tracker and schema
+      against one database. Run migrations once, from one server, and roll the
+      code across the others.
+    - *Scheduled jobs.* Maintenance already holds a database lease, and jobs lock
+      through `processing_tasks`, so they should run safely from any worker;
+      confirm that under load.
+  - **Queues and brokers:** enhanced events already go through Messenger. Add
+    `symfony/amqp-messenger` (RabbitMQ) and `symfony/redis-messenger` as optional
+    transports, documented with the PHP extensions they need, while `sync://` and
+    `doctrine://` keep working on shared hosting.
+  - **Anonymous events off the request path:** anonymous rows are written during
+    the request so that nothing more detailed than the stored row is ever kept,
+    not even in a queue. Queueing or batching only the already-sanitized,
+    hour-bucketed row keeps that guarantee, and is what the
+    [design decision](docs/DESIGN-DECISIONS.md#anonymous-events-written-immediately-enhanced-events-through-messenger)
+    names as the change that would revisit it. Kill switches, path exclusions and
+    rate limits still run before anything is queued; update the design decision
+    in the same change.
+  - **Publish/subscribe:** a RabbitMQ topic exchange or Redis Streams could fan
+    accepted events out to several consumers: storage, the alerts rules engine,
+    and streaming exports such as BigQuery, Fabric or Snowflake. Publish only
+    what storage would accept, after sanitization and the consent decision; send
+    enhanced payloads only to consumers allowed to have them; never publish IP
+    addresses, User-Agent strings or exact anonymous timestamps; and keep broker
+    credentials in `config/secrets`. Delivery is at least once, so consumers must
+    tolerate a redelivered message without counting it twice.
+- **Managed cloud hosting with bring-your-own database.** Subschema hosts the
+  application and dashboard for customers who don't want to run servers, while
+  every collected event stays in a database the customer owns and operates.
+  - **One instance per customer:** an installation already has exactly one
+    database and one set of YAML files, so start with an isolated instance (its
+    own code, YAML and `config/secrets`) per customer. Self-hosted behavior stays
+    unchanged; a shared multi-tenant application remains the separate
+    [agency multi-tenancy](#after-beta-feedback) design.
+  - **Bring your own database:** the customer provisions PostgreSQL, MySQL,
+    MariaDB, SQL Server or Azure SQL at a documented version, creates an
+    application user and a separate read-only BI user, requires TLS, and allows
+    connections from the platform's fixed outbound addresses (or a private
+    connection where their cloud supports one). SQLite is not offered, because
+    the file would sit on Subschema's servers. Backups, database retention and BI
+    access stay with the customer.
+  - **Placement and latency:** anonymous events are written during the request,
+    so every collection request waits on a round trip to the customer's
+    database. Run each instance in the same cloud region as its database, and set
+    plan limits from the load-testing results. A queue stays in the customer's
+    database (`doctrine://`) or their own broker, so enhanced visitor data never
+    waits in Subschema's infrastructure.
+  - **Onboarding:** build on the setup page, which already tests the database
+    connection and writes `.env.local`: a checklist per engine and cloud
+    (database, users, grants, firewall rules, TLS), a connection and permission
+    check that names what is missing, then migrations and the first
+    administrator. Onboarding will take longer than a self-install, so publish
+    guides for the common managed databases, such as Amazon RDS, Azure SQL and
+    Google Cloud SQL.
+  - **Updates and offboarding:** Subschema updates instances, and migrations run
+    against customer databases, so updates need notice, a maintenance window and
+    a check that the application user can still migrate. The updater never
+    reverses migrations, so customers back up before an upgrade. When a customer
+    leaves, they keep the database and receive an export of their YAML
+    configuration; the instance is then deleted.
+  - **Custom domains:** a customer points a hostname such as
+    `analytics.example.com` at their instance with a CNAME. The platform checks
+    the record, issues and renews a TLS certificate (for example through ACME),
+    and sets `app_host` so new snippets use it. The original hosted address keeps
+    working, so installed snippets don't break.
+  - **DNS-verified website domains:** on a shared platform, one customer must not
+    claim another's domain. A domain added to a website's
+    [domain rules](docs/CONFIGURATION.md#website-domains) stays pending until a
+    DNS TXT record with an instance-specific token is found (for example at
+    `_aggregate-verification.example.com`); only then does the server accept
+    events for it. A wildcard rule is verified at its parent domain, and **Allow
+    all domains**, IP literals and `localhost` are unavailable on hosted
+    instances. Re-check on a schedule, recorded in `processing_tasks`; after
+    repeated failures, warn administrators and then stop accepting, so a DNS
+    hiccup doesn't silently drop collection. Decide where verification status
+    lives: the domain list is YAML configuration, the check result is an
+    operational record, and the collection path needs a fast read of it.
+    Verification proves control of a domain; it does not authenticate requests,
+    since non-browser clients can send any `Origin` header. Self-hosted
+    installations could opt in, which also suits agencies.
+  - **Privacy and contracts:** visitor requests pass through Subschema's servers
+    even though no event is stored there. IP addresses are used for rate limiting
+    and optional geography, then discarded, so Subschema acts as a processor and
+    needs a data processing agreement, a subprocessor list and a choice of
+    regions. Load balancer, CDN and web server access logs record client
+    addresses by default; turn that off or keep the shortest retention, and say
+    what is kept.
 
 ## Available foundations
 
