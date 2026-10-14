@@ -3,6 +3,8 @@
 #
 #   tests/Load/server/smoke.sh BASE_URL WEBSITE_TOKEN
 set -euo pipefail
+# Logs are not always readable afterwards, so name the failing command in an annotation.
+trap 'status=$?; echo "::error title=$(basename "$0")::line ${LINENO}: ${BASH_COMMAND} (exit ${status})"' ERR
 
 base_url=${1:?base URL}
 token=${2:?website token}

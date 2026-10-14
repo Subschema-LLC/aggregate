@@ -7,8 +7,10 @@
 #
 # With --profile, every /api/receive request is profiled with xhprof and its
 # call data written to DIR (see tests/Load/profile/prepend.php).
-# Prints the number of workers.
+# Exports FPM_WORKERS to GitHub Actions when run there.
 set -euo pipefail
+# Logs are not always readable afterwards, so name the failing command in an annotation.
+trap 'status=$?; echo "::error title=$(basename "$0")::line ${LINENO}: ${BASH_COMMAND} (exit ${status})"' ERR
 
 profile_dir=''
 if [ "${1:-}" = '--profile' ]; then
@@ -46,10 +48,16 @@ EOF
 
 if [ -n "$profile_dir" ]; then
   if ! php-fpm8.3 -m | grep -qi '^xhprof$'; then
-    sudo apt-get install -y -qq php8.3-xhprof > /dev/null 2>&1 \
-      || sudo apt-get install -y -qq php-xhprof > /dev/null 2>&1 \
-      || { sudo apt-get install -y -qq php8.3-dev > /dev/null && yes '' | sudo pecl install xhprof > /dev/null \
-           && echo 'extension=xhprof.so' | sudo tee /etc/php/8.3/fpm/conf.d/20-xhprof.ini > /dev/null; }
+    log=/tmp/xhprof-install.log
+    if ! { sudo apt-get install -y -qq php8.3-xhprof > "$log" 2>&1 \
+        || sudo apt-get install -y -qq php-xhprof >> "$log" 2>&1 \
+        || { sudo apt-get install -y -qq php8.3-dev >> "$log" 2>&1 \
+             && sudo pecl install xhprof < /dev/null >> "$log" 2>&1 \
+             && echo 'extension=xhprof.so' | sudo tee /etc/php/8.3/mods-available/xhprof.ini > /dev/null \
+             && sudo phpenmod -v 8.3 xhprof; }; }; then
+      echo "::error title=xhprof::$(tail -n 15 "$log" | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')"
+      exit 1
+    fi
   fi
   sudo mkdir -p "$profile_dir"
   sudo chown "$(id -un):$(id -gn)" "$profile_dir"
@@ -63,6 +71,10 @@ else
   sudo rm -f /etc/php/8.3/fpm/conf.d/99-load-test-profile.ini
 fi
 
-sudo php-fpm8.3 -t > /dev/null 2>&1
+if ! test_output=$(sudo php-fpm8.3 -t 2>&1); then
+  echo "::error title=PHP-FPM configuration::$(echo "$test_output" | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')"
+  exit 1
+fi
 sudo systemctl restart php8.3-fpm
-echo "$workers"
+if [ -n "${GITHUB_ENV:-}" ]; then echo "FPM_WORKERS=$workers" >> "$GITHUB_ENV"; fi
+echo "PHP-FPM: ${workers} workers${profile_dir:+, profiling to $profile_dir}"

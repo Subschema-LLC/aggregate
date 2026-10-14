@@ -8,6 +8,8 @@
 # The website token is read from APP_ROOT/var/load-test-token. Set
 # WARMUP_SECONDS to change the warm-up (default 10).
 set -euo pipefail
+# Logs are not always readable afterwards, so name the failing command in an annotation.
+trap 'status=$?; echo "::error title=$(basename "$0")::line ${LINENO}: ${BASH_COMMAND} (exit ${status})"' ERR
 
 out=${1:?output directory}
 base_url=${2:?base URL}

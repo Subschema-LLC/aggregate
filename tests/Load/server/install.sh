@@ -9,6 +9,8 @@
 # public token to APP_ROOT/var/load-test-token. Never point it at a database
 # that holds real data.
 set -euo pipefail
+# Logs are not always readable afterwards, so name the failing command in an annotation.
+trap 'status=$?; echo "::error title=$(basename "$0")::line ${LINENO}: ${BASH_COMMAND} (exit ${status})"' ERR
 
 source_dir=${1:?source directory}
 app_root=${2:?application root}

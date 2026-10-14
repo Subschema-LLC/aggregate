@@ -4,6 +4,8 @@
 #
 #   tests/Load/server/configure-nginx.sh 80:/srv/aggregate [8082:/srv/head ...]
 set -euo pipefail
+# Logs are not always readable afterwards, so name the failing command in an annotation.
+trap 'status=$?; echo "::error title=$(basename "$0")::line ${LINENO}: ${BASH_COMMAND} (exit ${status})"' ERR
 
 repo_root=$(cd "$(dirname "$0")/../../.." && pwd)
 template="$repo_root/docs/nginx/aggregate-analytics.conf"

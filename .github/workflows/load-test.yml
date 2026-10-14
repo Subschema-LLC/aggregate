@@ -135,11 +135,11 @@ jobs:
       - name: Configure and start PHP-FPM and Nginx
         run: |
           if [ "$SUITE" = profile ]; then
-            workers=$(tests/Load/server/configure-php.sh --profile /srv/profile | tail -n 1)
+            tests/Load/server/configure-php.sh --profile /srv/profile
           else
-            workers=$(tests/Load/server/configure-php.sh | tail -n 1)
+            tests/Load/server/configure-php.sh
           fi
-          echo "FPM_WORKERS=$workers" >> "$GITHUB_ENV"
+          workers=$(sed -n 's/^FPM_WORKERS=//p' "$GITHUB_ENV" | tail -n 1)
           if [ "$SUITE" = compare ]; then
             tests/Load/server/configure-nginx.sh "8081:$BASE_ROOT" "8082:$HEAD_ROOT"
             tests/Load/server/smoke.sh http://127.0.0.1:8081 "$(cat "$BASE_ROOT/var/load-test-token")"

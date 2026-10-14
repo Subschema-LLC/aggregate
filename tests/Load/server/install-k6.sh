@@ -3,6 +3,8 @@
 #
 #   K6_VERSION=v1.0.0 tests/Load/server/install-k6.sh
 set -euo pipefail
+# Logs are not always readable afterwards, so name the failing command in an annotation.
+trap 'status=$?; echo "::error title=$(basename "$0")::line ${LINENO}: ${BASH_COMMAND} (exit ${status})"' ERR
 
 version=${K6_VERSION:?K6_VERSION}
 base="https://github.com/grafana/k6/releases/download/${version}"
