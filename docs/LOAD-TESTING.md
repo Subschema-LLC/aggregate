@@ -7,79 +7,100 @@ at rising rates until the server falls behind.
 
 ## Results
 
-Measured on 14 October 2026, at commit `e00c5d8`, on GitHub's standard Linux
-runner. Every request ran on one machine:
+Measured on 14 October 2026 on GitHub's standard Linux runners, in four runs
+of the same test (the last at commit `ece63a3`). Every request ran on one
+machine:
 
-- 4 vCPU and 15 GB of memory, shared with other GitHub customers.
+- 4 vCPU and 15 GB of memory, shared with other GitHub customers. The CPU model
+  changed from run to run, among Intel Xeon and AMD EPYC generations.
 - Nginx with the [documented site configuration](nginx/aggregate-analytics.conf),
   and PHP 8.3 with PHP-FPM (16 static workers) and production OPcache settings.
 - The database on the same machine: SQLite, or PostgreSQL 16 or MySQL 8.0 in a
   container with default settings.
-- The k6 load generator on the same machine too, using 3–5% of its CPU.
+- The k6 load generator on the same machine too, using 2–7% of its CPU.
 - `MESSENGER_TRANSPORT_DSN=sync://`, so enhanced events are written during the
   request, as in a default installation.
 
-Each stage sends requests at a fixed rate for 30 seconds. A stage is
-**sustained** when the server delivers at least 95% of the rate, fewer than 1%
-of requests fail, and 95% of responses (p95) arrive within 500 ms.
+Each stage sends requests at a fixed rate for 30 seconds: 50, 100, 125, 150,
+175, 200, 225, 250, 300 and 350 per second. A stage is **sustained** when the
+server delivers at least 95% of the rate, fewer than 1% of requests fail, and
+95% of responses (p95) arrive within 500 ms. The sustained rate of a run is the
+highest stage before the first one that is not.
 
-| Setup | Sustained | p95 at 150/s | Most served when overloaded | Server CPU per event |
-| --- | ---: | ---: | ---: | ---: |
-| SQLite, anonymous | 250/s (15,000/min) | 16 ms | 298/s | 12 ms |
-| SQLite, enhanced | 150/s (9,000/min) | 29 ms | 196/s | 21 ms |
-| PostgreSQL 16, anonymous | 175/s (10,500/min) | 32 ms | 210/s | 20 ms |
-| PostgreSQL 16, enhanced | 150/s (9,000/min) | 57 ms | 197/s | 22 ms |
-| MySQL 8.0, anonymous | 150/s (9,000/min) | 39 ms | 196/s | 21 ms |
-| MySQL 8.0, enhanced | 175/s (10,500/min) | 27 ms | 206/s | 20 ms |
+| Setup | Sustained per second (4 runs) | Most served when overloaded | Server CPU per event |
+| --- | ---: | ---: | ---: |
+| MySQL 8.0, anonymous | 150–300 | 196–342/s | 10–21 ms |
+| MySQL 8.0, enhanced | 150–175 | 185–206/s | 20–23 ms |
+| PostgreSQL 16, anonymous | 100–175 | 136–210/s | 20–36 ms |
+| PostgreSQL 16, enhanced | 50–150 | 123–197/s | 22–39 ms |
+| SQLite, anonymous | 175–250, and once none | 81–298/s | 11–20 ms |
+| SQLite, enhanced | 125–150 | 196–201/s | 21 ms |
 
-*Sustained* is the highest stage before the first one that missed the
-criteria, from stages of 50, 100, 125, 150, 175, 200, 225, 250, 300 and 350
-requests per second. *Server CPU per event* is PHP, database and Nginx CPU time
-divided by the events stored.
+*Server CPU per event* is the CPU time of PHP, the database and Nginx divided
+by the events stored. Multiply a rate per second by 60 for the rate per minute:
+150 per second is 9,000 per minute.
 
 What the runs show:
 
-- **Every setup sustained at least 150 requests per second (9,000 per
-  minute)**, with p95 under 60 ms at that rate.
+- **MySQL sustained 150 to 300 requests per second (9,000 to 18,000 per
+  minute)** in every run, with p95 between 9 and 250 ms at 150 per second.
+- **PostgreSQL sustained less: 50 to 175 per second.** Its database CPU per
+  event was 4–8 ms against MySQL's 1–2 ms, and PHP also spent more time per
+  request. A likely cause is that PHP opens a new database connection for every
+  request, and PostgreSQL starts a server process and checks the password with
+  SCRAM for each one, where MySQL reuses threads and caches authentication. A
+  connection pooler such as PgBouncer, or persistent connections, should narrow
+  the gap; that is untested.
+- **SQLite is fast until writes collide.** It sustained 175–250 per second
+  with anonymous events in three runs, the most of any database, but in the
+  fourth requests stalled from the first stage with the CPU mostly idle, and
+  the server answered with 502 errors and time-outs. SQLite allows one write at
+  a time, and the [database guide](DATABASE.md#sqlite) already recommends it
+  only for small deployments.
 - **The limit is CPU, and mostly PHP.** Past the limit the CPU was 98–100%
-  busy in every setup but SQLite with anonymous events, which leveled off at
-  83–91%, probably because SQLite lets only one write happen at a time. PHP
-  used 73–95% of the CPU time, the database server 7–23%, and Nginx and k6 the
-  rest. The database engine changes the result less than run-to-run variation
-  does.
-- **Overload slows requests down; it does not lose them.** Past the limit,
-  throughput levels off at about 190–300 per second (160–330 across both
-  runs) and requests wait in the queue, reaching p95 times of 4–6 seconds at
-  350 per second. No request
-  failed within k6's 10-second timeout, and every request reported as stored
-  had a row in the database. A browser that gives up sooner would lose those
-  events.
-- **Results vary between runs by about a quarter.** An earlier run of the same
-  test with coarser stages (25, 50, 100, 200, 300 and up) sustained 100 per
-  second in five setups and 200 in one, with similar overload throughput.
-  Treat the table as a range, not exact limits.
+  busy except in the SQLite runs. PHP used 73–95% of the CPU time, the database
+  server 7–23%, and Nginx and k6 the rest.
+- **The hardware matters too.** The same setup's CPU per event
+  differed by up to two times between runs, as the runners' CPU models changed.
+  CPU steal, time taken by other virtual machines, was 0% in the two runs that
+  measured it.
+- **Overload delays events more than it loses them.** Past the limit, requests
+  queue and p95 climbs to several seconds, up to k6's 10-second time-out. In two
+  PostgreSQL runs about 10,000 requests each passed that time-out, yet the
+  server still stored 98–99% of those events after k6 had given up. The
+  tracker sends with `fetch` and `keepalive`, without a time-out or a retry,
+  so a browser usually waits rather than resending. A queue that keeps growing is eventually refused, as the 502
+  errors in the stalled SQLite run show.
+
+An earlier run with coarser stages (25, 50, 100, 200, 300 and up) sustained
+100 per second in five setups and 200 in one, in line with these ranges.
 
 ### Sizing a server
 
-The CPU cost per event is the number that carries over to other hardware:
-12–22 ms of server CPU per event means one fully busy CPU core handles
-roughly 45–80 events per second. The runs above sustained 37–62 per second
-per vCPU while sharing the machine with the load generator.
+Plan from the lower end of each range, since the runner's CPU varied:
 
-For planning, allow about **25–30 requests per second per vCPU at your peak**,
-which leaves room for maintenance jobs, the dashboard and traffic spikes, then
-confirm on your own server with the test below. Peak traffic matters, not the
-daily total: a site's busiest minute is usually several times its average.
+- **MySQL or MariaDB:** about 37 requests per second per vCPU at the limit.
+  Allow **about 25 per vCPU at your peak**, which leaves room for maintenance
+  jobs, the dashboard and spikes. MariaDB was not tested; it is expected to
+  behave like MySQL.
+- **PostgreSQL:** about 12 per vCPU at the limit with enhanced events. Allow
+  **about 10 per vCPU at your peak** until connection pooling is tested.
+- **SQLite:** low-traffic sites only.
+
+So a 4-vCPU server with MySQL should handle a peak of about 100 requests per
+second (6,000 per minute); confirm on your own hardware with the test below.
+Peak traffic matters, not the daily total: a site's busiest minute is usually
+several times its average.
 
 These figures cover collection requests only. Serving the tracker script,
 consent banner and tag manager adds load unless a CDN or browser cache serves
-them, and a database on another server adds a network round trip to every
-request.
+them. A database on its own server takes its CPU share off the web server but
+adds a network round trip to every request.
 
 ### Where the time goes
 
-PHP spends 12–22 ms of CPU on each collection request, most of the cost of
-an event. Profiling that time is the next step before tuning anything. Every
+PHP spends 9–31 ms of CPU on each collection request, most of the cost of an
+event. Profiling that time is the next step before tuning anything. Every
 request parses `config/aggregate.yaml` and `config/websites.yaml` again and
 opens a new database connection, since PHP keeps neither between requests by
 default, so both are worth checking first.
@@ -98,8 +119,9 @@ The **Load test** workflow
 a fresh copy for each of SQLite, PostgreSQL 16 and MySQL 8.0, runs anonymous and
 enhanced traffic on each, and reports every stage in the job summary and as a
 notice on the run. Start it from **Actions → Load test → Run workflow**, where
-you can change the stage rates and length. It also runs on pull requests that
-change the test. Each of the six jobs takes about 8 minutes of runner time.
+you can change the stage rates and length. On a pull request, add the
+`load-test` label to run it. Each of the six jobs takes about 8 minutes, so a
+run uses about 50 minutes of runner time.
 
 ### Against your own server
 
