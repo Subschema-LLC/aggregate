@@ -219,26 +219,59 @@ jobs:
       - name: Clear the cache under load
         if: env.SUITE == 'cache'
         run: |
-          # Four stages of 30 s at 100 requests per second, 10 s apart (k6
-          # starts them 15 s, 55 s, 95 s and 135 s after it begins). In the
-          # middle of stages 2 to 4: cache:clear alone; cache:clear followed
-          # by a graceful PHP-FPM reload; a PHP-FPM restart, for contrast.
+          # Five stages of 30 s at 100 requests per second, 10 s apart (k6
+          # starts them 15 s, 55 s, 95 s, 135 s and 175 s after it begins). In
+          # the middle of stages 2 to 5: cache:clear alone; cache:clear and a
+          # PHP-FPM reload with the packaged process_control_timeout of 0,
+          # which ends busy workers at once; the same with a 10 s timeout,
+          # which lets them finish their requests; a PHP-FPM restart, for
+          # contrast. The timeout is read when PHP-FPM starts, so it is set
+          # before the first reload and used by the second.
           start=$(date +%s)
-          WARMUP_SECONDS=5 tests/Load/server/measure.sh run http://127.0.0.1 "$HEAD_ROOT" ${{ matrix.mode }} 100,100,100,100 30 "$DATABASE_IMAGE" &
+          WARMUP_SECONDS=5 tests/Load/server/measure.sh run http://127.0.0.1 "$HEAD_ROOT" ${{ matrix.mode }} 100,100,100,100,100 30 "$DATABASE_IMAGE" &
           k6_pid=$!
           at() { local wait=$(( start + $1 - $(date +%s) )); if [ "$wait" -gt 0 ]; then sleep "$wait"; fi; }
           timed() {
-            local t0=$EPOCHREALTIME status=ok
-            "$@" > /dev/null 2>&1 || status=failed
-            awk -v a="$t0" -v b="$EPOCHREALTIME" -v s="$status" 'BEGIN { printf "%s in %.1f s", s, b - a }'
+            local t0=$EPOCHREALTIME status=ok output
+            output=$(mktemp)
+            if ! "$@" > "$output" 2>&1; then
+              status="failed: $(grep -v '^[[:space:]]*$' "$output" | tail -n 1 | tr -d '\r' | cut -c 1-200)"
+            fi
+            awk -v a="$t0" -v b="$EPOCHREALTIME" -v s="$status" 'BEGIN { printf "%s, %.1f s", s, b - a }'
           }
+          fpm_conf=/etc/php/8.3/fpm/php-fpm.conf
           at 70;  clear1=$(cd "$HEAD_ROOT" && timed php bin/console cache:clear)
-          at 110; clear2=$(cd "$HEAD_ROOT" && timed php bin/console cache:clear); reload=$(timed sudo systemctl reload php8.3-fpm)
-          at 150; restart=$(timed sudo systemctl restart php8.3-fpm)
+          at 110; clear2=$(cd "$HEAD_ROOT" && timed php bin/console cache:clear)
+                  sudo sed -i -E '/^[;[:space:]]*process_control_timeout[[:space:]]*=/d' "$fpm_conf"
+                  sudo sed -i -E 's/^\[global\][[:space:]]*$/[global]\nprocess_control_timeout = 10s/' "$fpm_conf"
+                  grep -q '^process_control_timeout = 10s$' "$fpm_conf"
+                  reload1=$(timed sudo systemctl reload php8.3-fpm)
+          at 150; clear3=$(cd "$HEAD_ROOT" && timed php bin/console cache:clear); reload2=$(timed sudo systemctl reload php8.3-fpm)
+          at 190; restart=$(timed sudo systemctl restart php8.3-fpm)
           wait "$k6_pid"
+          # Errors the application logged (a 500 response, for example), most frequent first.
+          app_errors=$(python3 - "$HEAD_ROOT/var/log/prod.log" <<'PY'
+          import collections, json, sys
+          counts = collections.Counter()
+          try:
+              with open(sys.argv[1], encoding="utf-8", errors="replace") as log:
+                  for line in log:
+                      try:
+                          record = json.loads(line)
+                      except ValueError:
+                          continue
+                      if isinstance(record, dict) and int(record.get("level") or 0) >= 400:
+                          counts[" ".join(str(record.get("message", "")).split())[:200]] += 1
+          except FileNotFoundError:
+              pass
+          print("; ".join(f"{count}x {message}" for message, count in counts.most_common(3)) or "none")
+          PY
+          )
           python3 tests/Load/report.py --github --summary run/k6-summary.json --label "$LABEL, cache clearing" --server "$SERVER" \
             --vmstat run/vmstat.log --stored run/stored.json --php-log run/php-fpm.log --web-log run/nginx-error.log \
             --note "Stage 1 (first row): steady traffic, no action." \
             --note "Stage 2: cache:clear without a PHP-FPM reload (${clear1})." \
-            --note "Stage 3: cache:clear (${clear2}), then a graceful PHP-FPM reload (${reload})." \
-            --note "Stage 4: a PHP-FPM restart (${restart})."
+            --note "Stage 3: cache:clear (${clear2}), then a PHP-FPM reload with process_control_timeout 0, the packaged default (${reload1})." \
+            --note "Stage 4: cache:clear (${clear3}), then a PHP-FPM reload with process_control_timeout 10s (${reload2})." \
+            --note "Stage 5: a PHP-FPM restart (${restart})." \
+            --note "Application errors logged: ${app_errors}."
