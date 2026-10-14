@@ -461,7 +461,9 @@ For measured capacity and how to test your own server, see
 [load testing and capacity](docs/LOAD-TESTING.md). On a 4-vCPU test machine
 running everything, including the database, collection sustained 150–300
 requests per second with MySQL and 50–175 with PostgreSQL; the limit was
-PHP's CPU time.
+PHP's CPU time. The settings below were measured there too: preloading cut
+server CPU per collection request by 9–15%, and persistent connections by
+44–51% with PostgreSQL.
 
 **1. Use production environment:**
 ```bash
@@ -479,10 +481,26 @@ opcache.max_accelerated_files=20000
 opcache.validate_timestamps=0  ; Disable for production
 ```
 
-**3. Use PostgreSQL or MySQL:**
-SQLite is fine for small deployments, but use PostgreSQL or MySQL for production.
+**3. Preload classes (optional):**
+PHP-FPM can load the classes Symfony lists in `config/preload.php` once at
+start-up instead of on every request:
+```ini
+; php.ini, or the PHP-FPM pool's php.ini
+opcache.preload=/var/www/aggregate-sy/config/preload.php
+opcache.preload_user=www-data   ; the PHP-FPM pool's user
+```
+Preloaded classes stay in memory until PHP-FPM restarts, so restart it after
+every update, including updates from the dashboard's **Install update** button
+or `app:updates:apply`, which cannot restart it for you. Leave preloading off
+if your deployment cannot do that.
 
-**4. Use Redis or RabbitMQ for messaging:**
+**4. Use PostgreSQL or MySQL:**
+SQLite is fine for small deployments, but use PostgreSQL or MySQL for production.
+With PostgreSQL, keep connections open between requests with
+[persistent connections or PgBouncer](docs/DATABASE.md#performance-tuning);
+opening a new connection for every request is its largest cost.
+
+**5. Use Redis or RabbitMQ for messaging:**
 ```bash
 # In .env
 MESSENGER_TRANSPORT_DSN="amqp://user:pass@rabbitmq:5672/%2f/messages"
@@ -490,7 +508,7 @@ MESSENGER_TRANSPORT_DSN="amqp://user:pass@rabbitmq:5672/%2f/messages"
 MESSENGER_TRANSPORT_DSN="redis://localhost:6379/messages"
 ```
 
-**5. Scale workers:**
+**6. Scale workers:**
 Run multiple worker processes (with Supervisor or systemd):
 ```ini
 ; Supervisor: set numprocs

@@ -111,6 +111,24 @@ php bin/console app:analytics:glossary:sync
 - `events.consent_state`
 - `events (privacy_mode, website_token, created_at)`
 
+**Persistent connections:** PHP opens a new database connection for every
+request by default, and PostgreSQL starts a server process and checks the
+password for each one. Add `persistent=true` to `DATABASE_URL` so each PHP-FPM
+worker keeps its connection open between requests:
+
+```bash
+DATABASE_URL="postgresql://aggregate:password@127.0.0.1:5432/aggregate?serverVersion=16&persistent=true"
+```
+
+In the [load tests](LOAD-TESTING.md#optimizations) this cut PostgreSQL's CPU per
+collection request by 83% and the server's total by 44–51%. Each PHP-FPM
+worker then holds one connection, so keep the workers on all servers, plus
+scheduled commands and BI users, below `max_connections` (100 by default), and
+restart PHP-FPM after changing database credentials. A connection pooler such
+as PgBouncer in front of PostgreSQL is an alternative where connections are
+limited. With MySQL, whose connections are cheap, the setting made little
+difference; MariaDB was not tested.
+
 **Recommended settings for analytics workload:**
 ```ini
 # postgresql.conf
