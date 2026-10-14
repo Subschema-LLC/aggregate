@@ -3,19 +3,26 @@
 # (at least 8), never recycled so CPU accounting stays complete, and the
 # production OPcache settings from the deployment guide.
 #
-#   tests/Load/server/configure-php.sh [--profile DIR]
+#   tests/Load/server/configure-php.sh [--profile DIR] [--preload APP_ROOT]
 #
 # With --profile, every /api/receive request is profiled with xhprof and its
-# call data written to DIR (see tests/Load/profile/prepend.php).
+# call data written to DIR (see tests/Load/profile/prepend.php). With
+# --preload, OPcache preloads APP_ROOT/config/preload.php, Symfony's list of
+# the classes the application uses, when PHP-FPM starts.
 # Exports FPM_WORKERS to GitHub Actions when run there.
 set -euo pipefail
 # Logs are not always readable afterwards, so name the failing command in an annotation.
 trap 'status=$?; echo "::error title=$(basename "$0")::line ${LINENO}: ${BASH_COMMAND} (exit ${status})"' ERR
 
 profile_dir=''
-if [ "${1:-}" = '--profile' ]; then
-  profile_dir=${2:?profile directory}
-fi
+preload_root=''
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --profile) profile_dir=${2:?profile directory}; shift 2 ;;
+    --preload) preload_root=${2:?application root}; shift 2 ;;
+    *) echo "Unknown option $1" >&2; exit 2 ;;
+  esac
+done
 
 workers=$(( $(nproc) * 4 ))
 if [ "$workers" -lt 8 ]; then workers=8; fi
@@ -45,6 +52,16 @@ realpath_cache_size=4096K
 realpath_cache_ttl=600
 memory_limit=256M
 EOF
+
+if [ -n "$preload_root" ]; then
+  test -f "$preload_root/config/preload.php"
+  sudo tee /etc/php/8.3/fpm/conf.d/99-load-test-preload.ini > /dev/null <<EOF
+opcache.preload=${preload_root}/config/preload.php
+opcache.preload_user=$(id -un)
+EOF
+else
+  sudo rm -f /etc/php/8.3/fpm/conf.d/99-load-test-preload.ini
+fi
 
 if [ -n "$profile_dir" ]; then
   if ! php-fpm8.3 -m | grep -qi '^xhprof$'; then
@@ -77,4 +94,4 @@ if ! test_output=$(sudo php-fpm8.3 -t 2>&1); then
 fi
 sudo systemctl restart php8.3-fpm
 if [ -n "${GITHUB_ENV:-}" ]; then echo "FPM_WORKERS=$workers" >> "$GITHUB_ENV"; fi
-echo "PHP-FPM: ${workers} workers${profile_dir:+, profiling to $profile_dir}"
+echo "PHP-FPM: ${workers} workers${profile_dir:+, profiling to $profile_dir}${preload_root:+, preloading $preload_root}"
