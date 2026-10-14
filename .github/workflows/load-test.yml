@@ -16,10 +16,10 @@ on:
       stage_seconds:
         description: Seconds per stage
         default: '30'
+  # On a pull request, add the "load-test" label to run it; each run uses
+  # about 50 minutes of runner time across the six jobs.
   pull_request:
-    paths:
-      - 'tests/Load/**'
-      - '.github/workflows/load-test.yml'
+    types: [labeled]
 
 permissions:
   contents: read
@@ -31,6 +31,7 @@ concurrency:
 jobs:
   load:
     name: ${{ matrix.db.name }}, ${{ matrix.mode }}
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'load-test'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
@@ -210,6 +211,7 @@ jobs:
           json.dump({'total': after['total'] - before['total'], 'by_mode': by_mode}, open('stored.json', 'w'))
           EOF
           sudo cat /var/log/php8.3-fpm.log > php-fpm.log || true
+          sudo cat /var/log/nginx/aggregate_error.log > nginx-error.log || true
 
       - name: Report
         if: always() && hashFiles('k6-summary.json') != ''
@@ -220,6 +222,6 @@ jobs:
             --summary k6-summary.json \
             --label "${{ matrix.db.name }}, ${{ matrix.mode }}" \
             --server "$(nproc) vCPU (${model}), ${memory} GB RAM, Nginx, PHP $(php -r 'echo PHP_VERSION;') FPM with ${FPM_WORKERS} workers, k6 on the same machine" \
-            --vmstat vmstat.log --stored stored.json --php-log php-fpm.log \
+            --vmstat vmstat.log --stored stored.json --php-log php-fpm.log --web-log nginx-error.log \
             --cpu-before cpu-before.json --cpu-after cpu-after.json --k6-time k6-time.txt \
             --json-out load-result.json

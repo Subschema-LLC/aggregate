@@ -116,14 +116,17 @@ def add_cpu(rows: list[dict], summary: dict, samples: list[tuple[float, dict]]) 
         row["run_queue"] = max(values.get("r", 0) for values in window)
 
 
-def log_problems(path: Path | None, limit: int = 3) -> list[tuple[int, str]]:
+def log_problems(path: Path | None, markers: tuple[str, ...] = ("ERROR", "CRITICAL", "Fatal"), limit: int = 3) -> list[tuple[str, int]]:
+    """The most frequent error lines of a log, with numbers and times masked."""
     if path is None or not path.is_file():
         return []
     messages: Counter[str] = Counter()
     for line in path.read_text(errors="replace").splitlines():
-        if "ERROR" not in line and "CRITICAL" not in line and "Fatal" not in line:
+        if not any(marker in line for marker in markers):
             continue
         text = re.sub(r"^\[[^\]]*\]\s*", "", line)
+        text = re.sub(r"^\d{4}/\d\d/\d\d \d\d:\d\d:\d\d\s*", "", text)
+        text = re.sub(r"client: [^,]+, ", "", text)
         text = re.sub(r"\d{4}-\d\d-\d\dT[\d:.+-]+", "<time>", text)
         text = re.sub(r"\b\d+\b", "N", text)
         messages[text[:240]] += 1
@@ -195,15 +198,17 @@ def build_report(args: argparse.Namespace) -> tuple[str, str, dict]:
         if name.startswith("status_") and values.get("values", {}).get("count", 0)
     }
     problems = log_problems(Path(args.php_log) if args.php_log else None)
+    web_problems = log_problems(Path(args.web_log) if args.web_log else None, ("[error]", "[crit]", "[alert]"))
     cpu_lines, cpu_result = cpu_split(args, (stored_db or {}).get("total", stored_total))
 
-    header = "| Target rps | Achieved rps | Failed | Dropped | p50 ms | p95 ms | p99 ms | CPU busy | Sustained |"
-    lines = [header, "| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | :---: |"]
+    header = "| Target rps | Achieved rps | Failed | Dropped | p50 ms | p95 ms | p99 ms | CPU busy | I/O wait | Sustained |"
+    lines = [header, "| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | :---: |"]
     for row in rows:
         cpu = f"{row['cpu_busy_pct']:.0f}%" if "cpu_busy_pct" in row else "-"
+        wait = f"{row['cpu_wait_pct']:.0f}%" if "cpu_wait_pct" in row else "-"
         lines.append(
             f"| {row['target_rps']} | {row['achieved_rps']:,.0f} | {row['failure_rate'] * 100:.1f}% | {row['dropped']:,} "
-            f"| {fmt_ms(row['p50_ms'])} | {fmt_ms(row['p95_ms'])} | {fmt_ms(row['p99_ms'])} | {cpu} | {'yes' if row['sustained'] else 'no'} |"
+            f"| {fmt_ms(row['p50_ms'])} | {fmt_ms(row['p95_ms'])} | {fmt_ms(row['p99_ms'])} | {cpu} | {wait} | {'yes' if row['sustained'] else 'no'} |"
         )
 
     if capacity:
@@ -233,18 +238,21 @@ def build_report(args: argparse.Namespace) -> tuple[str, str, dict]:
     steal = [row["cpu_steal_pct"] for row in rows if "cpu_steal_pct" in row]
     if steal:
         context.append(f"- CPU steal (time given to other virtual machines): {sum(steal) / len(steal):.1f}% on average, {max(steal):.1f}% in the worst stage")
-    for count, message in [(c, m) for m, c in problems]:
+    for message, count in problems:
         context.append(f"- PHP log ({count:,}×): `{message}`")
+    for message, count in web_problems:
+        context.append(f"- Nginx error log ({count:,}×): `{message}`")
 
     markdown = "\n".join([f"### Load test: {args.label}", "", verdict, "", *lines, "", *context, ""])
 
     plain_lines = [verdict.replace("**", "")]
-    plain_lines.append("target  achieved  failed  dropped  p50ms  p95ms  p99ms  cpu  ok")
+    plain_lines.append("target  achieved  failed  dropped  p50ms  p95ms  p99ms  cpu  wait  ok")
     for row in rows:
         cpu = f"{row['cpu_busy_pct']:.0f}%" if "cpu_busy_pct" in row else "-"
+        wait = f"{row['cpu_wait_pct']:.0f}%" if "cpu_wait_pct" in row else "-"
         plain_lines.append(
             f"{row['target_rps']:>6}  {row['achieved_rps']:>8.0f}  {row['failure_rate'] * 100:>5.1f}%  {row['dropped']:>7}  "
-            f"{fmt_ms(row['p50_ms']):>5}  {fmt_ms(row['p95_ms']):>5}  {fmt_ms(row['p99_ms']):>5}  {cpu:>4}  {'yes' if row['sustained'] else 'no'}"
+            f"{fmt_ms(row['p50_ms']):>5}  {fmt_ms(row['p95_ms']):>5}  {fmt_ms(row['p99_ms']):>5}  {cpu:>4}  {wait:>4}  {'yes' if row['sustained'] else 'no'}"
         )
     plain_lines.extend(line.removeprefix("- ") for line in context)
     plain = "\n".join(plain_lines)
@@ -278,6 +286,7 @@ def main() -> None:
     parser.add_argument("--vmstat", help="Output of `vmstat -n -t 1` recorded during the run")
     parser.add_argument("--stored", help="JSON with the stored row counts")
     parser.add_argument("--php-log", help="PHP-FPM log to scan for errors")
+    parser.add_argument("--web-log", help="Nginx error log to scan for errors")
     parser.add_argument("--cpu-before", help="cpu_snapshot.py output from before the run")
     parser.add_argument("--cpu-after", help="cpu_snapshot.py output from after the run")
     parser.add_argument("--k6-time", help="GNU time output for k6: user and system seconds")
