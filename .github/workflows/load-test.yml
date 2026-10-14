@@ -1,0 +1,218 @@
+name: Load test
+
+# Measures how many collection requests one server handles. Each job installs
+# a disposable copy of Aggregate on Nginx and PHP-FPM with one database, sends
+# synthetic events to /api/receive at rising rates with k6, and reports every
+# stage in the job summary and as a notice. The load generator runs on the
+# same machine, so the numbers describe this runner, not a production server.
+# See docs/LOAD-TESTING.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      rates:
+        description: Requests per second for each stage, comma-separated
+        default: '25,50,100,200,300,400,500,650,800,1000'
+      stage_seconds:
+        description: Seconds per stage
+        default: '30'
+  pull_request:
+    paths:
+      - 'tests/Load/**'
+      - '.github/workflows/load-test.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: load-test-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  load:
+    name: ${{ matrix.db.name }}, ${{ matrix.mode }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [anonymous, enhanced]
+        db:
+          - name: SQLite
+            image: ''
+            port: 1
+            health: ''
+            url: 'sqlite:///%kernel.project_dir%/var/data.db'
+          - name: PostgreSQL 16
+            image: postgres:16
+            port: 5432
+            health: --health-cmd="pg_isready -U aggregate" --health-interval=5s --health-timeout=5s --health-retries=30
+            url: 'postgresql://aggregate:load-test@127.0.0.1:5432/aggregate?serverVersion=16'
+          - name: MySQL 8.0
+            image: mysql:8.0
+            port: 3306
+            health: --health-cmd="mysqladmin ping -h 127.0.0.1 -proot-load" --health-interval=5s --health-timeout=5s --health-retries=30
+            url: 'mysql://aggregate:load-test@127.0.0.1:3306/aggregate?serverVersion=8.0.0'
+    services:
+      database:
+        # An empty image skips the service (SQLite needs none).
+        image: ${{ matrix.db.image }}
+        ports:
+          - ${{ matrix.db.port }}:${{ matrix.db.port }}
+        env:
+          MYSQL_ROOT_PASSWORD: root-load
+          MYSQL_DATABASE: aggregate
+          MYSQL_USER: aggregate
+          MYSQL_PASSWORD: load-test
+          POSTGRES_DB: aggregate
+          POSTGRES_USER: aggregate
+          POSTGRES_PASSWORD: load-test
+        options: ${{ matrix.db.health }}
+    env:
+      APP_ROOT: /srv/aggregate
+      K6_VERSION: v1.0.0
+      RATES: ${{ inputs.rates || '25,50,100,200,300,400,500,650,800,1000' }}
+      STAGE_SECONDS: ${{ inputs.stage_seconds || '30' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Nginx and PHP 8.3 with PHP-FPM
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq nginx php8.3-fpm php8.3-cli php8.3-common php8.3-intl \
+            php8.3-mbstring php8.3-xml php8.3-curl php8.3-zip php8.3-sqlite3 php8.3-pgsql php8.3-mysql php8.3-opcache
+          sudo update-alternatives --set php /usr/bin/php8.3
+          php -v
+          composer --version
+
+      - name: Install Aggregate as a production site
+        env:
+          DATABASE_URL: ${{ matrix.db.url }}
+        run: |
+          sudo mkdir -p "$APP_ROOT"
+          sudo chown "$(id -un):$(id -gn)" "$APP_ROOT"
+          rsync -a --exclude .git ./ "$APP_ROOT/"
+          cd "$APP_ROOT"
+          composer install --no-dev --no-interaction --prefer-dist --no-progress --no-scripts --optimize-autoloader --classmap-authoritative
+          # The same defaults a release ZIP ships, then this server's values.
+          printf 'APP_ENV=prod\nAPP_DEBUG=0\nAPP_SECRET=\nTRUSTED_PROXIES=\nDATABASE_URL="sqlite:///%%kernel.project_dir%%/var/data.db"\nMESSENGER_TRANSPORT_DSN=sync://\nMAILER_DSN=null://null\n' > .env
+          {
+            echo "APP_SECRET=$(openssl rand -hex 32)"
+            echo "DATABASE_URL='${DATABASE_URL}'"
+            # k6 sends each simulated visitor's address in X-Forwarded-For
+            # through Nginx on this machine; trust only that local hop.
+            echo "TRUSTED_PROXIES=127.0.0.1"
+          } > .env.local
+          cp config/aggregate.yaml.example config/aggregate.yaml
+          php bin/console doctrine:migrations:migrate --no-interaction
+          php bin/console app:install --username=admin --password=load-test-admin --no-interaction
+          printf 'Load test\nloadtest.example\n' | php bin/console app:create-website
+          php bin/console cache:clear
+          token=$(php -r 'require "vendor/autoload.php"; echo Symfony\Component\Yaml\Yaml::parseFile("config/websites.yaml")["websites"][0]["token"];')
+          test -n "$token"
+          echo "WEBSITE_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Configure and start PHP-FPM and Nginx
+        run: |
+          workers=$(( $(nproc) * 4 ))
+          if [ "$workers" -lt 8 ]; then workers=8; fi
+          echo "FPM_WORKERS=$workers" >> "$GITHUB_ENV"
+          sudo tee /etc/php/8.3/fpm/pool.d/www.conf > /dev/null <<EOF
+          [www]
+          user = $(id -un)
+          group = $(id -gn)
+          listen = /run/php/php8.3-fpm.sock
+          listen.owner = www-data
+          listen.group = www-data
+          listen.mode = 0660
+          listen.backlog = 4096
+          pm = static
+          pm.max_children = ${workers}
+          pm.max_requests = 0
+          catch_workers_output = yes
+          decorate_workers_output = no
+          EOF
+          # Production OPcache settings from the deployment guide.
+          sudo tee /etc/php/8.3/fpm/conf.d/99-load-test.ini > /dev/null <<'EOF'
+          opcache.enable=1
+          opcache.memory_consumption=256
+          opcache.max_accelerated_files=20000
+          opcache.validate_timestamps=0
+          realpath_cache_size=4096K
+          realpath_cache_ttl=600
+          memory_limit=256M
+          EOF
+          # The documented site configuration, pointed at this checkout.
+          sed -e "s#root /var/www/aggregate-sy/public;#root ${APP_ROOT}/public;#" \
+              -e 's#php8.2-fpm.sock#php8.3-fpm.sock#g' \
+              -e 's#listen 80;#listen 80 default_server;#' \
+              -e 's#server_name analytics.example.com;#server_name _;#' \
+              docs/nginx/aggregate-analytics.conf | sudo tee /etc/nginx/conf.d/aggregate.conf > /dev/null
+          sudo rm -f /etc/nginx/sites-enabled/default
+          sudo sed -i -e 's/worker_connections [0-9]*;/worker_connections 8192;/' /etc/nginx/nginx.conf
+          grep -q worker_rlimit_nofile /etc/nginx/nginx.conf || sudo sed -i '1i worker_rlimit_nofile 32768;' /etc/nginx/nginx.conf
+          sudo nginx -t
+          sudo systemctl restart php8.3-fpm nginx
+
+      - name: Check that one event is stored
+        run: |
+          body=$(curl -sS -X POST http://127.0.0.1/api/receive \
+            -H 'Content-Type: application/json' -H 'Origin: https://loadtest.example' -H 'X-Forwarded-For: 198.19.255.254' \
+            -d "{\"websiteToken\":\"${WEBSITE_TOKEN}\",\"eventName\":\"view\",\"pagePath\":\"/\",\"consentState\":\"denied\"}")
+          echo "$body"
+          if ! echo "$body" | grep -q '"recorded"'; then
+            sudo tail -n 50 /var/log/php8.3-fpm.log || true
+            sudo tail -n 50 /var/log/nginx/aggregate_error.log || true
+            echo "::error title=Smoke test::/api/receive did not record the event: $body"
+            exit 1
+          fi
+
+      - name: Install k6
+        run: |
+          base="https://github.com/grafana/k6/releases/download/${K6_VERSION}"
+          archive="k6-${K6_VERSION}-linux-amd64.tar.gz"
+          curl -fsSL -o "/tmp/${archive}" "${base}/${archive}"
+          curl -fsSL -o /tmp/k6-checksums.txt "${base}/k6-${K6_VERSION}-checksums.txt"
+          (cd /tmp && grep " ${archive}\$" k6-checksums.txt | sha256sum -c -)
+          tar -xzf "/tmp/${archive}" -C /tmp
+          sudo install "/tmp/k6-${K6_VERSION}-linux-amd64/k6" /usr/local/bin/k6
+          k6 version
+
+      - name: Run the step test
+        run: |
+          (cd "$APP_ROOT" && php tests/Load/count-events.php) > before.json
+          vmstat -n -t 1 > vmstat.log &
+          vmstat_pid=$!
+          ulimit -n "$(ulimit -Hn)"
+          k6 run --quiet \
+            -e BASE_URL=http://127.0.0.1 \
+            -e WEBSITE_TOKEN="$WEBSITE_TOKEN" \
+            -e ORIGIN=https://loadtest.example \
+            -e MODE=${{ matrix.mode }} \
+            -e RATES="$RATES" \
+            -e STAGE_SECONDS="$STAGE_SECONDS" \
+            -e SUMMARY_FILE=k6-summary.json \
+            tests/Load/receive.js
+          kill "$vmstat_pid"
+          (cd "$APP_ROOT" && php tests/Load/count-events.php) > after.json
+          python3 - <<'EOF'
+          import json
+          before, after = json.load(open('before.json')), json.load(open('after.json'))
+          modes = set(before['by_mode']) | set(after['by_mode'])
+          by_mode = {m: after['by_mode'].get(m, 0) - before['by_mode'].get(m, 0) for m in modes}
+          json.dump({'total': after['total'] - before['total'], 'by_mode': by_mode}, open('stored.json', 'w'))
+          EOF
+          sudo cat /var/log/php8.3-fpm.log > php-fpm.log || true
+
+      - name: Report
+        if: always() && hashFiles('k6-summary.json') != ''
+        run: |
+          memory=$(free -g | awk '/^Mem:/ {print $2}')
+          python3 tests/Load/report.py --github \
+            --summary k6-summary.json \
+            --label "${{ matrix.db.name }}, ${{ matrix.mode }}" \
+            --server "$(nproc) vCPU, ${memory} GB RAM, Nginx, PHP $(php -r 'echo PHP_VERSION;') FPM with ${FPM_WORKERS} workers, k6 on the same machine" \
+            --vmstat vmstat.log --stored stored.json --php-log php-fpm.log \
+            --json-out load-result.json
