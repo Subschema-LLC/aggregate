@@ -463,6 +463,31 @@ must be tested. The fresh-install CI job runs on all five.
 
 **What would change it.** An engine that cannot support the reporting contract.
 
+### PostgreSQL connections kept open by default
+
+**Decision.** The setup page writes `persistent=true` into a PostgreSQL
+`DATABASE_URL`, so each PHP-FPM worker keeps its database connection between
+requests. A ticked checkbox on the setup page leaves it out, and
+`persistent=false` turns it off later. MySQL, MariaDB, SQL Server and SQLite
+connections are opened per request as before.
+
+**Why.** Every collection request is short, and opening a PostgreSQL connection
+(a new server process and a password check) was its largest cost: the
+[load test](LOAD-TESTING.md#results) sustained about twice the requests with
+persistent connections. Aggregate keeps no session state on a connection (no
+advisory locks, session settings or temporary tables), and PDO rolls back a
+transaction a request leaves open, so a reused connection starts clean. MySQL's
+connections are cheap to open, and keeping them made no measurable difference.
+
+**Trade-off.** Each PHP-FPM worker holds a connection while it lives, so the
+workers on every server count against PostgreSQL's `max_connections`, and
+database hosts that allow few connections need the setting off or a pooler.
+A credentials change needs a PHP-FPM reload to drop the old connections.
+
+**What would change it.** Hosting where connection limits are commonly too low
+for the PHP-FPM workers, or a server runtime that keeps the application loaded
+between requests, such as FrankenPHP's worker mode.
+
 ### Easy installation over tooling
 
 **Decision.** A release ZIP contains everything needed to run: dependencies and

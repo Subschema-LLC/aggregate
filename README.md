@@ -163,6 +163,8 @@ No terminal is needed:
 See [Release ZIP on a web host](DEPLOYMENT.md#release-zip-on-a-web-host) for the
 details and step-by-step hosting panel guides (Plesk so far). PHP 8.2+ and MySQL
 8.0+, MariaDB 10.6+, PostgreSQL 13+, SQL Server 2017+ or SQLite are required.
+A 2-vCPU server running the database too handles about 1.2 million page views
+and events a day; see [load testing and capacity](docs/LOAD-TESTING.md#at-a-glance-hits-per-day).
 
 ### For development
 
@@ -304,6 +306,7 @@ It is built from these files on `master` and describes the current release.
 | [Deployment](DEPLOYMENT.md) | Docker/native setup, web servers, workers, production operations, and upgrades |
 | [Plesk deployment](PLESK-DEPLOYMENT.md) | Plesk steps for a release ZIP without SSH, Git-based setup, and worker options |
 | [Database](docs/DATABASE.md) | Supported engines, connection strings, migrations, and reporting schema |
+| [Load testing and capacity](docs/LOAD-TESTING.md) | Hits per day one server handles, disk space per million hits, cache clearing under traffic, and how to measure your own server |
 | [Connect BI tools and AI assistants](docs/BI-CONNECTION.md) | Approved reporting views and their columns, safe queries, a connection checklist for Power BI or Tableau, and AI assistant setup |
 | [Sync to BigQuery](docs/BIGQUERY.md) | Copying reporting views to BigQuery on a schedule: sign-in methods, view selection, scheduling, column types and privacy |
 

@@ -232,9 +232,16 @@ def build_report(args: argparse.Namespace) -> tuple[str, str, dict]:
             f"- Stored rows: {stored_db.get('total', 0):,} in the database for {stored_total:,} requests reported as stored "
             f"({', '.join(f'{k}: {v:,}' for k, v in sorted(stored_db.get('by_mode', {}).items()))})"
         )
+        size, events = stored_db.get("bytes"), stored_db.get("total", 0)
+        if isinstance(size, int) and size > 0 and events > 0:
+            context.append(
+                f"- Storage: the events table grew by {size / 1024 ** 2:,.1f} MB with its indexes, about {size / events:,.0f} bytes "
+                f"per event, or {size / events * 1_000_000 / 1024 ** 3:,.2f} GB per million events"
+            )
     if statuses:
         context.append("- Responses: " + ", ".join(f"{name}: {count:,}" for name, count in sorted(statuses.items())))
     context.extend(f"- {line}" for line in cpu_lines)
+    context.extend(f"- {line}" for line in args.note)
     steal = [row["cpu_steal_pct"] for row in rows if "cpu_steal_pct" in row]
     if steal:
         context.append(f"- CPU steal (time given to other virtual machines): {sum(steal) / len(steal):.1f}% on average, {max(steal):.1f}% in the worst stage")
@@ -291,6 +298,7 @@ def main() -> None:
     parser.add_argument("--cpu-after", help="cpu_snapshot.py output from after the run")
     parser.add_argument("--k6-time", help="GNU time output for k6: user and system seconds")
     parser.add_argument("--json-out", help="Write the per-stage results as JSON here")
+    parser.add_argument("--note", action="append", default=[], help="A line to add to the report; repeatable")
     parser.add_argument("--github", action="store_true", help="Append to the job summary and emit a notice")
     args = parser.parse_args()
 
