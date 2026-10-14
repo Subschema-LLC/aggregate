@@ -457,6 +457,11 @@ migrations, run `php bin/console app:analytics:glossary:sync`, then use
 
 ### Performance
 
+For measured capacity and how to test your own server, see
+[load testing and capacity](docs/LOAD-TESTING.md). On a 4-vCPU test machine
+running everything, including the database, collection sustained 150–250
+requests per second; the limit was PHP's CPU time.
+
 **1. Use production environment:**
 ```bash
 # In .env (your server's environment file)
