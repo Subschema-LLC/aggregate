@@ -215,10 +215,11 @@ jobs:
         if: always() && hashFiles('k6-summary.json') != ''
         run: |
           memory=$(free -g | awk '/^Mem:/ {print $2}')
+          model=$(lscpu | sed -n 's/^Model name: *//p' | head -n 1)
           python3 tests/Load/report.py --github \
             --summary k6-summary.json \
             --label "${{ matrix.db.name }}, ${{ matrix.mode }}" \
-            --server "$(nproc) vCPU, ${memory} GB RAM, Nginx, PHP $(php -r 'echo PHP_VERSION;') FPM with ${FPM_WORKERS} workers, k6 on the same machine" \
+            --server "$(nproc) vCPU (${model}), ${memory} GB RAM, Nginx, PHP $(php -r 'echo PHP_VERSION;') FPM with ${FPM_WORKERS} workers, k6 on the same machine" \
             --vmstat vmstat.log --stored stored.json --php-log php-fpm.log \
             --cpu-before cpu-before.json --cpu-after cpu-after.json --k6-time k6-time.txt \
             --json-out load-result.json

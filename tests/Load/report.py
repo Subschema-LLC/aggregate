@@ -111,6 +111,8 @@ def add_cpu(rows: list[dict], summary: dict, samples: list[tuple[float, dict]]) 
         busy = [values.get("us", 0) + values.get("sy", 0) for values in window]
         row["cpu_busy_pct"] = sum(busy) / len(busy)
         row["cpu_wait_pct"] = sum(values.get("wa", 0) for values in window) / len(window)
+        # Time the hypervisor gave to other machines: noisy neighbours on shared hosts.
+        row["cpu_steal_pct"] = sum(values.get("st", 0) for values in window) / len(window)
         row["run_queue"] = max(values.get("r", 0) for values in window)
 
 
@@ -228,6 +230,9 @@ def build_report(args: argparse.Namespace) -> tuple[str, str, dict]:
     if statuses:
         context.append("- Responses: " + ", ".join(f"{name}: {count:,}" for name, count in sorted(statuses.items())))
     context.extend(f"- {line}" for line in cpu_lines)
+    steal = [row["cpu_steal_pct"] for row in rows if "cpu_steal_pct" in row]
+    if steal:
+        context.append(f"- CPU steal (time given to other virtual machines): {sum(steal) / len(steal):.1f}% on average, {max(steal):.1f}% in the worst stage")
     for count, message in [(c, m) for m, c in problems]:
         context.append(f"- PHP log ({count:,}×): `{message}`")
 
