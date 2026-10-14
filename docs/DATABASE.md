@@ -701,7 +701,7 @@ php bin/console app:analytics:maintain --dry-run
 php bin/console app:analytics:maintain
 ```
 
-Run maintenance at least daily; it also purges [task and audit records](#processing-tasks-and-audit-trail), which is on by default. Include the archive tables and lifecycle lease state in backups, and enforce separate expiration for database backups, replicas, BI extracts, and exports. On SQLite, file access still bypasses view permissions; use controlled exports, such as [BigQuery sync](BIGQUERY.md) of the approved views, or a server database for separate BI access.
+Run maintenance at least daily; it also purges [task and audit records](#processing-tasks-and-audit-trail), which is on by default. Include the archive tables and lifecycle lease state in backups, and enforce separate expiration for database backups, replicas, BI extracts, and exports. On SQLite, file access still bypasses view permissions; use controlled exports, such as [BigQuery sync](BIGQUERY.md) of the approved views, or a server database for separate BI access, which the [reporting database](REPORTING-DATABASE.md) sync can fill with copies of the views.
 
 ## Processing tasks and audit trail
 
@@ -709,8 +709,8 @@ Two generic, private tables record background work for every feature, instead of
 status table per feature:
 
 - **`processing_tasks`**: one row per run of a job. `task_type` names the job
-  (`bigquery_sync`, `analytics_maintenance`) and `subject` what it worked on (the
-  view, for BigQuery). `status` is `running`, `succeeded` or `failed`;
+  (`bigquery_sync`, `reporting_database_sync`, `analytics_maintenance`) and
+  `subject` what it worked on (the view, for the syncs). `status` is `running`, `succeeded` or `failed`;
   `triggered_by` is `schedule` (the scheduled command doing what is due),
   `command` (a person running a command for a specific job) or `dashboard`, with
   the administrator in `requested_by`. `started_at` and `finished_at` are UTC;

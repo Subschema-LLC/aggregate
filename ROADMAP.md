@@ -368,6 +368,7 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   preserved brand colors and fonts across modes.
 - [Feature flags](docs/FEATURE-FLAGS.md), with shared YAML/admin UI settings, server and CLI enforcement, and independent navigation visibility. Updates is the first registered capability; developer and contributor guidance explains how to add more.
 - [BigQuery sync](docs/BIGQUERY.md) of selected reporting views on an interval, with service account key, Google Cloud and Google sign-in authentication, explicit opt-in for private views, a status page and headless commands.
+- [Reporting database](docs/REPORTING-DATABASE.md): selected reporting views copied into same-named tables of a second database on any supported engine, swapped in whole at each sync, so BI users connect without access to the application database. Same view opt-ins, schedule, status page and headless commands as BigQuery sync.
 - [YAML disclosure thresholds](docs/CONFIGURATION.md#bi-disclosure-thresholds):
   `anonymous_min_cell_count` and `anonymous_geo_min_cell_count` live in the
   aggregate YAML with environment overrides, are edited on the BI disclosure page
@@ -384,7 +385,7 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   coarser `(other)` rows, with the same rule against the hourly view, so daily
   totals add up; `bi_anonymous_coverage_v1` reports, in bands, how much of each
   day's traffic each event view releases.
-- [Processing tasks and an audit trail](docs/DATABASE.md#processing-tasks-and-audit-trail): two shared private tables for background job runs (status, lock, failure details) and their outcomes, used by BigQuery sync and maintenance, with UI/YAML purge periods.
+- [Processing tasks and an audit trail](docs/DATABASE.md#processing-tasks-and-audit-trail): two shared private tables for background job runs (status, lock, failure details) and their outcomes, used by BigQuery sync, the reporting database sync and maintenance, with UI/YAML purge periods.
 - [Organization traffic markers](docs/PRIVACY-COMPLIANCE.md#organization-traffic), with YAML/UI settings, marking links that set the marker on each tracked website, and a fixed `org_internal_traffic` flag on every event. Filtering uses retained event JSON; grouped BI views and archives do not retain the flag.
 - [Custom data models](docs/DATA-MODEL.md), including UTM/query mappings, per-property consent settings, downloadable YAML, and private reporting columns. All UTMs require consent by default; anonymous attribution should use at most broad `utm_medium` values, with documented warnings for overrides.
 - [Optional JavaScript minification](docs/JS-BUILD.md) for tracker, organization-marker, and drop-in scripts.

@@ -15,6 +15,7 @@ Use this guide for application settings and runtime overrides. Run commands from
 - [BI glossary](#bi-glossary)
 - [Archiving and retention](#archiving-and-retention)
 - [BigQuery sync](#bigquery-sync)
+- [Reporting database](#reporting-database)
 - [Main navigation](#main-navigation)
 - [Conversion goals](#conversion-goals)
 - [Coarse geography](#optional-coarse-geography)
@@ -24,7 +25,7 @@ Use this guide for application settings and runtime overrides. Run commands from
 
 Configuration has separate sources of truth:
 
-- **Environment files and server variables:** Symfony infrastructure — database connection, message queue, app secret, and explicit proxy trust. Keep deployment values in untracked local files or server configuration.
+- **Environment files and server variables:** Symfony infrastructure — database connection, the optional [reporting database](#reporting-database) connection, message queue, app secret, and explicit proxy trust. Keep deployment values in untracked local files or server configuration.
 - **`config/aggregate.yaml`** (app-level, example committed): Analytics-specific settings — application branding, privacy measurement controls, internal traffic markers and sharing token, lifecycle policy, BigQuery sync, rate limit, JS namespace, dashboard toggle, and deployment-wide feature flags.
 - **`config/secrets/`** (untracked): Credentials Aggregate writes for itself, such as the BigQuery service account key and Google sign-in, readable only by the application's user and kept by updates.
 - **`config/goals.yaml`** (app-level, committed): Stable conversion-goal codes and whether each is enabled for anonymous collection. Customize it in `config/goals.local.yaml` (see [Local overrides](#local-overrides-for-shipped-defaults)).
@@ -110,6 +111,10 @@ Connection string formats for `DATABASE_URL` (see [Database Guide](DATABASE.md))
 directory; no other `%` sequence is interpreted, so encode special characters
 in passwords as usual (`@` as `%40`). A release ZIP's browser setup page writes
 `.env.local` with the encoded connection and detected version for you.
+
+The optional `REPORTING_DATABASE_URL` uses the same formats for a second
+database that receives copies of the reporting views; see
+[Reporting database](#reporting-database).
 
 MySQL and MariaDB version hints must include the patch component. See the
 [DBAL 4 upgrade notes](DATABASE.md#upgrade-to-doctrine-dbal-4) before updating an
@@ -400,7 +405,7 @@ Archiving creates private, unsuppressed aggregate cells and marks the source row
 
 ### Task and audit records
 
-Background jobs (each BigQuery view sync and each maintenance run) are recorded in
+Background jobs (each BigQuery or reporting database view sync and each maintenance run) are recorded in
 the private [`processing_tasks` and `audit_trail` tables](DATABASE.md#processing-tasks-and-audit-trail).
 Maintenance purges them after these periods; `0` keeps them indefinitely. The
 latest success and the latest failure of each job are always kept so schedules
@@ -428,6 +433,25 @@ listed separately under `bigquery_private_views`. Credentials are stored in
 deployments use a service account key or Google Cloud credentials. See
 [Sync to BigQuery](BIGQUERY.md) for every setting, the sign-in methods, column
 types and privacy notes.
+
+## Reporting database
+
+**Reporting → Reporting database** at `/dashboard/reporting-database` copies
+selected reporting views into same-named tables of a second database on an
+interval, so BI users can connect there instead of to the application database.
+The `reporting_database_*` keys in the active YAML environment hold the
+settings, with uppercase environment-variable overrides that lock the matching
+fields; `app:reporting-database:sync` (scheduled every five minutes) and
+`app:reporting-database:check` work with the dashboard disabled. Approved views
+are selected under `reporting_database_views`; row-level or unsuppressed views
+must be listed separately under `reporting_database_private_views`.
+
+The connection is the documented exception to keeping settings in YAML:
+`REPORTING_DATABASE_URL` is infrastructure, like `DATABASE_URL`, and holds a
+password, so it is set in `.env.local` or the server environment and has no YAML
+key or dashboard field. The admin page shows only the engine, server and
+database name. See [Reporting database](REPORTING-DATABASE.md) for the database
+setup on each engine, every setting, column types and privacy notes.
 
 ## Main navigation
 
