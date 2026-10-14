@@ -1,15 +1,59 @@
 # Load testing and capacity
 
-How many collection requests one Aggregate server handles, how that was
-measured, and how to measure your own server. The test sends synthetic page
-views to `/api/receive`, the endpoint every tracked page view and event uses,
-at rising rates until the server falls behind.
+How much traffic one Aggregate server handles, how that was measured, and how
+to measure your own server. The test sends synthetic page views to
+`/api/receive`, the endpoint every tracked page view and event uses, at rising
+rates until the server falls behind.
+
+- [At a glance: hits per day](#at-a-glance-hits-per-day)
+- [Results](#results)
+- [Sizing a server](#sizing-a-server)
+- [Disk space](#disk-space)
+- [Where the time goes](#where-the-time-goes)
+- [Optimizations](#optimizations)
+- [Clearing the cache under traffic](#clearing-the-cache-under-traffic)
+- [Run the test](#run-the-test)
+
+## At a glance: hits per day
+
+Every page view and every tracked event (a click, a form, a goal) is one
+**hit**: one request to Aggregate. With the database on the same server, one
+Aggregate server handles about this many hits a day:
+
+| Server | As installed | With OPcache preloading |
+| --- | ---: | ---: |
+| 2 vCPU | 1.2 million a day | 1.5 million a day |
+| 4 vCPU | 2.4 million a day | 3 million a day |
+| 8 vCPU | 4.8 million a day | 6 million a day |
+
+- **These assume ordinary daily traffic,** where the busiest minutes bring about
+  five times the day's average rate. If your traffic arrives in bursts (a
+  newsletter, a TV or radio spot, a post that takes off, or most visitors in one
+  hour), halve them.
+- **They hold for MySQL, MariaDB and PostgreSQL,** with the setup page's
+  default settings. SQLite handled as much in most runs but sometimes stalled,
+  so keep it for trials and small sites.
+- **A month is about 30 times as much:** a 2-vCPU server handles about 36
+  million hits a month as installed.
+- **In page views:** if visitors also trigger about one tracked event per page
+  they view, divide by two.
+- **Room to spare is included.** The figures use about 70% of the lowest rate a
+  server sustained in the test, leaving the rest for maintenance, the
+  dashboard, syncs and the unexpected.
+- **Disk:** the events table grows by about 0.3–0.6 GB per million hits; see
+  [Disk space](#disk-space).
+- **Preloading** is a PHP setting in the [deployment guide](../DEPLOYMENT.md#performance)
+  that gives about a quarter more.
+
+Only 4-vCPU servers were measured; the 2- and 8-vCPU rows assume capacity grows
+with the CPU, as it should while CPU is the limit. Confirm on your own hardware
+with the [test](#run-the-test).
 
 ## Results
 
 Measured on 14 October 2026 on GitHub's standard Linux runners, at commits
-`f925700` and `2f92705` of this guide's pull request. Every request ran on one
-machine:
+`f925700`, `2f92705` and `16a7927` of this guide's pull request. Every request
+ran on one machine:
 
 - 4 vCPU and 15 GB of memory, shared with other GitHub customers. The CPU model
   changed from run to run, among AMD EPYC and Intel Xeon generations.
@@ -30,45 +74,48 @@ highest stage before the first one that is not.
 
 Two configurations were measured:
 
-- **Default:** Aggregate as installed, which now includes the
-  [cached YAML parsing](#optimizations).
-- **Tuned:** the same plus two server settings from the
-  [deployment guide](../DEPLOYMENT.md#performance): OPcache preloading and, with
-  MySQL and PostgreSQL, persistent database connections.
+- **As installed:** Aggregate's defaults, including the
+  [cached YAML parsing](#optimizations) and, with PostgreSQL, the persistent
+  connections the setup page turns on.
+- **With preloading:** the same plus OPcache preloading from the
+  [deployment guide](../DEPLOYMENT.md#performance), and persistent connections
+  with MySQL too.
 
-| Setup | Default, sustained per second (1 run) | Tuned, sustained per second (2 runs) | Server CPU per event, default → tuned |
+| Setup | As installed, sustained per second | With preloading, sustained per second | Server CPU per event on AMD EPYC 7763 |
 | --- | ---: | ---: | ---: |
-| MySQL 8.0, anonymous | 200 | 250–300 | 15.0 → 9.9–11.5 ms |
-| MySQL 8.0, enhanced | 200 | 250 | 14.6 → 11.7–11.8 ms |
-| PostgreSQL 16, anonymous | 100 | 350–500 | 26.7 → 5.4–9.0 ms |
-| PostgreSQL 16, enhanced | 100 | 250–400 | 28.7 → 7.0–10.9 ms |
-| SQLite, anonymous | 200 | 250 (1 run) | 13.1 → 10.7 ms |
-| SQLite, enhanced | 200 | none: writes stalled (1 run) | 9.7 ms (newer CPU) |
+| MySQL 8.0, anonymous | 200 (2 runs) | 250–500 (3 runs) | 13.4–15.0 → 9.9–11.5 ms |
+| MySQL 8.0, enhanced | 200–350 (2 runs) | 250–300 (3 runs) | 14.6 → 11.7–11.8 ms |
+| PostgreSQL 16, anonymous | 500 (1 run) | 300–500 (3 runs) | not measured → 10.2 ms |
+| PostgreSQL 16, enhanced | 250 (1 run) | 250–400 (3 runs) | 13.6 → 10.9–11.5 ms |
+| SQLite, anonymous | 200 (2 runs) | 250–300 (2 runs) | 13.1–13.4 → 10.7 ms |
+| SQLite, enhanced | 200 (2 runs) | 250 (2 runs, one stalled) | 13.3 → 10.8 ms |
 
 *Server CPU per event* is the CPU time of PHP, the database and Nginx divided
-by the events stored. On the same CPU model (AMD EPYC 7763), tuning cut it by
-19–34% with MySQL, 18% with SQLite and 62% with PostgreSQL; the lowest tuned
-PostgreSQL figures come from newer CPUs. Multiply a rate per second by 60 for
-the rate per minute: 250 per second is 15,000 per minute.
+by the events stored, shown for the CPU model most runs had (as installed →
+with preloading); the highest sustained rates came from newer CPUs. Multiply a
+rate per second by 60 for the rate per minute: 250 per second is 15,000 per
+minute.
+
+PostgreSQL without persistent connections, the default before this change,
+sustained 100 per second in both privacy modes, at 26.7–28.7 ms of CPU per
+event on the same CPU.
 
 What the runs show:
 
 - **The limit is CPU, and mostly PHP.** At the limit the CPU was 98–100% busy
-  (less with SQLite, which also waits for the disk), PHP used 72–92% of it, the database 6–24%, and Nginx and k6 the rest.
-- **With default settings, PostgreSQL sustains half of what MySQL does.** PHP
-  opens a new database connection for every request, and PostgreSQL starts a
-  server process and checks the password with SCRAM for each one, where MySQL
-  reuses threads. Its database CPU per event was 6.7–7.0 ms against MySQL's
-  1.5–1.6 ms.
-- **Tuned, PostgreSQL catches up and can pass MySQL.** Persistent connections
-  remove that cost: PostgreSQL's database CPU per event fell to 0.4–0.7 ms, and
-  on the same CPU model tuned PostgreSQL and MySQL needed about the same CPU per
-  event.
-- **SQLite is fast until writes collide.** It sustained 200–250 per second in
-  most runs, but in some runs requests stalled from the first stage with the
-  CPU mostly idle and the disk busy (I/O wait above 20%), and the server
-  answered with errors and time-outs. It happened in both privacy modes, at
-  rates as low as 50 per second. SQLite allows one write at a time, and the
+  (less with SQLite, which also waits for the disk), PHP used 72–92% of it, the
+  database 6–24%, and Nginx and k6 the rest.
+- **Opening connections was PostgreSQL's handicap.** Without persistent
+  connections, PHP opens a new database connection for every request, and
+  PostgreSQL starts a server process and checks the password with SCRAM for
+  each one, where MySQL reuses threads. Its database CPU per event was 6.7–7.0
+  ms against MySQL's 1.5–1.6 ms, and it sustained half as much. With persistent
+  connections it fell to 0.4–0.7 ms, and PostgreSQL and MySQL needed about the
+  same CPU per event.
+- **SQLite is fast until writes collide.** It sustained 200–300 per second in
+  most runs, but in 3 of 20 runs its writes stalled, for a stage or for the
+  whole run, with the CPU mostly idle and the disk busy (I/O wait above 20%),
+  even at 50 per second; the worst answered with errors and time-outs. SQLite allows one write at a time, and the
   [database guide](DATABASE.md#sqlite) already recommends it only for small
   deployments.
 - **The hardware matters too.** The same setup's CPU per event differed by up to
@@ -77,51 +124,66 @@ What the runs show:
 - **Overload delays events more than it loses them.** Past the limit, requests
   queue and p95 climbs to several seconds, but in the MySQL and PostgreSQL runs
   at most 2 requests per run went unanswered, and the server kept serving at
-  its maximum rate. The tracker
-  sends with `fetch` and `keepalive`, without a time-out or a retry, so a browser
-  usually waits rather than resending. A queue that keeps growing is eventually
-  refused, as the time-outs in the stalled SQLite runs show.
+  its maximum rate. The tracker sends with `fetch` and `keepalive`, without a
+  time-out or a retry, so a browser usually waits rather than resending. A
+  queue that keeps growing is eventually refused, as the time-outs in the
+  stalled SQLite runs show.
 
 Before the YAML cache, four runs of the default configuration sustained 150–300
-per second with MySQL, 50–175 with PostgreSQL and 125–250 with SQLite, in line
-with these figures given the CPU differences.
+per second with MySQL, 50–175 with PostgreSQL and 125–250 with SQLite.
 
 ### Sizing a server
 
-Plan from these per-vCPU figures, about 70% of the lowest measured limit, which
-leaves room for maintenance jobs, the dashboard, syncs and spikes:
+The daily figures [above](#at-a-glance-hits-per-day) come from these rates per
+vCPU, about 70% of the lowest sustained rate on the most common CPU (200 per
+second as installed, 250 with preloading, on 4 vCPU):
 
-| Database | Default settings | Tuned (preloading and persistent connections) |
+| Database | As installed | With preloading |
 | --- | ---: | ---: |
-| MySQL or MariaDB | 35 per vCPU at your peak | 45 per vCPU at your peak |
-| PostgreSQL | 15 per vCPU at your peak | 45 per vCPU at your peak |
-| SQLite | low-traffic sites only | low-traffic sites only |
+| MySQL, MariaDB or PostgreSQL | 35 per second per vCPU at your peak | 45 per second per vCPU at your peak |
+| SQLite | small sites only | small sites only |
 
-For one instance with its database on the same server, that gives:
+| Server | As installed | With preloading |
+| --- | ---: | ---: |
+| 2 vCPU | 70 per second (4,200 per minute) | 90 per second (5,400 per minute) |
+| 4 vCPU | 140 per second (8,400 per minute) | 180 per second (10,800 per minute) |
+| 8 vCPU | 280 per second (16,800 per minute) | 360 per second (21,600 per minute) |
 
-| Server | MySQL or MariaDB, default | PostgreSQL, default | MySQL, MariaDB or PostgreSQL, tuned |
-| --- | ---: | ---: | ---: |
-| 2 vCPU | 70 per second (4,200 per minute) | 30 per second (1,800 per minute) | 90 per second (5,400 per minute) |
-| 4 vCPU | 140 per second (8,400 per minute) | 60 per second (3,600 per minute) | 180 per second (10,800 per minute) |
-| 8 vCPU | 280 per second (16,800 per minute) | 120 per second (7,200 per minute) | 360 per second (21,600 per minute) |
+**From a peak rate to hits per day.** Peak traffic matters, not the daily total.
+A day has 86,400 seconds, so a server that handles 70 hits per second at its
+peak handles 70 × 86,400 ÷ 5 ≈ 1.2 million hits a day when the busiest minutes
+bring five times the day's average rate, and half that when they bring ten
+times. To check your own ratio, compare your busiest hour's page views in your
+current analytics with the day's total divided by 24: about 2–3 is ordinary
+traffic, with short bursts above that; much more is bursty.
 
-Only 4 vCPU was measured; the other rows assume capacity grows with the CPU, as
-it should while CPU is the limit. MariaDB was not tested; it is expected to
-behave like MySQL.
-
-Peak traffic matters, not the daily total. Each page view and each tracked event
-is one request. If a site's busiest minute carries five times its average
-minute, which is common, **every 10 requests per second at the peak covers
-about 5 million requests a month**. A 2-vCPU instance with tuned settings
-(90 per second) therefore covers about 45 million requests a month at that
-ratio, and with default PostgreSQL (30 per second) about 15 million. Confirm on
-your own hardware with the test below.
+PostgreSQL with persistent connections turned off sustained less than half as
+much; plan 15 per second per vCPU for it. MariaDB was not tested; it is
+expected to behave like MySQL.
 
 These figures cover collection requests only. Serving the tracker script,
 consent banner and tag manager adds load unless a CDN or browser cache serves
 them, and TLS adds Nginx CPU that the test did not include. A database on its
-own server takes its CPU share off the web server but adds a network round trip
-to every request.
+own server takes its CPU share (6–24%) off the web server but adds a network
+round trip to every request.
+
+### Disk space
+
+The load test also measured how much the `events` table, with its indexes,
+grew per stored event:
+
+| Database | Anonymous events | Enhanced events |
+| --- | ---: | ---: |
+| MySQL 8.0 | 370–400 bytes | 550–590 bytes |
+| PostgreSQL 16 | about 280 bytes | about 400 bytes |
+| SQLite | about 350 bytes | about 480 bytes |
+
+So plan about **0.3–0.6 GB per million hits**: a site with a million hits a day
+adds 9–18 GB a month. The test's page views have short paths and no custom
+properties; longer URLs and [custom data](DATA-MODEL.md) take more.
+[Archiving](CONFIGURATION.md#archiving-and-retention) folds old rows into
+counted cells and retention deletes them after their periods, which keeps the
+table from growing without end.
 
 ### Where the time goes
 
@@ -161,16 +223,17 @@ of PHP, the database and Nginx for each stored event.
   times fell by the same 17–29%.
 - **OPcache preloading** is a PHP setting: PHP-FPM loads the classes Symfony
   lists in `config/preload.php` once at start-up instead of on every request.
-  It needs PHP-FPM to be restarted after every update. See
+  It needs a PHP-FPM reload after every update. See
   [preloading](../DEPLOYMENT.md#performance) in the deployment guide.
 - **Persistent connections** keep each PHP-FPM worker's database connection
   open between requests, set with `persistent=true` in `DATABASE_URL`.
   PostgreSQL's database CPU per event fell by 83% and median response times
-  by 37–47%; MySQL, whose connections are cheap, barely changed. See
+  by 37–47%; MySQL, whose connections are cheap, barely changed. The setup page
+  therefore turns them on for PostgreSQL only. See
   [PostgreSQL tuning](DATABASE.md#performance-tuning).
 
-The [results](#results) include the YAML cache in both configurations; the
-tuned configuration adds the two settings.
+The [results](#results) include the YAML cache and PostgreSQL's persistent
+connections in both configurations; the other adds preloading.
 
 ## Clearing the cache under traffic
 
@@ -225,7 +288,7 @@ and enhanced traffic on each. It has four suites:
 
 | Suite | What it measures | Pull request label | Runner time |
 | --- | --- | --- | ---: |
-| `load` | The step test above: capacity at rising rates; the tuned variant adds OPcache preloading and persistent connections | `load-test`, `load-test-tuned` | about 50 minutes |
+| `load` | The step test above: capacity at rising rates, as installed; the tuned variant adds OPcache preloading, and persistent connections on MySQL | `load-test`, `load-test-tuned` | about 50 minutes |
 | `profile` | xhprof profiles at 20 requests per second: PHP time per request by step and the functions with the most own time | `profile` | about 25 minutes |
 | `compare` | The pull request's code against its base on one machine: change in server CPU per event and response times | `compare` | about 60 minutes |
 | `cache` | Steady traffic while the cache is cleared and PHP-FPM reloads or restarts: failures and response times in each stage | `cache-clear` | about 30 minutes |

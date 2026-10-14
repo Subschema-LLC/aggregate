@@ -457,12 +457,22 @@ migrations, run `php bin/console app:analytics:glossary:sync`, then use
 
 ### Performance
 
-For measured capacity, sizing per vCPU and how to test your own server, see
-[load testing and capacity](docs/LOAD-TESTING.md). On a 4-vCPU test machine
-running everything, including the database, collection sustained about 200
-requests per second with MySQL and 100 with PostgreSQL as installed, and
-250–300 with MySQL and 250–500 with PostgreSQL with preloading (item 3) and
-persistent connections (item 4). The limit was PHP's CPU time.
+**How much traffic one server handles.** Every page view and every tracked
+event is one hit. With MySQL, MariaDB or PostgreSQL on the same server:
+
+| Server | As installed | With preloading (item 3) |
+| --- | ---: | ---: |
+| 2 vCPU | about 1.2 million hits a day | about 1.5 million hits a day |
+| 4 vCPU | about 2.4 million hits a day | about 3 million hits a day |
+| 8 vCPU | about 4.8 million hits a day | about 6 million hits a day |
+
+That assumes ordinary daily traffic, where the busiest minutes bring about
+five times the day's average; halve it if visitors arrive in bursts, such as
+after a newsletter or a campaign. Room for maintenance, the dashboard and syncs
+is already left out. Plan disk space for about 0.3–0.6 GB per million hits
+before archiving. The limit is the server's CPU, mostly PHP. See
+[load testing and capacity](docs/LOAD-TESTING.md#at-a-glance-hits-per-day) for
+how this was measured, the figures per second and how to test your own server.
 
 **1. Use production environment:**
 ```bash
@@ -509,7 +519,8 @@ restart, which always dropped some.
 SQLite is fine for small deployments, but use PostgreSQL or MySQL for production.
 With PostgreSQL, keep connections open between requests with
 [persistent connections or PgBouncer](docs/DATABASE.md#performance-tuning);
-opening a new connection for every request is its largest cost.
+opening a new connection for every request is its largest cost. The setup page
+turns persistent connections on for PostgreSQL by default.
 
 **5. Use Redis or RabbitMQ for messaging:**
 ```bash
