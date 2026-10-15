@@ -110,7 +110,7 @@ final class BigQueryCommandsTest extends TestCase
             self::throwException(new BigQueryException('No service account key is installed.')),
         );
         $background = $this->createStub(BigQueryBackgroundSync::class);
-        $background->method('cronLine')->willReturn('*/5 * * * * cd /srv && php bin/console app:bigquery:sync --no-interaction');
+        $background->method('cronLine')->willReturn('*/5 * * * * cd /srv && php bin/console app:scheduler:run --no-interaction');
         $tester = new CommandTester(new BigQueryCheckCommand($runner, $this->settings(['bigquery_enabled' => true]), $background));
 
         self::assertSame(Command::SUCCESS, $tester->execute([]));

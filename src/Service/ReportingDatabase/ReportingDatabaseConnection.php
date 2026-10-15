@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service\ReportingDatabase;
 
+use App\Service\BigQuery\BigQueryViewCatalog;
 use App\Service\ProjectDirEnvVarProcessor;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
@@ -47,6 +48,19 @@ class ReportingDatabaseConnection
         'sqlite3' => ['SQLite', null],
     ];
 
+    /**
+     * The database types the admin page and app:reporting-database:configure
+     * offer, with the URL scheme and PHP extension each needs.
+     */
+    public const TYPES = [
+        'mysql' => ['label' => 'MySQL or MariaDB', 'scheme' => 'mysql', 'extension' => 'pdo_mysql', 'port' => 3306],
+        'pgsql' => ['label' => 'PostgreSQL', 'scheme' => 'postgresql', 'extension' => 'pdo_pgsql', 'port' => 5432],
+        'sqlsrv' => ['label' => 'SQL Server', 'scheme' => 'mssql', 'extension' => 'pdo_sqlsrv', 'port' => 1433],
+        'sqlite' => ['label' => 'SQLite file', 'scheme' => 'sqlite', 'extension' => 'pdo_sqlite', 'port' => null],
+    ];
+    public const DEFAULT_SQLITE_FILE = 'var/reporting.db';
+    private const CHECK_TABLE = 'aggregate_sync_check';
+
     private ?Connection $connection = null;
 
     public function __construct(
@@ -59,6 +73,163 @@ class ReportingDatabaseConnection
     public function isConfigured(): bool
     {
         return $this->url !== null && trim($this->url) !== '';
+    }
+
+    /** The same application database with another reporting database URL, to test it before saving. */
+    public function withUrl(string $url): self
+    {
+        return new self($url, $this->projectDir, $this->application);
+    }
+
+    /**
+     * A REPORTING_DATABASE_URL from form fields, written like DATABASE_URL.
+     * Credentials and the database name are percent-encoded, so the result
+     * holds no quotes, spaces or backslashes. A relative SQLite path is under
+     * the application folder.
+     *
+     * @throws \InvalidArgumentException with a message for the administrator
+     */
+    public static function buildUrl(string $type, string $host, ?int $port, string $database, string $user, string $password, bool $trustCertificate = false): string
+    {
+        if (!isset(self::TYPES[$type])) {
+            throw new \InvalidArgumentException('Choose MySQL or MariaDB, PostgreSQL, SQL Server or SQLite.');
+        }
+        $database = trim($database);
+        if ($type === 'sqlite') {
+            $path = $database === '' ? self::DEFAULT_SQLITE_FILE : $database;
+            if (preg_match('/[\x00-\x1f\x7f\'"\\\\%?#]/', $path) === 1 || str_contains('/'.$path.'/', '/../')) {
+                throw new \InvalidArgumentException('Enter the SQLite file as a plain path, such as '.self::DEFAULT_SQLITE_FILE.'.');
+            }
+
+            return 'sqlite:///'.(str_starts_with($path, '/') ? $path : ProjectDirEnvVarProcessor::TOKEN.'/'.$path);
+        }
+        $host = trim($host);
+        if ($host === '' || strlen($host) > 255 || preg_match('/[^A-Za-z0-9.\-:_\[\]]/', $host) === 1) {
+            throw new \InvalidArgumentException('Enter the database server’s host name or IP address.');
+        }
+        if ($port !== null && ($port < 1 || $port > 65535)) {
+            throw new \InvalidArgumentException('The port must be between 1 and 65535.');
+        }
+        if ($database === '' || strlen($database) > 128 || preg_match('/[\x00-\x1f\x7f]/', $database) === 1) {
+            throw new \InvalidArgumentException('Enter the reporting database’s name.');
+        }
+        if (trim($user) === '' || strlen($user) > 128 || preg_match('/[\x00-\x1f\x7f]/', $user) === 1) {
+            throw new \InvalidArgumentException('Enter the database user name.');
+        }
+        if (strlen($password) > 1024 || str_contains($password, "\0")) {
+            throw new \InvalidArgumentException('The password is too long.');
+        }
+        $host = str_contains($host, ':') && !str_starts_with($host, '[') ? '['.$host.']' : $host;
+
+        return sprintf(
+            '%s://%s:%s@%s:%d/%s%s',
+            self::TYPES[$type]['scheme'],
+            rawurlencode(trim($user)),
+            rawurlencode($password),
+            $host,
+            $port ?? self::TYPES[$type]['port'],
+            rawurlencode($database),
+            $type === 'sqlsrv' && $trustCertificate ? '?driverOptions[TrustServerCertificate]=1' : '',
+        );
+    }
+
+    /**
+     * The configured URL as form fields, without the password; null when the
+     * URL is missing or cannot be read.
+     *
+     * @return array{type: string, host: string, port: string, database: string, user: string, trust_certificate: bool, has_password: bool}|null
+     */
+    public function fields(): ?array
+    {
+        try {
+            $params = $this->params();
+        } catch (ReportingDatabaseException) {
+            return null;
+        }
+        $type = match ($params['driver']) {
+            'pdo_mysql', 'mysqli' => 'mysql',
+            'pdo_pgsql', 'pgsql' => 'pgsql',
+            'pdo_sqlsrv', 'sqlsrv' => 'sqlsrv',
+            default => 'sqlite',
+        };
+        if ($type === 'sqlite') {
+            return ['type' => 'sqlite', 'host' => '', 'port' => '', 'database' => $this->describe()['database'], 'user' => '', 'trust_certificate' => false, 'has_password' => false];
+        }
+
+        return [
+            'type' => $type,
+            'host' => (string) ($params['host'] ?? ''),
+            'port' => isset($params['port']) ? (string) $params['port'] : '',
+            'database' => (string) ($params['dbname'] ?? ''),
+            'user' => (string) ($params['user'] ?? ''),
+            'trust_certificate' => (string) ($params['driverOptions']['TrustServerCertificate'] ?? '') === '1',
+            'has_password' => (string) ($params['password'] ?? '') !== '',
+        ];
+    }
+
+    /**
+     * The configured password, so a form left blank keeps it. Only for
+     * building a new URL; never shown.
+     */
+    public function password(): string
+    {
+        try {
+            return (string) ($this->params()['password'] ?? '');
+        } catch (ReportingDatabaseException) {
+            return '';
+        }
+    }
+
+    /**
+     * Connects, and creates and drops a small table to prove the sync may
+     * replace tables, without touching the copied views.
+     *
+     * @return array{engine: string, host: ?string, port: ?int, database: string, server_version: string, tables: list<string>}
+     *
+     * @throws ReportingDatabaseException with a message for the administrator
+     */
+    public function probe(): array
+    {
+        $location = $this->describe();
+        try {
+            $connection = $this->connection();
+            $version = $connection->getServerVersion();
+        } catch (ReportingDatabaseException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            throw new ReportingDatabaseException(self::firstLine($e, 'The reporting database could not be reached'), previous: $e);
+        }
+        try {
+            $platform = $connection->getDatabasePlatform();
+            $table = $platform->quoteSingleIdentifier(self::CHECK_TABLE);
+            $connection->executeStatement('DROP TABLE IF EXISTS '.$table);
+            $connection->executeStatement('CREATE TABLE '.$table.' (checked_at '.$platform->getDateTimeTypeDeclarationSQL([]).' NULL)');
+            $connection->executeStatement('DROP TABLE '.$table);
+        } catch (\Throwable $e) {
+            throw new ReportingDatabaseException(self::firstLine($e, 'Connected, but this database user cannot create and drop tables, which every sync does'), previous: $e);
+        }
+        $writer = new ReportingTableWriter($connection);
+        $copied = array_values(array_filter(array_keys(BigQueryViewCatalog::APPROVED + BigQueryViewCatalog::PRIVATE), $writer->tableExists(...)));
+
+        return [...$location, 'server_version' => $version, 'tables' => $copied];
+    }
+
+    /**
+     * A database error's first line, which names hosts, users and SQL states
+     * for connections and table changes but no stored value.
+     */
+    public static function firstLine(\Throwable $e, string $context): string
+    {
+        if (!$e instanceof \Doctrine\DBAL\Exception) {
+            return $context.' ('.(new \ReflectionClass($e))->getShortName().'); see the application log.';
+        }
+        $detail = trim((string) strtok($e->getMessage(), "\n"));
+        if (strlen($detail) > 300) {
+            $detail = substr($detail, 0, 297).'...';
+        }
+        $state = $e instanceof \Doctrine\DBAL\Exception\DriverException && $e->getSQLState() !== null ? ' (SQLSTATE '.$e->getSQLState().')' : '';
+
+        return $context.$state.': '.$detail;
     }
 
     /**

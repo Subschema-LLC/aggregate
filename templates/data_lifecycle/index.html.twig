@@ -30,7 +30,7 @@
 
     <div class="notification is-info is-light">
         <p class="has-text-weight-semibold">The application does not run lifecycle maintenance from a web request.</p>
-        <p>Schedule this command externally at least once a day:</p>
+        <p>The server’s scheduled task runs it once a day; <a href="{{ path('app_scheduled_tasks') }}">Scheduled tasks</a> shows whether it runs and how to set it up. To run it by hand:</p>
         <p class="mt-2"><code>php bin/console app:analytics:maintain</code></p>
         <p class="mt-2">Before first enabling deletion, inspect <code>php bin/console app:analytics:maintain --dry-run</code>, then monitor the scheduled job for failures.</p>
         <p class="mt-2">

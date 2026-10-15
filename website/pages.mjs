@@ -60,6 +60,7 @@ export const sections = [
   {
     text: 'Operate',
     items: [
+      { source: 'docs/SCHEDULED-TASKS.md', route: 'operate/scheduled-tasks', label: 'Scheduled tasks' },
       { source: 'docs/UPDATES.md', route: 'operate/updates', label: 'Updating' },
       { source: 'docs/RELEASES.md', route: 'operate/releases', label: 'Signed release packages' },
       { source: 'docs/LOAD-TESTING.md', route: 'operate/load-testing', label: 'Load testing and capacity' },

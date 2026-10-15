@@ -26,6 +26,7 @@ by hand (`.env.local` or environment variables) keep the behavior above.
 - [Web Server Configuration](#web-server-configuration)
 - [Worker Process Setup](#worker-process-setup)
 - [Production Considerations](#production-considerations)
+  - [Scheduled tasks](#scheduled-tasks)
 
 ---
 
@@ -52,13 +53,16 @@ Node. These steps work with any hosting panel or web server that runs PHP.
    checks the server, asks for the one-time code in `SETUP-CODE.txt` (next to
    `README.md` in the extracted folder), tests the database connection and writes
    `.env.local`. Then create the administrator account on `/install`.
+5. **Add one scheduled task** that runs `bin/console app:scheduler:run` every
+   five minutes, as the user PHP runs as. It runs maintenance and the optional
+   syncs. **Administration → Scheduled tasks** shows the exact settings for
+   your server and whether the task runs; see [Scheduled tasks](docs/SCHEDULED-TASKS.md).
 
 The web server must pass requests for addresses that are not files, and for
 `/aggregate.js`, to `public/index.php`. Apache does this through `public/.htaccess`
 when overrides are allowed; for nginx, use the rules under
 [Web Server Configuration](#web-server-configuration). The setup page checks both.
-No background worker or scheduled task is needed in the default `sync://` mode.
-Later updates are installed from the dashboard **Updates** page; see the
+Events need no background worker in the default `sync://` mode. Later updates are installed from the dashboard **Updates** page; see the
 [update guide](docs/UPDATES.md).
 
 ### Hosting panel guides
@@ -215,6 +219,10 @@ chown -R www-data:www-data var/
 #    After install, manage additional users/passwords in Administration -> Users,
 #    or via CLI with app:user:create and app:user:reset-password.
 #    CLI alternative: php bin/console app:install
+
+# 8. Schedule maintenance and the optional syncs: one cron line for www-data
+#    (sudo crontab -u www-data -e). app:scheduler:status shows whether it runs.
+#    */5 * * * * cd /var/www/aggregate && php bin/console app:scheduler:run --no-interaction
 ```
 
 For optional coarse geography on a native deployment, place a current GeoLite2-Country-compatible MMDB on the local filesystem outside `public/`, make it read-only and readable by the PHP ingestion process, then configure its absolute path. Direct UNC/network-share and Windows device paths are rejected. Do not give the application write access to the database file.
@@ -629,20 +637,23 @@ Add to crontab:
 0 2 * * * /path/to/backup-script.sh
 ```
 
-### Scheduled commands
+### Scheduled tasks
 
-Two commands run from the scheduler of the user that runs Aggregate, never from
-web requests:
+One command runs every background job that is due, never from web requests:
+daily maintenance (archiving, retention and purging of old task and audit
+records, which is on by default), BigQuery sync and the reporting database
+sync. Run it every five minutes as the user that runs Aggregate:
 
 ```cron
-# Archiving, retention and purging of old task and audit records (on by default)
-15 3 * * * cd /var/www/aggregate && php bin/console app:analytics:maintain --no-interaction
-# BigQuery sync, when it is turned on: each view syncs once per its interval
-*/5 * * * * cd /var/www/aggregate && php bin/console app:bigquery:sync --no-interaction
+*/5 * * * * cd /var/www/aggregate && php bin/console app:scheduler:run --no-interaction
 ```
 
-See [archiving and retention](docs/CONFIGURATION.md#archiving-and-retention) and
-[Sync to BigQuery](docs/BIGQUERY.md#schedule-the-sync).
+It prints nothing when nothing was due. **Administration → Scheduled tasks** and
+`php bin/console app:scheduler:status` show whether it runs, each job's last and
+next run, and the exact line for this server. A [systemd timer](docs/systemd/aggregate-scheduler.timer)
+works too. See [Scheduled tasks](docs/SCHEDULED-TASKS.md) for Plesk, systemd and
+troubleshooting. Separate lines for `app:analytics:maintain` or the sync
+commands from older guides keep working, but this one line replaces them.
 
 ### Updates
 

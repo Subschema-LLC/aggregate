@@ -204,6 +204,16 @@ parameters:
         - audit trail
         - processing tasks
         - jobs
+    'Scheduled tasks':
+      description: 'Set up the one scheduled task that runs maintenance and syncs, and check that it works'
+      synonyms:
+        - scheduled tasks
+        - scheduler
+        - cron
+        - crontab
+        - plesk
+        - background jobs
+        - schedule
     'Updates':
       description: 'Version status, git updates, and signed release packages'
       synonyms:

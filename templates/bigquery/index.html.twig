@@ -29,7 +29,7 @@
         <p>Each sync replaces a BigQuery table with the current contents of its view, so the tables always match Aggregate as of their last sync. Deletions and suppression in Aggregate carry over at the next sync.</p>
         {% if status.scheduler_late %}
             <div class="notification is-warning is-light mt-3" role="status">
-                <p><strong>The scheduled sync is not running.</strong> {% if status.last_run %}The last view sync started {{ status.last_run|date('Y-m-d H:i', 'UTC') }} UTC.{% else %}No view has synced yet.{% endif %} Add this line to the web server user’s crontab:</p>
+                <p><strong>The scheduled sync is not running.</strong> {% if status.last_run %}The last view sync started {{ status.last_run|date('Y-m-d H:i', 'UTC') }} UTC.{% else %}No view has synced yet.{% endif %} Set up the server’s scheduled task: <a href="{{ path('app_scheduled_tasks') }}">Scheduled tasks</a> shows the steps for this server, including Plesk. With cron, add this line to the crontab of the user that runs Aggregate:</p>
                 <pre class="mt-2 bigquery-cron"><code>{{ cron_line }}</code></pre>
             </div>
         {% endif %}
@@ -224,8 +224,7 @@
                 {{ help.env_help(overrides, 'bigquery_interval_minutes') }}
             </div>
         </div>
-        <p>Aggregate syncs from a scheduled command, not from web requests. Run it every five minutes; each view syncs about once per interval:</p>
-        <pre class="mt-2 mb-3 bigquery-cron"><code>{{ cron_line }}</code></pre>
+        <p class="mb-3">Aggregate syncs from the server’s scheduled task, which runs every five minutes, not from web requests; each view syncs about once per interval. <a href="{{ path('app_scheduled_tasks') }}">Scheduled tasks</a> shows whether it runs and how to set it up on this server.</p>
         <p class="help mb-3">Load jobs are free in BigQuery; storage and your queries are billed by Google. Most approved views are small, but private row-level views grow with your traffic.</p>
         <button class="button is-primary" type="submit"{% if configuration_error %} disabled{% endif %}>Save schedule</button>
     </form>

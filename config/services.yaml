@@ -160,11 +160,27 @@ services:
         arguments:
             $projectDir: '%kernel.project_dir%'
 
-    App\Service\BigQuery\BigQueryBackgroundSync:
+    App\Service\Operations\BackgroundCommand:
         arguments:
             $projectDir: '%kernel.project_dir%'
             $environment: '%kernel.environment%'
             $debug: '%kernel.debug%'
+
+    App\Service\Scheduler\Scheduler:
+        arguments:
+            $maintenance: '@App\Service\Scheduler\AnalyticsMaintenanceJob'
+            $bigQuery: '@App\Service\Scheduler\BigQuerySyncJob'
+            $reportingDatabase: '@App\Service\Scheduler\ReportingDatabaseSyncJob'
+            $projectDir: '%kernel.project_dir%'
+
+    App\Service\Scheduler\SchedulerSetup:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
+    App\Service\LocalEnvironmentFile:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+            $environment: '%kernel.environment%'
 
     App\Service\ReportingDatabase\ReportingDatabaseConnection:
         arguments:
@@ -172,12 +188,6 @@ services:
             # never a YAML setting. See docs/REPORTING-DATABASE.md.
             $url: '%env(default::REPORTING_DATABASE_URL)%'
             $projectDir: '%kernel.project_dir%'
-
-    App\Service\ReportingDatabase\ReportingDatabaseBackgroundSync:
-        arguments:
-            $projectDir: '%kernel.project_dir%'
-            $environment: '%kernel.environment%'
-            $debug: '%kernel.debug%'
 
     App\Service\TagManagerSettings:
         arguments:
@@ -205,7 +215,6 @@ services:
     App\Service\GeoIp\MaxMindMmdbGeoCodeLookup:
         arguments:
             $projectDir: '%kernel.project_dir%'
-
 
     App\Security\IpRateLimiter:
         arguments:

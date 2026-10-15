@@ -99,8 +99,8 @@ variables and command-line commands.
 in both modes before anything is derived from a request.
 
 **Maintenance.** `app:analytics:maintain`: archiving, retention and purging of
-old task and audit records, run daily on a schedule. A database lease keeps two
-runs from overlapping.
+old task and audit records, run daily by the scheduled task. A database lease
+keeps two runs from overlapping.
 
 **Maintenance mode.** The 503 page served while an update replaces files,
 controlled by `app:updates:maintenance`.
@@ -143,6 +143,11 @@ private. Their names carry a version (`_v1`).
 **Retention.** Deleting raw rows and archive cells after configured periods
 (`analytics_retention_enabled` and the `*_retention_days` settings). Off by
 default.
+
+**Scheduled task.** The one job the server runs every five minutes,
+`app:scheduler:run`, which starts maintenance and the BigQuery and reporting
+database syncs when they are due. **Administration → Scheduled tasks** shows
+whether it runs. See [Scheduled tasks](SCHEDULED-TASKS.md).
 
 **Setup code.** The one-time code in `SETUP-CODE.txt`, created by the browser
 setup page of a fresh release ZIP install. It proves the person finishing setup

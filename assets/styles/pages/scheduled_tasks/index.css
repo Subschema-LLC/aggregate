@@ -1,0 +1,25 @@
+/* Scheduled tasks: last run results and the jobs table. */
+.scheduled-tasks-results {
+    list-style: none;
+    margin-left: 0;
+}
+
+.scheduled-tasks-results li {
+    margin: 0.35rem 0;
+    overflow-wrap: anywhere;
+}
+
+.scheduled-tasks-jobs td,
+.scheduled-tasks-jobs th {
+    vertical-align: top;
+}
+
+.scheduled-tasks-jobs thead th {
+    white-space: nowrap;
+}
+
+.scheduled-tasks-jobs tbody th {
+    font-weight: normal;
+    letter-spacing: normal;
+    text-transform: none;
+}
