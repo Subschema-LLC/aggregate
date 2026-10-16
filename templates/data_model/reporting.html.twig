@@ -5,14 +5,28 @@
 {% block body %}
 <div class="model-reporting-page">
     <h1 class="title">Reporting views</h1>
-    {{ component('Ui:DocsLink', {topic: 'reporting.custom-views', label: 'Custom reporting views guide'}) }}
+    {{ component('Ui:DocsLink', {topic: 'data-model.reporting-views', label: 'Reporting views guide'}) }}
     {{ component('DataModel:Navigation', {current_model_page: 'app_data_model_reporting'}) }}
     {% if configuration_error %}<div class="notification is-danger" role="alert">{{ configuration_error }}</div>{% endif %}
     {% if reporting_error %}
         <div class="notification is-warning" role="alert">
             <p>{{ reporting_error }}</p>
-            <p class="is-size-7 mt-2">If this is a planned column addition or reorder, use <strong>Force recreate views</strong> below, or run <code>php bin/console app:analytics:views:regenerate --force</code>.</p>
+            <p class="is-size-7 mt-2">If you removed or renamed a column on purpose, use <strong>Force recreate views</strong> below, or run <code>php bin/console app:analytics:views:regenerate --force</code>.</p>
         </div>
+    {% endif %}
+    {% if view_status %}
+        {% if view_status.current %}
+            <div class="notification is-success is-light" role="status">The views match the saved model.</div>
+        {% else %}
+            <div class="notification is-warning is-light" role="status">
+                <p><strong>The views do not match the saved model yet.</strong>{% if view_status.removed is empty %} Saving the model, or <strong>Regenerate views from saved model</strong> below, updates them.{% endif %}</p>
+                <ul class="mt-2">
+                    {% if view_status.missing %}<li>Not created yet: {% for name in view_status.missing %}<code>{{ name }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</li>{% endif %}
+                    {% if view_status.added %}<li>Columns to add: {% for name in view_status.added %}<code>{{ name }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</li>{% endif %}
+                    {% if view_status.removed %}<li>No longer in the model: {% for name in view_status.removed %}<code>{{ name }}</code>{% if not loop.last %}, {% endif %}{% endfor %}. Removing a deployed column needs <strong>Force recreate views</strong>, which drops the views and their grants.</li>{% endif %}
+                </ul>
+            </div>
+        {% endif %}
     {% endif %}
     <section class="box">
         <p>Regenerate <code>analytics_custom_events_v1</code>, <code>analytics_custom_pageviews_v1</code>, and <code>analytics_custom_goals_v1</code> from the saved model. Text reporting columns preserve scalar values as text. Optional numeric columns support calculations: Integer requires a whole number; Float and Double preserve fractions with approximate precision. Missing, null, structured, or incompatible values become SQL <code>NULL</code>.</p>
@@ -23,14 +37,14 @@
                 <input type="hidden" name="_csrf_token" value="{{ csrf_token('data_model_settings') }}">
                 <div class="is-flex is-align-items-center is-flex-wrap-wrap" style="gap: 0.75rem;">
                     <button class="button is-primary" type="submit">Regenerate views from saved model</button>
-                    <button class="button is-light" type="submit" name="force" value="1" onclick="return confirm('Are you sure you want to drop and recreate the reporting views? Use this when new text columns were added after numeric columns, or when columns were reordered. Existing event data is untouched.');" title="Drop and recreate views without column-preservation checks (planned schema migration)">
+                    <button class="button is-light" type="submit" name="force" value="1" onclick="return confirm('Drop and recreate the reporting views? Use this when you removed or renamed a column on purpose. Grants on the views are lost; event data is untouched.');" title="Drop and recreate the views, for a removed or renamed column">
                         <span class="icon is-small mr-1"><i class="fas fa-arrows-rotate" aria-hidden="true"></i></span>
                         <span>Force recreate views</span>
                     </button>
                 </div>
             </form>
         {% endif %}
-        <p class="help mt-3">For headless use: <code>php bin/console app:analytics:views:regenerate</code> (or add <code>--force</code> for a planned schema migration). The database account needs view-creation privileges. MySQL/MariaDB apply each view separately; if an operation fails, correct the issue and rerun it.</p>
+        <p class="help mt-3">For headless use: <code>php bin/console app:analytics:views:regenerate</code>; <code>--check</code> reports whether the views match the model, and <code>--force</code> drops and recreates them. The database account needs view-creation privileges. MySQL/MariaDB apply each view separately; if an operation fails, correct the issue and rerun it.</p>
     </section>
 </div>
 {% endblock %}

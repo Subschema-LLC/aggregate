@@ -4,7 +4,7 @@
 
 {% block body %}
 <div class="data-model-editor" data-controller="pages--data-model--index"
-     data-pages--data-model--index-property-index-value="{{ model.custom_data_properties|length }}"
+     data-pages--data-model--index-property-index-value="{{ custom_properties|length }}"
      data-pages--data-model--index-mapping-index-value="{{ model.query_parameter_mappings|length }}"
      data-pages--data-model--index-reserved-columns-value="{{ (reserved_columns|default([]))|json_encode }}">
     <h1 class="title">Data model</h1>
@@ -21,6 +21,7 @@
         </div>
     {% endif %}
     {% if addition_error %}<div class="notification is-warning" role="alert">{{ addition_error }}</div>{% endif %}
+    {% if builtin_focus %}<div class="notification is-info" role="status"><code>{{ builtin_focus }}</code> is built in. Tick it under <a href="#built-in-properties">Built-in properties</a> to give it a reporting column, then save.</div>{% endif %}
 
     {% component 'Ui:Validation' with {action: path('app_data_model_save'), method: 'post', id: 'data-model-form'} %}
     {% block content %}
@@ -58,6 +59,28 @@
 
         {# PANE 1: Custom data properties #}
         <div id="pane-properties" class="workspace-pane is-active" role="tabpanel" data-pane-name="properties">
+            <section class="box built-in-properties" id="built-in-properties" aria-labelledby="built-in-properties-heading">
+                <h2 class="title is-4" id="built-in-properties-heading">Built-in properties</h2>
+                {{ component('Ui:DocsLink', {topic: 'data-model.builtin-properties', label: 'Built-in properties'}) }}
+                <p>Aggregate records these itself, so their type and consent are already set. Tick one to give it a column in the private reporting views (<code>analytics_custom_*_v1</code>); saving the model adds the column.</p>
+                {% for item in builtin_properties %}
+                    <div class="columns is-multiline is-vcentered built-in-property mt-3{% if item.key == builtin_focus %} is-highlighted{% endif %}" data-builtin-property="{{ item.key }}">
+                        <div class="column is-half">
+                            <label class="checkbox">
+                                <input type="checkbox" name="builtin[{{ item.key }}][include]" value="1"{% if item.included %} checked{% endif %} data-action="pages--data-model--index#toggleBuiltin" aria-describedby="builtin-{{ item.key }}-help">
+                                <strong>{{ item.label }}</strong> <code>{{ item.key }}</code>
+                            </label>
+                            <p class="help" id="builtin-{{ item.key }}-help">{{ item.help }}{% if item.key == 'page_sequence' and not model.page_sequence_enabled %} Page depth is off, so this column stays empty until you turn it on under <a href="#page-depth" data-action="pages--data-model--index#switchWorkspaceTab" data-tab-name="page-depth">Page depth</a>.{% endif %}</p>
+                        </div>
+                        <div class="column is-half">
+                            <label class="label is-small" for="builtin-{{ item.key }}-column">Column name</label>
+                            <input class="input" id="builtin-{{ item.key }}-column" name="builtin[{{ item.key }}][column]" value="{{ item.column }}" maxlength="63" pattern="[a-z][a-z0-9_]{0,62}" data-field="{{ item.kind == 'number' ? 'numeric_column' : 'column' }}" data-builtin-column data-action="input->pages--data-model--index#validateColumn">
+                            <div class="field-feedback is-size-7 mt-1" {{ item.kind == 'number' ? 'data-numeric-column-feedback' : 'data-column-feedback' }}></div>
+                            <p class="help">{{ item.kind == 'number' ? 'A whole-number column.' : 'A text column: true or false.' }}{% if item.text_column %} The text column <code>{{ item.text_column }}</code> from an earlier model stays as it is.{% endif %}</p>
+                        </div>
+                    </div>
+                {% endfor %}
+            </section>
             <section class="box">
                 <div class="level mb-2">
                     <div class="level-left">
@@ -77,7 +100,7 @@
                     </div>
                 </div>
                 <p>Expand a custom data JSON property to edit its type, consent, and optional reporting columns. Property names are literal top-level JSON keys. Leave both reporting columns empty to collect a property without exposing it in custom reporting views. Explicitly allowing a property without consent adds it to the server-enforced anonymous whitelist.</p>
-                <p class="help mb-3">Descriptions belong to the shared implementation model. Values must be flat strings, numbers, booleans, or null; nested data is discarded. Unlisted custom properties still require enhanced consent. Every event carries <code>org_internal_traffic</code>, true or false, from the organization-traffic marker in both modes; add it here as a boolean to give it a reporting column.</p>
+                <p class="help mb-3">Descriptions belong to the shared implementation model. Values must be flat strings, numbers, booleans, or null; nested data is discarded. Unlisted custom properties still require enhanced consent. <code>org_internal_traffic</code> and <code>page_sequence</code> are under <a href="#built-in-properties">Built-in properties</a> above.</p>
 
                 <details class="reserved-columns-reference box is-light mt-2 mb-4" id="reserved-columns-list" data-pages--data-model--index-target="reservedDetails">
                     <summary class="is-size-7 has-text-info is-clickable py-1">
@@ -95,7 +118,7 @@
                     </div>
                 </details>
 
-                {% if model.custom_data_properties|length > 2 %}
+                {% if custom_properties|length > 2 %}
                     <div class="field mb-3">
                         <div class="control has-icons-left">
                             <input type="search" class="input is-small is-rounded" placeholder="Filter properties..." aria-label="Filter properties" data-action="input->pages--data-model--index#filterProperties">
@@ -104,7 +127,7 @@
                     </div>
                 {% endif %}
                 <div id="property-rows" data-pages--data-model--index-target="propertyRows">
-                    {% for key, property in model.custom_data_properties %}
+                    {% for key, property in custom_properties %}
                         {{ component('DataModel:PropertyRow', {index: loop.index0, key: key, property: property, open: key == unsaved_property or restored_form|default(false)}) }}
                     {% endfor %}
                 </div>
@@ -114,7 +137,7 @@
                         <span>Add property</span>
                     </button>
                 </div>
-                <p class="help">Explicit types reject mismatched values without coercion; null is allowed. Integer values must be whole safe JSON numbers. Float and Double both use approximate double precision for portable reporting. Up to 50 properties. Reporting columns use unique lowercase letters, digits, and underscores, starting with a letter. After views are deployed, keep their aliases and order; append new columns at the end.</p>
+                <p class="help">Explicit types reject mismatched values without coercion; null is allowed. Integer values must be whole safe JSON numbers. Float and Double both use approximate double precision for portable reporting. Up to 50 properties. Reporting columns use unique lowercase letters, digits, and underscores, starting with a letter. Saving the model updates the private reporting views: new columns are added after the existing ones. Removing or renaming a deployed column needs <strong>Force recreate views</strong> on the Reporting views page.</p>
             </section>
         </div>
 
@@ -182,7 +205,7 @@
                     <p class="help" id="page-depth-storage"><strong>Tab session storage:</strong> keeps only a bounded number in browser session storage. Reloads count again. Review storage consent requirements before enabling.</p>
                     <p class="help" id="page-depth-url"><strong>URL parameter passing:</strong> reads <code>aggregate_page_sequence</code>, removes it from the address bar after capture, and adds the next number to ordinary same-origin links when activated. The counter uses no cookies or Web Storage. Reloads of cleaned URLs restart at 1; copied or shared links can carry an inaccurate depth before cleanup. Initial requests, logs or earlier scripts may still see the parameter. Review canonical URLs, SEO, router integrations and whether destinations accept the extra parameter. Links to excluded pages are left alone. Event page information contains no query string even if address-bar cleanup fails.</p>
                 </div>
-                <p class="help">For private reporting columns, add <code>page_sequence</code> as an Integer property with “Allow without consent”. Its collection is controlled by this switch. Supplied event properties and ordinary query mappings cannot override it; only the URL method reads the reserved sequence parameter.</p>
+                <p class="help">To report on page depth, tick <code>page_sequence</code> under <a href="#built-in-properties" data-action="pages--data-model--index#switchWorkspaceTab" data-tab-name="properties">Built-in properties</a>; this switch controls whether it is collected. Supplied event properties and ordinary query mappings cannot override it; only the URL method reads the reserved sequence parameter.</p>
             </section>
         </div>
 
@@ -190,7 +213,7 @@
             <button class="button is-primary" type="submit"{% if configuration_error %} disabled{% endif %}>Save model</button>
             {% if not configuration_error %}<a class="button" href="{{ path('app_data_model_download') }}">Download saved YAML</a>{% endif %}
         </div>
-        <p class="help mb-5">Saves only these model settings to the active environment in <code>config/aggregate.yaml</code> or its environment-specific file. Collection changes affect future requests; they do not erase existing data. Apply reporting changes from the Reporting views page after saving.</p>
+        <p class="help mb-5">Saves only these model settings to the active environment in <code>config/aggregate.yaml</code> or its environment-specific file, then updates the private reporting views to match. Collection changes affect future requests; they do not erase existing data.</p>
     {% endblock %}
     {% endcomponent %}
 

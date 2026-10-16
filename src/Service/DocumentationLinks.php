@@ -76,6 +76,8 @@ final class DocumentationLinks
         'configuration.application' => ['configure/configuration#application-settings', 'docs/CONFIGURATION.md'],
         'configuration.lifecycle' => ['configure/configuration#archiving-and-retention', 'docs/CONFIGURATION.md'],
         'data-model' => ['configure/data-model', 'docs/DATA-MODEL.md'],
+        'data-model.builtin-properties' => ['configure/data-model#built-in-properties', 'docs/DATA-MODEL.md'],
+        'data-model.reporting-views' => ['configure/data-model#reporting-views', 'docs/DATA-MODEL.md'],
         'feature-flags' => ['configure/feature-flags', 'docs/FEATURE-FLAGS.md'],
         'operate.scheduled-tasks' => ['operate/scheduled-tasks', 'docs/SCHEDULED-TASKS.md'],
         'operate.scheduled-tasks-plesk' => ['operate/scheduled-tasks#plesk', 'docs/SCHEDULED-TASKS.md'],

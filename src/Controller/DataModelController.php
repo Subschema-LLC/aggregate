@@ -7,7 +7,6 @@ namespace App\Controller;
 use App\Service\AggregateConfigLoader;
 use App\Service\CustomDataSettings;
 use App\Service\Glossary\GlossarySync;
-use App\Service\InternalTrafficSettings;
 use App\Service\ReportingViewManager;
 use App\Service\TrackerBuilds;
 use Psr\Log\LoggerInterface;
@@ -41,21 +40,20 @@ final class DataModelController extends AbstractController
         $context = $this->loadModel();
         $model = $context['model'];
         $unsavedProperty = null;
+        $builtinFocus = null;
         $additionError = null;
         $key = $request->query->all()['add_property'] ?? null;
         if ($key !== null && $context['configuration_error'] === null) {
             if (!is_string($key) || !CustomDataSettings::isValidPropertyKey($key)) {
                 $additionError = 'This property name cannot be added to the model.';
+            } elseif (CustomDataSettings::isBuiltin($key)) {
+                // Built-in properties have their own box: only the column is chosen.
+                $builtinFocus = $key;
             } elseif (!array_key_exists($key, $model[CustomDataSettings::PROPERTIES_KEY])) {
                 if (count($model[CustomDataSettings::PROPERTIES_KEY]) >= 50) {
                     $additionError = 'The model already contains the maximum of 50 properties.';
                 } else {
-                    $model[CustomDataSettings::PROPERTIES_KEY][$key] = match ($key) {
-                        CustomDataSettings::PAGE_SEQUENCE_PROPERTY => ['description' => 'Page depth; 20 means 20 or more.', 'consent_required' => false, 'type' => 'integer', 'column' => ''],
-                        // Recorded by the server in both modes, never submitted.
-                        InternalTrafficSettings::JSON_KEY => ['description' => 'Organization traffic: true for a marked browser.', 'consent_required' => false, 'type' => 'boolean', 'column' => ''],
-                        default => ['description' => '', 'consent_required' => true, 'column' => ''],
-                    };
+                    $model[CustomDataSettings::PROPERTIES_KEY][$key] = ['description' => '', 'consent_required' => true, 'column' => ''];
                     $model = $this->settings->validate($model);
                     $unsavedProperty = $key;
                 }
@@ -63,10 +61,12 @@ final class DataModelController extends AbstractController
         }
 
         $restoredForm = false;
+        $submittedBuiltins = null;
         if ($request->hasSession() && $request->getSession()->has('data_model_submitted_form')) {
             $submittedForm = $request->getSession()->remove('data_model_submitted_form');
             if (is_array($submittedForm)) {
                 $model = $this->rehydrateModelFromSubmittedForm($model, $submittedForm);
+                $submittedBuiltins = is_array($submittedForm['builtin'] ?? null) ? $submittedForm['builtin'] : null;
                 $restoredForm = true;
             }
         }
@@ -74,6 +74,9 @@ final class DataModelController extends AbstractController
         return $this->privateResponse($this->render('data_model/index.html.twig', [
             ...$context,
             'model' => $model,
+            'custom_properties' => array_diff_key($model[CustomDataSettings::PROPERTIES_KEY], CustomDataSettings::BUILTIN_PROPERTIES),
+            'builtin_properties' => $this->builtinProperties($context['model'], $submittedBuiltins),
+            'builtin_focus' => $builtinFocus,
             'unsaved_property' => $unsavedProperty,
             'addition_error' => $additionError,
             'detailed_anonymous_utms' => $this->detailedAnonymousUtms($model),
@@ -81,6 +84,40 @@ final class DataModelController extends AbstractController
             'restored_form' => $restoredForm,
             'tracker_omit_unused_features' => (new TrackerBuilds($this->config))->enabled(),
         ]));
+    }
+
+    /**
+     * The built-in properties box: whether each has a reporting column, and
+     * its name. A failed save shows what was submitted.
+     *
+     * @return list<array{key: string, label: string, help: string, kind: string, included: bool, column: string, text_column: string}>
+     */
+    private function builtinProperties(array $model, ?array $submitted): array
+    {
+        $items = [];
+        foreach (CustomDataSettings::BUILTIN_PROPERTIES as $key => $builtin) {
+            $saved = $model[CustomDataSettings::PROPERTIES_KEY][$key] ?? null;
+            $column = (string) ($saved[$builtin['alias']] ?? '');
+            $included = $column !== '';
+            if (is_array($submitted[$key] ?? null)) {
+                $included = ($submitted[$key]['include'] ?? '0') === '1';
+                $column = is_string($submitted[$key]['column'] ?? null) ? trim($submitted[$key]['column']) : $column;
+            }
+            $items[] = [
+                'key' => $key,
+                'label' => $key === CustomDataSettings::PAGE_SEQUENCE_PROPERTY ? 'Page depth' : 'Organization traffic',
+                'help' => $key === CustomDataSettings::PAGE_SEQUENCE_PROPERTY
+                    ? '1 for the first tracked page in a browser tab, then 2, 3 and so on; 20 means 20 or more. Recorded while page depth is on.'
+                    : 'true when the browser carries your team’s marker, false otherwise. Recorded on every event, so reports can leave out your own visits.',
+                'kind' => $builtin['alias'] === 'numeric_column' ? 'number' : 'text',
+                'included' => $included,
+                'column' => $column !== '' ? $column : $key,
+                // An earlier text alias of page_sequence stays as it is.
+                'text_column' => $builtin['alias'] === 'numeric_column' ? (string) ($saved['column'] ?? '') : '',
+            ];
+        }
+
+        return $items;
     }
 
     #[Route('/dashboard/data-model/discovery', name: 'app_data_model_discovery', methods: ['GET'])]
@@ -118,10 +155,12 @@ final class DataModelController extends AbstractController
         $this->denyUnlessAvailableToAdmin();
         $context = $this->loadModel();
         $sql = [];
+        $status = null;
         $reportingError = null;
         if ($context['configuration_error'] === null) {
             try {
                 $sql = $this->views->previewSql();
+                $status = $this->views->status();
             } catch (\Throwable $error) {
                 $reportingError = 'Reporting metadata could not be loaded. Check database connectivity, migrations, and permissions. The model can still be edited on its own page.';
                 $this->logFailure('preview', $error);
@@ -131,6 +170,7 @@ final class DataModelController extends AbstractController
         return $this->privateResponse($this->render('data_model/reporting.html.twig', [
             ...$context,
             'view_sql' => $sql,
+            'view_status' => $status,
             'reporting_error' => $reportingError,
         ]));
     }
@@ -180,21 +220,68 @@ final class DataModelController extends AbstractController
         }
         try {
             $this->settings->save($this->modelFromForm($request->request->all()));
-            $this->addFlash('success', 'Data model saved. Collection settings apply to future events. Use the Reporting views page to apply reporting-column changes.');
-        } catch (\InvalidArgumentException $e) {
-            $this->addFlash('error', $e->getMessage());
-            if ($request->hasSession()) {
-                $request->getSession()->set('data_model_submitted_form', $request->request->all());
-            }
         } catch (\Throwable $e) {
-            $this->logFailure('save', $e);
-            $this->addFlash('error', 'The data model could not be saved. Check the active YAML configuration and file permissions.');
+            if ($e instanceof \InvalidArgumentException) {
+                $this->addFlash('error', $e->getMessage());
+            } else {
+                $this->logFailure('save', $e);
+                $this->addFlash('error', 'The data model could not be saved. Check the active YAML configuration and file permissions.');
+            }
             if ($request->hasSession()) {
                 $request->getSession()->set('data_model_submitted_form', $request->request->all());
             }
+
+            return $this->back();
         }
+        $this->applyToViews();
 
         return $this->back();
+    }
+
+    /**
+     * After a save, brings the private reporting views up to date with the
+     * model: creates them, or appends new columns. Removing a deployed
+     * column drops grants, so that stays a deliberate step on the Reporting
+     * views page.
+     */
+    private function applyToViews(): void
+    {
+        $saved = 'Data model saved. Collection changes apply to future events.';
+        try {
+            $status = $this->views->status();
+            if ($status['current']) {
+                $this->addFlash('success', $saved.' The reporting views already match it.');
+
+                return;
+            }
+            if ($status['removed'] !== []) {
+                $this->addFlash('success', $saved);
+                $this->addFlash('warning', 'The reporting views were not updated: '.implode(', ', $status['removed']).(count($status['removed']) === 1 ? ' is' : ' are').' no longer in the model. Removing a deployed column drops the views and their grants, so do it on purpose with Force recreate views on the Reporting views page, or restore the column.');
+
+                return;
+            }
+            $this->views->regenerate();
+        } catch (\InvalidArgumentException $e) {
+            $this->addFlash('success', $saved);
+            $this->addFlash('warning', 'The reporting views were not updated: '.$e->getMessage());
+
+            return;
+        } catch (\Throwable $e) {
+            $this->logFailure('regenerate', $e);
+            $this->addFlash('success', $saved);
+            $this->addFlash('warning', 'The reporting views could not be updated. Check database privileges, migrations and JSON support, then use Regenerate on the Reporting views page.');
+
+            return;
+        }
+        $this->addFlash('success', $saved.' '.($status['missing'] === ReportingViewManager::VIEW_NAMES
+            ? 'The reporting views were created.'
+            : 'The reporting views were updated'.($status['added'] === [] ? '.' : ': added '.implode(', ', $status['added']).'.')));
+        try {
+            $this->glossary->sync();
+        } catch (\Throwable $error) {
+            $this->logFailure('glossary_sync', $error);
+            $this->addFlash('warning', 'The reporting views were updated, but the BI glossary was not synced. Run php bin/console app:analytics:glossary:sync after correcting its configuration or database issue.');
+        }
     }
 
     #[Route('/dashboard/data-model/regenerate', name: 'app_data_model_regenerate', methods: ['POST'])]
@@ -241,7 +328,7 @@ final class DataModelController extends AbstractController
 
     private function modelFromForm(array $submitted): array
     {
-        if (array_diff(array_keys($submitted), ['_csrf_token', 'properties', 'mappings', CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY, CustomDataSettings::PAGE_SEQUENCE_METHOD_KEY]) !== []) {
+        if (array_diff(array_keys($submitted), ['_csrf_token', 'properties', 'builtin', 'mappings', CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY, CustomDataSettings::PAGE_SEQUENCE_METHOD_KEY]) !== []) {
             throw new \InvalidArgumentException('The model form contained an unexpected setting. Nothing was saved.');
         }
         $pageSequenceEnabled = array_key_exists(CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY, $submitted)
@@ -288,6 +375,7 @@ final class DataModelController extends AbstractController
                 $properties[$key]['numeric_column'] = trim($row['numeric_column']);
             }
         }
+        $properties = $this->withBuiltinProperties($properties, $submitted['builtin'] ?? null);
         $mappings = [];
         foreach ($mappingRows as $row) {
             if (!is_array($row) || array_diff(array_keys($row), ['parameter', 'property']) !== []
@@ -317,6 +405,53 @@ final class DataModelController extends AbstractController
         }
 
         return $model;
+    }
+
+    /**
+     * Adds the built-in properties box to the submitted rows. A ticked box
+     * sets that property's reporting column; an unticked one clears it. Other
+     * fields of a saved definition, such as an earlier text alias of
+     * page_sequence, stay. Forms without the box keep the saved definitions.
+     *
+     * @param array<string, array<string, mixed>> $properties
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function withBuiltinProperties(array $properties, mixed $builtins): array
+    {
+        if ($builtins !== null && (!is_array($builtins) || array_diff(array_keys($builtins), array_keys(CustomDataSettings::BUILTIN_PROPERTIES)) !== [])) {
+            throw new \InvalidArgumentException('Invalid built-in property settings. Nothing was saved.');
+        }
+        $saved = $this->settings->properties();
+        foreach (CustomDataSettings::BUILTIN_PROPERTIES as $key => $builtin) {
+            $row = $builtins[$key] ?? null;
+            if ($row === null) {
+                // An older form, or an API client, lists them as ordinary rows.
+                if (!isset($properties[$key]) && isset($saved[$key])) {
+                    $properties[$key] = $saved[$key];
+                }
+                continue;
+            }
+            if (isset($properties[$key])) {
+                throw new \InvalidArgumentException($key.' is built in: choose its reporting column under Built-in properties instead of adding it as a property. Nothing was saved.');
+            }
+            if (!is_array($row) || array_diff(array_keys($row), ['include', 'column']) !== []
+                || !in_array($row['include'] ?? '0', ['0', '1'], true) || !is_string($row['column'] ?? '')) {
+                throw new \InvalidArgumentException('Invalid built-in property settings. Nothing was saved.');
+            }
+            $column = trim((string) ($row['column'] ?? ''));
+            if (($row['include'] ?? '0') === '1') {
+                $properties[$key] = [...($saved[$key] ?? CustomDataSettings::builtinDefinition($key, '')), $builtin['alias'] => $column !== '' ? $column : $key];
+            } elseif (isset($saved[$key])) {
+                $properties[$key] = $saved[$key];
+                unset($properties[$key][$builtin['alias']]);
+                if ($builtin['alias'] === 'column') {
+                    $properties[$key]['column'] = '';
+                }
+            }
+        }
+
+        return $properties;
     }
 
     private function validToken(Request $request): bool

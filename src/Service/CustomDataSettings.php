@@ -31,6 +31,24 @@ class CustomDataSettings
     /** The earlier name of that object, still accepted when customData is absent. */
     public const LEGACY_PAYLOAD_KEY = 'eventData';
     public const MAXIMUM_SAFE_INTEGER = 9_007_199_254_740_991;
+    /**
+     * Properties Aggregate records itself: the organization-traffic flag on
+     * every event, and page depth while it is on. Their type is fixed and they
+     * need no consent setting, so a definition only chooses the reporting
+     * column (`alias`: text or numeric). Both are in the default model.
+     */
+    public const BUILTIN_PROPERTIES = [
+        InternalTrafficSettings::JSON_KEY => [
+            'description' => 'Organization traffic: true for a marked browser.',
+            'type' => 'boolean',
+            'alias' => 'column',
+        ],
+        self::PAGE_SEQUENCE_PROPERTY => [
+            'description' => 'Page depth; 20 means 20 or more.',
+            'type' => 'integer',
+            'alias' => 'numeric_column',
+        ],
+    ];
     public const RESERVED_COLUMNS = [
         'id', 'website_token', 'event_name', 'page_path', 'referrer_channel', 'privacy_mode',
         'device_class', 'viewport_bucket', 'geo_area', 'goal_event', 'created_at', 'archived_at',
@@ -60,12 +78,38 @@ class CustomDataSettings
             ];
         }
 
+        foreach (self::BUILTIN_PROPERTIES as $key => $builtin) {
+            $properties[$key] = self::builtinDefinition($key, $key);
+        }
+
         return [
             self::PROPERTIES_KEY => $properties,
             self::MAPPINGS_KEY => array_combine(self::UTM_KEYS, self::UTM_KEYS),
             self::PAGE_SEQUENCE_ENABLED_KEY => false,
             self::PAGE_SEQUENCE_METHOD_KEY => 'session_storage',
         ];
+    }
+
+    /**
+     * A built-in property's definition with its reporting column, or none
+     * when $column is empty.
+     *
+     * @return array{description: string, consent_required: false, column: string, type: string, numeric_column?: string}
+     */
+    public static function builtinDefinition(string $key, string $column): array
+    {
+        $builtin = self::BUILTIN_PROPERTIES[$key] ?? throw new \InvalidArgumentException($key.' is not a built-in property.');
+        $definition = ['description' => $builtin['description'], 'consent_required' => false, 'column' => '', 'type' => $builtin['type']];
+        if ($column !== '') {
+            $definition[$builtin['alias']] = $column;
+        }
+
+        return $definition;
+    }
+
+    public static function isBuiltin(mixed $key): bool
+    {
+        return is_string($key) && isset(self::BUILTIN_PROPERTIES[$key]);
     }
 
     public function toArray(): array
@@ -378,10 +422,12 @@ class CustomDataSettings
             if (!is_array($definition) || array_diff(array_keys($definition), ['description', 'consent_required', 'column', 'type', 'numeric_column']) !== []) {
                 throw new \InvalidArgumentException('Each property needs a valid JSON key and only description, consent_required, column, type, and numeric_column settings.');
             }
+            $builtin = self::isBuiltin($key);
             $description = array_key_exists('description', $definition) ? $definition['description'] : '';
-            $consentRequired = array_key_exists('consent_required', $definition) ? $definition['consent_required'] : true;
+            $consentRequired = array_key_exists('consent_required', $definition) ? $definition['consent_required'] : !$builtin;
             $column = array_key_exists('column', $definition) ? $definition['column'] : '';
-            $type = array_key_exists('type', $definition) ? $definition['type'] : 'scalar';
+            // A built-in property's type is known, so a definition may leave it out.
+            $type = array_key_exists('type', $definition) ? $definition['type'] : ($builtin ? self::BUILTIN_PROPERTIES[$key]['type'] : 'scalar');
             $numericColumn = array_key_exists('numeric_column', $definition) ? $definition['numeric_column'] : '';
             if (!is_string($description) || strlen($description) > 1000 || !is_bool($consentRequired) || !is_string($column) || !is_string($numericColumn)) {
                 throw new \InvalidArgumentException('Descriptions must be at most 1000 bytes, consent_required must be true or false, and columns must be strings.');
@@ -389,10 +435,10 @@ class CustomDataSettings
             if (!is_string($type) || !in_array($type, self::TYPES, true)) {
                 throw new \InvalidArgumentException('Property type must be scalar, string, integer, float, double, or boolean.');
             }
-            // Preserve a page_sequence definition for historical reporting
-            // while the counter is off.
-            if ($pageSequenceEnabled && $key === self::PAGE_SEQUENCE_PROPERTY && ($type !== 'integer' || $consentRequired)) {
-                throw new \InvalidArgumentException('page_sequence is generated for both consent modes; its optional reporting definition requires type: integer and consent_required: false. Use page_sequence_enabled to control collection.');
+            // Preserve a page_sequence definition of another type for
+            // historical reporting while the counter is off.
+            if ($pageSequenceEnabled && $key === self::PAGE_SEQUENCE_PROPERTY && $type !== 'integer') {
+                throw new \InvalidArgumentException('page_sequence is page depth, a whole number from 1 to 20: leave its type out or use type: integer. page_sequence_enabled controls whether it is collected.');
             }
             if (!self::isValidPropertyKey($key)) {
                 throw new \InvalidArgumentException('Property names must start with a letter and use up to 64 letters, digits, underscores, dots, or hyphens.');
@@ -414,9 +460,10 @@ class CustomDataSettings
                 $columns[$alias] = true;
             }
             // org_internal_traffic is always the coarse boolean flag, recorded
-            // separately from submitted properties in either mode.
-            $normalized[$key] = ['description' => $description, 'consent_required' => $consentRequired, 'column' => $column];
-            if (array_key_exists('type', $definition)) {
+            // separately from submitted properties in either mode, and page
+            // depth has its own switch: consent never applies to either.
+            $normalized[$key] = ['description' => $description, 'consent_required' => $builtin ? false : $consentRequired, 'column' => $column];
+            if (array_key_exists('type', $definition) || $builtin) {
                 $normalized[$key]['type'] = $type;
             }
             if (array_key_exists('numeric_column', $definition)) {

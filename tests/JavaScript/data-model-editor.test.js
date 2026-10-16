@@ -128,3 +128,32 @@ test("switchWorkspaceTab activates selected tab and updates pane visibility", ()
   assert.equal(panes[1].style.display, "block");
   assert.equal(panes[0].style.display, "none");
 });
+
+test('a built-in property column is enabled only while its box is ticked, and ignored for duplicates while off', () => {
+  const column = {dataset: {field: 'numeric_column'}, value: 'page_sequence', disabled: false, classList: new Set(), focus() { this.focused = true; }};
+  column.classList.add = column.classList.add.bind(column.classList);
+  column.classList.remove = column.classList.delete.bind(column.classList);
+  column.closest = () => ({querySelector: () => null});
+  const other = {dataset: {field: 'numeric_column'}, value: 'page_sequence', disabled: false, classList: new Set()};
+  other.classList.add = other.classList.add.bind(other.classList);
+  other.classList.remove = other.classList.delete.bind(other.classList);
+  other.closest = () => ({querySelector: () => null});
+  const row = {querySelector: selector => (selector === '[data-builtin-column]' ? column : null)};
+  const checkbox = {checked: false, closest: () => row};
+  const controller = Object.assign(new Editor(), {
+    reservedColumnsValue: [],
+    element: {querySelectorAll: selector => (selector.includes('checkbox') ? [checkbox] : (selector.includes('column') ? [column, other] : []))},
+  });
+
+  controller.syncBuiltins();
+  assert.equal(column.disabled, true);
+  controller.checkColumnField(other);
+  assert.equal(other.classList.has('is-danger'), false, 'A column that is off is no duplicate.');
+
+  checkbox.checked = true;
+  controller.toggleBuiltin({currentTarget: checkbox});
+  assert.equal(column.disabled, false);
+  assert.equal(column.focused, true);
+  controller.checkColumnField(other);
+  assert.equal(other.classList.has('is-danger'), true);
+});

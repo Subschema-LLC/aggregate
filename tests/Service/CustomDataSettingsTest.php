@@ -45,7 +45,43 @@ final class CustomDataSettingsTest extends TestCase
         self::assertSame($utm, $settings->filterEventData($utm, true));
         self::assertSame([], $settings->toBrowserConfig()['consentFreeProperties']);
         self::assertSame(array_combine(array_keys($utm), array_keys($utm)), $settings->toBrowserConfig()['queryParameters']);
-        self::assertSame(array_combine(array_keys($utm), array_keys($utm)), $settings->reportingColumns());
+        self::assertSame(array_combine(array_keys($utm), array_keys($utm)) + ['org_internal_traffic' => 'org_internal_traffic'], $settings->reportingColumns());
+    }
+
+    public function testTheDefaultModelGivesBothBuiltInPropertiesAReportingColumn(): void
+    {
+        $settings = $this->settings([]);
+
+        self::assertSame('org_internal_traffic', $settings->reportingColumns()['org_internal_traffic']);
+        self::assertSame(['page_sequence' => ['property' => 'page_sequence', 'type' => 'integer']], $settings->numericReportingColumns());
+        self::assertSame(['description' => 'Organization traffic: true for a marked browser.', 'consent_required' => false, 'column' => 'org_internal_traffic', 'type' => 'boolean'], $settings->properties()['org_internal_traffic']);
+        // Neither becomes a submittable property, and page depth stays off.
+        self::assertSame([], $settings->toBrowserConfig()['consentFreeProperties']);
+        self::assertArrayNotHasKey('propertyTypes', $settings->toBrowserConfig());
+        self::assertFalse($settings->toBrowserConfig()['pageSequenceEnabled']);
+        self::assertNull($settings->filterEventData(['org_internal_traffic' => true, 'page_sequence' => 2], true));
+    }
+
+    public function testBuiltInPropertiesNeedOnlyAReportingColumn(): void
+    {
+        $settings = $this->settings([
+            'page_sequence_enabled' => true,
+            'custom_data_properties' => [
+                'org_internal_traffic' => ['column' => 'internal'],
+                // Consent never applies to either; a stray setting is ignored.
+                'page_sequence' => ['numeric_column' => 'depth', 'consent_required' => true],
+            ],
+            'query_parameter_mappings' => [],
+        ]);
+
+        self::assertSame(['description' => '', 'consent_required' => false, 'column' => 'internal', 'type' => 'boolean'], $settings->properties()['org_internal_traffic']);
+        self::assertSame(['description' => '', 'consent_required' => false, 'column' => '', 'type' => 'integer', 'numeric_column' => 'depth'], $settings->properties()['page_sequence']);
+        self::assertSame(['page_sequence' => 3], $settings->filterEventData(['page_sequence' => 3], false));
+        self::assertSame(
+            ['description' => 'Page depth; 20 means 20 or more.', 'consent_required' => false, 'column' => '', 'type' => 'integer', 'numeric_column' => 'page_depth'],
+            CustomDataSettings::builtinDefinition('page_sequence', 'page_depth'),
+        );
+        self::assertSame('', CustomDataSettings::builtinDefinition('org_internal_traffic', '')['column']);
     }
 
     public function testPageSequenceNeedsExplicitDeploymentOptInInBothModes(): void
@@ -202,8 +238,8 @@ final class CustomDataSettingsTest extends TestCase
                 yield 'invalid method '.$index.' '.($enabled ? 'enabled' : 'disabled') => [['page_sequence_enabled' => $enabled, 'page_sequence_method' => $invalid]];
             }
         }
-        yield 'property without integer declaration' => [['page_sequence_enabled' => true, 'custom_data_properties' => ['page_sequence' => ['consent_required' => false]]]];
-        yield 'property with conflicting consent policy' => [['page_sequence_enabled' => true, 'custom_data_properties' => ['page_sequence' => ['type' => 'integer', 'consent_required' => true]]]];
+        yield 'property declared as another type' => [['page_sequence_enabled' => true, 'custom_data_properties' => ['page_sequence' => ['type' => 'string', 'consent_required' => false]]]];
+        yield 'organization flag declared as a number' => [['custom_data_properties' => ['org_internal_traffic' => ['type' => 'integer']], 'query_parameter_mappings' => []]];
         yield 'query mapping' => [[
             'page_sequence_enabled' => true,
             'custom_data_properties' => ['page_sequence' => ['type' => 'integer', 'consent_required' => false]],
@@ -239,11 +275,9 @@ final class CustomDataSettingsTest extends TestCase
 
     public static function legacyPageSequenceDefinitions(): iterable
     {
-        yield 'unspecified scalar' => [[]];
         yield 'string' => [['type' => 'string', 'consent_required' => false]];
         yield 'boolean' => [['type' => 'boolean', 'consent_required' => false]];
         yield 'scalar' => [['type' => 'scalar', 'consent_required' => false]];
-        yield 'integer requiring consent' => [['type' => 'integer', 'consent_required' => true]];
     }
 
     public function testExplicitMediumWhitelistAppliesIndependentlyToBrowserAndServer(): void

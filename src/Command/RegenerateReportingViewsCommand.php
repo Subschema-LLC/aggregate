@@ -33,19 +33,20 @@ final class RegenerateReportingViewsCommand extends Command
     {
         $this
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Print the SQL without changing the database')
+            ->addOption('check', null, InputOption::VALUE_NONE, 'Report whether the views match the saved model; exit 1 when they do not. Changes nothing')
             ->addOption('discover', null, InputOption::VALUE_NONE, 'List property names, types and occurrence counts from a bounded event sample; do not regenerate')
             ->addOption('sample-size', null, InputOption::VALUE_REQUIRED, 'Maximum retained events with custom data to sample with --discover (1–10000)', '1000')
             ->addOption('export-model', null, InputOption::VALUE_NONE, 'Write the shareable YAML model to stdout; do not regenerate')
             ->addOption('force', 'f', InputOption::VALUE_NONE, 'Drop and recreate views without column-preservation checks (planned schema migration)')
-            ->setHelp('The private analytics_custom_* views contain retained raw events and configured scalar JSON columns. They are unsuppressed and require controlled access. Archives do not retain these properties. Existing bi_anonymous_* views are unchanged. Add new aliases at the end of the model to preserve deployed view columns and grants.');
+            ->setHelp('The private analytics_custom_* views contain retained raw events and configured scalar JSON columns. They are unsuppressed and require controlled access. Archives do not retain these properties. Existing bi_anonymous_* views are unchanged. Deployed columns keep their order and grants; new columns are appended. Removing or renaming a deployed column needs --force, which drops and recreates the views.');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
-        $modes = array_filter(['dry-run', 'discover', 'export-model'], static fn (string $option): bool => (bool) $input->getOption($option));
+        $modes = array_filter(['dry-run', 'check', 'discover', 'export-model'], static fn (string $option): bool => (bool) $input->getOption($option));
         if (count($modes) > 1) {
-            $io->error('Choose only one of --dry-run, --discover, or --export-model.');
+            $io->error('Choose only one of --dry-run, --check, --discover, or --export-model.');
 
             return Command::INVALID;
         }
@@ -78,6 +79,22 @@ final class RegenerateReportingViewsCommand extends Command
                 $io->note('Sampled up to '.$sample.' latest retained events with custom data. No captured values are displayed.');
 
                 return Command::SUCCESS;
+            }
+            if ($input->getOption('check')) {
+                $status = $this->views->status();
+                if ($status['current']) {
+                    $io->success('The reporting views match the saved model.');
+
+                    return Command::SUCCESS;
+                }
+                $io->warning(array_values(array_filter([
+                    'The reporting views do not match the saved model. Run app:analytics:views:regenerate to update them.',
+                    $status['missing'] === [] ? null : 'Not created yet: '.implode(', ', $status['missing']).'.',
+                    $status['added'] === [] ? null : 'Columns to add: '.implode(', ', $status['added']).'.',
+                    $status['removed'] === [] ? null : 'Columns no longer in the model: '.implode(', ', $status['removed']).'. Removing them needs --force, which drops and recreates the views and their grants.',
+                ])));
+
+                return Command::FAILURE;
             }
             if ($input->getOption('dry-run')) {
                 foreach ($this->views->previewSql() as $sql) {

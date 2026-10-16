@@ -195,13 +195,13 @@ final class ReportingViewManagerTest extends TestCase
     {
         $connection = $this->createMock(Connection::class);
         $connection->method('getDatabasePlatform')->willReturn($platform);
-        $connection->expects(self::once())->method('fetchFirstColumn')->willReturn([...ReportingViewManager::BUILTIN_COLUMNS, 'old_property']);
+        $connection->expects(self::exactly(3))->method('fetchFirstColumn')->willReturn([...ReportingViewManager::BUILTIN_COLUMNS, 'old_property']);
         $connection->method('transactional')->willReturnCallback(static fn (\Closure $callback): array => $callback());
         $connection->expects(self::never())->method('executeQuery');
         $connection->expects(self::never())->method('executeStatement');
 
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('append new columns');
+        $this->expectExceptionMessage('cannot be removed or renamed by a regeneration (old_property)');
         $this->manager($connection, ['replacement' => 'new'])->regenerate();
     }
 
@@ -378,17 +378,73 @@ PY]);
         $this->manager($connection, [], ['amount' => ['property' => 'amount', 'type' => 'double']])->regenerate();
     }
 
-    public function testNewTextAliasAfterDeployedNumericAliasesNeedsExplicitMigration(): void
+    public function testANewColumnIsAppendedAfterDeployedOnesOfEitherKind(): void
     {
         $connection = $this->createMock(Connection::class);
         $connection->method('getDatabasePlatform')->willReturn(new MySQL80Platform());
         $connection->method('fetchFirstColumn')->willReturn([...ReportingViewManager::BUILTIN_COLUMNS, 'amount_number']);
-        $connection->expects(self::never())->method('executeStatement');
-        $connection->expects(self::never())->method('executeQuery');
+        $connection->method('fetchAllAssociative')->willReturn([['column_name' => 'amount_number', 'data_type' => 'double', 'numeric_precision' => 22]]);
+        $connection->method('executeQuery')->willReturn($this->createStub(Result::class));
+        $statements = [];
+        $connection->expects(self::exactly(3))->method('executeStatement')->willReturnCallback(static function (string $sql) use (&$statements): int {
+            $statements[] = $sql;
 
-        $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('adding text aliases after numeric aliases');
+            return 0;
+        });
+
         $this->manager($connection, ['currency' => 'currency'], ['amount_number' => ['property' => 'amount', 'type' => 'double']])->regenerate();
+
+        // A text alias added after a deployed numeric one goes after it, not before.
+        self::assertLessThan(strpos($statements[0], 'AS `currency`'), strpos($statements[0], 'AS `amount_number`'));
+        self::assertStringStartsWith('CREATE OR REPLACE VIEW', $statements[0]);
+    }
+
+    public function testOnSqliteAModelChangeAppendsColumnsAndKeepsTheirOrder(): void
+    {
+        if (!extension_loaded('pdo_sqlite')) {
+            self::markTestSkipped('pdo_sqlite is required for this execution check.');
+        }
+        $connection = \Doctrine\DBAL\DriverManager::getConnection(['driver' => 'pdo_sqlite', 'memory' => true]);
+        $connection->executeStatement('CREATE TABLE events (id INTEGER PRIMARY KEY, website_token TEXT, event_name TEXT, url TEXT, referrer TEXT, privacy_mode TEXT, device_class TEXT, viewport_bucket TEXT, geo_area TEXT, goal_event TEXT, created_at TEXT, archived_at TEXT, custom_data TEXT)');
+        $connection->insert('events', ['event_name' => 'view', 'custom_data' => '{"amount": 12.5, "currency": "EUR", "org_internal_traffic": true, "page_sequence": 3}']);
+        $columns = static fn (): array => $connection->fetchFirstColumn("SELECT name FROM pragma_table_info('analytics_custom_events_v1', 'main') ORDER BY cid");
+
+        $first = $this->manager($connection, [], ['amount_number' => ['property' => 'amount', 'type' => 'double']]);
+        self::assertFalse($first->status()['current']);
+        $first->regenerate();
+        self::assertTrue($first->status()['current']);
+
+        // Text and numeric columns added later both go after the deployed ones.
+        $second = $this->manager($connection, ['currency' => 'currency', 'org_internal_traffic' => 'org_internal_traffic'], ['amount_number' => ['property' => 'amount', 'type' => 'double'], 'page_sequence' => ['property' => 'page_sequence', 'type' => 'integer']]);
+        self::assertSame(['current' => false, 'missing' => [], 'added' => ['currency', 'org_internal_traffic', 'page_sequence'], 'removed' => []], $second->status());
+        $second->regenerate();
+        self::assertSame([...ReportingViewManager::BUILTIN_COLUMNS, 'amount_number', 'currency', 'org_internal_traffic', 'page_sequence'], $columns());
+        self::assertTrue($second->status()['current']);
+        $row = $connection->fetchAssociative('SELECT amount_number, currency, org_internal_traffic, page_sequence FROM analytics_custom_pageviews_v1');
+        self::assertEquals(['amount_number' => 12.5, 'currency' => 'EUR', 'org_internal_traffic' => 'true', 'page_sequence' => 3], $row);
+
+        // Removing a deployed column still needs a deliberate recreation.
+        $this->expectException(\InvalidArgumentException::class);
+        $this->manager($connection, ['currency' => 'currency'])->regenerate();
+    }
+
+    public function testStatusComparesEachViewWithTheSavedModel(): void
+    {
+        $deployed = ['analytics_custom_events_v1' => [...ReportingViewManager::BUILTIN_COLUMNS, 'plan'], 'analytics_custom_pageviews_v1' => [...ReportingViewManager::BUILTIN_COLUMNS, 'plan', 'old'], 'analytics_custom_goals_v1' => []];
+        $connection = $this->createMock(Connection::class);
+        $connection->method('getDatabasePlatform')->willReturn(new PostgreSQLPlatform());
+        $connection->method('fetchFirstColumn')->willReturnCallback(static fn (string $query, array $parameters): array => $deployed[$parameters['view_name']]);
+        $connection->expects(self::never())->method('executeStatement');
+
+        self::assertSame(
+            ['current' => false, 'missing' => ['analytics_custom_goals_v1'], 'added' => ['depth'], 'removed' => ['old']],
+            $this->manager($connection, ['plan' => 'plan'], ['depth' => ['property' => 'page_sequence', 'type' => 'integer']])->status(),
+        );
+
+        $current = $this->createMock(Connection::class);
+        $current->method('getDatabasePlatform')->willReturn(new PostgreSQLPlatform());
+        $current->method('fetchFirstColumn')->willReturn([...ReportingViewManager::BUILTIN_COLUMNS, 'plan']);
+        self::assertSame(['current' => true, 'missing' => [], 'added' => [], 'removed' => []], $this->manager($current, ['plan' => 'plan'])->status());
     }
 
     public function testSqliteNumericViewsExecuteWithoutCoercingStringsOrTruncatingFractions(): void
@@ -501,7 +557,8 @@ SQL;
     {
         $connection = $this->createMock(Connection::class);
         $connection->method("getDatabasePlatform")->willReturn(new MySQL80Platform());
-        $connection->expects(self::never())->method("fetchFirstColumn");
+        // Deployed columns are read only to keep their order.
+        $connection->method("fetchFirstColumn")->willReturn([]);
         $executed = [];
         $connection->method("executeStatement")->willReturnCallback(function (string $sql) use (&$executed): int {
             $executed[] = $sql;

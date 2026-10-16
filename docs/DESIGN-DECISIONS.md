@@ -381,6 +381,38 @@ written for every database engine.
 
 **What would change it.** Nothing; this is how the contract stays trustworthy.
 
+### Saving the data model updates the private views
+
+**Decision.** The private `analytics_custom_*_v1` views follow the data model:
+saving it on the Data model page creates the views, or appends the new reporting
+columns after the deployed ones, and syncs the glossary, as saving page groups
+or disclosure thresholds regenerates the BI views. Deployed columns keep their
+order whichever kind a new column is. Removing or renaming a deployed column is
+left to **Force recreate views** (or `--force`), because it drops the views and
+their grants. The two properties Aggregate records itself,
+`org_internal_traffic` and `page_sequence`, are built in: their type is fixed,
+consent does not apply, the default model gives each a column, and the form
+offers only a checkbox and a column name.
+
+**Why.** Getting the organization-traffic flag or page depth into a report took
+four steps: knowing to add the property, choosing the right type and consent
+setting (the page refused anything else), naming a column, and regenerating the
+views on a separate page. A text column added after numeric ones also needed a
+forced recreation, because new views listed text columns first. Appending in
+deployed order keeps grants and BI reports intact without that rule, and asking
+only for what is actually a choice removes the rest.
+
+**Trade-off.** A model save now changes the database: on MySQL and MariaDB,
+whose DDL commits as it goes, a failure can leave some views updated (the
+message says to retry). Column order in long-lived views reflects when columns
+were added, not the model's order. Models saved before this version keep their
+own properties, so the two built-in columns appear only after their boxes are
+ticked once.
+
+**What would change it.** Views that need a planned layout, or installations
+that want model edits reviewed before any DDL, would call for an option to save
+without updating the views.
+
 ### Views copied to BigQuery whole, by scheduled load jobs
 
 **Decision.** [BigQuery sync](BIGQUERY.md) copies selected reporting views, never
