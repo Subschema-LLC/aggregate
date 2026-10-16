@@ -36,8 +36,9 @@ coarse dimensions, and, only with consent, identifiers and properties.
 
 ### 2. The server checks it
 
-[ReceiveController](../src/Controller/ReceiveController.php) applies the rules in
-this order, and stops at the first one that fails:
+[ReceiveController](../src/Controller/ReceiveController.php) hands each request
+to [EventIngestion](../src/Service/EventIngestion.php), which applies the rules in
+this order and stops at the first one that fails:
 
 1. **Website settings.** The token selects the website's group and website
    settings, layered over the deployment's
@@ -48,27 +49,30 @@ this order, and stops at the first one that fails:
    (`anonymous_tracking_enabled`) or the sanitized path matches an excluded
    route, the event is ignored. This happens before anything else is derived
    from the request.
-3. **Rate limit.** [IpRateLimiter](../src/Security/IpRateLimiter.php) counts
+3. **Bots.** A request whose User-Agent or the tracker's automation report marks
+   it as a bot is labelled, or with `bot_traffic: drop` ignored, before any
+   rate-limit bucket or lookup. Neither value is stored.
+4. **Rate limit.** [IpRateLimiter](../src/Security/IpRateLimiter.php) counts
    requests per client in one-minute windows. Each window's bucket name is an
    HMAC of the window and the address, so the file on disk cannot link the
    address across windows and the address is never stored.
-4. **Website token and origin.** The public token must belong to a registered
+5. **Website token and origin.** The public token must belong to a registered
    website ([WebsiteConfigManager](../src/Service/WebsiteConfigManager.php)), and
    the `Origin` (or `Referer`) must pass that website's domain rules
    ([WebsiteDomainPolicy](../src/Service/WebsiteDomainPolicy.php)).
-5. **Sanitize.** [PrivacySanitizer](../src/Service/PrivacySanitizer.php) reduces
+6. **Sanitize.** [PrivacySanitizer](../src/Service/PrivacySanitizer.php) reduces
    the path (query strings, fragments, and identifiers such as emails, UUIDs and
    numeric IDs are removed), and turns the referrer, device and screen width into
    coarse buckets. The **strict** collection profile
    ([CollectionProfile](../src/Service/CollectionProfile.php)) keeps only the
    path, the event name and allowed goal codes, and ignores everything else,
    including consent.
-6. **Goals and properties.** [GoalEventRegistry](../src/Service/GoalEventRegistry.php)
+7. **Goals and properties.** [GoalEventRegistry](../src/Service/GoalEventRegistry.php)
    accepts only configured goal codes, and
    [CustomDataSettings](../src/Service/CustomDataSettings.php) keeps only
    properties the data model allows. Anonymous events accept only those
    explicitly allowed without consent.
-7. **Consent decides the mode.** [PrivacyPolicy](../src/Service/PrivacyPolicy.php)
+8. **Consent decides the mode.** [PrivacyPolicy](../src/Service/PrivacyPolicy.php)
    treats only an affirmative choice as consent; a string such as `"false"` is
    not consent.
 
@@ -263,7 +267,7 @@ that an engine accepts it. See [tests and checks](../CONTRIBUTING.md#tests-and-c
 | You want to | Start here | Also update |
 | --- | --- | --- |
 | Add an operator setting | The service that owns the behavior, reading it through `AggregateConfigLoader` | The dashboard form (optional), `config/aggregate.yaml.example`, [CONFIGURATION.md](CONFIGURATION.md), and tests with the dashboard off |
-| Collect a new dimension | Discuss it in an issue first; it changes the privacy model | `PrivacySanitizer`, `ReceiveController`, the strict profile, the views, and the [privacy guide](PRIVACY-COMPLIANCE.md) |
+| Collect a new dimension | Discuss it in an issue first; it changes the privacy model | `PrivacySanitizer`, `EventIngestion`, the strict profile, the views, and the [privacy guide](PRIVACY-COMPLIANCE.md) |
 | Change what a reporting view returns | A new migration that adds a new versioned view (such as `_v2`), keeping the old one | SQL for all five engines, the fresh-install test, [DATABASE.md](DATABASE.md) |
 | Write engine-specific SQL | A platform branch (`instanceof PostgreSQLPlatform` and so on), as in the existing migrations | The fresh-install CI run on every engine |
 | Add a dashboard page | A controller for that page using the `DashboardAccess` trait, with form parsing and validation in a service (such as `CollectionControlsForm`); [templates/README.md](../templates/README.md) conventions and `config/navigation.yaml` | Registration in `config/routes_dashboard.yaml`, `config/services_dashboard.yaml` and the list in [Kernel](../src/Kernel.php) that removes dashboard controllers when the dashboard is off; a command-line or YAML equivalent for any setting it changes |

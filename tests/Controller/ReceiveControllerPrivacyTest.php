@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Controller;
 
 use App\Controller\ReceiveController;
+use App\Service\EventIngestion;
 use App\Entity\Event;
 use App\Message\TrackEventMessage;
 use App\Security\IpRateLimiter;
@@ -942,16 +943,18 @@ final class ReceiveControllerPrivacyTest extends TestCase
 
         return (new ReceiveController())(
             $this->request($payload, $userAgent),
-            $this->websiteManager(),
-            $bus,
-            $rateLimiter,
-            new PrivacySanitizer(),
-            $goalEvents,
-            new PrivacyPolicy($config),
-            $geoResolver,
-            $recorder,
-            $logger,
-            new CustomDataSettings($config),
+            new EventIngestion(
+                $this->websiteManager(),
+                $bus,
+                $rateLimiter,
+                new PrivacySanitizer(),
+                $goalEvents,
+                new PrivacyPolicy($config),
+                $geoResolver,
+                $recorder,
+                $logger,
+                new CustomDataSettings($config),
+            ),
         );
     }
 

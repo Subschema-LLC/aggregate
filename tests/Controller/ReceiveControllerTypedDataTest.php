@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Controller;
 
 use App\Controller\ReceiveController;
+use App\Service\EventIngestion;
 use App\Entity\Event;
 use App\Message\TrackEventMessage;
 use App\MessageHandler\TrackEventHandler;
@@ -390,11 +391,20 @@ final class ReceiveControllerTypedDataTest extends TestCase
         $sanitizer = new PrivacySanitizer();
 
         return (new ReceiveController())(
-            $request, $websites, $bus, $limiter, $sanitizer,
-            new GoalEventRegistry($sanitizer, []), new PrivacyPolicy($config), $geo,
-            new AnonymousEventRecorder($entityManager), new NullLogger(),
-            new CustomDataSettings($config),
-            $trackingFailures,
+            $request,
+            new EventIngestion(
+                $websites,
+                $bus,
+                $limiter,
+                $sanitizer,
+                new GoalEventRegistry($sanitizer, []),
+                new PrivacyPolicy($config),
+                $geo,
+                new AnonymousEventRecorder($entityManager),
+                new NullLogger(),
+                new CustomDataSettings($config),
+                $trackingFailures,
+            ),
         );
     }
 }

@@ -2,280 +2,24 @@
 
 namespace App\Controller;
 
-use App\Message\TrackEventMessage;
-use App\Service\WebsiteConfigManager;
-use App\Security\IpRateLimiter;
-use App\Service\AnonymousEventRecorder;
-use App\Service\BotTrafficSettings;
-use App\Service\CustomDataSettings;
-use App\Service\GeoIp\ConfiguredGeoIpResolver;
-use App\Service\GeoIp\GeoIpResolverInterface;
-use App\Service\GeoIp\MmdbGeoCodeLookupInterface;
-use App\Service\GoalEventRegistry;
-use App\Service\InternalTrafficSettings;
-use App\Service\PrivacyPolicy;
-use App\Service\PrivacySanitizer;
-use App\Service\TrackingFailureRetryRunner;
-use App\Service\WebsiteDomainPolicy;
-use App\Service\WebsiteScopeResolver;
-use Psr\Log\LoggerInterface;
+use App\Service\EventIngestion;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Routing\Annotation\Route;
 
+/**
+ * The collection endpoint. EventIngestion decides what is recorded; this
+ * controller only answers, with CORS headers for the website that sent it.
+ */
 class ReceiveController
 {
-    public function __construct(private readonly WebsiteDomainPolicy $domainPolicy = new WebsiteDomainPolicy())
-    {
-    }
-
     #[Route('/api/receive', name: 'api_receive', methods: ['POST'])]
-    public function __invoke(
-        Request $request,
-        WebsiteConfigManager $websiteManager,
-        MessageBusInterface $bus,
-        IpRateLimiter $rateLimiter,
-        PrivacySanitizer $sanitizer,
-        GoalEventRegistry $goalEvents,
-        PrivacyPolicy $privacyPolicy,
-        GeoIpResolverInterface $geoIpResolver,
-        AnonymousEventRecorder $anonymousRecorder,
-        LoggerInterface $logger,
-        CustomDataSettings $customDataSettings,
-        ?TrackingFailureRetryRunner $trackingFailures = null,
-        ?WebsiteScopeResolver $scopes = null,
-        ?MmdbGeoCodeLookupInterface $geoLookup = null,
-    ): Response
+    public function __invoke(Request $request, EventIngestion $ingestion): Response
     {
-        $failureMode = 'unknown';
-        $failureWebsiteToken = null;
+        $result = $ingestion->receive($request);
 
-        try {
-            if (strlen($request->getContent()) > 65_536) {
-                return $this->jsonWithCors($request, ['error' => 'Payload is too large'], Response::HTTP_REQUEST_ENTITY_TOO_LARGE);
-            }
-
-            try {
-                $payload = $this->decodePayload($request);
-            } catch (\InvalidArgumentException) {
-                return $this->jsonWithCors($request, ['error' => 'Invalid JSON payload'], Response::HTTP_BAD_REQUEST);
-            }
-
-            // A website or group file replaces the deployment settings for
-            // this token. An unusable scope collects nothing, before a rate
-            // bucket, website lookup or geography lookup.
-            $websiteToken = is_string($payload['websiteToken'] ?? null) ? trim($payload['websiteToken']) : '';
-            if ($scopes !== null && $websiteToken !== '' && strlen($websiteToken) <= 191 && preg_match('/\s/', $websiteToken) !== 1) {
-                $scoped = $scopes->forToken($websiteToken);
-                if ($scoped->hasLoadError()) {
-                    return $this->jsonWithCors($request, ['status' => 'ignored'], Response::HTTP_ACCEPTED);
-                }
-                $privacyPolicy = new PrivacyPolicy($scoped);
-                $customDataSettings = new CustomDataSettings($scoped);
-                if ($geoLookup !== null) {
-                    $geoIpResolver = new ConfiguredGeoIpResolver($scoped, $geoLookup);
-                }
-            }
-
-            // Despite its legacy name, this is the ingestion kill switch for
-            // the website's effective settings. Check it before deriving any
-            // request-based bucket.
-            if (!$privacyPolicy->isAnonymousTrackingEnabled()) {
-                return $this->jsonWithCors($request, ['status' => 'ignored'], Response::HTTP_ACCEPTED);
-            }
-
-            // New clients send pagePath. url remains a compatibility input,
-            // but its host, query and fragment are always discarded.
-            $pagePath = $sanitizer->sanitizePagePath($payload['pagePath'] ?? $payload['url'] ?? null);
-
-            // Exclusions are a server-side kill switch for sensitive routes,
-            // including when a client claims enhanced consent. Valid excluded
-            // paths are ignored before a local IP rate-limit bucket is made.
-            if ($pagePath !== null && $privacyPolicy->isExcludedPath($pagePath)) {
-                return $this->jsonWithCors($request, ['status' => 'ignored'], Response::HTTP_ACCEPTED);
-            }
-
-            // Bots are classified from the User-Agent header and the tracker's
-            // automation report while this request is handled; neither is
-            // stored. The strict profile reads no User-Agent and classifies
-            // nothing. With bot_traffic: drop, bot events end here, before an
-            // IP bucket, website lookup, geography lookup or queue message.
-            $strictCollection = $privacyPolicy->isStrictCollection();
-            $userAgent = $strictCollection ? '' : (string) $request->headers->get('User-Agent', '');
-            $isBot = !$strictCollection && $privacyPolicy->isBotRequest($userAgent, $payload['deviceClass'] ?? null);
-            if ($isBot && $privacyPolicy->botTraffic() === BotTrafficSettings::DROP) {
-                return $this->jsonWithCors($request, ['status' => 'ignored'], Response::HTTP_ACCEPTED);
-            }
-
-            // Apply the rate limiter only after the zero-collection controls.
-            // Excluded/disabled requests therefore create no local IP bucket.
-            // Other valid and invalid requests use a short-lived rotating HMAC
-            // bucket; the raw address never enters Messenger or analytics.
-            $ip = $request->getClientIp() ?? '0.0.0.0';
-            if (!$rateLimiter->allow($ip)) {
-                return $this->jsonWithCors($request, ['error' => 'Too Many Requests'], Response::HTTP_TOO_MANY_REQUESTS);
-            }
-
-            // Find website by public token
-            $websiteToken = is_string($payload['websiteToken'] ?? null)
-                ? trim($payload['websiteToken'])
-                : '';
-            if ($websiteToken === '' || strlen($websiteToken) > 191) {
-                return $this->jsonWithCors($request, ['error' => 'websiteToken is required'], Response::HTTP_BAD_REQUEST);
-            }
-            $failureWebsiteToken = $websiteToken;
-
-            $website = $websiteManager->findOneByToken($websiteToken);
-            if (!$website) {
-                return $this->jsonWithCors($request, ['error' => 'Invalid websiteToken'], Response::HTTP_BAD_REQUEST);
-            }
-
-            // Use the saved policy for both privacy modes. Only a missing
-            // Origin permits Referer fallback; payload fields cannot grant access.
-            // Repeated headers are invalid instead of selecting their first value.
-            $origins = $request->headers->all('Origin');
-            $referers = $request->headers->all('Referer');
-            if (!$this->domainPolicy->allows(
-                $website,
-                count($origins) > 1 ? '' : ($origins[0] ?? null),
-                count($referers) > 1 ? '' : ($referers[0] ?? null),
-            )) {
-                return $this->jsonWithCors($request, ['error' => 'Forbidden origin'], Response::HTTP_FORBIDDEN);
-            }
-
-            if ($pagePath === null) {
-                return $this->jsonWithCors($request, ['error' => 'pagePath is required'], Response::HTTP_BAD_REQUEST);
-            }
-
-            $eventName = $sanitizer->sanitizeEventName($payload['eventName'] ?? null);
-            if ($eventName === null) {
-                return $this->jsonWithCors($request, ['error' => 'eventName is invalid'], Response::HTTP_BAD_REQUEST);
-            }
-            // The strict profile keeps only what reporting a page view or named
-            // event requires. Every other dimension a client submits is ignored,
-            // including values sent by stale scripts or direct API requests.
-            $referrerChannel = $strictCollection ? 'unknown' : $sanitizer->sanitizeReferrerChannel(
-                $payload['referrerChannel'] ?? null,
-                $payload['referrer'] ?? null,
-                (string) $website['domain'],
-            );
-            $enhancedConsent = !$strictCollection && $privacyPolicy->hasEnhancedConsent($payload['consentState'] ?? null);
-            // Organization traffic: only the literal boolean true counts, never a
-            // marker name or value or a truthy string. Every standard-profile
-            // event records true or false; the strict profile reads no browser
-            // storage, so its events carry no value at all.
-            $internalTraffic = $strictCollection ? null : ($payload[InternalTrafficSettings::JSON_KEY] ?? false) === true;
-            // Resolve the deployment's property policy before either storage
-            // path. Client-side consent flags never authorize custom keys.
-            // customData is the payload's property object; eventData is its
-            // earlier name, read only when customData is absent.
-            $eventData = $strictCollection
-                ? null
-                : $customDataSettings->filterEventData(CustomDataSettings::submittedProperties($payload), $enhancedConsent);
-            if ($eventData !== null) {
-                unset($eventData[InternalTrafficSettings::JSON_KEY]);
-            }
-            $submittedGoal = $payload['goalEvent'] ?? null;
-            $goalEvent = $goalEvents->resolve($submittedGoal, anonymousMode: !$enhancedConsent);
-            $goalWasRejected = $goalEvents->wasSubmitted($submittedGoal) && $goalEvent === null;
-            unset($submittedGoal);
-            // The server's bot classification wins over the device class a
-            // client submits, so a page cannot relabel a known bot.
-            $deviceClass = match (true) {
-                $strictCollection => 'unknown',
-                $isBot => 'bot',
-                default => $sanitizer->sanitizeDeviceClass($payload['deviceClass'] ?? null, $userAgent),
-            };
-            $viewportBucket = $strictCollection ? 'unknown' : $sanitizer->sanitizeViewportBucket(
-                $payload['viewportBucket'] ?? null,
-                $payload['screenWidth'] ?? null,
-            );
-            $occurredAt = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
-            // The resolver returns only a canonical country/continent code. It
-            // performs no network calls and never exposes the source address or
-            // detailed MMDB record to events, Messenger or logs. The strict
-            // profile performs no lookup at all.
-            $geoArea = $strictCollection ? null : $geoIpResolver->resolve($ip)?->value();
-            unset($ip);
-
-            if (!$enhancedConsent) {
-                $failureMode = 'anonymous';
-                // Every safe named event is accepted anonymously, but attached
-                // identifiers are never copied. Properties and goals must be
-                // explicitly approved for collection without consent.
-                $anonymousRecorder->record(
-                    websiteToken: $websiteToken,
-                    eventName: $eventName,
-                    pagePath: $pagePath,
-                    referrerChannel: $referrerChannel,
-                    deviceClass: $deviceClass,
-                    viewportBucket: $viewportBucket,
-                    geoArea: $geoArea,
-                    occurredAt: $occurredAt,
-                    goalEvent: $goalEvent,
-                    internalTraffic: $internalTraffic,
-                    approvedCustomData: $eventData,
-                );
-
-                $responsePayload = [
-                    'status' => 'recorded',
-                    'mode' => 'anonymous',
-                ];
-                if ($goalWasRejected) {
-                    $responsePayload['warnings'] = ['goal_not_allowed'];
-                }
-
-                return $this->jsonWithCors($request, $responsePayload, Response::HTTP_ACCEPTED);
-            }
-
-            $failureMode = 'enhanced';
-            $bus->dispatch(new TrackEventMessage(
-                websiteToken: $websiteToken,
-                eventName: $eventName,
-                pagePath: $pagePath,
-                referrerChannel: $referrerChannel,
-                deviceClass: $deviceClass,
-                viewportBucket: $viewportBucket,
-                screenWidth: $sanitizer->sanitizeScreenWidth($payload['screenWidth'] ?? null),
-                goalEvent: $goalEvent,
-                eventData: $eventData ?: null,
-                generalizedUserAgent: $sanitizer->generalizeUserAgent($userAgent),
-                visitorId: $sanitizer->sanitizeIdentifier($payload['visitorId'] ?? null),
-                sessionId: $sanitizer->sanitizeIdentifier($payload['sessionId'] ?? null),
-                occurredAt: $occurredAt,
-                geoArea: $geoArea,
-                internalTraffic: $internalTraffic,
-            ));
-
-            $responsePayload = [
-                'status' => 'accepted',
-                'mode' => 'enhanced',
-            ];
-            if ($goalWasRejected) {
-                $responsePayload['warnings'] = ['goal_not_allowed'];
-            }
-
-            return $this->jsonWithCors($request, $responsePayload, Response::HTTP_ACCEPTED);
-        } catch (\Throwable $e) {
-            $logger->error('Failed to ingest analytics event', [
-                // Do not hand the exception or request metadata to a logger:
-                // transport/SQL exceptions can retain payload values.
-                'exception_class' => $e::class,
-            ]);
-            if ($trackingFailures !== null) {
-                try {
-                    $trackingFailures->recordIngestionFailure($failureMode, $failureWebsiteToken, $e);
-                } catch (\Throwable $recordingError) {
-                    $logger->error('Failed to record tracking ingestion failure.', [
-                        'exception_class' => $recordingError::class,
-                    ]);
-                }
-            }
-
-            return $this->jsonWithCors($request, ['error' => 'Ingestion failed'], Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
+        return $this->jsonWithCors($request, $result->body, $result->status);
     }
 
     #[Route('/api/receive', name: 'api_receive_options', methods: ['OPTIONS'])]
@@ -310,20 +54,5 @@ class ReceiveController
         $response->headers->set('Access-Control-Allow-Methods', 'POST, OPTIONS');
         $response->headers->set('Access-Control-Allow-Headers', $allowHeaders);
         $response->headers->set('Access-Control-Max-Age', '86400');
-    }
-
-    private function decodePayload(Request $request): array
-    {
-        try {
-            $payload = $request->toArray();
-        } catch (\Throwable) {
-            throw new \InvalidArgumentException('Invalid JSON payload');
-        }
-
-        if (!is_array($payload)) {
-            throw new \InvalidArgumentException('Invalid payload');
-        }
-
-        return $payload;
     }
 }
