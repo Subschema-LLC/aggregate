@@ -12,9 +12,16 @@ use Doctrine\DBAL\Platforms\SQLServerPlatform;
 
 final class AnonymousBiViewSqlBuilder
 {
+    private ?bool $shifts = null;
+    private ?ReportingTimeSql $timeSql = null;
+
     public function __construct(
         private readonly AbstractPlatform $platform,
+        private readonly string $reportingTimezone = ReportingTimezone::DEFAULT,
     ) {
+        if ($this->reportingTimezone !== ReportingTimezone::DEFAULT) {
+            ReportingTimezone::validate($this->reportingTimezone);
+        }
     }
 
     public function dropViewIfExistsSql(string $viewName): string
@@ -28,6 +35,10 @@ final class AnonymousBiViewSqlBuilder
 
     public function eventViewSql(int $minimumCellCount): string
     {
+        if ($this->shiftsTime()) {
+            return $this->shiftedEventViewSql($minimumCellCount);
+        }
+
         return sprintf(<<<'SQL'
 CREATE VIEW bi_anonymous_events_v1 AS
 WITH combined_event_cells AS (
@@ -90,6 +101,88 @@ SELECT
 FROM event_counts
 WHERE event_counts.event_count >= %3$d
 SQL, $this->completedHourPredicate('archived_events.event_hour'), $this->completedHourPredicate('events.created_at'), $minimumCellCount);
+    }
+
+    /**
+     * Same cells as the UTC hourly view, grouped by the stored UTC hour, with
+     * event_hour relabelled in the reporting timezone. Grouping by the stored
+     * hour keeps two UTC hours separate when a daylight-saving fallback gives
+     * them the same local label, so the threshold still applies to each cell.
+     */
+    private function shiftedEventViewSql(int $minimumCellCount): string
+    {
+        $time = $this->timeSql();
+        $archiveLabel = $time->hourLabel('archived_events.event_hour');
+        $liveLabel = $time->hourLabel('events.created_at');
+        $archiveHour = $this->completedHourPredicate('archived_events.event_hour');
+        $liveHour = $this->completedHourPredicate('events.created_at');
+
+        return <<<SQL
+CREATE VIEW bi_anonymous_events_v1 AS
+WITH combined_event_cells AS (
+    SELECT
+        archived_events.website_token,
+        archived_events.event_hour AS utc_hour,
+        {$archiveLabel} AS event_hour,
+        archived_events.event_name,
+        archived_events.page_path,
+        archived_events.referrer_channel,
+        archived_events.device_class,
+        archived_events.viewport_bucket,
+        archived_events.event_count
+    FROM analytics_archive_events archived_events
+    WHERE archived_events.privacy_mode = 'anonymous'
+      AND {$archiveHour}
+    UNION ALL
+    SELECT
+        events.website_token,
+        events.created_at AS utc_hour,
+        {$liveLabel} AS event_hour,
+        events.event_name,
+        events.url AS page_path,
+        COALESCE(events.referrer, 'unknown') AS referrer_channel,
+        events.device_class,
+        events.viewport_bucket,
+        1 AS event_count
+    FROM events
+    WHERE events.archived_at IS NULL
+      AND events.privacy_mode = 'anonymous'
+      AND {$liveHour}
+),
+event_counts AS (
+    SELECT
+        website_token,
+        utc_hour,
+        event_hour,
+        event_name,
+        page_path,
+        referrer_channel,
+        device_class,
+        viewport_bucket,
+        SUM(event_count) AS event_count
+    FROM combined_event_cells
+    GROUP BY
+        website_token,
+        utc_hour,
+        event_hour,
+        event_name,
+        page_path,
+        referrer_channel,
+        device_class,
+        viewport_bucket
+)
+SELECT
+    event_counts.website_token,
+    event_counts.event_hour,
+    event_counts.event_name,
+    event_counts.page_path,
+    event_counts.referrer_channel,
+    event_counts.device_class,
+    event_counts.viewport_bucket,
+    event_counts.event_count
+FROM event_counts
+WHERE event_counts.event_count >= {$minimumCellCount}
+SQL;
     }
 
     public function goalViewSql(int $minimumCellCount): string
@@ -555,11 +648,15 @@ LEFT JOIN released
    AND released.view_id = view_names.view_id
 WHERE day_totals.total_count >= %6$d
 SQL,
-            $this->completedDayPredicate('archived_events.event_hour'),
-            $this->completedDayPredicate('events.created_at'),
-            $this->eventDayExpression('event_hour'),
-            $this->eventDayExpression('bi_anonymous_events_v1.event_hour'),
-            $this->completedDayPredicate('bi_anonymous_events_v1.event_hour'),
+            $this->reportingDayPredicate('archived_events.event_hour'),
+            $this->reportingDayPredicate('events.created_at'),
+            $this->reportingDayExpression('event_hour'),
+            $this->shiftsTime()
+                ? $this->timeSql()->localDayExpression('bi_anonymous_events_v1.event_hour')
+                : $this->eventDayExpression('bi_anonymous_events_v1.event_hour'),
+            $this->shiftsTime()
+                ? $this->timeSql()->completedLocalDayPredicate('bi_anonymous_events_v1.event_hour')
+                : $this->completedDayPredicate('bi_anonymous_events_v1.event_hour'),
             $minimumCellCount,
             $this->label('bi_anonymous_events_v1'),
             $this->label('bi_anonymous_daily_v1'),
@@ -678,9 +775,9 @@ daily_cells AS (
         device_class
 )
 SQL,
-            $this->completedDayPredicate('archived_events.event_hour'),
-            $this->completedDayPredicate('events.created_at'),
-            $this->eventDayExpression('event_hour'),
+            $this->reportingDayPredicate('archived_events.event_hour'),
+            $this->reportingDayPredicate('events.created_at'),
+            $this->reportingDayExpression('event_hour'),
             $this->pageGroupExpression('page_path', $pageGroups),
             $minimumCellCount,
         );
@@ -733,6 +830,35 @@ SQL,
     private static function likeEscape(string $value): string
     {
         return str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $value);
+    }
+
+    /**
+     * Completed day in the reporting timezone. UTC keeps the original predicate
+     * so an unset timezone does not change the view SQL.
+     */
+    private function reportingDayPredicate(string $column): string
+    {
+        return $this->shiftsTime()
+            ? $this->timeSql()->completedReportingDayPredicate($column)
+            : $this->completedDayPredicate($column);
+    }
+
+    /** Local date of a stored UTC hour. The plain date cast when the zone is UTC. */
+    private function reportingDayExpression(string $column): string
+    {
+        return $this->shiftsTime()
+            ? $this->timeSql()->dayOfUtcHour($column)
+            : $this->eventDayExpression($column);
+    }
+
+    private function shiftsTime(): bool
+    {
+        return $this->shifts ??= !ReportingTimezone::isIdentity($this->reportingTimezone);
+    }
+
+    private function timeSql(): ReportingTimeSql
+    {
+        return $this->timeSql ??= new ReportingTimeSql($this->platform, $this->reportingTimezone);
     }
 
     private function completedHourPredicate(string $column): string

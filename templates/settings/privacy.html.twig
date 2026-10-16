@@ -25,7 +25,7 @@
             <div class="control">
                 <input class="input" type="number" id="anonymous-min-cell-count" name="anonymous_min_cell_count" value="{{ anonymous_min_cell_count }}" min="2" max="1000" required>
             </div>
-            <p class="help">Default: 5; allowed range: 2–1000. <code>bi_anonymous_events_v1</code> exposes completed UTC-hour cells and <code>bi_anonymous_goals_v1</code> exposes completed UTC-day goal cells meeting this count. <code>bi_anonymous_daily_v1</code> and <code>bi_anonymous_daily_rollup_v1</code> use it too, for completed UTC-day cells by <a href="{{ path('app_bi_page_groups') }}">page group</a>, and <code>bi_anonymous_coverage_v1</code> reports only days with at least this many events.</p>
+            <p class="help">Default: 5; allowed range: 2–1000. <code>bi_anonymous_events_v1</code> exposes completed UTC-hour cells, labelled in the <a href="{{ path('app_reporting_timezone') }}">reporting timezone</a>, and <code>bi_anonymous_goals_v1</code> exposes completed UTC-day goal cells meeting this count. <code>bi_anonymous_daily_v1</code> and <code>bi_anonymous_daily_rollup_v1</code> use it too, for completed days in that timezone by <a href="{{ path('app_bi_page_groups') }}">page group</a>, and <code>bi_anonymous_coverage_v1</code> reports only days with at least this many events.</p>
         </div>
 
         <div class="field">

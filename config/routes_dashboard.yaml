@@ -58,6 +58,10 @@ bi_page_groups_controller:
     resource: ../src/Controller/BiPageGroupsController.php
     type: attribute
 
+reporting_timezone_controller:
+    resource: ../src/Controller/ReportingTimezoneController.php
+    type: attribute
+
 event_examples_controller:
     resource: ../src/Controller/EventExamplesController.php
     type: attribute

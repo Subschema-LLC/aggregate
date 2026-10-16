@@ -7,6 +7,7 @@ namespace App\Tests\Service;
 use App\Service\AggregateConfigLoader;
 use App\Service\AnonymousBiViewManager;
 use App\Service\BiPageGroups;
+use App\Service\ReportingTimezone;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\MariaDB1060Platform;
@@ -131,6 +132,29 @@ final class AnonymousBiViewManagerTest extends TestCase
 
         self::assertStringNotContainsString('inventory', $executed[0]);
         self::assertStringContainsString("THEN 'inventory'", $executed[3]);
+    }
+
+    public function testMysqlWithoutTimezoneTablesLeavesTheViewsUntouched(): void
+    {
+        $directory = sys_get_temp_dir().'/aggregate-tz-mysql-'.bin2hex(random_bytes(4));
+        mkdir($directory.'/config', 0700, true);
+        file_put_contents($directory.'/config/aggregate.yaml', "reporting_timezone: America/Chicago\n");
+        $executed = [];
+        $connection = $this->createMock(Connection::class);
+        $connection->method('getDatabasePlatform')->willReturn(new MySQL80Platform());
+        $connection->method('fetchOne')->willReturn(null);
+        $connection->expects(self::never())->method('executeStatement');
+
+        try {
+            (new AnonymousBiViewManager($connection, null, new ReportingTimezone(new AggregateConfigLoader($directory, 'test'))))->regenerate(5, 25);
+            self::fail('MySQL regenerated views without time zone tables.');
+        } catch (\RuntimeException $e) {
+            self::assertStringContainsString('MySQL cannot convert America/Chicago', $e->getMessage());
+        }
+        self::assertSame([], $executed);
+        unlink($directory.'/config/aggregate.yaml');
+        rmdir($directory.'/config');
+        rmdir($directory);
     }
 
     public function testInvalidPageGroupsStopRegenerationBeforeAnyStatement(): void
