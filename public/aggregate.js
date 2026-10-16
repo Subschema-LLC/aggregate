@@ -478,8 +478,14 @@
           var keys = Object.keys(eventData);
           for (var i = 0; i < keys.length && count < 50; i++) {
             var key = keys[i].trim();
+            var given = eventData[keys[i]];
+            if (given !== null && typeof given === 'object') {
+              this.warn('emit() dropped ' + key.slice(0, 64) + ': a property must be text, a number, true, false or null.'
+                + (key === 'customData' ? ' To pass customData, use emit({eventName, customData}).' : ''));
+              continue;
+            }
             if (!canInclude(key)) continue;
-            var value = cleanValue(key, eventData[keys[i]]);
+            var value = cleanValue(key, given);
             if (typeof value === 'undefined') continue;
             if (!Object.prototype.hasOwnProperty.call(clean, key)) count++;
             clean[key] = value;
@@ -987,20 +993,54 @@
       }
     },
 
+    // emit({eventName, customData, goalEvent, pagePath}), or the short form
+    // emit(eventName, properties, goal). customData holds the event's own
+    // properties: everything the tracker does not add itself. pagePath sets a
+    // virtual page path, cleaned like the real one; the tracker sets the other
+    // request fields, so the object cannot.
     emit: function(eventName, eventData, goalEvent){
+      var pagePath = null;
+      if (eventName !== null && typeof eventName === 'object' && !Array.isArray(eventName)) {
+        var event = eventName;
+        var field = function(name){ return Object.prototype.hasOwnProperty.call(event, name) ? event[name] : undefined; };
+        var fields = Object.keys(event);
+        var renamed = {name: 'eventName', goal: 'goalEvent', eventData: 'customData', properties: 'customData'};
+        for (var i = 0; i < fields.length; i++) {
+          if (['eventName', 'customData', 'goalEvent', 'pagePath'].indexOf(fields[i]) !== -1) continue;
+          this.warn('emit() ignored ' + fields[i].slice(0, 64) + ': '
+            + (['websiteToken', 'referrerChannel', 'deviceClass', 'viewportBucket', 'consentState', 'visitorId', 'sessionId', 'screenWidth', 'org_internal_traffic'].indexOf(fields[i]) !== -1
+              ? 'the tracker sets it.'
+              : Object.prototype.hasOwnProperty.call(renamed, fields[i]) ? 'use ' + renamed[fields[i]] + '.' : 'put the event\'s properties in customData.'));
+        }
+        eventName = field('eventName');
+        eventData = field('customData');
+        goalEvent = field('goalEvent');
+        if (typeof eventData !== 'undefined' && eventData !== null && (typeof eventData !== 'object' || Array.isArray(eventData))) {
+          this.warn('emit() ignored customData: it must be an object of properties.');
+        }
+        var virtualPath = field('pagePath');
+        if (typeof virtualPath !== 'undefined') {
+          // A path on this site: no address, query or fragment.
+          if (typeof virtualPath === 'string' && /^\/(?!\/)[^?#\\]*$/.test(virtualPath)) pagePath = this.sanitizePagePath(virtualPath);
+          else this.warn('emit() ignored pagePath: use a path such as /checkout/step-2, with no query or fragment.');
+        }
+      }
       this.listenToGoogleConsent();
       var safeEventName = this.sanitizeEventName(eventName);
-      if (!safeEventName) return false;
+      if (!safeEventName) {
+        this.warn('emit() sent nothing: the event name is missing or not allowed. Use a fixed name such as "login": a letter, then letters, digits, _ . : or -, with no identifiers.');
+        return false;
+      }
 
       if (strictCollection) {
         // Event properties are not sent. Goals remain server-validated.
-        this.send({pagePath: this.sanitizePagePath(), eventName: safeEventName, goalEvent: goalEvent || null});
+        this.send({pagePath: pagePath || this.sanitizePagePath(), eventName: safeEventName, goalEvent: goalEvent || null});
         return true;
       }
 
       if (withStandardProfile) {
         var payload = {
-          pagePath: this.sanitizePagePath(),
+          pagePath: pagePath || this.sanitizePagePath(),
           referrerChannel: this.getReferrerChannel(),
           deviceClass: this.getDeviceClass(),
           viewportBucket: this.getViewportBucket(),
@@ -1155,11 +1195,13 @@
       return {event: prefix + 'event', goal: prefix + 'goal', prop: prefix + 'prop-'};
     },
 
-    warnedAttributes: Object.create(null),
+    warned: Object.create(null),
 
-    warnAttribute: function(message){
-      if (this.warnedAttributes[message] || Object.keys(this.warnedAttributes).length >= 20) return;
-      this.warnedAttributes[message] = true;
+    // Explains, once each and at most 20 times a page, why something sent
+    // less than asked or nothing.
+    warn: function(message){
+      if (this.warned[message] || Object.keys(this.warned).length >= 20) return;
+      this.warned[message] = true;
       try {
         if (typeof console !== 'undefined' && console && typeof console.warn === 'function') {
           console.warn('[' + namespace + '] ' + message);
@@ -1229,7 +1271,7 @@
         var written = element.getAttribute(names.event);
         var eventName = this.sanitizeEventName(written);
         if (!eventName || eventName === 'view') {
-          this.warnAttribute(eventName === 'view'
+          this.warn(eventName === 'view'
             ? names.event + '="view" is reserved for page views and was not sent. Use a name such as "' + (kind === 'submit' ? 'form_submit' : 'button_click') + '", or call trackView() for a page view.'
             : names.event + '="' + String(written).slice(0, 100) + '" is not a valid event name and was not sent. Use a fixed name of letters, digits, _ . : or -, starting with a letter.');
           return;

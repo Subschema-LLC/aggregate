@@ -89,12 +89,14 @@ final class EventExampleGenerator
             InternalTrafficSettings::JSON_KEY => false,
         ];
 
-        // A page passes emit() the event name and the properties themselves.
-        // The tracker builds the request body from them, adds the page path,
-        // consent state and page depth, and leaves out what consent does not
-        // allow, so one call serves both examples.
+        // A page names the event and passes its own properties in customData;
+        // the short form passes the name and the properties. The tracker builds
+        // the request body from them, adds the page path, consent state and page
+        // depth, and leaves out what consent does not allow, so one call serves
+        // both examples.
         $trackerName = $ecommerce ? 'purchase' : 'button_click';
         $trackerProperties = array_diff_key($enhanced, CustomDataSettings::BUILTIN_PROPERTIES);
+        $trackerEvent = ['eventName' => $trackerName] + ($trackerProperties === [] ? [] : ['customData' => (object) $trackerProperties]);
         $trackerMethod = TrackerNamespace::of($this->config).'.emit';
         $json = JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR;
 
@@ -104,8 +106,9 @@ final class EventExampleGenerator
             'source' => $ecommerce ? 'ecommerce_recommendation' : 'saved_model',
             'tracker' => [
                 'method' => $trackerMethod,
-                'arguments' => $trackerProperties === [] ? [$trackerName] : [$trackerName, (object) $trackerProperties],
-                'javascript' => $trackerMethod.'('.json_encode($trackerName, $json)
+                'event' => $trackerEvent,
+                'javascript' => $trackerMethod.'('.json_encode((object) $trackerEvent, $json).');',
+                'short_javascript' => $trackerMethod.'('.json_encode($trackerName, $json)
                     .($trackerProperties === [] ? '' : ', '.json_encode((object) $trackerProperties, $json)).');',
             ],
             'endpoint' => ['method' => 'POST', 'path' => '/api/receive'],
@@ -113,7 +116,7 @@ final class EventExampleGenerator
                 $ecommerce
                     ? 'This ecommerce recommendation is an unsaved proposed model with fixed synthetic values. Review and merge its YAML into the active model before using its property or numeric reporting rules. No settings are saved and no events are read or sent.'
                     : 'These examples use the saved deployment model and fixed synthetic values. No events are read or sent.',
-                'On a page with the tracker, make the call in tracker.javascript, or use tracker.method and tracker.arguments in a tag manager method tag. emit() takes the event name and the properties themselves; the tracker builds the request body from them and leaves out what consent does not allow. Do not pass a payload to emit(): it sends nothing.',
+                'On a page with the tracker, make the call in tracker.javascript: emit() takes the event with its own properties in customData, and the tracker builds the request body from it, leaving out what consent does not allow. tracker.short_javascript is the same call in the short form, emit(name, properties). In the tag manager, a Send an Aggregate event action takes tracker.event. Do not pass a payload to emit(): the tracker sets its other fields itself.',
                 'From a server or another client without the tracker, send only an example payload as the JSON request body. Replace the public website token placeholder and use an Origin allowed for that website. Never substitute an administrator or sharing token.',
                 'Declared types determine the synthetic values. Properties without a type use illustrative strings. Types do not define a permitted-value vocabulary; review actual bounded scalar values before collection.',
                 'Integer properties use whole numbers within the JavaScript safe-integer range. Float and double accept finite JSON numbers and project approximate double precision; numeric strings are not automatically converted.',

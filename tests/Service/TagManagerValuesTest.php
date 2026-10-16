@@ -160,4 +160,54 @@ final class TagManagerValuesTest extends TestCase
         yield 'properties first' => ['Aggregate.emit', [['method' => 'password']], 'The first argument is the event name'];
         yield 'no arguments' => ['Aggregate.emit', [], 'The first argument is the event name'];
     }
+
+    public function testAnAggregateEventKeepsItsFieldsAndFlatCustomData(): void
+    {
+        $variables = ['login_method' => 'method'];
+        $properties = ['app' => 'facilitation', 'method' => ['$var' => 'login_method'], 'attempts' => 2, 'rate' => 0.5, 'admin' => true, 'none' => null, 'context.source' => 'nav'];
+        self::assertSame(
+            ['eventName' => 'login', 'customData' => $properties, 'goalEvent' => 'signup', 'pagePath' => '/account/login'],
+            TagManagerValues::validateEvent(['eventName' => 'login', 'customData' => $properties, 'goalEvent' => 'signup', 'pagePath' => '/account/login'], $variables),
+        );
+        self::assertSame(['eventName' => 'login'], TagManagerValues::validateEvent(['eventName' => 'login', 'customData' => []], []), 'empty customData is left out');
+        self::assertSame(['eventName' => ['$var' => 'login_method'], 'goalEvent' => null, 'pagePath' => ['$var' => 'login_method']],
+            TagManagerValues::validateEvent(['eventName' => ['$var' => 'login_method'], 'goalEvent' => null, 'pagePath' => ['$var' => 'login_method']], $variables));
+    }
+
+    #[DataProvider('invalidEvents')]
+    public function testAnAggregateEventIsRefusedWithTheReason(mixed $event, string $message): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage($message);
+        TagManagerValues::validateEvent($event, ['login_method' => 'method'], 'Tag login: the event');
+    }
+
+    public static function invalidEvents(): iterable
+    {
+        yield 'a list' => [['login'], 'Tag login: the event must be an object such as {"eventName": "login", "customData": {"method": "password"}}.'];
+        yield 'text' => ['login', 'Tag login: the event must be an object'];
+        yield 'missing' => [null, 'Tag login: the event must be an object'];
+        yield 'no name' => [['customData' => []], 'Tag login: the event needs an eventName, such as "login".'];
+        yield 'a property beside the fields' => [['eventName' => 'login', 'method' => 'password'], "Tag login: the event has method, but it takes only eventName, customData, goalEvent and pagePath. Put the event's properties in customData."];
+        yield 'a field the tracker sets' => [['eventName' => 'login', 'deviceClass' => 'bot'], 'The tracker sets deviceClass itself.'];
+        yield 'an invalid name' => [['eventName' => 'log in'], 'Tag login: the event: eventName must be a fixed name such as "login": a letter, then up to 99 letters, digits, _ . : or -.'];
+        yield 'a nested wrapper' => [['eventName' => 'login', 'customData' => ['customData' => ['a' => 1]]], 'Tag login: the event: customData.customData must be text of at most 500 bytes, a number, true, false or null, not an object or a list. To read a value from the page, use {"$var": "alias"}.'];
+        yield 'a list property' => [['eventName' => 'login', 'customData' => ['tags' => ['a']]], 'customData.tags must be text'];
+        yield 'long text' => [['eventName' => 'login', 'customData' => ['note' => str_repeat('a', 501)]], 'customData.note must be text of at most 500 bytes'];
+        yield 'an unsafe integer' => [['eventName' => 'login', 'customData' => ['count' => 2 ** 60]], 'customData.count must be'];
+        yield 'customData as a list' => [['eventName' => 'login', 'customData' => ['a']], 'Tag login: the event: customData must be an object of properties, such as {"method": "password"}.'];
+        yield 'a property name' => [['eventName' => 'login', 'customData' => ['1st' => 'a']], 'customData.1st is not a property name'];
+        yield 'a prototype name' => [['eventName' => 'login', 'customData' => ['constructor' => 'a']], 'customData.constructor is not a property name'];
+        yield 'a built-in property' => [['eventName' => 'login', 'customData' => ['org_internal_traffic' => true]], 'Tag login: the event: the tracker adds customData.org_internal_traffic itself; leave it out.'];
+        yield 'page depth' => [['eventName' => 'login', 'customData' => ['page_sequence' => 2]], 'the tracker adds customData.page_sequence itself'];
+        yield 'too many properties' => [['eventName' => 'login', 'customData' => array_fill_keys(array_map(static fn (int $i): string => 'p'.$i, range(1, 33)), 1)], 'customData may hold at most 32 properties.'];
+        yield 'an undefined variable' => [['eventName' => 'login', 'customData' => ['method' => ['$var' => 'missing']]], 'Tag login: the event: customData.method uses {"$var": …} with a variable that is not defined. Add it under Variables.'];
+        yield 'a goal with spaces' => [['eventName' => 'login', 'goalEvent' => ' signup'], 'goalEvent must name a goal from config/goals.yaml, or be null.'];
+        yield 'an empty goal' => [['eventName' => 'login', 'goalEvent' => ''], 'goalEvent must name a goal'];
+        yield 'a query in the path' => [['eventName' => 'login', 'pagePath' => '/search?q=x'], 'pagePath must be a path on the site such as /checkout/step-2, without a query or fragment.'];
+        yield 'a fragment in the path' => [['eventName' => 'login', 'pagePath' => '/a#b'], 'pagePath must be a path'];
+        yield 'an address' => [['eventName' => 'login', 'pagePath' => 'https://site.example/x'], 'pagePath must be a path'];
+        yield 'another host' => [['eventName' => 'login', 'pagePath' => '//site.example/x'], 'pagePath must be a path'];
+        yield 'a relative path' => [['eventName' => 'login', 'pagePath' => 'checkout'], 'pagePath must be a path'];
+    }
 }

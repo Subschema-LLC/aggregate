@@ -25,6 +25,11 @@ final class TagManagerValues
     private const BLOCKED_MAP_KEYS = ['__proto__', 'prototype', 'constructor'];
     /** Names people give the properties object, after the request field and the GTM template's setting. */
     private const PROPERTY_WRAPPERS = ['customData', 'eventData'];
+    /** The fields of an event object; the tracker sets the others (see public/aggregate.js emit()). */
+    public const EVENT_FIELDS = ['eventName', 'customData', 'goalEvent', 'pagePath'];
+    private const TRACKER_FIELDS = ['websiteToken', 'referrerChannel', 'deviceClass', 'viewportBucket', 'consentState', 'visitorId', 'sessionId', 'screenWidth', 'org_internal_traffic'];
+    private const EVENT_NAME = '/^[A-Za-z][A-Za-z0-9_.:-]{0,99}$/D';
+    private const MAX_PROPERTY_BYTES = 500;
 
     public static function validateMethod(mixed $method): string
     {
@@ -92,6 +97,91 @@ final class TagManagerValues
         $last = array_pop($names);
 
         return sprintf('The tracker drops %s: a property must be text, a number, true, false or null, not an object or a list. Give each value its own property.', $names === [] ? $last : implode(', ', $names).' and '.$last);
+    }
+
+    /**
+     * The event of a "Send an Aggregate event" tag, as the tracker's
+     * emit({eventName, customData, goalEvent, pagePath}) takes it. customData
+     * holds the event's own properties, flat; any value may be a
+     * {$var: alias} reference read from the page. The tracker sets every
+     * other request field, so the event cannot.
+     *
+     * @param array<string, mixed> $variables already validated alias definitions
+     * @return array{eventName: string|array, customData?: array<string, mixed>, goalEvent?: string|array|null, pagePath?: string|array}
+     */
+    public static function validateEvent(mixed $event, array $variables, string $label = 'The event'): array
+    {
+        if (!is_array($event) || ($event !== [] && array_is_list($event))) {
+            throw new \InvalidArgumentException($label.' must be an object such as {"eventName": "login", "customData": {"method": "password"}}.');
+        }
+        $unknown = array_diff(array_map('strval', array_keys($event)), self::EVENT_FIELDS);
+        if ($unknown !== []) {
+            $field = reset($unknown);
+            throw new \InvalidArgumentException($label.' has '.$field.', but it takes only eventName, customData, goalEvent and pagePath. '
+                .(in_array($field, self::TRACKER_FIELDS, true) ? 'The tracker sets '.$field.' itself.' : 'Put the event\'s properties in customData.'));
+        }
+        if (!array_key_exists('eventName', $event)) {
+            throw new \InvalidArgumentException($label.' needs an eventName, such as "login".');
+        }
+        $validated = ['eventName' => self::eventValue($event['eventName'], $variables, $label.': eventName', static fn (mixed $name): bool => is_string($name) && preg_match(self::EVENT_NAME, $name) === 1,
+            'must be a fixed name such as "login": a letter, then up to 99 letters, digits, _ . : or -')];
+
+        if (array_key_exists('customData', $event)) {
+            $properties = $event['customData'];
+            if (!is_array($properties) || ($properties !== [] && array_is_list($properties))) {
+                throw new \InvalidArgumentException($label.': customData must be an object of properties, such as {"method": "password"}.');
+            }
+            if (count($properties) > self::MAX_ENTRIES) {
+                throw new \InvalidArgumentException($label.': customData may hold at most '.self::MAX_ENTRIES.' properties.');
+            }
+            $validated['customData'] = [];
+            foreach ($properties as $key => $value) {
+                $key = (string) $key;
+                if (!CustomDataSettings::isValidPropertyKey($key)) {
+                    throw new \InvalidArgumentException($label.': customData.'.mb_strimwidth($key, 0, 64, '…').' is not a property name. Use a letter, then up to 63 letters, digits, _ . or -.');
+                }
+                if (isset(CustomDataSettings::BUILTIN_PROPERTIES[$key])) {
+                    throw new \InvalidArgumentException($label.': the tracker adds customData.'.$key.' itself; leave it out.');
+                }
+                $validated['customData'][$key] = self::eventValue($value, $variables, $label.': customData.'.$key, static fn (mixed $value): bool => $value === null || is_bool($value)
+                    || (is_string($value) && strlen($value) <= self::MAX_PROPERTY_BYTES && preg_match('//u', $value) === 1)
+                    || ((is_int($value) || is_float($value)) && is_finite((float) $value) && !(floor((float) $value) === (float) $value && abs($value) > self::MAX_SAFE_INTEGER)),
+                    'must be text of at most '.self::MAX_PROPERTY_BYTES.' bytes, a number, true, false or null, not an object or a list');
+            }
+            if ($validated['customData'] === []) {
+                unset($validated['customData']);
+            }
+        }
+        if (array_key_exists('goalEvent', $event)) {
+            $validated['goalEvent'] = self::eventValue($event['goalEvent'], $variables, $label.': goalEvent', static fn (mixed $goal): bool => $goal === null
+                || (is_string($goal) && $goal !== '' && trim($goal) === $goal && strlen($goal) <= 100 && preg_match('/[\x00-\x1f\x7f]/', $goal) !== 1),
+                'must name a goal from config/goals.yaml, or be null');
+        }
+        if (array_key_exists('pagePath', $event)) {
+            $validated['pagePath'] = self::eventValue($event['pagePath'], $variables, $label.': pagePath', static fn (mixed $path): bool => is_string($path)
+                && strlen($path) <= 512 && preg_match('#^/(?!/)[^?\#\\\\\x00-\x1f\x7f]*$#D', $path) === 1,
+                'must be a path on the site such as /checkout/step-2, without a query or fragment');
+        }
+
+        return $validated;
+    }
+
+    /** A literal accepted by $valid, or a {$var: alias} reference to a declared variable. */
+    private static function eventValue(mixed $value, array $variables, string $label, \Closure $valid, string $rule): mixed
+    {
+        if (self::isReference($value)) {
+            $alias = $value['$var'];
+            if (!is_string($alias) || !array_key_exists($alias, $variables)) {
+                throw new \InvalidArgumentException($label.' uses {"$var": …} with a variable that is not defined. Add it under Variables.');
+            }
+
+            return ['$var' => $alias];
+        }
+        if (!$valid($value)) {
+            throw new \InvalidArgumentException($label.' '.$rule.(is_array($value) ? '. To read a value from the page, use {"$var": "alias"}.' : '.'));
+        }
+
+        return $value;
     }
 
     private static function isReference(mixed $value): bool
