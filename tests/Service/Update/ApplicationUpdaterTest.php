@@ -458,8 +458,69 @@ final class ApplicationUpdaterTest extends TestCase
         $this->messages[] = [$level, $message];
     }
 
+    public function testAWorkFolderTheUpdateCannotWriteIsAnErrorBeforeAnythingStarts(): void
+    {
+        if (function_exists('posix_geteuid') && posix_geteuid() === 0) {
+            self::markTestSkipped('Root can write any folder.');
+        }
+        mkdir($this->project.'/var/updates/uploads', 0775, true);
+        chmod($this->project.'/var/updates/uploads', 0555);
+        try {
+            $preflight = $this->updater()->preflight();
+        } finally {
+            chmod($this->project.'/var/updates/uploads', 0775);
+        }
+        $check = array_column($preflight['checks'], null, 'id')['writable'];
+        self::assertSame('error', $check['status']);
+        self::assertStringContainsString('cannot write var/updates/uploads/', $check['detail']);
+        self::assertContains($check['detail'], $preflight['problems']);
+    }
+
+    public function testRootIsStoppedFromUpdatingFilesThatBelongToTheWebsiteUser(): void
+    {
+        if (!function_exists('posix_geteuid') || posix_geteuid() !== 0) {
+            self::markTestSkipped('Needs root.');
+        }
+        self::assertArrayNotHasKey('user', array_column($this->updater()->preflight()['checks'], null, 'id'), 'Root may update files that root owns.');
+
+        chown($this->project, 'nobody');
+        try {
+            $preflight = $this->updater()->preflight();
+        } finally {
+            chown($this->project, 'root');
+        }
+        $check = array_column($preflight['checks'], null, 'id')['user'];
+        self::assertSame('error', $check['status']);
+        self::assertStringContainsString('belong to nobody', $check['detail']);
+        self::assertStringContainsString('sudo -u nobody '.\PHP_BINARY.' bin/console app:updates:apply', $check['detail']);
+        self::assertContains($check['detail'], $preflight['problems']);
+    }
+
+    public function testTheDashboardPreflightExplainsWhyTheCommandLineCouldNotRunIt(): void
+    {
+        $php = $this->project.'/fake-php';
+        $toolchain = $this->createStub(Toolchain::class);
+        $toolchain->method('php')->willReturn([$php]);
+
+        // PHP notices before the JSON line do not hide the result.
+        $fingerprint = $this->updater()->databaseFingerprint();
+        file_put_contents($php, "#!/bin/sh\necho 'PHP Deprecated:  something in Unknown on line 0'\necho '".json_encode(['problems' => [], 'environment' => 'prod', 'database' => $fingerprint])."'\n");
+        chmod($php, 0700);
+        self::assertSame([], $this->updater(toolchain: $toolchain)->backgroundProblems());
+
+        file_put_contents($php, "#!/bin/sh\necho 'PHP Fatal error:  Composer detected issues in your platform: Your Composer dependencies require the following PHP extensions to be installed: intl' >&2\nexit 255\n");
+        $problems = $this->updater(toolchain: $toolchain)->backgroundProblems();
+        self::assertCount(1, $problems);
+        self::assertStringContainsString('with '.$php.', because it exited with code 255: PHP Fatal error:  Composer detected issues in your platform', $problems[0]);
+
+        $missing = $this->createStub(Toolchain::class);
+        $missing->method('php')->willReturn(null);
+        $missing->method('phpProblem')->willReturn('The command-line PHP 8.3 executable could not be found (open_basedir hides it from the website).');
+        self::assertSame(['The command-line PHP 8.3 executable could not be found (open_basedir hides it from the website).'], $this->updater(toolchain: $missing)->backgroundProblems());
+    }
+
     /** @param array<string, mixed> $settings */
-    private function updater(?MockHttpClient $github = null, array $settings = []): ApplicationUpdater
+    private function updater(?MockHttpClient $github = null, array $settings = [], ?Toolchain $toolchain = null): ApplicationUpdater
     {
         $config = $this->createStub(AggregateConfigLoader::class);
         $config->method('all')->willReturn($settings);
@@ -475,7 +536,7 @@ final class ApplicationUpdaterTest extends TestCase
         $verifier = new ReleasePackageVerifier($config, $settings, $this->project, $features);
         $deployment = new DeploymentState($this->project);
         $updates = new ApplicationUpdateService($this->project, $github ?? new MockHttpClient([]), $cache, $clock, $features, '', $settings, $releases, $overrides, deployment: $deployment);
-        $toolchain = new Toolchain($this->project);
+        $toolchain ??= new Toolchain($this->project);
 
         return new ApplicationUpdater(
             $this->project, 'prod', false,

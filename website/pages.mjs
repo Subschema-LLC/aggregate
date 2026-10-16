@@ -54,13 +54,16 @@ export const sections = [
       { source: 'docs/BI-CONNECTION.md', route: 'reporting/connect-bi', label: 'Connect BI and AI tools' },
       { source: 'docs/BI-GLOSSARY.md', route: 'reporting/bi-glossary', label: 'BI labels and glossary' },
       { source: 'docs/BIGQUERY.md', route: 'reporting/bigquery', label: 'Sync to BigQuery' },
+      { source: 'docs/REPORTING-DATABASE.md', route: 'reporting/reporting-database', label: 'Reporting database' },
     ],
   },
   {
     text: 'Operate',
     items: [
+      { source: 'docs/SCHEDULED-TASKS.md', route: 'operate/scheduled-tasks', label: 'Scheduled tasks' },
       { source: 'docs/UPDATES.md', route: 'operate/updates', label: 'Updating' },
       { source: 'docs/RELEASES.md', route: 'operate/releases', label: 'Signed release packages' },
+      { source: 'docs/LOAD-TESTING.md', route: 'operate/load-testing', label: 'Load testing and capacity' },
     ],
   },
   {

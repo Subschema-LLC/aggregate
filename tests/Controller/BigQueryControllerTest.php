@@ -69,7 +69,7 @@ final class BigQueryControllerTest extends TestCase
             'scheduler_late' => $settings['bigquery_enabled'],
         ]);
         $this->background = $this->createMock(BigQueryBackgroundSync::class);
-        $this->background->method('cronLine')->willReturn('*/5 * * * * cd /srv/aggregate && php bin/console app:bigquery:sync --no-interaction');
+        $this->background->method('cronLine')->willReturn('*/5 * * * * cd /srv/aggregate && php bin/console app:scheduler:run --no-interaction');
         $this->session = new Session(new MockArraySessionStorage());
     }
 
@@ -99,7 +99,8 @@ final class BigQueryControllerTest extends TestCase
         self::assertSame('https://analytics.example.com/dashboard/bigquery/google/callback', $crawler->filter('#bigquery-redirect-uri')->attr('value'));
         self::assertStringContainsString('No key is installed yet.', $crawler->text());
         self::assertSame('disabled', $crawler->filter('button[form="bigquery-sync"]')->attr('disabled'));
-        self::assertStringContainsString('app:bigquery:sync --no-interaction', $crawler->filter('pre code')->text());
+        // The schedule is the server's one scheduled task; its page has the steps.
+        self::assertGreaterThan(0, $crawler->filter('a[href="/dashboard/scheduled-tasks"]')->count());
         self::assertSame('false', $crawler->filter('[data-controller="pages--bigquery--index"]')->attr('data-pages--bigquery--index-running-value'));
         // Google's sign-in page must open as a normal navigation, not a Turbo fetch.
         self::assertSame('false', $crawler->filter('form#bigquery-google-start')->attr('data-turbo'));
@@ -410,6 +411,10 @@ final class BigQueryControllerTest extends TestCase
 
     private static function url(string $name, array $parameters = []): string
     {
+        if ($name === 'app_scheduled_tasks') {
+            return '/dashboard/scheduled-tasks';
+        }
+
         return '/dashboard/bigquery'.match ($name) {
             'app_bigquery' => '',
             'app_bigquery_status' => '/status',

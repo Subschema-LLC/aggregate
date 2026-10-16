@@ -208,6 +208,31 @@ attribute names.
 construction, such as an outbound link's host name, if adopters need it. It would
 still need a data-model definition before it is stored.
 
+### An event names itself; its own properties go in customData
+
+**Decision.** [`emit()`](TRACKING.md#send-an-event) takes an event object:
+`eventName`, optional `goalEvent` and `pagePath`, and `customData` for the event's
+own properties, everything the tracker does not add itself. The tag manager's
+[Send an Aggregate event](TAG-MANAGER.md#send-an-aggregate-event) action takes
+the same object. The tracker sets every other request field and ignores one
+passed in, with a console warning. The short form,
+`emit(eventName, properties, goal)`, sends the same event and stays supported.
+
+**Why.** The object says what each part is, and matches the request body, the
+server-side API and the GTM template's **Custom data object**, so a call reads
+the same wherever it is written and the event's own data stays apart from what
+the tracker measures. A dedicated tag manager action knows the tracker, so it
+waits for it to load without tag chaining. The short form keeps existing pages,
+data attributes and GTM tags working.
+
+**Trade-off.** Two ways to call one method, which the documentation answers by
+leading with the object form. `pagePath` lets a page report a virtual path; it is
+cleaned like a real one and sensitive-path exclusions apply to it, but a site can
+use it to report a sensitive page under another path.
+
+**What would change it.** A reason to retire the short form, such as a tracker
+size budget it no longer fits, which would need a deprecation period first.
+
 ### Organization traffic marked on each website, reported on every event
 
 **Decision.** Team members mark a browser through [marking links](PRIVACY-COMPLIANCE.md#organization-traffic)
@@ -381,35 +406,37 @@ written for every database engine.
 
 **What would change it.** Nothing; this is how the contract stays trustworthy.
 
-### One reporting timezone, compiled into the event views
+### Saving the data model updates the private views
 
-**Decision.** An installation has one IANA reporting timezone, default `UTC`,
-stored in YAML and compiled into `bi_anonymous_events_v1` and the daily event
-views when they are regenerated. Column names stay the same. Stored events,
-archives, goal days and geography days stay UTC. There is no offset table and
-no second local column.
+**Decision.** The private `analytics_custom_*_v1` views follow the data model:
+saving it on the Data model page creates the views, or appends the new reporting
+columns after the deployed ones, and syncs the glossary, as saving page groups
+or disclosure thresholds regenerates the BI views. Deployed columns keep their
+order whichever kind a new column is. Removing or renaming a deployed column is
+left to **Force recreate views** (or `--force`), because it drops the views and
+their grants. The two properties Aggregate records itself,
+`org_internal_traffic` and `page_sequence`, are built in: their type is fixed,
+consent does not apply, the default model gives each a column, and the form
+offers only a checkbox and a column name.
 
-**Why.** A business timezone is an operator setting, like the disclosure
-thresholds, not collected data. A fixed differential cannot do daylight-saving
-time, and a lookup table would be a second place to edit the setting. Relabelling
-the existing UTC hour in the view answers "which business day was this?" without
-recording a visitor's local time or rewriting history. The default `UTC` leaves
-existing connections unchanged; choosing another zone is an explicit change for
-that installation, documented in the connection guide and the glossary, not a
-silent release. Goal and geography archives have already dropped the hour, so
-those views stay on UTC days rather than shifting only their live half.
+**Why.** Getting the organization-traffic flag or page depth into a report took
+four steps: knowing to add the property, choosing the right type and consent
+setting (the page refused anything else), naming a column, and regenerating the
+views on a separate page. A text column added after numeric ones also needed a
+forced recreation, because new views listed text columns first. Appending in
+deployed order keeps grants and BI reports intact without that rule, and asking
+only for what is actually a choice removes the rest.
 
-**Trade-off.** Opting in changes what `event_hour` and the event views'
-`event_day` mean, so extracts and BigQuery copies have to be refreshed. Zones
-that are not a whole number of hours from UTC are labelled by the hour's
-midpoint. One UTC hour stays one cell even when a daylight-saving fallback
-repeats a local hour. MySQL needs its time zone tables, SQL Server needs a
-Windows name, and SQLite carries a compiled transition table through 2100.
+**Trade-off.** A model save now changes the database: on MySQL and MariaDB,
+whose DDL commits as it goes, a failure can leave some views updated (the
+message says to retry). Column order in long-lived views reflects when columns
+were added, not the model's order. Models saved before this version keep their
+own properties, so the two built-in columns appear only after their boxes are
+ticked once.
 
-**What would change it.** A concrete need for a different zone per website,
-which belongs on the website in `config/websites.yaml` once website-specific
-settings exist, or audiences that need several zones, which should convert in
-the BI tool and leave the views in UTC.
+**What would change it.** Views that need a planned layout, or installations
+that want model edits reviewed before any DDL, would call for an option to save
+without updating the views.
 
 ### Views copied to BigQuery whole, by scheduled load jobs
 
@@ -437,6 +464,77 @@ needs the dashboard and each installation's own OAuth client.
 incremental loads of completed time buckets; a need for other warehouses would
 reuse the same export and schedule.
 
+### Views copied whole into a separate reporting database
+
+**Decision.** The [reporting database](REPORTING-DATABASE.md) sync copies
+selected reporting views, never raw tables, into same-named tables of a second
+database that `REPORTING_DATABASE_URL` names. Each sync fills a staging table and
+then swaps it in (one `RENAME TABLE` on MySQL and MariaDB; drop and rename in one
+transaction elsewhere), so readers always see a complete copy. It reuses the
+BigQuery sync's view catalog, value conversion, private-view opt-in, schedule
+and processing tasks. The connection is an environment variable, not a YAML
+setting, and a URL that names the application database is refused. The admin
+page and `app:reporting-database:configure` write it to `.env.local`, but only
+after a test connection that creates and drops a table succeeds.
+
+**Why.** Operators asked for BI access that cannot reach the application
+database and for BI queries that do not load the collection server. A full
+read replica copies raw tables and needs database-specific setup; copying the
+views needs only a second database on any supported engine, keeps the BI
+contract (names, columns, suppression) intact, and gives SQLite installations a
+server database for BI logins. Replacing whole tables makes deletions,
+threshold changes and new custom columns reach the copy at the next sync, with
+no incremental bookkeeping. The connection string holds a password, so it
+belongs with `DATABASE_URL` in the server environment rather than in YAML that
+the dashboard edits. Hand-editing `.env.local` was the step operators got wrong
+(unencoded passwords, a typo found only at the next sync), so Aggregate writes
+the file the same way the setup page writes `DATABASE_URL`: tested first,
+encoded, in `.env.local` only, and never shown back.
+
+**Trade-off.** Copies are only as fresh as their interval. Each sync re-reads
+whole views from the application database, which grows with private row-level
+views. Writing `.env.local` from the web needs PHP to be able to write it; where
+it cannot, or where another file or the server environment sets the variable,
+the page explains instead of saving. Recreated tables lose per-table grants, so BI access must be granted on
+the database or schema. The tables have no indexes. Tables of deselected views
+stay until an administrator drops them.
+
+**What would change it.** Views too large to copy whole would call for
+incremental copies of completed time buckets, as for BigQuery; a need for
+indexes or live data would favor database-native replication of the views'
+source tables to a reporting server that hosts the views itself.
+
+### One scheduled task for every background job
+
+**Decision.** One command, `app:scheduler:run`, runs every five minutes from the
+server's scheduler and starts each background job that is turned on and due:
+daily maintenance, BigQuery sync and the reporting database sync. Each job keeps
+its own command, settings page and interval; the scheduler only decides what is
+due. Runs never overlap (a file lock in `var/scheduler`), a failing job does not
+stop the others, and the command prints nothing when nothing ran. The
+**Scheduled tasks** page and `app:scheduler:status` show whether the server's
+task runs, counting only runs without a terminal, and give the exact setup for
+the server they run on: a Plesk **Run a PHP script** task when the application
+sits under `/var/www/vhosts`, otherwise a crontab line with the PHP binary that
+runs Aggregate.
+
+**Why.** Each job used to need its own cron line, and every new job would have
+added another. Hosting panels make each line a separate form, and Plesk's
+**Run a command** tasks fail in a restricted environment without PHP, which
+operators met as `cd: … No such file or directory`. One task, set up once with
+values copied from the page, covers future jobs too, and a page that turns
+green only when the server itself ran the task proves the setup instead of the
+person testing it from a terminal.
+
+**Trade-off.** Jobs share one five-minute cadence, so nothing runs more often,
+and a long job delays the next job in the same run. Maintenance moved from a
+fixed time of day to 24 hours after its last run. Telling scheduled runs from
+runs by hand relies on whether a terminal is attached.
+
+**What would change it.** A job that needs minute-level timing or must run in
+parallel with the others, or hosting without any scheduler, which would call for
+running due jobs from web requests.
+
 ### Two shared tables for job runs and the audit trail
 
 **Decision.** Background jobs record their runs in one `processing_tasks` table
@@ -446,7 +544,7 @@ exclusive job holds a lock key that a unique index keeps to one running row. The
 audit trail gets an entry for every finished run and is reserved for
 administrator actions. Maintenance purges both after configurable periods,
 keeping each job's latest success and failure. BigQuery sync and analytics
-maintenance use them; BigQuery's own status table was dropped without
+maintenance use them, as does the reporting database sync; BigQuery's own status table was dropped without
 migrating its rows.
 
 **Why.** Each new job (a sync, an export, a cleanup) would otherwise add a table
@@ -492,6 +590,31 @@ SQLite for a quick trial.
 must be tested. The fresh-install CI job runs on all five.
 
 **What would change it.** An engine that cannot support the reporting contract.
+
+### PostgreSQL connections kept open by default
+
+**Decision.** The setup page writes `persistent=true` into a PostgreSQL
+`DATABASE_URL`, so each PHP-FPM worker keeps its database connection between
+requests. A ticked checkbox on the setup page leaves it out, and
+`persistent=false` turns it off later. MySQL, MariaDB, SQL Server and SQLite
+connections are opened per request as before.
+
+**Why.** Every collection request is short, and opening a PostgreSQL connection
+(a new server process and a password check) was its largest cost: the
+[load test](LOAD-TESTING.md#results) sustained about twice the requests with
+persistent connections. Aggregate keeps no session state on a connection (no
+advisory locks, session settings or temporary tables), and PDO rolls back a
+transaction a request leaves open, so a reused connection starts clean. MySQL's
+connections are cheap to open, and keeping them made no measurable difference.
+
+**Trade-off.** Each PHP-FPM worker holds a connection while it lives, so the
+workers on every server count against PostgreSQL's `max_connections`, and
+database hosts that allow few connections need the setting off or a pooler.
+A credentials change needs a PHP-FPM reload to drop the old connections.
+
+**What would change it.** Hosting where connection limits are commonly too low
+for the PHP-FPM workers, or a server runtime that keeps the application loaded
+between requests, such as FrankenPHP's worker mode.
 
 ### Easy installation over tooling
 

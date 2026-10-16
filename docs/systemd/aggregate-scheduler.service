@@ -1,0 +1,15 @@
+# Runs Aggregate's due background jobs once; aggregate-scheduler.timer starts it
+# every five minutes. Use the user PHP runs as on the website, never root.
+[Unit]
+Description=Aggregate Analytics scheduled jobs
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/aggregate
+ExecStart=/usr/bin/php bin/console app:scheduler:run --no-interaction
+Nice=10
+SyslogIdentifier=aggregate-scheduler

@@ -26,6 +26,7 @@ by hand (`.env.local` or environment variables) keep the behavior above.
 - [Web Server Configuration](#web-server-configuration)
 - [Worker Process Setup](#worker-process-setup)
 - [Production Considerations](#production-considerations)
+  - [Scheduled tasks](#scheduled-tasks)
 
 ---
 
@@ -52,13 +53,16 @@ Node. These steps work with any hosting panel or web server that runs PHP.
    checks the server, asks for the one-time code in `SETUP-CODE.txt` (next to
    `README.md` in the extracted folder), tests the database connection and writes
    `.env.local`. Then create the administrator account on `/install`.
+5. **Add one scheduled task** that runs `bin/console app:scheduler:run` every
+   five minutes, as the user PHP runs as. It runs maintenance and the optional
+   syncs. **Administration → Scheduled tasks** shows the exact settings for
+   your server and whether the task runs; see [Scheduled tasks](docs/SCHEDULED-TASKS.md).
 
 The web server must pass requests for addresses that are not files, and for
 `/aggregate.js`, to `public/index.php`. Apache does this through `public/.htaccess`
 when overrides are allowed; for nginx, use the rules under
 [Web Server Configuration](#web-server-configuration). The setup page checks both.
-No background worker or scheduled task is needed in the default `sync://` mode.
-Later updates are installed from the dashboard **Updates** page; see the
+Events need no background worker in the default `sync://` mode. Later updates are installed from the dashboard **Updates** page; see the
 [update guide](docs/UPDATES.md).
 
 ### Hosting panel guides
@@ -215,6 +219,10 @@ chown -R www-data:www-data var/
 #    After install, manage additional users/passwords in Administration -> Users,
 #    or via CLI with app:user:create and app:user:reset-password.
 #    CLI alternative: php bin/console app:install
+
+# 8. Schedule maintenance and the optional syncs: one cron line for www-data
+#    (sudo crontab -u www-data -e). app:scheduler:status shows whether it runs.
+#    */5 * * * * cd /var/www/aggregate && php bin/console app:scheduler:run --no-interaction
 ```
 
 For optional coarse geography on a native deployment, place a current GeoLite2-Country-compatible MMDB on the local filesystem outside `public/`, make it read-only and readable by the PHP ingestion process, then configure its absolute path. Direct UNC/network-share and Windows device paths are rejected. Do not give the application write access to the database file.
@@ -457,6 +465,23 @@ migrations, run `php bin/console app:analytics:glossary:sync`, then use
 
 ### Performance
 
+**How much traffic one server handles.** Every page view and every tracked
+event is one hit. With MySQL, MariaDB or PostgreSQL on the same server:
+
+| Server | As installed | With preloading (item 3) |
+| --- | ---: | ---: |
+| 2 vCPU | about 1.2 million hits a day | about 1.5 million hits a day |
+| 4 vCPU | about 2.4 million hits a day | about 3 million hits a day |
+| 8 vCPU | about 4.8 million hits a day | about 6 million hits a day |
+
+That assumes ordinary daily traffic, where the busiest minutes bring about
+five times the day's average; halve it if visitors arrive in bursts, such as
+after a newsletter or a campaign. Room for maintenance, the dashboard and syncs
+is already left out. Plan disk space for about 0.3–0.6 GB per million hits
+before archiving. The limit is the server's CPU, mostly PHP. See
+[load testing and capacity](docs/LOAD-TESTING.md#at-a-glance-hits-per-day) for
+how this was measured, the figures per second and how to test your own server.
+
 **1. Use production environment:**
 ```bash
 # In .env (your server's environment file)
@@ -473,10 +498,39 @@ opcache.max_accelerated_files=20000
 opcache.validate_timestamps=0  ; Disable for production
 ```
 
-**3. Use PostgreSQL or MySQL:**
-SQLite is fine for small deployments, but use PostgreSQL or MySQL for production.
+**3. Preload classes (optional):**
+PHP-FPM can load the classes Symfony lists in `config/preload.php` once at
+start-up instead of on every request:
+```ini
+; php.ini, or the PHP-FPM pool's php.ini
+opcache.preload=/var/www/aggregate-sy/config/preload.php
+opcache.preload_user=www-data   ; the PHP-FPM pool's user
+```
+Preloaded classes stay in memory until PHP-FPM reloads, so reload it
+(`sudo systemctl reload php8.3-fpm`) after every update, including updates from
+the dashboard's **Install update** button or `app:updates:apply`, which cannot
+reload it for you. A reload preloads again; a restart is not needed. Leave
+preloading off if your deployment cannot reload PHP-FPM.
 
-**4. Use Redis or RabbitMQ for messaging:**
+**Reload PHP-FPM without dropping requests:** by default a PHP-FPM reload stops
+busy workers at once, which failed about 0.1% of collection requests in the
+[load test](docs/LOAD-TESTING.md#clearing-the-cache-under-traffic). Let them
+finish instead:
+```ini
+; php-fpm.conf, [global] section (on Ubuntu: /etc/php/8.3/fpm/php-fpm.conf)
+process_control_timeout = 10s
+```
+With it, reloads during traffic failed no requests. Prefer a reload to a
+restart, which always dropped some.
+
+**4. Use PostgreSQL or MySQL:**
+SQLite is fine for small deployments, but use PostgreSQL or MySQL for production.
+With PostgreSQL, keep connections open between requests with
+[persistent connections or PgBouncer](docs/DATABASE.md#performance-tuning);
+opening a new connection for every request is its largest cost. The setup page
+turns persistent connections on for PostgreSQL by default.
+
+**5. Use Redis or RabbitMQ for messaging:**
 ```bash
 # In .env
 MESSENGER_TRANSPORT_DSN="amqp://user:pass@rabbitmq:5672/%2f/messages"
@@ -484,7 +538,7 @@ MESSENGER_TRANSPORT_DSN="amqp://user:pass@rabbitmq:5672/%2f/messages"
 MESSENGER_TRANSPORT_DSN="redis://localhost:6379/messages"
 ```
 
-**5. Scale workers:**
+**6. Scale workers:**
 Run multiple worker processes (with Supervisor or systemd):
 ```ini
 ; Supervisor: set numprocs
@@ -583,20 +637,23 @@ Add to crontab:
 0 2 * * * /path/to/backup-script.sh
 ```
 
-### Scheduled commands
+### Scheduled tasks
 
-Two commands run from the scheduler of the user that runs Aggregate, never from
-web requests:
+One command runs every background job that is due, never from web requests:
+daily maintenance (archiving, retention and purging of old task and audit
+records, which is on by default), BigQuery sync and the reporting database
+sync. Run it every five minutes as the user that runs Aggregate:
 
 ```cron
-# Archiving, retention and purging of old task and audit records (on by default)
-15 3 * * * cd /var/www/aggregate && php bin/console app:analytics:maintain --no-interaction
-# BigQuery sync, when it is turned on: each view syncs once per its interval
-*/5 * * * * cd /var/www/aggregate && php bin/console app:bigquery:sync --no-interaction
+*/5 * * * * cd /var/www/aggregate && php bin/console app:scheduler:run --no-interaction
 ```
 
-See [archiving and retention](docs/CONFIGURATION.md#archiving-and-retention) and
-[Sync to BigQuery](docs/BIGQUERY.md#schedule-the-sync).
+It prints nothing when nothing was due. **Administration → Scheduled tasks** and
+`php bin/console app:scheduler:status` show whether it runs, each job's last and
+next run, and the exact line for this server. A [systemd timer](docs/systemd/aggregate-scheduler.timer)
+works too. See [Scheduled tasks](docs/SCHEDULED-TASKS.md) for Plesk, systemd and
+troubleshooting. Separate lines for `app:analytics:maintain` or the sync
+commands from older guides keep working, but this one line replaces them.
 
 ### Updates
 
@@ -819,7 +876,8 @@ php bin/console asset-map:compile
 sudo systemctl restart aggregate-worker
 ```
 
-Reload PHP/OPcache as required by your host, verify `/api/health`, then resume
+Reload PHP/OPcache as required by your host (for PHP-FPM, a graceful
+`sudo systemctl reload php8.3-fpm`; see [Performance](#performance)), verify `/api/health`, then resume
 the collection endpoint. In Docker, run PHP/Composer commands in the application
 container and Git commands as the owner of the mounted checkout; use the
 equivalent Compose worker restart.

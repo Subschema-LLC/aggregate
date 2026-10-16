@@ -18,6 +18,7 @@ per-region example configurations and their limits, see
 - [Stored data and reporting queries](#stored-data-and-reporting-queries)
 - [BI exposure and suppression](#bi-exposure-and-suppression)
 - [BigQuery sync](#bigquery-sync)
+- [Reporting database](#reporting-database)
 - [Administrative controls](#administrative-controls)
 - [Consent and consent-manager integration](#enhanced-analytics-consent)
 - [Independent consent controls and regional examples](#independent-consent-controls-and-regional-examples)
@@ -188,7 +189,8 @@ and disclose the selected method before enabling it; leave it off where separate
 consent would be required. The cap reduces precision, but is not proof of legal
 anonymity or permission to reconstruct individual journeys.
 It remains private `custom_data`: approved anonymous BI views and archive
-aggregates do not expose it. See [configuration and examples](DATA-MODEL.md#optional-page-depth).
+aggregates do not expose it; only the private `analytics_custom_*` views can
+show it as a column. See [configuration and examples](DATA-MODEL.md#optional-page-depth).
 
 ## Organization traffic
 
@@ -273,7 +275,7 @@ FROM events;
 
 Earlier versions stored the flag under the configured marker name (default `orgInternalTraffic`) and only when it was true. Those rows are not converted; include the old key in your filter, or update the stored JSON, if reports span the change.
 
-Keep raw-event access within your existing reporting policy. To expose the flag as a column, add `org_internal_traffic` as a boolean property in the [data model](DATA-MODEL.md) and regenerate the private `analytics_custom_*_v1` views. For anonymous reporting, apply the internal-traffic filter before aggregation and disclosure thresholds in a controlled export. Existing `bi_anonymous_*` views and archive tables do not expose `custom_data` and cannot distinguish internal traffic. Archives continue to combine both traffic types; once raw rows are deleted, this flag cannot be recovered from archives. Prepare filtered reporting datasets while the raw JSON is retained. This browser-supplied label is for reporting, not authorization.
+Keep raw-event access within your existing reporting policy. The private `analytics_custom_*_v1` views expose the flag as an `org_internal_traffic` column (`true` or `false`) in the default model; for a model saved earlier, tick it under **Built-in properties** in the [data model](DATA-MODEL.md#built-in-properties) and save. For anonymous reporting, apply the internal-traffic filter before aggregation and disclosure thresholds in a controlled export. Existing `bi_anonymous_*` views and archive tables do not expose `custom_data` and cannot distinguish internal traffic. Archives continue to combine both traffic types; once raw rows are deleted, this flag cannot be recovered from archives. Prepare filtered reporting datasets while the raw JSON is retained. This browser-supplied label is for reporting, not authorization.
 
 ## Bot traffic
 
@@ -449,6 +451,15 @@ metadata save/sync, not tracking, ingestion, or health checks.
 - Row-level `analytics_custom_*` views and unsuppressed `analytics_archived_*` views must each be listed under `bigquery_private_views`, and the admin page requires a confirmation before saving them. Restrict that dataset as you would the raw `events` table.
 - Each sync replaces the table, so deletions and threshold changes in Aggregate reach the copy at the next sync. BigQuery keeps earlier table versions for its time-travel and fail-safe periods, and tables of views that are no longer synced stay until deleted. Include the dataset in your retention and rights-request procedures.
 - The service account key or Google sign-in token is stored only in `config/secrets`, readable by the application's user, and never logged or shown. Error messages name views and columns; values quoted in BigQuery's own errors are removed.
+
+## Reporting database
+
+The [reporting database](REPORTING-DATABASE.md) sync is off by default. When an administrator turns it on, the selected reporting views are copied into tables of a second database that the operator runs, so their rows are disclosed to everyone with access to that database.
+
+- Only views can be copied, never raw tables. The approved `bi_anonymous_*`, `bi_dim_*_v1` and glossary views carry their suppression into the copy; the same rules about joining views and threshold limits apply there.
+- Row-level `analytics_custom_*` views and unsuppressed `analytics_archived_*` views must each be listed under `reporting_database_private_views`, and the admin page requires a confirmation before saving them. Protect a reporting database that holds them as you would the application database.
+- Each sync replaces the tables, so deletions and threshold changes in Aggregate reach the copy at the next sync. Tables of views that are no longer copied, and the reporting database's own backups, stay until deleted. Include them in your retention and rights-request procedures.
+- The connection, `REPORTING_DATABASE_URL`, is kept in `.env.local` or the server environment, like `DATABASE_URL`. The admin page and `app:reporting-database:configure` write it to `.env.local` after a successful test; its password is never shown, logged or kept in the session. Error messages name views, columns and SQL states, never a rejected value.
 
 ## Administrative controls
 

@@ -42,6 +42,8 @@ final class DataModelControllerTest extends TestCase
     private ReportingViewManager $views;
     private GlossarySync $glossary;
     private array $environment;
+    /** What the mocked views report: up to date unless a test says otherwise. */
+    private array $viewStatus = ['current' => true, 'missing' => [], 'added' => [], 'removed' => []];
 
     protected function setUp(): void
     {
@@ -61,6 +63,7 @@ final class DataModelControllerTest extends TestCase
         $this->config = new AggregateConfigLoader($this->projectDir, 'test');
         $this->settings = new CustomDataSettings($this->config);
         $this->views = $this->createMock(ReportingViewManager::class);
+        $this->views->method('status')->willReturnCallback(fn (): array => $this->viewStatus);
         $this->glossary = $this->createMock(GlossarySync::class);
     }
 
@@ -72,8 +75,9 @@ final class DataModelControllerTest extends TestCase
         rmdir($this->projectDir);
     }
 
-    public function testAdminSavesTheCompleteModelInTheActiveEnvironmentWithoutRegeneratingViews(): void
+    public function testAdminSavesTheCompleteModelInTheActiveEnvironment(): void
     {
+        // The views already match, so nothing is regenerated.
         $this->views->expects(self::never())->method('regenerate');
         $request = $this->request([
             'page_sequence_enabled' => '1',
@@ -103,10 +107,14 @@ final class DataModelControllerTest extends TestCase
         self::assertTrue($written['environments']['test']['page_sequence_enabled']);
         self::assertSame('url_parameter', $written['environments']['test']['page_sequence_method']);
         self::assertSame(['page_sequence' => 2], $this->settings->filterEventData(['page_sequence' => 2], false));
+        // A form without the built-in box keeps their definitions, here the defaults.
         self::assertSame([
             'utm_medium' => ['description' => 'Marketing channel', 'consent_required' => false, 'column' => 'marketing_channel'],
             'plan' => ['description' => '', 'consent_required' => true, 'column' => ''],
+            'org_internal_traffic' => CustomDataSettings::builtinDefinition('org_internal_traffic', 'org_internal_traffic'),
+            'page_sequence' => CustomDataSettings::builtinDefinition('page_sequence', 'page_sequence'),
         ], $written['environments']['test']['custom_data_properties']);
+        self::assertSame(['Data model saved. Collection changes apply to future events. The reporting views already match it.'], $request->getSession()->getFlashBag()->peek('success'));
         self::assertSame(['utm_medium' => 'utm_medium', 'channel' => 'utm_medium'], $written['environments']['test']['query_parameter_mappings']);
         self::assertSame(['utm_medium' => 'email'], $this->settings->filterEventData(['utm_medium' => 'email', 'plan' => 'pro'], false));
         self::assertNotEmpty($request->getSession()->getFlashBag()->peek('success'));
@@ -408,6 +416,7 @@ final class DataModelControllerTest extends TestCase
         $this->config->set('tracker_omit_unused_features', true);
 
         $before = $this->settings->toArray();
+        $custom = array_diff_key($before['custom_data_properties'], CustomDataSettings::BUILTIN_PROPERTIES);
         $request = $this->request([
             'page_sequence_enabled' => '0',
             'properties' => array_map(static fn (string $key, array $property): array => [
@@ -415,7 +424,8 @@ final class DataModelControllerTest extends TestCase
                 'description' => $property['description'],
                 'column' => $property['column'],
                 'consent_required' => $property['consent_required'] ? '1' : '0',
-            ], array_keys($before['custom_data_properties']), array_values($before['custom_data_properties'])),
+            ], array_keys($custom), array_values($custom)),
+            'builtin' => ['org_internal_traffic' => ['include' => '1', 'column' => 'org_internal_traffic'], 'page_sequence' => ['include' => '1', 'column' => 'page_sequence']],
             'mappings' => array_map(static fn (string $parameter, string $property): array => compact('parameter', 'property'),
                 array_keys($before['query_parameter_mappings']), array_values($before['query_parameter_mappings'])),
         ]);
@@ -427,37 +437,99 @@ final class DataModelControllerTest extends TestCase
         self::assertSame('https://test.example', $this->config->get('app_host'));
     }
 
-    public function testReviewingPageSequenceUsesItsBuiltInIntegerDefinition(): void
+    public function testBuiltInPropertiesHaveTheirOwnBoxWithOnlyAColumnToChoose(): void
     {
-        $request = $this->request(['add_property' => 'page_sequence'], 'GET');
-        $response = $this->controller($request)->index($request);
-        $crawler = new Crawler((string) $response->getContent());
+        $request = $this->request([], 'GET');
+        $crawler = new Crawler((string) $this->controller($request)->index($request)->getContent());
 
-        self::assertSame(200, $response->getStatusCode());
-        $row = $crawler->filter('#property-rows [data-property-row]')->last();
-        self::assertSame('integer', $row->filter('select[name$="[type]"] option[selected]')->attr('value'));
-        self::assertSame('0', $row->filter('select[name$="[consent_required]"] option[selected]')->attr('value'));
-        self::assertFalse($this->settings->toArray()['page_sequence_enabled']);
-        self::assertArrayNotHasKey('page_sequence', $this->settings->properties());
+        // The default model gives both a column; neither appears as an ordinary row.
+        $box = $crawler->filter('#built-in-properties');
+        self::assertSame('checked', $box->filter('input[name="builtin[org_internal_traffic][include]"]')->attr('checked'));
+        self::assertSame('org_internal_traffic', $box->filter('input[name="builtin[org_internal_traffic][column]"]')->attr('value'));
+        self::assertSame('checked', $box->filter('input[name="builtin[page_sequence][include]"]')->attr('checked'));
+        self::assertSame('numeric_column', $box->filter('input[name="builtin[page_sequence][column]"]')->attr('data-field'));
+        self::assertStringContainsString('Page depth is off', $box->text());
+        self::assertCount(0, $box->filter('select'));
+        $keys = $crawler->filter('#property-rows input[data-field="key"]')->each(static fn (Crawler $input): string => (string) $input->attr('value'));
+        self::assertSame([], array_intersect($keys, ['org_internal_traffic', 'page_sequence']));
+        self::assertContains('utm_medium', $keys);
     }
 
-    public function testOrganizationTrafficFlagIsProposedAsABooleanRecordedInBothModes(): void
+    public function testReviewingABuiltInPropertyPointsToItsBox(): void
     {
-        $request = $this->request(['add_property' => 'org_internal_traffic'], 'GET');
-        $response = $this->controller($request)->index($request);
-        $crawler = new Crawler((string) $response->getContent());
+        foreach (['page_sequence', 'org_internal_traffic'] as $key) {
+            $request = $this->request(['add_property' => $key], 'GET');
+            $crawler = new Crawler((string) $this->controller($request)->index($request)->getContent());
 
-        self::assertSame(200, $response->getStatusCode());
-        $row = $crawler->filter('#property-rows [data-property-row]')->last();
-        self::assertSame('boolean', $row->filter('select[name$="[type]"] option[selected]')->attr('value'));
-        self::assertSame('0', $row->filter('select[name$="[consent_required]"] option[selected]')->attr('value'));
-        self::assertArrayNotHasKey('org_internal_traffic', $this->settings->properties());
-        self::assertStringContainsString('Every event carries org_internal_traffic', $crawler->filter('body')->text());
+            self::assertStringContainsString($key.' is built in. Tick it under Built-in properties', $crawler->filter('[role="status"]')->text());
+            self::assertCount(1, $crawler->filter('[data-builtin-property="'.$key.'"].is-highlighted'));
+            self::assertCount(0, $crawler->filter('#property-rows [data-property-row] input[value="'.$key.'"]'));
+        }
+    }
+
+    public function testTickingABuiltInPropertySavesItsDefinitionAndUpdatesTheViews(): void
+    {
+        $this->config->set('custom_data_properties', ['plan' => ['consent_required' => true, 'column' => 'plan']]);
+        $this->config->set('query_parameter_mappings', []);
+        $this->viewStatus = ['current' => false, 'missing' => [], 'added' => ['org_flag', 'page_sequence'], 'removed' => []];
+        $this->views->expects(self::once())->method('regenerate')->willReturn(ReportingViewManager::VIEW_NAMES);
+        $this->glossary->expects(self::once())->method('sync');
+        $request = $this->request([
+            'properties' => [['key' => 'plan', 'description' => '', 'column' => 'plan', 'consent_required' => '1']],
+            'builtin' => ['org_internal_traffic' => ['include' => '1', 'column' => 'org_flag'], 'page_sequence' => ['include' => '1', 'column' => '']],
+            'mappings' => [],
+        ]);
+        $this->controller($request)->save($request);
+
+        self::assertSame([], $request->getSession()->getFlashBag()->peek('error'));
+        self::assertSame(['Data model saved. Collection changes apply to future events. The reporting views were updated: added org_flag, page_sequence.'], $request->getSession()->getFlashBag()->peek('success'));
+        $saved = $this->settings->properties();
+        self::assertSame(['description' => 'Organization traffic: true for a marked browser.', 'consent_required' => false, 'column' => 'org_flag', 'type' => 'boolean'], $saved['org_internal_traffic']);
+        // An empty name takes the property's own.
+        self::assertSame('page_sequence', $saved['page_sequence']['numeric_column']);
+
+        // Unticking clears the column; adding the key as an ordinary row is refused.
+        $request = $this->request([
+            'properties' => [['key' => 'plan', 'description' => '', 'column' => 'plan', 'consent_required' => '1']],
+            'builtin' => ['org_internal_traffic' => ['include' => '0', 'column' => 'org_flag'], 'page_sequence' => ['include' => '1', 'column' => 'page_sequence']],
+            'mappings' => [],
+        ]);
+        $this->viewStatus = ['current' => false, 'missing' => [], 'added' => [], 'removed' => ['org_flag']];
+        $this->controller($request)->save($request);
+        self::assertSame('', $this->settings->properties()['org_internal_traffic']['column']);
+        self::assertStringContainsString('org_flag is no longer in the model', implode(' ', $request->getSession()->getFlashBag()->peek('warning')));
+
+        $request = $this->request([
+            'properties' => [['key' => 'page_sequence', 'description' => '', 'column' => '', 'consent_required' => '0', 'type' => 'integer']],
+            'builtin' => ['page_sequence' => ['include' => '1', 'column' => 'page_sequence']],
+            'mappings' => [],
+        ]);
+        $this->controller($request)->save($request);
+        self::assertStringContainsString('page_sequence is built in', implode(' ', $request->getSession()->getFlashBag()->peek('error')));
+    }
+
+    public function testSaveCreatesMissingViewsAndReportsAViewProblemWithoutLosingTheSave(): void
+    {
+        $this->viewStatus = ['current' => false, 'missing' => ReportingViewManager::VIEW_NAMES, 'added' => [], 'removed' => []];
+        $this->views->expects(self::exactly(2))->method('regenerate')->willReturnOnConsecutiveCalls(
+            ReportingViewManager::VIEW_NAMES,
+            self::throwException(new \RuntimeException('Access denied for user')),
+        );
+        $form = ['properties' => [], 'mappings' => []];
+        $request = $this->request($form);
+        $this->controller($request)->save($request);
+        self::assertSame(['Data model saved. Collection changes apply to future events. The reporting views were created.'], $request->getSession()->getFlashBag()->peek('success'));
+
+        $request = $this->request($form);
+        $this->controller($request)->save($request);
+        self::assertSame(['Data model saved. Collection changes apply to future events.'], $request->getSession()->getFlashBag()->peek('success'));
+        $warning = implode(' ', $request->getSession()->getFlashBag()->peek('warning'));
+        self::assertStringContainsString('could not be updated', $warning);
+        self::assertStringNotContainsString('Access denied', $warning);
     }
 
     public function testSavingTypedAndLegacyRowsPreservesTheirSharedValidationAndReportingAliases(): void
     {
-        $this->views->expects(self::never())->method('regenerate');
         $row = ['description' => '', 'column' => '', 'consent_required' => '1'];
         $request = $this->request(['properties' => [
             ['key' => 'total', 'column' => 'total_text', 'type' => 'double', 'numeric_column' => ' total_number '] + $row,

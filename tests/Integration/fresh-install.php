@@ -14,6 +14,10 @@ declare(strict_types=1);
  *   AGGREGATE_E2E_DB_HOST=127.0.0.1 AGGREGATE_E2E_DB_PORT=3306 \
  *   AGGREGATE_E2E_DB_NAME=aggregate AGGREGATE_E2E_DB_USER=... AGGREGATE_E2E_DB_PASSWORD=... \
  *   [AGGREGATE_E2E_TRUST_CERTIFICATE=1] php tests/Integration/fresh-install.php
+ *
+ * On a database server, the reporting database sync step also needs an empty
+ * database named like AGGREGATE_E2E_DB_NAME plus "_reporting", on the same
+ * server, in which the same user can create, fill and drop tables.
  */
 
 use Doctrine\DBAL\Connection;
@@ -139,9 +143,9 @@ function console(string $root, array $arguments, ?string $input = null): string
 }
 
 /** Runs a console command that may fail; returns its exit code, output and error output. */
-function consoleResult(string $root, array $arguments): array
+function consoleResult(string $root, array $arguments, ?string $input = null): array
 {
-    $process = new Process(['php', 'bin/console', ...$arguments, '--no-ansi'], $root, cleanEnvironment(), null, 600);
+    $process = new Process(['php', 'bin/console', ...$arguments, '--no-ansi'], $root, cleanEnvironment(), $input, 600);
     $process->run();
 
     return [(int) $process->getExitCode(), $process->getOutput(), $process->getErrorOutput()];
@@ -226,6 +230,8 @@ E2E::step('setup page: connect the database', static function () use ($browser, 
     }
     $browser->submit($form);
     E2E::check(is_file($root.'/.env.local'), 'The setup page did not write .env.local. '.pageProblem($browser));
+    // PostgreSQL keeps connections open between requests unless unticked.
+    E2E::check(($driver === 'pgsql') === str_contains((string) file_get_contents($root.'/.env.local'), '&persistent=true'), 'Persistent connections in .env.local do not match the default for '.$driver.'.');
     E2E::check(str_ends_with((string) $browser->getHistory()->current()->getUri(), '/install'), 'Expected /install next. '.pageProblem($browser));
 });
 
@@ -470,6 +476,137 @@ E2E::step('BigQuery dry run exports every syncable view with its schema', static
     E2E::check(str_contains(console($root, ['app:bigquery:check', '--no-connect']), 'off'), 'app:bigquery:check did not report the settings.');
 });
 
+E2E::step('reporting database sync copies every syncable view to a second database', static function () use ($root, $driver, $database, $browser, $base): void {
+    // The same server and user, another database: CI creates aggregate_reporting
+    // beforehand; SQLite needs only a file.
+    $environment = rtrim((string) file_get_contents($root.'/.env.local'))."\n";
+    $applicationUrl = (new Dotenv())->parse($environment)['DATABASE_URL'];
+    $config = Yaml::parseFile($root.'/config/aggregate.yaml');
+    $views = ['bi_anonymous_events_v1', 'bi_anonymous_goals_v1', 'bi_anonymous_geo_events_v1', 'bi_anonymous_daily_v1', 'bi_anonymous_daily_rollup_v1', 'bi_anonymous_coverage_v1', 'bi_dim_website_token_v1', 'bi_dim_event_name_v1',
+        'bi_dim_goal_event_v1', 'bi_dim_referrer_channel_v1', 'bi_dim_device_class_v1', 'bi_dim_viewport_bucket_v1', 'bi_dim_geo_area_v1', 'bi_glossary_values_v1', 'bi_glossary_columns_v1'];
+    $private = ['analytics_custom_events_v1', 'analytics_custom_pageviews_v1', 'analytics_custom_goals_v1', 'analytics_archived_events_v1', 'analytics_archived_pageviews_v1', 'analytics_archived_goals_v1'];
+    file_put_contents($root.'/config/aggregate.yaml', Yaml::dump(['reporting_database_enabled' => true, 'reporting_database_views' => $views, 'reporting_database_private_views' => $private] + $config, 4, 2));
+
+    // A URL that leads back to the application database is refused.
+    file_put_contents($root.'/.env.local', $environment."REPORTING_DATABASE_URL='".str_replace('%kernel.project_dir%/var/data.db', '%kernel.project_dir%/var/./data.db', $applicationUrl)."'\n");
+    [$status, $output, $errors] = consoleResult($root, ['app:reporting-database:check']);
+    E2E::check($status === 1 && str_contains((string) preg_replace('/\s+/', ' ', $output.$errors), 'names the application database'), 'The application database was accepted as the reporting database: '.$output.$errors);
+
+    file_put_contents($root.'/.env.local', $environment);
+
+    // The command line tests a connection before saving it, and refuses the application database.
+    $fields = $driver === 'sqlite'
+        ? ['type' => 'sqlite', 'database' => 'var/reporting.db']
+        : ['type' => $driver, 'host' => $database['host'], 'port' => $database['port'], 'database' => $database['name'].'_reporting', 'user' => $database['user'], 'password' => $database['password'],
+            'trust_certificate' => getenv('AGGREGATE_E2E_TRUST_CERTIFICATE') === '1' ? '1' : ''];
+    $options = static function (array $fields): array {
+        $options = ['--type='.$fields['type'], '--database='.$fields['database']];
+        foreach (['host', 'port', 'user'] as $key) {
+            if (($fields[$key] ?? '') !== '') {
+                $options[] = '--'.$key.'='.$fields[$key];
+            }
+        }
+
+        return [...$options, ...(($fields['trust_certificate'] ?? '') === '1' ? ['--trust-certificate'] : []), ...($fields['type'] === 'sqlite' ? [] : ['--password-stdin'])];
+    };
+    $refused = ['database' => $driver === 'sqlite' ? 'var/./data.db' : $database['name']] + $fields;
+    [$status, $output, $errors] = consoleResult($root, ['app:reporting-database:configure', ...$options($refused), '--no-interaction'], $database['password']."\n");
+    E2E::check($status === 1 && str_contains((string) preg_replace('/\s+/', ' ', $output.$errors), 'application database') && file_get_contents($root.'/.env.local') === $environment, 'app:reporting-database:configure accepted the application database: '.$output.$errors);
+
+    // The dashboard form refuses it too, then tests and saves the reporting database to .env.local.
+    $submit = static function (array $values) use ($browser, $base): string {
+        $form = $browser->request('GET', $base.'/dashboard/reporting-database')->filter('form#reporting-database-connection')->form();
+        $form['type']->select($values['type']);
+        foreach (['host', 'port', 'database', 'user', 'password'] as $key) {
+            $form[$key] = (string) ($values[$key] ?? '');
+        }
+        ($values['trust_certificate'] ?? '') === '1' ? $form['trust_certificate']->tick() : $form['trust_certificate']->untick();
+
+        return (string) preg_replace('/\s+/', ' ', implode(' ', $browser->submit($form)->filter('.notification')->each(static fn ($notice): string => $notice->text())));
+    };
+    $message = $submit($refused);
+    E2E::check(str_contains($message, 'The connection was not saved') && str_contains($message, 'application database') && file_get_contents($root.'/.env.local') === $environment, 'The dashboard accepted the application database: '.$message.' '.pageProblem($browser));
+    $message = $submit($fields);
+    $saved = (new Dotenv())->parse((string) file_get_contents($root.'/.env.local'));
+    E2E::check(str_contains($message, 'saved to .env.local') && isset($saved['REPORTING_DATABASE_URL']) && $saved['DATABASE_URL'] === $applicationUrl, 'The dashboard did not save the connection: '.$message.' '.pageProblem($browser));
+    $reportingUrl = $saved['REPORTING_DATABASE_URL'];
+    if ($driver !== 'sqlite') {
+        // The form never shows the password; leaving it empty keeps the saved one.
+        E2E::check(!str_contains((string) $browser->getInternalResponse()->getContent(), rawurlencode($database['password'])) && !str_contains((string) $browser->getInternalResponse()->getContent(), $database['password']), 'The page shows the saved password.');
+        $message = $submit(['password' => ''] + $fields);
+        E2E::check(str_contains($message, 'saved to .env.local') && (new Dotenv())->parse((string) file_get_contents($root.'/.env.local'))['REPORTING_DATABASE_URL'] === $reportingUrl, 'Saving with an empty password: '.$message);
+    }
+    // SymfonyStyle wraps long lines.
+    $check = (string) preg_replace('/\s+/', ' ', console($root, ['app:reporting-database:check']));
+    E2E::check(str_contains($check, 'can create and drop tables') && str_contains($check, 'No views have been copied yet'), 'app:reporting-database:check: '.$check);
+
+    $reporting = static function () use ($root, $reportingUrl): Connection {
+        $scheme = ['mssql' => 'pdo_sqlsrv', 'mysql' => 'pdo_mysql', 'postgresql' => 'pdo_pgsql', 'sqlite' => 'pdo_sqlite'];
+
+        return DriverManager::getConnection((new DsnParser($scheme))->parse(str_replace('%kernel.project_dir%', $root, $reportingUrl)));
+    };
+    $application = connection($root);
+    // Twice: the first run creates each table, the second replaces it.
+    foreach (['create', 'replace'] as $round) {
+        $result = json_decode(console($root, ['app:reporting-database:sync', '--force', '--json']), true);
+        $statuses = array_column($result['results'] ?? [], 'status', 'view');
+        E2E::check($statuses === array_fill_keys([...$views, ...$private], 'synced'), $round.': '.json_encode($result));
+        $copy = $reporting();
+        foreach ([...$views, ...$private] as $view) {
+            $expected = (int) $application->fetchOne('SELECT COUNT(*) FROM '.$view);
+            $copied = (int) $copy->fetchOne('SELECT COUNT(*) FROM '.$view);
+            E2E::check($copied === $expected && ($statuses[$view] ?? null) === 'synced' && ($result['results'][array_search($view, array_column($result['results'], 'view'), true)]['rows'] ?? null) === $expected, sprintf('%s %s: %d rows copied, %d in the view.', $round, $view, $copied, $expected));
+        }
+        $copy->close();
+    }
+
+    $copy = $reporting();
+    // Staging and previous tables are gone; only the copies remain.
+    $tables = array_map(static fn ($name): string => strtolower($name->getUnqualifiedName()->getValue()), $copy->createSchemaManager()->introspectTableNames());
+    sort($tables);
+    $expectedTables = [...$views, ...$private];
+    sort($expectedTables);
+    E2E::check($tables === $expectedTables, 'Tables in the reporting database: '.implode(', ', $tables));
+    // Values keep their types on this engine.
+    E2E::check((int) $copy->fetchOne("SELECT SUM(event_count) FROM bi_anonymous_goals_v1 WHERE goal_event = 'purchase'") === 6, 'Copied goal counts differ.');
+    $purchases = $copy->fetchAllAssociative("SELECT plan_name, total_minor_number, discount_rate_number, created_at FROM analytics_custom_goals_v1 WHERE goal_event = 'purchase'");
+    E2E::check(count($purchases) === 6, 'Copied custom goals: '.json_encode($purchases));
+    foreach ($purchases as $row) {
+        E2E::check($row['plan_name'] === 'pro' && (int) $row['total_minor_number'] === 4999 && abs((float) $row['discount_rate_number'] - 0.1) < 1e-12
+            && preg_match('/^[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}:[0-9]{2}/', (string) $row['created_at']) === 1, 'Copied custom values: '.json_encode($row));
+    }
+    // Sorted here: the two databases may collate text differently.
+    $labels = static function (Connection $db): array {
+        $rows = array_map(static fn (array $row): string => json_encode(array_map(static fn (mixed $value): ?string => $value === null ? null : (string) $value, $row), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE), $db->fetchAllNumeric('SELECT dimension, code, locale, label FROM bi_glossary_values_v1'));
+        sort($rows);
+
+        return $rows;
+    };
+    E2E::check($labels($copy) === $labels($application), 'Copied glossary labels differ from the view.');
+    $flags = $copy->fetchAssociative("SELECT is_fallback, is_default_locale FROM bi_glossary_values_v1 WHERE dimension = 'goal_event' AND code = 'purchase'");
+    E2E::check(is_array($flags) && in_array($flags['is_default_locale'], [true, 1, '1'], true), 'Copied glossary flags: '.json_encode($flags));
+    $copy->close();
+
+    E2E::check((int) $application->fetchOne("SELECT COUNT(*) FROM processing_tasks WHERE task_type = 'reporting_database_sync' AND status = 'succeeded'") === 2 * (count($views) + count($private)), 'Reporting database syncs were not recorded.');
+    $check = (string) preg_replace('/\s+/', ' ', console($root, ['app:reporting-database:check']));
+    E2E::check(str_contains($check, (count($views) + count($private)).' copied views found'), 'app:reporting-database:check after the sync: '.$check);
+    $page = $browser->request('GET', $base.'/dashboard/reporting-database');
+    E2E::check($page->filter('.reporting-database-status .tag.is-success')->count() === count($views) + count($private) && str_contains($page->text(), $driver === 'sqlite' ? 'var/reporting.db' : 'aggregate_reporting'), 'The reporting database page: '.pageProblem($browser));
+
+    // Remove connection deletes only that line from .env.local.
+    $remove = $page->filter('form#reporting-database-remove-connection')->form();
+    $browser->submit($remove);
+    E2E::check(file_get_contents($root.'/.env.local') === $environment, 'Removing the connection left .env.local as: '.file_get_contents($root.'/.env.local'));
+
+    // The command line saves the same connection, reading the password from standard input.
+    [$status, $output, $errors] = consoleResult($root, ['app:reporting-database:configure', ...$options($fields), '--no-interaction'], $database['password']."\n");
+    E2E::check($status === 0 && (new Dotenv())->parse((string) file_get_contents($root.'/.env.local'))['REPORTING_DATABASE_URL'] === $reportingUrl, 'app:reporting-database:configure: '.$output.$errors);
+    console($root, ['app:reporting-database:configure', '--remove']);
+    E2E::check(file_get_contents($root.'/.env.local') === $environment, 'app:reporting-database:configure --remove left: '.file_get_contents($root.'/.env.local'));
+
+    file_put_contents($root.'/config/aggregate.yaml', Yaml::dump($config, 4, 2));
+});
+
 E2E::step('small cells are suppressed', static function () use ($root, $collect): void {
     $db = connection($root);
     $before = (int) $db->fetchOne('SELECT MAX(id) FROM events');
@@ -545,6 +682,27 @@ E2E::step('the roll-up view pools withheld cells and the coverage view bands the
         && $rank[$bands['bi_anonymous_daily_rollup_v1']] >= $rank[$bands['bi_anonymous_daily_v1']], 'Coverage bands: '.json_encode($bands));
 });
 
+E2E::step('the data model page adds the built-in columns after the deployed ones and updates the views', static function () use ($root, $browser, $base, $collect): void {
+    $crawler = $browser->request('GET', $base.'/dashboard/data-model');
+    $form = $crawler->filter('form#data-model-form')->form();
+    E2E::check(!$form['builtin[org_internal_traffic][include]']->hasValue() && !$form['builtin[page_sequence][include]']->hasValue(), 'The e2e model unexpectedly has built-in columns. '.pageProblem($browser));
+    $form['page_sequence_enabled']->select('1');
+    $form['builtin[org_internal_traffic][include]']->tick();
+    $form['builtin[page_sequence][include]']->tick();
+    $page = $browser->submit($form);
+    $message = (string) preg_replace('/\s+/', ' ', implode(' ', $page->filter('.notification')->each(static fn ($notice): string => $notice->text())));
+    E2E::check(str_contains($message, 'The reporting views were updated: added org_internal_traffic, page_sequence.'), 'Saving the model: '.$message.' '.pageProblem($browser));
+
+    $collect(['eventName' => 'view', 'pagePath' => '/built-in-columns', 'referrerChannel' => 'direct', 'deviceClass' => 'desktop', 'viewportBucket' => 'large',
+        'org_internal_traffic' => true, 'customData' => ['page_sequence' => 3, 'plan' => 'team']]);
+    $row = connection($root)->fetchAssociative("SELECT * FROM analytics_custom_pageviews_v1 WHERE page_path = '/built-in-columns'");
+    E2E::check(is_array($row) && array_slice(array_map('strtolower', array_keys($row)), -6) === ['plan_name', 'total_minor_text', 'total_minor_number', 'discount_rate_number', 'org_internal_traffic', 'page_sequence'], 'Columns after the save: '.json_encode($row));
+    E2E::check($row['org_internal_traffic'] === 'true' && (int) $row['page_sequence'] === 3 && $row['plan_name'] === 'team', 'Built-in column values: '.json_encode($row));
+    [$status, $output] = consoleResult($root, ['app:analytics:views:regenerate', '--check']);
+    E2E::check($status === 0, 'app:analytics:views:regenerate --check: '.$output);
+    E2E::check(str_contains($browser->request('GET', $base.'/dashboard/data-model/reporting')->text(''), 'The views match the saved model.'), 'The Reporting views page: '.pageProblem($browser));
+});
+
 E2E::step('retention deletes expired data', static function () use ($root): void {
     $config = Yaml::parseFile($root.'/config/aggregate.yaml');
     // Raw retention may not be shorter than the archive period, so archive after one day.
@@ -591,6 +749,42 @@ E2E::step('processing tasks and the audit trail record syncs and maintenance, an
     $audit = $db->fetchAllAssociative('SELECT operation, outcome, details FROM audit_trail');
     E2E::check(count($audit) === 1 && $audit[0]['operation'] === 'analytics_maintenance' && str_contains((string) $audit[0]['details'], 'audit trail entr'), 'Audit trail after the purge: '.json_encode($audit));
     file_put_contents($root.'/config/aggregate.yaml', Yaml::dump($config, 4, 2));
+});
+
+E2E::step('one scheduled task runs the due jobs and the dashboard shows that it works', static function () use ($root, $browser, $base): void {
+    [$status, $output] = consoleResult($root, ['app:scheduler:status', '--json']);
+    $state = json_decode($output, true);
+    E2E::check($status === 1 && ($state['state'] ?? null) === 'never' && str_contains((string) ($state['setup']['cron'] ?? ''), 'bin/console app:scheduler:run --no-interaction'), 'Status before the first run: '.$output);
+    E2E::check(str_contains($browser->request('GET', $base.'/dashboard/scheduled-tasks')->filter('#scheduler-status-title')->text(''), 'Not set up'), 'The Scheduled tasks page before the first run: '.pageProblem($browser));
+
+    // Maintenance ran in the previous step; make it due again.
+    $db = connection($root);
+    $earlier = new \DateTimeImmutable('-2 days', new \DateTimeZone('UTC'));
+    $db->executeStatement("UPDATE processing_tasks SET started_at = :at, finished_at = :at WHERE task_type = 'analytics_maintenance'", ['at' => $earlier], ['at' => Types::DATETIME_IMMUTABLE]);
+
+    // Without a terminal, as cron and Plesk run it.
+    $run = json_decode(console($root, ['app:scheduler:run', '--json']), true);
+    E2E::check(($run['trigger'] ?? null) === 'schedule' && array_column($run['results'] ?? [], 'status', 'job') === ['analytics_maintenance' => 'ran', 'bigquery_sync' => 'off', 'reporting_database_sync' => 'off'], 'app:scheduler:run: '.json_encode($run));
+    $latest = $db->fetchAssociative("SELECT status, triggered_by FROM processing_tasks WHERE task_type = 'analytics_maintenance' AND started_at > :earlier ORDER BY id DESC", ['earlier' => $earlier->modify('+1 day')], ['earlier' => Types::DATETIME_IMMUTABLE]);
+    E2E::check($latest === ['status' => 'succeeded', 'triggered_by' => 'schedule'], 'The scheduled maintenance run was not recorded: '.json_encode($latest));
+    // Nothing is due now, so the next run prints nothing for cron to mail.
+    [$status, $output, $errors] = consoleResult($root, ['app:scheduler:run']);
+    E2E::check($status === 0 && trim($output.$errors) === '', 'A run with nothing due printed: '.$output.$errors);
+
+    [$status, $output] = consoleResult($root, ['app:scheduler:status']);
+    E2E::check($status === 0 && str_contains((string) preg_replace('/\s+/', ' ', $output), 'The scheduled task last ran'), 'app:scheduler:status after a scheduled run: '.$output);
+    $page = $browser->request('GET', $base.'/dashboard/scheduled-tasks');
+    E2E::check(str_contains($page->filter('#scheduler-status-title')->text(''), 'Working') && str_contains($page->filter('.scheduled-tasks-results')->text(''), 'Analytics maintenance'), 'The Scheduled tasks page after a scheduled run: '.pageProblem($browser));
+
+    // Run due jobs now starts the scheduler in the background as the administrator.
+    $browser->submit($page->filter('form[action$="/dashboard/scheduled-tasks/run"]')->form());
+    $record = [];
+    for ($attempt = 0; $attempt < 100 && ($record['manual']['trigger'] ?? null) !== 'dashboard'; ++$attempt) {
+        usleep(200000);
+        $record = json_decode((string) @file_get_contents($root.'/var/scheduler/last-run.json'), true) ?: [];
+    }
+    E2E::check(($record['manual']['trigger'] ?? null) === 'dashboard', 'Run due jobs now did not run the scheduler: '.json_encode($record).' '.@file_get_contents($root.'/var/scheduler/last-output.log'));
+    E2E::check(str_contains($browser->request('GET', $base.'/dashboard/scheduled-tasks')->text(''), 'Last run by hand'), 'The run by hand is not shown: '.pageProblem($browser));
 });
 
 $version = (string) connection($root)->fetchOne(match ($driver) {

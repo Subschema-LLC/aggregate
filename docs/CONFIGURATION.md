@@ -15,6 +15,7 @@ Use this guide for application settings and runtime overrides. Run commands from
 - [BI glossary](#bi-glossary)
 - [Archiving and retention](#archiving-and-retention)
 - [BigQuery sync](#bigquery-sync)
+- [Reporting database](#reporting-database)
 - [Main navigation](#main-navigation)
 - [Conversion goals](#conversion-goals)
 - [Coarse geography](#optional-coarse-geography)
@@ -24,7 +25,7 @@ Use this guide for application settings and runtime overrides. Run commands from
 
 Configuration has separate sources of truth:
 
-- **Environment files and server variables:** Symfony infrastructure — database connection, message queue, app secret, and explicit proxy trust. Keep deployment values in untracked local files or server configuration.
+- **Environment files and server variables:** Symfony infrastructure — database connection, the optional [reporting database](#reporting-database) connection, message queue, app secret, and explicit proxy trust. Keep deployment values in untracked local files or server configuration.
 - **`config/aggregate.yaml`** (app-level, example committed): Analytics-specific settings — application branding, privacy measurement controls, internal traffic markers and sharing token, lifecycle policy, BigQuery sync, rate limit, JS namespace, dashboard toggle, and deployment-wide feature flags.
 - **`config/secrets/`** (untracked): Credentials Aggregate writes for itself, such as the BigQuery service account key and Google sign-in, readable only by the application's user and kept by updates.
 - **`config/goals.yaml`** (app-level, committed): Stable conversion-goal codes and whether each is enabled for anonymous collection. Customize it in `config/goals.local.yaml` (see [Local overrides](#local-overrides-for-shipped-defaults)).
@@ -35,6 +36,15 @@ Configuration has separate sources of truth:
 - **`anonymous_min_cell_count` / `anonymous_geo_min_cell_count`** (deployment config): BI disclosure thresholds in `config/aggregate*.yaml`, managed through the BI disclosure dashboard form, YAML, or environment overrides, and applied with `app:analytics:bi-views:regenerate` (see [BI disclosure thresholds](#bi-disclosure-thresholds)).
 
 The database holds no operator settings: it stores collected events, archives, users and operational records. Tables such as `analytics_glossary` are generated copies of YAML for BI joins.
+
+### When an edit takes effect
+
+Edits to `config/aggregate.yaml`, `config/websites.yaml` and the tag manager's site files take effect on the next request, whether they come from the dashboard, the command line or an editor. Aggregate reads these files on every request and keeps only the parsed result of an unchanged file in `var/cache/<environment>/parsed-yaml`, keyed by the file's exact contents, so there is no cache to clear after an edit. An edit that is not valid YAML, or not a valid configuration, stops collection until it is fixed rather than falling back to the previous settings.
+
+A few settings are built into Symfony's compiled container or into SQL, and need a step after an edit:
+
+- `dashboard_enabled` or `DASHBOARD_ENABLED`, and Symfony's own files under `config/packages/` and the `services*.yaml` and `routes*.yaml` files: run `php bin/console cache:clear`, then reload PHP-FPM gracefully. Clearing the cache also removes the parsed-YAML entries, which are rebuilt on the next request. Measured during live traffic, this fails no collection requests when PHP-FPM lets busy workers finish; see [clearing the cache under traffic](LOAD-TESTING.md#clearing-the-cache-under-traffic).
+- The BI disclosure thresholds: run `php bin/console app:analytics:bi-views:regenerate` (see [BI disclosure thresholds](#bi-disclosure-thresholds)).
 
 The web installer at `/install` is optional and only needed when you want dashboard-based setup.
 
@@ -101,6 +111,11 @@ Connection string formats for `DATABASE_URL` (see [Database Guide](DATABASE.md))
 directory; no other `%` sequence is interpreted, so encode special characters
 in passwords as usual (`@` as `%40`). A release ZIP's browser setup page writes
 `.env.local` with the encoded connection and detected version for you.
+
+The optional `REPORTING_DATABASE_URL` uses the same formats for a second
+database that receives copies of the reporting views. The Reporting database
+page and `app:reporting-database:configure` test it and write it to
+`.env.local`; see [Reporting database](#reporting-database).
 
 MySQL and MariaDB version hints must include the patch component. See the
 [DBAL 4 upgrade notes](DATABASE.md#upgrade-to-doctrine-dbal-4) before updating an
@@ -346,7 +361,7 @@ developer/contributor instructions.
 
 Every standard-profile event carries `org_internal_traffic`, `true` when the browser holds the organization marker on that website and `false` otherwise, stored in the existing event JSON under that fixed key; no migration is needed. The browser marker defaults to the cookie `orgInternalTraffic=true`. Configure `internal_traffic_storage`, `internal_traffic_name`, `internal_traffic_value`, `internal_traffic_cookie_domain`, and `internal_traffic_share_token` in the active YAML environment, or use the Organization traffic admin page; the marker's name never changes the JSON key.
 
-Team members mark a browser through the marking links on the Organization traffic page or the share page: each link opens a tracked website, whose tracker saves the marker in that website's own storage. See [organization traffic](PRIVACY-COMPLIANCE.md#organization-traffic) for how marking links work, browser scope, installation-generated sharing tokens, downloadable marker pages, and Power BI/Tableau filtering. Existing grouped views and archives omit this JSON flag.
+Team members mark a browser through the marking links on the Organization traffic page or the share page: each link opens a tracked website, whose tracker saves the marker in that website's own storage. See [organization traffic](PRIVACY-COMPLIANCE.md#organization-traffic) for how marking links work, browser scope, installation-generated sharing tokens, downloadable marker pages, and Power BI/Tableau filtering. The private `analytics_custom_*` views show the flag as an `org_internal_traffic` column, a [built-in property](DATA-MODEL.md#built-in-properties) of the data model; existing grouped views and archives omit it.
 
 ## BI glossary
 
@@ -376,7 +391,7 @@ Use **Collection → Data model** at `/dashboard/data-model` to define propertie
 
 Standard `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`, and `utm_id` map to properties with the same names and require enhanced consent by default. For anonymous attribution, prefer only `utm_medium` with broad channel values. This advice is overridable: select **Allow without consent** or set `consent_required: false` for any property. Detailed campaign data may contain search text or identifiers, and even medium values require review; the UI and [data model guide](DATA-MODEL.md) document this warning.
 
-The guide includes complete YAML examples, many-to-one mappings, strict optional value types, additive numeric columns, and `app:analytics:views:regenerate`. Saving changes future collection; explicit regeneration applies reporting columns to `analytics_custom_*` views over retained raw events. Existing grouped BI views and archives retain their contracts. Generate synthetic JSON through the UI or `app:analytics:examples`; the [event examples guide](EVENT-EXAMPLES.md) includes the flat ecommerce recipe and numeric calculations.
+The guide includes complete YAML examples, many-to-one mappings, strict optional value types, additive numeric columns, the [built-in properties](DATA-MODEL.md#built-in-properties) `org_internal_traffic` and `page_sequence`, and `app:analytics:views:regenerate`. Saving the model on the Data model page changes future collection and updates the `analytics_custom_*` views over retained raw events; after a YAML edit, run `app:analytics:views:regenerate`. Existing grouped BI views and archives retain their contracts. Generate synthetic JSON through the UI or `app:analytics:examples`; the [event examples guide](EVENT-EXAMPLES.md) includes the flat ecommerce recipe and numeric calculations.
 
 An optional [JavaScript minification build](JS-BUILD.md) produces the tracker and drop-in artifacts. Request `/aggregate.js?min=1` to use the built tracker with current public configuration; missing or stale builds fall back to configured source.
 
@@ -384,7 +399,7 @@ An optional [JavaScript minification build](JS-BUILD.md) produces the tracker an
 
 Administrators can edit the nine lifecycle settings at `/dashboard/data-lifecycle`: the seven `analytics_*` settings below and the two record retention periods. API-only deployments can manage the same keys in `config/aggregate.yaml`. Uppercase environment variables (for example, `ANALYTICS_RETENTION_ENABLED`) take precedence and lock the corresponding UI controls. Values are validated strictly. When archiving and retention are both enabled, each raw retention period must be at least `analytics_archive_after_days`. Whenever retention is enabled, archive retention must be at least the longer raw retention period so marked source rows cannot disappear from reporting early.
 
-Run maintenance outside the web process, normally once per day. Both features are disabled by default; inspect a dry run before enabling irreversible deletion:
+Maintenance runs outside the web process, once a day, from the server's one [scheduled task](SCHEDULED-TASKS.md) (`app:scheduler:run`, every five minutes). Both features are disabled by default; inspect a dry run before enabling irreversible deletion:
 
 When retention is enabled without archiving, eligible raw rows are deleted without first preserving aggregate history.
 
@@ -397,7 +412,7 @@ Archiving creates private, unsuppressed aggregate cells and marks the source row
 
 ### Task and audit records
 
-Background jobs (each BigQuery view sync and each maintenance run) are recorded in
+Background jobs (each BigQuery or reporting database view sync and each maintenance run) are recorded in
 the private [`processing_tasks` and `audit_trail` tables](DATABASE.md#processing-tasks-and-audit-trail).
 Maintenance purges them after these periods; `0` keeps them indefinitely. The
 latest success and the latest failure of each job are always kept so schedules
@@ -408,8 +423,8 @@ and status pages still know when it last ran.
 | `processing_tasks_retention_days` | `PROCESSING_TASKS_RETENTION_DAYS` | `90` | `0`–`36500` |
 | `audit_trail_retention_days` | `AUDIT_TRAIL_RETENTION_DAYS` | `365` | `0`–`36500` |
 
-Purging is on by default, so schedule `app:analytics:maintain` daily even when
-archiving and retention are off. Its dry run shows how many records would be
+Purging is on by default, so set up the [scheduled task](SCHEDULED-TASKS.md)
+even when archiving and retention are off. Its dry run shows how many records would be
 purged, and each run records what it archived, deleted and purged.
 
 ## BigQuery sync
@@ -417,14 +432,35 @@ purged, and each run records what it archived, deleted and purged.
 **Reporting → BigQuery sync** at `/dashboard/bigquery` copies selected reporting
 views to a BigQuery dataset on an interval. The `bigquery_*` keys in the active
 YAML environment hold the same settings, with uppercase environment-variable
-overrides that lock the matching fields; `app:bigquery:sync` (scheduled every five
-minutes) and `app:bigquery:check` work with the dashboard disabled. Approved views
+overrides that lock the matching fields; the [scheduled task](SCHEDULED-TASKS.md),
+`app:bigquery:sync` and `app:bigquery:check` work with the dashboard disabled. Approved views
 are selected under `bigquery_views`; row-level or unsuppressed views must be
 listed separately under `bigquery_private_views`. Credentials are stored in
 `config/secrets`. Signing in with Google needs the dashboard; headless
 deployments use a service account key or Google Cloud credentials. See
 [Sync to BigQuery](BIGQUERY.md) for every setting, the sign-in methods, column
 types and privacy notes.
+
+## Reporting database
+
+**Reporting → Reporting database** at `/dashboard/reporting-database` copies
+selected reporting views into same-named tables of a second database on an
+interval, so BI users can connect there instead of to the application database.
+The `reporting_database_*` keys in the active YAML environment hold the
+settings, with uppercase environment-variable overrides that lock the matching
+fields; the [scheduled task](SCHEDULED-TASKS.md), `app:reporting-database:sync`
+and `app:reporting-database:check` work with the dashboard disabled. Approved views
+are selected under `reporting_database_views`; row-level or unsuppressed views
+must be listed separately under `reporting_database_private_views`.
+
+The connection is the documented exception to keeping settings in YAML:
+`REPORTING_DATABASE_URL` is infrastructure, like `DATABASE_URL`, and holds a
+password, so it lives in `.env.local` or the server environment and has no YAML
+key. The admin page and `app:reporting-database:configure` test a connection
+and write it to `.env.local`, as the setup page does for `DATABASE_URL`; they
+never show the password back. A value set in the server environment or a file
+that overrides `.env.local` is left alone, and the page says where to change it. See [Reporting database](REPORTING-DATABASE.md) for the database
+setup on each engine, every setting, column types and privacy notes.
 
 ## Main navigation
 
@@ -548,7 +584,9 @@ administration. Each settings page loads the data needed for its own task.
 | Observed properties | `/dashboard/data-model/discovery` | Explicit bounded metadata discovery |
 | Reporting views | `/dashboard/data-model/reporting` | Saved SQL preview and explicit regeneration |
 | BigQuery sync | `/dashboard/bigquery` | Sign-in, views, schedule and status of the BigQuery copy |
+| Reporting database | `/dashboard/reporting-database` | Connection (tested, saved to `.env.local`), views, schedule and status of the reporting database copy |
 | Data lifecycle | `/dashboard/data-lifecycle` | Archiving, retention, task and audit record purging, and the last maintenance run |
+| Scheduled tasks | `/dashboard/scheduled-tasks` | Whether the server runs `app:scheduler:run`, the exact Plesk, cron or systemd settings for this server, each job's last and next run, and **Run due jobs now** ([guide](SCHEDULED-TASKS.md)) |
 
 Settings, users, and model pages require an administrator. Existing POST paths
 remain available and return to the page that owns the form. The general-settings
@@ -652,7 +690,7 @@ Or override per-script tag:
 Then use your custom namespace:
 ```javascript
 window.Company1Analytics.setConsent(true);
-window.Company1Analytics.emit('signup', {plan: 'pro'});
+window.Company1Analytics.emit({eventName: 'signup', customData: {plan: 'pro'}});
 ```
 
 The namespace also names the [tracking attributes](TRACKING.md#track-clicks-and-forms-with-data-attributes),

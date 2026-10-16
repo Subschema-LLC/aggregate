@@ -206,7 +206,9 @@ final class EventExampleGeneratorTest extends TestCase
 
         self::assertSame($expected, array_keys($bundle['examples']));
         self::assertTrue($bundle['synthetic']);
-        self::assertCount(6, $bundle['properties']);
+        // Six UTM properties and the two built-in ones, which are never submitted.
+        self::assertCount(8, $bundle['properties']);
+        self::assertSame(['not_submittable', 'not_submittable'], array_column(array_slice($bundle['properties'], 6), 'collection'));
         self::assertNotEmpty($bundle['notes']);
     }
 
@@ -369,6 +371,32 @@ final class EventExampleGeneratorTest extends TestCase
             self::assertStringContainsString('strict collection profile is active', $bundle['notes'][0]);
         }
         self::assertArrayNotHasKey('strict', $this->generator([])->generate()['examples']);
+    }
+
+    public function testTheTrackerCallUsesTheNamespaceAndPassesOnlyTheEventsOwnProperties(): void
+    {
+        file_put_contents($this->projectDir.'/config/aggregate.yaml', Yaml::dump([
+            'js_namespace' => 'Optin',
+            'page_sequence_enabled' => true,
+            'custom_data_properties' => ['plan' => ['consent_required' => true], 'utm_medium' => ['consent_required' => false]],
+        ], 6, 2));
+        $config = new AggregateConfigLoader($this->projectDir, 'test');
+        $generator = new EventExampleGenerator(new CustomDataSettings($config), $config);
+
+        $tracker = $generator->generate()['tracker'];
+        self::assertSame('Optin.emit', $tracker['method']);
+        // The tracker adds page_sequence and org_internal_traffic itself.
+        self::assertSame(['eventName' => 'button_click', 'customData' => ['plan' => 'example', 'utm_medium' => 'email']], json_decode(json_encode($tracker['event']), true));
+        self::assertSame("Optin.emit({\n    \"eventName\": \"button_click\",\n    \"customData\": {\n        \"plan\": \"example\",\n        \"utm_medium\": \"email\"\n    }\n});", $tracker['javascript']);
+        self::assertSame("Optin.emit(\"button_click\", {\n    \"plan\": \"example\",\n    \"utm_medium\": \"email\"\n});", $tracker['short_javascript']);
+        self::assertStringContainsString('a Send an Aggregate event action takes tracker.event', implode(' ', $generator->generate()['notes']));
+        self::assertSame("Optin.emit({\n    \"eventName\": \"purchase\",", implode("\n", array_slice(explode("\n", $generator->generate('ecommerce')['tracker']['javascript']), 0, 2)));
+        self::assertArrayHasKey('tracker', json_decode($generator->exportJson('anonymous'), true), 'the call does not depend on the mode');
+
+        file_put_contents($this->projectDir.'/config/aggregate.yaml', Yaml::dump(['js_namespace' => 'not a name', 'custom_data_properties' => [], 'query_parameter_mappings' => []], 6, 2));
+        $config = new AggregateConfigLoader($this->projectDir, 'test');
+        $empty = (new EventExampleGenerator(new CustomDataSettings($config), $config))->generate()['tracker'];
+        self::assertSame(['method' => 'Aggregate.emit', 'event' => ['eventName' => 'button_click'], 'javascript' => "Aggregate.emit({\n    \"eventName\": \"button_click\"\n});", 'short_javascript' => 'Aggregate.emit("button_click");'], $empty);
     }
 
     private function generator(array $values): EventExampleGenerator

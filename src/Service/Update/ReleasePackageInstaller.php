@@ -40,7 +40,7 @@ class ReleasePackageInstaller
         }
         $this->removeTree($stagingDir);
         if (!@mkdir($stagingDir, 0775, true) && !is_dir($stagingDir)) {
-            throw new \RuntimeException('The update staging directory could not be created. Check write access to var/updates.');
+            throw new \RuntimeException('The update staging directory could not be created: '.FileOwner::explain($stagingDir, $this->projectDir));
         }
         $zip = new \ZipArchive();
         if ($zip->open($archivePath, \ZipArchive::RDONLY) !== true) {

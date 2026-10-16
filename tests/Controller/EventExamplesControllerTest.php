@@ -81,9 +81,19 @@ final class EventExamplesControllerTest extends TestCase
         self::assertSame('granted', $enhanced['consentState']);
         self::assertArrayHasKey('plan', $enhanced['customData']);
         self::assertSame('REPLACE_WITH_PUBLIC_WEBSITE_TOKEN', $enhanced['websiteToken']);
-        self::assertCount(1, $crawler->filter('details[open] #example-anonymous'));
-        self::assertCount(0, $crawler->filter('details[open] #example-enhanced'));
-        self::assertSame('example-anonymous', $crawler->filter('pre code[id^="example-"]')->first()->attr('id'));
+        // A page calls emit(); the request bodies are for direct clients and stay closed.
+        self::assertCount(0, $crawler->filter('details[open]'));
+        self::assertSame(['example-tracker-call', 'example-tracker-short', 'example-tag-event', 'example-anonymous', 'example-enhanced'], $crawler->filter('pre code[id^="example-"]')->each(static fn (Crawler $code): ?string => $code->attr('id')));
+        $properties = array_diff_key($enhanced['customData'], CustomDataSettings::BUILTIN_PROPERTIES);
+        self::assertArrayHasKey('plan', $properties);
+        $event = ['eventName' => 'button_click', 'customData' => $properties];
+        self::assertSame('Aggregate.emit('.json_encode($event, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES).');', $crawler->filter('#example-tracker-call')->text(null, false));
+        self::assertSame('Aggregate.emit("button_click", '.json_encode($properties, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES).');', $crawler->filter('#example-tracker-short')->text(null, false));
+        self::assertSame($event, json_decode($crawler->filter('#example-tag-event')->text(), true, flags: JSON_THROW_ON_ERROR));
+        self::assertStringContainsString('the tracker sets these other fields itself', $crawler->text());
+        foreach (['tracker-call', 'tag-event'] as $target) {
+            self::assertCount(1, $crawler->filter('button[type="button"][data-copy-example="example-'.$target.'"]'));
+        }
         foreach (['anonymous', 'enhanced'] as $mode) {
             self::assertCount(1, $crawler->filter('button[type="button"][data-copy-example="example-'.$mode.'"]'));
             self::assertCount(1, $crawler->filter('a[href="/dashboard/data-model/examples/download?mode='.$mode.'&example=model"]'));
@@ -106,12 +116,14 @@ final class EventExamplesControllerTest extends TestCase
         self::assertSame($before, file_get_contents($this->projectDir.'/config/aggregate.yaml'));
         self::assertSame('Ecommerce examples', $crawler->filter('h1')->text());
         self::assertCount(1, $crawler->filter('button[data-copy-example="ecommerce-model-yaml"][data-copy-format="YAML"]'));
-        self::assertCount(1, $crawler->filter('details[open] #example-enhanced'));
-        self::assertCount(0, $crawler->filter('details[open] #example-anonymous'));
-        self::assertSame('example-enhanced', $crawler->filter('pre code[id^="example-"]')->first()->attr('id'));
-        self::assertSame('Ecommerce purchase JSON', $crawler->filter('details[open] summary')->text());
-        self::assertStringContainsString('explicit analytics consent', $crawler->filter('details[open]')->text());
+        self::assertCount(0, $crawler->filter('details[open] [id^="example-"]'));
+        self::assertSame(['example-tracker-call', 'example-tracker-short', 'example-tag-event', 'example-enhanced', 'example-anonymous'], $crawler->filter('pre code[id^="example-"]')->each(static fn (Crawler $code): ?string => $code->attr('id')));
+        self::assertSame('Ecommerce purchase request', $crawler->filter('details.box summary')->first()->text());
+        self::assertStringContainsString('explicit analytics consent', $crawler->filter('details.box')->first()->text());
         $generated = json_decode((new EventExampleGenerator($this->settings))->exportJson('all', 'ecommerce'), true, flags: JSON_THROW_ON_ERROR);
+        self::assertSame($generated['tracker']['javascript'], $crawler->filter('#example-tracker-call')->text(null, false));
+        self::assertStringStartsWith('Aggregate.emit({'."\n".'    "eventName": "purchase",'."\n".'    "customData": {'."\n".'        "currency": "USD",', $generated['tracker']['javascript']);
+        self::assertSame(['eventName' => 'purchase', 'customData' => $generated['examples']['enhanced']['payload']['customData']], $generated['tracker']['event']);
         foreach (['anonymous', 'enhanced'] as $mode) {
             $payload = json_decode($crawler->filter('#example-'.$mode)->text(), true, flags: JSON_THROW_ON_ERROR);
             self::assertSame($generated['examples'][$mode]['payload'], $payload);
@@ -127,7 +139,7 @@ final class EventExamplesControllerTest extends TestCase
         $validated = $this->settings->validate($recommended);
         self::assertNotEmpty($validated['custom_data_properties']);
         self::assertSame(array_keys($recommended['custom_data_properties']), array_keys($validated['custom_data_properties']));
-        self::assertCount(3, $crawler->filter('[data-copy-example]'));
+        self::assertCount(5, $crawler->filter('[data-copy-example]'));
         self::assertStringContainsString('does not change your saved model', $crawler->text());
         self::assertStringContainsString('Money is stored in integer minor units', $crawler->text());
         $this->assertNoSecrets((string) $response->getContent());

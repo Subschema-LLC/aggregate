@@ -581,13 +581,13 @@ LEFT JOIN bi_dim_goal_event_v1 d ON d.goal_event = f.goal_event;</code></pre>
             </summary>
             <div class="data-structure-content">
             <div class="content">
-                <p>Administrators can define JSON properties and SQL column names in Data model, then regenerate these views for reporting on retained raw events:</p>
+                <p>Administrators define JSON properties and SQL column names in Data model; saving the model updates these views for reporting on retained raw events:</p>
                 <ul>
                     <li><code>analytics_custom_events_v1</code>: all event names in both privacy modes.</li>
                     <li><code>analytics_custom_pageviews_v1</code>: page views only.</li>
                     <li><code>analytics_custom_goals_v1</code>: events with a retained goal.</li>
                 </ul>
-                <p>Modeled scalar properties become text columns, and numeric properties can also get a number column for calculations. Missing values, JSON null, arrays, and objects produce SQL null. These views expose individual rows without suppression and need separately approved raw-data access. They include raw rows already marked as archived while those rows remain retained; archive aggregate cells do not contain the custom properties.</p>
+                <p>Modeled scalar properties become text columns, and numeric properties can also get a number column for calculations. By default the views also have <code>org_internal_traffic</code> (true for your team’s marked browsers) and <code>page_sequence</code> (page depth, while it is on). Missing values, JSON null, arrays, and objects produce SQL null. These views expose individual rows without suppression and need separately approved raw-data access. They include raw rows already marked as archived while those rows remain retained; archive aggregate cells do not contain the custom properties.</p>
                 <p>The <code>bi_anonymous_*</code> views keep their existing dimensions and disclosure thresholds. Deleting raw events removes their custom properties from reporting, even when archived counts remain available.</p>
             </div>
             {{ component('Ui:DocsLink', {topic: 'reporting.custom-views', label: 'Custom reporting views'}) }}

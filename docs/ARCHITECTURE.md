@@ -90,7 +90,7 @@ never get access to it.
 
 `app:analytics:maintain`
 ([AnalyticsMaintenanceRunner](../src/Service/AnalyticsMaintenanceRunner.php)),
-run daily on a schedule:
+run daily by the scheduler (below):
 
 - **Archives** old rows into counted cells in private archive tables
   ([AnalyticsArchiveService](../src/Service/AnalyticsArchiveService.php)). The raw
@@ -111,6 +111,18 @@ shared `processing_tasks` table and an entry in `audit_trail`
 [AuditTrail](../src/Service/Operations/AuditTrail.php)). New background jobs use
 the same two tables, including their lock for exclusive runs, rather than adding
 their own.
+
+One scheduled task runs every background job: `app:scheduler:run`
+([Scheduler](../src/Service/Scheduler/Scheduler.php)), every five minutes from
+cron, Plesk or a systemd timer. Each job implements
+[ScheduledJob](../src/Service/Scheduler/ScheduledJob.php) and decides whether it
+is due: maintenance once a day, the BigQuery and reporting database syncs per
+view and interval. A file lock in `var/scheduler` keeps runs from overlapping,
+and `var/scheduler/last-run.json` tells the **Scheduled tasks** page whether the
+server's task runs ([SchedulerSetup](../src/Service/Scheduler/SchedulerSetup.php)
+works out the Plesk or cron settings to show). A new job implements the
+interface and is added to the scheduler; it needs no new cron line. See
+[Scheduled tasks](SCHEDULED-TASKS.md).
 
 ### 5. Reporting views publish it
 
@@ -144,13 +156,23 @@ A BI tool connects with a database user that can read only the approved views
 in [Connect BI tools and AI assistants](BI-CONNECTION.md), and the suppression rules in the
 [privacy guide](PRIVACY-COMPLIANCE.md#bi-exposure-and-suppression).
 
+Two scheduled syncs copy selected views elsewhere, whole, at each run: to
+BigQuery ([BigQuerySyncRunner](../src/Service/BigQuery/BigQuerySyncRunner.php))
+and to tables of a second database, for BI users who should not connect to the
+application database
+([ReportingDatabaseSyncRunner](../src/Service/ReportingDatabase/ReportingDatabaseSyncRunner.php),
+see [Reporting database](REPORTING-DATABASE.md)). Both read the views through
+[BigQueryViewExporter](../src/Service/BigQuery/BigQueryViewExporter.php), so the
+copies have the same rows and column types.
+
 ## Configuration
 
 Settings have one source of truth each (listed in
 [configuration sources](CONFIGURATION.md)):
 
 - **`.env.local` or server variables:** infrastructure, such as the database,
-  the application secret and the message transport.
+  the optional reporting database, the application secret and the message
+  transport.
 - **`config/aggregate.yaml`:** application settings, read by
   [AggregateConfigLoader](../src/Service/AggregateConfigLoader.php). Many can be
   overridden by an uppercase environment variable of the same name.
@@ -158,6 +180,12 @@ Settings have one source of truth each (listed in
   and each site's consent banner and tags.
 - **Shipped defaults** (`goals.yaml`, `navigation.yaml`, `quick_search.yaml`),
   customized through untracked `*.local.yaml` overrides.
+
+Every request reads these files. To save parsing them each time,
+[ParsedYamlCache](../src/Service/ParsedYamlCache.php) keeps the parsed result of
+an unchanged file in `var/cache/<environment>/parsed-yaml`, keyed by the file's
+exact contents, so any edit takes effect on the next request and an invalid
+edit still fails closed.
 
 The database holds collected events, archives, users and operational records,
 not settings. Tables such as `analytics_glossary` are generated from YAML so BI
@@ -176,7 +204,9 @@ services, so a setting has one validation wherever it is changed.
 - **Command line:** everything an administrator needs without the dashboard,
   in [src/Command](../src/Command). Examples: `app:install`,
   `app:create-website`, `app:user:create`, `app:user:reset-password`, `app:analytics:maintain`,
-  `app:analytics:glossary:sync`, `app:bigquery:sync` and `app:updates:apply`.
+  `app:analytics:glossary:sync`, `app:scheduler:run`, `app:scheduler:status`,
+  `app:bigquery:sync`, `app:reporting-database:configure`,
+  `app:reporting-database:sync` and `app:updates:apply`.
 - **First run:** a fresh release ZIP starts with a browser setup page,
   [config/setup.php](../config/setup.php) and
   [FirstRunSetup](../src/Setup/FirstRunSetup.php). It loads before Composer,
@@ -216,6 +246,7 @@ missing or stale, the readable source is served instead.
 | JavaScript ([tests/JavaScript](../tests/JavaScript)) | Tracker, consent and storage behavior in Node | `node --test tests/JavaScript/*.test.js` |
 | Release tooling ([tests/Release](../tests/Release)) | Package building and signing | `python3 -m unittest discover -s tests/Release` |
 | Fresh install ([tests/Integration/fresh-install.php](../tests/Integration/fresh-install.php)) | A full install, collection, archiving and every view on SQLite, MySQL, MariaDB, PostgreSQL and SQL Server | CI, or locally in a disposable copy |
+| Load ([tests/Load](../tests/Load)) | How many collection requests per second one server sustains, and the disk space per event, on SQLite, PostgreSQL and MySQL ([load testing](LOAD-TESTING.md)) | The Load test workflow, or k6 against a disposable copy |
 
 Mocked SQL tests show what SQL is generated; only the fresh-install test shows
 that an engine accepts it. See [tests and checks](../CONTRIBUTING.md#tests-and-checks).

@@ -450,7 +450,7 @@ class ApplicationUpdater
         }
         $directory = $this->journal->ensureDirectory('uploads').'/'.bin2hex(random_bytes(8));
         if (!@mkdir($directory, 0775) && !is_dir($directory)) {
-            throw new \RuntimeException('The upload could not be saved. Check write access to var/updates.');
+            throw new \RuntimeException('The upload could not be saved: '.FileOwner::explain($directory, $this->projectDir));
         }
         $paths = [];
         $canonical = ['package' => 'aggregate-package.zip', 'manifest' => 'aggregate-release.json', 'signature' => 'aggregate-release.json.sig'];
@@ -509,18 +509,30 @@ class ApplicationUpdater
         if (!function_exists('proc_open') || \DIRECTORY_SEPARATOR === '\\') {
             return ['Starting updates from the dashboard needs proc_open on a Unix-like server.'];
         }
-        if ($this->toolchain->php() === null) {
-            return ['The command-line PHP executable could not be found. Set PHP_PATH for the web server or run the update from the command line.'];
+        $php = $this->toolchain->php();
+        if ($php === null) {
+            return [$this->toolchain->phpProblem() ?? 'The command-line PHP executable could not be found.'];
         }
+        $command = $this->consoleCommand(['app:updates:apply', '--preflight', '--json']);
+        $result = null;
+        $failure = 'it could not be started';
         try {
-            $process = new Process($this->consoleCommand(['app:updates:apply', '--preflight', '--json']), $this->projectDir, null, null, 120);
+            $process = new Process($command, $this->projectDir, null, null, 120);
             $process->run();
-            $result = json_decode($process->getOutput(), true);
-        } catch (\Throwable) {
-            $result = null;
+            // PHP notices printed before the JSON line do not hide the result.
+            foreach (array_reverse(preg_split('/\R/', trim($process->getOutput())) ?: []) as $line) {
+                if (str_starts_with($line, '{')) {
+                    $result = json_decode($line, true);
+                    break;
+                }
+            }
+            $detail = self::firstLine($process->getErrorOutput()) ?? self::firstLine($process->getOutput());
+            $failure = 'it exited with code '.$process->getExitCode().($detail === null ? '' : ': '.$detail);
+        } catch (\Throwable $e) {
+            $failure .= ': '.(self::firstLine($e->getMessage()) ?? $e::class);
         }
         if (!is_array($result) || !is_array($result['problems'] ?? null)) {
-            return ['The command-line console could not run the update preflight. Run php bin/console app:updates:apply --preflight on the server for details.'];
+            return ['The update check could not run on the command line with '.$php[0].', because '.$failure.' Run '.$php[0].' bin/console app:updates:apply --preflight on the server, as the user that owns the files, for details.'];
         }
         $problems = array_values(array_filter($result['problems'], 'is_string'));
         if (($result['environment'] ?? null) !== $this->environment || ($result['database'] ?? null) !== $this->databaseFingerprint()) {
@@ -528,6 +540,19 @@ class ApplicationUpdater
         }
 
         return $problems;
+    }
+
+    /** The first non-empty line of a command's output, without escape codes, at most 300 characters. */
+    private static function firstLine(string $text): ?string
+    {
+        foreach (preg_split('/\R/', (string) preg_replace('/\e\[[0-9;]*[A-Za-z]/', '', $text)) ?: [] as $line) {
+            $line = trim($line);
+            if ($line !== '') {
+                return mb_strlen($line) > 300 ? mb_substr($line, 0, 299).'…' : $line;
+            }
+        }
+
+        return null;
     }
 
     /** @param array<string, mixed> $state @return array<string, mixed> */
@@ -627,7 +652,7 @@ class ApplicationUpdater
         }
         $directory = $this->projectDir.'/'.$state['backup'];
         if (!is_dir($directory) && !@mkdir($directory, 0775, true) && !is_dir($directory)) {
-            throw new \RuntimeException('The backup directory could not be created. Check write access to var/updates.');
+            throw new \RuntimeException('The backup directory could not be created: '.FileOwner::explain($directory, $this->projectDir));
         }
         $target = $directory.'/database.sqlite';
         if (!is_file($target)) {
@@ -1015,7 +1040,7 @@ class ApplicationUpdater
     /** @param list<string> $arguments @return list<string> */
     private function consoleCommand(array $arguments): array
     {
-        $php = $this->toolchain->php() ?? throw new \RuntimeException('The command-line PHP executable could not be found. Set PHP_PATH or run the update from the command line.');
+        $php = $this->toolchain->php() ?? throw new \RuntimeException(($this->toolchain->phpProblem() ?? 'The command-line PHP executable could not be found.').' Or run the update from the command line.');
         $command = [...$php, $this->projectDir.'/bin/console', ...$arguments, '--env='.$this->environment, '--no-interaction'];
         if (!$this->debug) {
             $command[] = '--no-debug';

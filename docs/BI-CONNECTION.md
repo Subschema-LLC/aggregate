@@ -305,12 +305,15 @@ in three generated views:
 
 Each modeled property becomes a text column, and numeric properties can also get
 a number column for calculations; missing values, JSON `null`, arrays and objects
-become SQL `NULL`. These views show individual raw rows without
+become SQL `NULL`. By default the views also have `org_internal_traffic`
+(`true` for your team's marked browsers, so reports can filter them out) and
+`page_sequence` (page depth, while it is on); see
+[built-in properties](DATA-MODEL.md#built-in-properties). These views show individual raw rows without
 suppression, so they need separately approved raw-data access and are not part of
 the routine BI contract. They include retained rows that were already archived,
 but archived counts carry no custom properties, and deleting raw rows removes them
-from these views. Regenerate them with `app:analytics:views:regenerate` or under
-**Reporting → Reporting views**. See
+from these views. Saving the data model updates them; `app:analytics:views:regenerate`
+does the same without the dashboard. See
 [custom data reporting views](DATABASE.md#custom-data-reporting-views).
 
 ## Private source tables
@@ -422,8 +425,19 @@ in them.
   database file can read the private `events` table.
 - Have a trusted process export explicit columns from the approved views instead,
   and protect the exported files. [BigQuery sync](BIGQUERY.md) does this on a
-  schedule, copying the approved views to a BigQuery dataset.
+  schedule, copying the approved views to a BigQuery dataset, and the
+  [reporting database](REPORTING-DATABASE.md) copies them into a server
+  database such as PostgreSQL or MySQL, where BI users get their own logins.
 - Use a server database when a BI tool needs a live connection.
+
+## Copy the views to a reporting database
+
+The [reporting database](REPORTING-DATABASE.md) sync copies selected views into
+same-named tables of a second database on a schedule. BI users then connect
+there, with logins that cannot reach the application database, and their
+queries run against plain tables, on another server if you like. The copies are
+as fresh as their last sync. Private views can be added only by an explicit
+opt-in, and the rules on this page apply to the copies too.
 
 ## Copy the views to BigQuery
 

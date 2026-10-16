@@ -91,6 +91,141 @@ test('a script URL pasted from an HTML snippet gets plain query separators and a
   assert.equal(hidden.hidden, true);
 });
 
+function callRow(method, args, namespaces = ['Optin', 'Aggregate']) {
+  const row = editor('call', 'data_layer');
+  const status = {hidden: true, classList: classes()};
+  const message = {textContent: ''};
+  const fix = {hidden: true, textContent: ''};
+  const eventInput = {value: '', focus() { eventInput.focused = true; }, setCustomValidity(text) { eventInput.validity = text; }};
+  const eventStatus = {textContent: '', classList: classes()};
+  row.methodInput.value = method;
+  row.argumentInput.value = args;
+  row.controller.actionFieldsTargets.push({dataset: {actionFields: 'event'}, querySelectorAll: () => [eventInput]});
+  Object.assign(row.controller, {
+    hasMethodTarget: true, methodTarget: row.methodInput,
+    hasArgumentsTarget: true, argumentsTarget: row.argumentInput,
+    hasArgumentsStatusTarget: true, argumentsStatusTarget: status,
+    hasArgumentsMessageTarget: true, argumentsMessageTarget: message,
+    hasArgumentsFixTarget: true, argumentsFixTarget: fix,
+    hasEventTarget: true, eventTarget: eventInput,
+    hasEventStatusTarget: true, eventStatusTarget: eventStatus,
+    hasNamespacesValue: true, namespacesValue: namespaces
+  });
+  row.controller.update();
+  return {...row, status, message, fix, eventInput, eventStatus};
+}
+
+function classes() {
+  const names = new Set();
+  return {toggle: (name, on) => { if (on) names.add(name); else names.delete(name); }, contains: (name) => names.has(name)};
+}
+
+test('a customData wrapper in a tracker emit call is explained and converts to an Aggregate event in one click', () => {
+  const args = ['login', {customData: {app: 'optin_model_facilitation_app', app_env: 'prod', method: {$var: 'login_method'}, user_role: {$var: 'user_role'}}}];
+  const row = callRow('Optin.emit', JSON.stringify(args, null, 4));
+  assert.equal(row.status.hidden, false);
+  assert.equal(row.status.classList.contains('is-warning'), true);
+  assert.equal(row.message.textContent, 'Remove the "customData" wrapper and put its properties directly in the second argument. The tracker puts the properties in customData itself and drops a property that holds an object, so this event would be sent without them.');
+  assert.equal(row.fix.hidden, false);
+  assert.equal(row.fix.textContent, 'Convert to Send an Aggregate event');
+
+  row.controller.convertToEvent();
+  assert.equal(row.controller.actionTypeTarget.value, 'event');
+  assert.equal(row.eventInput.value, JSON.stringify({eventName: 'login', customData: args[1].customData}, null, 4));
+  assert.equal(row.eventInput.focused, true);
+  assert.equal(row.eventInput.disabled, false);
+  assert.equal(row.argumentInput.disabled, true, 'the call fields are no longer submitted');
+  assert.equal(row.status.hidden, true);
+  assert.equal(row.eventStatus.textContent, '', 'the converted event passes the checks');
+
+  const flat = callRow('Aggregate.emit', '["signup_click", {"plan": "pro"}, "signup"]');
+  assert.equal(flat.status.hidden, false, 'a working call is offered the event action too');
+  assert.equal(flat.status.classList.contains('is-info'), true);
+  assert.ok(flat.message.textContent.startsWith('A Send an Aggregate event action does this'));
+  flat.controller.convertToEvent();
+  assert.deepEqual(JSON.parse(flat.eventInput.value), {eventName: 'signup_click', customData: {plan: 'pro'}, goalEvent: 'signup'});
+  const bare = callRow('Aggregate.emit', '["login", {"eventData": []}]');
+  bare.controller.convertToEvent();
+  assert.deepEqual(JSON.parse(bare.eventInput.value), {eventName: 'login'});
+});
+
+test('only tracker emit calls that would lose properties are flagged, with the server messages', () => {
+  for (const [method, args, expected, convertible] of [
+    ['Aggregate.emit', '["purchase", {"items": [{"sku": "x"}], "plan": "pro", "meta": {"a": 1}, "tags": ["x"]}]', 'The tracker drops "items", "meta" and "tags": a property must be text, a number, true, false or null, not an object or a list. Give each value its own property.', true],
+    ['Aggregate.emit', '["login", {"customData": {"app": "a"}, "plan": "pro"}]', 'The tracker drops "customData": ', true],
+    ['Aggregate.emit', '["login", {"customData": ["a"]}]', 'The tracker drops "customData": ', false],
+    [' Optin.emit ', '["purchase", ["pro"]]', 'The second argument holds the event properties and must be an object, such as {"plan": "pro"}, or null. A goal goes third.', false],
+    ['Aggregate.emit', '["signup_click", "signup"]', 'The second argument holds the event properties', false],
+    ['Aggregate.emit', '["login", {"$var": "props"}]', 'A variable gives one value, but the second argument needs an object of properties.', false],
+    ['Aggregate.emit', '[{"method": "password"}]', 'The first argument is the event name, such as "login".', false],
+    ['Aggregate.emit', '', 'The first argument is the event name', false]
+  ]) {
+    const row = callRow(method, args);
+    assert.equal(row.status.hidden, false, args);
+    assert.ok(row.message.textContent.startsWith(expected), row.message.textContent);
+    assert.equal(row.fix.hidden, !convertible, 'convertible: ' + args);
+  }
+
+  for (const [method, args, namespaces] of [
+    ['Acme.emit', '["login", {"customData": {"app": "a"}}]'],
+    ['Optin.configure', '[{"customData": {"propertyTypes": {}}}]'],
+    ['Optin.emit', '["login", {"customData": {"app": "a"}}]', ['Aggregate']],
+    ['Aggregate.emit', '["login", {"customData": ']
+  ]) {
+    assert.equal(callRow(method, args, namespaces).status.hidden, true, method + ' ' + args);
+  }
+});
+
+test('the call notice follows the method and action as they change', () => {
+  const row = callRow('Acme.track', '["login", {"customData": {"app": "a"}}]', []);
+  assert.equal(row.status.hidden, true);
+  row.methodInput.value = 'Aggregate.emit';
+  row.controller.checkArguments();
+  assert.equal(row.status.hidden, false, 'without a namespace the default Aggregate is used');
+  row.controller.actionTypeTarget.value = 'script';
+  row.controller.update();
+  assert.equal(row.status.hidden, true, 'a script action does not send these arguments');
+  row.controller.actionTypeTarget.value = 'call';
+  row.controller.update();
+  assert.equal(row.status.hidden, false);
+});
+
+test('a new Aggregate event starts from eventName and customData and is checked as the server will', () => {
+  const row = callRow('', '[]');
+  row.controller.actionTypeTarget.value = 'event';
+  row.controller.update();
+  assert.equal(row.eventInput.value, '{\n    "eventName": "",\n    "customData": {}\n}');
+  assert.equal(row.eventStatus.textContent, '', 'the untouched starting point is not an error yet');
+  row.eventInput.value = '{"eventName": "", "customData": {"plan": "pro"}}';
+  row.controller.checkEvent();
+  assert.match(row.eventStatus.textContent, /^The event: eventName must be a fixed name such as "login"/);
+  assert.equal(row.eventInput.validity, row.eventStatus.textContent, 'saving waits until it is fixed');
+
+  for (const [event, expected] of [
+    ['{"eventName": "login", "customData": {"app": "a", "method": {"$var": "login_method"}, "attempts": 2, "admin": true, "none": null}, "goalEvent": "signup", "pagePath": "/account/login"}', ''],
+    ['{"eventName": {"$var": "event_name"}}', ''],
+    ['{"eventName": "login", "customData": []}', ''],
+    ['', ''],
+    ['["login"]', 'The event must be a JSON object, for example {"eventName": "login", "customData": {"method": "password"}}.'],
+    ['{"eventName": "login",', 'The event must be a JSON object'],
+    ['{"customData": {}}', 'The event needs an eventName, such as "login".'],
+    ['{"eventName": "login", "method": "password"}', "The event has method, but it takes only eventName, customData, goalEvent and pagePath. Put the event's properties in customData."],
+    ['{"eventName": "login", "pagePath": "/x", "deviceClass": "bot"}', 'The event has deviceClass, but it takes only eventName, customData, goalEvent and pagePath. The tracker sets deviceClass itself.'],
+    ['{"eventName": "login", "customData": {"customData": {"a": 1}}}', 'The event: customData.customData must be text of at most 500 bytes, a number, true, false or null, not an object or a list. To read a value from the page, use {"$var": "alias"}.'],
+    ['{"eventName": "login", "customData": {"page_sequence": 2}}', 'The event: the tracker adds customData.page_sequence itself; leave it out.'],
+    ['{"eventName": "login", "customData": {"1st": "a"}}', 'The event: customData.1st is not a property name.'],
+    ['{"eventName": "login", "customData": "a"}', 'The event: customData must be an object of properties'],
+    ['{"eventName": "login", "goalEvent": " signup"}', 'The event: goalEvent must name a goal from config/goals.yaml, or be null.'],
+    ['{"eventName": "login", "pagePath": "/search?q=x"}', 'The event: pagePath must be a path on the site such as /checkout/step-2, without a query or fragment.'],
+    ['{"eventName": "login", "pagePath": "https://site.example/x"}', 'The event: pagePath must be a path']
+  ]) {
+    row.eventInput.value = event;
+    row.controller.checkEvent();
+    assert.ok(expected === '' ? row.eventStatus.textContent === '' : row.eventStatus.textContent.startsWith(expected), event + ' → ' + row.eventStatus.textContent);
+    assert.equal(row.eventStatus.classList.contains('is-danger'), expected !== '');
+  }
+});
+
 const pageSource = fs.readFileSync(path.join(__dirname, '../../assets/controllers/pages/tag_manager/index_controller.js'), 'utf8');
 const Page = vm.runInNewContext(pageSource.replace(/^import .*;\n/m, '').replace('export default class', 'class Page') + '\nPage;', {
   Controller: class {},
