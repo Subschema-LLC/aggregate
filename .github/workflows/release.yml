@@ -168,7 +168,7 @@ jobs:
         with:
           name: signed-release-package
           path: release
-      - name: Create a draft GitHub Release for review
+      - name: Attach the package to the release, or create a draft for review
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -176,5 +176,31 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Never replace assets on an existing release; tags/packages are immutable.
-          gh release create "$RELEASE_TAG" --verify-tag --draft --title "Aggregate $RELEASE_TAG" --generate-notes release/aggregate-*.zip release/aggregate-release.json release/aggregate-release.json.sig
+          assets=(release/aggregate-*.zip release/aggregate-release.json release/aggregate-release.json.sig)
+          # A maintainer may have created the release in GitHub's release form,
+          # which also creates the tag that started this workflow. Attach the
+          # package to that release: a second release with the same tag could
+          # never be published.
+          matches=$(gh api "repos/$GH_REPO/releases?per_page=100" --paginate \
+            --jq '.[] | select(.tag_name == env.RELEASE_TAG) | "\(.id) \(.assets | length) \(.draft)"')
+          count=$(printf '%s\n' "$matches" | grep -c . || true)
+          if [ "$count" -eq 0 ]; then
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "Aggregate $RELEASE_TAG" --generate-notes "${assets[@]}"
+            echo "Created a draft release for $RELEASE_TAG with the package. Review and publish it." >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$count" -eq 1 ]; then
+            read -r id attached draft <<< "$matches"
+            # Never replace assets on an existing release; tags and packages are immutable.
+            if [ "$attached" -ne 0 ]; then
+              echo "::error title=Release $RELEASE_TAG::The release already has $attached attached files. Packages are never replaced; tag a new version instead."
+              exit 1
+            fi
+            gh release upload "$RELEASE_TAG" "${assets[@]}"
+            if [ "$draft" = "true" ]; then
+              echo "Attached the package to the draft release $RELEASE_TAG (id $id). Review and publish it." >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "Attached the package to the published release $RELEASE_TAG (id $id); installations can update to it now." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          else
+            echo "::error title=Release $RELEASE_TAG::$count releases use the tag $RELEASE_TAG. Delete the extra ones on GitHub (deleting a release keeps its tag), then run this workflow again for the tag."
+            exit 1
+          fi
