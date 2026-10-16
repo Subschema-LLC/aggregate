@@ -8,13 +8,16 @@ use App\Security\IpRateLimiter;
 use App\Service\AnonymousEventRecorder;
 use App\Service\BotTrafficSettings;
 use App\Service\CustomDataSettings;
+use App\Service\GeoIp\ConfiguredGeoIpResolver;
 use App\Service\GeoIp\GeoIpResolverInterface;
+use App\Service\GeoIp\MmdbGeoCodeLookupInterface;
 use App\Service\GoalEventRegistry;
 use App\Service\InternalTrafficSettings;
 use App\Service\PrivacyPolicy;
 use App\Service\PrivacySanitizer;
 use App\Service\TrackingFailureRetryRunner;
 use App\Service\WebsiteDomainPolicy;
+use App\Service\WebsiteScopeResolver;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -42,6 +45,8 @@ class ReceiveController
         LoggerInterface $logger,
         CustomDataSettings $customDataSettings,
         ?TrackingFailureRetryRunner $trackingFailures = null,
+        ?WebsiteScopeResolver $scopes = null,
+        ?MmdbGeoCodeLookupInterface $geoLookup = null,
     ): Response
     {
         $failureMode = 'unknown';
@@ -58,8 +63,25 @@ class ReceiveController
                 return $this->jsonWithCors($request, ['error' => 'Invalid JSON payload'], Response::HTTP_BAD_REQUEST);
             }
 
-            // Despite its legacy name, this is the deployment-wide ingestion
-            // kill switch. Check it before deriving any request-based bucket.
+            // A website or group file replaces the deployment settings for
+            // this token. An unusable scope collects nothing, before a rate
+            // bucket, website lookup or geography lookup.
+            $websiteToken = is_string($payload['websiteToken'] ?? null) ? trim($payload['websiteToken']) : '';
+            if ($scopes !== null && $websiteToken !== '' && strlen($websiteToken) <= 191 && preg_match('/\s/', $websiteToken) !== 1) {
+                $scoped = $scopes->forToken($websiteToken);
+                if ($scoped->hasLoadError()) {
+                    return $this->jsonWithCors($request, ['status' => 'ignored'], Response::HTTP_ACCEPTED);
+                }
+                $privacyPolicy = new PrivacyPolicy($scoped);
+                $customDataSettings = new CustomDataSettings($scoped);
+                if ($geoLookup !== null) {
+                    $geoIpResolver = new ConfiguredGeoIpResolver($scoped, $geoLookup);
+                }
+            }
+
+            // Despite its legacy name, this is the ingestion kill switch for
+            // the website's effective settings. Check it before deriving any
+            // request-based bucket.
             if (!$privacyPolicy->isAnonymousTrackingEnabled()) {
                 return $this->jsonWithCors($request, ['status' => 'ignored'], Response::HTTP_ACCEPTED);
             }

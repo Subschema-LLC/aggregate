@@ -1,0 +1,24 @@
+# Website groups and the word used for them.
+# Copy to config/website-scopes.yaml, or create groups from the dashboard or
+# php bin/console app:website-scopes. A missing file means every website uses
+# the deployment settings in config/aggregate.yaml.
+#
+# A website setting overrides its group. A group overrides the deployment.
+# Environment variables still win for settings that have them.
+#
+# label:
+#   singular: Brand
+#   plural: Brands
+# groups:
+#   amazon:
+#     name: Amazon
+#     members:
+#       - your-website-token
+#
+# Shared settings for that group are a separate file:
+# config/website-scopes/groups/amazon.yaml
+# Settings for one website are:
+# config/website-scopes/websites/<site-id>.yaml
+#
+# Only collection controls and the data model can vary. See
+# docs/CONFIGURATION.md#website-groups.

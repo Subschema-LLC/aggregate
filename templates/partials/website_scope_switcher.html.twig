@@ -1,0 +1,31 @@
+{% if scope %}
+<div class="notification is-light mb-4">
+    <form method="get" action="{{ path(scope.route) }}">
+        <label class="label" for="website-scope">Settings for</label>
+        <div class="field has-addons">
+            <div class="control is-expanded">
+                <div class="select is-fullwidth">
+                    <select id="website-scope" name="scope" onchange="this.form.submit()">
+                        {% set current_group = '' %}
+                        {% for choice in scope.choices %}
+                            {% if choice.group != current_group %}
+                                {% if current_group != '' %}</optgroup>{% endif %}
+                                <optgroup label="{{ choice.group }}">
+                                {% set current_group = choice.group %}
+                            {% endif %}
+                            <option value="{{ choice.value }}"{% if choice.value == scope.value %} selected{% endif %}>{{ choice.label }}</option>
+                        {% endfor %}
+                        {% if current_group != '' %}</optgroup>{% endif %}
+                    </select>
+                </div>
+            </div>
+            <div class="control">
+                <button class="button" type="submit">Show</button>
+            </div>
+        </div>
+    </form>
+    <p class="help mb-2">{{ scope.help }}</p>
+    {% if scope.error %}<p class="help is-danger" role="alert">{{ scope.error }}</p>{% endif %}
+    <p class="mb-0"><a href="{{ path('app_website_groups') }}">Manage {{ scope.plural }}</a></p>
+</div>
+{% endif %}

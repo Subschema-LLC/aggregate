@@ -9,6 +9,7 @@ use Symfony\Component\Routing\Exception\ExceptionInterface as RoutingException;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use App\Service\WebsiteActivityService;
 use App\Service\WebsiteConfigManager;
+use App\Service\WebsiteScopeCatalog;
 use Symfony\Component\Security\Core\Authorization\AuthorizationCheckerInterface;
 use Twig\Extension\AbstractExtension;
 use Twig\TwigFunction;
@@ -27,6 +28,7 @@ final class NavigationExtension extends AbstractExtension
         private readonly ?DocumentationLinks $documentation = null,
         private readonly ?WebsiteConfigManager $websiteManager = null,
         private readonly ?WebsiteActivityService $activityService = null,
+        private readonly ?WebsiteScopeCatalog $scopes = null,
     ) {}
 
     public function getFunctions(): array
@@ -77,6 +79,9 @@ final class NavigationExtension extends AbstractExtension
         $state = $this->features->navigationState($item);
         if ($state['hidden']) {
             return null;
+        }
+        if (($item['route'] ?? null) === 'app_website_groups' && ($plural = $this->scopePlural()) !== null) {
+            $label = $plural;
         }
         $enabled = $state['enabled'] && $parentEnabled;
         $normalized = ['label' => $label, 'icon' => $this->text($item['icon'] ?? null), 'enabled' => $enabled];
@@ -210,10 +215,10 @@ final class NavigationExtension extends AbstractExtension
                     if (!is_array($child) || empty($child['enabled'])) {
                         continue;
                     }
-                    $items[] = $this->buildQuickSearchItem($child, (string) ($item['label'] ?? 'General'));
+                    $items[] = $this->buildQuickSearchItem($this->withScopeLabel($child), (string) ($item['label'] ?? 'General'));
                 }
             } elseif (!empty($item['enabled'])) {
-                $items[] = $this->buildQuickSearchItem($item, 'General');
+                $items[] = $this->buildQuickSearchItem($this->withScopeLabel($item), 'General');
             }
         }
 
@@ -290,6 +295,9 @@ final class NavigationExtension extends AbstractExtension
     {
         $label = (string) ($item['label'] ?? '');
         $config = $this->quickSearchSynonyms[$label] ?? [];
+        if ($config === [] && ($item['route'] ?? null) === 'app_website_groups') {
+            $config = $this->quickSearchSynonyms['Website groups'] ?? [];
+        }
 
         $synonyms = [];
         if (isset($config['synonyms']) && is_array($config['synonyms'])) {
@@ -300,6 +308,11 @@ final class NavigationExtension extends AbstractExtension
 
         $description = (string) ($config['description'] ?? ($label . ' settings and tools'));
 
+        if (($item['route'] ?? null) === 'app_website_groups' && $label !== 'Website groups') {
+            $synonyms[] = $label;
+            $synonyms[] = 'website groups';
+        }
+
         return [
             'title' => $label,
             'category' => $category,
@@ -308,5 +321,29 @@ final class NavigationExtension extends AbstractExtension
             'description' => $description,
             'keywords' => implode(' ', $synonyms),
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $item
+     *
+     * @return array<string, mixed>
+     */
+    private function withScopeLabel(array $item): array
+    {
+        if (($item['route'] ?? null) === 'app_website_groups' && ($plural = $this->scopePlural()) !== null) {
+            $item['label'] = $plural;
+        }
+
+        return $item;
+    }
+
+    private function scopePlural(): ?string
+    {
+        if ($this->scopes === null || $this->scopes->hasLoadError()) {
+            return null;
+        }
+        $plural = $this->scopes->label()['plural'];
+
+        return $plural === WebsiteScopeCatalog::DEFAULT_PLURAL ? null : $plural;
     }
 }

@@ -35,7 +35,7 @@ ROOT_FILES = (
     "var/browser/standalone-consent.template.min.js", "var/browser/standalone-consent-manifest.json",
 )
 CONFIG_FILES = (
-    "aggregate.yaml.example", "websites.yaml.example", "bundles.php", "preload.php",
+    "aggregate.yaml.example", "websites.yaml.example", "website-scopes.yaml.example", "bundles.php", "preload.php",
     "services.yaml", "services_dashboard.yaml", "routes_public.yaml", "routes_dashboard.yaml",
     "navigation.yaml", "goals.yaml", "quick_search.yaml", "maintenance.php", "setup.php",
     "release.yaml", "release-signing.pub",
@@ -46,6 +46,7 @@ CONFIG_FILES = (
 PROTECTED_PATHS = (
     ".env.local", ".env.local.php", ".env.*.local", ".env.prod",
     "config/aggregate.yaml", "config/aggregate_*.yaml", "config/websites.yaml",
+    "config/website-scopes.yaml", "config/website-scopes/**",
     "config/*.local.yaml", "config/tag-manager/sites/**", "config/secrets/**",
     "var/**", "SETUP-CODE.txt",
 )

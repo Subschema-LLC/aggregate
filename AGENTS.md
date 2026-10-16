@@ -64,9 +64,11 @@ reporting timezone pages, plus `app:analytics:bi-views:regenerate`, share
 reuse those services rather than regenerating views elsewhere. The reporting
 timezone relabels event-view hours and days only. Do not store local times on
 events or add a timezone lookup table. Goal and geography views stay on UTC
-days. Website-specific collection settings and data models are still
-[planned work](ROADMAP.md); current models are scoped to the deployment's
-active aggregate configuration.
+days. Collection settings and data models can vary by website or website
+group. The deployment YAML remains the base, a group replaces the keys it
+sets, and a website replaces those keys again. Reporting views stay on the
+deployment model until columns are published. See
+[website groups](docs/CONFIGURATION.md#website-groups).
 
 ## Privacy is an implementation constraint
 

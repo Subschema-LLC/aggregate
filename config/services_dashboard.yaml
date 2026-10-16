@@ -8,6 +8,7 @@ services:
         autoconfigure: true
 
     App\Controller\WebsitesController: ~
+    App\Controller\WebsiteScopesController: ~
     App\Controller\ApplicationSettingsController: ~
     App\Controller\BrandingSettingsController: ~
     App\Controller\CollectionSettingsController: ~

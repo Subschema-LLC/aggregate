@@ -11,6 +11,7 @@ use App\Service\Operations\TaskTrigger;
 use App\Service\TrackerBuilds;
 use App\Service\TrackingFailureRetryRunner;
 use App\Service\TrackingFailureSettings;
+use App\Service\WebsiteScopeEditor;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -28,30 +29,37 @@ class CollectionSettingsController extends AbstractController
         private readonly TrackingFailureSettings $trackingFailureSettings,
         private readonly TrackingFailureRetryRunner $trackingFailureRetryRunner,
         private readonly LoggerInterface $logger,
+        private readonly ?WebsiteScopeEditor $scopes = null,
     ) {}
 
     #[Route('/dashboard/collection', name: 'app_collection_settings', methods: ['GET'])]
-    public function collectionSettings(): Response
+    public function collectionSettings(Request $request): Response
     {
         $this->denyIfDashboardDisabled();
         $this->denyIfNotAdmin();
 
-        $excludedPaths = $this->config->getWithEnvFallback('anonymous_excluded_paths', []);
+        $scope = null;
+        $config = $this->config;
+        if ($this->scopes !== null) {
+            $scope = $this->scopes->selection($request->query->get('scope'), 'app_collection_settings');
+            $config = $this->scopes->configFor($scope);
+        }
+        $excludedPaths = $config->getWithEnvFallback('anonymous_excluded_paths', []);
         if (is_string($excludedPaths)) {
             $excludedPaths = preg_split('/[\r\n,]+/', $excludedPaths) ?: [];
         }
         if (!is_array($excludedPaths)) {
             $excludedPaths = [];
         }
-        $geoLevel = $this->config->getWithEnvFallback('anonymous_geo_level', 'macro_region');
+        $geoLevel = $config->getWithEnvFallback('anonymous_geo_level', 'macro_region');
         $geoLevel = is_string($geoLevel) ? strtolower(trim($geoLevel)) : 'macro_region';
         if (!in_array($geoLevel, ['macro_region', 'country'], true)) {
             $geoLevel = 'macro_region';
         }
-        $geoDatabasePath = $this->config->getWithEnvFallback('anonymous_geo_database_path', '');
-        $collectionProfile = new CollectionProfile($this->config);
-        $customData = new CustomDataSettings($this->config);
-        $bots = new BotTrafficSettings($this->config);
+        $geoDatabasePath = $config->getWithEnvFallback('anonymous_geo_database_path', '');
+        $collectionProfile = new CollectionProfile($config);
+        $customData = new CustomDataSettings($config);
+        $bots = new BotTrafficSettings($config);
         $trackingRetrySettings = TrackingFailureSettings::defaults();
         $trackingRetryOverrides = [
             TrackingFailureSettings::KEY_ENABLED => false,
@@ -71,9 +79,9 @@ class CollectionSettingsController extends AbstractController
             'collection_profile' => $collectionProfile->name(),
             'collection_profile_env_override' => $collectionProfile->hasEnvironmentOverride(),
             'tracker_omit_unused_features' => (new TrackerBuilds($this->config))->enabled(),
-            'anonymous_tracking_enabled' => $this->config->getBoolWithEnvFallback('anonymous_tracking_enabled', true),
+            'anonymous_tracking_enabled' => $config->getBoolWithEnvFallback('anonymous_tracking_enabled', true),
             'anonymous_excluded_paths' => array_values(array_filter($excludedPaths, 'is_string')),
-            'anonymous_geo_enabled' => $this->config->getBoolWithEnvFallback('anonymous_geo_enabled', false),
+            'anonymous_geo_enabled' => $config->getBoolWithEnvFallback('anonymous_geo_enabled', false),
             'anonymous_geo_level' => $geoLevel,
             'anonymous_geo_database_path' => is_string($geoDatabasePath) ? trim($geoDatabasePath) : '',
             'tracking_retry_settings' => $trackingRetrySettings,
@@ -84,6 +92,7 @@ class CollectionSettingsController extends AbstractController
             'bot_traffic_env_override' => $bots->hasEnvironmentOverride(),
             'bot_traffic_invalid' => $bots->isInvalid(),
             'bot_user_agents' => $bots->userAgents(),
+            'scope' => $scope,
         ]);
     }
 
@@ -120,21 +129,33 @@ class CollectionSettingsController extends AbstractController
         $this->denyIfDashboardDisabled();
         $this->denyIfNotAdmin();
 
+        $scope = (string) $request->request->get('scope', 'deployment');
+        $redirect = $scope !== '' && $scope !== 'deployment' ? ['scope' => $scope] : [];
         $csrfToken = (string) $request->request->get('_csrf_token', '');
         if (!$this->isCsrfTokenValid('anonymous_settings', $csrfToken)) {
             $this->addFlash('error', 'Invalid security token. Please try again.');
-            return $this->redirectToRoute('app_collection_settings');
+            return $this->redirectToRoute('app_collection_settings', $redirect);
         }
 
         try {
             $form = CollectionControlsForm::fromSubmission($request->request, new CustomDataSettings($this->config), new BotTrafficSettings($this->config));
         } catch (\InvalidArgumentException $e) {
             $this->addFlash('error', $e->getMessage());
-            return $this->redirectToRoute('app_collection_settings');
+            return $this->redirectToRoute('app_collection_settings', $redirect);
         }
         $collectionProfile = $form['collection_profile'];
 
         try {
+            if ($this->scopes !== null && $redirect !== []) {
+                $checked = $request->request->all('override');
+                if (!is_array($checked) || array_filter($checked, 'is_string') !== $checked) {
+                    throw new \InvalidArgumentException('Choose which sections to save for this scope. Nothing was saved.');
+                }
+                $this->scopes->saveCollection($scope, $this->scopedCollectionValues($request, $form), array_values($checked));
+                $this->addFlash('success', 'Saved for this scope. Unchecked sections keep the broader setting.');
+
+                return $this->redirectToRoute('app_collection_settings', $redirect);
+            }
             $this->config->setMany($form['settings']);
             $this->trackingFailureSettings->save($form['retry']);
             $effectiveGeoEnabled = $this->config->getBoolWithEnvFallback('anonymous_geo_enabled', false);
@@ -155,7 +176,39 @@ class CollectionSettingsController extends AbstractController
             $this->addFlash('error', 'Failed to save analytics privacy settings: ' . $e->getMessage());
         }
 
-        return $this->redirectToRoute('app_collection_settings');
+        return $this->redirectToRoute('app_collection_settings', $redirect);
+    }
+
+    /**
+     * A scope file stores every key in a checked section, including values the
+     * deployment form would leave unwritten because they match the deployment.
+     *
+     * @param array{settings: array<string, mixed>} $form
+     *
+     * @return array<string, mixed>
+     */
+    private function scopedCollectionValues(Request $request, array $form): array
+    {
+        $values = $form['settings'];
+        $consent = CustomDataSettings::normalizeGoogleConsentMode($request->request->get(CustomDataSettings::GOOGLE_CONSENT_MODE_KEY));
+        if ($consent === null) {
+            throw new \InvalidArgumentException('Google Consent Mode signals must be one of '.implode(', ', CustomDataSettings::GOOGLE_CONSENT_MODES).'.');
+        }
+        $values[CustomDataSettings::GOOGLE_CONSENT_MODE_KEY] = $consent;
+        $mode = BotTrafficSettings::normalizeMode($request->request->get(BotTrafficSettings::KEY));
+        if ($mode === null) {
+            throw new \InvalidArgumentException('Bot traffic must be label or drop.');
+        }
+        $values[BotTrafficSettings::KEY] = $mode;
+        $raw = (string) $request->request->get(BotTrafficSettings::USER_AGENTS_KEY, '');
+        $lines = array_values(array_filter(array_map('trim', preg_split('/\R/', $raw) ?: []), static fn (string $line): bool => $line !== ''));
+        $phrases = BotTrafficSettings::normalizeUserAgents($lines);
+        if ($phrases === null) {
+            throw new \InvalidArgumentException('The bot phrase list is not valid.');
+        }
+        $values[BotTrafficSettings::USER_AGENTS_KEY] = $phrases;
+
+        return $values;
     }
 
     #[Route('/dashboard/settings/tracking/retry', name: 'app_tracking_retry_now', methods: ['POST'])]

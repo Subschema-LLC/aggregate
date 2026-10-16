@@ -46,12 +46,6 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   currently applies to all events through one UI/YAML setting. Explore per-event
   inclusion where operators need it, keeping one page counter and shared server
   enforcement. Preserve numeric bounds and anonymous collection controls.
-- **Website-specific configuration and data models.** Allow collection settings
-  and models to vary by registered website. They currently use the deployment's
-  active aggregate YAML configuration. Tags and CMP already have per-website YAML;
-  registration manages primary domains, per-token source-domain rules, and ingestion
-  tokens separately. Preserve existing deployments and reporting
-  contracts through an explicit migration design.
 - **Administrator actions in the audit trail.** The `audit_trail` table records
   every finished processing task and reserves the `admin` category for
   administrator actions, such as saving settings, managing users and websites, and
@@ -143,8 +137,9 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   websites. This fits one organization with several brands, or clients content
   to share one configuration. Every approved view already has a `website_token`
   column, but [filtering in a BI tool is not separation](docs/BI-CONNECTION.md#postgresql-mysql-mariadb-and-sql-server).
-  - **Scopes:** a scope is a name and a list of website tokens, declared in YAML
-    and managed in the dashboard and the command line with one validation.
+  - **Scopes:** reuse the website groups that already share collection settings
+    ([website groups](docs/CONFIGURATION.md#website-groups)), rather than a
+    second list of the same websites.
   - **Views:** for each scope, generate copies of the approved `bi_anonymous_*`
     views filtered to its websites, with the same columns, so a report built on
     one can be repointed to another. Build them over the approved views, never
@@ -163,8 +158,8 @@ checkout, or a small accessibility fix. Keep each PR focused and target
     for each scope's reporting account. SQLite has no database users or
     per-view permissions, so scopes need a server database.
   - **When to use a separate installation instead:** the client needs a
-    different retention period, consent default, data model or disclosure
-    threshold, or must own its database.
+    different retention period, disclosure threshold, branding or database.
+    Collection settings and the data model can already vary by website group.
 - **Implementation partners.** Give agencies and consultants a supported way to
   install and run Aggregate for their clients, so adoption grows without the
   application taking on hosting or tenant features. Subschema can be the first

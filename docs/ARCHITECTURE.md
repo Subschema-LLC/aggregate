@@ -176,8 +176,8 @@ Settings have one source of truth each (listed in
 - **`config/aggregate.yaml`:** application settings, read by
   [AggregateConfigLoader](../src/Service/AggregateConfigLoader.php). Many can be
   overridden by an uppercase environment variable of the same name.
-- **`config/websites.yaml` and `config/tag-manager/sites/`:** registered websites
-  and each site's consent banner and tags.
+- **`config/websites.yaml`, `config/website-scopes.yaml` and `config/tag-manager/sites/`:** registered websites,
+  website groups and their collection overrides, and each site's consent banner and tags.
 - **Shipped defaults** (`goals.yaml`, `navigation.yaml`, `quick_search.yaml`),
   customized through untracked `*.local.yaml` overrides.
 

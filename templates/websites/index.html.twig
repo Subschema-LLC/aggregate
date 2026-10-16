@@ -11,6 +11,7 @@
         <div>
             <h1 class="title mb-1">Websites</h1>
             <p class="subtitle is-6">Manage website tokens, allowed domains, and tracker installation.</p>
+            {% if is_admin %}<p class="help"><a href="{{ path('app_website_groups') }}">Website groups</a> share collection settings and data models. A website setting overrides its group.</p>{% endif %}
             {{ component('Ui:DocsLink', {topic: 'configuration.websites', label: 'Website domains guide'}) }}
         </div>
     </div>

@@ -32,6 +32,8 @@
 
 ###> aggregate-analytics ###
 /config/websites.yaml
+/config/website-scopes.yaml
+/config/website-scopes/
 /config/aggregate.yaml
 /config/aggregate_*.yaml
 /config/*.local.yaml
