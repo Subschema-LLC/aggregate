@@ -36,6 +36,7 @@ class Kernel extends BaseKernel
             'App\\Controller\\DataModelController',
             'App\\Controller\\BiGlossaryController',
             'App\\Controller\\BiPageGroupsController',
+            'App\\Controller\\ReportingTimezoneController',
             'App\\Controller\\EventExamplesController',
             'App\\Controller\\FeatureFlagsController',
             'App\\Controller\\InternalTrafficController',
