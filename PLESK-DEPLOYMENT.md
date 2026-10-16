@@ -114,7 +114,8 @@ fails with "No such file or directory". See [Scheduled tasks](docs/SCHEDULED-TAS
 ### Keep it running
 
 - **Updates:** the dashboard **Updates** page installs new release ZIPs, keeping
-  your configuration and data. See the [update guide](docs/UPDATES.md).
+  your configuration and data. See the [update guide](docs/UPDATES.md) and
+  [updating without the dashboard button](#updating-without-the-dashboard-button).
 - **Backups:** include the site's files (at least `.env.local`, `config/` and
   `var/`) and the database, for example with Plesk's **Backup Manager**.
 - **Scheduled task:** the one task from [step 6](#6-add-the-scheduled-task)
@@ -140,6 +141,7 @@ fails with "No such file or directory". See [Scheduled tasks](docs/SCHEDULED-TAS
 | You want to start over | Delete `.env.local` (and `var/data.db` if you chose SQLite) in **Files**, then reload the site. |
 | A scheduled task fails with `cd: /var/www/vhosts/…: No such file or directory` or `php: command not found` | It is a **Run a command** task. Change it to **Run a PHP script** as in [step 6](#6-add-the-scheduled-task). |
 | **Scheduled tasks** says **Not set up** or **Late** | Click **Run Now** next to the task in Plesk and check its output. See [Scheduled tasks troubleshooting](docs/SCHEDULED-TASKS.md#troubleshooting). |
+| **Install update** says "The command-line console could not run the update preflight" | Earlier releases could not find Plesk's command-line PHP while `open_basedir` is on (Plesk's default). Install one update [without the dashboard button](#updating-without-the-dashboard-button); from then on the button finds it. |
 
 #### nginx without Apache
 
@@ -158,6 +160,31 @@ if (!-e $request_filename) {
 
 These have not been tested on every Plesk version; reload the setup page
 afterwards to confirm its routing check passes.
+
+### Updating without the dashboard button
+
+A scheduled task runs the update as the subscription's user with Plesk's PHP,
+and needs no SSH:
+
+1. Back up the database (Plesk **Databases** → **Export Dump**, or **Backup
+   Manager**). SQLite needs no backup: the update takes a snapshot.
+2. In **Scheduled Tasks**, click **Add Task** and fill in **Task type** **Run a
+   PHP script**, **Script path** the folder with Aggregate followed by
+   `bin/console` (for example `httpdocs/bin/console`), **Use PHP version** the
+   site's, and **Arguments** `app:updates:apply --yes --database-backup-confirmed`
+   (leave out `--database-backup-confirmed` on SQLite). Set **Run** to
+   **Cron style** `0 0 1 1 *` (once a year); you will delete the task before then.
+3. Click **Run Now**. Plesk shows the output; the site shows a maintenance page
+   until the update finishes. Then delete the task.
+
+With SSH, run the same as the subscription's system user and with Plesk's PHP,
+never as root and never with plain `php`:
+
+```bash
+cd /var/www/vhosts/example.com/httpdocs
+sudo -u $(stat -c %U .) /opt/plesk/php/8.3/bin/php bin/console app:updates:apply --preflight
+sudo -u $(stat -c %U .) /opt/plesk/php/8.3/bin/php bin/console app:updates:apply --database-backup-confirmed
+```
 
 ## Install from Git with SSH (advanced)
 
