@@ -84,7 +84,11 @@ verified the same way. Uploads need PHP's `upload_max_filesize` and
 `post_max_size` above the ZIP size (release ZIPs are about 25 MB; 64M is
 comfortable). The system check shows the current limit.
 
-From the command line, as the user that owns the application files:
+From the command line, as the user that owns the application files (not root) and
+with the PHP the website uses. A server can have several: on Plesk, `php` is
+often the operating system's, without the extensions Aggregate needs, while the
+website runs `/opt/plesk/php/8.3/bin/php`. The preflight names a better one when
+it finds one.
 
 ```bash
 php bin/console app:updates:check --refresh
@@ -454,9 +458,21 @@ php bin/console app:updates:maintenance status     # or: on, off
 php bin/console app:updates:verify-package PACKAGE MANIFEST SIGNATURE
 ```
 
-Run them as the user that owns the application files. The dashboard runs the same
-`app:updates:apply` command in the background and writes its output to
-`var/updates/last-run.log`.
+Run them as the user that owns the application files, with the PHP the website
+uses (`sudo -u USER /opt/plesk/php/8.3/bin/php bin/console …` on Plesk). Run as
+root while the files belong to another user, `app:updates:apply` stops: the files
+it wrote would belong to root, and the website could no longer change them.
+
+The dashboard runs the same `app:updates:apply` command in the background and
+writes its output to `var/updates/last-run.log`. To find the command-line PHP,
+it runs the PHP beside its own (PHP-FPM keeps it in `../bin/php`) and the usual
+hosting-panel locations, and takes the first with the website's PHP version and
+extensions. `open_basedir`, which Plesk turns on by default, does not get in the
+way. To name it yourself, add it to `.env.local`:
+
+```dotenv
+PHP_PATH=/opt/plesk/php/8.3/bin/php
+```
 
 ## Troubleshooting
 
@@ -475,6 +491,10 @@ checks for the command-line user.
 | The installed branch differs from `updates_branch` | Check out the configured branch with Git, or change `updates_branch`. |
 | Composer was not found | Install Composer for the update user, or set `AGGREGATE_COMPOSER`. |
 | User … cannot write … | Run `app:updates:apply` on the server as the owner of the files, or give the web server user write access to use the dashboard. |
+| **This runs as root, but the application files belong to …** | Run the command as that user, as the message shows: `sudo -u USER /opt/plesk/php/8.3/bin/php bin/console app:updates:apply`. |
+| **PHP runtime** on the command line: missing mbstring, curl, intl or zip | This is another PHP than the website's. Use the one the message names, or on Plesk `/opt/plesk/php/8.3/bin/php`. |
+| **Dashboard button can start updates**: the command-line PHP could not be found, or does not match | Add `PHP_PATH` with the command-line PHP of the website's version to `.env.local`, as [above](#command-reference). |
+| "The update check could not run on the command line with …" | The message gives the PHP binary, its exit code and its first error line. Fix that, or set `PHP_PATH`. Earlier releases showed only "The command-line console could not run the update preflight"; on Plesk, see [updating without the dashboard button](../PLESK-DEPLOYMENT.md#updating-without-the-dashboard-button). |
 | The site still runs old code after an update | PHP OPcache is not revalidating files (`opcache.validate_timestamps=0`); reload PHP-FPM or the web server. |
 | Installed updates disappear later | Another deployment tool overwrote the files; turn off its automatic deployments. |
 | **Post-deployment steps: Not recorded yet**, or files changed since | Run the [post-deployment commands](#after-each-deployment), and add them to your tool's deployment action. |
