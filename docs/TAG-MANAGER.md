@@ -2,9 +2,9 @@
 
 ## Aggregate Tag Manager Lite
 
-The tag manager loads HTTPS scripts, calls methods on libraries already loaded
-on the page, or runs [custom JavaScript](#custom-javascript) written in the
-dashboard or YAML. Each tag has a trigger and consent requirement, with optional named
+The tag manager loads HTTPS scripts, [sends Aggregate events](#send-an-aggregate-event),
+calls methods on libraries already loaded on the page, or runs
+[custom JavaScript](#custom-javascript) written in the dashboard or YAML. Each tag has a trigger and consent requirement, with optional named
 variables from a data layer. The manager itself can load without consent. Each
 tag defaults to analytics consent; choose another category or explicitly use
 `none` for an action that needs no consent.
@@ -112,9 +112,10 @@ tag_manager:
       consent: functional
       trigger: {type: data_layer, event: product_view}
     - id: record-purchase
-      type: call
-      method: Aggregate.emit
-      args: [purchase, {total_minor: {$var: order_total}, sku: {$var: first_sku}}]
+      type: event
+      event:
+        eventName: purchase
+        customData: {total_minor: {$var: order_total}, sku: {$var: first_sku}}
       consent: analytics
       trigger: {type: data_layer, event: purchase}
 ```
@@ -158,8 +159,10 @@ standalone settings does not rewrite the built-in CMP or tags.
 its trigger and consent requirement are met. A URL variable is URL-encoded;
 a missing, null, oversized or nonscalar value skips the tag.
 
-`type: call` invokes an already available API such as `Aggregate.emit`. Use your
-configured tracker namespace when it differs. The method's receiver is preserved,
+`type: event` sends an event through this website's tracker; see
+[Send an Aggregate event](#send-an-aggregate-event).
+
+`type: call` invokes an already available API such as `Acme.track`. The method's receiver is preserved,
 so APIs using `this` work. Method paths contain library and method identifiers;
 calls, expressions, bracket notation, constructors, prototype traversal and
 browser execution APIs are rejected. Only own data properties are resolved;
@@ -175,6 +178,16 @@ arguments as JSON, for example:
 ["purchase", {"total_minor": {"$var": "order_total"}, "currency": "USD"}]
 ```
 
+A call can also name the tracker's own `Aggregate.emit`, or your
+[`js_namespace`](CONFIGURATION.md#customizing-the-javascript-namespace), with the
+[short form's](TRACKING.md#send-an-event) arguments: the event name, then the
+properties themselves, not wrapped in `customData`. A
+[Send an Aggregate event](#send-an-aggregate-event) action is the clearer way, and
+waits for the tracker by itself. For a call to the tracker's `emit`, the editor
+says as you type when properties would be lost, such as to a `customData`
+wrapper, and offers **Convert to Send an Aggregate event**; saving such a tag
+shows the same warning, and the tag is still saved.
+
 Calls support at most 10 arguments, four nested containers, 32 entries per
 container and 128 total values including containers. Strings are at most 2048
 UTF-8 bytes. Numbers must be finite and integers inside JavaScript's safe range.
@@ -187,6 +200,73 @@ chain the call to the script tag with [tag chaining](#tag-chaining). Otherwise
 a missing method skips the action, and a later matching event can try again.
 There is no polling or retry timer.
 
+### Send an Aggregate event
+
+A **Send an Aggregate event** action (`type: event`) sends an event through this
+website's tracker, as [`emit()`](TRACKING.md#send-an-event) does on a page, and
+takes the same event object: `eventName` names the event, and `customData` holds
+its own properties, everything the tracker does not add itself. For this push:
+
+```javascript
+window.dataLayer.push({event: 'login', method: 'password', user_role: 'admin'});
+```
+
+add a [variable](#data-layer-and-variables) for each pushed value you want, and
+read it with `{$var: alias}`:
+
+```yaml
+tag_manager:
+  enabled: true
+  variables:
+    login_method: method
+    user_role: user_role
+  tags:
+    - id: login-event
+      type: event
+      event:
+        eventName: login
+        customData:
+          app: shop
+          method: {$var: login_method}
+          user_role: {$var: user_role}
+      consent: analytics
+      trigger: {type: data_layer, event: login}
+```
+
+In the dashboard, choose **Send an Aggregate event** and enter the event as JSON.
+A new event starts from `eventName` and an empty `customData`:
+
+```json
+{
+    "eventName": "login",
+    "customData": {
+        "app": "shop",
+        "method": {"$var": "login_method"},
+        "user_role": {"$var": "user_role"}
+    }
+}
+```
+
+- `eventName` is required. `customData` holds at most 32 properties, each text of
+  up to 500 bytes, a number, `true`, `false` or `null`. `goalEvent` names a goal
+  from `config/goals.yaml` and `pagePath` a virtual page path such as
+  `/checkout/step-2`; both are optional. Any value can be a variable instead.
+- The tracker sets every other request field, and adds `page_sequence` and
+  `org_internal_traffic` to `customData` itself, so the event cannot include
+  them. Saving refuses an event with anything else, and the editor checks the
+  event as you type.
+- A push's values are not copied into the event, and a variable gives one value,
+  so name each property. A missing value skips the event.
+- The action waits for the tracker. Until the tracker has loaded and sent its
+  page view, events are held, up to 20 a page, then sent in order if the tag
+  still has consent. It needs no [tag chaining](#tag-chaining), and it uses the
+  tracker's namespace without your naming it.
+- The tracker's consent and property rules apply. Granting an event tag's
+  `marketing` category does not grant enhanced analytics: while analytics
+  consent is denied, only the anonymous fields the tracker and server permit are
+  kept. Properties appear in reporting views once they are in the
+  [data model](DATA-MODEL.md).
+
 ### Tag chaining
 
 Tag chaining makes a tag wait until another tag has finished. Choose the other
@@ -195,6 +275,7 @@ tag under **Tag chaining** on the tag's row, where each choice reads
 
 - a **script** tag: its script has loaded and run;
 - a **method** tag: its method has been called without an error;
+- an **event** tag: its event has been sent, or held for the tracker;
 - a **custom JavaScript** tag: its code has run without an error or, if it
   returns a promise, that promise has resolved.
 
@@ -202,7 +283,9 @@ The waiting tag still runs on its own trigger and with its own consent category;
 it just runs no earlier than the tag it names. If its trigger fires first, the run
 is kept and happens as soon as that tag finishes, after checking the waiting
 tag's consent again. Several waiting runs of an event trigger are kept in order,
-up to 20. This loads the tracker, then sends an event once it is ready:
+up to 20. This loads the tracker, then calls it once it is ready (a
+[Send an Aggregate event](#send-an-aggregate-event) action waits for it without
+chaining):
 
 ```yaml
 tag_manager:
@@ -224,8 +307,8 @@ tag_manager:
 Both tags use **Document ready**, and the visitor may accept analytics after the
 page has loaded; either way the call runs after the tracker has loaded.
 
-- The tag named must run once per page: a script tag on any trigger, or a method
-  or custom tag on **Document ready** or **Window finished loading**. A tag on an
+- The tag named must run once per page: a script tag on any trigger, or a method,
+  event or custom tag on **Document ready** or **Window finished loading**. A tag on an
   event trigger can run many times, so nothing can wait for it.
 - One tag can be named; chains (C after B after A) are fine, loops are refused.
 - If the named tag never finishes, the waiting tag does not run: its consent is
@@ -235,60 +318,6 @@ page has loaded; either way the call runs after the tracker has loaded.
   names the tags left waiting.
 - The **Tag chaining** list on each tag row offers **Run after** for each of the
   other rows' IDs, including ones typed but not yet saved.
-
-A call to `Aggregate.emit` preserves the tracker's consent and property rules.
-Granting a method tag's `marketing` category does not grant enhanced analytics.
-Calls made while analytics consent is denied retain only the anonymous fields
-permitted by the tracker and server. See the [data model](DATA-MODEL.md).
-
-### Send data-layer events to the tracker
-
-A method tag that calls the tracker's `emit(name, properties, goal)` turns a
-data-layer push into an Aggregate event. For this push:
-
-```javascript
-window.dataLayer.push({event: 'login', method: 'password', user_role: 'admin'});
-```
-
-add a [variable](#data-layer-and-variables) for each pushed value you want, and
-name each property in the arguments:
-
-```yaml
-tag_manager:
-  enabled: true
-  variables:
-    login_method: method
-    user_role: user_role
-  tags:
-    - id: login-event
-      type: call
-      method: Aggregate.emit
-      args: [login, {app: shop, method: {$var: login_method}, user_role: {$var: user_role}}]
-      consent: analytics
-      trigger: {type: data_layer, event: login}
-```
-
-In the dashboard, these arguments are
-`["login", {"app": "shop", "method": {"$var": "login_method"}, "user_role": {"$var": "user_role"}}]`.
-
-- The second argument holds the properties themselves. Each is text, a number,
-  `true`, `false` or `null`; the tracker drops a property that holds an object
-  or a list. Do not wrap them in `customData`. The tracker sends them in the
-  collection request's `customData` itself, so
-  `["login", {"customData": {"method": "password"}}]` sends the event without
-  properties. The GTM template's **Custom data object** setting and a
-  GTM data-layer variable named `customData` hold the same inner object.
-- A push's values are not copied into the arguments, and a variable gives one
-  value, so `{"$var": "…"}` cannot stand for all the properties at once. A
-  missing value skips the call.
-- Use your [`js_namespace`](CONFIGURATION.md#customizing-the-javascript-namespace)
-  in place of `Aggregate` if you changed it. For calls to `emit` under that name
-  or `Aggregate`, the editor warns as you type when properties would be lost,
-  and offers to remove a `customData` or `eventData` wrapper. Saving such a tag
-  shows the same warning; the tag is still saved.
-- Properties appear in reporting views once they are in the
-  [data model](DATA-MODEL.md), and without analytics consent only those that do
-  not require it are kept.
 
 ## Custom JavaScript
 
@@ -325,7 +354,7 @@ The function receives one `tag` object:
 | `tag.data` | A copy of the [data-layer model](#data-layer-and-variables); for a `data_layer` trigger, the snapshot taken for that event. Changing the copy changes nothing else. |
 | `tag.get('alias')` | The value of a declared [variable](#data-layer-and-variables), or `undefined` when it is missing. |
 | `tag.consent('marketing')` | Whether a category is granted now. `none` is always `true`. |
-| `tag.emit(name, properties, goal)` | Calls the tracker's `emit()` under the configured `js_namespace`. If the tracker has not loaded yet, the event is held, up to 20 a page, and sent once it has, provided the tag still has consent; `true` means sent or held. The tracker's consent and property rules apply, as for a [call action](#actions-and-arguments). |
+| `tag.emit({eventName, customData})` | Calls the tracker's `emit()` under the configured `js_namespace`, with an [event object](TRACKING.md#send-an-event) or the short form `tag.emit(name, properties, goal)`. If the tracker has not loaded yet, the event is held, up to 20 a page, and sent once it has, provided the tag still has consent; `true` means sent or held. The tracker's consent and property rules apply, as for a [Send an Aggregate event](#send-an-aggregate-event) action. |
 | `tag.push({event: 'name'})` | Adds an object to `window.dataLayer`, which can trigger other tags. |
 | `tag.loadScript(url)` | Loads an HTTPS script asynchronously with the manager's nonce and no referrer, and returns a promise. It is refused once the tag's consent has been withdrawn. |
 | `tag.onCleanup(fn)` | Registers a function to run when the tag's consent is withdrawn, for removing listeners, timers or observers. |
@@ -345,7 +374,7 @@ tag_manager:
       trigger: {type: data_layer, event: signup}
       code: |
         // Send the plan the page put in the dataLayer.
-        tag.emit('signup', {plan: tag.get('plan')});
+        tag.emit({eventName: 'signup', customData: {plan: tag.get('plan')}});
 ```
 
 A custom tag on **Document ready** or **Window finished loading** runs once per
@@ -485,7 +514,8 @@ installation; replacing `window.dataLayer` bypasses its wrapper.
 This is a small data-layer subset, not GTM container compatibility. Function
 entries, `gtag()` command arrays, GTM internal events, automatic click/form
 variables and Google Consent Mode are not interpreted. The data layer does not
-transmit events to Aggregate on its own; configure a method tag to do so.
+transmit events to Aggregate on its own; configure a
+[Send an Aggregate event](#send-an-aggregate-event) tag to do so.
 
 Define up to 32 named variables in YAML or the UI's name/path rows:
 
@@ -647,11 +677,12 @@ conservative no-measurement-before-choice setup, use the
 [regional examples](CONSENT-REGIONS.md) instead of this `consent: none` example.
 
 This script loads asynchronously, so a tag that sends events through the
-tracker should not assume it is ready. Use [tag chaining](#tag-chaining) to set
-a method tag to **Run after** `aggregate-tracker`. In custom
-JavaScript, `tag.emit()` holds events until the tracker has loaded, however the
-tracker was installed, so no setting is needed; tag chaining still makes the
-whole tag wait when its other code needs the tracker too.
+tracker should not assume it is ready. A
+[Send an Aggregate event](#send-an-aggregate-event) action and, in custom
+JavaScript, `tag.emit()` hold events until the tracker has loaded, however the
+tracker was installed, so no setting is needed. A method tag that calls the
+tracker needs [tag chaining](#tag-chaining) to **Run after** `aggregate-tracker`;
+tag chaining also makes a custom tag wait when its other code needs the tracker.
 
 ## Optional minification
 

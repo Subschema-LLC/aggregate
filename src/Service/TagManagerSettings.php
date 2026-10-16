@@ -67,8 +67,8 @@ final class TagManagerSettings
             'variables' => $settings['enabled'] ? $settings['variables'] : [],
             'tags' => array_values(array_map(static fn (array $tag): array => array_diff_key($tag, ['enabled' => true, 'code' => true]), $tags)),
         ];
-        if (in_array('custom', array_column($tags, 'type'), true)) {
-            // Lets custom code send events with tag.emit() through the tracker's namespace.
+        if (array_intersect(['custom', 'event'], array_column($tags, 'type')) !== []) {
+            // Lets event tags and custom code's tag.emit() send events through the tracker's namespace.
             $configuration['namespace'] = $this->trackerNamespace();
         }
 
@@ -78,9 +78,7 @@ final class TagManagerSettings
     /** The global the tracker installs itself as (js_namespace), such as Aggregate. */
     public function trackerNamespace(): string
     {
-        $namespace = $this->config->getWithEnvFallback('js_namespace', 'Aggregate');
-
-        return is_string($namespace) && preg_match('/^[A-Za-z_$][A-Za-z0-9_$]{0,63}$/D', $namespace) === 1 ? $namespace : 'Aggregate';
+        return TrackerNamespace::of($this->config);
     }
 
     /**
@@ -91,7 +89,7 @@ final class TagManagerSettings
      */
     public function trackerNamespaces(): array
     {
-        return array_values(array_unique([$this->trackerNamespace(), 'Aggregate']));
+        return array_values(array_unique([$this->trackerNamespace(), TrackerNamespace::DEFAULT]));
     }
 
     /**
@@ -111,7 +109,7 @@ final class TagManagerSettings
             }
             $problem = TagManagerValues::emitProblem($tag['method'], $tag['args'], $this->trackerNamespaces());
             if ($problem !== null) {
-                $warnings[] = 'Tag '.$tag['id'].': '.$problem;
+                $warnings[] = 'Tag '.$tag['id'].': '.$problem.' Or convert it to a Send an Aggregate event action, which takes {"eventName": …, "customData": {…}}.';
             }
         }
 
@@ -198,7 +196,7 @@ final class TagManagerSettings
         $sources = [];
         $codeBytes = 0;
         foreach ($tags as $tag) {
-            if (!is_array($tag) || array_diff(array_keys($tag), ['id', 'type', 'src', 'method', 'args', 'code', 'enabled', 'consent', 'trigger', 'after']) !== []) {
+            if (!is_array($tag) || array_diff(array_keys($tag), ['id', 'type', 'src', 'method', 'args', 'event', 'code', 'enabled', 'consent', 'trigger', 'after']) !== []) {
                 throw new \InvalidArgumentException('Each tag must contain only its ID, action, enabled setting, consent, trigger and, optionally, the tag it runs after.');
             }
             $id = $tag['id'] ?? null;
@@ -216,8 +214,8 @@ final class TagManagerSettings
                 throw new \InvalidArgumentException('Each tag consent category must contain 1–32 lowercase letters, digits, underscores or hyphens, beginning with a letter. Use none only for a tag that needs no consent.');
             }
             if ($type === 'script') {
-                if (array_key_exists('method', $tag) || array_key_exists('args', $tag) || array_key_exists('code', $tag)) {
-                    throw new \InvalidArgumentException('A script tag uses src; method and args belong to a call tag, and code to a custom tag.');
+                if (array_key_exists('method', $tag) || array_key_exists('args', $tag) || array_key_exists('event', $tag) || array_key_exists('code', $tag)) {
+                    throw new \InvalidArgumentException('A script tag uses src; method and args belong to a call tag, event to an event tag, and code to a custom tag.');
                 }
                 $src = TagManagerVariables::validateSource($tag['src'] ?? null, $variables);
                 if (isset($sources[$src])) {
@@ -226,16 +224,21 @@ final class TagManagerSettings
                 $sources[$src] = true;
                 $action = ['src' => $src];
             } elseif ($type === 'call') {
-                if (array_key_exists('src', $tag) || array_key_exists('code', $tag)) {
-                    throw new \InvalidArgumentException('A call tag uses method and args; src belongs to a script tag, and code to a custom tag.');
+                if (array_key_exists('src', $tag) || array_key_exists('event', $tag) || array_key_exists('code', $tag)) {
+                    throw new \InvalidArgumentException('A call tag uses method and args; src belongs to a script tag, event to an event tag, and code to a custom tag.');
                 }
                 $action = [
                     'method' => TagManagerValues::validateMethod($tag['method'] ?? null),
                     'args' => TagManagerValues::validateArguments(array_key_exists('args', $tag) ? $tag['args'] : [], $variables),
                 ];
+            } elseif ($type === 'event') {
+                if (array_key_exists('src', $tag) || array_key_exists('method', $tag) || array_key_exists('args', $tag) || array_key_exists('code', $tag)) {
+                    throw new \InvalidArgumentException('An event tag uses event; src belongs to a script tag, method and args to a call tag, and code to a custom tag.');
+                }
+                $action = ['event' => TagManagerValues::validateEvent($tag['event'] ?? null, $variables, 'Tag '.$id.': the event')];
             } elseif ($type === 'custom') {
-                if (array_key_exists('src', $tag) || array_key_exists('method', $tag) || array_key_exists('args', $tag)) {
-                    throw new \InvalidArgumentException('A custom tag uses code; src belongs to a script tag, and method and args to a call tag.');
+                if (array_key_exists('src', $tag) || array_key_exists('method', $tag) || array_key_exists('args', $tag) || array_key_exists('event', $tag)) {
+                    throw new \InvalidArgumentException('A custom tag uses code; src belongs to a script tag, method and args to a call tag, and event to an event tag.');
                 }
                 $code = TagManagerCustomCode::validate($tag['code'] ?? null, 'Tag '.$id.': the custom JavaScript', $codeCacheDirectory);
                 $codeBytes += strlen($code);
@@ -244,7 +247,7 @@ final class TagManagerSettings
                 }
                 $action = ['code' => $code];
             } else {
-                throw new \InvalidArgumentException('A tag type must be script, call or custom.');
+                throw new \InvalidArgumentException('A tag type must be script, call, event or custom.');
             }
             $ids[$id] = true;
             $entry = ['id' => $id, ...$action, 'enabled' => $tagEnabled, 'consent' => $consent, 'trigger' => $trigger, 'type' => $type];

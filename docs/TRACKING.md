@@ -66,16 +66,59 @@ An anonymous-mode page-view row is recorded automatically when the script loads.
 Use a fixed event taxonomy. Names must match `[A-Za-z][A-Za-z0-9_.:-]{0,99}` and must not contain user-entered or identifier-like values.
 Even with enhanced consent, keep event properties purpose-limited and avoid emails, account IDs, form contents, search terms, or other free text.
 
-Call SDK methods after the script has loaded. The following sequence illustrates the API; connect the consent calls to actual consent-manager choices rather than running the whole sequence on page load. The SDK does not queue calls made before it exists. Once it has sent its automatic page view, it dispatches `aggregate:tracker-ready` on `document`, with the namespace in `event.detail.namespace`, so later scripts can wait for it; the tag manager's `tag.emit()` [holds events until then](TAG-MANAGER.md#custom-javascript).
+### Send an event
+
+`emit()` takes the event as an object. `eventName` says what happened, and
+`customData` holds the event's own properties: everything the tracker does not
+add itself.
+
+```javascript
+window.Aggregate.emit({
+  eventName: 'signup_click',
+  customData: {plan_type: 'pro'},
+  goalEvent: 'signup'
+});
+```
+
+| Field | What it holds |
+| --- | --- |
+| `eventName` | Required. A fixed name, as above. |
+| `customData` | The event's own properties. Each is text, a number, `true`, `false` or `null`; a property that holds an object or a list is dropped. Which are kept depends on the [data model](DATA-MODEL.md) and consent. |
+| `goalEvent` | Optional. A goal from `config/goals.yaml`, checked by the server. |
+| `pagePath` | Optional. A virtual page path, such as `/checkout/step-2` for a step of a single-page checkout. It is cleaned like the page's own path and cannot carry a query or fragment. Without it, the tracker sends the page's path. Sensitive-path exclusions apply to the path sent. |
+
+The tracker sets every other field of the request: the referrer channel, device
+class, viewport, consent state, identifiers and the organization-traffic flag.
+An event object that includes one of them, or a property beside `customData`
+rather than in it, is still sent without it, and the tracker says so in the
+browser console.
+
+The short form, `emit(eventName, properties, goal)`, sends the same event. It is
+less explicit: the properties are the second argument, so they are passed
+themselves rather than in `customData`, and it has no `pagePath`.
+
+```javascript
+window.Aggregate.emit('signup_click', {plan_type: 'pro'}, 'signup');
+```
+
+Both forms stay supported; the object form is the one the documentation and
+[Event examples](EVENT-EXAMPLES.md) use. `emit()` returns `true` when it sends
+the event and `false` when it sends nothing, such as for a missing or invalid
+event name. Each time it sends less than asked, or nothing, it writes a console
+warning that says why, without repeating the rejected value.
+
+### Call it after the script loads
+
+Call SDK methods after the script has loaded. The following sequence illustrates the API; connect the consent calls to actual consent-manager choices rather than running the whole sequence on page load. The SDK does not queue calls made before it exists. Once it has sent its automatic page view, it dispatches `aggregate:tracker-ready` on `document`, with the namespace in `event.detail.namespace`, so later scripts can wait for it; the tag manager's [Send an Aggregate event](TAG-MANAGER.md#send-an-aggregate-event) action and `tag.emit()` hold events until then.
 
 ```javascript
 // Anonymous mode records the safe event name, coarse context, and the allowlisted
 // `signup` goal. The custom property is omitted unless configured consent-free.
-window.Aggregate.emit('signup_click', { plan_type: 'pro' }, 'signup');
+window.Aggregate.emit({eventName: 'signup_click', customData: {plan_type: 'pro'}, goalEvent: 'signup'});
 
 // Accept enhanced analytics to include properties, identifiers, and exact dimensions.
 window.Aggregate.setConsent(true);
-window.Aggregate.emit('signup_click', { plan_type: 'pro' }, 'signup');
+window.Aggregate.emit({eventName: 'signup_click', customData: {plan_type: 'pro'}, goalEvent: 'signup'});
 
 // Reject or withdraw enhanced analytics. Coarse named-event rows and configured
 // anonymous goals and consent-free properties continue.
@@ -287,10 +330,11 @@ After loading, `Aggregate.configure({customData: {...}})` accepts the same setti
 
 The tracker sends an event's properties in the collection request's `customData`
 object; server-side and other direct clients do the same (see the
-[server-side guide](SERVER-SIDE.md)). Pass `emit()` the properties themselves,
-as in `emit('login', {method: 'password'})`: wrapped as
-`emit('login', {customData: {method: 'password'}})`, they form one property
-holding an object, which the tracker drops. `eventData`, the object's earlier name, is
+[server-side guide](SERVER-SIDE.md)). The [event object](#send-an-event) uses
+the same name for them. In the short form the second argument is the properties
+themselves, so `emit('login', {customData: {method: 'password'}})` would send
+one property holding an object; the tracker drops it and says so in the console.
+`eventData`, the object's earlier name, is
 still accepted when `customData` is absent, and both pass the same server
 filtering. The `customData` settings above are a different thing: they configure
 which properties the tracker collects, not the properties themselves.
@@ -299,7 +343,7 @@ Properties are flat scalars: strings, finite numbers, booleans, or null. At most
 
 Without a declared type, existing scalar behavior is preserved. Declared types omit mismatched values in both the SDK and server; null remains allowed. Integers must be whole numbers within JavaScript's safe-integer range, without fractional truncation. `float` and `double` both accept finite JSON numbers; they do not imply distinct JSON encodings or exact decimal arithmetic. Numeric and boolean strings are not converted. URL parameters are strings, so numeric/boolean typed properties need correctly typed `emit()` values instead of URL capture. Keep a separate text property if the original query value is needed. See the [complete type rules](DATA-MODEL.md#property-types-and-numeric-calculations).
 
-Use **Collection → Event examples** or `php bin/console app:analytics:examples` for synthetic anonymous/enhanced JSON from the saved model. The [ecommerce recipe](EVENT-EXAMPLES.md#a-flat-ecommerce-starting-point) recommends a flat purchase payload with integer minor units for money; generating or copying examples does not save a model or obtain visitor consent.
+Use **Collection → Event examples** or `php bin/console app:analytics:examples` for the `emit()` call that sends the saved model's properties, and the anonymous/enhanced request JSON that a server sends instead. The [ecommerce recipe](EVENT-EXAMPLES.md#a-flat-ecommerce-starting-point) recommends a flat purchase payload with integer minor units for money; generating or copying examples does not save a model or obtain visitor consent.
 
 ## Health and ingestion checks
 
@@ -616,7 +660,9 @@ dataLayer.push({
    - `DLV - customData` → Data Layer Variable Name: `customData`
    - `DLV - goalEvent` → Data Layer Variable Name: `goalEvent` (optional)
 
-`DLV - customData` returns the object inside the push's `customData`, so `emit()`
-receives the properties themselves. Keep that object flat. With
-[Aggregate's own tag manager](TAG-MANAGER.md#send-data-layer-events-to-the-tracker),
-a variable gives one value, so name each property in the arguments instead.
+`DLV - customData` returns the object inside the push's `customData`, so this
+short-form call receives the properties themselves; keep that object flat. The
+same tag can pass an event object instead:
+`window.Aggregate.emit({eventName: {{DLV - eventName}}, customData: {{DLV - customData}}, goalEvent: {{DLV - goalEvent}}})`.
+In [Aggregate's own tag manager](TAG-MANAGER.md#send-an-aggregate-event), a
+variable gives one value, so name each property in the event's `customData`.

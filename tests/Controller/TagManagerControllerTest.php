@@ -203,13 +203,54 @@ final class TagManagerControllerTest extends TestCase
 
         $flashes = $request->getSession()->getFlashBag();
         self::assertCount(1, $flashes->peek('success'));
-        self::assertSame(['Tag purchase: Remove the "customData" wrapper and put its properties directly in the second argument. The tracker puts the properties in customData itself and drops a property that holds an object, so this event would be sent without them.'], $flashes->peek('warning'));
+        self::assertSame(['Tag purchase: Remove the "customData" wrapper and put its properties directly in the second argument. The tracker puts the properties in customData itself and drops a property that holds an object, so this event would be sent without them. Or convert it to a Send an Aggregate event action, which takes {"eventName": …, "customData": {…}}.'], $flashes->peek('warning'));
         self::assertSame(['purchase', ['customData' => ['total_minor' => 1299, 'plan' => ['$var' => 'plan']]]], Yaml::parseFile($this->sitePath($this->siteId))['tag_manager']['tags'][1]['args']);
 
         $row = $this->view($request, ['site' => $this->siteId])->filter('[data-tag-row]')->eq(1);
         self::assertSame('["Aggregate"]', $row->attr('data-components--tag-manager--tag-row-namespaces-value'));
         self::assertCount(1, $row->filter('#tag-1-args-status[hidden][role="status"]'), 'the editor shows the warning as you type');
         self::assertSame('tag-1-args-help tag-1-args-status', $row->filter('#tag-1-args')->attr('aria-describedby'));
+    }
+
+    public function testAnAggregateEventIsSavedFromTheFormAndShownAgainAsJson(): void
+    {
+        $form = $this->siteForm();
+        $form['variables'][] = ['alias' => 'login_method', 'path' => 'method'];
+        $form['tags'][1] = ['id' => 'login-event', 'type' => 'event', 'event_json' => '{"eventName": "login", "customData": {"app": "facilitation", "method": {"$var": "login_method"}}, "goalEvent": null}',
+            'enabled' => '1', 'consent' => 'analytics', 'trigger' => ['type' => 'data_layer', 'event' => 'login']];
+        // The new-tag row with the editor's starting point for an event, left alone.
+        $form['tags'][] = ['id' => '', 'type' => 'event', 'event_json' => "{\n    \"eventName\": \"\",\n    \"customData\": {}\n}", 'enabled' => '1', 'consent' => 'analytics', 'trigger' => ['type' => 'dom_ready', 'event' => '']];
+        $request = $this->request($form);
+        $this->controller($request)->save($request);
+
+        self::assertSame([], $request->getSession()->getFlashBag()->peek('error'));
+        $saved = Yaml::parseFile($this->sitePath($this->siteId))['tag_manager']['tags'];
+        self::assertCount(2, $saved);
+        self::assertSame(['id' => 'login-event', 'event' => ['eventName' => 'login', 'customData' => ['app' => 'facilitation', 'method' => ['$var' => 'login_method']], 'goalEvent' => null],
+            'enabled' => true, 'consent' => 'analytics', 'trigger' => ['type' => 'data_layer', 'event' => 'login'], 'type' => 'event'], $saved[1]);
+
+        $row = $this->view($request, ['site' => $this->siteId])->filter('[data-tag-row]')->eq(1);
+        self::assertSame('event', $row->filter('select[name="tags[1][type]"] option[selected]')->attr('value'));
+        self::assertSame(['eventName' => 'login', 'customData' => ['app' => 'facilitation', 'method' => ['$var' => 'login_method']], 'goalEvent' => null],
+            json_decode($row->filter('textarea[name="tags[1][event_json]"]')->text(), true, flags: JSON_THROW_ON_ERROR));
+        self::assertSame('tag-1-event-object-status tag-1-event-object-help', $row->filter('#tag-1-event-object')->attr('aria-describedby'));
+    }
+
+    public function testAnEventFormFieldIsRefusedOutsideItsActionAndWhenItIsNotAJsonObject(): void
+    {
+        foreach ([
+            [['type' => 'call', 'method' => 'Aggregate.emit', 'args_json' => '[]', 'event_json' => '{"eventName": "login"}'], 'Only a Send an Aggregate event action uses an event. Clear it or choose that action.'],
+            [['type' => 'event', 'event_json' => '["login"]'], 'Tag login-event: the event must be a JSON object, for example {"eventName": "login", "customData": {"method": "password"}}.'],
+            [['type' => 'event', 'event_json' => '{"eventName": "login",'], 'Tag login-event: the event must be a JSON object'],
+            [['type' => 'event', 'event_json' => '{"eventName": "login"}', 'method' => 'Aggregate.emit'], 'A Send an Aggregate event action uses only its event. Clear the script URL, method and arguments.'],
+            [['type' => 'event', 'event_json' => '{"eventName": "login", "method": "password"}'], "Tag login-event: the event has method, but it takes only eventName, customData, goalEvent and pagePath. Put the event's properties in customData."],
+        ] as [$fields, $message]) {
+            $form = $this->siteForm();
+            $form['tags'][1] = $fields + ['id' => 'login-event', 'enabled' => '1', 'consent' => 'analytics', 'trigger' => ['type' => 'dom_ready', 'event' => '']];
+            $request = $this->request($form);
+            $this->controller($request)->save($request);
+            self::assertSame([$message], array_map(static fn (string $error): string => str_starts_with($error, $message) ? $message : $error, $request->getSession()->getFlashBag()->peek('error')), json_encode($fields));
+        }
     }
 
     #[DataProvider('invalidSiteFields')]
