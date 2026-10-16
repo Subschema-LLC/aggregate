@@ -1,0 +1,171 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Tests\Controller;
+
+use App\Controller\ReportingTimezoneController;
+use App\Service\AggregateConfigLoader;
+use App\Service\AnalyticsPrivacySettings;
+use App\Service\AnonymousBiViewManager;
+use App\Service\ReportingTimezone;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use PHPUnit\Framework\TestCase;
+use Psr\Log\NullLogger;
+use Symfony\Component\DependencyInjection\Container;
+use Symfony\Component\DomCrawler\Crawler;
+use Symfony\Component\HttpFoundation\RedirectResponse;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\RequestStack;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\Session\Session;
+use Symfony\Component\HttpFoundation\Session\Storage\MockArraySessionStorage;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
+use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
+use Symfony\Component\Security\Core\Authorization\AuthorizationCheckerInterface;
+use Symfony\Component\Security\Core\Exception\AccessDeniedException;
+use Symfony\Component\Security\Csrf\CsrfToken;
+use Symfony\Component\Security\Csrf\CsrfTokenManagerInterface;
+use Symfony\Component\Yaml\Yaml;
+use Twig\Environment;
+use Twig\Loader\ArrayLoader;
+use Twig\Loader\ChainLoader;
+use Twig\Loader\FilesystemLoader;
+use Twig\TwigFunction;
+
+final class ReportingTimezoneControllerTest extends TestCase
+{
+    private string $directory;
+    private array $environment;
+    private AggregateConfigLoader $config;
+    /** @var list<string> */
+    private array $executed = [];
+
+    protected function setUp(): void
+    {
+        $this->environment = [$_ENV, $_SERVER];
+        unset($_ENV['REPORTING_TIMEZONE'], $_SERVER['REPORTING_TIMEZONE'], $_ENV['DASHBOARD_ENABLED'], $_SERVER['DASHBOARD_ENABLED']);
+        $this->directory = sys_get_temp_dir().'/aggregate-tz-ui-'.bin2hex(random_bytes(6));
+        mkdir($this->directory.'/config', 0700, true);
+        file_put_contents($this->directory.'/config/aggregate.yaml', Yaml::dump([
+            'operator_setting' => 'preserve',
+            ReportingTimezone::KEY => 'America/Chicago',
+        ]));
+        $this->config = new AggregateConfigLoader($this->directory, 'test');
+        $this->executed = [];
+    }
+
+    protected function tearDown(): void
+    {
+        [$_ENV, $_SERVER] = $this->environment;
+        foreach (glob($this->directory.'/config/*') ?: [] as $file) {
+            unlink($file);
+        }
+        rmdir($this->directory.'/config');
+        rmdir($this->directory);
+    }
+
+    public function testPageShowsTheConfiguredZone(): void
+    {
+        $response = $this->controller(Request::create('/dashboard/reporting/timezone'))->index();
+
+        self::assertSame(200, $response->getStatusCode());
+        $crawler = new Crawler((string) $response->getContent());
+        self::assertSame('America/Chicago', $crawler->filter('#reporting-timezone option[selected]')->attr('value'));
+        self::assertSame('/dashboard/reporting/timezone/save', $crawler->filter('form')->attr('action'));
+        self::assertStringContainsString('day boundaries', $crawler->filter('.notification.is-warning')->text());
+    }
+
+    public function testSavingWritesYamlAndRegeneratesTheEventViews(): void
+    {
+        $request = $this->post(['reporting_timezone' => 'Europe/London']);
+        $response = $this->controller($request)->save($request);
+
+        self::assertInstanceOf(RedirectResponse::class, $response);
+        $saved = Yaml::parseFile($this->directory.'/config/aggregate.yaml');
+        self::assertSame('preserve', $saved['operator_setting']);
+        self::assertSame('Europe/London', $saved[ReportingTimezone::KEY]);
+        self::assertNotEmpty($this->executed);
+        self::assertStringContainsString("AT TIME ZONE 'Europe/London'", $this->executed[0]);
+        self::assertStringNotContainsString("AT TIME ZONE 'Europe/London'", $this->executed[1]);
+        self::assertSame(['Saved the reporting timezone Europe/London and regenerated the BI views.'], $request->getSession()->getFlashBag()->peek('success'));
+    }
+
+    public function testAnOffsetIsShownAgainAndNothingIsSaved(): void
+    {
+        $before = (string) file_get_contents($this->directory.'/config/aggregate.yaml');
+        $request = $this->post(['reporting_timezone' => 'EST']);
+        $response = $this->controller($request)->save($request);
+
+        self::assertSame(Response::HTTP_UNPROCESSABLE_ENTITY, $response->getStatusCode());
+        self::assertStringContainsString('IANA time zone name', (new Crawler((string) $response->getContent()))->filter('[role="alert"]')->text());
+        self::assertSame($before, file_get_contents($this->directory.'/config/aggregate.yaml'));
+        self::assertSame([], $this->executed);
+    }
+
+    public function testTheDisabledDashboardHidesThePage(): void
+    {
+        $this->config->set('dashboard_enabled', false);
+
+        $this->expectException(NotFoundHttpException::class);
+        $this->controller(Request::create('/dashboard/reporting/timezone'))->index();
+    }
+
+    public function testOnlyAdministratorsCanSave(): void
+    {
+        $this->expectException(AccessDeniedException::class);
+        $this->controller($this->post(['reporting_timezone' => 'UTC']), admin: false)->save($this->post(['reporting_timezone' => 'UTC']));
+    }
+
+    private function post(array $fields): Request
+    {
+        $request = Request::create('/dashboard/reporting/timezone/save', 'POST', ['_csrf_token' => 'valid-token'] + $fields);
+        $request->setSession(new Session(new MockArraySessionStorage()));
+
+        return $request;
+    }
+
+    private function controller(Request $request, bool $admin = true): ReportingTimezoneController
+    {
+        $connection = $this->createStub(Connection::class);
+        $connection->method('getDatabasePlatform')->willReturn(new PostgreSQLPlatform());
+        $connection->method('executeStatement')->willReturnCallback(function (string $sql): int {
+            $this->executed[] = $sql;
+
+            return 0;
+        });
+        $timezone = new ReportingTimezone($this->config);
+        $controller = new ReportingTimezoneController(
+            $this->config,
+            $timezone,
+            new AnalyticsPrivacySettings($this->config),
+            new AnonymousBiViewManager($connection, null, $timezone),
+            new NullLogger(),
+        );
+
+        $authorization = $this->createStub(AuthorizationCheckerInterface::class);
+        $authorization->method('isGranted')->willReturn($admin);
+        $csrf = $this->createStub(CsrfTokenManagerInterface::class);
+        $csrf->method('isTokenValid')->willReturnCallback(static fn (CsrfToken $token): bool => $token->getValue() === 'valid-token');
+        $router = $this->createStub(UrlGeneratorInterface::class);
+        $router->method('generate')->willReturn('/dashboard/reporting/timezone');
+        $stack = new RequestStack();
+        $stack->push($request);
+        $twig = new Environment(new ChainLoader([new ArrayLoader(['base.html.twig' => '{% block body %}{% endblock %}']), new FilesystemLoader(dirname(__DIR__, 2).'/templates')]), ['strict_variables' => true]);
+        $twig->addGlobal('app_branding', ['name' => 'Example Analytics']);
+        $twig->addFunction(new TwigFunction('path', static fn (string $name): string => $name === 'app_reporting_timezone_save' ? '/dashboard/reporting/timezone/save' : '/dashboard/reporting/timezone'));
+        $twig->addFunction(new TwigFunction('csrf_token', static fn (): string => 'valid-token'));
+        \App\Tests\Support\TwigComponents::register($twig);
+
+        $container = new Container();
+        $container->set('security.authorization_checker', $authorization);
+        $container->set('security.csrf.token_manager', $csrf);
+        $container->set('router', $router);
+        $container->set('request_stack', $stack);
+        $container->set('twig', $twig);
+        $controller->setContainer($container);
+
+        return $controller;
+    }
+}

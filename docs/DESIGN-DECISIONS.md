@@ -438,6 +438,30 @@ ticked once.
 that want model edits reviewed before any DDL, would call for an option to save
 without updating the views.
 
+### A website setting overrides its group, which overrides the deployment
+
+**Decision.** Collection settings and the data model can vary by named website
+group and by website. The deployment YAML, including its environment variables,
+is the base. A group file replaces only the keys it sets, and a website file
+replaces those keys again. The word "group" can be renamed, for example to
+Brand; each group still has its own name. Reporting views stay on the
+deployment model until an administrator publishes new columns from the narrower
+models. A missing catalog changes nothing. An invalid catalog or overlay stops
+collection for the affected websites instead of falling back to a broader
+setting.
+
+**Why.** Several brands on one installation need different collection rules
+without a second deployment, and an existing installation must keep collecting
+exactly as before until an operator opts in.
+
+**Trade-off.** A column that only one website collects does not appear in
+reports until it is published, and two scopes that introduce the same property
+with different columns are refused. Approved anonymous views are unchanged.
+
+**What would change it.** Website-specific reporting views, if a later contract
+needs them, would be a new versioned view rather than a change to
+`bi_anonymous_*`.
+
 ### Views copied to BigQuery whole, by scheduled load jobs
 
 **Decision.** [BigQuery sync](BIGQUERY.md) copies selected reporting views, never

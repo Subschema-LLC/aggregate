@@ -87,6 +87,7 @@
                 <p>
                     Each row is one released hourly cell, grouped by every dimension listed below.
                     The current UTC hour and cells below <code>anonymous_min_cell_count</code> are absent.
+                    <code>event_hour</code> is labelled in the installation reporting timezone, UTC unless that setting is changed.
                     The default threshold is 5 events and the allowed range is 2–1000.
                 </p>
             </div>
@@ -109,8 +110,8 @@
                         </tr>
                         <tr>
                             <th scope="row"><code>event_hour</code></th>
-                            <td>UTC datetime</td>
-                            <td>Start of a completed UTC hour; anonymous event times are bucketed to this boundary.</td>
+                            <td>Datetime</td>
+                            <td>Start of a completed hour in the reporting timezone, UTC unless that setting is changed. Anonymous event times are stored as a UTC hour; the view relabels that hour.</td>
                         </tr>
                         <tr>
                             <th scope="row"><code>event_name</code></th>
@@ -264,8 +265,8 @@
                         </tr>
                         <tr>
                             <th scope="row"><code>event_day</code></th>
-                            <td>UTC date</td>
-                            <td>A completed UTC calendar day.</td>
+                            <td>Date</td>
+                            <td>A completed day in the reporting timezone, UTC unless that setting is changed.</td>
                         </tr>
                         <tr>
                             <th scope="row"><code>event_name</code></th>
@@ -340,8 +341,8 @@
                         </tr>
                         <tr>
                             <th scope="row"><code>event_day</code></th>
-                            <td>UTC date</td>
-                            <td>A completed UTC calendar day.</td>
+                            <td>Date</td>
+                            <td>A completed day in the reporting timezone, UTC unless that setting is changed.</td>
                         </tr>
                         <tr>
                             <th scope="row"><code>event_name</code></th>
@@ -418,8 +419,8 @@
                         </tr>
                         <tr>
                             <th scope="row"><code>event_day</code></th>
-                            <td>UTC date</td>
-                            <td>A completed UTC calendar day.</td>
+                            <td>Date</td>
+                            <td>A completed day in the reporting timezone, the same day as the event views.</td>
                         </tr>
                         <tr>
                             <th scope="row"><code>view_name</code></th>
@@ -787,7 +788,7 @@ ORDER BY event_day, geo_area;</code></pre>
             <h3 class="title is-5">Model and refresh settings</h3>
             <div class="content">
                 <ul>
-                    <li>Configure <code>event_hour</code> as UTC; the physical timestamp may not carry a timezone marker.</li>
+                    <li>Configure <code>event_hour</code> as the reporting timezone, UTC unless that setting is changed; the physical timestamp may not carry a timezone marker. Goal and geography days stay UTC.</li>
                     <li>Connector-specific physical types vary; model <code>event_day</code> as a date and <code>event_count</code> as a whole number.</li>
                     <li>Expect new hourly event data only after an hour completes, and goal and geography data only after a UTC day completes.</li>
                     <li>Treat missing cells as withheld or unavailable, not as confirmed zero traffic.</li>

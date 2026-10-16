@@ -172,7 +172,7 @@ How files are treated:
 
 | Files | Update behavior |
 | --- | --- |
-| `.env.local`, `.env.*.local`, `.env.prod`, `config/aggregate.yaml`, `config/aggregate_*.yaml`, `config/websites.yaml`, `config/tag-manager/sites/`, `config/*.local.yaml`, `config/secrets/`, `var/` (except `var/browser/`) | Never replaced or deleted. Packages cannot contain them: the builder refuses them and the updater rejects a package that includes one. |
+| `.env.local`, `.env.*.local`, `.env.prod`, `config/aggregate.yaml`, `config/aggregate_*.yaml`, `config/websites.yaml`, `config/website-scopes.yaml`, `config/website-scopes/`, `config/tag-manager/sites/`, `config/*.local.yaml`, `config/secrets/`, `var/` (except `var/browser/`) | Never replaced or deleted. Packages cannot contain them: the builder refuses them and the updater rejects a package that includes one. |
 | `config/goals.yaml`, `config/navigation.yaml`, `config/quick_search.yaml` | Edits move to `config/NAME.local.yaml` (see [local overrides](CONFIGURATION.md#local-overrides-for-shipped-defaults)); the new default is installed. |
 | `.env` | Existing values kept; keys new in the release are appended. |
 | `config/release-signing.pub` | The installed trusted key is never replaced by a package. |

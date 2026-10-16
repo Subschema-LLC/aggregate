@@ -52,7 +52,9 @@ final class DropInScripts
         if ($withTags) {
             $urls[] = $host.'/tms-lite/sites/'.$siteId.'/lib.js?min=1';
         } else {
-            $urls[] = $format === 'query' ? $this->trackerUrl($token) : $host.'/aggregate.js?min=1';
+            $urls[] = $format === 'query'
+                ? $this->trackerUrl($token)
+                : $host.'/aggregate.js?'.http_build_query(['min' => '1', 'token' => $token], '', '&', PHP_QUERY_RFC3986);
         }
         foreach ($urls as $url) {
             $url = htmlspecialchars($url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
