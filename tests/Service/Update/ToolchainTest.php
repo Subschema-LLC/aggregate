@@ -73,12 +73,14 @@ final class ToolchainTest extends TestCase
     public function testItSuggestsAnotherPhpWithTheMissingExtensions(): void
     {
         $missing = $this->fakePhp('missing', $this->version(), ['intl']);
-        $older = $this->fakePhp('older', '8.2', []);
+        // Another supported minor version than the one running the tests.
+        $other = $this->fakePhp('other', $this->version() === '8.2' ? '8.4' : '8.2', []);
+        $tooOld = $this->fakePhp('too-old', '8.1', []);
         $matching = $this->fakePhp('matching', $this->version(), []);
 
-        self::assertSame($matching, (new Toolchain($this->directory, 'cli', [$missing, $older, $matching]))->suggestPhp(['intl'], '8.2.0'));
-        self::assertSame($older, (new Toolchain($this->directory, 'cli', [$missing, $older]))->suggestPhp(['intl'], '8.2.0'));
-        self::assertNull((new Toolchain($this->directory, 'cli', [$missing]))->suggestPhp(['intl'], '8.2.0'));
+        self::assertSame($matching, (new Toolchain($this->directory, 'cli', [$missing, $tooOld, $other, $matching]))->suggestPhp(['intl'], '8.2.0'));
+        self::assertSame($other, (new Toolchain($this->directory, 'cli', [$missing, $tooOld, $other]))->suggestPhp(['intl'], '8.2.0'));
+        self::assertNull((new Toolchain($this->directory, 'cli', [$missing, $tooOld]))->suggestPhp(['intl'], '8.2.0'));
     }
 
     private function version(): string
