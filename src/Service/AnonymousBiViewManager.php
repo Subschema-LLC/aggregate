@@ -31,6 +31,7 @@ final class AnonymousBiViewManager
         private readonly Connection $connection,
         private readonly ?BiPageGroups $pageGroups = null,
         private readonly ?ReportingTimezone $reportingTimezone = null,
+        private readonly ?MysqlTimeZoneTables $timeZones = null,
     ) {
     }
 
@@ -196,20 +197,7 @@ final class AnonymousBiViewManager
             ReportingTimezone::windowsName($timezone);
         }
         if ($platform instanceof AbstractMySQLPlatform) {
-            $this->assertMysqlNamedZone($timezone);
-        }
-    }
-
-    private function assertMysqlNamedZone(string $timezone): void
-    {
-        foreach (['2024-01-15 12:00:00', '2024-07-15 12:00:00'] as $instant) {
-            $converted = $this->connection->fetchOne('SELECT CONVERT_TZ(?, ?, ?)', [$instant, 'UTC', $timezone]);
-            if ($converted === null || $converted === false || $converted === '') {
-                throw new \RuntimeException(sprintf(
-                    'MySQL cannot convert %s. Load the time zone tables (mysql_tzinfo_to_sql or mariadb-tzinfo-to-sql) and run app:analytics:bi-views:regenerate again. The existing views were left unchanged.',
-                    $timezone,
-                ));
-            }
+            ($this->timeZones ?? new MysqlTimeZoneTables($this->connection))->assertConverts($timezone);
         }
     }
 }

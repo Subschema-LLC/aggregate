@@ -43,7 +43,8 @@ to a release that adds a view; saving the BI disclosure, page groups or reportin
 timezone page in the dashboard does the same. Invalid settings stop it before
 any view changes. A reporting timezone other than UTC also needs MySQL time zone
 tables, or a Windows time zone name on SQL Server; if those are missing the
-existing views stay in place.
+existing views stay in place. Load MySQL or MariaDB tables with
+app:analytics:mysql-timezones:load, or the command that failure prints.
 
 View names and columns do not change. PostgreSQL, MySQL, MariaDB and SQL Server
 replace each view in place, so grants to the reporting account are kept.

@@ -44,6 +44,8 @@ services:
             - '../src/Service/Operations/TaskTrigger.php'
             # Built by the sync runner for the reporting database's connection.
             - '../src/Service/ReportingDatabase/{ReportingDatabaseException,ReportingTableWriter}.php'
+            # Thrown when named zones cannot be compiled; not a service.
+            - '../src/Service/MysqlTimeZoneTablesMissing.php'
 
     App\Controller\HomeController: ~
     App\Controller\ReceiveController:

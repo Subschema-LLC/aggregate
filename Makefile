@@ -1,7 +1,8 @@
 .PHONY: help install setup start stop restart logs migrate worker test clean build-js check-js \
 	start-mysql start-postgres start-mariadb \
 	migrate-mysql migrate-postgres migrate-mariadb \
-	install-mysql install-postgres install-mariadb
+	install-mysql install-postgres install-mariadb \
+	load-mysql-timezones
 
 # Detect if Docker is available and being used
 USE_DOCKER := $(shell command -v docker >/dev/null 2>&1 && [ -f compose.yaml ] && echo 1 || echo 0)
@@ -92,6 +93,17 @@ install-postgres: ## Docker install flow with PostgreSQL profile
 
 install-mariadb: ## Docker install flow with MariaDB profile
 	@DOCKER_DATABASE_URL="$(MARIADB_DOCKER_DSN)" $(MAKE) install DOCKER_PROFILE=mariadb
+
+load-mysql-timezones: ## Load MySQL/MariaDB time zone tables (DOCKER_PROFILE=mysql or mariadb)
+ifeq ($(USE_DOCKER),0)
+	@echo "Docker is not available. On the database server run: mysql_tzinfo_to_sql /usr/share/zoneinfo | mysql -u root -p mysql"
+else ifeq ($(DOCKER_PROFILE),postgres)
+	@echo "PostgreSQL does not need MySQL time zone tables."
+else ifeq ($(DOCKER_PROFILE),mariadb)
+	$(COMPOSE) exec -T database-mariadb bash -s < docker/mysql/load-timezones.sh
+else
+	$(COMPOSE) exec -T database-mysql bash -s < docker/mysql/load-timezones.sh
+endif
 
 start: ## Start all services
 ifeq ($(USE_DOCKER),1)

@@ -18,6 +18,14 @@
         </div>
     {% endif %}
 
+    {% if timezone_load_command %}
+        <div class="notification is-warning is-light" role="alert">
+            <p>MySQL cannot convert named time zones until its time zone tables are loaded. On the database server, run:</p>
+            <pre class="mt-3"><code>{{ timezone_load_command }}</code></pre>
+            <p class="mt-3">Then save again, or run <code>php bin/console app:analytics:bi-views:regenerate</code>. Existing views stay unchanged until then. On a server that can administer MySQL, <code>php bin/console app:analytics:mysql-timezones:load</code> loads the tables and regenerates. With this repository's Docker Compose, run <code>make load-mysql-timezones</code> on the host.</p>
+        </div>
+    {% endif %}
+
     {% if reporting_timezone_error %}
         <div class="notification is-danger is-light" role="alert">{{ reporting_timezone_error }}</div>
     {% endif %}
@@ -56,7 +64,7 @@
             </div>
         </div>
     </form>
-    <p class="help mt-4">This does not recover a visitor's local time, and it does not change collection. MySQL and MariaDB need their time zone tables loaded. SQL Server uses a Windows time zone name; an unmapped name is refused and the existing views stay in place.</p>
+    <p class="help mt-4">This does not recover a visitor's local time, and it does not change collection. MySQL and MariaDB need their time zone tables loaded before a named zone can be saved. SQL Server uses a Windows time zone name; an unmapped name is refused and the existing views stay in place.</p>
 </div>
 </div>
 </div>

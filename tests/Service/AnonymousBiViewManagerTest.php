@@ -150,6 +150,9 @@ final class AnonymousBiViewManagerTest extends TestCase
             self::fail('MySQL regenerated views without time zone tables.');
         } catch (\RuntimeException $e) {
             self::assertStringContainsString('MySQL cannot convert America/Chicago', $e->getMessage());
+            self::assertStringContainsString('mysql_tzinfo_to_sql /usr/share/zoneinfo', $e->getMessage());
+            self::assertStringContainsString('app:analytics:mysql-timezones:load', $e->getMessage());
+            self::assertStringContainsString('app:analytics:bi-views:regenerate', $e->getMessage());
         }
         self::assertSame([], $executed);
         unlink($directory.'/config/aggregate.yaml');
