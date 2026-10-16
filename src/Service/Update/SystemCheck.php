@@ -30,9 +30,12 @@ class SystemCheck
 
     public const MINIMUM_PHP_VERSION = '8.2.0';
     public const REQUIRED_EXTENSIONS = ['ctype', 'iconv', 'pdo', 'mbstring', 'xml', 'curl', 'intl', 'sodium', 'zip'];
-    private const WRITABLE = ['', 'bin', 'config', 'migrations', 'public', 'src', 'templates', 'var', 'vendor'];
+    /** The folders an update writes; those under var/ are checked only when they exist. */
+    private const WRITABLE = ['', 'bin', 'config', 'migrations', 'public', 'src', 'templates', 'var', 'vendor', ...self::WORK_WRITABLE];
     /** Code deployed another way is replaced by that tool; the post-deployment steps write only these. */
-    private const DEPLOYMENT_WRITABLE = ['var', 'vendor', 'public', 'assets'];
+    private const DEPLOYMENT_WRITABLE = ['var', 'vendor', 'public', 'assets', ...self::WORK_WRITABLE];
+    /** Work and cache folders a command run as another user, typically root, may have created. */
+    private const WORK_WRITABLE = ['var/updates', 'var/updates/uploads', 'var/updates/downloads', 'var/updates/staging', 'var/updates/backups', 'var/cache'];
     private const MIN_FREE_BYTES = 300 * 1024 * 1024;
     private const MIN_UPLOAD_BYTES = 64 * 1024 * 1024;
 
@@ -135,11 +138,12 @@ class SystemCheck
         foreach (($source['source'] ?? null) === 'deployment' ? self::DEPLOYMENT_WRITABLE : self::WRITABLE as $directory) {
             $path = rtrim($this->projectDir.'/'.$directory, '/');
             if (is_dir($path) && !is_writable($path)) {
-                $unwritable[] = $directory === '' ? 'the application directory' : $directory.'/';
+                $owner = FileOwner::of($path);
+                $unwritable[] = ($directory === '' ? 'the application directory' : $directory.'/').($owner !== null && $owner !== FileOwner::current() ? ' (owned by '.$owner.')' : '');
             }
         }
-        $user = $this->userName();
-        $owner = $this->ownerName();
+        $user = FileOwner::current();
+        $owner = FileOwner::of($this->projectDir);
         if ($owner !== null && $owner !== $user && $user === 'root') {
             // Files root writes would belong to root, and the website could no
             // longer change them or its cache.
@@ -147,7 +151,9 @@ class SystemCheck
         }
         $add('writable', 'Application files writable', $unwritable === [] ? self::OK : self::ERROR, $unwritable === []
             ? 'User '.$user.' can replace application files.'
-            : 'User '.$user.' cannot write '.implode(', ', $unwritable).'. Run php bin/console app:updates:apply as the user that owns the files, or give this user write access to use the dashboard button.');
+            : 'User '.$user.' cannot write '.implode(', ', $unwritable).'.'.(str_contains(implode(' ', $unwritable), '(owned by')
+                ? ' A command run as another user, usually root, created them. As root, give them back with chown -R '.$user.' on each folder, or delete the folders under var/ so they are created again.'
+                : ' Run php bin/console app:updates:apply as the user that owns the files, or give this user write access to use the dashboard button.'));
 
         // Code deployed another way is never updated from the dashboard.
         if (($source['source'] ?? null) !== 'deployment') {
@@ -371,30 +377,6 @@ class SystemCheck
             'pdo_sqlsrv', 'sqlsrv' => 'SQL Server',
             default => 'the database',
         };
-    }
-
-    /** The user that owns the application folder, when the platform can tell. */
-    private function ownerName(): ?string
-    {
-        $uid = @fileowner($this->projectDir);
-        if (!is_int($uid) || !function_exists('posix_getpwuid')) {
-            return null;
-        }
-        $owner = posix_getpwuid($uid);
-
-        return is_array($owner) && is_string($owner['name'] ?? null) ? $owner['name'] : null;
-    }
-
-    private function userName(): string
-    {
-        if (function_exists('posix_geteuid') && function_exists('posix_getpwuid')) {
-            $user = posix_getpwuid(posix_geteuid());
-            if (is_array($user) && is_string($user['name'] ?? null)) {
-                return $user['name'];
-            }
-        }
-
-        return get_current_user() ?: 'this user';
     }
 
     private function bytes(float $bytes): string

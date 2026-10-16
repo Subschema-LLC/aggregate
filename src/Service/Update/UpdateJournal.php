@@ -30,7 +30,7 @@ class UpdateJournal
     {
         $path = rtrim($this->directory().'/'.$relative, '/');
         if (!is_dir($path) && !@mkdir($path, 0775, true) && !is_dir($path)) {
-            throw new \RuntimeException('The update work directory could not be created. Check write access to var/updates.');
+            throw new \RuntimeException('The update folder '.FileOwner::relative($path, $this->projectDir).' could not be created: '.FileOwner::explain($path, $this->projectDir));
         }
 
         return $path;
@@ -45,7 +45,7 @@ class UpdateJournal
         $this->ensureDirectory();
         $handle = @fopen($this->directory().'/update.lock', 'c');
         if ($handle === false) {
-            throw new \RuntimeException('The update lock could not be opened. Run the update as the deployment user with write access to var/updates.');
+            throw new \RuntimeException('The update lock could not be opened: '.FileOwner::explain($this->directory().'/update.lock', $this->projectDir));
         }
         if (!flock($handle, LOCK_EX | LOCK_NB)) {
             fclose($handle);
@@ -112,7 +112,7 @@ class UpdateJournal
         $json = json_encode($state, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
         if (@file_put_contents($temporary, $json."\n") === false || !@rename($temporary, $directory.'/state.json')) {
             @unlink($temporary);
-            throw new \RuntimeException('Update progress could not be saved. Check write access to var/updates.');
+            throw new \RuntimeException('Update progress could not be saved: '.FileOwner::explain(is_file($directory.'/state.json') ? $directory.'/state.json' : $directory, $this->projectDir));
         }
 
         return $state;

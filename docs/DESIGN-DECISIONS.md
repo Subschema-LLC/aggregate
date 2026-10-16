@@ -208,6 +208,31 @@ attribute names.
 construction, such as an outbound link's host name, if adopters need it. It would
 still need a data-model definition before it is stored.
 
+### An event names itself; its own properties go in customData
+
+**Decision.** [`emit()`](TRACKING.md#send-an-event) takes an event object:
+`eventName`, optional `goalEvent` and `pagePath`, and `customData` for the event's
+own properties, everything the tracker does not add itself. The tag manager's
+[Send an Aggregate event](TAG-MANAGER.md#send-an-aggregate-event) action takes
+the same object. The tracker sets every other request field and ignores one
+passed in, with a console warning. The short form,
+`emit(eventName, properties, goal)`, sends the same event and stays supported.
+
+**Why.** The object says what each part is, and matches the request body, the
+server-side API and the GTM template's **Custom data object**, so a call reads
+the same wherever it is written and the event's own data stays apart from what
+the tracker measures. A dedicated tag manager action knows the tracker, so it
+waits for it to load without tag chaining. The short form keeps existing pages,
+data attributes and GTM tags working.
+
+**Trade-off.** Two ways to call one method, which the documentation answers by
+leading with the object form. `pagePath` lets a page report a virtual path; it is
+cleaned like a real one and sensitive-path exclusions apply to it, but a site can
+use it to report a sensitive page under another path.
+
+**What would change it.** A reason to retire the short form, such as a tracker
+size budget it no longer fits, which would need a deprecation period first.
+
 ### Organization traffic marked on each website, reported on every event
 
 **Decision.** Team members mark a browser through [marking links](PRIVACY-COMPLIANCE.md#organization-traffic)

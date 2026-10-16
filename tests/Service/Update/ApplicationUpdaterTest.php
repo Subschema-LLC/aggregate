@@ -458,6 +458,24 @@ final class ApplicationUpdaterTest extends TestCase
         $this->messages[] = [$level, $message];
     }
 
+    public function testAWorkFolderTheUpdateCannotWriteIsAnErrorBeforeAnythingStarts(): void
+    {
+        if (function_exists('posix_geteuid') && posix_geteuid() === 0) {
+            self::markTestSkipped('Root can write any folder.');
+        }
+        mkdir($this->project.'/var/updates/uploads', 0775, true);
+        chmod($this->project.'/var/updates/uploads', 0555);
+        try {
+            $preflight = $this->updater()->preflight();
+        } finally {
+            chmod($this->project.'/var/updates/uploads', 0775);
+        }
+        $check = array_column($preflight['checks'], null, 'id')['writable'];
+        self::assertSame('error', $check['status']);
+        self::assertStringContainsString('cannot write var/updates/uploads/', $check['detail']);
+        self::assertContains($check['detail'], $preflight['problems']);
+    }
+
     public function testRootIsStoppedFromUpdatingFilesThatBelongToTheWebsiteUser(): void
     {
         if (!function_exists('posix_geteuid') || posix_geteuid() !== 0) {

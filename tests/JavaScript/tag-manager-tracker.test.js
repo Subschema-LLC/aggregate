@@ -120,7 +120,7 @@ function eventTarget(object = {}) {
 // Model only the two installed drop-ins. A configured script tag is fetched
 // asynchronously and evaluated later, with its own currentScript URL, exactly
 // where the SDK reads query parameters. There is no inline tracker config.
-function dropInPage({namespace = 'Aggregate', tokenParameter = 'token', saved, trackerTag = true, tagConsent = 'none', withCmp = true, trackerQuery = '', variables = {}, dataLayer} = {}) {
+function dropInPage({namespace = 'Aggregate', tokenParameter = 'token', saved, trackerTag = true, tagConsent = 'none', withCmp = true, trackerQuery = '', variables = {}, dataLayer, extraTags = []} = {}) {
   const requests = [];
   const timers = [];
   const injectedScripts = [];
@@ -187,8 +187,11 @@ function dropInPage({namespace = 'Aggregate', tokenParameter = 'token', saved, t
   const tags = trackerTag ? [{
     id: 'aggregate-sdk', type: 'script', src: trackerUrl.href + trackerQuery, consent: tagConsent, trigger: {type: 'dom_ready'}
   }] : [];
+  tags.push(...extraTags);
   if (dataLayer) window.dataLayer = dataLayer;
-  execute(configuredManager({enabled: true, variables, tags}), {src: 'https://analytics.example/tms-lite/sites/' + siteId + '/lib.js', dataset: {}});
+  // The server names the tracker's namespace for event and custom tags.
+  const managed = extraTags.length ? {enabled: true, namespace, variables, tags} : {enabled: true, variables, tags};
+  execute(configuredManager(managed), {src: 'https://analytics.example/tms-lite/sites/' + siteId + '/lib.js', dataset: {}});
 
   return {
     window, document, requests, injectedScripts, localStorage, sessionStorage, cookies, endpoint, token, trackerUrl,
@@ -312,4 +315,34 @@ test('a managed tracker URL carries dataLayer values as custom data on its page 
 
   const missing = dropInPage({saved: '{"analytics":true}', trackerQuery: '&cd.plan={{plan}}', variables: {plan: 'account.plan'}, dataLayer: []});
   assert.equal(missing.injectedScripts.length, 0, 'a missing variable skips the whole tracker tag');
+});
+
+test('an Aggregate event tag sends its customData through the tracker and waits for it without chaining', () => {
+  const page = dropInPage({
+    namespace: 'Optin', saved: '{"analytics":true}',
+    variables: {login_method: 'method', role: 'user_role'},
+    extraTags: [{
+      id: 'login-event', type: 'event', consent: 'analytics', trigger: {type: 'data_layer', event: 'login'},
+      event: {eventName: 'login', customData: {app: 'facilitation', method: {$var: 'login_method'}, user_role: {$var: 'role'}}}
+    }, {
+      id: 'step-view', type: 'event', consent: 'analytics', trigger: {type: 'dom_ready'},
+      event: {eventName: 'step_view', pagePath: '/checkout/step-2'}
+    }],
+    // Pushed before the tracker has loaded.
+    dataLayer: [{event: 'login', method: 'password', user_role: 'admin'}]
+  });
+  // The manager's own scheduled work runs before an async script can arrive.
+  page.flushTimers();
+  assert.equal(page.requests.length, 0, 'held until the tracker has loaded');
+  page.loadInjectedTracker();
+  page.flushTimers();
+  const sent = page.requests.map((request) => request.body);
+  assert.deepEqual(sent.map((body) => body.eventName), ['view', 'login', 'step_view'], 'the page view goes first, then the held events in order');
+  assert.deepEqual(sent[1].customData, {app: 'facilitation', method: 'password', user_role: 'admin'});
+  assert.equal(sent[1].pagePath, '/checkout');
+  assert.equal(sent[1].consentState, 'granted');
+  assert.equal(sent[2].pagePath, '/checkout/step-2');
+
+  page.window.dataLayer.push({event: 'login', method: 'passkey', user_role: 'admin'});
+  assert.deepEqual(page.requests.at(-1).body.customData, {app: 'facilitation', method: 'passkey', user_role: 'admin'}, 'later pushes are sent at once');
 });

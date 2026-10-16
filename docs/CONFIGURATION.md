@@ -684,7 +684,7 @@ Or override per-script tag:
 Then use your custom namespace:
 ```javascript
 window.Company1Analytics.setConsent(true);
-window.Company1Analytics.emit('signup', {plan: 'pro'});
+window.Company1Analytics.emit({eventName: 'signup', customData: {plan: 'pro'}});
 ```
 
 The namespace also names the [tracking attributes](TRACKING.md#track-clicks-and-forms-with-data-attributes),

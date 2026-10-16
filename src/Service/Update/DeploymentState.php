@@ -60,7 +60,7 @@ class DeploymentState
     {
         $directory = dirname($this->projectDir.'/'.self::RECORD);
         if (!is_dir($directory) && !@mkdir($directory, 0775, true) && !is_dir($directory)) {
-            throw new \RuntimeException('The deployment record could not be saved. Check write access to var/updates.');
+            throw new \RuntimeException('The deployment record could not be saved: '.FileOwner::explain($directory, $this->projectDir));
         }
         $json = json_encode([
             'schema' => self::SCHEMA,
