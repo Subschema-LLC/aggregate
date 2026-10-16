@@ -17,7 +17,8 @@
                 <thead><tr><th>JSON key</th><th>Observed types</th><th>Events in sample</th><th><span class="is-sr-only">Actions</span></th></tr></thead>
                 <tbody>{% for property in observed_properties %}
                     <tr><td><code>{{ property.key }}</code></td><td>{{ property.types|join(', ') }}</td><td>{{ property.event_count }}</td><td>
-                        {% if property.key in model.custom_data_properties|keys %}In saved model
+                        {% if property.key in ['org_internal_traffic', 'page_sequence'] %}<a class="button is-small" href="{{ path('app_data_model', {add_property: property.key}) }}#built-in-properties">Built in: choose its column</a>
+                        {% elseif property.key in model.custom_data_properties|keys %}In saved model
                         {% elseif property.can_add %}<a class="button is-small" href="{{ path('app_data_model', {add_property: property.key}) }}">Review in model editor</a>
                         {% else %}Unsupported property name{% endif %}
                     </td></tr>

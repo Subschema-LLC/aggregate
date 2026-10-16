@@ -26,6 +26,22 @@ class ReportingViewManager
         'goal_event', 'created_at', 'archived_at',
     ];
 
+    /** The SELECT expressions of BUILTIN_COLUMNS, in the same order. */
+    private const BUILTIN_SELECT = [
+        'events.id',
+        'events.website_token',
+        'events.event_name',
+        'events.url AS page_path',
+        'events.referrer AS referrer_channel',
+        'events.privacy_mode',
+        'events.device_class',
+        'events.viewport_bucket',
+        'events.geo_area',
+        'events.goal_event',
+        'events.created_at',
+        'events.archived_at',
+    ];
+
     public function __construct(
         private readonly Connection $connection,
         private readonly CustomDataSettings $settings,
@@ -103,8 +119,14 @@ class ReportingViewManager
     public function previewSql(): array
     {
         $platform = $this->platform();
+        try {
+            $deployed = $this->deployedColumns($platform);
+        } catch (\Throwable) {
+            // A preview without a reachable schema shows the model's own order.
+            $deployed = [];
+        }
         $statements = [];
-        foreach ($this->selectSql($platform) as $name => $select) {
+        foreach ($this->selectSql($platform, $deployed) as $name => $select) {
             $statements[$name] = implode(";\n", $this->viewStatements($platform, $name, $select)).';';
         }
 
@@ -112,24 +134,54 @@ class ReportingViewManager
     }
 
     /**
+     * Whether each view has exactly the columns the saved model gives it, and
+     * which columns a regeneration would add or remove. A view that does not
+     * exist yet is listed as missing.
+     *
+     * @return array{current: bool, missing: list<string>, added: list<string>, removed: list<string>}
+     */
+    public function status(): array
+    {
+        $platform = $this->platform();
+        $deployed = $this->deployedColumns($platform);
+        $missing = $added = $removed = [];
+        foreach (self::VIEW_NAMES as $name) {
+            $existing = $deployed[$name] ?? [];
+            if ($existing === []) {
+                $missing[] = $name;
+                continue;
+            }
+            $expected = [...self::BUILTIN_COLUMNS, ...$this->columnOrder($existing)];
+            array_push($added, ...array_diff($expected, $existing));
+            array_push($removed, ...array_diff($existing, $expected));
+        }
+        $added = array_values(array_unique($added));
+        $removed = array_values(array_unique($removed));
+
+        return ['current' => $missing === [] && $added === [] && $removed === [], 'missing' => $missing, 'added' => $added, 'removed' => $removed];
+    }
+
+    /**
      * Regenerate only these private views. Server-database replacement retains
-     * existing grants. Existing column names/order are kept on every platform,
-     * avoiding column-grant reassignment and PostgreSQL replacement failures.
+     * existing grants. Deployed columns keep their names and order on every
+     * platform, and new columns are appended, avoiding column-grant
+     * reassignment and PostgreSQL replacement failures.
      *
      * @return list<string>
      */
     public function regenerate(bool $force = false): array
     {
         $platform = $this->platform();
-        $selects = $this->selectSql($platform);
         if ($this->connection->isTransactionActive()) {
             throw new \RuntimeException('View regeneration requires a connection without an active transaction.');
         }
+        $deployed = $this->deployedColumns($platform);
+        $selects = $this->selectSql($platform, $deployed);
 
         $updated = [];
-        $regenerate = function () use ($platform, $selects, &$updated, $force): array {
+        $regenerate = function () use ($platform, $selects, $deployed, &$updated, $force): array {
             if (!$force) {
-                $this->assertColumnsCanBeReplaced($platform);
+                $this->assertColumnsCanBeReplaced($platform, $deployed);
             }
             // Resolve every table, column and JSON function before changing any
             // view. Fetch no event data during this schema/permission check.
@@ -176,36 +228,76 @@ class ReportingViewManager
         return $platform;
     }
 
-    /** @return array<string, string> */
-    private function selectSql(AbstractPlatform $platform): array
+    /**
+     * The configured reporting aliases in the order a view gets them: those
+     * the view already has, in their deployed order, then new ones in model
+     * order (text aliases before numeric ones).
+     *
+     * @param list<string> $deployed the view's current columns, built-ins first
+     *
+     * @return list<string>
+     */
+    private function columnOrder(array $deployed): array
     {
-        $fields = [
-            'events.id',
-            'events.website_token',
-            'events.event_name',
-            'events.url AS page_path',
-            'events.referrer AS referrer_channel',
-            'events.privacy_mode',
-            'events.device_class',
-            'events.viewport_bucket',
-            'events.geo_area',
-            'events.goal_event',
-            'events.created_at',
-            'events.archived_at',
-        ];
+        $configured = [...array_keys($this->settings->reportingColumns()), ...array_keys($this->settings->numericReportingColumns())];
+        $kept = array_values(array_intersect(array_slice($deployed, count(self::BUILTIN_COLUMNS)), $configured));
+
+        return [...$kept, ...array_values(array_diff($configured, $kept))];
+    }
+
+    /**
+     * Each existing view's columns in ordinal order; a missing view has none.
+     *
+     * @return array<string, list<string>>
+     */
+    private function deployedColumns(AbstractPlatform $platform): array
+    {
+        // DBAL's table introspection excludes views on PostgreSQL and SQL
+        // Server. Query view-capable metadata in the schema CREATE uses, and
+        // preserve ordinal positions rather than sorting aliases by name.
+        $query = match (true) {
+            $platform instanceof PostgreSQLPlatform => 'SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = :view_name ORDER BY ordinal_position',
+            $platform instanceof SQLServerPlatform => 'SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = SCHEMA_NAME() AND TABLE_NAME = :view_name ORDER BY ORDINAL_POSITION',
+            $platform instanceof SQLitePlatform => "SELECT name FROM pragma_table_info(:view_name, 'main') ORDER BY cid",
+            default => 'SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :view_name ORDER BY ORDINAL_POSITION',
+        };
+        $columns = [];
+        foreach (self::VIEW_NAMES as $name) {
+            $columns[$name] = array_map('strval', $this->connection->fetchFirstColumn($query, ['view_name' => $name]));
+        }
+
+        return $columns;
+    }
+
+    /**
+     * @param array<string, list<string>> $deployed
+     *
+     * @return array<string, string>
+     */
+    private function selectSql(AbstractPlatform $platform, array $deployed = []): array
+    {
+        $expressions = [];
         foreach ($this->settings->reportingColumns() as $column => $key) {
-            $fields[] = $this->scalarExpression($platform, $key).' AS '.$platform->quoteSingleIdentifier($column);
+            $expressions[$column] = $this->scalarExpression($platform, $key);
         }
         foreach ($this->settings->numericReportingColumns() as $column => $definition) {
-            $fields[] = $this->numericExpression($platform, $definition['property'], $definition['type']).' AS '.$platform->quoteSingleIdentifier($column);
+            $expressions[$column] = $this->numericExpression($platform, $definition['property'], $definition['type']);
         }
-        $select = "SELECT\n    ".implode(",\n    ", $fields)."\nFROM events\nWHERE ";
-
-        return [
-            self::VIEW_NAMES[0] => $select.'1 = 1',
-            self::VIEW_NAMES[1] => $select."events.event_name = 'view'",
-            self::VIEW_NAMES[2] => $select.'events.goal_event IS NOT NULL',
+        $conditions = [
+            self::VIEW_NAMES[0] => '1 = 1',
+            self::VIEW_NAMES[1] => "events.event_name = 'view'",
+            self::VIEW_NAMES[2] => 'events.goal_event IS NOT NULL',
         ];
+        $selects = [];
+        foreach ($conditions as $name => $condition) {
+            $fields = self::BUILTIN_SELECT;
+            foreach ($this->columnOrder($deployed[$name] ?? []) as $column) {
+                $fields[] = $expressions[$column].' AS '.$platform->quoteSingleIdentifier($column);
+            }
+            $selects[$name] = "SELECT\n    ".implode(",\n    ", $fields)."\nFROM events\nWHERE ".$condition;
+        }
+
+        return $selects;
     }
 
     private function scalarExpression(AbstractPlatform $platform, string $key): string
@@ -334,24 +426,17 @@ class ReportingViewManager
         return [$verb.' VIEW '.$quoted." AS\n".$select];
     }
 
-    private function assertColumnsCanBeReplaced(AbstractPlatform $platform): void
+    /** @param array<string, list<string>> $deployed */
+    private function assertColumnsCanBeReplaced(AbstractPlatform $platform, array $deployed): void
     {
         $textColumns = $this->settings->reportingColumns();
         $numericColumns = $this->settings->numericReportingColumns();
-        $expected = [...self::BUILTIN_COLUMNS, ...array_keys($textColumns), ...array_keys($numericColumns)];
-        // DBAL's table introspection excludes views on PostgreSQL and SQL
-        // Server. Query view-capable metadata in the schema CREATE uses, and
-        // preserve ordinal positions rather than sorting aliases by name.
-        $query = match (true) {
-            $platform instanceof PostgreSQLPlatform => 'SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = :view_name ORDER BY ordinal_position',
-            $platform instanceof SQLServerPlatform => 'SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = SCHEMA_NAME() AND TABLE_NAME = :view_name ORDER BY ORDINAL_POSITION',
-            $platform instanceof SQLitePlatform => "SELECT name FROM pragma_table_info(:view_name, 'main') ORDER BY cid",
-            default => 'SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :view_name ORDER BY ORDINAL_POSITION',
-        };
         foreach (self::VIEW_NAMES as $name) {
-            $existing = $this->connection->fetchFirstColumn($query, ['view_name' => $name]);
+            $existing = $deployed[$name] ?? [];
+            $expected = [...self::BUILTIN_COLUMNS, ...$this->columnOrder($existing)];
             if ($existing !== array_slice($expected, 0, count($existing))) {
-                throw new \InvalidArgumentException('Existing reporting columns cannot be removed, renamed, or reordered during regeneration. Keep deployed aliases in their original order and append new columns. Text aliases precede numeric aliases; adding text aliases after numeric aliases are deployed requires a planned migration.');
+                $gone = array_values(array_diff($existing, $expected));
+                throw new \InvalidArgumentException('Deployed reporting columns cannot be removed or renamed by a regeneration'.($gone === [] ? '' : ' ('.implode(', ', $gone).')').'. Restore them in the model, or recreate the views on purpose with Force recreate views or app:analytics:views:regenerate --force, which drops their grants.');
             }
             if ($existing !== []) {
                 $this->assertColumnTypesCanBeReplaced($platform, $name, $existing, $textColumns, $numericColumns);

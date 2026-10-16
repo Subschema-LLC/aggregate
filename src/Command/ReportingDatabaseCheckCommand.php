@@ -67,7 +67,7 @@ final class ReportingDatabaseCheckCommand extends Command
             $view['message'] ?? '',
         ], $status['views']));
         if ($status['scheduler_late']) {
-            $io->warning('app:reporting-database:sync has not run recently. Schedule it every five minutes, for example: '.$this->background->cronLine());
+            $io->warning('The sync has not run recently. Have the server run app:scheduler:run every five minutes; app:scheduler:status shows how on this server. With cron: '.$this->background->cronLine());
         }
 
         if ($input->getOption('no-connect')) {

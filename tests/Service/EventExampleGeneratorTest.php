@@ -206,7 +206,9 @@ final class EventExampleGeneratorTest extends TestCase
 
         self::assertSame($expected, array_keys($bundle['examples']));
         self::assertTrue($bundle['synthetic']);
-        self::assertCount(6, $bundle['properties']);
+        // Six UTM properties and the two built-in ones, which are never submitted.
+        self::assertCount(8, $bundle['properties']);
+        self::assertSame(['not_submittable', 'not_submittable'], array_column(array_slice($bundle['properties'], 6), 'collection'));
         self::assertNotEmpty($bundle['notes']);
     }
 

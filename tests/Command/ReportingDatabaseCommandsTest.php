@@ -96,7 +96,7 @@ final class ReportingDatabaseCommandsTest extends TestCase
         );
         $runner->expects(self::exactly(2))->method('check');
         $background = $this->createStub(ReportingDatabaseBackgroundSync::class);
-        $background->method('cronLine')->willReturn('*/5 * * * * cd /srv && php bin/console app:reporting-database:sync --no-interaction');
+        $background->method('cronLine')->willReturn('*/5 * * * * cd /srv && php bin/console app:scheduler:run --no-interaction');
         $connection = new ReportingDatabaseConnection('mysql://writer:secret-pw@localhost:3306/aggregate_reporting', $this->projectDir, DriverManager::getConnection(['driver' => 'pdo_sqlite', 'memory' => true]));
         $tester = new CommandTester(new ReportingDatabaseCheckCommand($runner, new ReportingDatabaseSettings(new AggregateConfigLoader($this->projectDir, 'test')), $connection, $background));
 

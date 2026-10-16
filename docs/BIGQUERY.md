@@ -22,8 +22,9 @@ same [reporting views](BI-CONNECTION.md) your BI tools already read.
 
 ## How the sync works
 
-- The command `php bin/console app:bigquery:sync` runs from your scheduler,
-  every five minutes. Each selected view is copied when the configured interval
+- The server's [scheduled task](SCHEDULED-TASKS.md), `app:scheduler:run`,
+  runs every five minutes and syncs the views that are due (the same as
+  `php bin/console app:bigquery:sync`). Each selected view is copied when the configured interval
   (15 minutes to 24 hours) has passed since its last sync. Web requests never run
   a sync; **Sync now** on the admin page starts the same command in the
   background.
@@ -65,7 +66,9 @@ them after their retention periods.
    use **Test connection**: it signs in, checks the dataset and confirms that the
    account can run BigQuery jobs, without changing anything.
 3. **Choose the views.** The approved views are selected by default.
-4. **Schedule.** Add the cron line the page shows, turn sync on and save. Use
+4. **Schedule.** Turn sync on, choose the interval and save. The server's one
+   [scheduled task](SCHEDULED-TASKS.md) copies the views from then on; if it is
+   not set up yet, **Administration → Scheduled tasks** shows how. Use
    **Sync now** to copy everything immediately.
 
 ## Choose how Aggregate signs in
@@ -177,15 +180,17 @@ you delete it there. The same applies when you turn sync off.
 
 ## Schedule the sync
 
-Add the line from the admin page to the crontab of the user that runs Aggregate,
-for example:
-
-```cron
-*/5 * * * * cd /var/www/aggregate && php bin/console app:bigquery:sync --no-interaction
-```
+The sync runs from the same [scheduled task](SCHEDULED-TASKS.md) as maintenance
+and the reporting database: `app:scheduler:run`, every five minutes. Set that
+task up once; **Administration → Scheduled tasks** shows the exact settings for
+your server (a Plesk **Run a PHP script** task, a crontab line or a systemd
+timer) and whether it runs. Turning the sync on or off here needs no change to
+the task.
 
 Each view syncs about once per interval (a run within five minutes of the due
-time counts). The page warns when the command has not run recently.
+time counts). The page warns when the views have not synced on time. An
+existing crontab line for `app:bigquery:sync` keeps working, but the scheduler's
+line replaces it.
 
 | Command | Purpose |
 | --- | --- |
@@ -289,5 +294,5 @@ column is nullable.
 | "No Google Cloud metadata server answered" | Aggregate is not running on Google Cloud; use a service account key. |
 | "The Google sign-in has expired or was revoked" | Sign in again. Publish the OAuth app or make it Internal so sign-ins do not end after 7 days. |
 | "The view … cannot be read in this database" | Run the database migrations; regenerate the custom views; turn on geography for `bi_anonymous_geo_events_v1`. |
-| "The scheduled sync is not running" | Add the cron line, as the user that runs Aggregate. |
+| "The scheduled sync is not running" | Set up the [scheduled task](SCHEDULED-TASKS.md#set-it-up); **Administration → Scheduled tasks** shows whether it runs. |
 | "Sync now" is not available | The server cannot start background processes; run `php bin/console app:bigquery:sync --force`. |

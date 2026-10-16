@@ -39,8 +39,9 @@ is an output, not a replica.
 
 ## How the sync works
 
-- The command `php bin/console app:reporting-database:sync` runs from your
-  scheduler every five minutes. Each selected view is copied when the configured
+- The server's [scheduled task](SCHEDULED-TASKS.md), `app:scheduler:run`,
+  runs every five minutes and copies the views that are due (the same as
+  `php bin/console app:reporting-database:sync`). Each selected view is copied when the configured
   interval has passed since its last copy. Web requests never run a sync; **Sync
   now** on **Reporting → Reporting database** starts the same command in the
   background.
@@ -77,8 +78,8 @@ asked for it.
 Create an empty database for reporting. It can be on the same server as the
 application database, which separates access, or on another server, which also
 separates load. It can even use a different engine: an installation on SQLite
-can copy its views to PostgreSQL or MySQL. Aggregate refuses a
-`REPORTING_DATABASE_URL` that names its own application database.
+can copy its views to PostgreSQL or MySQL. Aggregate refuses its own
+application database as the reporting database.
 
 Use two database users:
 
@@ -142,8 +143,52 @@ permissions.
 
 ## Connect Aggregate to it
 
-Add the reporting database's address to `.env.local` on the server (or the
-server's environment), written like `DATABASE_URL`:
+Open **Reporting → Reporting database** and fill in **1. Connect the reporting
+database**: the database type, server, port (empty for the type's default), the
+sync user's name and password, and the database name (for SQLite, a file such
+as `var/reporting.db`). For SQL Server with a self-signed certificate, tick
+**Trust the server certificate**. Click **Test and save**.
+
+Aggregate saves nothing until the connection works: it connects, creates and
+drops a small table to prove the sync user may replace tables, and refuses the
+application database. Then it writes the connection to `.env.local` on the
+server as `REPORTING_DATABASE_URL`, like the setup page writes `DATABASE_URL`,
+and reports the server version and any views already copied. The password is
+never shown again: the form leaves it empty, and an empty password keeps the
+saved one while the type, server and user stay the same. **Remove connection**
+deletes the line from `.env.local`; tables already copied stay in the reporting
+database.
+
+From the command line, `app:reporting-database:configure` does the same. It asks
+for the password, or reads it from standard input, so it stays out of the shell
+history:
+
+```bash
+php bin/console app:reporting-database:configure --type=pgsql \
+    --host=reporting.example.net --database=aggregate_reporting --user=aggregate_sync
+
+printf '%s\n' "$PASSWORD" | php bin/console app:reporting-database:configure \
+    --type=mysql --database=aggregate_reporting --user=aggregate_sync --password-stdin
+
+php bin/console app:reporting-database:configure --type=sqlite   # var/reporting.db
+php bin/console app:reporting-database:configure --remove
+```
+
+| Option | Meaning |
+| --- | --- |
+| `--type` | `mysql` (MySQL or MariaDB), `pgsql`, `sqlsrv` or `sqlite` |
+| `--host`, `--port` | The server (default `localhost`) and port (default for the type) |
+| `--database` | The database name, or for SQLite a file path (default `var/reporting.db`) |
+| `--user` | The sync user |
+| `--password-stdin` | Read the password from standard input instead of asking |
+| `--trust-certificate` | SQL Server: trust a self-signed server certificate |
+| `--url-stdin` | Read a complete URL, written like `DATABASE_URL`, from standard input |
+| `--remove` | Remove `REPORTING_DATABASE_URL` from `.env.local` |
+
+### Set it by hand
+
+You can also set `REPORTING_DATABASE_URL` yourself, in `.env.local` or the
+server environment, written like `DATABASE_URL`:
 
 ```dotenv
 # MySQL or MariaDB
@@ -157,14 +202,16 @@ REPORTING_DATABASE_URL="sqlite:///%kernel.project_dir%/var/reporting.db"
 ```
 
 Encode special characters in the password as in `DATABASE_URL` (`@` as `%40`,
-`%` as `%25`). The address holds a password, so it is set on the server like
-`DATABASE_URL` and is never a YAML setting or shown in the dashboard; the admin
-page shows only the engine, server and database name.
+`%` as `%25`). Then use **Test connection** on the admin page, or run
+`php bin/console app:reporting-database:check`.
 
-Then open **Reporting → Reporting database** and use **Test connection**, or run
-`php bin/console app:reporting-database:check`. The test connects, creates and
-drops a small table to prove the sync user may replace tables, and lists the
-views already copied.
+The admin page and the command change only `.env.local`. When the variable is
+set where `.env.local` cannot override it (the server environment,
+`.env.prod.local`, or a `.env.local.php` made by `composer dump-env`), or when
+PHP cannot write `.env.local`, the page says so instead of showing the form;
+change the value where it is set. The address is never a YAML setting, because
+it holds a password, and the page shows only the engine, server, database name
+and user name.
 
 ## Choose the views
 
@@ -182,15 +229,17 @@ sync off.
 
 ## Schedule the sync
 
-Add the line from the admin page to the crontab of the user that runs Aggregate,
-for example:
-
-```cron
-*/5 * * * * cd /var/www/aggregate && php bin/console app:reporting-database:sync --no-interaction
-```
+Turn the sync on and choose the interval on the admin page. The copies are made
+by the server's one [scheduled task](SCHEDULED-TASKS.md), `app:scheduler:run`
+every five minutes, which also runs maintenance and BigQuery sync. Set it up
+once; **Administration → Scheduled tasks** shows the exact settings for your
+server (a Plesk **Run a PHP script** task, a crontab line or a systemd timer)
+and whether it runs.
 
 Each view is copied about once per interval (a run within five minutes of the
-due time counts). The page warns when the command has not run recently.
+due time counts). The page warns when the views have not been copied on time.
+An existing crontab line for `app:reporting-database:sync` keeps working, but
+the scheduler's line replaces it.
 
 | Command | Purpose |
 | --- | --- |
@@ -199,6 +248,7 @@ due time counts). The page warns when the command has not run recently.
 | `app:reporting-database:sync --view=bi_anonymous_goals_v1` | Limit a run to selected views (repeatable) |
 | `app:reporting-database:sync --json` | Machine-readable results |
 | `app:reporting-database:check` | Show the settings and status, then test the connection (`--no-connect` skips the test) |
+| `app:reporting-database:configure` | Test a connection and save it to `.env.local` ([above](#connect-aggregate-to-it)) |
 
 **Sync now** starts `app:reporting-database:sync --force` in the background,
 which needs `proc_open` on a Unix-like server; otherwise run the command
@@ -210,7 +260,7 @@ interval, or a schedule outside busy hours, if a copy takes long.
 
 ## Settings without the dashboard
 
-Every setting except the connection lives in the active environment of
+Every setting except the [connection](#connect-aggregate-to-it) lives in the active environment of
 `config/aggregate.yaml` (or its environment-specific file). Uppercase
 environment variables take precedence and lock the matching admin fields; lists
 in the environment are comma-separated.
@@ -272,8 +322,12 @@ reporting database after changing its connection.
   the sync is turned off, stay until you drop them; so do the reporting
   database's own backups. Include them in your retention and deletion
   procedures.
-- **Credentials.** `REPORTING_DATABASE_URL` lives in the server environment. Its
-  user name and password are never shown, logged or stored by Aggregate. Error
+- **Credentials.** `REPORTING_DATABASE_URL`, with the sync user's password,
+  lives in `.env.local` or the server environment, like `DATABASE_URL`. The
+  admin page and `app:reporting-database:configure` write it only to
+  `.env.local`, keeping that file's permissions (`0600` when they create it).
+  The password is never shown, logged, kept in the session or stored elsewhere
+  by Aggregate. Error
   messages name views, columns and SQL states; a database's own message is shown
   only for connection and table changes, never for rejected rows, which could
   quote a value.
@@ -284,12 +338,13 @@ See the [privacy guide](PRIVACY-COMPLIANCE.md#reporting-database).
 
 | Message | What to do |
 | --- | --- |
-| "REPORTING_DATABASE_URL is not set" | Add it to `.env.local` on the server, then reload PHP-FPM if your host caches the environment. |
+| "REPORTING_DATABASE_URL is not set" | Enter the connection on the admin page, or run `app:reporting-database:configure`. |
+| The page shows a note instead of the connection form | The variable is set where `.env.local` cannot override it, or PHP cannot write `.env.local`. The note says where; change it there. |
 | "names the application database" | Create a separate database for reporting; it can be on the same server. |
 | "The reporting database could not be reached" | Check the host, port, database name, user name and password (encoded as in `DATABASE_URL`), and that the server accepts connections from the Aggregate server. |
 | "cannot create and drop tables, which every sync does" | Grant the sync user the privileges [above](#create-the-database). |
 | "The view … cannot be read in this database" | Run the database migrations; regenerate the custom views; turn on geography for `bi_anonymous_geo_events_v1`. |
 | A lock time-out during the swap | A BI query held the table for over 60 seconds. The sync retries after 15 minutes; schedule long refreshes away from the sync. |
 | BI users lose access after a sync | Their access was granted on single tables. Grant it on the database or schema [instead](#create-the-database). |
-| "The scheduled sync is not running" | Add the cron line, as the user that runs Aggregate. |
+| "The scheduled sync is not running" | Set up the [scheduled task](SCHEDULED-TASKS.md#set-it-up); **Administration → Scheduled tasks** shows whether it runs. |
 | "Sync now" is not available | The server cannot start background processes; run `php bin/console app:reporting-database:sync --force`. |

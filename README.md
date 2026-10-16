@@ -97,7 +97,7 @@ Details:
 - **Reporting views with suppression:** completed hourly or daily aggregates with configurable minimum event counts, plus a daily view by YAML-defined page group that releases far more of a low-traffic site's data without letting the views be subtracted to reveal small counts, a roll-up that pools withheld cells into coarser rows instead of dropping them, and a coverage view that says how complete each view is.
 - **AI-ready reporting:** versioned views and a built-in data dictionary that AI assistants can query with the same read-only account as BI tools.
 - **BigQuery sync:** copy the reporting views to a Google BigQuery dataset on a schedule, signing in with a service account key, the Google Cloud host's account or a Google sign-in. Private row-level views need an explicit opt-in. See [Sync to BigQuery](docs/BIGQUERY.md).
-- **Reporting database:** copy the reporting views into tables of a second database on a schedule, so BI users connect without access to the application database. See [Reporting database](docs/REPORTING-DATABASE.md).
+- **Reporting database:** copy the reporting views into tables of a second database on a schedule, so BI users connect without access to the application database. Enter the connection on the admin page or with one command; Aggregate tests it before saving. See [Reporting database](docs/REPORTING-DATABASE.md).
 - **Optional page depth:** a capped page count shared by events on each page, with tab storage or URL parameter passing configured through UI/YAML. See [storage, URL and reporting boundaries](docs/DATA-MODEL.md#optional-page-depth) before enabling it.
 - **Consent-based enhanced detail:** visitor/session IDs, properties, and exact dimensions when enabled by your consent manager.
 - **Headless operation:** an ingestion API, YAML configuration, and CLI commands, with an optional admin dashboard.
@@ -160,6 +160,9 @@ No terminal is needed:
 3. Open the site. The setup page checks the server, asks for the one-time code
    in `SETUP-CODE.txt`, tests your database connection and writes `.env.local`.
    Then create the administrator account.
+4. Add one scheduled task that runs `bin/console app:scheduler:run` every five
+   minutes, for maintenance and the optional syncs. **Administration →
+   Scheduled tasks** shows the exact settings for your server.
 
 See [Release ZIP on a web host](DEPLOYMENT.md#release-zip-on-a-web-host) for the
 details and step-by-step hosting panel guides (Plesk so far). PHP 8.2+ and MySQL
@@ -307,6 +310,7 @@ It is built from these files on `master` and describes the current release.
 | [Deployment](DEPLOYMENT.md) | Docker/native setup, web servers, workers, production operations, and upgrades |
 | [Plesk deployment](PLESK-DEPLOYMENT.md) | Plesk steps for a release ZIP without SSH, Git-based setup, and worker options |
 | [Database](docs/DATABASE.md) | Supported engines, connection strings, migrations, and reporting schema |
+| [Scheduled tasks](docs/SCHEDULED-TASKS.md) | The one scheduled task for maintenance and the syncs: Plesk, cron and systemd setup, checking that it runs, troubleshooting |
 | [Load testing and capacity](docs/LOAD-TESTING.md) | Hits per day one server handles, disk space per million hits, cache clearing under traffic, and how to measure your own server |
 | [Connect BI tools and AI assistants](docs/BI-CONNECTION.md) | Approved reporting views and their columns, safe queries, a connection checklist for Power BI or Tableau, and AI assistant setup |
 | [Sync to BigQuery](docs/BIGQUERY.md) | Copying reporting views to BigQuery on a schedule: sign-in methods, view selection, scheduling, column types and privacy |

@@ -174,7 +174,9 @@ The optional [page-depth setting](DATA-MODEL.md#optional-page-depth) adds
 `customData.page_sequence` to all events. Enable it in Data model or YAML after
 reviewing the selected method's storage or URL implications. It counts from `1`
 through `20` (`20+`), with interactions and asynchronous events sharing the current
-page's number. The counter does not create a visitor or session ID.
+page's number. The counter does not create a visitor or session ID. The
+private custom reporting views show it as a `page_sequence` column, a
+[built-in property](DATA-MODEL.md#built-in-properties).
 
 The SDK sends the initial page view automatically. For a single-page app, call
 this after your router changes the current page URL:

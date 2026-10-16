@@ -90,7 +90,7 @@ never get access to it.
 
 `app:analytics:maintain`
 ([AnalyticsMaintenanceRunner](../src/Service/AnalyticsMaintenanceRunner.php)),
-run daily on a schedule:
+run daily by the scheduler (below):
 
 - **Archives** old rows into counted cells in private archive tables
   ([AnalyticsArchiveService](../src/Service/AnalyticsArchiveService.php)). The raw
@@ -111,6 +111,18 @@ shared `processing_tasks` table and an entry in `audit_trail`
 [AuditTrail](../src/Service/Operations/AuditTrail.php)). New background jobs use
 the same two tables, including their lock for exclusive runs, rather than adding
 their own.
+
+One scheduled task runs every background job: `app:scheduler:run`
+([Scheduler](../src/Service/Scheduler/Scheduler.php)), every five minutes from
+cron, Plesk or a systemd timer. Each job implements
+[ScheduledJob](../src/Service/Scheduler/ScheduledJob.php) and decides whether it
+is due: maintenance once a day, the BigQuery and reporting database syncs per
+view and interval. A file lock in `var/scheduler` keeps runs from overlapping,
+and `var/scheduler/last-run.json` tells the **Scheduled tasks** page whether the
+server's task runs ([SchedulerSetup](../src/Service/Scheduler/SchedulerSetup.php)
+works out the Plesk or cron settings to show). A new job implements the
+interface and is added to the scheduler; it needs no new cron line. See
+[Scheduled tasks](SCHEDULED-TASKS.md).
 
 ### 5. Reporting views publish it
 
@@ -192,8 +204,9 @@ services, so a setting has one validation wherever it is changed.
 - **Command line:** everything an administrator needs without the dashboard,
   in [src/Command](../src/Command). Examples: `app:install`,
   `app:create-website`, `app:user:create`, `app:user:reset-password`, `app:analytics:maintain`,
-  `app:analytics:glossary:sync`, `app:bigquery:sync`, `app:reporting-database:sync`
-  and `app:updates:apply`.
+  `app:analytics:glossary:sync`, `app:scheduler:run`, `app:scheduler:status`,
+  `app:bigquery:sync`, `app:reporting-database:configure`,
+  `app:reporting-database:sync` and `app:updates:apply`.
 - **First run:** a fresh release ZIP starts with a browser setup page,
   [config/setup.php](../config/setup.php) and
   [FirstRunSetup](../src/Setup/FirstRunSetup.php). It loads before Composer,
