@@ -109,9 +109,10 @@ final class ReportingTimeSqlTest extends TestCase
         ];
         foreach ($zones as $zone) {
             $time = new ReportingTimeSql(new SQLitePlatform(), $zone);
-            $label = $time->hourLabel('?');
+            // The label repeats the column once per transition, so bind the hour once.
+            $label = $time->hourLabel('utc_hour');
+            $statement = $pdo->prepare('SELECT '.$label.' FROM (SELECT ? AS utc_hour)');
             foreach ($hours as $hour) {
-                $statement = $pdo->prepare('SELECT '.$label);
                 $statement->execute([$hour]);
                 self::assertSame(self::phpHourLabel($hour, $zone), $statement->fetchColumn(), $zone.' '.$hour);
             }
