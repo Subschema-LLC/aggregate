@@ -31,7 +31,8 @@ final class AnalyticsMaintenanceRunner
     ) {
     }
 
-    public function run(bool $dryRun = false): AnalyticsMaintenanceResult
+    /** @param TaskTrigger|null $trigger Recorded with the run; by default "schedule" */
+    public function run(bool $dryRun = false, ?TaskTrigger $trigger = null): AnalyticsMaintenanceResult
     {
         // Resolve every setting before acquiring a lease or changing data. A
         // malformed policy must always fail closed, especially for deletion.
@@ -84,7 +85,7 @@ final class AnalyticsMaintenanceRunner
         $task = null;
 
         try {
-            $task = $this->tasks->start(self::TASK_TYPE, null, TaskTrigger::schedule(), $now);
+            $task = $this->tasks->start(self::TASK_TYPE, null, $trigger ?? TaskTrigger::schedule(), $now);
             if ($archivingEnabled || $retentionEnabled) {
                 $this->archive->assertSchemaReady();
             }

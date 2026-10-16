@@ -80,6 +80,29 @@ final class ReportingDatabaseConnectionTest extends TestCase
         self::assertSame('utf8', $connection->getParams()['charset']);
     }
 
+    public function testFormFieldsBecomeAUrlAndTheUrlBecomesFieldsWithoutThePassword(): void
+    {
+        $url = ReportingDatabaseConnection::buildUrl('pgsql', 'db.example.net', null, 'aggregate reporting', 'sync@corp', 'p@ss:/?#%w0rd');
+        self::assertSame('postgresql://sync%40corp:p%40ss%3A%2F%3F%23%25w0rd@db.example.net:5432/aggregate%20reporting', $url);
+        $connection = new ReportingDatabaseConnection($url, '/srv/aggregate', $this->application());
+        self::assertSame(
+            ['type' => 'pgsql', 'host' => 'db.example.net', 'port' => '5432', 'database' => 'aggregate reporting', 'user' => 'sync@corp', 'trust_certificate' => false, 'has_password' => true],
+            $connection->fields(),
+        );
+        self::assertSame('p@ss:/?#%w0rd', $connection->password());
+
+        self::assertSame('mysql://u:@[::1]:3307/r', ReportingDatabaseConnection::buildUrl('mysql', '::1', 3307, 'r', 'u', ''));
+        $sqlsrv = ReportingDatabaseConnection::buildUrl('sqlsrv', 'sql.example.net', null, 'r', 'u', 'p', true);
+        self::assertSame('mssql://u:p@sql.example.net:1433/r?driverOptions[TrustServerCertificate]=1', $sqlsrv);
+        self::assertTrue((new ReportingDatabaseConnection($sqlsrv, '/srv', $this->application()))->fields()['trust_certificate']);
+        self::assertSame('mysql://u:p@db:3306/r', ReportingDatabaseConnection::buildUrl('mysql', 'db', null, 'r', 'u', 'p', true));
+
+        self::assertSame('sqlite:///%kernel.project_dir%/var/reporting.db', ReportingDatabaseConnection::buildUrl('sqlite', 'ignored', null, '', '', ''));
+        self::assertSame('sqlite:////srv/reports/bi.db', ReportingDatabaseConnection::buildUrl('sqlite', '', null, '/srv/reports/bi.db', '', ''));
+        self::assertSame('sqlite', (new ReportingDatabaseConnection('sqlite:///%kernel.project_dir%/var/reporting.db', '/srv', $this->application()))->fields()['type']);
+        self::assertNull((new ReportingDatabaseConnection(null, '/srv', $this->application()))->fields());
+    }
+
     private function application(): Connection
     {
         return DriverManager::getConnection(['driver' => 'pdo_sqlite', 'memory' => true]);

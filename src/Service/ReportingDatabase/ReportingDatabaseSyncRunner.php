@@ -9,8 +9,6 @@ use App\Service\BigQuery\BigQueryViewCatalog;
 use App\Service\BigQuery\BigQueryViewExporter;
 use App\Service\Operations\ProcessingTasks;
 use App\Service\Operations\TaskTrigger;
-use Doctrine\DBAL\Exception as DbalException;
-use Doctrine\DBAL\Exception\DriverException;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -30,7 +28,6 @@ class ReportingDatabaseSyncRunner
     /** A scheduled run every five minutes lands within this margin of the interval. */
     private const SCHEDULE_SLACK_MINUTES = 5;
     private const RETRY_AFTER_FAILURE_MINUTES = 15;
-    private const CHECK_TABLE = 'aggregate_sync_check';
 
     private \Closure $clock;
 
@@ -109,26 +106,14 @@ class ReportingDatabaseSyncRunner
      */
     public function check(): array
     {
-        $location = $this->database->describe();
         try {
-            $connection = $this->database->connection();
-            $version = $connection->getServerVersion();
-        } catch (\Throwable $e) {
-            throw new ReportingDatabaseException($this->message($e, 'The reporting database could not be reached'), previous: $e);
+            return $this->database->probe();
+        } catch (ReportingDatabaseException $e) {
+            if ($e->getPrevious() !== null) {
+                $this->logger->error('The reporting database check failed.', ['exception' => $e]);
+            }
+            throw $e;
         }
-        try {
-            $platform = $connection->getDatabasePlatform();
-            $table = $platform->quoteSingleIdentifier(self::CHECK_TABLE);
-            $connection->executeStatement('DROP TABLE IF EXISTS '.$table);
-            $connection->executeStatement('CREATE TABLE '.$table.' (checked_at '.$platform->getDateTimeTypeDeclarationSQL([]).' NULL)');
-            $connection->executeStatement('DROP TABLE '.$table);
-        } catch (\Throwable $e) {
-            throw new ReportingDatabaseException($this->message($e, 'Connected, but this database user cannot create and drop tables, which every sync does'), previous: $e);
-        }
-        $writer = new ReportingTableWriter($connection);
-        $copied = array_values(array_filter(array_keys(BigQueryViewCatalog::APPROVED + BigQueryViewCatalog::PRIVATE), $writer->tableExists(...)));
-
-        return [...$location, 'server_version' => $version, 'tables' => $copied];
     }
 
     /**
@@ -230,17 +215,8 @@ class ReportingDatabaseSyncRunner
             return $e->getMessage();
         }
         $this->logger->error($context.'.', ['exception' => $e]);
-        if ($e instanceof DbalException) {
-            $detail = trim((string) strtok($e->getMessage(), "\n"));
-            if (strlen($detail) > 300) {
-                $detail = substr($detail, 0, 297).'...';
-            }
-            $state = $e instanceof DriverException && $e->getSQLState() !== null ? ' (SQLSTATE '.$e->getSQLState().')' : '';
 
-            return $context.$state.': '.$detail;
-        }
-
-        return $context.' ('.(new \ReflectionClass($e))->getShortName().'); see the application log.';
+        return ReportingDatabaseConnection::firstLine($e, $context);
     }
 
     /** @param array{status: string, started_at: \DateTimeImmutable}|null $attempt */

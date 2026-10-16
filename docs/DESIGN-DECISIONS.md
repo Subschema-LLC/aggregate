@@ -381,6 +381,38 @@ written for every database engine.
 
 **What would change it.** Nothing; this is how the contract stays trustworthy.
 
+### Saving the data model updates the private views
+
+**Decision.** The private `analytics_custom_*_v1` views follow the data model:
+saving it on the Data model page creates the views, or appends the new reporting
+columns after the deployed ones, and syncs the glossary, as saving page groups
+or disclosure thresholds regenerates the BI views. Deployed columns keep their
+order whichever kind a new column is. Removing or renaming a deployed column is
+left to **Force recreate views** (or `--force`), because it drops the views and
+their grants. The two properties Aggregate records itself,
+`org_internal_traffic` and `page_sequence`, are built in: their type is fixed,
+consent does not apply, the default model gives each a column, and the form
+offers only a checkbox and a column name.
+
+**Why.** Getting the organization-traffic flag or page depth into a report took
+four steps: knowing to add the property, choosing the right type and consent
+setting (the page refused anything else), naming a column, and regenerating the
+views on a separate page. A text column added after numeric ones also needed a
+forced recreation, because new views listed text columns first. Appending in
+deployed order keeps grants and BI reports intact without that rule, and asking
+only for what is actually a choice removes the rest.
+
+**Trade-off.** A model save now changes the database: on MySQL and MariaDB,
+whose DDL commits as it goes, a failure can leave some views updated (the
+message says to retry). Column order in long-lived views reflects when columns
+were added, not the model's order. Models saved before this version keep their
+own properties, so the two built-in columns appear only after their boxes are
+ticked once.
+
+**What would change it.** Views that need a planned layout, or installations
+that want model edits reviewed before any DDL, would call for an option to save
+without updating the views.
+
 ### Views copied to BigQuery whole, by scheduled load jobs
 
 **Decision.** [BigQuery sync](BIGQUERY.md) copies selected reporting views, never
@@ -416,7 +448,9 @@ then swaps it in (one `RENAME TABLE` on MySQL and MariaDB; drop and rename in on
 transaction elsewhere), so readers always see a complete copy. It reuses the
 BigQuery sync's view catalog, value conversion, private-view opt-in, schedule
 and processing tasks. The connection is an environment variable, not a YAML
-setting, and a URL that names the application database is refused.
+setting, and a URL that names the application database is refused. The admin
+page and `app:reporting-database:configure` write it to `.env.local`, but only
+after a test connection that creates and drops a table succeeds.
 
 **Why.** Operators asked for BI access that cannot reach the application
 database and for BI queries that do not load the collection server. A full
@@ -427,11 +461,16 @@ server database for BI logins. Replacing whole tables makes deletions,
 threshold changes and new custom columns reach the copy at the next sync, with
 no incremental bookkeeping. The connection string holds a password, so it
 belongs with `DATABASE_URL` in the server environment rather than in YAML that
-the dashboard edits.
+the dashboard edits. Hand-editing `.env.local` was the step operators got wrong
+(unencoded passwords, a typo found only at the next sync), so Aggregate writes
+the file the same way the setup page writes `DATABASE_URL`: tested first,
+encoded, in `.env.local` only, and never shown back.
 
 **Trade-off.** Copies are only as fresh as their interval. Each sync re-reads
 whole views from the application database, which grows with private row-level
-views. Recreated tables lose per-table grants, so BI access must be granted on
+views. Writing `.env.local` from the web needs PHP to be able to write it; where
+it cannot, or where another file or the server environment sets the variable,
+the page explains instead of saving. Recreated tables lose per-table grants, so BI access must be granted on
 the database or schema. The tables have no indexes. Tables of deselected views
 stay until an administrator drops them.
 
@@ -439,6 +478,37 @@ stay until an administrator drops them.
 incremental copies of completed time buckets, as for BigQuery; a need for
 indexes or live data would favor database-native replication of the views'
 source tables to a reporting server that hosts the views itself.
+
+### One scheduled task for every background job
+
+**Decision.** One command, `app:scheduler:run`, runs every five minutes from the
+server's scheduler and starts each background job that is turned on and due:
+daily maintenance, BigQuery sync and the reporting database sync. Each job keeps
+its own command, settings page and interval; the scheduler only decides what is
+due. Runs never overlap (a file lock in `var/scheduler`), a failing job does not
+stop the others, and the command prints nothing when nothing ran. The
+**Scheduled tasks** page and `app:scheduler:status` show whether the server's
+task runs, counting only runs without a terminal, and give the exact setup for
+the server they run on: a Plesk **Run a PHP script** task when the application
+sits under `/var/www/vhosts`, otherwise a crontab line with the PHP binary that
+runs Aggregate.
+
+**Why.** Each job used to need its own cron line, and every new job would have
+added another. Hosting panels make each line a separate form, and Plesk's
+**Run a command** tasks fail in a restricted environment without PHP, which
+operators met as `cd: … No such file or directory`. One task, set up once with
+values copied from the page, covers future jobs too, and a page that turns
+green only when the server itself ran the task proves the setup instead of the
+person testing it from a terminal.
+
+**Trade-off.** Jobs share one five-minute cadence, so nothing runs more often,
+and a long job delays the next job in the same run. Maintenance moved from a
+fixed time of day to 24 hours after its last run. Telling scheduled runs from
+runs by hand relies on whether a terminal is attached.
+
+**What would change it.** A job that needs minute-level timing or must run in
+parallel with the others, or hosting without any scheduler, which would call for
+running due jobs from web requests.
 
 ### Two shared tables for job runs and the audit trail
 

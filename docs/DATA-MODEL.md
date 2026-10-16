@@ -6,9 +6,18 @@ The **Collection → Data model** admin page at `/dashboard/data-model` defines 
 
 The [strict collection profile](PRIVACY-COMPLIANCE.md#strict-collection-profile) collects no custom properties or page depth. The saved model stays in place and applies again when the profile returns to standard.
 
+- [Configure collection](#configure-collection)
+- [Built-in properties](#built-in-properties)
+- [Optional page depth](#optional-page-depth)
+- [Property types and numeric calculations](#property-types-and-numeric-calculations)
+- [Reporting views](#reporting-views)
+- [Discover properties](#discover-properties)
+- [BI labels and column definitions](#bi-labels-and-column-definitions)
+- [Reporting contract](#reporting-contract)
+
 ## Configure collection
 
-The default model defines `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`, and `utm_id`. Each maps from the identically named page query parameter, has a reporting column with the same name, and **requires enhanced consent**. Views are created only when you explicitly regenerate them.
+The default model defines `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`, and `utm_id`. Each maps from the identically named page query parameter, has a reporting column with the same name, and **requires enhanced consent**. It also gives the two [built-in properties](#built-in-properties), `org_internal_traffic` and `page_sequence`, a reporting column each. The private reporting views are created the first time you save the model, or when you [regenerate them](#reporting-views).
 
 Select **Allow without consent** for individual properties to whitelist them for anonymous events. The server enforces this independently of the tracker. Unlisted properties continue to require enhanced consent; the model does not restrict which properties enhanced events may contain.
 
@@ -25,7 +34,8 @@ custom_data_properties:
   utm_content: { consent_required: true, column: utm_content }
   utm_id: { consent_required: true, column: utm_id }
   plan: { description: 'Published pricing tier, supplied by emit().', consent_required: true, column: plan_name }
-  org_internal_traffic: { description: 'Organization traffic: true for a marked browser.', type: boolean, consent_required: false, column: organization_traffic }
+  org_internal_traffic: { column: org_internal_traffic }
+  page_sequence: { numeric_column: page_sequence }
 query_parameter_mappings:
   utm_source: utm_source
   utm_medium: utm_medium
@@ -39,7 +49,7 @@ query_parameter_mappings:
 
 Changing `utm_campaign.consent_required` to `false` deliberately overrides the recommendation and allows all its mapped inputs without consent. No additional bypass flag is required.
 
-`org_internal_traffic` is recorded by the server on every standard-profile event, `true` or `false`, from the [organization-traffic marker](PRIVACY-COMPLIANCE.md#organization-traffic) in either mode. Define it only to give it a reporting column; its type must be `boolean` or `scalar`, and its `consent_required` setting has no effect. Query parameters and submitted event properties cannot set it, and the marker's browser name is not a reserved property.
+The last two lines are the [built-in properties](#built-in-properties): they need only a column name.
 
 Rules:
 
@@ -55,6 +65,40 @@ Rules:
 - Collection changes apply to future requests and do not erase historical data. Malformed models prevent the tracker from being served and cause ingestion to fail closed. Synchronize the active YAML across application replicas.
 
 Static/CDN copies need matching public `customData` settings as described in the [tracking guide](TRACKING.md). Browser overrides cannot expand the server whitelist.
+
+## Built-in properties
+
+Aggregate records two properties itself. Their type is fixed and consent does not
+apply to them, so the only choice is whether each gets a column in the private
+[reporting views](#reporting-views), and its name.
+
+| Property | Value | Recorded | Default column |
+| --- | --- | --- | --- |
+| `org_internal_traffic` | `true` for a browser marked as your team's with the [organization-traffic marker](PRIVACY-COMPLIANCE.md#organization-traffic), `false` otherwise | On every standard-profile event, in both privacy modes | `org_internal_traffic`, text: `true` or `false` |
+| `page_sequence` | [Page depth](#optional-page-depth): `1` for the first tracked page in a browser tab, up to `20` (20 or more) | On every event while page depth is on | `page_sequence`, a whole number |
+
+On **Collection → Data model**, the **Built-in properties** box at the top of
+the Properties tab has a checkbox and a column name for each. Tick a box, adjust
+the name if you like, and save the model: the column is added to the views
+straight away. Unticking removes the property's column from the model; see
+[Reporting views](#reporting-views) for what that means for deployed views.
+
+The default model gives both a column. A model you saved before this version
+keeps its own properties, so tick them once. In YAML, a column name is enough:
+
+```yaml
+custom_data_properties:
+  # ...your other properties...
+  org_internal_traffic: { column: org_internal_traffic }
+  page_sequence: { numeric_column: page_sequence }
+```
+
+A `type` may be left out (`boolean` and `integer` are assumed) and any
+`consent_required` setting is ignored. A different type is refused:
+`org_internal_traffic` accepts only `boolean` or `scalar`, and `page_sequence`
+only `integer` while page depth is on. Query parameters and submitted event
+properties cannot set either value, and the marker's browser-side name is not a
+reserved property. A `page_sequence` column stays empty while page depth is off.
 
 ## Optional page depth
 
@@ -203,27 +247,17 @@ accepts only JSON integers from `1` through `20` when enabled. Query mappings to
 it, or from `aggregate_page_sequence` to another property, are invalid. Direct API clients must supply their own bounded number;
 the server validates its shape and permission, not the claimed navigation history.
 
-Page depth stays in the existing `custom_data` JSON. To add an optional private
-numeric reporting column, merge this definition into your existing
-`custom_data_properties` mapping:
-
-```yaml
-page_sequence:
-  description: 'Tracked page depth; 20 means 20 or more.'
-  type: integer
-  consent_required: false
-  numeric_column: page_sequence_number
-```
-
-Regenerate custom views using the existing UI/CLI workflow after reviewing column
-compatibility. Approved `bi_anonymous_*` views and archive aggregates do not gain
+Page depth stays in the existing `custom_data` JSON. Its private reporting
+column is a [built-in property](#built-in-properties): tick `page_sequence` under
+**Built-in properties**, or add `page_sequence: { numeric_column: page_sequence }`
+to the model. Approved `bi_anonymous_*` views and archive aggregates do not gain
 this dimension. Custom views remain private and unsuppressed; raw-row deletion
 removes their page-depth detail.
 
-**Existing models:** `page_sequence` is now reserved for collection. Existing
+**Existing models:** `page_sequence` is reserved for collection. Existing
 definitions can remain for historical reporting while the feature is disabled;
 incoming event properties under this key are stripped. Enabling the counter
-requires any definition to use `type: integer` and `consent_required: false`.
+requires any definition with an explicit `type` to use `type: integer`.
 If the old key meant something else, plan a data/reporting migration before using
 it for page depth; keep historical column meanings stable for consumers.
 Historical JSON is not rewritten, and older values do not become trustworthy
@@ -277,15 +311,11 @@ Merge these definitions into your existing model; do not overwrite unrelated
 properties or mappings. `column` retains its existing text semantics.
 `numeric_column` adds a separate numeric alias for an explicitly declared
 `integer`, `float`, or `double` property. Aliases must be unique across both
-kinds of columns. Numeric aliases follow the existing text aliases in generated
-views. Regeneration preserves deployed column order and rejects incompatible
-type changes; plan a database/reporting migration when a deployed contract must
-change. Do not change an existing text alias into a numeric alias in place.
-Because generated text aliases precede numeric aliases, adding a text alias
-after numeric aliases are already deployed also requires a planned migration;
-routine regeneration rejects the resulting reorder. To apply this planned
-migration, click **Force recreate views** on the Reporting views page, or
-run `php bin/console app:analytics:views:regenerate --force`.
+kinds of columns. In a new view, numeric aliases follow the text aliases; a
+column added later goes after the columns already deployed, whichever kind it
+is. Regeneration rejects incompatible type changes; plan a database/reporting
+migration when a deployed contract must change. Do not change an existing text
+alias into a numeric alias in place.
 
 Numeric projections return SQL `NULL` for missing/null values, strings,
 booleans, structured data, and numbers outside their supported range. Integer
@@ -297,24 +327,45 @@ expand the approved anonymous BI contract.
 See [event examples and ecommerce](EVENT-EXAMPLES.md) for copyable JSON, headless
 exports, and the recommended integer-minor-unit money representation.
 
-## Discover and regenerate
+## Reporting views
+
+**Saving the model updates the private reporting views.** On the first save
+they are created; afterwards, new reporting columns are added after the columns
+already in the views, so existing columns keep their names, order and grants.
+The message after saving says what changed. **Reporting → Reporting views**
+shows whether the views match the saved model, previews their SQL, and has
+**Regenerate views from saved model** for a retry.
+
+Removing or renaming a column that is already in the views is different: the
+views must be dropped and recreated, which also drops any grants on them. Saving
+the model then leaves the views as they are and says so. When you mean it, click
+**Force recreate views** on the Reporting views page, or run
+`php bin/console app:analytics:views:regenerate --force`, then grant access
+again.
+
+Without the dashboard, edit the YAML model and run the command:
+
+```bash
+php bin/console app:analytics:views:regenerate --check     # Do the views match the model? Exits 1 when not
+php bin/console app:analytics:views:regenerate --dry-run   # Print the SQL
+php bin/console app:analytics:views:regenerate             # Create or update the views
+php bin/console app:analytics:views:regenerate --force     # Drop and recreate them, for a removed or renamed column
+```
+
+## Discover properties
 
 1. Open **Data model → Observed properties → Refresh observed properties** to sample up to 1,000 latest retained events with custom data. The page shows keys, types, and occurrence counts without sample values; this is not a complete historical inventory. Opening the model editor does not query observed events or reporting SQL.
-2. Select **Review in model editor**, choose the new row's consent/type/reporting policy, then save. Ordinary new properties start with enhanced consent required. The reserved `page_sequence` row starts as an anonymous-permitted Integer; its separate switch still controls collection. The link only opens an unsaved row and never saves automatically.
-3. Open **Reporting → Reporting views**, review the saved SQL preview, and click **Regenerate views from saved model**. Saving and view replacement are separate operations.
-4. Download YAML or open **Event examples** for synthetic JSON. Exports omit website tokens, sharing tokens, and application secrets.
+2. Select **Review in model editor**, choose the new row's consent/type/reporting policy, then save. Ordinary new properties start with enhanced consent required. For `org_internal_traffic` and `page_sequence`, the link leads to their box under **Built-in properties**. The link only opens an unsaved row and never saves automatically.
+3. Download YAML or open **Event examples** for synthetic JSON. Exports omit website tokens, sharing tokens, and application secrets.
 
 Headless commands:
 
 ```bash
 php bin/console app:analytics:views:regenerate --discover --sample-size=1000
 php bin/console app:analytics:views:regenerate --export-model > aggregate-data-model.yaml
-php bin/console app:analytics:views:regenerate --dry-run
-php bin/console app:analytics:views:regenerate
-php bin/console app:analytics:views:regenerate --force
 ```
 
-`--discover`, `--export-model`, and `--dry-run` are mutually exclusive read-only modes. Edit YAML before using the CLI to regenerate.
+`--discover`, `--export-model`, `--check`, and `--dry-run` are mutually exclusive read-only modes.
 
 ## BI labels and column definitions
 
@@ -326,11 +377,10 @@ and declare value labels under the property's **text reporting alias** in
 dimensions. Declaring a value publishes its code to routine BI readers, including
 when the property's actual event values require consent and stay private.
 
-Successful view regeneration also synchronizes glossary metadata. A plain model
-save does not regenerate views or automatically publish their column changes;
-use the existing separate regeneration step. Manual glossary sync reads saved
-aliases without inspecting deployed SQL, so regenerate first after a model change
-to avoid publishing metadata for columns that are not yet deployed.
+Successful view regeneration, including the one after a model save, also
+synchronizes glossary metadata. Manual glossary sync reads saved aliases without
+inspecting deployed SQL, so after editing the YAML model, regenerate first to
+avoid publishing metadata for columns that are not yet deployed.
 If glossary synchronization fails
 after views are deployed, correct the metadata and run
 `php bin/console app:analytics:glossary:sync`. Generated custom views remain private,
@@ -344,7 +394,7 @@ and the glossary never adds custom dimensions to the anonymous fact views.
 | `analytics_custom_pageviews_v1` | Events named `view` |
 | `analytics_custom_goals_v1` | Events with a non-null approved goal |
 
-Each view contains built-in context plus configured text columns followed by optional numeric columns. Existing `column` aliases project strings, numbers, and booleans as text; booleans use `true`/`false`. Missing keys, JSON null, arrays, and objects produce SQL `NULL`. The additive `numeric_column` behavior is described above.
+Each view contains built-in context plus the configured reporting columns: in a new view, text columns followed by numeric columns, and columns added later after those. Existing `column` aliases project strings, numbers, and booleans as text; booleans use `true`/`false`. Missing keys, JSON null, arrays, and objects produce SQL `NULL`. The additive `numeric_column` behavior is described above.
 
 **These are private, unsuppressed views of individual retained events.** Apply raw-table access restrictions and appropriate aggregation/disclosure controls before sharing results. Existing `bi_anonymous_*` views retain their grouped and suppressed contracts. Custom columns are separate because archives discard JSON and geographic BI views deliberately restrict dimensions.
 
@@ -352,6 +402,6 @@ Rows marked `archived_at` remain in custom views while retained; archive aggrega
 
 PostgreSQL, MySQL/MariaDB, SQL Server, and SQLite with JSON functions are supported. Run migrations first. Use the intended reporting-view owner, particularly on MySQL/MariaDB where the invoking account becomes the view definer, with the required read/view privileges.
 
-Keep existing aliases and their order; append new columns at the end. Regeneration preserves server-database grants through replace/alter and rejects removal, renaming, or reordering of deployed columns. Changing the JSON key behind an alias changes its meaning for every retained row; coordinate this with report consumers. Removing or renaming a deployed column needs a separately planned database/report migration.
+Regeneration keeps deployed columns in their order and appends new ones, preserving server-database grants through replace/alter. It rejects removing or renaming a deployed column; that needs **Force recreate views** or `--force`, which drops the grants. Changing the JSON key behind an alias changes its meaning for every retained row; coordinate this with report consumers.
 
 PostgreSQL, SQL Server, and SQLite replacements are transactional. MySQL/MariaDB commit each view separately; queries are preflighted first, but later DDL failures can leave some views updated. Correct the issue and rerun. A dry run prints SQL without checking live schema, grants, or data.

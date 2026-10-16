@@ -94,8 +94,8 @@ checkout, or a small accessibility fix. Keep each PR focused and target
     share one validation service. The page manages rules and recipients, sends
     a test alert and lists recent alerts; it does not chart traffic, which stays
     in BI tools.
-  - **Evaluation:** a console command, scheduled externally like
-    `app:analytics:maintain`, evaluates rules on completed time buckets, so
+  - **Evaluation:** a job of the [scheduled task](docs/SCHEDULED-TASKS.md),
+    like maintenance, evaluates rules on completed time buckets, so
     hour-bucketed anonymous events and partial hours do not cause false alarms.
     It works with the dashboard disabled. A cooldown and a recovery notice keep
     a persistent problem from sending repeated alerts.
@@ -289,7 +289,7 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   - **Roles:** an administration server with the dashboard, setup and updates;
     collection servers behind a load balancer, serving `/api/receive` and the
     browser scripts with `DASHBOARD_ENABLED=0`; and worker servers running
-    `messenger:consume` and the scheduled commands. The YAML-first design already
+    `messenger:consume` and the scheduled task. The YAML-first design already
     lets a collection server run without a login page.
   - **Shared state to solve first:**
     - *Configuration.* YAML lives on each server's disk, and the dashboard writes
@@ -304,7 +304,9 @@ checkout, or a small accessibility fix. Keep each PR focused and target
       code across the others.
     - *Scheduled jobs.* Maintenance already holds a database lease, and jobs lock
       through `processing_tasks`, so they should run safely from any worker;
-      confirm that under load.
+      confirm that under load. The scheduler's own lock and its record of runs
+      are files in `var/scheduler`, per server, so the Scheduled tasks page
+      reports only the server it runs on.
   - **Queues and brokers:** enhanced events already go through Messenger. Add
     `symfony/amqp-messenger` (RabbitMQ) and `symfony/redis-messenger` as optional
     transports, documented with the PHP extensions they need, while `sync://` and
@@ -385,6 +387,7 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   coarser `(other)` rows, with the same rule against the hourly view, so daily
   totals add up; `bi_anonymous_coverage_v1` reports, in bands, how much of each
   day's traffic each event view releases.
+- [One scheduled task](docs/SCHEDULED-TASKS.md), `app:scheduler:run` every five minutes, for maintenance, BigQuery sync and the reporting database sync, with a Scheduled tasks page and `app:scheduler:status` that give the exact Plesk, cron or systemd setup for the server and show whether the server's task runs. The reporting database connection is entered on its page or with `app:reporting-database:configure`, tested, and saved to `.env.local`.
 - [Processing tasks and an audit trail](docs/DATABASE.md#processing-tasks-and-audit-trail): two shared private tables for background job runs (status, lock, failure details) and their outcomes, used by BigQuery sync, the reporting database sync and maintenance, with UI/YAML purge periods.
 - [Organization traffic markers](docs/PRIVACY-COMPLIANCE.md#organization-traffic), with YAML/UI settings, marking links that set the marker on each tracked website, and a fixed `org_internal_traffic` flag on every event. Filtering uses retained event JSON; grouped BI views and archives do not retain the flag.
 - [Custom data models](docs/DATA-MODEL.md), including UTM/query mappings, per-property consent settings, downloadable YAML, and private reporting columns. All UTMs require consent by default; anonymous attribution should use at most broad `utm_medium` values, with documented warnings for overrides.

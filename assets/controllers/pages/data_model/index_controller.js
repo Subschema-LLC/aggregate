@@ -6,6 +6,7 @@ export default class extends Controller {
 
     connect() {
         this.restoreDraftIfAvailable();
+        this.syncBuiltins();
         this.validateAll();
 
         if (typeof window !== "undefined" && window.location && window.location.hash) {
@@ -86,6 +87,27 @@ export default class extends Controller {
         if (typeof window !== "undefined" && window.location && window.history) {
             window.history.replaceState(null, "", "#" + name);
         }
+    }
+
+    // A built-in property's column name applies only while its box is ticked.
+    toggleBuiltin(event) {
+        const checkbox = event && event.currentTarget ? event.currentTarget : null;
+        this.syncBuiltin(checkbox);
+        const row = checkbox && typeof checkbox.closest === 'function' ? checkbox.closest('[data-builtin-property]') : null;
+        const input = row ? row.querySelector('[data-builtin-column]') : null;
+        if (input && !input.disabled && typeof input.focus === 'function') input.focus();
+        this.validateAll();
+    }
+
+    syncBuiltins() {
+        if (!this.element || typeof this.element.querySelectorAll !== 'function') return;
+        this.element.querySelectorAll('[data-builtin-property] input[type="checkbox"]').forEach(checkbox => this.syncBuiltin(checkbox));
+    }
+
+    syncBuiltin(checkbox) {
+        const row = checkbox && typeof checkbox.closest === 'function' ? checkbox.closest('[data-builtin-property]') : null;
+        const input = row ? row.querySelector('[data-builtin-column]') : null;
+        if (input) input.disabled = !checkbox.checked;
     }
 
     addProperty() {
@@ -226,7 +248,7 @@ export default class extends Controller {
             ? input.closest('.column')?.querySelector(feedbackSelector)
             : null;
 
-        if (value === '') {
+        if (value === '' || input.disabled) {
             if (input.classList && typeof input.classList.remove === 'function') input.classList.remove('is-danger');
             if (feedback) feedback.innerHTML = '';
             return;
@@ -236,7 +258,7 @@ export default class extends Controller {
         const isReserved = reservedList.includes(value);
 
         const allColumnInputs = this.element && typeof this.element.querySelectorAll === 'function'
-            ? Array.from(this.element.querySelectorAll('[data-field="column"], [data-field="numeric_column"]'))
+            ? Array.from(this.element.querySelectorAll('[data-field="column"], [data-field="numeric_column"]')).filter(el => !el.disabled)
             : [];
         const isDuplicate = allColumnInputs.filter(el => (el.value || '').trim().toLowerCase() === value).length > 1;
         const isValidFormat = /^[a-z][a-z0-9_]{0,62}$/.test(value);
