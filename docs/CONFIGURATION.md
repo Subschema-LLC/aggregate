@@ -308,6 +308,12 @@ Environment overrides (`ANONYMOUS_MIN_CELL_COUNT`, `ANONYMOUS_GEO_MIN_CELL_COUNT
 
 `bi_page_groups` (no environment override) lists the [page groups](BI-CONNECTION.md#page-groups) used by `bi_anonymous_daily_v1` and `bi_anonymous_daily_rollup_v1`. It is managed on **Reporting → Page groups** or in YAML, and applied by the same regeneration.
 
+### Reporting timezone
+
+`reporting_timezone` (default `UTC`) is the IANA name compiled into the event views when they are regenerated. **Reporting → Reporting timezone**, YAML, and `app:analytics:reporting-timezone` share `ReportingTimezone` and `AnonymousBiViewManager`. `REPORTING_TIMEZONE` overrides the saved value. An invalid name, a MySQL or MariaDB server without time zone tables, or an IANA name SQL Server cannot map stops regeneration and leaves the existing views in place.
+
+The setting relabels `event_hour` and the event views' `event_day`. It does not change stored events, archives, goal days or geography days, which stay UTC. See [reporting timezone](BI-CONNECTION.md#reporting-timezone).
+
 **Upgrading from database-stored thresholds.** Earlier releases kept the thresholds in an `analytics_privacy_settings` table. The migration that removes it rebuilds the views with the values it found there, but it does not write them to YAML. If you had changed either threshold from its default, copy the values into `config/aggregate.yaml` before you next save the BI disclosure page or run the command; otherwise the views return to the YAML values (the defaults when unset).
 
 ## Feature flags

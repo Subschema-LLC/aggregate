@@ -57,13 +57,16 @@ remain straightforward. Favor understandable designs over feature count.
   build tools on a server installing a prepared release ZIP.
 
 BI disclosure thresholds (`anonymous_min_cell_count`,
-`anonymous_geo_min_cell_count`) are YAML settings compiled into the
-`bi_anonymous_*` view SQL. The BI disclosure page and
-`app:analytics:bi-views:regenerate` share `AnalyticsPrivacySettings` and
-`AnonymousBiViewManager` to apply them; reuse those services rather than
-regenerating views elsewhere. Website-specific collection settings and data
-models are still [planned work](ROADMAP.md); current models are scoped to the
-deployment's active aggregate configuration.
+`anonymous_geo_min_cell_count`) and `reporting_timezone` are YAML settings
+compiled into the `bi_anonymous_*` view SQL. The BI disclosure, page groups and
+reporting timezone pages, plus `app:analytics:bi-views:regenerate`, share
+`AnalyticsPrivacySettings`, `ReportingTimezone` and `AnonymousBiViewManager`;
+reuse those services rather than regenerating views elsewhere. The reporting
+timezone relabels event-view hours and days only. Do not store local times on
+events or add a timezone lookup table. Goal and geography views stay on UTC
+days. Website-specific collection settings and data models are still
+[planned work](ROADMAP.md); current models are scoped to the deployment's
+active aggregate configuration.
 
 ## Privacy is an implementation constraint
 

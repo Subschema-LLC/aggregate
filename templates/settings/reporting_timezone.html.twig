@@ -1,0 +1,64 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Reporting timezone | {{ app_branding.name }}{% endblock %}
+
+{% block body %}
+<div class="settings-page">
+<h1 class="title">Reporting timezone</h1>
+<p class="subtitle">Label completed event hours and days in one business timezone.</p>
+{{ component('Ui:DocsLink', {topic: 'reporting.timezone', label: 'How the reporting timezone works'}) }}
+<div class="columns is-centered">
+<div class="column is-8-desktop">
+<div class="box">
+    <p class="mb-4">The setting is stored as <code>reporting_timezone</code> in <code>config/aggregate*.yaml</code>. Saving regenerates the event views. Stored events and archives stay in UTC; the views relabel the hour. Goal and geography views stay on UTC days, because their archives have already dropped the hour.</p>
+
+    {% if environment_override %}
+        <div class="notification is-warning is-light" role="status">
+            <code>REPORTING_TIMEZONE</code> overrides the saved value. The views use the environment value, not the selection below.
+        </div>
+    {% endif %}
+
+    {% if reporting_timezone_error %}
+        <div class="notification is-danger is-light" role="alert">{{ reporting_timezone_error }}</div>
+    {% endif %}
+
+    <form action="{{ path('app_reporting_timezone_save') }}" method="post">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token('reporting_timezone') }}">
+
+        <div class="field">
+            <label class="label" for="reporting-timezone">IANA time zone</label>
+            <div class="control">
+                <div class="select is-fullwidth">
+                    <select id="reporting-timezone" name="reporting_timezone" required>
+                        {% for group, zones in timezone_choices %}
+                            <optgroup label="{{ group }}">
+                                {% for zone in zones %}
+                                    <option value="{{ zone }}" {{ reporting_timezone == zone ? 'selected' }}>{{ zone }}</option>
+                                {% endfor %}
+                            </optgroup>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <p class="help" id="reporting-timezone-help">Default: <code>UTC</code>. Use a name such as <code>America/Chicago</code>, not an offset or abbreviation such as <code>UTC-5</code> or <code>EST</code>. A fixed differential is wrong for half the year where daylight-saving time applies.</p>
+        </div>
+
+        <div class="notification is-warning is-light">
+            Changing the timezone moves day boundaries. Imported BI extracts and BigQuery copies keep the previous zone until they are refreshed. The current UTC hour stays withheld; the current day is the day in this timezone.
+        </div>
+
+        <div class="field">
+            <div class="control">
+                <button type="submit" class="button is-link">
+                    <span class="icon"><i class="fas fa-clock" aria-hidden="true"></i></span>
+                    <span>Save reporting timezone</span>
+                </button>
+            </div>
+        </div>
+    </form>
+    <p class="help mt-4">This does not recover a visitor's local time, and it does not change collection. MySQL and MariaDB need their time zone tables loaded. SQL Server uses a Windows time zone name; an unmapped name is refused and the existing views stay in place.</p>
+</div>
+</div>
+</div>
+</div>
+{% endblock %}

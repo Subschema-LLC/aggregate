@@ -35,12 +35,13 @@ their column names and meanings; a change in meaning would ship as a new version
 
 One row per released hourly cell, grouped by every column except `event_count`.
 The current UTC hour and cells below `anonymous_min_cell_count` (default 5,
-allowed 2–1000) are absent.
+allowed 2–1000) are absent. The hour is withheld in UTC because that is the
+stored grain; its label is the reporting timezone.
 
 | Column | Type | Meaning |
 | --- | --- | --- |
 | `website_token` | String | The website the events belong to. Website names and domains are kept outside the database, in `config/websites.yaml`. |
-| `event_hour` | UTC date and time | Start of a completed UTC hour. Anonymous event times are truncated to this hour. |
+| `event_hour` | Date and time | Start of a completed hour in the [reporting timezone](#reporting-timezone), UTC unless that setting is changed. Anonymous event times are stored as a UTC hour; the view relabels that hour. The value may not carry a time zone marker. |
 | `event_name` | String | `view` for page views, or a fixed, safe name for a measured interaction. |
 | `page_path` | Text | Sanitized path: query strings and fragments removed, identifier-like segments redacted. |
 | `referrer_channel` | Category | `direct`, `internal`, `search`, `social`, `email`, `referral` or `unknown`. |
@@ -58,12 +59,13 @@ One row per released daily cell by page group, referrer channel and device
 class. It answers the same questions as the hourly view at a coarser grain, so a
 low-traffic site keeps far more of its events: dropping the hour and the
 viewport, and grouping many small pages, lets cells reach the threshold that
-hourly cells miss. The current UTC day is absent.
+hourly cells miss. The current day in the [reporting timezone](#reporting-timezone)
+is absent. UTC is that timezone unless an administrator changes it.
 
 | Column | Type | Meaning |
 | --- | --- | --- |
 | `website_token` | String | The website the events belong to. |
-| `event_day` | UTC date | A completed UTC day. |
+| `event_day` | Date | A completed day in the [reporting timezone](#reporting-timezone). UTC unless that setting is changed. |
 | `event_name` | String | `view` for page views, or a fixed, safe interaction name. |
 | `page_group` | Text | The label of the first matching [page group](#page-groups) rule, or the sanitized page path when no rule matches. Labels never start with `/`. |
 | `referrer_channel` | Category | `direct`, `internal`, `search`, `social`, `email`, `referral` or `unknown`. |
@@ -126,7 +128,7 @@ add up, such as page views per day for a small site.
 | Column | Type | Meaning |
 | --- | --- | --- |
 | `website_token` | String | The website the events belong to. |
-| `event_day` | UTC date | A completed UTC day. |
+| `event_day` | Date | A completed day in the [reporting timezone](#reporting-timezone). UTC unless that setting is changed. |
 | `event_name` | String | `view` or a fixed, safe interaction name. Every row keeps it. |
 | `page_group` | Text | Page group label, sanitized path, or `(other)`. |
 | `referrer_channel` | Category | Coarse source channel, or `(other)`. |
@@ -152,13 +154,14 @@ threshold after the last step is left out.
 
 ### `bi_anonymous_coverage_v1`
 
-How complete each event view is. One row per website, completed UTC day and
-event view, for days with at least `anonymous_min_cell_count` anonymous events.
+How complete each event view is. One row per website, completed day in the
+[reporting timezone](#reporting-timezone) and event view, for days with at least
+`anonymous_min_cell_count` anonymous events.
 
 | Column | Type | Meaning |
 | --- | --- | --- |
 | `website_token` | String | The website. |
-| `event_day` | UTC date | A completed UTC day. |
+| `event_day` | Date | A completed day in the [reporting timezone](#reporting-timezone). UTC unless that setting is changed. |
 | `view_name` | String | `bi_anonymous_events_v1`, `bi_anonymous_daily_v1` or `bi_anonymous_daily_rollup_v1`. |
 | `coverage_band` | Category | Percent of the day's anonymous events the view releases: `90-100`, `50-90`, `10-50` or `0-10`. |
 
@@ -211,6 +214,57 @@ match the hourly view.
 independently. Joining them to each other, or to anything else, does not recover
 withheld detail, and it can produce wrong totals. Choose the hourly or the daily
 event view for a report rather than combining them.
+
+## Reporting timezone
+
+`reporting_timezone` is one IANA name for the installation, default `UTC`. Set
+it under **Reporting → Reporting timezone**, in YAML, or with
+`app:analytics:reporting-timezone`. `REPORTING_TIMEZONE` overrides the saved
+value. Saving, or `app:analytics:bi-views:regenerate`, compiles it into
+`bi_anonymous_events_v1`, `bi_anonymous_daily_v1`, `bi_anonymous_daily_rollup_v1`
+and `bi_anonymous_coverage_v1`.
+
+```yaml
+reporting_timezone: America/Chicago
+```
+
+- Use a name, not an offset or abbreviation. `UTC-5` and `EST` are rejected: a
+  fixed differential is wrong for half the year where daylight-saving time applies.
+- The default `UTC` leaves the views and existing models unchanged. Choosing
+  another zone changes what `event_hour` and the event views' `event_day` mean
+  for that installation. Refresh imported extracts and BigQuery copies afterwards;
+  they keep the previous zone until then.
+- Collection does not change. Anonymous `created_at` remains a server-generated
+  UTC hour, and rows are not rewritten. The view relabels that hour. It is not
+  the visitor's local time.
+- For US, UK, EU and Japan zones, each UTC hour lands on one local hour. For
+  India, Newfoundland and Nepal, the label is the local hour that contains the
+  UTC hour's midpoint. A flat `+5:30` shift would mislabel the bucket.
+- One stored UTC hour stays one cell, including the repeated local hour when
+  daylight-saving time falls back. Do not add the hourly and daily views
+  together; they can describe the same events.
+- The hourly view still withholds the current UTC hour, because that hour is the
+  stored grain and it is complete only when it ends. Daily event views withhold
+  the current day in the reporting timezone, calculated when the view is queried.
+- `bi_anonymous_goals_v1` and `bi_anonymous_geo_events_v1` stay on UTC days.
+  Their archives have already dropped the hour, so shifting only the live half
+  would split one local day across two dates.
+- MySQL and MariaDB must have their time zone tables loaded. If `CONVERT_TZ`
+  cannot convert the name, regeneration fails and the existing views stay.
+  SQL Server uses a Windows time zone name; an unmapped IANA name is refused.
+  SQLite has no time zone database, so regeneration compiles that zone's
+  transitions into the view. Hours after the year 2100 keep the last compiled
+  offset until the views are regenerated.
+- Retention, archive keys, processing tasks and the audit trail stay in UTC.
+
+A second local column is not added to these views. The daily views rebuild the
+hourly cells and withhold a day when subtracting the released hours would reveal
+a small count. Another time column would make that harder to keep and easier to
+sum twice.
+
+If different report audiences need different zones, leave the setting at `UTC`
+and convert in Power BI or Tableau. One deployment has one reporting timezone.
+A zone per website is not available yet.
 
 ## Labels and definitions
 
@@ -380,11 +434,15 @@ an explicit opt-in. The rules on this page apply to the copies too.
 
 ## Model and refresh settings
 
-- Treat `event_hour` as UTC; the stored value may not carry a time zone.
+- Treat `event_hour` as the reporting timezone, UTC unless
+  [`reporting_timezone`](#reporting-timezone) is changed. The stored value may
+  not carry a time zone marker.
 - Model `event_day` as a date and `event_count` as a whole number, whatever
-  physical type the connector reports.
-- Expect new hourly data only after the hour ends, and goal and geography data
-  only after the UTC day ends.
+  physical type the connector reports. Event-view days use the reporting
+  timezone; goal and geography days stay UTC.
+- Expect new hourly data only after the UTC hour ends, daily event data only
+  after the reporting-timezone day ends, and goal and geography data only after
+  the UTC day ends.
 - Treat a missing cell as withheld or unavailable, not as zero.
 - `event_count` counts events or goal occurrences, not visitors, people or unique
   converters.
@@ -440,11 +498,12 @@ like these to its instructions:
 You can query these read-only SQL views about website traffic:
 - bi_anonymous_events_v1: one row per completed UTC hour and combination of
   website_token, event_name, page_path, referrer_channel, device_class and
-  viewport_bucket, with event_count.
-- bi_anonymous_daily_v1: one row per completed UTC day and combination of
-  website_token, event_name, page_group, referrer_channel and device_class,
-  with event_count. page_group is a content label, or a page path when it
-  starts with /.
+  viewport_bucket, with event_count. event_hour is that hour labelled in the
+  installation reporting timezone (UTC unless reporting_timezone was changed).
+- bi_anonymous_daily_v1: one row per completed day in that same reporting
+  timezone and combination of website_token, event_name, page_group,
+  referrer_channel and device_class, with event_count. page_group is a content
+  label, or a page path when it starts with /.
 - bi_anonymous_daily_rollup_v1: like bi_anonymous_daily_v1, plus rows where
   page_group, referrer_channel or device_class is (other): events pooled
   because their own rows were too small. detail_level says which dimensions are
@@ -464,8 +523,12 @@ Rules:
   daily view for day-level questions, the roll-up for daily totals, and the
   hourly view for hour-level ones. (other) is a remainder, never a page,
   channel or device name.
-- All times are UTC. The current hour (events) and day (daily events, goals,
-  geography) are not included yet.
+- Event hours and event-view days use the installation reporting timezone,
+  which is UTC unless reporting_timezone was changed. Goal and geography days
+  are always UTC. The current UTC hour (events), the current reporting-timezone
+  day (daily events) and the current UTC day (goals, geography) are not
+  included yet. Do not treat a repeated local hour as two visits merged into
+  one cell: one stored UTC hour is one cell.
 - Filter by website_token to report on one website.
 ```
 

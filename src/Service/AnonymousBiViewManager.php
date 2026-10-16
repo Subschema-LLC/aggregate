@@ -18,9 +18,9 @@ use Doctrine\DBAL\Platforms\SQLServerPlatform;
  * and recreates.
  *
  * The hourly, daily, roll-up and coverage views are always regenerated
- * together with one threshold and one set of page groups: the daily views'
- * complementary suppression, and the roll-up matching the daily view row for
- * row, assume it.
+ * together with one threshold, one set of page groups and one reporting
+ * timezone: the daily views' complementary suppression, and the roll-up
+ * matching the daily view row for row, assume it.
  */
 final class AnonymousBiViewManager
 {
@@ -30,12 +30,14 @@ final class AnonymousBiViewManager
     public function __construct(
         private readonly Connection $connection,
         private readonly ?BiPageGroups $pageGroups = null,
+        private readonly ?ReportingTimezone $reportingTimezone = null,
     ) {
     }
 
     public function regenerate(int $minimumCellCount, int $geoMinimumCellCount): void
     {
         $platform = $this->connection->getDatabasePlatform();
+        $this->assertConfiguredTimezoneCanBeCompiled();
         $statements = $this->statements($platform, $minimumCellCount, $geoMinimumCellCount);
 
         if ($platform instanceof AbstractMySQLPlatform) {
@@ -65,13 +67,24 @@ final class AnonymousBiViewManager
      */
     public function previewSql(int $minimumCellCount, int $geoMinimumCellCount): array
     {
+        $this->assertConfiguredTimezoneCanBeCompiled();
+
         return $this->statements($this->connection->getDatabasePlatform(), $minimumCellCount, $geoMinimumCellCount);
+    }
+
+    /**
+     * Refuse a timezone this engine cannot compile, before any view is replaced.
+     * MySQL named zones need loaded time zone tables; SQL Server needs a Windows name.
+     */
+    public function assertReportingTimezoneCanBeCompiled(string $timezone): void
+    {
+        $this->assertPlatformCanCompile(ReportingTimezone::validate($timezone));
     }
 
     /** @return list<string> */
     private function statements(AbstractPlatform $platform, int $minimumCellCount, int $geoMinimumCellCount): array
     {
-        $sql = new AnonymousBiViewSqlBuilder($platform);
+        $sql = new AnonymousBiViewSqlBuilder($platform, $this->reportingTimezoneName());
         // Read and validate page groups before any statement runs, so invalid
         // YAML leaves every existing view in place.
         $pageGroups = $this->pageGroups?->rules() ?? [];
@@ -160,5 +173,43 @@ final class AnonymousBiViewManager
         $verb = $platform instanceof SQLServerPlatform ? 'CREATE OR ALTER VIEW ' : 'CREATE OR REPLACE VIEW ';
 
         return $verb.$name.' AS'.substr($createSql, strlen($prefix));
+    }
+
+    private function reportingTimezoneName(): string
+    {
+        return $this->reportingTimezone?->name() ?? ReportingTimezone::DEFAULT;
+    }
+
+    private function assertConfiguredTimezoneCanBeCompiled(): void
+    {
+        $this->assertPlatformCanCompile($this->reportingTimezoneName());
+    }
+
+    private function assertPlatformCanCompile(string $timezone): void
+    {
+        if (ReportingTimezone::isIdentity($timezone)) {
+            return;
+        }
+
+        $platform = $this->connection->getDatabasePlatform();
+        if ($platform instanceof SQLServerPlatform) {
+            ReportingTimezone::windowsName($timezone);
+        }
+        if ($platform instanceof AbstractMySQLPlatform) {
+            $this->assertMysqlNamedZone($timezone);
+        }
+    }
+
+    private function assertMysqlNamedZone(string $timezone): void
+    {
+        foreach (['2024-01-15 12:00:00', '2024-07-15 12:00:00'] as $instant) {
+            $converted = $this->connection->fetchOne('SELECT CONVERT_TZ(?, ?, ?)', [$instant, 'UTC', $timezone]);
+            if ($converted === null || $converted === false || $converted === '') {
+                throw new \RuntimeException(sprintf(
+                    'MySQL cannot convert %s. Load the time zone tables (mysql_tzinfo_to_sql or mariadb-tzinfo-to-sql) and run app:analytics:bi-views:regenerate again. The existing views were left unchanged.',
+                    $timezone,
+                ));
+            }
+        }
     }
 }

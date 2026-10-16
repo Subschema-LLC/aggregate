@@ -115,6 +115,7 @@ checkout, or a small accessibility fix. Keep each PR focused and target
 - **Snowflake Integration** Add a Snowflake connector.
 - **Agency Multi-tenancy** Allow multi-tenancy for agencies that want to host on behalf of clients. Determine is separate databases per client or separation in one DB with views being unique to each client.
 - **Per Website View Generation** Allow separate BI views by website for organizations that require this.
+- **Tag Change Alerts** Add alerts for when tags are added or changed to help with compliance and an audit trail.
 
 ## Proposals to explore
 

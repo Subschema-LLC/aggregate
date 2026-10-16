@@ -381,6 +381,36 @@ written for every database engine.
 
 **What would change it.** Nothing; this is how the contract stays trustworthy.
 
+### One reporting timezone, compiled into the event views
+
+**Decision.** An installation has one IANA reporting timezone, default `UTC`,
+stored in YAML and compiled into `bi_anonymous_events_v1` and the daily event
+views when they are regenerated. Column names stay the same. Stored events,
+archives, goal days and geography days stay UTC. There is no offset table and
+no second local column.
+
+**Why.** A business timezone is an operator setting, like the disclosure
+thresholds, not collected data. A fixed differential cannot do daylight-saving
+time, and a lookup table would be a second place to edit the setting. Relabelling
+the existing UTC hour in the view answers "which business day was this?" without
+recording a visitor's local time or rewriting history. The default `UTC` leaves
+existing connections unchanged; choosing another zone is an explicit change for
+that installation, documented in the connection guide and the glossary, not a
+silent release. Goal and geography archives have already dropped the hour, so
+those views stay on UTC days rather than shifting only their live half.
+
+**Trade-off.** Opting in changes what `event_hour` and the event views'
+`event_day` mean, so extracts and BigQuery copies have to be refreshed. Zones
+that are not a whole number of hours from UTC are labelled by the hour's
+midpoint. One UTC hour stays one cell even when a daylight-saving fallback
+repeats a local hour. MySQL needs its time zone tables, SQL Server needs a
+Windows name, and SQLite carries a compiled transition table through 2100.
+
+**What would change it.** A concrete need for a different zone per website,
+which belongs on the website in `config/websites.yaml` once website-specific
+settings exist, or audiences that need several zones, which should convert in
+the BI tool and leave the views in UTC.
+
 ### Views copied to BigQuery whole, by scheduled load jobs
 
 **Decision.** [BigQuery sync](BIGQUERY.md) copies selected reporting views, never
