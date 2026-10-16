@@ -547,7 +547,6 @@ final class ApplicationUpdaterTest extends TestCase
             $releases,
             $updates,
             $installed,
-            $features,
             $this->connection,
             new SystemCheck($this->project, $updates, $settings, $installed, $verifier, $journal, $maintenance, $features, $this->connection, $toolchain, deployment: $deployment),
             $toolchain,

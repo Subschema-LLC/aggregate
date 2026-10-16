@@ -22,7 +22,7 @@ final class TagManagerSettings
     ) {
     }
 
-    /** @return array{enabled: bool, tags: list<array>} */
+    /** @return array{enabled: bool, variables: array<string, string>, tags: list<array>} */
     public function all(?string $siteId = null): array
     {
         $config = $this->configuration($siteId);

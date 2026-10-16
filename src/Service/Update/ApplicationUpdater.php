@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Service\Update;
 
 use App\Service\ApplicationUpdateService;
-use App\Service\FeatureFlags;
 use App\Service\InstalledRelease;
 use App\Service\ReleasePackageVerifier;
 use App\Service\ReleaseUpdateService;
@@ -51,7 +50,6 @@ class ApplicationUpdater
         private readonly ReleaseUpdateService $releases,
         private readonly ApplicationUpdateService $updates,
         private readonly InstalledRelease $installed,
-        private readonly FeatureFlags $features,
         private readonly Connection $connection,
         private readonly SystemCheck $systemCheck,
         private readonly Toolchain $toolchain,
