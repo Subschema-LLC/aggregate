@@ -69,11 +69,53 @@ final class TagManagerSettings
         ];
         if (in_array('custom', array_column($tags, 'type'), true)) {
             // Lets custom code send events with tag.emit() through the tracker's namespace.
-            $namespace = $this->config->getWithEnvFallback('js_namespace', 'Aggregate');
-            $configuration['namespace'] = is_string($namespace) && preg_match('/^[A-Za-z_$][A-Za-z0-9_$]{0,63}$/D', $namespace) === 1 ? $namespace : 'Aggregate';
+            $configuration['namespace'] = $this->trackerNamespace();
         }
 
         return $configuration;
+    }
+
+    /** The global the tracker installs itself as (js_namespace), such as Aggregate. */
+    public function trackerNamespace(): string
+    {
+        $namespace = $this->config->getWithEnvFallback('js_namespace', 'Aggregate');
+
+        return is_string($namespace) && preg_match('/^[A-Za-z_$][A-Za-z0-9_$]{0,63}$/D', $namespace) === 1 ? $namespace : 'Aggregate';
+    }
+
+    /**
+     * Names under which a method tag calls this tracker: its namespace and the
+     * default Aggregate, which the examples use.
+     *
+     * @return list<string>
+     */
+    public function trackerNamespaces(): array
+    {
+        return array_values(array_unique([$this->trackerNamespace(), 'Aggregate']));
+    }
+
+    /**
+     * Method tags whose call to the tracker's emit() would lose its properties,
+     * as "Tag <id>: <reason>" messages. These tags are valid and are saved;
+     * the messages say what to change.
+     *
+     * @param array{tags: list<array>} $settings validated settings
+     * @return list<string>
+     */
+    public function emitWarnings(array $settings): array
+    {
+        $warnings = [];
+        foreach ($settings['tags'] as $tag) {
+            if (($tag['type'] ?? null) !== 'call') {
+                continue;
+            }
+            $problem = TagManagerValues::emitProblem($tag['method'], $tag['args'], $this->trackerNamespaces());
+            if ($problem !== null) {
+                $warnings[] = 'Tag '.$tag['id'].': '.$problem;
+            }
+        }
+
+        return $warnings;
     }
 
     /** @return array<string, string> Tag ID => code of the custom JavaScript served with the tags. */

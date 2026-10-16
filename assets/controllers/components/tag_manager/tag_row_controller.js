@@ -28,6 +28,55 @@ function codeProblem(code, view) {
     return '';
 }
 
+// The tracker's emit(name, properties, goal) takes flat properties and drops
+// any that hold an object or a list, so a customData wrapper sends the event
+// without them. The server makes the same check on save
+// (TagManagerValues::emitProblem); keep the messages the same.
+const propertyWrappers = ['customData', 'eventData'];
+
+function isPlainObject(value) {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isReference(value) {
+    return isPlainObject(value) && Object.keys(value).length === 1 && Object.prototype.hasOwnProperty.call(value, '$var');
+}
+
+/** @returns {{message: string, wrapper: string|null, fixed: string|null}|null} */
+function emitProblem(method, argumentsJson, namespaces) {
+    if (!namespaces.some((namespace) => method.trim() === namespace + '.emit')) return null;
+    let args;
+    try {
+        args = JSON.parse(argumentsJson.trim() || '[]');
+    } catch (error) {
+        // The server explains invalid JSON on save.
+        return null;
+    }
+    if (!Array.isArray(args)) return null;
+    const problem = (message, wrapper = null, fixed = null) => ({message, wrapper, fixed});
+    if (typeof args[0] !== 'string' && !isReference(args[0])) return problem('The first argument is the event name, such as "login".');
+    const properties = args.length > 1 ? args[1] : null;
+    if (properties === null) return null;
+    if (isReference(properties)) return problem('A variable gives one value, but the second argument needs an object of properties. Name each property and use a variable for its value: {"plan": {"$var": "plan"}}.');
+    // JSON {} and [] both decode to an empty array on the server; neither sends anything.
+    if (!isPlainObject(properties) && !(Array.isArray(properties) && properties.length === 0)) {
+        return problem('The second argument holds the event properties and must be an object, such as {"plan": "pro"}, or null. A goal goes third.');
+    }
+    const keys = Object.keys(properties);
+    const nested = keys.filter((key) => properties[key] !== null && typeof properties[key] === 'object' && !isReference(properties[key]));
+    if (nested.length === 0) return null;
+    const wrapper = nested[0];
+    if (keys.length === 1 && propertyWrappers.includes(wrapper) && (isPlainObject(properties[wrapper]) || properties[wrapper].length === 0)) {
+        const fixedArgs = [...args];
+        fixedArgs[1] = Array.isArray(properties[wrapper]) ? {} : properties[wrapper];
+        return problem('Remove the "' + wrapper + '" wrapper and put its properties directly in the second argument. The tracker puts the properties in customData itself and drops a property that holds an object, so this event would be sent without them.',
+            wrapper, JSON.stringify(fixedArgs, null, 4));
+    }
+    const names = nested.map((name) => '"' + name + '"');
+    const last = names.pop();
+    return problem('The tracker drops ' + (names.length ? names.join(', ') + ' and ' + last : last) + ': a property must be text, a number, true, false or null, not an object or a list. Give each value its own property.');
+}
+
 function templates(document) {
     try {
         const groups = JSON.parse(document.getElementById('tag-custom-templates').textContent);
@@ -38,7 +87,10 @@ function templates(document) {
 }
 
 export default class extends Controller {
-    static targets = ['actionType', 'trigger', 'actionFields', 'eventField', 'source', 'sourceNote', 'template', 'code', 'codeStatus'];
+    static targets = ['actionType', 'trigger', 'actionFields', 'eventField', 'source', 'sourceNote', 'template', 'code', 'codeStatus',
+        'method', 'arguments', 'argumentsStatus', 'argumentsMessage', 'argumentsFix'];
+
+    static values = { namespaces: Array };
 
     connect() {
         this.update();
@@ -56,6 +108,29 @@ export default class extends Controller {
         this.eventFieldTarget.hidden = !eventNeeded;
         this.eventFieldTarget.querySelector('input').disabled = !eventNeeded;
         this.checkCode();
+        this.checkArguments();
+    }
+
+    // Warns, without blocking the save, when a call to the tracker's emit()
+    // would lose its properties, and offers to remove a customData wrapper.
+    checkArguments() {
+        if (!this.hasArgumentsStatusTarget || !this.hasMethodTarget || !this.hasArgumentsTarget) return;
+        const namespaces = this.hasNamespacesValue && this.namespacesValue.length ? this.namespacesValue : ['Aggregate'];
+        const problem = this.argumentsTarget.disabled ? null : emitProblem(this.methodTarget.value, this.argumentsTarget.value, namespaces);
+        this.fixedArguments = problem ? problem.fixed : null;
+        this.argumentsStatusTarget.hidden = problem === null;
+        if (this.hasArgumentsMessageTarget) this.argumentsMessageTarget.textContent = problem ? problem.message : '';
+        if (this.hasArgumentsFixTarget) {
+            this.argumentsFixTarget.hidden = this.fixedArguments === null;
+            this.argumentsFixTarget.textContent = problem && problem.wrapper ? 'Remove the ' + problem.wrapper + ' wrapper' : '';
+        }
+    }
+
+    fixArguments() {
+        if (!this.fixedArguments || !this.hasArgumentsTarget) return;
+        this.argumentsTarget.value = this.fixedArguments;
+        this.checkArguments();
+        if (typeof this.argumentsTarget.focus === 'function') this.argumentsTarget.focus();
     }
 
     checkCode() {

@@ -92,6 +92,7 @@ final class TagManagerController extends AbstractController
             'custom_templates_json' => json_encode($templates, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR),
             'configuration_error' => $configurationError, 'restored_form' => $restored,
             'tracker_url' => $trackerUrl, 'tracker_tag' => $trackerTag, 'tracker_tag_id' => self::TRACKER_TAG_ID,
+            'tracker_namespaces' => $this->settings->trackerNamespaces(),
         ]));
     }
 
@@ -117,6 +118,9 @@ final class TagManagerController extends AbstractController
             // Consent manager settings have their own page and save separately.
             $this->settings->save($tagSettings, $siteId !== '' ? $siteId : null);
             $this->addFlash('success', 'Script settings saved to YAML. Changes reach visitors within five minutes.');
+            foreach ($this->settings->emitWarnings($tagSettings) as $warning) {
+                $this->addFlash('warning', $warning);
+            }
         } catch (\InvalidArgumentException $e) {
             $this->addFlash('error', $e->getMessage());
             $this->rememberSubmittedForm($request, $siteId, $submitted);

@@ -194,6 +194,24 @@ final class TagManagerControllerTest extends TestCase
         self::assertArrayNotHasKey('args_json', $call);
     }
 
+    public function testAnEmitCallThatWouldLoseItsPropertiesIsSavedWithAWarningAndCheckedInTheEditor(): void
+    {
+        $form = $this->siteForm();
+        $form['tags'][1]['args_json'] = '["purchase", {"customData": {"total_minor": 1299, "plan": {"$var": "plan"}}}]';
+        $request = $this->request($form);
+        $this->controller($request)->save($request);
+
+        $flashes = $request->getSession()->getFlashBag();
+        self::assertCount(1, $flashes->peek('success'));
+        self::assertSame(['Tag purchase: Remove the "customData" wrapper and put its properties directly in the second argument. The tracker puts the properties in customData itself and drops a property that holds an object, so this event would be sent without them.'], $flashes->peek('warning'));
+        self::assertSame(['purchase', ['customData' => ['total_minor' => 1299, 'plan' => ['$var' => 'plan']]]], Yaml::parseFile($this->sitePath($this->siteId))['tag_manager']['tags'][1]['args']);
+
+        $row = $this->view($request, ['site' => $this->siteId])->filter('[data-tag-row]')->eq(1);
+        self::assertSame('["Aggregate"]', $row->attr('data-components--tag-manager--tag-row-namespaces-value'));
+        self::assertCount(1, $row->filter('#tag-1-args-status[hidden][role="status"]'), 'the editor shows the warning as you type');
+        self::assertSame('tag-1-args-help tag-1-args-status', $row->filter('#tag-1-args')->attr('aria-describedby'));
+    }
+
     #[DataProvider('invalidSiteFields')]
     public function testInvalidSiteArgumentsNeverPartiallySave(array $changes): void
     {

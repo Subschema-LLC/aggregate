@@ -287,7 +287,10 @@ After loading, `Aggregate.configure({customData: {...}})` accepts the same setti
 
 The tracker sends an event's properties in the collection request's `customData`
 object; server-side and other direct clients do the same (see the
-[server-side guide](SERVER-SIDE.md)). `eventData`, the object's earlier name, is
+[server-side guide](SERVER-SIDE.md)). Pass `emit()` the properties themselves,
+as in `emit('login', {method: 'password'})`: wrapped as
+`emit('login', {customData: {method: 'password'}})`, they form one property
+holding an object, which the tracker drops. `eventData`, the object's earlier name, is
 still accepted when `customData` is absent, and both pass the same server
 filtering. The `customData` settings above are a different thing: they configure
 which properties the tracker collects, not the properties themselves.
@@ -612,3 +615,8 @@ dataLayer.push({
    - `DLV - eventName` → Data Layer Variable Name: `eventName`
    - `DLV - customData` → Data Layer Variable Name: `customData`
    - `DLV - goalEvent` → Data Layer Variable Name: `goalEvent` (optional)
+
+`DLV - customData` returns the object inside the push's `customData`, so `emit()`
+receives the properties themselves. Keep that object flat. With
+[Aggregate's own tag manager](TAG-MANAGER.md#send-data-layer-events-to-the-tracker),
+a variable gives one value, so name each property in the arguments instead.

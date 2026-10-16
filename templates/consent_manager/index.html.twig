@@ -287,7 +287,7 @@
                             <div class="columns is-multiline">
                                 <div class="column is-half-tablet is-3-widescreen">
                                     <label class="label is-small" for="region-{{ index }}-id">Region ID</label>
-                                    <input class="input is-small" id="region-{{ index }}-id" name="regions[{{ index }}][id]" value="{{ region.id }}" placeholder="e.g. eu_eea, us, global" pattern="[a-z0-9_-]{1,32}">
+                                    <input class="input is-small" id="region-{{ index }}-id" name="regions[{{ index }}][id]" value="{{ region.id }}" placeholder="e.g. eu_eea, us, global" pattern="[a-z0-9_\-]{1,32}">
                                 </div>
                                 <div class="column is-half-tablet is-4-widescreen">
                                     <label class="label is-small" for="region-{{ index }}-name">Display Name</label>
@@ -357,7 +357,7 @@
                     <div class="columns is-multiline">
                         <div class="column is-half-tablet is-3-widescreen">
                             <label class="label is-small" for="new-region-id">Region ID</label>
-                            <input class="input is-small" id="new-region-id" name="regions[{{ form.regions|length }}][id]" placeholder="e.g. us, ca, global" pattern="[a-z0-9_-]{1,32}">
+                            <input class="input is-small" id="new-region-id" name="regions[{{ form.regions|length }}][id]" placeholder="e.g. us, ca, global" pattern="[a-z0-9_\-]{1,32}">
                         </div>
                         <div class="column is-half-tablet is-4-widescreen">
                             <label class="label is-small" for="new-region-name">Display Name</label>
