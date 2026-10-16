@@ -129,24 +129,15 @@ final class DropInScripts
             + (($consent['respect_gpc'] ?? true) === false ? ['respectGpc' => false] : [])
             + ConsentAppearance::browser($consent));
         if ($minified) {
-            $directory = $this->projectDir.'/var/browser';
-            try {
-                $manifest = json_decode((string) @file_get_contents($directory.'/consent-manifest.json'), true, flags: JSON_THROW_ON_ERROR);
-                $template = @file_get_contents($directory.'/consent.template.min.js');
-                if (is_array($manifest) && ($manifest['format'] ?? null) === 1 && is_string($template)
-                    && ($manifest['sourceSha256'] ?? null) === hash('sha256', $source)
-                    && ($manifest['stylesheetSha256'] ?? null) === hash('sha256', $styles)
-                    && ($manifest['templateSha256'] ?? null) === hash('sha256', $template)
-                    && str_contains($template, '__AGGREGATE_CONSENT_CONFIG__')
-                    && str_contains($template, '__AGGREGATE_CONSENT_STYLES__')) {
-                    return ['content' => strtr($template, [
-                        '__AGGREGATE_CONSENT_CONFIG__' => $configuration,
-                        '__AGGREGATE_CONSENT_STYLES__' => $this->json($styles),
-                    ]), 'minified' => true, 'variant' => 'minified'];
-                }
-            } catch (\Throwable) {
-                // Optional builds fall back to compacting the current source.
+            $template = BrowserBuild::template($this->projectDir, 'consent-manifest.json', 'consent.template.min.js',
+                ['sourceSha256' => $source, 'stylesheetSha256' => $styles], ['__AGGREGATE_CONSENT_CONFIG__', '__AGGREGATE_CONSENT_STYLES__']);
+            if ($template !== null) {
+                return ['content' => strtr($template, [
+                    '__AGGREGATE_CONSENT_CONFIG__' => $configuration,
+                    '__AGGREGATE_CONSENT_STYLES__' => $this->json($styles),
+                ]), 'minified' => true, 'variant' => 'minified'];
             }
+            // Without a current build, compact the current source.
             $compact = $this->compactor()->template($source, [
                 $declaration => 'var consentConfig = __AGGREGATE_CONSENT_CONFIG__;',
                 $stylesDeclaration => 'var consentStyles = __AGGREGATE_CONSENT_STYLES__;',
@@ -185,24 +176,15 @@ final class DropInScripts
         }
         $json = $this->json($configuration);
         if ($minified) {
-            $build = $this->projectDir.'/var/browser';
-            try {
-                $manifest = json_decode((string) @file_get_contents($build.'/standalone-consent-manifest.json'), true, flags: JSON_THROW_ON_ERROR);
-                $template = @file_get_contents($build.'/standalone-consent.template.min.js');
-                if (is_array($manifest) && ($manifest['format'] ?? null) === 1 && is_string($template)
-                    && ($manifest['sourceSha256'] ?? null) === hash('sha256', $source)
-                    && ($manifest['adapterSha256'] ?? null) === hash('sha256', $adapter)
-                    && ($manifest['stylesheetSha256'] ?? null) === hash('sha256', $styles)
-                    && ($manifest['templateSha256'] ?? null) === hash('sha256', $template)
-                    && str_contains($template, '__MICRO_CONSENT_CONFIG__') && str_contains($template, '__MICRO_CONSENT_STYLES__')) {
-                    return ['content' => strtr($template, [
-                        '__MICRO_CONSENT_CONFIG__' => $json,
-                        '__MICRO_CONSENT_STYLES__' => $this->json($styles),
-                    ]), 'minified' => true, 'variant' => 'minified'];
-                }
-            } catch (\Throwable) {
-                // A build is optional; stale or incomplete builds are compacted here.
+            $template = BrowserBuild::template($this->projectDir, 'standalone-consent-manifest.json', 'standalone-consent.template.min.js',
+                ['sourceSha256' => $source, 'adapterSha256' => $adapter, 'stylesheetSha256' => $styles], ['__MICRO_CONSENT_CONFIG__', '__MICRO_CONSENT_STYLES__']);
+            if ($template !== null) {
+                return ['content' => strtr($template, [
+                    '__MICRO_CONSENT_CONFIG__' => $json,
+                    '__MICRO_CONSENT_STYLES__' => $this->json($styles),
+                ]), 'minified' => true, 'variant' => 'minified'];
             }
+            // A build is optional; stale or incomplete builds are compacted here.
             // Each file is compacted alone, keeping its own license notice.
             $runtime = $this->compactor()->template($source, [$declaration => 'var microConsentStyles = __MICRO_CONSENT_STYLES__;'], ['__MICRO_CONSENT_STYLES__']);
             $bridge = $this->compactor()->compact($adapter);

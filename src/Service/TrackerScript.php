@@ -112,32 +112,15 @@ final class TrackerScript
     /** The verified Terser template for a build, or null when it is missing or stale. */
     private function minifiedTemplate(string $source, string $build): ?string
     {
-        $directory = $this->projectDir.'/var/browser';
-        $file = $build === TrackerBuilds::FULL ? 'aggregate.template.min.js' : 'aggregate-'.$build.'.template.min.js';
-        if (!is_readable($directory.'/manifest.json') || !is_readable($directory.'/'.$file)) {
-            return null;
-        }
+        $full = $build === TrackerBuilds::FULL;
 
-        try {
-            $manifest = json_decode((string) file_get_contents($directory.'/manifest.json'), true, flags: JSON_THROW_ON_ERROR);
-            $template = file_get_contents($directory.'/'.$file);
-            $expected = $build === TrackerBuilds::FULL ? ($manifest['templateSha256'] ?? null) : ($manifest['builds'][$build]['templateSha256'] ?? null);
-            if (!is_array($manifest) || ($manifest['format'] ?? null) !== 1 || !is_string($template)
-                || ($manifest['sourceSha256'] ?? null) !== hash('sha256', $source)
-                || !is_string($expected) || $expected !== hash('sha256', $template)) {
-                return null;
-            }
-            foreach (self::PLACEHOLDERS as $placeholder) {
-                if (substr_count($template, $placeholder) !== 1) {
-                    return null;
-                }
-            }
-
-            return $template;
-        } catch (\Throwable) {
-            // An optional build must never cause tracking to use stale code or
-            // stop working when generated assets are absent or incomplete.
-            return null;
-        }
+        return BrowserBuild::template(
+            $this->projectDir,
+            'manifest.json',
+            $full ? 'aggregate.template.min.js' : 'aggregate-'.$build.'.template.min.js',
+            ['sourceSha256' => $source],
+            self::PLACEHOLDERS,
+            $full ? ['templateSha256'] : ['builds', $build, 'templateSha256'],
+        );
     }
 }
