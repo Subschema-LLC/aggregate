@@ -27,6 +27,8 @@ by hand (`.env.local` or environment variables) keep the behavior above.
 - [Worker Process Setup](#worker-process-setup)
 - [Production Considerations](#production-considerations)
   - [Scheduled tasks](#scheduled-tasks)
+  - [Updates](#updates)
+- [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -414,7 +416,7 @@ sudo certbot --nginx -d analytics.example.com
 
 **2. Secure secrets:**
 - Never commit `.env` (server-specific env file) to version control — it is gitignored by default
-- Keep `config/aggregate.yaml`, environment-specific `config/aggregate_*.yaml`, `config/websites.yaml`, and `config/tag-manager/sites/` private; commit only sanitized example files
+- Keep `config/aggregate.yaml`, environment-specific `config/aggregate_*.yaml`, `config/websites.yaml`, `config/website-scopes.yaml`, `config/website-scopes/` and `config/tag-manager/sites/` private; commit only sanitized example files
 - Use a unique, strong `APP_SECRET` in the server environment
 - Review anonymous path exclusions and set both BI minimum-cell thresholds before collection (`anonymous_min_cell_count`, default `5`; `anonymous_geo_min_cell_count`, default `25`), on the BI disclosure page or in YAML followed by `php bin/console app:analytics:bi-views:regenerate`
 - Review every code in `config/goals.yaml`; keep values fixed and non-identifying, and set `anonymous: false` where enhanced consent is appropriate
@@ -436,8 +438,9 @@ executable front controller and browser assets. Preserve executable permissions
 on CLI scripts rather than applying one mode to every file in the checkout.
 
 Admin settings also require narrowly scoped write access to the active aggregate
-YAML file, `config/websites.yaml`, and `config/tag-manager/sites/` when per-site
-tag/CMP editing is enabled. Pre-create these paths as the deployment user, grant
+YAML file, `config/websites.yaml`, `config/website-scopes.yaml` and
+`config/website-scopes/` for website groups, and `config/tag-manager/sites/` when
+per-site tag/CMP editing is enabled. Pre-create these paths as the deployment user, grant
 the PHP group only the access the enabled admin actions need, and
 keep secrets readable only by the operator and necessary processes. Custom logo
 uploads are stored under `var/branding/`, outside the web root. Headless operators
@@ -613,14 +616,15 @@ mysqldump -u dbuser -p dbname > backup_$(date +%Y%m%d).sql
 ```
 
 **2. Application backups:**
-Include all active environment files, website registrations, per-site tag/CMP
-YAML under `config/tag-manager/sites/`, credentials under `config/secrets/` (such
+Include all active environment files, website registrations, website groups and
+their settings (`config/website-scopes.yaml` and `config/website-scopes/`), per-site
+tag/CMP YAML under `config/tag-manager/sites/`, credentials under `config/secrets/` (such
 as a BigQuery key), and branding uploads. Preserve these operator files when
 replacing application code or deploying a release ZIP.
 
 ```bash
 # Backup config (include deployment-specific settings — keep secure!)
-tar --ignore-failed-read -czf config_backup_$(date +%Y%m%d).tar.gz .env .env.local config/aggregate*.yaml config/websites.yaml config/*.local.yaml config/tag-manager/sites config/secrets
+tar --ignore-failed-read -czf config_backup_$(date +%Y%m%d).tar.gz .env .env.local config/aggregate*.yaml config/websites.yaml config/website-scopes.yaml config/website-scopes config/*.local.yaml config/tag-manager/sites config/secrets
 
 # Full backup (exclude vendor and cache)
 tar -czf app_backup_$(date +%Y%m%d).tar.gz \
@@ -657,196 +661,54 @@ commands from older guides keep working, but this one line replaces them.
 
 ### Updates
 
-Aggregate updates itself in place with one of two methods, or reports on code you
-deploy with another tool. An administrator chooses the method on the dashboard
-**Updates** page, with
-`php bin/console app:updates:method`, or with `updates_method` in
-`config/aggregate.yaml`; the page then shows only that method. The
-[update guide](docs/UPDATES.md) compares them in detail and covers setting up a Git
-clone, switching methods and troubleshooting.
-
-- **Release ZIP** (`updates_method: release`, recommended) — installs signed
-  releases published on GitHub. **Download from GitHub** fetches the newest
-  stable release for `updates_branch`; **Upload a release ZIP** installs the ZIP,
-  `aggregate-release.json` and `aggregate-release.json.sig` you downloaded, for
-  servers that cannot reach GitHub. The signature is verified with the
-  installation's trusted key before anything changes, and the server needs no Git,
-  Composer or Node. Works for any directory without `.git`, including files copied
-  by a deployment tool; an installation without `release.json` is offered the
-  latest release, and installing it records the version.
-- **From the repository** (`updates_method: repository`, advanced) — for a Git
-  clone of the repository in the application directory. The update fast-forwards
-  the checkout (the same rules as `app:updates:pull` below), runs `composer install`
-  when `composer.lock` or `importmap.php` changed, and compiles dashboard assets. It
-  installs whatever is on the branch, which is not a signed release, and needs Git
-  and Composer on the server.
-- **Deployed another way** (`updates_method: deployment`) — for code your own tool
-  deploys from Git: a hosting panel's Git deployment such as Plesk or cPanel,
-  CI/CD, or rsync. That tool installs updates; the Updates page is read only and
-  shows the deployed commit and how far behind it is. After each deployment,
-  `php bin/console app:updates:deployed` (best run from the tool's deployment
-  action) installs dependencies, runs migrations and rebuilds assets and the cache.
-  See [deploy the code another way](docs/UPDATES.md#deploy-the-code-another-way).
-
-Until a method is chosen, the dashboard does not install updates and the command
-line uses the method that fits the directory (a `.git` folder means repository).
-A chosen method that does not fit the directory stops updates, and the system check
-says what to change. Only one mechanism should write the application files: if
-another tool also deploys them, stop its automatic deployments before using the
-updater, or keep using that tool and choose **deployed another way**.
-
-From the command line, run as the user that owns the application files. The
-commands work with the dashboard disabled:
+Aggregate updates itself in place from signed **release ZIPs** (recommended) or a
+**Git clone** of the repository, or reports on code you **deploy another way**,
+such as a hosting panel's Git deployment or CI/CD. Choose the method on the
+dashboard **Updates** page, with `php bin/console app:updates:method`, or with
+`updates_method` in `config/aggregate.yaml`. The [update guide](docs/UPDATES.md)
+explains each method, the system check, recovery, the full command reference and
+troubleshooting.
 
 ```bash
-php bin/console app:updates:method               # show the method; add release, repository or deployment to choose
 php bin/console app:updates:check --refresh      # see what is available
 php bin/console app:updates:apply --preflight    # system check, changes nothing
 php bin/console app:updates:apply                # SQLite: snapshots the database automatically
 php bin/console app:updates:apply --database-backup-confirmed   # PostgreSQL, MySQL, MariaDB, SQL Server
-php bin/console app:updates:apply --package=aggregate-YYYY.MM.NN.zip \
-  --manifest=aggregate-release.json --signature=aggregate-release.json.sig   # release ZIP you downloaded
 ```
 
-**Settings.** `updates_method` (`release`, `repository` or `deployment`) can be chosen on the
-Updates page, with `app:updates:method`, or in YAML. `updates_branch` (default
-`master`) is the branch Git pulls, the branch releases must be published from, and
-the branch a deployed commit is compared with;
-it can be saved on the Updates page. `updates_repository` (default
-`Subschema-LLC/aggregate`) is YAML-only; see
-[configuration](docs/CONFIGURATION.md#github-update-checks).
+- Run commands as the user that owns the application files. The dashboard's
+  **Install update** button runs the same command in the background.
+- While files change, every request, including `/api/receive`, gets a 503
+  maintenance page, so events sent during the update are not recorded.
+- Your configuration and data are [never replaced](docs/UPDATES.md#what-an-update-keeps):
+  `.env.local`, `config/aggregate*.yaml`, `config/websites.yaml`,
+  `config/website-scopes.yaml` and `config/website-scopes/`,
+  `config/tag-manager/sites/`, `config/*.local.yaml`, `config/secrets/` and `var/`.
+- After an update, reload PHP if OPcache does not revalidate file timestamps
+  (`opcache.validate_timestamps=0`), and restart workers if your process manager
+  does not restart them after the stop signal. For Docker images, rebuild and
+  redeploy the image instead.
+- After every migration run, `php bin/console app:analytics:glossary:sync`
+  publishes the declared [BI glossary](docs/BI-GLOSSARY.md#view-only-grants); the
+  updater runs it for you.
 
-**System check.** The Updates page lists everything an update depends on, as seen
-by the web server user: the update method (and whether it fits the directory) and
-repository, PHP and extensions, Git
-and Composer (repository updates), `release.json`, the trusted signing key and the
-upload size limit (release ZIPs), the last post-deployment run, the deployment
-repository and Composer dependencies (deployed another way), write access to the application files, whether
-the page can start the command line, free disk space, database backup handling,
-OPcache, maintenance mode and the last update. A problem there disables the
-buttons and says what to fix; `app:updates:apply --preflight` prints the same
-checks for the command-line user.
+Installations whose code predates `app:updates:apply`, and code a deployment tool
+updates, use the manual steps below.
 
-Both then run database migrations, `app:analytics:glossary:sync`, warm the cache and
-signal async workers to restart. While files are replaced, every web request,
-including `/api/receive`, gets a 503 maintenance response, so events sent during
-the update are not recorded. `var/maintenance.json` controls this page;
-`app:updates:maintenance status|on|off` shows or changes it.
+#### Manual update steps
 
-**Your configuration is not overwritten.** Updates never replace or delete
-`.env.local` and other local environment files, `config/aggregate.yaml` and
-`config/aggregate_*.yaml`, `config/websites.yaml`, `config/tag-manager/sites/`,
-`config/*.local.yaml`, the installed `config/release-signing.pub`, or anything in
-`var/` (database, branding uploads, logs). If you edited a shipped default,
-`config/goals.yaml`, `config/navigation.yaml` or `config/quick_search.yaml`, the
-edits move to the matching [local override](docs/CONFIGURATION.md#local-overrides-for-shipped-defaults)
-first. New keys in a release's `.env` are appended; existing values stay.
+Use these steps when a deployment tool updates the files, or for an installation whose code predates `app:updates:apply`.
+With code deployed another way, `php bin/console app:updates:deployed` runs steps 4 to 7 for you; see
+[after each deployment](docs/UPDATES.md#after-each-deployment).
 
-**Recovery.** Changed files are backed up under `var/updates/backups/` (the last
-three updates are kept). If a check fails or a download does not verify, nothing
-changes. If installing files fails, the previous files are restored automatically.
-If a later step fails, such as a migration, the site stays in maintenance mode:
-fix the cause and run `php bin/console app:updates:apply --resume`, or restore the
-previous files with `php bin/console app:updates:rollback`. Rolling back files
-does **not** reverse database migrations. With SQLite, add `--restore-database` to
-put back the snapshot taken before the update, which discards data recorded since.
-With other databases, restore your own backup. If the console itself cannot start
-after an interrupted update, `php scripts/restore-update-files.php` restores the
-files without loading the application. `app:updates:apply --status` shows the last
-update and its log.
-
-The dashboard buttons run the same command in the background (output in
-`var/updates/last-run.log`). They are always shown; when nothing can be installed
-they are disabled and the page says why (already up to date, no stable release
-found, a branch mismatch, or an update that needs attention). Starting updates
-from the dashboard requires the PHP web server user to be able to write the
-application files, which is common on shared hosting but not in hardened
-deployments where code is read-only to PHP. When the system check finds that the
-web user cannot write the files, or that the command line sees a different
-environment or database than the web server, run the command on the server
-instead.
-
-After an update, reload PHP (PHP-FPM, Apache with mod_php, FrankenPHP or your
-host's equivalent) if OPcache does not revalidate file timestamps
-(`opcache.validate_timestamps=0`), and restart workers if your process manager
-does not restart them after the stop signal. For Docker images, rebuild and
-redeploy the image instead.
-
-Installations whose code predates `app:updates:apply` need one update with the
-manual steps below; later updates use the command. The remainder of this section
-describes version checks, source-only pulls and those manual steps.
-
-After every migration run, synchronize the declared BI glossary in the same
-environment with `php bin/console app:analytics:glossary:sync`. The command needs
-table read/write privileges but no view-creation privileges. Recheck routine BI
-view grants using the [glossary guide](docs/BI-GLOSSARY.md#view-only-grants).
-
-
-The official repository is [Subschema-LLC/aggregate](https://github.com/Subschema-LLC/aggregate).
-For existing checkouts, update the remote once:
+Checkouts made before the repository moved need its address updated once:
 
 ```bash
 git remote set-url origin https://github.com/Subschema-LLC/aggregate.git
 ```
 
-Open **Updates** in the admin dashboard or check from the CLI, including headless installations:
-
-```bash
-php bin/console app:updates:check
-php bin/console app:updates:check --refresh
-php bin/console app:updates:check --refresh --json
-```
-
-Set `updates_branch` in the active `config/aggregate.yaml` environment to choose
-the upstream branch; it defaults to **`master`**. Git checks compare the installed
-commit with that branch and show the installed branch separately. Official ZIP
-installations use their embedded `release.json` to check stable packaged releases
-for that branch without Git. Checks never switch branches or apply packages. Successful GitHub results
-are cached for one hour; failed requests are retried after one minute. **Check now**
-and `--refresh` bypass the cache. Checks run
-when requested through this page or command, and contact GitHub with branch and
-commit metadata. They do not send event data. The page shows updates, local commits
-ahead of upstream, diverged histories, and checks that could not be completed.
-CLI checks exit `0` for a known compatible comparison (including updates or divergence)
-and `1` when status is unavailable, invalid, or incompatible; use the JSON `state`
-and `installation_type` for automation. Packaged checks label signatures as
-unverified until the downloaded package is independently verified. See the
-[release guide](docs/RELEASES.md) for signed ZIPs, verification, and manual deployment.
-
-For source installations, Git 2.30 or newer must be installed and the checkout's `.git` metadata readable. If the deployment
-user owns the checkout and PHP runs as a different user, Git may require that exact
-checkout path in the PHP user's `safe.directory` configuration. Keep source files
-read-only and scope Git trust to this checkout; do not use a wildcard. Source ZIPs
-without official `release.json`, partial clones, unpublished branches/commits,
-and missing GitHub access may prevent comparison. Detached Git checkouts can be
-checked but cannot be pulled. Public checks need no token. For a private repository or higher API rate limits, configure
-`AGGREGATE_GITHUB_TOKEN` in the server environment or untracked `.env.local` with
-repository read access. This token is used only for API checks. Pulling uses the
-deployment user's existing Git HTTPS credentials; configure a credential helper
-for private repository access. Credentials are never entered in the dashboard.
-
-Run `app:updates:pull` as the deployment user with write access to the checkout.
-It fetches the configured branch directly from the official repository and applies
-only a fast-forward. The local branch must match `updates_branch`; the command
-does not switch or cross-merge branches. Local modifications, untracked files, detached HEADs,
-in-progress Git operations, and divergent or ahead histories stop the update.
-Ignored local configuration is preserved; a conflicting incoming tracked file
-also stops the update. Resolve custom code changes through your normal Git
-workflow. The dashboard only checks status and does not need permission to write
-application code.
-
-The pull command updates **source code only**; `app:updates:apply` also runs the
-steps below. Edits to `config/goals.yaml`, `config/navigation.yaml` and
-`config/quick_search.yaml` move to their `.local.yaml` overrides before a pull
-instead of blocking it; other local modifications still stop the update. Back up
-the database and local configuration, review the changes, and complete all steps below before resuming
-collection. If the installed version predates these commands, use `git pull --ff-only`
-after updating `origin` and verifying its tracking branch for that first upgrade.
-For image-based deployments, rebuild and redeploy the image using your usual pipeline.
-
-#### Manual update steps
-
-Use these steps when a deployment tool updates the files, or for an installation whose code predates `app:updates:apply`.
+If the installed version predates `app:updates:pull`, use `git pull --ff-only` for
+step 3 of that first upgrade.
 
 For upgrades that include the `Version20260724*` privacy migrations, pause `/api/receive` and stop all async workers before the steps below. The migrations permanently remove daily IP hashes, legacy non-granted event rows, and matching Doctrine-queue tracker envelopes. Inspect failed, external, and encoded/base64 queue transports separately before resuming ingestion.
 

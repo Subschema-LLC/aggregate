@@ -533,8 +533,9 @@ export APP_ENV=prod APP_DEBUG=0 AGGREGATE_COMPOSER=/opt/psa/var/modules/composer
 /opt/plesk/php/8.3/bin/php bin/console app:updates:apply --database-backup-confirmed
 ```
 
-Back up the database first. See the [deployment guide](DEPLOYMENT.md#updates) for
-what is preserved, `--resume` and `app:updates:rollback`. Installations whose code
+Back up the database first. See the [update guide](docs/UPDATES.md) for
+[what is preserved](docs/UPDATES.md#what-an-update-keeps), `--resume` and
+`app:updates:rollback`. Installations whose code
 predates `app:updates:apply` use the manual steps below once.
 
 For upgrades that include the `Version20260724*` privacy migrations, pause `/api/receive` and stop all async workers first. The migrations permanently remove daily IP hashes, legacy non-granted event rows, and matching Doctrine-queue tracker envelopes. Inspect failed, external, and encoded/base64 queue transports separately before resuming ingestion.

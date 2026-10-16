@@ -23,8 +23,10 @@ read. The dashboard is an optional third part for administration.
 
 A website loads the tracker, [public/aggregate.js](../public/aggregate.js), from
 the installation. [ScriptController](../src/Controller/ScriptController.php)
-serves it with the deployment's public settings: namespace, collection profile,
-allowed properties and the organization-traffic marker. The tracker is
+serves it with the public settings for the website its token names: namespace,
+collection profile, allowed properties and the organization-traffic marker, from
+the deployment's settings or the [website group](CONFIGURATION.md#website-groups)
+and website overrides layered over them. The tracker is
 hand-written source with no build step; an optional minified copy is built with
 Terser (see [JavaScript build](JS-BUILD.md)). A consent manager, either the
 built-in one or the site's own, tells the tracker whether the visitor opted in.
@@ -37,31 +39,36 @@ coarse dimensions, and, only with consent, identifiers and properties.
 [ReceiveController](../src/Controller/ReceiveController.php) applies the rules in
 this order, and stops at the first one that fails:
 
-1. **Kill switch and excluded paths.** If collection is off
+1. **Website settings.** The token selects the website's group and website
+   settings, layered over the deployment's
+   ([WebsiteScopeResolver](../src/Service/WebsiteScopeResolver.php)). If either
+   file cannot be read or is invalid, the event is ignored rather than collected
+   under broader settings.
+2. **Kill switch and excluded paths.** If collection is off
    (`anonymous_tracking_enabled`) or the sanitized path matches an excluded
    route, the event is ignored. This happens before anything else is derived
    from the request.
-2. **Rate limit.** [IpRateLimiter](../src/Security/IpRateLimiter.php) counts
+3. **Rate limit.** [IpRateLimiter](../src/Security/IpRateLimiter.php) counts
    requests per client in one-minute windows. Each window's bucket name is an
    HMAC of the window and the address, so the file on disk cannot link the
    address across windows and the address is never stored.
-3. **Website token and origin.** The public token must belong to a registered
+4. **Website token and origin.** The public token must belong to a registered
    website ([WebsiteConfigManager](../src/Service/WebsiteConfigManager.php)), and
    the `Origin` (or `Referer`) must pass that website's domain rules
    ([WebsiteDomainPolicy](../src/Service/WebsiteDomainPolicy.php)).
-4. **Sanitize.** [PrivacySanitizer](../src/Service/PrivacySanitizer.php) reduces
+5. **Sanitize.** [PrivacySanitizer](../src/Service/PrivacySanitizer.php) reduces
    the path (query strings, fragments, and identifiers such as emails, UUIDs and
    numeric IDs are removed), and turns the referrer, device and screen width into
    coarse buckets. The **strict** collection profile
    ([CollectionProfile](../src/Service/CollectionProfile.php)) keeps only the
    path, the event name and allowed goal codes, and ignores everything else,
    including consent.
-5. **Goals and properties.** [GoalEventRegistry](../src/Service/GoalEventRegistry.php)
+6. **Goals and properties.** [GoalEventRegistry](../src/Service/GoalEventRegistry.php)
    accepts only configured goal codes, and
    [CustomDataSettings](../src/Service/CustomDataSettings.php) keeps only
    properties the data model allows. Anonymous events accept only those
    explicitly allowed without consent.
-6. **Consent decides the mode.** [PrivacyPolicy](../src/Service/PrivacyPolicy.php)
+7. **Consent decides the mode.** [PrivacyPolicy](../src/Service/PrivacyPolicy.php)
    treats only an affirmative choice as consent; a string such as `"false"` is
    not consent.
 

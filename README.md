@@ -170,6 +170,14 @@ details and step-by-step hosting panel guides (Plesk so far). PHP 8.2+ and MySQL
 A 2-vCPU server running the database too handles about 1.2 million page views
 and events a day; see [load testing and capacity](docs/LOAD-TESTING.md#at-a-glance-hits-per-day).
 
+### Keep it up to date
+
+Admins choose an update method on the **Updates** page: signed **release ZIPs** (recommended), **the repository** for Git clones (advanced), or **deployed another way** when a hosting panel's Git deployment (such as Plesk or cPanel) or a CI/CD pipeline deploys the code. Install updates with the **Install update** button or `php bin/console app:updates:apply`; migrations and cache rebuilds run with a maintenance page in place. For code deployed another way, the page shows the deployed commit and how far behind it is, and `php bin/console app:updates:deployed` runs the same post-deployment steps from your tool's deployment action. `updates_method` and `updates_branch` (default `master`) can also be set in YAML or with `app:updates:method`. Your `.env.local`, `config/aggregate.yaml`, website registrations and groups, tag settings, `config/*.local.yaml` overrides and `var/` data are never overwritten. See the [update guide](docs/UPDATES.md) and [signed release packages](docs/RELEASES.md).
+
+The **Feature flags** admin page and YAML can disable Updates or hide its
+navigation entries. Updates stays enabled by default. See the
+[feature flag guide](docs/FEATURE-FLAGS.md) for configuration and contributor examples.
+
 ### For development
 
 For this development setup, install PHP 8.2+, Composer, the required PHP extensions and database driver, Docker Compose, and Make. The [deployment guide](DEPLOYMENT.md) covers native and production installation; [CONTRIBUTING.md](CONTRIBUTING.md#set-up-a-development-checkout) covers development prerequisites in detail.
@@ -195,12 +203,6 @@ curl http://localhost:9002/api/health
 
 Use `start-postgres` / `migrate-postgres` or `start-mariadb` / `migrate-mariadb` for another Docker profile. The sample environment is for development; use your own secrets and connection settings in production. Existing installations should follow the [upgrade guidance](docs/PRIVACY-COMPLIANCE.md#upgrading-older-installations) before applying historical privacy migrations.
 
-Admins choose an update method on the **Updates** page: signed **release ZIPs** (recommended), **the repository** for Git clones (advanced), or **deployed another way** when a hosting panel's Git deployment (such as Plesk or cPanel) or a CI/CD pipeline deploys the code. Install updates with the **Install update** button or `php bin/console app:updates:apply`; migrations and cache rebuilds run with a maintenance page in place. For code deployed another way, the page shows the deployed commit and how far behind it is, and `php bin/console app:updates:deployed` runs the same post-deployment steps from your tool's deployment action. `updates_method` and `updates_branch` (default `master`) can also be set in YAML or with `app:updates:method`. Your `.env.local`, `config/aggregate.yaml`, website and tag settings, `config/*.local.yaml` overrides and `var/` data are never overwritten. See the [update guide](docs/UPDATES.md) and [signed release packages](docs/RELEASES.md).
-
-The **Feature flags** admin page and YAML can disable Updates or hide its
-navigation entries. Updates stays enabled by default. See the
-[feature flag guide](docs/FEATURE-FLAGS.md) for configuration and contributor examples.
-
 ## Add tracking to a website
 
 **Websites** and the [Setup wizard](docs/SETUP.md) generate window configuration,
@@ -218,7 +220,13 @@ installation, use the website token from your registration and your analytics ho
 <script src="https://analytics.example.com/aggregate.js?min=1" defer referrerpolicy="no-referrer"></script>
 ```
 
-The tracker sends a page view automatically. Once it has loaded, record a named event with `window.Aggregate.emit('button_click')`, or mark an element in your HTML with `data-aggregate-event="button_click"` to send it on click (or, on a form, on submission); see [data attribute tracking](docs/TRACKING.md#track-clicks-and-forms-with-data-attributes). Configure goals and review event properties before using them.
+The tracker sends a page view automatically. Once it has loaded, send a named event with its own properties in `customData`:
+
+```javascript
+window.Aggregate.emit({eventName: 'signup_click', customData: {plan: 'pro'}});
+```
+
+The short form `window.Aggregate.emit('signup_click', {plan: 'pro'})` sends the same event; see [send an event](docs/TRACKING.md#send-an-event). Or mark an element in your HTML with `data-aggregate-event="button_click"` to send it on click (or, on a form, on submission); see [data attribute tracking](docs/TRACKING.md#track-clicks-and-forms-with-data-attributes). Configure goals and review event properties before using them.
 
 Tag-manager snippets install the container and enabled CMP. To load analytics
 through it, explicitly enable the manager and add the supplied tracker URL as a
@@ -239,6 +247,7 @@ progress and availability. The tracking guide includes GTM Custom HTML examples.
 | Branding, collection controls, organization markers, lifecycle, dashboard toggle | `config/aggregate.yaml` and supported environment overrides |
 | Custom property model, UTM/query mappings, consent requirements, reporting columns | `config/aggregate.yaml`, managed through the Data model admin page or YAML |
 | Website domains, [allowed event sources](docs/CONFIGURATION.md#website-domains), and public ingestion tokens | `config/websites.yaml`, managed through the dashboard, YAML, or CLI creation options |
+| [Website groups](docs/CONFIGURATION.md#website-groups) and the collection settings or data model a group or one website overrides | `config/website-scopes.yaml` and `config/website-scopes/`, managed through the Website groups admin page, YAML, or `app:website-scopes` |
 | Per-website CMP, tags, triggers, and variables | `config/tag-manager/sites/<site-id>.yaml`, managed through the Tag manager admin page or YAML |
 | Conversion-goal definitions | `config/goals.yaml`, customized in `config/goals.local.yaml` |
 | Navigation labels and links | `config/navigation.yaml`, customized in `config/navigation.local.yaml` |
@@ -274,8 +283,9 @@ and per-website CMP/script copy or download. The optional [simple tag manager](d
 stores each site's settings in YAML, serves its scripts remotely from the Aggregate
 installation, and maps each tag to a consent category or an explicit option to
 run without consent.
-Tags can load scripts or call an existing library method, triggered by page
-readiness, browser events, or data-layer events with named variable references.
+Tags can load scripts, send Aggregate events, call an existing library method or
+run custom JavaScript, triggered by page readiness, browser events, or data-layer
+events with named variable references.
 
 ## Documentation
 
@@ -283,38 +293,73 @@ All guides are also published as a searchable site that needs no account:
 **[subschema-llc.github.io/aggregate](https://subschema-llc.github.io/aggregate/)**.
 It is built from these files on `master` and describes the current release.
 
+### Get started
+
 | Guide | Contents |
 | --- | --- |
 | [Why Aggregate exists](docs/WHY.md) | The problem, the principles, and what the project deliberately will not do |
-| [Architecture tour](docs/ARCHITECTURE.md) | How an event flows from a web page to a BI report, and where to make common changes |
-| [Design decisions](docs/DESIGN-DECISIONS.md) | Why the main choices were made, what they cost, and what would change them |
 | [Glossary](docs/GLOSSARY.md) | Terms used across the code, settings and documentation |
-| [Contributing](CONTRIBUTING.md) | Branching strategy, development setup, architecture, privacy invariants, tests, Make commands, and pull requests |
 | [Beta testing](docs/BETA-TESTING.md) | First test session, expected privacy/reporting behavior, known limitations, and feedback |
-| [Agent guide](AGENTS.md) | Product ethos, architecture boundaries, privacy rules, and development expectations for coding agents |
-| [Roadmap](ROADMAP.md) | Planned work, available foundations, and current update limitations |
-| [Security policy](SECURITY.md) | Private vulnerability reporting and disclosure guidance |
-| [Code of conduct](CODE_OF_CONDUCT.md) | Community expectations and reporting concerns |
-| [Public release preparation](docs/PUBLIC-RELEASE.md) | Maintainer reporting setup, Git history review, GitHub checks, and launch steps |
-| [Privacy and compliance](docs/PRIVACY-COMPLIANCE.md) | Measurement limits, consent, organization traffic, BI suppression, logging, retention, and operator checks |
-| [Configuration](docs/CONFIGURATION.md) | YAML settings, environment overrides, branding, goals, and lifecycle policy |
-| [Feature flags](docs/FEATURE-FLAGS.md) | YAML/admin controls, navigation visibility, and developer/contributor guidance |
-| [Data model](docs/DATA-MODEL.md) | UTM/query mappings, anonymous property whitelists, model sharing, and custom reporting columns |
-| [Event examples](docs/EVENT-EXAMPLES.md) | UI copy/download, headless JSON exports, typed properties, and a flat ecommerce recipe |
-| [JavaScript build](docs/JS-BUILD.md) | Optional minification, dynamic tracker configuration, and build verification |
-| [Updating](docs/UPDATES.md) | Choosing release ZIP or repository updates, setting up a Git clone, switching methods, recovery and troubleshooting |
-| [Release packages](docs/RELEASES.md) | Publishing from master, signing keys, installable ZIPs, verification, and update groundwork |
-| [Tracking and GTM](docs/TRACKING.md) | Browser integration, custom events, tag-manager examples, and troubleshooting |
-| [Server-side collection](docs/SERVER-SIDE.md) | Sending events from your backend without a script, what that means for consent, and examples in seven languages |
-| [GTM tag template](https://github.com/Subschema-LLC/aggregate-gtm-tag-template) | Separate repository for the Google Tag Manager tag template, under development |
-| [Deployment](DEPLOYMENT.md) | Docker/native setup, web servers, workers, production operations, and upgrades |
+
+### Install and operate
+
+| Guide | Contents |
+| --- | --- |
+| [Deployment](DEPLOYMENT.md) | Release ZIP on a web host, Docker and native setup, web servers, workers, and production operations |
 | [Plesk deployment](PLESK-DEPLOYMENT.md) | Plesk steps for a release ZIP without SSH, Git-based setup, and worker options |
 | [Database](docs/DATABASE.md) | Supported engines, connection strings, migrations, and reporting schema |
 | [Scheduled tasks](docs/SCHEDULED-TASKS.md) | The one scheduled task for maintenance and the syncs: Plesk, cron and systemd setup, checking that it runs, troubleshooting |
+| [Updating](docs/UPDATES.md) | Choosing release ZIP or repository updates, deploying another way, switching methods, recovery and troubleshooting |
+| [Release packages](docs/RELEASES.md) | Publishing from master, signing keys, installable ZIPs, verification, and what an update keeps |
 | [Load testing and capacity](docs/LOAD-TESTING.md) | Hits per day one server handles, disk space per million hits, cache clearing under traffic, and how to measure your own server |
+
+### Track websites
+
+| Guide | Contents |
+| --- | --- |
+| [Setup and drop-ins](docs/SETUP.md) | The four-step Setup wizard, installation snippets, and per-website consent and tag scripts |
+| [Tracking and GTM](docs/TRACKING.md) | The tracker, sending events, data attributes, single-page apps, consent wiring, GTM examples, and troubleshooting |
+| [Server-side collection](docs/SERVER-SIDE.md) | Sending events from your backend without a script, what that means for consent, and examples in seven languages |
+| [Tag manager](docs/TAG-MANAGER.md) | Per-website tags that load scripts, send Aggregate events, call library methods or run custom JavaScript |
+| [Consent manager lite](docs/CONSENT-MANAGER.md) | The built-in consent banner: categories, wording, appearance, regions, and YAML |
+| [Regional consent examples](docs/CONSENT-REGIONS.md) | Conservative banner configurations by region, and their limits |
+| [Standalone consent banner](micro-consent-dropins/README.md) | An independent banner for static sites, with optional adapters for the tracker and Google Consent Mode |
+| [Event examples](docs/EVENT-EXAMPLES.md) | The tracker call and request JSON for your data model, typed properties, and a flat ecommerce recipe |
+| [JavaScript build](docs/JS-BUILD.md) | Optional minification, dynamic tracker configuration, and build verification |
+| [Page speed](docs/PAGE-SPEED.md) | What visitors download, smaller tracker builds, compression and caching |
+| [GTM tag template](https://github.com/Subschema-LLC/aggregate-gtm-tag-template) | Separate repository for the Google Tag Manager tag template, under development |
+
+### Configure
+
+| Guide | Contents |
+| --- | --- |
+| [Configuration](docs/CONFIGURATION.md) | YAML settings, environment overrides, website groups, branding, goals, and lifecycle policy |
+| [Data model](docs/DATA-MODEL.md) | UTM/query mappings, anonymous property whitelists, model sharing, and custom reporting columns |
+| [Feature flags](docs/FEATURE-FLAGS.md) | YAML/admin controls, navigation visibility, and developer/contributor guidance |
+
+### Privacy and reporting
+
+| Guide | Contents |
+| --- | --- |
+| [Privacy and compliance](docs/PRIVACY-COMPLIANCE.md) | Measurement limits, consent, organization traffic, BI suppression, logging, retention, and operator checks |
 | [Connect BI tools and AI assistants](docs/BI-CONNECTION.md) | Approved reporting views and their columns, safe queries, a connection checklist for Power BI or Tableau, and AI assistant setup |
+| [BI labels and glossary](docs/BI-GLOSSARY.md) | Human-readable labels and definitions for reporting codes and columns, locales, and view-only grants |
 | [Sync to BigQuery](docs/BIGQUERY.md) | Copying reporting views to BigQuery on a schedule: sign-in methods, view selection, scheduling, column types and privacy |
 | [Reporting database](docs/REPORTING-DATABASE.md) | Copying reporting views into a second database for BI users: database setup and grants on each engine, scheduling, column types and privacy |
+
+### Contribute
+
+| Guide | Contents |
+| --- | --- |
+| [Contributing](CONTRIBUTING.md) | Branching strategy, development setup, privacy invariants, tests, Make commands, and pull requests |
+| [Architecture tour](docs/ARCHITECTURE.md) | How an event flows from a web page to a BI report, and where to make common changes |
+| [Design decisions](docs/DESIGN-DECISIONS.md) | Why the main choices were made, what they cost, and what would change them |
+| [UI templates](templates/README.md) | Twig pages and components, Stimulus controllers and styles for the dashboard |
+| [Agent guide](AGENTS.md) | Product ethos, architecture boundaries, privacy rules, and development expectations for coding agents |
+| [Roadmap](ROADMAP.md) | Planned work, available foundations, and current update limitations |
+| [Public release preparation](docs/PUBLIC-RELEASE.md) | Maintainer reporting setup, Git history review, GitHub checks, and launch steps |
+| [Security policy](SECURITY.md) | Private vulnerability reporting and disclosure guidance |
+| [Code of conduct](CODE_OF_CONDUCT.md) | Community expectations and reporting concerns |
 
 ## Contributing
 
