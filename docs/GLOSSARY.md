@@ -39,6 +39,10 @@ consent manager served at `/cmp-lite/sites/<site-id>/consent.js`, configured per
 website. CMP stands for consent management platform. See the
 [consent manager guide](CONSENT-MANAGER.md).
 
+**Built-in property.** `org_internal_traffic` or `page_sequence`: a property
+Aggregate records itself, with a fixed type, so the data model only chooses its
+reporting column. See [built-in properties](DATA-MODEL.md#built-in-properties).
+
 **Cell.** One row of a reporting view: a count of events that share the same
 website, time bucket and dimensions.
 
@@ -58,7 +62,8 @@ event's bounded JSON `custom_data`. See [custom data model](DATA-MODEL.md).
 
 **Custom reporting views.** `analytics_custom_*` views that turn allowed
 properties into columns. They show individual raw rows, so they are private.
-Regenerate them with `app:analytics:views:regenerate`.
+Saving the data model updates them; `app:analytics:views:regenerate` does the
+same from the command line.
 
 **Dashboard.** The optional administration interface. `DASHBOARD_ENABLED=0`
 removes it and its login page. It never shows analytics reports.
@@ -116,12 +121,14 @@ website (default `window.Aggregate`).
 **Organization traffic marker.** A cookie or local storage flag (default
 `orgInternalTraffic=true`) that marks your own team's browsers on each tracked
 website. Every event reports it as `org_internal_traffic`, true or false, so BI
-reports can filter that traffic out without dropping the data. Team members set
+reports can filter that traffic out without dropping the data; the private
+custom reporting views have it as a column. Team members set
 it through marking links that open each website.
 
 **Page sequence.** Optional page depth (`page_sequence_enabled`, off by
 default): a number from 1 to 20 (20 meaning 20 or more) carried between pages in
-tab storage or a URL parameter. See [optional page depth](DATA-MODEL.md#optional-page-depth).
+tab storage or a URL parameter, recorded as `page_sequence`. See
+[optional page depth](DATA-MODEL.md#optional-page-depth).
 
 **Processing task.** One run of a background job, such as a BigQuery view sync
 or a maintenance run, recorded in the private `processing_tasks` table with its

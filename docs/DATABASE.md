@@ -543,7 +543,7 @@ The current schema contains:
 
 For `privacy_mode = 'anonymous'`, `created_at` is a server-generated UTC hour boundary, not an exact event time. Identifiers, exact dimensions, and generalized User-Agent values are null. The existing `custom_data` JSON may contain properties explicitly configured with `consent_required: false` and the organization-traffic flag `org_internal_traffic`, `true` or `false` on every standard-profile event; strict-profile events carry no flag. Enhanced rows may retain other scalar properties alongside it. Collection requires no schema migration. `goal_event` may contain only an enabled code from `config/goals.yaml` whose definition permits anonymous use; rejected goals are stored as null without rejecting the underlying event. These are still individual rows and may be personal data in context, so keep `events` private. Routine BI users should query `bi_anonymous_events_v1`, which groups hourly cells and suppresses counts below `anonymous_min_cell_count`.
 
-Existing `bi_anonymous_*` views and archive tables omit `custom_data`, combine internal and unmarked traffic, and cannot filter this flag. For internal-traffic filtering, model `org_internal_traffic` as a column in the separate custom reporting views or prepare an approved export from retained raw JSON before aggregation and disclosure checks. The flag and other custom properties are lost once raw rows are deleted. See [organization traffic in the compliance guide](PRIVACY-COMPLIANCE.md#organization-traffic) for browser setup and SQL expressions for each database.
+Existing `bi_anonymous_*` views and archive tables omit `custom_data`, combine internal and unmarked traffic, and cannot filter this flag. For internal-traffic filtering, use the `org_internal_traffic` column of the separate custom reporting views ([built-in](DATA-MODEL.md#built-in-properties), and in the default model) or prepare an approved export from retained raw JSON before aggregation and disclosure checks. The flag and other custom properties are lost once raw rows are deleted. See [organization traffic in the compliance guide](PRIVACY-COMPLIANCE.md#organization-traffic) for browser setup and SQL expressions for each database.
 
 Routine anonymous conversion reporting should use `bi_anonymous_goals_v1`: `website_token`, UTC `event_day`, `goal_event`, and `event_count`. It includes only anonymous rows with a retained goal, excludes the current UTC day, and reuses `anonymous_min_cell_count` (default `5`, range `2`–`1000`). It deliberately omits event name, path, referrer, device, viewport, geography, and identifiers. `event_count` counts goal occurrences rather than unique people or unique converters, and goal labels remain presentation metadata in `config/goals.yaml`. Do not join this completed-day view to the hourly or geography views to recover more detail.
 
@@ -594,9 +594,10 @@ the anonymous BI facts or make private custom views safe for routine access.
 
 Define custom properties, query parameter mappings, per-property consent, JSON value types, and SQL column names through **Collection → Data model** or YAML. The standard six UTM properties require consent by default. Each may be permitted separately; the recommendation for anonymous reporting is no more detail than `utm_medium`, with fixed channel values such as `email`, `social`, or `cpc`. This is advisory. Review actual values before permitting more detailed source, campaign, term, content, or ID values, which may reveal search text or identifiers. See [Data model](DATA-MODEL.md) for the configuration and shareable implementation contract.
 
-Regenerate the views from **Reporting → Reporting views** or the CLI:
+Saving the data model creates or updates the views. Without the dashboard, run:
 
 ```bash
+php bin/console app:analytics:views:regenerate --check
 php bin/console app:analytics:views:regenerate --dry-run
 php bin/console app:analytics:views:regenerate
 ```
@@ -607,7 +608,7 @@ php bin/console app:analytics:views:regenerate
 | `analytics_custom_pageviews_v1` | Rows with `event_name = 'view'` |
 | `analytics_custom_goals_v1` | Rows with a non-null `goal_event` |
 
-Each view exposes `id`, `website_token`, `event_name`, `page_path`, `referrer_channel`, `privacy_mode`, `device_class`, `viewport_bucket`, `geo_area`, `goal_event`, `created_at`, and `archived_at`, followed by configured text aliases and then optional numeric aliases. Dotted and hyphenated keys are literal top-level JSON keys.
+Each view exposes `id`, `website_token`, `event_name`, `page_path`, `referrer_channel`, `privacy_mode`, `device_class`, `viewport_bucket`, `geo_area`, `goal_event`, `created_at`, and `archived_at`, followed by the configured reporting aliases: text aliases and then numeric aliases in a new view, with aliases added later after those. The default model includes `org_internal_traffic` and `page_sequence` ([built-in properties](DATA-MODEL.md#built-in-properties)). Dotted and hyphenated keys are literal top-level JSON keys.
 
 An existing property's `column` retains its text contract: scalar JSON values become text, booleans become `true` or `false`, and missing keys, JSON null, arrays, and objects become SQL `NULL`. Declaring a collection `type` does not change an existing text alias into a numeric column.
 
@@ -623,7 +624,7 @@ Merge these definitions into the existing model. Numeric projections accept actu
 
 Historical JSON is interpreted through each engine's JSON functions. Native parsing can already round a very precise fraction or underflow a very small number before the view sees it, particularly with SQLite. Projections cannot restore precision already lost; test historical edge cases on the database you use.
 
-Regeneration guards deployed aliases, order, and SQL types. Text and numeric aliases must be unique across the model; keep existing aliases and append compatible columns. Because generated numeric aliases follow text aliases, adding a text alias after numeric aliases have been deployed can move existing columns and requires a separately planned database/reporting migration. Removing, renaming, reordering, or changing a deployed column's SQL type is also rejected. Preview SQL and test regeneration on the actual database/version with the intended view owner and reporting grants; generated SQL and mocked tests alone do not establish execution compatibility.
+Regeneration guards deployed aliases, order, and SQL types. Text and numeric aliases must be unique across the model. Deployed columns keep their order and new ones are appended, whichever kind they are. Removing, renaming, or changing a deployed column's SQL type is rejected; removing or renaming needs `--force` (or **Force recreate views**), which drops and recreates the views and their grants. Preview SQL and test regeneration on the actual database/version with the intended view owner and reporting grants; generated SQL and mocked tests alone do not establish execution compatibility.
 
 These views expose individual rows without suppression and need separately approved raw-data access. They include retained rows already marked `archived_at`, but never archive aggregate cells. Deleting raw rows removes them from these views even when archived counts remain elsewhere. Existing `bi_anonymous_*` reporting contracts and archives retain their dimensions and do not gain custom properties.
 

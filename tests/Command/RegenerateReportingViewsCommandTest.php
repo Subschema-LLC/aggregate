@@ -48,6 +48,23 @@ final class RegenerateReportingViewsCommandTest extends TestCase
         self::assertSame("CREATE VIEW test AS SELECT 1;\n\n", $tester->getDisplay());
     }
 
+    public function testCheckReportsWhetherTheViewsMatchTheModelWithoutChangingThem(): void
+    {
+        $views = $this->createMock(ReportingViewManager::class);
+        $views->expects(self::never())->method('regenerate');
+        $views->expects(self::exactly(2))->method('status')->willReturnOnConsecutiveCalls(
+            ['current' => false, 'missing' => [], 'added' => ['org_internal_traffic', 'page_sequence'], 'removed' => []],
+            ['current' => true, 'missing' => [], 'added' => [], 'removed' => []],
+        );
+        $tester = $this->tester($views);
+
+        self::assertSame(Command::FAILURE, $tester->execute(['--check' => true]));
+        self::assertStringContainsString('Columns to add: org_internal_traffic, page_sequence.', preg_replace('/\s+/', ' ', $tester->getDisplay()));
+        self::assertSame(Command::SUCCESS, $tester->execute(['--check' => true]));
+        self::assertStringContainsString('match the saved model', $tester->getDisplay());
+        self::assertSame(Command::INVALID, $tester->execute(['--check' => true, '--dry-run' => true]));
+    }
+
     public function testDiscoveryDoesNotRegenerateOrPrintEventValues(): void
     {
         $views = $this->createMock(ReportingViewManager::class);

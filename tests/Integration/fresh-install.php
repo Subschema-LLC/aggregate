@@ -682,6 +682,27 @@ E2E::step('the roll-up view pools withheld cells and the coverage view bands the
         && $rank[$bands['bi_anonymous_daily_rollup_v1']] >= $rank[$bands['bi_anonymous_daily_v1']], 'Coverage bands: '.json_encode($bands));
 });
 
+E2E::step('the data model page adds the built-in columns after the deployed ones and updates the views', static function () use ($root, $browser, $base, $collect): void {
+    $crawler = $browser->request('GET', $base.'/dashboard/data-model');
+    $form = $crawler->filter('form#data-model-form')->form();
+    E2E::check(!$form['builtin[org_internal_traffic][include]']->hasValue() && !$form['builtin[page_sequence][include]']->hasValue(), 'The e2e model unexpectedly has built-in columns. '.pageProblem($browser));
+    $form['page_sequence_enabled']->select('1');
+    $form['builtin[org_internal_traffic][include]']->tick();
+    $form['builtin[page_sequence][include]']->tick();
+    $page = $browser->submit($form);
+    $message = (string) preg_replace('/\s+/', ' ', implode(' ', $page->filter('.notification')->each(static fn ($notice): string => $notice->text())));
+    E2E::check(str_contains($message, 'The reporting views were updated: added org_internal_traffic, page_sequence.'), 'Saving the model: '.$message.' '.pageProblem($browser));
+
+    $collect(['eventName' => 'view', 'pagePath' => '/built-in-columns', 'referrerChannel' => 'direct', 'deviceClass' => 'desktop', 'viewportBucket' => 'large',
+        'org_internal_traffic' => true, 'customData' => ['page_sequence' => 3, 'plan' => 'team']]);
+    $row = connection($root)->fetchAssociative("SELECT * FROM analytics_custom_pageviews_v1 WHERE page_path = '/built-in-columns'");
+    E2E::check(is_array($row) && array_slice(array_map('strtolower', array_keys($row)), -6) === ['plan_name', 'total_minor_text', 'total_minor_number', 'discount_rate_number', 'org_internal_traffic', 'page_sequence'], 'Columns after the save: '.json_encode($row));
+    E2E::check($row['org_internal_traffic'] === 'true' && (int) $row['page_sequence'] === 3 && $row['plan_name'] === 'team', 'Built-in column values: '.json_encode($row));
+    [$status, $output] = consoleResult($root, ['app:analytics:views:regenerate', '--check']);
+    E2E::check($status === 0, 'app:analytics:views:regenerate --check: '.$output);
+    E2E::check(str_contains($browser->request('GET', $base.'/dashboard/data-model/reporting')->text(''), 'The views match the saved model.'), 'The Reporting views page: '.pageProblem($browser));
+});
+
 E2E::step('retention deletes expired data', static function () use ($root): void {
     $config = Yaml::parseFile($root.'/config/aggregate.yaml');
     // Raw retention may not be shorter than the archive period, so archive after one day.
