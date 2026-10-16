@@ -438,6 +438,12 @@ organization-marker artifacts keep their separate browser delivery paths.
 | [templates](templates/README.md) and [assets](assets) | Twig pages and partials grouped by feature; AssetMapper dashboard assets |
 | [tests](tests) | PHP regressions by component and Node browser/storage regressions |
 
+Keep controllers to routing, access checks and responses. When a dashboard
+form needs more than a few lines of parsing, put that in a form class beside
+its settings service, as `ConsentManagerForm`, `TagManagerForm` and
+`Glossary\GlossaryForm` do. Validation stays in the settings service that YAML
+and the command line also use.
+
 Operator configuration lives in YAML. Application settings, including the BI
 disclosure thresholds, are loaded by `AggregateConfigLoader`; website
 registrations live in an untracked `config/websites.yaml` file. Do not add

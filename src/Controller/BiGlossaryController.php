@@ -7,6 +7,7 @@ namespace App\Controller;
 use App\Service\AggregateConfigLoader;
 use App\Service\Glossary\BiGlossarySettings;
 use App\Service\Glossary\EventNameSuggestions;
+use App\Service\Glossary\GlossaryForm;
 use App\Service\Glossary\GlossaryResolver;
 use App\Service\Glossary\GlossarySync;
 use App\Service\Glossary\GlossaryValidationException;
@@ -23,6 +24,8 @@ final class BiGlossaryController extends AbstractController
 
     public const CSRF_TOKEN_ID = 'bi_glossary';
 
+    private readonly GlossaryForm $form;
+
     public function __construct(
         private readonly AggregateConfigLoader $config,
         private readonly BiGlossarySettings $settings,
@@ -31,6 +34,7 @@ final class BiGlossaryController extends AbstractController
         private readonly EventNameSuggestions $suggestions,
         private readonly LoggerInterface $logger,
     ) {
+        $this->form = new GlossaryForm($settings);
     }
 
     #[Route('/dashboard/data-model/glossary', name: 'app_bi_glossary', methods: ['GET'])]
@@ -49,7 +53,7 @@ final class BiGlossaryController extends AbstractController
             return $this->back($request);
         }
         try {
-            $this->settings->save($this->settingsFromForm($request->request->all()));
+            $this->settings->save($this->form->apply($request->request->all()));
         } catch (GlossaryValidationException $error) {
             return $this->page($request, $error->errors(), Response::HTTP_UNPROCESSABLE_ENTITY);
         } catch (\InvalidArgumentException $error) {
@@ -132,73 +136,6 @@ final class BiGlossaryController extends AbstractController
         return $this->downloadResponse(GlossarySync::csv($this->resolver->resolve(), true), 'bi-glossary-missing.csv', 'text/csv');
     }
 
-    private function settingsFromForm(array $form): array
-    {
-        $allowed = ['_csrf_token', 'action', 'locale', 'default_locale', 'locales', 'entry_type', 'subject', 'code', 'label', 'group', 'description', 'sort'];
-        if (array_diff(array_keys($form), $allowed) !== [] || array_filter($form, static fn (mixed $value): bool => !is_string($value)) !== []) {
-            throw new \InvalidArgumentException('Invalid glossary form. Nothing was saved.');
-        }
-        $settings = $this->settings->get();
-        if (($form['action'] ?? null) === 'locales') {
-            $settings['default_locale'] = $form['default_locale'] ?? '';
-            $settings['locales'] = preg_split('/[\s,]+/', trim($form['locales'] ?? ''), -1, PREG_SPLIT_NO_EMPTY);
-
-            return $settings;
-        }
-        if (!in_array($form['action'] ?? null, ['entry', 'reset'], true)
-            || !in_array($form['entry_type'] ?? null, ['value', 'column'], true)
-            || !in_array($form['locale'] ?? null, $settings['locales'], true)) {
-            throw new \InvalidArgumentException('Choose a glossary entry and a published locale. Nothing was saved.');
-        }
-        $type = $form['entry_type'] === 'value' ? 'values' : 'columns';
-        $subject = $form['subject'] ?? '';
-        $code = trim($form['code'] ?? '');
-        $locale = $form['locale'];
-        if ($form['action'] === 'reset') {
-            unset($settings[$type][$subject][$code]);
-            if (($settings[$type][$subject] ?? []) === []) {
-                unset($settings[$type][$subject]);
-            }
-
-            return $settings;
-        }
-        $entry = $settings[$type][$subject][$code] ?? [];
-        foreach (['label', 'group', 'description'] as $field) {
-            if ($field === 'group' && $type === 'columns') {
-                continue;
-            }
-            if ($field === 'description' && $type === 'columns'
-                && $locale === $settings['default_locale'] && $this->propertyForColumn($subject, $code) !== null) {
-                continue;
-            }
-            $texts = $entry[$field] ?? [];
-            if (is_string($texts)) {
-                $texts = [$settings['default_locale'] => $texts];
-            }
-            $value = $form[$field] ?? '';
-            if (trim($value) === '') {
-                unset($texts[$locale]);
-            } else {
-                $texts[$locale] = $value;
-            }
-            if ($texts === []) {
-                unset($entry[$field]);
-            } else {
-                $entry[$field] = $texts;
-            }
-        }
-        $sort = trim($form['sort'] ?? '');
-        if ($sort === '') {
-            unset($entry['sort']);
-        } else {
-            // Keep invalid input as-is so the shared validator identifies its field.
-            $entry['sort'] = preg_match('/^\d{1,6}$/D', $sort) === 1 ? (int) $sort : $sort;
-        }
-        $settings[$type][$subject][$code] = $entry;
-
-        return $settings;
-    }
-
     private function page(Request $request, array $errors = [], int $status = 200, ?array $suggestions = null): Response
     {
         $settings = ['default_locale' => 'en', 'locales' => ['en'], 'values' => [], 'columns' => []];
@@ -235,21 +172,13 @@ final class BiGlossaryController extends AbstractController
         if (!is_string($locale) || !in_array($locale, $settings['locales'], true)) {
             $locale = $settings['default_locale'];
         }
-        $entries = ['values' => [], 'columns' => []];
-        $resolved = [];
-        foreach ($rows as $row) {
-            $type = $row['entry_type'] === 'value' ? 'values' : 'columns';
-            $resolved[$type][$row['subject']][$row['code']][$row['locale']] = $row;
-        }
+        $resolved = GlossaryForm::grouped($rows);
         if ($loaded) {
-            foreach ($this->settings->dimensions() as $dimension => $codes) {
-                $entries['values'][$dimension] = [];
-            }
             $addition = $request->query->all();
             if (isset($addition['add_dimension'], $addition['add_code'])) {
                 try {
                     if (!is_string($addition['add_dimension']) || !is_string($addition['add_code'])
-                        || !$this->allowsNewCode($addition['add_dimension'])) {
+                        || !GlossaryForm::allowsNewCode($addition['add_dimension'])) {
                         throw new \InvalidArgumentException('Choose an event-name, website or custom-property dimension.');
                     }
                     $preview = $settings;
@@ -262,46 +191,9 @@ final class BiGlossaryController extends AbstractController
                     $errors['bi_glossary.values'] = $error->getMessage();
                 }
             }
-            // Keep an unsaved declared-code row editable after validation fails.
-            if ($errors !== [] && ($form['entry_type'] ?? null) === 'value'
-                && is_string($form['subject'] ?? null) && array_key_exists($form['subject'], $entries['values'])
-                && is_string($form['code'] ?? null) && strlen($form['code']) <= 191) {
-                $resolved['values'][$form['subject']][$form['code']] ??= [];
-            }
         }
-        foreach ($resolved as $type => $subjects) {
-            foreach ($subjects as $subject => $codes) {
-                foreach ($codes as $code => $translations) {
-                    $current = $translations[$locale] ?? ['label' => (string) $code, 'label_locale' => null, 'description' => null, 'group_label' => null, 'sort_order' => 0];
-                    $default = $translations[$settings['default_locale']] ?? $current;
-                    $entry = $settings[$type][$subject][$code] ?? [];
-                    $input = [];
-                    foreach (['label', 'group', 'description'] as $field) {
-                        $text = $entry[$field] ?? [];
-                        $input[$field] = is_array($text) ? ($text[$locale] ?? '') : ($locale === $settings['default_locale'] ? $text : '');
-                    }
-                    $input['sort'] = $entry['sort'] ?? '';
-                    $isSubmitted = $errors !== [] && ($form['entry_type'] ?? null) === ($type === 'values' ? 'value' : 'column')
-                        && ($form['subject'] ?? null) === $subject && ($form['code'] ?? null) === (string) $code;
-                    if ($isSubmitted) {
-                        foreach (array_keys($input) as $field) {
-                            $input[$field] = is_string($form[$field] ?? null) ? $form[$field] : '';
-                        }
-                    }
-                    $property = $type === 'columns' ? $this->propertyForColumn($subject, (string) $code) : null;
-                    $entries[$type][$subject][] = [
-                        'code' => (string) $code, 'current' => $current, 'default' => $default, 'input' => $input,
-                        'source' => match ($default['source'] ?? 'builtin') {
-                            'config' => match (true) { $type === 'columns' => 'Data model', $subject === 'website_token' => 'Websites', default => 'goals.yaml' },
-                            'glossary' => 'Glossary',
-                            default => 'Built-in',
-                        },
-                        'property' => $property, 'overridden' => isset($settings[$type][$subject][$code]),
-                        'unsaved' => $translations === [], 'open' => $isSubmitted || $translations === [],
-                    ];
-                }
-            }
-        }
+        $dimensions = $loaded ? array_keys($this->settings->dimensions()) : [];
+        $entries = $this->form->entries($resolved, $settings, $locale, $dimensions, $errors !== [] ? $form : null);
         $consent = [];
         if ($loaded) {
             foreach ($this->settings->properties() as $property) {
@@ -319,27 +211,8 @@ final class BiGlossaryController extends AbstractController
                 'default_locale' => $errors !== [] && ($form['action'] ?? null) === 'locales' && is_string($form['default_locale'] ?? null) ? $form['default_locale'] : $settings['default_locale'],
                 'locales' => $errors !== [] && ($form['action'] ?? null) === 'locales' && is_string($form['locales'] ?? null) ? $form['locales'] : implode(', ', $settings['locales']),
             ],
-            'editable_dimensions' => $loaded ? array_values(array_filter(array_keys($this->settings->dimensions()), $this->allowsNewCode(...))) : [],
+            'editable_dimensions' => array_values(array_filter($dimensions, GlossaryForm::allowsNewCode(...))),
         ], new Response(status: $status)));
-    }
-
-    private function propertyForColumn(string $view, string $column): ?array
-    {
-        if (!str_starts_with($view, 'analytics_custom_')) {
-            return null;
-        }
-        foreach ($this->settings->properties() as $key => $property) {
-            if (($property['column'] ?? '') === $column || ($property['numeric_column'] ?? '') === $column) {
-                return ['key' => $key, ...$property];
-            }
-        }
-
-        return null;
-    }
-
-    private function allowsNewCode(string $dimension): bool
-    {
-        return $dimension === 'event_name' || !in_array($dimension, ['goal_event', 'referrer_channel', 'device_class', 'viewport_bucket', 'geo_area', 'geo_level', 'privacy_mode'], true);
     }
 
     private function validToken(Request $request): bool
