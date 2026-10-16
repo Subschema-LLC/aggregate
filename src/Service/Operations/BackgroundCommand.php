@@ -31,7 +31,7 @@ class BackgroundCommand
             return 'Starting this from the dashboard needs proc_open on a Unix-like server. Run php bin/console '.$command.' on the server instead.';
         }
         if ($this->toolchain->php() === null) {
-            return 'The command-line PHP executable could not be found. Set PHP_PATH for the web server, or run php bin/console '.$command.' on the server.';
+            return ($this->toolchain->phpProblem() ?? 'The command-line PHP executable could not be found.').' Or run php bin/console '.$command.' on the server.';
         }
 
         return null;

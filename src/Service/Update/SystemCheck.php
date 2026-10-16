@@ -29,7 +29,7 @@ class SystemCheck
     public const ERROR = 'error';
 
     public const MINIMUM_PHP_VERSION = '8.2.0';
-    private const REQUIRED_EXTENSIONS = ['ctype', 'iconv', 'pdo', 'mbstring', 'xml', 'curl', 'intl', 'sodium', 'zip'];
+    public const REQUIRED_EXTENSIONS = ['ctype', 'iconv', 'pdo', 'mbstring', 'xml', 'curl', 'intl', 'sodium', 'zip'];
     private const WRITABLE = ['', 'bin', 'config', 'migrations', 'public', 'src', 'templates', 'var', 'vendor'];
     /** Code deployed another way is replaced by that tool; the post-deployment steps write only these. */
     private const DEPLOYMENT_WRITABLE = ['var', 'vendor', 'public', 'assets'];
@@ -112,6 +112,14 @@ class SystemCheck
         $phpDetail = $phpOk
             ? $phpCheck['detail'].' with the required extensions.'
             : 'PHP '.PHP_VERSION.' ('.implode('; ', $phpProblems).').';
+        if (!$phpOk && \PHP_SAPI === 'cli') {
+            // Servers often have a second PHP for the command line, such as
+            // the operating system's next to a hosting panel's.
+            $better = $this->toolchain->suggestPhp(array_values(array_unique([...self::REQUIRED_EXTENSIONS, ...($driver !== null ? [$driver] : [])])), self::MINIMUM_PHP_VERSION);
+            $phpDetail .= $better !== null
+                ? ' This is '.\PHP_BINARY.'; '.$better.' on this server has everything. Run the command with it: '.$better.' bin/console …'
+                : ' This is '.\PHP_BINARY.'. Run the command with the PHP the website uses (on Plesk, /opt/plesk/php/'.\PHP_MAJOR_VERSION.'.'.\PHP_MINOR_VERSION.'/bin/php).';
+        }
 
         $add('php', 'PHP runtime', $phpOk ? self::OK : self::ERROR, $phpDetail);
 
@@ -131,17 +139,23 @@ class SystemCheck
             }
         }
         $user = $this->userName();
+        $owner = $this->ownerName();
+        if ($owner !== null && $owner !== $user && $user === 'root') {
+            // Files root writes would belong to root, and the website could no
+            // longer change them or its cache.
+            $add('user', 'User running the update', self::ERROR, 'This runs as root, but the application files belong to '.$owner.'. Files the update writes would belong to root, and the website could not change them. Run it as '.$owner.': sudo -u '.$owner.' '.\PHP_BINARY.' bin/console app:updates:apply');
+        }
         $add('writable', 'Application files writable', $unwritable === [] ? self::OK : self::ERROR, $unwritable === []
             ? 'User '.$user.' can replace application files.'
             : 'User '.$user.' cannot write '.implode(', ', $unwritable).'. Run php bin/console app:updates:apply as the user that owns the files, or give this user write access to use the dashboard button.');
 
-        $php = $this->toolchain->php();
-        $background = function_exists('proc_open') && \DIRECTORY_SEPARATOR !== '\\' && $php !== null;
         // Code deployed another way is never updated from the dashboard.
         if (($source['source'] ?? null) !== 'deployment') {
-            $add('background', 'Dashboard button can start updates', $background ? self::OK : self::ERROR, $background
+            $processes = function_exists('proc_open') && \DIRECTORY_SEPARATOR !== '\\';
+            $php = $processes ? $this->toolchain->php() : null;
+            $add('background', 'Dashboard button can start updates', $php !== null ? self::OK : self::ERROR, $php !== null
                 ? 'Command-line PHP found at '.$php[0].'.'
-                : ($php === null ? 'The command-line PHP executable was not found. Set PHP_PATH for the web server.' : 'Starting background processes (proc_open on Unix) is not available.').' Use php bin/console app:updates:apply instead.', 'dashboard');
+                : ($processes ? $this->toolchain->phpProblem() ?? 'The command-line PHP executable was not found.' : 'Starting background processes (proc_open on Unix) is not available.').' Or run php bin/console app:updates:apply on the server.', 'dashboard');
         }
 
         $free = @disk_free_space($this->projectDir);
@@ -357,6 +371,18 @@ class SystemCheck
             'pdo_sqlsrv', 'sqlsrv' => 'SQL Server',
             default => 'the database',
         };
+    }
+
+    /** The user that owns the application folder, when the platform can tell. */
+    private function ownerName(): ?string
+    {
+        $uid = @fileowner($this->projectDir);
+        if (!is_int($uid) || !function_exists('posix_getpwuid')) {
+            return null;
+        }
+        $owner = posix_getpwuid($uid);
+
+        return is_array($owner) && is_string($owner['name'] ?? null) ? $owner['name'] : null;
     }
 
     private function userName(): string
