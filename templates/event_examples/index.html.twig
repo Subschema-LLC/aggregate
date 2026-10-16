@@ -28,7 +28,7 @@
 
         <section class="box" aria-labelledby="tracker-call-title">
             <h2 class="title is-4" id="tracker-call-title">Send it from your pages</h2>
-            <p class="mb-3">With the tracker on the page, call <code>emit()</code> with the event name and the properties themselves. The tracker adds the page path, consent state and the other request fields, and leaves out what consent does not allow, so make the same call with or without consent.</p>
+            <p class="mb-3">With the tracker on the page, call <code>emit()</code> with the event: <code>eventName</code> names it, and <code>customData</code> holds its own properties, everything the tracker does not add. The tracker adds the page path, consent state and the other request fields, and leaves out what consent does not allow, so make the same call with or without consent.</p>
             <pre tabindex="0" aria-label="Tracker call"><code id="example-tracker-call">{{ bundle.tracker.javascript }}</code></pre>
             {{ component('Ui:CopyButton', {
                 target: 'example-tracker-call',
@@ -40,21 +40,26 @@
                 'data-copy-example': 'example-tracker-call',
                 'data-copy-format': 'JavaScript'
             }) }}
-            <p class="mt-4 mb-3">In a tag manager method tag, use the method <code>{{ bundle.tracker.method }}</code> with these arguments. Replace a fixed value with <code>{"$var": "alias"}</code> to read it from the page.</p>
-            <pre tabindex="0" aria-label="Method tag arguments"><code id="example-tag-arguments">{{ tracker_arguments }}</code></pre>
+            <details class="mt-4">
+                <summary>The short form</summary>
+                <p class="my-3"><code>emit(name, properties, goal)</code> sends the same event, with the properties as the second argument:</p>
+                <pre tabindex="0" aria-label="Tracker call, short form"><code id="example-tracker-short">{{ bundle.tracker.short_javascript }}</code></pre>
+            </details>
+            <p class="mt-4 mb-3">In the tag manager, add a <strong>Send an Aggregate event</strong> action with this event. Replace a fixed value with <code>{"$var": "alias"}</code> to read it from the page.</p>
+            <pre tabindex="0" aria-label="Event for a Send an Aggregate event action"><code id="example-tag-event">{{ tracker_event }}</code></pre>
             {{ component('Ui:CopyButton', {
-                target: 'example-tag-arguments',
+                target: 'example-tag-event',
                 status: 'example-copy-status',
-                label: 'Copy method tag arguments',
-                success: 'Arguments copied.',
+                label: 'Copy event',
+                success: 'Event copied.',
                 fallback: 'Automatic copying is unavailable. Use your browser’s Copy command to copy the selected JSON.',
                 class: 'button mt-3',
-                'data-copy-example': 'example-tag-arguments'
+                'data-copy-example': 'example-tag-event'
             }) }}
         </section>
 
         <h2 class="title is-5 mt-5">Request bodies for servers and direct clients</h2>
-        <p class="mb-4">A server, or a client without the tracker, sends one of these JSON bodies to <code>POST /api/receive</code> itself. On a page with the tracker, use the call above instead: passing a request body to <code>emit()</code> sends nothing.</p>
+        <p class="mb-4">A server, or a client without the tracker, sends one of these JSON bodies to <code>POST /api/receive</code> itself. On a page with the tracker, use the call above instead: the tracker sets these other fields itself.</p>
         <div class="notification is-info">
             Replace the website token placeholder with a registered website's public ingestion token. Enhanced collection requires an actual consent choice; copying the example does not obtain consent.
         </div>

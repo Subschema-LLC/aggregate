@@ -312,6 +312,42 @@ final class TagManagerSettingsTest extends TestCase
         self::assertSame(['Tag default-name'], array_map(static fn (string $warning): string => strstr($warning, ':', true), $this->settings($values)->emitWarnings($settings->all())));
     }
 
+    public function testAggregateEventTagsAreServedWithTheTrackersNamespace(): void
+    {
+        $event = ['eventName' => 'login', 'customData' => ['app' => 'facilitation', 'method' => ['$var' => 'login_method']]];
+        $settings = $this->settings(['js_namespace' => 'Optin', 'tag_manager' => ['enabled' => true, 'variables' => ['login_method' => 'method'], 'tags' => [
+            ['id' => 'login-event', 'type' => 'event', 'event' => $event, 'trigger' => ['type' => 'data_layer', 'event' => 'login']],
+            ['id' => 'after-login', 'type' => 'event', 'event' => ['eventName' => 'opened'], 'consent' => 'functional', 'after' => 'opened'],
+            ['id' => 'opened', 'type' => 'event', 'event' => ['eventName' => 'opened', 'customData' => []]],
+        ]]]);
+
+        $browser = $settings->toBrowserConfig();
+        self::assertSame('Optin', $browser['namespace']);
+        self::assertSame(['id' => 'login-event', 'event' => $event, 'consent' => 'analytics', 'trigger' => ['type' => 'data_layer', 'event' => 'login'], 'type' => 'event'], $browser['tags'][0]);
+        self::assertSame(['eventName' => 'opened'], $browser['tags'][2]['event'], 'empty customData is left out');
+        self::assertSame(['analytics', 'functional'], $settings->consentCategories());
+        self::assertSame('{"eventName":"login","customData":{"app":"facilitation","method":{"$var":"login_method"}}}', json_encode($browser['tags'][0]['event']));
+        self::assertSame([], $settings->emitWarnings($settings->all()));
+    }
+
+    #[DataProvider('invalidEventTags')]
+    public function testAggregateEventTagsUseOnlyTheirEvent(array $tag, string $message): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage($message);
+        TagManagerSettings::validate(['tags' => [$tag + ['id' => 'login-event']]]);
+    }
+
+    public static function invalidEventTags(): iterable
+    {
+        yield 'no event' => [['type' => 'event'], 'Tag login-event: the event must be an object'];
+        yield 'with a method' => [['type' => 'event', 'event' => ['eventName' => 'login'], 'method' => 'Aggregate.emit'], 'An event tag uses event; src belongs to a script tag'];
+        yield 'an event on a call tag' => [['type' => 'call', 'method' => 'Aggregate.emit', 'args' => [], 'event' => ['eventName' => 'login']], 'A call tag uses method and args; src belongs to a script tag, event to an event tag'];
+        yield 'an event on a script tag' => [['src' => 'https://scripts.example/a.js', 'event' => ['eventName' => 'login']], 'A script tag uses src'];
+        yield 'a property beside the fields' => [['type' => 'event', 'event' => ['eventName' => 'login', 'method' => 'password']], "Tag login-event: the event has method"];
+        yield 'an unknown type' => [['type' => 'emit', 'event' => ['eventName' => 'login']], 'A tag type must be script, call, event or custom.'];
+    }
+
     #[DataProvider('invalidCustomTags')]
     public function testCustomTagsUseOnlyCheckedCode(array $tags, string $message): void
     {

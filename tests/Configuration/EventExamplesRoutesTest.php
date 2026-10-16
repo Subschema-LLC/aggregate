@@ -129,7 +129,8 @@ final class EventExamplesRoutesTest extends TestCase
             self::assertSame('example-tracker-call', $crawler->filter('.container pre code[id^="example-"]')->first()->attr('id'));
             $expected = json_decode($this->container()->get(EventExampleGenerator::class)->exportJson('all', $ecommerce ? 'ecommerce' : 'model'), true, flags: JSON_THROW_ON_ERROR);
             self::assertSame($expected['tracker']['javascript'], $crawler->filter('#example-tracker-call')->text(null, false));
-            self::assertSame($expected['tracker']['arguments'], json_decode($crawler->filter('#example-tag-arguments')->text(), true, flags: JSON_THROW_ON_ERROR));
+            self::assertSame($expected['tracker']['short_javascript'], $crawler->filter('#example-tracker-short')->text(null, false));
+            self::assertSame($expected['tracker']['event'], json_decode($crawler->filter('#example-tag-event')->text(), true, flags: JSON_THROW_ON_ERROR));
             foreach (['anonymous', 'enhanced'] as $mode) {
                 $payload = json_decode($crawler->filter('#example-'.$mode)->text(), true, flags: JSON_THROW_ON_ERROR);
                 self::assertSame($expected['examples'][$mode]['payload'], $payload);

@@ -143,6 +143,8 @@
           sources[tag.src] = true;
         } else if (type === 'call') {
           if (!methodParts(tag.method) || !Array.isArray(tag.args) || tag.args.length > 10) return false;
+        } else if (type === 'event') {
+          if (!record(tag.event)) return false;
         } else if (type === 'custom') {
           if (typeof own(customScripts, tag.id) !== 'function') return false;
         } else return false;
@@ -248,6 +250,23 @@
     catch (error) { report(tag, error); return false; }
   }
 
+  // Sends an event through the tracker or, until the tracker has loaded and
+  // sent its page view, holds it (up to 20 a page): true when sent or held.
+  // args are emit()'s: [event object] or [name, properties, goal].
+  function emitFor(tag, args) {
+    if (trackerAnnounced) {
+      var sent = sendEvent(tag, args);
+      if (sent !== null) return sent;
+    }
+    if (heldEvents.length >= 20) return false;
+    // A copy, so later changes to the objects do not change the event.
+    heldEvents.push({tag: tag, args: args.map(function (arg) { return arg !== null && typeof arg === 'object' ? plain(arg) : arg; })});
+    // A tracker already here, such as an older copy that does not announce
+    // itself, receives them once its own page view is on its way.
+    if (tracker()) soon(releaseHeldEvents);
+    return true;
+  }
+
   // Runs after the current task, so a tracker that has just loaded sends its
   // own page view first.
   function soon(callback) {
@@ -337,20 +356,10 @@
         layer.push(entry);
         return true;
       },
-      // Until the tracker has loaded and sent its page view, events wait for
-      // it (up to 20 a page).
+      // tag.emit({eventName, customData, goalEvent, pagePath}), or the short
+      // form tag.emit(name, properties, goal), as the tracker's emit() takes.
       emit: function (name, properties, goal) {
-        if (trackerAnnounced) {
-          var sent = sendEvent(tag, [name, properties, goal]);
-          if (sent !== null) return sent;
-        }
-        if (heldEvents.length >= 20) return false;
-        // A copy, so later changes to the object do not change the event.
-        heldEvents.push({tag: tag, args: [name, plain(properties), goal]});
-        // A tracker already here, such as an older copy that does not announce
-        // itself, receives them once its own page view is on its way.
-        if (tracker()) soon(releaseHeldEvents);
-        return true;
+        return emitFor(tag, record(name) ? [name] : [name, properties, goal]);
       },
       loadScript: function (url) {
         return new Promise(function (resolve, reject) {
@@ -420,6 +429,13 @@
         script.addEventListener('error', function () { blocked(tag, 'could not load its script'); });
         completed[tag.id] = true;
         parent.appendChild(script);
+      } else if (tag.type === 'event') {
+        // The tracker's own event: no method to name and no chaining needed.
+        var resolved = argumentsFor([tag.event], context);
+        if (resolved === null) return;
+        var once = trigger(tag);
+        if (once.type === 'dom_ready' || once.type === 'window_load') completed[tag.id] = true;
+        done = emitFor(tag, resolved);
       } else if (tag.type === 'custom') {
         var lifecycle = trigger(tag);
         if (lifecycle.type === 'dom_ready' || lifecycle.type === 'window_load') completed[tag.id] = true;
