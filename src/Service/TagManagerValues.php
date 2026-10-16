@@ -23,6 +23,8 @@ final class TagManagerValues
         'Worker', 'SharedWorker', 'importScripts', 'requestAnimationFrame', 'queueMicrotask',
     ];
     private const BLOCKED_MAP_KEYS = ['__proto__', 'prototype', 'constructor'];
+    /** Names people give the properties object, after the request field and the GTM template's setting. */
+    private const PROPERTY_WRAPPERS = ['customData', 'eventData'];
 
     public static function validateMethod(mixed $method): string
     {
@@ -37,6 +39,64 @@ final class TagManagerValues
         }
 
         return $method;
+    }
+
+    /**
+     * Why a call to the tracker's emit() would lose its properties, or null.
+     *
+     * emit(name, properties, goal) takes flat properties: text, numbers, true,
+     * false or null. The tracker puts them in the request's customData itself
+     * and drops a property that holds an object or a list, so a customData
+     * wrapper, or any other nesting, sends the event without them. The tag row
+     * editor makes the same check as you type (tag_row_controller.js).
+     *
+     * @param list<mixed>  $args       validated arguments
+     * @param list<string> $namespaces the tracker's JavaScript namespaces
+     */
+    public static function emitProblem(string $method, array $args, array $namespaces): ?string
+    {
+        $methods = array_map(static fn (string $namespace): string => $namespace.'.emit', $namespaces);
+        if (!in_array($method, $methods, true)) {
+            return null;
+        }
+        $name = $args[0] ?? null;
+        if (!is_string($name) && !self::isReference($name)) {
+            return 'The first argument is the event name, such as "login".';
+        }
+        $properties = $args[1] ?? null;
+        if ($properties === null) {
+            return null;
+        }
+        if (self::isReference($properties)) {
+            return 'A variable gives one value, but the second argument needs an object of properties. Name each property and use a variable for its value: {"plan": {"$var": "plan"}}.';
+        }
+        // JSON {} and [] both decode to an empty array; neither sends anything.
+        if (!is_array($properties) || ($properties !== [] && array_is_list($properties))) {
+            return 'The second argument holds the event properties and must be an object, such as {"plan": "pro"}, or null. A goal goes third.';
+        }
+        $nested = [];
+        foreach ($properties as $key => $value) {
+            if (is_array($value) && !self::isReference($value)) {
+                $nested[] = (string) $key;
+            }
+        }
+        if ($nested === []) {
+            return null;
+        }
+        $wrapper = $nested[0];
+        if (count($properties) === 1 && in_array($wrapper, self::PROPERTY_WRAPPERS, true)
+            && ($properties[$wrapper] === [] || !array_is_list($properties[$wrapper]))) {
+            return sprintf('Remove the "%s" wrapper and put its properties directly in the second argument. The tracker puts the properties in customData itself and drops a property that holds an object, so this event would be sent without them.', $wrapper);
+        }
+        $names = array_map(static fn (string $name): string => '"'.$name.'"', $nested);
+        $last = array_pop($names);
+
+        return sprintf('The tracker drops %s: a property must be text, a number, true, false or null, not an object or a list. Give each value its own property.', $names === [] ? $last : implode(', ', $names).' and '.$last);
+    }
+
+    private static function isReference(mixed $value): bool
+    {
+        return is_array($value) && count($value) === 1 && array_key_exists('$var', $value);
     }
 
     /** @param array<string, mixed> $variables Already validated alias definitions. */

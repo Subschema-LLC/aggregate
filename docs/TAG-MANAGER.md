@@ -241,6 +241,55 @@ Granting a method tag's `marketing` category does not grant enhanced analytics.
 Calls made while analytics consent is denied retain only the anonymous fields
 permitted by the tracker and server. See the [data model](DATA-MODEL.md).
 
+### Send data-layer events to the tracker
+
+A method tag that calls the tracker's `emit(name, properties, goal)` turns a
+data-layer push into an Aggregate event. For this push:
+
+```javascript
+window.dataLayer.push({event: 'login', method: 'password', user_role: 'admin'});
+```
+
+add a [variable](#data-layer-and-variables) for each pushed value you want, and
+name each property in the arguments:
+
+```yaml
+tag_manager:
+  enabled: true
+  variables:
+    login_method: method
+    user_role: user_role
+  tags:
+    - id: login-event
+      type: call
+      method: Aggregate.emit
+      args: [login, {app: shop, method: {$var: login_method}, user_role: {$var: user_role}}]
+      consent: analytics
+      trigger: {type: data_layer, event: login}
+```
+
+In the dashboard, these arguments are
+`["login", {"app": "shop", "method": {"$var": "login_method"}, "user_role": {"$var": "user_role"}}]`.
+
+- The second argument holds the properties themselves. Each is text, a number,
+  `true`, `false` or `null`; the tracker drops a property that holds an object
+  or a list. Do not wrap them in `customData`. The tracker sends them in the
+  collection request's `customData` itself, so
+  `["login", {"customData": {"method": "password"}}]` sends the event without
+  properties. The GTM template's **Custom data object** setting and a
+  GTM data-layer variable named `customData` hold the same inner object.
+- A push's values are not copied into the arguments, and a variable gives one
+  value, so `{"$var": "…"}` cannot stand for all the properties at once. A
+  missing value skips the call.
+- Use your [`js_namespace`](CONFIGURATION.md#customizing-the-javascript-namespace)
+  in place of `Aggregate` if you changed it. For calls to `emit` under that name
+  or `Aggregate`, the editor warns as you type when properties would be lost,
+  and offers to remove a `customData` or `eventData` wrapper. Saving such a tag
+  shows the same warning; the tag is still saved.
+- Properties appear in reporting views once they are in the
+  [data model](DATA-MODEL.md), and without analytics consent only those that do
+  not require it are kept.
+
 ## Custom JavaScript
 
 `type: custom` runs JavaScript you write, for small integrations a script URL or

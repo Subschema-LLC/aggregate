@@ -91,6 +91,91 @@ test('a script URL pasted from an HTML snippet gets plain query separators and a
   assert.equal(hidden.hidden, true);
 });
 
+function callRow(method, args, namespaces = ['Optin', 'Aggregate']) {
+  const row = editor('call', 'data_layer');
+  const status = {hidden: true};
+  const message = {textContent: ''};
+  const fix = {hidden: true, textContent: ''};
+  row.methodInput.value = method;
+  row.argumentInput.value = args;
+  row.argumentInput.focus = () => { row.argumentInput.focused = true; };
+  Object.assign(row.controller, {
+    hasMethodTarget: true, methodTarget: row.methodInput,
+    hasArgumentsTarget: true, argumentsTarget: row.argumentInput,
+    hasArgumentsStatusTarget: true, argumentsStatusTarget: status,
+    hasArgumentsMessageTarget: true, argumentsMessageTarget: message,
+    hasArgumentsFixTarget: true, argumentsFixTarget: fix,
+    hasNamespacesValue: true, namespacesValue: namespaces
+  });
+  row.controller.update();
+  return {...row, status, message, fix};
+}
+
+test('a customData wrapper in the tracker emit is explained and removed with one click', () => {
+  const args = ['login', {customData: {app: 'optin_model_facilitation_app', app_env: 'prod', method: {$var: 'login_method'}, user_role: {$var: 'user_role'}}}];
+  const row = callRow('Optin.emit', JSON.stringify(args, null, 4));
+  assert.equal(row.status.hidden, false);
+  assert.equal(row.message.textContent, 'Remove the "customData" wrapper and put its properties directly in the second argument. The tracker puts the properties in customData itself and drops a property that holds an object, so this event would be sent without them.');
+  assert.equal(row.fix.hidden, false);
+  assert.equal(row.fix.textContent, 'Remove the customData wrapper');
+
+  row.controller.fixArguments();
+  assert.equal(row.argumentInput.value, JSON.stringify(['login', args[1].customData], null, 4));
+  assert.equal(row.status.hidden, true, 'the fixed arguments pass');
+  assert.equal(row.argumentInput.focused, true);
+
+  const empty = callRow('Aggregate.emit', '["login", {"eventData": []}]');
+  assert.equal(empty.fix.textContent, 'Remove the eventData wrapper');
+  empty.controller.fixArguments();
+  assert.equal(empty.argumentInput.value, JSON.stringify(['login', {}], null, 4));
+});
+
+test('only tracker emit calls that would lose properties are flagged, with the server messages', () => {
+  for (const [method, args, expected] of [
+    ['Aggregate.emit', '["purchase", {"items": [{"sku": "x"}], "plan": "pro", "meta": {"a": 1}, "tags": ["x"]}]', 'The tracker drops "items", "meta" and "tags": a property must be text, a number, true, false or null, not an object or a list. Give each value its own property.'],
+    ['Aggregate.emit', '["login", {"customData": {"app": "a"}, "plan": "pro"}]', 'The tracker drops "customData": '],
+    ['Aggregate.emit', '["login", {"customData": ["a"]}]', 'The tracker drops "customData": '],
+    [' Optin.emit ', '["purchase", ["pro"]]', 'The second argument holds the event properties and must be an object, such as {"plan": "pro"}, or null. A goal goes third.'],
+    ['Aggregate.emit', '["signup_click", "signup"]', 'The second argument holds the event properties'],
+    ['Aggregate.emit', '["login", {"$var": "props"}]', 'A variable gives one value, but the second argument needs an object of properties.'],
+    ['Aggregate.emit', '[{"method": "password"}]', 'The first argument is the event name, such as "login".'],
+    ['Aggregate.emit', '', 'The first argument is the event name']
+  ]) {
+    const row = callRow(method, args);
+    assert.equal(row.status.hidden, false, args);
+    assert.ok(row.message.textContent.startsWith(expected), row.message.textContent);
+    assert.equal(row.fix.hidden, true, 'only a wrapper has a fix');
+  }
+
+  for (const [method, args, namespaces] of [
+    ['Optin.emit', '["login", {"app": "a", "method": {"$var": "login_method"}, "count": 2, "ok": true, "none": null}]'],
+    ['Aggregate.emit', '["login"]'],
+    ['Aggregate.emit', '["signup_click", null, "signup"]'],
+    ['Aggregate.emit', '["login", {}]'],
+    ['Aggregate.emit', '[{"$var": "event_name"}, {"plan": "pro"}]'],
+    ['Acme.emit', '["login", {"customData": {"app": "a"}}]'],
+    ['Optin.configure', '[{"customData": {"propertyTypes": {}}}]'],
+    ['Optin.emit', '["login", {"customData": {"app": "a"}}]', ['Aggregate']],
+    ['Aggregate.emit', '["login", {"customData": ']
+  ]) {
+    assert.equal(callRow(method, args, namespaces).status.hidden, true, method + ' ' + args);
+  }
+});
+
+test('the warning follows the method and action as they change', () => {
+  const row = callRow('Acme.track', '["login", {"customData": {"app": "a"}}]', []);
+  assert.equal(row.status.hidden, true);
+  row.methodInput.value = 'Aggregate.emit';
+  row.controller.checkArguments();
+  assert.equal(row.status.hidden, false, 'without a namespace the default Aggregate is used');
+  row.controller.actionTypeTarget.value = 'script';
+  row.controller.update();
+  assert.equal(row.status.hidden, true, 'a script action does not send these arguments');
+  row.controller.actionTypeTarget.value = 'call';
+  row.controller.update();
+  assert.equal(row.status.hidden, false);
+});
+
 const pageSource = fs.readFileSync(path.join(__dirname, '../../assets/controllers/pages/tag_manager/index_controller.js'), 'utf8');
 const Page = vm.runInNewContext(pageSource.replace(/^import .*;\n/m, '').replace('export default class', 'class Page') + '\nPage;', {
   Controller: class {},

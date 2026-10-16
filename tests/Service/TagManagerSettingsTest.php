@@ -289,6 +289,29 @@ final class TagManagerSettingsTest extends TestCase
         self::assertSame('Aggregate', $this->settings($values, true)->toBrowserConfig()['namespace']);
     }
 
+    public function testEmitWarningsNameTheTagAndUseTheTrackersNamespace(): void
+    {
+        $call = static fn (string $id, string $method, array $args): array => ['id' => $id, 'type' => 'call', 'method' => $method, 'args' => $args, 'trigger' => ['type' => 'data_layer', 'event' => 'login']];
+        $values = ['js_namespace' => 'Optin', 'tag_manager' => ['enabled' => true, 'tags' => [
+            self::tag(),
+            $call('login', 'Optin.emit', ['login', ['customData' => ['method' => 'password']]]),
+            $call('default-name', 'Aggregate.emit', ['purchase', ['items' => ['a']]]),
+            $call('flat', 'Optin.emit', ['login', ['method' => 'password']]),
+            $call('vendor', 'Acme.emit', ['login', ['customData' => ['method' => 'password']]]),
+        ]]];
+        $settings = $this->settings($values);
+
+        self::assertSame(['Optin', 'Aggregate'], $settings->trackerNamespaces());
+        $warnings = $settings->emitWarnings($settings->all());
+        self::assertCount(2, $warnings);
+        self::assertStringStartsWith('Tag login: Remove the "customData" wrapper', $warnings[0]);
+        self::assertStringStartsWith('Tag default-name: The tracker drops "items"', $warnings[1]);
+
+        unset($values['js_namespace']);
+        self::assertSame(['Aggregate'], $this->settings($values)->trackerNamespaces());
+        self::assertSame(['Tag default-name'], array_map(static fn (string $warning): string => strstr($warning, ':', true), $this->settings($values)->emitWarnings($settings->all())));
+    }
+
     #[DataProvider('invalidCustomTags')]
     public function testCustomTagsUseOnlyCheckedCode(array $tags, string $message): void
     {

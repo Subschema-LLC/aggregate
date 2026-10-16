@@ -116,4 +116,48 @@ final class TagManagerValuesTest extends TestCase
             yield 'unsafe map '.$key => [[['eventData' => [$key => ['value' => true]]]]];
         }
     }
+
+    public function testACustomDataWrapperInTheTrackersEmitIsExplainedWithTheFix(): void
+    {
+        $args = ['login', ['customData' => ['app' => 'optin_model_facilitation_app', 'method' => ['$var' => 'login_method']]]];
+
+        self::assertSame(
+            'Remove the "customData" wrapper and put its properties directly in the second argument. The tracker puts the properties in customData itself and drops a property that holds an object, so this event would be sent without them.',
+            TagManagerValues::emitProblem('Optin.emit', $args, ['Optin', 'Aggregate']),
+        );
+        self::assertNull(TagManagerValues::emitProblem('Optin.emit', $args, ['Aggregate']), 'Optin is another library unless it is the namespace');
+    }
+
+    #[DataProvider('emitCalls')]
+    public function testOnlyCallsToTheTrackersEmitThatWouldLoseProperties(string $method, array $args, ?string $expected): void
+    {
+        $problem = TagManagerValues::emitProblem($method, $args, ['Optin', 'Aggregate']);
+
+        if ($expected === null) {
+            self::assertNull($problem);
+        } else {
+            self::assertStringStartsWith($expected, (string) $problem);
+        }
+    }
+
+    public static function emitCalls(): iterable
+    {
+        $variable = ['$var' => 'login_method'];
+        yield 'flat properties' => ['Optin.emit', ['login', ['app' => 'a', 'method' => $variable, 'count' => 2, 'ok' => true, 'none' => null]], null];
+        yield 'no properties' => ['Aggregate.emit', ['login'], null];
+        yield 'null properties with a goal' => ['Aggregate.emit', ['signup_click', null, 'signup'], null];
+        yield 'empty properties' => ['Aggregate.emit', ['login', []], null];
+        yield 'name from a variable' => ['Aggregate.emit', [$variable, ['plan' => 'pro']], null];
+        yield 'another library' => ['Acme.emit', ['login', ['customData' => ['app' => 'a']]], null];
+        yield 'another tracker method' => ['Optin.configure', [['customData' => ['propertyTypes' => []]]], null];
+        yield 'eventData wrapper' => ['Aggregate.emit', ['login', ['eventData' => []]], 'Remove the "eventData" wrapper'];
+        yield 'wrapper beside a property' => ['Aggregate.emit', ['login', ['customData' => ['app' => 'a'], 'plan' => 'pro']], 'The tracker drops "customData": a property must be'];
+        yield 'wrapper holding a list' => ['Aggregate.emit', ['login', ['customData' => ['a', 'b']]], 'The tracker drops "customData": '];
+        yield 'nested properties' => ['Aggregate.emit', ['purchase', ['items' => [['sku' => 'x']], 'plan' => 'pro', 'meta' => ['a' => 1], 'tags' => ['x']]], 'The tracker drops "items", "meta" and "tags": '];
+        yield 'properties as a list' => ['Aggregate.emit', ['purchase', ['pro']], 'The second argument holds the event properties'];
+        yield 'goal in the properties place' => ['Aggregate.emit', ['signup_click', 'signup'], 'The second argument holds the event properties'];
+        yield 'properties from one variable' => ['Aggregate.emit', ['login', $variable], 'A variable gives one value'];
+        yield 'properties first' => ['Aggregate.emit', [['method' => 'password']], 'The first argument is the event name'];
+        yield 'no arguments' => ['Aggregate.emit', [], 'The first argument is the event name'];
+    }
 }
