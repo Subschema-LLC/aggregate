@@ -2,6 +2,10 @@ websites_controller:
     resource: ../src/Controller/WebsitesController.php
     type: attribute
 
+website_scopes_controller:
+    resource: ../src/Controller/WebsiteScopesController.php
+    type: attribute
+
 application_settings_controller:
     resource: ../src/Controller/ApplicationSettingsController.php
     type: attribute
@@ -56,6 +60,10 @@ bi_glossary_controller:
 
 bi_page_groups_controller:
     resource: ../src/Controller/BiPageGroupsController.php
+    type: attribute
+
+reporting_timezone_controller:
+    resource: ../src/Controller/ReportingTimezoneController.php
     type: attribute
 
 event_examples_controller:

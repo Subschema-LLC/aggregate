@@ -5,6 +5,16 @@
 # in the local file replaces the matching parameter here as a whole.
 parameters:
   app.quick_search_synonyms:
+    'Website groups':
+      description: 'Named groups that share collection settings and data models'
+      synonyms:
+        - brands
+        - brand
+        - organizations
+        - organization
+        - groups
+        - shared settings
+        - scope
     Websites:
       description: 'Manage website tokens, allowed domains, and snippets'
       synonyms:

@@ -9,6 +9,8 @@ use App\Service\CustomDataSettings;
 use App\Service\Glossary\GlossarySync;
 use App\Service\ReportingViewManager;
 use App\Service\TrackerBuilds;
+use App\Service\WebsiteScopeEditor;
+use App\Service\WebsiteScopePublisher;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
@@ -27,6 +29,8 @@ final class DataModelController extends AbstractController
         private readonly ReportingViewManager $views,
         private readonly LoggerInterface $logger,
         private readonly GlossarySync $glossary,
+        private readonly ?WebsiteScopeEditor $scopes = null,
+        private readonly ?WebsiteScopePublisher $publisher = null,
     ) {
     }
 
@@ -37,7 +41,13 @@ final class DataModelController extends AbstractController
         if (($request->query->all()['discover'] ?? null) === '1') {
             return $this->privateResponse($this->redirectToRoute('app_data_model_discovery', ['discover' => '1']));
         }
-        $context = $this->loadModel();
+        $scope = null;
+        $settings = $this->settings;
+        if ($this->scopes !== null) {
+            $scope = $this->scopes->selection($request->query->get('scope'), 'app_data_model');
+            $settings = new CustomDataSettings($this->scopes->configFor($scope));
+        }
+        $context = $this->loadModel($settings);
         $model = $context['model'];
         $unsavedProperty = null;
         $builtinFocus = null;
@@ -83,6 +93,8 @@ final class DataModelController extends AbstractController
             'reserved_columns' => CustomDataSettings::RESERVED_COLUMNS,
             'restored_form' => $restoredForm,
             'tracker_omit_unused_features' => (new TrackerBuilds($this->config))->enabled(),
+            'scope' => $scope,
+            'can_publish' => $this->publisher !== null && ($scope === null || $scope['kind'] === 'deployment'),
         ]));
     }
 
@@ -175,11 +187,12 @@ final class DataModelController extends AbstractController
         ]));
     }
 
-    private function loadModel(): array
+    private function loadModel(?CustomDataSettings $settings = null): array
     {
+        $settings ??= $this->settings;
         try {
             return [
-                'model' => $this->settings->toArray(),
+                'model' => $settings->toArray(),
                 'configuration_error' => null,
             ];
         } catch (\Throwable $error) {
@@ -215,11 +228,23 @@ final class DataModelController extends AbstractController
     public function save(Request $request): Response
     {
         $this->denyUnlessAvailableToAdmin();
+        $scope = (string) $request->query->get('scope', 'deployment');
+        $params = $scope !== '' && $scope !== 'deployment' ? ['scope' => $scope] : [];
         if (!$this->validToken($request)) {
-            return $this->back();
+            return $this->back('app_data_model', $params);
         }
+        $submitted = $request->request->all();
+        $override = ($submitted['model_override'] ?? '0') === '1';
+        unset($submitted['model_override']);
         try {
-            $this->settings->save($this->modelFromForm($request->request->all()));
+            $model = $this->modelFromForm($submitted);
+            if ($this->scopes !== null && $params !== []) {
+                $this->scopes->saveModel($scope, $model, $override);
+                $this->addFlash('success', 'Data model saved for this scope. Collection uses it on future events. Reporting views still follow the deployment model until you publish its columns.');
+
+                return $this->back('app_data_model', $params);
+            }
+            $this->settings->save($model);
         } catch (\Throwable $e) {
             if ($e instanceof \InvalidArgumentException) {
                 $this->addFlash('error', $e->getMessage());
@@ -231,9 +256,43 @@ final class DataModelController extends AbstractController
                 $request->getSession()->set('data_model_submitted_form', $request->request->all());
             }
 
-            return $this->back();
+            return $this->back('app_data_model', $params);
         }
         $this->applyToViews();
+
+        return $this->back();
+    }
+
+    #[Route('/dashboard/data-model/publish', name: 'app_data_model_publish', methods: ['POST'])]
+    public function publish(Request $request): Response
+    {
+        $this->denyUnlessAvailableToAdmin();
+        if (!$this->validToken($request)) {
+            return $this->back();
+        }
+        if ($this->publisher === null) {
+            $this->addFlash('error', 'Publishing website model columns is unavailable.');
+
+            return $this->back();
+        }
+        try {
+            $added = $this->publisher->publishModel();
+        } catch (\InvalidArgumentException $error) {
+            $this->addFlash('error', $error->getMessage());
+
+            return $this->back();
+        } catch (\Throwable $error) {
+            $this->logFailure('publish', $error);
+            $this->addFlash('error', 'Website model columns could not be published. Correct the scope files and try again.');
+
+            return $this->back();
+        }
+        if ($added === []) {
+            $this->addFlash('success', 'The deployment model already has every column used by a website or group model.');
+
+            return $this->back();
+        }
+        $this->applyToViews('Published '.implode(', ', $added).' into the deployment data model.');
 
         return $this->back();
     }
@@ -244,9 +303,8 @@ final class DataModelController extends AbstractController
      * column drops grants, so that stays a deliberate step on the Reporting
      * views page.
      */
-    private function applyToViews(): void
+    private function applyToViews(string $saved = 'Data model saved. Collection changes apply to future events.'): void
     {
-        $saved = 'Data model saved. Collection changes apply to future events.';
         try {
             $status = $this->views->status();
             if ($status['current']) {
@@ -466,9 +524,9 @@ final class DataModelController extends AbstractController
         return true;
     }
 
-    private function back(string $route = 'app_data_model'): Response
+    private function back(string $route = 'app_data_model', array $params = []): Response
     {
-        return $this->privateResponse($this->redirectToRoute($route));
+        return $this->privateResponse($this->redirectToRoute($route, $params));
     }
 
     private function privateResponse(Response $response): Response

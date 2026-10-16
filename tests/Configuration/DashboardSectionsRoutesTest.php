@@ -19,6 +19,7 @@ use App\Service\BrandingLogoManager;
 use App\Service\DocumentationLinks;
 use App\Service\SiteScriptConfig;
 use App\Service\WebsiteConfigManager;
+use App\Service\WebsiteScopeCatalog;
 use PHPUnit\Framework\TestCase;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
@@ -40,6 +41,7 @@ final class DashboardSectionsRoutesTest extends TestCase
         'app_collection_settings' => ['/dashboard/collection', 'Collection controls'],
         'app_privacy_settings' => ['/dashboard/privacy', 'BI disclosure'],
         'app_users' => ['/dashboard/users', 'Users'],
+        'app_website_groups' => ['/dashboard/website-groups', 'Groups'],
     ];
 
     private const MUTATIONS = [
@@ -149,6 +151,20 @@ final class DashboardSectionsRoutesTest extends TestCase
         self::assertStringContainsString('"websiteToken":"example-token"', $crawler->filter('#code-1')->text());
         self::assertStringContainsString('"consent":false', $crawler->filter('#code-1')->text());
         self::assertCount(0, $crawler->filter('script[src*="/aggregate.js"], script[src*="/cmp-lite/"]'));
+        $this->assertNoDatabaseConnection();
+    }
+
+    public function testWebsiteGroupsPageRendersTheRenameableWordAndEmptyState(): void
+    {
+        $browser = $this->browser('ROLE_ADMIN');
+        $this->preventDatabaseReadsAndWrites();
+        $crawler = $browser->request('GET', '/dashboard/website-groups');
+
+        self::assertSame(200, $browser->getResponse()->getStatusCode());
+        self::assertSame('Groups', $crawler->filter('.container h1')->text());
+        self::assertStringContainsString('No groups yet', $crawler->filter('.container')->text());
+        self::assertStringContainsString('What to call a group', $crawler->filter('.container')->text());
+        $this->assertPrivate($browser);
         $this->assertNoDatabaseConnection();
     }
 
@@ -520,7 +536,7 @@ final class DashboardSectionsRoutesTest extends TestCase
         $browser = $this->browser('ROLE_ADMIN');
         $this->preventDatabaseReadsAndWrites();
         $crawler = $browser->request('GET', '/dashboard/collection');
-        self::assertCount(1, $crawler->filter('fieldset legend:contains("Collection profile")'));
+        self::assertCount(1, $crawler->filter('fieldset legend')->reduce(static fn (Crawler $legend): bool => trim($legend->text()) === 'Collection profile'));
         self::assertCount(1, $crawler->filter('input[name="collection_profile"][value="standard"][checked]'));
 
         $form = $crawler->selectButton('Save Collection Settings')->form(['collection_profile' => 'strict']);
@@ -638,7 +654,7 @@ final class DashboardSectionsRoutesTestKernel extends Kernel implements Compiler
     public function process(ContainerBuilder $container): void
     {
         $container->setDefinition('security.user.provider.concrete.app_user_provider', new Definition(DashboardSectionsTestUserProvider::class));
-        foreach ([AggregateConfigLoader::class, WebsiteConfigManager::class, BrandingLogoManager::class, SiteScriptConfig::class] as $service) {
+        foreach ([AggregateConfigLoader::class, WebsiteConfigManager::class, BrandingLogoManager::class, SiteScriptConfig::class, WebsiteScopeCatalog::class] as $service) {
             $container->getDefinition($service)->setArgument('$projectDir', $this->temporaryDirectory);
         }
     }

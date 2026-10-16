@@ -6,6 +6,7 @@ Use this guide for application settings and runtime overrides. Run commands from
 
 - [Environment files](#environment-files)
 - [Application settings](#application-settings)
+- [Website groups](#website-groups)
 - [Website domains](#website-domains)
 - [Administration pages](#administration-pages)
 - [Feature flags](#feature-flags)
@@ -32,14 +33,15 @@ Configuration has separate sources of truth:
 - **`config/navigation.yaml`** (app-level, committed): Main navigation labels, icons, and link targets. Customize it in `config/navigation.local.yaml`.
 - **`config/quick_search.yaml`** (app-level, committed): Dashboard quick-search synonyms and extra entries. Customize it in `config/quick_search.local.yaml`.
 - **`config/websites.yaml`** (untracked): Website names, primary domains, allowed event-source domains, and public ingestion tokens, managed through the Websites page, YAML, or `app:create-website`.
-- **`config/tag-manager/sites/<site-id>.yaml`** (untracked): Per-website CMP settings, tags, triggers, and variables, managed through the Tag manager page or YAML. Run `app:tag-manager:sites` to list IDs and paths; see [Tag manager](TAG-MANAGER.md). Analytics collection settings and data models remain deployment-wide.
+- **`config/website-scopes.yaml`** and **`config/website-scopes/`** (untracked): Named website groups and the collection settings or data models that a group or one website overrides. A missing catalog means every website uses the deployment settings. See [Website groups](#website-groups).
+- **`config/tag-manager/sites/<site-id>.yaml`** (untracked): Per-website CMP settings, tags, triggers, and variables, managed through the Tag manager page or YAML. Run `app:tag-manager:sites` to list IDs and paths; see [Tag manager](TAG-MANAGER.md).
 - **`anonymous_min_cell_count` / `anonymous_geo_min_cell_count`** (deployment config): BI disclosure thresholds in `config/aggregate*.yaml`, managed through the BI disclosure dashboard form, YAML, or environment overrides, and applied with `app:analytics:bi-views:regenerate` (see [BI disclosure thresholds](#bi-disclosure-thresholds)).
 
 The database holds no operator settings: it stores collected events, archives, users and operational records. Tables such as `analytics_glossary` are generated copies of YAML for BI joins.
 
 ### When an edit takes effect
 
-Edits to `config/aggregate.yaml`, `config/websites.yaml` and the tag manager's site files take effect on the next request, whether they come from the dashboard, the command line or an editor. Aggregate reads these files on every request and keeps only the parsed result of an unchanged file in `var/cache/<environment>/parsed-yaml`, keyed by the file's exact contents, so there is no cache to clear after an edit. An edit that is not valid YAML, or not a valid configuration, stops collection until it is fixed rather than falling back to the previous settings.
+Edits to `config/aggregate.yaml`, `config/websites.yaml`, `config/website-scopes.yaml`, files under `config/website-scopes/` and the tag manager's site files take effect on the next request, whether they come from the dashboard, the command line or an editor. Aggregate reads the file a request needs and keeps only the parsed result of an unchanged file in `var/cache/<environment>/parsed-yaml`, keyed by the file's exact contents, so there is no cache to clear after an edit. A health check does not reread every website override on each poll: it notices a file that was added, removed, or whose size or modification time changed, and reads the overrides again only then. An edit that is not valid YAML, or not a valid configuration, stops collection for the websites that use it until it is fixed rather than falling back to the previous settings.
 
 A few settings are built into Symfony's compiled container or into SQL, and need a step after an edit:
 
@@ -120,6 +122,42 @@ page and `app:reporting-database:configure` test it and write it to
 MySQL and MariaDB version hints must include the patch component. See the
 [DBAL 4 upgrade notes](DATABASE.md#upgrade-to-doctrine-dbal-4) before updating an
 existing installation that uses a short version hint.
+
+## Website groups
+
+Collection settings and the data model can vary by registered website. The deployment configuration in `config/aggregate.yaml` is the base. A website group replaces the keys it sets for its members, and a website file replaces those keys again. The most specific setting wins. Environment variables still win for settings that have them, because they are read after this merge.
+
+A missing `config/website-scopes.yaml` means every website uses the deployment settings. Existing installations need no migration. An invalid catalog or setting file fails closed: collection for the affected websites stops instead of falling back to a broader setting the operator tried to replace. One website's invalid file does not stop collection for the others. Health reports the configuration as invalid until it is corrected, and a repeated check reads the override files again only after one is added, removed, or its size or modification time changes.
+
+The word "group" can be renamed, for example to Brand and Brands. That changes only the word in the dashboard and command output. Each group still has its own name, such as Amazon or Whole Foods. A website belongs to one group at most.
+
+Open **Website groups** (`/dashboard/website-groups`) to rename the word, add or rename groups, and choose which websites belong where. The same choices are available with the dashboard disabled:
+
+```bash
+php bin/console app:website-scopes label --singular=Brand --plural=Brands
+php bin/console app:website-scopes create-group --name=Amazon
+php bin/console app:website-scopes assign --token=WEBSITE_TOKEN --group=amazon
+php bin/console app:website-scopes list
+```
+
+Shared settings are separate YAML files, not database tables:
+
+- `config/website-scopes/groups/<id>.yaml` for a group
+- `config/website-scopes/websites/<site-id>.yaml` for one website
+
+On **Collection controls** and **Data model**, choose the deployment, a group, or a website. The page shows the settings in effect. Check a section to save it for that scope; leave it unchecked to keep the broader setting. Only collection controls and the data model can vary. Branding, retention, reporting views, users and the dashboard stay on the deployment.
+
+The approved `bi_anonymous_*` views and the private custom reporting views are still built from the deployment data model. A website or group model changes what that website collects. To add a new reporting column from those models, open the deployment data model and choose **Publish website and group columns**, or run `php bin/console app:website-scopes publish-model`, then regenerate views if they are not already current. Publishing does not change a column the deployment model already has, and it refuses two scopes that introduce the same new property with different columns.
+
+Copy `config/website-scopes.yaml.example` for the catalog shape. A group file contains only the keys it overrides, for example:
+
+```yaml
+collection_profile: strict
+anonymous_excluded_paths:
+  - /checkout/**
+```
+
+Already installed window snippets that load `/aggregate.js?min=1` without a token keep the deployment browser configuration until the snippet is refreshed. The server still applies the website's settings to events. New window and query snippets include the token, so the served tracker matches that website's profile, page depth and consent-mode settings. A tag-manager action that loads the tracker should use the website's tracker URL.
 
 ## Website domains
 
@@ -322,6 +360,12 @@ php bin/console app:analytics:bi-views:regenerate
 Environment overrides (`ANONYMOUS_MIN_CELL_COUNT`, `ANONYMOUS_GEO_MIN_CELL_COUNT`) take precedence over YAML. An invalid value stops regeneration and leaves the existing views in place. PostgreSQL, MySQL, MariaDB and SQL Server replace each view in place, so the reporting account's grants are kept; SQLite drops and recreates them and has no grants.
 
 `bi_page_groups` (no environment override) lists the [page groups](BI-CONNECTION.md#page-groups) used by `bi_anonymous_daily_v1` and `bi_anonymous_daily_rollup_v1`. It is managed on **Reporting → Page groups** or in YAML, and applied by the same regeneration.
+
+### Reporting timezone
+
+`reporting_timezone` (default `UTC`) is the IANA name compiled into the event views when they are regenerated. **Reporting → Reporting timezone**, YAML, and `app:analytics:reporting-timezone` share `ReportingTimezone` and `AnonymousBiViewManager`. `REPORTING_TIMEZONE` overrides the saved value. An invalid name, a MySQL or MariaDB server without time zone tables, or an IANA name SQL Server cannot map stops regeneration and leaves the existing views in place.
+
+The setting relabels `event_hour` and the event views' `event_day`. It does not change stored events, archives, goal days or geography days, which stay UTC. See [reporting timezone](BI-CONNECTION.md#reporting-timezone).
 
 **Upgrading from database-stored thresholds.** Earlier releases kept the thresholds in an `analytics_privacy_settings` table. The migration that removes it rebuilds the views with the values it found there, but it does not write them to YAML. If you had changed either threshold from its default, copy the values into `config/aggregate.yaml` before you next save the BI disclosure page or run the command; otherwise the views return to the YAML values (the defaults when unset).
 

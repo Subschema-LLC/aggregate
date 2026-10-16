@@ -10,6 +10,7 @@
     <h1 class="title">Data model</h1>
     <p class="subtitle">Define custom properties, campaign capture, consent requirements, and reporting columns. Download the saved model to share with your analytics implementation developers.</p>
     {{ component('Ui:DocsLink', {topic: 'data-model', label: 'Data model guide'}) }}
+    {% include 'partials/website_scope_switcher.html.twig' %}
 
     {% if configuration_error %}<div class="notification is-danger" role="alert">{{ configuration_error }}</div>{% endif %}
     {{ component('DataModel:Navigation', {current_model_page: 'app_data_model'}) }}
@@ -23,7 +24,8 @@
     {% if addition_error %}<div class="notification is-warning" role="alert">{{ addition_error }}</div>{% endif %}
     {% if builtin_focus %}<div class="notification is-info" role="status"><code>{{ builtin_focus }}</code> is built in. Tick it under <a href="#built-in-properties">Built-in properties</a> to give it a reporting column, then save.</div>{% endif %}
 
-    {% component 'Ui:Validation' with {action: path('app_data_model_save'), method: 'post', id: 'data-model-form'} %}
+    {% set model_scope = scope ? scope.value : 'deployment' %}
+    {% component 'Ui:Validation' with {action: path('app_data_model_save', model_scope == 'deployment' ? {} : {scope: model_scope}), method: 'post', id: 'data-model-form'} %}
     {% block content %}
         <input type="hidden" name="_csrf_token" value="{{ csrf_token('data_model_settings') }}">
 
@@ -209,13 +211,28 @@
             </section>
         </div>
 
+        {% if scope is defined and scope and scope.kind != 'deployment' %}
+            <label class="checkbox">
+                <input type="hidden" name="model_override" value="0">
+                <input type="checkbox" name="model_override" value="1"{% if 'custom_data_properties' in scope.overrides or 'query_parameter_mappings' in scope.overrides or 'page_sequence_enabled' in scope.overrides or 'page_sequence_method' in scope.overrides %} checked{% endif %}>
+                Save this data model for {{ scope.label }}
+            </label>
+            <p class="help">Unchecked keeps the broader model. Checked replaces it for this scope. Reporting views still use the deployment model until its columns are published from Every website.</p>
+        {% endif %}
         <div class="buttons mt-5">
             <button class="button is-primary" type="submit"{% if configuration_error %} disabled{% endif %}>Save model</button>
-            {% if not configuration_error %}<a class="button" href="{{ path('app_data_model_download') }}">Download saved YAML</a>{% endif %}
+            {% if not configuration_error and (scope is not defined or not scope or scope.kind == 'deployment') %}<a class="button" href="{{ path('app_data_model_download') }}">Download saved YAML</a>{% endif %}
         </div>
-        <p class="help mb-5">Saves only these model settings to the active environment in <code>config/aggregate.yaml</code> or its environment-specific file, then updates the private reporting views to match. Collection changes affect future requests; they do not erase existing data.</p>
+        <p class="help mb-5">{% if scope is defined and scope and scope.kind != 'deployment' %}A saved scope model changes collection on future events. It does not change reporting views or erase existing data.{% else %}Saves only these model settings to the active environment in <code>config/aggregate.yaml</code> or its environment-specific file, then updates the private reporting views to match. Collection changes affect future requests; they do not erase existing data.{% endif %}</p>
     {% endblock %}
     {% endcomponent %}
+    {% if can_publish|default(false) %}
+        <form class="box" method="post" action="{{ path('app_data_model_publish') }}">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token('data_model_settings') }}">
+            <button class="button is-light" type="submit">Publish website and group columns</button>
+            <p class="help">Copies new reporting columns from website and group models into this deployment model, without changing a column that is already here. Two scopes that introduce the same property with different columns are refused.</p>
+        </form>
+    {% endif %}
 
     <template id="property-row-template" data-pages--data-model--index-target="propertyTemplate">{{ component('DataModel:PropertyRow', {index: 'new', key: '', property: {}, open: true}) }}</template>
     <template id="mapping-row-template" data-pages--data-model--index-target="mappingTemplate">{{ component('DataModel:MappingRow', {index: 'new'}) }}</template>

@@ -7,14 +7,35 @@
 {% set retry_settings = tracking_retry_settings %}
 {% set retry_overrides = tracking_retry_environment_overrides %}
 <h1 class="title">Collection controls</h1>
-<p class="subtitle">Manage collection and local geography for this deployment.</p>
+<p class="subtitle">Manage collection and local geography{% if scope %} for {{ scope.label }}{% else %} for this deployment{% endif %}.</p>
 {{ component('Ui:DocsLink', {topic: 'privacy.controls', label: 'Collection controls in the privacy guide'}) }}
+{% include 'partials/website_scope_switcher.html.twig' %}
 <div class="columns is-centered">
 <div class="column is-9-desktop">
 <div class="box">
-<p class="mb-4">Save collection controls in <code>config/aggregate.yaml</code>, or edit the active YAML configuration directly. Server environment variables take precedence.</p>
+<p class="mb-4">{% if scope and scope.kind != 'deployment' %}The form shows the settings in effect. Check a section to save it for this scope; leave it unchecked to keep the broader setting. Environment variables still win.{% else %}Save collection controls in <code>config/aggregate.yaml</code>, or edit the active YAML configuration directly. Server environment variables take precedence.{% endif %}</p>
     <form action="{{ path('app_anonymous_settings_save') }}" method="post">
         <input type="hidden" name="_csrf_token" value="{{ csrf_token('anonymous_settings') }}">
+        <input type="hidden" name="scope" value="{{ scope ? scope.value : 'deployment' }}">
+        {% if scope and scope.kind != 'deployment' %}
+            <fieldset class="field">
+                <legend class="label">Save these sections for {{ scope.label }}</legend>
+                {% set section_saved = {
+                    profile: 'collection_profile' in scope.overrides,
+                    consent: 'google_consent_mode' in scope.overrides,
+                    bots: 'bot_traffic' in scope.overrides or 'bot_user_agents' in scope.overrides,
+                    tracking: 'anonymous_tracking_enabled' in scope.overrides or 'anonymous_excluded_paths' in scope.overrides,
+                    geography: 'anonymous_geo_enabled' in scope.overrides or 'anonymous_geo_level' in scope.overrides or 'anonymous_geo_database_path' in scope.overrides
+                } %}
+                {% for key, label in {profile: 'Collection profile', consent: 'Google Consent Mode', bots: 'Bot traffic', tracking: 'Collection switch and excluded paths', geography: 'Coarse geography'} %}
+                    <label class="checkbox mr-4">
+                        <input type="checkbox" name="override[]" value="{{ key }}"{% if section_saved[key] %} checked{% endif %}>
+                        {{ label }}
+                    </label>
+                {% endfor %}
+                <p class="help">Unchecked sections are removed from this scope and follow the broader setting.</p>
+            </fieldset>
+        {% endif %}
 
         <fieldset class="field" aria-describedby="collection-profile-help">
             <legend class="label">Collection profile</legend>
@@ -137,6 +158,7 @@
             <p class="help">Use a local absolute path (recommended) or a path inside the project root to a read-only GeoLite2-Country-compatible <code>.mmdb</code>. URI schemes, project-directory escapes, UNC/network shares, and Windows device paths are rejected. The application does not download a database or call a GeoIP web service.</p>
         </div>
 
+        {% if not scope or scope.kind == 'deployment' %}
         <hr>
         <h2 class="title is-5">Enhanced tracking retry</h2>
         <p class="mb-4">When an enhanced event cannot be stored, Aggregate records a failed task and keeps the message in Messenger&apos;s failed transport for retry.</p>
@@ -171,6 +193,9 @@
                 <span>Retry failed tracking messages now</span>
             </button>
         </div>
+        {% else %}
+            <p class="help">Tracking retries stay with the deployment. Open Every website to change them.</p>
+        {% endif %}
 
         <div class="field">
             <div class="control">

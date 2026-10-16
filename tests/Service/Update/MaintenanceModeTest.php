@@ -158,6 +158,7 @@ final class MaintenanceModeTest extends TestCase
         self::assertSame(UpdatePaths::PROTECTED, $patterns[1]);
 
         foreach (['.env.local', '.env.prod.local', 'config/aggregate.yaml', 'config/aggregate_prod.yaml', 'config/websites.yaml',
+            'config/website-scopes.yaml', 'config/website-scopes/groups/amazon.yaml', 'config/website-scopes/websites/abc.yaml',
             'config/goals.local.yaml', 'config/tag-manager/sites/a.yaml', 'var/data.db', 'var/branding/logo.png'] as $path) {
             self::assertTrue(UpdatePaths::isProtected($path), $path);
         }

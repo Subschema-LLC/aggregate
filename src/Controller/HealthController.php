@@ -4,6 +4,7 @@ namespace App\Controller;
 
 use App\Service\AggregateConfigLoader;
 use App\Service\CustomDataSettings;
+use App\Service\WebsiteScopeCatalog;
 use Doctrine\DBAL\Connection;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
@@ -14,6 +15,7 @@ class HealthController
     public function __construct(
         private readonly Connection $connection,
         private readonly AggregateConfigLoader $config,
+        private readonly ?WebsiteScopeCatalog $scopes = null,
     ) {}
 
     #[Route('/api/health', name: 'api_health', methods: ['GET'])]
@@ -35,6 +37,9 @@ class HealthController
             // The tracker and ingestion also depend on a valid custom-data
             // model, even when an event submits no custom properties.
             (new CustomDataSettings($this->config))->toArray();
+            if ($this->scopes?->hasInvalidOverlay()) {
+                throw new \RuntimeException('Website or group configuration is invalid.');
+            }
             $checks['configuration'] = ['status' => 'ok'];
         } catch (\Throwable) {
             $checks['configuration'] = [

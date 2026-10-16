@@ -12,6 +12,11 @@ class AggregateConfigLoader implements ResetInterface
     private bool $loadFailed = false;
     private readonly ParsedYamlCache $parsedYaml;
 
+    /** @var list<array<string, mixed>>|null */
+    private ?array $scopeLayers = null;
+    private bool $scopeInvalid = false;
+    private bool $scopeView = false;
+
     public function __construct(
         private readonly string $projectDir,
         private readonly string $environment,
@@ -22,6 +27,32 @@ class AggregateConfigLoader implements ResetInterface
             throw new \InvalidArgumentException('Configuration names must use safe relative path components.');
         }
         $this->parsedYaml = $parsedYaml ?? ParsedYamlCache::forProject($projectDir, $environment);
+    }
+
+    /**
+     * A read-only view of this deployment configuration with narrower layers
+     * applied last. The view never writes the deployment file.
+     *
+     * @param list<array<string, mixed>> $layers
+     */
+    public function withScope(array $layers, bool $invalid = false): self
+    {
+        $view = clone $this;
+        $view->scopeLayers = array_values($layers);
+        $view->scopeInvalid = $invalid;
+        $view->scopeView = true;
+
+        return $view;
+    }
+
+    public function isScopeView(): bool
+    {
+        return $this->scopeView;
+    }
+
+    public function isScopeInvalid(): bool
+    {
+        return $this->scopeInvalid;
     }
 
     private function load(): void
@@ -128,7 +159,7 @@ class AggregateConfigLoader implements ResetInterface
     {
         $this->load();
 
-        return $this->loadFailed || !$this->hasValidIngestionPrivacySettings();
+        return $this->loadFailed || $this->scopeInvalid || !$this->hasValidIngestionPrivacySettings();
     }
 
     public function assertHealthy(): void
@@ -140,20 +171,43 @@ class AggregateConfigLoader implements ResetInterface
 
     public function get(string $key, mixed $default = null): mixed
     {
+        if ($this->scopeLayers !== null) {
+            for ($index = count($this->scopeLayers) - 1; $index >= 0; --$index) {
+                if (array_key_exists($key, $this->scopeLayers[$index])) {
+                    return $this->scopeLayers[$index][$key];
+                }
+            }
+        }
         $this->load();
+
         return $this->config[$key] ?? $default;
     }
 
     public function has(string $key): bool
     {
+        if ($this->scopeLayers !== null) {
+            foreach ($this->scopeLayers as $layer) {
+                if (array_key_exists($key, $layer)) {
+                    return true;
+                }
+            }
+        }
         $this->load();
+
         return isset($this->config[$key]);
     }
 
     public function all(): array
     {
         $this->load();
-        return $this->config;
+        $merged = $this->config;
+        foreach ($this->scopeLayers ?? [] as $layer) {
+            foreach ($layer as $key => $value) {
+                $merged[$key] = $value;
+            }
+        }
+
+        return $merged;
     }
 
     /**
@@ -196,6 +250,9 @@ class AggregateConfigLoader implements ResetInterface
      */
     public function updateMany(callable $updater): void
     {
+        if ($this->scopeView) {
+            throw new \RuntimeException('Website and group settings are saved to their own files, not the deployment configuration.');
+        }
         $this->load();
         $this->assertHealthy();
 
