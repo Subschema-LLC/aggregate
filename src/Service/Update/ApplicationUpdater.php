@@ -450,7 +450,7 @@ class ApplicationUpdater
         }
         $directory = $this->journal->ensureDirectory('uploads').'/'.bin2hex(random_bytes(8));
         if (!@mkdir($directory, 0775) && !is_dir($directory)) {
-            throw new \RuntimeException('The upload could not be saved. Check write access to var/updates.');
+            throw new \RuntimeException('The upload could not be saved: '.FileOwner::explain($directory, $this->projectDir));
         }
         $paths = [];
         $canonical = ['package' => 'aggregate-package.zip', 'manifest' => 'aggregate-release.json', 'signature' => 'aggregate-release.json.sig'];
@@ -652,7 +652,7 @@ class ApplicationUpdater
         }
         $directory = $this->projectDir.'/'.$state['backup'];
         if (!is_dir($directory) && !@mkdir($directory, 0775, true) && !is_dir($directory)) {
-            throw new \RuntimeException('The backup directory could not be created. Check write access to var/updates.');
+            throw new \RuntimeException('The backup directory could not be created: '.FileOwner::explain($directory, $this->projectDir));
         }
         $target = $directory.'/database.sqlite';
         if (!is_file($target)) {
