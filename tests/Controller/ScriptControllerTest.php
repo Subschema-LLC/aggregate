@@ -70,7 +70,8 @@ final class ScriptControllerTest extends TestCase
 
     public function testJavaScriptSensitiveConfigurationIsEncodedWithoutReplacementExpansion(): void
     {
-        $namespace = "Company\n'</script>\"\\$1";
+        // A valid name can still look like a replacement reference.
+        $namespace = 'Company$1';
         $markerValue = "staff'</script>\"&\\$1";
         $script = (string) $this->response([
             'js_namespace' => $namespace,
@@ -80,6 +81,12 @@ final class ScriptControllerTest extends TestCase
         self::assertSame($markerValue, $this->browserConfig($script)['value']);
         self::assertSame(1, preg_match('/var namespace = (.*);/', $script, $matches));
         self::assertSame($namespace, json_decode($matches[1], true, flags: JSON_THROW_ON_ERROR));
+        self::assertStringNotContainsString('</script>', $script);
+
+        // Anything else is not served: the tracker installs as Aggregate, as the snippets and tag manager expect.
+        $script = (string) $this->response(['js_namespace' => "Company\n'</script>\"\\$1"])->getContent();
+        self::assertSame(1, preg_match('/var namespace = (.*);/', $script, $matches));
+        self::assertSame('Aggregate', json_decode($matches[1], true, flags: JSON_THROW_ON_ERROR));
         self::assertStringNotContainsString('</script>', $script);
         self::assertStringNotContainsString("Company\n", $script);
     }
@@ -171,7 +178,7 @@ final class ScriptControllerTest extends TestCase
     {
         $directory = $this->buildFixture();
         $settings = [
-            'js_namespace' => "Company'</script>\n\\$1",
+            'js_namespace' => 'Company$1',
             'internal_traffic_name' => 'companyStaff',
             'internal_traffic_value' => "staff'</script>&\\$1",
             'internal_traffic_share_token' => str_repeat('secret-', 8),

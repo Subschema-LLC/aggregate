@@ -6,6 +6,7 @@ use App\Service\AggregateConfigLoader;
 use App\Service\BrowserScriptCache;
 use App\Service\DocumentationLinks;
 use App\Service\TrackerBuilds;
+use App\Service\TrackerNamespace;
 use App\Service\TrackerScript;
 use App\Service\TrackingAttributes;
 use App\Service\WebsiteActivityService;
@@ -39,8 +40,10 @@ class ApplicationSettingsController extends AbstractController
 
         return $this->renderDashboardPage('settings/application.html.twig', [
             'app_host' => $this->config->getWithEnvFallback('app_host', 'http://localhost:8000'),
-            'js_namespace' => $this->config->getWithEnvFallback('js_namespace', 'Aggregate'),
-            'tracking_attributes' => TrackingAttributes::names($this->config->getWithEnvFallback('js_namespace', 'Aggregate')),
+            'js_namespace' => TrackerNamespace::of($this->config),
+            'js_namespace_ignored' => TrackerNamespace::ignored($this->config),
+            'js_namespace_pattern' => TrackerNamespace::PATTERN,
+            'tracking_attributes' => TrackingAttributes::names(TrackerNamespace::of($this->config)),
             'rate_limit' => $this->config->getWithEnvFallback('rate_limit_per_minute', 100),
             'website_activity_active_days' => (int) $this->config->getWithEnvFallback('website_activity_active_days', 1),
             'website_activity_stale_days' => (int) $this->config->getWithEnvFallback('website_activity_stale_days', 3),
@@ -107,6 +110,10 @@ class ApplicationSettingsController extends AbstractController
 
         if (empty($appHost)) {
             $this->addFlash('error', 'App Host is required.');
+            return $this->redirectToRoute('app_application_settings');
+        }
+        if (!TrackerNamespace::valid($jsNamespace)) {
+            $this->addFlash('error', TrackerNamespace::RULE);
             return $this->redirectToRoute('app_application_settings');
         }
 

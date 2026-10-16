@@ -282,7 +282,7 @@ environments:
 - `brand_text_color`: Main application text color (default: `#363636`)
 - `brand_font_family`: Safe comma-separated local/system font stack for application text (default: `system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif`)
 - `brand_heading_font_family`: Safe comma-separated local/system font stack for headings (default: `system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif`)
-- `js_namespace`: JavaScript global variable name (default: `Aggregate`)
+- `js_namespace`: JavaScript global variable name (default: `Aggregate`). Letters, digits, `_` and `$`, not starting with a digit, up to 64 characters; any other value is ignored and `Aggregate` is used. See [Customizing the JavaScript namespace](#customizing-the-javascript-namespace)
 - `tracker_omit_unused_features`: Send a smaller `/aggregate.js?min=1` without the code for features these settings turn off: page depth while it is off, and what only the standard profile uses while the strict profile is on (default: `true`; `TRACKER_OMIT_UNUSED_FEATURES` environment override). Also on **General settings → Page speed**. See [page speed](PAGE-SPEED.md#leave-out-unused-tracker-features)
 - `updates_method`: `release` (signed release ZIPs, recommended), `repository` (Git clone pulls, advanced) or `deployment` (deployed another way, such as a hosting panel's Git deployment or CI/CD); unset until an administrator chooses on the Updates page, with `app:updates:method`, or here. See [the update guide](UPDATES.md#choose-an-update-method)
 - `updates_branch`: GitHub branch used by repository pulls, packaged-release checks and comparisons of deployed commits (default: `master`); also editable on the Updates page, with active-environment precedence
@@ -714,11 +714,18 @@ the site and hides it when documentation links are off. Topics are listed in
 
 ## Customizing the JavaScript Namespace
 
-Set `js_namespace` in `config/aggregate.yaml` (or via the web installer):
+Set `js_namespace` in `config/aggregate.yaml`, in the web installer or under
+**General settings**:
 
 ```yaml
 js_namespace: "Company1Analytics"
 ```
+
+It must be a plain JavaScript name: letters, digits, `_` and `$`, not starting
+with a digit, up to 64 characters. The installer and the settings page refuse
+anything else. An invalid value set another way, in the YAML or with
+`JS_NAMESPACE`, is ignored, and the tracker, snippets, examples and tag manager use `Aggregate`
+until it is corrected; the settings page says when that happens.
 
 Or override per-script tag:
 

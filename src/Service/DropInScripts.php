@@ -38,7 +38,7 @@ final class DropInScripts
         $host = $this->host();
         $script = '';
         if (!$withTags && $format === 'window') {
-            $namespace = $this->json($this->namespace());
+            $namespace = $this->json(TrackerNamespace::of($this->config));
             $configuration = $this->json(['endpoint' => $host.'/api/receive', 'websiteToken' => $token, 'consent' => false]);
             $script = "<script>\n  window[".$namespace."] = ".$configuration.";\n</script>\n";
         }
@@ -121,7 +121,7 @@ final class DropInScripts
             throw new \RuntimeException('Consent script configuration declaration is invalid.');
         }
         $configuration = $this->json([
-            'namespace' => $this->namespace(), 'name' => $consent['name'],
+            'namespace' => TrackerNamespace::of($this->config), 'name' => $consent['name'],
             'categories' => ConsentCategories::builtin($this->tags?->consentCategories($siteId) ?? ['analytics'], $consent),
         ] + ($siteId === null ? [] : ['siteId' => $siteId])
             + (($consent['privacy_policy_url'] ?? '') !== '' ? ['privacyPolicyUrl' => $consent['privacy_policy_url']] : [])
@@ -164,7 +164,7 @@ final class DropInScripts
         $this->config->assertHealthy();
         $configuration = $this->standalone?->browserConfig($siteId)
             ?? throw new \RuntimeException('Standalone consent settings are unavailable.');
-        $configuration['aggregateNamespace'] = $this->namespace();
+        $configuration['aggregateNamespace'] = TrackerNamespace::of($this->config);
         $directory = $this->projectDir.'/micro-consent-dropins';
         $source = @file_get_contents($directory.'/js/consent-ui.js');
         $adapter = @file_get_contents($directory.'/js/aggregate-consent.js');
@@ -204,15 +204,6 @@ final class DropInScripts
         return $this->compactor ?? new BrowserScriptCompactor();
     }
 
-    private function namespace(): string
-    {
-        $namespace = $this->config->getWithEnvFallback('js_namespace', 'Aggregate');
-        if (!is_string($namespace) || $namespace === '') {
-            throw new \RuntimeException('The tracker namespace is invalid.');
-        }
-
-        return $namespace;
-    }
 
     private function host(): string
     {

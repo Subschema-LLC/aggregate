@@ -4,6 +4,7 @@ namespace App\Controller;
 
 use App\Service\AggregateConfigLoader;
 use App\Service\DropInScripts;
+use App\Service\TrackerNamespace;
 use App\Service\TrackingAttributes;
 use App\Service\WebsiteActivityService;
 use App\Service\WebsiteConfigManager;
@@ -84,8 +85,8 @@ class WebsitesController extends AbstractController
             'snippet_format' => $format,
             'include_tags' => $withTags,
             'include_cmp' => $includeCmp,
-            'js_namespace' => $this->config->getWithEnvFallback('js_namespace', 'Aggregate'),
-            'tracking_attributes' => TrackingAttributes::names($this->config->getWithEnvFallback('js_namespace', 'Aggregate')),
+            'js_namespace' => TrackerNamespace::of($this->config),
+            'tracking_attributes' => TrackingAttributes::names(TrackerNamespace::of($this->config)),
         ]);
     }
 

@@ -56,7 +56,7 @@ final class TrackerScript
         $customData = $this->customData->toBrowserConfig();
         $jsonFlags = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR;
         $values = array_combine(self::PLACEHOLDERS, [
-            json_encode($this->config->getWithEnvFallback('js_namespace', 'Aggregate'), $jsonFlags),
+            json_encode(TrackerNamespace::of($this->config), $jsonFlags),
             json_encode($this->internalTraffic->toBrowserConfig(), $jsonFlags),
             json_encode($customData, $jsonFlags),
             json_encode($collection, $jsonFlags),
