@@ -302,6 +302,14 @@ environments:
 
 The two BI disclosure thresholds, `anonymous_min_cell_count` (default `5`) and `anonymous_geo_min_cell_count` (default `25`), can also be set in this file. Saving them on the BI disclosure page applies them to the reporting views; after editing the YAML directly, run `php bin/console app:analytics:bi-views:regenerate` (in a scheduled task if you have no SSH access).
 
+A reporting timezone other than `UTC` needs MySQL or MariaDB time zone tables. On the server, as root:
+
+```bash
+mysql_tzinfo_to_sql /usr/share/zoneinfo | mysql -u admin -p"$(cat /etc/psa/.psa.shadow)" mysql
+```
+
+Use `mariadb-tzinfo-to-sql` and `mariadb` when those are the installed names. Then run `app:analytics:bi-views:regenerate`. `php bin/console app:analytics:mysql-timezones:load` does both when it can read the Plesk admin password. See [reporting timezone](docs/BI-CONNECTION.md#reporting-timezone).
+
 Optional coarse geography requires a locally managed GeoLite2-Country-compatible MMDB. Keep it on the local filesystem outside the document root, for example `/var/www/vhosts/your-domain.com/private/GeoLite2-Country.mmdb`, and make it read-only but readable by the domain's PHP process. Direct UNC/network-share and Windows device paths are rejected. Aggregate never downloads the file or calls a GeoIP web service. After installing it, set `anonymous_geo_enabled: true` and its absolute path above. Missing/unreadable/invalid databases leave `geo_area` empty without stopping ingestion.
 
 If the Plesk proxy chain does not already preserve the client address as `REMOTE_ADDR`, ask the server administrator for the exact proxy IPs/CIDRs and set them as a comma-separated `TRUSTED_PROXIES` value in `.env`. Confirm that each trusted proxy strips or overwrites client-supplied `X-Forwarded-*` headers. Never trust `0.0.0.0/0`, `::/0`, the Symfony `REMOTE_ADDR` shortcut, or an address range that untrusted clients can reach directly. An unset or incorrect trust boundary yields proxy/empty geography; an overly broad or unsanitized one permits forwarded-IP spoofing.

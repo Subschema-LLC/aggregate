@@ -364,7 +364,7 @@ Environment overrides (`ANONYMOUS_MIN_CELL_COUNT`, `ANONYMOUS_GEO_MIN_CELL_COUNT
 
 ### Reporting timezone
 
-`reporting_timezone` (default `UTC`) is the IANA name compiled into the event views when they are regenerated. **Reporting → Reporting timezone**, YAML, and `app:analytics:reporting-timezone` share `ReportingTimezone` and `AnonymousBiViewManager`. `REPORTING_TIMEZONE` overrides the saved value. An invalid name, a MySQL or MariaDB server without time zone tables, or an IANA name SQL Server cannot map stops regeneration and leaves the existing views in place.
+`reporting_timezone` (default `UTC`) is the IANA name compiled into the event views when they are regenerated. **Reporting → Reporting timezone**, YAML, and `app:analytics:reporting-timezone` share `ReportingTimezone` and `AnonymousBiViewManager`. `REPORTING_TIMEZONE` overrides the saved value. An invalid name, a MySQL or MariaDB server without time zone tables, or an IANA name SQL Server cannot map stops regeneration and leaves the existing views in place. Load MySQL or MariaDB time zone tables with the one command in [reporting timezone](BI-CONNECTION.md#reporting-timezone), or `php bin/console app:analytics:mysql-timezones:load` when this server can administer the database.
 
 The setting relabels `event_hour` and the event views' `event_day`. It does not change stored events, archives, goal days or geography days, which stay UTC. See [reporting timezone](BI-CONNECTION.md#reporting-timezone).
 

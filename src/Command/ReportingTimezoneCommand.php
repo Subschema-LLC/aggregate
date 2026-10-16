@@ -39,7 +39,9 @@ The reporting timezone is stored as reporting_timezone in the active aggregate
 YAML. REPORTING_TIMEZONE takes precedence. Setting it regenerates the event
 views so event_hour and the daily event_day use that zone. Goal and geography
 views stay on UTC days. An invalid name, a MySQL server without time zone
-tables, or a name SQL Server cannot map does not change the views.
+tables, or a name SQL Server cannot map does not change the views. Load MySQL
+or MariaDB tables with app:analytics:mysql-timezones:load, or the command that
+failure prints.
 
 {$this->guide()}
 HELP);
