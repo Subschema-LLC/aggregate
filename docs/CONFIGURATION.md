@@ -113,8 +113,9 @@ in passwords as usual (`@` as `%40`). A release ZIP's browser setup page writes
 `.env.local` with the encoded connection and detected version for you.
 
 The optional `REPORTING_DATABASE_URL` uses the same formats for a second
-database that receives copies of the reporting views; see
-[Reporting database](#reporting-database).
+database that receives copies of the reporting views. The Reporting database
+page and `app:reporting-database:configure` test it and write it to
+`.env.local`; see [Reporting database](#reporting-database).
 
 MySQL and MariaDB version hints must include the patch component. See the
 [DBAL 4 upgrade notes](DATABASE.md#upgrade-to-doctrine-dbal-4) before updating an
@@ -392,7 +393,7 @@ An optional [JavaScript minification build](JS-BUILD.md) produces the tracker an
 
 Administrators can edit the nine lifecycle settings at `/dashboard/data-lifecycle`: the seven `analytics_*` settings below and the two record retention periods. API-only deployments can manage the same keys in `config/aggregate.yaml`. Uppercase environment variables (for example, `ANALYTICS_RETENTION_ENABLED`) take precedence and lock the corresponding UI controls. Values are validated strictly. When archiving and retention are both enabled, each raw retention period must be at least `analytics_archive_after_days`. Whenever retention is enabled, archive retention must be at least the longer raw retention period so marked source rows cannot disappear from reporting early.
 
-Run maintenance outside the web process, normally once per day. Both features are disabled by default; inspect a dry run before enabling irreversible deletion:
+Maintenance runs outside the web process, once a day, from the server's one [scheduled task](SCHEDULED-TASKS.md) (`app:scheduler:run`, every five minutes). Both features are disabled by default; inspect a dry run before enabling irreversible deletion:
 
 When retention is enabled without archiving, eligible raw rows are deleted without first preserving aggregate history.
 
@@ -416,8 +417,8 @@ and status pages still know when it last ran.
 | `processing_tasks_retention_days` | `PROCESSING_TASKS_RETENTION_DAYS` | `90` | `0`–`36500` |
 | `audit_trail_retention_days` | `AUDIT_TRAIL_RETENTION_DAYS` | `365` | `0`–`36500` |
 
-Purging is on by default, so schedule `app:analytics:maintain` daily even when
-archiving and retention are off. Its dry run shows how many records would be
+Purging is on by default, so set up the [scheduled task](SCHEDULED-TASKS.md)
+even when archiving and retention are off. Its dry run shows how many records would be
 purged, and each run records what it archived, deleted and purged.
 
 ## BigQuery sync
@@ -425,8 +426,8 @@ purged, and each run records what it archived, deleted and purged.
 **Reporting → BigQuery sync** at `/dashboard/bigquery` copies selected reporting
 views to a BigQuery dataset on an interval. The `bigquery_*` keys in the active
 YAML environment hold the same settings, with uppercase environment-variable
-overrides that lock the matching fields; `app:bigquery:sync` (scheduled every five
-minutes) and `app:bigquery:check` work with the dashboard disabled. Approved views
+overrides that lock the matching fields; the [scheduled task](SCHEDULED-TASKS.md),
+`app:bigquery:sync` and `app:bigquery:check` work with the dashboard disabled. Approved views
 are selected under `bigquery_views`; row-level or unsuppressed views must be
 listed separately under `bigquery_private_views`. Credentials are stored in
 `config/secrets`. Signing in with Google needs the dashboard; headless
@@ -441,16 +442,18 @@ selected reporting views into same-named tables of a second database on an
 interval, so BI users can connect there instead of to the application database.
 The `reporting_database_*` keys in the active YAML environment hold the
 settings, with uppercase environment-variable overrides that lock the matching
-fields; `app:reporting-database:sync` (scheduled every five minutes) and
-`app:reporting-database:check` work with the dashboard disabled. Approved views
+fields; the [scheduled task](SCHEDULED-TASKS.md), `app:reporting-database:sync`
+and `app:reporting-database:check` work with the dashboard disabled. Approved views
 are selected under `reporting_database_views`; row-level or unsuppressed views
 must be listed separately under `reporting_database_private_views`.
 
 The connection is the documented exception to keeping settings in YAML:
 `REPORTING_DATABASE_URL` is infrastructure, like `DATABASE_URL`, and holds a
-password, so it is set in `.env.local` or the server environment and has no YAML
-key or dashboard field. The admin page shows only the engine, server and
-database name. See [Reporting database](REPORTING-DATABASE.md) for the database
+password, so it lives in `.env.local` or the server environment and has no YAML
+key. The admin page and `app:reporting-database:configure` test a connection
+and write it to `.env.local`, as the setup page does for `DATABASE_URL`; they
+never show the password back. A value set in the server environment or a file
+that overrides `.env.local` is left alone, and the page says where to change it. See [Reporting database](REPORTING-DATABASE.md) for the database
 setup on each engine, every setting, column types and privacy notes.
 
 ## Main navigation
@@ -575,7 +578,9 @@ administration. Each settings page loads the data needed for its own task.
 | Observed properties | `/dashboard/data-model/discovery` | Explicit bounded metadata discovery |
 | Reporting views | `/dashboard/data-model/reporting` | Saved SQL preview and explicit regeneration |
 | BigQuery sync | `/dashboard/bigquery` | Sign-in, views, schedule and status of the BigQuery copy |
+| Reporting database | `/dashboard/reporting-database` | Connection (tested, saved to `.env.local`), views, schedule and status of the reporting database copy |
 | Data lifecycle | `/dashboard/data-lifecycle` | Archiving, retention, task and audit record purging, and the last maintenance run |
+| Scheduled tasks | `/dashboard/scheduled-tasks` | Whether the server runs `app:scheduler:run`, the exact Plesk, cron or systemd settings for this server, each job's last and next run, and **Run due jobs now** ([guide](SCHEDULED-TASKS.md)) |
 
 Settings, users, and model pages require an administrator. Existing POST paths
 remain available and return to the page that owns the form. The general-settings

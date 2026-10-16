@@ -79,7 +79,37 @@ and use **Setup** in the dashboard to register your first website and copy
 its tracking code.
 
 `SETUP-CODE.txt` is deleted when the administrator is created. No background
-worker or scheduled task is needed: events are recorded as they arrive.
+worker is needed: events are recorded as they arrive. One scheduled task runs
+maintenance and the optional syncs; add it next.
+
+### 6. Add the scheduled task
+
+Maintenance purges old task and audit records (on by default), and archives or
+deletes analytics data when you turn those on. The BigQuery and reporting
+database syncs run from the same task. In the dashboard, open
+**Administration → Scheduled tasks**: it shows the values below for your
+server, with copy buttons.
+
+1. In **Websites & Domains**, open **Scheduled Tasks** for the subscription and
+   click **Add Task**.
+2. Fill in:
+
+   | Field | Value |
+   | --- | --- |
+   | Task type | **Run a PHP script** |
+   | Script path | The site's folder followed by `bin/console`, for example `analytics.example.com/bin/console`, or `httpdocs/bin/console` when Aggregate is in `httpdocs` |
+   | Use PHP version | The site's PHP version |
+   | Arguments | `app:scheduler:run` |
+   | Run | **Cron style**, `*/5 * * * *` |
+   | Notify | **Errors only** |
+
+3. Click **OK**, then **Run Now** next to the task. The Scheduled tasks page
+   shows **Working**.
+
+Choose **Run a PHP script**, not **Run a command**: Plesk runs commands in a
+restricted environment without PHP or the `/var/www/vhosts/…` path, so a
+command such as `cd /var/www/vhosts/example.com/httpdocs && php bin/console …`
+fails with "No such file or directory". See [Scheduled tasks](docs/SCHEDULED-TASKS.md#plesk).
 
 ### Keep it running
 
@@ -87,14 +117,12 @@ worker or scheduled task is needed: events are recorded as they arrive.
   your configuration and data. See the [update guide](docs/UPDATES.md).
 - **Backups:** include the site's files (at least `.env.local`, `config/` and
   `var/`) and the database, for example with Plesk's **Backup Manager**.
-- **Maintenance:** add a daily Plesk **Scheduled Task** that runs
-  `php bin/console app:analytics:maintain --no-interaction` in the site's folder.
-  It purges old task and audit records, and archives or deletes analytics data
-  when those are turned on. See
-  [archiving and retention](docs/CONFIGURATION.md#archiving-and-retention).
-- **BigQuery sync (optional):** add a Plesk **Scheduled Task** that runs
-  `php bin/console app:bigquery:sync --no-interaction` in the site's folder every
-  five minutes. See [Sync to BigQuery](docs/BIGQUERY.md#schedule-the-sync).
+- **Scheduled task:** the one task from [step 6](#6-add-the-scheduled-task)
+  runs maintenance daily and, when you turn them on,
+  [BigQuery sync](docs/BIGQUERY.md) and the
+  [reporting database](docs/REPORTING-DATABASE.md) sync. **Administration →
+  Scheduled tasks** shows whether it runs. If you added separate tasks for
+  `app:analytics:maintain` or a sync command before, delete them.
 - **Do not also deploy with Plesk Git** into the same folder: its deployments
   would overwrite installed updates.
 
@@ -110,6 +138,8 @@ worker or scheduled task is needed: events are recorded as they arrive.
 | "PHP cannot write to …" | The files do not belong to the site's system user, for example after uploading over FTP as another account. Upload and extract them with the site's **Files**, or ask your provider to fix the owner. |
 | The database check fails | Open **Technical details** under the message. Check the name, user and password from **Databases**; the server is usually `localhost`. MariaDB older than 10.6 is not supported: choose SQLite or ask your provider about an upgrade. |
 | You want to start over | Delete `.env.local` (and `var/data.db` if you chose SQLite) in **Files**, then reload the site. |
+| A scheduled task fails with `cd: /var/www/vhosts/…: No such file or directory` or `php: command not found` | It is a **Run a command** task. Change it to **Run a PHP script** as in [step 6](#6-add-the-scheduled-task). |
+| **Scheduled tasks** says **Not set up** or **Late** | Click **Run Now** next to the task in Plesk and check its output. See [Scheduled tasks troubleshooting](docs/SCHEDULED-TASKS.md#troubleshooting). |
 
 #### nginx without Apache
 
@@ -312,6 +342,14 @@ CLI alternative for admin creation:
 /opt/plesk/php/8.3/bin/php bin/console app:install
 ```
 
+### 10. Add the scheduled task
+
+Add the one scheduled task for maintenance and the syncs as in
+[step 6 of the ZIP install](#6-add-the-scheduled-task): a **Run a PHP script**
+task for `bin/console` with the argument `app:scheduler:run`, every five
+minutes. `/opt/plesk/php/8.3/bin/php bin/console app:scheduler:status` shows the
+values for this server and whether the task runs.
+
 ---
 
 ## Background Worker Setup
@@ -321,13 +359,20 @@ If `MESSENGER_TRANSPORT_DSN=sync://`, skip this section.
 
 ### Option A: Plesk Scheduled Tasks (Simplest)
 
-1. Go to **Tools & Settings** > **Scheduled Tasks** (or per-domain: **Domains** > **your-domain.com** > **Scheduled Tasks**)
-2. Add new task:
-   - **Command**: `cd /var/www/vhosts/your-domain.com/analytics && /opt/plesk/php/8.3/bin/php bin/console messenger:consume async --time-limit=3600`
-   - **Run**: Every hour
-   - **Run as**: Your domain user (e.g. `aggregate_admin`)
+1. In **Websites & Domains**, open **Scheduled Tasks** for the subscription and
+   click **Add Task**.
+2. Fill in:
+   - **Task type**: **Run a PHP script** (not **Run a command**, which runs
+     without PHP in a restricted environment; see
+     [Scheduled tasks](docs/SCHEDULED-TASKS.md#plesk))
+   - **Script path**: `analytics/bin/console` (the site's folder, relative to
+     the subscription)
+   - **Use PHP version**: the site's PHP version
+   - **Arguments**: `messenger:consume async --time-limit=3600`
+   - **Run**: Hourly
 
-This restarts the worker every hour. Suitable for low-to-medium traffic.
+This restarts the worker every hour. Suitable for low-to-medium traffic. It is
+separate from the [scheduled task for maintenance and the syncs](#10-add-the-scheduled-task).
 
 ### Option B: systemd (Recommended for Production)
 
@@ -608,6 +653,7 @@ Before going live:
 - [ ] Assets compiled (`asset-map:compile`; release ZIPs include them)
 - [ ] Background worker running (async mode only)
 - [ ] Setup page and `/install` completed
+- [ ] Scheduled task for `app:scheduler:run` added; **Administration → Scheduled tasks** shows **Working**
 - [ ] Test event successfully tracked (`curl /api/health`)
 - [ ] File permissions correct
 - [ ] Backups configured

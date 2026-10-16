@@ -458,7 +458,7 @@ The [reporting database](REPORTING-DATABASE.md) sync is off by default. When an 
 - Only views can be copied, never raw tables. The approved `bi_anonymous_*`, `bi_dim_*_v1` and glossary views carry their suppression into the copy; the same rules about joining views and threshold limits apply there.
 - Row-level `analytics_custom_*` views and unsuppressed `analytics_archived_*` views must each be listed under `reporting_database_private_views`, and the admin page requires a confirmation before saving them. Protect a reporting database that holds them as you would the application database.
 - Each sync replaces the tables, so deletions and threshold changes in Aggregate reach the copy at the next sync. Tables of views that are no longer copied, and the reporting database's own backups, stay until deleted. Include them in your retention and rights-request procedures.
-- The connection, `REPORTING_DATABASE_URL`, is kept in the server environment and never shown or logged. Error messages name views, columns and SQL states, never a rejected value.
+- The connection, `REPORTING_DATABASE_URL`, is kept in `.env.local` or the server environment, like `DATABASE_URL`. The admin page and `app:reporting-database:configure` write it to `.env.local` after a successful test; its password is never shown, logged or kept in the session. Error messages name views, columns and SQL states, never a rejected value.
 
 ## Administrative controls
 

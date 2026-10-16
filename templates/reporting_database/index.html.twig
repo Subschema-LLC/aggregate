@@ -30,7 +30,7 @@
         <p>Each sync replaces a table with the current contents of its view in one step, so BI users always read a complete copy as of the last sync. Deletions and suppression in Aggregate carry over at the next sync.</p>
         {% if status.scheduler_late %}
             <div class="notification is-warning is-light mt-3" role="status">
-                <p><strong>The scheduled sync is not running.</strong> {% if status.last_run %}The last view sync started {{ status.last_run|date('Y-m-d H:i', 'UTC') }} UTC.{% else %}No view has been copied yet.{% endif %} Add this line to the web server user’s crontab:</p>
+                <p><strong>The scheduled sync is not running.</strong> {% if status.last_run %}The last view sync started {{ status.last_run|date('Y-m-d H:i', 'UTC') }} UTC.{% else %}No view has been copied yet.{% endif %} Set up the server’s scheduled task: <a href="{{ path('app_scheduled_tasks') }}">Scheduled tasks</a> shows the steps for this server, including Plesk. With cron, add this line to the crontab of the user that runs Aggregate:</p>
                 <pre class="mt-2 reporting-database-code"><code>{{ cron_line }}</code></pre>
             </div>
         {% endif %}
@@ -54,14 +54,60 @@
         {% else %}
             <p class="notification is-warning is-light mt-4">{{ connection_error }}</p>
         {% endif %}
-        <ol class="ml-5">
-            <li>Create an empty database for reporting, on the same server as the application database or another one, and a user that can create and drop tables in it.</li>
-            <li>Add its address to <code>.env.local</code> on the server, written like <code>DATABASE_URL</code>:
-                <pre class="mt-2 mb-2 reporting-database-code"><code>REPORTING_DATABASE_URL="postgresql://aggregate_sync:password@localhost:5432/aggregate_reporting?serverVersion=16"</code></pre>
-            </li>
-            <li>Give BI users read-only access to the reporting database only, then use <strong>Test connection</strong>.</li>
-        </ol>
-        <p class="help mt-3">The address holds a password, so it is set on the server like <code>DATABASE_URL</code> and never shown or saved from this page.</p>
+        <p>Create an empty database for reporting, on the same server as the application database or another one, and a user that can create and drop tables in it. Then enter it here: Aggregate tests the connection and saves it to <code>.env.local</code> on the server, like <code>DATABASE_URL</code>.</p>
+        {% if connection_problem %}
+            <p class="notification is-info is-light mt-3">{{ connection_problem }}</p>
+        {% else %}
+            <form id="reporting-database-connection" method="post" action="{{ path('app_reporting_database_connection') }}" class="mt-4" autocomplete="off">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token('reporting_database_settings') }}">
+                <fieldset class="field">
+                    <legend class="label">Database type</legend>
+                    <div class="control">
+                        {% for value, type in types %}
+                            <label class="radio mr-4">
+                                <input type="radio" name="type" value="{{ value }}" data-pages--reporting-database--index-target="type" data-action="pages--reporting-database--index#showType"{% if connection.type == value %} checked{% endif %}{% if not type.available %} disabled{% endif %}>
+                                {{ type.label }}{% if not type.available %} <span class="has-text-grey">(PHP lacks {{ type.extension }})</span>{% endif %}
+                            </label>
+                        {% endfor %}
+                    </div>
+                </fieldset>
+                <div data-pages--reporting-database--index-target="serverFields">
+                    <div class="columns">
+                        <div class="column field">
+                            <label class="label" for="reporting-database-host">Server</label>
+                            <div class="control"><input class="input" id="reporting-database-host" name="host" type="text" maxlength="255" value="{{ connection.type != 'sqlite' ? connection.host : 'localhost' }}" spellcheck="false"></div>
+                        </div>
+                        <div class="column is-one-quarter field">
+                            <label class="label" for="reporting-database-port">Port</label>
+                            <div class="control"><input class="input" id="reporting-database-port" name="port" type="text" inputmode="numeric" maxlength="5" value="{{ connection.type != 'sqlite' ? connection.port : '' }}" placeholder="Default"></div>
+                        </div>
+                    </div>
+                    <div class="columns">
+                        <div class="column field">
+                            <label class="label" for="reporting-database-user">User name</label>
+                            <div class="control"><input class="input" id="reporting-database-user" name="user" type="text" maxlength="128" value="{{ connection.user }}" spellcheck="false"></div>
+                        </div>
+                        <div class="column field">
+                            <label class="label" for="reporting-database-password">Password</label>
+                            <div class="control"><input class="input" id="reporting-database-password" name="password" type="password" maxlength="1024" autocomplete="new-password" placeholder="{{ connection.has_password ? 'Saved; leave empty to keep it' : '' }}"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="field">
+                    <label class="label" for="reporting-database-name">Database name, or SQLite file</label>
+                    <div class="control"><input class="input" id="reporting-database-name" name="database" type="text" maxlength="255" value="{{ connection.database }}" placeholder="aggregate_reporting, or var/reporting.db for SQLite" spellcheck="false"></div>
+                    <p class="help">Use a separate database: Aggregate refuses its own application database.</p>
+                </div>
+                <div class="field" data-pages--reporting-database--index-target="sqlsrvFields">
+                    <label class="checkbox"><input type="checkbox" name="trust_certificate" value="1"{% if connection.trust_certificate %} checked{% endif %}> Trust the server certificate <span class="has-text-grey">(SQL Server with a self-signed certificate)</span></label>
+                </div>
+                <div class="buttons">
+                    <button class="button is-primary" type="submit">Test and save</button>
+                    {% if connection_saved_here %}<button class="button is-danger is-light" type="submit" form="reporting-database-remove-connection">Remove connection</button>{% endif %}
+                </div>
+            </form>
+            <p class="help">The password is stored only in <code>.env.local</code>, never shown here or logged. Leave it empty to keep the saved one while the type, server and user stay the same. Give BI users read-only access to the reporting database only. From the command line: <code>php bin/console app:reporting-database:configure</code>.</p>
+        {% endif %}
     </section>
 
     {# 2. Views #}
@@ -127,8 +173,7 @@
                 {{ help.env_help(overrides, 'reporting_database_interval_minutes') }}
             </div>
         </div>
-        <p>Aggregate syncs from a scheduled command, not from web requests. Run it every five minutes; each view is copied about once per interval:</p>
-        <pre class="mt-2 mb-3 reporting-database-code"><code>{{ cron_line }}</code></pre>
+        <p class="mb-3">Aggregate copies the views from the server’s scheduled task, which runs every five minutes, not from web requests; each view is copied about once per interval. <a href="{{ path('app_scheduled_tasks') }}">Scheduled tasks</a> shows whether it runs and how to set it up on this server.</p>
         <p class="help mb-3">A sync reads each whole view from the application database. Approved views are small; private row-level views grow with your traffic, so give them a longer interval or run the sync outside busy hours.</p>
         <button class="button is-primary" type="submit"{% if configuration_error %} disabled{% endif %}>Save schedule</button>
     </form>
@@ -168,5 +213,6 @@
     {# Forms submitted by buttons above. #}
     <form id="reporting-database-test" method="post" action="{{ path('app_reporting_database_test') }}" hidden><input type="hidden" name="_csrf_token" value="{{ csrf_token('reporting_database_settings') }}"></form>
     <form id="reporting-database-sync" method="post" action="{{ path('app_reporting_database_sync') }}" hidden><input type="hidden" name="_csrf_token" value="{{ csrf_token('reporting_database_settings') }}"></form>
+    <form id="reporting-database-remove-connection" method="post" action="{{ path('app_reporting_database_connection_remove') }}" hidden data-turbo-confirm="Remove the reporting database connection from .env.local? Copied tables stay in that database."><input type="hidden" name="_csrf_token" value="{{ csrf_token('reporting_database_settings') }}"></form>
 </div>
 {% endblock %}

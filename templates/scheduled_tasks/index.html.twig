@@ -1,0 +1,122 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Scheduled tasks - {{ app_branding.name }}{% endblock %}
+
+{% macro field(id, label, value, help) %}
+    <div class="field">
+        <label class="label" for="{{ id }}">{{ label }}</label>
+        <div class="field has-addons">
+            <div class="control is-expanded"><input class="input is-family-monospace" id="{{ id }}" type="text" value="{{ value }}" readonly></div>
+            <div class="control">{{ component('Ui:CopyButton', {target: id, status: id ~ '-status', label: 'Copy', success: label ~ ' copied.'}) }}</div>
+        </div>
+        <p class="help" id="{{ id }}-status" role="status" aria-live="polite">{{ help }}</p>
+    </div>
+{% endmacro %}
+
+{% macro result_tag(status) %}
+    {%- if status == 'ran' or status == 'succeeded' -%}<span class="tag is-success is-light">{{ status == 'ran' ? 'Ran' : 'Succeeded' }}</span>
+    {%- elseif status == 'failed' -%}<span class="tag is-danger is-light">Failed</span>
+    {%- elseif status == 'busy' or status == 'running' -%}<span class="tag is-info is-light">Running</span>
+    {%- elseif status == 'not_due' -%}<span class="tag is-light">Not due</span>
+    {%- elseif status == 'off' -%}<span class="tag is-light">Off</span>
+    {%- else -%}<span class="tag is-light">{{ status }}</span>{%- endif -%}
+{% endmacro %}
+
+{% block body %}
+{% import _self as ui %}
+{% set scheduled = health.scheduled %}
+{% set manual = health.manual %}
+<div class="scheduled-tasks-page"
+     data-controller="pages--scheduled-tasks--index"
+     data-pages--scheduled-tasks--index-status-url-value="{{ path('app_scheduled_tasks_status') }}"
+     data-pages--scheduled-tasks--index-running-value="{{ running or run_requested_at ? 'true' : 'false' }}"
+     data-pages--scheduled-tasks--index-since-value="{{ run_requested_at ?? 0 }}">
+    <h1 class="title">Scheduled tasks</h1>
+    <p class="subtitle">One scheduled task on the server runs maintenance and the syncs, each when it is due. Set it up once; turn jobs on and off on their own pages.</p>
+    {{ component('Ui:DocsLink', {topic: 'operate.scheduled-tasks', label: 'Scheduled tasks guide'}) }}
+
+    <section class="box" aria-labelledby="scheduler-status-title">
+        <h2 class="title is-5" id="scheduler-status-title">
+            {% if health.state == 'working' %}
+                <span class="tag is-success is-medium mr-2">Working</span> The scheduled task ran {{ scheduled.started_at|date('Y-m-d H:i', 'UTC') }} UTC
+            {% elseif health.state == 'late' %}
+                <span class="tag is-warning is-medium mr-2">Late</span> The scheduled task last ran {{ scheduled.started_at|date('Y-m-d H:i', 'UTC') }} UTC
+            {% else %}
+                <span class="tag is-light is-medium mr-2">Not set up</span> The scheduled task has not run yet
+            {% endif %}
+        </h2>
+        {% if health.state == 'working' %}
+            <p>The server runs the scheduled task. Jobs that are turned on run when they are due.</p>
+        {% elseif health.state == 'late' %}
+            <p>It has not run for more than {{ late_after_minutes }} minutes. Check the server’s scheduled task and its last output.</p>
+        {% else %}
+            <p>Set it up as shown below, then use your hosting panel’s <strong>Run now</strong> (or wait five minutes). This box turns green when the server’s scheduled task runs.</p>
+        {% endif %}
+        {% set results = scheduled ? scheduled.results : (manual ? manual.results : []) %}
+        {% if results is not empty %}
+            <ul class="mt-3 scheduled-tasks-results">
+                {% for result in results %}
+                    <li>{{ ui.result_tag(result.status) }} <strong>{{ result.label }}</strong>{% if result.status in ['ran', 'failed', 'busy'] %}: {{ result.message }}{% endif %}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+        {% if manual %}
+            <p class="help mt-3">Last run by hand: {{ manual.started_at|date('Y-m-d H:i', 'UTC') }} UTC ({{ manual.trigger == 'dashboard' ? 'from this page' : 'from the command line' }}). Runs by hand do not show that the server’s scheduled task works.</p>
+        {% endif %}
+        <form method="post" action="{{ path('app_scheduled_tasks_run') }}" class="mt-4">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token('scheduled_tasks') }}">
+            <button class="button" type="submit"{% if background_problem or running or run_requested_at %} disabled{% endif %}>
+                <span class="icon"><i class="fas fa-play" aria-hidden="true"></i></span><span>{{ running or run_requested_at ? 'Running…' : 'Run due jobs now' }}</span>
+            </button>
+        </form>
+        {% if background_problem %}<p class="help">{{ background_problem }}</p>{% endif %}
+    </section>
+
+    <section class="box" aria-labelledby="scheduler-setup-title">
+        <h2 class="title is-4" id="scheduler-setup-title">Set it up</h2>
+        {% if plesk %}
+            <p>In Plesk, open <strong>Websites &amp; Domains → {{ plesk.subscription }} → Scheduled Tasks → Add Task</strong> and fill in:</p>
+            <div class="columns is-multiline mt-2">
+                <div class="column is-half">{{ ui.field('scheduler-plesk-type', 'Task type', 'Run a PHP script', 'Not “Run a command”: Plesk runs commands in a restricted shell without PHP or this folder.') }}</div>
+                <div class="column is-half">{{ ui.field('scheduler-plesk-script', 'Script path', plesk.script_path, 'Relative to the subscription folder.') }}</div>
+                <div class="column is-half">{{ ui.field('scheduler-plesk-php', 'Use PHP version', plesk.php_version, 'The version this site uses.') }}</div>
+                <div class="column is-half">{{ ui.field('scheduler-plesk-arguments', 'Arguments', plesk.arguments, '') }}</div>
+                <div class="column is-half">{{ ui.field('scheduler-plesk-run', 'Run (Cron style)', plesk.schedule, 'Every five minutes.') }}</div>
+                <div class="column is-half">{{ ui.field('scheduler-plesk-notify', 'Notify', 'Errors only', 'The task prints nothing when nothing was due.') }}</div>
+            </div>
+            <p>Click <strong>OK</strong>, then <strong>Run Now</strong> next to the task. This page shows <strong>Working</strong> once it has run. If you already have tasks for the maintenance or sync commands, delete them: this one replaces them.</p>
+            {{ component('Ui:DocsLink', {topic: 'operate.scheduled-tasks-plesk', label: 'Plesk steps and fixes'}) }}
+            <details class="mt-4">
+                <summary>Other servers: a crontab line</summary>
+                <div class="mt-3">{{ ui.field('scheduler-cron', 'Crontab line', cron_line, 'For the crontab of the user that runs Aggregate.') }}</div>
+            </details>
+        {% else %}
+            <p>Add this line to the crontab of the user that runs Aggregate (<code>crontab -e</code>), or the equivalent in your hosting panel:</p>
+            <div class="mt-3">{{ ui.field('scheduler-cron', 'Crontab line', cron_line, 'Every five minutes. It prints nothing when nothing was due.') }}</div>
+            <p class="help">On Plesk, use a “Run a PHP script” task instead; on servers with systemd, a timer works too. The guide has both.</p>
+        {% endif %}
+        <p class="help mt-3">From the command line: <code>php bin/console app:scheduler:status</code> shows this page; <code>{{ manual_command }}</code> runs the due jobs once.</p>
+    </section>
+
+    <section class="box" aria-labelledby="scheduler-jobs-title">
+        <h2 class="title is-4" id="scheduler-jobs-title">Jobs</h2>
+        <div class="table-container">
+            <table class="table is-fullwidth is-striped scheduled-tasks-jobs">
+                <thead><tr><th scope="col">Job</th><th scope="col">Schedule</th><th scope="col">Last run</th><th scope="col">Next run</th><th scope="col">Settings</th></tr></thead>
+                <tbody>
+                {% for job in jobs %}
+                    <tr>
+                        <th scope="row">{{ job.label }}{% if job.problem %}<p class="help is-danger">{{ job.problem }}</p>{% endif %}</th>
+                        <td>{{ job.enabled ? job.schedule : 'Off' }}</td>
+                        <td>{% if job.last_run %}{{ job.last_run|date('Y-m-d H:i', 'UTC') }} UTC {% if job.last_status %}{{ ui.result_tag(job.last_status) }}{% endif %}{% else %}—{% endif %}</td>
+                        <td>{{ job.enabled and job.next_due ? job.next_due|date('Y-m-d H:i', 'UTC') ~ ' UTC' : '—' }}</td>
+                        <td>{% if job.page %}<a href="{{ path(job.page.route) }}">{{ job.page.label }}</a>{% endif %}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <p class="help">Maintenance runs once a day when archiving, retention or record purging is on. The syncs run at the intervals set on their pages. Each run is also recorded in the <code>processing_tasks</code> table and the audit trail.</p>
+    </section>
+</div>
+{% endblock %}

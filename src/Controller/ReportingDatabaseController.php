@@ -7,6 +7,7 @@ namespace App\Controller;
 use App\Service\AggregateConfigLoader;
 use App\Service\BigQuery\BigQueryViewCatalog;
 use App\Service\ReportingDatabase\ReportingDatabaseBackgroundSync;
+use App\Service\ReportingDatabase\ReportingDatabaseConfigurator;
 use App\Service\ReportingDatabase\ReportingDatabaseConnection;
 use App\Service\ReportingDatabase\ReportingDatabaseException;
 use App\Service\ReportingDatabase\ReportingDatabaseSettings;
@@ -30,6 +31,9 @@ final class ReportingDatabaseController extends AbstractController
 
     public const CSRF_TOKEN_ID = 'reporting_database_settings';
     private const SESSION_SYNC_REQUESTED = 'reporting_database_sync_requested_at';
+    /** Fields of a connection that failed its test, shown again without the password. */
+    private const SESSION_CONNECTION_FORM = 'reporting_database_connection_form';
+    private const CONNECTION_FIELDS = ['type', 'host', 'port', 'database', 'user', 'password', 'trust_certificate'];
 
     public function __construct(
         private readonly AggregateConfigLoader $config,
@@ -37,6 +41,7 @@ final class ReportingDatabaseController extends AbstractController
         private readonly ReportingDatabaseConnection $database,
         private readonly ReportingDatabaseSyncRunner $runner,
         private readonly ReportingDatabaseBackgroundSync $background,
+        private readonly ReportingDatabaseConfigurator $configurator,
         private readonly LoggerInterface $logger,
     ) {
     }
@@ -89,7 +94,81 @@ final class ReportingDatabaseController extends AbstractController
             'sync_requested_at' => $requested,
             'background_problem' => $this->background->problem(),
             'cron_line' => $this->background->cronLine(),
+            'connection' => $this->connectionForm($request),
+            'connection_problem' => $this->configurator->problem(),
+            'connection_saved_here' => $this->configurator->isSavedHere(),
+            'types' => array_map(static fn (array $type): array => $type + ['available' => extension_loaded($type['extension'])], ReportingDatabaseConnection::TYPES),
         ]);
+    }
+
+    /** Tests the connection from the form and saves it to .env.local. */
+    #[Route('/dashboard/reporting-database/connection', name: 'app_reporting_database_connection', methods: ['POST'])]
+    public function saveConnection(Request $request): Response
+    {
+        if (($response = $this->guard($request, self::CONNECTION_FIELDS)) !== null) {
+            return $response;
+        }
+        $fields = array_intersect_key($request->request->all(), array_flip(self::CONNECTION_FIELDS));
+        try {
+            $check = $this->configurator->save($fields);
+            $request->getSession()->remove(self::SESSION_CONNECTION_FORM);
+            $this->addFlash('success', sprintf(
+                'Connected to %s (server version %s) and saved to .env.local. This user can create and drop tables. %s',
+                ReportingDatabaseConnection::label($check),
+                $check['server_version'],
+                $check['tables'] === [] ? 'No views have been copied yet.' : count($check['tables']).' copied view'.(count($check['tables']) === 1 ? '' : 's').' found.',
+            ));
+        } catch (\InvalidArgumentException|ReportingDatabaseException $e) {
+            unset($fields['password']);
+            $request->getSession()->set(self::SESSION_CONNECTION_FORM, $fields);
+            $this->addFlash('error', 'The connection was not saved: '.$e->getMessage());
+        } catch (\Throwable $e) {
+            $this->logger->error('Failed to save the reporting database connection.', ['exception' => $e]);
+            $this->addFlash('error', 'The connection was not saved; see the application log.');
+        }
+
+        return $this->redirectToRoute('app_reporting_database');
+    }
+
+    #[Route('/dashboard/reporting-database/connection/remove', name: 'app_reporting_database_connection_remove', methods: ['POST'])]
+    public function removeConnection(Request $request): Response
+    {
+        if (($response = $this->guard($request)) !== null) {
+            return $response;
+        }
+        try {
+            $this->configurator->remove();
+            $this->addFlash('success', 'The connection was removed from .env.local. Tables already copied stay in the reporting database.');
+        } catch (\Throwable $e) {
+            $this->addFlash('error', $e instanceof ReportingDatabaseException || $e instanceof \RuntimeException ? $e->getMessage() : 'The connection could not be removed.');
+        }
+
+        return $this->redirectToRoute('app_reporting_database');
+    }
+
+    /**
+     * The connection form's values: those of a failed attempt, or the saved
+     * connection's, never its password.
+     *
+     * @return array{type: string, host: string, port: string, database: string, user: string, trust_certificate: bool, has_password: bool}
+     */
+    private function connectionForm(Request $request): array
+    {
+        $saved = $this->database->fields();
+        $form = $saved ?? ['type' => 'pgsql', 'host' => 'localhost', 'port' => '', 'database' => '', 'user' => '', 'trust_certificate' => false, 'has_password' => false];
+        $failed = $request->getSession()->get(self::SESSION_CONNECTION_FORM);
+        $request->getSession()->remove(self::SESSION_CONNECTION_FORM);
+        if (is_array($failed)) {
+            foreach (['type', 'host', 'port', 'database', 'user'] as $key) {
+                $form[$key] = is_scalar($failed[$key] ?? null) ? (string) $failed[$key] : '';
+            }
+            $form['trust_certificate'] = ($failed['trust_certificate'] ?? null) === '1';
+        }
+        if (!isset(ReportingDatabaseConnection::TYPES[$form['type']])) {
+            $form['type'] = 'pgsql';
+        }
+
+        return $form;
     }
 
     #[Route('/dashboard/reporting-database/status', name: 'app_reporting_database_status', methods: ['GET'])]
