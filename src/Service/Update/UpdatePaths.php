@@ -18,6 +18,7 @@ final class UpdatePaths
     public const PROTECTED = [
         '.env.local', '.env.local.php', '.env.*.local', '.env.prod',
         'config/aggregate.yaml', 'config/aggregate_*.yaml', 'config/websites.yaml',
+        'config/website-scopes.yaml', 'config/website-scopes/**',
         'config/*.local.yaml', 'config/tag-manager/sites/**', 'config/secrets/**',
         'var/**', 'SETUP-CODE.txt',
     ];

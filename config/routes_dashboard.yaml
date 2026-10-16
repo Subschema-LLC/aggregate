@@ -2,6 +2,10 @@ websites_controller:
     resource: ../src/Controller/WebsitesController.php
     type: attribute
 
+website_scopes_controller:
+    resource: ../src/Controller/WebsiteScopesController.php
+    type: attribute
+
 application_settings_controller:
     resource: ../src/Controller/ApplicationSettingsController.php
     type: attribute

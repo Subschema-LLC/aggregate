@@ -1,0 +1,129 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}{{ label.plural }} | {{ app_branding.name }}{% endblock %}
+
+{% block body %}
+<div class="websites-page">
+    <div class="level mb-5">
+        <div>
+            <h1 class="title mb-1">{{ label.plural }}</h1>
+            <p class="subtitle is-6">Share collection settings and data models across websites. A website setting overrides its {{ label.singular|lower }}, and a {{ label.singular|lower }} overrides the deployment.</p>
+            {{ component('Ui:DocsLink', {topic: 'configuration.website-groups', label: 'Website groups guide'}) }}
+        </div>
+    </div>
+
+    {% if catalog_error %}
+        <div class="notification is-danger" role="alert">config/website-scopes.yaml is invalid, so collection is off for every website until it is corrected. Saving is blocked so the file is not overwritten.</div>
+    {% endif %}
+
+    <div class="columns">
+        <div class="column is-half">
+            <form class="box" method="post" action="{{ path('app_website_groups_label') }}">
+                <h2 class="title is-5">What to call a group</h2>
+                <p class="help mb-3">For example, Brand and Brands, or Organization and Organizations. This only changes the word. It does not change settings.</p>
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token('website_scopes') }}">
+                <div class="field">
+                    <label class="label" for="group-singular">One</label>
+                    <input class="input" id="group-singular" name="singular" value="{{ label.singular }}" maxlength="40" required{% if catalog_error %} disabled{% endif %}>
+                </div>
+                <div class="field">
+                    <label class="label" for="group-plural">Several</label>
+                    <input class="input" id="group-plural" name="plural" value="{{ label.plural }}" maxlength="40" required{% if catalog_error %} disabled{% endif %}>
+                </div>
+                <button class="button is-link" type="submit"{% if catalog_error %} disabled{% endif %}>Save name</button>
+            </form>
+        </div>
+        <div class="column is-half">
+            <form class="box" method="post" action="{{ path('app_website_groups_create') }}">
+                <h2 class="title is-5">Add a {{ label.singular|lower }}</h2>
+                <p class="help mb-3">A new {{ label.singular|lower }} uses the deployment settings until you override a section for it.</p>
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token('website_scopes') }}">
+                <div class="field">
+                    <label class="label" for="group-name">Name</label>
+                    <input class="input" id="group-name" name="name" maxlength="80" required placeholder="Amazon"{% if catalog_error %} disabled{% endif %}>
+                </div>
+                <button class="button is-primary" type="submit"{% if catalog_error %} disabled{% endif %}>Add {{ label.singular|lower }}</button>
+            </form>
+        </div>
+    </div>
+
+    {% if groups is empty and not catalog_error %}
+        <div class="box has-text-centered py-6">
+            <h2 class="title is-5">No {{ label.plural|lower }} yet</h2>
+            <p>Every website uses the deployment collection settings and data model.</p>
+        </div>
+    {% endif %}
+
+    {% for id, group in groups %}
+        <article class="box">
+            <div class="level">
+                <div>
+                    <h2 class="title is-5 mb-1">{{ group.name }}</h2>
+                    <p class="help mb-0">Id <code>{{ id }}</code>. Settings are saved in <code>config/website-scopes/groups/{{ id }}.yaml</code>.</p>
+                </div>
+                <div class="buttons">
+                    <a class="button is-small" href="{{ path('app_collection_settings', {scope: 'group:' ~ id}) }}">Collection</a>
+                    <a class="button is-small" href="{{ path('app_data_model', {scope: 'group:' ~ id}) }}">Data model</a>
+                </div>
+            </div>
+            <p class="mb-3">
+                {% set members = websites|filter(site => site.group_id == id) %}
+                {% if members is empty %}
+                    No websites yet.
+                {% else %}
+                    {% for site in members %}{{ site.name }}{% if not loop.last %}, {% endif %}{% endfor %}
+                {% endif %}
+            </p>
+            <div class="level">
+                <form method="post" action="{{ path('app_website_groups_rename', {id: id}) }}">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token('website_scopes') }}">
+                    <div class="field has-addons mb-0">
+                        <div class="control">
+                            <label class="is-sr-only" for="rename-{{ id }}">Rename {{ group.name }}</label>
+                            <input class="input" id="rename-{{ id }}" name="name" value="{{ group.name }}" maxlength="80" required>
+                        </div>
+                        <div class="control">
+                            <button class="button" type="submit">Rename</button>
+                        </div>
+                    </div>
+                </form>
+                <form method="post" action="{{ path('app_website_groups_delete', {id: id}) }}" onsubmit="return confirm('Remove this {{ label.singular|lower }}? Its websites keep their own settings and otherwise use the deployment settings.');">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token('website_scopes') }}">
+                    <button class="button is-danger is-light" type="submit">Remove</button>
+                </form>
+            </div>
+        </article>
+    {% endfor %}
+
+    {% if websites is not empty and not catalog_error %}
+        <form class="box" method="post" action="{{ path('app_website_groups_assign') }}">
+            <h2 class="title is-5">Which websites belong where</h2>
+            <p class="help mb-4">A website belongs to one {{ label.singular|lower }} at most. Leaving it unassigned uses the deployment settings, plus any settings saved for that website alone.</p>
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token('website_scopes') }}">
+            {% for site in websites %}
+                <div class="field is-horizontal">
+                    <div class="field-label is-normal">
+                        <label class="label" for="assign-{{ loop.index }}">{{ site.name }}</label>
+                    </div>
+                    <div class="field-body">
+                        <div class="field">
+                            <div class="control">
+                                <div class="select is-fullwidth">
+                                    <select id="assign-{{ loop.index }}" name="assignment[{{ site.token }}]">
+                                        <option value=""{% if site.group_id is null %} selected{% endif %}>Not in a {{ label.singular|lower }}</option>
+                                        {% for id, group in groups %}
+                                            <option value="{{ id }}"{% if site.group_id == id %} selected{% endif %}>{{ group.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                            {% if site.domain %}<p class="help">{{ site.domain }}</p>{% endif %}
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+            <button class="button is-link" type="submit">Save membership</button>
+        </form>
+    {% endif %}
+</div>
+{% endblock %}

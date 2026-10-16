@@ -74,6 +74,7 @@ final class DocumentationLinks
         'reporting.reporting-database-schedule' => ['reporting/reporting-database#schedule-the-sync', 'docs/REPORTING-DATABASE.md'],
         'configuration' => ['configure/configuration', 'docs/CONFIGURATION.md'],
         'configuration.websites' => ['configure/configuration#website-domains', 'docs/CONFIGURATION.md'],
+        'configuration.website-groups' => ['configure/configuration#website-groups', 'docs/CONFIGURATION.md'],
         'configuration.application' => ['configure/configuration#application-settings', 'docs/CONFIGURATION.md'],
         'configuration.lifecycle' => ['configure/configuration#archiving-and-retention', 'docs/CONFIGURATION.md'],
         'data-model' => ['configure/data-model', 'docs/DATA-MODEL.md'],

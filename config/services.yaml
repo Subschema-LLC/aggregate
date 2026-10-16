@@ -75,6 +75,11 @@ services:
             $projectDir: '%kernel.project_dir%'
             $environment: '%kernel.environment%'
 
+    App\Service\WebsiteScopeCatalog:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+            $environment: '%kernel.environment%'
+
     App\Service\AppBranding:
         arguments:
             $projectDir: '%kernel.project_dir%'

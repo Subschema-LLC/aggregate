@@ -8,6 +8,7 @@ use App\Service\BrowserScriptCompactor;
 use App\Service\CustomDataSettings;
 use App\Service\InternalTrafficSettings;
 use App\Service\TrackerScript;
+use App\Service\WebsiteScopeResolver;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
@@ -20,12 +21,20 @@ class ScriptController
         private readonly CustomDataSettings $customData,
         private readonly string $projectDir = __DIR__.'/../..',
         private readonly ?BrowserScriptCompactor $compactor = null,
+        private readonly ?WebsiteScopeResolver $scopes = null,
     ) {}
 
     #[Route('/aggregate.js', name: 'aggregate_script', methods: ['GET'])]
     public function __invoke(?Request $request = null): Response
     {
-        $script = (new TrackerScript($this->config, $this->internalTraffic, $this->customData, $this->projectDir, $this->compactor))
+        $config = $this->config;
+        $customData = $this->customData;
+        $token = $request?->query->get('token');
+        if ($this->scopes !== null && is_string($token) && $token !== '') {
+            $config = $this->scopes->forToken($token);
+            $customData = new CustomDataSettings($config);
+        }
+        $script = (new TrackerScript($config, $this->internalTraffic, $customData, $this->projectDir, $this->compactor))
             ->render($request?->query->get('min') === '1');
         if ($script === null) {
             return new Response('Script not found', Response::HTTP_NOT_FOUND);

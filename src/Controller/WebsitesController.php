@@ -8,6 +8,7 @@ use App\Service\TrackingAttributes;
 use App\Service\WebsiteActivityService;
 use App\Service\WebsiteConfigManager;
 use App\Service\WebsiteDomainPolicy;
+use App\Service\WebsiteScopeCatalog;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -25,6 +26,7 @@ class WebsitesController extends AbstractController
         private readonly AggregateConfigLoader $config,
         private readonly LoggerInterface $logger,
         private readonly WebsiteDomainPolicy $websiteDomainPolicy = new WebsiteDomainPolicy(),
+        private readonly ?WebsiteScopeCatalog $scopes = null,
     ) {}
 
     #[Route('/dashboard', name: 'app_dashboard', methods: ['GET'])]
@@ -231,6 +233,12 @@ class WebsitesController extends AbstractController
             $success = $this->websiteManager->removeWebsite($token);
 
             if ($success) {
+                try {
+                    $this->scopes?->forgetWebsite($token);
+                } catch (\Throwable $error) {
+                    $this->logger->warning('A deleted website could not be removed from its group.', ['exception' => $error]);
+                    $this->addFlash('warning', 'The website was deleted, but its group membership could not be updated. Correct config/website-scopes.yaml.');
+                }
                 $this->addFlash('success', 'Website deleted successfully!');
             } else {
                 $this->addFlash('error', 'Website not found or could not be deleted.');
