@@ -491,6 +491,7 @@ checks for the command-line user.
 | The installed branch differs from `updates_branch` | Check out the configured branch with Git, or change `updates_branch`. |
 | Composer was not found | Install Composer for the update user, or set `AGGREGATE_COMPOSER`. |
 | User … cannot write … | Run `app:updates:apply` on the server as the owner of the files, or give the web server user write access to use the dashboard. |
+| "The update folder var/updates/… could not be created", "The upload could not be saved", or **Application files writable**: … (owned by root) | A command run as root, such as a console command over SSH, created that folder, and the website's user cannot write it. The message names the folder and its owner. As root, give it back, for example `chown -R USER var/updates` (on Plesk, `chown -R --reference=public/index.php var` gives all of `var` the site user and group), or delete the folder so it is created again. Then run commands as the site user. |
 | **This runs as root, but the application files belong to …** | Run the command as that user, as the message shows: `sudo -u USER /opt/plesk/php/8.3/bin/php bin/console app:updates:apply`. |
 | **PHP runtime** on the command line: missing mbstring, curl, intl or zip | This is another PHP than the website's. Use the one the message names, or on Plesk `/opt/plesk/php/8.3/bin/php`. |
 | **Dashboard button can start updates**: the command-line PHP could not be found, or does not match | Add `PHP_PATH` with the command-line PHP of the website's version to `.env.local`, as [above](#command-reference). |

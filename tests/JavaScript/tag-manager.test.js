@@ -638,6 +638,36 @@ test('events held for the tracker are sent, in order and after consent is checke
   assert.deepEqual(none, [], 'a tag that lost consent sends nothing it held');
 });
 
+test('event tags and tag.emit() pass an event object to the tracker as its one argument', () => {
+  const page = runtime({globals: {results: []}, config: {enabled: true, namespace: 'Shop', variables: {method: 'method'}, tags: [
+    {id: 'login-event', type: 'event', consent: 'none', trigger: {type: 'data_layer', event: 'login'},
+      event: {eventName: 'login', customData: {app: 'site', method: {$var: 'method'}}, goalEvent: 'signup'}},
+    {id: 'opened', type: 'event', consent: 'none', trigger: {type: 'dom_ready'}, event: {eventName: 'opened', pagePath: '/virtual'}},
+    customTag('custom', {type: 'dom_ready'})
+  ]}, custom: {custom: "window.results.push(tag.emit({eventName: 'custom_view', customData: {plan: 'team'}}));"}});
+  const sent = [];
+  page.window.Shop = {emit(...args) { sent.push(clean(args)); return true; }};
+  page.window.dataLayer.push({event: 'login', method: 'password'});
+  page.dispatch('aggregate:tracker-ready', {namespace: 'Shop'});
+  assert.deepEqual(sent, [
+    [{eventName: 'opened', pagePath: '/virtual'}],
+    [{eventName: 'custom_view', customData: {plan: 'team'}}],
+    [{eventName: 'login', customData: {app: 'site', method: 'password'}, goalEvent: 'signup'}]
+  ], 'held, then sent in order once the tracker is ready');
+  assert.deepEqual([...page.window.results], [true]);
+  page.window.dataLayer.push({event: 'login', method: 'passkey'});
+  assert.deepEqual(sent.at(-1), [{eventName: 'login', customData: {app: 'site', method: 'passkey'}, goalEvent: 'signup'}], 'sent at once after the tracker is ready');
+  page.dispatch('DOMContentLoaded');
+  assert.equal(sent.filter(([event]) => event.eventName === 'opened').length, 1, 'a page-load event tag runs once');
+
+  for (const event of [undefined, null, ['login'], 'login']) {
+    const invalid = runtime({config: {enabled: true, tags: [{id: 'bad', type: 'event', consent: 'none', trigger: {type: 'dom_ready'}, event}]}});
+    const none = installTracker(invalid);
+    invalid.dispatch('aggregate:tracker-ready');
+    assert.deepEqual(none, [], 'an invalid event configuration serves no tags: ' + JSON.stringify(event));
+  }
+});
+
 test('held events are also sent at window load and when a script tag loads, for trackers that do not announce themselves', () => {
   const page = runtime({ready: false, config: {enabled: true, tags: [
     customTag('early', {type: 'dom_ready'}),

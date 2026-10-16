@@ -45,20 +45,24 @@ final class EventExamplesController extends AbstractController
     {
         $bundle = null;
         $payloads = [];
+        $trackerEvent = null;
         try {
             $bundle = $this->examples->generate($example);
             foreach ($bundle['examples'] as $mode => $requestExample) {
                 $payloads[$mode] = json_encode($requestExample['payload'], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
             }
+            $trackerEvent = json_encode($bundle['tracker']['event'], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
         } catch (\Throwable $error) {
             $this->logFailure($error);
             $bundle = null;
             $payloads = [];
+            $trackerEvent = null;
         }
 
         return $this->privateResponse($this->render('event_examples/index.html.twig', [
             'bundle' => $bundle,
             'payloads' => $payloads,
+            'tracker_event' => $trackerEvent,
             'example_source' => $example,
             'recommended_model_yaml' => isset($bundle['recommended_model']) ? Yaml::dump($bundle['recommended_model'], 5, 2) : null,
         ], new Response(status: $bundle === null ? Response::HTTP_SERVICE_UNAVAILABLE : Response::HTTP_OK)));

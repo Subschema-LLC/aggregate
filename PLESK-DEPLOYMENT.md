@@ -141,6 +141,7 @@ fails with "No such file or directory". See [Scheduled tasks](docs/SCHEDULED-TAS
 | You want to start over | Delete `.env.local` (and `var/data.db` if you chose SQLite) in **Files**, then reload the site. |
 | A scheduled task fails with `cd: /var/www/vhosts/…: No such file or directory` or `php: command not found` | It is a **Run a command** task. Change it to **Run a PHP script** as in [step 6](#6-add-the-scheduled-task). |
 | **Scheduled tasks** says **Not set up** or **Late** | Click **Run Now** next to the task in Plesk and check its output. See [Scheduled tasks troubleshooting](docs/SCHEDULED-TASKS.md#troubleshooting). |
+| **Install update** or **Upload** says "The update work directory could not be created" or names a folder under `var/` that belongs to root | A command run as root over SSH created it. As root, run `chown -R --reference=public/index.php var` in the site's folder to give `var` back to the subscription's user, then run console commands as that user (`sudo -u $(stat -c %U .) /opt/plesk/php/8.3/bin/php bin/console …`) or with a scheduled task. |
 | **Install update** says "The command-line console could not run the update preflight" | Earlier releases could not find Plesk's command-line PHP while `open_basedir` is on (Plesk's default). Install one update [without the dashboard button](#updating-without-the-dashboard-button); from then on the button finds it. |
 
 #### nginx without Apache

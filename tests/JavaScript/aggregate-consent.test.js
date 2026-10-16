@@ -1793,3 +1793,102 @@ test('strict collection profile ignores Google consent signals', () => {
   runtime.window.Aggregate.emit('button_click');
   assert.equal(runtime.requests.at(-1).visitorId, undefined);
 });
+
+test('emit() takes an event object whose customData holds the event properties', () => {
+  const objectForm = loadSdk({dataset: {namespace: 'Optin'}});
+  const shortForm = loadSdk({dataset: {namespace: 'Optin'}});
+  for (const runtime of [objectForm, shortForm]) runtime.window.Optin.configure({consent: true});
+
+  assert.equal(objectForm.window.Optin.emit({eventName: 'login', customData: {app: 'facilitation', method: 'password', attempts: 2, admin: true}, goalEvent: 'signup'}), true);
+  assert.equal(shortForm.window.Optin.emit('login', {app: 'facilitation', method: 'password', attempts: 2, admin: true}, 'signup'), true);
+  const sent = objectForm.requests.at(-1);
+  const expected = shortForm.requests.at(-1);
+  for (const payload of [sent, expected]) {
+    delete payload.visitorId;
+    delete payload.sessionId;
+  }
+  assert.deepEqual(sent, expected, 'both forms send the same request');
+  assert.deepEqual(sent.customData, {app: 'facilitation', method: 'password', attempts: 2, admin: true});
+  assert.equal(sent.eventName, 'login');
+  assert.equal(sent.goalEvent, 'signup');
+  assert.equal(sent.pagePath, '/pricing');
+  assert.deepEqual(objectForm.consoleWarnings, []);
+
+  objectForm.window.Optin.emit({eventName: 'button_click'});
+  assert.equal(objectForm.requests.at(-1).eventName, 'button_click');
+  assert.equal(objectForm.requests.at(-1).goalEvent, null);
+  assert.deepEqual(objectForm.consoleWarnings, []);
+});
+
+test('an event object can set a virtual page path, cleaned like the real one', () => {
+  const runtime = loadSdk({});
+  runtime.window.Aggregate.emit({eventName: 'step_view', pagePath: '/checkout/step-2'});
+  assert.equal(runtime.requests.at(-1).pagePath, '/checkout/step-2');
+  runtime.window.Aggregate.emit({eventName: 'step_view', pagePath: '/orders/123456/receipt;jsessionid=x'});
+  assert.equal(runtime.requests.at(-1).pagePath, '/orders/_redacted/receipt');
+  assert.deepEqual(runtime.consoleWarnings, []);
+
+  for (const pagePath of ['https://other.example/x', '//other.example/x', 'checkout', '/search?q=private', '/a#b', 42]) {
+    runtime.window.Aggregate.emit({eventName: 'step_view', pagePath});
+    assert.equal(runtime.requests.at(-1).pagePath, '/pricing', String(pagePath));
+  }
+  assert.deepEqual(runtime.consoleWarnings, ['[Aggregate] emit() ignored pagePath: use a path such as /checkout/step-2, with no query or fragment.']);
+
+  const strict = loadSdk({inline: {collectionProfile: 'strict'}});
+  strict.window.Aggregate.emit({eventName: 'step_view', pagePath: '/checkout/step-2', customData: {plan: 'pro'}});
+  assert.deepEqual(strict.requests.at(-1), {pagePath: '/checkout/step-2', eventName: 'step_view', goalEvent: null, websiteToken: 'site-token'});
+});
+
+test('fields the tracker sets, misplaced properties and nesting are dropped with a console warning', () => {
+  const runtime = loadSdk({});
+  runtime.window.Aggregate.configure({consent: true});
+  runtime.window.Aggregate.emit({
+    eventName: 'login', deviceClass: 'bot', visitorId: 'chosen', org_internal_traffic: true,
+    method: 'password', goal: 'signup', customData: {app: 'facilitation', meta: {role: 'admin'}, tags: ['a']}
+  });
+  const payload = runtime.requests.at(-1);
+  assert.equal(payload.deviceClass, 'desktop');
+  assert.notEqual(payload.visitorId, 'chosen');
+  assert.equal(payload.org_internal_traffic, false);
+  assert.equal(payload.goalEvent, null);
+  assert.deepEqual(payload.customData, {app: 'facilitation'});
+  assert.deepEqual(runtime.consoleWarnings, [
+    '[Aggregate] emit() ignored deviceClass: the tracker sets it.',
+    '[Aggregate] emit() ignored visitorId: the tracker sets it.',
+    '[Aggregate] emit() ignored org_internal_traffic: the tracker sets it.',
+    "[Aggregate] emit() ignored method: put the event's properties in customData.",
+    '[Aggregate] emit() ignored goal: use goalEvent.',
+    '[Aggregate] emit() dropped meta: a property must be text, a number, true, false or null.',
+    '[Aggregate] emit() dropped tags: a property must be text, a number, true, false or null.'
+  ]);
+
+  // A customData wrapper in the short form is explained; the event is still sent.
+  runtime.window.Aggregate.emit('login', {customData: {app: 'facilitation'}});
+  assert.equal(runtime.requests.at(-1).eventName, 'login');
+  assert.equal(runtime.requests.at(-1).customData, null);
+  assert.equal(runtime.consoleWarnings.at(-1), '[Aggregate] emit() dropped customData: a property must be text, a number, true, false or null. To pass customData, use emit({eventName, customData}).');
+
+  runtime.window.Aggregate.emit({eventName: 'login', customData: 'method=password'});
+  assert.equal(runtime.consoleWarnings.at(-1), '[Aggregate] emit() ignored customData: it must be an object of properties.');
+  // Each message is written once a page.
+  const count = runtime.consoleWarnings.length;
+  runtime.window.Aggregate.emit({eventName: 'login', deviceClass: 'bot'});
+  assert.equal(runtime.consoleWarnings.length, count);
+});
+
+test('an event without a valid name sends nothing and says why', () => {
+  const runtime = loadSdk({});
+  const before = runtime.requests.length;
+  // A request body passed by mistake, an identifier as the name, no name, a list.
+  for (const call of [
+    () => runtime.window.Aggregate.emit({event: 'login', customData: {method: 'password'}}),
+    () => runtime.window.Aggregate.emit({eventName: 'user-0f8fad5b-d9cb-469f-a165-70867728950e'}),
+    () => runtime.window.Aggregate.emit(),
+    () => runtime.window.Aggregate.emit(['login'])
+  ]) {
+    assert.equal(call(), false);
+  }
+  assert.equal(runtime.requests.length, before);
+  assert.equal(runtime.consoleWarnings.at(-1), '[Aggregate] emit() sent nothing: the event name is missing or not allowed. Use a fixed name such as "login": a letter, then letters, digits, _ . : or -, with no identifiers.');
+  assert.equal(runtime.consoleWarnings.join(' ').includes('0f8fad5b'), false, 'the rejected name is not echoed');
+});

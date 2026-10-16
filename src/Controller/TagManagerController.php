@@ -92,6 +92,7 @@ final class TagManagerController extends AbstractController
             'custom_templates_json' => json_encode($templates, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR),
             'configuration_error' => $configurationError, 'restored_form' => $restored,
             'tracker_url' => $trackerUrl, 'tracker_tag' => $trackerTag, 'tracker_tag_id' => self::TRACKER_TAG_ID,
+            'tracker_namespaces' => $this->settings->trackerNamespaces(),
         ]));
     }
 
@@ -117,6 +118,9 @@ final class TagManagerController extends AbstractController
             // Consent manager settings have their own page and save separately.
             $this->settings->save($tagSettings, $siteId !== '' ? $siteId : null);
             $this->addFlash('success', 'Script settings saved to YAML. Changes reach visitors within five minutes.');
+            foreach ($this->settings->emitWarnings($tagSettings) as $warning) {
+                $this->addFlash('warning', $warning);
+            }
         } catch (\InvalidArgumentException $e) {
             $this->addFlash('error', $e->getMessage());
             $this->rememberSubmittedForm($request, $siteId, $submitted);
@@ -187,10 +191,11 @@ final class TagManagerController extends AbstractController
                 $trigger = is_array($row['trigger'] ?? null) ? $row['trigger'] : [];
                 $tag = [
                     'id' => $text($row['id'] ?? null),
-                    'type' => in_array($row['type'] ?? null, ['script', 'call', 'custom'], true) ? $row['type'] : 'script',
+                    'type' => in_array($row['type'] ?? null, ['script', 'event', 'call', 'custom'], true) ? $row['type'] : 'script',
                     'src' => $text($row['src'] ?? null),
                     'method' => $text($row['method'] ?? null),
                     'args_json' => $text($row['args_json'] ?? null, 2_000_000),
+                    'event_json' => $text($row['event_json'] ?? null, 2_000_000),
                     'code' => $text($row['code'] ?? null, 100_000),
                     'enabled' => ($row['enabled'] ?? '1') !== '0',
                     'consent' => $text($row['consent'] ?? null, 64),
@@ -199,7 +204,7 @@ final class TagManagerController extends AbstractController
                     'remove' => ($row['remove'] ?? null) === '1',
                 ];
                 // The trailing empty row comes back as the page's usual new-tag row.
-                if ($tag['id'] === '' && $tag['src'] === '' && $tag['method'] === '' && trim($tag['code']) === '' && in_array(trim($tag['args_json']), ['', '[]'], true)) continue;
+                if ($tag['id'] === '' && $tag['src'] === '' && $tag['method'] === '' && trim($tag['code']) === '' && in_array(trim($tag['args_json']), ['', '[]'], true) && self::blankEvent($tag['event_json'])) continue;
                 $tags[] = $tag;
             }
             $settings['tags'] = $tags;
@@ -249,6 +254,12 @@ final class TagManagerController extends AbstractController
         ]));
     }
 
+    /** An event field left empty, or as the editor's untouched starting point. */
+    private static function blankEvent(string $event): bool
+    {
+        return trim($event) === '' || preg_replace('/\s+/', '', $event) === '{"eventName":"","customData":{}}';
+    }
+
     private function settingsFromForm(array $submitted): array
     {
         if (array_diff(array_keys($submitted), ['_csrf_token', 'site', 'enabled', 'variables', 'tags']) !== []
@@ -277,12 +288,12 @@ final class TagManagerController extends AbstractController
 
         $tags = [];
         foreach ($submitted['tags'] as $tag) {
-            if (!is_array($tag) || array_diff(array_keys($tag), ['id', 'type', 'src', 'method', 'args_json', 'code', 'enabled', 'consent', 'trigger', 'after', 'remove']) !== []
+            if (!is_array($tag) || array_diff(array_keys($tag), ['id', 'type', 'src', 'method', 'args_json', 'event_json', 'code', 'enabled', 'consent', 'trigger', 'after', 'remove']) !== []
                 || !is_string($tag['id'] ?? null) || !in_array($tag['enabled'] ?? null, ['0', '1'], true)
                 || (array_key_exists('remove', $tag) && $tag['remove'] !== '1')) {
                 throw new \InvalidArgumentException('Each tag needs a valid ID, action and availability setting.');
             }
-            foreach (['type', 'src', 'method', 'args_json', 'code', 'consent', 'after'] as $key) {
+            foreach (['type', 'src', 'method', 'args_json', 'event_json', 'code', 'consent', 'after'] as $key) {
                 if (array_key_exists($key, $tag) && !is_string($tag[$key])) {
                     throw new \InvalidArgumentException('Tag action and consent fields must be text.');
                 }
@@ -292,8 +303,12 @@ final class TagManagerController extends AbstractController
             $src = $tag['src'] ?? '';
             $method = $tag['method'] ?? '';
             $args = trim($tag['args_json'] ?? '');
+            $event = trim($tag['event_json'] ?? '');
             $code = $tag['code'] ?? '';
-            if ($tag['id'] === '' && $src === '' && $method === '' && trim($code) === '' && in_array($args, ['', '[]'], true)) continue;
+            if ($tag['id'] === '' && $src === '' && $method === '' && trim($code) === '' && in_array($args, ['', '[]'], true) && self::blankEvent($event)) continue;
+            if ($type !== 'event' && !self::blankEvent($event)) {
+                throw new \InvalidArgumentException('Only a Send an Aggregate event action uses an event. Clear it or choose that action.');
+            }
             if ($type !== 'custom' && trim($code) !== '') {
                 throw new \InvalidArgumentException('Only a Run custom JavaScript action uses code. Clear the code or choose that action.');
             }
@@ -313,13 +328,26 @@ final class TagManagerController extends AbstractController
                     throw new \InvalidArgumentException('Method arguments must be valid JSON, for example ["purchase", {"total_minor": 1299}].');
                 }
                 $action = ['method' => $method, 'args' => $decoded];
+            } elseif ($type === 'event') {
+                if ($src !== '' || $method !== '' || !in_array($args, ['', '[]'], true)) {
+                    throw new \InvalidArgumentException('A Send an Aggregate event action uses only its event. Clear the script URL, method and arguments.');
+                }
+                try {
+                    if (strlen($event) > 2_000_000 || !str_starts_with($event, '{')) {
+                        throw new \JsonException();
+                    }
+                    $decoded = json_decode($event, true, 32, JSON_THROW_ON_ERROR);
+                } catch (\JsonException) {
+                    throw new \InvalidArgumentException('Tag '.$tag['id'].': the event must be a JSON object, for example {"eventName": "login", "customData": {"method": "password"}}.');
+                }
+                $action = ['event' => $decoded];
             } elseif ($type === 'custom') {
                 if ($src !== '' || $method !== '' || !in_array($args, ['', '[]'], true)) {
                     throw new \InvalidArgumentException('A custom JavaScript action uses only its code. Clear the script URL, method and arguments.');
                 }
                 $action = ['code' => $code];
             } else {
-                throw new \InvalidArgumentException('Choose a script, library method or custom JavaScript action.');
+                throw new \InvalidArgumentException('Choose a script, Aggregate event, library method or custom JavaScript action.');
             }
             $trigger = $tag['trigger'] ?? ['type' => 'dom_ready'];
             if (!is_array($trigger) || array_diff(array_keys($trigger), ['type', 'event']) !== []
