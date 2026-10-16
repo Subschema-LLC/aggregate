@@ -426,7 +426,7 @@ organization-marker artifacts keep their separate browser delivery paths.
 | --- | --- |
 | [public/aggregate.js](public/aggregate.js) | Browser tracker and its source; no separate tracker build |
 | [ScriptController](src/Controller/ScriptController.php) | Serves the tracker with public runtime settings; preserves its license header and keeps sharing tokens private |
-| [ReceiveController](src/Controller/ReceiveController.php) | Validates requests, website origin/token, collection controls, consent, and sanitized inputs |
+| [ReceiveController](src/Controller/ReceiveController.php) and [EventIngestion](src/Service/EventIngestion.php) | The collection endpoint; the service checks requests in order (website settings, collection controls, bots, rate limit, origin/token), then records them by consent with sanitized inputs |
 | [AnonymousEventRecorder](src/Service/AnonymousEventRecorder.php) | Writes anonymous events synchronously using UTC hour buckets |
 | [TrackEventMessage](src/Message/TrackEventMessage.php) and [TrackEventHandler](src/MessageHandler/TrackEventHandler.php) | Carry and persist enhanced events through Symfony Messenger |
 | [src/Service](src/Service) | Configuration, privacy policy, sanitization, goals, organization markers, branding, and data lifecycle services |

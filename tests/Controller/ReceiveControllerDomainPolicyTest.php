@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Controller;
 
 use App\Controller\ReceiveController;
+use App\Service\EventIngestion;
 use App\Entity\Event;
 use App\Message\TrackEventMessage;
 use App\Security\IpRateLimiter;
@@ -338,16 +339,18 @@ final class ReceiveControllerDomainPolicyTest extends TestCase
 
         $response = (new ReceiveController())(
             $request,
-            $manager,
-            $bus,
-            $limiter,
-            $sanitizer,
-            new GoalEventRegistry($sanitizer, []),
-            new PrivacyPolicy($config),
-            $geo,
-            new AnonymousEventRecorder($entityManager),
-            new NullLogger(),
-            new CustomDataSettings($config),
+            new EventIngestion(
+                $manager,
+                $bus,
+                $limiter,
+                $sanitizer,
+                new GoalEventRegistry($sanitizer, []),
+                new PrivacyPolicy($config),
+                $geo,
+                new AnonymousEventRecorder($entityManager),
+                new NullLogger(),
+                new CustomDataSettings($config),
+            ),
         );
 
         return [$response, $stored];
