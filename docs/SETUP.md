@@ -71,7 +71,7 @@ server using [their installation guide](../micro-consent-dropins/README.md).
 
 The hosted `/cmp-lite/sites/<site-id>/consent.js` URL receives the saved namespace,
 website name, and that website's enabled tag consent categories each time it is
-requested. Manage each site's CMP and tags in **Collection → Tag manager**, backed
+requested. Manage each site's CMP and tags in **Collection → Tag manager lite**, backed
 by `config/tag-manager/sites/<site-id>.yaml`. A downloaded CMP
 file is a snapshot of those settings: download and deploy it again when they
 change. The downloaded tag loader continues to retrieve current tag YAML; update

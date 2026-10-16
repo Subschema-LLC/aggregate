@@ -686,7 +686,7 @@ tag chaining also makes a custom tag wait when its other code needs the tracker.
 
 ## Optional minification
 
-Use **Setup → Build browser scripts** or:
+Use **Setup → Install scripts → Build browser scripts** or:
 
 ```bash
 php bin/console app:assets:build-js
