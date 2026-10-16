@@ -76,9 +76,15 @@ branches start from `development` and merge back into it through contributor PRs
 
 1. Open and merge a promotion PR from `development` to `uat`, then complete user acceptance testing. Submit any fixes through working-branch PRs to `development` and promote them to `uat` for testing too.
 2. After acceptance testing passes, open and merge a promotion PR from `uat` to `master`. Production publishing defaults to `master`; maintainers using a different publishing branch must keep `config/release.yaml` aligned with their production target.
-3. Create and push an immutable [calendar version](#version-numbers) tag on a commit from the configured publishing branch, for example `tag=$(python3 scripts/release-version.py next) && git tag "$tag" origin/master && git push origin "$tag"`. An existing release tag can also be supplied to the workflow's manual dispatch.
-4. The **Build release package** workflow tests PHP, JavaScript, and release tooling; prepares clean production dependencies; compiles dashboard and minified browser assets; creates and signs the ZIP; and boots the extracted package.
-5. After success, review and publish the **draft GitHub Release**. Drafts and prereleases are ignored by installation checks. An existing release's assets are not overwritten; use a new version for corrections.
+3. Tag the release with the next [calendar version](#version-numbers) on a commit from the configured publishing branch, in one of two ways:
+   - **Push a tag**, for example `tag=$(python3 scripts/release-version.py next) && git tag "$tag" origin/master && git push origin "$tag"`. The workflow creates a draft release with the package for you to review and publish.
+   - **Or create the release on GitHub** (**Releases → Draft a new release**), choosing a new tag and `master` as the target. Publish it, or save it as a draft. The new tag starts the workflow, which attaches the package to this release instead of creating a second one.
+
+   An existing release tag can also be supplied to the workflow's manual dispatch.
+4. The **Build release package** workflow tests PHP, JavaScript, and release tooling; prepares clean production dependencies; compiles dashboard and minified browser assets; creates and signs the ZIP; boots the extracted package; and attaches the ZIP, manifest and signature to the release.
+5. After success, review and publish the release if it is still a draft. Installations offer only published, stable releases with all three files; drafts, prereleases and releases without the package are ignored. A release created on GitHub and published straight away is offered once the workflow has finished and attached the package.
+
+The workflow never replaces a release's files: if the release for the tag already has attached files, it stops, and corrections need a new version. If two releases use the same tag (earlier versions of the workflow added a draft next to a release created on GitHub), it stops too. Delete the extra release on GitHub, which keeps the tag, and run the workflow again for that tag; or, for a release that is already published without files, download the draft's three files, attach them to the published release with **Edit**, and delete the draft.
 
 Each release includes:
 

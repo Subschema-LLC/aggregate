@@ -485,7 +485,7 @@ checks for the command-line user.
 | **Update method chosen: Not yet** | Choose a method on the Updates page or with `app:updates:method`. |
 | The update method is repository, but the directory is not a Git clone | [Set up a Git clone](#set-up-a-git-clone), or switch back to release ZIPs. |
 | The update method is release ZIP, but the directory is a Git clone | See [switch methods](#switch-methods), or switch back to the repository. |
-| No packaged stable release was found | Publish a stable (not draft or prerelease) release from `updates_branch` with its three assets. See the [release guide](RELEASES.md#publish-a-release). |
+| No packaged stable release was found | Publish a stable (not draft or prerelease) release from `updates_branch` with its three assets. A published release without the files usually has a draft twin holding them; see [two releases for one tag](RELEASES.md#publish-a-release). |
 | The upload was larger than this server accepts | Use **Download from GitHub**, or raise `upload_max_filesize` and `post_max_size`. |
 | The checkout has local changes or untracked files | Run `git status` on the server; commit, move or restore those files. |
 | The installed branch differs from `updates_branch` | Check out the configured branch with Git, or change `updates_branch`. |
