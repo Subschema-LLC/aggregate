@@ -4,11 +4,17 @@ declare(strict_types=1);
 
 namespace App\Service;
 
-/** Builds shareable request examples from policy alone, without observing events. */
+/**
+ * Builds shareable examples from policy alone, without observing events: the
+ * tracker call a page makes, and the request bodies a direct client sends.
+ */
 final class EventExampleGenerator
 {
-    public function __construct(private readonly CustomDataSettings $settings)
-    {
+    /** @param ?AggregateConfigLoader $config names the tracker's namespace in the tracker call (Aggregate without it) */
+    public function __construct(
+        private readonly CustomDataSettings $settings,
+        private readonly ?AggregateConfigLoader $config = null,
+    ) {
     }
 
     public function generate(string $example = 'model'): array
@@ -83,16 +89,32 @@ final class EventExampleGenerator
             InternalTrafficSettings::JSON_KEY => false,
         ];
 
+        // A page passes emit() the event name and the properties themselves.
+        // The tracker builds the request body from them, adds the page path,
+        // consent state and page depth, and leaves out what consent does not
+        // allow, so one call serves both examples.
+        $trackerName = $ecommerce ? 'purchase' : 'button_click';
+        $trackerProperties = array_diff_key($enhanced, CustomDataSettings::BUILTIN_PROPERTIES);
+        $trackerMethod = TrackerNamespace::of($this->config).'.emit';
+        $json = JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR;
+
         $bundle = [
             'schema_version' => 1,
             'synthetic' => true,
             'source' => $ecommerce ? 'ecommerce_recommendation' : 'saved_model',
+            'tracker' => [
+                'method' => $trackerMethod,
+                'arguments' => $trackerProperties === [] ? [$trackerName] : [$trackerName, (object) $trackerProperties],
+                'javascript' => $trackerMethod.'('.json_encode($trackerName, $json)
+                    .($trackerProperties === [] ? '' : ', '.json_encode((object) $trackerProperties, $json)).');',
+            ],
             'endpoint' => ['method' => 'POST', 'path' => '/api/receive'],
             'notes' => [
                 $ecommerce
                     ? 'This ecommerce recommendation is an unsaved proposed model with fixed synthetic values. Review and merge its YAML into the active model before using its property or numeric reporting rules. No settings are saved and no events are read or sent.'
                     : 'These examples use the saved deployment model and fixed synthetic values. No events are read or sent.',
-                'Send only an example payload as the JSON request body. Replace the public website token placeholder and use an Origin allowed for that website. Never substitute an administrator or sharing token.',
+                'On a page with the tracker, make the call in tracker.javascript, or use tracker.method and tracker.arguments in a tag manager method tag. emit() takes the event name and the properties themselves; the tracker builds the request body from them and leaves out what consent does not allow. Do not pass a payload to emit(): it sends nothing.',
+                'From a server or another client without the tracker, send only an example payload as the JSON request body. Replace the public website token placeholder and use an Origin allowed for that website. Never substitute an administrator or sharing token.',
                 'Declared types determine the synthetic values. Properties without a type use illustrative strings. Types do not define a permitted-value vocabulary; review actual bounded scalar values before collection.',
                 'Integer properties use whole numbers within the JavaScript safe-integer range. Float and double accept finite JSON numbers and project approximate double precision; numeric strings are not automatically converted.',
                 'Anonymous examples contain modeled properties explicitly allowed without consent and page_sequence when enabled. Unlisted ordinary properties require enhanced consent and are not included in these examples.',

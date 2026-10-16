@@ -4,11 +4,33 @@
 
 ## Generate from the saved model
 
-Open **Collection → Event examples** to generate anonymous and enhanced request
-JSON from the active saved model. Use **Copy anonymous JSON** or **Copy enhanced
-JSON**, or download the complete bundle with its consent/type notes. Unsaved
-model edits do not affect these examples. Clipboard access normally requires
-HTTPS; if the browser refuses access, the page selects the text for manual copy.
+Open **Collection → Event examples** to generate examples from the active saved
+model. **Send it from your pages** comes first: the tracker call a page makes,
+such as:
+
+```javascript
+Aggregate.emit("button_click", {
+    "plan": "example",
+    "utm_medium": "email"
+});
+```
+
+and the same values as the arguments of a [tag manager method tag](TAG-MANAGER.md#send-data-layer-events-to-the-tracker).
+The call names your [`js_namespace`](CONFIGURATION.md#customizing-the-javascript-namespace).
+`emit()` takes the event name and the properties themselves. The tracker adds
+the page path, consent state, page depth and the other request fields, puts the
+properties in the request's `customData`, and leaves out what consent does not
+allow, so a page makes the same call with or without consent.
+
+Below it, **Request bodies for servers and direct clients** holds the anonymous
+and enhanced JSON that a server, or a client without the tracker, sends to
+`POST /api/receive` itself. Passing one of these bodies to `emit()` sends
+nothing: its first argument is not an event name.
+
+Copy any of them, or download the complete bundle with its consent/type notes.
+Unsaved model edits do not affect these examples. Clipboard access normally
+requires HTTPS; if the browser refuses access, the page selects the text for
+manual copy.
 
 The same read-only generator is available with the dashboard disabled:
 
@@ -27,8 +49,11 @@ Examples use fixed synthetic values, never descriptions or observed values.
 Invalid model or collection configuration prevents saved-model generation.
 
 The versioned bundle includes `schema_version`, `synthetic`, `properties`, notes,
-and `examples.anonymous.payload` / `examples.enhanced.payload`. Send only a
-`payload` as the request body. Replace the public website-token placeholder and
+`tracker` and `examples.anonymous.payload` / `examples.enhanced.payload`.
+`tracker.javascript` is the call for a page, and `tracker.method` with
+`tracker.arguments` the same call for a tag manager method tag; they do not
+depend on `--mode`. From a server or direct client, send only a `payload` as
+the request body. Replace the public website-token placeholder and
 use an Origin registered for that website. Do not use an administrator or
 organization sharing token. Copying `consentState: "granted"` does not obtain
 consent; wire enhanced collection to an actual affirmative choice.
@@ -51,10 +76,25 @@ shows a matching notice. `--mode=anonymous` and `--mode=enhanced` are unchanged.
 
 ## A flat ecommerce starting point
 
-The UI's **Ecommerce recipe** and `--example=ecommerce` provide a proposed model
-and synthetic purchase payloads. **Ecommerce purchase JSON** opens first, with
-copy and download controls; **Anonymous collection JSON** shows the request
-without consent-dependent properties. **Recommended ecommerce model (YAML)**
+The UI's **Ecommerce recipe** and `--example=ecommerce` provide a proposed model,
+the tracker call and synthetic purchase payloads. The page starts with the call:
+
+```javascript
+Aggregate.emit("purchase", {
+    "currency": "USD",
+    "total_minor": 4999,
+    "tax_minor": 400,
+    "shipping_minor": 500,
+    "item_count": 2,
+    "discount_rate": 0.1,
+    "product_category": "accessories",
+    "checkout_step": "complete"
+});
+```
+
+**Ecommerce purchase request** is the body a server sends instead, with copy and
+download controls; **Anonymous request** shows it without consent-dependent
+properties. **Recommended ecommerce model (YAML)**
 contains the matching property configuration. This is a recommendation, not your
 saved model; generation never installs it. Review and merge the proposed
 definitions into your existing model, then regenerate saved-model examples and
@@ -69,6 +109,8 @@ event name does not automatically record the separately configured purchase goal
 
 The [complete ecommerce purchase JSON](examples/ecommerce-purchase.json) is a
 synthetic request body for `POST /api/receive`, separate from the model YAML.
+It is what the tracker builds from the call above; send it yourself only from a
+server or another client without the tracker, never through `emit()`.
 Replace the public website-token placeholder and connect enhanced tracking to
 explicit analytics consent. The visitor/session identifiers below are fixed
 examples, not identifiers to reuse for actual visitors. Copying `"granted"` does

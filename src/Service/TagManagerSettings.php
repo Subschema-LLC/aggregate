@@ -78,9 +78,7 @@ final class TagManagerSettings
     /** The global the tracker installs itself as (js_namespace), such as Aggregate. */
     public function trackerNamespace(): string
     {
-        $namespace = $this->config->getWithEnvFallback('js_namespace', 'Aggregate');
-
-        return is_string($namespace) && preg_match('/^[A-Za-z_$][A-Za-z0-9_$]{0,63}$/D', $namespace) === 1 ? $namespace : 'Aggregate';
+        return TrackerNamespace::of($this->config);
     }
 
     /**
@@ -91,7 +89,7 @@ final class TagManagerSettings
      */
     public function trackerNamespaces(): array
     {
-        return array_values(array_unique([$this->trackerNamespace(), 'Aggregate']));
+        return array_values(array_unique([$this->trackerNamespace(), TrackerNamespace::DEFAULT]));
     }
 
     /**

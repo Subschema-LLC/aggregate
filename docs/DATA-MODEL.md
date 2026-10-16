@@ -356,7 +356,7 @@ php bin/console app:analytics:views:regenerate --force     # Drop and recreate t
 
 1. Open **Data model → Observed properties → Refresh observed properties** to sample up to 1,000 latest retained events with custom data. The page shows keys, types, and occurrence counts without sample values; this is not a complete historical inventory. Opening the model editor does not query observed events or reporting SQL.
 2. Select **Review in model editor**, choose the new row's consent/type/reporting policy, then save. Ordinary new properties start with enhanced consent required. For `org_internal_traffic` and `page_sequence`, the link leads to their box under **Built-in properties**. The link only opens an unsaved row and never saves automatically.
-3. Download YAML or open **Event examples** for synthetic JSON. Exports omit website tokens, sharing tokens, and application secrets.
+3. Download YAML, or open **Event examples** for the `emit()` call and request JSON with synthetic values. Exports omit website tokens, sharing tokens, and application secrets.
 
 Headless commands:
 
