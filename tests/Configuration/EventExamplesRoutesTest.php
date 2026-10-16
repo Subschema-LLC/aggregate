@@ -116,7 +116,7 @@ final class EventExamplesRoutesTest extends TestCase
         $views->expects(self::never())->method('regenerate');
         $this->container()->set(ReportingViewManager::class, $views);
         $before = file_get_contents($this->temporaryDirectory.'/config/aggregate.yaml');
-        foreach ([self::EXAMPLE_ROUTES['app_event_examples'] => 2, self::EXAMPLE_ROUTES['app_event_examples_ecommerce'] => 3] as $path => $buttons) {
+        foreach ([self::EXAMPLE_ROUTES['app_event_examples'] => 4, self::EXAMPLE_ROUTES['app_event_examples_ecommerce'] => 5] as $path => $buttons) {
             $crawler = $browser->request('GET', $path);
             self::assertSame(200, $browser->getResponse()->getStatusCode(), $path);
             $this->assertPrivate($browser);
@@ -124,10 +124,12 @@ final class EventExamplesRoutesTest extends TestCase
             self::assertCount(1, $crawler->filter('.container #example-anonymous'));
             self::assertCount(1, $crawler->filter('.container #example-enhanced'));
             $ecommerce = $path === self::EXAMPLE_ROUTES['app_event_examples_ecommerce'];
-            $firstMode = $ecommerce ? 'enhanced' : 'anonymous';
-            self::assertCount(1, $crawler->filter('.container details[open] #example-'.$firstMode));
-            self::assertSame('example-'.$firstMode, $crawler->filter('.container pre code[id^="example-"]')->first()->attr('id'));
+            // The tracker call comes first; request bodies are for direct clients.
+            self::assertCount(0, $crawler->filter('.container details[open] [id^="example-"]'));
+            self::assertSame('example-tracker-call', $crawler->filter('.container pre code[id^="example-"]')->first()->attr('id'));
             $expected = json_decode($this->container()->get(EventExampleGenerator::class)->exportJson('all', $ecommerce ? 'ecommerce' : 'model'), true, flags: JSON_THROW_ON_ERROR);
+            self::assertSame($expected['tracker']['javascript'], $crawler->filter('#example-tracker-call')->text(null, false));
+            self::assertSame($expected['tracker']['arguments'], json_decode($crawler->filter('#example-tag-arguments')->text(), true, flags: JSON_THROW_ON_ERROR));
             foreach (['anonymous', 'enhanced'] as $mode) {
                 $payload = json_decode($crawler->filter('#example-'.$mode)->text(), true, flags: JSON_THROW_ON_ERROR);
                 self::assertSame($expected['examples'][$mode]['payload'], $payload);

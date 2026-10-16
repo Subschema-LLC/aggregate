@@ -373,6 +373,31 @@ final class EventExampleGeneratorTest extends TestCase
         self::assertArrayNotHasKey('strict', $this->generator([])->generate()['examples']);
     }
 
+    public function testTheTrackerCallUsesTheNamespaceAndPassesOnlyTheEventsOwnProperties(): void
+    {
+        file_put_contents($this->projectDir.'/config/aggregate.yaml', Yaml::dump([
+            'js_namespace' => 'Optin',
+            'page_sequence_enabled' => true,
+            'custom_data_properties' => ['plan' => ['consent_required' => true], 'utm_medium' => ['consent_required' => false]],
+        ], 6, 2));
+        $config = new AggregateConfigLoader($this->projectDir, 'test');
+        $generator = new EventExampleGenerator(new CustomDataSettings($config), $config);
+
+        $tracker = $generator->generate()['tracker'];
+        self::assertSame('Optin.emit', $tracker['method']);
+        // The tracker adds page_sequence and org_internal_traffic itself.
+        self::assertSame(['button_click', ['plan' => 'example', 'utm_medium' => 'email']], json_decode(json_encode($tracker['arguments']), true));
+        self::assertSame("Optin.emit(\"button_click\", {\n    \"plan\": \"example\",\n    \"utm_medium\": \"email\"\n});", $tracker['javascript']);
+        self::assertStringContainsString('Do not pass a payload to emit(): it sends nothing.', implode(' ', $generator->generate()['notes']));
+        self::assertSame('Optin.emit("purchase", {', strtok($generator->generate('ecommerce')['tracker']['javascript'], "\n"));
+        self::assertArrayHasKey('tracker', json_decode($generator->exportJson('anonymous'), true), 'the call does not depend on the mode');
+
+        file_put_contents($this->projectDir.'/config/aggregate.yaml', Yaml::dump(['js_namespace' => 'not a name', 'custom_data_properties' => [], 'query_parameter_mappings' => []], 6, 2));
+        $config = new AggregateConfigLoader($this->projectDir, 'test');
+        $empty = (new EventExampleGenerator(new CustomDataSettings($config), $config))->generate()['tracker'];
+        self::assertSame(['method' => 'Aggregate.emit', 'arguments' => ['button_click'], 'javascript' => 'Aggregate.emit("button_click");'], $empty);
+    }
+
     private function generator(array $values): EventExampleGenerator
     {
         file_put_contents($this->projectDir.'/config/aggregate.yaml', Yaml::dump($values, 6, 2));
