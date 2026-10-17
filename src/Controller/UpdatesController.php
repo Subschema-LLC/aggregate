@@ -8,6 +8,7 @@ use App\Service\AggregateConfigLoader;
 use App\Service\ApplicationUpdateService;
 use App\Service\FeatureFlags;
 use App\Service\Update\ApplicationUpdater;
+use App\Service\Update\BackgroundUpdate;
 use App\Service\Update\DeploymentAction;
 use App\Service\Update\SystemCheck;
 use App\Service\UpdateSettings;
@@ -30,6 +31,7 @@ final class UpdatesController extends AbstractController
         private readonly ApplicationUpdateService $updates,
         private readonly FeatureFlags $features,
         private readonly ApplicationUpdater $updater,
+        private readonly BackgroundUpdate $background,
         private readonly SystemCheck $systemCheck,
         private readonly UpdateSettings $settings,
         private readonly ?DeploymentAction $deploymentAction = null,
@@ -170,7 +172,7 @@ final class UpdatesController extends AbstractController
             return $this->redirectToRoute('app_updates');
         }
         try {
-            $staged = $this->updater->stageUpload($files);
+            $staged = $this->background->stageUpload($files);
         } catch (\RuntimeException $e) {
             $this->addFlash('error', 'The uploaded release was not installed: '.$e->getMessage());
 
@@ -208,7 +210,7 @@ final class UpdatesController extends AbstractController
         }
         $problems = $this->systemCheck->problems(dashboard: true);
         if ($problems === []) {
-            $problems = $this->updater->backgroundProblems();
+            $problems = $this->background->problems();
         }
 
         return $problems === [] ? null
@@ -222,7 +224,7 @@ final class UpdatesController extends AbstractController
             array_unshift($arguments, '--database-backup-confirmed');
         }
         try {
-            $this->updater->startInBackground($arguments);
+            $this->background->start($arguments);
         } catch (\RuntimeException $e) {
             $this->addFlash('error', $e->getMessage());
 

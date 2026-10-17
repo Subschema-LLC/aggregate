@@ -282,7 +282,7 @@ environments:
 - `brand_text_color`: Main application text color (default: `#363636`)
 - `brand_font_family`: Safe comma-separated local/system font stack for application text (default: `system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif`)
 - `brand_heading_font_family`: Safe comma-separated local/system font stack for headings (default: `system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif`)
-- `js_namespace`: JavaScript global variable name (default: `Aggregate`)
+- `js_namespace`: JavaScript global variable name (default: `Aggregate`). Letters, digits, `_` and `$`, not starting with a digit, up to 64 characters; any other value is ignored and `Aggregate` is used. See [Customizing the JavaScript namespace](#customizing-the-javascript-namespace)
 - `tracker_omit_unused_features`: Send a smaller `/aggregate.js?min=1` without the code for features these settings turn off: page depth while it is off, and what only the standard profile uses while the strict profile is on (default: `true`; `TRACKER_OMIT_UNUSED_FEATURES` environment override). Also on **General settings → Page speed**. See [page speed](PAGE-SPEED.md#leave-out-unused-tracker-features)
 - `updates_method`: `release` (signed release ZIPs, recommended), `repository` (Git clone pulls, advanced) or `deployment` (deployed another way, such as a hosting panel's Git deployment or CI/CD); unset until an administrator chooses on the Updates page, with `app:updates:method`, or here. See [the update guide](UPDATES.md#choose-an-update-method)
 - `updates_branch`: GitHub branch used by repository pulls, packaged-release checks and comparisons of deployed commits (default: `master`); also editable on the Updates page, with active-environment precedence
@@ -293,6 +293,7 @@ environments:
 - `page_sequence_enabled`: Optional page depth on all events in both modes (default: `false`, strict YAML boolean, no environment override). Configure in Data model or YAML; see [page depth](DATA-MODEL.md#optional-page-depth) for the `20+` cap and reporting limits.
 - `page_sequence_method`: `session_storage` (default) or `url_parameter`, with no environment override. Choose tab storage or the fixed `aggregate_page_sequence` URL parameter; review [storage and URL tradeoffs](DATA-MODEL.md#optional-page-depth) before enabling.
 - `dashboard_enabled`: Enable/disable dashboard/login/install behavior (default: `true`)
+- `website_activity_active_days`, `website_activity_stale_days`: How recently a website must have sent an event for the Websites page to show it as receiving data, and after how many days without one it shows as stale (defaults: `1` and `3`, range `1`–`365`, stale at least active). Also on **General settings**. The statuses are cached for 15 minutes and recalculated whenever someone signs in; `php bin/console app:websites:check-activity` prints them, and `--refresh` recalculates them first
 - `collection_profile`: `standard` (default) or `strict`, with an uppercase `COLLECTION_PROFILE` environment override. Strict records every event anonymously with only the sanitized path, event name and an approved goal, and the served tracker reads no screen size or referrer and does not touch cookies or browser storage. Other collection settings are kept but unused while strict is selected. See the [strict collection profile](PRIVACY-COMPLIANCE.md#strict-collection-profile).
 - `anonymous_tracking_enabled`: Administrative collection kill switch; `false` rejects anonymous and enhanced events (default: `true`)
 - `anonymous_excluded_paths`: Paths/globs excluded from anonymous and enhanced collection (default: `[]`)
@@ -301,8 +302,8 @@ environments:
 - `anonymous_geo_enabled`: Enable transient, local-IP-to-area lookup for accepted events (default: `false`)
 - `anonymous_geo_level`: Store `macro_region` (continent-level, recommended) or `country` (default: `macro_region`)
 - `anonymous_geo_database_path`: Local GeoLite2-Country-compatible `.mmdb` path (absolute recommended, or contained by the project root); URI/UNC/network-share/device paths are rejected and no database is downloaded automatically
-- `tracking_retry_enabled`: Allow or block manual retry runs for failed enhanced tracking messages in the dashboard and CLI (default: `true`)
-- `tracking_retry_batch_size`: Maximum failed tracking messages retried per run (default: `100`, range: `1`–`1000`)
+- `tracking_retry_enabled`: Allow or block manual retry runs for failed enhanced tracking messages in the dashboard (**Collection controls**) and with `php bin/console app:tracking:retry-failed` (default: `true`)
+- `tracking_retry_batch_size`: Maximum failed tracking messages retried per run (default: `100`, range: `1`–`1000`); `app:tracking:retry-failed --limit=N` sets it for one run
 - `analytics_archiving_enabled`: Aggregate older raw rows into private event/pageview, goal, and geography cells (default: `false`)
 - `analytics_archive_after_days`: Age at which completed raw data becomes eligible for archiving (default: `90`, range: `1`–`36500`)
 - `analytics_retention_enabled`: Enable irreversible raw-row and archive-cell deletion (default: `false`)
@@ -363,7 +364,7 @@ Environment overrides (`ANONYMOUS_MIN_CELL_COUNT`, `ANONYMOUS_GEO_MIN_CELL_COUNT
 
 ### Reporting timezone
 
-`reporting_timezone` (default `UTC`) is the IANA name compiled into the event views when they are regenerated. **Reporting → Reporting timezone**, YAML, and `app:analytics:reporting-timezone` share `ReportingTimezone` and `AnonymousBiViewManager`. `REPORTING_TIMEZONE` overrides the saved value. An invalid name, a MySQL or MariaDB server without time zone tables, or an IANA name SQL Server cannot map stops regeneration and leaves the existing views in place.
+`reporting_timezone` (default `UTC`) is the IANA name compiled into the event views when they are regenerated. **Reporting → Reporting timezone**, YAML, and `app:analytics:reporting-timezone` share `ReportingTimezone` and `AnonymousBiViewManager`. `REPORTING_TIMEZONE` overrides the saved value. An invalid name, a MySQL or MariaDB server without time zone tables, or an IANA name SQL Server cannot map stops regeneration and leaves the existing views in place. Load MySQL or MariaDB time zone tables with the one command in [reporting timezone](BI-CONNECTION.md#reporting-timezone), or `php bin/console app:analytics:mysql-timezones:load` when this server can administer the database.
 
 The setting relabels `event_hour` and the event views' `event_day`. It does not change stored events, archives, goal days or geography days, which stay UTC. See [reporting timezone](BI-CONNECTION.md#reporting-timezone).
 
@@ -614,7 +615,7 @@ administration. Each settings page loads the data needed for its own task.
 | Collection controls | `/dashboard/collection` | Collection switch, exclusions, optional local geography |
 | Setup | `/dashboard/setup` | Guided installation, separate built-in/standalone/external consent choice, script copy/download, optional minification |
 | Standalone consent settings | `/dashboard/setup/standalone/<site-id>` | Independent per-site banner settings and optional Formspree request endpoint |
-| Tag manager | `/dashboard/tag-manager` | Per-website CMP, script/method actions, consent, event triggers, variables, and YAML downloads |
+| Tag manager | `/dashboard/tag-manager` | Per-website tags that load scripts, send Aggregate events, call library methods or run custom JavaScript, with consent, triggers, variables and YAML downloads |
 | BI disclosure | `/dashboard/privacy` | YAML-backed event and geography thresholds with BI view regeneration |
 | Users | `/dashboard/users` | User creation and password administration |
 | Data model | `/dashboard/data-model` | Properties, types, consent, query mappings |
@@ -713,11 +714,18 @@ the site and hides it when documentation links are off. Topics are listed in
 
 ## Customizing the JavaScript Namespace
 
-Set `js_namespace` in `config/aggregate.yaml` (or via the web installer):
+Set `js_namespace` in `config/aggregate.yaml`, in the web installer or under
+**General settings**:
 
 ```yaml
 js_namespace: "Company1Analytics"
 ```
+
+It must be a plain JavaScript name: letters, digits, `_` and `$`, not starting
+with a digit, up to 64 characters. The installer and the settings page refuse
+anything else. An invalid value set another way, in the YAML or with
+`JS_NAMESPACE`, is ignored, and the tracker, snippets, examples and tag manager use `Aggregate`
+until it is corrected; the settings page says when that happens.
 
 Or override per-script tag:
 
@@ -773,8 +781,8 @@ application directory, or the path in the `AGGREGATE_COMPOSER` environment varia
 `AGGREGATE_GITHUB_TOKEN` in the server environment or untracked `.env.local` for
 private-repository API access or higher rate limits. Keep this credential out of
 tracked YAML and browser configuration. Git pulls use the deployment user's
-Git credentials separately. See the [deployment guide](../DEPLOYMENT.md#updates)
-for checking and applying updates, including headless use.
+Git credentials separately. See the [update guide](UPDATES.md) for checking and
+applying updates, including headless use.
 
 Offline package verification uses the shipped `config/release-signing.pub` or a
 YAML `updates_signing_public_key` override. Both contain only a base64 Ed25519

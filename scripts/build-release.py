@@ -72,7 +72,7 @@ REQUIRED_FILES = (
     "var/browser/tag-manager.template.min.js", "var/browser/tag-manager-manifest.json",
     "config/aggregate.yaml.example", "config/websites.yaml.example", "config/services.yaml",
     "config/bundles.php", "config/quick_search.yaml", "config/maintenance.php", "config/setup.php",
-    "src/Setup/FirstRunSetup.php", "src/Setup/SetupCode.php", "src/Kernel.php", "importmap.php",
+    "src/Setup/FirstRunSetup.php", "src/Setup/SetupPage.php", "src/Setup/SetupCode.php", "src/Kernel.php", "importmap.php",
     "var/browser/standalone-consent.template.min.js", "var/browser/standalone-consent-manifest.json",
     "micro-consent-dropins/js/consent-ui.js", "micro-consent-dropins/js/consent-ui.min.js",
     "micro-consent-dropins/js/aggregate-consent.js", "micro-consent-dropins/js/aggregate-consent.min.js",

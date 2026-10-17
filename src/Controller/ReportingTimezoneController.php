@@ -7,6 +7,8 @@ namespace App\Controller;
 use App\Service\AggregateConfigLoader;
 use App\Service\AnalyticsPrivacySettings;
 use App\Service\AnonymousBiViewManager;
+use App\Service\MysqlTimeZoneTables;
+use App\Service\MysqlTimeZoneTablesMissing;
 use App\Service\ReportingTimezone;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -27,6 +29,7 @@ final class ReportingTimezoneController extends AbstractController
         private readonly AnalyticsPrivacySettings $thresholds,
         private readonly AnonymousBiViewManager $views,
         private readonly LoggerInterface $logger,
+        private readonly MysqlTimeZoneTables $timeZones,
     ) {
     }
 
@@ -44,7 +47,7 @@ final class ReportingTimezoneController extends AbstractController
             $error = $e->getMessage();
         }
 
-        return $this->page($name, $error);
+        return $this->page($name, $error, timezoneLoadCommand: $this->loadCommandFor($name));
     }
 
     #[Route('/dashboard/reporting/timezone/save', name: 'app_reporting_timezone_save', methods: ['POST'])]
@@ -66,6 +69,8 @@ final class ReportingTimezoneController extends AbstractController
             if ($this->timezone->hasEnvironmentOverride()) {
                 $this->views->assertReportingTimezoneCanBeCompiled($this->timezone->name());
             }
+        } catch (MysqlTimeZoneTablesMissing $e) {
+            return $this->page($submitted, null, Response::HTTP_UNPROCESSABLE_ENTITY, $e->command());
         } catch (\InvalidArgumentException|\RuntimeException $e) {
             return $this->page($submitted, $e->getMessage(), Response::HTTP_UNPROCESSABLE_ENTITY);
         }
@@ -94,13 +99,23 @@ final class ReportingTimezoneController extends AbstractController
         return $this->redirectToRoute('app_reporting_timezone');
     }
 
-    private function page(string $name, ?string $error, int $status = Response::HTTP_OK): Response
+    private function page(string $name, ?string $error, int $status = Response::HTTP_OK, ?string $timezoneLoadCommand = null): Response
     {
         return $this->render('settings/reporting_timezone.html.twig', [
             'reporting_timezone' => $name,
             'reporting_timezone_error' => $error,
             'timezone_choices' => ReportingTimezone::choices(),
             'environment_override' => $this->timezone->hasEnvironmentOverride(),
+            'timezone_load_command' => $timezoneLoadCommand,
         ], new Response(status: $status, headers: ['Cache-Control' => 'private, no-store, max-age=0']));
+    }
+
+    private function loadCommandFor(string $timezone): ?string
+    {
+        if (!$this->timeZones->applies() || ReportingTimezone::isIdentity($timezone) || $this->timeZones->converts($timezone)) {
+            return null;
+        }
+
+        return $this->timeZones->operatorCommand();
     }
 }

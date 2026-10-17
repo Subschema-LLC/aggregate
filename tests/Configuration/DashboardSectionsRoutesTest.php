@@ -18,6 +18,7 @@ use App\Service\AnalyticsPrivacySettings;
 use App\Service\BrandingLogoManager;
 use App\Service\DocumentationLinks;
 use App\Service\SiteScriptConfig;
+use App\Service\TrackerNamespace;
 use App\Service\WebsiteConfigManager;
 use App\Service\WebsiteScopeCatalog;
 use PHPUnit\Framework\TestCase;
@@ -430,6 +431,26 @@ final class DashboardSectionsRoutesTest extends TestCase
         $collection = $browser->request('GET', '/dashboard/collection');
         self::assertSame('drop', $collection->filter('input[name="bot_traffic"][checked]')->attr('value'));
         self::assertSame("ExampleMonitor\nload-test", $collection->filter('#bot-user-agents')->text(normalizeWhitespace: false));
+        $this->assertNoDatabaseConnection();
+    }
+
+    public function testGeneralSettingsRefuseANamespaceTheTrackerWouldNotUse(): void
+    {
+        $browser = $this->browser('ROLE_ADMIN');
+        $this->preventDatabaseReadsAndWrites();
+        $configBefore = file_get_contents($this->temporaryDirectory.'/config/aggregate.yaml');
+        $browser->submit($browser->request('GET', '/dashboard/settings')->selectButton('Save Settings')->form(['js_namespace' => 'my-analytics']));
+        $this->assertRedirect($browser, '/dashboard/settings');
+        self::assertContains(TrackerNamespace::RULE, $browser->getRequest()->getSession()->getFlashBag()->peek('error'));
+        self::assertSame($configBefore, file_get_contents($this->temporaryDirectory.'/config/aggregate.yaml'));
+
+        // A value written to the YAML by hand is ignored, and the page says so.
+        $config = Yaml::parse((string) $configBefore);
+        file_put_contents($this->temporaryDirectory.'/config/aggregate.yaml', Yaml::dump(['js_namespace' => 'my-analytics'] + $config, 6, 2));
+        $field = $browser->request('GET', '/dashboard/settings')->filter('#js-namespace');
+        self::assertSame('my-analytics', $field->attr('value'));
+        self::assertSame(TrackerNamespace::PATTERN, $field->attr('pattern'));
+        self::assertStringContainsString('so the tracker, snippets and tag manager use Aggregate', $field->ancestors()->filter('.field')->first()->text());
         $this->assertNoDatabaseConnection();
     }
 

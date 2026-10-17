@@ -342,7 +342,7 @@ final class FirstRunSetupTest extends TestCase
         $blocked = $this->handle($this->server(['DOCUMENT_ROOT' => $this->project]));
         self::assertStringContainsString('in your hosting panel', $blocked);
 
-        foreach ([$blocked, (string) file_get_contents(dirname(__DIR__, 2).'/src/Setup/FirstRunSetup.php'), (string) file_get_contents(dirname(__DIR__, 2).'/config/setup.php')] as $text) {
+        foreach ([$blocked, (string) file_get_contents(dirname(__DIR__, 2).'/src/Setup/FirstRunSetup.php'), (string) file_get_contents(dirname(__DIR__, 2).'/src/Setup/SetupPage.php'), (string) file_get_contents(dirname(__DIR__, 2).'/config/setup.php')] as $text) {
             foreach (['plesk', 'cpanel', 'directadmin'] as $vendor) {
                 self::assertStringNotContainsStringIgnoringCase($vendor, $text);
             }

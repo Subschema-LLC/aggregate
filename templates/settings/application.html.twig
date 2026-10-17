@@ -43,12 +43,15 @@
             <div class="field">
                 <label class="label" for="js-namespace">JavaScript Namespace</label>
                 <div class="control has-icons-left">
-                    <input class="input" type="text" id="js-namespace" name="js_namespace" value="{{ js_namespace }}" required placeholder="Aggregate">
+                    <input class="input" type="text" id="js-namespace" name="js_namespace" value="{{ js_namespace_ignored ?? js_namespace }}" required placeholder="Aggregate" pattern="{{ js_namespace_pattern }}" maxlength="64" aria-describedby="js-namespace-help">
                     <span class="icon is-small is-left">
                         <i class="fas fa-terminal"></i>
                     </span>
                 </div>
-                <p class="help">The global JS variable name (e.g., <code>window.{{ js_namespace }}</code>). It also names the tracking attributes, such as <code>{{ tracking_attributes.event }}</code>; changing it means updating those in your pages.</p>
+                <p class="help" id="js-namespace-help">The global JS variable name (e.g., <code>window.{{ js_namespace }}</code>): letters, digits, <code>_</code> or <code>$</code>, not starting with a digit. It also names the tracking attributes, such as <code>{{ tracking_attributes.event }}</code>; changing it means updating those in your pages.</p>
+                {% if js_namespace_ignored is not null %}
+                    <p class="help is-danger" role="alert">The configured namespace <code>{{ js_namespace_ignored }}</code> is not a plain JavaScript name, so the tracker, snippets and tag manager use <code>{{ js_namespace }}</code>. Save a valid name to change it.</p>
+                {% endif %}
             </div>
 
             <div class="field">

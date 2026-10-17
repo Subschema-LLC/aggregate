@@ -404,6 +404,14 @@ composer validate --no-check-publish
 git diff --check
 ```
 
+CI also runs [PHPStan](https://phpstan.org/) at level 5 on `src`, with the
+version pinned in `.github/workflows/ci.yml`. To run it locally, install that
+version's `phpstan.phar` (it is not a Composer dependency) and run
+`php phpstan.phar analyse` from the repository root; `phpstan.dist.neon` holds
+the settings. `phpstan-baseline.neon` lists older findings. New code should
+pass without adding to it, and a change that fixes a listed finding should
+regenerate the file with `--generate-baseline`.
+
 Replace the PHP file placeholder with a file you changed. To check dependency
 injection without the dashboard, also run
 `DASHBOARD_ENABLED=0 php bin/console lint:container`. Clear the application cache
@@ -426,7 +434,7 @@ organization-marker artifacts keep their separate browser delivery paths.
 | --- | --- |
 | [public/aggregate.js](public/aggregate.js) | Browser tracker and its source; no separate tracker build |
 | [ScriptController](src/Controller/ScriptController.php) | Serves the tracker with public runtime settings; preserves its license header and keeps sharing tokens private |
-| [ReceiveController](src/Controller/ReceiveController.php) | Validates requests, website origin/token, collection controls, consent, and sanitized inputs |
+| [ReceiveController](src/Controller/ReceiveController.php) and [EventIngestion](src/Service/EventIngestion.php) | The collection endpoint; the service checks requests in order (website settings, collection controls, bots, rate limit, origin/token), then records them by consent with sanitized inputs |
 | [AnonymousEventRecorder](src/Service/AnonymousEventRecorder.php) | Writes anonymous events synchronously using UTC hour buckets |
 | [TrackEventMessage](src/Message/TrackEventMessage.php) and [TrackEventHandler](src/MessageHandler/TrackEventHandler.php) | Carry and persist enhanced events through Symfony Messenger |
 | [src/Service](src/Service) | Configuration, privacy policy, sanitization, goals, organization markers, branding, and data lifecycle services |
@@ -437,6 +445,12 @@ organization-marker artifacts keep their separate browser delivery paths.
 | [src/Command](src/Command) | CLI installation, website creation, and analytics maintenance |
 | [templates](templates/README.md) and [assets](assets) | Twig pages and partials grouped by feature; AssetMapper dashboard assets |
 | [tests](tests) | PHP regressions by component and Node browser/storage regressions |
+
+Keep controllers to routing, access checks and responses. When a dashboard
+form needs more than a few lines of parsing, put that in a form class beside
+its settings service, as `ConsentManagerForm`, `TagManagerForm` and
+`Glossary\GlossaryForm` do. Validation stays in the settings service that YAML
+and the command line also use.
 
 Operator configuration lives in YAML. Application settings, including the BI
 disclosure thresholds, are loaded by `AggregateConfigLoader`; website

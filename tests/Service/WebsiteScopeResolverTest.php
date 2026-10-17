@@ -6,6 +6,7 @@ namespace App\Tests\Service;
 
 use App\Controller\HealthController;
 use App\Controller\ReceiveController;
+use App\Service\EventIngestion;
 use App\Controller\ScriptController;
 use App\Entity\Event;
 use App\Service\AggregateConfigLoader;
@@ -101,17 +102,19 @@ final class WebsiteScopeResolverTest extends TestCase
                 'eventName' => 'view',
                 'consentState' => 'denied',
             ], JSON_THROW_ON_ERROR)),
-            $websites,
-            $this->createStub(MessageBusInterface::class),
-            $this->createStub(IpRateLimiter::class),
-            $sanitizer = new PrivacySanitizer(),
-            new GoalEventRegistry($sanitizer, []),
-            new PrivacyPolicy($loader),
-            $this->createStub(GeoIpResolverInterface::class),
-            new AnonymousEventRecorder($this->createStub(EntityManagerInterface::class)),
-            new NullLogger(),
-            new CustomDataSettings($loader),
-            scopes: $resolver,
+            new EventIngestion(
+                $websites,
+                $this->createStub(MessageBusInterface::class),
+                $this->createStub(IpRateLimiter::class),
+                $sanitizer = new PrivacySanitizer(),
+                new GoalEventRegistry($sanitizer, []),
+                new PrivacyPolicy($loader),
+                $this->createStub(GeoIpResolverInterface::class),
+                new AnonymousEventRecorder($this->createStub(EntityManagerInterface::class)),
+                new NullLogger(),
+                new CustomDataSettings($loader),
+                scopes: $resolver,
+            ),
         );
 
         self::assertSame(202, $response->getStatusCode());
@@ -274,19 +277,21 @@ final class WebsiteScopeResolverTest extends TestCase
                 InternalTrafficSettings::JSON_KEY => true,
                 'customData' => ['utm_medium' => 'private-medium'],
             ], JSON_THROW_ON_ERROR)),
-            $websites,
-            $bus,
-            $rateLimiter,
-            $sanitizer = new PrivacySanitizer(),
-            new GoalEventRegistry($sanitizer, [
-                'purchase' => ['label' => 'Purchase', 'enabled' => true, 'anonymous' => true],
-            ]),
-            new PrivacyPolicy($loader),
-            $geoResolver,
-            new AnonymousEventRecorder($entityManager),
-            new NullLogger(),
-            new CustomDataSettings($loader),
-            scopes: $resolver,
+            new EventIngestion(
+                $websites,
+                $bus,
+                $rateLimiter,
+                $sanitizer = new PrivacySanitizer(),
+                new GoalEventRegistry($sanitizer, [
+                        'purchase' => ['label' => 'Purchase', 'enabled' => true, 'anonymous' => true],
+                    ]),
+                new PrivacyPolicy($loader),
+                $geoResolver,
+                new AnonymousEventRecorder($entityManager),
+                new NullLogger(),
+                new CustomDataSettings($loader),
+                scopes: $resolver,
+            ),
         );
 
         self::assertSame(202, $response->getStatusCode());
@@ -453,17 +458,19 @@ final class WebsiteScopeResolverTest extends TestCase
                 'eventName' => 'view',
                 'consentState' => 'granted',
             ], JSON_THROW_ON_ERROR)),
-            $websites,
-            $this->createStub(MessageBusInterface::class),
-            $rateLimiter,
-            new PrivacySanitizer(),
-            new GoalEventRegistry(new PrivacySanitizer(), []),
-            new PrivacyPolicy($loader),
-            $this->createStub(GeoIpResolverInterface::class),
-            new AnonymousEventRecorder($entityManager),
-            new NullLogger(),
-            new CustomDataSettings($loader),
-            scopes: $resolver,
+            new EventIngestion(
+                $websites,
+                $this->createStub(MessageBusInterface::class),
+                $rateLimiter,
+                new PrivacySanitizer(),
+                new GoalEventRegistry(new PrivacySanitizer(), []),
+                new PrivacyPolicy($loader),
+                $this->createStub(GeoIpResolverInterface::class),
+                new AnonymousEventRecorder($entityManager),
+                new NullLogger(),
+                new CustomDataSettings($loader),
+                scopes: $resolver,
+            ),
         );
     }
 

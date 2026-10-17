@@ -228,7 +228,8 @@ deployed files: deploy the previous commit with your tool.
 
 Your tool decides which files it replaces or deletes. Your configuration and data
 are not in the repository: `.env.local`, `config/aggregate.yaml` and
-`config/aggregate_*.yaml`, `config/websites.yaml`, `config/*.local.yaml`,
+`config/aggregate_*.yaml`, `config/websites.yaml`, `config/website-scopes.yaml`
+and `config/website-scopes/`, `config/*.local.yaml`,
 `config/tag-manager/sites/`, `config/secrets/` and `var/`. Keep them out of the
 repository you deploy from, and exclude them from anything that deletes files, such
 as `rsync --delete`. Also exclude what the post-deployment steps create:
@@ -265,7 +266,7 @@ code next to the repository and runs the post-deployment steps:
 deployment:
   tasks:
     - export DEPLOYPATH=$HOME/analytics
-    - /usr/bin/rsync -a --delete --exclude=.git --exclude=/.env --exclude=/.env.local --exclude=/.env.*.local --exclude=/.env.prod --exclude=/config/aggregate.yaml --exclude=/config/aggregate_*.yaml --exclude=/config/websites.yaml --exclude=/config/*.local.yaml --exclude=/config/tag-manager/sites/ --exclude=/config/secrets/ --exclude=/var/ --exclude=/vendor/ --exclude=/assets/vendor/ --exclude=/public/assets/ --exclude=/public/bundles/ --exclude=/SETUP-CODE.txt ./ $DEPLOYPATH/
+    - /usr/bin/rsync -a --delete --exclude=.git --exclude=/.env --exclude=/.env.local --exclude=/.env.*.local --exclude=/.env.prod --exclude=/config/aggregate.yaml --exclude=/config/aggregate_*.yaml --exclude=/config/websites.yaml --exclude=/config/website-scopes.yaml --exclude=/config/website-scopes/ --exclude=/config/*.local.yaml --exclude=/config/tag-manager/sites/ --exclude=/config/secrets/ --exclude=/var/ --exclude=/vendor/ --exclude=/assets/vendor/ --exclude=/public/assets/ --exclude=/public/bundles/ --exclude=/SETUP-CODE.txt ./ $DEPLOYPATH/
     - /bin/rm -rf $DEPLOYPATH/var/cache/prod
     - /opt/cpanel/composer/bin/composer install --working-dir=$DEPLOYPATH --no-interaction --optimize-autoloader --no-dev
     - /opt/cpanel/ea-php83/root/usr/bin/php $DEPLOYPATH/bin/console app:updates:deployed --commit=$(git rev-parse HEAD) --database-backup-confirmed
@@ -346,7 +347,8 @@ deployment tool, use a fresh clone instead.
    the database.
 3. Copy your configuration and data from the old directory: `.env` and
    `.env.local` (and any `.env.*.local`), `config/aggregate.yaml` and
-   `config/aggregate_*.yaml`, `config/websites.yaml`, `config/*.local.yaml`,
+   `config/aggregate_*.yaml`, `config/websites.yaml`, `config/website-scopes.yaml`
+   and `config/website-scopes/`, `config/*.local.yaml`,
    `config/tag-manager/sites/`, `config/secrets/` if you use Symfony secrets, and
    `var/` (the SQLite database, branding uploads and generated browser scripts).
 4. In the new directory, run the post-update steps:
@@ -415,6 +417,7 @@ With [deployed another way](#deploy-the-code-another-way), your tool replaces th
 files; [keep your files out of it](#keep-your-files-out-of-the-deployment). The other
 two methods never replace or delete `.env.local` and other local environment files,
 `config/aggregate.yaml` and `config/aggregate_*.yaml`, `config/websites.yaml`,
+`config/website-scopes.yaml` and `config/website-scopes/`,
 `config/tag-manager/sites/`, `config/*.local.yaml`, `config/secrets/`, the
 installed `config/release-signing.pub`, or anything in `var/` (database, branding
 uploads, logs). Edits to the shipped `config/goals.yaml`,
@@ -457,6 +460,13 @@ php bin/console app:updates:deployed               # deployed another way: run t
 php bin/console app:updates:maintenance status     # or: on, off
 php bin/console app:updates:verify-package PACKAGE MANIFEST SIGNATURE
 ```
+
+`app:updates:check` contacts GitHub only when asked, with branch and commit
+metadata and no event data. A successful result is cached for an hour and a failed
+one for a minute; **Check now** and `--refresh` skip the cache. It exits `0` when
+it could compare the installation with the branch, including when an update is
+available or the histories have diverged, and `1` when it could not; `--json` gives
+the `state` and `installation_type` for automation.
 
 Run them as the user that owns the application files, with the PHP the website
 uses (`sudo -u USER /opt/plesk/php/8.3/bin/php bin/console …` on Plesk). Run as

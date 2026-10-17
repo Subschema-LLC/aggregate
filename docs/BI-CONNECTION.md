@@ -249,8 +249,24 @@ reporting_timezone: America/Chicago
 - `bi_anonymous_goals_v1` and `bi_anonymous_geo_events_v1` stay on UTC days.
   Their archives have already dropped the hour, so shifting only the live half
   would split one local day across two dates.
-- MySQL and MariaDB must have their time zone tables loaded. If `CONVERT_TZ`
-  cannot convert the name, regeneration fails and the existing views stay.
+- MySQL and MariaDB must have their time zone tables loaded before a named
+  zone can be compiled. If `CONVERT_TZ` cannot convert the name, regeneration
+  fails and the existing views stay. On the database server:
+
+  ```bash
+  mysql_tzinfo_to_sql /usr/share/zoneinfo | mysql -u root -p mysql
+  ```
+
+  MariaDB 10.11 and newer use `mariadb-tzinfo-to-sql` and `mariadb`; where the
+  old names are symlinks, either form works. Plesk's administrator is `admin`,
+  with the password in `/etc/psa/.psa.shadow`. Then run
+  `php bin/console app:analytics:bi-views:regenerate`, or
+  `php bin/console app:analytics:mysql-timezones:load`, which loads the tables
+  when this server can administer MySQL and then regenerates. With this
+  repository's Docker Compose, `make load-mysql-timezones` loads the running
+  database container (`DOCKER_PROFILE=mysql` or `mariadb`); a new container
+  loads them on first start. Restart the database server if the name still
+  does not convert, then load or regenerate again.
   SQL Server uses a Windows time zone name; an unmapped IANA name is refused.
   SQLite has no time zone database, so regeneration compiles that zone's
   transitions into the view. Hours after the year 2100 keep the last compiled
@@ -344,6 +360,7 @@ the physical type differs between database engines.
 | `custom_data` | Nullable JSON | Allowed scalar properties, optional `page_sequence`, and the organization-traffic flag `org_internal_traffic` (true or false). Anonymous rows keep only properties configured for collection without consent. Not included in the approved views or the archives. |
 | `goal_event` | Nullable string (191) | An enabled goal code; kept on anonymous rows only when the goal allows anonymous use. |
 | `created_at` | UTC date and time | The UTC hour for anonymous rows; the exact server time for enhanced rows. |
+| `archived_at` | Nullable UTC date and time | Set when maintenance has counted the row into the [archive tables](DATABASE.md#analytics-archive-and-maintenance). The row stays until retention deletes it. |
 
 **`anonymous_min_cell_count`** and **`anonymous_geo_min_cell_count`** in
 `config/aggregate*.yaml` define the thresholds the approved views publish:
