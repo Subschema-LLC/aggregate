@@ -188,7 +188,10 @@ class BigQueryClient
         return (string) preg_replace(['/\'(?:[^\'\\\\]|\\\\.)*\'/', '/"(?:[^"\\\\]|\\\\.)*"/', '/\bValue: [^;.]*/i'], ["'…'", '"…"', 'Value: …'], $message);
     }
 
-    /** @param list<array{name: string, type: string}> $fields @return list<array{name: string, type: string, mode: string}> */
+    /**
+     * @param list<array{name: string, type: string}> $fields
+     * @return list<array{name: string, type: string, mode: string}>
+     */
     private static function schema(array $fields): array
     {
         $schema = [];

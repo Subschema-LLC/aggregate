@@ -191,7 +191,7 @@ final class WebsiteScopeCatalog implements ResetInterface
         $directory = $this->projectDir.'/config/'.self::DIRECTORY.'/websites';
         if (is_dir($directory)) {
             foreach (scandir($directory) ?: [] as $file) {
-                if (!is_string($file) || !str_ends_with($file, '.yaml')) {
+                if (!str_ends_with($file, '.yaml')) {
                     continue;
                 }
                 $id = substr($file, 0, -5);
@@ -329,7 +329,7 @@ final class WebsiteScopeCatalog implements ResetInterface
     }
 
     /**
-     * @param array<string, mixed> $values
+     * @param array<mixed> $values a parsed overlay, which may have keys that are not settings
      *
      * @return array<string, mixed>
      */
@@ -528,7 +528,7 @@ final class WebsiteScopeCatalog implements ResetInterface
 
             return $data;
         });
-        if (!is_array($parsed) || ($parsed !== [] && array_is_list($parsed))) {
+        if ($parsed !== [] && array_is_list($parsed)) {
             throw new \RuntimeException('The website group configuration must be a mapping.');
         }
 
@@ -629,7 +629,7 @@ final class WebsiteScopeCatalog implements ResetInterface
                 continue;
             }
             foreach (scandir($directory) ?: [] as $file) {
-                if (is_string($file) && str_ends_with($file, '.yaml')) {
+                if (str_ends_with($file, '.yaml')) {
                     $paths[] = $directory.'/'.$file;
                 }
             }

@@ -407,10 +407,11 @@ git diff --check
 CI also runs [PHPStan](https://phpstan.org/) at level 5 on `src`, with the
 version pinned in `.github/workflows/ci.yml`. To run it locally, install that
 version's `phpstan.phar` (it is not a Composer dependency) and run
-`php phpstan.phar analyse` from the repository root; `phpstan.dist.neon` holds
-the settings. `phpstan-baseline.neon` lists older findings. New code should
-pass without adding to it, and a change that fixes a listed finding should
-regenerate the file with `--generate-baseline`.
+`php phpstan.phar analyse` from the repository root. `phpstan.dist.neon` holds
+the settings and a few ignore rules, each naming a known false positive, such
+as Doctrine-managed entity properties. `phpstan-baseline.neon` lists only
+findings caused by the JavaScript parser library's docblocks. New code must
+pass without adding to either.
 
 Replace the PHP file placeholder with a file you changed. To check dependency
 injection without the dashboard, also run

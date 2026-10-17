@@ -165,6 +165,8 @@ final class UpdatesCommandTest extends TestCase
             'previous_commit' => str_repeat('a', 40),
             'current_commit' => str_repeat('b', 40),
             'changed' => true,
+            'overrides_created' => [],
+            'changed_paths' => [],
         ]);
         $tester = new CommandTester(new PullUpdatesCommand($updates));
 
@@ -183,6 +185,8 @@ final class UpdatesCommandTest extends TestCase
             'previous_commit' => str_repeat('a', 40),
             'current_commit' => str_repeat('a', 40),
             'changed' => false,
+            'overrides_created' => [],
+            'changed_paths' => [],
         ]);
         $tester = new CommandTester(new PullUpdatesCommand($updates));
 

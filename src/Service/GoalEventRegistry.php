@@ -57,7 +57,7 @@ final class GoalEventRegistry
     }
 
     /**
-     * @param array<string, mixed> $definitions
+     * @param array<mixed> $definitions goal definitions as parsed from YAML; keys can be integers
      *
      * @return array<string, array{label: string, enabled: bool, anonymous: bool}>
      */

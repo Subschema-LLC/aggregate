@@ -209,7 +209,10 @@ class BigQuerySyncRunner
         return ['last_run' => $lastRun, 'views' => $views, 'scheduler_late' => $late];
     }
 
-    /** @param array<string, mixed> $settings @return array{view: string, status: string, rows: ?int, message: string} */
+    /**
+     * @param array<string, mixed> $settings
+     * @return array{view: string, status: string, rows: ?int, message: string}
+     */
     private function syncView(string $view, array $settings, ?BigQueryClient $client, ?string $setupError, ?callable $progress, TaskTrigger $trigger): array
     {
         $task = $this->tasks->start(self::TASK_TYPE, $view, $trigger, ($this->clock)(), self::LEASE_SECONDS);

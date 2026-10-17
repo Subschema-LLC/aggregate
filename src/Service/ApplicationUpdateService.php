@@ -867,7 +867,10 @@ class ApplicationUpdateService
         return 'aggregate.updates.'.$kind.'.'.hash('sha256', $this->repositoryName()."\0".$value."\0".$this->githubToken);
     }
 
-    /** @param list<string> $arguments @param list<int> $acceptedExitCodes */
+    /**
+     * @param list<string> $arguments
+     * @param list<int> $acceptedExitCodes
+     */
     private function git(array $arguments, string $failure, int $timeout = 10, array $acceptedExitCodes = [0]): Process
     {
         try {

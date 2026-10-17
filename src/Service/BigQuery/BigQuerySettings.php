@@ -225,7 +225,10 @@ final class BigQuerySettings
         ];
     }
 
-    /** @param array{bigquery_views: list<string>, bigquery_private_views: list<string>} $settings @return list<string> */
+    /**
+     * @param array{bigquery_views: list<string>, bigquery_private_views: list<string>} $settings
+     * @return list<string>
+     */
     public static function selectedViews(array $settings): array
     {
         return [...$settings[self::KEY_VIEWS], ...$settings[self::KEY_PRIVATE_VIEWS]];
@@ -285,7 +288,11 @@ final class BigQuerySettings
         return array_keys($views);
     }
 
-    /** @param list<string> $views @param array<string, string> $catalog @return list<string> */
+    /**
+     * @param list<string> $views
+     * @param array<string, string> $catalog
+     * @return list<string>
+     */
     private static function inCatalogOrder(array $views, array $catalog): array
     {
         return array_values(array_filter(array_keys($catalog), static fn (string $view): bool => in_array($view, $views, true)));

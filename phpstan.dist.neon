@@ -1,8 +1,7 @@
 # Static analysis. CI runs the PHPStan version pinned in .github/workflows/ci.yml:
-#   phpstan analyse --memory-limit=1G
-# phpstan-baseline.neon lists findings that predate this check; fix them over
-# time and regenerate it with --generate-baseline. New code must pass without
-# adding to it.
+#   php phpstan.phar analyse --memory-limit=1G
+# New code must pass without new entries in phpstan-baseline.neon or new
+# ignore rules. Each rule below names a known false positive.
 includes:
     - phpstan-baseline.neon
 
@@ -11,3 +10,27 @@ parameters:
     paths:
         - src
     tmpDir: var/phpstan
+    ignoreErrors:
+        # Doctrine writes and reads mapped entity properties by reflection;
+        # PHPStan cannot see that without the Doctrine extension.
+        -
+            identifier: property.unused
+            path: src/Entity/*
+        -
+            identifier: property.unusedType
+            path: src/Entity/*
+        # MicroKernelTrait calls configureContainer() and configureRoutes().
+        -
+            identifier: method.unused
+            path: src/Kernel.php
+        # PHP_BINARY is empty when PHP cannot tell its own executable; PHPStan
+        # reads the value from its own process, which always has one.
+        -
+            identifier: notIdentical.alwaysTrue
+            path: src/Service/Update/Toolchain.php
+# phpstan-baseline.neon holds the findings in TagManagerCustomCode and
+# BrowserScriptCompactor that come from Peast's docblocks: Pattern, Expression
+# and Statement are interfaces outside Node, and several getters typed as
+# non-null return null (an anonymous function's name, a missing else, holes in
+# an array pattern). The node classes it lists by name, although subclasses in
+# Peast today, stay so the custom-code checks hold if that changes.

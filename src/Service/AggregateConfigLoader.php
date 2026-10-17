@@ -33,7 +33,7 @@ class AggregateConfigLoader implements ResetInterface
      * A read-only view of this deployment configuration with narrower layers
      * applied last. The view never writes the deployment file.
      *
-     * @param list<array<string, mixed>> $layers
+     * @param array<int, array<string, mixed>> $layers
      */
     public function withScope(array $layers, bool $invalid = false): self
     {
@@ -246,7 +246,7 @@ class AggregateConfigLoader implements ResetInterface
      * Return an empty array to leave the file unchanged. The callback must not
      * write configuration or try to acquire this file's lock again.
      *
-     * @param callable(array<string, mixed>): array<string, mixed> $updater
+     * @param callable(array<string, mixed>): mixed $updater returns a mapping; anything else is refused before writing
      */
     public function updateMany(callable $updater): void
     {

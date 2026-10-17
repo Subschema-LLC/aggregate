@@ -113,7 +113,7 @@ final class ReleaseMetadata
         return is_string($version) && preg_match('/^20\d{2}\.(?:0[1-9]|1[0-2])\.(?:0[1-9]|[1-9]\d)$/D', $version) === 1;
     }
 
-    /** @param array{requirements: array{php: string, extensions: list<string>}} $metadata
+    /** @param array<string, mixed> $metadata a release manifest's metadata, which may leave requirements out
      *  @return list<string>
      */
     public static function compatibilityErrors(array $metadata): array
