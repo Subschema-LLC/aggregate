@@ -81,6 +81,27 @@ jobs:
           php bin/console cache:clear
           php bin/console lint:container
 
+  # The phar is pinned so the baseline and the findings stay stable; update the
+  # version and regenerate phpstan-baseline.neon together.
+  static-analysis:
+    name: PHPStan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
+        with:
+          php-version: '8.2'
+          extensions: ctype, iconv, pdo_sqlite, mbstring, xml, curl, intl, sodium, zip
+          coverage: none
+          tools: composer:v2, phpstan:2.1.8
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --no-scripts
+      - name: Analyse src at level 5
+        run: phpstan analyse --memory-limit=1G --no-progress --error-format=github
+
   javascript:
     name: JavaScript
     runs-on: ubuntu-latest
@@ -327,11 +348,12 @@ jobs:
   ci:
     name: CI
     if: ${{ always() }}
-    needs: [php, javascript, release-tooling, fresh-install]
+    needs: [php, static-analysis, javascript, release-tooling, fresh-install]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
       PHP_RESULT: ${{ needs.php.result }}
+      STATIC_ANALYSIS_RESULT: ${{ needs.static-analysis.result }}
       JAVASCRIPT_RESULT: ${{ needs.javascript.result }}
       RELEASE_TOOLING_RESULT: ${{ needs.release-tooling.result }}
       FRESH_INSTALL_RESULT: ${{ needs.fresh-install.result }}
@@ -339,6 +361,7 @@ jobs:
       - name: Require all checks to pass
         run: |
           test "$PHP_RESULT" = success
+          test "$STATIC_ANALYSIS_RESULT" = success
           test "$JAVASCRIPT_RESULT" = success
           test "$RELEASE_TOOLING_RESULT" = success
           test "$FRESH_INSTALL_RESULT" = success

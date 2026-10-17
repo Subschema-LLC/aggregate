@@ -7,6 +7,7 @@ namespace App\Tests\Controller;
 use App\Kernel;
 use App\Service\AggregateConfigLoader;
 use App\Service\InstallationChecker;
+use App\Service\TrackerNamespace;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
@@ -51,6 +52,22 @@ final class InstallControllerSecurityTest extends TestCase
         yield 'missing' => [[]];
         yield 'forged' => [['_csrf_token' => 'forged']];
         yield 'array' => [['_csrf_token' => ['forged']]];
+    }
+
+    public function testAnInvalidNamespaceStopsTheInstallBeforeConfigurationOrDatabaseChanges(): void
+    {
+        $browser = $this->browser();
+        $token = $browser->request('GET', '/install')->filter('form input[name="_csrf_token"]')->attr('value');
+        $browser->request('POST', '/install/execute', [
+            '_csrf_token' => $token,
+            'admin_username' => 'admin',
+            'admin_password' => 'a-long-enough-password',
+            'js_namespace' => 'my analytics',
+        ]);
+
+        self::assertSame('/install', $browser->getResponse()->headers->get('Location'));
+        self::assertContains(TrackerNamespace::RULE, $browser->getRequest()->getSession()->getFlashBag()->peek('error'));
+        self::assertFileDoesNotExist($this->temporaryDirectory.'/config/aggregate.yaml');
     }
 
     public function testRenderedInstallFormCarriesATokenThatWorksOnlyInItsSession(): void

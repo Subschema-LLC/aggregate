@@ -119,7 +119,8 @@ final class DropInScriptsTest extends TestCase
         self::assertStringNotContainsString('</script>', $script);
         self::assertStringNotContainsString('private-', $script);
         self::assertSame(1, preg_match('/var consentConfig = (.*);/', $script, $matches));
-        self::assertSame(['namespace' => "Company'</script>", 'name' => 'Company </script> name', 'categories' => ['analytics']], json_decode($matches[1], true, flags: JSON_THROW_ON_ERROR));
+        // Not a plain JavaScript name, so the banner uses the tracker's default, as the tracker does.
+        self::assertSame(['namespace' => 'Aggregate', 'name' => 'Company </script> name', 'categories' => ['analytics']], json_decode($matches[1], true, flags: JSON_THROW_ON_ERROR));
         self::assertSame(1, preg_match('/var consentStyles = (.*);/', $script, $styles));
         self::assertSame(file_get_contents($this->directory.'/public/consent.css'), json_decode($styles[1], true, flags: JSON_THROW_ON_ERROR));
         self::assertStringContainsString('https://analytics.example.test/lib.js?min=1', $scripts->tagLoader());

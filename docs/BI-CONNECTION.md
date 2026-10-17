@@ -360,6 +360,7 @@ the physical type differs between database engines.
 | `custom_data` | Nullable JSON | Allowed scalar properties, optional `page_sequence`, and the organization-traffic flag `org_internal_traffic` (true or false). Anonymous rows keep only properties configured for collection without consent. Not included in the approved views or the archives. |
 | `goal_event` | Nullable string (191) | An enabled goal code; kept on anonymous rows only when the goal allows anonymous use. |
 | `created_at` | UTC date and time | The UTC hour for anonymous rows; the exact server time for enhanced rows. |
+| `archived_at` | Nullable UTC date and time | Set when maintenance has counted the row into the [archive tables](DATABASE.md#analytics-archive-and-maintenance). The row stays until retention deletes it. |
 
 **`anonymous_min_cell_count`** and **`anonymous_geo_min_cell_count`** in
 `config/aggregate*.yaml` define the thresholds the approved views publish:

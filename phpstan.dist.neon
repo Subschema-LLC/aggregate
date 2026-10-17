@@ -1,0 +1,13 @@
+# Static analysis. CI runs the PHPStan version pinned in .github/workflows/ci.yml:
+#   phpstan analyse --memory-limit=1G
+# phpstan-baseline.neon lists findings that predate this check; fix them over
+# time and regenerate it with --generate-baseline. New code must pass without
+# adding to it.
+includes:
+    - phpstan-baseline.neon
+
+parameters:
+    level: 5
+    paths:
+        - src
+    tmpDir: var/phpstan

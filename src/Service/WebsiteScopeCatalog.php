@@ -49,7 +49,7 @@ final class WebsiteScopeCatalog implements ResetInterface
 
     public function __construct(
         private readonly string $projectDir,
-        private readonly string $environment = 'prod',
+        string $environment = 'prod',
         ?ParsedYamlCache $parsedYaml = null,
     ) {
         $this->parsedYaml = $parsedYaml ?? ParsedYamlCache::forProject($projectDir, $environment);
