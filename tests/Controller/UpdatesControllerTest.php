@@ -9,6 +9,7 @@ use App\Service\AggregateConfigLoader;
 use App\Service\ApplicationUpdateService;
 use App\Service\FeatureFlags;
 use App\Service\Update\ApplicationUpdater;
+use App\Service\Update\BackgroundUpdate;
 use App\Service\Update\DeploymentAction;
 use App\Service\Update\SystemCheck;
 use App\Service\UpdateSettings;
@@ -302,12 +303,13 @@ final class UpdatesControllerTest extends TestCase
             'installation_type' => 'release', 'latest_version' => '1.1.0',
         ]));
         $updater = $this->createMock(ApplicationUpdater::class);
+        $background = $this->createMock(BackgroundUpdate::class);
         $updater->method('isSqlite')->willReturn(false);
-        $updater->method('backgroundProblems')->willReturn([]);
-        $updater->expects(self::once())->method('startInBackground')->with(['--database-backup-confirmed', '--release=1.1.0']);
+        $background->method('problems')->willReturn([]);
+        $background->expects(self::once())->method('start')->with(['--database-backup-confirmed', '--release=1.1.0']);
         $request->request->set('database_backup_confirmed', '1');
 
-        $response = $this->controller($updates, $request, updater: $updater, csrfId: UpdatesController::INSTALL_CSRF_TOKEN_ID, method: 'release')->install($request);
+        $response = $this->controller($updates, $request, updater: $updater, background: $background, csrfId: UpdatesController::INSTALL_CSRF_TOKEN_ID, method: 'release')->install($request);
 
         self::assertSame('/dashboard/updates', $response->headers->get('Location'));
         self::assertStringContainsString('The update has started', $request->getSession()->getFlashBag()->peek('success')[0]);
@@ -319,10 +321,11 @@ final class UpdatesControllerTest extends TestCase
         $updates = $this->createMock(ApplicationUpdateService::class);
         $updates->method('check')->willReturn($this->availableStatus());
         $updater = $this->createMock(ApplicationUpdater::class);
+        $background = $this->createMock(BackgroundUpdate::class);
         $updater->method('isSqlite')->willReturn(false);
-        $updater->expects(self::never())->method('startInBackground');
+        $background->expects(self::never())->method('start');
 
-        $this->controller($updates, $request, updater: $updater, csrfId: UpdatesController::INSTALL_CSRF_TOKEN_ID, method: 'repository')->install($request);
+        $this->controller($updates, $request, updater: $updater, background: $background, csrfId: UpdatesController::INSTALL_CSRF_TOKEN_ID, method: 'repository')->install($request);
 
         self::assertStringContainsString('database backup', $request->getSession()->getFlashBag()->peek('error')[0]);
     }
@@ -334,11 +337,12 @@ final class UpdatesControllerTest extends TestCase
         $updates = $this->createMock(ApplicationUpdateService::class);
         $updates->method('check')->willReturn(array_replace($this->availableStatus(), ['state' => $state]));
         $updater = $this->createMock(ApplicationUpdater::class);
+        $background = $this->createMock(BackgroundUpdate::class);
         $updater->method('isSqlite')->willReturn(true);
-        $updater->method('backgroundProblems')->willReturn($backgroundProblems);
-        $updater->expects(self::never())->method('startInBackground');
+        $background->method('problems')->willReturn($backgroundProblems);
+        $background->expects(self::never())->method('start');
 
-        $this->controller($updates, $request, updater: $updater, csrfId: UpdatesController::INSTALL_CSRF_TOKEN_ID, problems: $problems, method: 'repository')->install($request);
+        $this->controller($updates, $request, updater: $updater, background: $background, csrfId: UpdatesController::INSTALL_CSRF_TOKEN_ID, problems: $problems, method: 'repository')->install($request);
 
         self::assertStringContainsString($message, $request->getSession()->getFlashBag()->peek('error')[0]);
     }
@@ -357,9 +361,10 @@ final class UpdatesControllerTest extends TestCase
         $updates = $this->createMock(ApplicationUpdateService::class);
         $updates->expects(self::never())->method('check');
         $updater = $this->createMock(ApplicationUpdater::class);
-        $updater->expects(self::never())->method('startInBackground');
+        $background = $this->createMock(BackgroundUpdate::class);
+        $background->expects(self::never())->method('start');
 
-        $this->controller($updates, $request, csrfValid: false, updater: $updater, csrfId: UpdatesController::INSTALL_CSRF_TOKEN_ID)->install($request);
+        $this->controller($updates, $request, csrfValid: false, updater: $updater, background: $background, csrfId: UpdatesController::INSTALL_CSRF_TOKEN_ID)->install($request);
 
         self::assertSame(['Invalid security token. Please try again.'], $request->getSession()->getFlashBag()->peek('error'));
     }
@@ -460,10 +465,11 @@ php /srv/site/bin/console app:updates:deployed --git-dir=/var/www/vhosts/example
         $updates = $this->createMock(ApplicationUpdateService::class);
         $updates->method('check')->willReturn(array_replace($this->availableStatus(), ['installation_type' => 'deployment']));
         $updater = $this->createMock(ApplicationUpdater::class);
+        $background = $this->createMock(BackgroundUpdate::class);
         $updater->method('isSqlite')->willReturn(true);
-        $updater->expects(self::never())->method('startInBackground');
+        $background->expects(self::never())->method('start');
 
-        $this->controller($updates, $request, updater: $updater, csrfId: UpdatesController::INSTALL_CSRF_TOKEN_ID, method: 'deployment')->install($request);
+        $this->controller($updates, $request, updater: $updater, background: $background, csrfId: UpdatesController::INSTALL_CSRF_TOKEN_ID, method: 'deployment')->install($request);
 
         self::assertStringContainsString('deployed another way', $request->getSession()->getFlashBag()->peek('error')[0]);
     }
@@ -518,10 +524,11 @@ php /srv/site/bin/console app:updates:deployed --git-dir=/var/www/vhosts/example
         $updates = $this->createMock(ApplicationUpdateService::class);
         $updates->method('check')->willReturn($this->availableStatus());
         $updater = $this->createMock(ApplicationUpdater::class);
+        $background = $this->createMock(BackgroundUpdate::class);
         $updater->method('isSqlite')->willReturn(true);
-        $updater->expects(self::never())->method('startInBackground');
+        $background->expects(self::never())->method('start');
 
-        $this->controller($updates, $request, updater: $updater, csrfId: UpdatesController::INSTALL_CSRF_TOKEN_ID, detected: 'repository')->install($request);
+        $this->controller($updates, $request, updater: $updater, background: $background, csrfId: UpdatesController::INSTALL_CSRF_TOKEN_ID, detected: 'repository')->install($request);
 
         self::assertStringContainsString('Choose an update method', $request->getSession()->getFlashBag()->peek('error')[0]);
     }
@@ -636,13 +643,14 @@ php /srv/site/bin/console app:updates:deployed --git-dir=/var/www/vhosts/example
         $request = $this->request('POST', ['_csrf_token' => 'valid-token'], '/dashboard/updates/upload');
         $request->files->set('release_files', [$file, $this->uploadedFile('aggregate-release.json'), $this->uploadedFile('aggregate-release.json.sig')]);
         $updater = $this->createMock(ApplicationUpdater::class);
+        $background = $this->createMock(BackgroundUpdate::class);
         $updater->method('isSqlite')->willReturn(true);
-        $updater->method('backgroundProblems')->willReturn([]);
-        $updater->expects(self::once())->method('stageUpload')->with(self::callback(static fn (array $files): bool => array_keys($files) === ['aggregate-2026.09.02.zip', 'aggregate-release.json', 'aggregate-release.json.sig']))
+        $background->method('problems')->willReturn([]);
+        $background->expects(self::once())->method('stageUpload')->with(self::callback(static fn (array $files): bool => array_keys($files) === ['aggregate-2026.09.02.zip', 'aggregate-release.json', 'aggregate-release.json.sig']))
             ->willReturn(['package' => '/p.zip', 'manifest' => '/m.json', 'signature' => '/s.sig', 'version' => '2026.09.02']);
-        $updater->expects(self::once())->method('startInBackground')->with(['--package=/p.zip', '--manifest=/m.json', '--signature=/s.sig']);
+        $background->expects(self::once())->method('start')->with(['--package=/p.zip', '--manifest=/m.json', '--signature=/s.sig']);
 
-        $this->controller($this->createMock(ApplicationUpdateService::class), $request, updater: $updater, csrfId: UpdatesController::UPLOAD_CSRF_TOKEN_ID, method: 'release')->upload($request);
+        $this->controller($this->createMock(ApplicationUpdateService::class), $request, updater: $updater, background: $background, csrfId: UpdatesController::UPLOAD_CSRF_TOKEN_ID, method: 'release')->upload($request);
 
         self::assertStringContainsString('Verified release 2026.09.02. The update has started', $request->getSession()->getFlashBag()->peek('success')[0]);
     }
@@ -655,12 +663,13 @@ php /srv/site/bin/console app:updates:deployed --git-dir=/var/www/vhosts/example
             $request->files->set('release_files', [$this->uploadedFile('aggregate-2026.09.02.zip')]);
         }
         $updater = $this->createMock(ApplicationUpdater::class);
+        $background = $this->createMock(BackgroundUpdate::class);
         $updater->method('isSqlite')->willReturn($sqlite);
-        $updater->method('backgroundProblems')->willReturn([]);
-        $updater->expects(self::never())->method('stageUpload');
-        $updater->expects(self::never())->method('startInBackground');
+        $background->method('problems')->willReturn([]);
+        $background->expects(self::never())->method('stageUpload');
+        $background->expects(self::never())->method('start');
 
-        $this->controller($this->createMock(ApplicationUpdateService::class), $request, updater: $updater, csrfId: UpdatesController::UPLOAD_CSRF_TOKEN_ID, problems: $problems, method: 'release')->upload($request);
+        $this->controller($this->createMock(ApplicationUpdateService::class), $request, updater: $updater, background: $background, csrfId: UpdatesController::UPLOAD_CSRF_TOKEN_ID, problems: $problems, method: 'release')->upload($request);
 
         self::assertStringContainsString($message, $request->getSession()->getFlashBag()->peek('error')[0]);
     }
@@ -677,9 +686,10 @@ php /srv/site/bin/console app:updates:deployed --git-dir=/var/www/vhosts/example
         $request = Request::create('/dashboard/updates/upload', 'POST', [], [], [], ['CONTENT_LENGTH' => '99999999']);
         $request->setSession(new Session(new MockArraySessionStorage()));
         $updater = $this->createMock(ApplicationUpdater::class);
-        $updater->expects(self::never())->method('stageUpload');
+        $background = $this->createMock(BackgroundUpdate::class);
+        $background->expects(self::never())->method('stageUpload');
 
-        $this->controller($this->createMock(ApplicationUpdateService::class), $request, updater: $updater, csrfId: UpdatesController::UPLOAD_CSRF_TOKEN_ID)->upload($request);
+        $this->controller($this->createMock(ApplicationUpdateService::class), $request, updater: $updater, background: $background, csrfId: UpdatesController::UPLOAD_CSRF_TOKEN_ID)->upload($request);
 
         self::assertStringContainsString('larger than this server accepts', $request->getSession()->getFlashBag()->peek('error')[0]);
     }
@@ -730,6 +740,7 @@ php /srv/site/bin/console app:updates:deployed --git-dir=/var/www/vhosts/example
         bool $csrfValid = true,
         bool $featureEnabled = true,
         ?ApplicationUpdater $updater = null,
+        ?BackgroundUpdate $background = null,
         string $csrfId = UpdatesController::CSRF_TOKEN_ID,
         array $problems = [],
         array $checks = [],
@@ -757,7 +768,7 @@ php /srv/site/bin/console app:updates:deployed --git-dir=/var/www/vhosts/example
         $systemCheck = $this->createStub(SystemCheck::class);
         $systemCheck->method('run')->willReturn($checks);
         $systemCheck->method('problems')->willReturn($problems);
-        $controller = new UpdatesController($config, $updates, new FeatureFlags($config), $updater, $systemCheck, new UpdateSettings($config), $deploymentAction);
+        $controller = new UpdatesController($config, $updates, new FeatureFlags($config), $updater, $background ?? $this->createStub(BackgroundUpdate::class), $systemCheck, new UpdateSettings($config), $deploymentAction);
 
         $authorization = $this->createMock(AuthorizationCheckerInterface::class);
         $authorization->expects($dashboardEnabled ? self::once() : self::never())
