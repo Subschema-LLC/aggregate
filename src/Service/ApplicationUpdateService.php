@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Service\Update\DeploymentState;
+use App\Service\Update\GitHubBranchStatus;
 use App\Service\Update\LocalConfigOverrides;
 use App\Service\Update\UpdatePaths;
 use Psr\Clock\ClockInterface;
 use Symfony\Component\Process\Process;
 use Symfony\Contracts\Cache\CacheInterface;
-use Symfony\Contracts\Cache\ItemInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /** Checks the configured upstream branch and permits explicit, fast-forward-only code updates. */
@@ -20,21 +20,22 @@ class ApplicationUpdateService
     public const REPOSITORY = UpdateSettings::DEFAULT_REPOSITORY;
     public const REPOSITORY_URL = 'https://github.com/'.self::REPOSITORY;
 
-    private const CACHE_SECONDS = 3600;
+    private readonly GitHubBranchStatus $github;
 
     public function __construct(
         private readonly string $projectDir,
-        private readonly HttpClientInterface $httpClient,
-        private readonly CacheInterface $cache,
-        private readonly ClockInterface $clock,
+        HttpClientInterface $httpClient,
+        CacheInterface $cache,
+        ClockInterface $clock,
         private readonly FeatureFlags $features,
-        private readonly string $githubToken = '',
+        string $githubToken = '',
         private readonly ?UpdateSettings $settings = null,
         private readonly ?ReleaseUpdateService $releases = null,
         private readonly ?LocalConfigOverrides $overrides = null,
         private readonly ?DocumentationLinks $documentation = null,
         private readonly ?DeploymentState $deployment = null,
     ) {
+        $this->github = new GitHubBranchStatus($httpClient, $cache, $clock, $githubToken);
     }
 
     /**
@@ -134,7 +135,7 @@ class ApplicationUpdateService
         }
 
         try {
-            $remote = $this->remoteHead($branch, $refresh);
+            $remote = $this->github->head($this->repositoryName(), $branch, $refresh);
             $result['checked_at'] = $remote['checked_at'];
             if ($remote['error'] !== null) {
                 $result['state'] = 'error';
@@ -151,7 +152,7 @@ class ApplicationUpdateService
             } else {
                 $result['state'] = $this->localComparison($local['commit'], $latest) ?? '';
                 if ($result['state'] === '') {
-                    $comparison = $this->compare($local['commit'], $latest, $refresh);
+                    $comparison = $this->github->compare($this->repositoryName(), $local['commit'], $latest, $refresh);
                     $result['state'] = $comparison['state'];
                     $result['message'] = $comparison['message'];
                     $result['commits_behind'] = $comparison['behind'];
@@ -226,7 +227,7 @@ class ApplicationUpdateService
                 ['rev-parse', '--verify', $temporaryRef.'^{commit}'],
                 'The fetched GitHub commit could not be resolved. Check the repository and retry.',
             )->getOutput());
-            if (!$this->isCommit($latest)) {
+            if (!GitHubBranchStatus::isCommit($latest)) {
                 throw new \RuntimeException('Git returned an invalid commit for the update. Check the repository manually.');
             }
 
@@ -264,7 +265,7 @@ class ApplicationUpdateService
 
             // Cache failures must not turn a successful code update into a reported failure.
             try {
-                $this->cache->delete($this->cacheKey('branch', $branch));
+                $this->github->forgetHead($this->repositoryName(), $branch);
             } catch (\Throwable) {
             }
 
@@ -322,7 +323,7 @@ class ApplicationUpdateService
      */
     public function resetTo(string $commit): void
     {
-        if (!$this->isCommit($commit)) {
+        if (!GitHubBranchStatus::isCommit($commit)) {
             throw new \RuntimeException('The recorded previous commit is invalid.');
         }
         $local = $this->repository();
@@ -364,7 +365,7 @@ class ApplicationUpdateService
         }
 
         $commit = trim($this->git(['rev-parse', '--verify', 'HEAD^{commit}'], $unavailable)->getOutput());
-        if (!$this->isCommit($commit)) {
+        if (!GitHubBranchStatus::isCommit($commit)) {
             throw new \RuntimeException($unavailable);
         }
         $symbolic = $this->git(['symbolic-ref', '--quiet', 'HEAD'], $unavailable, acceptedExitCodes: [0, 1]);
@@ -489,90 +490,6 @@ class ApplicationUpdateService
         )->getExitCode() === 0;
     }
 
-    /** @return array{state: string, message: string, behind: ?int} */
-    private function remoteComparison(string $current, string $latest): array
-    {
-        $response = $this->github('/compare/'.$current.'...'.$latest);
-        if ($response['status'] === 404) {
-            return [
-                'state' => 'unknown',
-                'message' => 'GitHub cannot compare the installed commit with this branch. The commit may not be published on GitHub (for example a local or fork commit); review its history before updating.',
-                'behind' => null,
-            ];
-        }
-        if ($response['error'] !== null) {
-            return ['state' => 'error', 'message' => $response['error'], 'behind' => null];
-        }
-
-        $data = $response['data'];
-        $ahead = $data['ahead_by'] ?? null;
-        $behind = $data['behind_by'] ?? null;
-        $state = null;
-        if (is_int($ahead) && is_int($behind) && $ahead >= 0 && $behind >= 0) {
-            $state = match ($data['status'] ?? null) {
-                'ahead' => $ahead > 0 && $behind === 0 ? 'available' : null,
-                'behind' => $behind > 0 && $ahead === 0 ? 'ahead' : null,
-                'diverged' => $ahead > 0 && $behind > 0 ? 'diverged' : null,
-                default => null,
-            };
-        }
-
-        return $state !== null
-            // GitHub's ahead_by counts the branch commits this installation lacks.
-            ? ['state' => $state, 'message' => '', 'behind' => $ahead]
-            : ['state' => 'error', 'message' => 'GitHub returned invalid comparison metadata. No update status could be determined.', 'behind' => null];
-    }
-
-    /**
-     * The newest commit of a GitHub branch, cached for an hour (a minute after errors).
-     *
-     * @return array{sha: ?string, error: ?string, checked_at: int}
-     */
-    private function remoteHead(string $branch, bool $refresh): array
-    {
-        return $this->cache->get(
-            $this->cacheKey('branch', $branch),
-            function (ItemInterface $item) use ($branch): array {
-                $response = $this->github('/commits/'.rawurlencode($branch));
-                $sha = $response['data']['sha'] ?? null;
-                $error = $response['error'];
-                if ($error === null && !$this->isCommit($sha)) {
-                    $error = 'GitHub returned invalid commit metadata. Try checking for updates again later.';
-                }
-                $item->expiresAt($this->clock->now()->modify('+'.($error === null ? self::CACHE_SECONDS : 60).' seconds'));
-
-                return [
-                    'sha' => $error === null ? $sha : null,
-                    'error' => $error,
-                    'checked_at' => $this->clock->now()->getTimestamp(),
-                ];
-            },
-            $refresh ? INF : null,
-        );
-    }
-
-    /**
-     * How an installed commit relates to the branch's newest commit, from GitHub,
-     * cached like remoteHead().
-     *
-     * @return array{state: string, message: string, behind: ?int}
-     */
-    private function compare(string $current, string $latest, bool $refresh): array
-    {
-        $comparison = $this->cache->get(
-            $this->cacheKey('compare', $current.'...'.$latest),
-            function (ItemInterface $item) use ($current, $latest): array {
-                $comparison = $this->remoteComparison($current, $latest);
-                $item->expiresAt($this->clock->now()->modify('+'.($comparison['state'] === 'error' ? 60 : self::CACHE_SECONDS).' seconds'));
-
-                return $comparison;
-            },
-            $refresh ? INF : null,
-        );
-
-        return $comparison + ['behind' => null];
-    }
-
     /**
      * Status of code deployed another way (Plesk Git, cPanel, CI/CD): which
      * commit is deployed, compared with the GitHub branch, and whether the
@@ -643,7 +560,7 @@ class ApplicationUpdateService
         }
 
         try {
-            $remote = $this->remoteHead($result['branch'], $refresh);
+            $remote = $this->github->head($this->repositoryName(), $result['branch'], $refresh);
         } catch (\Throwable) {
             $remote = ['sha' => null, 'error' => 'Update metadata could not be checked or cached. Check application cache permissions, then retry.', 'checked_at' => null];
         }
@@ -670,7 +587,7 @@ class ApplicationUpdateService
             ]);
         }
         try {
-            $comparison = $this->compare($commit, $remote['sha'], $refresh);
+            $comparison = $this->github->compare($this->repositoryName(), $commit, $remote['sha'], $refresh);
         } catch (\Throwable) {
             $comparison = ['state' => 'error', 'message' => 'Update metadata could not be checked or cached. Check application cache permissions, then retry.', 'behind' => null];
         }
@@ -686,45 +603,6 @@ class ApplicationUpdateService
                 default => 'The deployed commit could not be compared with '.$result['branch'].'.',
             }),
         ]);
-    }
-
-    /** @return array{status: ?int, data: array, error: ?string} */
-    private function github(string $path): array
-    {
-        $status = null;
-        try {
-            $headers = [
-                'Accept' => 'application/vnd.github+json',
-                'X-GitHub-Api-Version' => '2022-11-28',
-                'User-Agent' => 'Aggregate-Update-Checker',
-            ];
-            if ($this->githubToken !== '') {
-                $headers['Authorization'] = 'Bearer '.$this->githubToken;
-            }
-            $response = $this->httpClient->request('GET', 'https://api.github.com/repos/'.$this->repositoryName().$path, [
-                'headers' => $headers,
-                'timeout' => 5,
-                'max_duration' => 10,
-                'max_redirects' => 0,
-            ]);
-            $status = $response->getStatusCode();
-            $error = match (true) {
-                $status === 200 => null,
-                $status === 401 => 'GitHub could not authenticate the update check. Configure AGGREGATE_GITHUB_TOKEN with repository read access.',
-                $status === 403 || $status === 429 => 'GitHub denied or rate-limited the update check. Check AGGREGATE_GITHUB_TOKEN and try again later.',
-                $status === 404 => 'The configured updates_branch or repository could not be found on GitHub. Verify updates_branch in config/aggregate.yaml and repository availability.',
-                default => 'GitHub could not complete the update check. Try again later.',
-            };
-
-            return ['status' => $status, 'data' => $error === null ? $response->toArray(false) : [], 'error' => $error];
-        } catch (\Throwable) {
-            return ['status' => $status, 'data' => [], 'error' => 'GitHub update metadata could not be read. Check network access and try again later.'];
-        }
-    }
-
-    private function isCommit(mixed $sha): bool
-    {
-        return is_string($sha) && preg_match('/^[0-9a-f]{40}$/D', $sha) === 1;
     }
 
     /** The configured updates_branch. */
@@ -859,12 +737,6 @@ class ApplicationUpdateService
     public function repositoryUrl(): string
     {
         return 'https://github.com/'.$this->repositoryName();
-    }
-
-    private function cacheKey(string $kind, string $value): string
-    {
-        // Separate credentials so changing repository access does not reuse an old failure.
-        return 'aggregate.updates.'.$kind.'.'.hash('sha256', $this->repositoryName()."\0".$value."\0".$this->githubToken);
     }
 
     /**
