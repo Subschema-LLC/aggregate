@@ -433,8 +433,9 @@ organization-marker artifacts keep their separate browser delivery paths.
 
 | Location | Responsibility |
 | --- | --- |
-| [public/aggregate.js](public/aggregate.js) | Browser tracker and its source; no separate tracker build |
+| [public/aggregate.js](public/aggregate.js) | Browser tracker source; minified builds are optional ([JavaScript builds](docs/JS-BUILD.md)) |
 | [ScriptController](src/Controller/ScriptController.php) | Serves the tracker with public runtime settings; preserves its license header and keeps sharing tokens private |
+| [TrackerScript](src/Service/TrackerScript.php), [TagManagerScript](src/Service/TagManagerScript.php) and [DropInScripts](src/Service/DropInScripts.php) | Assemble the served scripts with each website's public settings; [BrowserBuild](src/Service/BrowserBuild.php) decides whether a minified build is current |
 | [ReceiveController](src/Controller/ReceiveController.php) and [EventIngestion](src/Service/EventIngestion.php) | The collection endpoint; the service checks requests in order (website settings, collection controls, bots, rate limit, origin/token), then records them by consent with sanitized inputs |
 | [AnonymousEventRecorder](src/Service/AnonymousEventRecorder.php) | Writes anonymous events synchronously using UTC hour buckets |
 | [TrackEventMessage](src/Message/TrackEventMessage.php) and [TrackEventHandler](src/MessageHandler/TrackEventHandler.php) | Carry and persist enhanced events through Symfony Messenger |

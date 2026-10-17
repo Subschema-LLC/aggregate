@@ -355,6 +355,26 @@ final class FirstRunSetupTest extends TestCase
     }
 
     /**
+     * The setup page loads before Composer, so it links the deployment guide
+     * directly rather than through DocumentationLinks topics.
+     */
+    public function testTheSetupPageLinksToHeadingsThatExistInTheDeploymentGuide(): void
+    {
+        $page = (string) file_get_contents(dirname(__DIR__, 2).'/src/Setup/SetupPage.php');
+        self::assertSame(2, preg_match_all('/\{\$installGuide\}#([a-z0-9-]+)/', $page, $anchors));
+        $headings = [];
+        preg_match_all('/^#{1,6}\s+(.+?)\s*$/m', (string) file_get_contents(dirname(__DIR__, 2).'/DEPLOYMENT.md'), $titles);
+        foreach ($titles[1] as $title) {
+            // GitHub's heading anchors, as website/slug.mjs computes them.
+            $headings[] = str_replace(' ', '-', (string) preg_replace('/[^\p{L}\p{M}\p{N}\p{Pc}\- ]/u', '', mb_strtolower(trim(str_replace('`', '', $title)))));
+        }
+        foreach ($anchors[1] as $anchor) {
+            self::assertContains($anchor, $headings, 'DEPLOYMENT.md has no heading for #'.$anchor);
+        }
+        self::assertStringEndsWith('/', FirstRunSetup::DOCUMENTATION_URL);
+    }
+
+    /**
      * public/index.php loads the setup page before Composer's autoloader, so its
      * classes may use only PHP itself and each other. PHPUnit's autoloader would
      * hide a violation from every other test here.

@@ -6,8 +6,9 @@
 //  - images from docs/images are copied into the site; external images (badges)
 //    are dropped so the site makes no third-party requests;
 //  - each page gets front matter (title, description, source path);
-//  - links whose target file or heading does not exist are reported, and fail
-//    the run with --strict (used in CI).
+//  - links whose target file or heading does not exist, including links to a
+//    heading on the same page, are reported, and fail the run with --strict
+//    (used in CI).
 //
 // Usage: node scripts/sync-docs.mjs [--strict]
 
@@ -114,7 +115,13 @@ function rewriteLine(line, source) {
 }
 
 function rewriteTarget(target, source, image) {
-  if (/^(?:[a-z][a-z0-9+.-]*:|#)/i.test(target)) {
+  if (target.startsWith('#')) {
+    if (!anchors.get(source)?.has(target.slice(1))) {
+      problems.push(`${source}: "${target}" points to a heading this page does not have`);
+    }
+    return target;
+  }
+  if (/^[a-z][a-z0-9+.-]*:/i.test(target)) {
     return target;
   }
   const [pathPart, anchor] = splitAnchor(target);

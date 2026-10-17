@@ -49,7 +49,7 @@ opt-in consent.
 - **The EU and UK rules on devices are read broadly.** The European Data
   Protection Board's guidelines say that tracking based on URLs or IP addresses
   that a device sends can fall within Article 5(3) of the ePrivacy Directive
-  ([Guidelines 2/2023](https://www.edpb.europa.eu/system/files/2024-10/edpb_guidelines_202302_technical_scope_art_53_eprivacydirective_v2_en_0.pdf)).
+  ([Guidelines 2/2023](https://www.edpb.europa.eu/system/files/documents/2024-10/edpb_guidelines_202302_technical_scope_art_53_eprivacydirective_v2_en_0.pdf)).
   No regulator has said that server-side analytics is consent-free as a rule.
   Some offer audience-measurement exemptions with conditions, such as first-party
   use, statistics only, clear information and a simple way to object: see
