@@ -188,7 +188,8 @@ table from growing without end.
 ### Where the time goes
 
 Profiling 900 requests per setup with xhprof, at a steady 20 per second,
-showed where PHP's time goes on a collection request:
+showed where PHP's time went on a collection request before the
+[optimizations](#optimizations) below:
 
 - **Parsing `config/aggregate.yaml`:** about a third of PHP's time on MySQL,
   because every request parsed the whole file again.
@@ -198,6 +199,21 @@ showed where PHP's time goes on a collection request:
 - **PostgreSQL only:** opening the connection took about 6 ms and the commit
   about 5.5 ms, together about a third of the request. PostgreSQL starts a
   server process and checks the password for every new connection.
+
+The same profile in October 2026, with cached YAML parsing and PostgreSQL's
+persistent connections, put a collection request at about 13 ms of PHP time
+(median, including xhprof's own overhead), against 24 ms before:
+
+- **Saving the event:** now the largest part, 28–32% for anonymous events
+  (3.8–4.7 ms). Most of it is Doctrine ORM's work around the one-row insert;
+  the commit itself took 0.4–1.2 ms.
+- **Loading classes:** 2.3–2.7 ms for about 630 classes, the part
+  [OPcache preloading](../DEPLOYMENT.md#performance) removes.
+- **Parsing YAML:** 0.15 ms, about 1% of the request.
+- **Enhanced events:** passing the event through Messenger to its handler took
+  9–10 ms on PostgreSQL and SQLite. On MySQL a few commits were much slower
+  (12 ms on average, with a median request of 13 ms), which one run cannot
+  separate from noise on the shared runner.
 
 ## Optimizations
 
@@ -365,5 +381,7 @@ A request counts as stored only when the response says the event was
 - Writing anonymous events with a direct insert instead of Doctrine ORM.
 - Requests for the tracker, consent and tag manager scripts, dashboard use, and
   `app:analytics:maintain` running during load.
+- An installation with many registered websites. Each request looks its website
+  up in the full registry, so this cost grows with the number of websites.
 
 The [roadmap](../ROADMAP.md) tracks this work.
