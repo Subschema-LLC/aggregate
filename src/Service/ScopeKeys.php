@@ -61,7 +61,7 @@ final class ScopeKeys
     }
 
     /**
-     * @param array<string, mixed> $values
+     * @param array<mixed> $values a parsed setting file, which may not be a mapping
      */
     public static function errors(array $values): ?string
     {

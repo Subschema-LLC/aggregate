@@ -19,7 +19,7 @@ final class FileOwner
         }
         $owner = posix_getpwuid($uid);
 
-        return is_array($owner) && is_string($owner['name'] ?? null) ? $owner['name'] : (string) $uid;
+        return is_array($owner) ? $owner['name'] : (string) $uid;
     }
 
     /** The user this process runs as. */
@@ -27,7 +27,7 @@ final class FileOwner
     {
         if (function_exists('posix_geteuid') && function_exists('posix_getpwuid')) {
             $user = posix_getpwuid(posix_geteuid());
-            if (is_array($user) && is_string($user['name'] ?? null)) {
+            if (is_array($user)) {
                 return $user['name'];
             }
         }

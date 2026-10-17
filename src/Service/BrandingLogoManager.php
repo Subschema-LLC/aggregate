@@ -40,20 +40,18 @@ final class BrandingLogoManager
         }
 
         $image = @getimagesize($logo->getPathname());
-        $imageType = is_array($image) ? ($image[2] ?? null) : null;
-        if (!is_int($imageType) || !isset(self::ALLOWED_IMAGE_TYPES[$imageType])) {
+        if (!is_array($image) || !isset(self::ALLOWED_IMAGE_TYPES[$image[2]])) {
             throw new \InvalidArgumentException('Upload a PNG, JPEG, or WebP logo. SVG and other file types are not accepted.');
         }
 
-        $width = $image[0] ?? null;
-        $height = $image[1] ?? null;
-        if (!is_int($width) || !is_int($height) || $width < 1 || $height < 1
+        [$width, $height, $imageType] = $image;
+        if ($width < 1 || $height < 1
             || $width > self::MAX_DIMENSION || $height > self::MAX_DIMENSION
             || $width > intdiv(self::MAX_PIXELS, $height)) {
             throw new \InvalidArgumentException('The logo must be at most 4096 × 4096 pixels and 16 megapixels.');
         }
 
-        $detectedMime = $image['mime'] ?? image_type_to_mime_type($imageType);
+        $detectedMime = $image['mime'];
         if ($detectedMime !== self::ALLOWED_IMAGE_TYPES[$imageType]['mime']) {
             throw new \InvalidArgumentException('The uploaded logo content does not match an allowed image type.');
         }

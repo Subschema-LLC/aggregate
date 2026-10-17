@@ -32,7 +32,6 @@ final class TrackerNamespace
         return $namespace === null || self::valid($namespace) ? null : (is_scalar($namespace) ? (string) $namespace : get_debug_type($namespace));
     }
 
-    /** @phpstan-assert-if-true string $namespace */
     public static function valid(mixed $namespace): bool
     {
         return is_string($namespace) && preg_match('/^'.self::PATTERN.'$/D', $namespace) === 1;

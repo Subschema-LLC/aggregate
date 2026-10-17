@@ -131,7 +131,7 @@ class ReleasePackageVerifier
             $expandedBytes = 0;
             for ($index = 0; $index < $zip->numFiles; ++$index) {
                 $entry = $zip->statIndex($index);
-                if (!is_array($entry) || !is_string($entry['name'] ?? null)) {
+                if ($entry === false) {
                     throw new \RuntimeException('The release ZIP contains an unreadable entry.');
                 }
                 $name = $entry['name'];
@@ -145,10 +145,10 @@ class ReleasePackageVerifier
                 if (!$directory) {
                     $exactFiles[$name] = true;
                 }
-                $size = $entry['size'] ?? -1;
-                if (!is_int($size) || $size < 0 || $size > self::MAX_ENTRY_BYTES
+                $size = $entry['size'];
+                if ($size < 0 || $size > self::MAX_ENTRY_BYTES
                     || ($expandedBytes += $size) > self::MAX_EXPANDED_BYTES
-                    || ($entry['encryption_method'] ?? 0) !== 0) {
+                    || $entry['encryption_method'] !== 0) {
                     throw new \RuntimeException('The release ZIP contains an encrypted or oversized entry.');
                 }
                 if (!$zip->getExternalAttributesIndex($index, $system, $attributes)) {

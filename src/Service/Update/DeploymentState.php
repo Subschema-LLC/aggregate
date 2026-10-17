@@ -283,7 +283,10 @@ class DeploymentState
         return null;
     }
 
-    /** @param list<mixed> $packages @return array<string, string> */
+    /**
+     * @param list<mixed> $packages
+     * @return array<string, string>
+     */
     private function packages(array $packages): array
     {
         $versions = [];

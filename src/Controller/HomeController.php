@@ -3,6 +3,7 @@
 namespace App\Controller;
 
 use App\Service\AggregateConfigLoader;
+use App\Service\Glossary\ApprovedViewColumns;
 use App\Service\InstallationChecker;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Response;
@@ -44,8 +45,8 @@ class HomeController extends AbstractController
     }
 
     #[Route('/how-it-works/data-visualization', name: 'app_how_it_works_data_visualization', methods: ['GET'])]
-    public function dataVisualization(): Response
+    public function dataVisualization(ApprovedViewColumns $columns): Response
     {
-        return $this->render('home/data_structure.html.twig');
+        return $this->render('home/data_structure.html.twig', ['view_columns' => $columns->all()]);
     }
 }

@@ -65,7 +65,7 @@ final class TagManagerSettings
         $configuration = [
             'enabled' => $settings['enabled'],
             'variables' => $settings['enabled'] ? $settings['variables'] : [],
-            'tags' => array_values(array_map(static fn (array $tag): array => array_diff_key($tag, ['enabled' => true, 'code' => true]), $tags)),
+            'tags' => array_map(static fn (array $tag): array => array_diff_key($tag, ['enabled' => true, 'code' => true]), $tags),
         ];
         if (array_intersect(['custom', 'event'], array_column($tags, 'type')) !== []) {
             // Lets event tags and custom code's tag.emit() send events through the tracker's namespace.
@@ -175,7 +175,7 @@ final class TagManagerSettings
         return $this->sites->configuration($siteId);
     }
 
-    /** @return array{enabled: bool, tags: list<array>} */
+    /** @return array{enabled: bool, variables: array<string, string>, tags: list<array>} */
     public static function validate(mixed $submitted, ?string $codeCacheDirectory = null): array
     {
         if (!is_array($submitted) || array_diff(array_keys($submitted), ['enabled', 'variables', 'tags']) !== []) {

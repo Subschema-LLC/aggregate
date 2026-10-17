@@ -4,25 +4,31 @@ declare(strict_types=1);
 
 namespace App\Tests\Service;
 
+use App\Controller\HomeController;
 use App\Entity\Event;
 use App\Service\AnonymousBiViewManager;
+use App\Service\Glossary\ApprovedViewColumns;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Mapping\UnderscoreNamingStrategy;
 use Doctrine\ORM\ORMSetup;
-use PHPUnit\Framework\TestCase;
+use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\DomCrawler\Crawler;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Session\Session;
+use Symfony\Component\HttpFoundation\Session\Storage\MockArraySessionStorage;
 
 /**
- * The dashboard's data structure page and the BI connection guide each list
- * the columns of the approved views and the private events table. Both must
- * match what the views and the entity actually have; view columns also in
- * their order, which BI connections see.
+ * The Data Structure page and the BI connection guide each list the columns
+ * of the approved views and the private events table. Both must match what
+ * the views and the entity actually have; view columns also in their order,
+ * which BI connections see. The page renders view columns from
+ * ApprovedViewColumns, so this also checks the glossary's column lists.
  */
-final class ReportingColumnListsTest extends TestCase
+final class ReportingColumnListsTest extends KernelTestCase
 {
-    private const PAGE = __DIR__.'/../../templates/home/data_structure.html.twig';
+    private const PAGE = 'the Data Structure page';
     private const GUIDE = __DIR__.'/../../docs/BI-CONNECTION.md';
 
     public function testEachApprovedViewIsListedWithItsColumnsOnThePageAndInTheGuide(): void
@@ -33,7 +39,7 @@ final class ReportingColumnListsTest extends TestCase
 
         foreach (AnonymousBiViewManager::VIEW_NAMES as $view) {
             self::assertNotSame([], $views[$view], $view);
-            self::assertSame($views[$view], $page[$view] ?? null, 'Columns exposed by '.$view.' on '.basename(self::PAGE));
+            self::assertSame($views[$view], $page[$view] ?? null, 'Columns exposed by '.$view.' on '.self::PAGE);
             self::assertSame($views[$view], $guide[$view] ?? null, $view.' in '.basename(self::GUIDE));
         }
     }
@@ -41,7 +47,7 @@ final class ReportingColumnListsTest extends TestCase
     public function testThePrivateEventsTableIsListedWithItsColumns(): void
     {
         $columns = $this->eventColumns();
-        $page = (new Crawler((string) file_get_contents(self::PAGE)))->filter('[aria-labelledby="events-table-heading"] tbody th[scope="row"] code');
+        $page = $this->page()->filter('[aria-labelledby="events-table-heading"] tbody th[scope="row"] code');
 
         // Grouped for reading (both modes, then enhanced only), so compared as sets.
         $sorted = static function (?array $names): ?array {
@@ -51,7 +57,7 @@ final class ReportingColumnListsTest extends TestCase
 
             return $names;
         };
-        self::assertSame($sorted($columns), $sorted($page->each(static fn (Crawler $code): string => $code->text())), basename(self::PAGE));
+        self::assertSame($sorted($columns), $sorted($page->each(static fn (Crawler $code): string => $code->text())), self::PAGE);
         self::assertSame($sorted($columns), $sorted($this->guideColumns()['events'] ?? null), basename(self::GUIDE));
     }
 
@@ -88,7 +94,7 @@ final class ReportingColumnListsTest extends TestCase
     private function pageColumns(): array
     {
         $columns = [];
-        (new Crawler((string) file_get_contents(self::PAGE)))->filter('table')->each(static function (Crawler $table) use (&$columns): void {
+        $this->page()->filter('table')->each(static function (Crawler $table) use (&$columns): void {
             $caption = $table->filter('caption');
             if ($caption->count() === 1 && preg_match('/^Columns exposed by (\w+)$/', trim($caption->text()), $match) === 1) {
                 $columns[$match[1]] = $table->filter('tbody th[scope="row"] code')->each(static fn (Crawler $code): string => $code->text());
@@ -115,6 +121,18 @@ final class ReportingColumnListsTest extends TestCase
         }
 
         return $columns;
+    }
+
+    private function page(): Crawler
+    {
+        self::bootKernel();
+        $container = self::getContainer();
+        $request = Request::create('/how-it-works/data-visualization');
+        $request->setSession(new Session(new MockArraySessionStorage()));
+        $container->get('request_stack')->push($request);
+        $response = $container->get(HomeController::class)->dataVisualization($container->get(ApprovedViewColumns::class));
+
+        return new Crawler((string) $response->getContent());
     }
 
     private function database(): Connection

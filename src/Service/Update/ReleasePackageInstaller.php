@@ -254,7 +254,10 @@ class ReleasePackageInstaller
         return $this->summary($plan);
     }
 
-    /** @param array<string, mixed> $plan @return array<string, mixed> */
+    /**
+     * @param array<string, mixed> $plan
+     * @return array<string, mixed>
+     */
     public function summary(array $plan): array
     {
         return [
@@ -262,7 +265,7 @@ class ReleasePackageInstaller
             'files_written' => count($plan['writes']),
             'files_removed' => count($plan['deletes']),
             'removed_sample' => array_slice($plan['deletes'], 0, self::MAX_LISTED),
-            'overrides_created' => array_values(array_map(fn (string $default): string => $this->overrides->overridePath($default), array_keys($plan['overrides']))),
+            'overrides_created' => array_map(fn (string $default): string => $this->overrides->overridePath($default), array_keys($plan['overrides'])),
             'kept' => $plan['kept'],
             'replaced_modified' => array_slice($plan['replaced_modified'], 0, self::MAX_LISTED),
             'replaced_modified_count' => count($plan['replaced_modified']),

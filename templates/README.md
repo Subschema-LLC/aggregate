@@ -28,9 +28,11 @@ For example, `templates/setup/index.html.twig` uses
 `assets/styles/pages/setup/index.css`. Its `Setup:Walkthrough` component has its
 own stylesheet at `assets/styles/components/setup/walkthrough.css`, while the
 page controller manages the tour. The data model and websites pages follow the
-same `index` convention. The static data-structure page lives at
+same `index` convention. The data-structure page lives at
 `templates/home/data_structure.html.twig` with CSS in
-`assets/styles/pages/home/data_structure.css`.
+`assets/styles/pages/home/data_structure.css`. Its view column tables come from
+`ApprovedViewColumns` through the `DataModel:ViewColumns` component, so they
+share the BI glossary's definitions; the rest of the page is written by hand.
 
 Create a controller or stylesheet only when it has behavior or styles to own.
 Components can use their containing page's styles: `TagManager:TagRow` has a
