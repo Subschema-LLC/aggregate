@@ -38,6 +38,7 @@ services:
             - '../src/Service/Update/FileTransaction.php'
             # Served by config/setup.php before the kernel exists; never a service.
             - '../src/Setup/FirstRunSetup.php'
+            - '../src/Setup/SetupPage.php'
             # BigQuery value objects and per-run clients, built by their factories.
             - '../src/Service/BigQuery/{BigQueryClient,BigQueryException,GoogleCloudCredentials,GoogleSignInCredentials,ServiceAccountCredentials,ServiceAccountKey,TokenCache}.php'
             # Value object describing what started a processing task.

@@ -220,10 +220,12 @@ services, so a setting has one validation wherever it is changed.
   `app:reporting-database:sync` and `app:updates:apply`.
 - **First run:** a fresh release ZIP starts with a browser setup page,
   [config/setup.php](../config/setup.php) and
-  [FirstRunSetup](../src/Setup/FirstRunSetup.php). It loads before Composer,
-  checks the server, asks for the one-time code in `SETUP-CODE.txt`, tests the
-  database and writes `.env.local`. [InstallController](../src/Controller/InstallController.php)
-  then runs migrations and creates the administrator.
+  [FirstRunSetup](../src/Setup/FirstRunSetup.php), with its HTML in
+  [SetupPage](../src/Setup/SetupPage.php). They load before Composer, so they
+  use plain PHP only. The page checks the server, asks for the one-time code
+  in `SETUP-CODE.txt`, tests the database and writes `.env.local`.
+  [InstallController](../src/Controller/InstallController.php) then runs
+  migrations and creates the administrator.
 - **Updates:** `app:updates:apply` and the dashboard's **Install update** button
   install signed release ZIPs or fast-forward a Git clone. A maintenance page
   ([config/maintenance.php](../config/maintenance.php)) answers requests while
