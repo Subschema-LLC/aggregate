@@ -195,7 +195,7 @@ final class HowItWorksControllerTest extends WebTestCase
         self::assertSelectorExists('#anonymous-goals-view table');
         self::assertSelectorTextContains('#anonymous-goals-view table', 'event_day');
         self::assertSelectorTextContains('#anonymous-goals-view table', 'goal_event');
-        self::assertSelectorTextContains('#anonymous-goals-view', 'not distinct people or unique converters');
+        self::assertSelectorTextContains('#anonymous-goals-view', 'not people or unique converters');
         self::assertSelectorExists('#anonymous-geography-view table');
         self::assertSelectorTextContains('#anonymous-geography-view table', 'event_day');
         self::assertSelectorExists('#private-source-tables table');

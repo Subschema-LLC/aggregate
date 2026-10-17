@@ -7,7 +7,8 @@ that reads SQL, or an AI assistant connects to versioned views in the Aggregate
 database. This page lists those views, the queries that use them correctly, and
 what to check before giving a reporting tool or an assistant access. Each
 installation also serves a shorter version of this reference at
-`/how-it-works/data-visualization`.
+`/how-it-works/data-visualization`. Its column definitions are the built-in BI
+glossary's, the same text BI tools read in `bi_glossary_columns_v1`.
 
 ## The reporting boundary
 
