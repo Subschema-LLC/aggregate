@@ -38,12 +38,16 @@ services:
             - '../src/Service/Update/FileTransaction.php'
             # Served by config/setup.php before the kernel exists; never a service.
             - '../src/Setup/FirstRunSetup.php'
+            - '../src/Setup/SetupPage.php'
             # BigQuery value objects and per-run clients, built by their factories.
             - '../src/Service/BigQuery/{BigQueryClient,BigQueryException,GoogleCloudCredentials,GoogleSignInCredentials,ServiceAccountCredentials,ServiceAccountKey,TokenCache}.php'
             # Value object describing what started a processing task.
             - '../src/Service/Operations/TaskTrigger.php'
+            - '../src/Service/IngestionResult.php'
             # Built by the sync runner for the reporting database's connection.
             - '../src/Service/ReportingDatabase/{ReportingDatabaseException,ReportingTableWriter}.php'
+            # Thrown when named zones cannot be compiled; not a service.
+            - '../src/Service/MysqlTimeZoneTablesMissing.php'
 
     App\Controller\HomeController: ~
     App\Controller\ReceiveController:

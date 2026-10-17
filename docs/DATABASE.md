@@ -106,10 +106,17 @@ php bin/console app:analytics:glossary:sync
 ### Performance Tuning
 
 **Indexes (automatically created by migrations):**
+- `events (website_token, created_at)`: finds each website's newest event for
+  the Websites page and sign-in in one index entry, and serves lookups by token
 - `events.session_id`
 - `events.visitor_id`
 - `events.consent_state`
 - `events (privacy_mode, website_token, created_at)`
+- `events (archived_at, created_at, id)`: archiving and retention
+
+`Version20261016000000` replaced the index on `website_token` alone with the
+first one above. Building it reads the whole `events` table once, which can take
+a while on a large one; the update runs it with the site in maintenance mode.
 
 **Persistent connections (on by default):** without them, PHP opens a new
 database connection for every request, and PostgreSQL starts a server process

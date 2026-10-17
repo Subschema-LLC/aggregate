@@ -1,6 +1,6 @@
 # Signed release packages
 
-[Deployment](../DEPLOYMENT.md#updates) · [Configuration](CONFIGURATION.md) · [JavaScript build](JS-BUILD.md)
+[Updating](UPDATES.md) · [Configuration](CONFIGURATION.md) · [JavaScript build](JS-BUILD.md)
 
 GitHub Releases on the public `Subschema-LLC/aggregate` repository host installable ZIPs. A separate artifact repository is unnecessary. Installations check versions without Git, verify packages against an independently trusted key, and install them in place with `app:updates:apply` or the dashboard **Install update** button, keeping their configuration.
 
@@ -217,7 +217,7 @@ Until the installation has an application secret and a database, every request g
 
 To update an existing installation, prefer [`app:updates:apply`](#update-an-installation). To deploy manually instead (for example, from a package without `release-files.json`), stage the new directory and retain deployment data deliberately:
 
-- Preserve `.env.local` and other actual environment overrides, the active `config/aggregate.yaml` or environment-specific files, `config/websites.yaml`, and `config/tag-manager/sites/` with each website's tag/CMP settings and environment overrides.
+- Preserve `.env.local` and other actual environment overrides, the active `config/aggregate.yaml` or environment-specific files, `config/websites.yaml`, `config/website-scopes.yaml` and `config/website-scopes/` with website groups and their settings, and `config/tag-manager/sites/` with each website's tag/CMP settings and environment overrides.
 - Preserve `config/*.local.yaml` overrides, and move any edits of the shipped `config/goals.yaml`, `config/navigation.yaml` or `config/quick_search.yaml` into those overrides. Do not carry forward the entire old `config/` directory, which would hide new routes and service definitions.
 - Preserve `var/branding`, any SQLite database, and separately configured logo/MMDB paths. Do not share the whole `var/` directory: `var/cache` belongs to the new release and `var/browser` contains that release's compiled tracker, CMP, and tag-manager templates.
 - Back up the database and configuration, pause collection/async workers as required, run migrations and rebuild production caches against the preserved configuration, activate the new release, restart workers/reload PHP, and verify `/api/health` before resuming collection.

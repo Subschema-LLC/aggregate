@@ -72,7 +72,12 @@ final class SiteScriptConfig
         return new AggregateConfigLoader($this->projectDir, $this->environment, 'tag-manager/sites/'.$id);
     }
 
-    /** @return array{enabled: bool, name: string, privacy_policy_url?: string, categories?: list<string>, text?: array, theme?: array, buttons?: array, layout?: string, external_tags?: list<array>} */
+    /**
+     * The website's validated consent_manager settings. Optional keys appear
+     * only when configured; respect_gpc only when turned off.
+     *
+     * @return array{enabled: bool, name: string, privacy_policy_url?: string, precheck_categories?: list<string>, categories?: list<string>, respect_gpc?: false, text?: array, theme?: array<string, string>, buttons?: array{show?: list<string>, reopen?: string}, layout?: string, external_tags?: list<array{id: string, name: string, category: string}>, consent_type?: string, close_button?: string, default_granted?: list<string>, regions?: list<array>, default_region?: string}
+     */
     public function consent(string $id): array
     {
         $site = $this->site($id);

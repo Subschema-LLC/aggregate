@@ -7,6 +7,7 @@ use App\Service\AggregateConfigLoader;
 use App\Service\DropInScripts;
 use App\Service\InstallationChecker;
 use App\Service\InternalTrafficSettings;
+use App\Service\TrackerNamespace;
 use App\Setup\SetupCode;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
@@ -107,6 +108,11 @@ class InstallController extends AbstractController
 
         if ($appHost === null && is_string($appHostInput) && trim($appHostInput) !== '') {
             $this->addFlash('error', 'Enter the public address as a full URL, for example https://analytics.example.com.');
+            return $this->redirectToRoute('app_install');
+        }
+
+        if (!TrackerNamespace::valid($jsNamespace)) {
+            $this->addFlash('error', TrackerNamespace::RULE);
             return $this->redirectToRoute('app_install');
         }
 

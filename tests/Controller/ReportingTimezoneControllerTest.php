@@ -8,8 +8,11 @@ use App\Controller\ReportingTimezoneController;
 use App\Service\AggregateConfigLoader;
 use App\Service\AnalyticsPrivacySettings;
 use App\Service\AnonymousBiViewManager;
+use App\Service\MysqlTimeZoneTables;
 use App\Service\ReportingTimezone;
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Platforms\MySQL80Platform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
@@ -75,6 +78,28 @@ final class ReportingTimezoneControllerTest extends TestCase
         self::assertSame('America/Chicago', $crawler->filter('#reporting-timezone option[selected]')->attr('value'));
         self::assertSame('/dashboard/reporting/timezone/save', $crawler->filter('form')->attr('action'));
         self::assertStringContainsString('day boundaries', $crawler->filter('.notification.is-warning')->text());
+        self::assertCount(0, $crawler->filter('pre code'));
+    }
+
+    public function testMysqlWithoutTimezoneTablesShowsTheLoadCommandAndDoesNotSave(): void
+    {
+        $before = (string) file_get_contents($this->directory.'/config/aggregate.yaml');
+        $response = $this->controller(Request::create('/dashboard/reporting/timezone'), platform: new MySQL80Platform())->index();
+
+        self::assertSame(200, $response->getStatusCode());
+        $crawler = new Crawler((string) $response->getContent());
+        self::assertSame(
+            'mysql_tzinfo_to_sql /usr/share/zoneinfo | mysql -u root -p mysql',
+            $crawler->filter('[role="alert"] pre code')->text(),
+        );
+
+        $request = $this->post(['reporting_timezone' => 'Europe/London']);
+        $saved = $this->controller($request, platform: new MySQL80Platform())->save($request);
+
+        self::assertSame(Response::HTTP_UNPROCESSABLE_ENTITY, $saved->getStatusCode());
+        self::assertStringContainsString('mysql_tzinfo_to_sql /usr/share/zoneinfo', (string) $saved->getContent());
+        self::assertSame($before, file_get_contents($this->directory.'/config/aggregate.yaml'));
+        self::assertSame([], $this->executed);
     }
 
     public function testSavingWritesYamlAndRegeneratesTheEventViews(): void
@@ -126,10 +151,11 @@ final class ReportingTimezoneControllerTest extends TestCase
         return $request;
     }
 
-    private function controller(Request $request, bool $admin = true): ReportingTimezoneController
+    private function controller(Request $request, bool $admin = true, ?AbstractPlatform $platform = null): ReportingTimezoneController
     {
         $connection = $this->createStub(Connection::class);
-        $connection->method('getDatabasePlatform')->willReturn(new PostgreSQLPlatform());
+        $connection->method('getDatabasePlatform')->willReturn($platform ?? new PostgreSQLPlatform());
+        $connection->method('fetchOne')->willReturn(null);
         $connection->method('executeStatement')->willReturnCallback(function (string $sql): int {
             $this->executed[] = $sql;
 
@@ -142,6 +168,7 @@ final class ReportingTimezoneControllerTest extends TestCase
             new AnalyticsPrivacySettings($this->config),
             new AnonymousBiViewManager($connection, null, $timezone),
             new NullLogger(),
+            new MysqlTimeZoneTables($connection, $this->directory.'/no-shadow'),
         );
 
         $authorization = $this->createStub(AuthorizationCheckerInterface::class);

@@ -67,8 +67,8 @@ return static function ($projectDir) {
         return true;
     }
 
-    // Composer is not loaded yet; the two classes have no other dependencies.
-    foreach (array('SetupCode', 'FirstRunSetup') as $class) {
+    // Composer is not loaded yet; these classes have no other dependencies.
+    foreach (array('SetupCode', 'FirstRunSetup', 'SetupPage') as $class) {
         if (!class_exists('App\\Setup\\'.$class, false)) {
             require_once dirname(__DIR__).'/src/Setup/'.$class.'.php';
         }

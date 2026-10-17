@@ -12,7 +12,9 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Entity(repositoryClass: EventRepository::class)]
 #[ORM\HasLifecycleCallbacks]
 #[ORM\Table(name: 'events')]
-#[ORM\Index(name: 'IDX_EVENTS_WEBSITE_TOKEN', columns: ['website_token'])]
+// Also serves lookups by website token alone, and finds a website's newest event
+// in one index entry (Version20261016000000).
+#[ORM\Index(name: 'IDX_EVENTS_TOKEN_CREATED', columns: ['website_token', 'created_at'])]
 #[ORM\Index(name: 'IDX_EVENTS_SESSION_ID', columns: ['session_id'])]
 #[ORM\Index(name: 'IDX_EVENTS_VISITOR_ID', columns: ['visitor_id'])]
 #[ORM\Index(name: 'IDX_EVENTS_CONSENT_STATE', columns: ['consent_state'])]

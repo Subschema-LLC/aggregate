@@ -4,6 +4,8 @@ namespace App\Repository;
 
 use App\Entity\Event;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
+use Doctrine\DBAL\Types\Type;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\Persistence\ManagerRegistry;
 
 class EventRepository extends ServiceEntityRepository
@@ -14,8 +16,11 @@ class EventRepository extends ServiceEntityRepository
     }
 
     /**
-     * Database errors are not caught here, so a failed lookup is never cached
-     * or shown as "no events".
+     * The newest event of each website, by asking for one website at a time:
+     * with the (website_token, created_at) index, each MAX() reads a single
+     * index entry, where one grouped query over several websites reads every
+     * one of their events. Database errors are not caught here, so a failed
+     * lookup is never cached or shown as "no events".
      *
      * @param string[] $tokens
      * @return array<string, \DateTimeImmutable> Map of websiteToken => latest createdAt
@@ -27,25 +32,21 @@ class EventRepository extends ServiceEntityRepository
             return [];
         }
 
-        $rows = $this->createQueryBuilder("e")
-            ->select("e.websiteToken AS token, MAX(e.createdAt) AS lastEventAt")
-            ->where("e.websiteToken IN (:tokens)")
-            ->setParameter("tokens", $cleanTokens)
-            ->groupBy("e.websiteToken")
-            ->getQuery()
-            ->getArrayResult();
+        $connection = $this->getEntityManager()->getConnection();
+        $platform = $connection->getDatabasePlatform();
+        $type = Type::getType(Types::DATETIME_IMMUTABLE);
+        $statement = $connection->prepare("SELECT MAX(created_at) FROM events WHERE website_token = ?");
 
         $results = [];
-        foreach ($rows as $row) {
-            $token = (string) ($row["token"] ?? "");
-            $date = $row["lastEventAt"] ?? null;
-            if ($token === "" || $date === null) {
+        foreach ($cleanTokens as $token) {
+            $statement->bindValue(1, $token);
+            $latest = $statement->executeQuery()->fetchOne();
+            if ($latest === null || $latest === false) {
                 continue;
             }
+            $date = $type->convertToPHPValue($latest, $platform);
             if ($date instanceof \DateTimeInterface) {
                 $results[$token] = \DateTimeImmutable::createFromInterface($date);
-            } elseif (is_string($date)) {
-                $results[$token] = new \DateTimeImmutable($date, new \DateTimeZone("UTC"));
             }
         }
 

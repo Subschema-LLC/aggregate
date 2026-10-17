@@ -11,6 +11,7 @@ use App\Service\InstalledRelease;
 use App\Service\ReleasePackageVerifier;
 use App\Service\ReleaseUpdateService;
 use App\Service\Update\ApplicationUpdater;
+use App\Service\Update\BackgroundUpdate;
 use App\Service\Update\DeploymentState;
 use App\Service\Update\LocalConfigOverrides;
 use App\Service\Update\MaintenanceMode;
@@ -224,7 +225,7 @@ final class ApplicationUpdaterTest extends TestCase
         }
         self::assertSame($before, $this->snapshot('var/updates'), 'Only the update lock was touched.');
         $this->expectExceptionMessage('does not install release ZIPs');
-        $updater->stageUpload(['aggregate-2.0.0.zip' => $package, 'aggregate-release.json' => $manifest, 'aggregate-release.json.sig' => $signature]);
+        $this->background(updater: $updater)->stageUpload(['aggregate-2.0.0.zip' => $package, 'aggregate-release.json' => $manifest, 'aggregate-release.json.sig' => $signature]);
     }
 
     public function testMethodCannotChangeWhileAnUpdateNeedsAttention(): void
@@ -256,7 +257,7 @@ final class ApplicationUpdaterTest extends TestCase
             $uploads[$name] = $temporary;
         }
 
-        $staged = $this->updater()->stageUpload($uploads);
+        $staged = $this->background()->stageUpload($uploads);
 
         self::assertSame('2.0.0', $staged['version']);
         self::assertStringStartsWith($this->project.'/var/updates/uploads/', $staged['package']);
@@ -271,7 +272,7 @@ final class ApplicationUpdaterTest extends TestCase
             copy($source, $copies[$name]);
         }
         try {
-            $this->updater()->stageUpload($copies);
+            $this->background()->stageUpload($copies);
             self::fail('A package that does not match its signed manifest must be refused.');
         } catch (\RuntimeException $e) {
             self::assertStringContainsString('does not match its signed manifest', $e->getMessage());
@@ -279,7 +280,7 @@ final class ApplicationUpdaterTest extends TestCase
         self::assertCount(1, glob($this->project.'/var/updates/uploads/*'), 'Refused uploads are removed.');
 
         $this->expectExceptionMessage('Missing aggregate-release.json.sig');
-        $this->updater()->stageUpload(['a.zip' => $package, 'b.json' => $manifest]);
+        $this->background()->stageUpload(['a.zip' => $package, 'b.json' => $manifest]);
     }
 
     public function testServerDatabasesRequireAConfirmedBackup(): void
@@ -377,7 +378,7 @@ final class ApplicationUpdaterTest extends TestCase
         [$package, $manifest, $signature] = $this->package('2.0.0');
 
         // Nothing installs code here: not app:updates:apply, the dashboard or an upload.
-        foreach ([fn () => $updater->start([], $this->record(...)), fn () => $updater->stageUpload(['a.zip' => $package, 'a.json' => $manifest, 'a.sig' => $signature])] as $attempt) {
+        foreach ([fn () => $updater->start([], $this->record(...)), fn () => $this->background(updater: $updater)->stageUpload(['a.zip' => $package, 'a.json' => $manifest, 'a.sig' => $signature])] as $attempt) {
             try {
                 $attempt();
                 self::fail('Code deployed another way must not be installed from here.');
@@ -506,17 +507,34 @@ final class ApplicationUpdaterTest extends TestCase
         $fingerprint = $this->updater()->databaseFingerprint();
         file_put_contents($php, "#!/bin/sh\necho 'PHP Deprecated:  something in Unknown on line 0'\necho '".json_encode(['problems' => [], 'environment' => 'prod', 'database' => $fingerprint])."'\n");
         chmod($php, 0700);
-        self::assertSame([], $this->updater(toolchain: $toolchain)->backgroundProblems());
+        self::assertSame([], $this->background($toolchain)->problems());
 
         file_put_contents($php, "#!/bin/sh\necho 'PHP Fatal error:  Composer detected issues in your platform: Your Composer dependencies require the following PHP extensions to be installed: intl' >&2\nexit 255\n");
-        $problems = $this->updater(toolchain: $toolchain)->backgroundProblems();
+        $problems = $this->background($toolchain)->problems();
         self::assertCount(1, $problems);
         self::assertStringContainsString('with '.$php.', because it exited with code 255: PHP Fatal error:  Composer detected issues in your platform', $problems[0]);
 
         $missing = $this->createStub(Toolchain::class);
         $missing->method('php')->willReturn(null);
         $missing->method('phpProblem')->willReturn('The command-line PHP 8.3 executable could not be found (open_basedir hides it from the website).');
-        self::assertSame(['The command-line PHP 8.3 executable could not be found (open_basedir hides it from the website).'], $this->updater(toolchain: $missing)->backgroundProblems());
+        self::assertSame(['The command-line PHP 8.3 executable could not be found (open_basedir hides it from the website).'], $this->background($missing)->problems());
+    }
+
+    private function background(?Toolchain $toolchain = null, ?ApplicationUpdater $updater = null): BackgroundUpdate
+    {
+        $config = $this->createStub(AggregateConfigLoader::class);
+        $config->method('all')->willReturn([]);
+        $settings = new UpdateSettings($config);
+        $verifier = new ReleasePackageVerifier($config, $settings, $this->project, new FeatureFlags($config));
+
+        return new BackgroundUpdate(
+            $updater ?? $this->updater(toolchain: $toolchain), $this->project, 'prod',
+            new UpdateJournal($this->project),
+            new ReleasePackageInstaller($this->project, new LocalConfigOverrides($this->project)),
+            $verifier,
+            new InstalledRelease($this->project),
+            $toolchain ?? new Toolchain($this->project),
+        );
     }
 
     /** @param array<string, mixed> $settings */
@@ -547,7 +565,6 @@ final class ApplicationUpdaterTest extends TestCase
             $releases,
             $updates,
             $installed,
-            $features,
             $this->connection,
             new SystemCheck($this->project, $updates, $settings, $installed, $verifier, $journal, $maintenance, $features, $this->connection, $toolchain, deployment: $deployment),
             $toolchain,

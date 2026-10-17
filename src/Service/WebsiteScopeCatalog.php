@@ -49,7 +49,7 @@ final class WebsiteScopeCatalog implements ResetInterface
 
     public function __construct(
         private readonly string $projectDir,
-        private readonly string $environment = 'prod',
+        string $environment = 'prod',
         ?ParsedYamlCache $parsedYaml = null,
     ) {
         $this->parsedYaml = $parsedYaml ?? ParsedYamlCache::forProject($projectDir, $environment);
@@ -134,17 +134,28 @@ final class WebsiteScopeCatalog implements ResetInterface
         // name, size and modification time are enough to notice an edit,
         // including one made outside this process; only a change reads the
         // files again.
-        $fingerprint = $this->overlayFingerprint();
+        [$fingerprint, $newest] = $this->overlayFingerprint();
         if ($this->overlayHealth !== null && $this->overlayHealth['fingerprint'] === $fingerprint) {
             return $this->overlayHealth['invalid'];
         }
-        $invalid = false;
-        foreach ($this->overlayDocuments() as $document) {
-            if (!$document['ok'] || ScopeKeys::errors($document['values']) !== null) {
-                $invalid = true;
-                break;
+        $check = function (): array {
+            foreach ($this->overlayDocuments() as $document) {
+                if (!$document['ok'] || ScopeKeys::errors($document['values']) !== null) {
+                    return ['invalid' => true];
+                }
             }
-        }
+
+            return ['invalid' => false];
+        };
+        // Under PHP-FPM every request builds a new catalog, so the result is
+        // also kept beside the parsed YAML, keyed by the fingerprint. Times
+        // have whole seconds: while a file is under two seconds old, a second
+        // edit in the same second could keep its size and time, so the result
+        // is not stored for later requests until the files have settled.
+        $result = time() - $newest >= 2
+            ? $this->parsedYaml->remember('website-scope-health', $fingerprint, static fn (): array => $check())
+            : $check();
+        $invalid = ($result['invalid'] ?? true) !== false;
         $this->overlayHealth = ['fingerprint' => $fingerprint, 'invalid' => $invalid];
 
         return $invalid;
@@ -603,32 +614,40 @@ final class WebsiteScopeCatalog implements ResetInterface
     }
 
     /**
-     * Names, sizes and modification times of the overlay files, not their
-     * contents. A changed, added or removed file changes it. A same-second
-     * edit that also keeps the same size is noticed on the next timestamp.
+     * Names, sizes and modification times of the catalog and the overlay
+     * files, not their contents, and the newest of those times. A changed,
+     * added or removed file changes the fingerprint.
+     *
+     * @return array{0: string, 1: int}
      */
-    private function overlayFingerprint(): string
+    private function overlayFingerprint(): array
     {
-        $files = [];
+        $paths = [$this->catalogPath()];
         foreach (['groups', 'websites'] as $kind) {
             $directory = $this->projectDir.'/config/'.self::DIRECTORY.'/'.$kind;
             if (!is_dir($directory)) {
                 continue;
             }
             foreach (scandir($directory) ?: [] as $file) {
-                if (!is_string($file) || !str_ends_with($file, '.yaml')) {
-                    continue;
+                if (is_string($file) && str_ends_with($file, '.yaml')) {
+                    $paths[] = $directory.'/'.$file;
                 }
-                $path = $directory.'/'.$file;
-                $modified = @filemtime($path);
-                $size = @filesize($path);
-                $files[] = $kind.'/'.$file.':'
-                    .(is_int($modified) ? $modified : 'unread').':'
-                    .(is_int($size) ? $size : 'unread');
             }
+        }
+        $files = [];
+        $newest = 0;
+        foreach ($paths as $path) {
+            $modified = @filemtime($path);
+            $size = @filesize($path);
+            if (is_int($modified)) {
+                $newest = max($newest, $modified);
+            }
+            $files[] = substr($path, strlen($this->projectDir)).':'
+                .(is_int($modified) ? $modified : 'missing').':'
+                .(is_int($size) ? $size : 'missing');
         }
         sort($files);
 
-        return implode("\n", $files);
+        return [implode("\n", $files), $newest];
     }
 }

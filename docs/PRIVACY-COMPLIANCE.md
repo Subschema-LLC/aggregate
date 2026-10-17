@@ -756,7 +756,7 @@ Before applying the `Version20260724*` privacy migrations, back up the database,
 
 The queue cleanup can only match envelopes visible as plain text in the Doctrine transport. Inspect and purge tracker messages from failed, externally hosted, or encoded/base64 transports before resuming ingestion. Legacy rows already stored as `granted` are retained, but older releases could infer that value solely from a session ID; audit or purge those rows if you cannot establish their consent provenance. Resume ingestion and workers only after the migrations succeed.
 
-See [deployment updates](../DEPLOYMENT.md#updates) and the [database migration guide](DATABASE.md#migration-and-compatibility) for the rest of the upgrade procedure.
+See the [manual update steps](../DEPLOYMENT.md#manual-update-steps) and the [database migration guide](DATABASE.md#migration-and-compatibility) for the rest of the upgrade procedure.
 
 ## Operator checklist
 
