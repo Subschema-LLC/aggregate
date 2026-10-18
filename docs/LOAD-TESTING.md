@@ -381,7 +381,6 @@ A request counts as stored only when the response says the event was
 - Writing anonymous events with a direct insert instead of Doctrine ORM.
 - Requests for the tracker, consent and tag manager scripts, dashboard use, and
   `app:analytics:maintain` running during load.
-- An installation with many registered websites. Each request looks its website
-  up in the full registry, so this cost grows with the number of websites.
+- An installation with many registered websites.
 
 The [roadmap](../ROADMAP.md) tracks this work.
