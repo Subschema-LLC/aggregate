@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Service\AggregateConfigLoader;
-use App\Service\BigQuery\BigQueryViewCatalog;
 use App\Service\ReportingDatabase\ReportingDatabaseBackgroundSync;
 use App\Service\ReportingDatabase\ReportingDatabaseConfigurator;
 use App\Service\ReportingDatabase\ReportingDatabaseConnection;
@@ -28,8 +27,10 @@ use Symfony\Component\Routing\Annotation\Route;
 final class ReportingDatabaseController extends AbstractController
 {
     use DashboardAccess;
+    use ViewSyncAdmin;
 
     public const CSRF_TOKEN_ID = 'reporting_database_settings';
+    private const ROUTE = 'app_reporting_database';
     private const SESSION_SYNC_REQUESTED = 'reporting_database_sync_requested_at';
     /** Fields of a connection that failed its test, shown again without the password. */
     private const SESSION_CONNECTION_FORM = 'reporting_database_connection_form';
@@ -50,14 +51,7 @@ final class ReportingDatabaseController extends AbstractController
     public function index(Request $request): Response
     {
         $this->denyUnlessAvailableToAdmin();
-        $error = null;
-        try {
-            $settings = $this->settings->toArray();
-        } catch (\Throwable $e) {
-            $this->logger->error('Failed to load reporting database settings.', ['exception' => $e]);
-            $settings = ReportingDatabaseSettings::validate([]);
-            $error = 'The reporting database settings in YAML or the environment are invalid: '.($e instanceof \InvalidArgumentException ? $e->getMessage() : 'see the application log.').' Correct them before syncing.';
-        }
+        [$settings, $error] = $this->loadSyncSettings('reporting database');
 
         $location = null;
         $connectionError = null;
@@ -66,34 +60,10 @@ final class ReportingDatabaseController extends AbstractController
         } catch (ReportingDatabaseException $e) {
             $connectionError = $e->getMessage();
         }
-        try {
-            $status = $this->runner->status($settings);
-        } catch (\Throwable $e) {
-            $this->logger->error('Failed to read reporting database sync status.', ['exception' => $e]);
-            $status = ['last_run' => null, 'views' => [], 'scheduler_late' => false];
-            $error ??= 'The sync status could not be read. Run the database migrations (php bin/console doctrine:migrations:migrate).';
-        }
-        // After “Sync now”, the page waits for the background run to start and finish.
-        $requested = $request->getSession()->get(self::SESSION_SYNC_REQUESTED);
-        $lastRun = $status['last_run'];
-        if (!is_int($requested) || $requested < time() - 600 || ($lastRun !== null && $lastRun->getTimestamp() >= $requested && !in_array('running', array_column($status['views'], 'status'), true))) {
-            $request->getSession()->remove(self::SESSION_SYNC_REQUESTED);
-            $requested = null;
-        }
-
         return $this->render('reporting_database/index.html.twig', [
-            'settings' => $settings,
-            'overrides' => $this->settings->getEnvironmentOverrides(),
-            'configuration_error' => $error,
-            'approved_views' => BigQueryViewCatalog::APPROVED,
-            'private_views' => BigQueryViewCatalog::PRIVATE,
-            'intervals' => ReportingDatabaseSettings::INTERVALS,
+            ...$this->syncPage($request, 'reporting database', $settings, $error),
             'location' => $location,
             'connection_error' => $connectionError,
-            'status' => $status,
-            'sync_requested_at' => $requested,
-            'background_problem' => $this->background->problem(),
-            'cron_line' => $this->background->cronLine(),
             'connection' => $this->connectionForm($request),
             'connection_problem' => $this->configurator->problem(),
             'connection_saved_here' => $this->configurator->isSavedHere(),
@@ -127,7 +97,7 @@ final class ReportingDatabaseController extends AbstractController
             $this->addFlash('error', 'The connection was not saved; see the application log.');
         }
 
-        return $this->redirectToRoute('app_reporting_database');
+        return $this->redirectToRoute(self::ROUTE);
     }
 
     #[Route('/dashboard/reporting-database/connection/remove', name: 'app_reporting_database_connection_remove', methods: ['POST'])]
@@ -143,7 +113,7 @@ final class ReportingDatabaseController extends AbstractController
             $this->addFlash('error', $e instanceof ReportingDatabaseException || $e instanceof \RuntimeException ? $e->getMessage() : 'The connection could not be removed.');
         }
 
-        return $this->redirectToRoute('app_reporting_database');
+        return $this->redirectToRoute(self::ROUTE);
     }
 
     /**
@@ -174,82 +144,19 @@ final class ReportingDatabaseController extends AbstractController
     #[Route('/dashboard/reporting-database/status', name: 'app_reporting_database_status', methods: ['GET'])]
     public function status(): JsonResponse
     {
-        $this->denyUnlessAvailableToAdmin();
-        try {
-            $status = $this->runner->status($this->settings->toArray());
-        } catch (\Throwable) {
-            return new JsonResponse(['running' => false, 'last_run' => null, 'views' => []], headers: ['Cache-Control' => 'no-store']);
-        }
-
-        return new JsonResponse([
-            'running' => in_array('running', array_column($status['views'], 'status'), true),
-            'last_run' => $status['last_run']?->getTimestamp(),
-            'views' => array_map(static fn (array $view): array => ['view' => $view['view'], 'status' => $view['status']], $status['views']),
-        ], headers: ['Cache-Control' => 'no-store']);
+        return $this->syncStatusResponse();
     }
 
     #[Route('/dashboard/reporting-database/views', name: 'app_reporting_database_views', methods: ['POST'])]
     public function saveViews(Request $request): Response
     {
-        if (($response = $this->guard($request, ['views', 'private_views', 'private_views_confirmed'])) !== null) {
-            return $response;
-        }
-        $views = $request->request->all()['views'] ?? [];
-        $private = $request->request->all()['private_views'] ?? [];
-        if (!is_array($views) || !is_array($private)) {
-            $this->addFlash('error', 'The form contained an unexpected value. Nothing was saved.');
-
-            return $this->redirectToRoute('app_reporting_database');
-        }
-        try {
-            $current = $this->settings->toArray()[ReportingDatabaseSettings::KEY_PRIVATE_VIEWS];
-            $added = array_diff(array_map('strval', $private), $current);
-            if ($added !== [] && $request->request->get('private_views_confirmed') !== '1') {
-                throw new \InvalidArgumentException('Confirm that the private views you selected may be copied to the reporting database. They hold row-level or unsuppressed data.');
-            }
-            $this->settings->save([
-                ReportingDatabaseSettings::KEY_VIEWS => array_values(array_map('strval', $views)),
-                ReportingDatabaseSettings::KEY_PRIVATE_VIEWS => array_values(array_map('strval', $private)),
-            ]);
-        } catch (\InvalidArgumentException $e) {
-            $this->addFlash('error', $e->getMessage());
-
-            return $this->redirectToRoute('app_reporting_database');
-        } catch (\Throwable $e) {
-            $this->logger->error('Failed to save reporting database views.', ['exception' => $e]);
-            $this->addFlash('error', 'The views could not be saved. Check the application log and configuration-file permissions.');
-
-            return $this->redirectToRoute('app_reporting_database');
-        }
-        $this->addFlash('success', 'The views to copy were saved. Tables of views you removed stay in the reporting database until you drop them there.');
-
-        return $this->redirectToRoute('app_reporting_database');
+        return $this->saveSyncViews($request, 'reporting database', 'the reporting database', 'The views to copy were saved. Tables of views you removed stay in the reporting database until you drop them there.');
     }
 
     #[Route('/dashboard/reporting-database/schedule', name: 'app_reporting_database_schedule', methods: ['POST'])]
     public function saveSchedule(Request $request): Response
     {
-        if (($response = $this->guard($request, ['enabled', 'interval'])) !== null) {
-            return $response;
-        }
-        try {
-            $this->settings->save(array_filter([
-                ReportingDatabaseSettings::KEY_ENABLED => $request->request->get('enabled', '0'),
-                ReportingDatabaseSettings::KEY_INTERVAL => $request->request->get('interval'),
-            ], static fn (mixed $value): bool => $value !== null));
-        } catch (\InvalidArgumentException $e) {
-            $this->addFlash('error', $e->getMessage());
-
-            return $this->redirectToRoute('app_reporting_database');
-        } catch (\Throwable $e) {
-            $this->logger->error('Failed to save the reporting database schedule.', ['exception' => $e]);
-            $this->addFlash('error', 'The schedule could not be saved. Check the application log and configuration-file permissions.');
-
-            return $this->redirectToRoute('app_reporting_database');
-        }
-        $this->addFlash('success', 'The sync schedule was saved.');
-
-        return $this->redirectToRoute('app_reporting_database');
+        return $this->saveSyncSchedule($request, 'reporting database');
     }
 
     #[Route('/dashboard/reporting-database/test', name: 'app_reporting_database_test', methods: ['POST'])]
@@ -273,49 +180,19 @@ final class ReportingDatabaseController extends AbstractController
             $this->addFlash('error', 'The connection test failed; see the application log.');
         }
 
-        return $this->redirectToRoute('app_reporting_database');
+        return $this->redirectToRoute(self::ROUTE);
     }
 
     #[Route('/dashboard/reporting-database/sync', name: 'app_reporting_database_sync', methods: ['POST'])]
     public function syncNow(Request $request): Response
     {
-        if (($response = $this->guard($request)) !== null) {
-            return $response;
-        }
-        try {
+        return $this->startSync($request, function (): void {
             if (!$this->settings->toArray()[ReportingDatabaseSettings::KEY_ENABLED]) {
                 throw new \RuntimeException('Turn the reporting database sync on before syncing.');
             }
             if (!$this->database->isConfigured()) {
                 throw new \RuntimeException('Set REPORTING_DATABASE_URL on the server before syncing.');
             }
-            $this->background->start($this->getUser()?->getUserIdentifier() ?? 'administrator');
-            $request->getSession()->set(self::SESSION_SYNC_REQUESTED, time());
-            $this->addFlash('success', 'The sync has started. This page shows each view’s result when it finishes.');
-        } catch (\RuntimeException|\InvalidArgumentException $e) {
-            $this->addFlash('error', $e->getMessage());
-        }
-
-        return $this->redirectToRoute('app_reporting_database');
-    }
-
-    /** Admin, dashboard and CSRF checks for form posts; only the listed fields may be submitted. @param list<string> $fields */
-    private function guard(Request $request, array $fields = []): ?Response
-    {
-        $this->denyUnlessAvailableToAdmin();
-        $submitted = $request->request->all();
-        $token = $submitted['_csrf_token'] ?? null;
-        if (!is_string($token) || !$this->isCsrfTokenValid(self::CSRF_TOKEN_ID, $token)) {
-            $this->addFlash('error', 'Invalid security token. Please try again.');
-
-            return $this->redirectToRoute('app_reporting_database');
-        }
-        if (array_diff(array_keys($submitted), ['_csrf_token', ...$fields]) !== []) {
-            $this->addFlash('error', 'The form contained an unexpected setting. Nothing was saved.');
-
-            return $this->redirectToRoute('app_reporting_database');
-        }
-
-        return null;
+        });
     }
 }

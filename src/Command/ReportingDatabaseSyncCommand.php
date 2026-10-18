@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Command;
 
-use App\Service\Operations\TaskTrigger;
 use App\Service\ReportingDatabase\ReportingDatabaseSyncRunner;
+use App\Service\ViewSync\ViewSyncConsole;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -55,10 +55,9 @@ HELP);
         $json = (bool) $input->getOption('json');
 
         try {
-            $requestedBy = $input->getOption('requested-by');
             $result = $this->runner->run((bool) $input->getOption('force'), $views === [] ? null : $views, $json ? null : static function (string $view) use ($io): void {
                 $io->writeln('Copying '.$view.'…');
-            }, is_string($requestedBy) && $requestedBy !== '' ? TaskTrigger::dashboard($requestedBy) : null);
+            }, ViewSyncConsole::trigger($input));
         } catch (\InvalidArgumentException $e) {
             $io->error(['The reporting database settings are invalid; nothing was copied.', $e->getMessage()]);
 
@@ -70,20 +69,6 @@ HELP);
             return Command::FAILURE;
         }
 
-        if ($json) {
-            $output->writeln(json_encode($result, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-        } elseif (!$result['enabled']) {
-            $io->note('Reporting database sync is turned off. Turn it on in the admin page or set reporting_database_enabled: true.');
-        } else {
-            $io->table(['View', 'Result', 'Rows', 'Details'], array_map(static fn (array $item): array => [$item['view'], $item['status'], $item['rows'] ?? '', $item['message']], $result['results']));
-        }
-
-        foreach ($result['results'] as $item) {
-            if ($item['status'] === 'failed') {
-                return Command::FAILURE;
-            }
-        }
-
-        return Command::SUCCESS;
+        return ViewSyncConsole::results($io, $output, $result, $json, 'Reporting database sync is turned off. Turn it on in the admin page or set reporting_database_enabled: true.');
     }
 }
