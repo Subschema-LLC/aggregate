@@ -157,6 +157,39 @@ final class WebsiteConfigManagerTest extends TestCase
         }
     }
 
+    public function testLookupsByTokenAndIdReadTheCurrentFileAndRefuseSharedTokens(): void
+    {
+        $this->writeConfig(['websites' => [
+            ['name' => 'First', 'domain' => 'first.example', 'token' => 'duplicate'],
+            ['name' => 'Second', 'domain' => 'second.example', 'public_token' => 'duplicate'],
+            ['name' => 'Numeric', 'domain' => 'numeric.example', 'token' => '12345'],
+            ['name' => 'No token', 'domain' => 'none.example'],
+        ]]);
+        $manager = new WebsiteConfigManager($this->projectDir);
+        $duplicate = WebsiteConfigManager::idForToken('duplicate');
+        $numeric = WebsiteConfigManager::idForToken('12345');
+
+        // A token that looks like a number is still found by its string.
+        self::assertSame('Numeric', $manager->findOneByToken('12345')['name'] ?? null);
+        self::assertSame('Numeric', $manager->findOneById($numeric)['name'] ?? null);
+        self::assertNull($manager->findOneById($duplicate), 'two websites share this id');
+        self::assertNull($manager->findOneByToken(''));
+        self::assertNull($manager->findOneById(WebsiteConfigManager::idForToken('missing')));
+        self::assertSame([
+            ['id' => $duplicate, 'name' => 'First', 'domain' => 'first.example', 'token' => 'duplicate'],
+            ['id' => $duplicate, 'name' => 'Second', 'domain' => 'second.example', 'token' => 'duplicate'],
+            ['id' => $numeric, 'name' => 'Numeric', 'domain' => 'numeric.example', 'token' => '12345'],
+        ], $manager->sites(), 'every website with a token, including ones that share it');
+        self::assertCount(4, $manager->getWebsites());
+
+        // The same object sees another process's edit, and its own, at once.
+        $this->writeConfig(['websites' => [['name' => 'Renamed', 'domain' => 'numeric.example', 'token' => '12345']]]);
+        self::assertSame('Renamed', $manager->findOneById($numeric)['name'] ?? null);
+        self::assertNull($manager->findOneByToken('duplicate'));
+        self::assertTrue($manager->addWebsite('Added', 'added.example', 'added-token'));
+        self::assertSame('Added', $manager->findOneById(WebsiteConfigManager::idForToken('added-token'))['name'] ?? null);
+    }
+
     public function testCannotCreateARegistrationWithAnExistingLegacyToken(): void
     {
         $this->writeConfig(['websites' => [['name' => 'Old', 'domain' => 'old.example', 'public_token' => 'token']]]);
