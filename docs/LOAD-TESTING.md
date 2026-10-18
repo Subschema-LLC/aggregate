@@ -17,7 +17,9 @@ rates until the server falls behind.
 ## At a glance: hits per day
 
 Every page view and every tracked event (a click, a form, a goal) is one
-**hit**: one request to Aggregate. With the database on the same server, one
+**hit**: one request to Aggregate. The tracker sends each hit as a CORS simple
+request, so browsers make no OPTIONS preflight request before it, even when
+Aggregate runs on another domain. With the database on the same server, one
 Aggregate server handles about this many hits a day:
 
 | Server | As installed | With OPcache preloading |

@@ -143,15 +143,14 @@ final class WebsiteScopeEditor
         $this->catalog->saveOverlay($kind, (string) $selection['id'], $model, []);
     }
 
+    /**
+     * The token of the website with this script id, or null when none or
+     * several have it: websites that share a token have no settings of their
+     * own, as ingestion and the script settings also refuse them.
+     */
     public function tokenForSiteId(string $siteId): ?string
     {
-        foreach ($this->websites->sites() as $site) {
-            if ($site['id'] === $siteId) {
-                return $site['token'];
-            }
-        }
-
-        return null;
+        return $this->websites->findOneById($siteId)['token'] ?? null;
     }
 
     /**
@@ -214,7 +213,17 @@ final class WebsiteScopeEditor
                 'group' => $label['plural'],
             ];
         }
-        foreach ($this->websites->sites() as $site) {
+        $sites = $this->websites->sites();
+        $websitesWithId = [];
+        foreach ($sites as $site) {
+            $websitesWithId[$site['id']] = ($websitesWithId[$site['id']] ?? 0) + 1;
+        }
+        foreach ($sites as $site) {
+            // Only websites that can be chosen: one that shares its token
+            // with another has no settings of its own (see tokenForSiteId()).
+            if ($websitesWithId[$site['id']] > 1) {
+                continue;
+            }
             $groupId = $this->catalog->groupIdForToken($site['token']);
             $suffix = $groupId !== null ? ' · '.$this->catalog->groupName($groupId) : '';
             $choices[] = [
@@ -237,10 +246,9 @@ final class WebsiteScopeEditor
             return (string) $this->catalog->groupName((string) $parsed['id']);
         }
         if ($parsed['kind'] === 'website') {
-            foreach ($this->websites->sites() as $site) {
-                if ($site['id'] === $parsed['id']) {
-                    return $site['name'];
-                }
+            $website = $this->websites->findOneById((string) $parsed['id']);
+            if ($website !== null) {
+                return (string) $website['name'];
             }
         }
 

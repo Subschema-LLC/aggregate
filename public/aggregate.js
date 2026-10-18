@@ -935,11 +935,14 @@
         }
       }
       try {
-        var headers = {'Content-Type':'application/json'};
-        // Include Origin automatically by browser
+        // The body is JSON, but a JSON content type would make each event
+        // to another origin wait for an OPTIONS preflight, a second request
+        // to the server. text/plain keeps it one request; the server reads
+        // the body as JSON whatever the type. The browser still sends
+        // Origin, which the website's domain rules check.
         fetch(this.config.endpoint, {
           method: 'POST',
-          headers: headers,
+          headers: {'Content-Type':'text/plain;charset=UTF-8'},
           body: JSON.stringify(payload),
           keepalive: true,
           referrerPolicy: 'no-referrer',

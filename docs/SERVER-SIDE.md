@@ -100,7 +100,7 @@ User-Agent: (the visitor's User-Agent header)
 
 | Header | Value |
 | --- | --- |
-| `Content-Type` | `application/json`. |
+| `Content-Type` | `application/json`. Aggregate reads the body as JSON whatever this says; the browser tracker sends `text/plain` so that browsers make no CORS preflight request first. |
 | `Origin` | Your site's origin, such as `https://www.example.com`, which must match the website's [domain rules](CONFIGURATION.md#website-domains). Not needed if the website allows all domains. A server can send any `Origin`, so these rules don't authenticate server callers; they stop other sites' pages from submitting events in visitors' browsers. |
 | `User-Agent` | The visitor's `User-Agent` header, so Aggregate can derive the device class and recognize crawlers. It is not stored. |
 | `X-Forwarded-For` | Optional: the visitor's IP address. See [rate limits and geography](#rate-limits-and-geography). |

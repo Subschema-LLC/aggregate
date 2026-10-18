@@ -1530,6 +1530,34 @@ test('page information and network referrers omit full queries in both modes and
   }
 });
 
+test('events are sent as one CORS simple request, so browsers send no OPTIONS preflight first', () => {
+  // The content types a cross-origin request may carry without a preflight:
+  // https://fetch.spec.whatwg.org/#cors-safelisted-request-header
+  const safelistedTypes = ['application/x-www-form-urlencoded', 'multipart/form-data', 'text/plain'];
+  for (const consent of [false, true]) {
+    const transports = [];
+    const runtime = loadSdk({
+      inline: {consent},
+      fetch: (url, request) => { transports.push([url, request]); return Promise.resolve({ok: true}); }
+    });
+    runtime.triggerPageView();
+    runtime.window.Aggregate.emit('button_click');
+
+    assert.equal(transports.length, 2);
+    for (const [url, request] of transports) {
+      assert.equal(url, 'https://analytics.example/api/receive');
+      assert.equal(request.method, 'POST');
+      const headers = Object.entries(request.headers || {});
+      assert.deepEqual(headers.map(([name]) => name.toLowerCase()), ['content-type'], 'no other header, which would need a preflight');
+      assert.ok(safelistedTypes.includes(headers[0][1].split(';')[0].trim().toLowerCase()), headers[0][1]);
+      // The body is still the JSON object the server reads.
+      assert.equal(JSON.parse(request.body).websiteToken, 'site-token');
+      assert.equal(request.keepalive, true);
+      assert.equal(request.credentials, 'omit');
+    }
+  }
+});
+
 const scriptUrl = (query) => 'https://analytics.example/aggregate.js?min=1&endpoint=https%3A%2F%2Fanalytics.example%2Fapi%2Freceive&token=site-token' + query;
 
 test('cd.* script URL values accompany the automatic page view under the same rules as emit() properties', () => {

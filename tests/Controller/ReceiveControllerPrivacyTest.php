@@ -392,6 +392,62 @@ final class ReceiveControllerPrivacyTest extends TestCase
         self::assertNull($persisted->getSessionId());
     }
 
+    /**
+     * The browser tracker sends its JSON body as text/plain, so browsers
+     * send it without a CORS preflight; server-side senders use
+     * application/json. The body is read as JSON either way.
+     */
+    #[DataProvider('bodyContentTypes')]
+    public function testTheJsonBodyIsReadWhateverItsContentType(string $contentType): void
+    {
+        $persisted = null;
+        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager->expects(self::once())->method('persist')
+            ->willReturnCallback(static function (object $event) use (&$persisted): void {
+                $persisted = $event;
+            });
+        $bus = $this->createMock(MessageBusInterface::class);
+        $bus->expects(self::never())->method('dispatch');
+
+        $response = $this->invoke(
+            payload: ['websiteToken' => 'public-site-token', 'pagePath' => '/pricing', 'eventName' => 'view', 'consentState' => 'denied'],
+            bus: $bus,
+            recorder: new AnonymousEventRecorder($entityManager),
+            contentType: $contentType,
+        );
+
+        self::assertSame(202, $response->getStatusCode());
+        self::assertInstanceOf(Event::class, $persisted);
+        self::assertSame('view', $persisted->getEventName());
+        self::assertSame('/pricing', $persisted->getUrl());
+    }
+
+    public static function bodyContentTypes(): iterable
+    {
+        yield 'the browser tracker' => ['text/plain;charset=UTF-8'];
+        yield 'plain text without a charset' => ['text/plain'];
+        yield 'server-side senders' => ['application/json'];
+    }
+
+    /** Without a preflight, the website's domain rules still refuse another site's page. */
+    public function testAPlainTextEventFromAnotherSiteIsStillRefused(): void
+    {
+        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager->expects(self::never())->method('persist');
+        $bus = $this->createMock(MessageBusInterface::class);
+        $bus->expects(self::never())->method('dispatch');
+
+        $response = $this->invoke(
+            payload: ['websiteToken' => 'public-site-token', 'pagePath' => '/pricing', 'eventName' => 'view', 'consentState' => 'denied'],
+            bus: $bus,
+            recorder: new AnonymousEventRecorder($entityManager),
+            contentType: 'text/plain;charset=UTF-8',
+            origin: 'https://other-site.test',
+        );
+
+        self::assertSame(403, $response->getStatusCode());
+    }
+
     public function testGrantedEventQueuesSanitizedFieldsWithOneExactOccurrenceTime(): void
     {
         $entityManager = $this->createMock(EntityManagerInterface::class);
@@ -934,6 +990,8 @@ final class ReceiveControllerPrivacyTest extends TestCase
         ?GeoIpResolverInterface $geoResolver = null,
         ?GoalEventRegistry $goalEvents = null,
         ?string $userAgent = null,
+        string $contentType = 'application/json',
+        string $origin = 'https://www.example.com',
     ): \Symfony\Component\HttpFoundation\Response {
         $config ??= $this->privacyConfig();
         $logger ??= new NullLogger();
@@ -942,7 +1000,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
         $goalEvents ??= $this->goalEvents();
 
         return (new ReceiveController())(
-            $this->request($payload, $userAgent),
+            $this->request($payload, $userAgent, $contentType, $origin),
             new EventIngestion(
                 $this->websiteManager(),
                 $bus,
@@ -991,14 +1049,14 @@ final class ReceiveControllerPrivacyTest extends TestCase
         return $config;
     }
 
-    private function request(array $payload, ?string $userAgent = null): Request
+    private function request(array $payload, ?string $userAgent = null, string $contentType = 'application/json', string $origin = 'https://www.example.com'): Request
     {
         return Request::create(
             '/api/receive',
             'POST',
             server: [
-                'CONTENT_TYPE' => 'application/json',
-                'HTTP_ORIGIN' => 'https://www.example.com',
+                'CONTENT_TYPE' => $contentType,
+                'HTTP_ORIGIN' => $origin,
                 'HTTP_USER_AGENT' => $userAgent ?? 'Mozilla/5.0 Chrome/126.0 Safari/537.36',
                 'REMOTE_ADDR' => '203.0.113.42',
             ],
