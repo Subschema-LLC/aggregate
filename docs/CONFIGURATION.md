@@ -810,10 +810,19 @@ export BRAND_TEXT_COLOR="#1F2937"
 export BRAND_FONT_FAMILY="system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
 export BRAND_HEADING_FONT_FAMILY="system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
 export DASHBOARD_ENABLED="0"
+export APP_HOST="https://analytics.example.com"
+export RATE_LIMIT_PER_MINUTE="100"
+export WEBSITE_ACTIVITY_ACTIVE_DAYS="1"
+export WEBSITE_ACTIVITY_STALE_DAYS="3"
 export COLLECTION_PROFILE="strict"
 export BOT_TRAFFIC="drop"
 export ANONYMOUS_TRACKING_ENABLED="0"
 export ANONYMOUS_GEO_ENABLED="0"
+export ANONYMOUS_GEO_LEVEL="macro_region"
+export ANONYMOUS_GEO_DATABASE_PATH="/var/lib/geoip/GeoLite2-Country.mmdb"
+export ANONYMOUS_EXCLUDED_PATHS="/account/**,/checkout/**"
+export TRACKING_RETRY_ENABLED="1"
+export TRACKING_RETRY_BATCH_SIZE="100"
 export ANALYTICS_ARCHIVING_ENABLED="1"
 export ANALYTICS_ARCHIVE_AFTER_DAYS="90"
 export ANALYTICS_RETENTION_ENABLED="0"
@@ -824,3 +833,19 @@ export ANALYTICS_MAINTENANCE_BATCH_SIZE="1000"
 export PROCESSING_TASKS_RETENTION_DAYS="90"
 export AUDIT_TRAIL_RETENTION_DAYS="365"
 ```
+
+Each variable is the setting's name in uppercase. List settings such as
+`ANONYMOUS_EXCLUDED_PATHS` take comma-separated values, and switches accept
+`1`/`0` or `true`/`false`. Other features have their own variables, described
+with them: the [organization-traffic marker](PRIVACY-COMPLIANCE.md#organization-traffic)
+(`INTERNAL_TRAFFIC_*`), [BigQuery](BIGQUERY.md) (`BIGQUERY_*`), the
+[reporting database](REPORTING-DATABASE.md) (`REPORTING_DATABASE_*`), the
+[BI disclosure thresholds](#bi-disclosure-thresholds) and the
+[reporting timezone](BI-CONNECTION.md#reporting-timezone).
+
+Pages that manage a setting with a variable either show it as fixed or refuse
+a change that would not take effect. **General settings** shows this only for
+the documentation address and the page speed option, and **Collection
+controls** only for the collection profile and bot traffic. For the other
+variables above, a value saved on those pages is stored in YAML but has no
+effect while the variable is set.
