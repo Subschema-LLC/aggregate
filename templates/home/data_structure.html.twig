@@ -93,58 +93,7 @@
             </div>
 
             <div class="table-container" role="region" aria-labelledby="anonymous-events-view-heading" tabindex="0">
-                <table class="table is-fullwidth is-striped is-hoverable data-structure-table">
-                    <caption class="is-sr-only">Columns exposed by bi_anonymous_events_v1</caption>
-                    <thead>
-                        <tr>
-                            <th scope="col">Column</th>
-                            <th scope="col">Logical type</th>
-                            <th scope="col">Meaning</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <th scope="row"><code>website_token</code></th>
-                            <td>String</td>
-                            <td>Site key used to partition events. Website names and domains are stored outside the database.</td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><code>event_hour</code></th>
-                            <td>Datetime</td>
-                            <td>Start of a completed hour in the reporting timezone, UTC unless that setting is changed. Anonymous event times are stored as a UTC hour; the view relabels that hour.</td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><code>event_name</code></th>
-                            <td>String</td>
-                            <td><code>view</code> for page views, or a fixed safe name for a measured interaction.</td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><code>page_path</code></th>
-                            <td>Text</td>
-                            <td>Sanitized path with query strings and fragments removed and identifier-like segments redacted.</td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><code>referrer_channel</code></th>
-                            <td>Category</td>
-                            <td><code>direct</code>, <code>internal</code>, <code>search</code>, <code>social</code>, <code>email</code>, <code>referral</code>, or <code>unknown</code>.</td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><code>device_class</code></th>
-                            <td>Category</td>
-                            <td><code>mobile</code>, <code>tablet</code>, <code>desktop</code>, <code>bot</code>, or <code>unknown</code>.</td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><code>viewport_bucket</code></th>
-                            <td>Category</td>
-                            <td><code>small</code>, <code>medium</code>, <code>large</code>, or <code>unknown</code>.</td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><code>event_count</code></th>
-                            <td>Integer</td>
-                            <td>Number of event rows in the released cell. This is not a count of distinct people.</td>
-                        </tr>
-                    </tbody>
-                </table>
+                {{ component('DataModel:ViewColumns', {view: 'bi_anonymous_events_v1', columns: view_columns['bi_anonymous_events_v1']}) }}
             </div>
 
             <div class="notification is-light mb-0">
@@ -179,38 +128,7 @@
             </div>
 
             <div class="table-container" role="region" aria-labelledby="anonymous-goals-view-heading" tabindex="0">
-                <table class="table is-fullwidth is-striped is-hoverable data-structure-table">
-                    <caption class="is-sr-only">Columns exposed by bi_anonymous_goals_v1</caption>
-                    <thead>
-                        <tr>
-                            <th scope="col">Column</th>
-                            <th scope="col">Logical type</th>
-                            <th scope="col">Meaning</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <th scope="row"><code>website_token</code></th>
-                            <td>String</td>
-                            <td>Site key used to partition goal occurrences.</td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><code>event_day</code></th>
-                            <td>UTC date</td>
-                            <td>A completed UTC calendar day.</td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><code>goal_event</code></th>
-                            <td>String</td>
-                            <td>Stable allowlisted code from <code>config/goals.yaml</code>; labels are presentation metadata and are not stored in this view.</td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><code>event_count</code></th>
-                            <td>Integer</td>
-                            <td>Number of goal occurrences in the released cell, not distinct people or unique converters.</td>
-                        </tr>
-                    </tbody>
-                </table>
+                {{ component('DataModel:ViewColumns', {view: 'bi_anonymous_goals_v1', columns: view_columns['bi_anonymous_goals_v1']}) }}
             </div>
 
             <div class="notification is-warning is-light mb-0">
@@ -248,53 +166,7 @@
             </div>
 
             <div class="table-container" role="region" aria-labelledby="anonymous-daily-view-heading" tabindex="0">
-                <table class="table is-fullwidth is-striped is-hoverable data-structure-table">
-                    <caption class="is-sr-only">Columns exposed by bi_anonymous_daily_v1</caption>
-                    <thead>
-                        <tr>
-                            <th scope="col">Column</th>
-                            <th scope="col">Logical type</th>
-                            <th scope="col">Meaning</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <th scope="row"><code>website_token</code></th>
-                            <td>String</td>
-                            <td>Site key used to partition events.</td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><code>event_day</code></th>
-                            <td>Date</td>
-                            <td>A completed day in the reporting timezone, UTC unless that setting is changed.</td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><code>event_name</code></th>
-                            <td>String</td>
-                            <td><code>view</code> for page views, or a fixed safe interaction name.</td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><code>page_group</code></th>
-                            <td>Text</td>
-                            <td>The label of the first matching page group rule, or the sanitized path when none matches.</td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><code>referrer_channel</code></th>
-                            <td>Category</td>
-                            <td>Coarse source channel.</td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><code>device_class</code></th>
-                            <td>Category</td>
-                            <td>Coarse device category.</td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><code>event_count</code></th>
-                            <td>Integer</td>
-                            <td>Number of events in the released daily cell, not distinct people.</td>
-                        </tr>
-                    </tbody>
-                </table>
+                {{ component('DataModel:ViewColumns', {view: 'bi_anonymous_daily_v1', columns: view_columns['bi_anonymous_daily_v1']}) }}
             </div>
             </div>
         </details>
@@ -324,58 +196,7 @@
             </div>
 
             <div class="table-container" role="region" aria-labelledby="anonymous-rollup-view-heading" tabindex="0">
-                <table class="table is-fullwidth is-striped is-hoverable data-structure-table">
-                    <caption class="is-sr-only">Columns exposed by bi_anonymous_daily_rollup_v1</caption>
-                    <thead>
-                        <tr>
-                            <th scope="col">Column</th>
-                            <th scope="col">Logical type</th>
-                            <th scope="col">Meaning</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <th scope="row"><code>website_token</code></th>
-                            <td>String</td>
-                            <td>Site key used to partition events.</td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><code>event_day</code></th>
-                            <td>Date</td>
-                            <td>A completed day in the reporting timezone, UTC unless that setting is changed.</td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><code>event_name</code></th>
-                            <td>String</td>
-                            <td>Kept in every row.</td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><code>page_group</code></th>
-                            <td>Text</td>
-                            <td>Page group label, sanitized path, or <code>(other)</code>.</td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><code>referrer_channel</code></th>
-                            <td>Category</td>
-                            <td>Coarse source channel, or <code>(other)</code>.</td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><code>device_class</code></th>
-                            <td>Category</td>
-                            <td>Coarse device category, or <code>(other)</code>.</td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><code>event_count</code></th>
-                            <td>Integer</td>
-                            <td>Number of events in the row, not distinct people.</td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><code>detail_level</code></th>
-                            <td>Category</td>
-                            <td><code>page_channel_device</code>, <code>page_channel</code>, <code>page</code>, <code>channel</code> or <code>day</code>: which dimensions are known.</td>
-                        </tr>
-                    </tbody>
-                </table>
+                {{ component('DataModel:ViewColumns', {view: 'bi_anonymous_daily_rollup_v1', columns: view_columns['bi_anonymous_daily_rollup_v1']}) }}
             </div>
             </div>
         </details>
@@ -402,38 +223,7 @@
             </div>
 
             <div class="table-container" role="region" aria-labelledby="anonymous-coverage-view-heading" tabindex="0">
-                <table class="table is-fullwidth is-striped is-hoverable data-structure-table">
-                    <caption class="is-sr-only">Columns exposed by bi_anonymous_coverage_v1</caption>
-                    <thead>
-                        <tr>
-                            <th scope="col">Column</th>
-                            <th scope="col">Logical type</th>
-                            <th scope="col">Meaning</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <th scope="row"><code>website_token</code></th>
-                            <td>String</td>
-                            <td>Site key used to partition events.</td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><code>event_day</code></th>
-                            <td>Date</td>
-                            <td>A completed day in the reporting timezone, the same day as the event views.</td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><code>view_name</code></th>
-                            <td>String</td>
-                            <td><code>bi_anonymous_events_v1</code>, <code>bi_anonymous_daily_v1</code> or <code>bi_anonymous_daily_rollup_v1</code>.</td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><code>coverage_band</code></th>
-                            <td>Category</td>
-                            <td><code>90-100</code>, <code>50-90</code>, <code>10-50</code> or <code>0-10</code>: percent of the day's events the view releases.</td>
-                        </tr>
-                    </tbody>
-                </table>
+                {{ component('DataModel:ViewColumns', {view: 'bi_anonymous_coverage_v1', columns: view_columns['bi_anonymous_coverage_v1']}) }}
             </div>
             </div>
         </details>
@@ -461,46 +251,7 @@
             </div>
 
             <div class="table-container" role="region" aria-labelledby="anonymous-geography-view-heading" tabindex="0">
-                <table class="table is-fullwidth is-striped is-hoverable data-structure-table">
-                    <caption class="is-sr-only">Columns exposed by bi_anonymous_geo_events_v1</caption>
-                    <thead>
-                        <tr>
-                            <th scope="col">Column</th>
-                            <th scope="col">Logical type</th>
-                            <th scope="col">Meaning</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <th scope="row"><code>website_token</code></th>
-                            <td>String</td>
-                            <td>Site key used to partition events.</td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><code>event_day</code></th>
-                            <td>UTC date</td>
-                            <td>A completed UTC calendar day.</td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><code>event_name</code></th>
-                            <td>String</td>
-                            <td><code>view</code> for page views, or a fixed safe interaction name.</td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><code>geo_area</code></th>
-                            <td>Category</td>
-                            <td>
-                                <code>continent:XX</code>, <code>country:XX</code>, or a suppressed pool such as
-                                <code>continent:other</code> or <code>country:other</code>.
-                            </td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><code>event_count</code></th>
-                            <td>Integer</td>
-                            <td>Number of event rows in the released geography cell, not distinct people.</td>
-                        </tr>
-                    </tbody>
-                </table>
+                {{ component('DataModel:ViewColumns', {view: 'bi_anonymous_geo_events_v1', columns: view_columns['bi_anonymous_geo_events_v1']}) }}
             </div>
 
             <div class="notification is-warning is-light mb-0">

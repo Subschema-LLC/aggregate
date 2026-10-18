@@ -14,7 +14,10 @@ class EventNameSuggestions
     {
     }
 
-    /** @param list<string> $declaredCodes @return list<string> */
+    /**
+     * @param list<string> $declaredCodes
+     * @return list<string>
+     */
     public function find(array $declaredCodes): array
     {
         $sample = $this->connection->createQueryBuilder()

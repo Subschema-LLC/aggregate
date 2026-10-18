@@ -116,35 +116,31 @@ final class AppBranding implements ResetInterface
                 return $this->cacheLogo($cacheKey, null);
             }
 
-            $imageType = $image[2] ?? null;
-            if (!is_int($imageType) || !isset(self::ALLOWED_IMAGE_TYPES[$imageType])) {
+            [$width, $height, $imageType] = $image;
+            if (!isset(self::ALLOWED_IMAGE_TYPES[$imageType])) {
                 return $this->cacheLogo($cacheKey, null);
             }
 
-            $width = $image[0] ?? null;
-            $height = $image[1] ?? null;
-            if (!is_int($width) || !is_int($height)
-                || $width < 1 || $height < 1
+            if ($width < 1 || $height < 1
                 || $width > self::MAX_DIMENSION || $height > self::MAX_DIMENSION
                 || $width > intdiv(self::MAX_PIXELS, $height)) {
                 return $this->cacheLogo($cacheKey, null);
             }
 
             $mimeType = self::ALLOWED_IMAGE_TYPES[$imageType];
-            $detectedMimeType = $image['mime'] ?? image_type_to_mime_type($imageType);
+            $detectedMimeType = $image['mime'];
             if ($detectedMimeType !== $mimeType) {
                 return $this->cacheLogo($cacheKey, null);
             }
 
             $version = hash('sha256', $content);
-            $lastModified = $stat['mtime'] ?? null;
 
             return $this->cacheLogo($cacheKey, [
                 'path' => $path,
                 'mime_type' => $mimeType,
                 'version' => $version,
                 'content' => $content,
-                'last_modified' => is_int($lastModified) ? $lastModified : null,
+                'last_modified' => $stat['mtime'],
             ]);
         } catch (\Throwable) {
             return null;
@@ -277,12 +273,12 @@ final class AppBranding implements ResetInterface
         clearstatcache(true, $resolvedPath);
         $stat = @stat($resolvedPath);
         $metadata = $stat === false ? null : [
-            $stat['dev'] ?? null,
-            $stat['ino'] ?? null,
-            $stat['mode'] ?? null,
-            $stat['size'] ?? null,
-            $stat['mtime'] ?? null,
-            $stat['ctime'] ?? null,
+            $stat['dev'],
+            $stat['ino'],
+            $stat['mode'],
+            $stat['size'],
+            $stat['mtime'],
+            $stat['ctime'],
             is_readable($resolvedPath),
         ];
 

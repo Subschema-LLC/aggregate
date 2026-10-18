@@ -1,0 +1,27 @@
+{% props view, columns %}
+
+{# Columns of one approved view, from ApprovedViewColumns: definitions are the BI glossary's. #}
+<table {{ attributes.defaults({class: 'table is-fullwidth is-striped is-hoverable data-structure-table'}) }}>
+    <caption class="is-sr-only">Columns exposed by {{ view }}</caption>
+    <thead>
+        <tr>
+            <th scope="col">Column</th>
+            <th scope="col">Logical type</th>
+            <th scope="col">Meaning</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for column in columns %}
+            <tr>
+                <th scope="row"><code>{{ column.name }}</code></th>
+                <td>{{ column.type }}</td>
+                <td>
+                    {{ column.description }}
+                    {% if column.codes is not empty %}
+                        Codes: {% for code in column.codes %}<code>{{ code }}</code>{{ loop.last ? '.' : ', ' }}{% endfor %}
+                    {% endif %}
+                </td>
+            </tr>
+        {% endfor %}
+    </tbody>
+</table>

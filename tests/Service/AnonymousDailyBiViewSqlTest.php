@@ -61,6 +61,45 @@ final class AnonymousDailyBiViewSqlTest extends TestCase
         self::assertStringContainsString("GROUP BY\n        website_token,\n        event_hour,\n        event_name,\n        page_path,\n        referrer_channel,\n        device_class,\n        viewport_bucket", $sql);
     }
 
+    /**
+     * The daily views release a day only when it cannot reveal an hourly cell
+     * the hourly view withholds, which holds only if they rebuild exactly the
+     * hourly view's cells: same sources, filters, columns and grouping. Only
+     * the period (completed hours or completed days) may differ.
+     */
+    #[DataProvider('periods')]
+    public function testDailyViewsRebuildTheHourlyViewCellsExactly(AbstractPlatform $platform, string $completedHour, string $completedDay): void
+    {
+        $sql = new AnonymousBiViewSqlBuilder($platform);
+        $cells = static function (string $view, string $name, string $period): string {
+            $start = strpos($view, "\nWITH combined_event_cells AS (\n");
+            $end = strpos($view, "\n)", (int) strpos($view, "\n".$name.' AS ('));
+            self::assertIsInt($start);
+            self::assertIsInt($end);
+            $periods = [sprintf($period, 'archived_events.event_hour'), sprintf($period, 'events.created_at')];
+            $cte = str_replace([$name, ...$periods], ['cells', '<period>', '<period>'], substr($view, $start, $end - $start));
+            self::assertSame(2, substr_count($cte, '<period>'));
+
+            return $cte;
+        };
+
+        $hourly = $cells($sql->eventViewSql(7), 'event_counts', $completedHour);
+        self::assertSame($hourly, $cells($sql->dailyViewSql(7), 'hourly_cells', $completedDay));
+        self::assertSame($hourly, $cells($sql->rollupViewSql(7), 'hourly_cells', $completedDay));
+        self::assertStringEndsWith("\nWHERE event_counts.event_count >= 7", $sql->eventViewSql(7));
+        self::assertStringContainsString('CASE WHEN event_count >= 7 THEN event_count ELSE 0 END AS released_hourly_count', $sql->rollupViewSql(7));
+    }
+
+    public static function periods(): iterable
+    {
+        $mysqlHour = "%s < DATE_FORMAT(UTC_TIMESTAMP(), '%%Y-%%m-%%d %%H:00:00')";
+        yield 'SQLite' => [new SQLitePlatform(), "%s < strftime('%%Y-%%m-%%d %%H:00:00', 'now')", "%s < date('now')"];
+        yield 'MySQL' => [new MySQL80Platform(), $mysqlHour, '%s < UTC_DATE()'];
+        yield 'MariaDB' => [new MariaDB1060Platform(), $mysqlHour, '%s < UTC_DATE()'];
+        yield 'PostgreSQL' => [new PostgreSQLPlatform(), "%s < date_trunc('hour', CURRENT_TIMESTAMP AT TIME ZONE 'UTC')", "%s < CAST(CURRENT_TIMESTAMP AT TIME ZONE 'UTC' AS date)"];
+        yield 'SQL Server' => [new SQLServerPlatform(), '%s < DATEADD(hour, DATEDIFF(hour, 0, SYSUTCDATETIME()), 0)', '%s < CAST(SYSUTCDATETIME() AS date)'];
+    }
+
     public function testPageGroupsCompileToEscapedLikeConditions(): void
     {
         $expression = (new AnonymousBiViewSqlBuilder(new PostgreSQLPlatform()))->pageGroupExpression('page_path', self::RULES);

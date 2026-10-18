@@ -175,7 +175,8 @@ export function send() {
     event.screenWidth = screenWidth;
   }
 
-  const headers = { 'Content-Type': 'application/json', Origin: ORIGIN };
+  // The same content type the browser tracker sends (see public/aggregate.js).
+  const headers = { 'Content-Type': 'text/plain;charset=UTF-8', Origin: ORIGIN };
   if (SPOOF_CLIENTS) {
     headers['X-Forwarded-For'] = clientAddress(visitor);
   }

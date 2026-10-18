@@ -10,6 +10,7 @@ use App\Service\InternalTrafficSettings;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Helper\QuestionHelper;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -57,6 +58,7 @@ class InstallCommand extends Command
         $adminPassword = $input->getOption('password') ?: $this->config->getWithEnvFallback('admin_password', null);
 
         if (empty($adminUsername) || empty($adminPassword)) {
+            /** @var QuestionHelper $helper */
             $helper = $this->getHelper('question');
 
             if (empty($adminUsername)) {

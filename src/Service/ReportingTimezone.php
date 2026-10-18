@@ -96,7 +96,7 @@ final class ReportingTimezone
     public static function windowsName(string $timezone): string
     {
         $name = WindowsTimezoneNames::MAP[$timezone] ?? null;
-        if (!is_string($name) || $name === '') {
+        if ($name === null) {
             throw new \RuntimeException(sprintf(
                 'SQL Server has no Windows time zone for %s. Choose another IANA name, or keep reporting_timezone at UTC. The existing views were left unchanged.',
                 $timezone,

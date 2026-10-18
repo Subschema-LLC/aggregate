@@ -36,6 +36,8 @@ services:
             - '../src/Entity/'
             - '../src/Kernel.php'
             - '../src/Service/Update/FileTransaction.php'
+            # Built by ApplicationUpdateService with its HTTP client, cache and token.
+            - '../src/Service/Update/GitHubBranchStatus.php'
             # Served by config/setup.php before the kernel exists; never a service.
             - '../src/Setup/FirstRunSetup.php'
             - '../src/Setup/SetupPage.php'
@@ -44,6 +46,8 @@ services:
             # Value object describing what started a processing task.
             - '../src/Service/Operations/TaskTrigger.php'
             - '../src/Service/IngestionResult.php'
+            # Built by WebsiteScopeCatalog with its parsed-YAML cache.
+            - '../src/Service/WebsiteScopeFiles.php'
             # Built by the sync runner for the reporting database's connection.
             - '../src/Service/ReportingDatabase/{ReportingDatabaseException,ReportingTableWriter}.php'
             # Thrown when named zones cannot be compiled; not a service.
@@ -112,6 +116,8 @@ services:
         resource: '../src/Service/Update/'
         exclude:
             - '../src/Service/Update/FileTransaction.php'
+            # Built by ApplicationUpdateService with its HTTP client, cache and token.
+            - '../src/Service/Update/GitHubBranchStatus.php'
             - '../src/Service/Update/UpdatePaths.php'
         bind:
             $projectDir: '%kernel.project_dir%'

@@ -80,7 +80,7 @@ column.bi_anonymous_goals_v1.event_day.description: 'Completed UTC calendar day.
 column.bi_anonymous_goals_v1.goal_event.label: Goal
 column.bi_anonymous_goals_v1.goal_event.description: 'Configured goal code. Disabled definitions retain historical labels; deleted definitions have no glossary row.'
 column.bi_anonymous_goals_v1.event_count.label: Events
-column.bi_anonymous_goals_v1.event_count.description: 'Goal occurrences in this completed daily cell, not people. Cells below the minimum event count are withheld, so totals undercount.'
+column.bi_anonymous_goals_v1.event_count.description: 'Goal occurrences in this completed daily cell, not people or unique converters. Cells below the minimum event count are withheld, so totals undercount.'
 column.bi_anonymous_geo_events_v1.website_token.label: 'Website token'
 column.bi_anonymous_geo_events_v1.website_token.description: 'Public website registration token identifying the site, not a visitor or session. Join bi_dim_website_token_v1 for the website name.'
 column.bi_anonymous_geo_events_v1.event_day.label: 'Event day (UTC)'
