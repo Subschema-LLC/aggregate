@@ -441,6 +441,7 @@ organization-marker artifacts keep their separate browser delivery paths.
 | [TrackEventMessage](src/Message/TrackEventMessage.php) and [TrackEventHandler](src/MessageHandler/TrackEventHandler.php) | Carry and persist enhanced events through Symfony Messenger |
 | [src/Service](src/Service) | Configuration, privacy policy, sanitization, goals, organization markers, branding, and data lifecycle services |
 | [src/Service/GeoIp](src/Service/GeoIp) | Local MMDB lookup and coarse geographic codes |
+| [src/Service/ViewSync](src/Service/ViewSync) | What the BigQuery and reporting database syncs share: their common settings, each view's interval, retry, lock and status, and starting a sync from the dashboard. [src/Service/BigQuery](src/Service/BigQuery) and [src/Service/ReportingDatabase](src/Service/ReportingDatabase) add how to connect and copy one view |
 | [src/Service/BotDetection](src/Service/BotDetection) | Bot User-Agent matching; `BotUserAgentPatterns.php` is generated from crawler-user-agents (MIT) by [scripts/update-bot-patterns.py](scripts/update-bot-patterns.py), never edited by hand |
 | [src/Entity](src/Entity), [src/Repository](src/Repository), [migrations](migrations) | Doctrine model, database access, schema, and versioned reporting views |
 | [config](config) | YAML application/website/goal settings, Symfony services, routes, and package configuration |

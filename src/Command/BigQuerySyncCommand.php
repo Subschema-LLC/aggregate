@@ -8,7 +8,7 @@ use App\Service\BigQuery\BigQueryException;
 use App\Service\BigQuery\BigQuerySettings;
 use App\Service\BigQuery\BigQuerySyncRunner;
 use App\Service\BigQuery\BigQueryViewCatalog;
-use App\Service\Operations\TaskTrigger;
+use App\Service\ViewSync\ViewSyncConsole;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -69,10 +69,9 @@ HELP);
         }
 
         try {
-            $requestedBy = $input->getOption('requested-by');
             $result = $this->runner->run((bool) $input->getOption('force'), $views === [] ? null : $views, $json ? null : static function (string $view) use ($io): void {
                 $io->writeln('Syncing '.$view.'…');
-            }, is_string($requestedBy) && $requestedBy !== '' ? TaskTrigger::dashboard($requestedBy) : null);
+            }, ViewSyncConsole::trigger($input));
         } catch (\InvalidArgumentException $e) {
             $io->error(['The BigQuery settings are invalid; nothing was synced.', $e->getMessage()]);
 
@@ -84,22 +83,7 @@ HELP);
             return Command::FAILURE;
         }
 
-        if ($json) {
-            $output->writeln(json_encode($result, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-        } elseif (!$result['enabled']) {
-            $io->note('BigQuery sync is turned off. Turn it on in the admin page or set bigquery_enabled: true.');
-        } else {
-            $rows = array_map(static fn (array $item): array => [$item['view'], $item['status'], $item['rows'] ?? '', $item['message']], $result['results']);
-            $io->table(['View', 'Result', 'Rows', 'Details'], $rows);
-        }
-
-        foreach ($result['results'] as $item) {
-            if ($item['status'] === 'failed') {
-                return Command::FAILURE;
-            }
-        }
-
-        return Command::SUCCESS;
+        return ViewSyncConsole::results($io, $output, $result, $json, 'BigQuery sync is turned off. Turn it on in the admin page or set bigquery_enabled: true.');
     }
 
     /** @param list<string> $views */
