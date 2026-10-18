@@ -1,0 +1,6 @@
+turbo:
+    # Turbo is used in the browser only. Broadcasting entity changes would
+    # add a Doctrine listener, and with it Twig, to every collection request
+    # that saves an event, and nothing here broadcasts.
+    broadcast:
+        enabled: false
