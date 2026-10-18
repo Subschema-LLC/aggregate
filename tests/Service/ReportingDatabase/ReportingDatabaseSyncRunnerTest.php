@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace App\Tests\Service\ReportingDatabase;
 
 use App\Service\AggregateConfigLoader;
-use App\Service\BigQuery\BigQueryViewCatalog;
-use App\Service\BigQuery\BigQueryViewExporter;
 use App\Service\CustomDataSettings;
 use App\Service\Operations\AuditTrail;
 use App\Service\Operations\ProcessingTasks;
@@ -15,6 +13,8 @@ use App\Service\ReportingDatabase\ReportingDatabaseConnection;
 use App\Service\ReportingDatabase\ReportingDatabaseException;
 use App\Service\ReportingDatabase\ReportingDatabaseSettings;
 use App\Service\ReportingDatabase\ReportingDatabaseSyncRunner;
+use App\Service\ViewSync\ViewCatalog;
+use App\Service\ViewSync\ViewReader;
 use App\Tests\Service\Operations\OperationsDatabase;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
@@ -214,7 +214,7 @@ final class ReportingDatabaseSyncRunnerTest extends TestCase
         return new ReportingDatabaseSyncRunner(
             $this->settings($values),
             new ReportingDatabaseConnection($url, $this->projectDir, $this->application),
-            new BigQueryViewExporter($this->application, new BigQueryViewCatalog($customData), $this->projectDir),
+            new ViewReader($this->application, new ViewCatalog($customData)),
             $this->tasks(),
             $logger ?? new NullLogger(),
             fn (): \DateTimeImmutable => $this->now,

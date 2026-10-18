@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
-use App\Service\BigQuery\BigQueryViewCatalog;
+use App\Service\ViewSync\ViewCatalog;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -72,8 +72,8 @@ trait ViewSyncAdmin
             'settings' => $settings,
             'overrides' => $this->settings->getEnvironmentOverrides(),
             'configuration_error' => $error,
-            'approved_views' => BigQueryViewCatalog::APPROVED,
-            'private_views' => BigQueryViewCatalog::PRIVATE,
+            'approved_views' => ViewCatalog::APPROVED,
+            'private_views' => ViewCatalog::PRIVATE,
             'intervals' => $this->settings::INTERVALS,
             'status' => $status,
             'sync_requested_at' => $requested,

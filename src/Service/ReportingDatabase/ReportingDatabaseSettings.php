@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service\ReportingDatabase;
 
-use App\Service\BigQuery\BigQueryViewCatalog;
+use App\Service\ViewSync\ViewCatalog;
 use App\Service\ViewSync\ViewSyncSettings;
 
 /**
@@ -27,7 +27,7 @@ final class ReportingDatabaseSettings extends ViewSyncSettings
     {
         return [
             self::KEY_ENABLED => false,
-            self::KEY_VIEWS => array_keys(BigQueryViewCatalog::APPROVED),
+            self::KEY_VIEWS => array_keys(ViewCatalog::APPROVED),
             self::KEY_PRIVATE_VIEWS => [],
             self::KEY_INTERVAL => 60,
         ];

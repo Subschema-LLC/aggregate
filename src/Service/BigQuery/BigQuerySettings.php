@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service\BigQuery;
 
 use App\Service\AggregateConfigLoader;
+use App\Service\ViewSync\ViewCatalog;
 use App\Service\ViewSync\ViewSyncSettings;
 
 /**
@@ -55,7 +56,7 @@ final class BigQuerySettings extends ViewSyncSettings
             self::KEY_AUTH => self::AUTH_SERVICE_ACCOUNT,
             self::KEY_CREDENTIALS_FILE => self::DEFAULT_CREDENTIALS_FILE,
             self::KEY_OAUTH_CLIENT_ID => '',
-            self::KEY_VIEWS => array_keys(BigQueryViewCatalog::APPROVED),
+            self::KEY_VIEWS => array_keys(ViewCatalog::APPROVED),
             self::KEY_PRIVATE_VIEWS => [],
             self::KEY_INTERVAL => 60,
         ];

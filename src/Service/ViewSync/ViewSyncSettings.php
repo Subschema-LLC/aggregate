@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Service\ViewSync;
 
 use App\Service\AggregateConfigLoader;
-use App\Service\BigQuery\BigQueryViewCatalog;
 
 /**
  * Settings of a view sync, BigQuery or the reporting database: one source for
@@ -151,16 +150,16 @@ abstract class ViewSyncSettings
         $keys = static::keys();
         $views = self::viewList($values[$keys['views']], $keys['views']);
         foreach ($views as $view) {
-            if (BigQueryViewCatalog::isPrivate($view)) {
+            if (ViewCatalog::isPrivate($view)) {
                 throw new \InvalidArgumentException($view.' holds row-level or unsuppressed data. List it under '.$keys['private_views'].' to confirm that it may be copied to '.$destination.'.');
             }
-            if (!BigQueryViewCatalog::isApproved($view)) {
+            if (!ViewCatalog::isApproved($view)) {
                 throw new \InvalidArgumentException($view.' is not a reporting view that can be '.$syncable.'.');
             }
         }
         $privateViews = self::viewList($values[$keys['private_views']], $keys['private_views']);
         foreach ($privateViews as $view) {
-            if (!BigQueryViewCatalog::isPrivate($view)) {
+            if (!ViewCatalog::isPrivate($view)) {
                 throw new \InvalidArgumentException($view.' is not a private reporting view. List approved views under '.$keys['views'].'.');
             }
         }
@@ -168,7 +167,7 @@ abstract class ViewSyncSettings
             throw new \InvalidArgumentException($noneChosen);
         }
 
-        return [self::inCatalogOrder($views, BigQueryViewCatalog::APPROVED), self::inCatalogOrder($privateViews, BigQueryViewCatalog::PRIVATE)];
+        return [self::inCatalogOrder($views, ViewCatalog::APPROVED), self::inCatalogOrder($privateViews, ViewCatalog::PRIVATE)];
     }
 
     protected static function interval(mixed $interval): int

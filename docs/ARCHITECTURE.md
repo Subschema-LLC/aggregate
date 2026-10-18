@@ -172,11 +172,13 @@ BigQuery ([BigQuerySyncRunner](../src/Service/BigQuery/BigQuerySyncRunner.php))
 and to tables of a second database, for BI users who should not connect to the
 application database
 ([ReportingDatabaseSyncRunner](../src/Service/ReportingDatabase/ReportingDatabaseSyncRunner.php),
-see [Reporting database](REPORTING-DATABASE.md)). Both read the views through
-[BigQueryViewExporter](../src/Service/BigQuery/BigQueryViewExporter.php), so the
-copies have the same rows and column types. What the two syncs do alike lives
-once in [src/Service/ViewSync](../src/Service/ViewSync): the settings every sync
-has ([ViewSyncSettings](../src/Service/ViewSync/ViewSyncSettings.php)), and the
+see [Reporting database](REPORTING-DATABASE.md)). What the two syncs do alike
+lives once in [src/Service/ViewSync](../src/Service/ViewSync): the views that can
+be copied and their column types
+([ViewCatalog](../src/Service/ViewSync/ViewCatalog.php)), reading a view
+([ViewReader](../src/Service/ViewSync/ViewReader.php)), so both copies have the
+same rows and types, the settings every sync has
+([ViewSyncSettings](../src/Service/ViewSync/ViewSyncSettings.php)), and the
 interval, retry, lock and status of each view
 ([ViewSyncRunner](../src/Service/ViewSync/ViewSyncRunner.php)). Each destination
 adds only how to connect and how to copy one view.

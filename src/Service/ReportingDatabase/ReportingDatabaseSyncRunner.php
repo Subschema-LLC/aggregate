@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Service\ReportingDatabase;
 
-use App\Service\BigQuery\BigQueryException;
-use App\Service\BigQuery\BigQueryViewExporter;
 use App\Service\Operations\ProcessingTasks;
+use App\Service\ViewSync\ViewReader;
+use App\Service\ViewSync\ViewSyncException;
 use App\Service\ViewSync\ViewSyncRunner;
 use Psr\Log\LoggerInterface;
 
@@ -27,7 +27,7 @@ class ReportingDatabaseSyncRunner extends ViewSyncRunner
     public function __construct(
         ReportingDatabaseSettings $settings,
         private readonly ReportingDatabaseConnection $database,
-        private readonly BigQueryViewExporter $exporter,
+        private readonly ViewReader $reader,
         ProcessingTasks $tasks,
         LoggerInterface $logger,
         ?\Closure $clock = null,
@@ -73,7 +73,7 @@ class ReportingDatabaseSyncRunner extends ViewSyncRunner
      */
     protected function copy(string $view, object $destination, array $settings, ?string &$externalId): array
     {
-        $source = $this->exporter->read($view);
+        $source = $this->reader->read($view);
         $rows = $destination->replace($view, $source['fields'], $source['rows']);
 
         return ['rows' => $rows, 'message' => sprintf('Replaced %s with %d row%s.', $view, $rows, $rows === 1 ? '' : 's')];
@@ -97,7 +97,7 @@ class ReportingDatabaseSyncRunner extends ViewSyncRunner
      */
     private function message(\Throwable $e, string $context): string
     {
-        if ($e instanceof ReportingDatabaseException || $e instanceof BigQueryException) {
+        if ($e instanceof ViewSyncException) {
             if ($e->getPrevious() !== null) {
                 $this->logger->error($context.'.', ['exception' => $e]);
             }

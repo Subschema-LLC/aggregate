@@ -4,10 +4,11 @@ declare(strict_types=1);
 
 namespace App\Tests\Service\BigQuery;
 
-use App\Service\BigQuery\BigQueryException;
-use App\Service\BigQuery\BigQueryViewCatalog;
 use App\Service\BigQuery\BigQueryViewExporter;
 use App\Service\CustomDataSettings;
+use App\Service\ViewSync\ViewCatalog;
+use App\Service\ViewSync\ViewReader;
+use App\Service\ViewSync\ViewSyncException;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -85,7 +86,7 @@ final class BigQueryViewExporterTest extends TestCase
         try {
             $this->exporter()->export('bi_anonymous_goals_v1');
             self::fail('An invalid DATE was exported.');
-        } catch (BigQueryException $e) {
+        } catch (ViewSyncException $e) {
             self::assertSame('The view bi_anonymous_goals_v1 has a value in event_day that is not a valid DATE. Nothing was uploaded for this view.', $e->getMessage());
         }
         self::assertSame([], glob($this->projectDir.'/var/bigquery/export-*') ?: []);
@@ -96,13 +97,13 @@ final class BigQueryViewExporterTest extends TestCase
         try {
             $this->exporter()->export('events');
             self::fail('A raw table was exported.');
-        } catch (BigQueryException $e) {
+        } catch (ViewSyncException $e) {
             self::assertStringContainsString('not a reporting view', $e->getMessage());
         }
         try {
             $this->exporter()->export('bi_anonymous_geo_events_v1');
             self::fail('A missing view was exported.');
-        } catch (BigQueryException $e) {
+        } catch (ViewSyncException $e) {
             self::assertStringContainsString('needs optional geography', $e->getMessage());
         }
     }
@@ -123,7 +124,7 @@ final class BigQueryViewExporterTest extends TestCase
     #[DataProvider('conversions')]
     public function testDatabaseValuesFromEveryEngineConvertToBigQueryJson(mixed $value, string $type, mixed $expected): void
     {
-        self::assertSame($expected, BigQueryViewExporter::convert($value, $type, 'v', 'c'));
+        self::assertSame($expected, ViewReader::convert($value, $type, 'v', 'c'));
     }
 
     public static function conversions(): iterable
@@ -158,8 +159,8 @@ final class BigQueryViewExporterTest extends TestCase
     #[DataProvider('invalidConversions')]
     public function testValuesThatDoNotFitFailClosed(mixed $value, string $type): void
     {
-        $this->expectException(BigQueryException::class);
-        BigQueryViewExporter::convert($value, $type, 'v', 'c');
+        $this->expectException(ViewSyncException::class);
+        ViewReader::convert($value, $type, 'v', 'c');
     }
 
     public static function invalidConversions(): iterable
@@ -185,6 +186,6 @@ final class BigQueryViewExporterTest extends TestCase
             'price_value' => ['property' => 'price', 'type' => 'double'],
         ]);
 
-        return new BigQueryViewExporter($this->connection, new BigQueryViewCatalog($customData), $this->projectDir);
+        return new BigQueryViewExporter(new ViewReader($this->connection, new ViewCatalog($customData)), $this->projectDir);
     }
 }

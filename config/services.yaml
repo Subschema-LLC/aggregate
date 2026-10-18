@@ -43,6 +43,7 @@ services:
             - '../src/Setup/SetupPage.php'
             # BigQuery value objects and per-run clients, built by their factories.
             - '../src/Service/BigQuery/{BigQueryClient,BigQueryException,GoogleCloudCredentials,GoogleSignInCredentials,ServiceAccountCredentials,ServiceAccountKey,TokenCache}.php'
+            - '../src/Service/ViewSync/ViewSyncException.php'
             # Value object describing what started a processing task.
             - '../src/Service/Operations/TaskTrigger.php'
             - '../src/Service/IngestionResult.php'

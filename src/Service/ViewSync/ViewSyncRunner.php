@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Service\ViewSync;
 
-use App\Service\BigQuery\BigQueryViewCatalog;
 use App\Service\Operations\ProcessingTasks;
 use App\Service\Operations\TaskTrigger;
 use Psr\Log\LoggerInterface;
@@ -148,8 +147,8 @@ abstract class ViewSyncRunner
             $success = $latest[$view]['success'] ?? null;
             $views[] = [
                 'view' => $view,
-                'private' => BigQueryViewCatalog::isPrivate($view),
-                'description' => BigQueryViewCatalog::describe($view),
+                'private' => ViewCatalog::isPrivate($view),
+                'description' => ViewCatalog::describe($view),
                 'status' => $attempt['status'] ?? 'never',
                 'started_at' => $attempt['started_at'] ?? null,
                 'finished_at' => $attempt['finished_at'] ?? null,
