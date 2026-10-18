@@ -12,6 +12,8 @@ class WebsiteConfigManager
 {
     private string $configPath;
     private readonly ParsedYamlCache $parsedYaml;
+    /** @var array{0: string, 1: array}|null The last registry built, with the hash of the content it came from. */
+    private ?array $registry = null;
 
     public function __construct(
         string $projectDir,
@@ -22,62 +24,123 @@ class WebsiteConfigManager
         $this->parsedYaml = $parsedYaml ?? ParsedYamlCache::forProject($projectDir);
     }
 
+    /**
+     * The registered websites, in file order: name, domain, token and any
+     * domain_policy, with defaults filled in.
+     */
     public function getWebsites(): array
     {
+        return $this->registry()['websites'];
+    }
+
+    /** The website with this token, or null when none or several have it. */
+    public function findOneByToken(string $token): ?array
+    {
+        $registry = $this->registry();
+        $position = $token === '' ? null : ($registry['tokens'][$token] ?? null);
+
+        return $position === null || $position < 0 ? null : $registry['websites'][$position];
+    }
+
+    /**
+     * The website whose script id (idForToken()) this is, or null when none
+     * or several have it.
+     */
+    public function findOneById(string $id): ?array
+    {
+        $registry = $this->registry();
+        $position = $registry['ids'][$id] ?? null;
+
+        return $position === null || $position < 0 ? null : $registry['websites'][$position];
+    }
+
+    /**
+     * Each website that has a token, with its script id, in file order.
+     * Websites that share a token are all listed.
+     *
+     * @return list<array{id: string, name: string, domain: string, token: string}>
+     */
+    public function sites(): array
+    {
+        return $this->registry()['sites'];
+    }
+
+    /** The id that names a website's script settings and setting files: the start of its token's SHA-256. */
+    public static function idForToken(string $token): string
+    {
+        return substr(hash('sha256', $token), 0, 24);
+    }
+
+    /**
+     * The registry and its lookups. The file is read on every call, so an
+     * edit from another process is seen at once; the lookups are built once
+     * per file content and cached beside the parsed YAML, so a lookup does
+     * not scan or hash every website.
+     *
+     * @return array{websites: list<array<string, mixed>>, sites: list<array{id: string, name: string, domain: string, token: string}>, tokens: array<string, int>, ids: array<string, int>}
+     */
+    private function registry(): array
+    {
+        $empty = ['websites' => [], 'sites' => [], 'tokens' => [], 'ids' => []];
         $handle = @fopen($this->configPath, 'rb');
         if ($handle === false) {
-            return [];
+            return $empty;
         }
 
         try {
             if (!@flock($handle, LOCK_SH)) {
-                return [];
+                return $empty;
             }
             $yaml = @stream_get_contents($handle);
             if (!is_string($yaml)) {
-                return [];
+                return $empty;
             }
-            // Read on every call; only parsing an unchanged document is skipped.
-            $config = $this->parsedYaml->remember('websites', $yaml, fn (string $document): array => $this->parseDocument($document));
+            $key = hash('xxh128', $yaml);
+            if ($this->registry === null || $this->registry[0] !== $key) {
+                $this->registry = [$key, $this->parsedYaml->remember('websites-registry', $yaml, fn (string $document): array => self::buildRegistry($this->parseDocument($document)))];
+            }
 
-            return array_map(static function (array $site): array {
-                $website = [
-                    'name' => $site['name'] ?? 'Unnamed',
-                    'domain' => $site['domain'] ?? '',
-                    'token' => $site['token'] ?? ($site['public_token'] ?? ''),
-                ];
-                // Keep an explicitly malformed policy intact so ingestion
-                // rejects it instead of reverting to the legacy domain rule.
-                if (array_key_exists('domain_policy', $site)) {
-                    $website['domain_policy'] = $site['domain_policy'];
-                }
-
-                return $website;
-            }, $config['websites'] ?? []);
+            return $this->registry[1];
         } catch (\Throwable) {
-            return [];
+            return $empty;
         } finally {
             @flock($handle, LOCK_UN);
             fclose($handle);
         }
     }
 
-    public function findOneByToken(string $token): ?array
+    /**
+     * @param array<string, mixed> $config a document parseDocument() accepted
+     *
+     * @return array{websites: list<array<string, mixed>>, sites: list<array{id: string, name: string, domain: string, token: string}>, tokens: array<string, int>, ids: array<string, int>}
+     */
+    private static function buildRegistry(array $config): array
     {
-        if ($token === '') {
-            return null;
-        }
-        $match = null;
-        foreach ($this->getWebsites() as $website) {
-            if ($website['token'] === $token) {
-                if ($match !== null) {
-                    return null;
-                }
-                $match = $website;
+        $registry = ['websites' => [], 'sites' => [], 'tokens' => [], 'ids' => []];
+        foreach ($config['websites'] ?? [] as $site) {
+            $website = [
+                'name' => $site['name'] ?? 'Unnamed',
+                'domain' => $site['domain'] ?? '',
+                'token' => $site['token'] ?? ($site['public_token'] ?? ''),
+            ];
+            // Keep an explicitly malformed policy intact so ingestion
+            // rejects it instead of reverting to the legacy domain rule.
+            if (array_key_exists('domain_policy', $site)) {
+                $website['domain_policy'] = $site['domain_policy'];
             }
+            $position = count($registry['websites']);
+            $registry['websites'][] = $website;
+            if ($website['token'] === '') {
+                continue;
+            }
+            $id = self::idForToken($website['token']);
+            $registry['sites'][] = ['id' => $id, 'name' => $website['name'], 'domain' => $website['domain'], 'token' => $website['token']];
+            // -1 marks a token or id that several websites share: neither selects one.
+            $registry['tokens'][$website['token']] = isset($registry['tokens'][$website['token']]) ? -1 : $position;
+            $registry['ids'][$id] = isset($registry['ids'][$id]) ? -1 : $position;
         }
 
-        return $match;
+        return $registry;
     }
 
     public function addWebsite(string $name, string $domain, ?string $token = null, ?array $domainPolicy = null): bool

@@ -35,34 +35,25 @@ final class SiteScriptConfig
 
     public static function idForToken(string $token): string
     {
-        return substr(hash('sha256', $token), 0, 24);
+        return WebsiteConfigManager::idForToken($token);
     }
 
     /** @return list<array{id:string,name:string,domain:string,token:string}> */
     public function sites(): array
     {
-        $sites = [];
-        foreach ($this->websites->getWebsites() as $website) {
-            if (!is_string($website['token'] ?? null) || $website['token'] === '') {
-                continue;
-            }
-            $sites[] = ['id' => self::idForToken($website['token']), 'name' => $website['name'], 'domain' => $website['domain'], 'token' => $website['token']];
-        }
-
-        return $sites;
+        return $this->websites->sites();
     }
 
+    /** @return array{id:string,name:string,domain:string,token:string} */
     public function site(string $id): array
     {
         if (preg_match('/^[a-f0-9]{24}$/D', $id) !== 1) {
             throw new \InvalidArgumentException('Choose a registered website.');
         }
-        $matches = array_values(array_filter($this->sites(), static fn (array $site): bool => $site['id'] === $id));
-        if (count($matches) !== 1) {
-            throw new \InvalidArgumentException('Choose a registered website with a unique registration token.');
-        }
+        $website = $this->websites->findOneById($id)
+            ?? throw new \InvalidArgumentException('Choose a registered website with a unique registration token.');
 
-        return $matches[0];
+        return ['id' => $id, 'name' => $website['name'], 'domain' => $website['domain'], 'token' => $website['token']];
     }
 
     public function configuration(string $id): AggregateConfigLoader
