@@ -145,17 +145,9 @@ final class WebsiteScopeEditor
 
     public function tokenForSiteId(string $siteId): ?string
     {
-        foreach ($this->websites->getWebsites() as $site) {
-            $token = (string) ($site['token'] ?? '');
-            if ($token === '') {
-                continue;
-            }
-            try {
-                if (SiteScriptConfig::idForToken($token) === $siteId) {
-                    return $token;
-                }
-            } catch (\Throwable) {
-                continue;
+        foreach ($this->websites->sites() as $site) {
+            if ($site['id'] === $siteId) {
+                return $site['token'];
             }
         }
 
@@ -222,21 +214,12 @@ final class WebsiteScopeEditor
                 'group' => $label['plural'],
             ];
         }
-        foreach ($this->websites->getWebsites() as $site) {
-            $token = (string) ($site['token'] ?? '');
-            if ($token === '') {
-                continue;
-            }
-            try {
-                $siteId = SiteScriptConfig::idForToken($token);
-            } catch (\Throwable) {
-                continue;
-            }
-            $groupId = $this->catalog->groupIdForToken($token);
+        foreach ($this->websites->sites() as $site) {
+            $groupId = $this->catalog->groupIdForToken($site['token']);
             $suffix = $groupId !== null ? ' · '.$this->catalog->groupName($groupId) : '';
             $choices[] = [
-                'value' => 'website:'.$siteId,
-                'label' => ((string) ($site['name'] ?? 'Unnamed')).$suffix,
+                'value' => 'website:'.$site['id'],
+                'label' => $site['name'].$suffix,
                 'group' => 'Websites',
             ];
         }
@@ -254,10 +237,9 @@ final class WebsiteScopeEditor
             return (string) $this->catalog->groupName((string) $parsed['id']);
         }
         if ($parsed['kind'] === 'website') {
-            $token = $this->tokenForSiteId((string) $parsed['id']);
-            foreach ($this->websites->getWebsites() as $site) {
-                if ((string) ($site['token'] ?? '') === $token) {
-                    return (string) ($site['name'] ?? 'Unnamed');
+            foreach ($this->websites->sites() as $site) {
+                if ($site['id'] === $parsed['id']) {
+                    return $site['name'];
                 }
             }
         }
