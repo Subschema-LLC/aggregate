@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\EventSubscriber;
 
 use App\Repository\UserRepository;
+use App\Security\SignInCode\SecondStepListener;
 use App\Security\SignInCode\SignInCodeAuthenticator;
+use App\Security\SignInCode\SignInCodes;
 use App\Service\Operations\AdminActions;
 use App\Service\Operations\AdminAudit;
 use App\Service\Operations\AuditTrailSettings;
@@ -160,8 +162,22 @@ final class AdminAuditSubscriber implements EventSubscriberInterface, ServiceSub
 
     public function onLoginSuccess(LoginSuccessEvent $event): void
     {
-        $withCode = self::isSignInCode($event->getAuthenticator());
-        $this->audit()->record(AuditTrailSettings::SIGN_INS, 'signed_in', AdminAudit::SUCCEEDED, $event->getAuthenticatedToken()->getUserIdentifier(), null, $withCode ? 'With an emailed sign-in code.' : null);
+        $username = $event->getAuthenticatedToken()->getUserIdentifier();
+        // A password that only started two-step sign-in (SecondStepListener).
+        $outcome = $event->getRequest()->attributes->get(SecondStepListener::OUTCOME_ATTRIBUTE);
+        if (is_array($outcome) && count($outcome) === 3) {
+            [$action, $result, $details] = $outcome;
+            $this->audit()->record(AuditTrailSettings::SIGN_INS, (string) $action, (string) $result, $username, null, (string) $details);
+
+            return;
+        }
+        $details = null;
+        if (self::isSignInCode($event->getAuthenticator())) {
+            $details = $event->getPassport()->getAttribute(SignInCodeAuthenticator::KIND_ATTRIBUTE) === SignInCodes::KIND_SECOND_STEP
+                ? 'With a password and an emailed code (two-step sign-in).'
+                : 'With an emailed sign-in code.';
+        }
+        $this->audit()->record(AuditTrailSettings::SIGN_INS, 'signed_in', AdminAudit::SUCCEEDED, $username, null, $details);
     }
 
     /**
@@ -186,6 +202,7 @@ final class AdminAuditSubscriber implements EventSubscriberInterface, ServiceSub
         $withCode = self::isSignInCode($event->getAuthenticator());
         $details = match (true) {
             $event->getException() instanceof TooManyLoginAttemptsAuthenticationException => 'Too many attempts; sign-ins are paused for a minute.',
+            $withCode && $known && $event->getPassport()?->getAttribute(SignInCodeAuthenticator::KIND_ATTRIBUTE) === SignInCodes::KIND_SECOND_STEP => 'Wrong or expired two-step sign-in code.',
             $withCode && $known => 'Wrong or expired sign-in code.',
             $withCode => 'A sign-in code was entered with no code pending for an account.',
             $known => 'Wrong password.',

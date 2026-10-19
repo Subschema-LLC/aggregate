@@ -1,6 +1,6 @@
 {% extends 'base.html.twig' %}
 
-{% block title %}Sign in with a code | {{ app_branding.name }}{% endblock %}
+{% block title %}{{ second_step ? 'Enter your code' : 'Sign in with a code' }} | {{ app_branding.name }}{% endblock %}
 
 {% block body %}
 <div class="columns is-centered py-5">
@@ -11,7 +11,7 @@
                     <div class="mb-3">
                         {{ component('Branding:Identity', {branding: app_branding}) }}
                     </div>
-                    <h1 class="title is-4 mb-1">Sign in with a code</h1>
+                    <h1 class="title is-4 mb-1">{{ second_step ? 'One more step' : 'Sign in with a code' }}</h1>
                     <p class="subtitle is-6">{{ pending ? 'Check your email' : 'We will email you a code' }}</p>
                 </div>
 
@@ -22,7 +22,11 @@
                 {% endif %}
 
                 {% if pending %}
+                    {% if second_step %}
+                    <p class="mb-4 sign-in-second-step">Your password was right. To finish signing in, enter the {{ digits }}-digit code we just emailed to the address on your account. It works in this browser until {{ pending.expires_at|date('H:i', 'UTC') }} UTC{% if pending.attempts_left < 5 %}, for {{ pending.attempts_left }} more {{ pending.attempts_left == 1 ? 'try' : 'tries' }}{% endif %}.</p>
+                    {% else %}
                     <p class="mb-4">If an account matches what you entered and has an email address, a {{ digits }}-digit code is on its way to it. It works in this browser until {{ pending.expires_at|date('H:i', 'UTC') }} UTC{% if pending.attempts_left < 5 %}, for {{ pending.attempts_left }} more {{ pending.attempts_left == 1 ? 'try' : 'tries' }}{% endif %}.</p>
+                    {% endif %}
                     <form method="post" action="{{ path('app_login_code_verify') }}" class="sign-in-code-verify">
                         <input type="hidden" name="_csrf_token" value="{{ csrf_token(verify_token_id) }}">
                         <div class="field mb-5">
@@ -43,7 +47,11 @@
                             </div>
                         </div>
                     </form>
-                    <p class="mt-4 has-text-centered is-size-7"><a href="{{ path('app_login_code', {new: 1}) }}">Ask for a new code</a></p>
+                    {% if second_step %}
+                        <p class="mt-4 has-text-centered is-size-7">No code? <a href="{{ path('app_login') }}">Sign in again</a> to get a new one.</p>
+                    {% else %}
+                        <p class="mt-4 has-text-centered is-size-7"><a href="{{ path('app_login_code', {new: 1}) }}">Ask for a new code</a></p>
+                    {% endif %}
                 {% else %}
                     <form method="post" action="{{ path('app_login_code_request') }}" class="sign-in-code-request">
                         <input type="hidden" name="_csrf_token" value="{{ csrf_token('login_code_request') }}">
