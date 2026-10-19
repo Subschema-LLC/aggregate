@@ -479,8 +479,12 @@ data is archived or deleted, and makes deletions in Aggregate reach the copy at
 the next sync. Load jobs cost nothing, unlike streaming inserts. A few REST calls
 avoid adding the large Google Cloud client libraries to every installation.
 
-**Trade-off.** Each sync re-reads and re-uploads whole views, which grows with
-private row-level views. Data in BigQuery is outside Aggregate's retention, held
+**Trade-off.** Each sync re-reads whole views, which grows with private
+row-level views. A scheduled sync uploads a view only when its rows differ
+from its last successful sync (by an order-independent fingerprint recorded
+with the task) or its table is missing or holds a different number of rows;
+**Sync now** uploads every view. Daily and label views change at most a few
+times a day, so most syncs cost them one read rather than a load job. Data in BigQuery is outside Aggregate's retention, held
 by BigQuery's time travel and by tables no longer synced. Signing in with Google
 needs the dashboard and each installation's own OAuth client.
 
@@ -494,9 +498,10 @@ reuse the same export and schedule.
 selected reporting views, never raw tables, into same-named tables of a second
 database that `REPORTING_DATABASE_URL` names. Each sync fills a staging table and
 then swaps it in (one `RENAME TABLE` on MySQL and MariaDB; drop and rename in one
-transaction elsewhere), so readers always see a complete copy. It reuses the
+transaction elsewhere), so readers always see a complete copy. It shares the
 BigQuery sync's view catalog, value conversion, private-view opt-in, schedule
-and processing tasks. The connection is an environment variable, not a YAML
+and processing tasks, and copies from the same temporary snapshot of each
+view. The connection is an environment variable, not a YAML
 setting, and a URL that names the application database is refused. The admin
 page and `app:reporting-database:configure` write it to `.env.local`, but only
 after a test connection that creates and drops a table succeeds.
@@ -517,7 +522,10 @@ encoded, in `.env.local` only, and never shown back.
 
 **Trade-off.** Copies are only as fresh as their interval. Each sync re-reads
 whole views from the application database, which grows with private row-level
-views. Writing `.env.local` from the web needs PHP to be able to write it; where
+views, into a temporary file that needs disk space in `var/`; reading first
+keeps the application database's read short. A scheduled sync rewrites a table
+only when its view's rows changed, the table is missing, or it holds a
+different number of rows; **Sync now** rewrites every table. Writing `.env.local` from the web needs PHP to be able to write it; where
 it cannot, or where another file or the server environment sets the variable,
 the page explains instead of saving. Recreated tables lose per-table grants, so BI access must be granted on
 the database or schema. The tables have no indexes. Tables of deselected views

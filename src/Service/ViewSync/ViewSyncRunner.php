@@ -16,8 +16,15 @@ use Psr\Log\LoggerInterface;
  * (subject = view) that holds the view's lock while it runs and ends in the
  * audit trail.
  *
- * A destination opens its connection once per run (open) and copies each view
- * (copy). If it cannot be opened, every due view fails with the reason.
+ * Each view is first written to a snapshot (ViewExporter), and its content
+ * fingerprint is recorded with the task. A scheduled sync keeps the
+ * destination's copy when the fingerprint is the one its last successful sync
+ * recorded and the copy still has as many rows; --force and the dashboard's
+ * "Sync now" always replace it.
+ *
+ * A destination opens its connection once per run (open), counts the rows of
+ * a copy (copiedRows) and replaces a copy with a snapshot (replace). If it
+ * cannot be opened, every due view fails with the reason.
  *
  * @template TDestination of object
  */
@@ -39,6 +46,7 @@ abstract class ViewSyncRunner
      */
     public function __construct(
         protected readonly ViewSyncSettings $settings,
+        protected readonly ViewExporter $exporter,
         protected readonly ProcessingTasks $tasks,
         protected readonly LoggerInterface $logger,
         ?\Closure $clock,
@@ -63,15 +71,31 @@ abstract class ViewSyncRunner
     abstract protected function open(array $settings): object;
 
     /**
-     * Copies one view, replacing its previous copy. Sets $externalId as soon as
-     * the destination assigns one, so a failure is recorded with it.
+     * Replaces the destination's copy of the view with the snapshot's rows.
+     * Sets $externalId as soon as the destination assigns one, so a failure is
+     * recorded with it.
      *
      * @param TDestination         $destination
      * @param array<string, mixed> $settings
-     *
-     * @return array{rows: int, message: string}
      */
-    abstract protected function copy(string $view, object $destination, array $settings, ?string &$externalId): array;
+    abstract protected function replace(ViewSnapshot $snapshot, object $destination, array $settings, ?string &$externalId): void;
+
+    /**
+     * How many rows the destination's copy of the view has, or null when it
+     * has none.
+     *
+     * @param TDestination         $destination
+     * @param array<string, mixed> $settings
+     */
+    abstract protected function copiedRows(string $view, object $destination, array $settings): ?int;
+
+    /**
+     * The copy's name in messages, as in "Replaced … with 3 rows."
+     *
+     * @param TDestination         $destination
+     * @param array<string, mixed> $settings
+     */
+    abstract protected function copyName(string $view, object $destination, array $settings): string;
 
     /** Why the destination could not be opened, safe to store and show. */
     abstract protected function setupFailure(\Throwable $e): string;
@@ -80,6 +104,7 @@ abstract class ViewSyncRunner
     abstract protected function copyFailure(string $view, \Throwable $e): string;
 
     /**
+     * @param bool                          $force    Sync every view now, replacing even copies of unchanged views
      * @param list<string>|null             $only     Views to sync now (they must be selected)
      * @param (callable(string): void)|null $progress
      * @param TaskTrigger|null              $trigger  Recorded with each view's task; by default
@@ -124,7 +149,9 @@ abstract class ViewSyncRunner
         }
 
         foreach ($due as $view) {
-            $results[] = $this->syncView($view, $settings, $destination, $setupError, $progress, $trigger);
+            // A forced sync replaces every copy; a scheduled one may keep an unchanged copy.
+            $keepIfUnchanged = $force ? null : ($latest[$view]['success']['fingerprint'] ?? null);
+            $results[] = $this->syncView($view, $settings, $destination, $setupError, $progress, $trigger, $keepIfUnchanged);
         }
         usort($results, static fn (array $a, array $b): int => array_search($a['view'], $views, true) <=> array_search($b['view'], $views, true));
 
@@ -190,11 +217,12 @@ abstract class ViewSyncRunner
 
     /**
      * @param array<string, mixed> $settings
-     * @param TDestination|null    $destination null when it could not be opened
+     * @param TDestination|null    $destination     null when it could not be opened
+     * @param string|null          $keepIfUnchanged the fingerprint of the last successful copy, when it may be kept
      *
      * @return array{view: string, status: string, rows: ?int, message: string}
      */
-    private function syncView(string $view, array $settings, ?object $destination, string $setupError, ?callable $progress, TaskTrigger $trigger): array
+    private function syncView(string $view, array $settings, ?object $destination, string $setupError, ?callable $progress, TaskTrigger $trigger, ?string $keepIfUnchanged): array
     {
         $task = $this->tasks->start($this->taskType, $view, $trigger, ($this->clock)(), self::LEASE_SECONDS);
         if ($task === null) {
@@ -209,16 +237,30 @@ abstract class ViewSyncRunner
             return ['view' => $view, 'status' => 'failed', 'rows' => null, 'message' => $setupError];
         }
         $externalId = null;
+        $snapshot = null;
         try {
-            $copied = $this->copy($view, $destination, $settings, $externalId);
-            $this->tasks->succeed($task, ($this->clock)(), $copied['rows'], $copied['message'], $externalId);
+            // The view is read completely before the destination is written.
+            $snapshot = $this->exporter->export($view, $this->settings::definition()->exportDirectory);
+            $rows = sprintf('%d row%s', $snapshot->rows, $snapshot->rows === 1 ? '' : 's');
+            if ($keepIfUnchanged !== null && hash_equals($keepIfUnchanged, $snapshot->fingerprint)
+                && $this->copiedRows($view, $destination, $settings) === $snapshot->rows) {
+                $status = 'unchanged';
+                $message = 'Unchanged since the last sync: kept '.$this->copyName($view, $destination, $settings).' with '.$rows.'.';
+            } else {
+                $this->replace($snapshot, $destination, $settings, $externalId);
+                $status = 'synced';
+                $message = 'Replaced '.$this->copyName($view, $destination, $settings).' with '.$rows.'.';
+            }
+            $this->tasks->succeed($task, ($this->clock)(), $snapshot->rows, $message, $externalId, $snapshot->fingerprint);
 
-            return ['view' => $view, 'status' => 'synced', 'rows' => $copied['rows'], 'message' => $copied['message']];
+            return ['view' => $view, 'status' => $status, 'rows' => $snapshot->rows, 'message' => $message];
         } catch (\Throwable $e) {
             $message = $this->copyFailure($view, $e);
             $this->tasks->fail($task, ($this->clock)(), $message, $externalId);
 
             return ['view' => $view, 'status' => 'failed', 'rows' => null, 'message' => $message];
+        } finally {
+            $snapshot?->delete();
         }
     }
 

@@ -79,6 +79,7 @@ final class ReportingDatabaseSettings extends ViewSyncSettings
             viewsSaved: 'The views to copy were saved. Tables of views you removed stay in the reporting database until you drop them there.',
             command: ReportingDatabaseBackgroundSync::COMMAND,
             logFile: 'var/reporting-database/last-run.log',
+            exportDirectory: 'var/reporting-database',
         );
     }
 }

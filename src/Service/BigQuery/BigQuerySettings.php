@@ -172,6 +172,7 @@ final class BigQuerySettings extends ViewSyncSettings
             viewsSaved: 'The views to sync were saved. Tables of views you removed stay in BigQuery until you delete them there.',
             command: BigQueryBackgroundSync::COMMAND,
             logFile: 'var/bigquery/last-run.log',
+            exportDirectory: 'var/bigquery',
         );
     }
 

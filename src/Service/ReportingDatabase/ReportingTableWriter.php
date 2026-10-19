@@ -46,15 +46,16 @@ final class ReportingTableWriter
     }
 
     /**
-     * @param list<array{name: string, type: string}> $fields  Catalog columns, in row order
+     * @param list<array{name: string, type: string}> $fields   Catalog columns, in row order
      * @param iterable<list<mixed>>                    $rows
+     * @param int|null                                 $expected the number of rows $rows must yield, checked before the table is replaced
      *
      * @return int the number of rows in the new table
      *
      * @throws ReportingDatabaseException with a message that names the view and column, never a value
      * @throws \Doctrine\DBAL\Exception    when the reporting database refuses a statement
      */
-    public function replace(string $table, array $fields, iterable $rows): int
+    public function replace(string $table, array $fields, iterable $rows, ?int $expected = null): int
     {
         if ($fields === []) {
             throw new ReportingDatabaseException('The view '.$table.' has no columns.');
@@ -66,6 +67,9 @@ final class ReportingTableWriter
         $this->connection->executeStatement($this->createTableSql($staging, $fields, $platform));
         try {
             $written = $this->fill($staging, $table, $fields, $rows, $platform);
+            if ($expected !== null && $written !== $expected) {
+                throw new ReportingDatabaseException(sprintf('%d of the %d rows of %s were read; the table was not replaced.', $written, $expected, $table));
+            }
             $counted = (int) $this->connection->fetchOne('SELECT COUNT(*) FROM '.$this->quote($staging));
             if ($counted !== $written) {
                 throw new ReportingDatabaseException(sprintf('The reporting database holds %d of the %d rows copied from %s; the table was not replaced.', $counted, $written, $table));
@@ -259,6 +263,12 @@ final class ReportingTableWriter
             ? $platform->getRenameTableSQL($staging, $table) // sp_rename takes the new name unquoted
             : 'ALTER TABLE '.$this->quote($staging).' RENAME TO '.$this->quote($table));
         $this->connection->commit();
+    }
+
+    /** How many rows the table holds, or null when there is no such table. */
+    public function rowCount(string $table): ?int
+    {
+        return $this->tableExists($table) ? (int) $this->connection->fetchOne('SELECT COUNT(*) FROM '.$this->quote($table)) : null;
     }
 
     /**

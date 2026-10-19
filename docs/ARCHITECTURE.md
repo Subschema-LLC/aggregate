@@ -176,12 +176,14 @@ see [Reporting database](REPORTING-DATABASE.md)). What the two syncs do alike
 lives once in [src/Service/ViewSync](../src/Service/ViewSync): the views that can
 be copied and their column types
 ([ViewCatalog](../src/Service/ViewSync/ViewCatalog.php)), reading a view
-([ViewReader](../src/Service/ViewSync/ViewReader.php)), so both copies have the
-same rows and types, the settings every sync has
+([ViewReader](../src/Service/ViewSync/ViewReader.php)) into a fingerprinted
+snapshot file ([ViewExporter](../src/Service/ViewSync/ViewExporter.php)), so
+both copies have the same rows and types, the settings every sync has
 ([ViewSyncSettings](../src/Service/ViewSync/ViewSyncSettings.php)), and the
 interval, retry, lock and status of each view
-([ViewSyncRunner](../src/Service/ViewSync/ViewSyncRunner.php)). Each destination
-adds only how to connect and how to copy one view, and defines its task type,
+([ViewSyncRunner](../src/Service/ViewSync/ViewSyncRunner.php)), which keeps
+the copy of a view whose rows have not changed on a scheduled sync. Each
+destination adds only how to connect, count a copy's rows and replace a copy, and defines its task type,
 command and wording once
 ([ViewSyncDefinition](../src/Service/ViewSync/ViewSyncDefinition.php)), which
 its runner, scheduler job, dashboard launcher and admin page read.
