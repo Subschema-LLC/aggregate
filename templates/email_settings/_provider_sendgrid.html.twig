@@ -1,0 +1,13 @@
+{% import 'email_settings/_macros.html.twig' as help %}
+<div class="field">
+    <label class="label" for="email-sendgrid-region">Region</label>
+    <div class="control">
+        <div class="select">
+            <select id="email-sendgrid-region" name="email_sendgrid_region"{% if overrides.email_sendgrid_region %} disabled{% endif %}>
+                <option value="global"{% if settings.email_sendgrid_region == 'global' %} selected{% endif %}>Global</option>
+                <option value="eu"{% if settings.email_sendgrid_region == 'eu' %} selected{% endif %}>EU (an EU-pinned subuser)</option>
+            </select>
+        </div>
+    </div>
+    {{ help.env_help(overrides, 'email_sendgrid_region') }}
+</div>

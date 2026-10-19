@@ -729,12 +729,14 @@ Two generic, private tables record background work for every feature, instead of
 status table per feature:
 
 - **`processing_tasks`**: one row per run of a job. `task_type` names the job
-  (`bigquery_sync`, `reporting_database_sync`, `analytics_maintenance`) and
-  `subject` what it worked on (the view, for the syncs). `status` is `running`, `succeeded` or `failed`;
+  (`bigquery_sync`, `reporting_database_sync`, `analytics_maintenance`,
+  `email_send`) and `subject` what it worked on (the view, for the syncs; the
+  kind of message, for [email](EMAIL.md#what-is-recorded), never its recipient). `status` is `running`, `succeeded` or `failed`;
   `triggered_by` is `schedule` (the scheduled command doing what is due),
   `command` (a person running a command for a specific job) or `dashboard`, with
   the administrator in `requested_by`. `started_at` and `finished_at` are UTC;
-  `row_count`, `external_id` (such as a BigQuery job ID), `details` (the result
+  `row_count`, `external_id` (such as a BigQuery job ID or an email service's
+  message ID), `details` (the result
   or the failure, redacted) and, for a successful view sync, `fingerprint` (of
   the rows it copied, so the next scheduled sync can keep an unchanged copy)
   complete the row. While an exclusive job runs, its

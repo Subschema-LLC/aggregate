@@ -98,6 +98,13 @@ parameters:
                     route: 'app_users'
                     icon: 'fas fa-user-gear'
                     role: 'ROLE_ADMIN'
+                  # Administrator-only: the service that sends transactional
+                  # email and its credential. Shown before email is on, since
+                  # this is where it is turned on.
+                  - label: 'Email'
+                    route: 'app_email'
+                    icon: 'fas fa-envelope'
+                    role: 'ROLE_ADMIN'
                   - label: 'Data lifecycle'
                     route: 'app_data_lifecycle'
                     icon: 'fas fa-box-archive'

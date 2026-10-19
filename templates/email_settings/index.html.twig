@@ -1,0 +1,173 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Email - {{ app_branding.name }}{% endblock %}
+
+{% import 'email_settings/_macros.html.twig' as help %}
+
+{% block body %}
+<div data-controller="pages--email-settings--index">
+    <div class="level">
+        <div class="level-left">
+            <div>
+                <h1 class="title">Email</h1>
+                <p class="subtitle">The service that sends Aggregate’s own messages to its users, and the address they come from.</p>
+                {{ component('Ui:DocsLink', {topic: 'email', label: 'Transactional email guide'}) }}
+            </div>
+        </div>
+        <div class="level-right">
+            <a class="button" href="{{ path('app_dashboard') }}">
+                <span class="icon"><i class="fas fa-arrow-left" aria-hidden="true"></i></span>
+                <span>Dashboard</span>
+            </a>
+        </div>
+    </div>
+
+    {% if configuration_error %}
+        <div class="notification is-danger is-light" role="alert">{{ configuration_error }}</div>
+    {% endif %}
+    {% if secrets_error %}
+        <div class="notification is-danger is-light" role="alert">{{ secrets_error }}</div>
+    {% endif %}
+
+    {% if not configuration_error %}
+        {% if problem is null %}
+            <div class="notification is-success is-light email-status">
+                Email is on and sends through <strong>{{ attribute(providers, settings.email_provider).label }}</strong> from <strong>{{ settings.email_from_address }}</strong>.
+            </div>
+        {% elseif not settings.email_enabled %}
+            <div class="notification is-info is-light email-status">
+                Email is off, so nothing is sent{% if test_problem is null %}. The settings below are complete: send a test message, then turn email on{% endif %}.
+            </div>
+        {% else %}
+            <div class="notification is-warning is-light email-status" role="alert">
+                Email is on, but nothing can be sent: {{ problem }}
+            </div>
+        {% endif %}
+    {% endif %}
+
+    <form method="post" action="{{ path('app_email_save') }}" data-turbo="false" autocomplete="off">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token('email_settings') }}">
+
+        <div class="box">
+            <h2 class="title is-4">Service and sender</h2>
+            <div class="columns is-multiline">
+                <div class="column is-half field">
+                    <label class="label" for="email-enabled">Email</label>
+                    <div class="control">
+                        <div class="select is-fullwidth">
+                            <select id="email-enabled" name="email_enabled"{% if overrides.email_enabled %} disabled{% endif %}>
+                                <option value="0"{% if not settings.email_enabled %} selected{% endif %}>Off: send nothing</option>
+                                <option value="1"{% if settings.email_enabled %} selected{% endif %}>On</option>
+                            </select>
+                        </div>
+                    </div>
+                    {% if overrides.email_enabled %}{{ help.env_help(overrides, 'email_enabled') }}{% else %}<p class="help">A test message can be sent while email is off.</p>{% endif %}
+                </div>
+                <div class="column is-half field">
+                    <label class="label" for="email-provider">Service</label>
+                    <div class="control">
+                        <div class="select is-fullwidth">
+                            <select id="email-provider" name="email_provider" data-pages--email-settings--index-target="provider" data-action="pages--email-settings--index#showProvider"{% if overrides.email_provider %} disabled{% endif %}>
+                                <option value=""{% if settings.email_provider == '' %} selected{% endif %}>Choose a service</option>
+                                {% for code, provider in providers %}
+                                    <option value="{{ code }}"{% if settings.email_provider == code %} selected{% endif %}>{{ provider.label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    {{ help.env_help(overrides, 'email_provider') }}
+                </div>
+                <div class="column is-half field">
+                    <label class="label" for="email-from-address">From address</label>
+                    <div class="control"><input class="input" id="email-from-address" name="email_from_address" type="email" maxlength="254" value="{{ settings.email_from_address }}" placeholder="no-reply@example.com"{% if overrides.email_from_address %} disabled{% endif %}></div>
+                    {% if overrides.email_from_address %}{{ help.env_help(overrides, 'email_from_address') }}{% else %}<p class="help">An address or domain the service has verified for sending.</p>{% endif %}
+                </div>
+                <div class="column is-half field">
+                    <label class="label" for="email-from-name">From name</label>
+                    <div class="control"><input class="input" id="email-from-name" name="email_from_name" type="text" maxlength="100" value="{{ settings.email_from_name }}" placeholder="{{ app_branding.name }}"{% if overrides.email_from_name %} disabled{% endif %}></div>
+                    {% if overrides.email_from_name %}{{ help.env_help(overrides, 'email_from_name') }}{% else %}<p class="help">Empty: the brand name, {{ app_branding.name }}.</p>{% endif %}
+                </div>
+                <div class="column is-half field">
+                    <label class="label" for="email-reply-to">Reply-to address</label>
+                    <div class="control"><input class="input" id="email-reply-to" name="email_reply_to" type="email" maxlength="254" value="{{ settings.email_reply_to }}" placeholder="Optional"{% if overrides.email_reply_to %} disabled{% endif %}></div>
+                    {% if overrides.email_reply_to %}{{ help.env_help(overrides, 'email_reply_to') }}{% else %}<p class="help">Where replies go, if someone answers a message. Empty: the from address.</p>{% endif %}
+                </div>
+            </div>
+        </div>
+
+        {% for code, provider in providers %}
+            {% set credential = attribute(credentials, code) %}
+            <div class="box email-provider" data-pages--email-settings--index-target="panel" data-provider="{{ code }}">
+                <h2 class="title is-4">{{ provider.label }}</h2>
+                <p class="mb-4">{{ provider.description }}</p>
+                {% include ['email_settings/_provider_' ~ code ~ '.html.twig', 'email_settings/_provider_none.html.twig'] with {settings: settings, overrides: overrides} only %}
+                <div class="field">
+                    <label class="label" for="email-credential-{{ code }}">{{ credential.label }}{% if not credential.required %} <span class="has-text-weight-normal">(optional)</span>{% endif %}</label>
+                    <div class="control">
+                        <input class="input" id="email-credential-{{ code }}" name="credential[{{ credential.key }}]" type="password" maxlength="4096" autocomplete="new-password" spellcheck="false"
+                            placeholder="{{ credential.source ? 'Saved; leave empty to keep it' : '' }}"{% if credential.source == 'environment' %} disabled{% endif %}>
+                    </div>
+                    <p class="help">
+                        {% if credential.source == 'environment' %}
+                            Controlled by <code>{{ credential.variable }}</code>.
+                        {% else %}
+                            {{ credential.help }} Stored in <code>config/secrets/email.yaml</code>, readable only by the application{% if credential.source == 'file' %}; a key is saved{% endif %}.
+                        {% endif %}
+                    </p>
+                    {% if credential.source == 'file' %}
+                        <label class="checkbox mt-1">
+                            <input type="checkbox" name="remove[{{ credential.key }}]" value="1"> Remove the saved {{ credential.label|lower }}
+                        </label>
+                    {% endif %}
+                </div>
+            </div>
+        {% endfor %}
+
+        <div class="buttons">
+            <button class="button is-primary" type="submit">Save email settings</button>
+        </div>
+    </form>
+
+    <div class="box mt-5">
+        <h2 class="title is-4">Test message</h2>
+        {% if test_address %}
+            <form method="post" action="{{ path('app_email_test') }}" data-turbo="false">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token('email_test') }}">
+                <p class="mb-3">Sends a short message to your own address, <strong>{{ test_address }}</strong>, with the saved settings{% if not settings.email_enabled %}, even while email is off{% endif %}.</p>
+                <button class="button is-link" type="submit"{% if test_problem is not null %} disabled aria-describedby="email-test-help"{% endif %}>
+                    <span class="icon"><i class="fas fa-paper-plane" aria-hidden="true"></i></span><span>Send a test email</span>
+                </button>
+                {% if test_problem is not null %}<p class="help" id="email-test-help">{{ test_problem }}</p>{% endif %}
+            </form>
+        {% else %}
+            <p>The test message goes to your own address. <a href="{{ path('app_profile') }}">Add an email address to your profile</a> first.</p>
+        {% endif %}
+
+        <h3 class="title is-6 mt-5">Last sends</h3>
+        {% if sends %}
+            <div class="table-container">
+                <table class="table is-fullwidth is-narrow email-sends">
+                    <thead><tr><th scope="col">Message</th><th scope="col">Last attempt</th><th scope="col">Result</th><th scope="col">Last sent</th></tr></thead>
+                    <tbody>
+                        {% for send in sends %}
+                            <tr>
+                                <td>{{ send.label }}</td>
+                                <td>{{ send.attempt.started_at|date('Y-m-d H:i', 'UTC') }} UTC</td>
+                                <td>
+                                    {% if send.attempt.status == 'succeeded' %}<span class="tag is-success is-light">Sent</span>{% if send.attempt.external_id %} <code>{{ send.attempt.external_id }}</code>{% endif %}
+                                    {% elseif send.attempt.status == 'failed' %}<span class="tag is-danger is-light">Failed</span> {{ send.attempt.details }}
+                                    {% else %}<span class="tag is-light">Sending</span>{% endif %}
+                                </td>
+                                <td>{{ send.success ? send.success.started_at|date('Y-m-d H:i', 'UTC') ~ ' UTC' : 'Never' }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <p class="help">Each send is a processing task and an audit trail entry. Neither records the recipient or the message; the message ID finds it in the service’s activity log.</p>
+        {% else %}
+            <p>Nothing has been sent yet.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

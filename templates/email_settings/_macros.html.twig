@@ -1,0 +1,2 @@
+{#- Shared by the Email page and its provider partials. -#}
+{% macro env_help(overrides, key) %}{% if attribute(overrides, key) %}<p class="help">Controlled by <code>{{ key|upper }}</code>.</p>{% endif %}{% endmacro %}

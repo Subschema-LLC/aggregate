@@ -710,6 +710,41 @@ are recorded when they start because they replace the running code.
 recording non-secret values for an allowlist of settings. A requirement for
 tamper evidence would add a hash chain or an external sink, such as syslog.
 
+### Transactional email through Symfony Mailer's bridges, not vendor SDKs
+
+**Decision.** Aggregate sends its own email through Symfony Mailer, with the
+official Postmark, SendGrid and Mailgun bridges, a generic SMTP choice and a raw
+mailer DSN for any other transport. Each service is one small `EmailProvider`
+class that turns its YAML settings and its one credential into a transport;
+settings, credentials, templates, sending, redaction and recording are shared
+(`App\Service\Email`). Settings live in `config/aggregate.yaml`; credentials in
+`config/secrets/email.yaml` or `EMAIL_*` environment variables, one per
+service. Every send is a `processing_tasks` row and an audit entry with the kind
+of message and the service's message ID, never the recipient or content.
+Messages go straight to the service rather than through the Messenger queue.
+
+**Why.** Symfony Mailer was already a dependency, and its bridges depend on
+nothing else, use the HTTP client the application ships, return the service's
+message ID and include signed webhook parsers for later delivery events. The
+vendors' SDKs would add Guzzle or extensions such as `ext-gmp` that some hosts
+lack, and a different API per service. Keeping keys out of `aggregate.yaml`
+keeps that file safe to share and export, as with the other integrations.
+Sending directly lets a task record the service's real answer and keeps
+message content out of a queue table, and a test can run before email is turned
+on.
+
+**Trade-off.** A send waits for the service in the request or command that
+causes it, with no automatic retry. Services beyond the built-in three need
+their bridge installed, which release updates do not preserve, so first-class
+support means shipping the bridge and a provider class. Message IDs and redacted
+failure reasons are all the records hold, so investigating a delivery problem
+means looking the ID up in the service's activity log.
+
+**What would change it.** A volume of messages, or messages nobody waits for
+(such as alerts), would justify the queue with retries. Webhooks for bounces and
+complaints would add an endpoint per service, recording against the task ID the
+messages already carry.
+
 ## Platform
 
 ### PHP and Symfony
