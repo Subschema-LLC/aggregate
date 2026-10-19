@@ -28,7 +28,7 @@ final class WebsiteScopesController extends AbstractController
     #[Route('/dashboard/website-groups', name: 'app_website_groups', methods: ['GET'])]
     public function index(): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         $label = $this->catalog->hasLoadError()
             ? ['singular' => WebsiteScopeCatalog::DEFAULT_SINGULAR, 'plural' => WebsiteScopeCatalog::DEFAULT_PLURAL]
             : $this->catalog->label();
@@ -59,7 +59,7 @@ final class WebsiteScopesController extends AbstractController
     #[Route('/dashboard/website-groups/label', name: 'app_website_groups_label', methods: ['POST'])]
     public function saveLabel(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         if (!$this->isCsrfTokenValid('website_scopes', (string) $request->request->get('_csrf_token', ''))) {
             $this->addFlash('error', 'Invalid security token. Please try again.');
 
@@ -81,7 +81,7 @@ final class WebsiteScopesController extends AbstractController
     #[Route('/dashboard/website-groups/create', name: 'app_website_groups_create', methods: ['POST'])]
     public function create(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         if (!$this->isCsrfTokenValid('website_scopes', (string) $request->request->get('_csrf_token', ''))) {
             $this->addFlash('error', 'Invalid security token. Please try again.');
 
@@ -102,7 +102,7 @@ final class WebsiteScopesController extends AbstractController
     #[Route('/dashboard/website-groups/{id}/rename', name: 'app_website_groups_rename', methods: ['POST'], requirements: ['id' => '[a-z0-9][a-z0-9-]{0,62}'])]
     public function rename(string $id, Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         if (!$this->isCsrfTokenValid('website_scopes', (string) $request->request->get('_csrf_token', ''))) {
             $this->addFlash('error', 'Invalid security token. Please try again.');
 
@@ -122,7 +122,7 @@ final class WebsiteScopesController extends AbstractController
     #[Route('/dashboard/website-groups/{id}/delete', name: 'app_website_groups_delete', methods: ['POST'], requirements: ['id' => '[a-z0-9][a-z0-9-]{0,62}'])]
     public function delete(string $id, Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         if (!$this->isCsrfTokenValid('website_scopes', (string) $request->request->get('_csrf_token', ''))) {
             $this->addFlash('error', 'Invalid security token. Please try again.');
 
@@ -142,7 +142,7 @@ final class WebsiteScopesController extends AbstractController
     #[Route('/dashboard/website-groups/assign', name: 'app_website_groups_assign', methods: ['POST'])]
     public function assign(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         if (!$this->isCsrfTokenValid('website_scopes', (string) $request->request->get('_csrf_token', ''))) {
             $this->addFlash('error', 'Invalid security token. Please try again.');
 

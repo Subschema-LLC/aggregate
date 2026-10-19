@@ -29,17 +29,18 @@ Entries belong to areas. Each area can be switched off on its own.
 | Area | Code | Records | Default |
 | --- | --- | --- | --- |
 | Settings changes | `settings` | Saving a settings page: collection, BI disclosure, data model, glossary, page groups, reporting timezone, branding, general settings, consent and tag manager, organization traffic, feature flags, data lifecycle and the audit switches | On |
-| Users | `users` | Installing, creating users and changing passwords, from the dashboard, the installer or the command line | On |
+| Users | `users` | Installing; creating, changing and deleting users, their access and permission groups; profile changes and passwords; from the dashboard, the installer or the command line | On |
 | Websites and groups | `websites` | Adding and removing websites, their domain rules, and creating, renaming, deleting and assigning website groups | On |
 | Integrations | `integrations` | BigQuery and reporting database connections, keys, Google sign-in, connection tests, and the views and schedules they copy | On |
 | Updates | `updates` | Checking for, uploading and installing updates, rollbacks, recorded deployments, the update method and source, and maintenance mode | On |
-| Manual runs | `operations` | **Sync now**, running the scheduled jobs by hand, publishing columns and regenerating reporting views, glossary sync, building browser scripts, retrying failed tracking and exporting the audit trail | On |
+| Manual runs | `operations` | **Sync now**, running the scheduled jobs by hand, publishing columns and regenerating reporting views, glossary sync, building browser scripts, retrying failed tracking, starting a data transfer and exporting the audit trail | On |
 | Background job runs | `task` | Each finished view sync and maintenance run, scheduled or started by someone | On |
 | Sign-ins | `sign_ins` | Successful and failed sign-ins and sign-outs | Off |
 
 A request is recorded only once its page has run: a request the sign-in check
-turned away is not. An administrator page that a signed-in user without
-administrator rights tries to use is recorded as **Denied**, with who tried.
+turned away is not. A change that a signed-in user without the
+[permission](USERS-AND-PERMISSIONS.md) for it tries to make, including a
+view-only user's save, is recorded as **Denied**, with who tried.
 Pages that only show something are not recorded, except the CSV export.
 
 ## What an entry holds
@@ -51,7 +52,7 @@ Pages that only show something are not recorded, except the CSV export.
 | Outcome | **Succeeded**; **Failed** when the page reported an error or the command exited with an error; **Denied** when the user was not allowed; **Started** for updates, which are recorded when they begin |
 | User | The username, or for a command the operating-system account followed by "(command line)". Scheduled job runs have none |
 | Subject | What was acted on, when there is one thing: a user, a website (by name, never its token), a website group (`group:id`) or a reporting view |
-| Details | The settings that changed, by name only, such as `Changed aggregate.yaml: brand_name, feature_flags.updates`; a short summary such as "Viewer account." or "Turned off: sign_ins."; or a job's result |
+| Details | The settings that changed, by name only, such as `Changed aggregate.yaml: brand_name, feature_flags.updates`; a short summary such as "Standard account. Permission groups: client-editors. Websites: 1 group(s), 0 website(s). Pages: Tag manager lite (edit)." or "Turned off: sign_ins."; or a job's result |
 
 Settings nested in a group are named one level down (`feature_flags.updates`).
 Secret files, such as `config/secrets/bigquery-service-account.json`, are named

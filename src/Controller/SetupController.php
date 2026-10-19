@@ -15,6 +15,8 @@ use Symfony\Component\Routing\Attribute\Route;
 
 final class SetupController extends AbstractController
 {
+    use DashboardAccess;
+
     public function __construct(private readonly AggregateConfigLoader $config, private readonly DropInScripts $scripts, private readonly StandaloneConsentSettings $standalone)
     {
     }
@@ -23,9 +25,12 @@ final class SetupController extends AbstractController
     public function index(Request $request): Response
     {
         $this->authorize();
-        $websites = $this->scripts->websites();
+        $websites = $this->visibleWebsites($this->scripts->websites());
         $query = $request->query->all();
         $token = $query['website'] ?? ($websites[0]['token'] ?? '');
+        if (is_string($token) && $token !== '' && !$this->canUseWebsiteToken($token)) {
+            throw $this->createNotFoundException('Choose a website you can use.');
+        }
         [$tags, $format] = $this->snippetOptions($query);
         $consentOption = $this->consentOption($query);
         $step = $query['step'] ?? '1';
@@ -72,9 +77,12 @@ final class SetupController extends AbstractController
         if (!in_array($kind, ['snippet', 'consent', 'tags', 'standalone-consent', 'standalone-settings'], true)) {
             throw $this->createNotFoundException();
         }
+        $query = $request->query->all();
+        $token = $query['website'] ?? '';
+        if (is_string($token) && $token !== '' && !$this->canUseWebsiteToken($token)) {
+            throw $this->createNotFoundException('Choose a website you can use.');
+        }
         try {
-            $query = $request->query->all();
-            $token = $query['website'] ?? '';
             if (!is_string($token) || $token === '') {
                 throw new \InvalidArgumentException('Choose a registered website.');
             }
@@ -125,10 +133,7 @@ final class SetupController extends AbstractController
 
     private function authorize(): void
     {
-        if (!$this->config->isDashboardEnabled()) {
-            throw $this->createNotFoundException('Dashboard is disabled.');
-        }
-        $this->denyAccessUnlessGranted('ROLE_ADMIN');
+        $this->denyUnlessPermitted();
     }
 
     private function privateResponse(Response $response): Response

@@ -40,14 +40,17 @@ final class ConsentManagerController extends AbstractController
     #[Route('/dashboard/consent-manager', name: 'app_consent_manager', methods: ['GET'])]
     public function index(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
-        $websites = $this->sites->sites();
+        $this->denyUnlessPermitted();
+        $websites = $this->visibleWebsites($this->sites->sites());
         $query = $request->query->all();
         $siteId = array_key_exists('site', $query) ? $query['site'] : ($websites[0]['id'] ?? null);
+        if ($siteId !== null && (!is_string($siteId) || !$this->canUseSiteId($siteId))) {
+            throw $this->createNotFoundException('Choose a website you can use.');
+        }
         $site = null;
         if ($siteId !== null) {
             try {
-                $site = is_string($siteId) ? $this->sites->site($siteId) : throw new \InvalidArgumentException();
+                $site = $this->sites->site($siteId);
             } catch (\InvalidArgumentException) {
                 throw $this->createNotFoundException('Choose a registered website.');
             }
@@ -93,9 +96,12 @@ final class ConsentManagerController extends AbstractController
     #[Route('/dashboard/consent-manager/save', name: 'app_consent_manager_save', methods: ['POST'])]
     public function save(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         $submitted = $request->request->all();
         $siteId = is_string($submitted['site'] ?? null) ? $submitted['site'] : '';
+        if (!$this->canUseSiteId($siteId)) {
+            throw $this->createNotFoundException('Choose a website you can use.');
+        }
         $csrf = $submitted['_csrf_token'] ?? null;
         if (!is_string($csrf) || !$this->isCsrfTokenValid(self::CSRF_TOKEN_ID, $csrf)) {
             $this->addFlash('error', 'Invalid security token. Please try again.');

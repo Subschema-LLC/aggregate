@@ -221,7 +221,7 @@
         {% endif %}
         <div class="buttons mt-5">
             <button class="button is-primary" type="submit"{% if configuration_error %} disabled{% endif %}>Save model</button>
-            {% if not configuration_error and (scope is not defined or not scope or scope.kind == 'deployment') %}<a class="button" href="{{ path('app_data_model_download') }}">Download saved YAML</a>{% endif %}
+            {% if not configuration_error and (scope is not defined or not scope or scope.kind == 'deployment') and dashboard_allowed('app_data_model_download') %}<a class="button" href="{{ path('app_data_model_download') }}">Download saved YAML</a>{% endif %}
         </div>
         <p class="help mb-5">{% if scope is defined and scope and scope.kind != 'deployment' %}A saved scope model changes collection on future events. It does not change reporting views or erase existing data.{% else %}Saves only these model settings to the active environment in <code>config/aggregate.yaml</code> or its environment-specific file, then updates the private reporting views to match. Collection changes affect future requests; they do not erase existing data.{% endif %}</p>
     {% endblock %}

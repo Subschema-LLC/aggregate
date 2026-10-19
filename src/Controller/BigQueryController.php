@@ -52,7 +52,7 @@ final class BigQueryController extends AbstractController
     #[Route('/dashboard/bigquery', name: 'app_bigquery', methods: ['GET'])]
     public function index(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         [$settings, $error] = $this->loadSyncSettings();
 
         $key = null;
@@ -224,7 +224,7 @@ final class BigQueryController extends AbstractController
     #[Route('/dashboard/bigquery/google/callback', name: 'app_bigquery_google_callback', methods: ['GET'])]
     public function googleCallback(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         $pending = $request->getSession()->get(self::SESSION_SIGN_IN);
         $request->getSession()->remove(self::SESSION_SIGN_IN);
         $state = $request->query->get('state');

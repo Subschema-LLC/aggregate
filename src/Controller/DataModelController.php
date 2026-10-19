@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Security\Access\DashboardAccessVoter;
 use App\Service\AggregateConfigLoader;
 use App\Service\CustomDataSettings;
 use App\Service\Glossary\GlossarySync;
@@ -37,15 +38,17 @@ final class DataModelController extends AbstractController
     #[Route('/dashboard/data-model', name: 'app_data_model', methods: ['GET'])]
     public function index(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         if (($request->query->all()['discover'] ?? null) === '1') {
             return $this->privateResponse($this->redirectToRoute('app_data_model_discovery', ['discover' => '1']));
         }
         $scope = null;
         $settings = $this->settings;
         if ($this->scopes !== null) {
-            $scope = $this->scopes->selection($request->query->get('scope'), 'app_data_model');
+            $scope = $this->permittedScopeSelection($this->scopes, $request->query->get('scope'), 'app_data_model');
             $settings = new CustomDataSettings($this->scopes->configFor($scope));
+        } elseif (!$this->canUseEveryWebsite()) {
+            throw $this->createAccessDeniedException('The deployment data model needs access to every website.');
         }
         $context = $this->loadModel($settings);
         $model = $context['model'];
@@ -94,7 +97,7 @@ final class DataModelController extends AbstractController
             'restored_form' => $restoredForm,
             'tracker_omit_unused_features' => (new TrackerBuilds($this->config))->enabled(),
             'scope' => $scope,
-            'can_publish' => $this->publisher !== null && ($scope === null || $scope['kind'] === 'deployment'),
+            'can_publish' => $this->publisher !== null && ($scope === null || $scope['kind'] === 'deployment') && $this->isGranted(DashboardAccessVoter::ROUTE, 'app_data_model_publish'),
         ]));
     }
 
@@ -135,7 +138,7 @@ final class DataModelController extends AbstractController
     #[Route('/dashboard/data-model/discovery', name: 'app_data_model_discovery', methods: ['GET'])]
     public function discovery(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         $context = $this->loadModel();
         $requested = ($request->query->all()['discover'] ?? null) === '1';
         $properties = [];
@@ -164,7 +167,7 @@ final class DataModelController extends AbstractController
     #[Route('/dashboard/data-model/reporting', name: 'app_data_model_reporting', methods: ['GET'])]
     public function reporting(): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         $context = $this->loadModel();
         $sql = [];
         $status = null;
@@ -227,8 +230,11 @@ final class DataModelController extends AbstractController
     #[Route('/dashboard/data-model/save', name: 'app_data_model_save', methods: ['POST'])]
     public function save(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         $scope = (string) $request->query->get('scope', 'deployment');
+        if (!$this->canUseScope($scope)) {
+            throw $this->createNotFoundException('That website scope is not available.');
+        }
         $params = $scope !== '' && $scope !== 'deployment' ? ['scope' => $scope] : [];
         if (!$this->validToken($request)) {
             return $this->back('app_data_model', $params);
@@ -266,7 +272,7 @@ final class DataModelController extends AbstractController
     #[Route('/dashboard/data-model/publish', name: 'app_data_model_publish', methods: ['POST'])]
     public function publish(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         if (!$this->validToken($request)) {
             return $this->back();
         }
@@ -345,7 +351,7 @@ final class DataModelController extends AbstractController
     #[Route('/dashboard/data-model/regenerate', name: 'app_data_model_regenerate', methods: ['POST'])]
     public function regenerate(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         if (!$this->validToken($request)) {
             return $this->back('app_data_model_reporting');
         }
@@ -375,7 +381,7 @@ final class DataModelController extends AbstractController
     #[Route('/dashboard/data-model/download', name: 'app_data_model_download', methods: ['GET'])]
     public function download(): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
 
         return $this->privateResponse(new Response($this->settings->exportYaml(), headers: [
             'Content-Type' => 'application/yaml; charset=UTF-8',

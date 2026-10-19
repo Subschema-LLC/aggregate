@@ -16,6 +16,8 @@ use Symfony\Component\Yaml\Yaml;
 
 final class StandaloneConsentController extends AbstractController
 {
+    use DashboardAccess;
+
     public function __construct(
         private readonly AggregateConfigLoader $config,
         private readonly SiteScriptConfig $sites,
@@ -26,10 +28,10 @@ final class StandaloneConsentController extends AbstractController
     #[Route('/dashboard/setup/standalone/{siteId}', name: 'app_standalone_consent', requirements: ['siteId' => '[a-f0-9]{24}'], methods: ['GET', 'POST'])]
     public function index(Request $request, string $siteId): Response
     {
-        if (!$this->config->isDashboardEnabled()) {
-            throw $this->createNotFoundException();
+        $this->denyUnlessPermitted();
+        if (!$this->canUseSiteId($siteId)) {
+            throw $this->createNotFoundException('Choose a website you can use.');
         }
-        $this->denyAccessUnlessGranted('ROLE_ADMIN');
         try {
             $site = $this->sites->site($siteId);
         } catch (\InvalidArgumentException) {

@@ -53,6 +53,8 @@ services:
             - '../src/Service/ReportingDatabase/{ReportingDatabaseException,ReportingTableWriter}.php'
             # Thrown when named zones cannot be compiled; not a service.
             - '../src/Service/MysqlTimeZoneTablesMissing.php'
+            # Transfer value objects and package files, built by DataTransfer.
+            - '../src/Service/DataTransfer/{DataTransferException,IdMap,TransferPackage,TransferReport}.php'
 
     App\Controller\HomeController: ~
     App\Controller\ReceiveController:
@@ -85,6 +87,11 @@ services:
             $environment: '%kernel.environment%'
 
     App\Service\WebsiteScopeCatalog:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+            $environment: '%kernel.environment%'
+
+    App\Security\Access\PermissionGroupCatalog:
         arguments:
             $projectDir: '%kernel.project_dir%'
             $environment: '%kernel.environment%'
@@ -228,6 +235,10 @@ services:
 
     App\Service\GeoIp\MmdbGeoCodeLookupInterface:
         alias: App\Service\GeoIp\MaxMindMmdbGeoCodeLookup
+
+    App\Service\DataTransfer\DataTransfer:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
 
     App\Service\GeoIp\MaxMindMmdbGeoCodeLookup:
         arguments:

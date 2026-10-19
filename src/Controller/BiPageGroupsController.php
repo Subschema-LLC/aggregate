@@ -33,7 +33,7 @@ final class BiPageGroupsController extends AbstractController
     #[Route('/dashboard/data-model/page-groups', name: 'app_bi_page_groups', methods: ['GET'])]
     public function index(): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
 
         try {
             $text = BiPageGroups::toLines($this->pageGroups->rules());
@@ -50,7 +50,7 @@ final class BiPageGroupsController extends AbstractController
     #[Route('/dashboard/data-model/page-groups/save', name: 'app_bi_page_groups_save', methods: ['POST'])]
     public function save(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         $form = $request->request->all();
         $token = $form['_csrf_token'] ?? null;
         if (!is_string($token) || !$this->isCsrfTokenValid(self::CSRF_TOKEN_ID, $token)) {

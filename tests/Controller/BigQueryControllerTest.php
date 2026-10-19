@@ -386,7 +386,7 @@ final class BigQueryControllerTest extends TestCase
         $request ??= Request::create('/dashboard/bigquery');
         $request->setSession($this->session);
         $authorization = $this->createStub(AuthorizationCheckerInterface::class);
-        $authorization->method('isGranted')->willReturnCallback(static fn (string $role): bool => $admin && $role === 'ROLE_ADMIN');
+        $authorization->method('isGranted')->willReturnCallback(static fn (string $role): bool => $admin && ($role === 'ROLE_ADMIN' || str_starts_with($role, 'DASHBOARD_')));
         $csrf = $this->createStub(CsrfTokenManagerInterface::class);
         $csrf->method('isTokenValid')->willReturnCallback(static fn (CsrfToken $token): bool => $token->getId() === BigQueryController::CSRF_TOKEN_ID && $token->getValue() === 'valid-token');
         $router = $this->createStub(UrlGeneratorInterface::class);

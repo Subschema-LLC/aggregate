@@ -14,12 +14,14 @@ services:
     App\Controller\CollectionSettingsController: ~
     App\Controller\PrivacySettingsController: ~
     App\Controller\UsersController: ~
+    App\Controller\ProfileController: ~
     App\Controller\SetupController: ~
     App\Controller\StandaloneConsentController: ~
     App\Controller\TagManagerController: ~
     App\Controller\ConsentManagerController: ~
     App\Controller\BrowserAssetsController: ~
     App\Controller\DataLifecycleController: ~
+    App\Controller\DataTransferController: ~
     App\Controller\DataModelController: ~
     App\Controller\BiGlossaryController: ~
     App\Controller\BiPageGroupsController: ~

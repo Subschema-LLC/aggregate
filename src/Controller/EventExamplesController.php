@@ -28,7 +28,7 @@ final class EventExamplesController extends AbstractController
     #[Route('/dashboard/data-model/examples', name: 'app_event_examples', methods: ['GET'])]
     public function index(): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
 
         return $this->renderExamples('model');
     }
@@ -36,7 +36,7 @@ final class EventExamplesController extends AbstractController
     #[Route('/dashboard/data-model/examples/ecommerce', name: 'app_event_examples_ecommerce', methods: ['GET'])]
     public function ecommerce(): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
 
         return $this->renderExamples('ecommerce');
     }
@@ -71,7 +71,7 @@ final class EventExamplesController extends AbstractController
     #[Route('/dashboard/data-model/examples/download', name: 'app_event_examples_download', methods: ['GET'])]
     public function download(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         $mode = $request->query->all()['mode'] ?? 'all';
         $example = $request->query->all()['example'] ?? 'model';
         if (!is_string($mode) || !in_array($mode, ['all', 'anonymous', 'enhanced'], true)) {

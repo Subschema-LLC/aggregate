@@ -7,11 +7,13 @@ namespace App\Tests\Configuration;
 use App\Controller\WebsitesController;
 use App\Entity\User;
 use App\Kernel;
+use App\Security\Access\PermissionGroupCatalog;
 use App\Service\AggregateConfigLoader;
 use App\Service\BrandingLogoManager;
 use App\Service\Operations\AdminAudit;
 use App\Service\SiteScriptConfig;
 use App\Service\WebsiteConfigManager;
+use App\Service\WebsiteScopeCatalog;
 use App\Tests\Support\RecordingAdminAudit;
 use PHPUnit\Framework\TestCase;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
@@ -36,6 +38,8 @@ final class WebsiteDomainRulesRoutesTest extends TestCase
 
     protected function setUp(): void
     {
+        WebsiteDomainRulesTestUserProvider::$access = WebsiteDomainRulesTestUserProvider::EDITOR;
+        RecordingAdminAudit::$entries = [];
         $this->environment = [$_ENV, $_SERVER];
         foreach (['APP_HOST', 'JS_NAMESPACE'] as $key) {
             unset($_ENV[$key], $_SERVER[$key]);
@@ -135,6 +139,57 @@ final class WebsiteDomainRulesRoutesTest extends TestCase
         self::assertSame($aggregateBefore, file_get_contents($this->temporaryDirectory.'/config/aggregate.yaml'));
         self::assertSame("shop.example.test\n*.campaign.example.test", trim($this->domainForm($browser)['allowed_domains']->getValue()));
         $this->assertNoDatabaseConnection();
+    }
+
+    public function testViewOnlyUsersSeeTheRulesButCannotChangeThemOrAddWebsites(): void
+    {
+        WebsiteDomainRulesTestUserProvider::$access = ['websites' => ['all' => true], 'pages' => ['websites' => 'view']];
+        $browser = $this->browser();
+        $before = $this->websitesContents();
+        $crawler = $browser->request('GET', '/dashboard');
+        self::assertSame(200, $browser->getResponse()->getStatusCode());
+        self::assertStringContainsString('view-only access to Websites', $crawler->filter('.view-only-notice')->text());
+        self::assertCount(0, $crawler->filter('form[action="'.self::SAVE_PATH.'"]'));
+        self::assertCount(2, $crawler->filter('fieldset[disabled] [name="allowed_domains"]'), 'each website shows its rules, not editable');
+        self::assertCount(0, $crawler->filter('form[action="/dashboard/website/create"], #add-website-trigger'));
+        self::assertCount(0, $crawler->filter('form[action^="/dashboard/website/delete/"]'));
+
+        // A forged save is sent back with a message and recorded as denied.
+        $browser->request('POST', self::SAVE_PATH, ['domain_mode' => 'all', '_csrf_token' => 'forged'], [], ['HTTP_REFERER' => 'http://localhost/dashboard']);
+        self::assertSame(303, $browser->getResponse()->getStatusCode());
+        self::assertSame('/dashboard', parse_url((string) $browser->getResponse()->headers->get('Location'), PHP_URL_PATH));
+        self::assertContains('You have view-only access to Websites. Ask an administrator for edit access.', $browser->getRequest()->getSession()->getFlashBag()->peek('error'));
+        $browser->request('POST', '/dashboard/website/create', ['name' => 'New', 'domain' => 'new.test', '_csrf_token' => 'forged']);
+        self::assertSame(303, $browser->getResponse()->getStatusCode());
+        self::assertSame($before, $this->websitesContents());
+        self::assertSame([['domain_rules_saved', 'denied'], ['website_created', 'denied']], array_map(
+            static fn (array $entry): array => [$entry['action'], $entry['outcome']],
+            RecordingAdminAudit::$entries,
+        ));
+        $this->assertNoDatabaseConnection();
+    }
+
+    public function testUsersSeeAndChangeOnlyTheWebsitesTheyWereGranted(): void
+    {
+        WebsiteDomainRulesTestUserProvider::$access = ['websites' => ['sites' => ['example-token']], 'pages' => ['websites' => 'edit']];
+        $browser = $this->browser();
+        $crawler = $browser->request('GET', '/dashboard');
+        self::assertSame(200, $browser->getResponse()->getStatusCode());
+        self::assertStringContainsString('Example <site>', $crawler->filter('.container')->text());
+        self::assertStringNotContainsString('Other website', $crawler->filter('.container')->text());
+        self::assertStringNotContainsString('other-token', (string) $browser->getResponse()->getContent());
+        self::assertCount(1, $crawler->filter('form[action="'.self::SAVE_PATH.'"]'));
+        // Adding a website needs every website, so a new one is never outside the user's access.
+        self::assertCount(0, $crawler->filter('form[action="/dashboard/website/create"], #add-website-trigger'));
+
+        $before = $this->websitesContents();
+        foreach (['/dashboard/website/other-token/domains', '/dashboard/website/delete/other-token'] as $path) {
+            $browser->request('POST', $path, ['domain_mode' => 'all', '_csrf_token' => 'forged']);
+            self::assertSame(404, $browser->getResponse()->getStatusCode(), $path);
+        }
+        $browser->request('GET', '/dashboard/websites/activity');
+        self::assertSame([], array_diff(array_keys(json_decode((string) $browser->getResponse()->getContent(), true)['websites'] ?? []), ['example-token']));
+        self::assertSame($before, $this->websitesContents());
     }
 
     public function testBrokenScriptSettingsOnlyHideTheAffectedWebsitesInstallationCode(): void
@@ -442,18 +497,27 @@ final class WebsiteDomainRulesRoutesTestKernel extends Kernel implements Compile
         $container->setDefinition('security.user.provider.concrete.app_user_provider', new Definition(WebsiteDomainRulesTestUserProvider::class));
         // No database here: administrator actions are kept in memory.
         $container->setDefinition(AdminAudit::class, new Definition(RecordingAdminAudit::class));
-        foreach ([AggregateConfigLoader::class, WebsiteConfigManager::class, BrandingLogoManager::class, SiteScriptConfig::class] as $service) {
+        foreach ([AggregateConfigLoader::class, WebsiteConfigManager::class, BrandingLogoManager::class, SiteScriptConfig::class, WebsiteScopeCatalog::class, PermissionGroupCatalog::class] as $service) {
             $container->getDefinition($service)->setArgument('$projectDir', $this->temporaryDirectory);
         }
     }
 }
 
-/** @implements UserProviderInterface<User> */
+/**
+ * A standard user who, by default, can edit every website on the Websites page.
+ *
+ * @implements UserProviderInterface<User>
+ */
 final class WebsiteDomainRulesTestUserProvider implements UserProviderInterface
 {
+    public const EDITOR = ['websites' => ['all' => true], 'pages' => ['websites' => 'edit']];
+
+    /** @var array<string, mixed> the signed-in user's grants, reread on every request */
+    public static array $access = self::EDITOR;
+
     public static function user(): User
     {
-        $user = (new User())->setUsername('website-domain-user')->setRoles(['ROLE_USER'])->setPassword('test-only');
+        $user = (new User())->setUsername('website-domain-user')->setRoles(['ROLE_USER'])->setPassword('test-only')->setAccess(self::$access);
         (new \ReflectionProperty($user, 'id'))->setValue($user, 7);
 
         return $user;

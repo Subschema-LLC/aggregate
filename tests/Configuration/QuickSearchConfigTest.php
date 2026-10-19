@@ -86,6 +86,8 @@ final class QuickSearchConfigTest extends KernelTestCase
     {
         $features = new FeatureFlagsExtension($this->createMock(\App\Service\FeatureFlags::class));
         $auth = $this->createMock(AuthorizationCheckerInterface::class);
+        // An administrator, who can open the Websites page for every website.
+        $auth->method('isGranted')->willReturn(true);
         $urls = $this->createMock(UrlGeneratorInterface::class);
         $urls->method('generate')->willReturn('/dashboard');
 
@@ -138,9 +140,11 @@ final class QuickSearchConfigTest extends KernelTestCase
         $activityService->expects(self::never())->method('getStatuses');
         $activityService->method('cachedStatuses')->willReturn(null);
 
+        $auth = $this->createMock(AuthorizationCheckerInterface::class);
+        $auth->method('isGranted')->willReturn(true);
         $extension = new NavigationExtension(
             new FeatureFlagsExtension($this->createMock(\App\Service\FeatureFlags::class)),
-            $this->createMock(AuthorizationCheckerInterface::class),
+            $auth,
             $urls,
             websiteManager: $websiteManager,
             activityService: $activityService
@@ -150,5 +154,52 @@ final class QuickSearchConfigTest extends KernelTestCase
         self::assertCount(1, $items);
         self::assertSame('Demo Store', $items[0]['title']);
         self::assertSame('none', $items[0]['status']);
+    }
+
+    public function testQuickSearchListsOnlyTheWebsitesAStandardUserCanUse(): void
+    {
+        $directory = sys_get_temp_dir().'/aggregate-quick-search-'.bin2hex(random_bytes(6));
+        mkdir($directory.'/config', 0700, true);
+        try {
+            $urls = $this->createMock(UrlGeneratorInterface::class);
+            $urls->method('generate')->willReturn('/dashboard');
+            $websites = [
+                ['name' => 'Demo Store', 'domain' => 'demo.example.com', 'token' => 'token-demo'],
+                ['name' => 'Other Store', 'domain' => 'other.example.com', 'token' => 'token-other'],
+            ];
+            $websiteManager = $this->createMock(\App\Service\WebsiteConfigManager::class);
+            $websiteManager->method('getWebsites')->willReturn($websites);
+            $user = (new \App\Entity\User())->setUsername('client')->setRoles([])
+                ->setAccess(['websites' => ['sites' => ['token-demo']], 'pages' => ['websites' => 'view']]);
+            $security = $this->createMock(\Symfony\Bundle\SecurityBundle\Security::class);
+            $security->method('getUser')->willReturn($user);
+            $requests = new \Symfony\Component\HttpFoundation\RequestStack();
+            $requests->push(new \Symfony\Component\HttpFoundation\Request());
+            $resolver = new \App\Security\Access\UserAccessResolver(
+                new \App\Security\Access\PermissionGroupCatalog($directory, 'test'),
+                new \App\Service\WebsiteScopeCatalog($directory, 'test'),
+            );
+            $access = new \App\Security\Access\WebsiteAccess($security, $resolver, $requests, $websiteManager);
+            $voter = new \App\Security\Access\DashboardAccessVoter($resolver);
+            $token = new \Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken($user, 'main', []);
+            $auth = $this->createMock(AuthorizationCheckerInterface::class);
+            $auth->method('isGranted')->willReturnCallback(static fn (string $attribute, mixed $subject = null): bool => $voter->vote($token, $subject, [$attribute]) === 1);
+            $features = new FeatureFlagsExtension($this->createMock(\App\Service\FeatureFlags::class));
+            $navigation = static fn () => new NavigationExtension(
+                $features,
+                $auth,
+                $urls,
+                websiteManager: $websiteManager,
+                websiteAccess: $access,
+            );
+
+            self::assertSame(['Demo Store'], array_column($navigation()->quickSearchItems(['items' => []]), 'title'));
+
+            // Without the Websites page, quick search lists no websites at all.
+            $user->setAccess(['websites' => ['all' => true], 'pages' => ['tag_manager' => 'edit']]);
+            self::assertSame([], $navigation()->quickSearchItems(['items' => []]));
+        } finally {
+            (new \Symfony\Component\Filesystem\Filesystem())->remove($directory);
+        }
     }
 }

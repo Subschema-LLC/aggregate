@@ -56,8 +56,8 @@ Both then run database migrations, sync the BI glossary, rebuild the cache and s
   continues its steps if they stopped.
 
 Your configuration is never overwritten: .env.local, config/aggregate*.yaml, config/websites.yaml,
-config/website-scopes.yaml, config/website-scopes/, config/tag-manager/sites/, config/*.local.yaml and
-var/ are left alone. Edits to the shipped
+config/website-scopes.yaml, config/website-scopes/, config/permission-groups.yaml,
+config/tag-manager/sites/, config/*.local.yaml and var/ are left alone. Edits to the shipped
 config/goals.yaml, config/navigation.yaml or config/quick_search.yaml move to the matching
 config/NAME.local.yaml override first. New keys in the shipped .env are appended; existing values stay.
 

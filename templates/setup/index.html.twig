@@ -142,10 +142,13 @@
             {% component 'Ui:PageSpeedNote' with {class: 'mb-3'} %}
                 {% block content %}The build gives the smallest scripts, with the tracker's internal names shortened. Prepared release packages already include it. See all page speed savers in <a href="{{ path('app_application_settings') }}#page-speed">General settings</a>.{% endblock %}
             {% endcomponent %}
+            {# Building changes the scripts every website loads. #}
+            {% if dashboard_allowed('app_setup_build_scripts') %}
             <form method="post" action="{{ path('app_setup_build_scripts') }}">
                 <input type="hidden" name="_token" value="{{ csrf_token('build_browser_scripts') }}">
                 <button type="submit" class="button" data-pages--setup--index-target="tip" data-tour-title="Build smaller scripts" data-tour-text="Run the same optional minifier offered by the CLI. If build tools are unavailable, the hosted URLs keep working with scripts this server compacts itself.">Build browser scripts</button>
             </form>
+            {% endif %}
         </div>
         <p id="setup-copy-status" role="status" aria-live="polite" class="mt-3"></p>
     {% else %}

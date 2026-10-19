@@ -13,6 +13,8 @@ use Symfony\Component\Routing\Attribute\Route;
 
 final class BrowserAssetsController extends AbstractController
 {
+    use DashboardAccess;
+
     public function __construct(private readonly AggregateConfigLoader $config, private readonly BrowserAssetBuilder $builder)
     {
     }
@@ -20,10 +22,7 @@ final class BrowserAssetsController extends AbstractController
     #[Route('/dashboard/setup/build-scripts', name: 'app_setup_build_scripts', methods: ['POST'])]
     public function build(Request $request): Response
     {
-        if (!$this->config->isDashboardEnabled()) {
-            throw $this->createNotFoundException('Dashboard is disabled.');
-        }
-        $this->denyAccessUnlessGranted('ROLE_ADMIN');
+        $this->denyUnlessPermitted();
         $token = $request->request->all()['_token'] ?? null;
         if (!is_string($token) || !$this->isCsrfTokenValid('build_browser_scripts', $token)) {
             throw $this->createAccessDeniedException('Invalid CSRF token.');

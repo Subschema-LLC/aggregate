@@ -11,12 +11,14 @@
 - [Plesk](https://subschema-llc.github.io/aggregate/install/plesk)
 - [Databases](https://subschema-llc.github.io/aggregate/install/databases)
 - [Updating](https://subschema-llc.github.io/aggregate/operate/updates)
+- [Data transfer](https://subschema-llc.github.io/aggregate/operate/data-transfer)
 
 **Use**
 - [Track websites](https://subschema-llc.github.io/aggregate/tracking/setup)
 - [Privacy and compliance](https://subschema-llc.github.io/aggregate/privacy/compliance)
 - [Connect BI and AI tools](https://subschema-llc.github.io/aggregate/reporting/connect-bi)
 - [Configuration](https://subschema-llc.github.io/aggregate/configure/configuration)
+- [Users and permissions](https://subschema-llc.github.io/aggregate/configure/users-and-permissions)
 
 **Contribute**
 - [Contributing guide](https://subschema-llc.github.io/aggregate/contribute/contributing)
