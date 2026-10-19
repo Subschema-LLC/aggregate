@@ -51,7 +51,7 @@ class AuditTrailSettings
         ],
         self::INTEGRATIONS => [
             'label' => 'Integrations',
-            'description' => 'BigQuery and reporting database connections, keys, Google sign-in, connection tests, and the views and schedules they copy; creating and revoking reporting API tokens; approving and revoking AI assistant connections.',
+            'description' => 'BigQuery and reporting database connections, keys, Google sign-in, connection tests, and the views and schedules they copy; creating and revoking reporting API tokens; approving and revoking AI assistant connections; the email service, sender and credentials.',
             'default' => true,
         ],
         self::UPDATES => [
@@ -61,12 +61,12 @@ class AuditTrailSettings
         ],
         self::OPERATIONS => [
             'label' => 'Manual runs',
-            'description' => 'Sync now, running the scheduled jobs, publishing columns and regenerating reporting views, glossary sync, building browser scripts and retrying failed tracking.',
+            'description' => 'Sync now, running the scheduled jobs, publishing columns and regenerating reporting views, glossary sync, building browser scripts, retrying failed tracking and sending a test email.',
             'default' => true,
         ],
         self::TASKS => [
             'label' => 'Background job runs',
-            'description' => 'Each finished view sync and maintenance run, scheduled or started by someone. Their processing tasks, which status pages read, are kept either way.',
+            'description' => 'Each finished view sync, maintenance run and email send, scheduled or started by someone. An email send names the kind of message, never its recipient. Their processing tasks, which status pages read, are kept either way.',
             'default' => true,
         ],
         self::ASSISTANT => [

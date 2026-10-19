@@ -104,6 +104,7 @@ Details:
 - **Optional page depth:** a capped page count shared by events on each page, with tab storage or URL parameter passing configured through UI/YAML. See [storage, URL and reporting boundaries](docs/DATA-MODEL.md#optional-page-depth) before enabling it.
 - **Consent-based enhanced detail:** visitor/session IDs, properties, and exact dimensions when enabled by your consent manager.
 - **Headless operation:** an ingestion API, YAML configuration, and CLI commands, with an optional admin dashboard.
+- **Transactional email:** Aggregate's own messages to its users through Postmark, SendGrid, Mailgun, any SMTP server or another Symfony Mailer transport, set up on one page or in YAML. Each send is recorded without the recipient. See [Transactional email](docs/EMAIL.md).
 - **Server-side collection:** send page views and goals from your backend, with no script on the page. See the [server-side guide](docs/SERVER-SIDE.md) for PHP, Java, .NET, Node.js, Python, Ruby and Go examples.
 - **Organization traffic markers:** mark team browsers on each tracked website through marking links, with a configurable cookie or local storage entry defaulting to `orgInternalTraffic=true`; every event reports `org_internal_traffic` as true or false for filtering in BI reports.
 - **Configurable branding and lifecycle:** dashboard name, logo, colors, fonts, archiving, and retention policies.
@@ -341,6 +342,7 @@ It is built from these files on `master` and describes the current release.
 | [Data model](docs/DATA-MODEL.md) | UTM/query mappings, anonymous property whitelists, model sharing, and custom reporting columns |
 | [Feature flags](docs/FEATURE-FLAGS.md) | YAML/admin controls, navigation visibility, and developer/contributor guidance |
 | [Users and permissions](docs/USERS-AND-PERMISSIONS.md) | Administrators and standard users, page and website grants, permission groups, profiles, and the commands |
+| [Transactional email](docs/EMAIL.md) | Sending Aggregate's own messages through Postmark, SendGrid, Mailgun or SMTP: setup on the page or in YAML, credentials, test messages and what each send records |
 
 ### Privacy and reporting
 

@@ -84,6 +84,7 @@ final class AdminActions
         'app_api_tokens_revoke' => [Area::INTEGRATIONS, 'api_token_revoked'],
         'app_mcp_connection_revoke' => [Area::INTEGRATIONS, 'assistant_connection_revoked'],
         'app_mcp_authorize_decide' => [Area::INTEGRATIONS, 'assistant_sign_in_decided'],
+        'app_email_save' => [Area::INTEGRATIONS, 'email_settings_saved'],
         // Updates.
         'app_updates_refresh' => [Area::UPDATES, 'update_check_refreshed'],
         'app_updates_install' => [Area::UPDATES, 'update_started'],
@@ -99,6 +100,7 @@ final class AdminActions
         'app_bi_glossary_sync' => [Area::OPERATIONS, 'glossary_synced'],
         'app_setup_build_scripts' => [Area::OPERATIONS, 'browser_scripts_built'],
         'app_tracking_retry_now' => [Area::OPERATIONS, 'tracking_retry_started'],
+        'app_email_test' => [Area::OPERATIONS, 'test_email_requested'],
         'app_data_transfer_export' => [Area::OPERATIONS, 'data_export_started'],
         'app_data_transfer_import' => [Area::OPERATIONS, 'data_import_started'],
         'app_data_transfer_copy' => [Area::OPERATIONS, 'data_copy_started'],
@@ -213,6 +215,7 @@ final class AdminActions
             'app:analytics:glossary:sync' => $option('export') === true ? null : $end(Area::OPERATIONS, 'glossary_synced'),
             'app:assets:build-js' => $end(Area::OPERATIONS, 'browser_scripts_built'),
             'app:tracking:retry-failed' => $end(Area::OPERATIONS, 'tracking_retry_started'),
+            'app:email:test' => $end(Area::OPERATIONS, 'test_email_requested'),
             'app:updates:method' => $text($argument('method')) !== null ? $end(Area::UPDATES, 'update_method_changed') : null,
             'app:updates:maintenance' => match ($argument('action')) {
                 'on' => $end(Area::UPDATES, 'maintenance_turned_on'),

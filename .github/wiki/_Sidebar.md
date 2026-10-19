@@ -20,6 +20,7 @@
 - [Reporting API](https://subschema-llc.github.io/aggregate/reporting/reporting-api)
 - [Configuration](https://subschema-llc.github.io/aggregate/configure/configuration)
 - [Users and permissions](https://subschema-llc.github.io/aggregate/configure/users-and-permissions)
+- [Transactional email](https://subschema-llc.github.io/aggregate/configure/email)
 
 **Contribute**
 - [Contributing guide](https://subschema-llc.github.io/aggregate/contribute/contributing)

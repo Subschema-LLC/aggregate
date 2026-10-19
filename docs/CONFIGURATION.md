@@ -17,6 +17,7 @@ Use this guide for application settings and runtime overrides. Run commands from
 - [BI glossary](#bi-glossary)
 - [Archiving and retention](#archiving-and-retention)
 - [Sync](#sync): [BigQuery](#bigquery-sync) and [reporting database](#reporting-database)
+- [Transactional email](#transactional-email)
 - [Main navigation](#main-navigation)
 - [Conversion goals](#conversion-goals)
 - [Coarse geography](#optional-coarse-geography)
@@ -27,8 +28,8 @@ Use this guide for application settings and runtime overrides. Run commands from
 Configuration has separate sources of truth:
 
 - **Environment files and server variables:** Symfony infrastructure — database connection, the optional [reporting database](#reporting-database) connection, message queue, app secret, and explicit proxy trust. Keep deployment values in untracked local files or server configuration.
-- **`config/aggregate.yaml`** (app-level, example committed): Analytics-specific settings — application branding, privacy measurement controls, internal traffic markers and sharing token, lifecycle policy, BigQuery sync, rate limit, JS namespace, dashboard toggle, and deployment-wide feature flags.
-- **`config/secrets/`** (untracked): Credentials Aggregate writes for itself, such as the BigQuery service account key and Google sign-in, the hashes of [reporting API tokens](REPORTING-API.md#tokens) in `api-tokens.yaml`, and the [AI assistant sign-in](MCP.md#sign-in) state in `mcp-oauth.yaml`, readable only by the application's user and kept by updates.
+- **`config/aggregate.yaml`** (app-level, example committed): Analytics-specific settings — application branding, privacy measurement controls, internal traffic markers and sharing token, lifecycle policy, BigQuery sync, the [email service](#transactional-email) and sender, rate limit, JS namespace, dashboard toggle, and deployment-wide feature flags.
+- **`config/secrets/`** (untracked): Credentials Aggregate writes for itself, such as the BigQuery service account key and Google sign-in, the hashes of [reporting API tokens](REPORTING-API.md#tokens) in `api-tokens.yaml`, the [AI assistant sign-in](MCP.md#sign-in) state in `mcp-oauth.yaml`, and the [email service's credential](EMAIL.md) in `email.yaml`, readable only by the application's user and kept by updates.
 - **`config/goals.yaml`** (app-level, committed): Stable conversion-goal codes and whether each is enabled for anonymous collection. Customize it in `config/goals.local.yaml` (see [Local overrides](#local-overrides-for-shipped-defaults)).
 - **`config/navigation.yaml`** (app-level, committed): Main navigation labels, icons, and link targets. Customize it in `config/navigation.local.yaml`.
 - **`config/quick_search.yaml`** (app-level, committed): Dashboard quick-search synonyms and extra entries. Customize it in `config/quick_search.local.yaml`.
@@ -552,6 +553,33 @@ use a token), `app:api:token:list` and `app:api:token:revoke`. Assistants that
 signed in are kept in `config/secrets/mcp-oauth.yaml` and managed with
 `app:mcp:connection:list` and `app:mcp:connection:revoke`.
 
+## Transactional email
+
+**Administration → Email** at `/dashboard/email` (administrators only) chooses
+the service that sends Aggregate's own messages to its users (Postmark,
+SendGrid, Mailgun, any SMTP server, or another Symfony Mailer transport), the
+sender, and each service's credential, and sends a test message. Email is off
+until `email_enabled` is true:
+
+```yaml
+email_enabled: false
+email_provider: ''                  # postmark, sendgrid, mailgun, smtp or dsn
+email_from_address: ''              # required once email is on
+email_from_name: ''                 # empty: the brand name
+email_reply_to: ''
+```
+
+Each service adds `email_<service>_*` keys, listed in
+[config/aggregate.yaml.example](../config/aggregate.yaml.example). Uppercase
+environment variables of the same names take precedence and lock the matching
+fields. Credentials are not settings: they are kept in
+`config/secrets/email.yaml`, or come from `EMAIL_POSTMARK_SERVER_TOKEN`,
+`EMAIL_SENDGRID_API_KEY`, `EMAIL_MAILGUN_API_KEY`, `EMAIL_SMTP_PASSWORD` or
+`EMAIL_DSN`, which take precedence over the file. `app:email:status` and
+`app:email:test` work with the dashboard disabled. Each send is recorded as a
+processing task and an audit entry, without the recipient. See
+[Transactional email](EMAIL.md).
+
 ## Main navigation
 
 Associate links with a registered flag using `feature: updates` (or another
@@ -702,13 +730,14 @@ administration. Each settings page loads the data needed for its own task.
 | Sync: BigQuery | `/dashboard/bigquery` | Sign-in, views, schedule and status of the BigQuery copy |
 | Sync: Reporting database | `/dashboard/reporting-database` | Connection (tested, saved to `.env.local`), views, schedule and status of the reporting database copy |
 | API tokens | `/dashboard/api-tokens` | Reporting API tokens, AI assistant connections and their settings, administrators only ([API guide](REPORTING-API.md), [MCP guide](MCP.md)) |
+| Email | `/dashboard/email` | The service that sends transactional email, the sender, credentials, a test message and the last sends, administrators only ([guide](EMAIL.md)) |
 | Data lifecycle | `/dashboard/data-lifecycle` | Archiving, retention, task and audit record purging, and the last maintenance run |
 | Data transfer | `/dashboard/data-transfer` | Export, import, or copy collected rows; the last run comes from the processing task and audit trail ([guide](DATA-TRANSFER.md)) |
 | Scheduled tasks | `/dashboard/scheduled-tasks` | Whether the server runs `app:scheduler:run`, the exact Plesk, cron or systemd settings for this server, each job's last and next run, and **Run due jobs now** ([guide](SCHEDULED-TASKS.md)) |
 
 Administrators can use every page. Standard users can use the pages an
 administrator granted them, at view or edit, for the websites they were granted;
-Users, permission groups and API tokens stay with administrators, and every
+Users, permission groups, API tokens and email stay with administrators, and every
 user has their own profile page. Every dashboard route needs the page and level listed in
 `App\Security\Access\DashboardPages`; see
 [how access is enforced](USERS-AND-PERMISSIONS.md#how-access-is-enforced).
