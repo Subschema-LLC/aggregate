@@ -129,6 +129,7 @@ final class ApplicationUpdaterTest extends TestCase
         self::assertSame("APP_SECRET=operator\n", $this->read('.env.local'));
         self::assertStringEndsWith("parameters: { app.goal_events: { operator: {} } }\n", $this->read('config/goals.local.yaml'));
         self::assertSame(['config/goals.local.yaml'], $state['report']['files']['overrides_created']);
+        $this->assertJournalHasTheDocumentedShape();
 
         // A second update cannot start over an unresolved one.
         try {
@@ -142,6 +143,7 @@ final class ApplicationUpdaterTest extends TestCase
         $rolledBack = $this->updater()->rollback(true, $this->record(...));
 
         self::assertSame('rolled_back', $rolledBack['status']);
+        $this->assertJournalHasTheDocumentedShape();
         self::assertSame($before, $this->snapshot(except: 'var/'));
         self::assertNull((new MaintenanceMode($this->project))->status());
         self::assertSame(['before update'], $this->connection->fetchFirstColumn('SELECT name FROM events'));
@@ -231,9 +233,9 @@ final class ApplicationUpdaterTest extends TestCase
     public function testMethodCannotChangeWhileAnUpdateNeedsAttention(): void
     {
         self::assertNull($this->updater()->methodChangeProblem());
-        (new UpdateJournal($this->project))->write(['id' => 'x', 'type' => 'release', 'status' => 'needs_attention', 'step' => 'migrations']);
+        (new UpdateJournal($this->project))->write(['id' => 'x', 'type' => 'release', 'status' => 'needs_attention', 'step' => 'migrations', 'log' => []]);
         self::assertStringContainsString('cannot change while an update', (string) $this->updater()->methodChangeProblem());
-        (new UpdateJournal($this->project))->write(['id' => 'x', 'type' => 'release', 'status' => 'completed', 'step' => 'finish']);
+        (new UpdateJournal($this->project))->write(['id' => 'x', 'type' => 'release', 'status' => 'completed', 'step' => 'finish', 'log' => []]);
         self::assertNull($this->updater()->methodChangeProblem());
     }
 
@@ -350,6 +352,7 @@ final class ApplicationUpdaterTest extends TestCase
 
         self::assertSame('git', $state['type']);
         self::assertSame('needs_attention', $state['status'], 'The fixture console cannot finish the update.');
+        $this->assertJournalHasTheDocumentedShape();
         self::assertSame($latest, $this->git(['rev-parse', 'HEAD'], $this->project));
         self::assertSame('<?php // two', $this->read('src/App.php'));
         self::assertSame("parameters: { app.goal_events: { purchase: {}, lead: {} } }\n", $this->read('config/goals.yaml'));
@@ -397,6 +400,7 @@ final class ApplicationUpdaterTest extends TestCase
 
         self::assertSame('deployment', $state['type']);
         self::assertSame(['maintenance', 'database_backup', 'dependencies'], $state['completed']);
+        $this->assertJournalHasTheDocumentedShape();
         self::assertSame('needs_attention', $state['status'], 'The fixture console cannot continue after the handoff.');
         self::assertSame($files, $this->snapshot('var'), 'Deployed files are never changed.');
         self::assertFileExists($this->project.'/'.$state['backup'].'/database.sqlite');
@@ -664,5 +668,22 @@ final class ApplicationUpdaterTest extends TestCase
         ksort($files);
 
         return $files;
+    }
+
+    /**
+     * The journal an update wrote has every key UpdateJournal's UpdateState
+     * requires and no key it does not describe, so the type that static
+     * analysis checks the updater against is the format on disk.
+     */
+    private function assertJournalHasTheDocumentedShape(): void
+    {
+        $doc = (string) (new \ReflectionClass(UpdateJournal::class))->getDocComment();
+        self::assertSame(1, preg_match('/@phpstan-type UpdateState array\{(.*?)\n \* \}/s', $doc, $match));
+        preg_match_all('/^ \*     ([a-z_]+)(\??):/m', $match[1], $keys, PREG_SET_ORDER);
+        $documented = array_column($keys, 2, 1);
+        $state = json_decode((string) file_get_contents($this->project.'/var/updates/state.json'), true, flags: JSON_THROW_ON_ERROR);
+
+        self::assertSame([], array_values(array_diff(array_keys($state), array_keys($documented))), 'keys the journal holds but UpdateState does not describe');
+        self::assertSame([], array_values(array_diff(array_keys(array_filter($documented, static fn (string $optional): bool => $optional === '')), array_keys($state))), 'required keys missing from the journal');
     }
 }

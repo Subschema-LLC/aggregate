@@ -49,6 +49,26 @@ final class BigQueryClientTest extends TestCase
         $elsewhere->ensureDataset('aggregate');
     }
 
+    public function testATablesRowCountIsReadAndAMissingTableOrViewHasNone(): void
+    {
+        $responses = [
+            new MockResponse('{"type":"TABLE","numRows":"1234"}', ['http_code' => 200]),
+            new MockResponse('{"error":{"code":404,"message":"Not found: Table"}}', ['http_code' => 404]),
+            new MockResponse('{"type":"VIEW"}', ['http_code' => 200]),
+        ];
+        $urls = [];
+        $client = $this->client(static function (string $method, string $url) use (&$responses, &$urls): MockResponse {
+            $urls[] = $method.' '.$url;
+
+            return array_shift($responses);
+        });
+
+        self::assertSame(1234, $client->tableRows('aggregate', 'bi_anonymous_events_v1'));
+        self::assertNull($client->tableRows('aggregate', 'bi_anonymous_events_v1'));
+        self::assertNull($client->tableRows('aggregate', 'bi_anonymous_events_v1'));
+        self::assertSame('GET https://bigquery.googleapis.com/bigquery/v2/projects/my-project/datasets/aggregate/tables/bi_anonymous_events_v1', $urls[0]);
+    }
+
     public function testLoadReplacesTheTableWithAResumableUploadInChunksAndWaitsForTheJob(): void
     {
         $content = str_repeat("{\"event_hour\":\"2026-10-01 10:00:00.000000\",\"event_count\":\"7\"}\n", 10000);

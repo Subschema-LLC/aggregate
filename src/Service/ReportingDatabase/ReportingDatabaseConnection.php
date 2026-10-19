@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Service\ReportingDatabase;
 
-use App\Service\BigQuery\BigQueryViewCatalog;
 use App\Service\ProjectDirEnvVarProcessor;
+use App\Service\ViewSync\ViewCatalog;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
 use Doctrine\DBAL\Exception\MalformedDsnException;
@@ -209,7 +209,7 @@ class ReportingDatabaseConnection
             throw new ReportingDatabaseException(self::firstLine($e, 'Connected, but this database user cannot create and drop tables, which every sync does'), previous: $e);
         }
         $writer = new ReportingTableWriter($connection);
-        $copied = array_values(array_filter(array_keys(BigQueryViewCatalog::APPROVED + BigQueryViewCatalog::PRIVATE), $writer->tableExists(...)));
+        $copied = array_values(array_filter(array_keys(ViewCatalog::APPROVED + ViewCatalog::PRIVATE), $writer->tableExists(...)));
 
         return [...$location, 'server_version' => $version, 'tables' => $copied];
     }

@@ -36,12 +36,34 @@ final class ProcessingTasksTest extends TestCase
         self::assertSame([
             'id' => '1', 'task_type' => 'example_job', 'subject' => 'first', 'status' => 'succeeded', 'triggered_by' => 'schedule',
             'requested_by' => null, 'lock_key' => null, 'started_at' => '2026-10-07 12:00:00', 'finished_at' => '2026-10-07 12:02:00',
-            'row_count' => '42', 'external_id' => 'job-1', 'details' => 'Copied 42 rows. Done.',
+            'row_count' => '42', 'external_id' => 'job-1', 'details' => 'Copied 42 rows. Done.', 'fingerprint' => null,
         ], array_map(static fn (mixed $value): ?string => $value === null ? null : (string) $value, $this->row($id)));
         self::assertSame([[
             'occurred_at' => '2026-10-07 12:02:00', 'category' => 'task', 'operation' => 'example_job', 'subject' => 'first',
             'outcome' => 'succeeded', 'actor' => null, 'processing_task_id' => '1', 'details' => 'Copied 42 rows. Done.',
         ]], $this->audit());
+    }
+
+    public function testASuccessCanRecordAFingerprintOfWhatItProduced(): void
+    {
+        $first = (int) $this->tasks->start('example_job', 'view', TaskTrigger::schedule(), $this->now);
+        $this->tasks->succeed($first, $this->now, 3, 'Copied.', null, str_repeat('a', 64));
+        $failed = (int) $this->tasks->start('example_job', 'view', TaskTrigger::schedule(), $this->now->modify('+1 minute'));
+        $this->tasks->fail($failed, $this->now->modify('+1 minute'), 'Failed.');
+
+        $latest = $this->tasks->latest('example_job')['view'];
+        self::assertNull($latest['attempt']['fingerprint']);
+        self::assertSame(str_repeat('a', 64), $latest['success']['fingerprint'], 'the last success keeps it after a failure');
+
+        $invalid = (int) $this->tasks->start('example_job', 'other', TaskTrigger::schedule(), $this->now);
+        foreach ([str_repeat('a', 65), '', "two\nlines"] as $fingerprint) {
+            try {
+                $this->tasks->succeed($invalid, $this->now, null, null, null, $fingerprint);
+                self::fail('An invalid fingerprint was stored.');
+            } catch (\InvalidArgumentException) {
+            }
+        }
+        self::assertSame('running', $this->row($invalid)['status']);
     }
 
     public function testFailuresKeepTheirDetailsAndTheAdministrator(): void
