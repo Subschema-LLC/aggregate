@@ -104,6 +104,14 @@ details::details-content {
     box-sizing: inherit;
 }
 
+/*
+ * Bulma classes such as .tag, .button, and .is-flex set an explicit display
+ * property, which overrides the user-agent `[hidden] { display: none }` rule.
+ */
+[hidden] {
+    display: none !important;
+}
+
 html,
 body {
     background-color: var(--app-brand-background);
@@ -764,7 +772,7 @@ details.message:not([open]) > summary.message-header {
     color: var(--app-brand-primary-text) !important;
 }
 
-.tabs li.is-active a,
+.tabs:not(.is-toggle) li.is-active a,
 .tabs.is-boxed li.is-active a {
     background-color: var(--app-brand-surface);
     border-bottom-color: var(--app-brand-focus);

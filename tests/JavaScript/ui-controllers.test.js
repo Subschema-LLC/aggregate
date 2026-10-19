@@ -16,6 +16,7 @@ const Confirm = controller('confirm');
 const Validation = controller('validation');
 const Notification = controller('notification');
 const Cards = controller('cards');
+const ToggleTabs = controller('toggle_tabs');
 const EmailSettings = vm.runInNewContext(
   fs.readFileSync(path.join(__dirname, '../../assets/controllers/pages/email_settings/index_controller.js'), 'utf8')
     .replace(/^import .*;\n/m, '')
@@ -247,8 +248,19 @@ test('cards controller enhances cards and expands or collapses all cards on the 
 });
 
 test('email settings controller places the selected email service card first and collapses all others', () => {
+  const makeClassList = (initial = []) => {
+    const set = new Set(initial);
+    return {
+      contains: n => set.has(n),
+      toggle: (n, force) => {
+        const next = force === undefined ? !set.has(n) : Boolean(force);
+        if (next) set.add(n); else set.delete(n);
+        return next;
+      }
+    };
+  };
   const makePanel = (provider, open = false) => {
-    const badge = {hidden: !open};
+    const badge = {hidden: !open, classList: makeClassList(open ? [] : ['is-hidden'])};
     return {
       dataset: {provider},
       open,
@@ -284,8 +296,101 @@ test('email settings controller places the selected email service card first and
   assert.equal(order[0], sendgrid, 'selected provider card is moved first');
   assert.equal(sendgrid.open, true, 'selected provider card is expanded');
   assert.equal(sendgrid.badge.hidden, false);
+  assert.equal(sendgrid.badge.classList.contains('is-hidden'), false);
   assert.equal(postmark.open, false, 'other provider cards are collapsed');
   assert.equal(postmark.badge.hidden, true);
+  assert.equal(postmark.badge.classList.contains('is-hidden'), true);
   assert.equal(smtp.open, false, 'other provider cards are collapsed');
   assert.equal(postmark.hidden, false, 'other provider cards remain collapsible instead of hidden');
+});
+
+test('toggle tabs controller switches nested in-page panes, supports keyboard navigation, and reveals invalid panes', () => {
+  const makeClassList = (initial = []) => {
+    const set = new Set(initial);
+    return {
+      contains: n => set.has(n),
+      toggle: (n, force) => {
+        const next = force === undefined ? !set.has(n) : Boolean(force);
+        if (next) set.add(n); else set.delete(n);
+        return next;
+      }
+    };
+  };
+
+  const makeTab = (id, active = false) => {
+    const attrs = {'aria-selected': active ? 'true' : 'false', 'aria-controls': `pane-${id}`, href: `#${id}`};
+    const link = {
+      dataset: {tabName: id},
+      focused: false,
+      focus() { this.focused = true; },
+      getAttribute: k => attrs[k] ?? null,
+      setAttribute: (k, v) => { attrs[k] = v; },
+      closest: () => link
+    };
+    return {
+      dataset: {toggleTab: id, workspaceTab: id},
+      classList: makeClassList(active ? ['is-active'] : []),
+      querySelector: sel => sel === 'a' ? link : null,
+      link,
+      attrs
+    };
+  };
+
+  const makePane = (id, active = false) => ({
+    id: `pane-${id}`,
+    dataset: {togglePane: id, paneName: id},
+    hidden: !active,
+    classList: makeClassList(active ? ['is-active'] : []),
+    removeAttribute(k) { if (k === 'hidden') this.hidden = false; },
+    setAttribute(k) { if (k === 'hidden') this.hidden = true; }
+  });
+
+  const tabs = [makeTab('variables', true), makeTab('tags', false), makeTab('triggers', false)];
+  const panes = new Map([
+    ['pane-variables', makePane('variables', true)],
+    ['pane-tags', makePane('tags', false)],
+    ['pane-triggers', makePane('triggers', false)]
+  ]);
+  const historyCalls = [];
+  const doc = {
+    getElementById: id => panes.get(id) ?? null,
+    defaultView: {
+      location: {hash: ''},
+      history: {replaceState: (_s, _t, hash) => historyCalls.push(hash)},
+      addEventListener() {},
+      removeEventListener() {}
+    }
+  };
+  const form = {addEventListener() {}, removeEventListener() {}};
+  const element = {
+    ownerDocument: doc,
+    querySelectorAll: () => tabs,
+    closest: () => form
+  };
+
+  const instance = Object.assign(new ToggleTabs(), {element});
+  instance.connect();
+
+  // Click to switch to tags
+  instance.switchTab({preventDefault() {}, currentTarget: tabs[1].link});
+  assert.equal(tabs[0].classList.contains('is-active'), false);
+  assert.equal(tabs[0].attrs['aria-selected'], 'false');
+  assert.equal(panes.get('pane-variables').hidden, true);
+  assert.equal(tabs[1].classList.contains('is-active'), true);
+  assert.equal(tabs[1].attrs['aria-selected'], 'true');
+  assert.equal(panes.get('pane-tags').hidden, false);
+  assert.deepEqual(historyCalls, ['#tags']);
+
+  // Keyboard ArrowRight moves from tags to triggers and focuses link
+  instance.onKeydown({key: 'ArrowRight', currentTarget: tabs[1].link, preventDefault() {}});
+  assert.equal(tabs[2].classList.contains('is-active'), true);
+  assert.equal(tabs[2].link.focused, true);
+  assert.equal(panes.get('pane-triggers').hidden, false);
+  assert.equal(panes.get('pane-tags').hidden, true);
+
+  // Invalid event inside hidden variables pane reveals the variables tab
+  instance.revealInvalid({target: {closest: () => panes.get('pane-variables')}});
+  assert.equal(tabs[0].classList.contains('is-active'), true);
+  assert.equal(panes.get('pane-variables').hidden, false);
+  assert.equal(panes.get('pane-triggers').hidden, true);
 });

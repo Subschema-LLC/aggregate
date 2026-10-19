@@ -117,7 +117,7 @@
                     <summary>
                         <span class="is-inline-flex is-align-items-center">
                             <h2 class="title is-4">{{ provider.label }}</h2>
-                            <span class="tag is-primary is-light ml-2" data-provider-selected-badge{% if not is_selected %} hidden{% endif %}>Selected</span>
+                            <span class="tag is-primary is-light ml-2{% if not is_selected %} is-hidden{% endif %}" data-provider-selected-badge{% if not is_selected %} hidden{% endif %}>Selected</span>
                         </span>
                     </summary>
                     <p class="mb-4">{{ provider.description }}</p>

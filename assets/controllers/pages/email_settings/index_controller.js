@@ -23,6 +23,7 @@ export default class extends Controller {
                 : null;
             if (badge) {
                 badge.hidden = !isSelected;
+                badge.classList?.toggle('is-hidden', !isSelected);
             }
         });
 

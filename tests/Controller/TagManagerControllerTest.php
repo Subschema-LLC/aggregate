@@ -298,6 +298,13 @@ final class TagManagerControllerTest extends TestCase
         self::assertCount(0, $crawler->filter('[name^="consent_manager"]'));
         self::assertStringContainsString('Consent manager lite: enabled', $crawler->text());
         self::assertCount(1, $crawler->filter('a[href="/dashboard/consent-manager?site='.$this->siteId.'"].button'));
+        self::assertCount(1, $crawler->filter('.tabs.is-toggle.is-fullwidth.nested-toggle-tabs[role="tablist"][aria-label="Tag manager sections"]'));
+        self::assertSame(['variables', 'tags', 'triggers'], $crawler->filter('[data-toggle-tab]')->each(static fn (Crawler $tab): string => (string) $tab->attr('data-toggle-tab')));
+        self::assertSame(['Variables', 'Tags', 'Triggers'], $crawler->filter('[data-toggle-tab] a > span:not(.icon):not(.tag)')->each(static fn (Crawler $label): string => $label->text()));
+        self::assertSame(['1', '2'], $crawler->filter('[data-toggle-tab] .tag')->each(static fn (Crawler $badge): string => $badge->text()));
+        self::assertCount(1, $crawler->filter('#pane-variables[role="tabpanel"] #variable-0-path'));
+        self::assertCount(1, $crawler->filter('#pane-tags[role="tabpanel"][hidden] #tag-1-method'));
+        self::assertCount(1, $crawler->filter('#pane-triggers[role="tabpanel"][hidden] table'));
         self::assertSame('window.siteData.plan', $crawler->filter('#variable-0-path')->attr('value'));
         self::assertSame('call', $crawler->filter('#tag-1-type option[selected]')->attr('value'));
         self::assertSame('Aggregate.emit', $crawler->filter('#tag-1-method')->attr('value'));

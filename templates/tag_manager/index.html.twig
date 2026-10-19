@@ -109,34 +109,51 @@
                 <p class="help" id="tag-manager-enabled-help">Disabling preserves definitions and prevents new page loads from receiving these tags.</p>
             </div>
 
-            <details class="box"{% if restored_form and variable_rows|length > 0 %} open{% endif %}>
-                <summary class="has-text-weight-semibold">Variables — read values from this page</summary>
-                <div class="content mt-3"><p>Give each value an alias and a path, such as <code>plan</code> → <code>window.siteData.plan</code> or <code>category</code> → <code>dataLayer[0].ecommerce.items[0].category</code>. Paths read own data properties; they do not run JavaScript or getters.</p><p>Use <code>{% verbatim %}{{plan}}{% endverbatim %}</code> in a script URL's path or query, or <code>{"$var":"plan"}</code> in method arguments. URL substitutions are encoded; the host stays fixed. Missing or invalid values skip that tag.</p></div>
-                {% if variable_rows|length < max_variables %}{% set variable_rows = variable_rows|merge([{alias: '', path: ''}]) %}{% endif %}
-                {% for variable in variable_rows %}
-                    {{ component('TagManager:VariableRow', {index: loop.index0, variable: variable}) }}
-                {% endfor %}
-                <p class="help">Up to {{ max_variables }} variables. Save to add another row. Leave both fields empty to keep the current list.</p>
-            </details>
+            {{ component('Ui:ToggleTabs', {
+                label: 'Tag manager sections',
+                current: 'variables',
+                items: [
+                    {id: 'variables', label: 'Variables', icon: 'fas fa-code', badge: settings.variables|length},
+                    {id: 'tags', label: 'Tags', icon: 'fas fa-tags', badge: settings.tags|length},
+                    {id: 'triggers', label: 'Triggers', icon: 'fas fa-bolt'}
+                ]
+            }) }}
 
-            {% set tag_ids = rows|map(row => row.id|default(''))|filter(id => id != '') %}
-            {% for tag in rows %}
-                {{ component('TagManager:TagRow', {index: loop.index0, tag: tag, script_suggestions: suggest_tracker, custom_scripts_enabled: custom_scripts_enabled, custom_templates: custom_templates, tag_ids: tag_ids, tracker_namespaces: tracker_namespaces}) }}
-            {% endfor %}
-            {% if suggest_tracker %}<datalist id="tag-script-suggestions"><option value="{{ tracker_url }}">This website's tracker</option></datalist>{% endif %}
-            {# Starter templates for custom JavaScript, read by the tag row editor. #}
-            <script type="application/json" id="tag-custom-templates">{{ custom_templates_json|raw }}</script>
-            <datalist id="tag-consent-categories"><option value="analytics">Analytics</option><option value="functional">Functional</option><option value="marketing">Marketing</option><option value="none">No consent required</option></datalist>
-            <datalist id="tag-event-examples"><option value="click"></option><option value="submit"></option><option value="change"></option><option value="cart:updated"></option><option value="purchase"></option><option value="checkout_complete"></option></datalist>
-            <details class="box"><summary class="has-text-weight-semibold">Trigger and event reference</summary><div class="table-container mt-3"><table class="table is-fullwidth"><thead><tr><th>Trigger</th><th>When it runs</th><th>Example</th></tr></thead><tbody>
-                <tr><td>Document ready</td><td>Once the HTML is ready and consent permits</td><td>No event name</td></tr>
-                <tr><td>Window finished loading</td><td>Once the page finishes loading and consent permits</td><td>No event name</td></tr>
-                <tr><td>Document event</td><td>A named event on the document, including events that bubble to it</td><td><code>click</code>, <code>submit</code>, <code>cart:updated</code></td></tr>
-                <tr><td>Window event</td><td>A named event dispatched on the window</td><td><code>account:updated</code></td></tr>
-                <tr><td>dataLayer event</td><td>A new <code>dataLayer.push({event: 'purchase'})</code> entry</td><td><code>purchase</code></td></tr>
-            </tbody></table></div><p class="help">Custom names must be emitted by your website. Document/window events and dataLayer entries received before consent are not replayed. Script actions load once per page; method actions can run for each eligible event.</p></details>
-            <p class="help mb-3">Up to {{ max_tags }} tags. Save a new tag to add another row. Hosted scripts and downloaded tag loaders receive saved changes within five minutes; browsers reuse a script that long.</p>
-            <button class="button is-primary" type="submit">Save script settings</button>
+            <div id="pane-variables" class="workspace-pane nested-toggle-pane is-active" role="tabpanel" aria-labelledby="tab-variables" data-toggle-pane="variables" data-pane-name="variables">
+                <details class="box" open>
+                    <summary class="has-text-weight-semibold">Variables — read values from this page</summary>
+                    <div class="content mt-3"><p>Give each value an alias and a path, such as <code>plan</code> → <code>window.siteData.plan</code> or <code>category</code> → <code>dataLayer[0].ecommerce.items[0].category</code>. Paths read own data properties; they do not run JavaScript or getters.</p><p>Use <code>{% verbatim %}{{plan}}{% endverbatim %}</code> in a script URL's path or query, or <code>{"$var":"plan"}</code> in method arguments. URL substitutions are encoded; the host stays fixed. Missing or invalid values skip that tag.</p></div>
+                    {% if variable_rows|length < max_variables %}{% set variable_rows = variable_rows|merge([{alias: '', path: ''}]) %}{% endif %}
+                    {% for variable in variable_rows %}
+                        {{ component('TagManager:VariableRow', {index: loop.index0, variable: variable}) }}
+                    {% endfor %}
+                    <p class="help">Up to {{ max_variables }} variables. Save to add another row. Leave both fields empty to keep the current list.</p>
+                </details>
+            </div>
+
+            <div id="pane-tags" class="workspace-pane nested-toggle-pane" role="tabpanel" aria-labelledby="tab-tags" data-toggle-pane="tags" data-pane-name="tags" hidden>
+                {% set tag_ids = rows|map(row => row.id|default(''))|filter(id => id != '') %}
+                {% for tag in rows %}
+                    {{ component('TagManager:TagRow', {index: loop.index0, tag: tag, script_suggestions: suggest_tracker, custom_scripts_enabled: custom_scripts_enabled, custom_templates: custom_templates, tag_ids: tag_ids, tracker_namespaces: tracker_namespaces}) }}
+                {% endfor %}
+                {% if suggest_tracker %}<datalist id="tag-script-suggestions"><option value="{{ tracker_url }}">This website's tracker</option></datalist>{% endif %}
+                {# Starter templates for custom JavaScript, read by the tag row editor. #}
+                <script type="application/json" id="tag-custom-templates">{{ custom_templates_json|raw }}</script>
+                <datalist id="tag-consent-categories"><option value="analytics">Analytics</option><option value="functional">Functional</option><option value="marketing">Marketing</option><option value="none">No consent required</option></datalist>
+                <datalist id="tag-event-examples"><option value="click"></option><option value="submit"></option><option value="change"></option><option value="cart:updated"></option><option value="purchase"></option><option value="checkout_complete"></option></datalist>
+                <p class="help mb-3">Up to {{ max_tags }} tags. Save a new tag to add another row. Hosted scripts and downloaded tag loaders receive saved changes within five minutes; browsers reuse a script that long.</p>
+            </div>
+
+            <div id="pane-triggers" class="workspace-pane nested-toggle-pane" role="tabpanel" aria-labelledby="tab-triggers" data-toggle-pane="triggers" data-pane-name="triggers" hidden>
+                <details class="box" open><summary class="has-text-weight-semibold">Trigger and event reference</summary><div class="table-container mt-3"><table class="table is-fullwidth"><thead><tr><th>Trigger</th><th>When it runs</th><th>Example</th></tr></thead><tbody>
+                    <tr><td>Document ready</td><td>Once the HTML is ready and consent permits</td><td>No event name</td></tr>
+                    <tr><td>Window finished loading</td><td>Once the page finishes loading and consent permits</td><td>No event name</td></tr>
+                    <tr><td>Document event</td><td>A named event on the document, including events that bubble to it</td><td><code>click</code>, <code>submit</code>, <code>cart:updated</code></td></tr>
+                    <tr><td>Window event</td><td>A named event dispatched on the window</td><td><code>account:updated</code></td></tr>
+                    <tr><td>dataLayer event</td><td>A new <code>dataLayer.push({event: 'purchase'})</code> entry</td><td><code>purchase</code></td></tr>
+                </tbody></table></div><p class="help">Custom names must be emitted by your website. Document/window events and dataLayer entries received before consent are not replayed. Script actions load once per page; method actions can run for each eligible event.</p></details>
+            </div>
+            <button class="button is-primary mt-3" type="submit">Save script settings</button>
         {% endblock %}
         {% endcomponent %}
     {% endif %}
