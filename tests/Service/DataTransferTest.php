@@ -236,13 +236,14 @@ final class DataTransferTest extends TestCase
         $this->schema($source);
         $this->operationTables($source);
         $this->insert($source, 'events', $this->anonymous(1, 'site-a'));
+        $logger = new RecordingDataTransferLogger();
         $command = new ExportDataCommand(
             new DataTransfer($source, $this->directory),
-            new TransferConsole(new ProcessingTasks($source, new AuditTrail($source)), new FixedDataTransferClock(), new NullLogger()),
+            new TransferConsole(new ProcessingTasks($source, new AuditTrail($source)), new FixedDataTransferClock(), $logger),
         );
 
         $tester = new CommandTester($command);
-        self::assertSame(0, $tester->execute(['--package' => 'recorded', '--dataset' => ['events']]));
+        self::assertSame(0, $tester->execute(['--package' => 'recorded', '--dataset' => ['events']]), $tester->getDisplay()."\n".$logger->recorded);
 
         $task = $source->fetchAssociative('SELECT status, task_type, subject, lock_key, details FROM processing_tasks');
         self::assertSame(['succeeded', 'data_transfer', 'transfer', null], [$task['status'], $task['task_type'], $task['subject'], $task['lock_key']]);
@@ -261,14 +262,15 @@ final class DataTransferTest extends TestCase
         $bad = $this->anonymous(1, 'site-a');
         $bad['visitor_id'] = 'secret-visitor';
         $this->insert($source, 'events', $bad);
+        $logger = new RecordingDataTransferLogger();
         $tasks = new ProcessingTasks($source, new AuditTrail($source));
-        $console = new TransferConsole($tasks, new FixedDataTransferClock(), new NullLogger());
+        $console = new TransferConsole($tasks, new FixedDataTransferClock(), $logger);
         $command = new ExportDataCommand(new DataTransfer($source, $this->directory), $console);
         $tester = new CommandTester($command);
 
-        self::assertSame(1, $tester->execute(['--package' => 'failed', '--dataset' => ['events']]));
+        self::assertSame(1, $tester->execute(['--package' => 'failed', '--dataset' => ['events']]), $tester->getDisplay()."\n".$logger->recorded);
         $failed = $source->fetchAssociative('SELECT status, details FROM processing_tasks');
-        self::assertSame('failed', $failed['status']);
+        self::assertSame('failed', $failed['status'], $tester->getDisplay()."\n".$logger->recorded);
         self::assertStringNotContainsString('secret-visitor', (string) $failed['details']);
         self::assertSame('failed', $source->fetchOne('SELECT outcome FROM audit_trail'));
 
@@ -286,23 +288,25 @@ final class DataTransferTest extends TestCase
         $this->schema($source);
         $this->operationTables($source);
         $this->insert($source, 'events', $this->anonymous(1, 'old_token'));
+        $logger = new RecordingDataTransferLogger();
         $tasks = new ProcessingTasks($source, new AuditTrail($source));
-        $console = new TransferConsole($tasks, new FixedDataTransferClock(), new NullLogger());
-        (new CommandTester(new ExportDataCommand(new DataTransfer($source, $this->directory), $console)))
-            ->execute(['--package' => 'mapped', '--dataset' => ['events']]);
+        $console = new TransferConsole($tasks, new FixedDataTransferClock(), $logger);
+        $exported = new CommandTester(new ExportDataCommand(new DataTransfer($source, $this->directory), $console));
+        self::assertSame(0, $exported->execute(['--package' => 'mapped', '--dataset' => ['events']]), $exported->getDisplay()."\n".$logger->recorded);
 
         $target = $this->connection($this->directory.'/target.sqlite');
         $this->schema($target);
         $this->operationTables($target);
+        $importLogger = new RecordingDataTransferLogger();
         $tester = new CommandTester(new ImportDataCommand(
             new DataTransfer($target, $this->directory),
-            new TransferConsole(new ProcessingTasks($target, new AuditTrail($target)), new FixedDataTransferClock(), new NullLogger()),
+            new TransferConsole(new ProcessingTasks($target, new AuditTrail($target)), new FixedDataTransferClock(), $importLogger),
         ));
         self::assertSame(0, $tester->execute([
             '--package' => 'mapped',
             '--dataset' => ['events'],
             '--map-token' => ['old_token=new-token'],
-        ]));
+        ]), $tester->getDisplay()."\n".$importLogger->recorded);
         self::assertSame('new-token', $target->fetchOne('SELECT website_token FROM events'));
         self::assertStringNotContainsString('old_token', (string) $target->fetchOne('SELECT details FROM audit_trail'));
     }
@@ -448,6 +452,19 @@ final class DataTransferTest extends TestCase
             is_dir($child) ? $this->remove($child) : unlink($child);
         }
         rmdir($path);
+    }
+}
+
+final class RecordingDataTransferLogger extends NullLogger
+{
+    public string $recorded = '';
+
+    public function error(string|\Stringable $message, array $context = []): void
+    {
+        $exception = $context['exception'] ?? null;
+        $this->recorded = $exception instanceof \Throwable
+            ? $exception::class.': '.$exception->getMessage()."\n".$exception->getTraceAsString()
+            : (string) $message;
     }
 }
 

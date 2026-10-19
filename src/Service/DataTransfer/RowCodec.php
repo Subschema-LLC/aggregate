@@ -32,7 +32,9 @@ final class RowCodec
     }
 
     /**
-     * @param array<string, mixed> $row
+     * A package row is untrusted JSON, so its keys may not be column names.
+     *
+     * @param array<mixed> $row
      *
      * @return array<string, mixed>
      */

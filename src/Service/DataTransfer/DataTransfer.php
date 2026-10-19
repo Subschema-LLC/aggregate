@@ -602,9 +602,6 @@ final class DataTransfer
         }
         $sql .= ' ORDER BY '.$platform->quoteSingleIdentifier(TransferCatalog::primary($table));
         foreach ($source->executeQuery($sql, $params)->iterateAssociative() as $row) {
-            if (!is_array($row)) {
-                throw new DataTransferException(sprintf('The %s table returned a row that could not be read.', $table));
-            }
             yield $row;
         }
     }
@@ -654,7 +651,7 @@ final class DataTransfer
             .' WHERE '.$platform->quoteSingleIdentifier('username').' IN ('.implode(', ', array_fill(0, count($usernames), '?')).')';
         $found = [];
         foreach ($connection->executeQuery($sql, $usernames)->iterateAssociative() as $row) {
-            if (is_array($row) && is_string($row['username'] ?? null)) {
+            if (is_string($row['username'] ?? null)) {
                 $found[$row['username']] = $this->keyString($row['id'] ?? '');
             }
         }
@@ -911,7 +908,7 @@ final class DataTransfer
     {
         $params = $connection->getParams();
         $driver = $params['driver'] ?? null;
-        if (!is_string($driver) || $driver === '') {
+        if (!is_string($driver)) {
             return null;
         }
         if (in_array($driver, ['pdo_sqlite', 'sqlite3'], true)) {
@@ -1009,13 +1006,27 @@ final class DataTransfer
             }
         }
         if (!rename($temp, $final)) {
-            if ($aside !== null && !is_dir($final)) {
-                rename($aside, $final);
-            }
+            $this->restoreReplacedPackage($aside, $final);
             throw new DataTransferException('The package could not be saved.');
         }
         if ($aside !== null) {
             TransferPackage::discardDirectory($aside);
+        }
+    }
+
+    /**
+     * Puts the previous package back when the new one could not take its place.
+     * The directory check lives here so a stale stat result from the rename
+     * cannot skip the restore.
+     */
+    private function restoreReplacedPackage(?string $aside, string $final): void
+    {
+        if ($aside === null) {
+            return;
+        }
+        clearstatcache(true, $final);
+        if (!is_dir($final)) {
+            rename($aside, $final);
         }
     }
 

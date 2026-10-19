@@ -145,7 +145,7 @@ final class DataTransferController extends AbstractController
             return $this->redirectToRoute('app_data_transfer');
         }
         $username = $this->getUser()?->getUserIdentifier();
-        if (is_string($username) && $username !== '') {
+        if (is_string($username)) {
             $line[] = '--requested-by='.$username;
         }
         try {
