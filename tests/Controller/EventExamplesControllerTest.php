@@ -275,7 +275,7 @@ final class EventExamplesControllerTest extends TestCase
     {
         $controller = new EventExamplesController($this->config, new EventExampleGenerator($settings ?? $this->settings), $logger ?? new NullLogger());
         $authorization = $this->createStub(AuthorizationCheckerInterface::class);
-        $authorization->method('isGranted')->willReturnCallback(static fn (string $role): bool => $admin && $role === 'ROLE_ADMIN');
+        $authorization->method('isGranted')->willReturnCallback(static fn (string $role): bool => $admin && ($role === 'ROLE_ADMIN' || str_starts_with($role, 'DASHBOARD_')));
         $container = new Container();
         $container->set('security.authorization_checker', $authorization);
         $container->set('twig', $this->twig());

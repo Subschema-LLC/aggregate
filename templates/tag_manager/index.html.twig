@@ -17,7 +17,7 @@
             <label class="label" for="tag-manager-site">Website</label>
             <div class="control select"><select id="tag-manager-site" name="site">
                 {% for website in sites %}<option value="{{ website.id }}"{% if selected_site == website.id %} selected{% endif %}>{{ website.name }} ({{ website.domain }})</option>{% endfor %}
-                <option value=""{% if selected_site == '' %} selected{% endif %}>Shared configuration</option>
+                {% if can_use_shared is not defined or can_use_shared %}<option value=""{% if selected_site == '' %} selected{% endif %}>Shared configuration</option>{% endif %}
             </select></div>
         </div>
         <button type="submit" class="button">Open website settings</button>

@@ -1,4 +1,4 @@
-{% props website, index, include_tags = false, snippet_format = 'window', is_admin = false, include_cmp = true %}
+{% props website, index, include_tags = false, snippet_format = 'window', can_edit = false, can_setup = false, include_cmp = true %}
 
 <details class="box mb-4"{% if index == 1 %} open{% endif %}>
     <summary class="website-summary has-text-weight-semibold">
@@ -63,22 +63,30 @@
             {% elseif website.domain_policy is not defined %}
                 <p class="help mb-3">This existing registration permits its primary domain and its subdomains. The list below preserves that behavior; save to make the rules explicit.</p>
             {% endif %}
+            {% if can_edit %}
             <form action="{{ path('app_website_domains', {token: website.token}) }}" method="post" class="mb-5">
                 <input type="hidden" name="_csrf_token" value="{{ csrf_token('website_domains_' ~ website.token) }}">
                 {{ component('Websites:DomainFields', {field_prefix: 'website-domains-' ~ index, domain_settings: website.domain_settings}) }}
                 <button type="submit" class="button is-primary mt-3">Save domain rules</button>
             </form>
+            {% else %}
+            <fieldset disabled class="mb-5" aria-label="Allowed domains (view only)">
+                {{ component('Websites:DomainFields', {field_prefix: 'website-domains-' ~ index, domain_settings: website.domain_settings}) }}
+            </fieldset>
+            {% endif %}
         </div>
 
-        {% if is_admin %}
+        {% if can_setup %}
             <p class="mt-4"><a href="{{ path('app_setup', {website: website.token, step: 3, format: snippet_format, tags: include_tags ? '1' : '0', consent_option: include_cmp ? null : 'external'}) }}">Open setup and downloads for this website</a></p>
         {% endif %}
 
+        {% if can_edit %}
         {% component 'Ui:Confirm' with {message: 'Delete this website token? Existing tracker installations using it will stop collecting.', action: path('app_website_delete', {token: website.token}), method: 'post', class: 'mt-5'} %}
             {% block content %}
             <input type="hidden" name="_csrf_token" value="{{ csrf_token('delete_website_' ~ website.token) }}">
             <button type="submit" class="button is-danger is-outlined is-small">Delete Website</button>
             {% endblock %}
         {% endcomponent %}
+        {% endif %}
     </div>
 </details>

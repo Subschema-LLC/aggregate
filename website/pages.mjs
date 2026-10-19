@@ -45,6 +45,7 @@ export const sections = [
       { source: 'docs/CONFIGURATION.md', route: 'configure/configuration', label: 'Configuration' },
       { source: 'docs/DATA-MODEL.md', route: 'configure/data-model', label: 'Custom data model' },
       { source: 'docs/FEATURE-FLAGS.md', route: 'configure/feature-flags', label: 'Feature flags' },
+      { source: 'docs/USERS-AND-PERMISSIONS.md', route: 'configure/users-and-permissions', label: 'Users and permissions' },
     ],
   },
   {
@@ -60,6 +61,7 @@ export const sections = [
   {
     text: 'Operate',
     items: [
+      { source: 'docs/DATA-TRANSFER.md', route: 'operate/data-transfer', label: 'Data transfer' },
       { source: 'docs/SCHEDULED-TASKS.md', route: 'operate/scheduled-tasks', label: 'Scheduled tasks' },
       { source: 'docs/AUDIT-TRAIL.md', route: 'operate/audit-trail', label: 'Audit trail' },
       { source: 'docs/UPDATES.md', route: 'operate/updates', label: 'Updating' },

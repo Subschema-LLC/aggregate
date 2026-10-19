@@ -1,0 +1,40 @@
+# Permission groups (roles) for standard users.
+# Copy to config/permission-groups.yaml, or create groups on the Users page
+# (Permission groups tab) or with php bin/console app:permission-groups.
+# Assign a group to a user on the Users page or with
+# php bin/console app:user:access USERNAME --group=ID.
+#
+# Administrators can always use everything; groups only add access for
+# standard users. A user has the highest level any of their groups or their
+# own grants give. An invalid file grants nothing until it is corrected.
+#
+# websites: which websites the group's website pages show and change.
+#   all: true          every website and website group, including new ones,
+#                      and the settings shared by all of them
+#   groups: [id]       every website in these website groups (config/website-scopes.yaml)
+#   sites: [token]     these websites, by registration token (config/websites.yaml)
+# pages: page: view or edit. List them with
+#   php bin/console app:permission-groups pages
+# System-wide pages (general_settings, branding, updates, feature_flags, ...)
+# show and change settings for every website whatever websites are chosen.
+#
+# permission_groups:
+#   client-editors:
+#     name: Client editors
+#     description: Edit tags and the consent banner for the Brand A websites.
+#     websites:
+#       groups: [brand-a]
+#     pages:
+#       websites: view
+#       tag_manager: edit
+#       consent_manager: edit
+#   analysts:
+#     name: Analysts
+#     websites:
+#       all: true
+#     pages:
+#       data_model: view
+#       reporting_views: view
+#       bi_glossary: edit
+#
+# See docs/USERS-AND-PERMISSIONS.md.

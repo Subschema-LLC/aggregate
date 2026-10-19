@@ -26,6 +26,10 @@ users_controller:
     resource: ../src/Controller/UsersController.php
     type: attribute
 
+profile_controller:
+    resource: ../src/Controller/ProfileController.php
+    type: attribute
+
 setup_controller:
     resource: ../src/Controller/SetupController.php
     type: attribute
@@ -48,6 +52,10 @@ browser_assets_controller:
 
 data_lifecycle_controller:
     resource: ../src/Controller/DataLifecycleController.php
+    type: attribute
+
+data_transfer_controller:
+    resource: ../src/Controller/DataTransferController.php
     type: attribute
 
 data_model_controller:

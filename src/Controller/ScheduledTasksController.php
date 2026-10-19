@@ -47,7 +47,7 @@ final class ScheduledTasksController extends AbstractController
     #[Route('/dashboard/scheduled-tasks', name: 'app_scheduled_tasks', methods: ['GET'])]
     public function index(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         $jobs = [];
         foreach ($this->scheduler->jobs() as $job) {
             try {
@@ -85,7 +85,7 @@ final class ScheduledTasksController extends AbstractController
     #[Route('/dashboard/scheduled-tasks/status', name: 'app_scheduled_tasks_status', methods: ['GET'])]
     public function status(): JsonResponse
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
 
         return new JsonResponse([
             'running' => $this->scheduler->isRunning(),
@@ -96,7 +96,7 @@ final class ScheduledTasksController extends AbstractController
     #[Route('/dashboard/scheduled-tasks/run', name: 'app_scheduled_tasks_run', methods: ['POST'])]
     public function run(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         $token = $request->request->get('_csrf_token');
         if (!is_string($token) || !$this->isCsrfTokenValid(self::CSRF_TOKEN_ID, $token)) {
             $this->addFlash('error', 'Invalid security token. Please try again.');

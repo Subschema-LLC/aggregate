@@ -1,5 +1,5 @@
 {% set search_items = quick_search_items(navigation) %}
-{% props navigation, username %}
+{% props navigation, username, profile_url = null %}
 {% macro label(item) %}
     <span class="icon-text">
         {% if item.icon %}
@@ -73,7 +73,8 @@
     </div>
 
     <div class="app-navigation-account" id="app-navigation-account">
-        <div class="navbar-item app-navigation-user" title="{{ username }}">
+        {% set user_tag = profile_url ? 'a' : 'div' %}
+        <{{ user_tag }} class="navbar-item app-navigation-user"{% if profile_url %} href="{{ profile_url }}" title="Your profile and access: {{ username }}"{% else %} title="{{ username }}"{% endif %}>
             <span class="app-navigation-avatar" aria-hidden="true">{{ username|slice(0, 1)|upper }}</span>
             <span class="icon-text">
                 {% if navigation.account.user_icon %}
@@ -81,7 +82,7 @@
                 {% endif %}
                 <span class="app-navigation-username">{{ username }}</span>
             </span>
-        </div>
+        </{{ user_tag }}>
         {{ component('Layout:ThemeToggle') }}
         <div class="navbar-item">
             {{ _self.link(navigation.account.logout, 'button is-light') }}

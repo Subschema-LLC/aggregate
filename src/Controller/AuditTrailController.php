@@ -53,7 +53,7 @@ final class AuditTrailController extends AbstractController
     #[Route('/dashboard/audit-trail', name: 'app_audit_trail', methods: ['GET'])]
     public function index(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         $filter = AuditTrailFilter::fromQuery($request->query->all(), $problems);
         $result = null;
         $choices = ['areas' => [], 'actions' => [], 'outcomes' => [], 'users' => [], 'without_user' => false];
@@ -125,7 +125,7 @@ final class AuditTrailController extends AbstractController
     #[Route('/dashboard/audit-trail/export', name: 'app_audit_trail_export', methods: ['GET'])]
     public function export(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         $filter = AuditTrailFilter::fromQuery($request->query->all());
         $names = $filter->filterNames();
         $request->attributes->set(AdminAuditSubscriber::DETAILS, $names === [] ? 'All entries.' : 'Filtered by '.implode(', ', $names).'.');
@@ -178,7 +178,7 @@ final class AuditTrailController extends AbstractController
     #[Route('/dashboard/audit-trail/settings', name: 'app_audit_trail_settings', methods: ['POST'])]
     public function saveSettings(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         $submitted = $request->request->all();
         $csrf = $submitted['_csrf_token'] ?? null;
         if (!is_string($csrf) || !$this->isCsrfTokenValid(self::CSRF_TOKEN_ID, $csrf)) {

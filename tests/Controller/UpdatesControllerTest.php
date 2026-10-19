@@ -772,7 +772,7 @@ php /srv/site/bin/console app:updates:deployed --git-dir=/var/www/vhosts/example
 
         $authorization = $this->createMock(AuthorizationCheckerInterface::class);
         $authorization->expects($dashboardEnabled ? self::once() : self::never())
-            ->method('isGranted')->with('ROLE_ADMIN')->willReturn($admin);
+            ->method('isGranted')->willReturn($admin);
 
         $request ??= $this->request('GET');
         $stack = new RequestStack();

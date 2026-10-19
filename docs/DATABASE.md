@@ -14,6 +14,7 @@ Aggregate Analytics supports **PostgreSQL**, **MySQL**, **MariaDB**, **Microsoft
 - [Upgrade to Doctrine DBAL 4](#upgrade-to-doctrine-dbal-4)
 - [BI glossary metadata](#bi-glossary-metadata)
 - [Custom data reporting views](#custom-data-reporting-views)
+- [Moving collected data](#moving-collected-data)
 - [Analytics Archive and Maintenance](#analytics-archive-and-maintenance)
 
 ---
@@ -688,6 +689,15 @@ php bin/console doctrine:migrations:migrate prev
 ```
 
 ---
+
+## Moving collected data
+
+`app:data:export`, `app:data:import` and `app:data:copy` copy collected rows
+between installations. They copy `events`, the three archive tables, and
+`users` only when asked. They do not copy configuration, reporting views, the
+glossary, or task history. The target database must already have the tables
+(`doctrine:migrations:migrate`). Each run is recorded in `processing_tasks`,
+and finishing it writes `audit_trail`. See [Data transfer](DATA-TRANSFER.md).
 
 ## Analytics Archive and Maintenance
 

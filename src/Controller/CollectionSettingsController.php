@@ -35,14 +35,15 @@ class CollectionSettingsController extends AbstractController
     #[Route('/dashboard/collection', name: 'app_collection_settings', methods: ['GET'])]
     public function collectionSettings(Request $request): Response
     {
-        $this->denyIfDashboardDisabled();
-        $this->denyIfNotAdmin();
+        $this->denyUnlessPermitted();
 
         $scope = null;
         $config = $this->config;
         if ($this->scopes !== null) {
-            $scope = $this->scopes->selection($request->query->get('scope'), 'app_collection_settings');
+            $scope = $this->permittedScopeSelection($this->scopes, $request->query->get('scope'), 'app_collection_settings');
             $config = $this->scopes->configFor($scope);
+        } elseif (!$this->canUseEveryWebsite()) {
+            throw $this->createAccessDeniedException('Deployment collection settings need access to every website.');
         }
         $excludedPaths = $config->getWithEnvFallback('anonymous_excluded_paths', []);
         if (is_string($excludedPaths)) {
@@ -104,8 +105,7 @@ class CollectionSettingsController extends AbstractController
     #[Route('/dashboard/collection/tracking-status', name: 'app_tracking_failure_status', methods: ['GET'])]
     public function trackingFailureStatus(): JsonResponse
     {
-        $this->denyIfDashboardDisabled();
-        $this->denyIfNotAdmin();
+        $this->denyUnlessPermitted();
         $headers = ['Cache-Control' => 'private, no-store, max-age=0'];
 
         try {
@@ -126,10 +126,12 @@ class CollectionSettingsController extends AbstractController
     #[Route('/dashboard/settings/anonymous', name: 'app_anonymous_settings_save', methods: ['POST'])]
     public function saveAnonymousSettings(Request $request): Response
     {
-        $this->denyIfDashboardDisabled();
-        $this->denyIfNotAdmin();
+        $this->denyUnlessPermitted();
 
         $scope = (string) $request->request->get('scope', 'deployment');
+        if (!$this->canUseScope($scope)) {
+            throw $this->createNotFoundException('That website scope is not available.');
+        }
         $redirect = $scope !== '' && $scope !== 'deployment' ? ['scope' => $scope] : [];
         $csrfToken = (string) $request->request->get('_csrf_token', '');
         if (!$this->isCsrfTokenValid('anonymous_settings', $csrfToken)) {
@@ -214,8 +216,7 @@ class CollectionSettingsController extends AbstractController
     #[Route('/dashboard/settings/tracking/retry', name: 'app_tracking_retry_now', methods: ['POST'])]
     public function retryTrackingFailures(Request $request): Response
     {
-        $this->denyIfDashboardDisabled();
-        $this->denyIfNotAdmin();
+        $this->denyUnlessPermitted();
 
         $csrfToken = (string) $request->request->get('_csrf_token', '');
         if (!$this->isCsrfTokenValid('tracking_retry_now', $csrfToken)) {

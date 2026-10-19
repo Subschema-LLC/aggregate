@@ -52,6 +52,15 @@ remain straightforward. Favor understandable designs over feature count.
   YAML states when it appears and the dashboard search still finds it. New
   feature flags start off and hidden (`FeatureFlagDefaultsTest`). See
   [flags, settings and menu conditions](docs/FEATURE-FLAGS.md#flags-settings-and-menu-conditions).
+- **Give every dashboard route a permission.** Administrators can do
+  everything; standard users get pages at view or edit and websites, directly
+  or through permission groups. List each new `/dashboard` route in
+  `App\Security\Access\DashboardPages` with its page and level
+  (`DashboardPagesTest` fails otherwise; an unlisted route is
+  administrator-only). Controllers call `denyUnlessPermitted()`, and website
+  pages filter and check websites and scopes with the `DashboardAccess`
+  helpers rather than listing every website. See
+  [users and permissions](docs/USERS-AND-PERMISSIONS.md).
 - **Support white labeling.** Use the existing branding and navigation helpers
   for names, logos, colors, typography, and presentation. Avoid hardcoded vendor
   identity in ordinary product UI. Preserve accessible contrast, keyboard use,

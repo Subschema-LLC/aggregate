@@ -52,7 +52,7 @@ final class ReportingDatabaseController extends AbstractController
     #[Route('/dashboard/reporting-database', name: 'app_reporting_database', methods: ['GET'])]
     public function index(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         [$settings, $error] = $this->loadSyncSettings();
 
         $location = null;
