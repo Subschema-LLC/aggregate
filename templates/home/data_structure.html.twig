@@ -535,6 +535,8 @@ ORDER BY event_day, geo_area;</code></pre>
                 </div>
             </div>
 
+            <p>To keep BI tools off the application database, including with SQLite, the dashboard's {% if sync_url|default(null) %}<a href="{{ sync_url }}">Sync</a>{% else %}<strong>Sync</strong>{% endif %} page copies reporting views to a separate reporting database or to Google BigQuery on a schedule.</p>
+
             <hr>
 
             <h3 class="title is-5">Model and refresh settings</h3>

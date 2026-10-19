@@ -58,6 +58,19 @@ final class MysqlTimeZoneTables
         return true;
     }
 
+    /**
+     * The command an administrator runs before $timezone can be compiled
+     * into the views, or null when this database needs none.
+     */
+    public function loadCommandFor(string $timezone): ?string
+    {
+        if (!$this->applies() || ReportingTimezone::isIdentity($timezone) || $this->converts($timezone)) {
+            return null;
+        }
+
+        return $this->operatorCommand();
+    }
+
     public function assertConverts(string $timezone): void
     {
         if ($this->converts($timezone)) {

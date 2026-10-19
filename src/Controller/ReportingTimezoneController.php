@@ -7,21 +7,28 @@ namespace App\Controller;
 use App\Service\AggregateConfigLoader;
 use App\Service\AnalyticsPrivacySettings;
 use App\Service\AnonymousBiViewManager;
-use App\Service\MysqlTimeZoneTables;
 use App\Service\MysqlTimeZoneTablesMissing;
 use App\Service\ReportingTimezone;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 
-/** Reporting timezone for the event views; YAML and app:analytics:reporting-timezone are the headless path. */
+/**
+ * Saves the reporting timezone for the event views. The form is a section of
+ * General settings (ApplicationSettingsController); the old page address
+ * redirects there. YAML and app:analytics:reporting-timezone are the headless path.
+ */
 final class ReportingTimezoneController extends AbstractController
 {
     use DashboardAccess;
 
     public const CSRF_TOKEN_ID = 'reporting_timezone';
+    /** A refused save: the submitted zone and why, shown once on General settings. */
+    public const SESSION_REFUSED_SAVE = 'reporting_timezone_refused_save';
+    public const SECTION = 'reporting-timezone';
 
     public function __construct(
         private readonly AggregateConfigLoader $config,
@@ -29,25 +36,16 @@ final class ReportingTimezoneController extends AbstractController
         private readonly AnalyticsPrivacySettings $thresholds,
         private readonly AnonymousBiViewManager $views,
         private readonly LoggerInterface $logger,
-        private readonly MysqlTimeZoneTables $timeZones,
     ) {
     }
 
+    /** The setting moved to General settings; bookmarks and older links land on its section. */
     #[Route('/dashboard/reporting/timezone', name: 'app_reporting_timezone', methods: ['GET'])]
     public function index(): Response
     {
         $this->denyUnlessAvailableToAdmin();
 
-        try {
-            $name = $this->timezone->name();
-            $error = null;
-        } catch (\RuntimeException $e) {
-            $this->logger->error('Failed to load the reporting timezone.', ['exception' => $e]);
-            $name = ReportingTimezone::DEFAULT;
-            $error = $e->getMessage();
-        }
-
-        return $this->page($name, $error, timezoneLoadCommand: $this->loadCommandFor($name));
+        return $this->section();
     }
 
     #[Route('/dashboard/reporting/timezone/save', name: 'app_reporting_timezone_save', methods: ['POST'])]
@@ -59,7 +57,7 @@ final class ReportingTimezoneController extends AbstractController
         if (!is_string($token) || !$this->isCsrfTokenValid(self::CSRF_TOKEN_ID, $token)) {
             $this->addFlash('error', 'Invalid security token. Please try again.');
 
-            return $this->redirectToRoute('app_reporting_timezone');
+            return $this->section();
         }
 
         $submitted = is_string($form['reporting_timezone'] ?? null) ? $form['reporting_timezone'] : '';
@@ -70,9 +68,9 @@ final class ReportingTimezoneController extends AbstractController
                 $this->views->assertReportingTimezoneCanBeCompiled($this->timezone->name());
             }
         } catch (MysqlTimeZoneTablesMissing $e) {
-            return $this->page($submitted, null, Response::HTTP_UNPROCESSABLE_ENTITY, $e->command());
+            return $this->refused($request, $submitted, null, $e->command());
         } catch (\InvalidArgumentException|\RuntimeException $e) {
-            return $this->page($submitted, $e->getMessage(), Response::HTTP_UNPROCESSABLE_ENTITY);
+            return $this->refused($request, $submitted, $e->getMessage());
         }
 
         try {
@@ -81,7 +79,7 @@ final class ReportingTimezoneController extends AbstractController
             $this->logger->error('Failed to save the reporting timezone.', ['exception' => $e]);
             $this->addFlash('error', 'The reporting timezone could not be saved. Check the active YAML configuration and file permissions.');
 
-            return $this->redirectToRoute('app_reporting_timezone');
+            return $this->section();
         }
 
         try {
@@ -96,26 +94,26 @@ final class ReportingTimezoneController extends AbstractController
             $this->addFlash('warning', 'The reporting timezone was saved, but the BI views were not regenerated. Run php bin/console app:analytics:bi-views:regenerate after correcting the problem.');
         }
 
-        return $this->redirectToRoute('app_reporting_timezone');
+        return $this->section();
     }
 
-    private function page(string $name, ?string $error, int $status = Response::HTTP_OK, ?string $timezoneLoadCommand = null): Response
+    /** Nothing was saved: General settings shows the submitted zone again with the reason or the MySQL command. */
+    private function refused(Request $request, string $submitted, ?string $error, ?string $loadCommand = null): Response
     {
-        return $this->render('settings/reporting_timezone.html.twig', [
-            'reporting_timezone' => $name,
-            'reporting_timezone_error' => $error,
-            'timezone_choices' => ReportingTimezone::choices(),
-            'environment_override' => $this->timezone->hasEnvironmentOverride(),
-            'timezone_load_command' => $timezoneLoadCommand,
-        ], new Response(status: $status, headers: ['Cache-Control' => 'private, no-store, max-age=0']));
+        $request->getSession()->set(self::SESSION_REFUSED_SAVE, [
+            'value' => $submitted,
+            'error' => $error,
+            'load_command' => $loadCommand,
+        ]);
+
+        return $this->section();
     }
 
-    private function loadCommandFor(string $timezone): ?string
+    private function section(): RedirectResponse
     {
-        if (!$this->timeZones->applies() || ReportingTimezone::isIdentity($timezone) || $this->timeZones->converts($timezone)) {
-            return null;
-        }
+        $response = $this->redirect($this->generateUrl('app_application_settings').'#'.self::SECTION);
+        $response->headers->set('Cache-Control', 'private, no-store, max-age=0');
 
-        return $this->timeZones->operatorCommand();
+        return $response;
     }
 }

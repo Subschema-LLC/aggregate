@@ -287,7 +287,21 @@
 
 .app-navigation [aria-disabled='true'] {
     cursor: default;
+}
+
+/* A feature turned off but left in the menu: the label is dimmed, and the Off
+   tag stays legible so the entry reads as a choice rather than a fault. */
+.app-navigation [aria-disabled='true'] > :not(.app-navigation-off) {
     opacity: 0.5;
+}
+
+.app-navigation .app-navigation-off {
+    background-color: transparent;
+    border: 1px solid var(--app-nav-rule);
+    color: inherit;
+    font-size: 0.7rem;
+    height: auto;
+    padding: 0.05rem 0.45rem;
 }
 
 /* Compact desktop: the username becomes an initial badge (full name in the

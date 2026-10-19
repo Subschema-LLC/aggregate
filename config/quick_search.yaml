@@ -135,20 +135,16 @@ parameters:
         - daily view
         - path patterns
         - coarser reporting
-    'BigQuery sync':
-      description: 'Copy reporting views to Google BigQuery on a schedule'
+    'Sync':
+      description: 'Copy reporting views to Google BigQuery or a reporting database on a schedule'
       synonyms:
         - bigquery
         - google cloud
         - gcp
         - warehouse
         - export
-        - sync
         - looker studio
         - service account
-    'Reporting database':
-      description: 'Copy reporting views to a separate database for BI tools'
-      synonyms:
         - reporting database
         - second database
         - read replica
@@ -156,7 +152,6 @@ parameters:
         - power bi
         - tableau
         - copy views
-        - sync
     'BI connection guide':
       description: 'Database schema, view specifications, and query examples'
       synonyms:
@@ -170,7 +165,7 @@ parameters:
         - looker
         - metabase
     'General settings':
-      description: 'Application host URL, JS namespace, and rate limits'
+      description: 'Application host URL, JS namespace, rate limits, reporting timezone, and page speed'
       synonyms:
         - host
         - namespace
@@ -178,6 +173,11 @@ parameters:
         - url
         - config
         - throttling
+        - reporting timezone
+        - timezone
+        - time zone
+        - business hours
+        - page speed
     'Branding':
       description: 'Brand name, logo upload, color palette, and fonts'
       synonyms:

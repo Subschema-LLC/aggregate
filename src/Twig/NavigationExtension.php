@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Twig;
 
 use App\Service\DocumentationLinks;
+use App\Service\NavigationConditions;
 use Symfony\Component\Routing\Exception\ExceptionInterface as RoutingException;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use App\Service\WebsiteActivityService;
@@ -29,7 +30,16 @@ final class NavigationExtension extends AbstractExtension
         private readonly ?WebsiteConfigManager $websiteManager = null,
         private readonly ?WebsiteActivityService $activityService = null,
         private readonly ?WebsiteScopeCatalog $scopes = null,
+        private readonly ?NavigationConditions $conditions = null,
     ) {}
+
+    /**
+     * Links left out of the menu by an unmet shown_when condition during the
+     * current menu() call, with their group label; quick search still lists them.
+     *
+     * @var list<array{item: array<string, mixed>, category: string}>
+     */
+    private array $searchOnly = [];
 
     public function getFunctions(): array
     {
@@ -44,6 +54,7 @@ final class NavigationExtension extends AbstractExtension
         $navigation = is_array($navigation) ? $navigation : [];
         $account = is_array($navigation['account'] ?? null) ? $navigation['account'] : [];
         $items = [];
+        $this->searchOnly = [];
         $configuredItems = $navigation['items'] ?? [];
         if (is_array($configuredItems) && array_is_list($configuredItems)) {
             foreach (array_slice($configuredItems, 0, self::MAX_ITEMS) as $item) {
@@ -53,6 +64,8 @@ final class NavigationExtension extends AbstractExtension
                 }
             }
         }
+        $searchOnly = $this->searchOnly;
+        $this->searchOnly = [];
 
         return [
             'brand' => $this->item($navigation['brand'] ?? null),
@@ -61,10 +74,12 @@ final class NavigationExtension extends AbstractExtension
                 'user_icon' => $this->text($account['user_icon'] ?? null),
                 'logout' => $this->item($account['logout'] ?? null),
             ],
+            // Not rendered as menu entries: pages waiting for their shown_when condition.
+            'search_only' => $searchOnly,
         ];
     }
 
-    private function item(mixed $item, bool $allowGroup = false, bool $parentEnabled = true): ?array
+    private function item(mixed $item, bool $allowGroup = false, bool $parentEnabled = true, string $category = 'General'): ?array
     {
         if (!is_array($item) || ($label = $this->text($item['label'] ?? null)) === null) {
             return null;
@@ -88,13 +103,14 @@ final class NavigationExtension extends AbstractExtension
 
         if (array_key_exists('children', $item)) {
             // One level only, and a group is a disclosure label rather than a link.
-            if (!$allowGroup || $this->destinationCount($item) !== 0
+            // shown_when belongs on links; a group disappears once its links do.
+            if (!$allowGroup || $this->destinationCount($item) !== 0 || array_key_exists('shown_when', $item)
                 || !is_array($item['children']) || !array_is_list($item['children'])) {
                 return null;
             }
             $children = [];
             foreach (array_slice($item['children'], 0, self::MAX_ITEMS) as $child) {
-                $child = $this->item($child, parentEnabled: $enabled);
+                $child = $this->item($child, parentEnabled: $enabled, category: $label);
                 if ($child !== null) {
                     $children[] = $child;
                 }
@@ -141,7 +157,7 @@ final class NavigationExtension extends AbstractExtension
             return null;
         }
 
-        return [
+        $link = [
             ...$normalized,
             'url' => $enabled ? $url : null,
             'external' => $external,
@@ -149,6 +165,21 @@ final class NavigationExtension extends AbstractExtension
                 || (is_string($url) && str_starts_with($url, '/') && !str_starts_with($url, '//')
                     && parse_url($url, PHP_URL_PATH) === '/logout'),
         ];
+        if (array_key_exists('shown_when', $item)) {
+            if (!NavigationConditions::has($item['shown_when'])) {
+                // Like an unknown feature name: a misspelled condition hides the link.
+                return null;
+            }
+            if ($this->conditions !== null && !$this->conditions->isMet($item['shown_when'])) {
+                if ($enabled) {
+                    $this->searchOnly[] = ['item' => $link, 'category' => $category];
+                }
+
+                return null;
+            }
+        }
+
+        return $link;
     }
 
     /** Destinations defined on a link: exactly one of route, url or docs (a documentation topic). */
@@ -219,6 +250,14 @@ final class NavigationExtension extends AbstractExtension
                 }
             } elseif (!empty($item['enabled'])) {
                 $items[] = $this->buildQuickSearchItem($this->withScopeLabel($item), 'General');
+            }
+        }
+
+        // Pages left out of the menu until their shown_when condition is met
+        // stay findable here, so an administrator can open one to turn it on.
+        foreach (is_array($navigation['search_only'] ?? null) ? $navigation['search_only'] : [] as $hidden) {
+            if (is_array($hidden) && is_array($hidden['item'] ?? null) && !empty($hidden['item']['enabled'])) {
+                $items[] = $this->buildQuickSearchItem($hidden['item'], (string) ($hidden['category'] ?? 'General'));
             }
         }
 

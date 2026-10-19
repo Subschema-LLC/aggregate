@@ -4,7 +4,12 @@ declare(strict_types=1);
 
 namespace App\Service;
 
-/** Deployment-wide capabilities configured only through the active aggregate YAML. */
+/**
+ * Deployment-wide capabilities configured only through the active aggregate YAML.
+ * Saving writes every registered feature with both options, so the YAML states
+ * what is on and what the menu shows. A new feature starts off and hidden
+ * (FeatureFlagDefaultsTest); only graduated features default to on.
+ */
 class FeatureFlags
 {
     public const DEFINITIONS = [
@@ -19,6 +24,8 @@ class FeatureFlags
             'description' => 'Tag manager tags that run JavaScript written in the dashboard or YAML. When off, existing custom tags are kept but not served to visitors, and new ones cannot be added.',
             'enabled' => true,
             'hide_from_navigation' => false,
+            // No menu entry of its own; the Feature flags page says the option has no visible effect.
+            'navigation' => false,
         ],
     ];
 

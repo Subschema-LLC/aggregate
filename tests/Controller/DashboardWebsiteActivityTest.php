@@ -9,6 +9,8 @@ use App\Controller\WebsitesController;
 use App\Entity\User;
 use App\Service\DocumentationLinks;
 use App\Service\DropInScripts;
+use App\Service\MysqlTimeZoneTables;
+use App\Service\ReportingTimezone;
 use App\Service\TrackerBuilds;
 use App\Service\TrackerScript;
 use App\Service\WebsiteActivityService;
@@ -116,8 +118,9 @@ final class DashboardWebsiteActivityTest extends KernelTestCase
     {
         $this->controller('/dashboard/settings');
         $container = self::getContainer();
+        $request = $container->get('request_stack')->getCurrentRequest();
 
-        $response = $container->get(ApplicationSettingsController::class)->applicationSettings($container->get(DocumentationLinks::class), $container->get(TrackerBuilds::class), $container->get(TrackerScript::class));
+        $response = $container->get(ApplicationSettingsController::class)->applicationSettings($container->get(DocumentationLinks::class), $container->get(TrackerBuilds::class), $container->get(TrackerScript::class), $request, $container->get(ReportingTimezone::class), $container->get(MysqlTimeZoneTables::class));
         self::assertSame(200, $response->getStatusCode());
 
         $crawler = new Crawler((string) $response->getContent());

@@ -10,6 +10,8 @@ use App\Entity\User;
 use App\Service\AggregateConfigLoader;
 use App\Service\DocumentationLinks;
 use App\Service\DropInScripts;
+use App\Service\MysqlTimeZoneTables;
+use App\Service\ReportingTimezone;
 use App\Service\TrackerBuilds;
 use App\Service\TrackerScript;
 use App\Service\TrackingAttributes;
@@ -40,7 +42,7 @@ final class DashboardTrackingAttributesTest extends KernelTestCase
         self::assertCount(1, $link, 'links to the guide through its documentation topic');
         self::assertSame('noopener noreferrer', $link->attr('rel'));
 
-        $settings = new Crawler((string) $container->get(ApplicationSettingsController::class)->applicationSettings($container->get(DocumentationLinks::class), $container->get(TrackerBuilds::class), $container->get(TrackerScript::class))->getContent());
+        $settings = new Crawler((string) $container->get(ApplicationSettingsController::class)->applicationSettings($container->get(DocumentationLinks::class), $container->get(TrackerBuilds::class), $container->get(TrackerScript::class), $request, $container->get(ReportingTimezone::class), $container->get(MysqlTimeZoneTables::class))->getContent());
         self::assertStringContainsString($names['event'], $settings->filter('#js-namespace')->ancestors()->filter('.field')->first()->filter('.help')->text());
     }
 }

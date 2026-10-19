@@ -6,6 +6,7 @@ namespace App\Controller;
 
 use App\Service\ViewSync\ViewCatalog;
 use App\Service\ViewSync\ViewSyncBackground;
+use App\Service\ViewSync\ViewSyncDestinations;
 use App\Service\ViewSync\ViewSyncRunner;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -15,8 +16,9 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * What the admin pages of the two view syncs, BigQuery and the reporting
  * database, do the same way: the sync status, choosing the views, the
- * schedule and "Sync now". Names and messages come from the sync's
- * definition (ViewSyncSettings::definition()).
+ * schedule and "Sync now". Both pages are tabs of the dashboard's Sync page.
+ * Names and messages come from the sync's definition
+ * (ViewSyncSettings::definition()).
  *
  * The using controller uses DashboardAccess and implements the abstract
  * methods below. It also defines the constants ROUTE, CSRF_TOKEN_ID and
@@ -35,6 +37,9 @@ trait ViewSyncAdmin
     abstract private function syncBackground(): ViewSyncBackground;
 
     abstract private function syncLogger(): LoggerInterface;
+
+    /** Every destination, for the Sync page's tabs. */
+    abstract private function syncDestinations(): ViewSyncDestinations;
 
     /**
      * The settings, or the defaults with the reason the configured ones
@@ -96,6 +101,7 @@ trait ViewSyncAdmin
             'sync_requested_at' => $requested,
             'background_problem' => $this->syncBackground()->problem(),
             'cron_line' => $this->syncBackground()->cronLine(),
+            'sync_destinations' => $this->syncDestinations()->all(),
         ];
     }
 

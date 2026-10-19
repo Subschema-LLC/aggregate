@@ -59,14 +59,25 @@ final class ReportingTimezoneRoutesTest extends TestCase
             self::assertSame(302, $browser->getResponse()->getStatusCode(), $path);
             self::assertSame('/login', parse_url((string) $browser->getResponse()->headers->get('Location'), PHP_URL_PATH));
         }
-        $reporting = array_values(array_filter($container->getParameter('app.main_navigation')['items'], static fn (array $item): bool => $item['label'] === 'Reporting'))[0]['children'];
-        $link = array_values(array_filter($reporting, static fn (array $item): bool => ($item['route'] ?? null) === 'app_reporting_timezone'));
-        self::assertCount(1, $link);
-        self::assertSame('ROLE_ADMIN', $link[0]['role']);
+        // The setting is a section of General settings, which has the menu entry.
+        $routes = [];
+        array_walk_recursive($container->getParameter('app.main_navigation')['items'], static function (mixed $value, string|int $key) use (&$routes): void {
+            if ($key === 'route') {
+                $routes[] = $value;
+            }
+        });
+        self::assertNotContains('app_reporting_timezone', $routes);
+        self::assertContains('app_application_settings', $routes);
         $browser->loginUser(ReportingTimezoneRoutesUserProvider::user());
         $browser->request('GET', '/dashboard/reporting/timezone');
+        self::assertSame(302, $browser->getResponse()->getStatusCode());
+        self::assertSame('/dashboard/settings#reporting-timezone', $browser->getResponse()->headers->get('Location'));
+        $browser->request('GET', '/dashboard/settings');
         self::assertSame(200, $browser->getResponse()->getStatusCode());
-        self::assertStringContainsString('America/Chicago', (string) $browser->getResponse()->getContent());
+        $page = (string) $browser->getResponse()->getContent();
+        self::assertStringContainsString('id="reporting-timezone"', $page);
+        self::assertStringContainsString('America/Chicago', $page);
+        self::assertStringContainsString('action="/dashboard/reporting/timezone/save"', $page);
         self::assertFalse($container->get('doctrine.dbal.default_connection')->isConnected());
     }
 

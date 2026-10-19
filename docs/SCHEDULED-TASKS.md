@@ -28,8 +28,8 @@ on or off happens on that job's own page.
 | Job | When it runs | Turn it on or off |
 | --- | --- | --- |
 | Analytics maintenance | Once a day, when archiving, retention or the purging of old task and audit records is on. Purging is on by default. | **Administration → Data lifecycle**, see [archiving and retention](CONFIGURATION.md#archiving-and-retention) |
-| BigQuery sync | Each selected view once per interval (15 minutes to 24 hours), while the sync is on | **Reporting → BigQuery sync**, see [BigQuery](BIGQUERY.md#schedule-the-sync) |
-| Reporting database sync | Each selected view once per interval, while the sync is on | **Reporting → Reporting database**, see [Reporting database](REPORTING-DATABASE.md#schedule-the-sync) |
+| BigQuery sync | Each selected view once per interval (15 minutes to 24 hours), while the sync is on | **Reporting → Sync → BigQuery**, see [BigQuery](BIGQUERY.md#schedule-the-sync) |
+| Reporting database sync | Each selected view once per interval, while the sync is on | **Reporting → Sync → Reporting database**, see [Reporting database](REPORTING-DATABASE.md#schedule-the-sync) |
 
 Maintenance is due 24 hours after the last maintenance run started, whoever
 started it. A run within ten minutes of that time counts, so a task every five

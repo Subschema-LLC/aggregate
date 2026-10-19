@@ -86,6 +86,10 @@ reporting_database_controller:
     resource: ../src/Controller/ReportingDatabaseController.php
     type: attribute
 
+view_sync_controller:
+    resource: ../src/Controller/ViewSyncController.php
+    type: attribute
+
 scheduled_tasks_controller:
     resource: ../src/Controller/ScheduledTasksController.php
     type: attribute

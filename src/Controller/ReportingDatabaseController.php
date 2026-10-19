@@ -11,6 +11,7 @@ use App\Service\ReportingDatabase\ReportingDatabaseConnection;
 use App\Service\ReportingDatabase\ReportingDatabaseException;
 use App\Service\ReportingDatabase\ReportingDatabaseSettings;
 use App\Service\ReportingDatabase\ReportingDatabaseSyncRunner;
+use App\Service\ViewSync\ViewSyncDestinations;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -44,6 +45,7 @@ final class ReportingDatabaseController extends AbstractController
         private readonly ReportingDatabaseBackgroundSync $background,
         private readonly ReportingDatabaseConfigurator $configurator,
         private readonly LoggerInterface $logger,
+        private readonly ViewSyncDestinations $destinations,
     ) {
     }
 
@@ -129,6 +131,11 @@ final class ReportingDatabaseController extends AbstractController
     private function syncLogger(): LoggerInterface
     {
         return $this->logger;
+    }
+
+    private function syncDestinations(): ViewSyncDestinations
+    {
+        return $this->destinations;
     }
 
     /**
