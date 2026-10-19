@@ -243,8 +243,11 @@ services, so a setting has one validation wherever it is changed.
   ([config/maintenance.php](../config/maintenance.php)) answers requests while
   files change, and backups allow rollback.
   [UpdatePaths](../src/Service/Update/UpdatePaths.php) lists the operator files
-  an update never touches. See [updating](UPDATES.md) and
-  [signed release packages](RELEASES.md).
+  an update never touches. Progress is kept in `var/updates/state.json`, whose
+  keys [UpdateJournal](../src/Service/Update/UpdateJournal.php) describes as
+  the type every update step takes and returns; a newer release reads what an
+  older one wrote, so keys are added, not renamed. See [updating](UPDATES.md)
+  and [signed release packages](RELEASES.md).
 - **Feature flags:** optional capabilities can be turned off for a whole
   deployment ([feature flags](FEATURE-FLAGS.md)).
 

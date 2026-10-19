@@ -192,7 +192,7 @@ class SystemCheck
         if ($this->journal->isLocked()) {
             $add('last_update', 'Update activity', self::ERROR, 'An update is running now.');
         } elseif (in_array($last['status'] ?? null, ['running', 'needs_attention'], true)) {
-            $add('last_update', 'Update activity', self::ERROR, ($last['type'] ?? null) === 'deployment'
+            $add('last_update', 'Update activity', self::ERROR, $last['type'] === 'deployment'
                 ? 'The last deployment stopped at "'.($last['step'] ?? 'unknown').'". Continue it with php bin/console app:updates:apply --resume, or deploy again.'
                 : 'The last update stopped at "'.($last['step'] ?? 'unknown').'". Continue it with php bin/console app:updates:apply --resume or restore files with php bin/console app:updates:rollback.');
         } else {
