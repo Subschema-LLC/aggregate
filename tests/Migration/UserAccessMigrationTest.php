@@ -16,14 +16,24 @@ use Doctrine\DBAL\Platforms\SQLServerPlatform;
 use Doctrine\DBAL\Schema\Comparator;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\Migrations\AbstractMigration;
+use Doctrine\Migrations\Configuration\Configuration;
+use Doctrine\Migrations\Configuration\Connection\ExistingConnection;
+use Doctrine\Migrations\Configuration\Migration\ExistingConfiguration;
+use Doctrine\Migrations\DependencyFactory;
+use Doctrine\Migrations\Finder\MigrationFinder;
+use Doctrine\Migrations\Metadata\Storage\TableMetadataStorageConfiguration;
+use Doctrine\Migrations\MigratorConfiguration;
+use Doctrine\Migrations\Version\Version;
 use DoctrineMigrations\Version20260330000000;
 use DoctrineMigrations\Version20261020000000;
+use DoctrineMigrations\Version20261020000001;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
 
 require_once dirname(__DIR__, 2).'/migrations/Version20260330000000.php';
 require_once dirname(__DIR__, 2).'/migrations/Version20261020000000.php';
+require_once dirname(__DIR__, 2).'/migrations/Version20261020000001.php';
 
 final class UserAccessMigrationTest extends TestCase
 {
@@ -63,6 +73,11 @@ final class UserAccessMigrationTest extends TestCase
         yield 'SQLite' => [new SQLitePlatform()];
     }
 
+    /**
+     * Runs both migrations through Doctrine's own migrator, which executes a
+     * migration's queued SQL before its schema changes. Updating the access
+     * column in the migration that adds it failed on MySQL for that reason.
+     */
     public function testAdministratorsStayAndFormerViewersKeepTheWebsitesPage(): void
     {
         if (!in_array('sqlite', \PDO::getAvailableDrivers(), true)) {
@@ -74,12 +89,11 @@ final class UserAccessMigrationTest extends TestCase
             $connection->insert('users', ['username' => $username, 'roles' => $roles, 'password' => 'hash', 'created_at' => '2026-10-01 00:00:00']);
         }
 
-        $migration = new Version20261020000000($connection, new NullLogger());
-        $this->migrate($connection, $migration, 'up');
-        foreach ($migration->getSql() as $query) {
-            $connection->executeStatement($query->getStatement(), $query->getParameters(), $query->getTypes());
-        }
+        // A dry run changes nothing. Each run gets fresh migrations, as a new command would.
+        $this->runMigrations($this->migrations($connection), dryRun: true);
+        self::assertNotContains('access', $this->columns($connection));
 
+        $this->runMigrations($this->migrations($connection));
         $access = $connection->fetchAllKeyValue('SELECT username, access FROM users ORDER BY username');
         self::assertNull($access['root']);
         foreach (['viewer', 'analyst'] as $username) {
@@ -89,10 +103,50 @@ final class UserAccessMigrationTest extends TestCase
         }
         self::assertSame(3, (int) $connection->fetchOne('SELECT COUNT(*) FROM users'));
 
-        $this->migrate($connection, $migration, 'down');
-        $columns = array_map(static fn (\Doctrine\DBAL\Schema\Column $column): string => strtolower($column->getName()), array_values($connection->createSchemaManager()->introspectTableByUnquotedName('users')->getColumns()));
-        self::assertSame(['id', 'username', 'roles', 'password', 'created_at'], $columns);
+        // Only accounts without access are changed, so access granted since is kept on a rerun.
+        $connection->update('users', ['access' => '{"pages":{"branding":"view"}}'], ['username' => 'viewer']);
+        $this->runMigrations($this->migrations($connection), version: '0');
+        self::assertNotContains('access', $this->columns($connection));
         self::assertSame(3, (int) $connection->fetchOne('SELECT COUNT(*) FROM users'));
+        $this->migrate($connection, new Version20261020000000($connection, new NullLogger()), 'up');
+        $connection->update('users', ['access' => '{"pages":{"branding":"view"}}'], ['username' => 'viewer']);
+        $second = new Version20261020000001($connection, new NullLogger());
+        $second->up($connection->createSchemaManager()->introspectSchema());
+        foreach ($second->getSql() as $query) {
+            $connection->executeStatement($query->getStatement(), $query->getParameters(), $query->getTypes());
+        }
+        self::assertSame('{"pages":{"branding":"view"}}', $connection->fetchOne('SELECT access FROM users WHERE username = ?', ['viewer']));
+        self::assertNotNull($connection->fetchOne('SELECT access FROM users WHERE username = ?', ['analyst']));
+    }
+
+    private function migrations(Connection $connection): DependencyFactory
+    {
+        $configuration = new Configuration();
+        $configuration->addMigrationsDirectory('DoctrineMigrations', dirname(__DIR__, 2).'/migrations');
+        $configuration->setMetadataStorageConfiguration(new TableMetadataStorageConfiguration());
+        $factory = DependencyFactory::fromConnection(new ExistingConfiguration($configuration), new ExistingConnection($connection));
+        $factory->setService(MigrationFinder::class, new class implements MigrationFinder {
+            public function findMigrations(string $directory, ?string $namespace = null): array
+            {
+                return [Version20261020000000::class, Version20261020000001::class];
+            }
+        });
+        $factory->getMetadataStorage()->ensureInitialized();
+
+        return $factory;
+    }
+
+    private function runMigrations(DependencyFactory $factory, bool $dryRun = false, string $version = 'latest'): void
+    {
+        $target = $version === 'latest' ? $factory->getVersionAliasResolver()->resolveVersionAlias('latest') : new Version($version);
+        $plan = $factory->getMigrationPlanCalculator()->getPlanUntilVersion($target);
+        $factory->getMigrator()->migrate($plan, (new MigratorConfiguration())->setDryRun($dryRun));
+    }
+
+    /** @return list<string> */
+    private function columns(Connection $connection): array
+    {
+        return array_map(static fn (\Doctrine\DBAL\Schema\Column $column): string => strtolower($column->getName()), array_values($connection->createSchemaManager()->introspectTableByUnquotedName('users')->getColumns()));
     }
 
     private function migrate(Connection $connection, AbstractMigration $migration, string $direction): void
