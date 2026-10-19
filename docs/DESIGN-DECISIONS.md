@@ -1138,3 +1138,23 @@ permissive license lets any site use or adapt it without licensing questions.
 
 **What would change it.** A licensing decision by the maintainers; contributions
 do not change it.
+
+### Contributions signed off under the DCO, not a contributor license agreement
+
+**Decision.** Each commit in a pull request from a fork carries a
+`Signed-off-by` line that certifies the Developer Certificate of Origin, and CI
+checks it. There is no contributor license agreement. See
+[sign off your commits](../CONTRIBUTING.md#sign-off-your-commits-dco).
+
+**Why.** The sign-off records that whoever submitted a change had the right to
+submit it under the project's licenses, and it costs one flag on `git commit`.
+A license agreement asks people to sign a separate document before their first
+pull request, which discourages the small fixes a young project depends on.
+
+**Trade-off.** Contributions arrive under the licenses of the files they change
+and stay their authors' copyright. The maintainers cannot relicense them, for
+example to sell a commercial license alongside the AGPL, without each author's
+permission.
+
+**What would change it.** A decision to offer commercial licenses, which would
+need a contributor license agreement before more outside code is merged.
