@@ -493,10 +493,17 @@ administrator allows them. The rules on this page apply to what it returns.
 An AI assistant or agent that can run SQL can answer questions from the same
 views as a BI tool: "Which pages gained the most views last week?", "How did
 sign-ups trend by day this month?" or "Which countries did most page views come
-from?" Aggregate does not include an assistant. Use any tool that connects a
-model to a SQL database, such as a database connector (an MCP server) for your
-assistant or a notebook, with the settings below. A packaged, read-only
-integration is a [roadmap proposal](../ROADMAP.md#proposals-to-explore).
+from?" Aggregate does not include an assistant; you choose the assistant and
+its model provider.
+
+The simplest way is Aggregate's own [MCP server](MCP.md): turn on the
+`mcp_server` feature flag and add the installation's `/mcp` address to the
+assistant. It signs in through an approval page, or uses an API token, and
+reads the views through read-only tools that already carry the rules below and
+the glossary. It needs no database account.
+
+To connect an assistant or a notebook to the database instead, use any tool
+that connects a model to SQL with the settings below.
 
 ### Give it the reporting account
 

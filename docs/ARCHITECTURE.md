@@ -218,6 +218,21 @@ to the same column types the syncs use. Private views are served only while
 `reporting_api_private_views` allows them
 ([ReportingApiSettings](../src/Service/ReportingApi/ReportingApiSettings.php)).
 
+The optional [MCP server](MCP.md) puts the same services behind tools for AI
+assistants ([McpController](../src/Controller/McpController.php),
+[McpServer](../src/Service/Mcp/McpServer.php),
+[McpTools](../src/Service/Mcp/McpTools.php)). Each tool call builds a
+`ViewQuery`, including grouping, and runs it with `ViewQueryRunner`;
+[McpRequestGuard](../src/Service/Mcp/McpRequestGuard.php) accepts an API token
+with the MCP grant or the access token of an approved assistant connection
+([OAuthStore](../src/Service/Mcp/OAuth/OAuthStore.php), in
+`config/secrets/mcp-oauth.yaml`), and
+[McpUsageLog](../src/Service/Mcp/McpUsageLog.php) writes each call to the audit
+trail. [OAuthServer](../src/Service/Mcp/OAuth/OAuthServer.php) serves the
+sign-in metadata, registration and token endpoints, and
+[McpAuthorizeController](../src/Controller/McpAuthorizeController.php) is the
+dashboard page where an administrator approves an assistant.
+
 ## Configuration
 
 Settings have one source of truth each (listed in

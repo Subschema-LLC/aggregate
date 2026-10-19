@@ -111,6 +111,11 @@ keeps two runs from overlapping.
 **Maintenance mode.** The 503 page served while an update replaces files,
 controlled by `app:updates:maintenance`.
 
+**MCP server.** The optional read-only [Model Context Protocol](MCP.md) server
+at `/mcp`, behind the `mcp_server` feature flag. AI assistants list, describe
+and query the reporting views through four tools, signing in through an
+administrator's approval or using an API token with the MCP grant.
+
 **Minimum cell count.** The suppression threshold: `anonymous_min_cell_count`
 (default 5) for events and goals, and `anonymous_geo_min_cell_count` (default 25)
 for geography. Set in YAML or on the BI disclosure page and applied to the views

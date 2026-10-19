@@ -8,6 +8,7 @@ use App\Service\AggregateConfigLoader;
 use App\Service\FeatureFlags;
 use App\Service\ReportingApi\ApiTokenStore;
 use App\Service\ReportingApi\ReportingApiSettings;
+use App\Service\ViewSync\ViewCatalog;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
@@ -80,7 +81,8 @@ final class ReportingApiControllerTest extends WebTestCase
         $secret = $this->boot(views: ['bi_anonymous_daily_v1']);
 
         $list = $this->json('/api/v1/views', $secret);
-        self::assertSame(['bi_anonymous_daily_v1'], array_column($list['data'], 'name'));
+        // Labels and definitions come with any scope.
+        self::assertSame(['bi_anonymous_daily_v1', ...self::metadataViews()], array_column($list['data'], 'name'));
         self::assertSame(['private_views_allowed' => false, 'reporting_timezone' => 'UTC'], $list['meta']);
         self::assertSame('http://localhost/api/v1/views/bi_anonymous_daily_v1', $list['data'][0]['links']['rows']);
         self::assertResponseHeaderSame('Cache-Control', 'no-store, private');
@@ -97,7 +99,7 @@ final class ReportingApiControllerTest extends WebTestCase
 
         $page = $this->json('/api/v1/views/bi_anonymous_daily_v1?limit=2&sort=-event_count&fields=page_group,event_count', $secret);
         self::assertSame([['page_group' => '/pricing', 'event_count' => 30], ['page_group' => '/blog', 'event_count' => 12]], $page['data']);
-        self::assertSame(['view' => 'bi_anonymous_daily_v1', 'approved' => true, 'limit' => 2, 'offset' => 0, 'returned' => 2, 'has_more' => true, 'reporting_timezone' => 'UTC'], $page['meta']);
+        self::assertSame(['view' => 'bi_anonymous_daily_v1', 'approved' => true, 'limit' => 2, 'offset' => 0, 'returned' => 2, 'has_more' => true, 'group' => null, 'reporting_timezone' => 'UTC'], $page['meta']);
         self::assertStringContainsString('offset=2', (string) $page['links']['next']);
 
         $next = $this->json((string) $page['links']['next'], $secret);
@@ -119,7 +121,7 @@ final class ReportingApiControllerTest extends WebTestCase
         $this->writeConfig(['reporting_api_private_views' => false]);
         $this->client->request('GET', '/api/v1/views/analytics_custom_events_v1', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$secret]);
         $this->assertProblem(403, 'private_views_disabled');
-        self::assertSame([], $this->json('/api/v1/views', $secret)['data']);
+        self::assertSame(self::metadataViews(), array_column($this->json('/api/v1/views', $secret)['data'], 'name'));
     }
 
     public function testTheSchemaAndOpenApiDocumentDescribeOnlyReadableViews(): void
@@ -149,6 +151,12 @@ final class ReportingApiControllerTest extends WebTestCase
         $this->assertProblem(404, 'not_found');
         $this->client->request('POST', '/api/v1/views', server: ['HTTP_AUTHORIZATION' => 'Bearer '.$secret]);
         $this->assertProblem(405, 'method_not_allowed');
+    }
+
+    /** @return list<string> */
+    private static function metadataViews(): array
+    {
+        return array_values(array_filter(array_keys(ViewCatalog::APPROVED), [ViewCatalog::class, 'isMetadata']));
     }
 
     /** @return array<string, mixed> */

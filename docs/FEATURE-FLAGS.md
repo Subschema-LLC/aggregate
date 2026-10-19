@@ -23,6 +23,9 @@ feature_flags:
   reporting_api:
     enabled: false
     hide_from_navigation: true
+  mcp_server:
+    enabled: false
+    hide_from_navigation: true
 ```
 
 Saving on the Feature flags page writes every registered feature with both
@@ -51,6 +54,19 @@ exception to returning 404 for a disabled feature's pages, the API tokens page
 still lists and revokes tokens while the flag is off, and so does
 `app:api:token:revoke`, so a token can be revoked before the API is turned back
 on. Its menu entry follows the flag.
+
+The `mcp_server` flag (off and hidden by default) covers the
+[MCP server for AI assistants](MCP.md): `/mcp`, the sign-in metadata under
+`/.well-known/`, the `/oauth/*` endpoints assistants call and the page where an
+administrator approves an assistant. When disabled, all of them return the
+ordinary 404 and no assistant can connect. Tokens granted to assistants and
+approved connections are kept and can still be revoked on the API tokens page
+and with `app:api:token:revoke` and `app:mcp:connection:revoke`. The API tokens
+page serves both flags, so its menu entry names both
+(`feature: ['reporting_api', 'mcp_server']`): it is available while either is
+on. The reporting API and the MCP server are separate flags so that one can be
+offered without the other, for example API access for scripts without AI
+assistants.
 
 | `enabled` | `hide_from_navigation` | Behavior |
 | --- | --- | --- |

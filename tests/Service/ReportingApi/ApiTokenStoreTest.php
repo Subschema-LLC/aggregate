@@ -8,6 +8,7 @@ use App\Service\AggregateConfigLoader;
 use App\Service\FeatureFlags;
 use App\Service\ReportingApi\ApiTokenStore;
 use App\Service\ReportingApi\ReportingApiSettings;
+use App\Service\ViewSync\ViewCatalog;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Clock\MockClock;
@@ -137,16 +138,18 @@ final class ApiTokenStoreTest extends TestCase
         }
 
         $this->configure(['reporting_api_private_views' => true]);
-        [$token] = $this->store()->create('Raw', ['bi_dim_website_token_v1'], ['analytics_custom_events_v1'], null, 'scott');
+        [$token] = $this->store()->create('Raw', ['bi_anonymous_daily_v1'], ['analytics_custom_events_v1'], null, 'scott');
         self::assertTrue($token->mayRead('analytics_custom_events_v1', true));
-        self::assertSame(['bi_dim_website_token_v1', 'analytics_custom_events_v1'], $token->readableViews(true));
+        // Labels and definitions are readable with any scope.
+        $metadata = array_values(array_filter(array_keys(ViewCatalog::APPROVED), [ViewCatalog::class, 'isMetadata']));
+        self::assertSame(['bi_anonymous_daily_v1', ...$metadata, 'analytics_custom_events_v1'], $token->readableViews(true));
 
         // Turning the toggle off keeps the grant in the file but stops serving it.
         $this->configure(['reporting_api_private_views' => false]);
         $stored = $this->store()->find($token->id);
         self::assertSame(['analytics_custom_events_v1'], $stored?->privateViews);
         self::assertFalse($stored->mayRead('analytics_custom_events_v1', false));
-        self::assertSame(['bi_dim_website_token_v1'], $stored->readableViews(false));
+        self::assertSame(['bi_anonymous_daily_v1', ...$metadata], $stored->readableViews(false));
     }
 
     public function testCreatingNeedsTheFeatureFlagButRevokingDoesNot(): void

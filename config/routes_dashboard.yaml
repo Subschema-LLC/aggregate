@@ -121,3 +121,7 @@ security_controller:
 api_tokens_controller:
     resource: ../src/Controller/ApiTokensController.php
     type: attribute
+
+mcp_authorize_controller:
+    resource: ../src/Controller/McpAuthorizeController.php
+    type: attribute

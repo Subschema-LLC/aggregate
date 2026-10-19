@@ -17,10 +17,19 @@ namespace App\Service\ReportingApi;
  *     fields=a,b,c                 columns to return, in this order
  *     sort=-a,b                    order; "-" for descending
  *     limit=100&offset=0           page
+ *     group=a,b                    one row per combination of a and b, with
+ *                                  event_count summed; group= (empty) is the total
+ *
+ * Grouping sums released rows only: the view has already withheld small
+ * cells, so a sum can never contain them. It needs a view with the
+ * event_count measure, which cannot itself be a group column; fields and
+ * sort may then name only the group columns and event_count.
  */
 final readonly class ViewQuery
 {
-    public const PARAMETERS = ['filter', 'fields', 'sort', 'limit', 'offset'];
+    public const PARAMETERS = ['filter', 'fields', 'sort', 'limit', 'offset', 'group'];
+    /** The measure grouping sums. */
+    public const MEASURE = 'event_count';
     public const MAX_IN_VALUES = 100;
     public const MAX_FILTERS = 50;
     public const MAX_TEXT = 2048;
@@ -30,6 +39,7 @@ final readonly class ViewQuery
      * @param list<string>                                                                   $fields  columns to return
      * @param list<array{column: string, type: string, operator: string, value: mixed}>      $filters typed values; a list for "in", a bool for "null"
      * @param list<array{column: string, descending: bool}>                                  $sort    the caller's order, before the tie-breaking columns
+     * @param list<string>|null                                                              $group   group columns, [] for one total, or null for rows
      */
     public function __construct(
         public string $view,
@@ -38,7 +48,26 @@ final readonly class ViewQuery
         public array $sort,
         public int $limit,
         public int $offset,
+        public ?array $group = null,
     ) {
+    }
+
+    public function isGrouped(): bool
+    {
+        return $this->group !== null;
+    }
+
+    /**
+     * Columns that make each result row unique: the group columns when
+     * grouped, otherwise the view's own unique order.
+     *
+     * @param list<string> $viewUniqueOrder ViewSchema::uniqueOrder for the view
+     *
+     * @return list<string>
+     */
+    public function uniqueOrder(array $viewUniqueOrder): array
+    {
+        return $this->group ?? $viewUniqueOrder;
     }
 
     /**
@@ -57,15 +86,33 @@ final readonly class ViewQuery
         foreach ($columns as $column) {
             $byName[$column['name']] = $column;
         }
-        $fields = isset($query['fields']) ? self::columnList($query['fields'], 'fields', $view, $byName) : array_keys($byName);
+        $group = null;
+        if (array_key_exists('group', $query)) {
+            if (($byName[self::MEASURE]['catalog_type'] ?? null) !== 'INT64') {
+                throw ApiProblem::badRequest('invalid_parameter', sprintf('%s has no %s column to sum, so it cannot be grouped. Read its rows instead.', $view, self::MEASURE));
+            }
+            $group = self::columnList($query['group'] ?? '', 'group', $view, $byName);
+            if (in_array(self::MEASURE, $group, true)) {
+                throw ApiProblem::badRequest('invalid_parameter', sprintf('group cannot include %s: it is the measure that grouping sums.', self::MEASURE));
+            }
+        }
+        $outputs = $group === null ? array_keys($byName) : [...$group, self::MEASURE];
+        $fields = isset($query['fields']) ? self::columnList($query['fields'], 'fields', $view, $byName) : $outputs;
         if ($fields === []) {
             throw ApiProblem::badRequest('invalid_parameter', 'fields must name at least one column.');
+        }
+        self::assertGroupedColumns($fields, $outputs, 'fields', $group);
+        foreach ($group ?? [] as $column) {
+            if (!in_array($column, $fields, true)) {
+                throw ApiProblem::badRequest('invalid_parameter', sprintf('With group, fields must include every group column; %s is missing.', $column));
+            }
         }
         $sort = [];
         if (isset($query['sort'])) {
             foreach (self::columnList($query['sort'], 'sort', $view, $byName, true) as $entry) {
                 $sort[] = ['column' => ltrim($entry, '-'), 'descending' => str_starts_with($entry, '-')];
             }
+            self::assertGroupedColumns(array_column($sort, 'column'), $outputs, 'sort', $group);
         }
 
         return new self(
@@ -75,7 +122,25 @@ final readonly class ViewQuery
             $sort,
             self::integer($query['limit'] ?? null, 'limit', 1, $maxLimit) ?? $defaultLimit,
             self::integer($query['offset'] ?? null, 'offset', 0, self::MAX_OFFSET) ?? 0,
+            $group,
         );
+    }
+
+    /**
+     * @param list<string>      $names
+     * @param list<string>      $outputs the columns a grouped result has
+     * @param list<string>|null $group
+     */
+    private static function assertGroupedColumns(array $names, array $outputs, string $parameter, ?array $group): void
+    {
+        if ($group === null) {
+            return;
+        }
+        foreach ($names as $name) {
+            if (!in_array($name, $outputs, true)) {
+                throw ApiProblem::badRequest('invalid_parameter', sprintf('With group, %s may name only the group columns and %s, not %s. Add %s to group or leave it out.', $parameter, self::MEASURE, $name, $name));
+            }
+        }
     }
 
     /**

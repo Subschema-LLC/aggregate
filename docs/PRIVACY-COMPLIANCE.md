@@ -20,6 +20,7 @@ per-region example configurations and their limits, see
 - [BigQuery sync](#bigquery-sync)
 - [Reporting database](#reporting-database)
 - [Reporting API](#reporting-api)
+- [AI assistants (MCP)](#ai-assistants-mcp)
 - [Administrative controls](#administrative-controls)
 - [Consent and consent-manager integration](#enhanced-analytics-consent)
 - [Independent consent controls and regional examples](#independent-consent-controls-and-regional-examples)
@@ -466,10 +467,20 @@ The [reporting database](REPORTING-DATABASE.md) sync is off by default. When an 
 
 The [reporting API](REPORTING-API.md) is off by default, behind the `reporting_api` feature flag. When an administrator turns it on and creates tokens, the views each token may read can be downloaded over HTTP by anyone holding that token.
 
-- Only views can be read, never raw tables. Approved `bi_anonymous_*`, `bi_dim_*_v1` and glossary views keep their suppression; the API offers no joins or aggregation, so it cannot be used to recombine withheld cells beyond what SQL users can already do.
+- Only views can be read, never raw tables. Approved `bi_anonymous_*`, `bi_dim_*_v1` and glossary views keep their suppression. The API offers no joins, and its grouping only sums the released rows of one view, so it cannot be used to recombine withheld cells beyond what SQL users can already do. Labels and definitions can be read with any token; they hold no traffic.
 - Row-level `analytics_custom_*` and unsuppressed `analytics_archived_*` views are served only while `reporting_api_private_views` is on, and only to tokens that were each granted them explicitly, after a confirmation. Turning the setting off stops serving them at once. A token with private views is a credential for raw events: restrict and expire it accordingly, and cover the clients that download rows in your records of processing and rights-request procedures, since their copies are outside Aggregate's retention. See [private views](REPORTING-API.md#private-views).
 - Tokens are stored as SHA-256 hashes in `config/secrets/api-tokens.yaml`, readable only by the application's user. A token is shown once and never logged; tokens sent in a query string are refused. Creating and revoking tokens is in the audit trail; individual API requests are not.
 - Responses are marked `Cache-Control: private, no-store`, and error messages name parameters, views and columns, never data values.
+
+## AI assistants (MCP)
+
+The [MCP server](MCP.md) is off by default, behind the `mcp_server` feature flag. It gives AI assistants the reporting API's reach through four read-only tools, with the same views, validation and private-view rules.
+
+- An assistant reads only the views its API token or approved connection was granted, plus labels and definitions. It cannot run SQL, join views or reach raw tables, and grouping sums released rows only.
+- **What it reads goes to its provider.** The released counts, labels and descriptions an assistant asks for are sent to whoever runs the model. Choosing an assistant is choosing a recipient, as choosing a BI tool is; cover it in your records of processing and vendor review like any other processor. Granting an assistant a private view sends row-level or unsuppressed data to that provider.
+- Assistants connect with an API token that holds a separate MCP grant, or through a sign-in an administrator approves on the dashboard. Sign-in state is kept as SHA-256 hashes in `config/secrets/mcp-oauth.yaml`, readable only by the application's user; access tokens last an hour.
+- Each tool call is recorded in the audit trail (area `assistant`): the credential, tool, view, row count and duration, never results, filter values or the conversation, which the server never sees.
+- The server tells assistants that missing rows are withheld rather than zero, and offers a coverage tool, but it cannot stop a model from misreading a result. Review assistant answers before relying on them.
 
 ## Administrative controls
 

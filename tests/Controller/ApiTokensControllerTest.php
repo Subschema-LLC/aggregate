@@ -7,6 +7,7 @@ namespace App\Tests\Controller;
 use App\Controller\ApiTokensController;
 use App\Service\AggregateConfigLoader;
 use App\Service\FeatureFlags;
+use App\Service\Mcp\OAuth\OAuthStore;
 use App\Service\ReportingApi\ApiTokenStore;
 use App\Service\ReportingApi\ReportingApiSettings;
 use PHPUnit\Framework\TestCase;
@@ -213,7 +214,7 @@ final class ApiTokensControllerTest extends TestCase
     private function controller(Request $request, bool $csrfValid): ApiTokensController
     {
         $config = new AggregateConfigLoader($this->projectDir, 'test');
-        $controller = new ApiTokensController($config, $this->store(), new ReportingApiSettings($config), new FeatureFlags($config), new NullLogger());
+        $controller = new ApiTokensController($config, $this->store(), new ReportingApiSettings($config), new FeatureFlags($config), new OAuthStore($this->projectDir), new NullLogger());
 
         $authorization = $this->createStub(AuthorizationCheckerInterface::class);
         $authorization->method('isGranted')->willReturn(true);
@@ -235,6 +236,8 @@ final class ApiTokensControllerTest extends TestCase
             'app_api_tokens_create' => '/dashboard/api-tokens/create',
             'app_api_tokens_settings' => '/dashboard/api-tokens/settings',
             'app_api_tokens_revoke' => '/dashboard/api-tokens/'.$parameters['id'].'/revoke',
+            'app_mcp_connection_revoke' => '/dashboard/api-tokens/connections/'.$parameters['id'].'/revoke',
+            'app_audit_trail' => '/dashboard/audit-trail?area[]=assistant',
             'app_feature_flags' => '/dashboard/feature-flags',
         }));
         $twig->addFunction(new TwigFunction('csrf_token', static fn (): string => 'rendered-token'));

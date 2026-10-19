@@ -1,18 +1,20 @@
 # Reporting API
 
-[Connect BI tools and AI assistants](BI-CONNECTION.md) · [Privacy guide](PRIVACY-COMPLIANCE.md#reporting-api) · [Feature flags](FEATURE-FLAGS.md)
+[Connect BI tools and AI assistants](BI-CONNECTION.md) · [MCP server for AI assistants](MCP.md) · [Privacy guide](PRIVACY-COMPLIANCE.md#reporting-api) · [Feature flags](FEATURE-FLAGS.md)
 
 The reporting API is a read-only HTTP interface to the same reporting views BI
 tools read from the database. Scripts, notebooks, low-code tools and AI
 assistants can fetch rows over HTTPS with a token, without a database account
 or a network path to the database. It adds no new data: approved views are
 served by default, private views only where an administrator allows them, and
-raw tables never.
+raw tables never. AI assistants that speak MCP can use the same views, tokens
+and settings through the [MCP server](MCP.md).
 
 - [Turn it on](#turn-it-on)
 - [Tokens](#tokens)
 - [Endpoints](#endpoints)
 - [Reading rows](#reading-rows)
+- [Grouping](#grouping)
 - [Responses](#responses)
 - [Time columns](#time-columns)
 - [Errors](#errors)
@@ -63,13 +65,14 @@ Administrators manage tokens under **Reporting → API tokens**
 (`/dashboard/api-tokens`). The menu entry appears while the feature flag is on.
 The page is for administrators only: a token grants data access outside the
 dashboard's own [permissions](USERS-AND-PERMISSIONS.md), so issuing one is
-treated like creating an account.
+treated like creating an account. The same page manages AI assistant
+connections when the [MCP server](MCP.md) is on.
 
 Without the dashboard, use the commands:
 
 ```bash
 php bin/console app:api:token:create "Power BI refresh"
-php bin/console app:api:token:create "Notebook" --view=bi_anonymous_daily_v1 --view=bi_dim_device_class_v1 --expires=90d
+php bin/console app:api:token:create "Notebook" --view=bi_anonymous_daily_v1 --expires=90d
 php bin/console app:api:token:create "Script" --expires=2027-06-30 --json
 php bin/console app:api:token:list
 php bin/console app:api:token:revoke 3f9a1c2e
@@ -79,17 +82,22 @@ Each token has:
 
 - **A name**, unique, saying what it is for.
 - **Approved views**: every approved view (the default, including approved views
-  later releases add), or a list.
+  later releases add), or a list. Labels and definitions (the seven
+  `bi_dim_*_v1` views and the two glossary views) can be read with any token:
+  they hold no traffic, and a token needs them to label the views it reads.
 - **Private views**: none by default. See [private views](#private-views).
 - **An expiry**: one year by default. Any duration (`30d`, `12w`, `6m`, `5y`),
   any future date, or `never` can be chosen; there is no upper limit. A token
   that never expires keeps working if it leaks, until someone revokes it, so the
   dashboard and the command warn when one is created.
+- **AI assistants (MCP)**: off by default. When on, AI assistants may also use
+  the token on the [MCP server](MCP.md#with-a-token). Every token works on the
+  API while the API is on.
 
-Creating a token needs the feature flag on. Listing and revoking always work,
+Creating a token needs the `reporting_api` or the `mcp_server` flag on. Listing and revoking always work,
 so a token can be revoked before the API is turned back on. Creating and
 revoking tokens are recorded in the [audit trail](AUDIT-TRAIL.md) under
-**Integrations**, with the token's ID; API requests themselves are not.
+**Integrations**, with the token's ID. API requests themselves are not; [MCP tool calls](MCP.md#usage-log) are.
 
 To provision the same tokens on several servers, copy
 `config/secrets/api-tokens.yaml`; it holds hashes only:
@@ -104,6 +112,7 @@ tokens:
     created_at: '2026-10-18T22:30:00+00:00'
     created_by: scott
     expires_at: '2027-10-18T22:30:00+00:00'   # ~ for never
+    mcp: false               # true: AI assistants may use it too
 ```
 
 An invalid file authenticates nothing until it is corrected, and nothing is
@@ -115,7 +124,7 @@ saved over it.
 | --- | --- |
 | `GET /api/v1/views` | The views this token may read, with descriptions and links |
 | `GET /api/v1/views/{view}` | A page of rows from one view |
-| `GET /api/v1/views/{view}/schema` | The view's columns: name, type, description, time zone and filter operators |
+| `GET /api/v1/views/{view}/schema` | The view's columns: name, type, label, description, time zone, filter operators, and the codes and labels of category columns |
 | `GET /api/v1/openapi.json` | An [OpenAPI 3.1 document](#openapi-document) for this token |
 
 `{view}` is the view's database name, version included:
@@ -138,6 +147,7 @@ GET /api/v1/views/bi_anonymous_daily_v1?filter[event_day][gte]=2026-10-01&filter
 | `sort` | `sort=-event_day,page_group` | Sort columns; `-` sorts descending |
 | `limit` | `limit=1000` | Rows per page: 100 by default, at most the [maximum page size](#settings) (10,000 unless changed) |
 | `offset` | `offset=1000` | Rows to skip |
+| `group` | `group=event_day` | Sum `event_count` by these columns; see [grouping](#grouping) |
 
 Any other parameter is an error, so a mistyped `filters[...]` fails instead of
 returning unfiltered rows. URL-encode values: `+` means a space in a query
@@ -177,6 +187,35 @@ within one refresh, or filter on its time column, for a consistent copy.
 There is no total count, and no default date range. For large views, filter on
 the time column rather than paging through everything.
 
+## Grouping
+
+`group` returns one row per combination of the named columns, with
+`event_count` summed over the released rows:
+
+```text
+GET /api/v1/views/bi_anonymous_daily_rollup_v1?group=event_day&filter[event_name]=view&sort=event_day
+```
+
+```json
+{"data": [{"event_day": "2026-10-01", "event_count": 1840}, {"event_day": "2026-10-02", "event_count": 1712}], "meta": {"group": ["event_day"], …}}
+```
+
+- Only views with `event_count` can be grouped, and `event_count` cannot be a
+  group column. With `group`, `fields` and `sort` may name only the group
+  columns and `event_count`, and `fields` must include every group column.
+- `group=` (empty) returns one total.
+- Filters apply before grouping. Sorting on `event_count` sorts on the sum.
+- Rows are ordered by the group columns after your `sort`, so paging is stable.
+- **Only released rows are summed.** The view has already withheld small
+  cells, so a sum never contains them, and grouping cannot bring them back. A
+  total with nothing released is `null`, not 0: nothing was released for those
+  conditions, which is not the same as nothing happening. Use
+  [`bi_anonymous_coverage_v1`](BI-CONNECTION.md#bi_anonymous_coverage_v1) to
+  see how complete each day is.
+
+Grouping saves downloading every hourly or daily row to add them up yourself,
+and it is how AI assistants total results.
+
 ## Responses
 
 ```json
@@ -191,6 +230,7 @@ the time column rather than paging through everything.
     "offset": 0,
     "returned": 1,
     "has_more": false,
+    "group": null,
     "reporting_timezone": "America/Chicago"
   },
   "links": {
@@ -218,6 +258,23 @@ server no extra memory. A response that ends before its closing `}` was
 interrupted; discard it and request the page again.
 
 Responses carry `Cache-Control: private, no-store`.
+
+### Schemas
+
+`GET /api/v1/views/{view}/schema` describes each column with its label and
+description from the published [glossary](BI-GLOSSARY.md), in the default
+locale, so an administrator's edits and custom columns appear as BI tools see
+them; until the glossary is published, the built-in text is used. Columns that
+hold a glossary dimension also list their codes:
+
+```json
+{"name": "device_class", "type": "string", "label": "Device class", "description": "…", "timezone": null,
+ "filter_operators": ["eq", "ne", "in", "starts_with", "null"],
+ "values": [{"code": "mobile", "label": "Mobile", "description": "…"}, …], "values_truncated": false}
+```
+
+At most 1,000 codes are listed per column; `values_truncated` says when there
+are more, and the matching `bi_dim_*_v1` view has them all.
 
 ## Time columns
 
@@ -251,7 +308,7 @@ Errors are [RFC 9457 problem details](https://www.rfc-editor.org/rfc/rfc9457)
 | Status | Code | Meaning |
 | --- | --- | --- |
 | 400 | `unknown_parameter` | A query parameter the endpoint does not take |
-| 400 | `invalid_parameter` | A malformed `fields`, `sort`, `limit`, `offset` or filter |
+| 400 | `invalid_parameter` | A malformed `fields`, `sort`, `limit`, `offset`, `group` or filter |
 | 400 | `unknown_column` | The view has no such column |
 | 400 | `unsupported_operator` | The column does not accept that filter operator |
 | 400 | `invalid_filter_value` | The value does not fit the column's type |
@@ -307,7 +364,8 @@ See also the [privacy guide](PRIVACY-COMPLIANCE.md#reporting-api).
 
 ## Rate limits
 
-Each token can make 120 requests per minute. Beyond that the API answers
+Each token can make 120 requests per minute on the API, and separately 120 on
+the [MCP server](MCP.md#limits). Beyond that the API answers
 `429 rate_limited` with `Retry-After` (seconds) and `X-RateLimit-Limit`.
 Requests without a valid token are not counted per token; limit them at the web
 server or proxy as for any public address.
@@ -320,8 +378,8 @@ precedence and locks the dashboard field.
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `reporting_api_private_views` | `false` | Whether tokens may be granted, and may read, [private views](#private-views) |
-| `reporting_api_max_page_size` | `10000` | The largest `limit` a request may ask for, from 1 to 1,000,000. Responses are streamed; larger pages take longer to query and download |
+| `reporting_api_private_views` | `false` | Whether tokens and AI assistant connections may be granted, and may read, [private views](#private-views) |
+| `reporting_api_max_page_size` | `10000` | The largest `limit` a request may ask for, from 1 to 1,000,000. Responses are streamed; larger pages take longer to query and download. AI assistants get at most 1,000 rows per call |
 
 ```yaml
 reporting_api_private_views: false

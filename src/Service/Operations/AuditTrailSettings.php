@@ -27,6 +27,8 @@ class AuditTrailSettings
     public const UPDATES = 'updates';
     public const OPERATIONS = 'operations';
     public const SIGN_INS = 'sign_ins';
+    /** AI assistant tool calls on the MCP server, recorded by McpUsageLog. */
+    public const ASSISTANT = 'assistant';
     /** Background job runs, recorded by ProcessingTasks under the category AuditTrail::CATEGORY_TASK. */
     public const TASKS = AuditTrail::CATEGORY_TASK;
 
@@ -49,7 +51,7 @@ class AuditTrailSettings
         ],
         self::INTEGRATIONS => [
             'label' => 'Integrations',
-            'description' => 'BigQuery and reporting database connections, keys, Google sign-in, connection tests, and the views and schedules they copy; creating and revoking reporting API tokens.',
+            'description' => 'BigQuery and reporting database connections, keys, Google sign-in, connection tests, and the views and schedules they copy; creating and revoking reporting API tokens; approving and revoking AI assistant connections.',
             'default' => true,
         ],
         self::UPDATES => [
@@ -65,6 +67,11 @@ class AuditTrailSettings
         self::TASKS => [
             'label' => 'Background job runs',
             'description' => 'Each finished view sync and maintenance run, scheduled or started by someone. Their processing tasks, which status pages read, are kept either way.',
+            'default' => true,
+        ],
+        self::ASSISTANT => [
+            'label' => 'AI assistant requests',
+            'description' => 'Each MCP tool call by an AI assistant: the credential, the tool, the view, how many rows came back and how long it took. Never the results, filter values or the conversation.',
             'default' => true,
         ],
         self::SIGN_INS => [

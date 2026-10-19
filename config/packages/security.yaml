@@ -18,6 +18,14 @@ security:
             stateless: true
             security: false
 
+        # The MCP server and the sign-in endpoints assistants call: bearer
+        # tokens and PKCE, never a session cookie. The page where an
+        # administrator approves an assistant is under /dashboard.
+        mcp:
+            pattern: ^/(?:mcp$|oauth/(?:token|register|revoke)$|\.well-known/(?:oauth-protected-resource|oauth-authorization-server|openid-configuration))
+            stateless: true
+            security: false
+
         script:
             pattern: ^/(?:aggregate|consent-manager|lib|tms-lite/sites/[a-f0-9]{24}/lib|(?:cmp-lite|standalone-cmp)/sites/[a-f0-9]{24}/consent)\.js$
             security: false

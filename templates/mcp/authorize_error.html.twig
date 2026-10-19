@@ -1,0 +1,12 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Assistant sign-in - {{ app_branding.name }}{% endblock %}
+
+{% block body %}
+<div class="mcp-authorize">
+    <h1 class="title">This connection cannot continue</h1>
+    <div class="notification is-danger" role="alert">{{ message }}</div>
+    <p>Nothing was connected, and you were not sent back to the assistant, because the request could not be verified. Start the connection again from the assistant, or ask the person who set it up.</p>
+    {{ component('Ui:DocsLink', {topic: 'mcp.sign-in', label: 'How assistant sign-in works'}) }}
+</div>
+{% endblock %}

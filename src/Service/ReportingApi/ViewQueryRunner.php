@@ -16,7 +16,9 @@ use Doctrine\DBAL\Platforms\AbstractPlatform;
  * identifiers quoted by the platform, every value bound, the platform's own
  * limit syntax, and an order that ends with columns making each row unique
  * so offset paging is stable. Rows are streamed (ViewReader::select) and
- * converted to the JSON form of each column's catalog type.
+ * converted to the JSON form of each column's catalog type. A grouped query
+ * selects the group columns and SUM(event_count), grouped by those columns,
+ * which together make each result row unique.
  *
  * Only views in ViewCatalog can be named; the caller has already checked
  * that the token may read the view.
@@ -50,22 +52,31 @@ class ViewQueryRunner
         foreach ($query->filters as $filter) {
             $conditions[] = $this->condition($platform, $quote($filter['column']), $filter, $params, $types);
         }
+        // The measure is summed, and sorted on as the sum, when grouped.
+        $expression = static fn (string $column): string => $query->isGrouped() && $column === ViewQuery::MEASURE
+            ? 'SUM('.$quote($column).')'
+            : $quote($column);
         $order = [];
         $ordered = [];
         foreach ($query->sort as $entry) {
-            $order[] = $quote($entry['column']).($entry['descending'] ? ' DESC' : ' ASC');
+            $order[] = $expression($entry['column']).($entry['descending'] ? ' DESC' : ' ASC');
             $ordered[$entry['column']] = true;
         }
-        foreach ($uniqueOrder as $column) {
+        foreach ($query->uniqueOrder($uniqueOrder) as $column) {
             if (!isset($ordered[$column])) {
                 $order[] = $quote($column).' ASC';
             }
         }
+        $select = array_map(
+            static fn (string $column): string => $query->isGrouped() && $column === ViewQuery::MEASURE ? $expression($column).' AS '.$quote($column) : $quote($column),
+            $query->fields,
+        );
 
-        $sql = 'SELECT '.implode(', ', array_map($quote, $query->fields))
+        $sql = 'SELECT '.implode(', ', $select)
             .' FROM '.$quote($query->view)
             .($conditions === [] ? '' : ' WHERE '.implode(' AND ', $conditions))
-            .' ORDER BY '.implode(', ', $order);
+            .($query->group === null || $query->group === [] ? '' : ' GROUP BY '.implode(', ', array_map($quote, $query->group)))
+            .($order === [] ? '' : ' ORDER BY '.implode(', ', $order));
 
         return [
             'sql' => $platform->modifyLimitQuery($sql, $query->limit + 1, $query->offset),

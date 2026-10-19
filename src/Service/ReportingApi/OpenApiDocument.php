@@ -52,7 +52,7 @@ class OpenApiDocument
         $available = [];
         foreach ($views as $view) {
             try {
-                $columns = $this->schema->columns($view);
+                $columns = $this->schema->described($view);
             } catch (ApiProblem) {
                 continue;
             }
@@ -158,13 +158,17 @@ class OpenApiDocument
     private function pageParameters(array $columns, int $defaultLimit, int $maxLimit): array
     {
         $names = implode(', ', array_column($columns, 'name'));
-
-        return [
+        $parameters = [
             ['name' => 'fields', 'in' => 'query', 'description' => 'Columns to return, comma-separated, in this order. Default: all ('.$names.').', 'schema' => ['type' => 'string']],
             ['name' => 'sort', 'in' => 'query', 'description' => 'Columns to sort by, comma-separated; prefix with - for descending. Rows are always ordered completely, so pages are stable.', 'schema' => ['type' => 'string']],
             ['name' => 'limit', 'in' => 'query', 'description' => 'Rows per page.', 'schema' => ['type' => 'integer', 'minimum' => 1, 'maximum' => $maxLimit, 'default' => $defaultLimit]],
             ['name' => 'offset', 'in' => 'query', 'description' => 'Rows to skip. Follow links.next for the next page.', 'schema' => ['type' => 'integer', 'minimum' => 0, 'default' => 0]],
         ];
+        if (in_array(ViewQuery::MEASURE, array_column($columns, 'name'), true)) {
+            $parameters[] = ['name' => 'group', 'in' => 'query', 'description' => 'Columns to group by, comma-separated: one row per combination, with '.ViewQuery::MEASURE.' summed over the released rows. Leave it empty (group=) for one total. fields and sort may then name only these columns and '.ViewQuery::MEASURE.'.', 'allowEmptyValue' => true, 'schema' => ['type' => 'string']];
+        }
+
+        return $parameters;
     }
 
     /**
@@ -224,6 +228,7 @@ class OpenApiDocument
                     'offset' => ['type' => 'integer'],
                     'returned' => ['type' => 'integer'],
                     'has_more' => ['type' => 'boolean'],
+                    'group' => ['type' => ['array', 'null'], 'items' => ['type' => 'string'], 'description' => 'The group columns of a grouped request; null for rows.'],
                     'reporting_timezone' => ['type' => 'string'],
                 ],
             ],
@@ -261,9 +266,15 @@ class OpenApiDocument
                                 'properties' => [
                                     'name' => ['type' => 'string'],
                                     'type' => ['type' => 'string', 'enum' => array_values(ViewSchema::API_TYPES)],
+                                    'label' => ['type' => ['string', 'null']],
                                     'description' => ['type' => ['string', 'null']],
                                     'timezone' => ['type' => ['string', 'null']],
                                     'filter_operators' => ['type' => 'array', 'items' => ['type' => 'string']],
+                                    'values' => ['type' => ['array', 'null'], 'description' => 'The codes this column holds, with labels, for columns with a glossary dimension.', 'items' => [
+                                        'type' => 'object',
+                                        'properties' => ['code' => ['type' => 'string'], 'label' => ['type' => 'string'], 'description' => ['type' => ['string', 'null']]],
+                                    ]],
+                                    'values_truncated' => ['type' => 'boolean'],
                                 ],
                             ]],
                         ],

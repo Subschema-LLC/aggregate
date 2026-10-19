@@ -56,7 +56,10 @@ services:
             # Transfer value objects and package files, built by DataTransfer.
             - '../src/Service/DataTransfer/{DataTransferException,IdMap,TransferPackage,TransferReport}.php'
             # Reporting API value objects and problems.
-            - '../src/Service/ReportingApi/{ApiProblem,ApiToken,ViewQuery}.php'
+            - '../src/Service/ReportingApi/{ApiProblem,ApiToken,ViewQuery,ViewScope,ViewGrant}.php'
+            # MCP value objects, errors and static helpers.
+            - '../src/Service/Mcp/{McpConnection,McpPrincipal,McpHttpError,McpToolError,McpProtocolError,McpViewGuide}.php'
+            - '../src/Service/Mcp/OAuth/{OAuthError,OAuthClient,RedirectUri,AuthorizationRequest}.php'
 
     App\Controller\HomeController: ~
     App\Controller\ReceiveController:
@@ -79,8 +82,14 @@ services:
         tags: ['controller.service_arguments']
     App\Controller\ReportingApiController:
         tags: ['controller.service_arguments']
+    App\Controller\McpController:
+        tags: ['controller.service_arguments']
 
     App\Service\ReportingApi\ApiTokenStore:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
+    App\Service\Mcp\OAuth\OAuthStore:
         arguments:
             $projectDir: '%kernel.project_dir%'
 
