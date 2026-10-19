@@ -1,0 +1,9 @@
+{% extends 'email/layout.html.twig' %}
+
+{% block body %}
+    <p style="margin:0 0 16px;font-size:18px;font-weight:600;">Email is working</p>
+    <p style="margin:0 0 16px;">This test message was sent through {{ provider_label }} at {{ sent_at|date('Y-m-d H:i', 'UTC') }} UTC. Other messages from {{ brand_name }} will be sent the same way.</p>
+    {% if app_url %}
+        <p style="margin:0;">Sent by <a href="{{ app_url }}" style="color:#1f5bd8;">{{ app_url }}</a>.</p>
+    {% endif %}
+{% endblock %}

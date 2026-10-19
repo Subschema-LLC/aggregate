@@ -953,7 +953,40 @@ E2E::step('the reporting API and the MCP server group the views, and an assistan
     E2E::check((int) $db->fetchOne("SELECT COUNT(*) FROM audit_trail WHERE operation = 'assistant_sign_in_decided' AND actor = 'admin'") === 1, 'The approval was not recorded in the audit trail.');
 });
 
-$version = (string) connection($root)->fetchOne(match ($driver) {
+E2E::step('the Email page saves a service and a test send is recorded without the address', static function () use ($root, $browser, $base): void {
+    $crawler = $browser->request('GET', $base.'/dashboard/email');
+    E2E::check($crawler->filter('.email-status')->count() === 1 && str_contains($crawler->filter('.email-status')->text(), 'Email is off'), 'The Email page did not start with email off. '.pageProblem($browser));
+    // The null transport accepts every message: the step needs no mail server.
+    $form = $crawler->filter('form[action$="/dashboard/email/save"]')->form();
+    $form['email_enabled'] = '1';
+    $form['email_provider'] = 'dsn';
+    $form['email_from_address'] = 'no-reply@example.com';
+    $form['credential[dsn]'] = 'null://null';
+    $browser->submit($form);
+    $config = (string) file_get_contents($root.'/config/aggregate.yaml');
+    $parsed = Yaml::parse($config);
+    E2E::check(($parsed['email_enabled'] ?? null) === true && ($parsed['email_provider'] ?? null) === 'dsn' && !str_contains($config, 'null://'), 'The email settings were not saved, or the DSN reached aggregate.yaml. '.pageProblem($browser));
+    E2E::check((Yaml::parseFile($root.'/config/secrets/email.yaml')['dsn'] ?? null) === 'null://null', 'The DSN was not saved to config/secrets/email.yaml.');
+
+    $db = connection($root);
+    $db->executeStatement("UPDATE users SET email = 'admin-e2e@example.org' WHERE username = 'admin'");
+    $crawler = $browser->request('GET', $base.'/dashboard/email');
+    $browser->submit($crawler->filter('form[action$="/dashboard/email/test"]')->form());
+    E2E::check(str_contains((string) $browser->getResponse()->getContent(), 'A test email was sent to your address'), 'The test email was not sent. '.pageProblem($browser));
+    [$status, $output] = consoleResult($root, ['app:email:test', 'admin']);
+    E2E::check($status === 0, 'app:email:test admin: '.$output);
+
+    $sends = $db->fetchAllAssociative("SELECT subject, status, triggered_by, requested_by, external_id, details FROM processing_tasks WHERE task_type = 'email_send' ORDER BY id");
+    E2E::check(count($sends) === 2 && $sends[0]['status'] === 'succeeded' && $sends[0]['triggered_by'] === 'dashboard' && $sends[0]['requested_by'] === 'admin' && $sends[1]['triggered_by'] === 'command' && $sends[0]['external_id'] !== null, 'Email sends: '.json_encode($sends));
+    E2E::check((int) $db->fetchOne("SELECT COUNT(*) FROM audit_trail WHERE operation = 'email_send' AND outcome = 'succeeded'") === 2, 'Email sends were not audited.');
+    E2E::check((int) $db->fetchOne("SELECT COUNT(*) FROM audit_trail WHERE operation = 'email_settings_saved' AND actor = 'admin'") === 1, 'Saving the Email page was not audited.');
+    $stored = json_encode([$db->fetchAllAssociative('SELECT * FROM processing_tasks'), $db->fetchAllAssociative('SELECT * FROM audit_trail')]);
+    E2E::check(!str_contains((string) $stored, 'admin-e2e@example.org') && !str_contains((string) $stored, 'null://'), 'A recipient address or the DSN was stored in processing_tasks or audit_trail.');
+    $status = json_decode(console($root, ['app:email:status', '--json']), true);
+    E2E::check(($status['ready'] ?? false) === true && ($status['sends']['test']['status'] ?? null) === 'succeeded', 'app:email:status: '.json_encode($status));
+});
+
+$version =(string) connection($root)->fetchOne(match ($driver) {
     'mysql' => 'SELECT VERSION()',
     'pgsql' => 'SHOW server_version',
     'sqlsrv' => "SELECT CAST(SERVERPROPERTY('ProductVersion') AS NVARCHAR(128))",

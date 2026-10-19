@@ -200,6 +200,11 @@ final class DashboardPages
         // Approving an AI assistant grants data access the same way.
         'app_mcp_authorize' => [self::ADMIN],
         'app_mcp_authorize_decide' => [self::ADMIN],
+        // An email credential sends mail as the organization, so the
+        // service stays with administrators.
+        'app_email' => [self::ADMIN],
+        'app_email_save' => [self::ADMIN],
+        'app_email_test' => [self::ADMIN],
         // Everyone manages their own profile.
         'app_profile' => [self::SIGNED_IN],
         'app_profile_save' => [self::SIGNED_IN],

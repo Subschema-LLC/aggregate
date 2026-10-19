@@ -46,6 +46,7 @@ export const sections = [
       { source: 'docs/DATA-MODEL.md', route: 'configure/data-model', label: 'Custom data model' },
       { source: 'docs/FEATURE-FLAGS.md', route: 'configure/feature-flags', label: 'Feature flags' },
       { source: 'docs/USERS-AND-PERMISSIONS.md', route: 'configure/users-and-permissions', label: 'Users and permissions' },
+      { source: 'docs/EMAIL.md', route: 'configure/email', label: 'Transactional email' },
     ],
   },
   {

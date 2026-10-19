@@ -236,6 +236,18 @@ parameters:
         - audit trail
         - processing tasks
         - jobs
+    Email:
+      description: 'The service that sends transactional email, the sender and a test message'
+      synonyms:
+        - mail
+        - smtp
+        - postmark
+        - sendgrid
+        - mailgun
+        - transactional email
+        - sender
+        - from address
+        - test email
     'Audit trail':
       description: 'Who changed what and when: settings, users, websites, integrations, updates, manual runs, job runs and sign-ins'
       synonyms:

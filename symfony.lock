@@ -158,6 +158,15 @@
             "./config/packages/mailer.yaml"
         ]
     },
+    "symfony/mailgun-mailer": {
+        "version": "7.4",
+        "recipe": {
+            "repo": "github.com/symfony/recipes",
+            "branch": "main",
+            "version": "4.4",
+            "ref": "808e7052971863a6b94df61807f41a71d480885b"
+        }
+    },
     "symfony/maker-bundle": {
         "version": "1.63",
         "recipe": {
@@ -203,6 +212,15 @@
             "./config/packages/notifier.yaml"
         ]
     },
+    "symfony/postmark-mailer": {
+        "version": "7.4",
+        "recipe": {
+            "repo": "github.com/symfony/recipes",
+            "branch": "main",
+            "version": "4.4",
+            "ref": "a5924b4e3d78962df013d8434f463c090594ae79"
+        }
+    },
     "symfony/property-info": {
         "version": "7.3",
         "recipe": {
@@ -240,6 +258,15 @@
             "./config/packages/security.yaml",
             "./config/routes/security.yaml"
         ]
+    },
+    "symfony/sendgrid-mailer": {
+        "version": "7.4",
+        "recipe": {
+            "repo": "github.com/symfony/recipes",
+            "branch": "main",
+            "version": "4.4",
+            "ref": "1caff9467bfc5c7f68503aa9eba9dc762a30ae21"
+        }
     },
     "symfony/stimulus-bundle": {
         "version": "2.26",

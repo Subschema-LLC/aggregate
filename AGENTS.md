@@ -22,7 +22,9 @@ remain straightforward. Favor understandable designs over feature count.
   custom property. Add tables or abstractions only for a concrete requirement.
   Background jobs record runs in the shared `processing_tasks` and
   `audit_trail` tables through `App\Service\Operations`, not in a status table
-  of their own.
+  of their own. Email goes through `App\Service\Email\TransactionalMailer`,
+  which records each send there without the recipient; a new email service is
+  an `EmailProvider` class, not a new code path (see [docs/EMAIL.md](docs/EMAIL.md#add-a-provider)).
 - **Keep the application headless.** Collection, installation, configuration,
   and maintenance must remain usable with the dashboard disabled. The optional
   web UI is for administration: setup, website/user management, configuration,
