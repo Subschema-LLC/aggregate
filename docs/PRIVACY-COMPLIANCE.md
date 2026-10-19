@@ -490,6 +490,7 @@ The [MCP server](MCP.md) is off by default, behind the `mcp_server` feature flag
 - Each send is recorded as a processing task and an audit entry with the kind of message, who started it, the outcome and the service's message ID. Neither records the address, the content or a code it carries, and a failure reason is redacted before it is stored or logged.
 - Messages carry no tracking pixels or remote images. Mailgun messages turn tracking off; turn off open and click tracking for the Postmark server or SendGrid key used, since those are account settings.
 - Credentials are kept in `config/secrets/email.yaml`, readable only by the application's user, or in the environment, and are never shown, logged or recorded.
+- With [two-step sign-in](EMAIL.md#two-step-sign-in), every sign-in sends a code to the user's address through the email service, which therefore learns when each user signs in. The code is handled like a sign-in code.
 - A [sign-in code](EMAIL.md#sign-in-codes) exists only in the email and, as a keyed hash, in the requesting browser's server-side session for 10 minutes. Requests for codes are recorded under the sign-ins audit area, naming the account only when it exists.
 
 ## Administrative controls

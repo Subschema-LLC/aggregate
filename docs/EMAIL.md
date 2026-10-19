@@ -3,7 +3,8 @@
 [README](../README.md) · [Configuration](CONFIGURATION.md) · [Audit trail](AUDIT-TRAIL.md)
 
 Aggregate sends a small number of messages to its own users, such as
-[sign-in codes](#sign-in-codes), through an email service you choose. It never
+[two-step sign-in](#two-step-sign-in) and [sign-in codes](#sign-in-codes),
+through an email service you choose. It never
 emails website visitors or analytics data. Email is off until an administrator
 turns it on.
 
@@ -11,6 +12,7 @@ turns it on.
 - [Set it up on the Email page](#set-it-up-on-the-email-page)
 - [Set it up in YAML](#set-it-up-in-yaml)
 - [Send a test message](#send-a-test-message)
+- [Two-step sign-in](#two-step-sign-in)
 - [Sign-in codes](#sign-in-codes)
 - [What is recorded](#what-is-recorded)
 - [What a message carries](#what-a-message-carries)
@@ -110,6 +112,44 @@ checked before email is turned on; every other message waits until it is on.
 The command prints the service's message ID, which finds the message in the
 service's activity log. A failure prints the service's reason.
 
+## Two-step sign-in
+
+With `mfa_required: true` (**Two-step sign-in: Required for every user** on the
+Email page, or `MFA_REQUIRED`), a correct password no longer signs anyone in on
+its own. The user is asked for a six-digit code emailed to the address on their
+account, and only the code finishes the sign-in. The email also tells the
+owner that their password was just used. It is off by default and, to start,
+applies to every user.
+
+- **The code** lasts 10 minutes, allows 5 tries and works once, in the browser
+  where the password was entered. A new code needs a new sign-in with the
+  password; an account gets at most 3 codes in 15 minutes. Wrong codes count
+  against sign-in throttling and the per-account pause, as for
+  [sign-in codes](#sign-in-codes).
+- **Turning it on** from the page needs working email and an email address on
+  your own profile, so the change cannot lock you out. Your session stays
+  signed in; every other session signs in again on its next page. The page
+  lists users without an email address: they cannot sign in until they get
+  one, and nobody can remove their own address while it is required.
+- **It fails closed.** If email stops working, a password still cannot sign in
+  without its code, so nobody can finish signing in until email works again.
+  To recover, fix the email settings, or set `mfa_required: false` in
+  `config/aggregate.yaml` (or `MFA_REQUIRED=0`) on the server. An invalid value
+  counts as required.
+- **Sign-in codes alone are not accepted** while it is required: the emailed
+  code is then the second factor, so code-only sign-in would make it one
+  factor again. Forgotten passwords are reset by an administrator on the Users
+  page or with `app:user:reset-password`.
+- **Nothing is stored**, as for sign-in codes: the code exists only in the email
+  and, as an HMAC, in the browser's server-side session.
+
+An emailed code protects against a stolen or guessed password, not against
+someone who also controls the user's mailbox. Each step is recorded under
+**Sign-ins**: `password_accepted` when the password was right and a code was
+sent, then `signed_in` noting two-step sign-in, or `sign_in_failed` with the
+reason. Each code sent is an `email_send` task with subject
+`sign_in_second_step`.
+
 ## Sign-in codes
 
 With `sign_in_codes_enabled: true` (or **Sign-in codes: On** on the Email page,
@@ -118,6 +158,7 @@ Email me a sign-in code**. The user enters their username or email address
 and gets a six-digit code at the address on their account, which signs them in
 instead of their password. The option appears only while email can be sent,
 and only users with an email address can use it; everyone keeps their password.
+It is not offered while [two-step sign-in](#two-step-sign-in) is required.
 
 - **A code lasts 10 minutes, allows 5 tries and works once,** in the browser
   that asked for it. Asking again replaces it. An address that several users
@@ -154,7 +195,7 @@ Each send is one row in `processing_tasks` and one entry in `audit_trail`
 (see [task and audit records](DATABASE.md#processing-tasks-and-audit-trail)):
 
 - **task type** `email_send`, **subject** the kind of message (`test`,
-  `sign_in_code`), how it was started (`dashboard`, `command`, or `request` for
+  `sign_in_code`, `sign_in_second_step`), how it was started (`dashboard`, `command`, or `request` for
   a code asked for on the sign-in page) and by whom;
 - **external ID** the service's message ID;
 - **details** the service used, or the reason a send failed.

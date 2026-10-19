@@ -92,6 +92,22 @@ final class SignInCodesTest extends TestCase
         self::assertNull($this->codes()->verify($this->session, $code), 'Changing the account in the session invalidates the code');
     }
 
+    public function testASecondStepCodeKeepsItsKind(): void
+    {
+        $codes = $this->codes();
+        $code = (string) $codes->issue($this->session, 'scott', SignInCodes::KIND_SECOND_STEP);
+        self::assertSame(SignInCodes::KIND_SECOND_STEP, $codes->pendingKind($this->session));
+        self::assertSame(SignInCodes::KIND_SECOND_STEP, $codes->pending($this->session)['kind']);
+
+        $pending = $this->session->get(SignInCodes::SESSION_KEY);
+        $this->session->set(SignInCodes::SESSION_KEY, ['kind' => SignInCodes::KIND_SIGN_IN] + $pending);
+        self::assertNull($codes->verify($this->session, $code), 'Relabelling the kind invalidates the code');
+
+        $code = (string) $codes->issue($this->session, 'scott', SignInCodes::KIND_SECOND_STEP);
+        self::assertSame('scott', $codes->verify($this->session, $code));
+        self::assertNull($codes->pendingKind($this->session));
+    }
+
     public function testATamperedSessionEntryIsIgnored(): void
     {
         $this->session->set(SignInCodes::SESSION_KEY, ['username' => 'scott', 'hash' => 'x', 'issued_at' => 'now', 'attempts' => 0]);

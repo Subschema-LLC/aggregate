@@ -23,9 +23,11 @@ use Symfony\Component\Security\Http\SecurityRequestAttributes;
 use Symfony\Component\Security\Http\Util\TargetPathTrait;
 
 /**
- * Signs a browser in with the code it was emailed (POST /login/code/verify).
- * The account comes from the browser's pending sign-in (SignInCodes), never
- * from the form, so a code only ever signs in the account it was sent for.
+ * Signs a browser in with the code it was emailed (POST /login/code/verify):
+ * a sign-in code on its own, or the second step after a password
+ * (SecondStepListener). The account comes from the browser's pending
+ * sign-in (SignInCodes), never from the form, so a code only ever signs in
+ * the account it was sent for.
  *
  * Guessing is bounded three ways: MAX_ATTEMPTS per code, the firewall's
  * login throttling (shared with passwords), and sign_in_code_guess, which
@@ -43,6 +45,10 @@ class SignInCodeAuthenticator extends AbstractAuthenticator
     public const ROUTE = 'app_login_code_verify';
     public const CSRF_TOKEN_ID = 'login_code_verify';
     public const TOKEN_ATTRIBUTE = 'aggregate_signed_in_with_code_at';
+    /** Set on a token that finished two-step sign-in; SecondStepGate signs out sessions without it. */
+    public const SECOND_STEP_ATTRIBUTE = 'aggregate_second_step_at';
+    /** The kind of code that signed in, on the passport, for the audit trail. */
+    public const KIND_ATTRIBUTE = 'aggregate_sign_in_kind';
     public const PASSWORD_RESET_WINDOW = 900;
     public const WRONG_CODE = 'That code is wrong or has expired. Check the latest email, or ask for a new code.';
 
@@ -62,10 +68,12 @@ class SignInCodeAuthenticator extends AbstractAuthenticator
 
     public function authenticate(Request $request): Passport
     {
-        if (!$this->settings->isAvailable()) {
+        $session = $request->getSession();
+        $kind = $this->codes->pendingKind($session);
+        // A second step continues whatever the sign-in code setting is.
+        if ($kind !== SignInCodes::KIND_SECOND_STEP && !$this->settings->isAvailable()) {
             throw new CustomUserMessageAuthenticationException('Sign-in codes are not available. Sign in with your password.');
         }
-        $session = $request->getSession();
         $typed = (string) $request->request->get('code', '');
         $username = $this->codes->pendingUsername($session);
         if ($username === null) {
@@ -74,7 +82,7 @@ class SignInCodeAuthenticator extends AbstractAuthenticator
             throw new CustomUserMessageAuthenticationException(self::WRONG_CODE);
         }
 
-        return new Passport(
+        $passport = new Passport(
             new UserBadge($username),
             new CustomCredentials(function (string $typed, UserInterface $user) use ($session): bool {
                 $limiter = $this->guessLimiter->create(hash('sha256', 'account:'.$user->getUserIdentifier()));
@@ -91,12 +99,19 @@ class SignInCodeAuthenticator extends AbstractAuthenticator
             }, $typed),
             [new CsrfTokenBadge(self::CSRF_TOKEN_ID, (string) $request->request->get('_csrf_token', ''))],
         );
+        $passport->setAttribute(self::KIND_ATTRIBUTE, $kind);
+
+        return $passport;
     }
 
     public function createToken(Passport $passport, string $firewallName): TokenInterface
     {
         $token = parent::createToken($passport, $firewallName);
-        $token->setAttribute(self::TOKEN_ATTRIBUTE, time());
+        if ($passport->getAttribute(self::KIND_ATTRIBUTE) === SignInCodes::KIND_SECOND_STEP) {
+            $token->setAttribute(self::SECOND_STEP_ATTRIBUTE, time());
+        } else {
+            $token->setAttribute(self::TOKEN_ATTRIBUTE, time());
+        }
 
         return $token;
     }
@@ -119,6 +134,12 @@ class SignInCodeAuthenticator extends AbstractAuthenticator
         $request->getSession()->set(SecurityRequestAttributes::AUTHENTICATION_ERROR, $exception);
 
         return new RedirectResponse($this->urls->generate('app_login_code'));
+    }
+
+    /** Whether this session finished two-step sign-in. */
+    public static function completedSecondStep(?TokenInterface $token): bool
+    {
+        return $token !== null && $token->hasAttribute(self::SECOND_STEP_ATTRIBUTE) && is_int($token->getAttribute(self::SECOND_STEP_ATTRIBUTE));
     }
 
     /** Whether this session was signed in with a code less than PASSWORD_RESET_WINDOW seconds ago. */

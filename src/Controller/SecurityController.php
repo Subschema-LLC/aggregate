@@ -45,9 +45,9 @@ class SecurityController extends AbstractController
     }
 
     /**
-     * Asking for an emailed code, then entering it. Offered only while sign-in
-     * codes are on and email can be sent; otherwise this leads back to the
-     * password form.
+     * Asking for an emailed code, then entering it; also where the second step
+     * of two-step sign-in is entered. Asking is offered only while sign-in
+     * codes are available; otherwise this leads back to the password form.
      */
     #[Route('/login/code', name: 'app_login_code', methods: ['GET'])]
     public function loginCode(Request $request, AuthenticationUtils $authenticationUtils, SignInCodes $codes): Response
@@ -58,13 +58,18 @@ class SecurityController extends AbstractController
         if ($this->getUser()) {
             return $this->redirectToRoute('app_dashboard');
         }
-        if (!$this->signInCodes->isAvailable()) {
+        $pending = $codes->pending($request->getSession());
+        $secondStep = ($pending['kind'] ?? null) === SignInCodes::KIND_SECOND_STEP;
+        if (!$secondStep && !$this->signInCodes->isAvailable()) {
             return $this->redirectToRoute('app_login');
         }
-        $pending = $request->query->has('new') ? null : $codes->pending($request->getSession());
+        if ($request->query->has('new') && !$secondStep) {
+            $pending = null;
+        }
 
         return $this->render('security/login_code.html.twig', [
             'pending' => $pending,
+            'second_step' => $secondStep,
             'error' => $authenticationUtils->getLastAuthenticationError(),
             'minutes' => intdiv(SignInCodes::LIFETIME, 60),
             'digits' => SignInCodes::DIGITS,

@@ -237,8 +237,14 @@ parameters:
         - processing tasks
         - jobs
     Email:
-      description: 'The service that sends transactional email, the sender, a test message and sign-in codes'
+      description: 'The service that sends transactional email, the sender, a test message, two-step sign-in and sign-in codes'
       synonyms:
+        - mfa
+        - 2fa
+        - two-factor
+        - two-step
+        - multi-factor
+        - second factor
         - sign-in codes
         - passcode
         - one-time code

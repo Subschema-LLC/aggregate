@@ -32,6 +32,22 @@ class UserRepository extends ServiceEntityRepository implements PasswordUpgrader
         return count($matches) === 1 && $matches[0] instanceof User ? $matches[0] : null;
     }
 
+    /**
+     * Usernames of users with no email address, who cannot finish two-step
+     * sign-in.
+     *
+     * @return list<string>
+     */
+    public function usernamesWithoutEmail(): array
+    {
+        return array_map('strval', $this->createQueryBuilder('u')
+            ->select('u.username')
+            ->where('u.email IS NULL')
+            ->orderBy('u.username', 'ASC')
+            ->getQuery()
+            ->getSingleColumnResult());
+    }
+
     public function upgradePassword(PasswordAuthenticatedUserInterface $user, string $newHashedPassword): void
     {
         if (!$user instanceof User) {

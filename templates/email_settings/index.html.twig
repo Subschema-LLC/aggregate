@@ -123,6 +123,32 @@
             </div>
         {% endfor %}
 
+        <div class="box email-two-step">
+            <h2 class="title is-4">Two-step sign-in</h2>
+            <p class="mb-4">Asks every user for a {{ constant('App\\Security\\SignInCode\\SignInCodes::DIGITS') }}-digit code, emailed to the address on their account, after their password. A stolen password alone then signs nobody in, and the email tells the owner their password was used.</p>
+            <div class="field">
+                <label class="label" for="mfa-required">Two-step sign-in</label>
+                <div class="control">
+                    <div class="select">
+                        <select id="mfa-required" name="mfa_required"{% if mfa_override %} disabled{% endif %}>
+                            <option value="0"{% if not mfa %} selected{% endif %}>Off: a password signs in</option>
+                            <option value="1"{% if mfa %} selected{% endif %}>Required for every user</option>
+                        </select>
+                    </div>
+                </div>
+                {% if mfa_override %}
+                    <p class="help">Controlled by <code>MFA_REQUIRED</code>.</p>
+                {% else %}
+                    <p class="help">Turning it on needs working email and an address on your own profile. Other users sign in again on their next page. If email stops working, nobody can finish signing in until it works again or this is turned off in YAML.</p>
+                {% endif %}
+            </div>
+            {% if users_without_email %}
+                <div class="notification {{ mfa ? 'is-danger' : 'is-warning' }} is-light email-users-without-email">
+                    {{ mfa ? 'These users cannot sign in' : 'With two-step sign-in, these users could not sign in' }} until they have an email address: <strong>{{ users_without_email|join(', ') }}</strong>. Add addresses on the <a href="{{ path('app_users') }}">Users</a> page.
+                </div>
+            {% endif %}
+        </div>
+
         <div class="box email-sign-in-codes">
             <h2 class="title is-4">Sign-in codes</h2>
             <p class="mb-4">Lets users sign in with a {{ constant('App\\Security\\SignInCode\\SignInCodes::DIGITS') }}-digit code sent to the email address on their account, instead of their password. A code lasts {{ constant('App\\Security\\SignInCode\\SignInCodes::LIFETIME') // 60 }} minutes and works once, in the browser that asked for it. Someone who forgot their password signs in with a code and sets a new one on their profile.</p>
@@ -138,6 +164,8 @@
                 </div>
                 {% if sign_in_codes_override %}
                     <p class="help">Controlled by <code>SIGN_IN_CODES_ENABLED</code>.</p>
+                {% elseif mfa %}
+                    <p class="help">Not offered while two-step sign-in is required: the emailed code is then the second step, so a code alone signs nobody in. An administrator resets a forgotten password.</p>
                 {% elseif sign_in_codes and problem is not null %}
                     <p class="help has-text-warning-dark">The sign-in page offers codes only while email can be sent.</p>
                 {% else %}

@@ -6,6 +6,8 @@ namespace App\Tests\Controller;
 
 use App\Controller\EmailSettingsController;
 use App\Entity\User;
+use App\Repository\UserRepository;
+use App\Security\SignInCode\SignInCodeAuthenticator;
 use App\Security\SignInCode\SignInCodeSettings;
 use App\Service\AggregateConfigLoader;
 use App\Service\AppBranding;
@@ -53,11 +55,14 @@ final class EmailSettingsControllerTest extends TestCase
     private ?Session $session = null;
     /** @var list<array<string, mixed>> */
     private array $sent = [];
+    /** @var list<string> */
+    private array $withoutEmail = [];
+    private ?TokenStorage $tokens = null;
 
     protected function setUp(): void
     {
         $this->environment = [$_ENV, $_SERVER];
-        foreach (['DASHBOARD_ENABLED', 'EMAIL_ENABLED', 'EMAIL_PROVIDER', 'EMAIL_FROM_ADDRESS', 'EMAIL_POSTMARK_SERVER_TOKEN', 'EMAIL_SENDGRID_API_KEY', 'SIGN_IN_CODES_ENABLED'] as $key) {
+        foreach (['DASHBOARD_ENABLED', 'EMAIL_ENABLED', 'EMAIL_PROVIDER', 'EMAIL_FROM_ADDRESS', 'EMAIL_POSTMARK_SERVER_TOKEN', 'EMAIL_SENDGRID_API_KEY', 'SIGN_IN_CODES_ENABLED', 'MFA_REQUIRED'] as $key) {
             unset($_ENV[$key], $_SERVER[$key]);
         }
         $this->projectDir = sys_get_temp_dir().'/aggregate-email-page-'.bin2hex(random_bytes(8));
@@ -188,6 +193,37 @@ final class EmailSettingsControllerTest extends TestCase
         unset($_SERVER['SIGN_IN_CODES_ENABLED']);
     }
 
+    public function testTwoStepSignInIsTurnedOnOnlyWhenNobodyIncludingTheAdministratorWouldBeLockedOut(): void
+    {
+        $this->withoutEmail = ['alex'];
+        $form = ['_csrf_token' => 'valid', 'mfa_required' => '1'];
+
+        $this->call('save', $this->request('POST', '/dashboard/email/save', $form, 'scott@example.com'));
+        self::assertStringContainsString('Two-step sign-in was not turned on: email must work first', implode(' ', $this->session->getFlashBag()->get('error')));
+        self::assertArrayNotHasKey('mfa_required', Yaml::parseFile($this->projectDir.'/config/aggregate.yaml'));
+
+        file_put_contents($this->projectDir.'/config/aggregate.yaml', Yaml::dump(['brand_name' => 'Example Analytics', 'email_enabled' => true, 'email_provider' => 'postmark', 'email_from_address' => 'no-reply@example.com']));
+        (new EmailSecrets($this->projectDir))->set((new PostmarkProvider())->credential(), 'token');
+        $this->call('save', $this->request('POST', '/dashboard/email/save', $form));
+        self::assertStringContainsString('add an email address to your profile first', implode(' ', $this->session->getFlashBag()->get('error')));
+        self::assertArrayNotHasKey('mfa_required', Yaml::parseFile($this->projectDir.'/config/aggregate.yaml'));
+
+        $this->call('save', $this->request('POST', '/dashboard/email/save', $form, 'scott@example.com'));
+        self::assertTrue(Yaml::parseFile($this->projectDir.'/config/aggregate.yaml')['mfa_required']);
+        $success = implode(' ', $this->session->getFlashBag()->get('success'));
+        self::assertStringContainsString('Two-step sign-in is now required', $success);
+        self::assertStringContainsString('cannot sign in until they get one: alex', $success);
+        self::assertTrue(SignInCodeAuthenticator::completedSecondStep($this->tokens?->getToken()), 'The administrator who turned it on stays signed in');
+
+        $crawler = $this->crawl($this->call('index', $this->request('GET', '/dashboard/email', [], 'scott@example.com')));
+        self::assertCount(1, $crawler->filter('select[name="mfa_required"] option[value="1"][selected]'));
+        self::assertStringContainsString('alex', $crawler->filter('.email-users-without-email')->text());
+        self::assertStringContainsString('Not offered while two-step sign-in is required', $crawler->filter('.email-sign-in-codes')->text());
+
+        $this->call('save', $this->request('POST', '/dashboard/email/save', ['_csrf_token' => 'valid', 'mfa_required' => '0'], 'scott@example.com'));
+        self::assertFalse(Yaml::parseFile($this->projectDir.'/config/aggregate.yaml')['mfa_required']);
+    }
+
     public function testThePageIsUnavailableWithoutTheDashboard(): void
     {
         $_SERVER['DASHBOARD_ENABLED'] = '0';
@@ -225,7 +261,9 @@ final class EmailSettingsControllerTest extends TestCase
         });
         $emailTwig = new Environment(new FilesystemLoader(dirname(__DIR__, 2).'/templates'), ['autoescape' => 'name']);
         $mailer = new TransactionalMailer($settings, $secrets, $tasks, $emailTwig, new AppBranding($config, $this->projectDir), $config, new NullLogger(), EmailTestKit::transports($client));
-        $controller = new EmailSettingsController($config, $settings, $secrets, $mailer, $tasks, new SignInCodeSettings($config, $mailer), new NullLogger());
+        $users = $this->createStub(UserRepository::class);
+        $users->method('usernamesWithoutEmail')->willReturnCallback(fn (): array => $this->withoutEmail);
+        $controller = new EmailSettingsController($config, $settings, $secrets, $mailer, $tasks, new SignInCodeSettings($config, $mailer), $users, new NullLogger());
 
         $authorization = $this->createStub(AuthorizationCheckerInterface::class);
         $authorization->method('isGranted')->willReturn(true);
@@ -237,6 +275,7 @@ final class EmailSettingsControllerTest extends TestCase
         $stack->push($request);
         $tokens = new TokenStorage();
         $tokens->setToken(new UsernamePasswordToken($this->user($request->attributes->get('_test_email')), 'main', ['ROLE_ADMIN']));
+        $this->tokens = $tokens;
 
         $twig = new Environment(new ChainLoader([
             new ArrayLoader(['base.html.twig' => '<title>{% block title %}{% endblock %}</title><body>{% block body %}{% endblock %}</body>']),
@@ -247,6 +286,7 @@ final class EmailSettingsControllerTest extends TestCase
             'app_email_save' => '/dashboard/email/save',
             'app_email_test' => '/dashboard/email/test',
             'app_profile' => '/dashboard/profile',
+            'app_users' => '/dashboard/users',
             'app_dashboard' => '/dashboard',
         }));
         $twig->addFunction(new TwigFunction('csrf_token', static fn (): string => 'rendered-token'));
