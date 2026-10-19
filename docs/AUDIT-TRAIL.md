@@ -31,10 +31,10 @@ Entries belong to areas. Each area can be switched off on its own.
 | Settings changes | `settings` | Saving a settings page: collection, BI disclosure, data model, glossary, page groups, reporting timezone, branding, general settings, consent and tag manager, organization traffic, feature flags, data lifecycle, reporting API settings and the audit switches | On |
 | Users | `users` | Installing; creating, changing and deleting users, their access and permission groups; profile changes and passwords; from the dashboard, the installer or the command line | On |
 | Websites and groups | `websites` | Adding and removing websites, their domain rules, and creating, renaming, deleting and assigning website groups | On |
-| Integrations | `integrations` | BigQuery and reporting database connections, keys, Google sign-in, connection tests, and the views and schedules they copy; creating and revoking reporting API tokens; approving, denying and revoking AI assistant connections; from the dashboard or the command line | On |
+| Integrations | `integrations` | BigQuery and reporting database connections, keys, Google sign-in, connection tests, and the views and schedules they copy; creating and revoking reporting API tokens; approving, denying and revoking AI assistant connections; the [email](EMAIL.md) service, sender and credentials; from the dashboard or the command line | On |
 | Updates | `updates` | Checking for, uploading and installing updates, rollbacks, recorded deployments, the update method and source, and maintenance mode | On |
-| Manual runs | `operations` | **Sync now**, running the scheduled jobs by hand, publishing columns and regenerating reporting views, glossary sync, building browser scripts, retrying failed tracking, starting a data transfer and exporting the audit trail | On |
-| Background job runs | `task` | Each finished view sync and maintenance run, scheduled or started by someone | On |
+| Manual runs | `operations` | **Sync now**, running the scheduled jobs by hand, publishing columns and regenerating reporting views, glossary sync, building browser scripts, retrying failed tracking, starting a data transfer, sending a test email and exporting the audit trail | On |
+| Background job runs | `task` | Each finished view sync, maintenance run and email send, scheduled or started by someone; an email send names the kind of message, never its recipient | On |
 | AI assistant requests | `assistant` | Each [MCP](MCP.md#usage-log) tool call by an AI assistant: the token or connection, the tool, the view, whether it succeeded, the rows returned and how long it took. Never the results, filter values or the conversation | On |
 | Sign-ins | `sign_ins` | Successful and failed sign-ins and sign-outs | Off |
 

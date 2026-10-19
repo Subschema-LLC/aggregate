@@ -1,0 +1,35 @@
+{#- The shared layout of transactional email: plain markup with inline
+    styles that mail clients keep, the brand name and no images, tracking
+    pixels or remote resources. Each purpose fills the body block. -#}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>{{ subject }}</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2933;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;">
+        <tr>
+            <td align="center" style="padding:24px 12px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:8px;border:1px solid #e1e4e8;">
+                    <tr>
+                        <td style="padding:20px 28px;border-bottom:1px solid #e1e4e8;font-size:16px;font-weight:600;">{{ brand_name }}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding:28px;font-size:15px;line-height:1.6;">
+                            {% block body %}{% endblock %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding:16px 28px;border-top:1px solid #e1e4e8;font-size:12px;line-height:1.5;color:#616e7c;">
+                            {% block footer %}This message was sent automatically by {{ brand_name }}. Replies may not be read.{% endblock %}
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

@@ -1,0 +1,20 @@
+{% import 'email_settings/_macros.html.twig' as help %}
+<div class="columns">
+    <div class="column field">
+        <label class="label" for="email-mailgun-domain">Sending domain</label>
+        <div class="control"><input class="input" id="email-mailgun-domain" name="email_mailgun_domain" type="text" maxlength="253" value="{{ settings.email_mailgun_domain }}" placeholder="mg.example.com"{% if overrides.email_mailgun_domain %} disabled{% endif %}></div>
+        {% if overrides.email_mailgun_domain %}{{ help.env_help(overrides, 'email_mailgun_domain') }}{% else %}<p class="help">A domain verified in Mailgun. Open and click tracking are turned off for these messages.</p>{% endif %}
+    </div>
+    <div class="column field">
+        <label class="label" for="email-mailgun-region">Region</label>
+        <div class="control">
+            <div class="select">
+                <select id="email-mailgun-region" name="email_mailgun_region"{% if overrides.email_mailgun_region %} disabled{% endif %}>
+                    <option value="us"{% if settings.email_mailgun_region == 'us' %} selected{% endif %}>US</option>
+                    <option value="eu"{% if settings.email_mailgun_region == 'eu' %} selected{% endif %}>EU</option>
+                </select>
+            </div>
+        </div>
+        {% if overrides.email_mailgun_region %}{{ help.env_help(overrides, 'email_mailgun_region') }}{% else %}<p class="help">The region the domain was created in.</p>{% endif %}
+    </div>
+</div>

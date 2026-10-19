@@ -84,8 +84,6 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   - starter prompts, if they cost nothing to maintain.
   Keep it read-only, with structured queries and no SQL tool.
 - **Microsoft Fabric Connector.** Similar to the BigQuery Sync connector, but for Microsoft Fabric.
-- **Sendgrid Integration** For transactional emails.
-- **Postmark Integration.** For transactional emails.
 - **Alerts rules engine.** Notify administrators when collection looks wrong, so
   a broken tag, a removed tracker or a misconfigured consent banner is noticed
   within hours instead of at the next report. Administrators define rules such
@@ -105,11 +103,12 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   - **Records:** each evaluation run is recorded in `processing_tasks` and each
     alert sent, suppressed or failed in `audit_trail`, through
     `App\Service\Operations`, with no alerts table of its own.
-  - **Delivery:** email through the Postmark and SendGrid integrations above,
-    and SMS through a provider still to be chosen, since Postmark and SendGrid
-    send email only (Twilio, SendGrid's parent company, is one option).
-    Credentials stay in `config/secrets` or the environment, never in YAML,
-    messages or logs.
+  - **Delivery:** email through the delivered
+    [transactional email](docs/EMAIL.md) service (`TransactionalMailer`, with
+    an alert purpose), and SMS through a provider still to be chosen, since
+    the email services send email only (Twilio, SendGrid's parent company, is
+    one option). Credentials stay in `config/secrets` or the environment, never
+    in YAML, messages or logs.
   - **Privacy:** an alert carries the rule, website, threshold, window and
     observed count, never event rows, page paths, custom property values or
     visitor data. Recipients' email addresses and phone numbers are personal
@@ -224,11 +223,11 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   the released rows of one view.
 - **Branding polish.** Improve the default logo and administration presentation
   while preserving configured white labels, accessibility, and license notices.
-- **Operational email integrations.** Explore Postmark/SendGrid support for a
-  concrete administration or maintenance notification need; the alerts rules
-  engine above is the first. Keep secrets in
-  deployment configuration and avoid embedding private analytics data in email.
-  Analytics report delivery belongs in external reporting tools.
+- **Email delivery events.** Receive the Postmark, SendGrid and Mailgun
+  webhooks (bounces, spam complaints) through the bridges' signed webhook
+  parsers and record them in the audit trail against the send's task ID, which
+  every message already carries as metadata. Store no recipient addresses.
+  Analytics report delivery still belongs in external reporting tools.
 - **Tag management integrations.** The
   [Aggregate GTM tag template](https://github.com/Subschema-LLC/aggregate-gtm-tag-template)
   is under development in its own repository; track template progress and

@@ -1,0 +1,6 @@
+{% import 'email_settings/_macros.html.twig' as help %}
+<div class="field">
+    <label class="label" for="email-postmark-message-stream">Message stream</label>
+    <div class="control"><input class="input" id="email-postmark-message-stream" name="email_postmark_message_stream" type="text" maxlength="100" value="{{ settings.email_postmark_message_stream }}" placeholder="outbound"{% if overrides.email_postmark_message_stream %} disabled{% endif %}></div>
+    {% if overrides.email_postmark_message_stream %}{{ help.env_help(overrides, 'email_postmark_message_stream') }}{% else %}<p class="help">The ID of a transactional stream on the server; <code>outbound</code> is the default one.</p>{% endif %}
+</div>

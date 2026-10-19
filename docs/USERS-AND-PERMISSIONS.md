@@ -27,6 +27,7 @@ and pages an administrator grants them, directly or through
 | Users and permission groups | Create, change and delete | No access |
 | Data transfer | Export, import and copy | No access |
 | API tokens and AI assistants | Create and revoke [API tokens](REPORTING-API.md#tokens); approve and revoke [AI assistant connections](MCP.md#sign-in) | No access |
+| Email | Choose the [email service](EMAIL.md), its credential and the sender; send a test message | No access |
 | Own profile | Name, email, password | Name, email, password |
 
 Only administrators create, change or delete users. An installation always keeps

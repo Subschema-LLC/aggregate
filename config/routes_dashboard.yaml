@@ -122,6 +122,10 @@ api_tokens_controller:
     resource: ../src/Controller/ApiTokensController.php
     type: attribute
 
+email_settings_controller:
+    resource: ../src/Controller/EmailSettingsController.php
+    type: attribute
+
 mcp_authorize_controller:
     resource: ../src/Controller/McpAuthorizeController.php
     type: attribute

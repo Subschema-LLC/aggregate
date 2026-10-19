@@ -618,6 +618,28 @@ environments:
 # reporting_database_private_views: []       # Row-level or unsuppressed views, each by explicit opt-in
 # reporting_database_interval_minutes: 60    # 15, 30, 60, 120, 180, 360, 720 or 1440
 #
+# Transactional email (optional; see docs/EMAIL.md). Aggregate's own messages to
+# its users, through one email service. Off until
+# email_enabled is true; a test (app:email:test) works while it is off. Also
+# managed on Administration → Email. Uppercase environment variables with the
+# same names override these values. Credentials are never kept here: they go in
+# config/secrets/email.yaml (postmark_server_token, sendgrid_api_key,
+# mailgun_api_key, smtp_password or dsn) or EMAIL_<KEY> variables.
+#
+# email_enabled: false
+# email_provider: ''                    # postmark, sendgrid, mailgun, smtp or dsn
+# email_from_address: no-reply@example.com
+# email_from_name: ''                   # Empty: the brand name
+# email_reply_to: ''
+# email_postmark_message_stream: outbound
+# email_sendgrid_region: global         # global or eu
+# email_mailgun_domain: mg.example.com
+# email_mailgun_region: us              # us or eu
+# email_smtp_host: smtp.example.com
+# email_smtp_port: 587
+# email_smtp_username: ''
+# email_smtp_encryption: starttls       # starttls (required), tls (port 465) or none (local relay only)
+#
 # Reporting API (optional; see docs/REPORTING-API.md). Needs the reporting_api
 # feature flag. Tokens are kept, hashed, in config/secrets/api-tokens.yaml and
 # managed on Reporting → API tokens or with app:api:token:create, :list and

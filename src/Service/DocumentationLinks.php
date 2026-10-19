@@ -78,6 +78,7 @@ final class DocumentationLinks
         'reporting.api-errors' => ['reporting/reporting-api#errors', 'docs/REPORTING-API.md'],
         'mcp' => ['reporting/mcp', 'docs/MCP.md'],
         'mcp.sign-in' => ['reporting/mcp#sign-in', 'docs/MCP.md'],
+        'email' => ['configure/email', 'docs/EMAIL.md'],
         'configuration' => ['configure/configuration', 'docs/CONFIGURATION.md'],
         'configuration.websites' => ['configure/configuration#website-domains', 'docs/CONFIGURATION.md'],
         'configuration.website-groups' => ['configure/configuration#website-groups', 'docs/CONFIGURATION.md'],

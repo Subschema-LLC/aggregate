@@ -1,0 +1,10 @@
+Email is working
+
+This test message was sent through {{ provider_label }} at {{ sent_at|date('Y-m-d H:i', 'UTC') }} UTC. Other messages from {{ brand_name }} will be sent the same way.
+{% if app_url %}
+
+Sent by {{ app_url }}.
+{% endif %}
+
+--
+This message was sent automatically by {{ brand_name }}. Replies may not be read.
