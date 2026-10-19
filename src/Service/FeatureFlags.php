@@ -27,6 +27,12 @@ class FeatureFlags
             // No menu entry of its own; the Feature flags page says the option has no visible effect.
             'navigation' => false,
         ],
+        'reporting_api' => [
+            'label' => 'Reporting API',
+            'description' => 'A read-only HTTP API that returns rows from the reporting views to callers with an API token. When off, every /api/v1 address returns 404 and new tokens cannot be created; existing tokens are kept and can still be revoked.',
+            'enabled' => false,
+            'hide_from_navigation' => true,
+        ],
     ];
 
     private const OPTIONS = ['enabled', 'hide_from_navigation'];

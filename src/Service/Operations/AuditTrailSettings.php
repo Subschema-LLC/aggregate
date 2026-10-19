@@ -34,7 +34,7 @@ class AuditTrailSettings
     public const AREAS = [
         self::SETTINGS => [
             'label' => 'Settings changes',
-            'description' => 'Saving a settings page: collection, BI disclosure, data model, glossary, page groups, reporting timezone, branding, general settings, consent and tag manager, organization traffic, feature flags, data lifecycle and these audit switches.',
+            'description' => 'Saving a settings page: collection, BI disclosure, data model, glossary, page groups, reporting timezone, branding, general settings, consent and tag manager, organization traffic, feature flags, data lifecycle, reporting API settings and these audit switches.',
             'default' => true,
         ],
         self::USERS => [
@@ -49,7 +49,7 @@ class AuditTrailSettings
         ],
         self::INTEGRATIONS => [
             'label' => 'Integrations',
-            'description' => 'BigQuery and reporting database connections, keys, Google sign-in, connection tests, and the views and schedules they copy.',
+            'description' => 'BigQuery and reporting database connections, keys, Google sign-in, connection tests, and the views and schedules they copy; creating and revoking reporting API tokens.',
             'default' => true,
         ],
         self::UPDATES => [

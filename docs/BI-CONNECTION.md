@@ -464,6 +464,13 @@ For Looker Studio, Connected Sheets or other tools that read Google BigQuery,
 schedule, replacing each table at every sync. Private views can be added only by
 an explicit opt-in. The rules on this page apply to the copies too.
 
+## Read the views over HTTP
+
+The [reporting API](REPORTING-API.md) returns rows from the same views over
+HTTPS with a token, for scripts, notebooks and tools that cannot open a database
+connection. It serves approved views by default; private views only where an
+administrator allows them. The rules on this page apply to what it returns.
+
 ## Model and refresh settings
 
 - Treat `event_hour` as the reporting timezone, UTC unless

@@ -1,0 +1,181 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}API tokens - {{ app_branding.name }}{% endblock %}
+
+{% macro env_help(overrides, key) %}{% if attribute(overrides, key) %}<p class="help">Controlled by <code>{{ key|upper }}</code>.</p>{% endif %}{% endmacro %}
+
+{% block body %}
+{% import _self as help %}
+<div class="api-tokens-page">
+    <h1 class="title">API tokens</h1>
+    <p class="subtitle">Tokens for the read-only reporting API, which returns rows from the reporting views over HTTPS.</p>
+    {{ component('Ui:DocsLink', {topic: 'reporting.api', label: 'Reporting API guide'}) }}
+
+    {% if not api_enabled %}
+        <div class="notification is-warning is-light" role="status">
+            The reporting API is turned off in <a href="{{ path('app_feature_flags') }}">Feature flags</a> (<code>reporting_api</code>). Every <code>/api/v1</code> address returns 404 and no token works. You can still revoke tokens here; revoke any you no longer trust before turning the API back on.
+        </div>
+    {% endif %}
+    {% if tokens_error %}<div class="notification is-danger" role="alert">{{ tokens_error }} No token works until the file is corrected, and nothing is saved over it.</div>{% endif %}
+    {% if settings_error %}<div class="notification is-danger" role="alert">{{ settings_error }}</div>{% endif %}
+
+    {% if created %}
+        <section class="box api-token-created" aria-labelledby="api-token-created-title">
+            <h2 class="title is-5" id="api-token-created-title"><span class="icon has-text-success"><i class="fas fa-circle-check" aria-hidden="true"></i></span> Token {{ created.token.id }} created</h2>
+            <p><strong>Copy it now.</strong> Only its hash is stored, so it cannot be shown again. If it is lost, revoke it and create another.</p>
+            <div class="api-token-secret mt-3">
+                <code id="api-token-secret">{{ created.secret }}</code>
+                {{ component('Ui:CopyButton', {target: 'api-token-secret', status: 'api-token-copy-status', label: 'Copy token', class: 'button is-small'}) }}
+            </div>
+            <p id="api-token-copy-status" class="help" role="status" aria-live="polite"></p>
+            <p class="mt-3">Try it:</p>
+            {% set example_view = created.token.views is null ? (approved_views|keys|first) : (created.token.views|first ?: created.token.privateViews|first) %}
+            <pre class="api-token-example"><code>curl -H "Authorization: Bearer YOUR_TOKEN" "{{ api_base_url }}/views/{{ example_view }}?limit=10"</code></pre>
+            {% if created.token.expiresAt is null %}
+                <div class="notification is-warning is-light mt-3" role="status">{{ never_expires_warning }}</div>
+            {% endif %}
+            {% if created.token.privateViews is not empty %}
+                <div class="notification is-warning is-light mt-3" role="status">This token can read row-level or unsuppressed data: {{ created.token.privateViews|join(', ') }}. Store it like a database password for raw events.</div>
+            {% endif %}
+        </section>
+    {% endif %}
+
+    {% if api_enabled and not tokens_error %}
+        <details class="box"{% if tokens is empty and not created %} open{% endif %}>
+            <summary class="has-text-weight-semibold">Create a token</summary>
+            {# A plain form post: the response shows the new token once, so it is never stored in the session. #}
+            <form method="post" action="{{ path('app_api_tokens_create') }}" class="mt-4" data-turbo="false" autocomplete="off">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token(csrf_token_id) }}">
+                <div class="field">
+                    <label class="label" for="api-token-name">Name</label>
+                    <div class="control"><input class="input" id="api-token-name" name="name" type="text" maxlength="80" required placeholder="Power BI refresh"></div>
+                    <p class="help">What the token is for, so it can be recognized and revoked later.</p>
+                </div>
+
+                <fieldset class="field">
+                    <legend class="label">Approved views</legend>
+                    <p class="help mb-2">Counted anonymous events with small cells withheld, and labels: what routine BI users read.</p>
+                    <label class="radio api-token-scope"><input type="radio" name="scope" value="all" checked> Every approved view, including views added by later releases</label>
+                    <label class="radio api-token-scope"><input type="radio" name="scope" value="selected"> Only the views selected below</label>
+                    <div class="api-token-views mt-2">
+                        {% for view, description in approved_views %}
+                            <label class="checkbox api-token-view">
+                                <input type="checkbox" name="views[]" value="{{ view }}">
+                                <code>{{ view }}</code> <span class="has-text-grey">{{ description }}</span>
+                            </label>
+                        {% endfor %}
+                    </div>
+                </fieldset>
+
+                {% if private_views_allowed %}
+                    <details class="api-token-private">
+                        <summary class="has-text-weight-semibold">Private views</summary>
+                        <div class="notification is-warning is-light mt-3">
+                            These views hold individual retained events or unsuppressed counts, outside Aggregate's suppression. Anyone holding the token can download them. Grant them only for an approved raw-data workflow.
+                            {{ component('Ui:DocsLink', {topic: 'reporting.api-private-views', label: 'Risks of private views over the API'}) }}
+                        </div>
+                        <fieldset class="field">
+                            <legend class="is-sr-only">Private views</legend>
+                            {% for view, description in private_views %}
+                                <label class="checkbox api-token-view">
+                                    <input type="checkbox" name="private_views[]" value="{{ view }}">
+                                    <code>{{ view }}</code> <span class="has-text-grey">{{ description }}</span>
+                                </label>
+                            {% endfor %}
+                        </fieldset>
+                        <label class="checkbox">
+                            <input type="checkbox" name="private_views_confirmed" value="1">
+                            I confirm that this token may read row-level or unsuppressed data, and that it will be stored like a password for raw events.
+                        </label>
+                    </details>
+                {% endif %}
+
+                <div class="columns mt-3">
+                    <div class="column is-narrow field">
+                        <label class="label" for="api-token-expires">Expires</label>
+                        <div class="control"><div class="select"><select id="api-token-expires" name="expires" aria-describedby="api-token-expires-help">
+                            {% for value, label in expiry_choices %}
+                                <option value="{{ value }}"{% if value == default_expiry %} selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                            <option value="date">On a date…</option>
+                        </select></div></div>
+                    </div>
+                    <div class="column is-narrow field">
+                        <label class="label" for="api-token-expires-date">Date <span class="has-text-weight-normal has-text-grey">(for “On a date”)</span></label>
+                        <div class="control"><input class="input" id="api-token-expires-date" name="expires_date" type="date"></div>
+                    </div>
+                </div>
+                <p class="help mb-4" id="api-token-expires-help">Any expiry can be chosen. A token that never expires keeps working if it leaks, until someone revokes it.</p>
+                <button class="button is-primary" type="submit">
+                    <span class="icon"><i class="fas fa-key" aria-hidden="true"></i></span><span>Create token</span>
+                </button>
+            </form>
+        </details>
+    {% endif %}
+
+    <section class="box" aria-labelledby="api-tokens-list-title">
+        <h2 class="title is-5" id="api-tokens-list-title">Tokens</h2>
+        {% if tokens is empty %}
+            <p>No tokens yet. Headless installations can create them with <code>php bin/console app:api:token:create</code>.</p>
+        {% else %}
+            <div class="table-container">
+                <table class="table is-fullwidth is-striped api-tokens-table">
+                    <thead><tr><th scope="col">ID</th><th scope="col">Name</th><th scope="col">Views</th><th scope="col">Created</th><th scope="col">Expires</th><th scope="col"><span class="is-sr-only">Actions</span></th></tr></thead>
+                    <tbody>
+                        {% for token in tokens %}
+                            <tr id="token-{{ token.id }}">
+                                <td><code>{{ token.id }}</code></td>
+                                <td>{{ token.name }}</td>
+                                <td>
+                                    {{ token.views is null ? 'Every approved view' : token.views|join(', ') }}
+                                    {% if token.privateViews is not empty %}
+                                        <br><span class="tag is-warning is-light">Private</span> {{ token.privateViews|join(', ') }}
+                                        {% if not private_views_allowed %}<span class="has-text-grey">(not served while private views are off)</span>{% endif %}
+                                    {% endif %}
+                                </td>
+                                <td>{{ token.createdAt|date('Y-m-d', 'UTC') }} <span class="has-text-grey">by {{ token.createdBy }}</span></td>
+                                <td>
+                                    {% if token.expiresAt is null %}<span class="tag is-warning is-light">Never</span>
+                                    {% elseif expired[token.id] %}<span class="tag is-danger is-light">Expired {{ token.expiresAt|date('Y-m-d', 'UTC') }}</span>
+                                    {% else %}{{ token.expiresAt|date('Y-m-d', 'UTC') }}{% endif %}
+                                </td>
+                                <td class="has-text-right">
+                                    {% component 'Ui:Confirm' with {message: 'Revoke the token ' ~ token.name ~ '? Requests with it will fail. This cannot be undone.', action: path('app_api_tokens_revoke', {id: token.id}), method: 'post'} %}
+                                        {% block content %}
+                                            <input type="hidden" name="_csrf_token" value="{{ csrf_token(csrf_token_id) }}">
+                                            <button class="button is-small is-danger is-light" type="submit">Revoke</button>
+                                        {% endblock %}
+                                    {% endcomponent %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endif %}
+    </section>
+
+    {% if api_enabled and settings %}
+        <form method="post" action="{{ path('app_api_tokens_settings') }}" class="box" aria-labelledby="api-settings-title">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token(csrf_token_id) }}">
+            <h2 class="title is-5" id="api-settings-title">Settings</h2>
+            <div class="columns">
+                <div class="column field">
+                    <label class="label" for="api-private-views">Private views</label>
+                    <div class="control"><div class="select"><select id="api-private-views" name="private_views"{% if overrides.reporting_api_private_views %} disabled{% endif %}>
+                        <option value="0"{% if not settings.reporting_api_private_views %} selected{% endif %}>Off: approved views only</option>
+                        <option value="1"{% if settings.reporting_api_private_views %} selected{% endif %}>On: tokens may be granted private views</option>
+                    </select></div></div>
+                    {% if overrides.reporting_api_private_views %}{{ help.env_help(overrides, 'reporting_api_private_views') }}{% else %}<p class="help">While off, no token can be granted a private view, and private views already granted are not served; they work again if this is turned back on.</p>{% endif %}
+                </div>
+                <div class="column field">
+                    <label class="label" for="api-max-page-size">Maximum rows per request</label>
+                    <div class="control"><input class="input" id="api-max-page-size" name="max_page_size" type="number" min="{{ page_size_range[0] }}" max="{{ page_size_range[1] }}" step="1" required value="{{ settings.reporting_api_max_page_size }}"{% if overrides.reporting_api_max_page_size %} disabled{% endif %}></div>
+                    {% if overrides.reporting_api_max_page_size %}{{ help.env_help(overrides, 'reporting_api_max_page_size') }}{% else %}<p class="help">The largest <code>limit</code> a request may ask for, up to {{ page_size_range[1]|number_format }}. Responses are streamed; larger pages take longer to query and download.</p>{% endif %}
+                </div>
+            </div>
+            <button class="button is-primary" type="submit">Save settings</button>
+        </form>
+    {% endif %}
+</div>
+{% endblock %}

@@ -56,6 +56,7 @@ export const sections = [
       { source: 'docs/BI-GLOSSARY.md', route: 'reporting/bi-glossary', label: 'BI labels and glossary' },
       { source: 'docs/BIGQUERY.md', route: 'reporting/bigquery', label: 'Sync to BigQuery' },
       { source: 'docs/REPORTING-DATABASE.md', route: 'reporting/reporting-database', label: 'Reporting database' },
+      { source: 'docs/REPORTING-API.md', route: 'reporting/reporting-api', label: 'Reporting API' },
     ],
   },
   {
