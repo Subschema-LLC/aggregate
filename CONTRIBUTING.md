@@ -315,8 +315,9 @@ The project wiki on GitHub is a short signpost to this site. Its pages live in
 
 The [CI workflow](.github/workflows/ci.yml) runs PHP tests and syntax/configuration
 checks, the JavaScript build and browser tests, release-tooling tests, and a fresh
-install on each database engine on pushes and pull requests. Its final `CI` check
-requires all jobs to pass. The separate
+install on each database engine on pushes and pull requests, plus a
+[DCO sign-off check](#sign-off-your-commits-dco) on pull requests from forks.
+Its final `CI` check requires all jobs to pass. The separate
 [release workflow](.github/workflows/release.yml) builds and verifies production
 packages; see the [release guide](docs/RELEASES.md) for maintainer setup.
 
@@ -498,7 +499,8 @@ their results; name any relevant checks you could not run. For UI changes,
 describe the interaction and how you verified it.
 
 Before submitting, review the complete diff for unintended changes, secrets,
-personal data in examples, and generated artifacts. Update the relevant guide or
+personal data in examples, and generated artifacts, and
+[sign off each commit](#sign-off-your-commits-dco). Update the relevant guide or
 configuration example when behavior changes. If the change alters or adds one of
 the [design decisions](docs/DESIGN-DECISIONS.md), update that page too. Privacy-sensitive PRs should explain
 which fields reach the browser payload, queue, event row, and reporting views,
@@ -511,3 +513,68 @@ documentation, server code, dashboard assets, and tests. The browser tracker
 build source. The [Code of Conduct](CODE_OF_CONDUCT.md) adapts Contributor Covenant
 2.1 under **CC BY 4.0**, with attribution in that file. Preserve these license
 notices. Third-party dependencies and vendored assets retain their own licenses.
+
+## Sign off your commits (DCO)
+
+Sign off every commit in your pull request. A sign-off is a line at the end of
+the commit message with your name and the email address the commit is authored
+with:
+
+```text
+Signed-off-by: Ada Lovelace <ada@example.com>
+```
+
+It certifies the Developer Certificate of Origin below: that you wrote the
+change, or otherwise have the right to submit it, under the license of the files
+it changes. That is AGPL-3.0-only, or BSD-3-Clause for the browser tracker.
+Signing off does not transfer copyright, and there is no separate contributor
+license agreement.
+
+- **New commits:** `git commit -s` adds the line from your Git name and email.
+- **The last commit:** `git commit --amend -s --no-edit`, then force-push.
+- **Every commit on the branch:** `git rebase --signoff upstream/development`
+  (use whichever remote points at this repository), then force-push.
+
+The **DCO** job in the [CI workflow](.github/workflows/ci.yml) checks each commit
+in a pull request from a fork and lists any without a sign-off from its author.
+Merge commits are skipped. The final `CI` check requires it, so a pull request
+cannot merge until every commit is signed off. Branches pushed to this
+repository by maintainers are not checked.
+
+```text
+Developer Certificate of Origin
+Version 1.1
+
+Copyright (C) 2004, 2006 The Linux Foundation and its contributors.
+660 York Street, Suite 102,
+San Francisco, CA 94110 USA
+
+Everyone is permitted to copy and distribute verbatim copies of this
+license document, but changing it is not allowed.
+
+Developer's Certificate of Origin 1.1
+
+By making a contribution to this project, I certify that:
+
+(a) The contribution was created in whole or in part by me and I
+    have the right to submit it under the open source license
+    indicated in the file; or
+
+(b) The contribution is based upon previous work that, to the best
+    of my knowledge, is covered under an appropriate open source
+    license and I have the right under that license to submit that
+    work with modifications, whether created in whole or in part
+    by me, under the same open source license (unless I am
+    permitted to submit under a different license), as indicated
+    in the file; or
+
+(c) The contribution was provided directly to me by some other
+    person who certified (a), (b) or (c) and I have not modified
+    it.
+
+(d) I understand and agree that this project and the contribution
+    are public and that a record of the contribution (including all
+    personal information I submit with it, including my sign-off) is
+    maintained indefinitely and may be redistributed consistent with
+    this project or the open source license(s) involved.
+```
