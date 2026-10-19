@@ -8,6 +8,41 @@ namespace App\Service\Update;
  * Durable progress of the most recent update in var/updates/state.json, plus the
  * exclusive lock that prevents concurrent updates. The format is versioned so a
  * newer release can resume an update started by the release it replaces.
+ *
+ * UpdateState describes that format for static analysis; it changes nothing at
+ * run time. The file is written only by write(), and SCHEMA changes whenever
+ * the format does, so read() trusts a file with the current SCHEMA. A newer
+ * release reads files that an older one wrote, and scripts/restore-update-files.php
+ * reads them without the application: add keys, but do not rename or remove
+ * them without changing SCHEMA.
+ *
+ * @phpstan-type UpdateLogEntry array{at: int, level: string, message: string}
+ * @phpstan-type UpdateState array{
+ *     schema?: int,
+ *     updated_at?: int,
+ *     id: string,
+ *     type: string,
+ *     status: string,
+ *     step: ?string,
+ *     completed: list<string>,
+ *     environment: string,
+ *     from: array{version?: ?string, commit?: ?string, branch?: ?string, finished_at?: ?int},
+ *     to: array{version?: ?string, commit?: ?string, branch?: ?string, fingerprint?: string},
+ *     files: array{package?: string, manifest?: string, signature?: string},
+ *     backup: string,
+ *     database_backup: array{path?: string, confirmed_by_operator?: bool}|null,
+ *     report: array{preview?: array{files_written: int, files_removed: int, overrides_created: mixed}, files?: array<string, mixed>},
+ *     error: ?string,
+ *     log: list<UpdateLogEntry>,
+ *     started_at: int,
+ *     finished_at?: int,
+ *     superseded?: string|true,
+ *     flags?: array{composer: bool, importmap: bool},
+ *     rollback?: array{files: bool, migrations: bool},
+ *     files_restored?: bool,
+ *     handed_off?: bool,
+ *     running?: bool
+ * }
  */
 class UpdateJournal
 {
@@ -81,7 +116,7 @@ class UpdateJournal
         return !$free;
     }
 
-    /** @return array<string, mixed>|null */
+    /** @return UpdateState|null */
     public function read(): ?array
     {
         $raw = @file_get_contents($this->directory().'/state.json', false, null, 0, 4194304);
@@ -93,18 +128,20 @@ class UpdateJournal
             return null;
         }
 
+        // Only write() produces this file, in this schema (see the class description).
+        /** @var UpdateState $state */
         return $state;
     }
 
     /**
-     * @param array<string, mixed> $state
-     * @return array<string, mixed>
+     * @param UpdateState $state
+     * @return UpdateState
      */
     public function write(array $state): array
     {
         $state['schema'] = self::SCHEMA;
         $state['updated_at'] = time();
-        if (count($state['log'] ?? []) > self::MAX_LOG) {
+        if (count($state['log']) > self::MAX_LOG) {
             $state['log'] = array_slice($state['log'], -self::MAX_LOG);
         }
         $directory = $this->ensureDirectory();
@@ -119,8 +156,8 @@ class UpdateJournal
     }
 
     /**
-     * @param array<string, mixed> $state
-     * @return array<string, mixed>
+     * @param UpdateState $state
+     * @return UpdateState
      */
     public function log(array $state, string $message, string $level = 'info'): array
     {

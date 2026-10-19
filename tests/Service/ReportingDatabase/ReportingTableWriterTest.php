@@ -114,6 +114,24 @@ final class ReportingTableWriterTest extends TestCase
         self::assertFalse($this->reporting->isTransactionActive());
     }
 
+    public function testTheRowCountOfACopyAndAShortReadThatKeepsThePreviousCopy(): void
+    {
+        $writer = new ReportingTableWriter($this->reporting);
+        $fields = [['name' => 'event_day', 'type' => 'DATE'], ['name' => 'event_count', 'type' => 'INT64']];
+        self::assertNull($writer->rowCount('bi_anonymous_goals_v1'));
+        $writer->replace('bi_anonymous_goals_v1', $fields, [['2026-10-01', 4], ['2026-10-02', 5]], 2);
+        self::assertSame(2, $writer->rowCount('bi_anonymous_goals_v1'));
+
+        try {
+            $writer->replace('bi_anonymous_goals_v1', $fields, [['2026-10-03', 6]], 2);
+            self::fail('A short read replaced the table.');
+        } catch (ReportingDatabaseException $e) {
+            self::assertSame('1 of the 2 rows of bi_anonymous_goals_v1 were read; the table was not replaced.', $e->getMessage());
+        }
+        self::assertSame(2, $writer->rowCount('bi_anonymous_goals_v1'));
+        self::assertSame(['bi_anonymous_goals_v1'], $this->tables(), 'The staging table was dropped.');
+    }
+
     public function testAnIntegerBeyondSixtyFourBitsIsRefused(): void
     {
         $this->expectException(ReportingDatabaseException::class);

@@ -546,6 +546,7 @@ E2E::step('reporting database sync copies every syncable view to a second databa
         return DriverManager::getConnection((new DsnParser($scheme))->parse(str_replace('%kernel.project_dir%', $root, $reportingUrl)));
     };
     $application = connection($root);
+    $hour = gmdate('Y-m-d H');
     // Twice: the first run creates each table, the second replaces it.
     foreach (['create', 'replace'] as $round) {
         $result = json_decode(console($root, ['app:reporting-database:sync', '--force', '--json']), true);
@@ -559,6 +560,20 @@ E2E::step('reporting database sync copies every syncable view to a second databa
         }
         $copy->close();
     }
+
+    // A scheduled sync once the interval has passed keeps every table: no view
+    // changed, so its fingerprint and row count match on this engine. Views
+    // release a new hour's events when the hour completes, so a run that
+    // crossed an hour may copy some views again.
+    $application->executeStatement(
+        "UPDATE processing_tasks SET started_at = :past WHERE task_type = 'reporting_database_sync'",
+        ['past' => new DateTimeImmutable('2000-01-01 00:00:00', new DateTimeZone('UTC'))],
+        ['past' => Types::DATETIME_IMMUTABLE],
+    );
+    $result = json_decode(console($root, ['app:reporting-database:sync', '--json']), true);
+    $statuses = array_column($result['results'] ?? [], 'status', 'view');
+    $allowed = $hour === gmdate('Y-m-d H') ? ['unchanged'] : ['unchanged', 'synced'];
+    E2E::check(array_diff_key(array_fill_keys([...$views, ...$private], true), $statuses) === [] && array_diff($statuses, $allowed) === [], 'scheduled: '.json_encode($result));
 
     $copy = $reporting();
     // Staging and previous tables are gone; only the copies remain.
@@ -587,7 +602,7 @@ E2E::step('reporting database sync copies every syncable view to a second databa
     E2E::check(is_array($flags) && in_array($flags['is_default_locale'], [true, 1, '1'], true), 'Copied glossary flags: '.json_encode($flags));
     $copy->close();
 
-    E2E::check((int) $application->fetchOne("SELECT COUNT(*) FROM processing_tasks WHERE task_type = 'reporting_database_sync' AND status = 'succeeded'") === 2 * (count($views) + count($private)), 'Reporting database syncs were not recorded.');
+    E2E::check((int) $application->fetchOne("SELECT COUNT(*) FROM processing_tasks WHERE task_type = 'reporting_database_sync' AND status = 'succeeded'") === 3 * (count($views) + count($private)), 'Reporting database syncs were not recorded.');
     $check = (string) preg_replace('/\s+/', ' ', console($root, ['app:reporting-database:check']));
     E2E::check(str_contains($check, (count($views) + count($private)).' copied views found'), 'app:reporting-database:check after the sync: '.$check);
     $page = $browser->request('GET', $base.'/dashboard/reporting-database');

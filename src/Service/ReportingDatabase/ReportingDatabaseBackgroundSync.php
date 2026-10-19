@@ -15,6 +15,6 @@ class ReportingDatabaseBackgroundSync extends ViewSyncBackground
 
     public function __construct(BackgroundCommand $background, SchedulerSetup $scheduler)
     {
-        parent::__construct($background, $scheduler, self::COMMAND, 'var/reporting-database/last-run.log');
+        parent::__construct($background, $scheduler, ReportingDatabaseSettings::definition());
     }
 }

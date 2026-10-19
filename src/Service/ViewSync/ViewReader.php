@@ -2,86 +2,46 @@
 
 declare(strict_types=1);
 
-namespace App\Service\BigQuery;
+namespace App\Service\ViewSync;
 
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 
 /**
- * Writes one reporting view to a temporary newline-delimited JSON file for a
- * BigQuery load job, converting every value to the view's BigQuery type.
- * Rows are streamed, so large private views do not have to fit in memory.
- * Errors name the view and column, never a value.
+ * Reads one reporting view for a view sync: its columns, with their catalog
+ * types, and its rows in that column order. Rows are streamed in batches, so
+ * large private views do not have to fit in memory. Both syncs read views
+ * through this, so their copies have the same rows and types. Errors name the
+ * view and column, never a value.
  */
-class BigQueryViewExporter
+class ViewReader
 {
     private const FETCH_ROWS = 2000;
 
     public function __construct(
         private readonly Connection $connection,
-        private readonly BigQueryViewCatalog $catalog,
-        private readonly string $projectDir,
+        private readonly ViewCatalog $catalog,
     ) {
     }
 
     /**
      * A syncable view's columns, with their catalog types, and its rows in
-     * that column order, read lazily in batches. The reporting database sync
-     * reads views through this, so both syncs see the same rows and types.
+     * that column order, read lazily in batches: the view is queried when the
+     * rows are first read.
      *
      * @return array{fields: list<array{name: string, type: string}>, rows: iterable<list<mixed>>}
      *
-     * @throws BigQueryException when the view is not syncable or cannot be read
+     * @throws ViewSyncException when the view is not syncable or cannot be read
      */
     public function read(string $view): array
     {
-        if (!BigQueryViewCatalog::isKnown($view)) {
-            throw new BigQueryException($view.' is not a reporting view that can be synced.');
+        if (!ViewCatalog::isKnown($view)) {
+            throw new ViewSyncException($view.' is not a reporting view that can be synced.');
         }
         $sql = 'SELECT * FROM '.$this->connection->getDatabasePlatform()->quoteSingleIdentifier($view);
 
         return ['fields' => $this->fields($view, $sql), 'rows' => $this->rows($sql)];
-    }
-
-    /**
-     * @return array{file: string, rows: int, bytes: int, fields: list<array{name: string, type: string}>}
-     *
-     * @throws BigQueryException
-     */
-    public function export(string $view): array
-    {
-        if (!BigQueryViewCatalog::isKnown($view)) {
-            throw new BigQueryException($view.' is not a reporting view that can be synced.');
-        }
-        $sql = 'SELECT * FROM '.$this->connection->getDatabasePlatform()->quoteSingleIdentifier($view);
-        $fields = $this->fields($view, $sql);
-        $file = $this->temporaryFile($view);
-        $handle = fopen($file, 'wb');
-        if ($handle === false) {
-            throw new BigQueryException('The export file could not be created in var/bigquery. Check that the folder is writable.');
-        }
-        $rows = 0;
-        try {
-            foreach ($this->rows($sql) as $row) {
-                $record = [];
-                foreach ($fields as $index => $field) {
-                    $record[$field['name']] = self::convert($row[$index] ?? null, $field['type'], $view, $field['name']);
-                }
-                $line = json_encode($record, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_PRESERVE_ZERO_FRACTION)."\n";
-                if (fwrite($handle, $line) !== strlen($line)) {
-                    throw new BigQueryException('The export file could not be written. Check the free space in var/bigquery.');
-                }
-                ++$rows;
-            }
-        } catch (\Throwable $e) {
-            fclose($handle);
-            @unlink($file);
-            throw $e;
-        }
-        fclose($handle);
-
-        return ['file' => $file, 'rows' => $rows, 'bytes' => (int) filesize($file), 'fields' => $fields];
     }
 
     /** @return list<array{name: string, type: string}> */
@@ -96,10 +56,10 @@ class BigQueryViewExporter
             }
             $result->free();
         } catch (\Doctrine\DBAL\Exception $e) {
-            throw new BigQueryException('The view '.$view.' cannot be read in this database. Run the database migrations'.(str_starts_with($view, 'analytics_custom_') ? ' and regenerate the reporting views' : '').($view === 'bi_anonymous_geo_events_v1' ? ' (this view needs optional geography)' : '').'.', previous: $e);
+            throw new ViewSyncException('The view '.$view.' cannot be read in this database. Run the database migrations'.(str_starts_with($view, 'analytics_custom_') ? ' and regenerate the reporting views' : '').($view === 'bi_anonymous_geo_events_v1' ? ' (this view needs optional geography)' : '').'.', previous: $e);
         }
         if ($fields === []) {
-            throw new BigQueryException('The view '.$view.' has no columns.');
+            throw new ViewSyncException('The view '.$view.' has no columns.');
         }
 
         return $fields;
@@ -116,9 +76,9 @@ class BigQueryViewExporter
             $completed = false;
             try {
                 $this->connection->executeStatement('SET TRANSACTION READ ONLY');
-                $this->connection->executeStatement('DECLARE aggregate_bigquery_export NO SCROLL CURSOR FOR '.$sql);
+                $this->connection->executeStatement('DECLARE aggregate_view_sync NO SCROLL CURSOR FOR '.$sql);
                 do {
-                    $batch = $this->connection->fetchAllNumeric('FETCH FORWARD '.self::FETCH_ROWS.' FROM aggregate_bigquery_export');
+                    $batch = $this->connection->fetchAllNumeric('FETCH FORWARD '.self::FETCH_ROWS.' FROM aggregate_view_sync');
                     yield from $batch;
                 } while (count($batch) === self::FETCH_ROWS);
                 $completed = true;
@@ -151,27 +111,15 @@ class BigQueryViewExporter
         }
     }
 
-    private function temporaryFile(string $view): string
-    {
-        $directory = $this->projectDir.'/var/bigquery';
-        if (!is_dir($directory) && !@mkdir($directory, 0700, true) && !is_dir($directory)) {
-            throw new BigQueryException('var/bigquery could not be created. Check that var is writable.');
-        }
-        // Exports left by an interrupted run are removed after a day.
-        foreach (glob($directory.'/export-*.ndjson') ?: [] as $stale) {
-            if (filemtime($stale) < time() - 86400) {
-                @unlink($stale);
-            }
-        }
-        $file = $directory.'/export-'.$view.'-'.bin2hex(random_bytes(6)).'.ndjson';
-        if (@touch($file) === false || !@chmod($file, 0600)) {
-            throw new BigQueryException('The export file could not be created in var/bigquery. Check that the folder is writable.');
-        }
-
-        return $file;
-    }
-
-    /** Converts one database value to its JSON representation for a BigQuery column type. */
+    /**
+     * Converts one database value to the JSON representation of its catalog
+     * type, failing closed for a value that does not fit. ViewExporter writes
+     * the result to the snapshot both syncs copy from. Converting a converted
+     * value again returns it unchanged, so ReportingTableWriter can check the
+     * values it reads back the same way.
+     *
+     * @throws ViewSyncException naming the view and column, never the value
+     */
     public static function convert(mixed $value, string $type, string $view, string $column): mixed
     {
         if (is_resource($value)) {
@@ -180,7 +128,7 @@ class BigQueryViewExporter
         if ($value === null) {
             return null;
         }
-        $invalid = static fn (): BigQueryException => new BigQueryException(sprintf('The view %s has a value in %s that is not a valid %s. Nothing was uploaded for this view.', $view, $column, $type));
+        $invalid = static fn (): ViewSyncException => new ViewSyncException(sprintf('The view %s has a value in %s that is not a valid %s. Nothing was copied for this view.', $view, $column, $type));
 
         switch ($type) {
             case 'INT64':

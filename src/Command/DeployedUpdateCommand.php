@@ -132,18 +132,18 @@ HELP);
             return Command::FAILURE;
         }
 
-        if (($state['status'] ?? null) === 'up_to_date') {
+        if ($state['status'] === 'up_to_date') {
             $io->success((string) $state['message']);
 
             return Command::SUCCESS;
         }
-        $code = ($state['status'] ?? null) === 'completed' ? Command::SUCCESS : Command::FAILURE;
+        $code = $state['status'] === 'completed' ? Command::SUCCESS : Command::FAILURE;
         if ($state['handed_off'] ?? false) {
             // A fresh process finished the deployment with the deployed code and
             // reported it. This one may hold an outdated container: stop here.
             exit($code);
         }
-        match ($state['status'] ?? null) {
+        match ($state['status']) {
             'completed' => $io->success('The post-deployment steps are complete.'),
             'failed' => $io->error('The post-deployment steps did not run. '.($state['error'] ?? '')),
             default => $io->error('The post-deployment steps need attention. '.($state['error'] ?? '').' Run php bin/console app:updates:apply --status for details.'),

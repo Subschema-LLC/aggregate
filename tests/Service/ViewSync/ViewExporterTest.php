@@ -2,18 +2,19 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Service\BigQuery;
+namespace App\Tests\Service\ViewSync;
 
-use App\Service\BigQuery\BigQueryException;
-use App\Service\BigQuery\BigQueryViewCatalog;
-use App\Service\BigQuery\BigQueryViewExporter;
 use App\Service\CustomDataSettings;
+use App\Service\ViewSync\ViewCatalog;
+use App\Service\ViewSync\ViewExporter;
+use App\Service\ViewSync\ViewReader;
+use App\Service\ViewSync\ViewSyncException;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
-final class BigQueryViewExporterTest extends TestCase
+final class ViewExporterTest extends TestCase
 {
     private string $projectDir;
     private Connection $connection;
@@ -54,39 +55,93 @@ final class BigQueryViewExporterTest extends TestCase
     {
         $exporter = $this->exporter();
 
-        $events = $exporter->export('bi_anonymous_events_v1');
-        self::assertSame(1, $events['rows']);
+        $events = $exporter->export('bi_anonymous_events_v1', 'var/bigquery');
+        self::assertSame(1, $events->rows);
         self::assertSame([
             ['name' => 'website_token', 'type' => 'STRING'],
             ['name' => 'event_hour', 'type' => 'TIMESTAMP'],
             ['name' => 'event_name', 'type' => 'STRING'],
             ['name' => 'page_path', 'type' => 'STRING'],
             ['name' => 'event_count', 'type' => 'INT64'],
-        ], $events['fields']);
-        self::assertSame('{"website_token":"tok","event_hour":"2026-10-01 10:00:00.000000","event_name":"view","page_path":"/a","event_count":"2"}'."\n", file_get_contents($events['file']));
-        self::assertSame(0600, fileperms($events['file']) & 0777);
-        self::assertStringStartsWith($this->projectDir.'/var/bigquery/export-bi_anonymous_events_v1-', $events['file']);
-        self::assertSame(filesize($events['file']), $events['bytes']);
+        ], $events->fields);
+        self::assertSame('{"website_token":"tok","event_hour":"2026-10-01 10:00:00.000000","event_name":"view","page_path":"/a","event_count":"2"}'."\n", file_get_contents($events->file));
+        self::assertSame(0600, fileperms($events->file) & 0777);
+        self::assertStringStartsWith($this->projectDir.'/var/bigquery/export-bi_anonymous_events_v1-', $events->file);
+        self::assertSame(filesize($events->file), $events->bytes);
 
-        $glossary = $exporter->export('bi_glossary_values_v1');
-        self::assertSame(['dimension' => 'device_class', 'code' => 'mobile', 'is_fallback' => false, 'sort_order' => '10', 'is_default_locale' => true], json_decode((string) file_get_contents($glossary['file']), true));
+        $glossary = $exporter->export('bi_glossary_values_v1', 'var/bigquery');
+        self::assertSame(['dimension' => 'device_class', 'code' => 'mobile', 'is_fallback' => false, 'sort_order' => '10', 'is_default_locale' => true], json_decode((string) file_get_contents($glossary->file), true));
 
-        $custom = $exporter->export('analytics_custom_events_v1');
-        self::assertSame(['INT64', 'STRING', 'STRING', 'STRING', 'TIMESTAMP', 'TIMESTAMP', 'STRING', 'INT64', 'FLOAT64'], array_column($custom['fields'], 'type'));
-        $lines = array_map(static fn (string $line): array => json_decode($line, true), file($custom['file'], FILE_IGNORE_NEW_LINES));
+        $custom = $exporter->export('analytics_custom_events_v1', 'var/bigquery');
+        self::assertSame(['INT64', 'STRING', 'STRING', 'STRING', 'TIMESTAMP', 'TIMESTAMP', 'STRING', 'INT64', 'FLOAT64'], array_column($custom->fields, 'type'));
+        $lines = array_map(static fn (string $line): array => json_decode($line, true), file($custom->file, FILE_IGNORE_NEW_LINES));
         self::assertSame(['id' => '1', 'website_token' => 'tok', 'event_name' => 'view', 'page_path' => '/a', 'created_at' => '2026-10-01 10:12:00.000000', 'archived_at' => null, 'plan_name' => 'pro', 'quantity_value' => '2', 'price_value' => 12.5], $lines[0]);
         self::assertSame('Grüße ☃', $lines[1]['plan_name']);
         self::assertSame('2026-10-05 00:00:00.000000', $lines[1]['archived_at']);
         self::assertNull($lines[1]['quantity_value']);
     }
 
+    public function testTheFingerprintFollowsTheContentButNotTheRowOrder(): void
+    {
+        $this->connection->executeStatement('CREATE TABLE tokens (website_token VARCHAR(191), name VARCHAR(191), position INTEGER)');
+        $this->connection->executeStatement("INSERT INTO tokens VALUES ('a', 'Shop', 1), ('b', 'Blog', 2), ('c', 'Docs', 3)");
+        $files = [];
+        $fingerprint = function (string $order) use (&$files): string {
+            $this->connection->executeStatement('DROP VIEW IF EXISTS bi_dim_website_token_v1');
+            $this->connection->executeStatement('CREATE VIEW bi_dim_website_token_v1 AS SELECT website_token, name AS label FROM tokens ORDER BY '.$order);
+            $snapshot = $this->exporter()->export('bi_dim_website_token_v1', 'var/bigquery');
+            $files[] = file_get_contents($snapshot->file);
+            $snapshot->delete();
+
+            return $snapshot->fingerprint;
+        };
+
+        $first = $fingerprint('position');
+        self::assertMatchesRegularExpression('/^[0-9a-f]{64}$/', $first);
+        self::assertSame($first, $fingerprint('position DESC'), 'the same rows in another order');
+        self::assertNotSame($files[0], $files[1], 'the files list the rows in different orders');
+
+        $this->connection->executeStatement("UPDATE tokens SET name = 'Docs site' WHERE website_token = 'c'");
+        $changed = $fingerprint('position');
+        self::assertNotSame($first, $changed, 'a changed value');
+
+        $this->connection->executeStatement("INSERT INTO tokens VALUES ('c', 'Docs site', 4)");
+        self::assertNotSame($changed, $fingerprint('position'), 'a duplicated row');
+
+        $this->connection->executeStatement('DROP VIEW bi_dim_website_token_v1');
+        $this->connection->executeStatement('CREATE VIEW bi_dim_website_token_v1 AS SELECT website_token AS label, name AS website_token FROM tokens');
+        self::assertNotSame($first, $this->exporter()->export('bi_dim_website_token_v1', 'var/bigquery')->fingerprint, 'other columns');
+    }
+
+    public function testTheRowsReadBackAreTheConvertedValuesInColumnOrder(): void
+    {
+        $snapshot = $this->exporter()->export('analytics_custom_events_v1', 'var/reporting-database');
+
+        self::assertStringStartsWith($this->projectDir.'/var/reporting-database/export-analytics_custom_events_v1-', $snapshot->file);
+        $rows = iterator_to_array($snapshot->records(), false);
+        self::assertSame(['1', 'tok', 'view', '/a', '2026-10-01 10:12:00.000000', null, 'pro', '2', 12.5], $rows[0]);
+        self::assertSame('Grüße ☃', $rows[1][6]);
+        self::assertCount($snapshot->rows, $rows);
+        // Converting a value read back gives the same value, so the reporting
+        // database checks it with the same rules.
+        foreach ($rows as $row) {
+            foreach ($snapshot->fields as $index => $field) {
+                self::assertSame($row[$index], ViewReader::convert($row[$index], $field['type'], 'v', 'c'));
+            }
+        }
+        $snapshot->delete();
+        self::assertFileDoesNotExist($snapshot->file);
+        array_map('unlink', glob($this->projectDir.'/var/reporting-database/*') ?: []);
+        rmdir($this->projectDir.'/var/reporting-database');
+    }
+
     public function testAValueThatDoesNotFitItsTypeStopsTheViewWithoutRevealingIt(): void
     {
         try {
-            $this->exporter()->export('bi_anonymous_goals_v1');
+            $this->exporter()->export('bi_anonymous_goals_v1', 'var/bigquery');
             self::fail('An invalid DATE was exported.');
-        } catch (BigQueryException $e) {
-            self::assertSame('The view bi_anonymous_goals_v1 has a value in event_day that is not a valid DATE. Nothing was uploaded for this view.', $e->getMessage());
+        } catch (ViewSyncException $e) {
+            self::assertSame('The view bi_anonymous_goals_v1 has a value in event_day that is not a valid DATE. Nothing was copied for this view.', $e->getMessage());
         }
         self::assertSame([], glob($this->projectDir.'/var/bigquery/export-*') ?: []);
     }
@@ -94,15 +149,15 @@ final class BigQueryViewExporterTest extends TestCase
     public function testOnlyCatalogViewsThatExistCanBeExported(): void
     {
         try {
-            $this->exporter()->export('events');
+            $this->exporter()->export('events', 'var/bigquery');
             self::fail('A raw table was exported.');
-        } catch (BigQueryException $e) {
+        } catch (ViewSyncException $e) {
             self::assertStringContainsString('not a reporting view', $e->getMessage());
         }
         try {
-            $this->exporter()->export('bi_anonymous_geo_events_v1');
+            $this->exporter()->export('bi_anonymous_geo_events_v1', 'var/bigquery');
             self::fail('A missing view was exported.');
-        } catch (BigQueryException $e) {
+        } catch (ViewSyncException $e) {
             self::assertStringContainsString('needs optional geography', $e->getMessage());
         }
     }
@@ -114,16 +169,16 @@ final class BigQueryViewExporterTest extends TestCase
         touch($stale, time() - 90000);
         file_put_contents($recent = $this->projectDir.'/var/bigquery/export-recent.ndjson', 'x');
 
-        $this->exporter()->export('bi_glossary_values_v1');
+        $this->exporter()->export('bi_glossary_values_v1', 'var/bigquery');
 
         self::assertFileDoesNotExist($stale);
         self::assertFileExists($recent);
     }
 
     #[DataProvider('conversions')]
-    public function testDatabaseValuesFromEveryEngineConvertToBigQueryJson(mixed $value, string $type, mixed $expected): void
+    public function testDatabaseValuesFromEveryEngineConvertToTheirCatalogTypes(mixed $value, string $type, mixed $expected): void
     {
-        self::assertSame($expected, BigQueryViewExporter::convert($value, $type, 'v', 'c'));
+        self::assertSame($expected, ViewReader::convert($value, $type, 'v', 'c'));
     }
 
     public static function conversions(): iterable
@@ -158,8 +213,8 @@ final class BigQueryViewExporterTest extends TestCase
     #[DataProvider('invalidConversions')]
     public function testValuesThatDoNotFitFailClosed(mixed $value, string $type): void
     {
-        $this->expectException(BigQueryException::class);
-        BigQueryViewExporter::convert($value, $type, 'v', 'c');
+        $this->expectException(ViewSyncException::class);
+        ViewReader::convert($value, $type, 'v', 'c');
     }
 
     public static function invalidConversions(): iterable
@@ -177,7 +232,7 @@ final class BigQueryViewExporterTest extends TestCase
         yield 'array' => [[1], 'STRING'];
     }
 
-    private function exporter(): BigQueryViewExporter
+    private function exporter(): ViewExporter
     {
         $customData = $this->createStub(CustomDataSettings::class);
         $customData->method('numericReportingColumns')->willReturn([
@@ -185,6 +240,6 @@ final class BigQueryViewExporterTest extends TestCase
             'price_value' => ['property' => 'price', 'type' => 'double'],
         ]);
 
-        return new BigQueryViewExporter($this->connection, new BigQueryViewCatalog($customData), $this->projectDir);
+        return new ViewExporter(new ViewReader($this->connection, new ViewCatalog($customData)), $this->projectDir);
     }
 }

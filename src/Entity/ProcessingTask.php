@@ -59,4 +59,7 @@ class ProcessingTask
 
     #[ORM\Column(type: 'text', nullable: true)]
     private ?string $details;
+
+    #[ORM\Column(type: 'string', length: 64, nullable: true)]
+    private ?string $fingerprint;
 }

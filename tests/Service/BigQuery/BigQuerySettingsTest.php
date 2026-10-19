@@ -6,7 +6,7 @@ namespace App\Tests\Service\BigQuery;
 
 use App\Service\AggregateConfigLoader;
 use App\Service\BigQuery\BigQuerySettings;
-use App\Service\BigQuery\BigQueryViewCatalog;
+use App\Service\ViewSync\ViewCatalog;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Yaml\Yaml;
@@ -44,7 +44,7 @@ final class BigQuerySettingsTest extends TestCase
         self::assertSame('aggregate', $settings['bigquery_dataset']);
         self::assertSame('US', $settings['bigquery_location']);
         self::assertSame('service_account', $settings['bigquery_auth']);
-        self::assertSame(array_keys(BigQueryViewCatalog::APPROVED), $settings['bigquery_views']);
+        self::assertSame(array_keys(ViewCatalog::APPROVED), $settings['bigquery_views']);
         self::assertSame([], $settings['bigquery_private_views']);
         self::assertSame(60, $settings['bigquery_interval_minutes']);
         self::assertSame($this->projectDir.'/config/secrets/bigquery-service-account.json', $this->settings([])->credentialsPath());
