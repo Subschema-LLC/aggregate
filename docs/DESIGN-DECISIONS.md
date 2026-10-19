@@ -745,6 +745,37 @@ means looking the ID up in the service's activity log.
 complaints would add an endpoint per service, recording against the task ID the
 messages already carry.
 
+### Sign-in codes kept in the session, not in YAML or a table
+
+**Decision.** An emailed six-digit sign-in code is held only as an HMAC (keyed
+with `APP_SECRET`) in the server-side session of the browser that asked for it,
+with its account, issue time and attempt count. It lasts 10 minutes, allows 5
+tries and works once. Rate limits (codes per account, requests per address,
+wrong codes per account over 24 hours) use Symfony's rate limiter, alongside
+the firewall's existing login throttling. A sign-in with a code opens a
+15-minute window in which the profile sets a new password without the current
+one, which makes the code the password reset.
+
+**Why.** Configuration lives in YAML, but a pending code is per-browser
+sign-in state, not configuration. A six-digit code needs an attempt count, so
+in YAML every wrong guess would rewrite a file in `config/` under a lock, which
+an attacker could trigger at will. The MCP sign-in keeps its codes in YAML only
+because they are 256-bit random values that need no counting. Columns on
+`users` would work, but would need a migration on five engines for state that
+lives ten minutes. The session already carries sign-in state, is server-side,
+and is cleaned up by PHP; its one requirement, shared sessions behind a load
+balancer, is one that password sign-in already has.
+
+**Trade-off.** A code works only in the browser that asked for it, not on
+another device. The rate limits are per server unless the cache is shared, so
+a farm of servers allows proportionally more guesses. Anyone with access to a
+user's mailbox can sign in as them, which is why the option is off by default.
+
+**What would change it.** Codes or links that must work across devices would
+need shared storage: the `users` table, with a migration. A requirement for
+second factors would make the code an addition to the password rather than an
+alternative.
+
 ## Platform
 
 ### PHP and Symfony

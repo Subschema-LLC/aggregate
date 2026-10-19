@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Entity\User;
+use App\Security\SignInCode\SignInCodeSettings;
 use App\Service\AggregateConfigLoader;
 use App\Service\Email\EmailPurpose;
 use App\Service\Email\EmailSecrets;
@@ -37,6 +38,7 @@ final class EmailSettingsController extends AbstractController
         private readonly EmailSecrets $secrets,
         private readonly TransactionalMailer $mailer,
         private readonly ProcessingTasks $tasks,
+        private readonly SignInCodeSettings $signInCodes,
         private readonly LoggerInterface $logger,
     ) {
     }
@@ -89,8 +91,15 @@ final class EmailSettingsController extends AbstractController
         }
 
         $user = $this->getUser();
+        try {
+            $signInCodes = $this->signInCodes->isEnabled();
+        } catch (\Throwable) {
+            $signInCodes = false;
+        }
 
         return $this->render('email_settings/index.html.twig', [
+            'sign_in_codes' => $signInCodes,
+            'sign_in_codes_override' => $this->signInCodes->isEnvironmentControlled(),
             'settings' => $settings,
             'overrides' => $this->settings->environmentOverrides(),
             'providers' => $this->settings->providers()->all(),
@@ -119,7 +128,8 @@ final class EmailSettingsController extends AbstractController
         // Credentials arrive as credential[<key>] (a new value) and remove[<key>].
         $newCredentials = $submitted['credential'] ?? [];
         $removals = $submitted['remove'] ?? [];
-        unset($submitted['credential'], $submitted['remove']);
+        $signInCodes = $submitted[SignInCodeSettings::KEY] ?? null;
+        unset($submitted['credential'], $submitted['remove'], $submitted[SignInCodeSettings::KEY]);
         if (!is_array($newCredentials) || !is_array($removals)) {
             $this->addFlash('error', 'The email form was not valid. Nothing was saved.');
 
@@ -166,6 +176,9 @@ final class EmailSettingsController extends AbstractController
         }
         try {
             $this->settings->validate([...$current, ...$candidate]);
+            if ($signInCodes !== null) {
+                SignInCodeSettings::validate($signInCodes);
+            }
             foreach ($changes as [$credential, $value]) {
                 if ($this->secrets->isEnvironmentControlled($credential)) {
                     throw new \InvalidArgumentException(sprintf('The %s is set by %s and cannot be changed here.', strtolower($credential->label), $credential->environmentVariable));
@@ -185,6 +198,7 @@ final class EmailSettingsController extends AbstractController
                 $value === null ? $this->secrets->remove($credential) : $this->secrets->set($credential, $value);
             }
             $saved = $this->settings->save($candidate);
+            $codesOn = $signInCodes !== null ? $this->signInCodes->save($signInCodes) : $this->signInCodes->isEnabled();
         } catch (\InvalidArgumentException $e) {
             $this->addFlash('error', $e->getMessage());
 
@@ -200,6 +214,8 @@ final class EmailSettingsController extends AbstractController
         $problem = $this->mailer->problem($saved);
         if (EmailSettings::isEnabled($saved) && $problem !== null) {
             $this->addFlash('warning', 'Email is on, but nothing can be sent yet: '.$problem);
+        } elseif ($codesOn && $problem !== null) {
+            $this->addFlash('warning', 'Sign-in codes are on, but the sign-in page will not offer them until email can be sent: '.$problem);
         }
 
         return $this->redirectToRoute('app_email');

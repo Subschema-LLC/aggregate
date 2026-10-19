@@ -32,8 +32,8 @@ use Twig\Environment;
  * or shown. The provider's message ID finds the message in its activity log.
  *
  * Messages go straight to the provider rather than through the Messenger
- * queue, so the task records the provider's real answer and a message's
- * content never waits in a queue table.
+ * queue, so the task records the provider's real answer and a sign-in code
+ * never waits in a queue table.
  */
 class TransactionalMailer
 {

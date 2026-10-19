@@ -76,7 +76,7 @@ class AuditTrailSettings
         ],
         self::SIGN_INS => [
             'label' => 'Sign-ins',
-            'description' => 'Successful and failed sign-ins and sign-outs. A failed sign-in names the account only when it exists, so a mistyped password in the username field is never stored.',
+            'description' => 'Successful and failed sign-ins and sign-outs, and requests for emailed sign-in codes. A failed sign-in or code request names the account only when it exists, so a mistyped password in the username field is never stored.',
             'default' => false,
         ],
     ];

@@ -112,6 +112,8 @@ final class AdminActions
         'api_receive' => 'Collection requests from websites.',
         'app_login' => 'Sign-ins are recorded from the security events, under sign_ins.',
         'app_logout' => 'Sign-outs are recorded from the security events, under sign_ins.',
+        'app_login_code_request' => 'Asking for a sign-in code is recorded by SignInCodeRequests, under sign_ins.',
+        'app_login_code_verify' => 'Signing in with a code is recorded from the security events, under sign_ins.',
         'app_bi_glossary_suggestions' => 'Returns suggested labels; changes nothing.',
         'app_home' => 'The home page accepts any method and changes nothing.',
         'mcp' => 'AI assistant requests; each tool call is recorded by McpUsageLog under assistant.',

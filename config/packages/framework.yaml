@@ -26,6 +26,21 @@ framework:
             policy: fixed_window
             limit: 30
             interval: '1 minute'
+        # Emailed sign-in codes (docs/EMAIL.md#sign-in-codes): codes sent per
+        # account, requests per client address, and wrong codes per account
+        # from any browser before code sign-in pauses for that account.
+        sign_in_code_request:
+            policy: sliding_window
+            limit: 3
+            interval: '15 minutes'
+        sign_in_code_request_address:
+            policy: sliding_window
+            limit: 10
+            interval: '15 minutes'
+        sign_in_code_guess:
+            policy: sliding_window
+            limit: 10
+            interval: '24 hours'
 
 when@test:
     framework:

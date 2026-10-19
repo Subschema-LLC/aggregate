@@ -41,10 +41,14 @@
             <h2 class="title is-5">Change password</h2>
             <form action="{{ path('app_profile_password') }}" method="post" class="account-password-form">
                 <input type="hidden" name="_csrf_token" value="{{ csrf_token('profile_password') }}">
+                {% if password_reset|default(false) %}
+                    <p class="notification is-info is-light">You signed in with an emailed code, so for a few minutes you can set a new password without the current one.</p>
+                {% else %}
                 <div class="field">
                     <label class="label" for="profile-current-password">Current password</label>
                     <div class="control"><input class="input" type="password" id="profile-current-password" name="current_password" autocomplete="current-password" required></div>
                 </div>
+                {% endif %}
                 <div class="field">
                     <label class="label" for="profile-new-password">New password</label>
                     <div class="control"><input class="input" type="password" id="profile-new-password" name="new_password" autocomplete="new-password" minlength="8" required placeholder="At least 8 characters"></div>
