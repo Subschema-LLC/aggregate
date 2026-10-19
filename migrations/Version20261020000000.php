@@ -11,14 +11,12 @@ use Doctrine\Migrations\AbstractMigration;
 /**
  * User profiles and permissions: an optional display name and email each user
  * manages, and a standard user's permission groups and own grants (a JSON
- * document, read by App\Security\Access\AccessGrant). Administrators stay
- * administrators. Other existing accounts keep what they could see before:
- * the Websites page, for every website, read-only.
+ * document, read by App\Security\Access\AccessGrant). Columns only:
+ * Version20261020000001 then gives former viewer accounts their access, because
+ * Doctrine runs a migration's own SQL before the schema changes it describes.
  */
 final class Version20261020000000 extends AbstractMigration
 {
-    private const FORMER_VIEWER_ACCESS = '{"permission_groups":[],"websites":{"all":true,"groups":[],"sites":[]},"pages":{"websites":"view"}}';
-
     public function getDescription(): string
     {
         return 'Add display name, email and access to users';
@@ -42,16 +40,8 @@ final class Version20261020000000 extends AbstractMigration
         if (!$users->hasColumn('email')) {
             $users->addColumn('email', 'string', ['length' => 254, 'notnull' => false]);
         }
-        if ($users->hasColumn('access')) {
-            return;
-        }
-        $users->addColumn('access', 'json', ['notnull' => false]);
-        foreach ($this->connection->fetchAllAssociative('SELECT id, roles FROM users') as $row) {
-            $roles = json_decode((string) $row['roles'], true);
-            if (is_array($roles) && in_array('ROLE_ADMIN', $roles, true)) {
-                continue;
-            }
-            $this->addSql('UPDATE users SET access = ? WHERE id = ?', [self::FORMER_VIEWER_ACCESS, (int) $row['id']]);
+        if (!$users->hasColumn('access')) {
+            $users->addColumn('access', 'json', ['notnull' => false]);
         }
     }
 
