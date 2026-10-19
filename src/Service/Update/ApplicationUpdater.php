@@ -6,6 +6,7 @@ namespace App\Service\Update;
 
 use App\Service\ApplicationUpdateService;
 use App\Service\InstalledRelease;
+use App\Service\Operations\AdminActions;
 use App\Service\ReleasePackageVerifier;
 use App\Service\ReleaseUpdateService;
 use Doctrine\DBAL\Connection;
@@ -985,7 +986,9 @@ class ApplicationUpdater
     {
         // Children inherit this process's environment. SYMFONY_DOTENV_VARS tells
         // them which values came from .env files, so they re-read those files.
-        return [];
+        // The update was recorded in the audit trail when it started; its own
+        // steps and the process it hands over to are not recorded again.
+        return [AdminActions::CHILD_PROCESS => '1'];
     }
 
     private function shouldCompileAssets(): bool

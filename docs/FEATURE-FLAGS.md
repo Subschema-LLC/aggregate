@@ -17,7 +17,15 @@ feature_flags:
   updates:
     enabled: false
     hide_from_navigation: true
+  custom_scripts:
+    enabled: true
+    hide_from_navigation: false
 ```
+
+Saving on the Feature flags page writes every registered feature with both
+options, so the YAML always states what is on and what the menu shows. The page
+shows the exact mapping a save writes under **YAML for these settings**, ready
+to copy into a headless installation.
 
 The `updates` flag covers the Updates page, Git and release version checks, Git
 source pulls, release package verification, and installing updates with
@@ -36,8 +44,8 @@ navigation entry, so `hide_from_navigation` has no effect on it.
 | --- | --- | --- |
 | `true` | `false` | Available; navigation links are shown to authorized users. |
 | `true` | `true` | Available through direct routes/commands; navigation entries are hidden. |
-| `false` | `false` | Unavailable; navigation shows an inactive item without a link. |
-| `false` | `true` | Unavailable; navigation entries are hidden. |
+| `false` | `false` | Unavailable; navigation shows the entry greyed out with an **Off** tag, without a link, and explains that it was turned off in Feature flags. |
+| `false` | `true` | Unavailable; navigation entries are hidden. Choose this when a greyed-out entry would make people think something is broken. |
 
 Omitted options use registered defaults. Updates and custom JavaScript tags
 default to enabled and visible, preserving installations without a
@@ -61,12 +69,35 @@ Long-running consumers must reset/reload configuration between jobs, as Symfony
 Messenger does for resettable services. With the dashboard disabled, edit YAML
 to manage flags; enabled update commands remain available headlessly.
 
+## Flags, settings and menu conditions
+
+Three mechanisms switch things on and off. Use the one that answers the question:
+
+- **A feature flag** answers "should this capability exist on this installation
+  at all?" Use it for beta capabilities, actions that reach the network or run
+  arbitrary code (updates, custom JavaScript), and anything a host or partner
+  may want to switch off for a whole installation.
+- **A feature's own setting**, such as `bigquery_enabled` or
+  `analytics_archiving_enabled`, answers "is this in use?" It lives with the
+  feature's other settings, on its own page and in YAML. Do not duplicate it as
+  a flag.
+- **A menu condition** (`shown_when` in `config/navigation.yaml`) keeps a page's
+  menu entry out of the way until its setting is in use, as the **Sync** entry
+  does until BigQuery or the reporting database sync is on. The YAML entry
+  states the rule, and the dashboard search still finds the page. See
+  [main navigation](CONFIGURATION.md#main-navigation).
+
 ## Add a feature as a developer
 
 1. Register a stable lowercase snake-case key in
    [`FeatureFlags::DEFINITIONS`](../src/Service/FeatureFlags.php). Supply a label,
-   description, and boolean defaults. Start new beta capabilities disabled and
-   hidden unless the proposal justifies different defaults:
+   description, and boolean defaults. New capabilities start disabled and
+   hidden, so an installation never gains a feature or a menu entry by
+   updating. `FeatureFlagDefaultsTest` fails for a new flag that defaults to on
+   or shown; a feature that graduates from beta is added to its `GRADUATED`
+   list with the proposal that justifies it. A feature without a menu entry of
+   its own sets `'navigation' => false`, so the Feature flags page says that its
+   navigation option has no visible effect:
 
    ```php
    'example_export' => [

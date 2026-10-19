@@ -62,7 +62,8 @@ final class AnalyticsMaintenanceJob implements ScheduledJob
             return $status;
         }
         $status['enabled'] = $policy['archiving_enabled'] || $policy['retention_enabled']
-            || $policy['processing_tasks_retention_days'] > 0 || $policy['audit_trail_retention_days'] > 0;
+            || $policy['processing_tasks_retention_days'] > 0 || $policy['audit_trail_retention_days'] > 0
+            || $policy['audit_trail_admin_retention_days'] > 0;
         if ($status['enabled']) {
             $status['next_due'] = $attempt === null ? $this->now() : $attempt['started_at']->modify('+'.self::INTERVAL_HOURS.' hours');
         }

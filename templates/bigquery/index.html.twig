@@ -1,6 +1,6 @@
 {% extends 'base.html.twig' %}
 
-{% block title %}BigQuery sync - {{ app_branding.name }}{% endblock %}
+{% block title %}Sync: BigQuery - {{ app_branding.name }}{% endblock %}
 
 {% macro env_help(overrides, key) %}{% if attribute(overrides, key) %}<p class="help">Controlled by <code>{{ key|upper }}</code>.</p>{% endif %}{% endmacro %}
 
@@ -12,8 +12,10 @@
      data-pages--bigquery--index-status-url-value="{{ path('app_bigquery_status') }}"
      data-pages--bigquery--index-running-value="{{ running or sync_requested_at ? 'true' : 'false' }}"
      data-pages--bigquery--index-since-value="{{ sync_requested_at ?? 0 }}">
-    <h1 class="title">BigQuery sync</h1>
-    <p class="subtitle">Copy reporting views to a Google BigQuery dataset on a schedule, for Looker Studio, Connected Sheets or anything else that reads BigQuery.</p>
+    <h1 class="title">Sync</h1>
+    <p class="subtitle">Copy reporting views to another destination on a schedule.</p>
+    {{ component('Sync:Navigation', {current: 'app_bigquery', destinations: sync_destinations}) }}
+    <p class="mb-3">Copy reporting views to a Google BigQuery dataset, for Looker Studio, Connected Sheets or anything else that reads BigQuery.</p>
     {{ component('Ui:DocsLink', {topic: 'reporting.bigquery', label: 'BigQuery sync guide'}) }}
 
     {% if configuration_error %}<div class="notification is-danger" role="alert">{{ configuration_error }}</div>{% endif %}

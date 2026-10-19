@@ -2,6 +2,7 @@
 
 namespace App\Controller;
 
+use App\EventSubscriber\AdminAuditSubscriber;
 use App\Service\AggregateConfigLoader;
 use App\Service\DropInScripts;
 use App\Service\TrackerNamespace;
@@ -151,6 +152,7 @@ class WebsitesController extends AbstractController
             return $this->redirectToRoute('app_dashboard');
         }
 
+        $request->attributes->set(AdminAuditSubscriber::SUBJECT, $name);
         try {
             $domain = $this->websiteDomainPolicy->normalizePrimaryDomain($domain);
             $policy = $this->submittedDomainPolicy($request, $domain);
@@ -178,6 +180,7 @@ class WebsitesController extends AbstractController
             return $this->redirectToRoute('app_dashboard');
         }
 
+        $this->nameWebsiteForAudit($request, $token);
         try {
             $policy = $this->submittedDomainPolicy($request);
             if ($policy === null) {
@@ -195,6 +198,19 @@ class WebsitesController extends AbstractController
         }
 
         return $this->redirectToRoute('app_dashboard');
+    }
+
+    /** The audit trail names the website, never its token. */
+    private function nameWebsiteForAudit(Request $request, string $token): void
+    {
+        try {
+            $name = $this->websiteManager->findOneByToken($token)['name'] ?? null;
+        } catch (\Throwable) {
+            $name = null;
+        }
+        if (is_string($name) && $name !== '') {
+            $request->attributes->set(AdminAuditSubscriber::SUBJECT, $name);
+        }
     }
 
     private function submittedDomainPolicy(Request $request, ?string $newWebsiteDomain = null): ?array
@@ -230,6 +246,7 @@ class WebsitesController extends AbstractController
             return $this->redirectToRoute('app_dashboard');
         }
 
+        $this->nameWebsiteForAudit($request, $token);
         try {
             $success = $this->websiteManager->removeWebsite($token);
 

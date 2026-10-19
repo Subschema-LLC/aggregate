@@ -46,6 +46,12 @@ remain straightforward. Favor understandable designs over feature count.
   Respect existing environment precedence, including settings that intentionally
   have no environment-variable override. Never overwrite unrelated settings or
   deployment configuration. Document any necessary exception or existing gap.
+- **Keep the dashboard small.** Fold a single setting into an existing page
+  rather than adding a menu entry. A page that only matters once something is
+  turned on gets a `shown_when` condition in `config/navigation.yaml`, so the
+  YAML states when it appears and the dashboard search still finds it. New
+  feature flags start off and hidden (`FeatureFlagDefaultsTest`). See
+  [flags, settings and menu conditions](docs/FEATURE-FLAGS.md#flags-settings-and-menu-conditions).
 - **Support white labeling.** Use the existing branding and navigation helpers
   for names, logos, colors, typography, and presentation. Avoid hardcoded vendor
   identity in ordinary product UI. Preserve accessible contrast, keyboard use,
@@ -58,8 +64,9 @@ remain straightforward. Favor understandable designs over feature count.
 
 BI disclosure thresholds (`anonymous_min_cell_count`,
 `anonymous_geo_min_cell_count`) and `reporting_timezone` are YAML settings
-compiled into the `bi_anonymous_*` view SQL. The BI disclosure, page groups and
-reporting timezone pages, plus `app:analytics:bi-views:regenerate`, share
+compiled into the `bi_anonymous_*` view SQL. The BI disclosure and page groups
+pages, the reporting timezone section of General settings, plus
+`app:analytics:bi-views:regenerate`, share
 `AnalyticsPrivacySettings`, `ReportingTimezone` and `AnonymousBiViewManager`;
 reuse those services rather than regenerating views elsewhere. The reporting
 timezone relabels event-view hours and days only. Do not store local times on

@@ -21,6 +21,7 @@ final class AnalyticsDataLifecyclePolicyTest extends TestCase
         'analytics_archive_retention_days',
         'analytics_maintenance_batch_size',
         'audit_trail_retention_days',
+        'audit_trail_admin_retention_days',
         'processing_tasks_retention_days',
     ];
 
@@ -73,6 +74,7 @@ final class AnalyticsDataLifecyclePolicyTest extends TestCase
             'analytics_archive_retention_days' => 730,
             'analytics_maintenance_batch_size' => 1000,
             'audit_trail_retention_days' => 365,
+            'audit_trail_admin_retention_days' => 730,
             'processing_tasks_retention_days' => 90,
         ], $policy->toArray());
     }
@@ -90,6 +92,19 @@ final class AnalyticsDataLifecyclePolicyTest extends TestCase
         $this->setEnvironment('AUDIT_TRAIL_RETENTION_DAYS', '730');
         self::assertSame(730, $this->policy([])->getAuditTrailRetentionDays());
         self::assertTrue($this->policy([])->isEnvironmentOverridden('audit_trail_retention_days'));
+    }
+
+    public function testAdministratorActionsHaveTheirOwnLongerPeriod(): void
+    {
+        self::assertSame(730, $this->policy([])->getAuditTrailAdminRetentionDays());
+        $policy = $this->policy(['audit_trail_retention_days' => 30, 'audit_trail_admin_retention_days' => '0']);
+        self::assertSame([30, 0], [$policy->getAuditTrailRetentionDays(), $policy->getAuditTrailAdminRetentionDays()]);
+        self::assertSame(0, $policy->getPolicy()['audit_trail_admin_retention_days']);
+
+        $this->setEnvironment('AUDIT_TRAIL_ADMIN_RETENTION_DAYS', '1825');
+        self::assertSame(1825, $this->policy(['audit_trail_admin_retention_days' => 90])->getAuditTrailAdminRetentionDays());
+        self::assertTrue($this->policy([])->isEnvironmentOverridden('audit_trail_admin_retention_days'));
+        self::assertTrue($this->policy([])->getPolicy()['environment_overrides']['audit_trail_admin_retention_days']);
     }
 
     public function testReadsACompleteValidPolicyFromYaml(): void
@@ -137,6 +152,7 @@ final class AnalyticsDataLifecyclePolicyTest extends TestCase
             'analytics_archive_retention_days' => false,
             'analytics_maintenance_batch_size' => false,
             'audit_trail_retention_days' => false,
+            'audit_trail_admin_retention_days' => false,
             'processing_tasks_retention_days' => false,
         ], $policy->getEnvironmentOverrides());
     }
@@ -164,6 +180,8 @@ final class AnalyticsDataLifecyclePolicyTest extends TestCase
         yield 'batch below minimum' => ['analytics_maintenance_batch_size', 99];
         yield 'batch above maximum' => ['analytics_maintenance_batch_size', 10_001];
         yield 'negative audit retention' => ['audit_trail_retention_days', -1];
+        yield 'administrator audit retention above maximum' => ['audit_trail_admin_retention_days', 36_501];
+        yield 'administrator audit retention is not a number' => ['audit_trail_admin_retention_days', 'two years'];
         yield 'task retention above maximum' => ['processing_tasks_retention_days', 36_501];
         yield 'fractional task retention' => ['processing_tasks_retention_days', '1.5'];
     }

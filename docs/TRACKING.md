@@ -343,7 +343,7 @@ Properties are flat scalars: strings, finite numbers, booleans, or null. At most
 
 Without a declared type, existing scalar behavior is preserved. Declared types omit mismatched values in both the SDK and server; null remains allowed. Integers must be whole numbers within JavaScript's safe-integer range, without fractional truncation. `float` and `double` both accept finite JSON numbers; they do not imply distinct JSON encodings or exact decimal arithmetic. Numeric and boolean strings are not converted. URL parameters are strings, so numeric/boolean typed properties need correctly typed `emit()` values instead of URL capture. Keep a separate text property if the original query value is needed. See the [complete type rules](DATA-MODEL.md#property-types-and-numeric-calculations).
 
-Use **Collection → Event examples** or `php bin/console app:analytics:examples` for the `emit()` call that sends the saved model's properties, and the anonymous/enhanced request JSON that a server sends instead. The [ecommerce recipe](EVENT-EXAMPLES.md#a-flat-ecommerce-starting-point) recommends a flat purchase payload with integer minor units for money; generating or copying examples does not save a model or obtain visitor consent.
+Use **Help → Event examples** (also a tab of **Collection → Data model**) or `php bin/console app:analytics:examples` for the `emit()` call that sends the saved model's properties, and the anonymous/enhanced request JSON that a server sends instead. The [ecommerce recipe](EVENT-EXAMPLES.md#a-flat-ecommerce-starting-point) recommends a flat purchase payload with integer minor units for money; generating or copying examples does not save a model or obtain visitor consent.
 
 ## Health and ingestion checks
 

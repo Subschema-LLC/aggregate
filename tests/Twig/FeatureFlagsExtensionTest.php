@@ -54,7 +54,15 @@ final class FeatureFlagsExtensionTest extends TestCase
         self::assertCount(1, $crawler->filter('a[href="/documentation"]'));
         self::assertCount(1, $crawler->filter('a[href="/dashboard/feature-flags"]'));
         self::assertCount(1, $crawler->filter('a[href="/logout?_csrf_token=logout-test-token"]'));
-        self::assertSame(!$enabled && !$hidden, str_contains($crawler->text(), '(disabled)'));
+        // A feature that is off but shown explains itself instead of looking broken.
+        $off = $crawler->filter('span[role="link"][aria-disabled="true"]');
+        self::assertCount(!$enabled && !$hidden ? 1 : 0, $off);
+        if (!$enabled && !$hidden) {
+            self::assertSame('Off', $off->filter('.tag')->text());
+            self::assertStringContainsString('Feature flags', (string) $off->attr('title'));
+            self::assertStringContainsString('turned off in Feature flags', $off->filter('.is-sr-only')->text());
+        }
+        self::assertStringNotContainsString('(disabled)', $crawler->text());
     }
 
     public static function featureStates(): iterable

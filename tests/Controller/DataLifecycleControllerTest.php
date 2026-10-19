@@ -45,6 +45,7 @@ final class DataLifecycleControllerTest extends TestCase
         AnalyticsDataLifecyclePolicy::KEY_ARCHIVE_RETENTION_DAYS,
         AnalyticsDataLifecyclePolicy::KEY_MAINTENANCE_BATCH_SIZE,
         AnalyticsDataLifecyclePolicy::KEY_AUDIT_TRAIL_RETENTION_DAYS,
+        AnalyticsDataLifecyclePolicy::KEY_AUDIT_TRAIL_ADMIN_RETENTION_DAYS,
         AnalyticsDataLifecyclePolicy::KEY_PROCESSING_TASKS_RETENTION_DAYS,
     ];
 
@@ -185,6 +186,7 @@ final class DataLifecycleControllerTest extends TestCase
             AnalyticsDataLifecyclePolicy::KEY_ARCHIVE_RETENTION_DAYS => 800,
             AnalyticsDataLifecyclePolicy::KEY_MAINTENANCE_BATCH_SIZE => 2500,
             AnalyticsDataLifecyclePolicy::KEY_AUDIT_TRAIL_RETENTION_DAYS => 0,
+            AnalyticsDataLifecyclePolicy::KEY_AUDIT_TRAIL_ADMIN_RETENTION_DAYS => 1095,
             AnalyticsDataLifecyclePolicy::KEY_PROCESSING_TASKS_RETENTION_DAYS => 30,
         ], Yaml::parseFile($this->projectDir.'/config/aggregate.yaml'));
     }
@@ -218,6 +220,10 @@ final class DataLifecycleControllerTest extends TestCase
 
         yield 'negative record retention' => [array_replace($valid, [
             AnalyticsDataLifecyclePolicy::KEY_AUDIT_TRAIL_RETENTION_DAYS => '-1',
+        ])];
+
+        yield 'administrator actions kept too long' => [array_replace($valid, [
+            AnalyticsDataLifecyclePolicy::KEY_AUDIT_TRAIL_ADMIN_RETENTION_DAYS => '36501',
         ])];
 
         yield 'malformed integer' => [array_replace($valid, [
@@ -377,6 +383,7 @@ final class DataLifecycleControllerTest extends TestCase
             AnalyticsDataLifecyclePolicy::KEY_ARCHIVE_RETENTION_DAYS => 730,
             AnalyticsDataLifecyclePolicy::KEY_MAINTENANCE_BATCH_SIZE => 1000,
             AnalyticsDataLifecyclePolicy::KEY_AUDIT_TRAIL_RETENTION_DAYS => 365,
+            AnalyticsDataLifecyclePolicy::KEY_AUDIT_TRAIL_ADMIN_RETENTION_DAYS => 730,
             AnalyticsDataLifecyclePolicy::KEY_PROCESSING_TASKS_RETENTION_DAYS => 90,
         ];
     }
@@ -400,6 +407,7 @@ final class DataLifecycleControllerTest extends TestCase
             AnalyticsDataLifecyclePolicy::KEY_ARCHIVE_RETENTION_DAYS => '800',
             AnalyticsDataLifecyclePolicy::KEY_MAINTENANCE_BATCH_SIZE => '2500',
             AnalyticsDataLifecyclePolicy::KEY_AUDIT_TRAIL_RETENTION_DAYS => '0',
+            AnalyticsDataLifecyclePolicy::KEY_AUDIT_TRAIL_ADMIN_RETENTION_DAYS => '1095',
             AnalyticsDataLifecyclePolicy::KEY_PROCESSING_TASKS_RETENTION_DAYS => '30',
         ];
     }

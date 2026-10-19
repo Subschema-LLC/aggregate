@@ -80,6 +80,7 @@ final class DataLifecycleController extends AbstractController
             AnalyticsDataLifecyclePolicy::KEY_ARCHIVE_RETENTION_DAYS => true,
             AnalyticsDataLifecyclePolicy::KEY_MAINTENANCE_BATCH_SIZE => true,
             AnalyticsDataLifecyclePolicy::KEY_AUDIT_TRAIL_RETENTION_DAYS => true,
+            AnalyticsDataLifecyclePolicy::KEY_AUDIT_TRAIL_ADMIN_RETENTION_DAYS => true,
             AnalyticsDataLifecyclePolicy::KEY_PROCESSING_TASKS_RETENTION_DAYS => true,
         ];
         $unknownKeys = array_diff_key($submitted, $allowedKeys);
