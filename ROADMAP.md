@@ -173,36 +173,17 @@ checkout, or a small accessibility fix. Keep each PR focused and target
     listing does not certify any deployment's legal compliance.
   - Partner names and offerings stay out of the application; each installation
     keeps its operator's white label.
-- **Load testing and capacity limits.** Measure how much traffic one
-  installation handles, so installations are sized on numbers rather than
-  guesses, and the [scale-out proposal](#proposals-to-explore) below starts
-  from a measured limit. Every collection request runs its checks in PHP, and
-  anonymous events are written to the database during the request, so PHP
-  workers and the database set today's ceiling.
-  - **Harness:** repeatable load scripts in the repository (k6 is a good fit:
-    open source, scriptable, and runs from a laptop or CI) that send anonymous
-    and enhanced `/api/receive` traffic with synthetic payloads, requests for the
-    tracker, consent and tag manager scripts, and dashboard use at the same
-    time. Run them against disposable installations only, never production data.
-  - **Matrix:** PHP-FPM behind Nginx and FrankenPHP; SQLite, MySQL or MariaDB,
-    PostgreSQL and, where possible, SQL Server; `sync://` and `doctrine://` with
-    one and several workers; and `app:analytics:maintain` running during load.
-  - **Measurements:** sustained events per second and per minute at a stated p95
-    and p99 latency and error rate; the point where latency or errors start to
-    climb; database CPU, connections and lock waits; and queue depth from
-    `messenger:stats` and worker lag.
-  - **Rate limiting:** `rate_limit_per_minute` counts per client address, so a
-    test from a few machines is throttled before anything else. Test runs need a
-    test-only limit, or synthetic client addresses through `TRUSTED_PROXIES` in
-    the disposable environment, and should report the limiter's own cost
-    separately.
-  - **Results:** a published capacity page with the hardware, versions, settings
-    and numbers of each run, linked from the deployment guide for sizing. The
-    figures describe the tested setup; they are not a guarantee.
-  - **Known gap:** the [performance advice](DEPLOYMENT.md#performance) suggests
-    AMQP and Redis transports, but only `symfony/doctrine-messenger` is installed,
-    so `amqp://` and `redis://` DSNs fail today. Add those transports (see below)
-    or correct the guide.
+- **Load testing: what is not measured yet.** The harness, the Load test
+  workflow and the published results are in place
+  ([load testing and capacity](docs/LOAD-TESTING.md)). Still to measure:
+  - a load generator and server on separate dedicated machines, without the
+    shared runner's noise or k6's share of the CPU;
+  - `doctrine://` with background workers, FrankenPHP, Apache, SQL Server and
+    MariaDB, and other PHP-FPM worker counts;
+  - requests for the tracker, consent and tag manager scripts, dashboard use,
+    and `app:analytics:maintain`, running during load;
+  - an installation with many registered websites;
+  - writing anonymous events with a direct insert instead of Doctrine ORM.
 
 ## Proposals to explore
 
@@ -387,6 +368,7 @@ checkout, or a small accessibility fix. Keep each PR focused and target
 - [Organization traffic markers](docs/PRIVACY-COMPLIANCE.md#organization-traffic), with YAML/UI settings, marking links that set the marker on each tracked website, and a fixed `org_internal_traffic` flag on every event. Filtering uses retained event JSON; grouped BI views and archives do not retain the flag.
 - [Custom data models](docs/DATA-MODEL.md), including UTM/query mappings, per-property consent settings, downloadable YAML, and private reporting columns. All UTMs require consent by default; anonymous attribution should use at most broad `utm_medium` values, with documented warnings for overrides.
 - [Optional JavaScript minification](docs/JS-BUILD.md) for tracker, organization-marker, and drop-in scripts.
+- [Load testing and capacity](docs/LOAD-TESTING.md): k6 scripts and a Load test workflow that measure the hits per day one server handles on SQLite, MySQL and PostgreSQL, profile collection requests, compare two versions, and clear the cache under traffic; results feed the [sizing table](DEPLOYMENT.md#performance).
 - [Git source updates](DEPLOYMENT.md#updates) and [signed release packages](docs/RELEASES.md), with dashboard/CLI version checks and configurable update branches defaulting to `master`.
 - [Code deployed another way](docs/UPDATES.md#deploy-the-code-another-way), such as with a hosting panel's Git deployment or CI/CD: a read-only Updates page with the deployed commit and how far behind it is, and one post-deployment command for the tool's deployment action.
 

@@ -148,7 +148,7 @@ class CollectionSettingsController extends AbstractController
         try {
             if ($this->scopes !== null && $redirect !== []) {
                 $checked = $request->request->all('override');
-                if (!is_array($checked) || array_filter($checked, 'is_string') !== $checked) {
+                if (array_filter($checked, 'is_string') !== $checked) {
                     throw new \InvalidArgumentException('Choose which sections to save for this scope. Nothing was saved.');
                 }
                 $this->scopes->saveCollection($scope, $this->scopedCollectionValues($request, $form), array_values($checked));

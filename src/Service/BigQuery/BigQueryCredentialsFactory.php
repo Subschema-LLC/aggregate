@@ -15,7 +15,10 @@ class BigQueryCredentialsFactory
     ) {
     }
 
-    /** @param array<string, mixed> $settings Validated BigQuerySettings @throws BigQueryException */
+    /**
+     * @param array<string, mixed> $settings Validated BigQuerySettings
+     * @throws BigQueryException
+     */
     public function create(array $settings): GoogleCredentials
     {
         switch ($settings[BigQuerySettings::KEY_AUTH]) {

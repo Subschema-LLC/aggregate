@@ -145,11 +145,6 @@ final class WebsiteScopesController extends AbstractController
             return $this->redirectToRoute('app_website_groups');
         }
         $assignments = $request->request->all('assignment');
-        if (!is_array($assignments)) {
-            $this->addFlash('error', 'Choose a group for each website. Nothing was saved.');
-
-            return $this->redirectToRoute('app_website_groups');
-        }
         try {
             foreach ($assignments as $token => $groupId) {
                 if (!is_string($token) || !is_string($groupId)) {

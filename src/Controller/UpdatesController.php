@@ -186,7 +186,10 @@ final class UpdatesController extends AbstractController
         ], 'Verified release '.$staged['version'].'. ');
     }
 
-    /** @param array<string, mixed> $submitted @param list<string> $arguments */
+    /**
+     * @param array<string, mixed> $submitted
+     * @param list<string> $arguments
+     */
     private function startUpdate(array $submitted, array $arguments, string $prefix = ''): Response
     {
         $error = $this->startError($submitted);
@@ -217,7 +220,10 @@ final class UpdatesController extends AbstractController
             : 'The update cannot start from the dashboard: '.implode(' ', $problems).' You can run php bin/console app:updates:apply on the server instead.';
     }
 
-    /** @param array<string, mixed> $submitted @param list<string> $arguments */
+    /**
+     * @param array<string, mixed> $submitted
+     * @param list<string> $arguments
+     */
     private function launch(array $submitted, array $arguments, string $prefix = ''): Response
     {
         if (($submitted['database_backup_confirmed'] ?? null) === '1') {

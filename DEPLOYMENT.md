@@ -4,12 +4,16 @@ This guide covers installing a release ZIP on a web host, and Docker and native 
 
 Complete first-time setup behind a local connection, VPN, or web-server access
 restriction before exposing the application publicly. Prefer
-`php bin/console app:install` to create the initial administrator. The web
-installer is a first-run bootstrap flow: its CSRF protection prevents forged
-browser submissions, but anyone who can reach an uninitialized installation can
-open the form and create the first account. Keep `/install` and `/install/execute`
-restricted until setup completes. Headless deployments should disable the
-dashboard as described in the [configuration guide](docs/CONFIGURATION.md).
+`php bin/console app:install` to create the initial administrator. It asks for
+the name and password, or takes them from `--username` and `--password` or the
+`ADMIN_USERNAME` and `ADMIN_PASSWORD` environment variables for an unattended
+install; an environment variable keeps the password out of the shell history.
+The web installer is a first-run bootstrap flow: its CSRF protection prevents
+forged browser submissions, but anyone who can reach an uninitialized
+installation can open the form and create the first account. Keep `/install`
+and `/install/execute` restricted until setup completes. Headless deployments
+should disable the dashboard as described in the
+[configuration guide](docs/CONFIGURATION.md).
 
 A release ZIP extracted without any environment configuration starts with the
 browser [setup page](docs/RELEASES.md#install-or-deploy-a-verified-package)
@@ -318,7 +322,7 @@ change its `root` to your `public/` directory and run
 ## Worker Process Setup
 
 The worker process handles background analytics event processing.
-It is required only when `MESSENGER_TRANSPORT_DSN` is async (for example `doctrine://default`, AMQP, Redis).
+It is required only when `MESSENGER_TRANSPORT_DSN` is async, such as `doctrine://default`.
 If you use `MESSENGER_TRANSPORT_DSN=sync://`, no worker is needed.
 
 ### Option 1: systemd (Recommended)
@@ -533,13 +537,18 @@ With PostgreSQL, keep connections open between requests with
 opening a new connection for every request is its largest cost. The setup page
 turns persistent connections on for PostgreSQL by default.
 
-**5. Use Redis or RabbitMQ for messaging:**
+**5. Queue enhanced events:**
+By default (`sync://`) each enhanced event is saved during the request. To save
+them in the background instead, use the included Doctrine transport and run a
+[worker](#worker-process-setup):
 ```bash
-# In .env
-MESSENGER_TRANSPORT_DSN="amqp://user:pass@rabbitmq:5672/%2f/messages"
-# or
-MESSENGER_TRANSPORT_DSN="redis://localhost:6379/messages"
+# In .env.local
+MESSENGER_TRANSPORT_DSN=doctrine://default
 ```
+Only this transport is included. Redis and RabbitMQ (AMQP) would need the
+`symfony/redis-messenger` or `symfony/amqp-messenger` package, which release
+ZIPs do not contain, and an update replaces `vendor/`, so a package added by
+hand disappears with the next update.
 
 **6. Scale workers:**
 Run multiple worker processes (with Supervisor or systemd):

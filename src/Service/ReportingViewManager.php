@@ -84,7 +84,7 @@ class ReportingViewManager
             if (!$data instanceof \stdClass) {
                 continue;
             }
-            foreach ($data as $key => $value) {
+            foreach (get_object_vars($data) as $key => $value) {
                 $key = (string) $key;
                 // Control characters and unbounded keys are not useful model
                 // suggestions and must not enter terminal or browser output.
@@ -106,13 +106,13 @@ class ReportingViewManager
         }
 
         ksort($properties, SORT_STRING);
-        foreach ($properties as &$property) {
-            $property['types'] = array_keys($property['types']);
-            sort($property['types'], SORT_STRING);
-        }
-        unset($property);
 
-        return array_values($properties);
+        return array_values(array_map(static function (array $property): array {
+            $types = array_keys($property['types']);
+            sort($types, SORT_STRING);
+
+            return ['key' => $property['key'], 'types' => $types, 'event_count' => $property['event_count']];
+        }, $properties));
     }
 
     /** @return array<string, string> View name => portable-platform-specific DDL. */

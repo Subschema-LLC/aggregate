@@ -134,7 +134,10 @@ a warning or a consent checkbox is not enforcement.
 Routine anonymous BI access uses approved `bi_anonymous_*` views. Preserve
 completed time buckets, minimum event counts, geography pooling and secondary
 suppression, including when live and archived data are combined. Thresholds
-count events, not people; they are not a guarantee of legal anonymity.
+count events, not people; they are not a guarantee of legal anonymity. The
+hourly, daily, roll-up and coverage views read events through one definition in
+`AnonymousBiViewSqlBuilder`; change event sources, filters or the hourly cell
+grouping there, never in one view alone.
 
 The seven `bi_dim_*_v1` views plus `bi_glossary_values_v1` and
 `bi_glossary_columns_v1` are approved metadata contracts; keep their backing

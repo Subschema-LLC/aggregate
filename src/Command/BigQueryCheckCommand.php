@@ -8,6 +8,7 @@ use App\Service\BigQuery\BigQueryBackgroundSync;
 use App\Service\BigQuery\BigQueryException;
 use App\Service\BigQuery\BigQuerySettings;
 use App\Service\BigQuery\BigQuerySyncRunner;
+use App\Service\ViewSync\ViewSyncConsole;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -53,17 +54,7 @@ final class BigQueryCheckCommand extends Command
         );
 
         $status = $this->runner->status($settings);
-        $io->table(['View', 'Status', 'Last sync', 'Rows', 'Next', 'Details'], array_map(static fn (array $view): array => [
-            $view['view'].($view['private'] ? ' (private)' : ''),
-            $view['status'],
-            $view['succeeded_at']?->format('Y-m-d H:i').($view['succeeded_at'] ? ' UTC' : ''),
-            $view['row_count'] ?? '',
-            $view['next_due'] === null ? 'next run' : $view['next_due']->format('Y-m-d H:i').' UTC',
-            $view['message'] ?? '',
-        ], $status['views']));
-        if ($status['scheduler_late']) {
-            $io->warning('The sync has not run recently. Have the server run app:scheduler:run every five minutes; app:scheduler:status shows how on this server. With cron: '.$this->background->cronLine());
-        }
+        ViewSyncConsole::status($io, $status, $this->background->cronLine());
 
         if ($input->getOption('no-connect')) {
             return Command::SUCCESS;

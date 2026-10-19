@@ -12,6 +12,22 @@ use Doctrine\DBAL\Platforms\SQLServerPlatform;
 
 final class AnonymousBiViewSqlBuilder
 {
+    /**
+     * Each column of an anonymous event cell, as read from an archived cell
+     * and from a live event not yet archived (which counts once). The hourly,
+     * daily, rollup and coverage views all read events through these sources.
+     */
+    private const EVENT_CELL_SOURCES = [
+        'website_token' => ['archived_events.website_token', 'events.website_token'],
+        'event_hour' => ['archived_events.event_hour', 'events.created_at'],
+        'event_name' => ['archived_events.event_name', 'events.event_name'],
+        'page_path' => ['archived_events.page_path', 'events.url'],
+        'referrer_channel' => ['archived_events.referrer_channel', "COALESCE(events.referrer, 'unknown')"],
+        'device_class' => ['archived_events.device_class', 'events.device_class'],
+        'viewport_bucket' => ['archived_events.viewport_bucket', 'events.viewport_bucket'],
+        'event_count' => ['archived_events.event_count', '1'],
+    ];
+
     private ?bool $shifts = null;
     private ?ReportingTimeSql $timeSql = null;
 
@@ -35,60 +51,15 @@ final class AnonymousBiViewSqlBuilder
 
     public function eventViewSql(int $minimumCellCount): string
     {
-        if ($this->shiftsTime()) {
-            return $this->shiftedEventViewSql($minimumCellCount);
-        }
+        return "CREATE VIEW bi_anonymous_events_v1 AS\n"
+            .$this->hourlyCellsSql(
+                'event_counts',
+                $this->completedHourPredicate('archived_events.event_hour'),
+                $this->completedHourPredicate('events.created_at'),
+                $this->shiftsTime(),
+            )
+            .sprintf(<<<'SQL'
 
-        return sprintf(<<<'SQL'
-CREATE VIEW bi_anonymous_events_v1 AS
-WITH combined_event_cells AS (
-    SELECT
-        archived_events.website_token,
-        archived_events.event_hour,
-        archived_events.event_name,
-        archived_events.page_path,
-        archived_events.referrer_channel,
-        archived_events.device_class,
-        archived_events.viewport_bucket,
-        archived_events.event_count
-    FROM analytics_archive_events archived_events
-    WHERE archived_events.privacy_mode = 'anonymous'
-      AND %1$s
-    UNION ALL
-    SELECT
-        events.website_token,
-        events.created_at AS event_hour,
-        events.event_name,
-        events.url AS page_path,
-        COALESCE(events.referrer, 'unknown') AS referrer_channel,
-        events.device_class,
-        events.viewport_bucket,
-        1 AS event_count
-    FROM events
-    WHERE events.archived_at IS NULL
-      AND events.privacy_mode = 'anonymous'
-      AND %2$s
-),
-event_counts AS (
-    SELECT
-        website_token,
-        event_hour,
-        event_name,
-        page_path,
-        referrer_channel,
-        device_class,
-        viewport_bucket,
-        SUM(event_count) AS event_count
-    FROM combined_event_cells
-    GROUP BY
-        website_token,
-        event_hour,
-        event_name,
-        page_path,
-        referrer_channel,
-        device_class,
-        viewport_bucket
-)
 SELECT
     event_counts.website_token,
     event_counts.event_hour,
@@ -99,90 +70,8 @@ SELECT
     event_counts.viewport_bucket,
     event_counts.event_count
 FROM event_counts
-WHERE event_counts.event_count >= %3$d
-SQL, $this->completedHourPredicate('archived_events.event_hour'), $this->completedHourPredicate('events.created_at'), $minimumCellCount);
-    }
-
-    /**
-     * Same cells as the UTC hourly view, grouped by the stored UTC hour, with
-     * event_hour relabelled in the reporting timezone. Grouping by the stored
-     * hour keeps two UTC hours separate when a daylight-saving fallback gives
-     * them the same local label, so the threshold still applies to each cell.
-     */
-    private function shiftedEventViewSql(int $minimumCellCount): string
-    {
-        $time = $this->timeSql();
-        $archiveLabel = $time->hourLabel('archived_events.event_hour');
-        $liveLabel = $time->hourLabel('events.created_at');
-        $archiveHour = $this->completedHourPredicate('archived_events.event_hour');
-        $liveHour = $this->completedHourPredicate('events.created_at');
-
-        return <<<SQL
-CREATE VIEW bi_anonymous_events_v1 AS
-WITH combined_event_cells AS (
-    SELECT
-        archived_events.website_token,
-        archived_events.event_hour AS utc_hour,
-        {$archiveLabel} AS event_hour,
-        archived_events.event_name,
-        archived_events.page_path,
-        archived_events.referrer_channel,
-        archived_events.device_class,
-        archived_events.viewport_bucket,
-        archived_events.event_count
-    FROM analytics_archive_events archived_events
-    WHERE archived_events.privacy_mode = 'anonymous'
-      AND {$archiveHour}
-    UNION ALL
-    SELECT
-        events.website_token,
-        events.created_at AS utc_hour,
-        {$liveLabel} AS event_hour,
-        events.event_name,
-        events.url AS page_path,
-        COALESCE(events.referrer, 'unknown') AS referrer_channel,
-        events.device_class,
-        events.viewport_bucket,
-        1 AS event_count
-    FROM events
-    WHERE events.archived_at IS NULL
-      AND events.privacy_mode = 'anonymous'
-      AND {$liveHour}
-),
-event_counts AS (
-    SELECT
-        website_token,
-        utc_hour,
-        event_hour,
-        event_name,
-        page_path,
-        referrer_channel,
-        device_class,
-        viewport_bucket,
-        SUM(event_count) AS event_count
-    FROM combined_event_cells
-    GROUP BY
-        website_token,
-        utc_hour,
-        event_hour,
-        event_name,
-        page_path,
-        referrer_channel,
-        device_class,
-        viewport_bucket
-)
-SELECT
-    event_counts.website_token,
-    event_counts.event_hour,
-    event_counts.event_name,
-    event_counts.page_path,
-    event_counts.referrer_channel,
-    event_counts.device_class,
-    event_counts.viewport_bucket,
-    event_counts.event_count
-FROM event_counts
-WHERE event_counts.event_count >= {$minimumCellCount}
-SQL;
+WHERE %s
+SQL, self::hourlyCellReleased('event_counts.event_count', $minimumCellCount));
     }
 
     public function goalViewSql(int $minimumCellCount): string
@@ -561,54 +450,42 @@ SQL,
      */
     public function coverageViewSql(int $minimumCellCount): string
     {
-        return sprintf(<<<'SQL'
-CREATE VIEW bi_anonymous_coverage_v1 AS
-WITH combined_event_cells AS (
-    SELECT
-        archived_events.website_token,
-        archived_events.event_hour,
-        archived_events.event_count
-    FROM analytics_archive_events archived_events
-    WHERE archived_events.privacy_mode = 'anonymous'
-      AND %1$s
-    UNION ALL
-    SELECT
-        events.website_token,
-        events.created_at AS event_hour,
-        1 AS event_count
-    FROM events
-    WHERE events.archived_at IS NULL
-      AND events.privacy_mode = 'anonymous'
-      AND %2$s
-),
+        return "CREATE VIEW bi_anonymous_coverage_v1 AS\n"
+            .self::combinedEventCellsSql(
+                self::eventCellColumns('website_token', 'event_hour', 'event_count'),
+                $this->reportingDayPredicate('archived_events.event_hour'),
+                $this->reportingDayPredicate('events.created_at'),
+            )
+            .sprintf(<<<'SQL'
+,
 day_totals AS (
     SELECT
         website_token,
-        %3$s AS event_day,
+        %1$s AS event_day,
         SUM(event_count) AS total_count
     FROM combined_event_cells
     GROUP BY
         website_token,
-        %3$s
+        %1$s
 ),
 view_names AS (
-    SELECT 1 AS view_id, %7$s AS view_name
+    SELECT 1 AS view_id, %5$s AS view_name
     UNION ALL
-    SELECT 2 AS view_id, %8$s AS view_name
+    SELECT 2 AS view_id, %6$s AS view_name
     UNION ALL
-    SELECT 3 AS view_id, %9$s AS view_name
+    SELECT 3 AS view_id, %7$s AS view_name
 ),
 released AS (
     SELECT
         1 AS view_id,
         website_token,
-        %4$s AS event_day,
+        %2$s AS event_day,
         SUM(event_count) AS released_count
     FROM bi_anonymous_events_v1
-    WHERE %5$s
+    WHERE %3$s
     GROUP BY
         website_token,
-        %4$s
+        %2$s
     UNION ALL
     SELECT
         2 AS view_id,
@@ -635,10 +512,10 @@ SELECT
     day_totals.event_day,
     view_names.view_name,
     CASE
-        WHEN COALESCE(released.released_count, 0) * 10 >= day_totals.total_count * 9 THEN %10$s
-        WHEN COALESCE(released.released_count, 0) * 2 >= day_totals.total_count THEN %11$s
-        WHEN COALESCE(released.released_count, 0) * 10 >= day_totals.total_count THEN %12$s
-        ELSE %13$s
+        WHEN COALESCE(released.released_count, 0) * 10 >= day_totals.total_count * 9 THEN %8$s
+        WHEN COALESCE(released.released_count, 0) * 2 >= day_totals.total_count THEN %9$s
+        WHEN COALESCE(released.released_count, 0) * 10 >= day_totals.total_count THEN %10$s
+        ELSE %11$s
     END AS coverage_band
 FROM day_totals
 CROSS JOIN view_names
@@ -646,10 +523,8 @@ LEFT JOIN released
     ON released.website_token = day_totals.website_token
    AND released.event_day = day_totals.event_day
    AND released.view_id = view_names.view_id
-WHERE day_totals.total_count >= %6$d
+WHERE day_totals.total_count >= %4$d
 SQL,
-            $this->reportingDayPredicate('archived_events.event_hour'),
-            $this->reportingDayPredicate('events.created_at'),
             $this->reportingDayExpression('event_hour'),
             $this->shiftsTime()
                 ? $this->timeSql()->localDayExpression('bi_anonymous_events_v1.event_hour')
@@ -694,65 +569,23 @@ SQL,
      */
     private function dailyCellsSql(int $minimumCellCount, array $pageGroups): string
     {
-        return sprintf(<<<'SQL'
-WITH combined_event_cells AS (
-    SELECT
-        archived_events.website_token,
-        archived_events.event_hour,
-        archived_events.event_name,
-        archived_events.page_path,
-        archived_events.referrer_channel,
-        archived_events.device_class,
-        archived_events.viewport_bucket,
-        archived_events.event_count
-    FROM analytics_archive_events archived_events
-    WHERE archived_events.privacy_mode = 'anonymous'
-      AND %1$s
-    UNION ALL
-    SELECT
-        events.website_token,
-        events.created_at AS event_hour,
-        events.event_name,
-        events.url AS page_path,
-        COALESCE(events.referrer, 'unknown') AS referrer_channel,
-        events.device_class,
-        events.viewport_bucket,
-        1 AS event_count
-    FROM events
-    WHERE events.archived_at IS NULL
-      AND events.privacy_mode = 'anonymous'
-      AND %2$s
-),
-hourly_cells AS (
-    SELECT
-        website_token,
-        event_hour,
-        event_name,
-        page_path,
-        referrer_channel,
-        device_class,
-        viewport_bucket,
-        SUM(event_count) AS event_count
-    FROM combined_event_cells
-    GROUP BY
-        website_token,
-        event_hour,
-        event_name,
-        page_path,
-        referrer_channel,
-        device_class,
-        viewport_bucket
-),
+        return $this->hourlyCellsSql(
+            'hourly_cells',
+            $this->reportingDayPredicate('archived_events.event_hour'),
+            $this->reportingDayPredicate('events.created_at'),
+        )
+            .sprintf(<<<'SQL'
+,
 grouped_cells AS (
     SELECT
         website_token,
-        %3$s AS event_day,
+        %1$s AS event_day,
         event_name,
-        %4$s AS page_group,
+        %2$s AS page_group,
         referrer_channel,
         device_class,
         event_count,
-        CASE WHEN event_count >= %5$d THEN event_count ELSE 0 END AS released_hourly_count
+        CASE WHEN %3$s THEN event_count ELSE 0 END AS released_hourly_count
     FROM hourly_cells
 ),
 daily_cells AS (
@@ -775,12 +608,106 @@ daily_cells AS (
         device_class
 )
 SQL,
-            $this->reportingDayPredicate('archived_events.event_hour'),
-            $this->reportingDayPredicate('events.created_at'),
-            $this->reportingDayExpression('event_hour'),
-            $this->pageGroupExpression('page_path', $pageGroups),
-            $minimumCellCount,
-        );
+                $this->reportingDayExpression('event_hour'),
+                $this->pageGroupExpression('page_path', $pageGroups),
+                self::hourlyCellReleased('event_count', $minimumCellCount),
+            );
+    }
+
+    /**
+     * The hourly event cells, from the WITH clause through the CTE named
+     * $cells: anonymous events summed per stored UTC hour, event, page path,
+     * channel, device and viewport. bi_anonymous_events_v1 releases these
+     * cells and the daily views account for the ones it withholds, so both
+     * build them here and cannot drift apart.
+     *
+     * With $localHourLabel, event_hour is the hour in the reporting timezone
+     * and utc_hour the stored hour. Cells are still grouped by the stored
+     * hour, so two UTC hours that share a local label after a daylight-saving
+     * fallback stay separate cells and the threshold applies to each.
+     */
+    private function hourlyCellsSql(string $cells, string $archivePredicate, string $livePredicate, bool $localHourLabel = false): string
+    {
+        $columns = self::EVENT_CELL_SOURCES;
+        if ($localHourLabel) {
+            [$archived, $live] = $columns['event_hour'];
+            $columns = [
+                'website_token' => $columns['website_token'],
+                'utc_hour' => [$archived, $live],
+                'event_hour' => [$this->timeSql()->hourLabel($archived), $this->timeSql()->hourLabel($live)],
+            ] + $columns;
+        }
+        $key = implode(",\n        ", array_diff(array_keys($columns), ['event_count']));
+
+        return self::combinedEventCellsSql($columns, $archivePredicate, $livePredicate).<<<SQL
+,
+{$cells} AS (
+    SELECT
+        {$key},
+        SUM(event_count) AS event_count
+    FROM combined_event_cells
+    GROUP BY
+        {$key}
+)
+SQL;
+    }
+
+    /**
+     * Whether the hourly view releases a cell with this count. The daily
+     * views use the same test to work out the part of each day the hourly
+     * view already shows.
+     */
+    private static function hourlyCellReleased(string $count, int $minimumCellCount): string
+    {
+        return sprintf('%s >= %d', $count, $minimumCellCount);
+    }
+
+    /**
+     * The combined_event_cells CTE that opens the WITH clause: anonymous
+     * archived cells and anonymous live events not yet archived, one row per
+     * archived cell or live event.
+     *
+     * @param array<string, array{string, string}> $columns output column => [archived, live] expression
+     */
+    private static function combinedEventCellsSql(array $columns, string $archivePredicate, string $livePredicate): string
+    {
+        $select = static function (string $table, int $side) use ($columns): string {
+            $items = [];
+            foreach ($columns as $column => $sources) {
+                $items[] = $sources[$side] === $table.'.'.$column ? $sources[$side] : $sources[$side].' AS '.$column;
+            }
+
+            return implode(",\n        ", $items);
+        };
+        $archived = $select('archived_events', 0);
+        $live = $select('events', 1);
+
+        return <<<SQL
+WITH combined_event_cells AS (
+    SELECT
+        {$archived}
+    FROM analytics_archive_events archived_events
+    WHERE archived_events.privacy_mode = 'anonymous'
+      AND {$archivePredicate}
+    UNION ALL
+    SELECT
+        {$live}
+    FROM events
+    WHERE events.archived_at IS NULL
+      AND events.privacy_mode = 'anonymous'
+      AND {$livePredicate}
+)
+SQL;
+    }
+
+    /**
+     * The named columns of EVENT_CELL_SOURCES, in the order given.
+     *
+     * @return array<string, array{string, string}>
+     */
+    private static function eventCellColumns(string ...$names): array
+    {
+        return array_map(static fn (string $name): array => self::EVENT_CELL_SOURCES[$name], array_combine($names, $names));
     }
 
     /**

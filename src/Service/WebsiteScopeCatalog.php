@@ -14,6 +14,8 @@ use Symfony\Contracts\Service\ResetInterface;
  * overrides a setting has its own file under config/website-scopes/. A missing
  * catalog means every website uses the deployment settings. An invalid catalog
  * fails closed: collection does not guess which websites share a group.
+ * WebsiteScopeFiles reads and writes the files; this class keeps the groups,
+ * changes them and reports whether the setting files are valid.
  */
 final class WebsiteScopeCatalog implements ResetInterface
 {
@@ -25,9 +27,8 @@ final class WebsiteScopeCatalog implements ResetInterface
     public const MAX_LABEL = 40;
     public const MAX_GROUPS = 200;
     public const MAX_MEMBERS = 500;
-    private const MAX_BYTES = 262144;
-
     private readonly ParsedYamlCache $parsedYaml;
+    private readonly WebsiteScopeFiles $files;
     private bool $loaded = false;
     private bool $loadFailed = false;
 
@@ -48,11 +49,12 @@ final class WebsiteScopeCatalog implements ResetInterface
     private ?array $overlayHealth = null;
 
     public function __construct(
-        private readonly string $projectDir,
+        string $projectDir,
         string $environment = 'prod',
         ?ParsedYamlCache $parsedYaml = null,
     ) {
         $this->parsedYaml = $parsedYaml ?? ParsedYamlCache::forProject($projectDir, $environment);
+        $this->files = new WebsiteScopeFiles($projectDir, $this->parsedYaml);
     }
 
     public function hasLoadError(): bool
@@ -108,20 +110,7 @@ final class WebsiteScopeCatalog implements ResetInterface
      */
     public function readOverlay(string $kind, string $id): array
     {
-        if (!$this->validOverlayId($kind, $id)) {
-            return ['ok' => false, 'values' => []];
-        }
-        $path = $this->overlayPath($kind, $id);
-        if (!is_file($path)) {
-            return ['ok' => true, 'values' => []];
-        }
-        try {
-            $data = $this->readYaml($path, 'scope-'.$kind.'-'.$id);
-        } catch (\Throwable) {
-            return ['ok' => false, 'values' => []];
-        }
-
-        return ['ok' => true, 'values' => $data];
+        return $this->files->readOverlay($kind, $id);
     }
 
     public function hasInvalidOverlay(): bool
@@ -134,7 +123,7 @@ final class WebsiteScopeCatalog implements ResetInterface
         // name, size and modification time are enough to notice an edit,
         // including one made outside this process; only a change reads the
         // files again.
-        [$fingerprint, $newest] = $this->overlayFingerprint();
+        [$fingerprint, $newest] = $this->files->fingerprint();
         if ($this->overlayHealth !== null && $this->overlayHealth['fingerprint'] === $fingerprint) {
             return $this->overlayHealth['invalid'];
         }
@@ -188,22 +177,15 @@ final class WebsiteScopeCatalog implements ResetInterface
                 'values' => $overlay['values'],
             ];
         }
-        $directory = $this->projectDir.'/config/'.self::DIRECTORY.'/websites';
-        if (is_dir($directory)) {
-            foreach (scandir($directory) ?: [] as $file) {
-                if (!is_string($file) || !str_ends_with($file, '.yaml')) {
-                    continue;
-                }
-                $id = substr($file, 0, -5);
-                $overlay = $this->readOverlay('websites', $id);
-                $documents[] = [
-                    'kind' => 'website',
-                    'id' => $id,
-                    'label' => $id,
-                    'ok' => $overlay['ok'],
-                    'values' => $overlay['values'],
-                ];
-            }
+        foreach ($this->files->websiteOverlayIds() as $id) {
+            $overlay = $this->readOverlay('websites', $id);
+            $documents[] = [
+                'kind' => 'website',
+                'id' => $id,
+                'label' => $id,
+                'ok' => $overlay['ok'],
+                'values' => $overlay['values'],
+            ];
         }
 
         return $documents;
@@ -252,7 +234,7 @@ final class WebsiteScopeCatalog implements ResetInterface
         unset($this->groups[$id]);
         $this->rebuildIndex();
         $this->writeCatalog();
-        $path = $this->overlayPath('groups', $id);
+        $path = $this->files->overlayPath('groups', $id);
         if (is_file($path) && !@unlink($path)) {
             throw new \RuntimeException('The group was removed, but its setting file could not be deleted.');
         }
@@ -291,11 +273,11 @@ final class WebsiteScopeCatalog implements ResetInterface
         if ($token === '' || strlen($token) > 191) {
             return;
         }
-        if (!$this->hasLoadError() && is_file($this->catalogPath()) && $this->groupIdForToken($token) !== null) {
+        if (!$this->hasLoadError() && is_file($this->files->catalogPath()) && $this->groupIdForToken($token) !== null) {
             $this->assign($token, null);
         }
         try {
-            $path = $this->overlayPath('websites', SiteScriptConfig::idForToken($token));
+            $path = $this->files->overlayPath('websites', SiteScriptConfig::idForToken($token));
         } catch (\Throwable) {
             return;
         }
@@ -310,7 +292,7 @@ final class WebsiteScopeCatalog implements ResetInterface
      */
     public function saveOverlay(string $kind, string $id, array $set, array $remove): void
     {
-        if (!$this->validOverlayId($kind, $id)) {
+        if (!$this->files->validOverlayId($kind, $id)) {
             throw new \InvalidArgumentException('That website or group setting file is not valid.');
         }
         $current = $this->readOverlay($kind, $id);
@@ -325,11 +307,12 @@ final class WebsiteScopeCatalog implements ResetInterface
         if ($error !== null) {
             throw new \InvalidArgumentException($error);
         }
-        $this->writeOverlay($kind, $id, $values);
+        $this->files->writeOverlay($kind, $id, $values);
+        $this->overlayHealth = null;
     }
 
     /**
-     * @param array<string, mixed> $values
+     * @param array<mixed> $values a parsed overlay, which may have keys that are not settings
      *
      * @return array<string, mixed>
      */
@@ -354,12 +337,12 @@ final class WebsiteScopeCatalog implements ResetInterface
             return;
         }
         $this->loaded = true;
-        $path = $this->catalogPath();
+        $path = $this->files->catalogPath();
         if (!is_file($path)) {
             return;
         }
         try {
-            $data = $this->readYaml($path, 'website-scopes');
+            $data = $this->files->read($path, 'website-scopes');
             if ($data === []) {
                 return;
             }
@@ -441,98 +424,11 @@ final class WebsiteScopeCatalog implements ResetInterface
         if ($groups !== []) {
             $data['groups'] = $groups;
         }
-        $this->writeLocked($this->catalogPath(), Yaml::dump($data, 4, 2));
+        $this->files->write($this->files->catalogPath(), Yaml::dump($data, 4, 2));
         $this->loaded = true;
         $this->loadFailed = false;
         $this->overlayHealth = null;
         $this->rebuildIndex();
-    }
-
-    /**
-     * @param array<string, mixed> $values
-     */
-    private function writeOverlay(string $kind, string $id, array $values): void
-    {
-        $path = $this->overlayPath($kind, $id);
-        if ($values === []) {
-            if (is_file($path) && !@unlink($path)) {
-                throw new \RuntimeException('The website or group setting file could not be removed.');
-            }
-            $this->overlayHealth = null;
-
-            return;
-        }
-        $this->writeLocked($path, Yaml::dump($values, 6, 2));
-        $this->overlayHealth = null;
-    }
-
-    private function writeLocked(string $path, string $yaml): void
-    {
-        $directory = dirname($path);
-        if (!is_dir($directory) && !@mkdir($directory, 0775, true) && !is_dir($directory)) {
-            throw new \RuntimeException('The website group configuration directory could not be created.');
-        }
-        $handle = @fopen($path, is_file($path) ? 'c+b' : 'x+b');
-        if ($handle === false) {
-            $handle = @fopen($path, 'c+b');
-        }
-        if ($handle === false) {
-            throw new \RuntimeException('The website group configuration file is not writable.');
-        }
-        try {
-            if (!flock($handle, LOCK_EX)) {
-                throw new \RuntimeException('The website group configuration could not be locked.');
-            }
-            if (!ftruncate($handle, 0) || fwrite($handle, $yaml) === false || !fflush($handle)) {
-                throw new \RuntimeException('The website group configuration could not be saved.');
-            }
-        } finally {
-            @flock($handle, LOCK_UN);
-            fclose($handle);
-        }
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function readYaml(string $path, string $cacheKey): array
-    {
-        if (is_file($path) && filesize($path) > self::MAX_BYTES) {
-            throw new \RuntimeException('The website group configuration is too large.');
-        }
-        $handle = @fopen($path, 'rb');
-        if ($handle === false) {
-            throw new \RuntimeException('The website group configuration could not be opened.');
-        }
-        try {
-            if (!flock($handle, LOCK_SH)) {
-                throw new \RuntimeException('The website group configuration could not be locked.');
-            }
-            $yaml = stream_get_contents($handle);
-            if (!is_string($yaml)) {
-                throw new \RuntimeException('The website group configuration could not be read.');
-            }
-        } finally {
-            @flock($handle, LOCK_UN);
-            fclose($handle);
-        }
-        $parsed = $this->parsedYaml->remember($cacheKey, $yaml, static function (string $document): array {
-            $content = preg_replace('/^\s*(?:#.*|---|\.\.\.)\s*$/m', '', $document);
-            if (trim((string) $content) === '') {
-                return [];
-            }
-            $data = Yaml::parse($document);
-            if (!is_array($data) || ($data !== [] && array_is_list($data))) {
-                throw new \RuntimeException('The website group configuration must be a mapping.');
-            }
-
-            return $data;
-        });
-        if (!is_array($parsed) || ($parsed !== [] && array_is_list($parsed))) {
-            throw new \RuntimeException('The website group configuration must be a mapping.');
-        }
-
-        return $parsed;
     }
 
     private function rebuildIndex(): void
@@ -594,60 +490,4 @@ final class WebsiteScopeCatalog implements ResetInterface
         }
     }
 
-    private function validOverlayId(string $kind, string $id): bool
-    {
-        return match ($kind) {
-            'groups' => preg_match('/^[a-z0-9][a-z0-9-]{0,62}$/D', $id) === 1,
-            'websites' => preg_match('/^[a-f0-9]{24}$/D', $id) === 1,
-            default => false,
-        };
-    }
-
-    private function catalogPath(): string
-    {
-        return $this->projectDir.'/config/'.self::FILE;
-    }
-
-    private function overlayPath(string $kind, string $id): string
-    {
-        return $this->projectDir.'/config/'.self::DIRECTORY.'/'.$kind.'/'.$id.'.yaml';
-    }
-
-    /**
-     * Names, sizes and modification times of the catalog and the overlay
-     * files, not their contents, and the newest of those times. A changed,
-     * added or removed file changes the fingerprint.
-     *
-     * @return array{0: string, 1: int}
-     */
-    private function overlayFingerprint(): array
-    {
-        $paths = [$this->catalogPath()];
-        foreach (['groups', 'websites'] as $kind) {
-            $directory = $this->projectDir.'/config/'.self::DIRECTORY.'/'.$kind;
-            if (!is_dir($directory)) {
-                continue;
-            }
-            foreach (scandir($directory) ?: [] as $file) {
-                if (is_string($file) && str_ends_with($file, '.yaml')) {
-                    $paths[] = $directory.'/'.$file;
-                }
-            }
-        }
-        $files = [];
-        $newest = 0;
-        foreach ($paths as $path) {
-            $modified = @filemtime($path);
-            $size = @filesize($path);
-            if (is_int($modified)) {
-                $newest = max($newest, $modified);
-            }
-            $files[] = substr($path, strlen($this->projectDir)).':'
-                .(is_int($modified) ? $modified : 'missing').':'
-                .(is_int($size) ? $size : 'missing');
-        }
-        sort($files);
-
-        return [implode("\n", $files), $newest];
-    }
 }

@@ -229,6 +229,7 @@ final class TagManagerCustomCode
 
     private function walk(Node\Node $node): void
     {
+        // Arrow functions and static blocks are subclasses in Peast today; listing them keeps them checked if that changes.
         if ($node instanceof Node\Function_ || $node instanceof Node\ArrowFunctionExpression) {
             $this->function($node);
 
@@ -296,11 +297,15 @@ final class TagManagerCustomCode
         if ($node instanceof Node\ClassDeclaration && $node->getId() !== null) {
             $this->reserved($node, $node->getId()->getName());
         }
-        if (($node instanceof Node\AssignmentExpression && $node->getLeft() instanceof Node\Identifier)
-            || ($node instanceof Node\UpdateExpression && $node->getArgument() instanceof Node\Identifier)) {
-            $target = $node instanceof Node\AssignmentExpression ? $node->getLeft() : $node->getArgument();
+        $target = match (true) {
+            $node instanceof Node\AssignmentExpression => $node->getLeft(),
+            $node instanceof Node\UpdateExpression => $node->getArgument(),
+            default => null,
+        };
+        if ($target instanceof Node\Identifier) {
             $this->reserved($node, $target->getName());
         }
+        // NewExpression extends CallExpression in Peast today; it is listed so new Function() stays caught if that changes.
         if ($node instanceof Node\CallExpression || $node instanceof Node\NewExpression) {
             $callee = $node->getCallee();
             $name = $callee instanceof Node\Identifier ? $callee->getName()

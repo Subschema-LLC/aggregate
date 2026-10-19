@@ -59,7 +59,7 @@ HELP);
         }
 
         $io->success('Application source code was updated.');
-        foreach ($result['overrides_created'] ?? [] as $override) {
+        foreach ($result['overrides_created'] as $override) {
             $io->note('Your edits now live in '.$override.'. It replaces the matching shipped parameter as a whole.');
         }
         $io->definitionList(

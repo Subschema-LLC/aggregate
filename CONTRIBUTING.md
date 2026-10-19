@@ -407,10 +407,11 @@ git diff --check
 CI also runs [PHPStan](https://phpstan.org/) at level 5 on `src`, with the
 version pinned in `.github/workflows/ci.yml`. To run it locally, install that
 version's `phpstan.phar` (it is not a Composer dependency) and run
-`php phpstan.phar analyse` from the repository root; `phpstan.dist.neon` holds
-the settings. `phpstan-baseline.neon` lists older findings. New code should
-pass without adding to it, and a change that fixes a listed finding should
-regenerate the file with `--generate-baseline`.
+`php phpstan.phar analyse` from the repository root. `phpstan.dist.neon` holds
+the settings and a few ignore rules, each naming a known false positive, such
+as Doctrine-managed entity properties. `phpstan-baseline.neon` lists only
+findings caused by the JavaScript parser library's docblocks. New code must
+pass without adding to either.
 
 Replace the PHP file placeholder with a file you changed. To check dependency
 injection without the dashboard, also run
@@ -432,13 +433,15 @@ organization-marker artifacts keep their separate browser delivery paths.
 
 | Location | Responsibility |
 | --- | --- |
-| [public/aggregate.js](public/aggregate.js) | Browser tracker and its source; no separate tracker build |
+| [public/aggregate.js](public/aggregate.js) | Browser tracker source; minified builds are optional ([JavaScript builds](docs/JS-BUILD.md)) |
 | [ScriptController](src/Controller/ScriptController.php) | Serves the tracker with public runtime settings; preserves its license header and keeps sharing tokens private |
+| [TrackerScript](src/Service/TrackerScript.php), [TagManagerScript](src/Service/TagManagerScript.php) and [DropInScripts](src/Service/DropInScripts.php) | Assemble the served scripts with each website's public settings; [BrowserBuild](src/Service/BrowserBuild.php) decides whether a minified build is current |
 | [ReceiveController](src/Controller/ReceiveController.php) and [EventIngestion](src/Service/EventIngestion.php) | The collection endpoint; the service checks requests in order (website settings, collection controls, bots, rate limit, origin/token), then records them by consent with sanitized inputs |
 | [AnonymousEventRecorder](src/Service/AnonymousEventRecorder.php) | Writes anonymous events synchronously using UTC hour buckets |
 | [TrackEventMessage](src/Message/TrackEventMessage.php) and [TrackEventHandler](src/MessageHandler/TrackEventHandler.php) | Carry and persist enhanced events through Symfony Messenger |
 | [src/Service](src/Service) | Configuration, privacy policy, sanitization, goals, organization markers, branding, and data lifecycle services |
 | [src/Service/GeoIp](src/Service/GeoIp) | Local MMDB lookup and coarse geographic codes |
+| [src/Service/ViewSync](src/Service/ViewSync) | What the BigQuery and reporting database syncs share: their common settings, each view's interval, retry, lock and status, and starting a sync from the dashboard. [src/Service/BigQuery](src/Service/BigQuery) and [src/Service/ReportingDatabase](src/Service/ReportingDatabase) add how to connect and copy one view |
 | [src/Service/BotDetection](src/Service/BotDetection) | Bot User-Agent matching; `BotUserAgentPatterns.php` is generated from crawler-user-agents (MIT) by [scripts/update-bot-patterns.py](scripts/update-bot-patterns.py), never edited by hand |
 | [src/Entity](src/Entity), [src/Repository](src/Repository), [migrations](migrations) | Doctrine model, database access, schema, and versioned reporting views |
 | [config](config) | YAML application/website/goal settings, Symfony services, routes, and package configuration |

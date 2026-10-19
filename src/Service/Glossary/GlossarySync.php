@@ -61,7 +61,8 @@ class GlossarySync
     public function sync(): array
     {
         $rows = $this->rows();
-        for ($attempt = 0; $attempt < 2; ++$attempt) {
+        // Two attempts: a conflict on the second is reported, so the loop only ends by return or throw.
+        for ($attempt = 0; ; ++$attempt) {
             try {
                 $diff = $this->connection->transactional(function () use ($rows): array {
                     $diff = $this->diff($rows);
@@ -88,8 +89,6 @@ class GlossarySync
                 }
             }
         }
-
-        throw new \LogicException('The glossary sync did not complete.');
     }
 
     /** CSV is shared by the headless command and the administrator download. */

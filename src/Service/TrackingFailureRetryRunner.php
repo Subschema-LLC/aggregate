@@ -179,9 +179,6 @@ class TrackingFailureRetryRunner
     {
         $latest = null;
         foreach ($this->tasks->latest(self::TASK_TYPE_FAILURE) as $item) {
-            if (!isset($item['attempt']) || !is_array($item['attempt'])) {
-                continue;
-            }
             if ($latest === null || $item['attempt']['started_at'] > $latest['started_at']) {
                 $latest = $item['attempt'];
             }
@@ -201,9 +198,6 @@ class TrackingFailureRetryRunner
     {
         $latest = null;
         foreach ($this->tasks->latest(self::TASK_TYPE_INGEST_FAILURE) as $item) {
-            if (!isset($item['attempt']) || !is_array($item['attempt'])) {
-                continue;
-            }
             if ($latest === null || $item['attempt']['started_at'] > $latest['started_at']) {
                 $latest = $item['attempt'];
             }

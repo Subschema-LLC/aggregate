@@ -411,7 +411,10 @@ class ApplicationUpdater
         }
     }
 
-    /** @param array<string, mixed> $state @return array<string, mixed> */
+    /**
+     * @param array<string, mixed> $state
+     * @return array<string, mixed>
+     */
     private function run(array $state): array
     {
         $steps = self::stepsFor((string) $state['type']);
@@ -437,7 +440,10 @@ class ApplicationUpdater
         return $state;
     }
 
-    /** @param array<string, mixed> $state @return array<string, mixed> */
+    /**
+     * @param array<string, mixed> $state
+     * @return array<string, mixed>
+     */
     private function stepDownload(array $state): array
     {
         if (($state['files']['package'] ?? null) !== null && is_file($state['files']['package'])) {
@@ -451,7 +457,10 @@ class ApplicationUpdater
         return $state;
     }
 
-    /** @param array<string, mixed> $state @return array<string, mixed> */
+    /**
+     * @param array<string, mixed> $state
+     * @return array<string, mixed>
+     */
     private function stepVerify(array $state): array
     {
         $manifest = $this->verifier->verify($state['files']['package'], $state['files']['manifest'], $state['files']['signature']);
@@ -463,7 +472,10 @@ class ApplicationUpdater
         return $this->say($state, 'Verified the signature and checksum of release '.$manifest['version'].'.');
     }
 
-    /** @param array<string, mixed> $state @return array<string, mixed> */
+    /**
+     * @param array<string, mixed> $state
+     * @return array<string, mixed>
+     */
     private function stepStage(array $state): array
     {
         $staging = $this->journal->ensureDirectory('staging').'/'.$state['id'];
@@ -482,7 +494,10 @@ class ApplicationUpdater
         return $this->say($state, sprintf('Prepared %d changed files and %d removals.', $summary['files_written'], $summary['files_removed']));
     }
 
-    /** @param array<string, mixed> $state @return array<string, mixed> */
+    /**
+     * @param array<string, mixed> $state
+     * @return array<string, mixed>
+     */
     private function stepMaintenance(array $state): array
     {
         $this->maintenance->enable('update');
@@ -492,7 +507,10 @@ class ApplicationUpdater
         return $state;
     }
 
-    /** @param array<string, mixed> $state @return array<string, mixed> */
+    /**
+     * @param array<string, mixed> $state
+     * @return array<string, mixed>
+     */
     private function stepDatabaseBackup(array $state): array
     {
         if (!$this->isSqlite()) {
@@ -526,7 +544,10 @@ class ApplicationUpdater
         return $this->say($state, 'Saved an SQLite snapshot to '.$state['backup'].'/database.sqlite.');
     }
 
-    /** @param array<string, mixed> $state @return array<string, mixed> */
+    /**
+     * @param array<string, mixed> $state
+     * @return array<string, mixed>
+     */
     private function stepApplyFiles(array $state): array
     {
         if ($state['type'] === 'release') {
@@ -569,7 +590,10 @@ class ApplicationUpdater
         return $this->say($state, 'Fast-forwarded the checkout to '.$result['current_commit'].'.');
     }
 
-    /** @param array<string, mixed> $state @return array<string, mixed> */
+    /**
+     * @param array<string, mixed> $state
+     * @return array<string, mixed>
+     */
     private function stepDependencies(array $state): array
     {
         $this->clearCacheDirectory($state['id']);
@@ -591,7 +615,10 @@ class ApplicationUpdater
         return $state;
     }
 
-    /** @param array<string, mixed> $state @return array<string, mixed> */
+    /**
+     * @param array<string, mixed> $state
+     * @return array<string, mixed>
+     */
     private function stepHandoff(array $state): array
     {
         $this->clearCacheDirectory($state['id']);
@@ -617,7 +644,10 @@ class ApplicationUpdater
         return $final;
     }
 
-    /** @param array<string, mixed> $state @return array<string, mixed> */
+    /**
+     * @param array<string, mixed> $state
+     * @return array<string, mixed>
+     */
     private function stepMigrations(array $state): array
     {
         $this->console($state, ['doctrine:migrations:migrate', '--allow-no-migration'], 3600);
@@ -625,7 +655,10 @@ class ApplicationUpdater
         return $this->say($state, 'Database migrations are complete.');
     }
 
-    /** @param array<string, mixed> $state @return array<string, mixed> */
+    /**
+     * @param array<string, mixed> $state
+     * @return array<string, mixed>
+     */
     private function stepGlossary(array $state): array
     {
         $this->console($state, ['app:analytics:glossary:sync'], 900);
@@ -633,7 +666,10 @@ class ApplicationUpdater
         return $state;
     }
 
-    /** @param array<string, mixed> $state @return array<string, mixed> */
+    /**
+     * @param array<string, mixed> $state
+     * @return array<string, mixed>
+     */
     private function stepAssets(array $state): array
     {
         if ($state['type'] === 'deployment') {
@@ -650,7 +686,10 @@ class ApplicationUpdater
         return $state;
     }
 
-    /** @param array<string, mixed> $state @return array<string, mixed> */
+    /**
+     * @param array<string, mixed> $state
+     * @return array<string, mixed>
+     */
     private function stepCache(array $state): array
     {
         // The cache directory was emptied before the handoff and rebuilt by this
@@ -661,13 +700,19 @@ class ApplicationUpdater
         return $state;
     }
 
-    /** @param array<string, mixed> $state @return array<string, mixed> */
+    /**
+     * @param array<string, mixed> $state
+     * @return array<string, mixed>
+     */
     private function stepWorkers(array $state): array
     {
         return $this->stopWorkers($state);
     }
 
-    /** @param array<string, mixed> $state @return array<string, mixed> */
+    /**
+     * @param array<string, mixed> $state
+     * @return array<string, mixed>
+     */
     private function stepFinish(array $state): array
     {
         $this->maintenance->disable();
@@ -688,7 +733,10 @@ class ApplicationUpdater
         return $this->say($state, 'Update complete: '.$version.'. Maintenance mode is off. If PHP OPcache does not revalidate files on your host, reload PHP (for example PHP-FPM or the web server) now.', 'success');
     }
 
-    /** @param array<string, mixed> $state @return array<string, mixed> */
+    /**
+     * @param array<string, mixed> $state
+     * @return array<string, mixed>
+     */
     private function fail(array $state, \Throwable $error): array
     {
         $step = (string) $state['step'];
@@ -806,7 +854,10 @@ class ApplicationUpdater
         return ['done' => $done, 'from' => $from, 'to' => $to, 'warnings' => $warnings];
     }
 
-    /** @param array<string, mixed> $state @return array<string, mixed> */
+    /**
+     * @param array<string, mixed> $state
+     * @return array<string, mixed>
+     */
     private function finishDeployment(array $state): array
     {
         $deployment = $this->deploymentState();
@@ -838,7 +889,10 @@ class ApplicationUpdater
         return ($state['type'] ?? null) === 'deployment' ? 'maintenance' : 'apply_files';
     }
 
-    /** @param array<string, mixed> $state @return array<string, mixed> */
+    /**
+     * @param array<string, mixed> $state
+     * @return array<string, mixed>
+     */
     private function composerInstall(array $state): array
     {
         $composer = $this->toolchain->composer() ?? throw new \RuntimeException('Composer was not found. Install it for this user, then run php bin/console app:updates:apply --resume.');
@@ -856,7 +910,10 @@ class ApplicationUpdater
         return $state;
     }
 
-    /** @param array<string, mixed> $state @return array<string, mixed> */
+    /**
+     * @param array<string, mixed> $state
+     * @return array<string, mixed>
+     */
     private function stopWorkers(array $state): array
     {
         try {
@@ -868,7 +925,10 @@ class ApplicationUpdater
         return $state;
     }
 
-    /** @param array<string, mixed> $state @param list<string> $arguments */
+    /**
+     * @param array<string, mixed> $state
+     * @param list<string>         $arguments
+     */
     private function console(array &$state, array $arguments, int $timeout): void
     {
         $this->runProcess($state, 'php bin/console '.implode(' ', $arguments), $this->consoleCommand($arguments), $timeout, $this->childEnvironment());
@@ -974,7 +1034,10 @@ class ApplicationUpdater
         return $index === false ? -1 : $index;
     }
 
-    /** @param array<string, mixed> $state @return array<string, mixed> */
+    /**
+     * @param array<string, mixed> $state
+     * @return array<string, mixed>
+     */
     private function say(array $state, string $message, string $level = 'info'): array
     {
         if ($this->output !== null) {

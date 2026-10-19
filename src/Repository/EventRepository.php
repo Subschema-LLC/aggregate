@@ -27,7 +27,7 @@ class EventRepository extends ServiceEntityRepository
      */
     public function findLastEventDatesByTokens(array $tokens): array
     {
-        $cleanTokens = array_values(array_filter(array_unique($tokens), static fn (mixed $t): bool => is_string($t) && trim($t) !== ""));
+        $cleanTokens = array_values(array_filter(array_unique($tokens), static fn (string $t): bool => trim($t) !== ""));
         if ($cleanTokens === []) {
             return [];
         }
