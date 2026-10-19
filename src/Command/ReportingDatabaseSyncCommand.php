@@ -30,7 +30,7 @@ final class ReportingDatabaseSyncCommand extends Command
     protected function configure(): void
     {
         $this
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Sync now, without waiting for the interval')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Sync now, without waiting for the interval, and replace copies of unchanged views too')
             ->addOption('view', null, InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY, 'Sync only this view (repeatable)')
             ->addOption('json', null, InputOption::VALUE_NONE, 'Print the result as JSON')
             ->addOption('requested-by', null, InputOption::VALUE_REQUIRED, 'Set by the dashboard’s Sync now: the administrator recorded with each task')
@@ -42,7 +42,9 @@ Schedule this command every five minutes, for example with cron:
 Each selected view is copied to a table of the same name in the database that
 REPORTING_DATABASE_URL names, when the configured interval has passed since its
 last sync. The new copy replaces the table in one step, so BI users always read
-a complete copy. Settings come from the reporting database admin page,
+a complete copy. A view whose rows have not changed since its last successful
+sync keeps its table (status "unchanged"); --force replaces it anyway.
+Settings come from the reporting database admin page,
 config/aggregate.yaml or REPORTING_DATABASE_* environment variables. Every view
 sync is recorded in the processing_tasks table and the audit trail.
 HELP);

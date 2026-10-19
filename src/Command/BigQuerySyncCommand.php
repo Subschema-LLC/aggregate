@@ -34,7 +34,7 @@ final class BigQuerySyncCommand extends Command
     protected function configure(): void
     {
         $this
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Sync now, without waiting for the interval')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Sync now, without waiting for the interval, and replace copies of unchanged views too')
             ->addOption('view', null, InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY, 'Sync only this view (repeatable)')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Export the views locally and report rows and columns; upload nothing and use no credentials')
             ->addOption('output', null, InputOption::VALUE_REQUIRED, 'With --dry-run, keep the exported NDJSON and schema files in this folder')
@@ -46,7 +46,9 @@ Schedule this command every five minutes, for example with cron:
   */5 * * * * cd /path/to/aggregate && php bin/console app:bigquery:sync --no-interaction
 
 Each selected view is copied when the configured interval has passed since its
-last sync. Settings come from the BigQuery admin page, config/aggregate.yaml or
+last sync. A view whose rows have not changed since its last successful sync
+keeps its table (status "unchanged"); --force replaces it anyway. Settings
+come from the BigQuery admin page, config/aggregate.yaml or
 BIGQUERY_* environment variables. Every view sync is recorded in the
 processing_tasks table and the audit trail. --dry-run reads every selected view
 (or the --view names, which may be any syncable view) and uploads nothing.

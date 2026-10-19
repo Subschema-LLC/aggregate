@@ -14,6 +14,7 @@ use App\Service\ReportingDatabase\ReportingDatabaseException;
 use App\Service\ReportingDatabase\ReportingDatabaseSettings;
 use App\Service\ReportingDatabase\ReportingDatabaseSyncRunner;
 use App\Service\ViewSync\ViewCatalog;
+use App\Service\ViewSync\ViewExporter;
 use App\Service\ViewSync\ViewReader;
 use App\Tests\Service\Operations\OperationsDatabase;
 use Doctrine\DBAL\Connection;
@@ -61,7 +62,7 @@ final class ReportingDatabaseSyncRunnerTest extends TestCase
     {
         [$_ENV, $_SERVER] = $this->environment;
         foreach ([...(glob($this->projectDir.'/config/*') ?: []), ...(glob($this->projectDir.'/var/*') ?: [])] as $file) {
-            unlink($file);
+            is_dir($file) ? rmdir($file) : unlink($file);
         }
         rmdir($this->projectDir.'/config');
         rmdir($this->projectDir.'/var');
@@ -103,9 +104,33 @@ final class ReportingDatabaseSyncRunnerTest extends TestCase
         self::assertSame(3, (int) $this->reporting()->fetchOne('SELECT COUNT(*) FROM analytics_custom_events_v1'));
 
         $this->now = $this->now->modify('+1 minute');
-        self::assertSame(['synced', 'synced', 'synced'], array_column($this->runner()->run()['results'], 'status'));
+        self::assertSame(['synced', 'unchanged', 'synced'], array_column($this->runner()->run()['results'], 'status'));
         self::assertSame(2, (int) $this->reporting()->fetchOne('SELECT COUNT(*) FROM analytics_custom_events_v1'));
         self::assertSame(0, (int) $this->reporting()->fetchOne("SELECT COUNT(*) FROM bi_anonymous_events_v1 WHERE page_path = '/a'"));
+    }
+
+    public function testAnUnchangedViewKeepsItsTableUntilItChangesIsDroppedOrIsForced(): void
+    {
+        $this->runner()->run();
+        // Edit the copy without changing its row count: a kept table keeps the edit.
+        $this->reporting()->executeStatement("UPDATE bi_anonymous_events_v1 SET page_path = '/edited' WHERE page_path = '/a'");
+
+        $this->now = $this->now->modify('+1 hour');
+        $result = $this->runner()->run();
+        self::assertSame(['unchanged', 'unchanged', 'unchanged'], array_column($result['results'], 'status'));
+        self::assertSame('Unchanged since the last sync: kept bi_anonymous_events_v1 with 3 rows.', $result['results'][0]['message']);
+        self::assertSame(1, (int) $this->reporting()->fetchOne("SELECT COUNT(*) FROM bi_anonymous_events_v1 WHERE page_path = '/edited'"));
+        self::assertSame([], glob($this->projectDir.'/var/reporting-database/export-*') ?: []);
+
+        // A dropped table is copied again; the others are kept.
+        $this->reporting()->executeStatement('DROP TABLE bi_dim_device_class_v1');
+        $this->now = $this->now->modify('+1 hour');
+        self::assertSame(['unchanged', 'synced', 'unchanged'], array_column($this->runner()->run()['results'], 'status'));
+        self::assertTrue($this->reporting()->createSchemaManager()->tablesExist(['bi_dim_device_class_v1']));
+
+        // --force, as the dashboard's Sync now runs it, replaces every table.
+        self::assertSame(['synced', 'synced', 'synced'], array_column($this->runner()->run(true)['results'], 'status'));
+        self::assertSame(0, (int) $this->reporting()->fetchOne("SELECT COUNT(*) FROM bi_anonymous_events_v1 WHERE page_path = '/edited'"));
     }
 
     public function testAFailedViewKeepsItsPreviousCopyAndIsRetriedWhileOthersContinue(): void
@@ -115,7 +140,7 @@ final class ReportingDatabaseSyncRunnerTest extends TestCase
         $result = $runner->run();
 
         self::assertSame(['synced', 'failed'], array_column($result['results'], 'status'));
-        self::assertSame('The view bi_anonymous_goals_v1 has a value in event_day that is not a valid DATE; the table was not replaced.', $result['results'][1]['message']);
+        self::assertSame('The view bi_anonymous_goals_v1 has a value in event_day that is not a valid DATE. Nothing was copied for this view.', $result['results'][1]['message']);
         $latest = $this->tasks()->latest(ReportingDatabaseSyncRunner::TASK_TYPE)['bi_anonymous_goals_v1'];
         self::assertSame('failed', $latest['attempt']['status']);
         self::assertNull($latest['success']);
@@ -214,7 +239,7 @@ final class ReportingDatabaseSyncRunnerTest extends TestCase
         return new ReportingDatabaseSyncRunner(
             $this->settings($values),
             new ReportingDatabaseConnection($url, $this->projectDir, $this->application),
-            new ViewReader($this->application, new ViewCatalog($customData)),
+            new ViewExporter(new ViewReader($this->application, new ViewCatalog($customData)), $this->projectDir),
             $this->tasks(),
             $logger ?? new NullLogger(),
             fn (): \DateTimeImmutable => $this->now,

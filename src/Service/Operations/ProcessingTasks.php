@@ -21,7 +21,11 @@ use Doctrine\DBAL\Types\Types;
  * same job at once. A run still holding its lock after its allowed time is
  * treated as abandoned: the next start marks it failed and takes over.
  *
- * @phpstan-type TaskRow array{id: int, task_type: string, subject: ?string, status: string, triggered_by: string, requested_by: ?string, started_at: \DateTimeImmutable, finished_at: ?\DateTimeImmutable, row_count: ?int, external_id: ?string, details: ?string}
+ * A successful run can record a fingerprint of what it produced, so a later
+ * run can tell whether it would produce the same: a view sync records its
+ * copy's content (ViewExporter).
+ *
+ * @phpstan-type TaskRow array{id: int, task_type: string, subject: ?string, status: string, triggered_by: string, requested_by: ?string, started_at: \DateTimeImmutable, finished_at: ?\DateTimeImmutable, row_count: ?int, external_id: ?string, details: ?string, fingerprint: ?string}
  */
 class ProcessingTasks
 {
@@ -30,7 +34,7 @@ class ProcessingTasks
     public const FAILED = 'failed';
 
     private const TABLE = 'processing_tasks';
-    private const COLUMNS = 'id, task_type, subject, status, triggered_by, requested_by, started_at, finished_at, row_count, external_id, details';
+    private const COLUMNS = 'id, task_type, subject, status, triggered_by, requested_by, started_at, finished_at, row_count, external_id, details, fingerprint';
     private const ID_CHUNK_SIZE = 500;
 
     public function __construct(
@@ -76,14 +80,18 @@ class ProcessingTasks
         return (int) $this->connection->lastInsertId();
     }
 
-    public function succeed(int $id, \DateTimeImmutable $now, ?int $rowCount = null, ?string $details = null, ?string $externalId = null): void
+    /** @param string|null $fingerprint what the run produced, at most 64 characters (see the class description) */
+    public function succeed(int $id, \DateTimeImmutable $now, ?int $rowCount = null, ?string $details = null, ?string $externalId = null, ?string $fingerprint = null): void
     {
-        $this->finish($id, self::SUCCEEDED, $now, $rowCount, $details, $externalId);
+        if ($fingerprint !== null && preg_match('/^[\x21-\x7e]{1,64}$/D', $fingerprint) !== 1) {
+            throw new \InvalidArgumentException('A task fingerprint must be 1-64 printable ASCII characters.');
+        }
+        $this->finish($id, self::SUCCEEDED, $now, $rowCount, $details, $externalId, $fingerprint);
     }
 
     public function fail(int $id, \DateTimeImmutable $now, string $details, ?string $externalId = null): void
     {
-        $this->finish($id, self::FAILED, $now, null, $details, $externalId);
+        $this->finish($id, self::FAILED, $now, null, $details, $externalId, null);
     }
 
     /**
@@ -188,7 +196,7 @@ class ProcessingTasks
             $this->finish((int) $id, self::FAILED, $now, null, sprintf(
                 'Stopped without a result: the run was still marked running after %d minutes, so its process probably ended. The next run started instead.',
                 intdiv($now->getTimestamp() - $startedBefore->getTimestamp(), 60),
-            ), null);
+            ), null, null);
         }
     }
 
@@ -196,12 +204,12 @@ class ProcessingTasks
      * Ends a running task and writes its audit entry. A task that already
      * ended (for example, expired by another process) is left unchanged.
      */
-    private function finish(int $id, string $status, \DateTimeImmutable $now, ?int $rowCount, ?string $details, ?string $externalId): void
+    private function finish(int $id, string $status, \DateTimeImmutable $now, ?int $rowCount, ?string $details, ?string $externalId, ?string $fingerprint): void
     {
         $now = AuditTrail::utc($now);
         $details = AuditTrail::clean($details, AuditTrail::DETAILS_MAX_LENGTH);
         $affected = $this->connection->executeStatement(
-            'UPDATE '.self::TABLE.' SET status = :status, lock_key = NULL, finished_at = :now, row_count = :rows, external_id = :external, details = :details'
+            'UPDATE '.self::TABLE.' SET status = :status, lock_key = NULL, finished_at = :now, row_count = :rows, external_id = :external, details = :details, fingerprint = :fingerprint'
             .' WHERE id = :id AND status = :running',
             [
                 'status' => $status,
@@ -209,6 +217,7 @@ class ProcessingTasks
                 'rows' => $rowCount,
                 'external' => AuditTrail::clean($externalId, 191),
                 'details' => $details,
+                'fingerprint' => $fingerprint,
                 'id' => $id,
                 'running' => self::RUNNING,
             ],
@@ -257,6 +266,7 @@ class ProcessingTasks
             'row_count' => $row['row_count'] === null ? null : (int) $row['row_count'],
             'external_id' => $row['external_id'] === null ? null : (string) $row['external_id'],
             'details' => $row['details'] === null ? null : (string) $row['details'],
+            'fingerprint' => $row['fingerprint'] === null ? null : (string) $row['fingerprint'],
         ];
     }
 

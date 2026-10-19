@@ -113,9 +113,10 @@ class ViewReader
 
     /**
      * Converts one database value to the JSON representation of its catalog
-     * type, failing closed for a value that does not fit. BigQuery receives
-     * the result as it is; ReportingTableWriter converts it again for its
-     * database and replaces the message with its own.
+     * type, failing closed for a value that does not fit. ViewExporter writes
+     * the result to the snapshot both syncs copy from. Converting a converted
+     * value again returns it unchanged, so ReportingTableWriter can check the
+     * values it reads back the same way.
      *
      * @throws ViewSyncException naming the view and column, never the value
      */
@@ -127,7 +128,7 @@ class ViewReader
         if ($value === null) {
             return null;
         }
-        $invalid = static fn (): ViewSyncException => new ViewSyncException(sprintf('The view %s has a value in %s that is not a valid %s. Nothing was uploaded for this view.', $view, $column, $type));
+        $invalid = static fn (): ViewSyncException => new ViewSyncException(sprintf('The view %s has a value in %s that is not a valid %s. Nothing was copied for this view.', $view, $column, $type));
 
         switch ($type) {
             case 'INT64':
