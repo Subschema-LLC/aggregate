@@ -1,0 +1,166 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Data transfer - {{ app_branding.name }}{% endblock %}
+
+{% block body %}
+<h1 class="title">Data transfer</h1>
+<p class="subtitle">Copy collected events and archive cells to another installation. Configuration stays in YAML and is not copied.</p>
+{{ component('Ui:DocsLink', {topic: 'operate.data-transfer', label: 'Data transfer guide'}) }}
+
+<section class="box" aria-labelledby="data-transfer-last-title">
+    <h2 class="title is-5" id="data-transfer-last-title">Last run</h2>
+    {% if last_run %}
+        <p>
+            <span class="tag {{ last_run.status == 'succeeded' ? 'is-success' : (last_run.status == 'running' ? 'is-info' : 'is-danger') }}">{{ last_run.status }}</span>
+            Started {{ last_run.started_at|date('Y-m-d H:i', 'UTC') }} UTC
+            {% if last_run.finished_at %}and finished {{ last_run.finished_at|date('Y-m-d H:i', 'UTC') }} UTC{% endif %}
+            {% if last_run.row_count is not null %}· {{ last_run.row_count }} rows{% endif %}
+        </p>
+        {% if last_run.details %}<p>{{ last_run.details }}</p>{% endif %}
+    {% else %}
+        <p>No transfer has been recorded yet.</p>
+    {% endif %}
+    <p class="help">Each run is stored in the processing tasks table. Finishing it also writes the audit trail. Those records are the log; they do not include row values or the target database URL.</p>
+    {% if background_problem %}<p class="help">{{ background_problem }}</p>{% endif %}
+</section>
+
+<section class="box" aria-labelledby="data-transfer-counts-title">
+    <h2 class="title is-5" id="data-transfer-counts-title">Collected rows</h2>
+    <table class="table is-fullwidth">
+        <thead><tr><th>Table</th><th>Rows</th></tr></thead>
+        <tbody>
+        {% for table, count in counts %}
+            <tr>
+                <td><code>{{ table }}</code></td>
+                <td>{{ count is null ? 'Not ready' : count }}</td>
+            </tr>
+        {% else %}
+            <tr><td colspan="2">Collected tables could not be read. Run the database migrations, then reload this page.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</section>
+
+<form method="post" action="{{ path('app_data_transfer_export') }}" class="box" aria-labelledby="data-transfer-export-title">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token('data_transfer_export') }}">
+    <h2 class="title is-4" id="data-transfer-export-title">Export a package</h2>
+    <p>Writes a private package under <code>var/data-transfer</code>. Copy that directory to the other installation, then import it there. Pause collection first if the copy must be one consistent moment.</p>
+    <div class="field">
+        <label class="label" for="export-package">Package name</label>
+        <input class="input" id="export-package" name="package" value="{{ suggested_package }}" maxlength="64" required>
+    </div>
+    <div class="field">
+        <label class="checkbox mr-4"><input type="checkbox" name="dataset[]" value="events" checked> Events</label>
+        <label class="checkbox"><input type="checkbox" name="dataset[]" value="archives" checked> Archive cells</label>
+    </div>
+    <div class="field">
+        <label class="label" for="export-tokens">Website tokens</label>
+        <textarea class="textarea" id="export-tokens" name="website_tokens" rows="2" placeholder="Leave empty to copy every website"></textarea>
+        <p class="help">One token per line. Empty copies every website.</p>
+    </div>
+    <div class="field">
+        <label class="checkbox"><input type="checkbox" name="include_users" value="1"> Include user accounts and password hashes</label>
+        <p class="help">Leave this off unless the other installation should have the same accounts.</p>
+    </div>
+    <div class="field">
+        <label class="checkbox mr-4"><input type="checkbox" name="consistent" value="1"> Read consistently</label>
+        <label class="checkbox"><input type="checkbox" name="dry_run" value="1"> Dry run</label>
+    </div>
+    <button class="button is-primary" type="submit"{{ background_problem ? ' disabled' }}>Export</button>
+</form>
+
+<form method="post" action="{{ path('app_data_transfer_import') }}" class="box" aria-labelledby="data-transfer-import-title">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token('data_transfer_import') }}">
+    <h2 class="title is-4" id="data-transfer-import-title">Import a package</h2>
+    <p>The package must already be in <code>var/data-transfer</code> on this server. Import does not copy configuration, and it does not import user accounts unless you ask.</p>
+    {% if packages %}
+        <div class="field">
+            <label class="label" for="import-package">Package</label>
+            <div class="select is-fullwidth">
+                <select id="import-package" name="package" required>
+                    {% for package in packages %}
+                        <option value="{{ package.name }}">{{ package.name }}{% if package.readable %} · {{ package.rows }} rows{% if package.contains_users %} · includes accounts{% endif %}{% if package.contains_enhanced_events %} · includes enhanced events{% endif %}{% else %} · unreadable{% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+    {% else %}
+        <div class="field">
+            <label class="label" for="import-package">Package name</label>
+            <input class="input" id="import-package" name="package" maxlength="64" required>
+            <p class="help">No package is in <code>var/data-transfer</code> yet.</p>
+        </div>
+    {% endif %}
+    <div class="field">
+        <label class="checkbox mr-4"><input type="checkbox" name="dataset[]" value="events" checked> Events</label>
+        <label class="checkbox"><input type="checkbox" name="dataset[]" value="archives" checked> Archive cells</label>
+    </div>
+    <div class="field">
+        <label class="label" for="import-conflict">When a row already exists</label>
+        <div class="select">
+            <select id="import-conflict" name="on_conflict">
+                <option value="fail">Stop</option>
+                <option value="skip">Skip it</option>
+                <option value="replace">Replace it</option>
+            </select>
+        </div>
+    </div>
+    <div class="field">
+        <label class="label" for="import-map">Rewrite website tokens</label>
+        <textarea class="textarea" id="import-map" name="map_tokens" rows="2" placeholder="old-token=new-token"></textarea>
+        <p class="help">One <code>old=new</code> pair per line. The new token must be one this installation can collect.</p>
+    </div>
+    <div class="field">
+        <label class="label" for="import-tokens">Limit to website tokens</label>
+        <textarea class="textarea" id="import-tokens" name="website_tokens" rows="2"></textarea>
+    </div>
+    <div class="field">
+        <label class="checkbox mr-4"><input type="checkbox" name="include_users" value="1"> Import user accounts</label>
+        <label class="checkbox mr-4"><input type="checkbox" name="new_ids" value="1"> Assign new ids</label>
+        <label class="checkbox"><input type="checkbox" name="dry_run" value="1"> Dry run</label>
+    </div>
+    <button class="button is-primary" type="submit"{{ background_problem ? ' disabled' }}>Import</button>
+</form>
+
+<section class="box" aria-labelledby="data-transfer-copy-title">
+    <h2 class="title is-4" id="data-transfer-copy-title">Copy to another database</h2>
+    <p>Set <code>{{ constant('App\\Service\\DataTransfer\\DataTransfer::TARGET_URL_ENV') }}</code> in the server environment to the target database URL, written like <code>DATABASE_URL</code>. The page never asks for that URL and does not show it. The target must already have the tables (<code>doctrine:migrations:migrate</code>).</p>
+    {% if target_configured %}
+        <form method="post" action="{{ path('app_data_transfer_copy') }}">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token('data_transfer_copy') }}">
+            <p class="notification is-success is-light">A target database URL is set. It is not shown here.</p>
+            <div class="field">
+                <label class="checkbox mr-4"><input type="checkbox" name="dataset[]" value="events" checked> Events</label>
+                <label class="checkbox"><input type="checkbox" name="dataset[]" value="archives" checked> Archive cells</label>
+            </div>
+            <div class="field">
+                <label class="label" for="copy-conflict">When a row already exists</label>
+                <div class="select">
+                    <select id="copy-conflict" name="on_conflict">
+                        <option value="fail">Stop</option>
+                        <option value="skip">Skip it</option>
+                        <option value="replace">Replace it</option>
+                    </select>
+                </div>
+            </div>
+            <div class="field">
+                <label class="label" for="copy-map">Rewrite website tokens</label>
+                <textarea class="textarea" id="copy-map" name="map_tokens" rows="2" placeholder="old-token=new-token"></textarea>
+            </div>
+            <div class="field">
+                <label class="label" for="copy-tokens">Limit to website tokens</label>
+                <textarea class="textarea" id="copy-tokens" name="website_tokens" rows="2"></textarea>
+            </div>
+            <div class="field">
+                <label class="checkbox mr-4"><input type="checkbox" name="include_users" value="1"> Copy user accounts</label>
+                <label class="checkbox mr-4"><input type="checkbox" name="new_ids" value="1"> Assign new ids</label>
+                <label class="checkbox mr-4"><input type="checkbox" name="consistent" value="1"> Read consistently</label>
+                <label class="checkbox"><input type="checkbox" name="dry_run" value="1"> Dry run</label>
+            </div>
+            <button class="button is-primary" type="submit"{{ background_problem ? ' disabled' }}>Copy</button>
+        </form>
+    {% else %}
+        <p>No target URL is set. From the server, run <code>php bin/console app:data:copy</code> with the variable set in that command's environment.</p>
+    {% endif %}
+</section>
+{% endblock %}

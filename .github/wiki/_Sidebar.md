@@ -11,6 +11,7 @@
 - [Plesk](https://subschema-llc.github.io/aggregate/install/plesk)
 - [Databases](https://subschema-llc.github.io/aggregate/install/databases)
 - [Updating](https://subschema-llc.github.io/aggregate/operate/updates)
+- [Data transfer](https://subschema-llc.github.io/aggregate/operate/data-transfer)
 
 **Use**
 - [Track websites](https://subschema-llc.github.io/aggregate/tracking/setup)

@@ -309,6 +309,7 @@ It is built from these files on `master` and describes the current release.
 | [Plesk deployment](PLESK-DEPLOYMENT.md) | Plesk steps for a release ZIP without SSH, Git-based setup, and worker options |
 | [Database](docs/DATABASE.md) | Supported engines, connection strings, migrations, and reporting schema |
 | [Scheduled tasks](docs/SCHEDULED-TASKS.md) | The one scheduled task for maintenance and the syncs: Plesk, cron and systemd setup, checking that it runs, troubleshooting |
+| [Data transfer](docs/DATA-TRANSFER.md) | Copy collected events and archive cells to another installation, by package or directly, without copying configuration |
 | [Updating](docs/UPDATES.md) | Choosing release ZIP or repository updates, deploying another way, switching methods, recovery and troubleshooting |
 | [Release packages](docs/RELEASES.md) | Publishing from master, signing keys, installable ZIPs, verification, and what an update keeps |
 | [Load testing and capacity](docs/LOAD-TESTING.md) | Hits per day one server handles, disk space per million hits, cache clearing under traffic, and how to measure your own server |

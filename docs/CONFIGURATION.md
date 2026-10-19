@@ -625,6 +625,7 @@ administration. Each settings page loads the data needed for its own task.
 | BigQuery sync | `/dashboard/bigquery` | Sign-in, views, schedule and status of the BigQuery copy |
 | Reporting database | `/dashboard/reporting-database` | Connection (tested, saved to `.env.local`), views, schedule and status of the reporting database copy |
 | Data lifecycle | `/dashboard/data-lifecycle` | Archiving, retention, task and audit record purging, and the last maintenance run |
+| Data transfer | `/dashboard/data-transfer` | Export, import, or copy collected rows; the last run comes from the processing task and audit trail ([guide](DATA-TRANSFER.md)) |
 | Scheduled tasks | `/dashboard/scheduled-tasks` | Whether the server runs `app:scheduler:run`, the exact Plesk, cron or systemd settings for this server, each job's last and next run, and **Run due jobs now** ([guide](SCHEDULED-TASKS.md)) |
 
 Settings, users, and model pages require an administrator. Existing POST paths

@@ -33,6 +33,7 @@ class Kernel extends BaseKernel
             'App\\Controller\\TagManagerController',
             'App\\Controller\\BrowserAssetsController',
             'App\\Controller\\DataLifecycleController',
+            'App\\Controller\\DataTransferController',
             'App\\Controller\\DataModelController',
             'App\\Controller\\BiGlossaryController',
             'App\\Controller\\BiPageGroupsController',

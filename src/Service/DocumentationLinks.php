@@ -81,6 +81,7 @@ final class DocumentationLinks
         'data-model.builtin-properties' => ['configure/data-model#built-in-properties', 'docs/DATA-MODEL.md'],
         'data-model.reporting-views' => ['configure/data-model#reporting-views', 'docs/DATA-MODEL.md'],
         'feature-flags' => ['configure/feature-flags', 'docs/FEATURE-FLAGS.md'],
+        'operate.data-transfer' => ['operate/data-transfer', 'docs/DATA-TRANSFER.md'],
         'operate.scheduled-tasks' => ['operate/scheduled-tasks', 'docs/SCHEDULED-TASKS.md'],
         'operate.scheduled-tasks-plesk' => ['operate/scheduled-tasks#plesk', 'docs/SCHEDULED-TASKS.md'],
         'updates' => ['operate/updates', 'docs/UPDATES.md'],
