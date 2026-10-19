@@ -2,6 +2,7 @@
 
 namespace App\Controller;
 
+use App\Security\Access\DashboardAccessVoter;
 use App\Service\AggregateConfigLoader;
 use App\Service\Glossary\ApprovedViewColumns;
 use App\Service\InstallationChecker;
@@ -50,7 +51,7 @@ class HomeController extends AbstractController
         return $this->render('home/data_structure.html.twig', [
             'view_columns' => $columns->all(),
             // The Sync page exists only with the dashboard; link it for administrators.
-            'sync_url' => $this->config->isDashboardEnabled() && $this->isGranted('ROLE_ADMIN') && $this->container->get('router')->getRouteCollection()->get('app_sync') !== null
+            'sync_url' => $this->config->isDashboardEnabled() && $this->isGranted(DashboardAccessVoter::ROUTE, 'app_sync') && $this->container->get('router')->getRouteCollection()->get('app_sync') !== null
                 ? $this->generateUrl('app_sync')
                 : null,
         ]);

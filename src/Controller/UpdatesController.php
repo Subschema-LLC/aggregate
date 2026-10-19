@@ -20,6 +20,10 @@ use Symfony\Component\Routing\Annotation\Route;
 
 final class UpdatesController extends AbstractController
 {
+    use DashboardAccess {
+        denyUnlessPermitted as private denyUnlessPagePermitted;
+    }
+
     public const CSRF_TOKEN_ID = 'application_updates_refresh';
     public const INSTALL_CSRF_TOKEN_ID = 'application_updates_install';
     public const SETTINGS_CSRF_TOKEN_ID = 'application_updates_settings';
@@ -41,7 +45,7 @@ final class UpdatesController extends AbstractController
     #[Route('/dashboard/updates', name: 'app_updates', methods: ['GET'])]
     public function index(): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
 
         $status = $this->updates->check();
         $checks = $this->systemCheck->run();
@@ -65,7 +69,7 @@ final class UpdatesController extends AbstractController
     #[Route('/dashboard/updates/refresh', name: 'app_updates_refresh', methods: ['POST'])]
     public function refresh(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
 
         $submitted = $request->request->all();
         $csrfToken = $submitted['_csrf_token'] ?? null;
@@ -87,7 +91,7 @@ final class UpdatesController extends AbstractController
     #[Route('/dashboard/updates/install', name: 'app_updates_install', methods: ['POST'])]
     public function install(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
 
         $submitted = $request->request->all();
         $csrfToken = $submitted['_csrf_token'] ?? null;
@@ -129,7 +133,7 @@ final class UpdatesController extends AbstractController
     #[Route('/dashboard/updates/upload', name: 'app_updates_upload', methods: ['POST'])]
     public function upload(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
 
         $limit = SystemCheck::uploadLimit();
         $length = (int) $request->server->get('CONTENT_LENGTH', 0);
@@ -249,7 +253,7 @@ final class UpdatesController extends AbstractController
     #[Route('/dashboard/updates/method', name: 'app_updates_method', methods: ['POST'])]
     public function saveMethod(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
 
         $submitted = $request->request->all();
         $csrfToken = $submitted['_csrf_token'] ?? null;
@@ -301,7 +305,7 @@ final class UpdatesController extends AbstractController
     #[Route('/dashboard/updates/settings', name: 'app_updates_settings', methods: ['POST'])]
     public function saveSettings(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
 
         $submitted = $request->request->all();
         $csrfToken = $submitted['_csrf_token'] ?? null;
@@ -348,13 +352,9 @@ final class UpdatesController extends AbstractController
         }
     }
 
-    private function denyUnlessAvailableToAdmin(): void
+    private function denyUnlessPermitted(): void
     {
-        if (!$this->config->isDashboardEnabled()) {
-            throw $this->createNotFoundException('Dashboard is disabled.');
-        }
-
-        $this->denyAccessUnlessGranted('ROLE_ADMIN');
+        $this->denyUnlessPagePermitted();
 
         if (!$this->features->isEnabled('updates')) {
             throw $this->createNotFoundException('Updates are disabled.');

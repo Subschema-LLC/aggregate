@@ -1,0 +1,72 @@
+{#
+    What a user can use, from EffectiveAccess::summary(): each page with its
+    level and where it came from, and the websites. Parameters: summary,
+    website_names (token => name), group_names (id => name), website_group_label,
+    you (true on the user's own profile).
+#}
+{% set you = you|default(false) %}
+{% if summary.admin %}
+    <p>{{ you ? 'You are an administrator' : 'An administrator' }}: every page, every website and group, and managing users and permission groups.</p>
+{% else %}
+    <h3 class="title is-6 mb-2">Websites</h3>
+    {% if summary.every_website is not empty %}
+        <p class="mb-3">
+            Every website and {{ website_group_label|lower }}, including ones added later, and the settings shared by all of them.
+            <span class="help mt-0">From: {{ summary.every_website|join(', ') }}</span>
+        </p>
+    {% elseif summary.groups is empty and summary.sites is empty %}
+        <p class="mb-3">No websites{{ you ? ' are assigned to you' : '' }} yet. Website pages stay empty until an administrator adds some.</p>
+    {% else %}
+        <ul class="access-summary-list mb-3">
+            {% for group_id, sources in summary.groups %}
+                <li>
+                    <span class="icon is-small"><i class="fas fa-layer-group" aria-hidden="true"></i></span>
+                    {{ group_names[group_id]|default(group_id ~ ' (no longer exists)') }}, all its websites
+                    <span class="help mt-0">From: {{ sources|join(', ') }}</span>
+                </li>
+            {% endfor %}
+            {% for token, sources in summary.sites %}
+                <li>
+                    <span class="icon is-small"><i class="fas fa-globe" aria-hidden="true"></i></span>
+                    {{ website_names[token]|default('A website that no longer exists') }}
+                    <span class="help mt-0">From: {{ sources|join(', ') }}</span>
+                </li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+
+    <h3 class="title is-6 mb-2">Pages</h3>
+    {% if summary.pages is empty %}
+        <p>No pages{{ you ? ' are granted to you' : '' }} yet{{ you ? '. Ask an administrator for the access you need.' : '.' }}</p>
+    {% else %}
+        <div class="table-container">
+            <table class="table is-fullwidth is-narrow access-summary">
+                <thead>
+                    <tr><th scope="col">Page</th><th scope="col">Level</th><th scope="col">From</th></tr>
+                </thead>
+                <tbody>
+                    {% for page in summary.pages %}
+                        <tr>
+                            <th scope="row">
+                                {{ page.label }}
+                                {% if page.scope == 'system' %}<span class="tag is-warning is-light ml-1">System-wide</span>{% elseif page.scope == 'websites' %}<span class="tag is-info is-light ml-1">Website</span>{% endif %}
+                            </th>
+                            <td>{% if page.level == 'edit' %}<span class="tag is-success is-light">View and edit</span>{% else %}<span class="tag is-light">View only</span>{% endif %}</td>
+                            <td>
+                                {% for source in page.sources %}
+                                    {{ source.label }}{% if page.sources|length > 1 %} ({{ source.level }}){% endif %}{% if not loop.last %}<br>{% endif %}
+                                {% endfor %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <p class="help">The highest level from any source applies. Users and permission groups are managed by administrators.</p>
+    {% endif %}
+    {% if summary.missing_permission_groups is not empty %}
+        <p class="notification is-warning is-light mt-3">
+            Assigned permission group{{ summary.missing_permission_groups|length > 1 ? 's' : '' }} {{ summary.missing_permission_groups|join(', ') }} no longer exist{{ summary.missing_permission_groups|length > 1 ? '' : 's' }} and grant{{ summary.missing_permission_groups|length > 1 ? '' : 's' }} nothing.
+        </p>
+    {% endif %}
+{% endif %}

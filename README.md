@@ -337,6 +337,7 @@ It is built from these files on `master` and describes the current release.
 | [Configuration](docs/CONFIGURATION.md) | YAML settings, environment overrides, website groups, branding, goals, and lifecycle policy |
 | [Data model](docs/DATA-MODEL.md) | UTM/query mappings, anonymous property whitelists, model sharing, and custom reporting columns |
 | [Feature flags](docs/FEATURE-FLAGS.md) | YAML/admin controls, navigation visibility, and developer/contributor guidance |
+| [Users and permissions](docs/USERS-AND-PERMISSIONS.md) | Administrators and standard users, page and website grants, permission groups, profiles, and the commands |
 
 ### Privacy and reporting
 

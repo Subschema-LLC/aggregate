@@ -16,7 +16,8 @@ dashboard is off.
 | --- | --- |
 | `events` | YAML configuration, `.env`, and secrets |
 | `analytics_archive_events`, `analytics_archive_goals`, `analytics_archive_geo_events` | Reporting views, which the target rebuilds |
-| `users`, only with the account option | The glossary, which the target rebuilds from its own YAML |
+| `users`, only with the account option: username, roles, password hash and creation time | The glossary, which the target rebuilds from its own YAML |
+| | Each user's display name, email, permission groups and grants; a standard user has no access on the target until it is granted ([users and permissions](USERS-AND-PERMISSIONS.md)) |
 | | Processing tasks and the audit trail, except the record of this transfer |
 
 Anonymous and enhanced events both move, including enhanced identifiers. An

@@ -31,7 +31,7 @@ final class DataLifecycleController extends AbstractController
     #[Route('/dashboard/data-lifecycle', name: 'app_data_lifecycle', methods: ['GET'])]
     public function index(): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
 
         $configurationError = null;
         try {
@@ -60,7 +60,7 @@ final class DataLifecycleController extends AbstractController
     #[Route('/dashboard/data-lifecycle/save', name: 'app_data_lifecycle_save', methods: ['POST'])]
     public function save(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
 
         $submitted = $request->request->all();
         $csrfToken = $submitted['_csrf_token'] ?? null;

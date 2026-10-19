@@ -650,7 +650,7 @@ final class TagManagerControllerTest extends TestCase
         $scripts = new DropInScripts($this->config, new WebsiteConfigManager($this->projectDir), new AppBranding($this->config, $this->projectDir), $this->projectDir, $settings, $this->sites);
         $controller = new TagManagerController($this->config, $settings, new NullLogger(), $this->sites, $scripts);
         $authorization = $this->createMock(AuthorizationCheckerInterface::class);
-        $authorization->method('isGranted')->with('ROLE_ADMIN')->willReturn($admin);
+        $authorization->method('isGranted')->willReturn($admin);
         $csrf = $this->createMock(CsrfTokenManagerInterface::class);
         $submittedToken = $request->request->all()['_csrf_token'] ?? null;
         $csrf->expects(is_string($submittedToken) ? self::once() : self::never())->method('isTokenValid')

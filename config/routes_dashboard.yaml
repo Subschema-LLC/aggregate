@@ -26,6 +26,10 @@ users_controller:
     resource: ../src/Controller/UsersController.php
     type: attribute
 
+profile_controller:
+    resource: ../src/Controller/ProfileController.php
+    type: attribute
+
 setup_controller:
     resource: ../src/Controller/SetupController.php
     type: attribute

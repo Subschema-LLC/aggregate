@@ -33,8 +33,7 @@ class ApplicationSettingsController extends AbstractController
     #[Route('/dashboard/settings', name: 'app_application_settings', methods: ['GET'])]
     public function applicationSettings(DocumentationLinks $documentation, TrackerBuilds $trackerBuilds, TrackerScript $tracker, Request $request, ReportingTimezone $timezone, MysqlTimeZoneTables $timeZones): Response
     {
-        $this->denyIfDashboardDisabled();
-        $this->denyIfNotAdmin();
+        $this->denyUnlessPermitted();
 
         try {
             $sizes = $tracker->sizes();
@@ -111,8 +110,7 @@ class ApplicationSettingsController extends AbstractController
     #[Route('/dashboard/settings/page-speed', name: 'app_page_speed_save', methods: ['POST'])]
     public function savePageSpeed(Request $request, TrackerBuilds $trackerBuilds): Response
     {
-        $this->denyIfDashboardDisabled();
-        $this->denyIfNotAdmin();
+        $this->denyUnlessPermitted();
 
         if (!$this->isCsrfTokenValid('page_speed', (string) $request->request->get('_csrf_token', ''))) {
             $this->addFlash('error', 'Invalid security token. Please try again.');
@@ -141,8 +139,7 @@ class ApplicationSettingsController extends AbstractController
     #[Route('/dashboard/settings/save', name: 'app_settings_save', methods: ['POST'])]
     public function saveSettings(Request $request, DocumentationLinks $documentation, ?WebsiteActivityService $activityService = null): Response
     {
-        $this->denyIfDashboardDisabled();
-        $this->denyIfNotAdmin();
+        $this->denyUnlessPermitted();
 
         if (!$this->isCsrfTokenValid('app_settings', (string) $request->request->get('_csrf_token', ''))) {
             $this->addFlash('error', 'Invalid security token. Please try again.');

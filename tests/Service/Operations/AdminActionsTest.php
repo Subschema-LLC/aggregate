@@ -110,6 +110,13 @@ final class AdminActionsTest extends TestCase
         yield 'install' => ['app:install', ['--username' => 'admin', '--password' => 'not-recorded'], $end('users', 'installed', 'admin')];
         yield 'reset a password' => ['app:user:reset-password', ['username' => 'ana', '--password' => 'not-recorded'], $end('users', 'password_changed', 'ana')];
         yield 'create a group' => ['app:website-scopes', ['action' => 'create-group', '--name' => 'Brand A'], $end('websites', 'group_created', 'Brand A')];
+        yield 'show a user\'s access' => ['app:user:access', ['username' => 'ana'], null];
+        yield 'grant a user pages' => ['app:user:access', ['username' => 'ana', '--page' => ['setup:view']], $end('users', 'user_updated', 'ana')];
+        yield 'make a user an administrator' => ['app:user:access', ['username' => 'ana', '--admin' => true], $end('users', 'user_updated', 'ana')];
+        yield 'delete a user' => ['app:user:delete', ['username' => 'ana'], $end('users', 'user_deleted', 'ana')];
+        yield 'list permission groups' => ['app:permission-groups', ['action' => 'list'], null];
+        yield 'create a permission group' => ['app:permission-groups', ['action' => 'create', '--name' => 'Editors'], $end('users', 'permission_group_created', 'Editors')];
+        yield 'delete a permission group' => ['app:permission-groups', ['action' => 'delete', '--id' => 'editors'], $end('users', 'permission_group_deleted', 'editors')];
         yield 'list groups' => ['app:website-scopes', ['action' => 'list'], null];
         yield 'remove the reporting database' => ['app:reporting-database:configure', ['--remove' => true], $end('integrations', 'reporting_database_connection_removed')];
         yield 'show the reporting timezone' => ['app:analytics:reporting-timezone', [], null];

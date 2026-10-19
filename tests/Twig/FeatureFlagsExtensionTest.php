@@ -441,7 +441,8 @@ final class FeatureFlagsExtensionTest extends TestCase
         $features = new FeatureFlagsExtension(new FeatureFlags($this->config));
         $twig->addExtension($features);
         $authorization = $this->createStub(AuthorizationCheckerInterface::class);
-        $authorization->method('isGranted')->willReturnCallback(static fn (string $role): bool => $admin && $role === 'ROLE_ADMIN');
+        // Administrators can also view every dashboard page.
+        $authorization->method('isGranted')->willReturnCallback(static fn (string $role): bool => $admin && ($role === 'ROLE_ADMIN' || str_starts_with($role, 'DASHBOARD_')));
         $routes = new RouteCollection();
         foreach ([
             'app_home' => '/',

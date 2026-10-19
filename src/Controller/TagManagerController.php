@@ -40,10 +40,14 @@ final class TagManagerController extends AbstractController
     #[Route('/dashboard/tag-manager', name: 'app_tag_manager', methods: ['GET'])]
     public function index(?Request $request = null): Response
     {
-        $this->denyUnlessAvailableToAdmin();
-        $websites = $this->sites->sites();
+        $this->denyUnlessPermitted();
+        $websites = $this->visibleWebsites($this->sites->sites());
         $query = $request?->query->all() ?? [];
+        if ($websites === [] && !$this->canUseEveryWebsite()) {
+            throw $this->createAccessDeniedException('No websites are assigned to you yet. Ask an administrator for access.');
+        }
         $siteId = array_key_exists('site', $query) ? $query['site'] : ($websites[0]['id'] ?? '');
+        $this->denyUnlessSiteUsable($siteId);
         try {
             $site = $this->selectedSite($siteId);
         } catch (\InvalidArgumentException) {
@@ -87,6 +91,7 @@ final class TagManagerController extends AbstractController
         return $this->privateResponse($this->render('tag_manager/index.html.twig', [
             'settings' => $settings, 'variable_rows' => $variableRows, 'consent_settings' => $consent,
             'sites' => $websites, 'selected_site' => $siteId, 'site' => $site,
+            'can_use_shared' => $this->canUseEveryWebsite(),
             'max_tags' => TagManagerSettings::MAX_TAGS, 'max_variables' => TagManagerVariables::MAX_VARIABLES,
             'custom_scripts_enabled' => $this->settings->customScriptsEnabled(),
             'custom_templates' => $templates,
@@ -100,9 +105,14 @@ final class TagManagerController extends AbstractController
     #[Route('/dashboard/tag-manager/save', name: 'app_tag_manager_save', methods: ['POST'])]
     public function save(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         $submitted = $request->request->all();
         $siteId = is_string($submitted['site'] ?? null) ? $submitted['site'] : '';
+        // A malformed site is refused below with the other invalid input.
+        $raw = array_key_exists('site', $submitted) ? $submitted['site'] : '';
+        if (is_string($raw)) {
+            $this->denyUnlessSiteUsable($raw);
+        }
         $csrf = $submitted['_csrf_token'] ?? null;
         if (!is_string($csrf) || !$this->isCsrfTokenValid(self::CSRF_TOKEN_ID, $csrf)) {
             $this->addFlash('error', 'Invalid security token. Please try again.');
@@ -180,9 +190,10 @@ final class TagManagerController extends AbstractController
     #[Route('/dashboard/tag-manager/download', name: 'app_tag_manager_download', methods: ['GET'])]
     public function download(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         $query = $request->query->all();
         $siteId = array_key_exists('site', $query) ? $query['site'] : '';
+        $this->denyUnlessSiteUsable($siteId);
         try {
             $this->selectedSite($siteId);
             $content = $siteId !== '' ? $this->sites->export($siteId)
@@ -222,6 +233,18 @@ final class TagManagerController extends AbstractController
                 throw new \InvalidArgumentException('Custom JavaScript tags are turned off for this installation on the Feature flags page. Existing ones are kept but not served, and none can be added or changed.');
             }
         }
+    }
+
+    /** A website the user can use, or the shared configuration for users with every website. */
+    private function denyUnlessSiteUsable(mixed $siteId): void
+    {
+        if (is_string($siteId) && ($siteId === '' ? $this->canUseEveryWebsite() : $this->canUseSiteId($siteId))) {
+            return;
+        }
+        if (is_string($siteId) && $siteId === '') {
+            throw $this->createAccessDeniedException('The shared configuration needs access to every website.');
+        }
+        throw $this->createNotFoundException('Choose a website you can use.');
     }
 
     private function selectedSite(mixed $siteId): ?array

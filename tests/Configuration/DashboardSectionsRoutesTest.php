@@ -14,6 +14,7 @@ use App\Controller\WebsitesController;
 use App\Entity\User;
 use App\Kernel;
 use App\Repository\UserRepository;
+use App\Security\Access\PermissionGroupCatalog;
 use App\Service\AggregateConfigLoader;
 use App\Service\AnalyticsPrivacySettings;
 use App\Service\BrandingLogoManager;
@@ -322,7 +323,8 @@ final class DashboardSectionsRoutesTest extends TestCase
         $this->preventDatabaseReadsAndWrites();
         $crawler = $browser->request('GET', '/dashboard');
         self::assertSame(200, $browser->getResponse()->getStatusCode());
-        self::assertCount(1, $crawler->filter('form[action="/dashboard/website/create"]'));
+        // View-only: snippets, but no forms that add, change or delete websites.
+        self::assertCount(0, $crawler->filter('form[action="/dashboard/website/create"], form[action^="/dashboard/website/delete/"], form[action$="/domains"]'));
         self::assertCount(0, $crawler->filter('form[action^="/dashboard/settings/"]'));
         self::assertCount(0, $crawler->selectLink('Open setup and downloads for this website'));
         self::assertCount(1, $crawler->filter('#code-1'));
@@ -695,7 +697,7 @@ final class DashboardSectionsRoutesTestKernel extends Kernel implements Compiler
         $container->setDefinition('security.user.provider.concrete.app_user_provider', new Definition(DashboardSectionsTestUserProvider::class));
         // No database here: administrator actions are kept in memory.
         $container->setDefinition(AdminAudit::class, new Definition(RecordingAdminAudit::class));
-        foreach ([AggregateConfigLoader::class, WebsiteConfigManager::class, BrandingLogoManager::class, SiteScriptConfig::class, WebsiteScopeCatalog::class] as $service) {
+        foreach ([AggregateConfigLoader::class, WebsiteConfigManager::class, BrandingLogoManager::class, SiteScriptConfig::class, WebsiteScopeCatalog::class, PermissionGroupCatalog::class] as $service) {
             $container->getDefinition($service)->setArgument('$projectDir', $this->temporaryDirectory);
         }
     }
@@ -704,9 +706,13 @@ final class DashboardSectionsRoutesTestKernel extends Kernel implements Compiler
 /** @implements UserProviderInterface<User> */
 final class DashboardSectionsTestUserProvider implements UserProviderInterface
 {
+    /** An administrator, or a standard user with what former viewer accounts keep: the Websites page, read-only. */
     public static function user(string $role): User
     {
         $user = (new User())->setUsername($role === 'ROLE_ADMIN' ? 'section-admin' : 'section-user')->setRoles([$role])->setPassword('test-only');
+        if ($role !== 'ROLE_ADMIN') {
+            $user->setAccess(['websites' => ['all' => true], 'pages' => ['websites' => 'view']]);
+        }
         (new \ReflectionProperty($user, 'id'))->setValue($user, 7);
 
         return $user;

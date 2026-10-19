@@ -28,7 +28,7 @@ final class ViewSyncController extends AbstractController
     #[Route('/dashboard/sync', name: 'app_sync', methods: ['GET'])]
     public function index(): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
 
         return $this->redirectToRoute($this->destinations->landingRoute());
     }

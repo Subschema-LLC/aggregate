@@ -267,7 +267,7 @@ final class FeatureFlagsControllerTest extends TestCase
         $dashboardEnabled = $this->config->isDashboardEnabled();
         $authorization = $this->createMock(AuthorizationCheckerInterface::class);
         $authorization->expects($dashboardEnabled ? self::once() : self::never())
-            ->method('isGranted')->with('ROLE_ADMIN')->willReturn($admin);
+            ->method('isGranted')->willReturn($admin);
 
         $stack = new RequestStack();
         $stack->push($request);

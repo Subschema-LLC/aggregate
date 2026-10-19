@@ -45,6 +45,7 @@ export const sections = [
       { source: 'docs/CONFIGURATION.md', route: 'configure/configuration', label: 'Configuration' },
       { source: 'docs/DATA-MODEL.md', route: 'configure/data-model', label: 'Custom data model' },
       { source: 'docs/FEATURE-FLAGS.md', route: 'configure/feature-flags', label: 'Feature flags' },
+      { source: 'docs/USERS-AND-PERMISSIONS.md', route: 'configure/users-and-permissions', label: 'Users and permissions' },
     ],
   },
   {
