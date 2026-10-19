@@ -5,6 +5,8 @@ namespace App\Controller;
 use App\Service\AggregateConfigLoader;
 use App\Service\BrowserScriptCache;
 use App\Service\DocumentationLinks;
+use App\Service\MysqlTimeZoneTables;
+use App\Service\ReportingTimezone;
 use App\Service\TrackerBuilds;
 use App\Service\TrackerNamespace;
 use App\Service\TrackerScript;
@@ -15,7 +17,11 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
 
-/** Application settings: host, tracker namespace, rate limit, activity thresholds, documentation address and page speed. */
+/**
+ * Application settings: host, tracker namespace, rate limit, activity thresholds,
+ * documentation address, reporting timezone and page speed. The reporting
+ * timezone form posts to ReportingTimezoneController, which regenerates the views.
+ */
 class ApplicationSettingsController extends AbstractController
 {
     use DashboardAccess;
@@ -25,7 +31,7 @@ class ApplicationSettingsController extends AbstractController
     ) {}
 
     #[Route('/dashboard/settings', name: 'app_application_settings', methods: ['GET'])]
-    public function applicationSettings(DocumentationLinks $documentation, TrackerBuilds $trackerBuilds, TrackerScript $tracker): Response
+    public function applicationSettings(DocumentationLinks $documentation, TrackerBuilds $trackerBuilds, TrackerScript $tracker, Request $request, ReportingTimezone $timezone, MysqlTimeZoneTables $timeZones): Response
     {
         $this->denyIfDashboardDisabled();
         $this->denyIfNotAdmin();
@@ -57,7 +63,48 @@ class ApplicationSettingsController extends AbstractController
                 'build_label' => $sizes !== null ? TrackerBuilds::describe($sizes['build']) : null,
                 'cache_minutes' => intdiv(BrowserScriptCache::MAX_AGE, 60),
             ],
+            'reporting_timezone' => $this->reportingTimezone($request, $timezone, $timeZones),
         ]);
+    }
+
+    /**
+     * The reporting timezone section: the saved zone, or the zone a refused
+     * save submitted with its reason, and the MySQL command when named zones
+     * cannot be converted yet.
+     *
+     * @return array{name: string, error: ?string, load_command: ?string, choices: array<string, list<string>>, environment_override: bool}
+     */
+    private function reportingTimezone(Request $request, ReportingTimezone $timezone, MysqlTimeZoneTables $timeZones): array
+    {
+        try {
+            $name = $timezone->name();
+            $error = null;
+        } catch (\RuntimeException $e) {
+            $name = ReportingTimezone::DEFAULT;
+            $error = $e->getMessage();
+        }
+        try {
+            $loadCommand = $timeZones->loadCommandFor($name);
+        } catch (\Throwable) {
+            // An unreachable database must not keep this page from opening.
+            $loadCommand = null;
+        }
+
+        $refused = $request->hasSession() ? $request->getSession()->get(ReportingTimezoneController::SESSION_REFUSED_SAVE) : null;
+        if (is_array($refused)) {
+            $request->getSession()->remove(ReportingTimezoneController::SESSION_REFUSED_SAVE);
+            $name = is_string($refused['value'] ?? null) ? $refused['value'] : $name;
+            $error = is_string($refused['error'] ?? null) ? $refused['error'] : null;
+            $loadCommand = is_string($refused['load_command'] ?? null) ? $refused['load_command'] : null;
+        }
+
+        return [
+            'name' => $name,
+            'error' => $error,
+            'load_command' => $loadCommand,
+            'choices' => ReportingTimezone::choices(),
+            'environment_override' => $timezone->hasEnvironmentOverride(),
+        ];
     }
 
     /** The page speed setting; also YAML tracker_omit_unused_features or the environment. */

@@ -133,6 +133,7 @@ services:
             $quickSearchExtraItems: '%app.quick_search_extra_items%'
             $websiteManager: '@App\Service\WebsiteConfigManager'
             $activityService: '@App\Service\WebsiteActivityService'
+            $conditions: '@App\Service\NavigationConditions'
 
     App\Twig\AppBrandingExtension:
         autoconfigure: false

@@ -42,9 +42,12 @@ feature_flags:
     hide_from_navigation: false
   custom_scripts:
     enabled: true
+    hide_from_navigation: false
 # enabled: false blocks update routes/services/commands. Independently, true
-# hide_from_navigation removes their navigation entries. A disabled visible
-# feature appears as an inactive item without a link. Use YAML booleans only.
+# hide_from_navigation removes their navigation entries. A feature that is off
+# and shown appears greyed out with an Off tag; hide it if that would look like
+# a problem. Saving on the Feature flags page writes every feature with both
+# options, so this mapping states what is on and what shows. YAML booleans only.
 # custom_scripts: enabled: false keeps tag manager custom JavaScript tags in
 # YAML but stops serving them, and the dashboard cannot add or change them.
 

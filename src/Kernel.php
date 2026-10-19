@@ -42,6 +42,7 @@ class Kernel extends BaseKernel
             'App\\Controller\\InternalTrafficController',
             'App\\Controller\\BigQueryController',
             'App\\Controller\\ReportingDatabaseController',
+            'App\\Controller\\ViewSyncController',
             'App\\Controller\\ScheduledTasksController',
             'App\\Controller\\UpdatesController',
             'App\\Controller\\InstallController',

@@ -13,6 +13,7 @@ use App\Service\BigQuery\BigQuerySyncRunner;
 use App\Service\BigQuery\GoogleSignIn;
 use App\Service\BigQuery\ServiceAccountKey;
 use App\Service\DropInScripts;
+use App\Service\ViewSync\ViewSyncDestinations;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
@@ -44,6 +45,7 @@ final class BigQueryController extends AbstractController
         private readonly BigQueryBackgroundSync $background,
         private readonly GoogleSignIn $signIn,
         private readonly LoggerInterface $logger,
+        private readonly ViewSyncDestinations $destinations,
     ) {
     }
 
@@ -293,6 +295,11 @@ final class BigQueryController extends AbstractController
     private function syncLogger(): LoggerInterface
     {
         return $this->logger;
+    }
+
+    private function syncDestinations(): ViewSyncDestinations
+    {
+        return $this->destinations;
     }
 
     /** The redirect URI to register with the OAuth client. */

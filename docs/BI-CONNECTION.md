@@ -219,7 +219,7 @@ event view for a report rather than combining them.
 ## Reporting timezone
 
 `reporting_timezone` is one IANA name for the installation, default `UTC`. Set
-it under **Reporting → Reporting timezone**, in YAML, or with
+it under **Administration → General settings → Reporting timezone**, in YAML, or with
 `app:analytics:reporting-timezone`. `REPORTING_TIMEZONE` overrides the saved
 value. Saving, or `app:analytics:bi-views:regenerate`, compiles it into
 `bi_anonymous_events_v1`, `bi_anonymous_daily_v1`, `bi_anonymous_daily_rollup_v1`

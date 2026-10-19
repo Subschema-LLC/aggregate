@@ -734,6 +734,31 @@ its views are regenerated, so a YAML edit needs that explicit step.
 
 **What would change it.** Nothing; new exceptions need a documented reason.
 
+### A small dashboard menu that says why an entry is missing
+
+**Decision.** A single setting is a section of an existing page, not a menu
+entry: the reporting timezone is part of General settings. Related pages share
+one entry with tabs: BigQuery and the reporting database are tabs of **Sync**.
+A page that matters only once something is on carries a `shown_when` condition
+in `config/navigation.yaml`, so **Sync** joins the menu once a destination is
+on, and the dashboard search finds it before that. A feature flag that is off
+but shown is greyed out with an **Off** tag, and the Feature flags page writes
+and displays every flag with both options. New flags start off and hidden.
+
+**Why.** A long menu makes a small product look bloated and hides the pages
+people use. Leaving entries out silently, or greying them out without a reason,
+looks like a fault. Stating the rule in the YAML, and showing what a save
+writes, keeps what the files say and what the screen shows the same.
+
+**Trade-off.** A page waiting on its condition is one search away rather than
+one click. Separate tab pages keep their own addresses, so the Google sign-in
+callback stays the same, but the two sync forms are not on one screen.
+Operators with a customized `navigation.local.yaml` keep their old entries
+until they edit it; the old addresses still work.
+
+**What would change it.** Evidence that administrators cannot find pages that
+are not yet in the menu.
+
 ### Custom JavaScript compiled into the tag manager script
 
 **Decision.** A [custom JavaScript tag](TAG-MANAGER.md#custom-javascript) is the
