@@ -118,7 +118,17 @@ Every user opens their profile from their name in the menu. There they can:
 - change their **display name**, shown in the menu instead of their username;
 - change their **email**, so administrators can reach them;
 - change their **password**, after entering the current one. Their other
-  sessions sign out; the current one stays signed in.
+  sessions sign out; the current one stays signed in. For 15 minutes after
+  signing in with an emailed code, the current password is not needed.
+
+## Forgotten passwords and sign-in codes
+
+When an administrator turns on [sign-in codes](EMAIL.md#sign-in-codes) and
+email can be sent, the sign-in page offers **Forgot your password? Email me a
+sign-in code**. A user with an email address gets a six-digit code that signs
+them in once; they can then set a new password on their profile. Without email,
+an administrator resets a password on the Users page, or with
+`app:user:reset-password` on the server.
 
 **Your access** lists, read-only, the websites and pages they can use, the level
 of each page, and where each grant comes from: assigned directly or from a

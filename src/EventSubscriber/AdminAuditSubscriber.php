@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\EventSubscriber;
 
 use App\Repository\UserRepository;
+use App\Security\SignInCode\SignInCodeAuthenticator;
 use App\Service\Operations\AdminActions;
 use App\Service\Operations\AdminAudit;
 use App\Service\Operations\AuditTrailSettings;
@@ -20,6 +21,8 @@ use Symfony\Component\HttpKernel\Event\ResponseEvent;
 use Symfony\Component\HttpKernel\KernelEvents;
 use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
 use Symfony\Component\Security\Core\Exception\TooManyLoginAttemptsAuthenticationException;
+use Symfony\Component\Security\Http\Authenticator\AuthenticatorInterface;
+use Symfony\Component\Security\Http\Authenticator\Debug\TraceableAuthenticator;
 use Symfony\Component\Security\Http\Authenticator\Passport\Badge\UserBadge;
 use Symfony\Component\Security\Http\Event\LoginFailureEvent;
 use Symfony\Component\Security\Http\Event\LoginSuccessEvent;
@@ -157,7 +160,8 @@ final class AdminAuditSubscriber implements EventSubscriberInterface, ServiceSub
 
     public function onLoginSuccess(LoginSuccessEvent $event): void
     {
-        $this->audit()->record(AuditTrailSettings::SIGN_INS, 'signed_in', AdminAudit::SUCCEEDED, $event->getAuthenticatedToken()->getUserIdentifier());
+        $withCode = self::isSignInCode($event->getAuthenticator());
+        $this->audit()->record(AuditTrailSettings::SIGN_INS, 'signed_in', AdminAudit::SUCCEEDED, $event->getAuthenticatedToken()->getUserIdentifier(), null, $withCode ? 'With an emailed sign-in code.' : null);
     }
 
     /**
@@ -179,8 +183,11 @@ final class AdminAuditSubscriber implements EventSubscriberInterface, ServiceSub
                 $known = false;
             }
         }
+        $withCode = self::isSignInCode($event->getAuthenticator());
         $details = match (true) {
             $event->getException() instanceof TooManyLoginAttemptsAuthenticationException => 'Too many attempts; sign-ins are paused for a minute.',
+            $withCode && $known => 'Wrong or expired sign-in code.',
+            $withCode => 'A sign-in code was entered with no code pending for an account.',
             $known => 'Wrong password.',
             default => 'No account has the username entered.',
         };
@@ -193,6 +200,16 @@ final class AdminAuditSubscriber implements EventSubscriberInterface, ServiceSub
         if ($user !== null) {
             $this->audit()->record(AuditTrailSettings::SIGN_INS, 'signed_out', AdminAudit::SUCCEEDED, $user->getUserIdentifier());
         }
+    }
+
+    /** Whether an emailed code signed in, through the debug wrapper the dev and test environments add. */
+    private static function isSignInCode(AuthenticatorInterface $authenticator): bool
+    {
+        if ($authenticator instanceof TraceableAuthenticator) {
+            $authenticator = $authenticator->getAuthenticator();
+        }
+
+        return $authenticator instanceof SignInCodeAuthenticator;
     }
 
     private function audit(): AdminAudit

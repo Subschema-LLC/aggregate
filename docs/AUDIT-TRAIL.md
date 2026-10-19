@@ -36,7 +36,7 @@ Entries belong to areas. Each area can be switched off on its own.
 | Manual runs | `operations` | **Sync now**, running the scheduled jobs by hand, publishing columns and regenerating reporting views, glossary sync, building browser scripts, retrying failed tracking, starting a data transfer, sending a test email and exporting the audit trail | On |
 | Background job runs | `task` | Each finished view sync, maintenance run and email send, scheduled or started by someone; an email send names the kind of message, never its recipient | On |
 | AI assistant requests | `assistant` | Each [MCP](MCP.md#usage-log) tool call by an AI assistant: the token or connection, the tool, the view, whether it succeeded, the rows returned and how long it took. Never the results, filter values or the conversation | On |
-| Sign-ins | `sign_ins` | Successful and failed sign-ins and sign-outs | Off |
+| Sign-ins | `sign_ins` | Successful and failed sign-ins and sign-outs, and requests for [emailed sign-in codes](EMAIL.md#sign-in-codes); a sign-in with a code says so | Off |
 
 A request is recorded only once its page has run: a request the sign-in check
 turned away is not. A change that a signed-in user without the

@@ -7,8 +7,9 @@ namespace App\Service\Operations;
 /**
  * What started a processing task: its scheduled command doing whatever is
  * due ("schedule"), someone running a command for a specific job ("command"),
- * an internal worker flow ("worker"), or an administrator in the dashboard
- * ("dashboard", with their username).
+ * an internal worker flow ("worker"), an administrator in the dashboard
+ * ("dashboard", with their username), or a request made without signing in,
+ * such as asking for a sign-in code ("request", with the account it was for).
  */
 final readonly class TaskTrigger
 {
@@ -16,6 +17,7 @@ final readonly class TaskTrigger
     public const COMMAND = 'command';
     public const WORKER = 'worker';
     public const DASHBOARD = 'dashboard';
+    public const REQUEST = 'request';
 
     private function __construct(
         public string $source,
@@ -36,6 +38,12 @@ final readonly class TaskTrigger
     public static function worker(): self
     {
         return new self(self::WORKER, null);
+    }
+
+    /** A request made without signing in, for an account that exists (or none). */
+    public static function request(?string $username): self
+    {
+        return new self(self::REQUEST, AuditTrail::clean($username, 191));
     }
 
     public static function dashboard(string $username): self

@@ -484,12 +484,13 @@ The [MCP server](MCP.md) is off by default, behind the `mcp_server` feature flag
 
 ## Transactional email
 
-[Email](EMAIL.md) is off by default. Once an administrator chooses a service and turns it on, Aggregate sends its own messages to the addresses of its users. It never emails website visitors and never puts collected events or reporting data in a message.
+[Email](EMAIL.md) is off by default. Once an administrator chooses a service and turns it on, Aggregate sends its own messages, such as sign-in codes, to the addresses of its users. It never emails website visitors and never puts collected events or reporting data in a message.
 
 - **The service is a processor.** The recipient's address and the message go to the chosen service (Postmark, SendGrid, Mailgun, an SMTP server or another transport), which keeps its own delivery logs. Cover it in your records of processing and vendor review, and check its region settings if data location matters.
 - Each send is recorded as a processing task and an audit entry with the kind of message, who started it, the outcome and the service's message ID. Neither records the address, the content or a code it carries, and a failure reason is redacted before it is stored or logged.
 - Messages carry no tracking pixels or remote images. Mailgun messages turn tracking off; turn off open and click tracking for the Postmark server or SendGrid key used, since those are account settings.
 - Credentials are kept in `config/secrets/email.yaml`, readable only by the application's user, or in the environment, and are never shown, logged or recorded.
+- A [sign-in code](EMAIL.md#sign-in-codes) exists only in the email and, as a keyed hash, in the requesting browser's server-side session for 10 minutes. Requests for codes are recorded under the sign-ins audit area, naming the account only when it exists.
 
 ## Administrative controls
 

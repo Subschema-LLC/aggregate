@@ -10,7 +10,7 @@
         <div class="level-left">
             <div>
                 <h1 class="title">Email</h1>
-                <p class="subtitle">The service that sends Aggregate’s own messages to its users, and the address they come from.</p>
+                <p class="subtitle">The service that sends Aggregate’s own messages to its users, such as sign-in codes, and the address they come from.</p>
                 {{ component('Ui:DocsLink', {topic: 'email', label: 'Transactional email guide'}) }}
             </div>
         </div>
@@ -122,6 +122,29 @@
                 </div>
             </div>
         {% endfor %}
+
+        <div class="box email-sign-in-codes">
+            <h2 class="title is-4">Sign-in codes</h2>
+            <p class="mb-4">Lets users sign in with a {{ constant('App\\Security\\SignInCode\\SignInCodes::DIGITS') }}-digit code sent to the email address on their account, instead of their password. A code lasts {{ constant('App\\Security\\SignInCode\\SignInCodes::LIFETIME') // 60 }} minutes and works once, in the browser that asked for it. Someone who forgot their password signs in with a code and sets a new one on their profile.</p>
+            <div class="field">
+                <label class="label" for="sign-in-codes-enabled">Sign-in codes</label>
+                <div class="control">
+                    <div class="select">
+                        <select id="sign-in-codes-enabled" name="sign_in_codes_enabled"{% if sign_in_codes_override %} disabled{% endif %}>
+                            <option value="0"{% if not sign_in_codes %} selected{% endif %}>Off: passwords only</option>
+                            <option value="1"{% if sign_in_codes %} selected{% endif %}>On: offer a code on the sign-in page</option>
+                        </select>
+                    </div>
+                </div>
+                {% if sign_in_codes_override %}
+                    <p class="help">Controlled by <code>SIGN_IN_CODES_ENABLED</code>.</p>
+                {% elseif sign_in_codes and problem is not null %}
+                    <p class="help has-text-warning-dark">The sign-in page offers codes only while email can be sent.</p>
+                {% else %}
+                    <p class="help">Anyone who controls a user’s mailbox can then sign in as that user, as with any emailed password reset. Users without an email address keep using their password.</p>
+                {% endif %}
+            </div>
+        </div>
 
         <div class="buttons">
             <button class="button is-primary" type="submit">Save email settings</button>
