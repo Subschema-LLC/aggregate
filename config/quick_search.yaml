@@ -153,7 +153,7 @@ parameters:
         - tableau
         - copy views
     'API tokens':
-      description: 'Tokens for the read-only reporting API, and whether it serves private views'
+      description: 'Tokens for the reporting API and AI assistants, assistant connections, and whether they read private views'
       synonyms:
         - api
         - rest
@@ -165,6 +165,15 @@ parameters:
         - integration
         - notebook
         - private views
+        - mcp
+        - ai assistant
+        - assistant
+        - claude
+        - chatgpt
+        - copilot
+        - gemini
+        - connector
+        - oauth
     'BI connection guide':
       description: 'Database schema, view specifications, and query examples'
       synonyms:

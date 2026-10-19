@@ -69,6 +69,7 @@ HELP);
                 'created_by' => $token->createdBy,
                 'expires_at' => $token->expiresAt?->format(\DateTimeInterface::ATOM),
                 'expired' => $token->isExpired($now),
+                'mcp' => $token->mcp,
             ], $tokens)), JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
             return Command::SUCCESS;
@@ -76,6 +77,7 @@ HELP);
 
         $io->definitionList(
             ['Reporting API' => $this->features->isEnabled('reporting_api') ? 'on' : 'off (feature flag reporting_api)'],
+            ['MCP server' => $this->features->isEnabled('mcp_server') ? 'on' : 'off (feature flag mcp_server)'],
             ['Private views' => $privateAllowed ? 'allowed' : 'off ('.ReportingApiSettings::PRIVATE_VIEWS.')'],
         );
         if ($tokens === []) {
@@ -88,7 +90,7 @@ HELP);
             $private = $token->privateViews === [] ? '' : implode(', ', $token->privateViews).($privateAllowed ? '' : ' (off)');
             $rows[] = [
                 $token->id,
-                $token->name,
+                $token->name.($token->mcp ? ' [MCP]' : ''),
                 $token->views === null ? 'every approved view' : implode(', ', $token->views),
                 $private,
                 $token->createdAt->format('Y-m-d').' by '.$token->createdBy,

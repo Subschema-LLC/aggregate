@@ -81,7 +81,7 @@ final class ReportingApiController
             if ($request->query->count() > 0) {
                 throw ApiProblem::badRequest('unknown_parameter', 'This endpoint takes no parameters.');
             }
-            $columns = $this->schema->columns($view);
+            $columns = $this->schema->described($view);
 
             return $this->json(['data' => [
                 'name' => $view,
@@ -91,9 +91,12 @@ final class ReportingApiController
                 'columns' => array_map(static fn (array $column): array => [
                     'name' => $column['name'],
                     'type' => $column['type'],
+                    'label' => $column['label'],
                     'description' => $column['description'],
                     'timezone' => $column['timezone'],
                     'filter_operators' => $column['operators'],
+                    'values' => $column['values'],
+                    'values_truncated' => $column['values_truncated'],
                 ], $columns),
             ]]);
         });
@@ -145,6 +148,7 @@ final class ReportingApiController
                         'offset' => $query->offset,
                         'returned' => $returned,
                         'has_more' => $more,
+                        'group' => $query->group,
                         'reporting_timezone' => $timezone,
                     ], self::JSON), ',"links":', json_encode([
                         'self' => $request->getUri(),

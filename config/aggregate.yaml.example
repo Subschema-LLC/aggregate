@@ -46,6 +46,9 @@ feature_flags:
   reporting_api:
     enabled: false
     hide_from_navigation: true
+  mcp_server:
+    enabled: false
+    hide_from_navigation: true
 # enabled: false blocks update routes/services/commands. Independently, true
 # hide_from_navigation removes their navigation entries. A feature that is off
 # and shown appears greyed out with an Off tag; hide it if that would look like
@@ -55,6 +58,8 @@ feature_flags:
 # YAML but stops serving them, and the dashboard cannot add or change them.
 # reporting_api: enabled: true turns on the read-only reporting API under /api/v1
 # and its Reporting → API tokens page (docs/REPORTING-API.md).
+# mcp_server: enabled: true turns on the read-only MCP server for AI assistants
+# at /mcp and their sign-in, managed on the same page (docs/MCP.md).
 
 # Optional shared tag configuration, selected as Shared configuration in
 # Collection → Tag manager. Per-website tags/CMP use separate files at

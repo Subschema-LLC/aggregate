@@ -196,6 +196,10 @@ final class DashboardPages
         'app_api_tokens_create' => [self::ADMIN],
         'app_api_tokens_revoke' => [self::ADMIN],
         'app_api_tokens_settings' => [self::ADMIN],
+        'app_mcp_connection_revoke' => [self::ADMIN],
+        // Approving an AI assistant grants data access the same way.
+        'app_mcp_authorize' => [self::ADMIN],
+        'app_mcp_authorize_decide' => [self::ADMIN],
         // Everyone manages their own profile.
         'app_profile' => [self::SIGNED_IN],
         'app_profile_save' => [self::SIGNED_IN],

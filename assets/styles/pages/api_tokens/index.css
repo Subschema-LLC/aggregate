@@ -34,3 +34,37 @@
 .api-tokens-table td {
     vertical-align: middle;
 }
+
+/* The tables scroll within their container on narrow screens. Positioned, it
+   also contains the visually hidden column headings, which would otherwise
+   widen the page. */
+.api-tokens-page .table-container {
+    position: relative;
+}
+
+/* AI assistant sign-in and connections. */
+.mcp-authorize-facts {
+    display: grid;
+    gap: 0.35rem 1rem;
+    grid-template-columns: max-content 1fr;
+    margin-bottom: 0.75rem;
+}
+
+.mcp-authorize-facts dt {
+    font-weight: 600;
+}
+
+.mcp-authorize-facts dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 480px) {
+    .mcp-authorize-facts {
+        grid-template-columns: 1fr;
+    }
+
+    .mcp-authorize-facts dd {
+        margin-bottom: 0.5rem;
+    }
+}

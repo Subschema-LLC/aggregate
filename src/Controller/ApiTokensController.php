@@ -6,6 +6,9 @@ namespace App\Controller;
 
 use App\Service\AggregateConfigLoader;
 use App\Service\FeatureFlags;
+use App\Service\Mcp\McpConnection;
+use App\Service\Mcp\OAuth\OAuthServer;
+use App\Service\Mcp\OAuth\OAuthStore;
 use App\Service\ReportingApi\ApiToken;
 use App\Service\ReportingApi\ApiTokenStore;
 use App\Service\ReportingApi\ReportingApiSettings;
@@ -17,17 +20,18 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
 
 /**
- * Reporting → API tokens: create and revoke reporting API tokens, and the
- * API's own settings. Administrators only (DashboardPages::ADMIN): a token
- * grants data access outside the dashboard's permissions. The same
- * ApiTokenStore and ReportingApiSettings serve the app:api:token:* commands
- * and YAML.
+ * Reporting → API tokens: create and revoke reporting API tokens, list and
+ * revoke AI assistant connections, and the settings both share.
+ * Administrators only (DashboardPages::ADMIN): a token or a connection grants
+ * data access outside the dashboard's permissions. The same ApiTokenStore,
+ * OAuthStore and ReportingApiSettings serve the app:api:token:* and
+ * app:mcp:connection:* commands and YAML.
  *
  * A new token is shown once, in the page the create form returns; it is
- * never put in the session or a flash message. While the reporting_api flag
- * is off the page still lists and revokes tokens, so a token can be revoked
- * before the API is turned back on, but creating tokens and saving settings
- * return 404.
+ * never put in the session or a flash message. While both the reporting_api
+ * and mcp_server flags are off the page still lists and revokes tokens and
+ * connections, so they can be revoked before either is turned back on, but
+ * creating tokens and saving settings return 404.
  */
 final class ApiTokensController extends AbstractController
 {
@@ -40,6 +44,7 @@ final class ApiTokensController extends AbstractController
         private readonly ApiTokenStore $tokens,
         private readonly ReportingApiSettings $settings,
         private readonly FeatureFlags $features,
+        private readonly OAuthStore $connections,
         private readonly LoggerInterface $logger,
     ) {
     }
@@ -86,6 +91,7 @@ final class ApiTokensController extends AbstractController
                 $privateViews,
                 $this->tokens->expiryFrom($expiry),
                 $this->getUser()?->getUserIdentifier() ?? 'unknown',
+                $form->get('mcp') === '1',
             );
         } catch (\InvalidArgumentException $error) {
             $this->addFlash('error', $error->getMessage());
@@ -116,6 +122,26 @@ final class ApiTokensController extends AbstractController
         } catch (\Throwable $error) {
             $this->logFailure('revoke', $error);
             $this->addFlash('error', 'The token could not be revoked. Check that config/secrets is writable and config/secrets/api-tokens.yaml is valid.');
+        }
+
+        return $this->back();
+    }
+
+    #[Route('/dashboard/api-tokens/connections/{id}/revoke', name: 'app_mcp_connection_revoke', requirements: ['id' => '[a-f0-9]{8}'], methods: ['POST'])]
+    public function revokeConnection(Request $request, string $id): Response
+    {
+        $this->denyUnlessPermitted();
+        if (!$this->validCsrf($request)) {
+            return $this->back();
+        }
+        try {
+            $connection = $this->connections->revoke($id);
+            $this->addFlash('success', sprintf('Disconnected %s (%s). Its requests now fail.', $connection->clientName, $connection->id));
+        } catch (\InvalidArgumentException $error) {
+            $this->addFlash('error', $error->getMessage());
+        } catch (\Throwable $error) {
+            $this->logFailure('revoke_connection', $error);
+            $this->addFlash('error', 'The connection could not be revoked. Check that config/secrets is writable and config/secrets/mcp-oauth.yaml is valid.');
         }
 
         return $this->back();
@@ -171,10 +197,24 @@ final class ApiTokensController extends AbstractController
         } catch (\RuntimeException|\InvalidArgumentException $error) {
             $settingsError = $error instanceof \InvalidArgumentException ? $error->getMessage() : 'The application configuration could not be read.';
         }
+        $connections = [];
+        $connectionsError = null;
+        try {
+            $connections = $this->connections->connections();
+        } catch (\RuntimeException $error) {
+            $connectionsError = $error->getMessage();
+        }
         $now = new \DateTimeImmutable();
+        $base = $request->getSchemeAndHttpHost().$request->getBaseUrl();
 
         return $this->renderDashboardPage('api_tokens/index.html.twig', [
             'api_enabled' => $this->features->isEnabled('reporting_api'),
+            'mcp_enabled' => $this->features->isEnabled('mcp_server'),
+            'tokens_creatable' => $this->tokens->creatable(),
+            'connections' => $connections,
+            'connections_error' => $connectionsError,
+            'connection_hosts' => array_map(static fn (McpConnection $connection): string => $connection->clientHost(), $connections),
+            'mcp_url' => OAuthServer::resource($base),
             'tokens' => $tokens,
             'tokens_error' => $tokensError,
             'expired' => array_map(static fn (ApiToken $token): bool => $token->isExpired($now), $tokens),
@@ -194,10 +234,11 @@ final class ApiTokensController extends AbstractController
         ]);
     }
 
+    /** Tokens and the shared settings serve the reporting API and the MCP server. */
     private function denyUnlessApiEnabled(): void
     {
-        if (!$this->features->isEnabled('reporting_api')) {
-            throw $this->createNotFoundException('The reporting API is turned off.');
+        if (!$this->tokens->creatable()) {
+            throw $this->createNotFoundException('The reporting API and the MCP server are turned off.');
         }
     }
 

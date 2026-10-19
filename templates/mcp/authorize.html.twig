@@ -1,0 +1,98 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Connect an AI assistant - {{ app_branding.name }}{% endblock %}
+
+{% block body %}
+<div class="mcp-authorize">
+    <h1 class="title">Connect {{ client.name }}?</h1>
+    <p class="subtitle">An AI assistant is asking to read reporting data from {{ app_branding.name }} through the MCP server.</p>
+    {{ component('Ui:DocsLink', {topic: 'mcp.sign-in', label: 'How assistant sign-in works'}) }}
+
+    {% if error %}<div class="notification is-danger" role="alert">{{ error }}</div>{% endif %}
+    {% if not secure %}
+        <div class="notification is-warning" role="alert">This page was not opened over HTTPS. The assistant's tokens and the data it reads would travel unencrypted. Serve {{ app_branding.name }} over HTTPS before connecting assistants.</div>
+    {% endif %}
+
+    <section class="box" aria-labelledby="mcp-authorize-who">
+        <h2 class="title is-5" id="mcp-authorize-who">Who is asking</h2>
+        <dl class="mcp-authorize-facts">
+            <dt>Assistant</dt>
+            <dd>{{ client.name }}{% if registered_here %} <span class="has-text-grey">(name given by the assistant when it registered here; anyone can choose any name)</span>{% endif %}</dd>
+            {% if not registered_here and client_host %}
+                <dt>Published by</dt>
+                <dd><code>{{ client_host }}</code> <span class="has-text-grey">(the assistant's client description is hosted there)</span></dd>
+            {% endif %}
+            <dt>Returns to</dt>
+            <dd><code>{{ redirect_host }}</code>{% if redirect_is_local %} <span class="tag is-warning is-light">This computer</span> <span class="has-text-grey">An app running on the same computer as the browser, such as a command-line assistant. Any app on that computer could claim this address.</span>{% endif %}</dd>
+        </dl>
+        <p class="help">Connect only if you or a colleague just started this connection in that assistant. If you did not, deny it.</p>
+    </section>
+
+    <form method="post" action="{{ path('app_mcp_authorize_decide') }}" class="box" data-turbo="false" autocomplete="off" aria-labelledby="mcp-authorize-what">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token(csrf_token_id) }}">
+        {% for name, value in carried %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+        <h2 class="title is-5" id="mcp-authorize-what">What it may read</h2>
+        <p class="mb-3">The assistant can list, describe and query only the views you allow, read-only, with small counts withheld as for any BI user. Labels and definitions are always included. Whatever it reads is sent to the assistant's provider.</p>
+
+        <fieldset class="field">
+            <legend class="label">Approved views</legend>
+            <label class="radio api-token-scope"><input type="radio" name="scope_choice" value="all" checked> Every approved view, including views added by later releases</label>
+            <label class="radio api-token-scope"><input type="radio" name="scope_choice" value="selected"> Only the views selected below</label>
+            <div class="api-token-views mt-2">
+                {% for view, description in approved_views %}
+                    <label class="checkbox api-token-view">
+                        <input type="checkbox" name="views[]" value="{{ view }}">
+                        <code>{{ view }}</code> <span class="has-text-grey">{{ description }}</span>
+                    </label>
+                {% endfor %}
+            </div>
+        </fieldset>
+
+        {% if private_views_allowed %}
+            <details class="api-token-private">
+                <summary class="has-text-weight-semibold">Private views</summary>
+                <div class="notification is-warning is-light mt-3">
+                    These views hold individual retained events or unsuppressed counts. An assistant granted them can send that data to its provider. Grant them only for an approved raw-data workflow.
+                </div>
+                <fieldset class="field">
+                    <legend class="is-sr-only">Private views</legend>
+                    {% for view, description in private_views %}
+                        <label class="checkbox api-token-view">
+                            <input type="checkbox" name="private_views[]" value="{{ view }}">
+                            <code>{{ view }}</code> <span class="has-text-grey">{{ description }}</span>
+                        </label>
+                    {% endfor %}
+                </fieldset>
+                <label class="checkbox">
+                    <input type="checkbox" name="private_views_confirmed" value="1">
+                    I confirm that this assistant may read row-level or unsuppressed data.
+                </label>
+            </details>
+        {% endif %}
+
+        <div class="columns mt-3">
+            <div class="column is-narrow field">
+                <label class="label" for="mcp-authorize-expires">Connection expires</label>
+                <div class="control"><div class="select"><select id="mcp-authorize-expires" name="expires" aria-describedby="mcp-authorize-expires-help">
+                    {% for value, label in expiry_choices %}
+                        <option value="{{ value }}"{% if value == default_expiry %} selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                    <option value="date">On a date…</option>
+                </select></div></div>
+            </div>
+            <div class="column is-narrow field">
+                <label class="label" for="mcp-authorize-expires-date">Date <span class="has-text-weight-normal has-text-grey">(for “On a date”)</span></label>
+                <div class="control"><input class="input" id="mcp-authorize-expires-date" name="expires_date" type="date"></div>
+            </div>
+        </div>
+        <p class="help mb-4" id="mcp-authorize-expires-help">After this the assistant has to be connected again. You can revoke it sooner on the API tokens page.</p>
+
+        <div class="buttons">
+            <button class="button is-primary" type="submit" name="decision" value="approve">
+                <span class="icon"><i class="fas fa-plug" aria-hidden="true"></i></span><span>Connect</span>
+            </button>
+            <button class="button" type="submit" name="decision" value="deny">Deny</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

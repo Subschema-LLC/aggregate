@@ -563,8 +563,11 @@ high-entropy secret needs no slow password hash. A generated OpenAPI document
 cannot drift from the views' real columns, while Swagger UI would be a large
 vendored bundle and another page to secure.
 
-**Trade-off.** No joins, grouping or totals on the server; callers aggregate in
-their own tools, as SQL users do. Offset paging re-runs the view's query for
+**Trade-off.** No joins on the server. Grouping was added later, for the MCP
+server (below): `group` sums `event_count` over the released rows of one view.
+It returns only numbers a caller could already add up from the rows it may
+read, so it cannot bring a withheld cell back, and a total with nothing
+released is `null` rather than 0. Offset paging re-runs the view's query for
 every page, so very large views are better read with a date filter or a
 database connection. Timestamps are returned as the views label them, without
 an offset. Token last-use times are not recorded, because that would turn every
@@ -573,7 +576,51 @@ read into a write of the token file.
 **What would change it.** A concrete need for keyset paging, CSV output or a
 read-only database account for API queries (all [roadmap](../ROADMAP.md)
 proposals). An OData endpoint for Power BI only if it can be offered without
-joins or aggregation.
+joins or aggregation across views.
+
+### AI assistants through a read-only MCP server in the application
+
+**Decision.** The [MCP server](MCP.md) is part of the application, at `/mcp`,
+behind its own feature flag that starts off. It offers four read-only tools
+(`list_views`, `describe_view`, `query_view`, `get_coverage`) and resources
+describing the views, over the reporting API's view catalog, schema, query
+validation and runner, called in-process. Queries are structured, never SQL.
+Assistants authenticate with an API token that holds a separate MCP grant, or
+by signing in: OAuth 2.1 with PKCE, client registration or client ID metadata
+documents, and an administrator's approval on a dashboard page. Sign-in state
+lives in `config/secrets/mcp-oauth.yaml` as hashes, like API tokens. Each tool
+call is recorded in the audit trail. The transport is Streamable HTTP without
+sessions or server streams, implemented in the application rather than with an
+SDK.
+
+**Why.** "AI-ready" otherwise meant every operator wiring a database connector
+to an assistant themselves. In the application, the server reuses the token
+store, settings, view catalog and audit trail, and installs with nothing extra
+on ordinary PHP hosting. Structured queries are enough for the questions
+assistants ask, self-describing, and keep the view catalog as the only surface;
+a SQL tool would need its own parser and allowlist to be as safe. Fixed tokens
+alone would have shut out the assistants most buyers use: ChatGPT accepts no
+fixed key, and Claude's hosted apps take one only in a limited beta, so
+sign-in is how they connect. Approval by an administrator mirrors issuing an
+API token. Grouping is on the server because a model adding up hundreds of rows
+gets totals wrong, and a page cap would cut the rows off anyway. Keeping
+sign-in state in YAML follows where tokens and configuration already live;
+writes are about one an hour per connected assistant, under the same lock and
+atomic replace. Stateless JSON answers fit PHP hosting, where long-lived
+streams are a problem, and the protocol subset needed is small enough that a
+dependency would add more than it saves.
+
+**Trade-off.** Sign-in needs the dashboard, and an installation at the root of
+its host name for assistants that only look for metadata there. Only public
+clients are supported, with PKCE and no client secrets. The server speaks the
+2025 protocol revisions; clients that try the 2026-07-28 revision fall back to
+them. There is no SQL tool, no write or admin tool, and no per-query time
+limit beyond PHP's and the database's. The server cannot stop a model
+misreading a result; it states the rules and offers coverage.
+
+**What would change it.** Assistants that need the 2026 revision without
+fallback, a sustained need for questions structured queries cannot express,
+or enterprise single sign-on for approvals.
 
 ### One scheduled task for every background job
 

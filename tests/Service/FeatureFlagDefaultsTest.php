@@ -49,8 +49,8 @@ final class FeatureFlagDefaultsTest extends TestCase
         $items = Yaml::parseFile(dirname(__DIR__, 2).'/config/navigation.yaml')['parameters']['app.main_navigation']['items'];
         foreach ($items as $item) {
             foreach ([$item, ...($item['children'] ?? [])] as $link) {
-                if (isset($link['feature'])) {
-                    $tagged[$link['feature']] = true;
+                foreach ((array) ($link['feature'] ?? []) as $feature) {
+                    $tagged[$feature] = true;
                 }
             }
         }

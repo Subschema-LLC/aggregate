@@ -17,7 +17,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 
 #[AsCommand(
     name: 'app:api:token:create',
-    description: 'Create a reporting API token and print it once',
+    description: 'Create a reporting API token, optionally for AI assistants, and print it once',
 )]
 final class ApiTokenCreateCommand extends Command
 {
@@ -36,16 +36,23 @@ final class ApiTokenCreateCommand extends Command
             ->addOption('private-view', null, InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY, 'A private (row-level or unsuppressed) view the token may read; repeat for more. Needs reporting_api_private_views: true')
             ->addOption('expires', null, InputOption::VALUE_REQUIRED, 'When the token stops working: a duration (30d, 12w, 6m, 1y), a date (YYYY-MM-DD) or "never"', ApiTokenStore::DEFAULT_EXPIRY)
             ->addOption('created-by', null, InputOption::VALUE_REQUIRED, 'Who the token is recorded as created by', 'command line')
+            ->addOption('mcp', null, InputOption::VALUE_NONE, 'Let AI assistants use the token on the MCP server too. Needs the mcp_server feature flag on')
             ->addOption('json', null, InputOption::VALUE_NONE, 'Print the token and its details as JSON')
             ->setHelp(<<<'HELP'
 Creates a token for the read-only reporting API and prints it once. Only its
 hash is stored in config/secrets/api-tokens.yaml, so copy it now: a lost token
-can be revoked and replaced, never shown again. Needs the reporting_api
-feature flag on.
+can be revoked and replaced, never shown again. Needs the reporting_api or
+the mcp_server feature flag on. Labels and definitions (the bi_dim_* and
+glossary views) can be read with any token.
 
   php bin/console app:api:token:create "Power BI refresh"
-  php bin/console app:api:token:create "Notebook" --view=bi_anonymous_daily_v1 --view=bi_dim_device_class_v1 --expires=90d
-  php bin/console app:api:token:create "Raw export" --view=bi_dim_website_token_v1 --private-view=analytics_custom_events_v1
+  php bin/console app:api:token:create "Notebook" --view=bi_anonymous_daily_v1 --expires=90d
+  php bin/console app:api:token:create "Raw export" --view=bi_anonymous_daily_v1 --private-view=analytics_custom_events_v1
+  php bin/console app:api:token:create "Gemini CLI" --mcp --expires=90d
+
+--mcp lets AI assistants that take a header use the token on the MCP server
+(docs/MCP.md). Assistants that sign in, such as Claude and ChatGPT, get their
+own connection instead.
 
 Private views hold individual events or unsuppressed counts. Grant them only
 for an approved raw-data workflow; see docs/REPORTING-API.md#private-views.
@@ -61,7 +68,7 @@ HELP);
         $privateViews = $input->getOption('private-view');
         try {
             $expiresAt = $this->tokens->expiryFrom((string) $input->getOption('expires'));
-            [$token, $secret] = $this->tokens->create((string) $input->getArgument('name'), $views === [] ? null : $views, $privateViews, $expiresAt, (string) $input->getOption('created-by'));
+            [$token, $secret] = $this->tokens->create((string) $input->getArgument('name'), $views === [] ? null : $views, $privateViews, $expiresAt, (string) $input->getOption('created-by'), $input->getOption('mcp') === true);
         } catch (\InvalidArgumentException $error) {
             $io->error($error->getMessage());
 
@@ -80,6 +87,7 @@ HELP);
                 'views' => $token->views,
                 'private_views' => $token->privateViews,
                 'expires_at' => $token->expiresAt?->format(\DateTimeInterface::ATOM),
+                'mcp' => $token->mcp,
             ], JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
             return Command::SUCCESS;
@@ -94,6 +102,7 @@ HELP);
             ['Views' => $token->views === null ? 'every approved view' : implode(', ', $token->views)],
             ['Private views' => $token->privateViews === [] ? 'none' : implode(', ', $token->privateViews)],
             ['Expires' => $token->expiresAt === null ? 'never' : $token->expiresAt->format('Y-m-d H:i').' UTC'],
+            ['AI assistants (MCP)' => $token->mcp ? 'allowed' : 'no'],
         );
         if ($token->expiresAt === null) {
             $io->warning(ApiTokenStore::NEVER_EXPIRES_WARNING);
@@ -104,6 +113,9 @@ HELP);
         $example = $token->views === null ? array_key_first(ViewCatalog::APPROVED) : ($token->views[0] ?? $token->privateViews[0]);
         $io->writeln('Try it:');
         $io->writeln(sprintf('  curl -H "Authorization: Bearer $AGGREGATE_API_TOKEN" "https://YOUR-HOST/api/v1/views/%s?limit=10"', $example));
+        if ($token->mcp) {
+            $io->writeln('For an AI assistant, add the remote MCP server https://YOUR-HOST/mcp with the header "Authorization: Bearer <token>".');
+        }
         if (!$this->settings->privateViewsAllowed() && $token->privateViews !== []) {
             $io->note('Private views are turned off, so this token cannot read them yet.');
         }

@@ -16,6 +16,16 @@ framework:
             policy: fixed_window
             limit: 120
             interval: '1 minute'
+        # Requests per MCP credential: token or assistant connection (docs/MCP.md#limits).
+        mcp:
+            policy: fixed_window
+            limit: 120
+            interval: '1 minute'
+        # Sign-in endpoint requests per client address: registration, tokens, revocation.
+        mcp_sign_in:
+            policy: fixed_window
+            limit: 30
+            interval: '1 minute'
 
 when@test:
     framework:

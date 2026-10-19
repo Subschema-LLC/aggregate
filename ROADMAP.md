@@ -71,7 +71,18 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   to it through [`documentation_url`](docs/CONFIGURATION.md#documentation-links).
   Publish a copy of the site for each release and link each installation to the
   guides for its own version.
-- **MCP Connector.** An AI connector so agents have ample context and an easy way to integrate and interact with Aggregate.  
+- **MCP server follow-ups.** The [MCP server](docs/MCP.md) for AI assistants
+  is in place, with sign-in and API tokens. Each of these only for a concrete
+  need:
+  - the 2026-07-28 protocol revision (`server/discover` and handshake-free
+    requests); clients that try it now fall back to the 2025 revisions;
+  - approvals through enterprise single sign-on, and letting standard users
+    approve assistants limited to their own websites and pages;
+  - per-query time limits on each database engine;
+  - last-used times for tokens and connections, kept outside their YAML files
+    so a read does not become a write;
+  - starter prompts, if they cost nothing to maintain.
+  Keep it read-only, with structured queries and no SQL tool.
 - **Microsoft Fabric Connector.** Similar to the BigQuery Sync connector, but for Microsoft Fabric.
 - **Sendgrid Integration** For transactional emails.
 - **Postmark Integration.** For transactional emails.
@@ -196,15 +207,12 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   completed buckets, suppression and consistent live/archive behavior; preserve
   existing BI contracts and keep private custom views restricted. See the
   [current measurement boundaries](docs/PRIVACY-COMPLIANCE.md#insight-without-visit-or-session-ids).
-- **External analysis examples and an MCP integration.** AI assistants can
-  already [query the approved views](docs/BI-CONNECTION.md#connect-an-ai-assistant)
-  through a general SQL connector and the read-only reporting account, or over
-  HTTPS through the [reporting API](docs/REPORTING-API.md). Package a
-  read-only integration over the approved `bi_anonymous_*` and glossary views,
-  with synthetic sample Python notebooks; an MCP server can use the API's token
-  scopes. Any MCP server needs explicit credential scope and authorization;
-  it must not expose private raw inputs or let consumers undo suppression.
-  Charts and analysis remain in external tools.
+- **External analysis examples.** AI assistants can now query the approved
+  views through the [MCP server](docs/MCP.md), and scripts through the
+  [reporting API](docs/REPORTING-API.md). Add synthetic sample Python notebooks
+  and example assistant questions with the answers they should give, including
+  how withheld cells and coverage change them. Charts and analysis remain in
+  external tools.
 - **Reporting API follow-ups.** Proposals for the [reporting API](docs/REPORTING-API.md),
   each only for a concrete need: an optional read-only database account for API
   queries (`REPORTING_API_DATABASE_URL`, not possible on SQLite), so database
@@ -212,7 +220,8 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   CSV or newline-delimited JSON; conditional requests (`ETag`) for scheduled
   refreshes; a last-used time per token kept outside the token file; a
   configurable rate limit; and keyset paging for the custom views, which have a
-  unique `id`. Keep the API read-only, without joins or server-side aggregation.
+  unique `id`. Keep the API read-only and without joins; its grouping only sums
+  the released rows of one view.
 - **Branding polish.** Improve the default logo and administration presentation
   while preserving configured white labels, accessibility, and license notices.
 - **Operational email integrations.** Explore Postmark/SendGrid support for a
@@ -281,8 +290,14 @@ checkout, or a small accessibility fix. Keep each PR focused and target
       deployed from version control, a read-only shared mount, or a sync from the
       administration server.
     - *Rate limiting.* Buckets are files under `var/rate_limit`, so each server
-      counts on its own and a load balancer multiplies the effective limit. Use a
-      shared store with the same HMAC keys, or limit at the load balancer.
+      counts on its own and a load balancer multiplies the effective limit. The
+      reporting API and MCP limits are in each server's cache too. Use a shared
+      store with the same HMAC keys, or limit at the load balancer.
+    - *Credentials.* API tokens and assistant sign-ins are YAML files in
+      `config/secrets`, written by the server that handles the request; an
+      assistant renewing its tokens writes about once an hour. They need one
+      shared copy, such as a shared mount, before API or MCP traffic is spread
+      over several servers.
     - *Updates.* Servers must not serve different releases' tracker and schema
       against one database. Run migrations once, from one server, and roll the
       code across the others.
@@ -320,6 +335,11 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   optional Formspree request submission, and explicit tracker/Google signal
   adapters. Conservative examples gate the initial tracker load; they are not
   legal advice, region detection, a rights-processing system or provider enforcement.
+- [Consent categories and other tags](docs/CONSENT-MANAGER.md#categories-and-other-tags),
+  so scripts loaded outside the tag manager (a theme pixel, a CMS plugin, a tag
+  in Google Tag Manager) wait for their category, with a card or
+  [bottom bar layout](docs/CONSENT-MANAGER.md#layout) and administrator
+  controls for wording, colors, buttons and regions.
 
 - [Strict collection profile](docs/PRIVACY-COMPLIANCE.md#strict-collection-profile),
   set in Collection controls, YAML or `COLLECTION_PROFILE`. Every event is
@@ -352,7 +372,13 @@ checkout, or a small accessibility fix. Keep each PR focused and target
 - [Configurable branding and light/dark appearance](docs/CONFIGURATION.md#application-settings),
   with a browser preference, a return to the site's configured palette, and
   preserved brand colors and fonts across modes.
-- [Feature flags](docs/FEATURE-FLAGS.md), with shared YAML/admin UI settings, server and CLI enforcement, and independent navigation visibility. Updates is the first registered capability; developer and contributor guidance explains how to add more.
+- [Feature flags](docs/FEATURE-FLAGS.md), with shared YAML/admin UI settings, server and CLI enforcement, and independent navigation visibility: `updates`, `custom_scripts`, `reporting_api` and `mcp_server`. New flags start off and hidden, a feature that is off reads as **Off** rather than broken, and pages that only matter once something is on wait in the dashboard search behind a [menu condition](docs/FEATURE-FLAGS.md#flags-settings-and-menu-conditions). Developer and contributor guidance explains how to add more.
+- [MCP server for AI assistants](docs/MCP.md): a read-only Model Context Protocol server at `/mcp` with four tools (list, describe, query with grouped totals, coverage) and resources describing the views. Claude, ChatGPT and other assistants sign in through an administrator's approval page (OAuth 2.1 with PKCE, kept in `config/secrets/mcp-oauth.yaml`); developer tools use an API token with the MCP grant. Each tool call is in the audit trail. Tested with the official MCP Python SDK, and in the fresh-install CI job on every database engine.
+- [Reporting API](docs/REPORTING-API.md): the reporting views over HTTPS with bearer tokens created on the API tokens page or with `app:api:token:create`, filters, grouped totals, paging, labels and codes in each view's schema, an OpenAPI document per token, and private views only behind their own switch and a per-token grant.
+- [Users and permissions](docs/USERS-AND-PERMISSIONS.md): administrators and standard users, page grants at view or edit, website and website-group grants, permission groups, and profiles, from the dashboard, YAML or `app:user:access` and `app:permission-groups`.
+- [Data transfer](docs/DATA-TRANSFER.md): moving collected rows and user accounts to another installation, database engine or server, as an export and import or a direct copy, with validation, conflict handling and a record of each run. Settings are not copied.
+- [Website-specific settings](docs/CONFIGURATION.md#website-groups): collection settings and data models that a website group or one website overrides, on the deployment YAML as the base.
+- [Bot traffic](docs/PRIVACY-COMPLIANCE.md#bot-traffic): crawlers, monitors and automated browsers are recognized on the server and either labelled `device_class = 'bot'` (the default) or dropped before anything is stored.
 - [BigQuery sync](docs/BIGQUERY.md) of selected reporting views on an interval, with service account key, Google Cloud and Google sign-in authentication, explicit opt-in for private views, a status page and headless commands.
 - [Reporting database](docs/REPORTING-DATABASE.md): selected reporting views copied into same-named tables of a second database on any supported engine, swapped in whole at each sync, so BI users connect without access to the application database. Same view opt-ins, schedule, status page and headless commands as BigQuery sync.
 - [YAML disclosure thresholds](docs/CONFIGURATION.md#bi-disclosure-thresholds):
@@ -372,12 +398,12 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   totals add up; `bi_anonymous_coverage_v1` reports, in bands, how much of each
   day's traffic each event view releases.
 - [One scheduled task](docs/SCHEDULED-TASKS.md), `app:scheduler:run` every five minutes, for maintenance, BigQuery sync and the reporting database sync, with a Scheduled tasks page and `app:scheduler:status` that give the exact Plesk, cron or systemd setup for the server and show whether the server's task runs. The reporting database connection is entered on its page or with `app:reporting-database:configure`, tested, and saved to `.env.local`.
-- [Administrator actions in the audit trail](docs/AUDIT-TRAIL.md): settings changes (by setting name, never value), users, websites and groups, integrations, updates, manual runs and, when turned on, sign-ins, from the dashboard and the command line. Each area can be switched off; an Audit trail page filters by date, area, action, outcome, user, subject, text and job run, exports CSV, and `app:audit:list` does the same on the command line. Administrator actions have their own retention period (730 days by default).
+- [Administrator actions in the audit trail](docs/AUDIT-TRAIL.md): settings changes (by setting name, never value), users, websites and groups, integrations, updates, manual runs, AI assistant tool calls and, when turned on, sign-ins, from the dashboard and the command line. Each area can be switched off; an Audit trail page filters by date, area, action, outcome, user, subject, text and job run, exports CSV, and `app:audit:list` does the same on the command line. Administrator actions have their own retention period (730 days by default).
 - [Processing tasks and an audit trail](docs/DATABASE.md#processing-tasks-and-audit-trail): two shared private tables for background job runs (status, lock, failure details) and their outcomes, used by BigQuery sync, the reporting database sync and maintenance, with UI/YAML purge periods.
 - [Organization traffic markers](docs/PRIVACY-COMPLIANCE.md#organization-traffic), with YAML/UI settings, marking links that set the marker on each tracked website, and a fixed `org_internal_traffic` flag on every event. Filtering uses retained event JSON; grouped BI views and archives do not retain the flag.
 - [Custom data models](docs/DATA-MODEL.md), including UTM/query mappings, per-property consent settings, downloadable YAML, and private reporting columns. All UTMs require consent by default; anonymous attribution should use at most broad `utm_medium` values, with documented warnings for overrides.
 - [Optional JavaScript minification](docs/JS-BUILD.md) for tracker, organization-marker, and drop-in scripts.
-- [Load testing and capacity](docs/LOAD-TESTING.md): k6 scripts and a Load test workflow that measure the hits per day one server handles on SQLite, MySQL and PostgreSQL, profile collection requests, compare two versions, and clear the cache under traffic; results feed the [sizing table](DEPLOYMENT.md#performance).
+- [Load testing and capacity](docs/LOAD-TESTING.md): k6 scripts and a Load test workflow that measure the hits per day one server handles on SQLite, MySQL and PostgreSQL, profile collection requests, compare two versions, and clear the cache under traffic; results feed the [sizing table](DEPLOYMENT.md#performance). The tracker now sends collection as a simple request without a preflight, and the dashboard's activity and health checks avoid scanning events.
 - [Git source updates](DEPLOYMENT.md#updates) and [signed release packages](docs/RELEASES.md), with dashboard/CLI version checks and configurable update branches defaulting to `master`.
 - [Code deployed another way](docs/UPDATES.md#deploy-the-code-another-way), such as with a hosting panel's Git deployment or CI/CD: a read-only Updates page with the deployed commit and how far behind it is, and one post-deployment command for the tool's deployment action.
 

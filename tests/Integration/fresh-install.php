@@ -865,6 +865,94 @@ E2E::step('one scheduled task runs the due jobs and the dashboard shows that it 
     E2E::check(str_contains($browser->request('GET', $base.'/dashboard/scheduled-tasks')->text(''), 'Last run by hand'), 'The run by hand is not shown: '.pageProblem($browser));
 });
 
+E2E::step('the reporting API and the MCP server group the views, and an assistant signs in through the approval page', static function () use ($root, $browser, $base, $token): void {
+    $config = Yaml::parseFile($root.'/config/aggregate.yaml');
+    $config['feature_flags'] = [
+        ...($config['feature_flags'] ?? []),
+        'reporting_api' => ['enabled' => true, 'hide_from_navigation' => false],
+        'mcp_server' => ['enabled' => true, 'hide_from_navigation' => false],
+    ];
+    file_put_contents($root.'/config/aggregate.yaml', Yaml::dump($config, 4, 2));
+    $secret = (string) (json_decode(console($root, ['app:api:token:create', 'E2E assistant', '--mcp', '--json']), true)['token'] ?? '');
+    E2E::check(str_starts_with($secret, 'agg_'), 'No token was created.');
+    $http = HttpClient::create(['timeout' => 120]);
+    $expected = array_map('intval', connection($root)->fetchAllKeyValue("SELECT page_group, SUM(event_count) FROM bi_anonymous_daily_rollup_v1 WHERE event_name = 'view' GROUP BY page_group"));
+    ksort($expected);
+    E2E::check($expected !== [], 'The roll-up view has no rows to compare.');
+
+    // The API's group parameter sums on this engine exactly as SQL does.
+    $api = $http->request('GET', $base.'/api/v1/views/bi_anonymous_daily_rollup_v1', [
+        'headers' => ['Authorization' => 'Bearer '.$secret],
+        'query' => ['group' => 'page_group', 'filter' => ['event_name' => 'view'], 'sort' => '-event_count', 'limit' => '1000'],
+    ]);
+    E2E::check($api->getStatusCode() === 200, 'GET grouped rows answered '.$api->getStatusCode().': '.$api->getContent(false));
+    $grouped = array_column($api->toArray()['data'], 'event_count', 'page_group');
+    ksort($grouped);
+    E2E::check($grouped === $expected, 'Grouped API rows '.json_encode($grouped).' differ from SQL '.json_encode($expected));
+    $schema = $http->request('GET', $base.'/api/v1/views/bi_anonymous_daily_rollup_v1/schema', ['headers' => ['Authorization' => 'Bearer '.$secret]])->toArray();
+    $columns = array_column($schema['data']['columns'], null, 'name');
+    E2E::check(in_array('mobile', array_column($columns['device_class']['values'] ?? [], 'code'), true), 'The schema lists no device_class codes.');
+    E2E::check(array_column($columns['website_token']['values'] ?? [], 'label', 'code') === [$token => 'E2E site'], 'The schema does not label the website from the published glossary: '.json_encode($columns['website_token']['values'] ?? null));
+
+    $rpc = static function (string $credential, string $method, array $params = []) use ($http, $base): array {
+        $response = $http->request('POST', $base.'/mcp', [
+            'headers' => ['Authorization' => 'Bearer '.$credential, 'Accept' => 'application/json, text/event-stream', 'Content-Type' => 'application/json'],
+            'body' => json_encode(['jsonrpc' => '2.0', 'id' => 1, 'method' => $method, 'params' => $params === [] ? new \ArrayObject() : $params], JSON_THROW_ON_ERROR),
+        ]);
+        E2E::check($response->getStatusCode() === 200, $method.' answered '.$response->getStatusCode().': '.$response->getContent(false));
+
+        return $response->toArray();
+    };
+    $init = $rpc($secret, 'initialize', ['protocolVersion' => '2025-06-18', 'capabilities' => new \ArrayObject(), 'clientInfo' => ['name' => 'e2e', 'version' => '1']]);
+    E2E::check(($init['result']['protocolVersion'] ?? null) === '2025-06-18', 'initialize: '.json_encode($init));
+    $query = $rpc($secret, 'tools/call', ['name' => 'query_view', 'arguments' => ['view' => 'bi_anonymous_daily_rollup_v1', 'group_by' => ['page_group'], 'filters' => [['column' => 'event_name', 'operator' => 'eq', 'value' => 'view']], 'limit' => 1000]]);
+    E2E::check(($query['result']['isError'] ?? true) === false, 'query_view failed: '.json_encode($query));
+    $viaMcp = array_column($query['result']['structuredContent']['rows'], 'event_count', 'page_group');
+    ksort($viaMcp);
+    E2E::check($viaMcp === $expected, 'Grouped MCP rows '.json_encode($viaMcp).' differ from SQL '.json_encode($expected));
+    $today = new \DateTimeImmutable('today', new \DateTimeZone('UTC'));
+    $coverage = $rpc($secret, 'tools/call', ['name' => 'get_coverage', 'arguments' => ['view' => 'bi_anonymous_daily_rollup_v1', 'date_range' => ['from' => $today->modify('-30 days')->format('Y-m-d'), 'to' => $today->format('Y-m-d')]]]);
+    E2E::check(($coverage['result']['isError'] ?? true) === false, 'get_coverage failed: '.json_encode($coverage));
+    $describe = $rpc($secret, 'tools/call', ['name' => 'describe_view', 'arguments' => ['view' => 'bi_anonymous_daily_rollup_v1']]);
+    E2E::check(($describe['result']['structuredContent']['time_column'] ?? null) === 'event_day', 'describe_view: '.json_encode($describe));
+
+    // Sign-in: registration, the approval page, the code exchange, a call, renewal and revocation.
+    $register = $http->request('POST', $base.'/oauth/register', ['json' => ['client_name' => 'E2E assistant', 'redirect_uris' => ['https://assistant.example/callback']]]);
+    E2E::check($register->getStatusCode() === 201, 'Registration answered '.$register->getStatusCode().': '.$register->getContent(false));
+    $clientId = (string) $register->toArray()['client_id'];
+    $verifier = rtrim(strtr(base64_encode(random_bytes(48)), '+/', '-_'), '=');
+    $challenge = rtrim(strtr(base64_encode(hash('sha256', $verifier, true)), '+/', '-_'), '=');
+    $page = $browser->request('GET', $base.'/dashboard/oauth/authorize?'.http_build_query(['response_type' => 'code', 'client_id' => $clientId, 'redirect_uri' => 'https://assistant.example/callback', 'code_challenge' => $challenge, 'code_challenge_method' => 'S256', 'state' => 'e2e-state', 'resource' => $base.'/mcp']));
+    E2E::check(str_contains($page->filter('h1')->text(''), 'Connect E2E assistant?'), 'The approval page: '.pageProblem($browser));
+    $form = $page->selectButton('Connect')->form();
+    $form['scope_choice'] = 'all';
+    $browser->followRedirects(false);
+    try {
+        $browser->submit($form);
+        $location = (string) $browser->getInternalResponse()->getHeader('Location');
+    } finally {
+        $browser->followRedirects(true);
+    }
+    parse_str((string) parse_url($location, PHP_URL_QUERY), $returned);
+    E2E::check(str_starts_with($location, 'https://assistant.example/callback?') && ($returned['state'] ?? null) === 'e2e-state' && isset($returned['code']), 'The approval did not return a code: '.$location);
+    $exchange = $http->request('POST', $base.'/oauth/token', ['body' => ['grant_type' => 'authorization_code', 'code' => $returned['code'], 'redirect_uri' => 'https://assistant.example/callback', 'client_id' => $clientId, 'code_verifier' => $verifier, 'resource' => $base.'/mcp']]);
+    E2E::check($exchange->getStatusCode() === 200, 'The code exchange answered '.$exchange->getStatusCode().': '.$exchange->getContent(false));
+    $tokens = $exchange->toArray();
+    $views = $rpc($tokens['access_token'], 'tools/call', ['name' => 'list_views', 'arguments' => new \ArrayObject()]);
+    E2E::check(in_array('bi_anonymous_daily_rollup_v1', array_column($views['result']['structuredContent']['views'] ?? [], 'name'), true), 'list_views with the signed-in assistant: '.json_encode($views));
+    $renewed = $http->request('POST', $base.'/oauth/token', ['body' => ['grant_type' => 'refresh_token', 'refresh_token' => $tokens['refresh_token'], 'client_id' => $clientId]])->toArray();
+    $rpc($renewed['access_token'], 'ping');
+    E2E::check(str_contains(console($root, ['app:mcp:connection:list']), 'E2E assistant'), 'app:mcp:connection:list does not show the connection.');
+    $http->request('POST', $base.'/oauth/revoke', ['body' => ['token' => $renewed['refresh_token'], 'client_id' => $clientId]])->getStatusCode();
+    $refused = $http->request('POST', $base.'/mcp', ['headers' => ['Authorization' => 'Bearer '.$renewed['access_token'], 'Content-Type' => 'application/json'], 'body' => '{"jsonrpc":"2.0","id":1,"method":"ping"}']);
+    E2E::check($refused->getStatusCode() === 401, 'A revoked connection still works: '.$refused->getStatusCode());
+
+    $db = connection($root);
+    $calls = $db->fetchFirstColumn("SELECT operation FROM audit_trail WHERE category = 'assistant' ORDER BY id");
+    E2E::check($calls === ['mcp_query_view', 'mcp_get_coverage', 'mcp_describe_view', 'mcp_list_views'], 'The audit trail recorded these tool calls: '.json_encode($calls));
+    E2E::check((int) $db->fetchOne("SELECT COUNT(*) FROM audit_trail WHERE operation = 'assistant_sign_in_decided' AND actor = 'admin'") === 1, 'The approval was not recorded in the audit trail.');
+});
+
 $version = (string) connection($root)->fetchOne(match ($driver) {
     'mysql' => 'SELECT VERSION()',
     'pgsql' => 'SHOW server_version',

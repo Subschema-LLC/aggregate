@@ -41,3 +41,7 @@ internal_traffic_public_controller:
 reporting_api_controller:
     resource: ../src/Controller/ReportingApiController.php
     type: attribute
+
+mcp_controller:
+    resource: ../src/Controller/McpController.php
+    type: attribute
