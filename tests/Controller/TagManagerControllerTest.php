@@ -289,10 +289,16 @@ final class TagManagerControllerTest extends TestCase
         $this->controller($request)->save($request);
         $viewRequest = Request::create('/dashboard/tag-manager');
         $response = $this->controller($viewRequest)->index($viewRequest);
-        $crawler = new Crawler((string) $response->getContent());
+        $crawler = new Crawler((string) $response->getContent(), 'https://analytics.example/dashboard/tag-manager');
 
         self::assertSame(200, $response->getStatusCode());
         self::assertSame($this->siteId, $crawler->filter('#tag-manager-site option[selected]')->attr('value'));
+        $websiteCard = $crawler->filter('#tag-manager-site')->ancestors()->filter('.box');
+        self::assertCount(1, $websiteCard->filter('#tag-manager-enabled[form="tag-manager-form"]'));
+        self::assertCount(1, $websiteCard->filter('a[href="/dashboard/tag-manager/download?site='.$this->siteId.'"].button'));
+        self::assertSame('1', $crawler->filter('#tag-manager-enabled option[selected]')->attr('value'));
+        self::assertSame('1', $crawler->selectButton('Save script settings')->form()->getPhpValues()['enabled'] ?? null);
+        self::assertArrayNotHasKey('enabled', $crawler->selectButton('Open website settings')->form()->getPhpValues());
         self::assertSame('First shop', $crawler->filter('#tag-manager-scope')->text());
         self::assertSame($this->siteId, $crawler->filter('input[name="site"]')->attr('value'));
         self::assertCount(0, $crawler->filter('[name^="consent_manager"]'));
@@ -370,6 +376,7 @@ final class TagManagerControllerTest extends TestCase
         $crawler = new Crawler((string) $this->controller($request)->index($request)->getContent());
         self::assertCount(1, $crawler->filter('[role="alert"]'));
         self::assertCount(0, $crawler->filter('#tag-manager-form'));
+        self::assertCount(0, $crawler->filter('#tag-manager-enabled'));
     }
 
     private function sitePath(string $id): string

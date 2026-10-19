@@ -21,16 +21,39 @@
         </div>
     </div>
     {{ component('TagManager:Navigation', {current_page: 'app_tag_manager', selected_site: selected_site}) }}
-    <form method="get" action="{{ path('app_tag_manager') }}" class="box">
-        <div class="field">
-            <label class="label" for="tag-manager-site">Website</label>
-            <div class="control select"><select id="tag-manager-site" name="site">
-                {% for website in sites %}<option value="{{ website.id }}"{% if selected_site == website.id %} selected{% endif %}>{{ website.name }} ({{ website.domain }})</option>{% endfor %}
-                {% if can_use_shared is not defined or can_use_shared %}<option value=""{% if selected_site == '' %} selected{% endif %}>Shared configuration</option>{% endif %}
-            </select></div>
+    <div class="box">
+        <div class="columns">
+            <div class="column">
+                <form method="get" action="{{ path('app_tag_manager') }}">
+                    <div class="field">
+                        <label class="label" for="tag-manager-site">Website</label>
+                        <div class="control select"><select id="tag-manager-site" name="site">
+                            {% for website in sites %}<option value="{{ website.id }}"{% if selected_site == website.id %} selected{% endif %}>{{ website.name }} ({{ website.domain }})</option>{% endfor %}
+                            {% if can_use_shared is not defined or can_use_shared %}<option value=""{% if selected_site == '' %} selected{% endif %}>Shared configuration</option>{% endif %}
+                        </select></div>
+                    </div>
+                    <div class="buttons">
+                        <button type="submit" class="button">Open website settings</button>
+                        {% if not configuration_error %}
+                            <a class="button" href="{{ path('app_tag_manager_download', {site: selected_site}) }}">Download settings YAML</a>
+                        {% endif %}
+                    </div>
+                </form>
+            </div>
+            {% if not configuration_error %}
+                <div class="column">
+                    <div class="field">
+                        <label class="label" for="tag-manager-enabled">Tag manager</label>
+                        <div class="control select"><select id="tag-manager-enabled" name="enabled" form="tag-manager-form" required aria-describedby="tag-manager-enabled-help">
+                            <option value="0"{% if not settings.enabled %} selected{% endif %}>Disabled</option>
+                            <option value="1"{% if settings.enabled %} selected{% endif %}>Enabled</option>
+                        </select></div>
+                        <p class="help" id="tag-manager-enabled-help">Disabling preserves definitions and prevents new page loads from receiving these tags.</p>
+                    </div>
+                </div>
+            {% endif %}
         </div>
-        <button type="submit" class="button">Open website settings</button>
-    </form>
+    </div>
     <h2 class="title is-4" id="tag-manager-scope">{{ site ? site.name : 'Shared configuration' }}</h2>
     <div class="content">
         {% if site %}
@@ -89,7 +112,6 @@
     {% if configuration_error %}
         <div class="notification is-danger" role="alert">{{ configuration_error }}</div>
     {% else %}
-        <p class="mb-4"><a class="button" href="{{ path('app_tag_manager_download', {site: selected_site}) }}">Download settings YAML</a></p>
         {% component 'Ui:Validation' with {action: path('app_tag_manager_save'), method: 'post', id: 'tag-manager-form', 'aria-labelledby': 'tag-manager-scope'} %}
         {% block content %}
             {% if restored_form %}
@@ -100,14 +122,6 @@
             {% endif %}
             <input type="hidden" name="_csrf_token" value="{{ csrf_token('tag_manager_settings') }}">
             <input type="hidden" name="site" value="{{ selected_site }}">
-            <div class="field">
-                <label class="label" for="tag-manager-enabled">Tag manager</label>
-                <div class="control select"><select id="tag-manager-enabled" name="enabled" required aria-describedby="tag-manager-enabled-help">
-                    <option value="0"{% if not settings.enabled %} selected{% endif %}>Disabled</option>
-                    <option value="1"{% if settings.enabled %} selected{% endif %}>Enabled</option>
-                </select></div>
-                <p class="help" id="tag-manager-enabled-help">Disabling preserves definitions and prevents new page loads from receiving these tags.</p>
-            </div>
 
             {{ component('Ui:ToggleTabs', {
                 label: 'Tag manager sections',
