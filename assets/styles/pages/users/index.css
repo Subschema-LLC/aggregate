@@ -31,3 +31,63 @@
     border-top: 1px solid var(--app-brand-border);
     margin-top: 1rem;
 }
+
+/* Website and page grants (users/_access_fields.html.twig) */
+.settings-page .access-fields {
+    border: 1px solid var(--app-brand-border-weak);
+    border-radius: var(--bulma-control-radius);
+    min-width: 0;
+    padding: 0.75rem 1rem 1rem;
+}
+
+.settings-page .access-fields > legend {
+    padding: 0 0.35rem;
+}
+
+.settings-page .access-radio-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.settings-page .access-radio-list .radio + .radio {
+    margin-inline-start: 0;
+}
+
+.settings-page .access-choice-grid {
+    display: grid;
+    gap: 0.35rem 1.25rem;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
+}
+
+/* Row headers name a page; only the column headers use the small capitals of other tables. */
+.settings-page .access-pages tbody th,
+.settings-page .access-summary tbody th {
+    font-size: inherit;
+    letter-spacing: normal;
+    opacity: 1;
+    text-transform: none;
+}
+
+.settings-page .access-pages th[scope="row"] .help {
+    display: block;
+    font-weight: normal;
+}
+
+.settings-page .access-pages td {
+    vertical-align: middle;
+    width: 6.5rem;
+}
+
+.settings-page .access-summary-list {
+    list-style: none;
+    margin-left: 0;
+}
+
+.settings-page .access-summary-list li + li {
+    margin-top: 0.35rem;
+}
+
+.view-only-notice + [data-controller="components--layout--view-only"] form[method="post" i] :disabled {
+    cursor: not-allowed;
+}

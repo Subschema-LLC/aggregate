@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Twig;
 
+use App\Security\Access\DashboardAccessVoter;
+use App\Security\Access\DashboardPages;
+use App\Security\Access\WebsiteAccess;
 use App\Service\DocumentationLinks;
 use App\Service\NavigationConditions;
 use Symfony\Component\Routing\Exception\ExceptionInterface as RoutingException;
@@ -15,7 +18,11 @@ use Symfony\Component\Security\Core\Authorization\AuthorizationCheckerInterface;
 use Twig\Extension\AbstractExtension;
 use Twig\TwigFunction;
 
-/** Presentation filtering only: every destination must enforce its own authorization. */
+/**
+ * Presentation filtering only: every destination must enforce its own
+ * authorization. A link to a dashboard route listed in DashboardPages appears
+ * only for users who can view that page, in addition to any role it names.
+ */
 final class NavigationExtension extends AbstractExtension
 {
     private const MAX_ITEMS = 32;
@@ -31,6 +38,7 @@ final class NavigationExtension extends AbstractExtension
         private readonly ?WebsiteActivityService $activityService = null,
         private readonly ?WebsiteScopeCatalog $scopes = null,
         private readonly ?NavigationConditions $conditions = null,
+        private readonly ?WebsiteAccess $websiteAccess = null,
     ) {}
 
     /**
@@ -89,6 +97,10 @@ final class NavigationExtension extends AbstractExtension
             if ($role === null || !$this->authorization->isGranted($role)) {
                 return null;
             }
+        }
+        if (is_string($item['route'] ?? null) && array_key_exists($item['route'], DashboardPages::ROUTES)
+            && !$this->authorization->isGranted(DashboardAccessVoter::ROUTE, $item['route'])) {
+            return null;
         }
 
         $state = $this->features->navigationState($item);
@@ -278,9 +290,14 @@ final class NavigationExtension extends AbstractExtension
             }
         }
 
-        if ($this->websiteManager !== null) {
+        if ($this->websiteManager !== null && $this->authorization->isGranted(DashboardAccessVoter::ROUTE, 'app_dashboard')) {
             try {
                 $websites = $this->websiteManager->getWebsites();
+                if ($this->websiteAccess !== null) {
+                    $websites = $this->websiteAccess->filter($websites);
+                } elseif (!$this->authorization->isGranted(DashboardAccessVoter::EVERY_WEBSITE)) {
+                    $websites = [];
+                }
                 // Only statuses already computed: quick search is on every
                 // page, and pages never wait on the events database.
                 $statuses = $this->activityService?->cachedStatuses() ?? [];

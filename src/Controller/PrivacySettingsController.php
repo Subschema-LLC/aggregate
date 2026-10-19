@@ -26,8 +26,7 @@ class PrivacySettingsController extends AbstractController
     #[Route('/dashboard/privacy', name: 'app_privacy_settings', methods: ['GET'])]
     public function privacySettings(): Response
     {
-        $this->denyIfDashboardDisabled();
-        $this->denyIfNotAdmin();
+        $this->denyUnlessPermitted();
 
         $privacySettingsError = false;
         try {
@@ -51,8 +50,7 @@ class PrivacySettingsController extends AbstractController
     #[Route('/dashboard/settings/analytics-privacy', name: 'app_analytics_privacy_settings_save', methods: ['POST'])]
     public function saveAnalyticsPrivacySettings(Request $request): Response
     {
-        $this->denyIfDashboardDisabled();
-        $this->denyIfNotAdmin();
+        $this->denyUnlessPermitted();
 
         $csrfToken = (string) $request->request->get('_csrf_token', '');
         if (!$this->isCsrfTokenValid('analytics_privacy_settings', $csrfToken)) {

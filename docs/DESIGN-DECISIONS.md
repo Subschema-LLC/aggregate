@@ -790,6 +790,34 @@ until they edit it; the old addresses still work.
 **What would change it.** Evidence that administrators cannot find pages that
 are not yet in the menu.
 
+### Administrators and standard users, with page and website grants
+
+**Decision.** An account is an administrator, who can do everything, or a
+standard user. A standard user gets dashboard pages at view or edit, and
+websites (every website, website groups or single websites), directly or through
+permission groups; grants only add access. Users and permission groups stay with
+administrators, and everyone manages their own profile. Every dashboard route is
+listed with the page and level it needs, and an unlisted dashboard route is
+administrator-only. Permission groups are YAML (`config/permission-groups.yaml`);
+each user's own grants are stored on their account.
+
+**Why.** Agencies and teams need to let a client or colleague see or edit their
+own websites without handing over the whole installation. View and edit levels
+cover read-only clients without a separate role per page. One list of routes,
+checked before any controller runs and by a test, keeps a new page from being
+reachable by accident. Permission groups are shared definitions, like website
+groups, so they follow the YAML-first rule and work headless; a user's grants
+belong to that user's record.
+
+**Trade-off.** System-wide pages (settings that affect every website) can be
+granted but cannot be limited to some websites, so granting them is a trust
+decision. Per-user grants live in the database while the groups they reference
+live in YAML, so moving users between installations means copying both. There
+are no deny rules or per-field permissions.
+
+**What would change it.** Installations that need deny rules, per-setting
+access, or single sign-on with roles from an identity provider.
+
 ### Custom JavaScript compiled into the tag manager script
 
 **Decision.** A [custom JavaScript tag](TAG-MANAGER.md#custom-javascript) is the

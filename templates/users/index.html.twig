@@ -5,7 +5,14 @@
 {% block body %}
 <div class="settings-page">
 <h1 class="title">Users</h1>
-<p class="subtitle">Create dashboard accounts and reset their passwords.</p>
+<p class="subtitle">Administrators can do everything. Standard users can use the websites and pages you grant them, directly or through permission groups.</p>
+{{ component('Ui:DocsLink', {topic: 'users.permissions', label: 'Users and permissions guide'}) }}
+{% include 'users/_tabs.html.twig' %}
+
+{% if permission_groups_error %}
+    <div class="notification is-danger is-light">config/permission-groups.yaml is invalid, so permission groups grant nothing until it is corrected: {{ permission_groups_error }}</div>
+{% endif %}
+
 <details class="box"{% if users is empty %} open{% endif %}>
 <summary class="has-text-weight-semibold mb-4">Add user</summary>
 <div class="columns">
@@ -17,9 +24,7 @@
             <label class="label" for="new-username">Username</label>
             <div class="control has-icons-left">
                 <input class="input" type="text" id="new-username" name="username" maxlength="180" autocomplete="off" required placeholder="new-user">
-                <span class="icon is-small is-left">
-                    <i class="fas fa-user"></i>
-                </span>
+                <span class="icon is-small is-left"><i class="fas fa-user" aria-hidden="true"></i></span>
             </div>
         </div>
 
@@ -27,24 +32,46 @@
             <label class="label" for="initial-password">Password</label>
             <div class="control has-icons-left">
                 <input class="input" type="password" id="initial-password" name="password" autocomplete="new-password" minlength="8" required placeholder="Minimum 8 characters">
-                <span class="icon is-small is-left">
-                    <i class="fas fa-lock"></i>
-                </span>
+                <span class="icon is-small is-left"><i class="fas fa-lock" aria-hidden="true"></i></span>
             </div>
         </div>
 
-        <div class="field">
-            <label class="checkbox">
-                <input type="checkbox" name="is_admin" value="1">
-                Grant administrator access
-            </label>
+        <div class="columns is-variable is-3">
+            <div class="column field mb-0">
+                <label class="label" for="new-display-name">Display name <span class="has-text-weight-normal has-text-grey">(optional)</span></label>
+                <div class="control"><input class="input" type="text" id="new-display-name" name="display_name" maxlength="120" autocomplete="off"></div>
+            </div>
+            <div class="column field">
+                <label class="label" for="new-email">Email <span class="has-text-weight-normal has-text-grey">(optional)</span></label>
+                <div class="control"><input class="input" type="email" id="new-email" name="email" maxlength="254" autocomplete="off"></div>
+            </div>
         </div>
+
+        <fieldset class="field">
+            <legend class="label">Account type</legend>
+            <div class="control access-radio-list">
+                <label class="radio"><input type="radio" name="account_type" value="standard" checked> Standard user: only the websites and pages you grant</label>
+                <label class="radio"><input type="radio" name="account_type" value="admin"> Administrator: everything, including users</label>
+            </div>
+        </fieldset>
+
+        {% if permission_groups is not empty %}
+            <fieldset class="field">
+                <legend class="label">Permission groups <span class="has-text-weight-normal has-text-grey">(standard users)</span></legend>
+                <div class="access-choice-grid">
+                    {% for group_id, group in permission_groups %}
+                        <label class="checkbox"><input type="checkbox" name="permission_groups[]" value="{{ group_id }}"> {{ group.name }}</label>
+                    {% endfor %}
+                </div>
+                <p class="help">You can grant websites and pages directly after the user is created.</p>
+            </fieldset>
+        {% endif %}
 
         <div class="field">
             <div class="control">
                 <button type="submit" class="button is-link">
-                    <span class="icon"><i class="fas fa-user-plus"></i></span>
-                    <span>Create User</span>
+                    <span class="icon"><i class="fas fa-user-plus" aria-hidden="true"></i></span>
+                    <span>Create user</span>
                 </button>
             </div>
         </div>
@@ -52,24 +79,97 @@
 </div>
 </div>
 </details>
+
 <div class="box">
 <h2 class="title is-5">Existing users</h2>
-<p class="mb-4">Set a new password for an existing account.</p>
 {% if users is empty %}
-    <div class="notification is-info is-light">
-        No users found.
-    </div>
+    <div class="notification is-info is-light">No users found.</div>
 {% else %}
     {% for user in users %}
-        <details class="account-card">
+        {% set access = user.access %}
+        {% set is_self = app.user and app.user.userIdentifier == user.userIdentifier %}
+        <details class="account-card" id="user-{{ user.id }}">
             <summary>
-                <strong>{{ user.username }}</strong>
-                <span class="tags mt-2">
-                    {% for role in user.roles %}<span class="tag is-info is-light">{{ role }}</span>{% endfor %}
+                <span>
+                    <strong>{{ user.label }}</strong>
+                    {% if user.displayName %}<span class="has-text-grey ml-1">{{ user.username }}</span>{% endif %}
+                    {% if is_self %}<span class="tag is-light ml-1">You</span>{% endif %}
+                </span>
+                <span class="tags mb-0">
+                    {% if user.admin %}
+                        <span class="tag is-link is-light">Administrator</span>
+                    {% else %}
+                        <span class="tag is-info is-light">Standard user</span>
+                        {% for group_id in access.permission_groups %}
+                            <span class="tag is-light">{{ permission_groups[group_id].name|default(group_id ~ ' (missing)') }}</span>
+                        {% endfor %}
+                    {% endif %}
                 </span>
             </summary>
-            <p class="help mt-3 mb-4">Created <time datetime="{{ user.createdAt|date('c') }}">{{ user.createdAt|date('Y-m-d H:i') }}</time></p>
-            <form action="{{ path('app_user_password_update', {id: user.id}) }}" method="post" class="account-password-form">
+            <p class="help mt-3 mb-4">Created <time datetime="{{ user.createdAt|date('c') }}">{{ user.createdAt|date('Y-m-d H:i') }}</time>{% if user.email %} · {{ user.email }}{% endif %}</p>
+
+            <form action="{{ path('app_user_update', {id: user.id}) }}" method="post" class="mb-5">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token('update_user_' ~ user.id) }}">
+                <div class="columns is-variable is-3 is-multiline">
+                    <div class="column is-4-desktop field mb-0">
+                        <label class="label" for="user-{{ user.id }}-username">Username</label>
+                        <div class="control"><input class="input" type="text" id="user-{{ user.id }}-username" name="username" maxlength="180" required value="{{ user.username }}" autocomplete="off"></div>
+                        {% if is_self %}<p class="help">Changing your own username signs you out.</p>{% endif %}
+                    </div>
+                    <div class="column is-4-desktop field mb-0">
+                        <label class="label" for="user-{{ user.id }}-display-name">Display name</label>
+                        <div class="control"><input class="input" type="text" id="user-{{ user.id }}-display-name" name="display_name" maxlength="120" value="{{ user.displayName }}" autocomplete="off"></div>
+                    </div>
+                    <div class="column is-4-desktop field">
+                        <label class="label" for="user-{{ user.id }}-email">Email</label>
+                        <div class="control"><input class="input" type="email" id="user-{{ user.id }}-email" name="email" maxlength="254" value="{{ user.email }}" autocomplete="off"></div>
+                    </div>
+                </div>
+
+                <fieldset class="field">
+                    <legend class="label">Account type</legend>
+                    <div class="control access-radio-list">
+                        <label class="radio"><input type="radio" name="account_type" value="standard"{% if not user.admin %} checked{% endif %}{% if is_self and user.admin %} disabled{% endif %}> Standard user</label>
+                        <label class="radio"><input type="radio" name="account_type" value="admin"{% if user.admin %} checked{% endif %}> Administrator</label>
+                    </div>
+                    {% if is_self and user.admin %}<p class="help">You cannot remove your own administrator access.</p>{% endif %}
+                    {% if user.admin %}<p class="help">Administrators can use everything; the access below applies if you make them a standard user.</p>{% endif %}
+                </fieldset>
+
+                <details class="mb-4"{% if not user.admin %} open{% endif %}>
+                    <summary class="has-text-weight-semibold mb-3">Standard user access</summary>
+                    {% if permission_groups is not empty %}
+                        <fieldset class="field">
+                            <legend class="label">Permission groups</legend>
+                            <div class="access-choice-grid">
+                                {% for group_id, group in permission_groups %}
+                                    <label class="checkbox"><input type="checkbox" name="permission_groups[]" value="{{ group_id }}"{% if group_id in access.permission_groups %} checked{% endif %}> {{ group.name }}</label>
+                                {% endfor %}
+                            </div>
+                        </fieldset>
+                    {% else %}
+                        <p class="help mb-3">No permission groups yet. <a href="{{ path('app_permission_groups') }}">Create one</a> to grant the same access to several users.</p>
+                    {% endif %}
+                    <p class="label mb-2">Granted directly</p>
+                    {% include 'users/_access_fields.html.twig' with {prefix: 'user-' ~ user.id, grant: access} %}
+                </details>
+
+                <button type="submit" class="button is-primary">
+                    <span class="icon"><i class="fas fa-floppy-disk" aria-hidden="true"></i></span>
+                    <span>Save {{ user.username }}</span>
+                </button>
+            </form>
+
+            {% if not user.admin %}
+                <details class="mb-5">
+                    <summary class="has-text-weight-semibold">What {{ user.label }} can use</summary>
+                    <div class="mt-3">
+                        {% include 'users/_access_summary.html.twig' with {summary: dashboard_access_summary(user), website_names: website_names, group_names: website_groups} %}
+                    </div>
+                </details>
+            {% endif %}
+
+            <form action="{{ path('app_user_password_update', {id: user.id}) }}" method="post" class="account-password-form mb-5">
                 <input type="hidden" name="_csrf_token" value="{{ csrf_token('update_user_password_' ~ user.id) }}">
                 <div class="field">
                     <label class="label" for="user-{{ user.id }}-password">New password for {{ user.username }}</label>
@@ -82,6 +182,18 @@
                     <span>Update password</span>
                 </button>
             </form>
+
+            {% if not is_self %}
+                {% component 'Ui:Confirm' with {message: 'Delete ' ~ user.username ~ '? They can no longer sign in. This cannot be undone.', action: path('app_user_delete', {id: user.id}), method: 'post'} %}
+                    {% block content %}
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token('delete_user_' ~ user.id) }}">
+                    <button type="submit" class="button is-danger is-outlined is-small">
+                        <span class="icon"><i class="fas fa-user-xmark" aria-hidden="true"></i></span>
+                        <span>Delete user</span>
+                    </button>
+                    {% endblock %}
+                {% endcomponent %}
+            {% endif %}
         </details>
     {% endfor %}
 {% endif %}

@@ -36,7 +36,7 @@ final class DataTransferController extends AbstractController
     #[Route('/dashboard/data-transfer', name: 'app_data_transfer', methods: ['GET'])]
     public function index(): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
 
         return $this->renderDashboardPage('data_transfer/index.html.twig', [
             'counts' => $this->counts(),
@@ -129,7 +129,7 @@ final class DataTransferController extends AbstractController
     /** @param callable(array<string, mixed>): list<string> $arguments */
     private function start(Request $request, string $csrf, string $command, callable $arguments): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         $submitted = $request->request->all();
         $token = $submitted['_csrf_token'] ?? null;
         if (!is_string($token) || !$this->isCsrfTokenValid($csrf, $token)) {

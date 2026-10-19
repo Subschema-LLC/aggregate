@@ -3,7 +3,8 @@
 {% block title %}Websites | {{ app_branding.name }}{% endblock %}
 
 {% block body %}
-{% set is_admin = is_granted('ROLE_ADMIN') %}
+{% set can_edit = dashboard_can_edit('websites') %}
+{% set can_add = dashboard_allowed('app_website_create') %}
 
 <div class="websites-page" data-controller="pages--websites--index pages--websites--activity" data-pages--websites--activity-url-value="{{ path('app_website_activity') }}" data-action="turbo:before-cache@document->pages--websites--index#reset">
 <div class="level mb-5">
@@ -11,16 +12,18 @@
         <div>
             <h1 class="title mb-1">Websites</h1>
             <p class="subtitle is-6">Manage website tokens, allowed domains, and tracker installation.</p>
-            {% if is_admin %}<p class="help"><a href="{{ path('app_website_groups') }}">Website groups</a> share collection settings and data models. A website setting overrides its group.</p>{% endif %}
+            {% if dashboard_allowed('app_website_groups') %}<p class="help"><a href="{{ path('app_website_groups') }}">Website groups</a> share collection settings and data models. A website setting overrides its group.</p>{% endif %}
             {{ component('Ui:DocsLink', {topic: 'configuration.websites', label: 'Website domains guide'}) }}
         </div>
     </div>
+    {% if can_add %}
     <div class="level-right">
         <button type="button" class="button is-primary" id="add-website-trigger" data-pages--websites--index-target="trigger" data-action="pages--websites--index#open">
             <span class="icon" aria-hidden="true"><i class="fas fa-plus"></i></span>
             <span>Add Website</span>
         </button>
     </div>
+    {% endif %}
 </div>
 
 {% if websites is empty %}
@@ -29,12 +32,14 @@
             <i class="fas fa-globe fa-3x" aria-hidden="true"></i>
         </span>
         <h2 class="title is-4 mb-2">Welcome to {{ app_branding.name }}</h2>
+        {% if can_add %}
         <p class="subtitle is-6 mb-4">Add your first website to get its token and installation code.</p>
-        {% if is_admin %}
             <button type="button" class="button is-primary" data-action="pages--websites--index#open">
                 <span class="icon" aria-hidden="true"><i class="fas fa-plus"></i></span>
                 <span>Add Your First Website</span>
             </button>
+        {% else %}
+        <p class="subtitle is-6 mb-4">No websites are assigned to you yet. Ask an administrator for access.</p>
         {% endif %}
     </div>
 {% endif %}
@@ -105,7 +110,7 @@
 {% endif %}
 
 {% for website in websites %}
-    {{ component('Websites:SiteCard', {website: website, index: loop.index, include_tags: include_tags, snippet_format: snippet_format, is_admin: is_admin, include_cmp: include_cmp}) }}
+    {{ component('Websites:SiteCard', {website: website, index: loop.index, include_tags: include_tags, snippet_format: snippet_format, can_edit: can_edit, can_setup: dashboard_allowed('app_setup'), include_cmp: include_cmp}) }}
 {% endfor %}
 
 <details class="box mt-5">
@@ -139,6 +144,6 @@ window[{{ js_namespace|json_encode(15) }}].setConsent(false);</code></pre>
     </div>
 </details>
 
-{{ component('Websites:CreateDialog') }}
+{% if can_add %}{{ component('Websites:CreateDialog') }}{% endif %}
 </div>
 {% endblock %}

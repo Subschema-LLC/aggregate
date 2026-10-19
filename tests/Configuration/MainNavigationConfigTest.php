@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Configuration;
 
+use App\Security\Access\DashboardPages;
 use App\Service\ApplicationUpdateService;
 use App\Service\DocumentationLinks;
 use App\Service\ReportingViewManager;
@@ -28,7 +29,7 @@ final class MainNavigationConfigTest extends KernelTestCase
         ));
         self::assertCount(1, $links);
         self::assertSame('Data model', $links[0]['label']);
-        self::assertSame('ROLE_ADMIN', $links[0]['role']);
+        $this->assertPagePermission($links[0], 'data_model');
 
         $routes = $container->get('router')->getRouteCollection();
         foreach ([
@@ -152,7 +153,7 @@ final class MainNavigationConfigTest extends KernelTestCase
         ));
         self::assertCount(1, $lifecycleLinks);
         self::assertNotSame('', trim((string) ($lifecycleLinks[0]['label'] ?? '')));
-        self::assertSame('ROLE_ADMIN', $lifecycleLinks[0]['role'] ?? null);
+        $this->assertPagePermission($lifecycleLinks[0], 'data_lifecycle');
 
         $router = $container->get('router');
         self::assertInstanceOf(RouterInterface::class, $router);
@@ -178,7 +179,7 @@ final class MainNavigationConfigTest extends KernelTestCase
         ));
         self::assertCount(1, $updateLinks);
         self::assertSame('Updates', $updateLinks[0]['label']);
-        self::assertSame('ROLE_ADMIN', $updateLinks[0]['role']);
+        $this->assertPagePermission($updateLinks[0], 'updates');
         self::assertSame('updates', $updateLinks[0]['feature']);
 
         $router = $container->get('router');
@@ -203,7 +204,7 @@ final class MainNavigationConfigTest extends KernelTestCase
                 && ($item['route'] ?? null) === 'app_feature_flags',
         ));
         self::assertCount(1, $links);
-        self::assertSame('ROLE_ADMIN', $links[0]['role']);
+        $this->assertPagePermission($links[0], 'feature_flags');
         self::assertArrayNotHasKey('feature', $links[0], 'Feature management must remain accessible when other features are disabled.');
         $route = $container->get('router')->getRouteCollection()->get('app_feature_flags');
         self::assertNotNull($route);
@@ -232,6 +233,13 @@ final class MainNavigationConfigTest extends KernelTestCase
         }
     }
     /** @return list<array> */
+    /** A dashboard link shows for users who can view its page; administrators can view every page. */
+    private function assertPagePermission(array $link, string $page): void
+    {
+        self::assertArrayNotHasKey('role', $link, 'Page permissions decide who sees '.$link['label'].'.');
+        self::assertSame($page, DashboardPages::requirement((string) $link['route'])['page']);
+    }
+
     private function links(array $items): array
     {
         $links = [];

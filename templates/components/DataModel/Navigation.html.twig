@@ -8,7 +8,7 @@
                 {route: "app_event_examples", label: "Event examples", icon: "fas fa-file-code"},
                 {route: "app_data_model_discovery", label: "Observed properties", icon: "fas fa-binoculars"},
                 {route: "app_data_model_reporting", label: "Reporting views", icon: "fas fa-table"}
-            ] %}
+            ] | filter(item => item.route == current_model_page or dashboard_allowed(item.route)) %}
                 <li class="{% if current_model_page == item.route %}is-active{% endif %}">
                     <a href="{{ path(item.route) }}"{% if current_model_page == item.route %} aria-current="page"{% endif %}>
                         <span class="icon is-small mr-1"><i class="{{ item.icon }}" aria-hidden="true"></i></span>

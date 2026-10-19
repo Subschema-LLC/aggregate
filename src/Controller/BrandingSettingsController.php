@@ -26,8 +26,7 @@ class BrandingSettingsController extends AbstractController
     #[Route('/dashboard/branding', name: 'app_branding_settings', methods: ['GET'])]
     public function brandingSettings(): Response
     {
-        $this->denyIfDashboardDisabled();
-        $this->denyIfNotAdmin();
+        $this->denyUnlessPermitted();
 
         return $this->renderDashboardPage('settings/branding.html.twig');
     }
@@ -35,8 +34,7 @@ class BrandingSettingsController extends AbstractController
     #[Route('/dashboard/settings/branding', name: 'app_branding_settings_save', methods: ['POST'])]
     public function saveBrandingSettings(Request $request): Response
     {
-        $this->denyIfDashboardDisabled();
-        $this->denyIfNotAdmin();
+        $this->denyUnlessPermitted();
 
         $csrfToken = (string) $request->request->get('_csrf_token', '');
         if (!$this->isCsrfTokenValid('branding_settings', $csrfToken)) {

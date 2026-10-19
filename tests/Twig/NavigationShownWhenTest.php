@@ -7,6 +7,7 @@ namespace App\Tests\Twig;
 use App\Service\AggregateConfigLoader;
 use App\Service\BigQuery\BigQuerySettings;
 use App\Service\FeatureFlags;
+use App\Security\Access\DashboardPages;
 use App\Service\NavigationConditions;
 use App\Service\ReportingDatabase\ReportingDatabaseSettings;
 use App\Service\ViewSync\ViewSyncDestinations;
@@ -130,7 +131,19 @@ final class NavigationShownWhenTest extends TestCase
         self::assertArrayNotHasKey('Reporting database', $links);
         self::assertArrayNotHasKey('Reporting timezone', $links);
         self::assertSame('Help', $links['Event examples']['group']);
-        self::assertSame('ROLE_ADMIN', $links['Event examples']['role']);
+        // Page permissions decide who sees a dashboard link; only administrator-only pages name a role.
+        self::assertArrayNotHasKey('role', $links['Event examples']);
+        self::assertSame(['event_examples', DashboardPages::VIEW], DashboardPages::ROUTES['app_event_examples']);
+        foreach ($links as $label => $link) {
+            $adminOnly = isset($link['route']) && DashboardPages::requirement($link['route'])['kind'] === DashboardPages::ADMIN;
+            if ($adminOnly) {
+                self::assertSame('ROLE_ADMIN', $link['role'] ?? null, $label);
+            } else {
+                self::assertArrayNotHasKey('role', $link, $label);
+            }
+        }
+        self::assertSame('ROLE_ADMIN', $links['Users']['role']);
+        self::assertSame('ROLE_ADMIN', $links['Data transfer']['role']);
         foreach ($links as $label => $link) {
             if (array_key_exists('shown_when', $link)) {
                 self::assertTrue(NavigationConditions::has($link['shown_when']), $label);

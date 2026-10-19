@@ -9,6 +9,7 @@ Use this guide for application settings and runtime overrides. Run commands from
 - [Website groups](#website-groups)
 - [Website domains](#website-domains)
 - [Administration pages](#administration-pages)
+- [Users and permissions](USERS-AND-PERMISSIONS.md)
 - [Feature flags](#feature-flags)
 - [Organization traffic](#organization-traffic)
 - [Custom data and UTM parameters](#custom-data-and-utm-parameters)
@@ -33,10 +34,11 @@ Configuration has separate sources of truth:
 - **`config/quick_search.yaml`** (app-level, committed): Dashboard quick-search synonyms and extra entries. Customize it in `config/quick_search.local.yaml`.
 - **`config/websites.yaml`** (untracked): Website names, primary domains, allowed event-source domains, and public ingestion tokens, managed through the Websites page, YAML, or `app:create-website`.
 - **`config/website-scopes.yaml`** and **`config/website-scopes/`** (untracked): Named website groups and the collection settings or data models that a group or one website overrides. A missing catalog means every website uses the deployment settings. See [Website groups](#website-groups).
+- **`config/permission-groups.yaml`** (untracked): Permission groups (roles), the named sets of websites and pages that administrators assign to standard users, managed through the Users page, YAML, or `app:permission-groups`. A missing file means no groups. See [Users and permissions](USERS-AND-PERMISSIONS.md#permission-groups).
 - **`config/tag-manager/sites/<site-id>.yaml`** (untracked): Per-website CMP settings, tags, triggers, and variables, managed through the Tag manager page or YAML. Run `app:tag-manager:sites` to list IDs and paths; see [Tag manager](TAG-MANAGER.md).
 - **`anonymous_min_cell_count` / `anonymous_geo_min_cell_count`** (deployment config): BI disclosure thresholds in `config/aggregate*.yaml`, managed through the BI disclosure dashboard form, YAML, or environment overrides, and applied with `app:analytics:bi-views:regenerate` (see [BI disclosure thresholds](#bi-disclosure-thresholds)).
 
-The database holds no operator settings: it stores collected events, archives, users and operational records. Tables such as `analytics_glossary` are generated copies of YAML for BI joins.
+The database holds no operator settings: it stores collected events, archives, users (with each user's own permission grants) and operational records. Tables such as `analytics_glossary` are generated copies of YAML for BI joins.
 
 ### When an edit takes effect
 
@@ -543,7 +545,7 @@ An unknown condition name hides the link, like an unknown feature name.
 disappears by itself once none of its links are shown. Conditions are presentation
 only and never grant access.
 
-The `brand` entry controls where the branded identity links. Its `label` remains a backward-compatible name/wordmark fallback for existing deployments. Runtime identity, logo, theme-color, and font settings live in `config/aggregate.yaml` (or their environment overrides), so UI changes do not require rebuilding navigation configuration. Edit `items` and `account` to manage the remaining authenticated-navbar links. Each link defines exactly one Symfony `route` name (for example, `app_how_it_works`), literal `url`, or documentation topic (`docs`, see [documentation links](#documentation-links)); `label` is required, while `icon`, `route_parameters`, and an optional security `role` are supported. Existing flat configurations and an empty `items` list remain supported.
+The `brand` entry controls where the branded identity links. Its `label` remains a backward-compatible name/wordmark fallback for existing deployments. Runtime identity, logo, theme-color, and font settings live in `config/aggregate.yaml` (or their environment overrides), so UI changes do not require rebuilding navigation configuration. Edit `items` and `account` to manage the remaining authenticated-navbar links. Each link defines exactly one Symfony `route` name (for example, `app_how_it_works`), literal `url`, or documentation topic (`docs`, see [documentation links](#documentation-links)); `label` is required, while `icon`, `route_parameters`, and an optional security `role` are supported. A link to a dashboard page also appears only for users who can view that page ([users and permissions](USERS-AND-PERMISSIONS.md)), so the shipped menu names a role only for Users. Existing flat configurations and an empty `items` list remain supported.
 
 Top-level items can instead group links under `children`. A group has a label
 and optional icon/role/feature, with no route or URL of its own:
@@ -554,16 +556,18 @@ parameters:
     brand: { label: 'Analytics', route: app_home }
     items:
       - label: Collection
-        role: ROLE_ADMIN
         children:
-          - { label: 'Data model', route: app_data_model, role: ROLE_ADMIN }
+          - { label: 'Data model', route: app_data_model }
       - label: Reporting
         children:
-          - { label: Sync, route: app_sync, role: ROLE_ADMIN, shown_when: view_sync_on }
+          - { label: Sync, route: app_sync, shown_when: view_sync_on }
+      - label: Administration
+        children:
+          - { label: Users, route: app_users, role: ROLE_ADMIN }
       - label: Help
         children:
           - { label: 'How it works', route: app_how_it_works }
-          - { label: 'Event examples', route: app_event_examples, role: ROLE_ADMIN }
+          - { label: 'Event examples', route: app_event_examples }
           - { label: Documentation, docs: home }
     account:
       user_icon: 'fas fa-user'
@@ -655,7 +659,8 @@ administration. Each settings page loads the data needed for its own task.
 | Standalone consent settings | `/dashboard/setup/standalone/<site-id>` | Independent per-site banner settings and optional Formspree request endpoint |
 | Tag manager | `/dashboard/tag-manager` | Per-website tags that load scripts, send Aggregate events, call library methods or run custom JavaScript, with consent, triggers, variables and YAML downloads |
 | BI disclosure | `/dashboard/privacy` | YAML-backed event and geography thresholds with BI view regeneration |
-| Users | `/dashboard/users` | User creation and password administration |
+| Users | `/dashboard/users` | Administrators and standard users: create, change access, reset passwords, delete; the **Permission groups** tab manages roles ([guide](USERS-AND-PERMISSIONS.md)) |
+| Your profile | `/dashboard/profile` | Every user's display name, email, password, and a read-only list of their access |
 | Data model | `/dashboard/data-model` | Properties, types, consent, query mappings |
 | Event examples | `/dashboard/data-model/examples` | Synthetic JSON generation, copy, download, and ecommerce recipe |
 | Observed properties | `/dashboard/data-model/discovery` | Explicit bounded metadata discovery |
@@ -667,10 +672,15 @@ administration. Each settings page loads the data needed for its own task.
 | Data transfer | `/dashboard/data-transfer` | Export, import, or copy collected rows; the last run comes from the processing task and audit trail ([guide](DATA-TRANSFER.md)) |
 | Scheduled tasks | `/dashboard/scheduled-tasks` | Whether the server runs `app:scheduler:run`, the exact Plesk, cron or systemd settings for this server, each job's last and next run, and **Run due jobs now** ([guide](SCHEDULED-TASKS.md)) |
 
-Settings, users, and model pages require an administrator. Existing POST paths
-remain available and return to the page that owns the form. The general-settings
-save endpoint now also requires an administrator. Dashboard-disabled deployments
-omit these UI routes while keeping shared YAML services and CLI commands.
+Administrators can use every page. Standard users can use the pages an
+administrator granted them, at view or edit, for the websites they were granted;
+Users and permission groups stay with administrators, and every user has their
+own profile page. Every dashboard route needs the page and level listed in
+`App\Security\Access\DashboardPages`; see
+[how access is enforced](USERS-AND-PERMISSIONS.md#how-access-is-enforced).
+Existing POST paths remain available and return to the page that owns the form.
+Dashboard-disabled deployments omit these UI routes while keeping shared YAML
+services and CLI commands.
 
 ## Conversion goals
 

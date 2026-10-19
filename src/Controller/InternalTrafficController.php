@@ -32,7 +32,7 @@ final class InternalTrafficController extends AbstractController
     #[Route('/dashboard/internal-traffic', name: 'app_internal_traffic', methods: ['GET'])]
     public function index(): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         $error = null;
         $shareUrl = null;
         $marker = InternalTrafficSettings::DEFAULTS;
@@ -66,7 +66,7 @@ final class InternalTrafficController extends AbstractController
     #[Route('/dashboard/internal-traffic/save', name: 'app_internal_traffic_save', methods: ['POST'])]
     public function save(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         $submitted = $request->request->all();
         $csrf = $submitted['_csrf_token'] ?? null;
         if (!is_string($csrf) || !$this->isCsrfTokenValid(self::CSRF_TOKEN_ID, $csrf)) {
@@ -103,7 +103,7 @@ final class InternalTrafficController extends AbstractController
     #[Route('/dashboard/internal-traffic/download', name: 'app_internal_traffic_download', methods: ['GET'])]
     public function download(): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         $response = $this->render('internal_traffic/public.html.twig', [
             'browser_config' => $this->settings->toBrowserConfig(),
             'standalone' => true,

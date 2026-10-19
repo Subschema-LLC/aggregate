@@ -1,6 +1,6 @@
 {# Common Navigation - Configurable in config/navigation.yaml #}
 {% if app.user %}
-    {{ component('Layout:Navigation', {navigation: navigation_menu(main_navigation), username: app.user.username}) }}
+    {{ component('Layout:Navigation', {navigation: navigation_menu(main_navigation), username: app.user.label|default(app.user.userIdentifier), profile_url: path('app_profile')}) }}
 {% else %}
     <nav class="navbar is-dark app-navigation has-shadow" aria-label="public navigation">
         <div class="navbar-brand">

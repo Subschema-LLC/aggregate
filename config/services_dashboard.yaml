@@ -14,6 +14,7 @@ services:
     App\Controller\CollectionSettingsController: ~
     App\Controller\PrivacySettingsController: ~
     App\Controller\UsersController: ~
+    App\Controller\ProfileController: ~
     App\Controller\SetupController: ~
     App\Controller\StandaloneConsentController: ~
     App\Controller\TagManagerController: ~

@@ -34,7 +34,7 @@ class WebsitesController extends AbstractController
     #[Route('/dashboard', name: 'app_dashboard', methods: ['GET'])]
     public function index(Request $request, DropInScripts $scripts, ?WebsiteActivityService $activityService = null): Response
     {
-        $this->denyIfDashboardDisabled();
+        $this->denyUnlessPermitted();
         $query = $request->query->all();
         $format = ($query['format'] ?? null) === 'query' ? 'query' : 'window';
         $withTags = ($query['tags'] ?? null) === '1';
@@ -82,7 +82,7 @@ class WebsitesController extends AbstractController
                 $website['activity'] = $activityService?->cachedStatusForToken((string) ($website['token'] ?? ''));
 
                 return $website;
-            }, $this->websiteManager->getWebsites()),
+            }, $this->visibleWebsites($this->websiteManager->getWebsites())),
             'snippet_format' => $format,
             'include_tags' => $withTags,
             'include_cmp' => $includeCmp,
@@ -99,7 +99,7 @@ class WebsitesController extends AbstractController
     #[Route('/dashboard/websites/activity', name: 'app_website_activity', methods: ['GET'])]
     public function websiteActivity(WebsiteActivityService $activityService): JsonResponse
     {
-        $this->denyIfDashboardDisabled();
+        $this->denyUnlessPermitted();
         $headers = ['Cache-Control' => 'private, no-store, max-age=0'];
 
         try {
@@ -111,7 +111,7 @@ class WebsitesController extends AbstractController
         }
 
         $websites = [];
-        foreach ($this->websiteManager->getWebsites() as $website) {
+        foreach ($this->visibleWebsites($this->websiteManager->getWebsites()) as $website) {
             $token = (string) ($website['token'] ?? '');
             if ($token === '') {
                 continue;
@@ -130,7 +130,7 @@ class WebsitesController extends AbstractController
     #[Route('/dashboard/website/create', name: 'app_website_create', methods: ['POST'])]
     public function createWebsite(Request $request): Response
     {
-        $this->denyIfDashboardDisabled();
+        $this->denyUnlessPermitted();
 
         if (!$this->isCsrfTokenValid('create_website', (string) $request->request->get('_csrf_token', ''))) {
             $this->addFlash('error', 'Invalid security token. Please try again.');
@@ -173,7 +173,10 @@ class WebsitesController extends AbstractController
     #[Route('/dashboard/website/{token}/domains', name: 'app_website_domains', methods: ['POST'])]
     public function saveWebsiteDomains(string $token, Request $request): Response
     {
-        $this->denyIfDashboardDisabled();
+        $this->denyUnlessPermitted();
+        if (!$this->canUseWebsiteToken($token)) {
+            throw $this->createNotFoundException('Website not found.');
+        }
 
         if (!$this->isCsrfTokenValid('website_domains_'.$token, (string) $request->request->get('_csrf_token', ''))) {
             $this->addFlash('error', 'Invalid security token. Please try again.');
@@ -239,7 +242,10 @@ class WebsitesController extends AbstractController
     #[Route('/dashboard/website/delete/{token}', name: 'app_website_delete', methods: ['POST'])]
     public function deleteWebsite(string $token, Request $request): Response
     {
-        $this->denyIfDashboardDisabled();
+        $this->denyUnlessPermitted();
+        if (!$this->canUseWebsiteToken($token)) {
+            throw $this->createNotFoundException('Website not found.');
+        }
 
         if (!$this->isCsrfTokenValid('delete_website_'.$token, (string) $request->request->get('_csrf_token', ''))) {
             $this->addFlash('error', 'Invalid security token. Please try again.');

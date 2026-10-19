@@ -34,6 +34,7 @@
 /config/websites.yaml
 /config/website-scopes.yaml
 /config/website-scopes/
+/config/permission-groups.yaml
 /config/aggregate.yaml
 /config/aggregate_*.yaml
 /config/*.local.yaml

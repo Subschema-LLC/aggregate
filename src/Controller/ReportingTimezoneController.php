@@ -43,7 +43,7 @@ final class ReportingTimezoneController extends AbstractController
     #[Route('/dashboard/reporting/timezone', name: 'app_reporting_timezone', methods: ['GET'])]
     public function index(): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
 
         return $this->section();
     }
@@ -51,7 +51,7 @@ final class ReportingTimezoneController extends AbstractController
     #[Route('/dashboard/reporting/timezone/save', name: 'app_reporting_timezone_save', methods: ['POST'])]
     public function save(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         $form = $request->request->all();
         $token = $form['_csrf_token'] ?? null;
         if (!is_string($token) || !$this->isCsrfTokenValid(self::CSRF_TOKEN_ID, $token)) {

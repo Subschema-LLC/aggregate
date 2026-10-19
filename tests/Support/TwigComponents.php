@@ -21,10 +21,13 @@ use Symfony\UX\TwigComponent\Twig\ComponentRuntime;
 use Twig\Environment;
 use Twig\Runtime\EscaperRuntime;
 use Twig\RuntimeLoader\FactoryRuntimeLoader;
+use Twig\Extension\AbstractExtension;
+use Twig\TwigFunction;
 
 /**
  * Use the real UX renderer in isolated controller tests, without booting services or a database.
- * Also registers docs_url(), which shared components use, with a fixed documentation_url.
+ * Also registers docs_url(), which shared components use, with a fixed documentation_url,
+ * and the permission functions of AccessExtension as an administrator sees them.
  */
 final class TwigComponents
 {
@@ -32,6 +35,17 @@ final class TwigComponents
     public static function register(Environment $twig, string $documentationUrl = DocumentationLinks::DEFAULT_URL): void
     {
         $twig->addExtension(new DocumentationExtension(FixedDocumentationLinks::create($documentationUrl)));
+        $twig->addExtension(new class extends AbstractExtension {
+            public function getFunctions(): array
+            {
+                return [
+                    new TwigFunction('dashboard_allowed', static fn (string $route): bool => true),
+                    new TwigFunction('dashboard_can_edit', static fn (string $page): bool => true),
+                    new TwigFunction('dashboard_page_access', static fn (): ?array => null),
+                    new TwigFunction('dashboard_access_summary', static fn (mixed $user = null): ?array => null),
+                ];
+            }
+        });
         $dispatcher = new EventDispatcher();
         $accessor = PropertyAccess::createPropertyAccessor();
         $factory = new ComponentFactory(

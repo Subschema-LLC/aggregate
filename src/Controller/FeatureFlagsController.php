@@ -29,7 +29,7 @@ final class FeatureFlagsController extends AbstractController
     #[Route('/dashboard/feature-flags', name: 'app_feature_flags', methods: ['GET'])]
     public function index(): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         $settings = [];
         $configurationError = null;
         try {
@@ -51,7 +51,7 @@ final class FeatureFlagsController extends AbstractController
     #[Route('/dashboard/feature-flags/save', name: 'app_feature_flags_save', methods: ['POST'])]
     public function save(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         $submitted = $request->request->all();
         $csrf = $submitted['_csrf_token'] ?? null;
         if (!is_string($csrf) || !$this->isCsrfTokenValid(self::CSRF_TOKEN_ID, $csrf)) {

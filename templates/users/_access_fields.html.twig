@@ -1,0 +1,89 @@
+{#
+    The website and page grants shared by the user and permission group forms.
+    Parameters: prefix (unique id prefix), grant (websites and pages), pages,
+    websites, website_groups, website_group_label. Read by AccessGrant::fromForm().
+#}
+{% set selected_sites = grant.websites.sites|default([]) %}
+{% set selected_groups = grant.websites.groups|default([]) %}
+{% set every_website = grant.websites.all|default(false) %}
+<fieldset class="access-fields mb-4">
+    <legend class="label">Websites</legend>
+    <div class="field">
+        <div class="control access-radio-list">
+            <label class="radio">
+                <input type="radio" name="website_mode" value="all"{% if every_website %} checked{% endif %}>
+                Every website and {{ website_group_label|lower }}, including ones added later, and settings shared by all of them
+            </label>
+            <label class="radio">
+                <input type="radio" name="website_mode" value="selected"{% if not every_website %} checked{% endif %}>
+                Only the {{ website_group_label|lower }} and websites ticked below
+            </label>
+        </div>
+    </div>
+    {% if website_groups is not empty %}
+        <p class="help mb-1">{{ website_group_label }} include every website in them, also ones added later.</p>
+        <div class="access-choice-grid mb-3" role="group" aria-label="{{ website_group_label }}">
+            {% for group_id, group_name in website_groups %}
+                <label class="checkbox">
+                    <input type="checkbox" name="website_groups[]" value="{{ group_id }}"{% if group_id in selected_groups %} checked{% endif %}>
+                    <span class="icon is-small"><i class="fas fa-layer-group" aria-hidden="true"></i></span> {{ group_name }}
+                </label>
+            {% endfor %}
+        </div>
+    {% endif %}
+    {% if websites is not empty %}
+        <div class="access-choice-grid" role="group" aria-label="Websites">
+            {% for website in websites %}
+                <label class="checkbox">
+                    <input type="checkbox" name="websites[]" value="{{ website.token }}"{% if website.token in selected_sites %} checked{% endif %}>
+                    {{ website.name|default(website.token) }} <span class="has-text-grey">{{ website.domain|default('') }}</span>
+                </label>
+            {% endfor %}
+        </div>
+    {% elseif website_groups is empty %}
+        <p class="help">No websites are registered yet.</p>
+    {% endif %}
+</fieldset>
+
+<fieldset class="access-fields">
+    <legend class="label">Pages</legend>
+    <p class="help mb-2">
+        <strong>Website</strong> pages show and change only the websites above.
+        <strong>System-wide</strong> pages show and change settings for every website, whatever is chosen above.
+        View opens a page; edit also saves its changes.
+    </p>
+    <div class="table-container">
+        <table class="table is-fullwidth is-narrow access-pages">
+            <thead>
+                <tr>
+                    <th scope="col">Page</th>
+                    <th scope="col" class="has-text-centered">No access</th>
+                    <th scope="col" class="has-text-centered">View</th>
+                    <th scope="col" class="has-text-centered">Edit</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for page, definition in pages %}
+                    {% set level = grant.pages[page]|default('none') %}
+                    {% set row_id = prefix ~ '-page-' ~ page %}
+                    <tr>
+                        <th scope="row" id="{{ row_id }}">
+                            <span class="has-text-weight-semibold">{{ definition.label }}</span>
+                            {% if definition.scope == 'system' %}<span class="tag is-warning is-light ml-1">System-wide</span>{% elseif definition.scope == 'websites' %}<span class="tag is-info is-light ml-1">Website</span>{% else %}<span class="tag is-light ml-1">Reference</span>{% endif %}
+                            <span class="help mt-0">{{ definition.description }}</span>
+                        </th>
+                        {% for option in ['none', 'view', 'edit'] %}
+                            <td class="has-text-centered">
+                                {% if option == 'none' or option in (definition.levels|default(['view', 'edit'])) %}
+                                    <input type="radio" name="pages[{{ page }}]" value="{{ option }}" aria-label="{{ definition.label }}: {{ option == 'none' ? 'no access' : option }}"{% if level == option %} checked{% endif %}>
+                                {% else %}
+                                    <span class="has-text-grey-light" aria-hidden="true">—</span>
+                                {% endif %}
+                            </td>
+                        {% endfor %}
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</fieldset>

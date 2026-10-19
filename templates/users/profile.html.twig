@@ -1,0 +1,74 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Your profile | {{ app_branding.name }}{% endblock %}
+
+{% block body %}
+<div class="settings-page">
+<h1 class="title">Your profile</h1>
+<p class="subtitle">Your name, email and password, and what you can use in {{ app_branding.name }}.</p>
+{{ component('Ui:DocsLink', {topic: 'users.profile', label: 'Profile and access guide'}) }}
+
+<div class="columns">
+    <div class="column is-6-desktop">
+        <div class="box">
+            <h2 class="title is-5">Profile</h2>
+            <form action="{{ path('app_profile_save') }}" method="post">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token('profile') }}">
+                <div class="field">
+                    <label class="label" for="profile-username">Username</label>
+                    <div class="control"><input class="input" type="text" id="profile-username" value="{{ profile.username }}" readonly aria-describedby="profile-username-help"></div>
+                    <p class="help" id="profile-username-help">You sign in with this. An administrator can change it.</p>
+                </div>
+                <div class="field">
+                    <label class="label" for="profile-display-name">Display name</label>
+                    <div class="control"><input class="input" type="text" id="profile-display-name" name="display_name" maxlength="120" value="{{ profile.displayName }}" autocomplete="name"></div>
+                    <p class="help">Shown in the menu instead of your username.</p>
+                </div>
+                <div class="field">
+                    <label class="label" for="profile-email">Email</label>
+                    <div class="control"><input class="input" type="email" id="profile-email" name="email" maxlength="254" value="{{ profile.email }}" autocomplete="email"></div>
+                    <p class="help">So administrators can reach you. Leave it empty if you prefer.</p>
+                </div>
+                <button type="submit" class="button is-primary">
+                    <span class="icon"><i class="fas fa-floppy-disk" aria-hidden="true"></i></span>
+                    <span>Save profile</span>
+                </button>
+            </form>
+        </div>
+    </div>
+    <div class="column is-6-desktop">
+        <div class="box">
+            <h2 class="title is-5">Change password</h2>
+            <form action="{{ path('app_profile_password') }}" method="post" class="account-password-form">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token('profile_password') }}">
+                <div class="field">
+                    <label class="label" for="profile-current-password">Current password</label>
+                    <div class="control"><input class="input" type="password" id="profile-current-password" name="current_password" autocomplete="current-password" required></div>
+                </div>
+                <div class="field">
+                    <label class="label" for="profile-new-password">New password</label>
+                    <div class="control"><input class="input" type="password" id="profile-new-password" name="new_password" autocomplete="new-password" minlength="8" required placeholder="At least 8 characters"></div>
+                </div>
+                <div class="field">
+                    <label class="label" for="profile-confirm-password">Repeat the new password</label>
+                    <div class="control"><input class="input" type="password" id="profile-confirm-password" name="confirm_password" autocomplete="new-password" minlength="8" required></div>
+                </div>
+                <button type="submit" class="button is-warning is-light">
+                    <span class="icon"><i class="fas fa-key" aria-hidden="true"></i></span>
+                    <span>Change password</span>
+                </button>
+                <p class="help mt-2">You stay signed in here; your other sessions sign out.</p>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="box" id="your-access">
+    <h2 class="title is-5">Your access</h2>
+    {% set summary = dashboard_access_summary() %}
+    {% if summary %}
+        {% include 'users/_access_summary.html.twig' with {summary: summary, website_names: website_names, group_names: group_names, you: true} %}
+    {% endif %}
+</div>
+</div>
+{% endblock %}

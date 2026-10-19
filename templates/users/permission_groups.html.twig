@@ -1,0 +1,90 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Permission groups | {{ app_branding.name }}{% endblock %}
+
+{% block body %}
+{% set empty_grant = {websites: {all: false, groups: [], sites: []}, pages: {}} %}
+<div class="settings-page">
+<h1 class="title">Users</h1>
+<p class="subtitle">A permission group is a named set of websites and pages. Assign it to standard users, and changing it changes their access.</p>
+{{ component('Ui:DocsLink', {topic: 'users.permission-groups', label: 'Permission groups guide'}) }}
+{% include 'users/_tabs.html.twig' %}
+
+{% if permission_groups_error %}
+    <div class="notification is-danger is-light">
+        config/permission-groups.yaml is invalid, so permission groups grant nothing until it is corrected: {{ permission_groups_error }}
+    </div>
+{% endif %}
+
+<details class="box"{% if permission_groups is empty and not permission_groups_error %} open{% endif %}>
+    <summary class="has-text-weight-semibold mb-4">Add permission group</summary>
+    <form action="{{ path('app_permission_groups_create') }}" method="post">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token('create_permission_group') }}">
+        <div class="columns is-variable is-3">
+            <div class="column is-5-desktop field mb-0">
+                <label class="label" for="new-group-name">Name</label>
+                <div class="control"><input class="input" type="text" id="new-group-name" name="name" maxlength="80" required placeholder="Client editors" autocomplete="off"></div>
+            </div>
+            <div class="column field">
+                <label class="label" for="new-group-description">Description <span class="has-text-weight-normal has-text-grey">(optional)</span></label>
+                <div class="control"><input class="input" type="text" id="new-group-description" name="description" maxlength="300" autocomplete="off"></div>
+            </div>
+        </div>
+        {% include 'users/_access_fields.html.twig' with {prefix: 'new-group', grant: empty_grant} %}
+        <button type="submit" class="button is-link mt-4">
+            <span class="icon"><i class="fas fa-plus" aria-hidden="true"></i></span>
+            <span>Create permission group</span>
+        </button>
+    </form>
+</details>
+
+<div class="box">
+    <h2 class="title is-5">Permission groups</h2>
+    {% if permission_groups is empty %}
+        <p>No permission groups yet. Headless setups can also define them in <code>config/permission-groups.yaml</code> or with <code>php bin/console app:permission-groups</code>.</p>
+    {% else %}
+        {% for group_id, group in permission_groups %}
+            {% set count = members[group_id]|default(0) %}
+            <details class="account-card" id="group-{{ group_id }}">
+                <summary>
+                    <span>
+                        <strong>{{ group.name }}</strong>
+                        {% if group.description %}<span class="has-text-grey ml-1">{{ group.description }}</span>{% endif %}
+                    </span>
+                    <span class="tags mb-0">
+                        <span class="tag is-light">{{ count }} user{{ count == 1 ? '' : 's' }}</span>
+                        <span class="tag is-light">{{ group.pages|length }} page{{ group.pages|length == 1 ? '' : 's' }}</span>
+                        {% if group.websites.all %}<span class="tag is-info is-light">Every website</span>{% endif %}
+                    </span>
+                </summary>
+                <form action="{{ path('app_permission_groups_update', {id: group_id}) }}" method="post" class="mt-4 mb-5">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token('update_permission_group_' ~ group_id) }}">
+                    <div class="columns is-variable is-3">
+                        <div class="column is-5-desktop field mb-0">
+                            <label class="label" for="group-{{ group_id }}-name">Name</label>
+                            <div class="control"><input class="input" type="text" id="group-{{ group_id }}-name" name="name" maxlength="80" required value="{{ group.name }}" autocomplete="off"></div>
+                        </div>
+                        <div class="column field">
+                            <label class="label" for="group-{{ group_id }}-description">Description</label>
+                            <div class="control"><input class="input" type="text" id="group-{{ group_id }}-description" name="description" maxlength="300" value="{{ group.description }}" autocomplete="off"></div>
+                        </div>
+                    </div>
+                    {% include 'users/_access_fields.html.twig' with {prefix: 'group-' ~ group_id, grant: group} %}
+                    <p class="help mt-3">Id <code>{{ group_id }}</code>, used in YAML and on the command line.</p>
+                    <button type="submit" class="button is-primary mt-3">
+                        <span class="icon"><i class="fas fa-floppy-disk" aria-hidden="true"></i></span>
+                        <span>Save {{ group.name }}</span>
+                    </button>
+                </form>
+                {% component 'Ui:Confirm' with {message: 'Delete the permission group ' ~ group.name ~ '? Its ' ~ count ~ ' user(s) lose the access it gives.', action: path('app_permission_groups_delete', {id: group_id}), method: 'post'} %}
+                    {% block content %}
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token('delete_permission_group_' ~ group_id) }}">
+                    <button type="submit" class="button is-danger is-outlined is-small">Delete permission group</button>
+                    {% endblock %}
+                {% endcomponent %}
+            </details>
+        {% endfor %}
+    {% endif %}
+</div>
+</div>
+{% endblock %}

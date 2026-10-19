@@ -40,7 +40,7 @@ final class BiGlossaryController extends AbstractController
     #[Route('/dashboard/data-model/glossary', name: 'app_bi_glossary', methods: ['GET'])]
     public function index(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
 
         return $this->page($request);
     }
@@ -48,7 +48,7 @@ final class BiGlossaryController extends AbstractController
     #[Route('/dashboard/data-model/glossary/save', name: 'app_bi_glossary_save', methods: ['POST'])]
     public function save(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         if (!$this->validToken($request)) {
             return $this->back($request);
         }
@@ -81,7 +81,7 @@ final class BiGlossaryController extends AbstractController
     #[Route('/dashboard/data-model/glossary/sync', name: 'app_bi_glossary_sync', methods: ['POST'])]
     public function synchronize(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         if (!$this->validToken($request)) {
             return $this->back($request);
         }
@@ -101,7 +101,7 @@ final class BiGlossaryController extends AbstractController
     #[Route('/dashboard/data-model/glossary/suggestions', name: 'app_bi_glossary_suggestions', methods: ['POST'])]
     public function discover(Request $request): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         if (!$this->validToken($request)) {
             return $this->back($request);
         }
@@ -123,7 +123,7 @@ final class BiGlossaryController extends AbstractController
     #[Route('/dashboard/data-model/glossary/download', name: 'app_bi_glossary_download', methods: ['GET'])]
     public function download(): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
 
         return $this->downloadResponse(Yaml::dump(['bi_glossary' => $this->settings->get()], 10, 2), 'bi-glossary.yaml', 'application/yaml');
     }
@@ -131,7 +131,7 @@ final class BiGlossaryController extends AbstractController
     #[Route('/dashboard/data-model/glossary/missing', name: 'app_bi_glossary_missing', methods: ['GET'])]
     public function missing(): Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
 
         return $this->downloadResponse(GlossarySync::csv($this->resolver->resolve(), true), 'bi-glossary-missing.csv', 'text/csv');
     }

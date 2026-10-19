@@ -108,7 +108,7 @@ trait ViewSyncAdmin
     /** Whether a sync is running, for the page to poll after "Sync now". */
     private function syncStatusResponse(): JsonResponse
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         $runner = $this->syncRunner();
         try {
             $status = $runner->status($runner->settings()->toArray());
@@ -220,7 +220,7 @@ trait ViewSyncAdmin
     /** Admin, dashboard and CSRF checks for form posts; only the listed fields may be submitted. @param list<string> $fields */
     private function guard(Request $request, array $fields = []): ?Response
     {
-        $this->denyUnlessAvailableToAdmin();
+        $this->denyUnlessPermitted();
         $submitted = $request->request->all();
         $token = $submitted['_csrf_token'] ?? null;
         if (!is_string($token) || !$this->isCsrfTokenValid(self::CSRF_TOKEN_ID, $token)) {

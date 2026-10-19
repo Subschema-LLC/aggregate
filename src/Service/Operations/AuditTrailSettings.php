@@ -39,7 +39,7 @@ class AuditTrailSettings
         ],
         self::USERS => [
             'label' => 'Users',
-            'description' => 'Creating users and changing passwords, from the dashboard, the installer or the command line.',
+            'description' => 'Creating, changing and deleting users, their access and permission groups, profile changes and passwords, from the dashboard, the installer or the command line.',
             'default' => true,
         ],
         self::WEBSITES => [

@@ -49,6 +49,13 @@ final class AdminActions
         'app_install_execute' => [Area::USERS, 'installed'],
         'app_user_create' => [Area::USERS, 'user_created'],
         'app_user_password_update' => [Area::USERS, 'password_changed'],
+        'app_user_update' => [Area::USERS, 'user_updated'],
+        'app_user_delete' => [Area::USERS, 'user_deleted'],
+        'app_permission_groups_create' => [Area::USERS, 'permission_group_created'],
+        'app_permission_groups_update' => [Area::USERS, 'permission_group_updated'],
+        'app_permission_groups_delete' => [Area::USERS, 'permission_group_deleted'],
+        'app_profile_save' => [Area::USERS, 'profile_updated'],
+        'app_profile_password' => [Area::USERS, 'password_changed'],
         // Websites and groups.
         'app_website_create' => [Area::WEBSITES, 'website_created'],
         'app_website_domains' => [Area::WEBSITES, 'domain_rules_saved'],
@@ -130,6 +137,22 @@ final class AdminActions
         return ['area' => $entry[0], 'action' => $entry[1]];
     }
 
+    /** Whether app:user:access was asked to change anything, rather than only show access. */
+    private static function changesAccess(InputInterface $input): bool
+    {
+        foreach (['admin', 'standard', 'group', 'remove-group', 'website', 'website-group', 'all-websites', 'selected-websites', 'page', 'clear'] as $name) {
+            if (!$input->hasOption($name)) {
+                continue;
+            }
+            $value = $input->getOption($name);
+            if ($value === true || (is_array($value) && $value !== []) || (is_string($value) && $value !== '')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /**
      * What a console command records, or null when it is not an
      * administrator action or only reads. "start" records it when it begins:
@@ -152,6 +175,14 @@ final class AdminActions
             'app:install' => $end(Area::USERS, 'installed', $text($option('username'))),
             'app:user:create' => $end(Area::USERS, 'user_created', $text($argument('username'))),
             'app:user:reset-password' => $end(Area::USERS, 'password_changed', $text($argument('username'))),
+            'app:user:access' => self::changesAccess($input) ? $end(Area::USERS, 'user_updated', $text($argument('username'))) : null,
+            'app:user:delete' => $end(Area::USERS, 'user_deleted', $text($argument('username'))),
+            'app:permission-groups' => match ($argument('action')) {
+                'create' => $end(Area::USERS, 'permission_group_created', $text($option('name'))),
+                'update' => $end(Area::USERS, 'permission_group_updated', $text($option('id'))),
+                'delete' => $end(Area::USERS, 'permission_group_deleted', $text($option('id'))),
+                default => null,
+            },
             'app:create-website' => $end(Area::WEBSITES, 'website_created'),
             'app:website-scopes' => match ($argument('action')) {
                 'label' => $end(Area::WEBSITES, 'group_label_saved'),

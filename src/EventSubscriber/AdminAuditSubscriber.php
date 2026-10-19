@@ -32,7 +32,7 @@ use Symfony\Contracts\Service\ServiceSubscriberInterface;
  * A request to a route AdminActions lists is recorded once its controller has
  * run, with the signed-in username, what was acted on, the settings it
  * changed (by name, from ConfigurationChanges) and its outcome: denied for a
- * 403, failed for another error status or an error message on the page, and
+ * 403 or a change DashboardAccessSubscriber sent back (REFUSED), failed for another error status or an error message on the page, and
  * succeeded otherwise. A request the firewall turned away (not signed in)
  * never reaches its controller and is not recorded, and neither is a signed-out
  * request to the installer that did not get past its setup code.
@@ -46,6 +46,8 @@ final class AdminAuditSubscriber implements EventSubscriberInterface, ServiceSub
     public const SUBJECT = '_audit_subject';
     /** A controller sets this to a short summary of what it did, such as the kind of account created. Never a submitted value. */
     public const DETAILS = '_audit_details';
+    /** Set when a change was turned away without a 403, such as a view-only user's save sent back to the page. */
+    public const REFUSED = '_audit_refused';
     private const ACTION = '_audit_action';
     private const ERRORS_BEFORE = '_audit_errors_before';
     /** The website or group a settings page saved, from its scope field. */
@@ -121,7 +123,7 @@ final class AdminAuditSubscriber implements EventSubscriberInterface, ServiceSub
     {
         $status = $response->getStatusCode();
         $outcome = match (true) {
-            $status === 403 => AdminAudit::DENIED,
+            $status === 403, $request->attributes->get(self::REFUSED) === true => AdminAudit::DENIED,
             $status >= 400, self::errorCount($request) > (int) $request->attributes->get(self::ERRORS_BEFORE, 0) => AdminAudit::FAILED,
             default => AdminAudit::SUCCEEDED,
         };

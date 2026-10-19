@@ -64,7 +64,9 @@ final class BiGlossaryRoutesTest extends TestCase
         $reporting = array_values(array_filter($container->getParameter('app.main_navigation')['items'], static fn (array $item): bool => $item['label'] === 'Reporting'))[0]['children'];
         self::assertSame('app_data_model_reporting', $reporting[0]['route']);
         self::assertSame('app_bi_glossary', $reporting[1]['route']);
-        self::assertSame('ROLE_ADMIN', $reporting[1]['role']);
+        // The glossary page permission decides who sees the link.
+        self::assertArrayNotHasKey('role', $reporting[1]);
+        self::assertSame('bi_glossary', \App\Security\Access\DashboardPages::requirement('app_bi_glossary')['page']);
         self::assertFalse($container->get('doctrine.dbal.default_connection')->isConnected());
     }
 
