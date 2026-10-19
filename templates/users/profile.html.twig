@@ -4,9 +4,18 @@
 
 {% block body %}
 <div class="settings-page">
-<h1 class="title">Your profile</h1>
-<p class="subtitle">Your name, email and password, and what you can use in {{ app_branding.name }}.</p>
-{{ component('Ui:DocsLink', {topic: 'users.profile', label: 'Profile and access guide'}) }}
+<div class="level">
+    <div class="level-left">
+        <div>
+            <h1 class="title">Your profile</h1>
+            <p class="subtitle">Your name, email and password, and what you can use in {{ app_branding.name }}.</p>
+            {{ component('Ui:DocsLink', {topic: 'users.profile', label: 'Profile and access guide'}) }}
+        </div>
+    </div>
+    <div class="level-right">
+        {{ component('Ui:CardControls', {class: 'page-card-controls mb-0'}) }}
+    </div>
+</div>
 
 <div class="columns">
     <div class="column is-6-desktop">

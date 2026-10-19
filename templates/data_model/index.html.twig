@@ -7,9 +7,18 @@
      data-pages--data-model--index-property-index-value="{{ custom_properties|length }}"
      data-pages--data-model--index-mapping-index-value="{{ model.query_parameter_mappings|length }}"
      data-pages--data-model--index-reserved-columns-value="{{ (reserved_columns|default([]))|json_encode }}">
-    <h1 class="title">Data model</h1>
-    <p class="subtitle">Define custom properties, campaign capture, consent requirements, and reporting columns. Download the saved model to share with your analytics implementation developers.</p>
-    {{ component('Ui:DocsLink', {topic: 'data-model', label: 'Data model guide'}) }}
+    <div class="level">
+        <div class="level-left">
+            <div>
+                <h1 class="title">Data model</h1>
+                <p class="subtitle">Define custom properties, campaign capture, consent requirements, and reporting columns. Download the saved model to share with your analytics implementation developers.</p>
+                {{ component('Ui:DocsLink', {topic: 'data-model', label: 'Data model guide'}) }}
+            </div>
+        </div>
+        <div class="level-right">
+            {{ component('Ui:CardControls', {class: 'page-card-controls mb-0'}) }}
+        </div>
+    </div>
     {% include 'partials/website_scope_switcher.html.twig' %}
 
     {% if configuration_error %}<div class="notification is-danger" role="alert">{{ configuration_error }}</div>{% endif %}

@@ -213,7 +213,9 @@ h6,
     transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
-details.box summary {
+details.box summary,
+details.card summary,
+.collapsible-card-header {
     align-items: center;
     cursor: pointer;
     display: flex;
@@ -222,11 +224,14 @@ details.box summary {
     user-select: none;
 }
 
-details.box summary::-webkit-details-marker {
+details.box summary::-webkit-details-marker,
+details.card summary::-webkit-details-marker {
     display: none;
 }
 
-details.box summary::after {
+details.box summary::after,
+details.card summary::after,
+.collapsible-card-chevron {
     border-bottom: 2px solid currentColor;
     border-right: 2px solid currentColor;
     content: '';
@@ -239,18 +244,39 @@ details.box summary::after {
     width: 0.5rem;
 }
 
-details.box[open] > summary::after {
+details.box[open] > summary::after,
+details.card[open] > summary::after,
+.collapsible-card-header[aria-expanded="true"] .collapsible-card-chevron {
     transform: rotate(225deg);
 }
 
+details.box > summary :is(h1, h2, h3, h4, h5, h6, .title, legend),
+details.card > summary :is(h1, h2, h3, h4, h5, h6, .title, legend),
 details.box.update-panel > summary .title {
     display: inline;
     margin-bottom: 0;
     vertical-align: middle;
 }
 
+details.box[open] > summary,
+details.card[open] > summary,
 details.box.update-panel[open] > summary {
     margin-bottom: 1rem;
+}
+
+.is-collapsible-card.is-collapsed .collapsible-card-header {
+    margin-bottom: 0 !important;
+}
+
+.is-collapsible-card.is-collapsed > :not(.collapsible-card-header):not(:has(.collapsible-card-header)),
+.is-collapsible-card.is-collapsed :is(fieldset, .card-content, .column, form) > :not(.collapsible-card-header):not(:has(.collapsible-card-header)),
+.is-collapsible-card.is-collapsed > .columns > .column:not(:has(.collapsible-card-header)) {
+    display: none !important;
+}
+
+.container > .page-card-controls:has(~ * [data-card-controls]),
+.container > .section-tabs-nav:has(~ * .section-tabs-nav) {
+    display: none !important;
 }
 
 .card {

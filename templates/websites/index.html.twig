@@ -16,14 +16,17 @@
             {{ component('Ui:DocsLink', {topic: 'configuration.websites', label: 'Website domains guide'}) }}
         </div>
     </div>
-    {% if can_add %}
     <div class="level-right">
-        <button type="button" class="button is-primary" id="add-website-trigger" data-pages--websites--index-target="trigger" data-action="pages--websites--index#open">
-            <span class="icon" aria-hidden="true"><i class="fas fa-plus"></i></span>
-            <span>Add Website</span>
-        </button>
+        <div class="is-flex is-align-items-center is-flex-wrap-wrap" style="gap: 0.5rem;">
+            {{ component('Ui:CardControls', {class: 'page-card-controls mb-0'}) }}
+            {% if can_add %}
+            <button type="button" class="button is-primary" id="add-website-trigger" data-pages--websites--index-target="trigger" data-action="pages--websites--index#open">
+                <span class="icon" aria-hidden="true"><i class="fas fa-plus"></i></span>
+                <span>Add Website</span>
+            </button>
+            {% endif %}
+        </div>
     </div>
-    {% endif %}
 </div>
 
 {% if websites is empty %}

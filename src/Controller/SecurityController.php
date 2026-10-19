@@ -44,6 +44,26 @@ class SecurityController extends AbstractController
         ]);
     }
 
+    #[Route('/login/forgot-password', name: 'app_forgot_password', methods: ['GET'])]
+    public function forgotPassword(): Response
+    {
+        if (!$this->config->isDashboardEnabled()) {
+            throw $this->createNotFoundException('Dashboard is disabled.');
+        }
+
+        if ($this->getUser()) {
+            return $this->redirectToRoute('app_dashboard');
+        }
+
+        if ($this->signInCodes->isAvailable()) {
+            return $this->redirectToRoute('app_login_code');
+        }
+
+        return $this->render('security/forgot_password.html.twig', [
+            'mfa_required' => $this->signInCodes->isSecondStepRequired(),
+        ]);
+    }
+
     /**
      * Asking for an emailed code, then entering it; also where the second step
      * of two-step sign-in is entered. Asking is offered only while sign-in

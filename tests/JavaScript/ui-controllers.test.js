@@ -15,6 +15,13 @@ const Clipboard = controller('copy_button');
 const Confirm = controller('confirm');
 const Validation = controller('validation');
 const Notification = controller('notification');
+const Cards = controller('cards');
+const EmailSettings = vm.runInNewContext(
+  fs.readFileSync(path.join(__dirname, '../../assets/controllers/pages/email_settings/index_controller.js'), 'utf8')
+    .replace(/^import .*;\n/m, '')
+    .replace('export default class', 'class EmailSettingsController') + '\nEmailSettingsController;',
+  {Controller: class {}}
+);
 
 function clipboard({source = {textContent: 'Example snippet'}, writeText = async () => {}, disabled = false} = {}) {
   const selections = [];
@@ -155,4 +162,130 @@ test('dismissing a notification removes only its own component', () => {
   assert.deepEqual(notifications, [second]);
   instance.dismiss();
   assert.deepEqual(notifications, [second]);
+});
+
+test('cards controller enhances cards and expands or collapses all cards on the page', () => {
+  const makeClassList = (initial = []) => {
+    const set = new Set(initial);
+    return {
+      add: (...names) => names.forEach(n => set.add(n)),
+      remove: (...names) => names.forEach(n => set.delete(n)),
+      contains: n => set.has(n),
+      toggle: (n, force) => {
+        const next = force === undefined ? !set.has(n) : Boolean(force);
+        if (next) set.add(n); else set.delete(n);
+        return next;
+      }
+    };
+  };
+
+  const listeners = {};
+  const header = {
+    tagName: 'H2',
+    dataset: {},
+    attributes: {},
+    classList: makeClassList(['title']),
+    hasAttribute(k) { return k in this.attributes; },
+    setAttribute(k, v) { this.attributes[k] = v; },
+    querySelector: () => null,
+    appendChild() {},
+    addEventListener(type, cb) { listeners[type] = cb; }
+  };
+
+  const card = {
+    tagName: 'DIV',
+    dataset: {},
+    hidden: false,
+    classList: makeClassList(['box']),
+    children: [header],
+    querySelector: sel => sel === '.collapsible-card-header' ? header : header
+  };
+
+  const detailsA = {tagName: 'DETAILS', open: false, hidden: false};
+  const detailsB = {tagName: 'DETAILS', open: true, hidden: false};
+  const toolbar1 = {hidden: false};
+  const toolbar2 = {hidden: false};
+
+  const container = {
+    ownerDocument: {createElement: () => ({setAttribute() {}})},
+    querySelectorAll(selector) {
+      if (selector === '.box, .card') return [card];
+      if (selector === '[data-card-controls]') return [toolbar1, toolbar2];
+      if (selector === '.is-collapsible-card') return [card];
+      if (selector.startsWith('details.')) return [detailsA, detailsB];
+      return [];
+    }
+  };
+
+  const instance = Object.assign(new Cards(), {element: container});
+  instance.connect();
+
+  assert.equal(card.classList.contains('is-collapsible-card'), true);
+  assert.equal(header.classList.contains('collapsible-card-header'), true);
+  assert.equal(header.attributes['aria-expanded'], 'true');
+  assert.equal(toolbar1.hidden, true, 'duplicate fallback toolbar is hidden when page has its own toolbar');
+  assert.equal(toolbar2.hidden, false);
+
+  // Clicking the header toggles the card
+  listeners.click({target: header});
+  assert.equal(card.classList.contains('is-collapsed'), true);
+  assert.equal(header.attributes['aria-expanded'], 'false');
+
+  // Expand all opens both details and enhanced cards
+  instance.expandAll();
+  assert.equal(detailsA.open, true);
+  assert.equal(detailsB.open, true);
+  assert.equal(card.classList.contains('is-collapsed'), false);
+  assert.equal(header.attributes['aria-expanded'], 'true');
+
+  // Collapse all closes both details and enhanced cards
+  instance.collapseAll();
+  assert.equal(detailsA.open, false);
+  assert.equal(detailsB.open, false);
+  assert.equal(card.classList.contains('is-collapsed'), true);
+  assert.equal(header.attributes['aria-expanded'], 'false');
+});
+
+test('email settings controller places the selected email service card first and collapses all others', () => {
+  const makePanel = (provider, open = false) => {
+    const badge = {hidden: !open};
+    return {
+      dataset: {provider},
+      open,
+      hidden: false,
+      querySelector: sel => sel === '[data-provider-selected-badge]' ? badge : null,
+      badge
+    };
+  };
+
+  const postmark = makePanel('postmark', false);
+  const sendgrid = makePanel('sendgrid', false);
+  const smtp = makePanel('smtp', false);
+  const order = [postmark, sendgrid, smtp];
+  const providerList = {
+    get firstElementChild() { return order[0]; },
+    prepend(panel) {
+      const idx = order.indexOf(panel);
+      if (idx !== -1) order.splice(idx, 1);
+      order.unshift(panel);
+    }
+  };
+
+  const instance = Object.assign(new EmailSettings(), {
+    hasProviderTarget: true,
+    hasProviderListTarget: true,
+    providerTarget: {value: 'sendgrid'},
+    providerListTarget: providerList,
+    panelTargets: order
+  });
+
+  instance.connect();
+
+  assert.equal(order[0], sendgrid, 'selected provider card is moved first');
+  assert.equal(sendgrid.open, true, 'selected provider card is expanded');
+  assert.equal(sendgrid.badge.hidden, false);
+  assert.equal(postmark.open, false, 'other provider cards are collapsed');
+  assert.equal(postmark.badge.hidden, true);
+  assert.equal(smtp.open, false, 'other provider cards are collapsed');
+  assert.equal(postmark.hidden, false, 'other provider cards remain collapsible instead of hidden');
 });
