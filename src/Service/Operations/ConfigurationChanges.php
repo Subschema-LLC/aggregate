@@ -81,14 +81,19 @@ final class ConfigurationChanges
     /**
      * A YAML mapping was replaced: records the settings whose values differ,
      * with nested mappings reported one level down ("feature_flags.updates").
+     * Saving the same values again records nothing.
      *
      * @param array<mixed> $before
      * @param array<mixed> $after
      */
     public static function recordMapping(string $file, array $before, array $after): void
     {
-        if (self::$recording) {
-            self::record($file, self::changedNames($before, $after));
+        if (!self::$recording) {
+            return;
+        }
+        $names = self::changedNames($before, $after);
+        if ($names !== []) {
+            self::record($file, $names);
         }
     }
 

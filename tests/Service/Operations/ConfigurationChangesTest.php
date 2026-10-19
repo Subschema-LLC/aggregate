@@ -82,6 +82,14 @@ final class ConfigurationChangesTest extends TestCase
         self::assertNull(ConfigurationChanges::describe([]));
     }
 
+    public function testSavingTheSameValuesRecordsNothing(): void
+    {
+        ConfigurationChanges::start();
+        ConfigurationChanges::recordMapping('config/aggregate.yaml', ['brand_name' => 'Same'], ['brand_name' => 'Same']);
+
+        self::assertSame([], ConfigurationChanges::finish());
+    }
+
     public function testStartingAgainForgetsTheEarlierAction(): void
     {
         ConfigurationChanges::start();

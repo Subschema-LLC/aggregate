@@ -106,53 +106,49 @@
                     </div>
                 </div>
 
-                <div class="column is-one-third-desktop is-half-tablet">
+                <div class="column is-3-desktop is-half-tablet">
                     <div class="field">
                         <label class="label" for="audit-q">Search</label>
                         <div class="control has-icons-left">
-                            <input class="input" type="search" id="audit-q" name="q" value="{{ filter.text }}" maxlength="191" placeholder="Action, user, subject or details" aria-describedby="audit-q-help">
+                            <input class="input" type="search" id="audit-q" name="q" value="{{ filter.text }}" maxlength="191" placeholder="For example brand_name" aria-describedby="audit-q-help">
                             <span class="icon is-left" aria-hidden="true"><i class="fas fa-magnifying-glass"></i></span>
                         </div>
                         <p class="help" id="audit-q-help">Finds text anywhere in an entry, ignoring case, for example a setting name.</p>
                     </div>
                 </div>
-                <div class="column is-one-third-desktop is-half-tablet">
+                <div class="column is-3-desktop is-half-tablet">
                     <div class="field">
                         <label class="label" for="audit-subject">Subject contains</label>
-                        <div class="control"><input class="input" type="search" id="audit-subject" name="subject" value="{{ filter.subject }}" maxlength="191" placeholder="A user, website, group or view" aria-describedby="audit-subject-help"></div>
+                        <div class="control"><input class="input" type="search" id="audit-subject" name="subject" value="{{ filter.subject }}" maxlength="191" placeholder="A user, website or group" aria-describedby="audit-subject-help"></div>
                         <p class="help" id="audit-subject-help">What an action was done to.</p>
                     </div>
                 </div>
-                <div class="column is-one-third-desktop is-full-tablet">
-                    <div class="columns is-mobile">
-                        <div class="column">
-                            <div class="field">
-                                <label class="label" for="audit-task">Job run</label>
-                                <div class="control"><input class="input" type="text" inputmode="numeric" pattern="[0-9]*" id="audit-task" name="task" value="{{ filter.task }}" aria-describedby="audit-task-help"></div>
-                                <p class="help" id="audit-task-help">Processing task number.</p>
-                            </div>
-                        </div>
-                        <div class="column">
-                            <div class="field">
-                                <label class="label" for="audit-sort">Order</label>
-                                <div class="control"><div class="select is-fullwidth">
-                                    <select id="audit-sort" name="sort">
-                                        <option value="newest"{% if not filter.oldestFirst %} selected{% endif %}>Newest first</option>
-                                        <option value="oldest"{% if filter.oldestFirst %} selected{% endif %}>Oldest first</option>
-                                    </select>
-                                </div></div>
-                            </div>
-                        </div>
-                        <div class="column">
-                            <div class="field">
-                                <label class="label" for="audit-per-page">Per page</label>
-                                <div class="control"><div class="select is-fullwidth">
-                                    <select id="audit-per-page" name="per_page">
-                                        {% for size in page_sizes %}<option value="{{ size }}"{% if filter.pageSize == size %} selected{% endif %}>{{ size }}</option>{% endfor %}
-                                    </select>
-                                </div></div>
-                            </div>
-                        </div>
+                <div class="column is-2-desktop is-one-third-tablet">
+                    <div class="field">
+                        <label class="label" for="audit-task">Job run</label>
+                        <div class="control"><input class="input" type="text" inputmode="numeric" pattern="[0-9]*" id="audit-task" name="task" value="{{ filter.task }}" aria-describedby="audit-task-help"></div>
+                        <p class="help" id="audit-task-help">Processing task number.</p>
+                    </div>
+                </div>
+                <div class="column is-2-desktop is-one-third-tablet">
+                    <div class="field">
+                        <label class="label" for="audit-sort">Order</label>
+                        <div class="control"><div class="select is-fullwidth">
+                            <select id="audit-sort" name="sort">
+                                <option value="newest"{% if not filter.oldestFirst %} selected{% endif %}>Newest first</option>
+                                <option value="oldest"{% if filter.oldestFirst %} selected{% endif %}>Oldest first</option>
+                            </select>
+                        </div></div>
+                    </div>
+                </div>
+                <div class="column is-2-desktop is-one-third-tablet">
+                    <div class="field">
+                        <label class="label" for="audit-per-page">Per page</label>
+                        <div class="control"><div class="select is-fullwidth">
+                            <select id="audit-per-page" name="per_page">
+                                {% for size in page_sizes %}<option value="{{ size }}"{% if filter.pageSize == size %} selected{% endif %}>{{ size }}</option>{% endfor %}
+                            </select>
+                        </div></div>
                     </div>
                 </div>
             </div>
