@@ -1061,6 +1061,74 @@ E2E::step('a user signs in with an emailed code and sets a new password', static
     }
 });
 
+E2E::step('two-step sign-in asks for an emailed code after the password and signs out older sessions', static function () use ($root, $base): void {
+    $probe = stream_socket_server('tcp://127.0.0.1:0');
+    $smtpPort = (int) substr((string) stream_socket_get_name($probe, false), strrpos((string) stream_socket_get_name($probe, false), ':') + 1);
+    fclose($probe);
+    $mailbox = $root.'/var/e2e-mailbox-mfa';
+    (new \Symfony\Component\Filesystem\Filesystem())->mkdir($mailbox, 0700);
+    $catcher = new Process(['php', $root.'/tests/Integration/smtp-catcher.php', (string) $smtpPort, $mailbox], $root, cleanEnvironment(), null, null);
+    $catcher->start();
+    $catcher->waitUntil(static fn (string $type, string $output): bool => str_contains($output, 'listening'));
+    $signIn = static function (string $password) use ($base): HttpBrowser {
+        $browser = new HttpBrowser(HttpClient::create(['timeout' => 300, 'max_duration' => 600]));
+        $form = $browser->request('GET', $base.'/login')->filter('form')->form();
+        $form['_username'] = 'admin';
+        $form['_password'] = $password;
+        $browser->submit($form);
+
+        return $browser;
+    };
+    try {
+        $admin = $signIn('e2e-new-password-after-code');
+        $stale = $signIn('e2e-new-password-after-code');
+        E2E::check(str_contains((string) $stale->getHistory()->current()->getUri(), '/dashboard'), 'A password did not sign in before two-step sign-in. '.pageProblem($stale));
+
+        $form = $admin->request('GET', $base.'/dashboard/email')->filter('form[action$="/dashboard/email/save"]')->form();
+        $form['email_smtp_port'] = (string) $smtpPort;
+        $form['mfa_required'] = '1';
+        $admin->submit($form);
+        E2E::check(str_contains((string) $admin->getResponse()->getContent(), 'Two-step sign-in is now required'), 'Two-step sign-in was not turned on. '.pageProblem($admin));
+        E2E::check((Yaml::parseFile($root.'/config/aggregate.yaml')['mfa_required'] ?? null) === true, 'mfa_required was not saved.');
+        $admin->request('GET', $base.'/dashboard/email');
+        E2E::check($admin->getInternalResponse()->getStatusCode() === 200 && str_contains((string) $admin->getHistory()->current()->getUri(), '/dashboard/email'), 'The administrator who turned it on was signed out. '.pageProblem($admin));
+        $stale->request('GET', $base.'/dashboard');
+        E2E::check(str_ends_with((string) $stale->getHistory()->current()->getUri(), '/login') && str_contains((string) $stale->getResponse()->getContent(), 'Two-step sign-in is now required'), 'An older session was not signed out. '.pageProblem($stale));
+        E2E::check($stale->getCrawler()->filter('.sign-in-code-link')->count() === 0, 'Sign-in codes are still offered while two-step sign-in is required.');
+
+        $visitor = $signIn('e2e-new-password-after-code');
+        E2E::check(str_contains((string) $visitor->getHistory()->current()->getUri(), '/login/code') && $visitor->getCrawler()->filter('.sign-in-second-step')->count() === 1, 'The password did not lead to the second step. '.pageProblem($visitor));
+        $visitor->request('GET', $base.'/dashboard');
+        E2E::check(str_ends_with((string) $visitor->getHistory()->current()->getUri(), '/login'), 'The password alone opened the dashboard. '.pageProblem($visitor));
+        $files = glob($mailbox.'/*.eml') ?: [];
+        E2E::check(count($files) === 1, 'Expected one message in the mailbox, found '.count($files).'.');
+        $message = (string) file_get_contents($files[0]);
+        E2E::check(preg_match('/^ {4}([0-9]{6})\r?$/m', $message, $match) === 1 && str_contains($message, 'Your password was just used'), "The message has no code:\n".substr($message, 0, 2000));
+
+        // Signing in again sends a new code, as the page suggests; that one finishes the sign-in.
+        $visitor = $signIn('e2e-new-password-after-code');
+        $files = glob($mailbox.'/*.eml') ?: [];
+        sort($files, SORT_NATURAL);
+        preg_match('/^ {4}([0-9]{6})\r?$/m', (string) file_get_contents((string) end($files)), $match);
+        $form = $visitor->getCrawler()->filter('form.sign-in-code-verify')->form();
+        $form['code'] = $match[1];
+        $visitor->submit($form);
+        E2E::check(str_contains((string) $visitor->getHistory()->current()->getUri(), '/dashboard'), 'The second step did not sign in. '.pageProblem($visitor));
+        $visitor->request('GET', $base.'/dashboard/profile');
+        E2E::check($visitor->getInternalResponse()->getStatusCode() === 200 && $visitor->getCrawler()->filter('input[name="current_password"]')->count() === 1, 'After two steps the profile should ask for the current password. '.pageProblem($visitor));
+
+        $db = connection($root);
+        $steps = $db->fetchAllAssociative("SELECT operation, outcome, actor, details FROM audit_trail WHERE category = 'sign_ins' AND operation IN ('password_accepted', 'signed_in') ORDER BY id DESC");
+        E2E::check(($steps[0]['operation'] ?? null) === 'signed_in' && str_contains((string) $steps[0]['details'], 'two-step') && ($steps[1]['operation'] ?? null) === 'password_accepted', 'Two-step audit entries: '.json_encode(array_slice($steps, 0, 3)));
+        $sends = $db->fetchFirstColumn("SELECT triggered_by FROM processing_tasks WHERE task_type = 'email_send' AND subject = 'sign_in_second_step' AND status = 'succeeded'");
+        E2E::check(count($sends) === 2 && array_unique($sends) === ['request'], 'Second-step sends: '.json_encode($sends));
+        $stored = json_encode([$db->fetchAllAssociative('SELECT * FROM processing_tasks'), $db->fetchAllAssociative('SELECT * FROM audit_trail')]);
+        E2E::check(!str_contains((string) $stored, $match[1]), 'A second-step code was stored.');
+    } finally {
+        $catcher->stop(1);
+    }
+});
+
 $version =(string) connection($root)->fetchOne(match ($driver) {
     'mysql' => 'SELECT VERSION()',
     'pgsql' => 'SHOW server_version',

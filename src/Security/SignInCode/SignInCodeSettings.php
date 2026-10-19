@@ -8,15 +8,23 @@ use App\Service\AggregateConfigLoader;
 use App\Service\Email\TransactionalMailer;
 
 /**
- * Whether users may sign in with a code emailed to their address, instead of
- * their password: sign_in_codes_enabled in YAML (off by default), the
- * SIGN_IN_CODES_ENABLED environment variable, or the Email page. Codes are
- * offered only while email can also be sent, so turning email off or losing
- * its credential hides the option rather than sending nothing.
+ * The two uses of emailed codes, each a YAML switch (off by default) with an
+ * uppercase environment override, also on the Email page:
+ *
+ * - sign_in_codes_enabled: a code instead of the password (sign-in codes);
+ * - mfa_required: a code after the password, for every user (two-step
+ *   sign-in).
+ *
+ * While two-step sign-in is required, a code alone signs nobody in, since
+ * the code is then the second factor. Sign-in codes are offered only while
+ * email can be sent; two-step sign-in is enforced whatever the state of email,
+ * failing closed, so an email outage stops sign-ins rather than skipping the
+ * second step.
  */
 class SignInCodeSettings
 {
     public const KEY = 'sign_in_codes_enabled';
+    public const KEY_MFA = 'mfa_required';
 
     public function __construct(
         private readonly AggregateConfigLoader $config,
@@ -37,14 +45,40 @@ class SignInCodeSettings
         return $this->config->hasEnvironmentOverride(self::KEY);
     }
 
-    /** Switched on and email can be sent: whether the sign-in page offers a code. */
+    /** Switched on, two-step sign-in not required, and email can be sent: whether the sign-in page offers a code. */
     public function isAvailable(): bool
     {
         try {
-            return $this->isEnabled() && $this->mailer->problem() === null;
+            return $this->isEnabled() && !$this->isSecondStepRequired() && $this->mailer->problem() === null;
         } catch (\Throwable) {
             return false;
         }
+    }
+
+    /**
+     * Whether every password sign-in needs an emailed code too. An invalid
+     * value counts as required: the setting fails closed.
+     */
+    public function isSecondStepRequired(): bool
+    {
+        try {
+            $this->config->assertHealthy();
+
+            return self::validate($this->config->getWithEnvFallback(self::KEY_MFA, false), self::KEY_MFA);
+        } catch (\Throwable) {
+            return true;
+        }
+    }
+
+    public function isSecondStepEnvironmentControlled(): bool
+    {
+        return $this->config->hasEnvironmentOverride(self::KEY_MFA);
+    }
+
+    /** What stops a second step from being sent now, or null; see TransactionalMailer::problem(). */
+    public function secondStepProblem(): ?string
+    {
+        return $this->mailer->problem();
     }
 
     /** Writes the switch unless the environment controls it; returns the value in effect. */
@@ -61,7 +95,21 @@ class SignInCodeSettings
         return $enabled;
     }
 
-    public static function validate(mixed $value): bool
+    /** Writes the two-step switch unless the environment controls it; returns the value in effect. */
+    public function saveSecondStep(mixed $value): bool
+    {
+        $required = self::validate($value, self::KEY_MFA);
+        if ($this->isSecondStepEnvironmentControlled()) {
+            return $this->isSecondStepRequired();
+        }
+        if ($this->config->get(self::KEY_MFA) !== $required) {
+            $this->config->set(self::KEY_MFA, $required);
+        }
+
+        return $required;
+    }
+
+    public static function validate(mixed $value, string $key = self::KEY): bool
     {
         if (is_bool($value)) {
             return $value;
@@ -79,6 +127,6 @@ class SignInCodeSettings
             }
         }
 
-        throw new \InvalidArgumentException(self::KEY.' must be true or false.');
+        throw new \InvalidArgumentException($key.' must be true or false.');
     }
 }

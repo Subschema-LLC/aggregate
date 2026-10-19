@@ -110,6 +110,24 @@ final class SignInCodeAuthenticatorTest extends TestCase
         $this->authenticator(false)->authenticate($this->request(['code' => $code]));
     }
 
+    public function testASecondStepFinishesWhileSignInCodesAreUnavailableAndMarksTheToken(): void
+    {
+        $code = (string) $this->codes->issue($this->session, 'scott', SignInCodes::KIND_SECOND_STEP);
+        $authenticator = $this->authenticator(false);
+        $passport = $authenticator->authenticate($this->request(['code' => $code]));
+        $this->check($passport, 'scott');
+
+        self::assertSame(SignInCodes::KIND_SECOND_STEP, $passport->getAttribute(SignInCodeAuthenticator::KIND_ATTRIBUTE));
+        $user = (new User())->setUsername('scott')->setRoles(['ROLE_USER']);
+        $token = $authenticator->createToken(new Passport(new UserBadge('scott', static fn (): User => $user), new CustomCredentials(static fn (): bool => true, '')), 'main');
+        self::assertFalse(SignInCodeAuthenticator::completedSecondStep($token), 'A sign-in code is not a second step');
+        $passport = new Passport(new UserBadge('scott', static fn (): User => $user), new CustomCredentials(static fn (): bool => true, ''));
+        $passport->setAttribute(SignInCodeAuthenticator::KIND_ATTRIBUTE, SignInCodes::KIND_SECOND_STEP);
+        $token = $authenticator->createToken($passport, 'main');
+        self::assertTrue(SignInCodeAuthenticator::completedSecondStep($token));
+        self::assertFalse(SignInCodeAuthenticator::recentlySignedInWithCode($token), 'A second step opens no password reset window');
+    }
+
     public function testTheTokenOpensAShortPasswordResetWindow(): void
     {
         $user = (new User())->setUsername('scott')->setRoles(['ROLE_USER']);

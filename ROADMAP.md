@@ -223,6 +223,12 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   the released rows of one view.
 - **Branding polish.** Improve the default logo and administration presentation
   while preserving configured white labels, accessibility, and license notices.
+- **Stronger and finer two-step sign-in.** [Two-step sign-in](docs/EMAIL.md#two-step-sign-in)
+  is all users or none, with an emailed code. Next: requiring it per role
+  (administrators first) or per user; an authenticator app (TOTP) and passkeys
+  (WebAuthn), whose per-user secrets would live on `users`; remembered devices;
+  and one-time recovery codes, so a forgotten password need not wait for an
+  administrator.
 - **Email delivery events.** Receive the Postmark, SendGrid and Mailgun
   webhooks (bounces, spam complaints) through the bridges' signed webhook
   parsers and record them in the audit trail against the send's task ID, which

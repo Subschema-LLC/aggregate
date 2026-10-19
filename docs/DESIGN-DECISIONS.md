@@ -772,9 +772,38 @@ a farm of servers allows proportionally more guesses. Anyone with access to a
 user's mailbox can sign in as them, which is why the option is off by default.
 
 **What would change it.** Codes or links that must work across devices would
-need shared storage: the `users` table, with a migration. A requirement for
-second factors would make the code an addition to the password rather than an
-alternative.
+need shared storage: the `users` table, with a migration.
+
+### Two-step sign-in with the same emailed code, required globally, failing closed
+
+**Decision.** `mfa_required` makes the emailed code a second step after the
+password, for every user. A correct password never makes a session: the
+sign-in success is turned into a pending second step (a code of its own kind in
+the same session store) and only the code authenticator finishes it, marking
+the token. While it is required, a session without that mark is signed out on
+its next request, sign-in codes alone are not accepted, and a missing address,
+an email outage or an invalid setting stops the sign-in rather than skipping
+the step. Turning it on from the page needs working email and the
+administrator's own address, and keeps their session.
+
+**Why.** It reuses the code store, rate limits, authenticator, mailer and
+records already built, adds no table, column or dependency, and protects
+against the commonest risk, a reused or phished password. Clearing the token
+on the password step makes the second step the only way into a session, so a
+route cannot be forgotten; the request check covers sessions that existed
+before. A code-only sign-in would be the same single factor as the mailbox, so
+it is turned off. Failing open on an email outage would silently remove the
+protection when it matters.
+
+**Trade-off.** Email is a weaker second factor than an authenticator app or a
+passkey: someone with the user's mailbox has both factors. Every sign-in waits
+for an email, and an email outage stops sign-ins until it is fixed or the
+setting is turned off on the server. It is all users or none, and forgotten
+passwords need an administrator while it is on.
+
+**What would change it.** Per-role or per-user requirements, an authenticator
+app (TOTP) or passkeys, which would need per-user secrets in the `users` table,
+and remembered devices or recovery codes.
 
 ## Platform
 

@@ -8,6 +8,7 @@ use App\Entity\User;
 use App\EventSubscriber\AdminAuditSubscriber;
 use App\Security\Access\UserAdministration;
 use App\Security\SignInCode\SignInCodeAuthenticator;
+use App\Security\SignInCode\SignInCodeSettings;
 use App\Service\AggregateConfigLoader;
 use App\Service\WebsiteConfigManager;
 use App\Service\WebsiteScopeCatalog;
@@ -29,6 +30,7 @@ final class ProfileController extends AbstractController
         private readonly UserAdministration $administration,
         private readonly WebsiteConfigManager $websites,
         private readonly WebsiteScopeCatalog $websiteGroups,
+        private readonly SignInCodeSettings $signIn,
     ) {
     }
 
@@ -78,7 +80,11 @@ final class ProfileController extends AbstractController
         }
         $request->attributes->set(AdminAuditSubscriber::SUBJECT, $user->getUsername());
         try {
-            $this->administration->updateProfile($user, (string) $request->request->get('display_name', ''), (string) $request->request->get('email', ''));
+            $email = (string) $request->request->get('email', '');
+            if (trim($email) === '' && $this->signIn->isSecondStepRequired()) {
+                throw new \InvalidArgumentException('Two-step sign-in is required, so your account needs an email address: without one you could not sign in again.');
+            }
+            $this->administration->updateProfile($user, (string) $request->request->get('display_name', ''), $email);
             $this->addFlash('success', 'Profile saved.');
         } catch (\InvalidArgumentException $e) {
             $this->addFlash('error', $e->getMessage());

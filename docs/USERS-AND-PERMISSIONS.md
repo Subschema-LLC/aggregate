@@ -121,12 +121,22 @@ Every user opens their profile from their name in the menu. There they can:
   sessions sign out; the current one stays signed in. For 15 minutes after
   signing in with an emailed code, the current password is not needed.
 
+## Two-step sign-in
+
+When an administrator requires [two-step sign-in](EMAIL.md#two-step-sign-in)
+(`mfa_required`), every user enters a code emailed to the address on their
+account after their password. Users without an email address cannot sign in
+until an administrator adds one; the Email page lists them, and nobody can
+remove their own address while it is required. Turning it on signs out every
+other session on its next page.
+
 ## Forgotten passwords and sign-in codes
 
 When an administrator turns on [sign-in codes](EMAIL.md#sign-in-codes) and
 email can be sent, the sign-in page offers **Forgot your password? Email me a
 sign-in code**. A user with an email address gets a six-digit code that signs
-them in once; they can then set a new password on their profile. Without email,
+them in once; they can then set a new password on their profile. Sign-in codes
+are not offered while two-step sign-in is required. Without them,
 an administrator resets a password on the Users page, or with
 `app:user:reset-password` on the server.
 

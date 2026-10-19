@@ -36,7 +36,7 @@ use Symfony\Contracts\Service\ResetInterface;
  */
 class SignInCodeRequests implements EventSubscriberInterface, ResetInterface
 {
-    /** @var list<array{username: string, address: string, code: string}> */
+    /** @var list<array{username: string, address: string, code: string, purpose: EmailPurpose}> */
     private array $outbox = [];
 
     public function __construct(
@@ -88,10 +88,32 @@ class SignInCodeRequests implements EventSubscriberInterface, ResetInterface
         }
 
         $code = $this->codes->issue($session, $username);
-        $this->outbox[] = ['username' => $username, 'address' => (string) $user->getEmail(), 'code' => (string) $code];
+        $this->outbox[] = ['username' => $username, 'address' => (string) $user->getEmail(), 'code' => (string) $code, 'purpose' => EmailPurpose::SignInCode];
         $this->record(true, $username, 'A sign-in code was requested.');
 
         return true;
+    }
+
+    /**
+     * Starts the second step of a sign-in whose password was accepted: issues
+     * a code for this browser and sends it after the response. Returns why
+     * the sign-in cannot continue, or null. The account limit applies, so a
+     * stolen password cannot be used to flood its owner's mailbox.
+     */
+    public function startSecondStep(Request $request, User $user): ?string
+    {
+        $address = $user->getEmail();
+        if ($address === null) {
+            return 'Two-step sign-in is required, and your account has no email address to send a code to. Ask an administrator to add one.';
+        }
+        $username = $user->getUserIdentifier();
+        if (!$this->accountLimiter->create(hash('sha256', 'account:'.$username))->consume()->isAccepted()) {
+            return 'Too many codes were sent for this account. Wait 15 minutes, then sign in again.';
+        }
+        $code = $this->codes->issue($request->getSession(), $username, SignInCodes::KIND_SECOND_STEP);
+        $this->outbox[] = ['username' => $username, 'address' => $address, 'code' => (string) $code, 'purpose' => EmailPurpose::SecondStep];
+
+        return null;
     }
 
     /** Sends the codes this request issued, after its response. */
@@ -101,7 +123,7 @@ class SignInCodeRequests implements EventSubscriberInterface, ResetInterface
         $this->outbox = [];
         foreach ($outbox as $message) {
             try {
-                $this->mailer->send(EmailPurpose::SignInCode, $message['address'], [
+                $this->mailer->send($message['purpose'], $message['address'], [
                     'code' => $message['code'],
                     'minutes' => intdiv(SignInCodes::LIFETIME, 60),
                 ], TaskTrigger::request($message['username']));

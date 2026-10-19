@@ -1,0 +1,8 @@
+{% extends 'email/layout.html.twig' %}
+
+{% block body %}
+    <p style="margin:0 0 16px;">Your password was just used to sign in to {{ brand_name }}. Enter this code to finish signing in:</p>
+    <p style="margin:0 0 16px;font-size:32px;font-weight:700;letter-spacing:6px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;">{{ code }}</p>
+    <p style="margin:0 0 16px;">It works once, in the browser where you signed in, for {{ minutes }} minutes.</p>
+    <p style="margin:0;"><strong>If this was not you,</strong> someone knows your password. Do not share this code: change your password and tell an administrator.</p>
+{% endblock %}
