@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Tests\Controller;
 
 use App\Controller\BigQueryController;
-use App\Service\BigQuery\BigQueryViewCatalog;
 use App\Service\AggregateConfigLoader;
 use App\Service\BigQuery\BigQueryBackgroundSync;
 use App\Service\BigQuery\BigQueryException;
@@ -13,6 +12,9 @@ use App\Service\BigQuery\BigQuerySecrets;
 use App\Service\BigQuery\BigQuerySettings;
 use App\Service\BigQuery\BigQuerySyncRunner;
 use App\Service\BigQuery\GoogleSignIn;
+use App\Service\ReportingDatabase\ReportingDatabaseSettings;
+use App\Service\ViewSync\ViewSyncDestinations;
+use App\Service\ViewSync\ViewCatalog;
 use App\Tests\Service\BigQuery\GoogleCredentialsTest;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
@@ -47,6 +49,7 @@ final class BigQueryControllerTest extends TestCase
     private array $environment;
     private BigQuerySyncRunner $runner;
     private BigQueryBackgroundSync $background;
+    private ?BigQuerySettings $settings = null;
     private array $httpRequests = [];
     private Session $session;
 
@@ -60,6 +63,8 @@ final class BigQueryControllerTest extends TestCase
         mkdir($this->projectDir.'/config', 0700, true);
         $this->writeYaml(['admin_token' => 'kept', 'app_host' => 'https://analytics.example.com']);
         $this->runner = $this->createMock(BigQuerySyncRunner::class);
+        // The runner shares its settings with the page, as the container does.
+        $this->runner->method('settings')->willReturnCallback(fn (): BigQuerySettings => $this->settings);
         $this->runner->method('status')->willReturnCallback(static fn (array $settings): array => [
             'last_run' => null,
             'views' => array_map(static fn (string $view): array => [
@@ -90,10 +95,17 @@ final class BigQueryControllerTest extends TestCase
     {
         $crawler = new Crawler((string) $this->page()->getContent());
 
-        self::assertSame('BigQuery sync', $crawler->filter('h1')->text());
+        self::assertSame('Sync', $crawler->filter('h1')->text());
+        // Both destinations are tabs of one Sync page; each says whether it is on.
+        $tabs = $crawler->filter('nav[aria-label="Sync destinations"] li');
+        self::assertCount(2, $tabs);
+        self::assertSame('/dashboard/bigquery', $tabs->eq(0)->filter('a[aria-current="page"]')->attr('href'));
+        self::assertStringContainsString('Off', $tabs->eq(0)->text());
+        self::assertSame('/dashboard/reporting-database', $tabs->eq(1)->filter('a')->attr('href'));
+        self::assertStringContainsString('Off', $tabs->eq(1)->text());
         self::assertCount(3, $crawler->filter('input[name="auth"]'));
         self::assertSame('service_account', $crawler->filter('input[name="auth"][checked]')->attr('value'));
-        self::assertCount(count(BigQueryViewCatalog::APPROVED), $crawler->filter('input[name="views[]"][checked]'));
+        self::assertCount(count(ViewCatalog::APPROVED), $crawler->filter('input[name="views[]"][checked]'));
         self::assertCount(6, $crawler->filter('input[name="private_views[]"]'));
         self::assertCount(0, $crawler->filter('input[name="private_views[]"][checked]'));
         self::assertSame('https://analytics.example.com/dashboard/bigquery/google/callback', $crawler->filter('#bigquery-redirect-uri')->attr('value'));
@@ -322,7 +334,7 @@ final class BigQueryControllerTest extends TestCase
         $body = json_decode((string) $this->controller()->status()->getContent(), true);
         self::assertFalse($body['running']);
         self::assertNull($body['last_run']);
-        self::assertCount(count(BigQueryViewCatalog::APPROVED), $body['views']);
+        self::assertCount(count(ViewCatalog::APPROVED), $body['views']);
     }
 
     private function page(): \Symfony\Component\HttpFoundation\Response
@@ -361,7 +373,7 @@ final class BigQueryControllerTest extends TestCase
     private function controller(?Request $request = null, bool $admin = true): BigQueryController
     {
         $config = new AggregateConfigLoader($this->projectDir, 'test');
-        $settings = new BigQuerySettings($config, $this->projectDir);
+        $settings = $this->settings = new BigQuerySettings($config, $this->projectDir);
         $idToken = 'h.'.rtrim(strtr(base64_encode(json_encode(['email' => 'admin@example.com'])), '+/', '-_'), '=').'.s';
         $http = new MockHttpClient(function (string $method, string $url, array $options) use ($idToken): MockResponse {
             $this->httpRequests[] = [$method, $url, $options['body'] ?? ''];
@@ -370,7 +382,7 @@ final class BigQueryControllerTest extends TestCase
                 ? new MockResponse('', ['http_code' => 200])
                 : new MockResponse(json_encode(['access_token' => 'a', 'refresh_token' => 'refresh-token', 'scope' => 'https://www.googleapis.com/auth/bigquery openid', 'id_token' => $idToken]), ['http_code' => 200]);
         });
-        $controller = new BigQueryController($config, $settings, new BigQuerySecrets($settings, $this->projectDir), $this->runner, $this->background, new GoogleSignIn($http), new NullLogger());
+        $controller = new BigQueryController($config, $settings, new BigQuerySecrets($settings, $this->projectDir), $this->runner, $this->background, new GoogleSignIn($http), new NullLogger(), new ViewSyncDestinations($settings, new ReportingDatabaseSettings($config)));
         $request ??= Request::create('/dashboard/bigquery');
         $request->setSession($this->session);
         $authorization = $this->createStub(AuthorizationCheckerInterface::class);
@@ -413,6 +425,9 @@ final class BigQueryControllerTest extends TestCase
     {
         if ($name === 'app_scheduled_tasks') {
             return '/dashboard/scheduled-tasks';
+        }
+        if ($name === 'app_reporting_database') {
+            return '/dashboard/reporting-database';
         }
 
         return '/dashboard/bigquery'.match ($name) {

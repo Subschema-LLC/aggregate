@@ -15,8 +15,7 @@ Use this guide for application settings and runtime overrides. Run commands from
 - [Standalone consent settings](#standalone-consent-settings)
 - [BI glossary](#bi-glossary)
 - [Archiving and retention](#archiving-and-retention)
-- [BigQuery sync](#bigquery-sync)
-- [Reporting database](#reporting-database)
+- [Sync](#sync): [BigQuery](#bigquery-sync) and [reporting database](#reporting-database)
 - [Main navigation](#main-navigation)
 - [Conversion goals](#conversion-goals)
 - [Coarse geography](#optional-coarse-geography)
@@ -364,7 +363,7 @@ Environment overrides (`ANONYMOUS_MIN_CELL_COUNT`, `ANONYMOUS_GEO_MIN_CELL_COUNT
 
 ### Reporting timezone
 
-`reporting_timezone` (default `UTC`) is the IANA name compiled into the event views when they are regenerated. **Reporting → Reporting timezone**, YAML, and `app:analytics:reporting-timezone` share `ReportingTimezone` and `AnonymousBiViewManager`. `REPORTING_TIMEZONE` overrides the saved value. An invalid name, a MySQL or MariaDB server without time zone tables, or an IANA name SQL Server cannot map stops regeneration and leaves the existing views in place. Load MySQL or MariaDB time zone tables with the one command in [reporting timezone](BI-CONNECTION.md#reporting-timezone), or `php bin/console app:analytics:mysql-timezones:load` when this server can administer the database.
+`reporting_timezone` (default `UTC`) is the IANA name compiled into the event views when they are regenerated. The **Reporting timezone** section of **Administration → General settings**, YAML, and `app:analytics:reporting-timezone` share `ReportingTimezone` and `AnonymousBiViewManager`. `REPORTING_TIMEZONE` overrides the saved value. An invalid name, a MySQL or MariaDB server without time zone tables, or an IANA name SQL Server cannot map stops regeneration and leaves the existing views in place. Load MySQL or MariaDB time zone tables with the one command in [reporting timezone](BI-CONNECTION.md#reporting-timezone), or `php bin/console app:analytics:mysql-timezones:load` when this server can administer the database.
 
 The setting relabels `event_hour` and the event views' `event_day`. It does not change stored events, archives, goal days or geography days, which stay UTC. See [reporting timezone](BI-CONNECTION.md#reporting-timezone).
 
@@ -382,6 +381,7 @@ feature_flags:
     hide_from_navigation: false
   custom_scripts:
     enabled: true
+    hide_from_navigation: false
 ```
 
 Updates is enabled and visible by default. Disabling it blocks update routes and
@@ -389,7 +389,10 @@ commands; hiding removes navigation entries independently of availability.
 `custom_scripts` (enabled by default) serves the tag manager's
 [custom JavaScript tags](TAG-MANAGER.md#custom-javascript); disabling it keeps
 their YAML but stops serving them.
-Disabled, visible features appear without a clickable link. These settings have
+A feature that is off and shown appears greyed out with an **Off** tag; hide it
+when that would look like a problem. Saving on the Feature flags page writes
+every feature with both options, so the YAML states what is on and what shows,
+and the page displays that YAML. These settings have
 no uppercase environment-variable overrides. Use YAML booleans; malformed or
 unregistered flag settings make flagged features unavailable. An active
 environment's entire flag mapping replaces the shared mapping. See the
@@ -453,6 +456,8 @@ Archiving creates private, unsuppressed aggregate cells and marks the source row
 
 Background jobs (each BigQuery or reporting database view sync and each maintenance run) are recorded in
 the private [`processing_tasks` and `audit_trail` tables](DATABASE.md#processing-tasks-and-audit-trail).
+The [audit trail](AUDIT-TRAIL.md) also records administrator actions and, when
+turned on, sign-ins; its job runs and its other entries have their own periods.
 Maintenance purges them after these periods; `0` keeps them indefinitely. The
 latest success and the latest failure of each job are always kept so schedules
 and status pages still know when it last ran.
@@ -460,15 +465,30 @@ and status pages still know when it last ran.
 | Setting | Environment variable | Default | Range |
 | --- | --- | --- | --- |
 | `processing_tasks_retention_days` | `PROCESSING_TASKS_RETENTION_DAYS` | `90` | `0`–`36500` |
-| `audit_trail_retention_days` | `AUDIT_TRAIL_RETENTION_DAYS` | `365` | `0`–`36500` |
+| `audit_trail_retention_days` | `AUDIT_TRAIL_RETENTION_DAYS` | `365` | `0`–`36500` (job-run entries) |
+| `audit_trail_admin_retention_days` | `AUDIT_TRAIL_ADMIN_RETENTION_DAYS` | `730` | `0`–`36500` (administrator actions and sign-ins) |
+
+What the audit trail records is chosen by area under `audit_trail_areas`, on
+**Administration → Audit trail**; there is no environment variable for it. See
+[turn areas on and off](AUDIT-TRAIL.md#turn-areas-on-and-off).
 
 Purging is on by default, so set up the [scheduled task](SCHEDULED-TASKS.md)
 even when archiving and retention are off. Its dry run shows how many records would be
 purged, and each run records what it archived, deleted and purged.
 
-## BigQuery sync
+## Sync
 
-**Reporting → BigQuery sync** at `/dashboard/bigquery` copies selected reporting
+**Reporting → Sync** copies selected reporting views to another destination on
+an interval. Each destination is a tab of the Sync page with its own address:
+BigQuery at `/dashboard/bigquery` and the reporting database at
+`/dashboard/reporting-database`. `/dashboard/sync` opens the destination that
+is on. The menu entry appears once either destination is on, or its settings
+need repair; until then, find **Sync** with the dashboard search, or follow the
+link in the BI connection guide. See [main navigation](#main-navigation).
+
+### BigQuery sync
+
+The **BigQuery** tab at `/dashboard/bigquery` copies selected reporting
 views to a BigQuery dataset on an interval. The `bigquery_*` keys in the active
 YAML environment hold the same settings, with uppercase environment-variable
 overrides that lock the matching fields; the [scheduled task](SCHEDULED-TASKS.md),
@@ -480,9 +500,9 @@ deployments use a service account key or Google Cloud credentials. See
 [Sync to BigQuery](BIGQUERY.md) for every setting, the sign-in methods, column
 types and privacy notes.
 
-## Reporting database
+### Reporting database
 
-**Reporting → Reporting database** at `/dashboard/reporting-database` copies
+The **Reporting database** tab at `/dashboard/reporting-database` copies
 selected reporting views into same-named tables of a second database on an
 interval, so BI users can connect there instead of to the application database.
 The `reporting_database_*` keys in the active YAML environment hold the
@@ -505,8 +525,23 @@ setup on each engine, every setting, column types and privacy notes.
 
 Associate links with a registered flag using `feature: updates` (or another
 registered key). The shared template honors its availability and
-`hide_from_navigation` setting for each reference. See
+`hide_from_navigation` setting for each reference: a feature that is off and
+shown appears greyed out with an **Off** tag. See
 [feature navigation integration](FEATURE-FLAGS.md#add-a-feature-as-a-developer).
+
+A link can also state when it appears with `shown_when` and a condition name,
+so the YAML says why an entry is missing instead of the menu leaving it out
+silently. The menu leaves the link out until the condition is met; the
+dashboard search still finds it, so the page can be opened to turn it on.
+
+| Condition | Met when |
+| --- | --- |
+| `view_sync_on` | BigQuery sync or the reporting database sync is turned on, or either one's settings are invalid and need its page |
+
+An unknown condition name hides the link, like an unknown feature name.
+`shown_when` belongs on links; a group that sets it is omitted, and a group
+disappears by itself once none of its links are shown. Conditions are presentation
+only and never grant access.
 
 The `brand` entry controls where the branded identity links. Its `label` remains a backward-compatible name/wordmark fallback for existing deployments. Runtime identity, logo, theme-color, and font settings live in `config/aggregate.yaml` (or their environment overrides), so UI changes do not require rebuilding navigation configuration. Edit `items` and `account` to manage the remaining authenticated-navbar links. Each link defines exactly one Symfony `route` name (for example, `app_how_it_works`), literal `url`, or documentation topic (`docs`, see [documentation links](#documentation-links)); `label` is required, while `icon`, `route_parameters`, and an optional security `role` are supported. Existing flat configurations and an empty `items` list remain supported.
 
@@ -522,10 +557,13 @@ parameters:
         role: ROLE_ADMIN
         children:
           - { label: 'Data model', route: app_data_model, role: ROLE_ADMIN }
-          - { label: 'Event examples', route: app_event_examples, role: ROLE_ADMIN }
+      - label: Reporting
+        children:
+          - { label: Sync, route: app_sync, role: ROLE_ADMIN, shown_when: view_sync_on }
       - label: Help
         children:
           - { label: 'How it works', route: app_how_it_works }
+          - { label: 'Event examples', route: app_event_examples, role: ROLE_ADMIN }
           - { label: Documentation, docs: home }
     account:
       user_icon: 'fas fa-user'
@@ -610,7 +648,7 @@ administration. Each settings page loads the data needed for its own task.
 | Page | Route | Purpose |
 | --- | --- | --- |
 | Websites | `/dashboard` | Website registrations and expandable integration snippets |
-| General settings | `/dashboard/settings` | Application host, documentation links, tracker namespace, ingestion rate limit |
+| General settings | `/dashboard/settings` | Application host, documentation links, tracker namespace, ingestion rate limit, reporting timezone, page speed |
 | Branding | `/dashboard/branding` | Identity, logos, colors, typography |
 | Collection controls | `/dashboard/collection` | Collection switch, exclusions, optional local geography |
 | Setup | `/dashboard/setup` | Guided installation, separate built-in/standalone/external consent choice, script copy/download, optional minification |
@@ -622,8 +660,9 @@ administration. Each settings page loads the data needed for its own task.
 | Event examples | `/dashboard/data-model/examples` | Synthetic JSON generation, copy, download, and ecommerce recipe |
 | Observed properties | `/dashboard/data-model/discovery` | Explicit bounded metadata discovery |
 | Reporting views | `/dashboard/data-model/reporting` | Saved SQL preview and explicit regeneration |
-| BigQuery sync | `/dashboard/bigquery` | Sign-in, views, schedule and status of the BigQuery copy |
-| Reporting database | `/dashboard/reporting-database` | Connection (tested, saved to `.env.local`), views, schedule and status of the reporting database copy |
+| Sync | `/dashboard/sync` | Opens the destination that is on; each destination is a tab |
+| Sync: BigQuery | `/dashboard/bigquery` | Sign-in, views, schedule and status of the BigQuery copy |
+| Sync: Reporting database | `/dashboard/reporting-database` | Connection (tested, saved to `.env.local`), views, schedule and status of the reporting database copy |
 | Data lifecycle | `/dashboard/data-lifecycle` | Archiving, retention, task and audit record purging, and the last maintenance run |
 | Data transfer | `/dashboard/data-transfer` | Export, import, or copy collected rows; the last run comes from the processing task and audit trail ([guide](DATA-TRANSFER.md)) |
 | Scheduled tasks | `/dashboard/scheduled-tasks` | Whether the server runs `app:scheduler:run`, the exact Plesk, cron or systemd settings for this server, each job's last and next run, and **Run due jobs now** ([guide](SCHEDULED-TASKS.md)) |

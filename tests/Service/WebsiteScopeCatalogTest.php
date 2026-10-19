@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Service;
 
+use App\Service\Operations\ConfigurationChanges;
 use App\Service\SiteScriptConfig;
 use App\Service\WebsiteScopeCatalog;
 use PHPUnit\Framework\TestCase;
@@ -50,6 +51,24 @@ final class WebsiteScopeCatalogTest extends TestCase
             'eu-shops' => ['name' => 'European shops', 'members' => ['token-a']],
             'eu-shops-2' => ['name' => 'EU shops', 'members' => ['token-b']],
         ]], Yaml::parseFile($this->projectDir.'/config/website-scopes.yaml'));
+    }
+
+    public function testAShorterFileReplacesALongerOneWhileAnActionIsRecorded(): void
+    {
+        $catalog = $this->catalog();
+        $id = $catalog->createGroup('A group with a rather long name for this test');
+        $catalog->assign('token-a', $id);
+
+        ConfigurationChanges::start();
+        $catalog->renameGroup($id, 'Short');
+        $catalog->assign('token-a', null);
+        $changes = ConfigurationChanges::finish();
+
+        $contents = (string) file_get_contents($this->projectDir.'/config/website-scopes.yaml');
+        self::assertStringNotContainsString("\0", $contents);
+        self::assertSame(['name' => 'Short'], Yaml::parse($contents)['groups'][$id]);
+        // Group ids are named, website tokens never.
+        self::assertSame(['config/website-scopes.yaml' => ['groups.'.$id]], $changes);
     }
 
     public function testDeletingAGroupOrForgettingAWebsiteRemovesItsSettingFile(): void

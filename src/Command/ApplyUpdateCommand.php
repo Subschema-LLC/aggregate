@@ -93,11 +93,11 @@ HELP);
                 ['Type' => $status['type']],
                 ['Status' => $status['status'].($status['running'] ? ' (running now)' : '')],
                 ['Step' => (string) ($status['step'] ?? '-')],
-                ['From' => $this->describe($status['from'] ?? [])],
-                ['To' => $this->describe($status['to'] ?? [])],
-                ['Backup' => (string) ($status['backup'] ?? '-')],
+                ['From' => $this->describe($status['from'])],
+                ['To' => $this->describe($status['to'])],
+                ['Backup' => $status['backup']],
             );
-            foreach (array_slice($status['log'] ?? [], -15) as $entry) {
+            foreach (array_slice($status['log'], -15) as $entry) {
                 $io->text(gmdate('H:i:s', (int) $entry['at']).'  '.OutputFormatter::escape((string) $entry['message']));
             }
 
@@ -187,12 +187,12 @@ HELP);
             return Command::FAILURE;
         }
 
-        if (($state['status'] ?? null) === 'up_to_date') {
+        if ($state['status'] === 'up_to_date') {
             $io->success('Already up to date. '.$state['message']);
 
             return Command::SUCCESS;
         }
-        $code = ($state['status'] ?? null) === 'completed' ? Command::SUCCESS : Command::FAILURE;
+        $code = $state['status'] === 'completed' ? Command::SUCCESS : Command::FAILURE;
         if ($state['handed_off'] ?? false) {
             // The new release finished the update and reported it. This process
             // still runs the previous code and its compiled container is gone, so

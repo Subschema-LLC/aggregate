@@ -479,8 +479,12 @@ data is archived or deleted, and makes deletions in Aggregate reach the copy at
 the next sync. Load jobs cost nothing, unlike streaming inserts. A few REST calls
 avoid adding the large Google Cloud client libraries to every installation.
 
-**Trade-off.** Each sync re-reads and re-uploads whole views, which grows with
-private row-level views. Data in BigQuery is outside Aggregate's retention, held
+**Trade-off.** Each sync re-reads whole views, which grows with private
+row-level views. A scheduled sync uploads a view only when its rows differ
+from its last successful sync (by an order-independent fingerprint recorded
+with the task) or its table is missing or holds a different number of rows;
+**Sync now** uploads every view. Daily and label views change at most a few
+times a day, so most syncs cost them one read rather than a load job. Data in BigQuery is outside Aggregate's retention, held
 by BigQuery's time travel and by tables no longer synced. Signing in with Google
 needs the dashboard and each installation's own OAuth client.
 
@@ -494,9 +498,10 @@ reuse the same export and schedule.
 selected reporting views, never raw tables, into same-named tables of a second
 database that `REPORTING_DATABASE_URL` names. Each sync fills a staging table and
 then swaps it in (one `RENAME TABLE` on MySQL and MariaDB; drop and rename in one
-transaction elsewhere), so readers always see a complete copy. It reuses the
+transaction elsewhere), so readers always see a complete copy. It shares the
 BigQuery sync's view catalog, value conversion, private-view opt-in, schedule
-and processing tasks. The connection is an environment variable, not a YAML
+and processing tasks, and copies from the same temporary snapshot of each
+view. The connection is an environment variable, not a YAML
 setting, and a URL that names the application database is refused. The admin
 page and `app:reporting-database:configure` write it to `.env.local`, but only
 after a test connection that creates and drops a table succeeds.
@@ -517,7 +522,10 @@ encoded, in `.env.local` only, and never shown back.
 
 **Trade-off.** Copies are only as fresh as their interval. Each sync re-reads
 whole views from the application database, which grows with private row-level
-views. Writing `.env.local` from the web needs PHP to be able to write it; where
+views, into a temporary file that needs disk space in `var/`; reading first
+keeps the application database's read short. A scheduled sync rewrites a table
+only when its view's rows changed, the table is missing, or it holds a
+different number of rows; **Sync now** rewrites every table. Writing `.env.local` from the web needs PHP to be able to write it; where
 it cannot, or where another file or the server environment sets the variable,
 the page explains instead of saving. Recreated tables lose per-table grants, so BI access must be granted on
 the database or schema. The tables have no indexes. Tables of deselected views
@@ -565,8 +573,8 @@ running due jobs from web requests.
 and their outcomes in one `audit_trail` table, instead of a status table per
 feature. A run is a row with a type, a subject, a status and failure details; an
 exclusive job holds a lock key that a unique index keeps to one running row. The
-audit trail gets an entry for every finished run and is reserved for
-administrator actions. Maintenance purges both after configurable periods,
+audit trail gets an entry for every finished run, and administrator actions too
+(see below). Maintenance purges both after configurable periods,
 keeping each job's latest success and failure. BigQuery sync and analytics
 maintenance use them, as does the reporting database sync; BigQuery's own status table was dropped without
 migrating its rows.
@@ -584,6 +592,37 @@ run, and the kept latest runs mean a purge never empties the table completely.
 **What would change it.** A job whose results need typed, queryable columns
 beyond those, or a volume of runs the purge cannot keep small, would get a table
 of its own.
+
+### Administrator actions in the audit trail, by area
+
+**Decision.** Administrator actions share the `audit_trail` table with job runs,
+in areas (settings, users, websites, integrations, updates, manual runs, job
+runs, sign-ins) that can each be switched off. A request subscriber records each
+dashboard route listed in `AdminActions` once its controller has run, with the
+outcome taken from the response status and new error messages; a console
+subscriber records the listed commands. Configuration writers report which files
+and settings they changed, by name, while an action runs. Switch changes are
+always recorded. Job runs and the other entries have separate retention periods,
+730 days by default for administrator actions. Sign-ins are off by default.
+
+**Why.** One list of routes, checked by a test against every route that accepts
+POST, keeps new forms from being missed without adding a line to each
+controller. Recording setting names rather than values keeps passwords, keys and
+connection URLs out of the trail by construction, so details need no redaction.
+Areas let an operator keep what their policy needs and drop the rest; recording
+switch changes keeps turning auditing off visible. Audit evidence is usually kept
+longer than job history, hence its own period.
+
+**Trade-off.** An entry says which settings changed but not from what to what,
+so reconstructing a past value needs the configuration's own history or a
+backup. Outcomes are inferred from the response: a page that reports an error
+without an error message or status would be recorded as succeeded. Commands are
+attributed to the operating-system account, not a dashboard user, and updates
+are recorded when they start because they replace the running code.
+
+**What would change it.** A need to show earlier values would call for
+recording non-secret values for an allowlist of settings. A requirement for
+tamper evidence would add a hash chain or an external sink, such as syslog.
 
 ## Platform
 
@@ -725,6 +764,31 @@ validation. A setting compiled into SQL, like a threshold, only takes effect whe
 its views are regenerated, so a YAML edit needs that explicit step.
 
 **What would change it.** Nothing; new exceptions need a documented reason.
+
+### A small dashboard menu that says why an entry is missing
+
+**Decision.** A single setting is a section of an existing page, not a menu
+entry: the reporting timezone is part of General settings. Related pages share
+one entry with tabs: BigQuery and the reporting database are tabs of **Sync**.
+A page that matters only once something is on carries a `shown_when` condition
+in `config/navigation.yaml`, so **Sync** joins the menu once a destination is
+on, and the dashboard search finds it before that. A feature flag that is off
+but shown is greyed out with an **Off** tag, and the Feature flags page writes
+and displays every flag with both options. New flags start off and hidden.
+
+**Why.** A long menu makes a small product look bloated and hides the pages
+people use. Leaving entries out silently, or greying them out without a reason,
+looks like a fault. Stating the rule in the YAML, and showing what a save
+writes, keeps what the files say and what the screen shows the same.
+
+**Trade-off.** A page waiting on its condition is one search away rather than
+one click. Separate tab pages keep their own addresses, so the Google sign-in
+callback stays the same, but the two sync forms are not on one screen.
+Operators with a customized `navigation.local.yaml` keep their old entries
+until they edit it; the old addresses still work.
+
+**What would change it.** Evidence that administrators cannot find pages that
+are not yet in the menu.
 
 ### Custom JavaScript compiled into the tag manager script
 

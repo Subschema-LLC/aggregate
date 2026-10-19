@@ -6,6 +6,7 @@ namespace App\Service\Update;
 
 use App\Service\ApplicationUpdateService;
 use App\Service\InstalledRelease;
+use App\Service\Operations\AdminActions;
 use App\Service\ReleasePackageVerifier;
 use App\Service\ReleaseUpdateService;
 use Doctrine\DBAL\Connection;
@@ -28,6 +29,11 @@ use Symfony\Component\Process\Process;
  * File recovery and database restoration are separate: rolling back restores
  * application files, and restores a database only from an SQLite snapshot and
  * only when asked.
+ *
+ * Every step takes the journal state and returns it (UpdateState, described in
+ * UpdateJournal), so static analysis checks the keys each step reads and writes.
+ *
+ * @phpstan-import-type UpdateState from UpdateJournal
  */
 class ApplicationUpdater
 {
@@ -73,7 +79,7 @@ class ApplicationUpdater
         };
     }
 
-    /** @return array<string, mixed>|null The last recorded update, with whether it is still running */
+    /** @return UpdateState|null The last recorded update, with whether it is still running */
     public function status(): ?array
     {
         $state = $this->journal->read();
@@ -91,7 +97,7 @@ class ApplicationUpdater
     public function methodChangeProblem(): ?string
     {
         $state = $this->status();
-        if ($state !== null && ($state['running'] || in_array($state['status'] ?? null, ['running', 'needs_attention'], true))) {
+        if ($state !== null && ($state['running'] || in_array($state['status'], ['running', 'needs_attention'], true))) {
             return 'The update method cannot change while an update is running or needs attention. Finish, resume or roll back that update first.';
         }
 
@@ -150,7 +156,7 @@ class ApplicationUpdater
      *
      * @param array{version?: ?string, package?: ?string, manifest?: ?string, signature?: ?string, database_backup_confirmed?: bool, deployed?: bool, commit?: ?string, repository?: ?string, force?: bool} $options
      * @param callable(string, string): void $output
-     * @return array<string, mixed> The final journal state, or a no-op result
+     * @return UpdateState|array{status: 'up_to_date', message: string} The final journal state, or a no-op result
      */
     public function start(array $options, callable $output): array
     {
@@ -162,7 +168,7 @@ class ApplicationUpdater
             $last = $this->journal->read();
             $superseded = null;
             if (in_array($last['status'] ?? null, ['running', 'needs_attention'], true)) {
-                if ($type !== 'deployment' || ($last['type'] ?? null) !== 'deployment') {
+                if ($type !== 'deployment' || $last['type'] !== 'deployment') {
                     throw new \RuntimeException('The previous update stopped at "'.($last['step'] ?? 'unknown').'". Resume it with app:updates:apply --resume or restore files with app:updates:rollback.');
                 }
                 // Running app:updates:deployed again is how a deployment retries: every step repeats.
@@ -259,11 +265,11 @@ class ApplicationUpdater
             }
 
             if ($superseded !== null) {
-                $state['superseded'] = $superseded['id'] ?? true;
+                $state['superseded'] = $superseded['id'];
             }
             $state = $this->journal->write($state);
             if ($superseded !== null) {
-                $state = $this->say($state, 'Replacing deployment '.($superseded['id'] ?? '').', which stopped at "'.($superseded['step'] ?? 'unknown').'". Every step runs again.', 'warning');
+                $state = $this->say($state, 'Replacing deployment '.$superseded['id'].', which stopped at "'.($superseded['step'] ?? 'unknown').'". Every step runs again.', 'warning');
             }
             foreach ($prepared['warnings'] ?? [] as $warning) {
                 $state = $this->say($state, $warning, 'warning');
@@ -284,7 +290,7 @@ class ApplicationUpdater
      * Continue an interrupted update from its recorded step.
      *
      * @param callable(string, string): void $output
-     * @return array<string, mixed>
+     * @return UpdateState
      */
     public function resume(callable $output): array
     {
@@ -293,10 +299,10 @@ class ApplicationUpdater
         $this->journal->acquire();
         try {
             $state = $this->journal->read();
-            if ($state === null || !in_array($state['status'] ?? null, ['running', 'needs_attention'], true)) {
+            if ($state === null || !in_array($state['status'], ['running', 'needs_attention'], true)) {
                 throw new \RuntimeException('There is no interrupted update to resume.');
             }
-            if (($state['environment'] ?? $this->environment) !== $this->environment) {
+            if ($state['environment'] !== $this->environment) {
                 throw new \RuntimeException('Resume the update in the "'.$state['environment'].'" environment it started in (add --env='.$state['environment'].').');
             }
             if ($state['step'] === 'rollback') {
@@ -325,7 +331,7 @@ class ApplicationUpdater
      * Restore the application files from before the last update.
      *
      * @param callable(string, string): void $output
-     * @return array<string, mixed>
+     * @return UpdateState
      */
     public function rollback(bool $restoreDatabase, callable $output): array
     {
@@ -334,14 +340,14 @@ class ApplicationUpdater
         $this->journal->acquire();
         try {
             $state = $this->journal->read() ?? throw new \RuntimeException('No update has been recorded, so there is nothing to roll back.');
-            if (($state['status'] ?? null) === 'rolled_back') {
+            if ($state['status'] === 'rolled_back') {
                 throw new \RuntimeException('The last update was already rolled back.');
             }
             if ($state['step'] === 'rollback') {
                 // Repeating a rollback that stopped: reuse what the first attempt found.
                 $filesChanged = (bool) ($state['rollback']['files'] ?? true);
                 $migrationsStarted = (bool) ($state['rollback']['migrations'] ?? true);
-            } elseif (($state['type'] ?? null) === 'deployment') {
+            } elseif ($state['type'] === 'deployment') {
                 // The deployment tool changed the files, so there is no file backup here.
                 $filesChanged = false;
                 $migrationsStarted = in_array('migrations', $state['completed'], true) || in_array($state['step'], ['migrations', 'glossary', 'assets', 'cache', 'workers', 'finish'], true);
@@ -373,7 +379,7 @@ class ApplicationUpdater
                 }
                 $this->clearCacheDirectory($state['id']);
             }
-            if (($state['type'] ?? null) === 'deployment') {
+            if ($state['type'] === 'deployment') {
                 $state = $this->say($state, 'These files were deployed another way, so they were left as they are.'
                     .(DeploymentState::isCommit($state['from']['commit'] ?? null)
                         ? ' To return to the previous version, deploy commit '.$state['from']['commit'].' with that tool.'
@@ -412,8 +418,8 @@ class ApplicationUpdater
     }
 
     /**
-     * @param array<string, mixed> $state
-     * @return array<string, mixed>
+     * @param UpdateState $state
+     * @return UpdateState
      */
     private function run(array $state): array
     {
@@ -441,8 +447,8 @@ class ApplicationUpdater
     }
 
     /**
-     * @param array<string, mixed> $state
-     * @return array<string, mixed>
+     * @param UpdateState $state
+     * @return UpdateState
      */
     private function stepDownload(array $state): array
     {
@@ -458,8 +464,8 @@ class ApplicationUpdater
     }
 
     /**
-     * @param array<string, mixed> $state
-     * @return array<string, mixed>
+     * @param UpdateState $state
+     * @return UpdateState
      */
     private function stepVerify(array $state): array
     {
@@ -473,8 +479,8 @@ class ApplicationUpdater
     }
 
     /**
-     * @param array<string, mixed> $state
-     * @return array<string, mixed>
+     * @param UpdateState $state
+     * @return UpdateState
      */
     private function stepStage(array $state): array
     {
@@ -495,8 +501,8 @@ class ApplicationUpdater
     }
 
     /**
-     * @param array<string, mixed> $state
-     * @return array<string, mixed>
+     * @param UpdateState $state
+     * @return UpdateState
      */
     private function stepMaintenance(array $state): array
     {
@@ -508,8 +514,8 @@ class ApplicationUpdater
     }
 
     /**
-     * @param array<string, mixed> $state
-     * @return array<string, mixed>
+     * @param UpdateState $state
+     * @return UpdateState
      */
     private function stepDatabaseBackup(array $state): array
     {
@@ -545,8 +551,8 @@ class ApplicationUpdater
     }
 
     /**
-     * @param array<string, mixed> $state
-     * @return array<string, mixed>
+     * @param UpdateState $state
+     * @return UpdateState
      */
     private function stepApplyFiles(array $state): array
     {
@@ -591,8 +597,8 @@ class ApplicationUpdater
     }
 
     /**
-     * @param array<string, mixed> $state
-     * @return array<string, mixed>
+     * @param UpdateState $state
+     * @return UpdateState
      */
     private function stepDependencies(array $state): array
     {
@@ -616,8 +622,8 @@ class ApplicationUpdater
     }
 
     /**
-     * @param array<string, mixed> $state
-     * @return array<string, mixed>
+     * @param UpdateState $state
+     * @return UpdateState
      */
     private function stepHandoff(array $state): array
     {
@@ -632,7 +638,7 @@ class ApplicationUpdater
         });
         $this->journal->acquire();
         $final = $this->journal->read() ?? $state;
-        if (($final['status'] ?? null) === 'running') {
+        if ($final['status'] === 'running') {
             $final['status'] = 'needs_attention';
             $final['error'] = 'The updated application could not continue the update (exit code '.$exit.').';
             $this->maintenance->hold('update');
@@ -645,8 +651,8 @@ class ApplicationUpdater
     }
 
     /**
-     * @param array<string, mixed> $state
-     * @return array<string, mixed>
+     * @param UpdateState $state
+     * @return UpdateState
      */
     private function stepMigrations(array $state): array
     {
@@ -656,8 +662,8 @@ class ApplicationUpdater
     }
 
     /**
-     * @param array<string, mixed> $state
-     * @return array<string, mixed>
+     * @param UpdateState $state
+     * @return UpdateState
      */
     private function stepGlossary(array $state): array
     {
@@ -667,8 +673,8 @@ class ApplicationUpdater
     }
 
     /**
-     * @param array<string, mixed> $state
-     * @return array<string, mixed>
+     * @param UpdateState $state
+     * @return UpdateState
      */
     private function stepAssets(array $state): array
     {
@@ -687,8 +693,8 @@ class ApplicationUpdater
     }
 
     /**
-     * @param array<string, mixed> $state
-     * @return array<string, mixed>
+     * @param UpdateState $state
+     * @return UpdateState
      */
     private function stepCache(array $state): array
     {
@@ -701,8 +707,8 @@ class ApplicationUpdater
     }
 
     /**
-     * @param array<string, mixed> $state
-     * @return array<string, mixed>
+     * @param UpdateState $state
+     * @return UpdateState
      */
     private function stepWorkers(array $state): array
     {
@@ -710,8 +716,8 @@ class ApplicationUpdater
     }
 
     /**
-     * @param array<string, mixed> $state
-     * @return array<string, mixed>
+     * @param UpdateState $state
+     * @return UpdateState
      */
     private function stepFinish(array $state): array
     {
@@ -734,8 +740,8 @@ class ApplicationUpdater
     }
 
     /**
-     * @param array<string, mixed> $state
-     * @return array<string, mixed>
+     * @param UpdateState $state
+     * @return UpdateState
      */
     private function fail(array $state, \Throwable $error): array
     {
@@ -855,8 +861,8 @@ class ApplicationUpdater
     }
 
     /**
-     * @param array<string, mixed> $state
-     * @return array<string, mixed>
+     * @param UpdateState $state
+     * @return UpdateState
      */
     private function finishDeployment(array $state): array
     {
@@ -890,8 +896,8 @@ class ApplicationUpdater
     }
 
     /**
-     * @param array<string, mixed> $state
-     * @return array<string, mixed>
+     * @param UpdateState $state
+     * @return UpdateState
      */
     private function composerInstall(array $state): array
     {
@@ -911,8 +917,8 @@ class ApplicationUpdater
     }
 
     /**
-     * @param array<string, mixed> $state
-     * @return array<string, mixed>
+     * @param UpdateState $state
+     * @return UpdateState
      */
     private function stopWorkers(array $state): array
     {
@@ -926,8 +932,10 @@ class ApplicationUpdater
     }
 
     /**
-     * @param array<string, mixed> $state
-     * @param list<string>         $arguments
+     * @param UpdateState  $state
+     * @param list<string> $arguments
+     *
+     * @param-out UpdateState $state
      */
     private function console(array &$state, array $arguments, int $timeout): void
     {
@@ -935,9 +943,11 @@ class ApplicationUpdater
     }
 
     /**
-     * @param array<string, mixed> $state
+     * @param UpdateState $state
      * @param list<string> $command
      * @param array<string, string|false> $environment
+     *
+     * @param-out UpdateState $state
      */
     private function runProcess(array &$state, string $label, array $command, int $timeout, array $environment): void
     {
@@ -976,7 +986,9 @@ class ApplicationUpdater
     {
         // Children inherit this process's environment. SYMFONY_DOTENV_VARS tells
         // them which values came from .env files, so they re-read those files.
-        return [];
+        // The update was recorded in the audit trail when it started; its own
+        // steps and the process it hands over to are not recorded again.
+        return [AdminActions::CHILD_PROCESS => '1'];
     }
 
     private function shouldCompileAssets(): bool
@@ -1025,18 +1037,18 @@ class ApplicationUpdater
         }
     }
 
-    /** @param array<string, mixed> $state */
+    /** @param UpdateState $state */
     private function stepIndex(array $state, string $step): int
     {
-        $steps = self::stepsFor((string) ($state['type'] ?? 'release'));
+        $steps = self::stepsFor($state['type']);
         $index = array_search($step, $steps, true);
 
         return $index === false ? -1 : $index;
     }
 
     /**
-     * @param array<string, mixed> $state
-     * @return array<string, mixed>
+     * @param UpdateState $state
+     * @return UpdateState
      */
     private function say(array $state, string $message, string $level = 'info'): array
     {

@@ -13,6 +13,7 @@ use App\Service\BigQuery\BigQuerySyncRunner;
 use App\Service\BigQuery\GoogleSignIn;
 use App\Service\BigQuery\ServiceAccountKey;
 use App\Service\DropInScripts;
+use App\Service\ViewSync\ViewSyncDestinations;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
@@ -44,6 +45,7 @@ final class BigQueryController extends AbstractController
         private readonly BigQueryBackgroundSync $background,
         private readonly GoogleSignIn $signIn,
         private readonly LoggerInterface $logger,
+        private readonly ViewSyncDestinations $destinations,
     ) {
     }
 
@@ -51,7 +53,7 @@ final class BigQueryController extends AbstractController
     public function index(Request $request): Response
     {
         $this->denyUnlessAvailableToAdmin();
-        [$settings, $error] = $this->loadSyncSettings('BigQuery');
+        [$settings, $error] = $this->loadSyncSettings();
 
         $key = null;
         $keyError = null;
@@ -69,7 +71,7 @@ final class BigQueryController extends AbstractController
             $keyError ??= $e->getMessage();
         }
         return $this->render('bigquery/index.html.twig', [
-            ...$this->syncPage($request, 'BigQuery', $settings, $error),
+            ...$this->syncPage($request, $settings, $error),
             'auth_methods' => BigQuerySettings::AUTH_METHODS,
             'key' => $key === null ? null : ['email' => $key->clientEmail, 'project' => $key->projectId],
             'key_error' => $keyError,
@@ -137,13 +139,13 @@ final class BigQueryController extends AbstractController
     #[Route('/dashboard/bigquery/views', name: 'app_bigquery_views', methods: ['POST'])]
     public function saveViews(Request $request): Response
     {
-        return $this->saveSyncViews($request, 'BigQuery', 'BigQuery', 'The views to sync were saved. Tables of views you removed stay in BigQuery until you delete them there.');
+        return $this->saveSyncViews($request);
     }
 
     #[Route('/dashboard/bigquery/schedule', name: 'app_bigquery_schedule', methods: ['POST'])]
     public function saveSchedule(Request $request): Response
     {
-        return $this->saveSyncSchedule($request, 'BigQuery');
+        return $this->saveSyncSchedule($request);
     }
 
     #[Route('/dashboard/bigquery/key/remove', name: 'app_bigquery_key_remove', methods: ['POST'])]
@@ -278,6 +280,26 @@ final class BigQueryController extends AbstractController
         }
 
         return $this->redirectToRoute(self::ROUTE);
+    }
+
+    private function syncRunner(): BigQuerySyncRunner
+    {
+        return $this->runner;
+    }
+
+    private function syncBackground(): BigQueryBackgroundSync
+    {
+        return $this->background;
+    }
+
+    private function syncLogger(): LoggerInterface
+    {
+        return $this->logger;
+    }
+
+    private function syncDestinations(): ViewSyncDestinations
+    {
+        return $this->destinations;
     }
 
     /** The redirect URI to register with the OAuth client. */

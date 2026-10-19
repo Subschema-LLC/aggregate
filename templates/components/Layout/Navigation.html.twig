@@ -13,7 +13,8 @@
     {% if item %}
         {% set tag = item.enabled ? 'a' : 'span' %}
         {% set external = item.enabled and item.external|default(false) %}
-        <{{ tag }} class="{{ classes }}" {% if item.enabled %}href="{{ item.logout ? logout_path('main') : item.url }}"{% if external %} target="_blank" rel="noopener noreferrer"{% endif %}{% else %}role="link" aria-disabled="true"{% endif %}>
+        {# A link is only ever inactive because a feature flag turned it off and left it shown. #}
+        <{{ tag }} class="{{ classes }}" {% if item.enabled %}href="{{ item.logout ? logout_path('main') : item.url }}"{% if external %} target="_blank" rel="noopener noreferrer"{% endif %}{% else %}role="link" aria-disabled="true" title="Turned off by an administrator in Feature flags"{% endif %}>
             {% if is_brand %}
                 {{ component('Branding:Identity', {branding: app_branding}) }}
             {% else %}
@@ -23,7 +24,8 @@
                 <span class="is-sr-only">(opens in a new tab)</span>
             {% endif %}
             {% if not item.enabled %}
-                <span class="ml-1" aria-hidden="true">(disabled)</span>
+                <span class="tag is-light ml-2 app-navigation-off">Off</span>
+                <span class="is-sr-only">(turned off in Feature flags)</span>
             {% endif %}
         </{{ tag }}>
     {% endif %}

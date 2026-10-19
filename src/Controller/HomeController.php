@@ -47,6 +47,12 @@ class HomeController extends AbstractController
     #[Route('/how-it-works/data-visualization', name: 'app_how_it_works_data_visualization', methods: ['GET'])]
     public function dataVisualization(ApprovedViewColumns $columns): Response
     {
-        return $this->render('home/data_structure.html.twig', ['view_columns' => $columns->all()]);
+        return $this->render('home/data_structure.html.twig', [
+            'view_columns' => $columns->all(),
+            // The Sync page exists only with the dashboard; link it for administrators.
+            'sync_url' => $this->config->isDashboardEnabled() && $this->isGranted('ROLE_ADMIN') && $this->container->get('router')->getRouteCollection()->get('app_sync') !== null
+                ? $this->generateUrl('app_sync')
+                : null,
+        ]);
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Service;
 
+use App\Service\Operations\ConfigurationChanges;
 use Symfony\Component\Yaml\Yaml;
 
 /**
@@ -246,6 +247,7 @@ class WebsiteConfigManager
 
                 return false;
             }
+            ConfigurationChanges::recordMapping('config/websites.yaml', $config, $updated);
 
             return true;
         } catch (\InvalidArgumentException $e) {

@@ -10,11 +10,12 @@ use App\Service\BigQuery\BigQueryCredentialsFactory;
 use App\Service\BigQuery\BigQueryException;
 use App\Service\BigQuery\BigQuerySettings;
 use App\Service\BigQuery\BigQuerySyncRunner;
-use App\Service\BigQuery\BigQueryViewExporter;
 use App\Service\BigQuery\GoogleCredentials;
 use App\Service\Operations\AuditTrail;
 use App\Service\Operations\ProcessingTasks;
 use App\Service\Operations\TaskTrigger;
+use App\Service\ViewSync\ViewExporter;
+use App\Service\ViewSync\ViewSnapshot;
 use App\Tests\Service\Operations\OperationsDatabase;
 use Doctrine\DBAL\Connection;
 use PHPUnit\Framework\TestCase;
@@ -30,6 +31,10 @@ final class BigQuerySyncRunnerTest extends TestCase
     private \DateTimeImmutable $now;
     /** @var list<array{0: string, 1: string}> */
     private array $loads = [];
+    /** @var array<string, string> each view's content, as its fingerprint */
+    private array $content = [];
+    /** @var array<string, int> the rows of each table in BigQuery */
+    private array $tables = [];
     private array $environment;
 
     protected function setUp(): void
@@ -106,11 +111,61 @@ final class BigQuerySyncRunnerTest extends TestCase
         self::assertSame([], $this->loads);
 
         $this->now = $this->now->modify('+1 minute');
-        self::assertSame(['synced', 'synced', 'synced'], array_column($this->runner()->run()['results'], 'status'));
+        $this->content['bi_anonymous_events_v1'] = 'an hour later';
+        self::assertSame(['synced', 'unchanged', 'unchanged'], array_column($this->runner()->run()['results'], 'status'));
 
         $this->loads = [];
         $this->runner()->run(true, ['bi_dim_device_class_v1']);
         self::assertSame([['empty', 'bi_dim_device_class_v1']], $this->loads);
+    }
+
+    public function testAScheduledSyncKeepsTheTableOfAViewThatHasNotChanged(): void
+    {
+        $this->runner()->run();
+        $first = $this->tasks()->latest(BigQuerySyncRunner::TASK_TYPE)['bi_anonymous_events_v1']['success'];
+        self::assertSame(hash('sha256', 'first'), $first['fingerprint']);
+        $this->loads = [];
+
+        $this->now = $this->now->modify('+1 hour');
+        $result = $this->runner()->run();
+        self::assertSame([
+            ['view' => 'bi_anonymous_events_v1', 'status' => 'unchanged', 'rows' => 3, 'message' => 'Unchanged since the last sync: kept my-project.aggregate.bi_anonymous_events_v1 with 3 rows.'],
+            ['view' => 'bi_dim_device_class_v1', 'status' => 'unchanged', 'rows' => 0, 'message' => 'Unchanged since the last sync: kept my-project.aggregate.bi_dim_device_class_v1 with 0 rows.'],
+            ['view' => 'analytics_custom_events_v1', 'status' => 'unchanged', 'rows' => 3, 'message' => 'Unchanged since the last sync: kept my-project.aggregate.analytics_custom_events_v1 with 3 rows.'],
+        ], $result['results']);
+        self::assertSame([], $this->loads);
+        $kept = $this->tasks()->latest(BigQuerySyncRunner::TASK_TYPE)['bi_anonymous_events_v1']['success'];
+        self::assertSame(['succeeded', 3, null, $first['fingerprint']], [$kept['status'], $kept['row_count'], $kept['external_id'], $kept['fingerprint']]);
+        self::assertEquals($this->now, $kept['finished_at'], 'the copy is confirmed current now');
+        self::assertSame([], glob($this->projectDir.'/var/bigquery/export-*') ?: [], 'the snapshot is deleted either way');
+
+        // A changed view, a table deleted in BigQuery and one whose row count
+        // differs are replaced; the others are kept.
+        $this->now = $this->now->modify('+1 hour');
+        $this->content['bi_anonymous_events_v1'] = 'changed';
+        unset($this->tables['bi_dim_device_class_v1']);
+        $this->tables['analytics_custom_events_v1'] = 2;
+        self::assertSame(['synced', 'synced', 'synced'], array_column($this->runner()->run()['results'], 'status'));
+        self::assertSame(['bi_anonymous_events_v1', 'bi_dim_device_class_v1', 'analytics_custom_events_v1'], array_column($this->loads, 1));
+        self::assertSame(hash('sha256', 'changed'), $this->tasks()->latest(BigQuerySyncRunner::TASK_TYPE)['bi_anonymous_events_v1']['success']['fingerprint']);
+    }
+
+    public function testForcedSyncsReplaceUnchangedTablesAndAFailureKeepsTheLastFingerprint(): void
+    {
+        $this->runner()->run();
+        $this->loads = [];
+
+        // --force, and the dashboard's Sync now, which runs it.
+        self::assertSame(['synced', 'synced', 'synced'], array_column($this->runner()->run(true)['results'], 'status'));
+        self::assertCount(3, $this->loads);
+
+        // A failed attempt leaves the table as it was, so a later scheduled
+        // sync of the same content still keeps it.
+        $this->now = $this->now->modify('+1 hour');
+        $this->runner([], failFor: 'bi_anonymous_events_v1')->run(true, ['bi_anonymous_events_v1']);
+        self::assertSame('failed', $this->tasks()->latest(BigQuerySyncRunner::TASK_TYPE)['bi_anonymous_events_v1']['attempt']['status']);
+        $this->now = $this->now->modify('+15 minutes');
+        self::assertSame('unchanged', $this->runner()->run(false, ['bi_anonymous_events_v1'])['results'][0]['status']);
     }
 
     public function testAFailedViewIsRecordedAndRetriedAfterFifteenMinutesWhileOthersContinue(): void
@@ -270,22 +325,25 @@ final class BigQuerySyncRunnerTest extends TestCase
             $factory->method('create')->willReturn($credentials);
         }
         $directory = $this->projectDir.'/var/bigquery';
-        $exporter = $this->createStub(BigQueryViewExporter::class);
-        $exporter->method('export')->willReturnCallback(static function (string $view) use ($directory): array {
+        $exporter = $this->createStub(ViewExporter::class);
+        $exporter->method('export')->willReturnCallback(function (string $view, string $exportDirectory) use ($directory): ViewSnapshot {
+            self::assertSame('var/bigquery', $exportDirectory);
             @mkdir($directory, 0700, true);
             $file = $directory.'/export-'.$view.'.ndjson';
             $rows = $view === 'bi_dim_device_class_v1' ? 0 : 3;
             file_put_contents($file, str_repeat("{}\n", $rows));
 
-            return ['file' => $file, 'rows' => $rows, 'bytes' => $rows * 3, 'fields' => [['name' => 'website_token', 'type' => 'STRING']]];
+            return new ViewSnapshot($view, $file, [['name' => 'website_token', 'type' => 'STRING']], $rows, $rows * 3, hash('sha256', $this->content[$view] ?? 'first'));
         });
         $client = $this->createStub(BigQueryClient::class);
         $client->method('project')->willReturn('my-project');
+        $client->method('tableRows')->willReturnCallback(fn (string $dataset, string $table): ?int => $this->tables[$table] ?? null);
         $client->method('load')->willReturnCallback(function (string $dataset, string $table) use ($failFor, $failure): array {
             if ($table === $failFor) {
                 throw $failure ?? new BigQueryException('BigQuery refused the request: quota exceeded.');
             }
             $this->loads[] = ['load', $table];
+            $this->tables[$table] = 3;
 
             return ['job_id' => 'job-'.$table, 'rows' => 3];
         });
@@ -294,6 +352,7 @@ final class BigQuerySyncRunnerTest extends TestCase
                 throw $failure ?? new BigQueryException('BigQuery refused the request: quota exceeded.');
             }
             $this->loads[] = ['empty', $table];
+            $this->tables[$table] = 0;
 
             return ['job_id' => 'job-'.$table, 'rows' => 0];
         });

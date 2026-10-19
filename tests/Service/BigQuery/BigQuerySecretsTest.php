@@ -12,6 +12,7 @@ use App\Service\BigQuery\BigQuerySettings;
 use App\Service\BigQuery\GoogleCloudCredentials;
 use App\Service\BigQuery\GoogleSignInCredentials;
 use App\Service\BigQuery\ServiceAccountCredentials;
+use App\Service\Operations\ConfigurationChanges;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\Yaml\Yaml;
@@ -66,6 +67,23 @@ final class BigQuerySecretsTest extends TestCase
 
         $secrets->removeServiceAccountKey();
         self::assertFileDoesNotExist($path);
+    }
+
+    public function testTheAuditTrailNamesTheSecretFilesButNeverTheirContents(): void
+    {
+        $secrets = $this->secrets();
+        ConfigurationChanges::start();
+        $secrets->storeServiceAccountKey(GoogleCredentialsTest::keyJson());
+        $secrets->storeClientSecret('client-secret');
+        $changes = ConfigurationChanges::finish();
+        self::assertSame(['config/secrets/bigquery-google-sign-in.json' => [], 'config/secrets/bigquery-service-account.json' => []], $changes);
+
+        ConfigurationChanges::start();
+        $secrets->removeServiceAccountKey();
+        $secrets->removeServiceAccountKey();
+        $secrets->clearSignIn();
+        self::assertSame(['config/secrets/bigquery-google-sign-in.json' => [], 'config/secrets/bigquery-service-account.json' => []], ConfigurationChanges::finish());
+        self::assertStringNotContainsString('client-secret', (string) ConfigurationChanges::describe($changes));
     }
 
     public function testAKeyManagedElsewhereIsReadButNeverWritten(): void

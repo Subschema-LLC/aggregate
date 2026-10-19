@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Tests\Service\ReportingDatabase;
 
 use App\Service\AggregateConfigLoader;
-use App\Service\BigQuery\BigQueryViewCatalog;
 use App\Service\ReportingDatabase\ReportingDatabaseSettings;
+use App\Service\ViewSync\ViewCatalog;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Yaml\Yaml;
 
@@ -40,7 +40,7 @@ final class ReportingDatabaseSettingsTest extends TestCase
         $settings = $this->settings([])->toArray();
 
         self::assertFalse($settings['reporting_database_enabled']);
-        self::assertSame(array_keys(BigQueryViewCatalog::APPROVED), $settings['reporting_database_views']);
+        self::assertSame(array_keys(ViewCatalog::APPROVED), $settings['reporting_database_views']);
         self::assertSame([], $settings['reporting_database_private_views']);
         self::assertSame(60, $settings['reporting_database_interval_minutes']);
     }

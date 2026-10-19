@@ -4,14 +4,15 @@ declare(strict_types=1);
 
 namespace App\Service\BigQuery;
 
+use App\Service\ViewSync\ViewCatalog;
 use Symfony\Contracts\HttpClient\Exception\ExceptionInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Symfony\Contracts\HttpClient\ResponseInterface;
 
 /**
- * The few BigQuery REST calls the sync needs: datasets, load jobs with a
- * resumable upload, and job status. Load jobs replace a table atomically
- * (WRITE_TRUNCATE) and do not incur streaming-insert charges.
+ * The few BigQuery REST calls the sync needs: datasets, a table's row count,
+ * load jobs with a resumable upload, and job status. Load jobs replace a table
+ * atomically (WRITE_TRUNCATE) and do not incur streaming-insert charges.
  */
 class BigQueryClient
 {
@@ -65,7 +66,7 @@ class BigQueryClient
             $this->call('POST', '/projects/'.rawurlencode($this->project).'/datasets', [
                 'datasetReference' => ['projectId' => $this->project, 'datasetId' => $dataset],
                 'location' => $this->location,
-                'description' => 'Reporting views copied from Aggregate. Each table is replaced on every sync.',
+                'description' => 'Reporting views copied from Aggregate. Each table is replaced when its view changes.',
                 'labels' => ['source' => 'aggregate'],
             ], conflictIsSuccess: true);
 
@@ -74,6 +75,21 @@ class BigQueryClient
         if ($status['location'] !== '' && strcasecmp($status['location'], $this->location) !== 0) {
             throw new BigQueryException(sprintf('The dataset %s is in %s, not %s. Set the location to %s, or choose another dataset.', $dataset, $status['location'], $this->location, $status['location']));
         }
+    }
+
+    /**
+     * How many rows a table holds, or null when there is no such table (or
+     * the name is a view). A table that load jobs fill reports its exact count.
+     */
+    public function tableRows(string $dataset, string $table): ?int
+    {
+        $response = $this->call('GET', '/projects/'.rawurlencode($this->project).'/datasets/'.rawurlencode($dataset).'/tables/'.rawurlencode($table), allowNotFound: true);
+        if ($response === null || ($response['type'] ?? 'TABLE') !== 'TABLE') {
+            return null;
+        }
+        $rows = $response['numRows'] ?? null;
+
+        return is_string($rows) && preg_match('/^[0-9]{1,18}$/D', $rows) === 1 ? (int) $rows : (is_int($rows) ? $rows : null);
     }
 
     /** Confirms these credentials may run jobs in the project, with a free dry-run query. */
@@ -196,7 +212,7 @@ class BigQueryClient
     {
         $schema = [];
         foreach ($fields as $field) {
-            if (preg_match('/^[A-Za-z_][A-Za-z0-9_]{0,299}$/D', $field['name']) !== 1 || !in_array($field['type'], BigQueryViewCatalog::TYPES, true)) {
+            if (preg_match('/^[A-Za-z_][A-Za-z0-9_]{0,299}$/D', $field['name']) !== 1 || !in_array($field['type'], ViewCatalog::TYPES, true)) {
                 throw new BigQueryException('The column '.TokenCache::clean($field['name'], 80).' cannot be used as a BigQuery column name.');
             }
             $schema[] = ['name' => $field['name'], 'type' => $field['type'], 'mode' => 'NULLABLE'];

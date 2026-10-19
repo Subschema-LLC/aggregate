@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Service\Operations\ConfigurationChanges;
 use Symfony\Component\Yaml\Yaml;
 
 /**
@@ -146,13 +147,33 @@ final class WebsiteScopeFiles
             if (!flock($handle, LOCK_EX)) {
                 throw new \RuntimeException('The website group configuration could not be locked.');
             }
-            if (!ftruncate($handle, 0) || fwrite($handle, $yaml) === false || !fflush($handle)) {
+            $before = ConfigurationChanges::isRecording() ? self::parsedOrEmpty(stream_get_contents($handle)) : [];
+            if (!ftruncate($handle, 0) || !rewind($handle) || fwrite($handle, $yaml) === false || !fflush($handle)) {
                 throw new \RuntimeException('The website group configuration could not be saved.');
+            }
+            if (ConfigurationChanges::isRecording()) {
+                $relative = str_starts_with($path, $this->projectDir.'/') ? substr($path, strlen($this->projectDir) + 1) : basename($path);
+                ConfigurationChanges::recordMapping($relative, $before, self::parsedOrEmpty($yaml));
             }
         } finally {
             @flock($handle, LOCK_UN);
             fclose($handle);
         }
+    }
+
+    /** @return array<mixed> the mapping in a YAML document, or [] when there is none */
+    private static function parsedOrEmpty(string|false $yaml): array
+    {
+        if (!is_string($yaml) || trim($yaml) === '') {
+            return [];
+        }
+        try {
+            $parsed = Yaml::parse($yaml);
+        } catch (\Throwable) {
+            return [];
+        }
+
+        return is_array($parsed) ? $parsed : [];
     }
 
     /**

@@ -10,23 +10,28 @@ use Doctrine\DBAL\Types\Types;
 
 /**
  * The append-only audit_trail table: what happened, to what, by whom and with
- * what outcome. ProcessingTasks writes one entry per finished task; the
- * "admin" category is reserved for administrator actions. Entries are only
- * removed by the retention purge (audit_trail_retention_days). Details must
- * never carry secrets or visitor data; callers pass summaries and redacted
- * error messages.
+ * what outcome. The category is the area an entry belongs to
+ * (AuditTrailSettings::AREAS): ProcessingTasks writes one "task" entry per
+ * finished task, and AdminAudit one entry per administrator action. An area
+ * that is switched off records nothing. Entries are only removed by the
+ * retention purge: job runs after audit_trail_retention_days, everything else
+ * after audit_trail_admin_retention_days. Details must never carry secrets,
+ * submitted values or visitor data; callers pass summaries, setting names and
+ * redacted error messages.
  */
 class AuditTrail
 {
     public const CATEGORY_TASK = 'task';
-    public const CATEGORY_ADMIN = 'admin';
     public const DETAILS_MAX_LENGTH = 4000;
 
     private const TABLE = 'audit_trail';
     private const ID_CHUNK_SIZE = 500;
 
-    public function __construct(private readonly Connection $connection)
-    {
+    /** @param AuditTrailSettings|null $settings what to record; without it, everything is */
+    public function __construct(
+        private readonly Connection $connection,
+        private readonly ?AuditTrailSettings $settings = null,
+    ) {
     }
 
     public function record(
@@ -38,7 +43,11 @@ class AuditTrail
         ?string $actor = null,
         ?int $processingTaskId = null,
         ?string $details = null,
+        bool $always = false,
     ): void {
+        if (!$always && $this->settings !== null && isset(AuditTrailSettings::AREAS[$category]) && !$this->settings->isRecorded($category)) {
+            return;
+        }
         foreach (['category' => [$category, 32], 'operation' => [$operation, 64], 'outcome' => [$outcome, 16]] as $name => [$value, $length]) {
             if (preg_match('/^[a-z][a-z0-9_]*$/D', $value) !== 1 || strlen($value) > $length) {
                 throw new \InvalidArgumentException(sprintf('The audit %s must be a short lowercase code.', $name));
@@ -60,29 +69,36 @@ class AuditTrail
         ]);
     }
 
-    public function countBefore(\DateTimeImmutable $cutoff): int
+    /** @param bool|null $jobRuns true counts only job runs (category task), false every other entry, null all */
+    public function countBefore(\DateTimeImmutable $cutoff, ?bool $jobRuns = null): int
     {
         return (int) $this->connection->fetchOne(
-            'SELECT COUNT(*) FROM '.self::TABLE.' WHERE occurred_at < :cutoff',
-            ['cutoff' => self::utc($cutoff)],
+            'SELECT COUNT(*) FROM '.self::TABLE.' WHERE occurred_at < :cutoff'.self::jobRunCondition($jobRuns),
+            ['cutoff' => self::utc($cutoff)] + ($jobRuns === null ? [] : ['task' => self::CATEGORY_TASK]),
             ['cutoff' => Types::DATETIME_IMMUTABLE],
         );
     }
 
-    /** Deletes entries that occurred before the cutoff, in batches. */
-    public function purgeBefore(\DateTimeImmutable $cutoff, int $batchSize): int
+    /**
+     * Deletes entries that occurred before the cutoff, in batches.
+     *
+     * @param bool|null $jobRuns true deletes only job runs (category task), false every other entry, null all
+     */
+    public function purgeBefore(\DateTimeImmutable $cutoff, int $batchSize, ?bool $jobRuns = null): int
     {
         $deleted = 0;
         do {
-            $ids = array_map('intval', $this->connection->createQueryBuilder()
+            $query = $this->connection->createQueryBuilder()
                 ->select('id')
                 ->from(self::TABLE)
-                ->where('occurred_at < :cutoff')
+                ->where('occurred_at < :cutoff'.self::jobRunCondition($jobRuns))
                 ->orderBy('id', 'ASC')
                 ->setMaxResults($batchSize)
-                ->setParameter('cutoff', self::utc($cutoff), Types::DATETIME_IMMUTABLE)
-                ->executeQuery()
-                ->fetchFirstColumn());
+                ->setParameter('cutoff', self::utc($cutoff), Types::DATETIME_IMMUTABLE);
+            if ($jobRuns !== null) {
+                $query->setParameter('task', self::CATEGORY_TASK);
+            }
+            $ids = array_map('intval', $query->executeQuery()->fetchFirstColumn());
             foreach (array_chunk($ids, self::ID_CHUNK_SIZE) as $chunk) {
                 $deleted += (int) $this->connection->executeStatement(
                     'DELETE FROM '.self::TABLE.' WHERE id IN (:ids)',
@@ -93,6 +109,15 @@ class AuditTrail
         } while (count($ids) === $batchSize);
 
         return $deleted;
+    }
+
+    private static function jobRunCondition(?bool $jobRuns): string
+    {
+        return match ($jobRuns) {
+            null => '',
+            true => ' AND category = :task',
+            false => ' AND category <> :task',
+        };
     }
 
     /**

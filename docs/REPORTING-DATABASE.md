@@ -43,21 +43,27 @@ is an output, not a replica.
   runs every five minutes and copies the views that are due (the same as
   `php bin/console app:reporting-database:sync`). Each selected view is copied when the configured
   interval has passed since its last copy. Web requests never run a sync; **Sync
-  now** on **Reporting → Reporting database** starts the same command in the
+  now** on **Reporting → Sync → Reporting database** starts the same command in the
   background.
 - Each view becomes a table with the view's name, for example
   `bi_anonymous_events_v1`, in the reporting database's default schema.
-- Aggregate reads the whole view and writes the rows to a new table
+- Aggregate reads the whole view into a temporary file in
+  `var/reporting-database`, then writes the rows to a new table
   (`<view>_sync_new`). Only when every row is in and counted does that table
   replace the previous copy, in one step: MySQL and MariaDB rename both tables in
   one statement; PostgreSQL, SQL Server and SQLite drop and rename in one
   transaction. A BI query sees the previous copy or the new one, never a partial
   one. If anything fails, the previous copy stays and the half-written table is
   dropped.
-- Because every sync replaces the whole table, the copy always matches the view:
-  suppression, threshold changes, archiving and deletions in Aggregate reach the
-  reporting database at the next sync. A new column in a view, such as a new
-  [custom property](DATA-MODEL.md), appears in its table at the next sync.
+- A scheduled sync keeps a table whose view has the same rows and columns as
+  at its last successful sync, when the table still has as many rows, instead
+  of writing it again (status `unchanged`). Rows are compared by a fingerprint
+  of the file, whatever their order. Any change in the view gives different
+  rows, so suppression, threshold changes, archiving and deletions in Aggregate
+  reach the reporting database at the next sync, a new column in a view, such
+  as a new [custom property](DATA-MODEL.md), appears in its table at the next
+  sync, and a dropped table is copied again. **Sync now** and `--force` replace
+  every table.
 - A view that fails is recorded with its error and retried after 15 minutes (or
   the interval, if shorter); the other views continue. Two scheduled runs never
   copy the same view at once.
@@ -143,7 +149,9 @@ permissions.
 
 ## Connect Aggregate to it
 
-Open **Reporting → Reporting database** and fill in **1. Connect the reporting
+Open **Reporting → Sync** and choose the **Reporting database** tab (before any
+sync is on, the menu has no **Sync** entry yet: type "Sync" or "reporting
+database" in the dashboard search). Fill in **1. Connect the reporting
 database**: the database type, server, port (empty for the type's default), the
 sync user's name and password, and the database name (for SQLite, a file such
 as `var/reporting.db`). For SQL Server with a self-signed certificate, tick
@@ -244,7 +252,7 @@ the scheduler's line replaces it.
 | Command | Purpose |
 | --- | --- |
 | `app:reporting-database:sync` | Copy the views that are due; exits with an error when a view fails |
-| `app:reporting-database:sync --force` | Copy every selected view now |
+| `app:reporting-database:sync --force` | Copy every selected view now, replacing unchanged tables too |
 | `app:reporting-database:sync --view=bi_anonymous_goals_v1` | Limit a run to selected views (repeatable) |
 | `app:reporting-database:sync --json` | Machine-readable results |
 | `app:reporting-database:check` | Show the settings and status, then test the connection (`--no-connect` skips the test) |
@@ -254,9 +262,12 @@ the scheduler's line replaces it.
 which needs `proc_open` on a Unix-like server; otherwise run the command
 yourself. Its output goes to `var/reporting-database/last-run.log`.
 
-A sync reads each whole view from the application database. The approved views
-are small. Private row-level views grow with your traffic; give them a longer
-interval, or a schedule outside busy hours, if a copy takes long.
+A sync reads each whole view from the application database, even when it then
+keeps the table, and writes it to a temporary file first, so leave free space
+in `var/reporting-database` for the largest view; the file is deleted after
+each view. The approved views are small. Private row-level views grow with your
+traffic; give them a longer interval, or a schedule outside busy hours, if a
+copy takes long.
 
 ## Settings without the dashboard
 

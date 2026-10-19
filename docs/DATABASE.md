@@ -532,6 +532,8 @@ Current migrations:
 - `migrations/Version20261001000000.php` (website labels view `bi_dim_website_token_v1`)
 - `migrations/Version20261007000000.php` (private `analytics_bigquery_sync` status table for [BigQuery sync](BIGQUERY.md); replaced by the next migration)
 - `migrations/Version20261007210000.php` (generic private `processing_tasks` and `audit_trail` tables; drops `analytics_bigquery_sync` without copying its rows)
+- `migrations/Version20261018000000.php` (`processing_tasks.fingerprint`, so view syncs can keep copies of unchanged views)
+- `migrations/Version20261019000000.php` (`audit_trail` indexes by area, action and user for the Audit trail page and its retention purges)
 
 The current schema contains:
 - `events` (private individual rows for both `anonymous` and `enhanced` privacy modes, with optional coarse `geo_area` and allowlisted `goal_event`)
@@ -732,24 +734,31 @@ status table per feature:
   `triggered_by` is `schedule` (the scheduled command doing what is due),
   `command` (a person running a command for a specific job) or `dashboard`, with
   the administrator in `requested_by`. `started_at` and `finished_at` are UTC;
-  `row_count`, `external_id` (such as a BigQuery job ID) and `details` (the result
-  or the failure, redacted) complete the row. While an exclusive job runs, its
+  `row_count`, `external_id` (such as a BigQuery job ID), `details` (the result
+  or the failure, redacted) and, for a successful view sync, `fingerprint` (of
+  the rows it copied, so the next scheduled sync can keep an unchanged copy)
+  complete the row. While an exclusive job runs, its
   `lock_key` (`task_type:subject`) is set, and a unique index allows only one
   running row per key, so two processes never run the same job at once. A run
   still marked running after its allowed time is marked failed by the next run.
-- **`audit_trail`**: one entry per finished run: `occurred_at` (UTC),
-  `category` (`task`; `admin` is reserved for administrator actions),
-  `operation` (the task type), `subject`, `outcome`, `actor` (the administrator,
-  when there is one), `processing_task_id` and `details`.
+- **`audit_trail`**: one entry per finished run and per
+  [administrator action or sign-in](AUDIT-TRAIL.md): `occurred_at` (UTC),
+  `category` (the area: `task` for job runs; `settings`, `users`, `websites`,
+  `integrations`, `updates`, `operations` or `sign_ins` for the others),
+  `operation` (the task type or action code), `subject`, `outcome`, `actor`
+  (the username, or the operating-system account for a command, when there is
+  one), `processing_task_id` and `details`. It is indexed by time, by category
+  and time, by operation and by actor for the Audit trail page and the purges.
 
-Details hold summaries and error messages, never event rows or credentials;
-database errors are recorded by type only, with the full error in the application
-log. Do not grant either table to routine BI users.
+Details hold summaries, setting names and error messages, never setting values,
+event rows or credentials; database errors are recorded by type only, with the
+full error in the application log. Do not grant either table to routine BI users.
 
 `app:analytics:maintain` purges runs that started and ended more than
 `processing_tasks_retention_days` (default 90) ago, keeping the latest success and
-failure of each job, and audit entries older than `audit_trail_retention_days`
-(default 365). `0` keeps them. See
+failure of each job, job-run audit entries older than `audit_trail_retention_days`
+(default 365), and other audit entries older than
+`audit_trail_admin_retention_days` (default 730). `0` keeps them. See
 [task and audit records](CONFIGURATION.md#task-and-audit-records).
 
 ---

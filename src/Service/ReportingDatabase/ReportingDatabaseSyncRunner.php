@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace App\Service\ReportingDatabase;
 
-use App\Service\BigQuery\BigQueryException;
-use App\Service\BigQuery\BigQueryViewExporter;
 use App\Service\Operations\ProcessingTasks;
+use App\Service\ViewSync\ViewExporter;
+use App\Service\ViewSync\ViewSnapshot;
+use App\Service\ViewSync\ViewSyncException;
 use App\Service\ViewSync\ViewSyncRunner;
 use Psr\Log\LoggerInterface;
 
@@ -27,12 +28,12 @@ class ReportingDatabaseSyncRunner extends ViewSyncRunner
     public function __construct(
         ReportingDatabaseSettings $settings,
         private readonly ReportingDatabaseConnection $database,
-        private readonly BigQueryViewExporter $exporter,
+        ViewExporter $exporter,
         ProcessingTasks $tasks,
         LoggerInterface $logger,
         ?\Closure $clock = null,
     ) {
-        parent::__construct($settings, $tasks, $logger, $clock, self::TASK_TYPE, 'the reporting database');
+        parent::__construct($settings, $exporter, $tasks, $logger, $clock);
     }
 
     /**
@@ -64,19 +65,26 @@ class ReportingDatabaseSyncRunner extends ViewSyncRunner
     }
 
     /**
-     * Reads the view from the application database and writes it to the
-     * reporting database. The view's rows are read while they are written;
-     * leaving this method, normally or by an exception, ends that read before
-     * the task is recorded on the application database.
+     * Writes the snapshot's rows to the reporting database, replacing the
+     * view's table (see ReportingTableWriter). The view was read from the
+     * application database before this starts.
      *
      * @param ReportingTableWriter $destination
      */
-    protected function copy(string $view, object $destination, array $settings, ?string &$externalId): array
+    protected function replace(ViewSnapshot $snapshot, object $destination, array $settings, ?string &$externalId): void
     {
-        $source = $this->exporter->read($view);
-        $rows = $destination->replace($view, $source['fields'], $source['rows']);
+        $destination->replace($snapshot->view, $snapshot->fields, $snapshot->records(), $snapshot->rows);
+    }
 
-        return ['rows' => $rows, 'message' => sprintf('Replaced %s with %d row%s.', $view, $rows, $rows === 1 ? '' : 's')];
+    /** @param ReportingTableWriter $destination */
+    protected function copiedRows(string $view, object $destination, array $settings): ?int
+    {
+        return $destination->rowCount($view);
+    }
+
+    protected function copyName(string $view, object $destination, array $settings): string
+    {
+        return $view;
     }
 
     protected function setupFailure(\Throwable $e): string
@@ -97,7 +105,7 @@ class ReportingDatabaseSyncRunner extends ViewSyncRunner
      */
     private function message(\Throwable $e, string $context): string
     {
-        if ($e instanceof ReportingDatabaseException || $e instanceof BigQueryException) {
+        if ($e instanceof ViewSyncException) {
             if ($e->getPrevious() !== null) {
                 $this->logger->error($context.'.', ['exception' => $e]);
             }

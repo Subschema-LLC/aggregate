@@ -172,7 +172,8 @@
                     <h2 class="title is-4">Task and audit records</h2>
                     <p class="mb-4">
                         Every background job run is a row in <code>processing_tasks</code>, and every finished run is an entry in <code>audit_trail</code>.
-                        Maintenance purges both after the periods below; <strong>0</strong> keeps them indefinitely. The latest success and failure of each job are always kept so schedules and status pages still work.
+                        Administrator actions and sign-ins are entries in <code>audit_trail</code> too, kept for their own period; <a href="{{ path('app_audit_trail') }}">Audit trail</a> lists them and chooses what is recorded.
+                        Maintenance purges each after the periods below; <strong>0</strong> keeps them indefinitely. The latest success and failure of each job are always kept so schedules and status pages still work.
                     </p>
                     {% set record_fields = [
                         {
@@ -184,13 +185,19 @@
                         {
                             key: 'audit_trail_retention_days',
                             id: 'audit-trail-retention-days',
-                            label: 'Audit trail entries',
+                            label: 'Audit trail: job runs',
                             env: 'AUDIT_TRAIL_RETENTION_DAYS'
+                        },
+                        {
+                            key: 'audit_trail_admin_retention_days',
+                            id: 'audit-trail-admin-retention-days',
+                            label: 'Audit trail: administrator actions',
+                            env: 'AUDIT_TRAIL_ADMIN_RETENTION_DAYS'
                         }
                     ] %}
                     <div class="columns">
                         {% for field in record_fields %}
-                            <div class="column is-half">
+                            <div class="column is-one-third">
                                 <div class="field">
                                     <label class="label" for="{{ field.id }}">{{ field.label }}</label>
                                     <div class="field has-addons">

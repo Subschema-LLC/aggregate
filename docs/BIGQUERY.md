@@ -36,18 +36,23 @@ same [reporting views](BI-CONNECTION.md) your BI tools already read.
   columns.
 - The dataset is created in the configured location on the first sync if it does
   not exist.
-- Because every sync replaces the whole table, the copy always matches the view:
-  suppression, threshold changes, archiving and deletions in Aggregate reach
-  BigQuery at the next sync.
+- A scheduled sync keeps a table whose view has the same rows as at its last
+  successful sync, when the table still has as many rows, instead of loading
+  it again (status `unchanged`). Rows are compared by a fingerprint of the
+  file, whatever their order. Any change in the view gives different rows, so
+  suppression, threshold changes, archiving and deletions in Aggregate still
+  reach BigQuery at the next sync, and a table deleted in BigQuery is loaded
+  again. **Sync now** and `--force` replace every table.
 - A view that fails is recorded with its error and retried after 15 minutes (or
   the interval, if shorter); the other views continue. Two scheduled runs, on one
   server or several, never sync the same view at once.
 - Load jobs are free in BigQuery. Google bills the storage of the tables and the
   queries you run on them. The approved views are small; private row-level views
-  grow with your traffic.
+  grow with your traffic. Keeping unchanged tables saves their upload, not the
+  reading: every sync reads each due view from the application database.
 
 Status for each view (last successful sync, rows, next sync and the last message)
-appears on **Reporting → BigQuery sync** and in
+appears on the **BigQuery** tab of **Reporting → Sync** and in
 `php bin/console app:bigquery:check`. Every view sync is a row in the private
 [`processing_tasks` table](DATABASE.md#processing-tasks-and-audit-trail)
 (`task_type` `bigquery_sync`, `subject` the view) with its status, row count,
@@ -60,7 +65,9 @@ them after their retention periods.
 
 1. **Prepare Google Cloud.** Pick or create a project and
    [enable the BigQuery API](https://console.cloud.google.com/apis/library/bigquery.googleapis.com).
-2. **Connect.** Open **Reporting → BigQuery sync**, choose how Aggregate signs in
+2. **Connect.** Open **Reporting → Sync** and choose the **BigQuery** tab. The
+   menu shows **Sync** once a destination is on; before that, type "Sync" or
+   "BigQuery" in the dashboard search. Choose how Aggregate signs in
    (below), enter the project ID if it is not detected, a dataset name (default
    `aggregate`) and a location such as `US`, `EU` or `europe-west2`. Save, then
    use **Test connection**: it signs in, checks the dataset and confirms that the
@@ -195,7 +202,7 @@ line replaces it.
 | Command | Purpose |
 | --- | --- |
 | `app:bigquery:sync` | Sync the views that are due; exits with an error when a view fails |
-| `app:bigquery:sync --force` | Sync every selected view now |
+| `app:bigquery:sync --force` | Sync every selected view now, replacing unchanged tables too |
 | `app:bigquery:sync --view=bi_anonymous_goals_v1` | Limit a run to selected views (repeatable) |
 | `app:bigquery:sync --dry-run [--output=DIR]` | Export locally and report rows and columns, without credentials or uploads; `--output` keeps the NDJSON and schema files |
 | `app:bigquery:sync --json` | Machine-readable results |
@@ -204,7 +211,7 @@ line replaces it.
 **Sync now** starts `app:bigquery:sync --force` in the background, which needs
 `proc_open` on a Unix-like server; otherwise run the command yourself. Its output
 goes to `var/bigquery/last-run.log`. Temporary export files are written to
-`var/bigquery` and deleted after each upload.
+`var/bigquery` and deleted after each view.
 
 ## Settings without the dashboard
 

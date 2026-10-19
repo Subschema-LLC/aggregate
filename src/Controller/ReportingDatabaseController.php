@@ -11,6 +11,7 @@ use App\Service\ReportingDatabase\ReportingDatabaseConnection;
 use App\Service\ReportingDatabase\ReportingDatabaseException;
 use App\Service\ReportingDatabase\ReportingDatabaseSettings;
 use App\Service\ReportingDatabase\ReportingDatabaseSyncRunner;
+use App\Service\ViewSync\ViewSyncDestinations;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -44,6 +45,7 @@ final class ReportingDatabaseController extends AbstractController
         private readonly ReportingDatabaseBackgroundSync $background,
         private readonly ReportingDatabaseConfigurator $configurator,
         private readonly LoggerInterface $logger,
+        private readonly ViewSyncDestinations $destinations,
     ) {
     }
 
@@ -51,7 +53,7 @@ final class ReportingDatabaseController extends AbstractController
     public function index(Request $request): Response
     {
         $this->denyUnlessAvailableToAdmin();
-        [$settings, $error] = $this->loadSyncSettings('reporting database');
+        [$settings, $error] = $this->loadSyncSettings();
 
         $location = null;
         $connectionError = null;
@@ -61,7 +63,7 @@ final class ReportingDatabaseController extends AbstractController
             $connectionError = $e->getMessage();
         }
         return $this->render('reporting_database/index.html.twig', [
-            ...$this->syncPage($request, 'reporting database', $settings, $error),
+            ...$this->syncPage($request, $settings, $error),
             'location' => $location,
             'connection_error' => $connectionError,
             'connection' => $this->connectionForm($request),
@@ -116,6 +118,26 @@ final class ReportingDatabaseController extends AbstractController
         return $this->redirectToRoute(self::ROUTE);
     }
 
+    private function syncRunner(): ReportingDatabaseSyncRunner
+    {
+        return $this->runner;
+    }
+
+    private function syncBackground(): ReportingDatabaseBackgroundSync
+    {
+        return $this->background;
+    }
+
+    private function syncLogger(): LoggerInterface
+    {
+        return $this->logger;
+    }
+
+    private function syncDestinations(): ViewSyncDestinations
+    {
+        return $this->destinations;
+    }
+
     /**
      * The connection form's values: those of a failed attempt, or the saved
      * connection's, never its password.
@@ -150,13 +172,13 @@ final class ReportingDatabaseController extends AbstractController
     #[Route('/dashboard/reporting-database/views', name: 'app_reporting_database_views', methods: ['POST'])]
     public function saveViews(Request $request): Response
     {
-        return $this->saveSyncViews($request, 'reporting database', 'the reporting database', 'The views to copy were saved. Tables of views you removed stay in the reporting database until you drop them there.');
+        return $this->saveSyncViews($request);
     }
 
     #[Route('/dashboard/reporting-database/schedule', name: 'app_reporting_database_schedule', methods: ['POST'])]
     public function saveSchedule(Request $request): Response
     {
-        return $this->saveSyncSchedule($request, 'reporting database');
+        return $this->saveSyncSchedule($request);
     }
 
     #[Route('/dashboard/reporting-database/test', name: 'app_reporting_database_test', methods: ['POST'])]

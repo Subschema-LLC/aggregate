@@ -12,7 +12,9 @@ use Psr\Clock\ClockInterface;
 /**
  * Runs the data lifecycle policy: archives and deletes analytics data when
  * those are turned on, and purges processing tasks and audit trail entries
- * older than their retention periods. Each run that changes data is itself a
+ * older than their retention periods: job-run entries after
+ * audit_trail_retention_days, administrator actions and sign-ins after
+ * audit_trail_admin_retention_days. Each run that changes data is itself a
  * processing task (analytics_maintenance), so it ends in the audit trail.
  */
 final class AnalyticsMaintenanceRunner
@@ -41,7 +43,8 @@ final class AnalyticsMaintenanceRunner
         $retentionEnabled = $settings['retention_enabled'];
         $taskDays = $settings['processing_tasks_retention_days'];
         $auditDays = $settings['audit_trail_retention_days'];
-        $recordPurgeEnabled = $taskDays > 0 || $auditDays > 0;
+        $adminAuditDays = $settings['audit_trail_admin_retention_days'];
+        $recordPurgeEnabled = $taskDays > 0 || $auditDays > 0 || $adminAuditDays > 0;
 
         if (!$archivingEnabled && !$retentionEnabled && !$recordPurgeEnabled) {
             return new AnalyticsMaintenanceResult(
@@ -61,6 +64,7 @@ final class AnalyticsMaintenanceRunner
         $archiveRetentionCutoff = $this->calendarCutoff($now, $settings['archive_retention_days']);
         $taskCutoff = $taskDays > 0 ? $this->calendarCutoff($now, $taskDays) : null;
         $auditCutoff = $auditDays > 0 ? $this->calendarCutoff($now, $auditDays) : null;
+        $adminAuditCutoff = $adminAuditDays > 0 ? $this->calendarCutoff($now, $adminAuditDays) : null;
 
         if ($dryRun) {
             return new AnalyticsMaintenanceResult(
@@ -76,7 +80,8 @@ final class AnalyticsMaintenanceRunner
                     : 0,
                 $recordPurgeEnabled,
                 $taskCutoff !== null ? $this->tasks->countBefore($taskCutoff) : 0,
-                $auditCutoff !== null ? $this->audit->countBefore($auditCutoff) : 0,
+                ($auditCutoff !== null ? $this->audit->countBefore($auditCutoff, true) : 0)
+                    + ($adminAuditCutoff !== null ? $this->audit->countBefore($adminAuditCutoff, false) : 0),
             );
         }
 
@@ -124,7 +129,10 @@ final class AnalyticsMaintenanceRunner
             $heartbeat();
             $purgedTasks = $taskCutoff !== null ? $this->tasks->purgeBefore($taskCutoff, $settings['batch_size']) : 0;
             $heartbeat();
-            $purgedAudit = $auditCutoff !== null ? $this->audit->purgeBefore($auditCutoff, $settings['batch_size']) : 0;
+            $purgedJobRuns = $auditCutoff !== null ? $this->audit->purgeBefore($auditCutoff, $settings['batch_size'], true) : 0;
+            $heartbeat();
+            $purgedAdmin = $adminAuditCutoff !== null ? $this->audit->purgeBefore($adminAuditCutoff, $settings['batch_size'], false) : 0;
+            $purgedAudit = $purgedJobRuns + $purgedAdmin;
 
             $result = new AnalyticsMaintenanceResult(
                 false,
@@ -141,7 +149,7 @@ final class AnalyticsMaintenanceRunner
                 (int) $task,
                 $this->now(),
                 $archivedEvents + $deletedRawEvents + $deletedArchiveCells + $purgedTasks + $purgedAudit,
-                self::summary($result, $archiveCutoff, $taskCutoff, $auditCutoff),
+                self::summary($result, $archiveCutoff, $taskCutoff, [[$auditCutoff, $purgedJobRuns, 'job run'], [$adminAuditCutoff, $purgedAdmin, 'administrator']]),
             );
 
             return $result;
@@ -169,8 +177,12 @@ final class AnalyticsMaintenanceRunner
         }
     }
 
-    /** What the run changed, for its processing task and audit entry. */
-    private static function summary(AnalyticsMaintenanceResult $result, \DateTimeImmutable $archiveCutoff, ?\DateTimeImmutable $taskCutoff, ?\DateTimeImmutable $auditCutoff): string
+    /**
+     * What the run changed, for its processing task and audit entry.
+     *
+     * @param list<array{0: ?\DateTimeImmutable, 1: int, 2: string}> $auditPurges cutoff, entries purged, kind
+     */
+    private static function summary(AnalyticsMaintenanceResult $result, \DateTimeImmutable $archiveCutoff, ?\DateTimeImmutable $taskCutoff, array $auditPurges): string
     {
         $count = static fn (int $number, string $one, string $many): string => $number.' '.($number === 1 ? $one : $many);
         $parts = [];
@@ -183,8 +195,10 @@ final class AnalyticsMaintenanceRunner
         if ($taskCutoff !== null) {
             $parts[] = sprintf('purged %s from before %s', $count($result->purgedProcessingTasks, 'processing task', 'processing tasks'), $taskCutoff->format('Y-m-d'));
         }
-        if ($auditCutoff !== null) {
-            $parts[] = sprintf('purged %s from before %s', $count($result->purgedAuditEntries, 'audit trail entry', 'audit trail entries'), $auditCutoff->format('Y-m-d'));
+        foreach ($auditPurges as [$cutoff, $purged, $kind]) {
+            if ($cutoff !== null) {
+                $parts[] = sprintf('purged %s from before %s', $count($purged, $kind.' audit trail entry', $kind.' audit trail entries'), $cutoff->format('Y-m-d'));
+            }
         }
 
         return ucfirst(implode('; ', $parts)).'.';

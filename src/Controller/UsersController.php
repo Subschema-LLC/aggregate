@@ -3,6 +3,7 @@
 namespace App\Controller;
 
 use App\Entity\User;
+use App\EventSubscriber\AdminAuditSubscriber;
 use App\Repository\UserRepository;
 use App\Service\AggregateConfigLoader;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
@@ -67,6 +68,8 @@ class UsersController extends AbstractController
             return $this->redirectToRoute('app_users');
         }
 
+        $request->attributes->set(AdminAuditSubscriber::SUBJECT, $username);
+        $request->attributes->set(AdminAuditSubscriber::DETAILS, $isAdmin ? 'Administrator account.' : 'Viewer account.');
         if ($this->userRepository->findOneBy(['username' => $username]) instanceof User) {
             $this->addFlash('error', sprintf('User "%s" already exists.', $username));
             return $this->redirectToRoute('app_users');
@@ -120,6 +123,7 @@ class UsersController extends AbstractController
             return $this->redirectToRoute('app_users');
         }
 
+        $request->attributes->set(AdminAuditSubscriber::SUBJECT, $user->getUsername());
         try {
             $user->setPassword($this->passwordHasher->hashPassword($user, $newPassword));
             $this->em->flush();

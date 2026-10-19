@@ -11,6 +11,7 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\Yaml\Yaml;
 
 final class FeatureFlagsController extends AbstractController
 {
@@ -42,6 +43,8 @@ final class FeatureFlagsController extends AbstractController
             'definitions' => $this->flags->definitions(),
             'settings' => $settings,
             'configuration_error' => $configurationError,
+            // Exactly what a save writes, every feature with both settings.
+            'yaml' => $configurationError === null ? Yaml::dump(['feature_flags' => $settings], 3, 2) : '',
         ]));
     }
 

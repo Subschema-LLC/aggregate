@@ -69,35 +69,27 @@ final class ReportingTimezoneControllerTest extends TestCase
         rmdir($this->directory);
     }
 
-    public function testPageShowsTheConfiguredZone(): void
+    public function testTheOldAddressOpensTheGeneralSettingsSection(): void
     {
         $response = $this->controller(Request::create('/dashboard/reporting/timezone'))->index();
 
-        self::assertSame(200, $response->getStatusCode());
-        $crawler = new Crawler((string) $response->getContent());
-        self::assertSame('America/Chicago', $crawler->filter('#reporting-timezone option[selected]')->attr('value'));
-        self::assertSame('/dashboard/reporting/timezone/save', $crawler->filter('form')->attr('action'));
-        self::assertStringContainsString('day boundaries', $crawler->filter('.notification.is-warning')->text());
-        self::assertCount(0, $crawler->filter('pre code'));
+        self::assertInstanceOf(RedirectResponse::class, $response);
+        self::assertSame('/dashboard/settings#reporting-timezone', $response->getTargetUrl());
+        self::assertSame([], $this->executed);
     }
 
-    public function testMysqlWithoutTimezoneTablesShowsTheLoadCommandAndDoesNotSave(): void
+    public function testMysqlWithoutTimezoneTablesRefusesTheSaveAndKeepsTheLoadCommand(): void
     {
         $before = (string) file_get_contents($this->directory.'/config/aggregate.yaml');
-        $response = $this->controller(Request::create('/dashboard/reporting/timezone'), platform: new MySQL80Platform())->index();
-
-        self::assertSame(200, $response->getStatusCode());
-        $crawler = new Crawler((string) $response->getContent());
-        self::assertSame(
-            'mysql_tzinfo_to_sql /usr/share/zoneinfo | mysql -u root -p mysql',
-            $crawler->filter('[role="alert"] pre code')->text(),
-        );
-
         $request = $this->post(['reporting_timezone' => 'Europe/London']);
         $saved = $this->controller($request, platform: new MySQL80Platform())->save($request);
 
-        self::assertSame(Response::HTTP_UNPROCESSABLE_ENTITY, $saved->getStatusCode());
-        self::assertStringContainsString('mysql_tzinfo_to_sql /usr/share/zoneinfo', (string) $saved->getContent());
+        self::assertInstanceOf(RedirectResponse::class, $saved);
+        self::assertSame('/dashboard/settings#reporting-timezone', $saved->getTargetUrl());
+        $refused = $request->getSession()->get(ReportingTimezoneController::SESSION_REFUSED_SAVE);
+        self::assertSame('Europe/London', $refused['value']);
+        self::assertNull($refused['error']);
+        self::assertStringContainsString('mysql_tzinfo_to_sql /usr/share/zoneinfo', $refused['load_command']);
         self::assertSame($before, file_get_contents($this->directory.'/config/aggregate.yaml'));
         self::assertSame([], $this->executed);
     }
@@ -108,6 +100,7 @@ final class ReportingTimezoneControllerTest extends TestCase
         $response = $this->controller($request)->save($request);
 
         self::assertInstanceOf(RedirectResponse::class, $response);
+        self::assertSame('/dashboard/settings#reporting-timezone', $response->getTargetUrl());
         $saved = Yaml::parseFile($this->directory.'/config/aggregate.yaml');
         self::assertSame('preserve', $saved['operator_setting']);
         self::assertSame('Europe/London', $saved[ReportingTimezone::KEY]);
@@ -115,18 +108,34 @@ final class ReportingTimezoneControllerTest extends TestCase
         self::assertStringContainsString("AT TIME ZONE 'Europe/London'", $this->executed[0]);
         self::assertStringNotContainsString("AT TIME ZONE 'Europe/London'", $this->executed[1]);
         self::assertSame(['Saved the reporting timezone Europe/London and regenerated the BI views.'], $request->getSession()->getFlashBag()->peek('success'));
+        self::assertNull($request->getSession()->get(ReportingTimezoneController::SESSION_REFUSED_SAVE));
     }
 
-    public function testAnOffsetIsShownAgainAndNothingIsSaved(): void
+    public function testAnOffsetIsRefusedAndShownAgain(): void
     {
         $before = (string) file_get_contents($this->directory.'/config/aggregate.yaml');
         $request = $this->post(['reporting_timezone' => 'EST']);
         $response = $this->controller($request)->save($request);
 
-        self::assertSame(Response::HTTP_UNPROCESSABLE_ENTITY, $response->getStatusCode());
-        self::assertStringContainsString('IANA time zone name', (new Crawler((string) $response->getContent()))->filter('[role="alert"]')->text());
+        self::assertInstanceOf(RedirectResponse::class, $response);
+        $refused = $request->getSession()->get(ReportingTimezoneController::SESSION_REFUSED_SAVE);
+        self::assertSame('EST', $refused['value']);
+        self::assertStringContainsString('IANA time zone name', $refused['error']);
+        self::assertNull($refused['load_command']);
         self::assertSame($before, file_get_contents($this->directory.'/config/aggregate.yaml'));
         self::assertSame([], $this->executed);
+    }
+
+    public function testAForgedTokenSavesNothing(): void
+    {
+        $before = (string) file_get_contents($this->directory.'/config/aggregate.yaml');
+        $request = Request::create('/dashboard/reporting/timezone/save', 'POST', ['_csrf_token' => 'forged', 'reporting_timezone' => 'Europe/London']);
+        $request->setSession(new Session(new MockArraySessionStorage()));
+        $response = $this->controller($request)->save($request);
+
+        self::assertInstanceOf(RedirectResponse::class, $response);
+        self::assertSame(['Invalid security token. Please try again.'], $request->getSession()->getFlashBag()->peek('error'));
+        self::assertSame($before, file_get_contents($this->directory.'/config/aggregate.yaml'));
     }
 
     public function testTheDisabledDashboardHidesThePage(): void
@@ -166,9 +175,8 @@ final class ReportingTimezoneControllerTest extends TestCase
             $this->config,
             $timezone,
             new AnalyticsPrivacySettings($this->config),
-            new AnonymousBiViewManager($connection, null, $timezone),
+            new AnonymousBiViewManager($connection, null, $timezone, timeZones: new MysqlTimeZoneTables($connection, $this->directory.'/no-shadow')),
             new NullLogger(),
-            new MysqlTimeZoneTables($connection, $this->directory.'/no-shadow'),
         );
 
         $authorization = $this->createStub(AuthorizationCheckerInterface::class);
@@ -176,7 +184,7 @@ final class ReportingTimezoneControllerTest extends TestCase
         $csrf = $this->createStub(CsrfTokenManagerInterface::class);
         $csrf->method('isTokenValid')->willReturnCallback(static fn (CsrfToken $token): bool => $token->getValue() === 'valid-token');
         $router = $this->createStub(UrlGeneratorInterface::class);
-        $router->method('generate')->willReturn('/dashboard/reporting/timezone');
+        $router->method('generate')->willReturnCallback(static fn (string $name): string => $name === 'app_application_settings' ? '/dashboard/settings' : '/dashboard/reporting/timezone');
         $stack = new RequestStack();
         $stack->push($request);
         $twig = new Environment(new ChainLoader([new ArrayLoader(['base.html.twig' => '{% block body %}{% endblock %}']), new FilesystemLoader(dirname(__DIR__, 2).'/templates')]), ['strict_variables' => true]);
