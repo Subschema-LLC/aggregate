@@ -39,9 +39,9 @@ described in the [release guide](docs/RELEASES.md).
 
 ## Reporting API and MCP server
 
-The [reporting API](docs/REPORTING-API.md) and the [MCP server for AI
-assistants](docs/MCP.md) are off by default. When you turn them on, serve the
-installation over HTTPS only, give tokens and assistant connections the
+The [reporting API](docs/REPORTING-API.md) and the
+[MCP server for AI assistants](docs/MCP.md) are off by default. When you turn
+them on, serve the installation over HTTPS only, give tokens and assistant connections the
 narrowest views and shortest expiry that work, and revoke them when they are no
 longer needed. Report a way around a token's or connection's scope, the
 sign-in flow, suppression or the view catalog privately, as above. No
