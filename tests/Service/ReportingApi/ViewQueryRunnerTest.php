@@ -221,7 +221,8 @@ final class ViewQueryRunnerTest extends TestCase
 
     public function testTheSchemaUsesThePublishedGlossaryAndListsCodeLabels(): void
     {
-        $columns = array_column($this->schema->columns('bi_anonymous_daily_v1'), null, 'name');
+        self::assertArrayNotHasKey('values', $this->schema->columns('bi_anonymous_daily_v1')[0], 'Queries read no glossary');
+        $columns = array_column($this->schema->described('bi_anonymous_daily_v1'), null, 'name');
         self::assertNull($columns['page_group']['values'], 'Not a glossary dimension');
         self::assertNull($columns['website_token']['values'], 'Website codes come only from configuration until published');
 
@@ -242,7 +243,7 @@ final class ViewQueryRunnerTest extends TestCase
         $translator->addResource('yaml', dirname(__DIR__, 3).'/translations/bi_glossary.en.yaml', 'en', 'bi_glossary');
         $schema = new ViewSchema($reader, new BuiltinGlossaryCatalog($translator), new ReportingTimezone(new AggregateConfigLoader($this->projectDir, 'test')));
 
-        $published = array_column($schema->columns('bi_anonymous_daily_v1'), null, 'name');
+        $published = array_column($schema->described('bi_anonymous_daily_v1'), null, 'name');
         self::assertSame('Section', $published['page_group']['label']);
         self::assertSame('Edited by an administrator.', $published['page_group']['description']);
         self::assertSame($columns['event_count']['description'], $published['event_count']['description'], 'Columns the glossary does not list keep the built-in text');

@@ -213,7 +213,7 @@ class McpTools
      */
     public function description(string $view): array
     {
-        $columns = $this->schema->columns($view);
+        $columns = $this->schema->described($view);
         $names = array_column($columns, 'name');
 
         return [

@@ -81,7 +81,7 @@ final class ReportingApiController
             if ($request->query->count() > 0) {
                 throw ApiProblem::badRequest('unknown_parameter', 'This endpoint takes no parameters.');
             }
-            $columns = $this->schema->columns($view);
+            $columns = $this->schema->described($view);
 
             return $this->json(['data' => [
                 'name' => $view,

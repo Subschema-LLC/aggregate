@@ -52,7 +52,7 @@ class OpenApiDocument
         $available = [];
         foreach ($views as $view) {
             try {
-                $columns = $this->schema->columns($view);
+                $columns = $this->schema->described($view);
             } catch (ApiProblem) {
                 continue;
             }

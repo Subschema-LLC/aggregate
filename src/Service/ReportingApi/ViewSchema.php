@@ -20,11 +20,13 @@ use App\Service\ViewSync\ViewSyncException;
  * are labelled in. Columns holding a glossary dimension (device_class,
  * referrer_channel and so on) also list their codes with labels.
  *
- * Labels, descriptions and code labels come from the published glossary,
- * bi_glossary_columns_v1 and bi_glossary_values_v1 in the default locale, so
- * the API says what BI tools read, including an administrator's edits and
- * custom columns. Until the glossary has been published, or when its views
- * cannot be read, the built-in text is used instead.
+ * columns() is what validating and running a query needs, with the built-in
+ * descriptions; it reads no glossary. described() adds labels, descriptions
+ * and code labels from the published glossary, bi_glossary_columns_v1 and
+ * bi_glossary_values_v1 in the default locale, so a schema says what BI tools
+ * read, including an administrator's edits and custom columns. Until the
+ * glossary has been published, or when its views cannot be read, the built-in
+ * text is used instead.
  */
 class ViewSchema
 {
@@ -67,7 +69,7 @@ class ViewSchema
     /** Codes listed for one column; a longer list is cut and says so. */
     public const MAX_VALUES = 1000;
 
-    /** @var array<string, list<array{name: string, catalog_type: string, type: string, operators: list<string>, label: ?string, description: ?string, timezone: ?string, values: ?list<array{code: string, label: string, description: ?string}>, values_truncated: bool}>> */
+    /** @var array<string, list<array{name: string, catalog_type: string, type: string, operators: list<string>, description: ?string, timezone: ?string}>> */
     private array $columns = [];
     /** @var array{columns: array<string, array<string, array{label: ?string, description: ?string}>>, values: array<string, list<array{code: string, label: string, description: ?string}>>}|null */
     private ?array $published = null;
@@ -80,7 +82,7 @@ class ViewSchema
     }
 
     /**
-     * @return list<array{name: string, catalog_type: string, type: string, operators: list<string>, label: ?string, description: ?string, timezone: ?string, values: ?list<array{code: string, label: string, description: ?string}>, values_truncated: bool}>
+     * @return list<array{name: string, catalog_type: string, type: string, operators: list<string>, description: ?string, timezone: ?string}>
      *
      * @throws ApiProblem when the view does not exist in this database
      */
@@ -94,30 +96,51 @@ class ViewSchema
         } catch (ViewSyncException $error) {
             throw new ApiProblem(503, 'view_unavailable', sprintf('The view %s is not available on this installation.', $view), previous: $error);
         }
-        $published = $this->published();
         $columns = [];
         foreach ($fields as $field) {
             $type = $field['type'];
-            $name = $field['name'];
+            $columns[] = [
+                'name' => $field['name'],
+                'catalog_type' => $type,
+                'type' => self::API_TYPES[$type],
+                'operators' => self::OPERATORS[$type],
+                'description' => $this->glossary->text('column', $view, $field['name'], 'description', self::LOCALE),
+                'timezone' => in_array($type, ['DATE', 'TIMESTAMP'], true) ? $this->timezone($view, $field['name']) : null,
+            ];
+        }
+
+        return $this->columns[$view] = $columns;
+    }
+
+    /**
+     * The columns with their labels and descriptions from the published
+     * glossary, and the codes of columns that hold a glossary dimension.
+     *
+     * @return list<array{name: string, catalog_type: string, type: string, operators: list<string>, label: ?string, description: ?string, timezone: ?string, values: ?list<array{code: string, label: string, description: ?string}>, values_truncated: bool}>
+     *
+     * @throws ApiProblem when the view does not exist in this database
+     */
+    public function described(string $view): array
+    {
+        $published = $this->published();
+        $described = [];
+        foreach ($this->columns($view) as $column) {
+            $name = $column['name'];
             $text = $published['columns'][$view][$name] ?? null;
             $values = null;
             if (!ViewCatalog::isMetadata($view) && in_array($name, BuiltinGlossaryCatalog::DIMENSIONS, true)) {
                 $values = $published['values'][$name] ?? $this->builtinValues($name);
             }
-            $columns[] = [
-                'name' => $name,
-                'catalog_type' => $type,
-                'type' => self::API_TYPES[$type],
-                'operators' => self::OPERATORS[$type],
+            $described[] = [
+                ...$column,
                 'label' => $text['label'] ?? $this->glossary->text('column', $view, $name, 'label', self::LOCALE),
-                'description' => $text['description'] ?? $this->glossary->text('column', $view, $name, 'description', self::LOCALE),
-                'timezone' => in_array($type, ['DATE', 'TIMESTAMP'], true) ? $this->timezone($view, $name) : null,
+                'description' => $text['description'] ?? $column['description'],
                 'values' => $values === null ? null : array_slice($values, 0, self::MAX_VALUES),
                 'values_truncated' => $values !== null && count($values) > self::MAX_VALUES,
             ];
         }
 
-        return $this->columns[$view] = $columns;
+        return $described;
     }
 
     /**
