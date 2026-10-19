@@ -64,10 +64,29 @@ and branches prior to public release.
 
 ### Post-visibility checklist (apply immediately after making public)
 
-- [ ] Turn on **Private vulnerability reporting** in repository Settings &rarr; Code security.
-- [ ] Turn on **Secret scanning** and **Push protection** (free for public repositories).
-- [ ] Ensure **Allow forking** is enabled in repository General settings.
+- [x] Turn on **Private vulnerability reporting** in repository Settings &rarr; Code security.
+- [x] Turn on **Secret scanning** and **Push protection** (free for public repositories).
+- [x] Ensure **Allow forking** is enabled in repository General settings.
 - [ ] Confirm the security inbox (subschema address in `SECURITY.md`) is active.
+
+The first three were confirmed in the
+[post-visibility review](#post-visibility-review-2026-10-19). The inbox can only
+be confirmed by sending it mail.
+
+## Post-visibility review: 2026-10-19
+
+Settings were read through the GitHub API with the repository public, and the
+history was scanned again after the October releases. Nothing was changed or
+rotated.
+
+| Check | Evidence and findings | Status |
+| --- | --- | --- |
+| Visibility | Public, with `development` as the default branch and forking allowed. | Done |
+| GitHub security | Secret scanning, push protection and private vulnerability reporting are on. Dependabot security updates are off; version updates run from `.github/dependabot.yml`. | Consider turning on Dependabot security updates |
+| Branch rules | The `Development`, `UAT` and `Master` rulesets are active. Each requires a pull request with two approvals and the `CI` check, and blocks deletion and force pushes; one user can bypass them. | Active |
+| History scanner | Gitleaks 8.30.1 with `git --log-opts="--all --full-history -m" --redact=100` over every published branch and tag: 683 commit patches, 33 findings. They are the two development values reviewed on 2026-09-29, sample website tokens in the README, `config/websites.yaml.example` and the reporting API design, the `YOUR_TOKEN` placeholder in the API tokens page's `curl` example, and `America/Chicago` test values matched as generic keys. Pull-request and fork refs were not scanned. No secret values are reproduced here. | No new secrets |
+| Contributions | Outside contributors [sign off their commits](../CONTRIBUTING.md#sign-off-your-commits-dco) under the Developer Certificate of Origin, and CI checks commits in pull requests from forks. | Added |
+| Security inbox | The address in [SECURITY.md](../SECURITY.md) was not tested. | Owner to confirm |
 
 ## Before changing repository visibility
 
