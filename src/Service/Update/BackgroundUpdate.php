@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service\Update;
 
 use App\Service\InstalledRelease;
+use App\Service\Operations\AdminActions;
 use App\Service\ReleasePackageVerifier;
 use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Process\Process;
@@ -108,7 +109,8 @@ class BackgroundUpdate
         $setsid = (new ExecutableFinder())->find('setsid');
         $line = ($setsid !== null ? escapeshellarg($setsid).' ' : '').'nohup '.implode(' ', array_map('escapeshellarg', $command))
             .' > '.escapeshellarg($log).' 2>&1 < /dev/null &';
-        $process = Process::fromShellCommandline($line, $this->projectDir, null, null, 30);
+        // The update records itself in the audit trail when the dashboard starts it.
+        $process = Process::fromShellCommandline($line, $this->projectDir, [AdminActions::CHILD_PROCESS => '1'], null, 30);
         $process->run();
         if (!$process->isSuccessful()) {
             throw new \RuntimeException('The update could not be started in the background. Run it from the command line.');

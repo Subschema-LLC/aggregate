@@ -7,8 +7,9 @@ namespace App\Service;
 /**
  * Validated archive, deletion and record purge settings shared by the Data
  * lifecycle page, YAML, environment variables and app:analytics:maintain.
- * The two record settings purge the audit trail and processing tasks after
- * that many days; 0 keeps them.
+ * The record settings purge processing tasks, the audit trail's job-run
+ * entries and its administrator-action entries after that many days; 0 keeps
+ * them.
  */
 final class AnalyticsDataLifecyclePolicy
 {
@@ -19,7 +20,10 @@ final class AnalyticsDataLifecyclePolicy
     public const KEY_ENHANCED_RETENTION_DAYS = 'analytics_enhanced_retention_days';
     public const KEY_ARCHIVE_RETENTION_DAYS = 'analytics_archive_retention_days';
     public const KEY_MAINTENANCE_BATCH_SIZE = 'analytics_maintenance_batch_size';
+    /** Job-run entries (category task) of the audit trail. */
     public const KEY_AUDIT_TRAIL_RETENTION_DAYS = 'audit_trail_retention_days';
+    /** Every other audit trail entry: administrator actions and sign-ins. */
+    public const KEY_AUDIT_TRAIL_ADMIN_RETENTION_DAYS = 'audit_trail_admin_retention_days';
     public const KEY_PROCESSING_TASKS_RETENTION_DAYS = 'processing_tasks_retention_days';
 
     public const DEFAULT_ARCHIVING_ENABLED = false;
@@ -30,6 +34,7 @@ final class AnalyticsDataLifecyclePolicy
     public const DEFAULT_ARCHIVE_RETENTION_DAYS = 730;
     public const DEFAULT_MAINTENANCE_BATCH_SIZE = 1000;
     public const DEFAULT_AUDIT_TRAIL_RETENTION_DAYS = 365;
+    public const DEFAULT_AUDIT_TRAIL_ADMIN_RETENTION_DAYS = 730;
     public const DEFAULT_PROCESSING_TASKS_RETENTION_DAYS = 90;
 
     public const MIN_DAYS = 1;
@@ -49,6 +54,7 @@ final class AnalyticsDataLifecyclePolicy
         self::KEY_ARCHIVE_RETENTION_DAYS => self::DEFAULT_ARCHIVE_RETENTION_DAYS,
         self::KEY_MAINTENANCE_BATCH_SIZE => self::DEFAULT_MAINTENANCE_BATCH_SIZE,
         self::KEY_AUDIT_TRAIL_RETENTION_DAYS => self::DEFAULT_AUDIT_TRAIL_RETENTION_DAYS,
+        self::KEY_AUDIT_TRAIL_ADMIN_RETENTION_DAYS => self::DEFAULT_AUDIT_TRAIL_ADMIN_RETENTION_DAYS,
         self::KEY_PROCESSING_TASKS_RETENTION_DAYS => self::DEFAULT_PROCESSING_TASKS_RETENTION_DAYS,
     ];
 
@@ -62,6 +68,7 @@ final class AnalyticsDataLifecyclePolicy
         self::KEY_ARCHIVE_RETENTION_DAYS => 'archive_retention_days',
         self::KEY_MAINTENANCE_BATCH_SIZE => 'batch_size',
         self::KEY_AUDIT_TRAIL_RETENTION_DAYS => 'audit_trail_retention_days',
+        self::KEY_AUDIT_TRAIL_ADMIN_RETENTION_DAYS => 'audit_trail_admin_retention_days',
         self::KEY_PROCESSING_TASKS_RETENTION_DAYS => 'processing_tasks_retention_days',
     ];
 
@@ -109,6 +116,11 @@ final class AnalyticsDataLifecyclePolicy
         return $this->toArray()[self::KEY_AUDIT_TRAIL_RETENTION_DAYS];
     }
 
+    public function getAuditTrailAdminRetentionDays(): int
+    {
+        return $this->toArray()[self::KEY_AUDIT_TRAIL_ADMIN_RETENTION_DAYS];
+    }
+
     public function getProcessingTasksRetentionDays(): int
     {
         return $this->toArray()[self::KEY_PROCESSING_TASKS_RETENTION_DAYS];
@@ -149,6 +161,7 @@ final class AnalyticsDataLifecyclePolicy
      *     archive_retention_days: int,
      *     batch_size: int,
      *     audit_trail_retention_days: int,
+     *     audit_trail_admin_retention_days: int,
      *     processing_tasks_retention_days: int,
      *     environment_overrides: array<string, bool>
      * }
@@ -251,6 +264,12 @@ final class AnalyticsDataLifecyclePolicy
             self::KEY_AUDIT_TRAIL_RETENTION_DAYS => self::parseInteger(
                 $values[self::KEY_AUDIT_TRAIL_RETENTION_DAYS],
                 self::KEY_AUDIT_TRAIL_RETENTION_DAYS,
+                self::MIN_RECORD_DAYS,
+                self::MAX_DAYS,
+            ),
+            self::KEY_AUDIT_TRAIL_ADMIN_RETENTION_DAYS => self::parseInteger(
+                $values[self::KEY_AUDIT_TRAIL_ADMIN_RETENTION_DAYS],
+                self::KEY_AUDIT_TRAIL_ADMIN_RETENTION_DAYS,
                 self::MIN_RECORD_DAYS,
                 self::MAX_DAYS,
             ),

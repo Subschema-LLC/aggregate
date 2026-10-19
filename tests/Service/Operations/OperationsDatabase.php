@@ -9,11 +9,13 @@ use Doctrine\DBAL\DriverManager;
 use Doctrine\DBAL\Schema\Schema;
 use DoctrineMigrations\Version20261007210000;
 use DoctrineMigrations\Version20261018000000;
+use DoctrineMigrations\Version20261019000000;
 use PHPUnit\Framework\Assert;
 use Psr\Log\NullLogger;
 
 require_once dirname(__DIR__, 3).'/migrations/Version20261007210000.php';
 require_once dirname(__DIR__, 3).'/migrations/Version20261018000000.php';
+require_once dirname(__DIR__, 3).'/migrations/Version20261019000000.php';
 
 /** An in-memory SQLite database with the processing_tasks and audit_trail tables from their migrations. */
 final class OperationsDatabase
@@ -27,6 +29,7 @@ final class OperationsDatabase
         $schema = new Schema();
         (new Version20261007210000($connection, new NullLogger()))->up($schema);
         (new Version20261018000000($connection, new NullLogger()))->up($schema);
+        (new Version20261019000000($connection, new NullLogger()))->up($schema);
         foreach ($connection->getDatabasePlatform()->getCreateTablesSQL($schema->getTables()) as $sql) {
             $connection->executeStatement($sql);
         }

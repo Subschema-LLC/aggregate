@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Service\Operations\ConfigurationChanges;
 use Symfony\Component\Dotenv\Dotenv;
 
 /**
@@ -94,7 +95,11 @@ class LocalEnvironmentFile
             }
             $kept[] = $name."='".$value."'";
         }
-        $this->write($file, $kept === [] ? '' : implode("\n", $kept)."\n");
+        $contents = $kept === [] ? '' : implode("\n", $kept)."\n";
+        $this->write($file, $contents);
+        if ($contents !== $current) {
+            ConfigurationChanges::record(self::FILE, [$name]);
+        }
     }
 
     public function path(): string

@@ -5,7 +5,7 @@
 {% block body %}
 <div class="settings-page">
 <h1 class="title">General settings</h1>
-<p class="subtitle">Configure the public endpoint, tracker namespace, request budget, documentation links, and page speed.</p>
+<p class="subtitle">Configure the public endpoint, tracker namespace, request budget, documentation links, reporting timezone, and page speed.</p>
 {{ component('Ui:DocsLink', {topic: 'configuration.application', label: 'Application settings reference'}) }}
 <div class="box">
 <div class="columns">
@@ -121,6 +121,7 @@
     </div>
 </div>
 </div>
+{% include 'settings/_reporting_timezone.html.twig' with {timezone: reporting_timezone} only %}
 {% set tracker = page_speed.tracker %}
 <section class="box page-speed" id="page-speed" aria-labelledby="page-speed-title"
     data-controller="pages--settings--page-speed"

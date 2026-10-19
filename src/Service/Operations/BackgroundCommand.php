@@ -60,7 +60,8 @@ class BackgroundCommand
         $setsid = (new ExecutableFinder())->find('setsid');
         $shell = ($setsid !== null ? escapeshellarg($setsid).' ' : '').'nohup '.implode(' ', array_map('escapeshellarg', $line))
             .' > '.escapeshellarg($this->projectDir.'/'.$logFile).' 2>&1 < /dev/null &';
-        $process = Process::fromShellCommandline($shell, $this->projectDir, null, null, 30);
+        // The dashboard action that starts the command is recorded in the audit trail; the command is not again.
+        $process = Process::fromShellCommandline($shell, $this->projectDir, [AdminActions::CHILD_PROCESS => '1'], null, 30);
         $process->run();
         if (!$process->isSuccessful()) {
             throw new \RuntimeException('The command could not be started in the background. Run php bin/console '.$command.' on the server.');

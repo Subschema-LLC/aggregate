@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Configuration;
 
 use App\Controller\ApplicationSettingsController;
+use App\Controller\AuditTrailController;
 use App\Controller\BrandingSettingsController;
 use App\Controller\CollectionSettingsController;
 use App\Controller\PrivacySettingsController;
@@ -17,10 +18,12 @@ use App\Service\AggregateConfigLoader;
 use App\Service\AnalyticsPrivacySettings;
 use App\Service\BrandingLogoManager;
 use App\Service\DocumentationLinks;
+use App\Service\Operations\AdminAudit;
 use App\Service\SiteScriptConfig;
 use App\Service\TrackerNamespace;
 use App\Service\WebsiteConfigManager;
 use App\Service\WebsiteScopeCatalog;
+use App\Tests\Support\RecordingAdminAudit;
 use PHPUnit\Framework\TestCase;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
@@ -43,6 +46,8 @@ final class DashboardSectionsRoutesTest extends TestCase
         'app_privacy_settings' => ['/dashboard/privacy', 'BI disclosure'],
         'app_users' => ['/dashboard/users', 'Users'],
         'app_website_groups' => ['/dashboard/website-groups', 'Groups'],
+        'app_audit_trail' => ['/dashboard/audit-trail', 'Audit trail'],
+        'app_audit_trail_export' => ['/dashboard/audit-trail/export', 'Audit trail'],
     ];
 
     private const MUTATIONS = [
@@ -56,6 +61,7 @@ final class DashboardSectionsRoutesTest extends TestCase
         '/dashboard/settings/analytics-privacy' => '/dashboard/privacy',
         '/dashboard/users/create' => '/dashboard/users',
         '/dashboard/users/7/password' => '/dashboard/users',
+        '/dashboard/audit-trail/settings' => '/dashboard/audit-trail',
     ];
 
     private string $temporaryDirectory;
@@ -65,6 +71,7 @@ final class DashboardSectionsRoutesTest extends TestCase
     protected function setUp(): void
     {
         $this->environment = [$_ENV, $_SERVER];
+        RecordingAdminAudit::$entries = [];
         foreach (['APP_HOST', 'JS_NAMESPACE', 'DOCUMENTATION_URL', 'TRACKER_OMIT_UNUSED_FEATURES'] as $key) {
             unset($_ENV[$key], $_SERVER[$key]);
         }
@@ -131,6 +138,12 @@ final class DashboardSectionsRoutesTest extends TestCase
         }
         self::assertSame($configBefore, file_get_contents($this->temporaryDirectory.'/config/aggregate.yaml'));
         $this->assertNoDatabaseConnection();
+        // Each refused action is in the audit trail, as denied, with who tried it.
+        self::assertNotEmpty(RecordingAdminAudit::$entries);
+        foreach (RecordingAdminAudit::$entries as $entry) {
+            self::assertSame(['denied', 'section-user', null], [$entry['outcome'], $entry['actor'], $entry['details']], $entry['action']);
+        }
+        self::assertContains('general_settings_saved', array_column(RecordingAdminAudit::$entries, 'action'));
     }
 
     public function testWebsitesAndYamlSettingsRenderWithoutReadingUsersOrBiSettings(): void
@@ -387,6 +400,11 @@ final class DashboardSectionsRoutesTest extends TestCase
         self::assertSame('preserve-me', $saved['unrelated_operator_setting']);
         // An unchanged documentation address is not written, so the default is not pinned.
         self::assertArrayNotHasKey('documentation_url', $saved);
+        // The audit trail names the changed settings, never their values.
+        $entry = array_pop(RecordingAdminAudit::$entries);
+        self::assertSame(['settings', 'general_settings_saved', 'succeeded', 'section-admin', null], [$entry['area'], $entry['action'], $entry['outcome'], $entry['actor'], $entry['subject']]);
+        // The activity periods were not in the file before, so writing them is a change too.
+        self::assertSame('Changed aggregate.yaml: app_host, js_namespace, rate_limit_per_minute, website_activity_active_days, website_activity_stale_days', $entry['details']);
 
         $collection = $browser->request('GET', '/dashboard/collection');
         // The failure status is read from the database after the page loads.
@@ -582,7 +600,7 @@ final class DashboardSectionsRoutesTest extends TestCase
     public function testHeadlessBootOmitsEveryDashboardSectionAndMutation(): void
     {
         $browser = $this->browser(dashboardEnabled: false);
-        foreach ([WebsitesController::class, ApplicationSettingsController::class, BrandingSettingsController::class, CollectionSettingsController::class, PrivacySettingsController::class, UsersController::class] as $controller) {
+        foreach ([WebsitesController::class, ApplicationSettingsController::class, BrandingSettingsController::class, CollectionSettingsController::class, PrivacySettingsController::class, UsersController::class, AuditTrailController::class] as $controller) {
             self::assertFalse($this->container()->has($controller), $controller);
         }
         $routes = $this->container()->get('router')->getRouteCollection();
@@ -675,6 +693,8 @@ final class DashboardSectionsRoutesTestKernel extends Kernel implements Compiler
     public function process(ContainerBuilder $container): void
     {
         $container->setDefinition('security.user.provider.concrete.app_user_provider', new Definition(DashboardSectionsTestUserProvider::class));
+        // No database here: administrator actions are kept in memory.
+        $container->setDefinition(AdminAudit::class, new Definition(RecordingAdminAudit::class));
         foreach ([AggregateConfigLoader::class, WebsiteConfigManager::class, BrandingLogoManager::class, SiteScriptConfig::class, WebsiteScopeCatalog::class] as $service) {
             $container->getDefinition($service)->setArgument('$projectDir', $this->temporaryDirectory);
         }

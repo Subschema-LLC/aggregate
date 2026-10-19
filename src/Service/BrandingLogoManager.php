@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Service\Operations\ConfigurationChanges;
 use Symfony\Component\HttpFoundation\File\Exception\FileException;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
@@ -73,8 +74,10 @@ final class BrandingLogoManager
         }
 
         @chmod($stored->getPathname(), 0640);
+        $path = $this->managedRelativeDirectory().'/'.$filename;
+        ConfigurationChanges::record($path);
 
-        return $this->managedRelativeDirectory().'/'.$filename;
+        return $path;
     }
 
     /**
@@ -94,6 +97,7 @@ final class BrandingLogoManager
         if (!@unlink($absolutePath)) {
             throw new \RuntimeException('The previous managed logo could not be removed.');
         }
+        ConfigurationChanges::record($path);
     }
 
     public function isManagedPath(mixed $path): bool

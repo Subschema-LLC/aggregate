@@ -6,8 +6,10 @@
 # which opens on the documentation site. Top-level items may instead
 # define a label and children (one submenu level, no parent route/URL).
 # Links and groups may require a security role and a registered feature name.
-# Hidden/inaccessible children are filtered before empty groups are removed;
-# disabling a group makes every remaining child unclickable.
+# A link may also name a shown_when condition (App\Service\NavigationConditions):
+# the menu leaves it out until the condition is met, and quick search still
+# finds it. Hidden/inaccessible children are filtered before empty groups are
+# removed; disabling a group makes every remaining child unclickable.
 # Navigation does not grant access: destination routes enforce authorization.
 # Clear the production cache after changing this file.
 # Shipped defaults: application updates replace this file. To customize it,
@@ -53,10 +55,6 @@ parameters:
                     route: 'app_data_model'
                     icon: 'fas fa-table-columns'
                     role: 'ROLE_ADMIN'
-                  - label: 'Event examples'
-                    route: 'app_event_examples'
-                    icon: 'fas fa-file-code'
-                    role: 'ROLE_ADMIN'
                   - label: 'Organization traffic'
                     route: 'app_internal_traffic'
                     icon: 'fas fa-users'
@@ -80,18 +78,14 @@ parameters:
                     route: 'app_bi_page_groups'
                     icon: 'fas fa-layer-group'
                     role: 'ROLE_ADMIN'
-                  - label: 'Reporting timezone'
-                    route: 'app_reporting_timezone'
-                    icon: 'fas fa-clock'
-                    role: 'ROLE_ADMIN'
-                  - label: 'BigQuery sync'
-                    route: 'app_bigquery'
+                  # BigQuery and the reporting database, as tabs of one page.
+                  # Shown once either is on; until then, open it from quick
+                  # search or the BI connection guide.
+                  - label: 'Sync'
+                    route: 'app_sync'
                     icon: 'fas fa-cloud-arrow-up'
                     role: 'ROLE_ADMIN'
-                  - label: 'Reporting database'
-                    route: 'app_reporting_database'
-                    icon: 'fas fa-server'
-                    role: 'ROLE_ADMIN'
+                    shown_when: 'view_sync_on'
                   - label: 'BI connection guide'
                     route: 'app_how_it_works_data_visualization'
                     icon: 'fas fa-book-open'
@@ -119,6 +113,10 @@ parameters:
                     route: 'app_scheduled_tasks'
                     icon: 'fas fa-clock'
                     role: 'ROLE_ADMIN'
+                  - label: 'Audit trail'
+                    route: 'app_audit_trail'
+                    icon: 'fas fa-clipboard-list'
+                    role: 'ROLE_ADMIN'
                   - label: 'Updates'
                     route: 'app_updates'
                     icon: 'fas fa-rotate'
@@ -134,6 +132,10 @@ parameters:
                   - label: 'How it works'
                     route: 'app_how_it_works'
                     icon: 'fas fa-circle-info'
+                  - label: 'Event examples'
+                    route: 'app_event_examples'
+                    icon: 'fas fa-file-code'
+                    role: 'ROLE_ADMIN'
                   # A documentation topic (App\Service\DocumentationLinks::TOPICS) on
                   # the site set by documentation_url; hidden when that is empty.
                   - label: 'Documentation'

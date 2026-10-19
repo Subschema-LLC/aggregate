@@ -1,0 +1,23 @@
+{% props current, destinations %}
+
+{# One tab per sync destination; each tab says whether that destination is on. #}
+<nav class="section-tabs-nav mb-5" aria-label="Sync destinations">
+    <div class="tabs section-underline-tabs">
+        <ul>
+            {% for destination in destinations %}
+                <li class="{% if current == destination.route %}is-active{% endif %}">
+                    <a href="{{ path(destination.route) }}"{% if current == destination.route %} aria-current="page"{% endif %}>
+                        <span>{{ destination.label }}</span>
+                        {% if destination.on is same as(true) %}
+                            <span class="tag is-success is-light ml-2">On</span>
+                        {% elseif destination.on is same as(false) %}
+                            <span class="tag is-light ml-2">Off</span>
+                        {% else %}
+                            <span class="tag is-warning is-light ml-2">Needs attention</span>
+                        {% endif %}
+                    </a>
+                </li>
+            {% endfor %}
+        </ul>
+    </div>
+</nav>

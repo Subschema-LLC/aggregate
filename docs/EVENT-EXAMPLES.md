@@ -4,7 +4,7 @@
 
 ## Generate from the saved model
 
-Open **Collection → Event examples** to generate examples from the active saved
+Open **Help → Event examples**, or the **Event examples** tab of **Collection → Data model**, to generate examples from the active saved
 model. **Send it from your pages** comes first: the tracker call a page makes,
 with the [event object](TRACKING.md#send-an-event), such as:
 

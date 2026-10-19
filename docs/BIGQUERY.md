@@ -52,7 +52,7 @@ same [reporting views](BI-CONNECTION.md) your BI tools already read.
   reading: every sync reads each due view from the application database.
 
 Status for each view (last successful sync, rows, next sync and the last message)
-appears on **Reporting → BigQuery sync** and in
+appears on the **BigQuery** tab of **Reporting → Sync** and in
 `php bin/console app:bigquery:check`. Every view sync is a row in the private
 [`processing_tasks` table](DATABASE.md#processing-tasks-and-audit-trail)
 (`task_type` `bigquery_sync`, `subject` the view) with its status, row count,
@@ -65,7 +65,9 @@ them after their retention periods.
 
 1. **Prepare Google Cloud.** Pick or create a project and
    [enable the BigQuery API](https://console.cloud.google.com/apis/library/bigquery.googleapis.com).
-2. **Connect.** Open **Reporting → BigQuery sync**, choose how Aggregate signs in
+2. **Connect.** Open **Reporting → Sync** and choose the **BigQuery** tab. The
+   menu shows **Sync** once a destination is on; before that, type "Sync" or
+   "BigQuery" in the dashboard search. Choose how Aggregate signs in
    (below), enter the project ID if it is not detected, a dataset name (default
    `aggregate`) and a location such as `US`, `EU` or `europe-west2`. Save, then
    use **Test connection**: it signs in, checks the dataset and confirms that the

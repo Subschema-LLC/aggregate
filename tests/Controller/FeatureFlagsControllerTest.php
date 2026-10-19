@@ -88,8 +88,14 @@ final class FeatureFlagsControllerTest extends TestCase
         }
         self::assertSame('0', $crawler->filter('select[name="feature_flags[updates][enabled]"] option[selected]')->attr('value'));
         self::assertSame('1', $crawler->filter('select[name="feature_flags[updates][hide_from_navigation]"] option[selected]')->attr('value'));
-        self::assertStringContainsString('independently of whether it is enabled', $crawler->text());
-        self::assertStringContainsString('can still be accessed directly by authorized users', $crawler->text());
+        self::assertStringContainsString('greyed out with an Off tag, unless you hide it', $crawler->text());
+        self::assertStringContainsString('still works for authorized users', $crawler->text());
+        // Each setting names its YAML value, and a feature without a menu entry says so.
+        self::assertStringContainsString('hide_from_navigation: true', $crawler->filter('#feature-updates-navigation-help')->text());
+        self::assertStringContainsString('has no menu entry', $crawler->filter('#feature-custom_scripts-navigation-help')->text());
+        // The YAML block is exactly what a save writes: every feature, both options.
+        self::assertSame(['feature_flags' => $this->flags->all()], Yaml::parse($crawler->filter('details pre code')->text(null, false)));
+        self::assertSame(array_keys($this->flags->definitions()), array_keys(Yaml::parse($crawler->filter('details pre code')->text(null, false))['feature_flags']));
         self::assertStringNotContainsString('private-admin-token', $crawler->text());
     }
 

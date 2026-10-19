@@ -12,8 +12,10 @@ use App\Entity\User;
 use App\Kernel;
 use App\Service\AggregateConfigLoader;
 use App\Service\BrowserAssetBuilder;
+use App\Service\Operations\AdminAudit;
 use App\Service\SiteScriptConfig;
 use App\Service\WebsiteConfigManager;
+use App\Tests\Support\RecordingAdminAudit;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
@@ -406,6 +408,8 @@ final class SetupRoutesKernel extends Kernel implements CompilerPassInterface
     public function process(ContainerBuilder $container): void
     {
         $container->setDefinition('security.user.provider.concrete.app_user_provider', new Definition(SetupRoutesUserProvider::class));
+        // No database here: administrator actions are kept in memory.
+        $container->setDefinition(AdminAudit::class, new Definition(RecordingAdminAudit::class));
         foreach ([AggregateConfigLoader::class, WebsiteConfigManager::class, SiteScriptConfig::class] as $service) {
             $container->getDefinition($service)->setArgument('$projectDir', $this->directory);
         }

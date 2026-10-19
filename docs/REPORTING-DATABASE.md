@@ -43,7 +43,7 @@ is an output, not a replica.
   runs every five minutes and copies the views that are due (the same as
   `php bin/console app:reporting-database:sync`). Each selected view is copied when the configured
   interval has passed since its last copy. Web requests never run a sync; **Sync
-  now** on **Reporting → Reporting database** starts the same command in the
+  now** on **Reporting → Sync → Reporting database** starts the same command in the
   background.
 - Each view becomes a table with the view's name, for example
   `bi_anonymous_events_v1`, in the reporting database's default schema.
@@ -149,7 +149,9 @@ permissions.
 
 ## Connect Aggregate to it
 
-Open **Reporting → Reporting database** and fill in **1. Connect the reporting
+Open **Reporting → Sync** and choose the **Reporting database** tab (before any
+sync is on, the menu has no **Sync** entry yet: type "Sync" or "reporting
+database" in the dashboard search). Fill in **1. Connect the reporting
 database**: the database type, server, port (empty for the type's default), the
 sync user's name and password, and the database name (for SQLite, a file such
 as `var/reporting.db`). For SQL Server with a self-signed certificate, tick

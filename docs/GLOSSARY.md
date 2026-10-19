@@ -20,10 +20,11 @@ reporting views include archived counts. See
 [archiving and retention](CONFIGURATION.md#archiving-and-retention).
 
 **Audit trail.** The private `audit_trail` table: one entry per finished
-processing task, with its outcome and details, and the administrator when one
-started it. Reserved for administrator actions too. Purged after
-`audit_trail_retention_days`. See
-[processing tasks and audit trail](DATABASE.md#processing-tasks-and-audit-trail).
+processing task and per administrator action or sign-in, with its area, outcome,
+user and details. Shown, filtered and exported on **Administration → Audit
+trail**, where each area can be switched off. Job runs are purged after
+`audit_trail_retention_days`, the rest after `audit_trail_admin_retention_days`.
+See [audit trail](AUDIT-TRAIL.md).
 
 **BI glossary.** Labels and descriptions for codes, websites and columns, declared in
 configuration and published to BI tools through the `bi_dim_*` and
