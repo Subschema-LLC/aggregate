@@ -83,6 +83,8 @@ final class DocumentationLinks
         'feature-flags' => ['configure/feature-flags', 'docs/FEATURE-FLAGS.md'],
         'operate.scheduled-tasks' => ['operate/scheduled-tasks', 'docs/SCHEDULED-TASKS.md'],
         'operate.scheduled-tasks-plesk' => ['operate/scheduled-tasks#plesk', 'docs/SCHEDULED-TASKS.md'],
+        'operate.audit-trail' => ['operate/audit-trail', 'docs/AUDIT-TRAIL.md'],
+        'operate.audit-trail-areas' => ['operate/audit-trail#what-is-recorded', 'docs/AUDIT-TRAIL.md'],
         'updates' => ['operate/updates', 'docs/UPDATES.md'],
         'updates.choose' => ['operate/updates#choose-an-update-method', 'docs/UPDATES.md'],
         'updates.repository' => ['operate/updates#update-from-the-repository-advanced', 'docs/UPDATES.md'],

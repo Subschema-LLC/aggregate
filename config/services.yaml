@@ -44,8 +44,8 @@ services:
             # BigQuery value objects and per-run clients, built by their factories.
             - '../src/Service/BigQuery/{BigQueryClient,BigQueryException,GoogleCloudCredentials,GoogleSignInCredentials,ServiceAccountCredentials,ServiceAccountKey,TokenCache}.php'
             - '../src/Service/ViewSync/{ViewSnapshot,ViewSyncDefinition,ViewSyncException}.php'
-            # Value object describing what started a processing task.
-            - '../src/Service/Operations/TaskTrigger.php'
+            # Value objects and static helpers of the processing tasks and audit trail.
+            - '../src/Service/Operations/{TaskTrigger,AuditTrailFilter,AdminActions,ConfigurationChanges}.php'
             - '../src/Service/IngestionResult.php'
             # Built by WebsiteScopeCatalog with its parsed-YAML cache.
             - '../src/Service/WebsiteScopeFiles.php'

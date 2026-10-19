@@ -3,6 +3,7 @@
 namespace App\Controller;
 
 use App\Entity\User;
+use App\EventSubscriber\AdminAuditSubscriber;
 use App\Service\AggregateConfigLoader;
 use App\Service\DropInScripts;
 use App\Service\InstallationChecker;
@@ -116,6 +117,7 @@ class InstallController extends AbstractController
             return $this->redirectToRoute('app_install');
         }
 
+        $request->attributes->set(AdminAuditSubscriber::SUBJECT, $adminUsername);
         try {
             // Persist js_namespace, and the public address used in tracking snippets
             $this->config->setMany(['js_namespace' => $jsNamespace] + ($appHost !== null ? ['app_host' => $appHost] : []));

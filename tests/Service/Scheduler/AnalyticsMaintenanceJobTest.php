@@ -31,7 +31,7 @@ final class AnalyticsMaintenanceJobTest extends TestCase
     protected function setUp(): void
     {
         $this->environment = [$_ENV, $_SERVER];
-        foreach (['ANALYTICS_ARCHIVING_ENABLED', 'ANALYTICS_RETENTION_ENABLED', 'AUDIT_TRAIL_RETENTION_DAYS', 'PROCESSING_TASKS_RETENTION_DAYS'] as $key) {
+        foreach (['ANALYTICS_ARCHIVING_ENABLED', 'ANALYTICS_RETENTION_ENABLED', 'AUDIT_TRAIL_RETENTION_DAYS', 'AUDIT_TRAIL_ADMIN_RETENTION_DAYS', 'PROCESSING_TASKS_RETENTION_DAYS'] as $key) {
             unset($_ENV[$key], $_SERVER[$key]);
         }
         $this->projectDir = sys_get_temp_dir().'/aggregate-maintenance-job-'.bin2hex(random_bytes(6));
@@ -81,12 +81,20 @@ final class AnalyticsMaintenanceJobTest extends TestCase
         self::assertStringStartsWith('The data lifecycle settings are invalid', $result['message']);
     }
 
+    public function testKeepingAdministratorActionsForAPeriodTurnsTheJobOn(): void
+    {
+        $this->policy(['audit_trail_admin_retention_days' => 730]);
+        self::assertTrue($this->job()->status()['enabled']);
+        self::assertSame('ran', $this->job()->runDue(TaskTrigger::schedule())['status']);
+    }
+
     private function policy(array $changes): void
     {
         file_put_contents($this->projectDir.'/config/aggregate.yaml', Yaml::dump(array_replace([
             'analytics_archiving_enabled' => false,
             'analytics_retention_enabled' => false,
             'audit_trail_retention_days' => 0,
+            'audit_trail_admin_retention_days' => 0,
             'processing_tasks_retention_days' => 0,
         ], $changes)));
     }

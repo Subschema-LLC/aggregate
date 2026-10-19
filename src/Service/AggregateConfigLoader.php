@@ -2,6 +2,7 @@
 
 namespace App\Service;
 
+use App\Service\Operations\ConfigurationChanges;
 use Symfony\Component\Yaml\Yaml;
 use Symfony\Contracts\Service\ResetInterface;
 
@@ -316,6 +317,7 @@ class AggregateConfigLoader implements ResetInterface
             } else {
                 $data = array_replace($data, $values);
             }
+            $before = $effectiveConfig;
             $effectiveConfig = array_replace($effectiveConfig, $values);
 
             // Multi-line text, such as custom JavaScript, stays readable as a literal block.
@@ -341,6 +343,8 @@ class AggregateConfigLoader implements ResetInterface
             }
 
             $this->config = $effectiveConfig;
+            // For the audit trail: which settings changed, by name.
+            ConfigurationChanges::recordMapping(substr($configFile, strlen($this->projectDir) + 1), $before, $effectiveConfig);
         } finally {
             @flock($configHandle, LOCK_UN);
             fclose($configHandle);

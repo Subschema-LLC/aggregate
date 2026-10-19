@@ -1,0 +1,314 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Audit trail - {{ app_branding.name }}{% endblock %}
+
+{% macro outcome_tag(outcome, label) %}
+    {%- if outcome == 'succeeded' -%}<span class="tag is-success is-light">{{ label }}</span>
+    {%- elseif outcome == 'failed' -%}<span class="tag is-danger is-light">{{ label }}</span>
+    {%- elseif outcome == 'denied' -%}<span class="tag is-warning is-light">{{ label }}</span>
+    {%- elseif outcome == 'started' -%}<span class="tag is-info is-light">{{ label }}</span>
+    {%- else -%}<span class="tag is-light">{{ label }}</span>{%- endif -%}
+{% endmacro %}
+
+{% macro without(query, key, value = null) %}
+    {%- if value is null -%}
+        {{- path('app_audit_trail', query|filter((v, k) => k != key)) -}}
+    {%- else -%}
+        {{- path('app_audit_trail', query|merge({(key): query[key]|filter(v => v != value)})) -}}
+    {%- endif -%}
+{% endmacro %}
+
+{% block body %}
+{% import _self as ui %}
+<div class="audit-trail-page">
+    <h1 class="title">Audit trail</h1>
+    <p class="subtitle">Who changed what and when: settings, users, websites, integrations, updates, manual runs, background job runs and, when turned on, sign-ins.</p>
+    {{ component('Ui:DocsLink', {topic: 'operate.audit-trail', label: 'Audit trail guide'}) }}
+
+    {% for problem in problems %}
+        <div class="notification is-warning is-light" role="status">{{ problem }}</div>
+    {% endfor %}
+    {% if read_error %}
+        <div class="notification is-danger" role="alert">{{ read_error }}</div>
+    {% endif %}
+
+    <section class="box" aria-labelledby="audit-filter-title">
+        <h2 class="title is-5" id="audit-filter-title">Filter entries</h2>
+        <form method="get" action="{{ path('app_audit_trail') }}" class="audit-trail-filter">
+            <div class="columns is-multiline">
+                <div class="column is-one-quarter-desktop is-half-tablet">
+                    <div class="field">
+                        <label class="label" for="audit-from">From</label>
+                        <div class="control"><input class="input" type="date" id="audit-from" name="from" value="{{ filter.from ? filter.from|date('Y-m-d', 'UTC') }}" aria-describedby="audit-dates-help"></div>
+                    </div>
+                </div>
+                <div class="column is-one-quarter-desktop is-half-tablet">
+                    <div class="field">
+                        <label class="label" for="audit-to">To</label>
+                        <div class="control"><input class="input" type="date" id="audit-to" name="to" value="{{ filter.to ? filter.to|date('Y-m-d', 'UTC') }}" aria-describedby="audit-dates-help"></div>
+                    </div>
+                </div>
+                <div class="column is-half-desktop is-full-tablet">
+                    <p class="label">Quick ranges</p>
+                    <div class="buttons are-small">
+                        {% for label, range in ranges %}
+                            {% set active = filter.from and filter.to and filter.from|date('Y-m-d', 'UTC') == range.from and filter.to|date('Y-m-d', 'UTC') == range.to %}
+                            <a class="button{{ active ? ' is-link is-selected' : '' }}" href="{{ path('app_audit_trail', query|merge({from: range.from, to: range.to})) }}"{% if active %} aria-current="true"{% endif %}>{{ label }}</a>
+                        {% endfor %}
+                        <a class="button{{ not filter.from and not filter.to ? ' is-link is-selected' : '' }}" href="{{ path('app_audit_trail', query|filter((v, k) => k != 'from' and k != 'to')) }}">All time</a>
+                    </div>
+                    <p class="help" id="audit-dates-help">Whole days in UTC, both included.</p>
+                </div>
+
+                <div class="column is-one-third-desktop is-half-tablet">
+                    <fieldset class="field">
+                        <legend class="label">Area</legend>
+                        {% for area, definition in areas %}
+                            <div class="control"><label class="checkbox"><input type="checkbox" name="area[]" value="{{ area }}"{% if area in filter.areas %} checked{% endif %}> {{ definition.label }}</label></div>
+                        {% endfor %}
+                    </fieldset>
+                </div>
+                <div class="column is-one-third-desktop is-half-tablet">
+                    <div class="field">
+                        <label class="label" for="audit-action">Action</label>
+                        <div class="control">
+                            <div class="select is-multiple is-fullwidth">
+                                <select id="audit-action" name="action[]" multiple size="8" aria-describedby="audit-action-help">
+                                    {% for code, label in actions %}
+                                        <option value="{{ code }}"{% if code in filter.actions %} selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <p class="help" id="audit-action-help">{{ actions is empty ? 'No actions recorded yet.' : 'Hold Ctrl or ⌘ to choose several. Lists the actions recorded so far.' }}</p>
+                    </div>
+                </div>
+                <div class="column is-one-third-desktop is-full-tablet">
+                    <fieldset class="field">
+                        <legend class="label">Outcome</legend>
+                        {% for code, label in outcomes %}
+                            <div class="control"><label class="checkbox"><input type="checkbox" name="outcome[]" value="{{ code }}"{% if code in filter.outcomes %} checked{% endif %}> {{ label }}</label></div>
+                        {% endfor %}
+                    </fieldset>
+                    <div class="field">
+                        <label class="label" for="audit-user">User</label>
+                        <div class="control">
+                            <div class="select is-fullwidth">
+                                <select id="audit-user" name="user">
+                                    <option value="">Anyone</option>
+                                    {% if without_user or filter.user == no_user %}<option value="{{ no_user }}"{% if filter.user == no_user %} selected{% endif %}>No user (scheduled and system)</option>{% endif %}
+                                    {% for user in users %}
+                                        <option value="{{ user }}"{% if filter.user == user %} selected{% endif %}>{{ user }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="column is-one-third-desktop is-half-tablet">
+                    <div class="field">
+                        <label class="label" for="audit-q">Search</label>
+                        <div class="control has-icons-left">
+                            <input class="input" type="search" id="audit-q" name="q" value="{{ filter.text }}" maxlength="191" placeholder="Action, user, subject or details" aria-describedby="audit-q-help">
+                            <span class="icon is-left" aria-hidden="true"><i class="fas fa-magnifying-glass"></i></span>
+                        </div>
+                        <p class="help" id="audit-q-help">Finds text anywhere in an entry, ignoring case, for example a setting name.</p>
+                    </div>
+                </div>
+                <div class="column is-one-third-desktop is-half-tablet">
+                    <div class="field">
+                        <label class="label" for="audit-subject">Subject contains</label>
+                        <div class="control"><input class="input" type="search" id="audit-subject" name="subject" value="{{ filter.subject }}" maxlength="191" placeholder="A user, website, group or view" aria-describedby="audit-subject-help"></div>
+                        <p class="help" id="audit-subject-help">What an action was done to.</p>
+                    </div>
+                </div>
+                <div class="column is-one-third-desktop is-full-tablet">
+                    <div class="columns is-mobile">
+                        <div class="column">
+                            <div class="field">
+                                <label class="label" for="audit-task">Job run</label>
+                                <div class="control"><input class="input" type="text" inputmode="numeric" pattern="[0-9]*" id="audit-task" name="task" value="{{ filter.task }}" aria-describedby="audit-task-help"></div>
+                                <p class="help" id="audit-task-help">Processing task number.</p>
+                            </div>
+                        </div>
+                        <div class="column">
+                            <div class="field">
+                                <label class="label" for="audit-sort">Order</label>
+                                <div class="control"><div class="select is-fullwidth">
+                                    <select id="audit-sort" name="sort">
+                                        <option value="newest"{% if not filter.oldestFirst %} selected{% endif %}>Newest first</option>
+                                        <option value="oldest"{% if filter.oldestFirst %} selected{% endif %}>Oldest first</option>
+                                    </select>
+                                </div></div>
+                            </div>
+                        </div>
+                        <div class="column">
+                            <div class="field">
+                                <label class="label" for="audit-per-page">Per page</label>
+                                <div class="control"><div class="select is-fullwidth">
+                                    <select id="audit-per-page" name="per_page">
+                                        {% for size in page_sizes %}<option value="{{ size }}"{% if filter.pageSize == size %} selected{% endif %}>{{ size }}</option>{% endfor %}
+                                    </select>
+                                </div></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="field is-grouped is-grouped-multiline">
+                <div class="control"><button class="button is-primary" type="submit"><span class="icon" aria-hidden="true"><i class="fas fa-filter"></i></span><span>Apply filters</span></button></div>
+                <div class="control"><a class="button is-light" href="{{ path('app_audit_trail') }}">Clear filters</a></div>
+                <div class="control"><a class="button is-light" href="{{ path('app_audit_trail_export', query) }}" aria-describedby="audit-export-help"><span class="icon" aria-hidden="true"><i class="fas fa-file-csv"></i></span><span>Export CSV</span></a></div>
+            </div>
+            <p class="help" id="audit-export-help">The export has the entries that match the filters, in this order, up to {{ export_limit|number_format }}. Exports are recorded in the audit trail.</p>
+        </form>
+    </section>
+
+    {% if result %}
+        <section class="box" aria-labelledby="audit-entries-title">
+            <div class="level is-mobile mb-3">
+                <div class="level-left">
+                    <h2 class="title is-5 mb-0" id="audit-entries-title">
+                        {{ result.total|number_format }} {{ result.total == 1 ? 'entry' : 'entries' }}{{ filter.filtered ? ' match' : '' }}
+                    </h2>
+                </div>
+                {% if result.total > 0 %}
+                    <div class="level-right"><p class="is-size-7">Page {{ result.page|number_format }} of {{ result.pages|number_format }}</p></div>
+                {% endif %}
+            </div>
+
+            {% if filter.filtered %}
+                <div class="tags mb-4" aria-label="Active filters">
+                    {% if filter.from or filter.to %}
+                        <span class="tag is-link is-light">{{ filter.from ? filter.from|date('Y-m-d', 'UTC') : 'Start' }} – {{ filter.to ? filter.to|date('Y-m-d', 'UTC') : 'today' }}<a class="delete is-small" href="{{ path('app_audit_trail', query|filter((v, k) => k != 'from' and k != 'to')) }}" aria-label="Remove the dates"></a></span>
+                    {% endif %}
+                    {% for area in filter.areas %}
+                        <span class="tag is-link is-light">{{ areas[area].label }}<a class="delete is-small" href="{{ ui.without(query, 'area', area) }}" aria-label="Remove the area {{ areas[area].label }}"></a></span>
+                    {% endfor %}
+                    {% for action in filter.actions %}
+                        <span class="tag is-link is-light">{{ actions[action] ?? action }}<a class="delete is-small" href="{{ ui.without(query, 'action', action) }}" aria-label="Remove the action {{ actions[action] ?? action }}"></a></span>
+                    {% endfor %}
+                    {% for outcome in filter.outcomes %}
+                        <span class="tag is-link is-light">{{ outcomes[outcome] ?? outcome }}<a class="delete is-small" href="{{ ui.without(query, 'outcome', outcome) }}" aria-label="Remove the outcome {{ outcomes[outcome] ?? outcome }}"></a></span>
+                    {% endfor %}
+                    {% if filter.user is not null %}
+                        <span class="tag is-link is-light">User: {{ filter.user == no_user ? 'none' : filter.user }}<a class="delete is-small" href="{{ ui.without(query, 'user') }}" aria-label="Remove the user filter"></a></span>
+                    {% endif %}
+                    {% if filter.subject is not null %}
+                        <span class="tag is-link is-light">Subject: {{ filter.subject }}<a class="delete is-small" href="{{ ui.without(query, 'subject') }}" aria-label="Remove the subject filter"></a></span>
+                    {% endif %}
+                    {% if filter.text is not null %}
+                        <span class="tag is-link is-light">Search: {{ filter.text }}<a class="delete is-small" href="{{ ui.without(query, 'q') }}" aria-label="Remove the search"></a></span>
+                    {% endif %}
+                    {% if filter.task is not null %}
+                        <span class="tag is-link is-light">Job run {{ filter.task }}<a class="delete is-small" href="{{ ui.without(query, 'task') }}" aria-label="Remove the job run filter"></a></span>
+                    {% endif %}
+                </div>
+            {% endif %}
+
+            {% if result.entries is empty %}
+                <p>{{ filter.filtered ? 'No entries match these filters.' : 'Nothing has been recorded yet.' }}</p>
+            {% else %}
+                <div class="table-container">
+                    <table class="table is-fullwidth is-striped is-hoverable is-narrow audit-trail-entries">
+                        <thead>
+                            <tr><th scope="col">Time (UTC)</th><th scope="col">Area</th><th scope="col">Action</th><th scope="col">Outcome</th><th scope="col">User</th><th scope="col">Subject</th><th scope="col">Details</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for entry in result.entries %}
+                                <tr>
+                                    <td class="is-family-monospace is-size-7 has-text-nowrap">{{ entry.occurred_at|date('Y-m-d H:i:s', 'UTC') }}</td>
+                                    <td><a href="{{ path('app_audit_trail', query|merge({area: [entry.area]})) }}" title="Only this area">{{ areas[entry.area].label ?? entry.area }}</a></td>
+                                    <td><a href="{{ path('app_audit_trail', query|merge({action: [entry.action]})) }}" title="Only this action">{{ actions[entry.action] ?? entry.action }}</a></td>
+                                    <td><a href="{{ path('app_audit_trail', query|merge({outcome: [entry.outcome]})) }}" title="Only this outcome">{{ ui.outcome_tag(entry.outcome, outcomes[entry.outcome] ?? entry.outcome) }}</a></td>
+                                    <td>{% if entry.user is not null %}<a href="{{ path('app_audit_trail', query|merge({user: entry.user})) }}" title="Only this user">{{ entry.user }}</a>{% else %}<span class="has-text-grey">—</span>{% endif %}</td>
+                                    <td>{% if entry.subject is not null %}<a href="{{ path('app_audit_trail', query|merge({subject: entry.subject})) }}" title="Only this subject">{{ entry.subject }}</a>{% else %}<span class="has-text-grey">—</span>{% endif %}</td>
+                                    <td class="audit-trail-details">
+                                        {% if entry.details is null %}
+                                            <span class="has-text-grey">—</span>
+                                        {% elseif entry.details|length > 140 %}
+                                            <details><summary>{{ entry.details|slice(0, 120) }}…</summary><p class="is-size-7">{{ entry.details }}</p></details>
+                                        {% else %}
+                                            {{ entry.details }}
+                                        {% endif %}
+                                        {% if entry.task is not null %}
+                                            <p class="is-size-7"><a href="{{ path('app_audit_trail', {task: entry.task}) }}">Job run {{ entry.task }}</a></p>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                {% if result.pages > 1 %}
+                    {% set first = max(1, result.page - 2) %}
+                    {% set last = min(result.pages, result.page + 2) %}
+                    <nav class="pagination is-centered is-small mt-4" aria-label="Audit trail pages">
+                        <a class="pagination-previous" {% if result.page > 1 %}href="{{ path('app_audit_trail', query|merge({page: result.page - 1})) }}"{% else %}aria-disabled="true"{% endif %}>Newer</a>
+                        <a class="pagination-next" {% if result.page < result.pages %}href="{{ path('app_audit_trail', query|merge({page: result.page + 1})) }}"{% else %}aria-disabled="true"{% endif %}>Older</a>
+                        <ul class="pagination-list">
+                            {% if first > 1 %}
+                                <li><a class="pagination-link" href="{{ path('app_audit_trail', query) }}" aria-label="Page 1">1</a></li>
+                                {% if first > 2 %}<li><span class="pagination-ellipsis">&hellip;</span></li>{% endif %}
+                            {% endif %}
+                            {% for number in first..last %}
+                                <li><a class="pagination-link{{ number == result.page ? ' is-current' : '' }}" href="{{ path('app_audit_trail', query|merge({page: number})) }}" aria-label="Page {{ number }}"{% if number == result.page %} aria-current="page"{% endif %}>{{ number }}</a></li>
+                            {% endfor %}
+                            {% if last < result.pages %}
+                                {% if last < result.pages - 1 %}<li><span class="pagination-ellipsis">&hellip;</span></li>{% endif %}
+                                <li><a class="pagination-link" href="{{ path('app_audit_trail', query|merge({page: result.pages})) }}" aria-label="Page {{ result.pages }}">{{ result.pages }}</a></li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                {% endif %}
+            {% endif %}
+        </section>
+    {% endif %}
+
+    <section class="box" id="audit-switches" aria-labelledby="audit-switches-title">
+        <h2 class="title is-5" id="audit-switches-title">What is recorded</h2>
+        <p class="mb-2">Turn an area off to stop recording it; its existing entries are kept until they expire. Changes to these switches are always recorded, whatever they are set to.</p>
+        {{ component('Ui:DocsLink', {topic: 'operate.audit-trail-areas', label: 'What each area records'}) }}
+        {% if switches_error %}
+            <div class="notification is-danger is-light" role="alert">{{ switches_error }}</div>
+        {% endif %}
+        <form method="post" action="{{ path('app_audit_trail_settings') }}">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token('audit_trail_settings') }}">
+            <div class="columns is-multiline">
+                {% for area, definition in areas %}
+                    <div class="column is-half">
+                        <div class="field">
+                            <label class="checkbox has-text-weight-semibold" for="audit-area-{{ area }}">
+                                <input type="checkbox" id="audit-area-{{ area }}" name="record[{{ area }}]" value="1"{% if switches[area] %} checked{% endif %} aria-describedby="audit-area-{{ area }}-help">
+                                {{ definition.label }}{% if not definition.default %} <span class="tag is-light">Off by default</span>{% endif %}
+                            </label>
+                            <p class="help" id="audit-area-{{ area }}-help">
+                                {{ definition.description }}
+                                {% if summary[area] is defined %}{{ summary[area].count|number_format }} {{ summary[area].count == 1 ? 'entry' : 'entries' }} kept, since {{ summary[area].oldest|date('Y-m-d', 'UTC') }}.{% endif %}
+                            </p>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+            <button class="button is-primary" type="submit">Save what is recorded</button>
+        </form>
+    </section>
+
+    <section class="box" aria-labelledby="audit-retention-title">
+        <h2 class="title is-5" id="audit-retention-title">How long entries are kept</h2>
+        {% if retention %}
+            <p>
+                Background job runs are kept for {{ retention.job_runs == 0 ? 'ever' : retention.job_runs|number_format ~ ' days' }},
+                and administrator actions and sign-ins for {{ retention.admin == 0 ? 'ever' : retention.admin|number_format ~ ' days' }}.
+                Maintenance removes older entries once a day. Change these periods on <a href="{{ path('app_data_lifecycle') }}">Data lifecycle</a>.
+            </p>
+        {% else %}
+            <p>The data lifecycle settings are invalid, so nothing is removed. Correct them on <a href="{{ path('app_data_lifecycle') }}">Data lifecycle</a>.</p>
+        {% endif %}
+        <p class="help mt-3">The audit trail never holds passwords, keys, submitted values or visitor data: settings are recorded by name, a failed sign-in names the account only when it exists, and IP addresses are not kept. From the command line: <code>php bin/console app:audit:list --help</code>.</p>
+    </section>
+</div>
+{% endblock %}

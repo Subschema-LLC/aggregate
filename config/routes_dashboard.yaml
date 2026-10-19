@@ -90,6 +90,10 @@ scheduled_tasks_controller:
     resource: ../src/Controller/ScheduledTasksController.php
     type: attribute
 
+audit_trail_controller:
+    resource: ../src/Controller/AuditTrailController.php
+    type: attribute
+
 updates_controller:
     resource: ../src/Controller/UpdatesController.php
     type: attribute

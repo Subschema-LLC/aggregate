@@ -9,8 +9,10 @@ use App\Entity\User;
 use App\Kernel;
 use App\Service\AggregateConfigLoader;
 use App\Service\BrandingLogoManager;
+use App\Service\Operations\AdminAudit;
 use App\Service\SiteScriptConfig;
 use App\Service\WebsiteConfigManager;
+use App\Tests\Support\RecordingAdminAudit;
 use PHPUnit\Framework\TestCase;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
@@ -438,6 +440,8 @@ final class WebsiteDomainRulesRoutesTestKernel extends Kernel implements Compile
     public function process(ContainerBuilder $container): void
     {
         $container->setDefinition('security.user.provider.concrete.app_user_provider', new Definition(WebsiteDomainRulesTestUserProvider::class));
+        // No database here: administrator actions are kept in memory.
+        $container->setDefinition(AdminAudit::class, new Definition(RecordingAdminAudit::class));
         foreach ([AggregateConfigLoader::class, WebsiteConfigManager::class, BrandingLogoManager::class, SiteScriptConfig::class] as $service) {
             $container->getDefinition($service)->setArgument('$projectDir', $this->temporaryDirectory);
         }

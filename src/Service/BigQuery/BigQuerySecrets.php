@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Service\BigQuery;
 
+use App\Service\Operations\ConfigurationChanges;
+
 /**
  * Credential files for BigQuery sync, kept in config/secrets (preserved by
  * updates, never published) with owner-only permissions:
@@ -58,8 +60,11 @@ final class BigQuerySecrets
             throw new \InvalidArgumentException('The key file location is set in YAML or the environment. Remove the key file on the server instead.');
         }
         $path = $this->projectDir.'/'.BigQuerySettings::DEFAULT_CREDENTIALS_FILE;
-        if (is_file($path) && !@unlink($path)) {
-            throw new \RuntimeException('The key file could not be removed. Check the permissions of config/secrets.');
+        if (is_file($path)) {
+            if (!@unlink($path)) {
+                throw new \RuntimeException('The key file could not be removed. Check the permissions of config/secrets.');
+            }
+            ConfigurationChanges::record(BigQuerySettings::DEFAULT_CREDENTIALS_FILE);
         }
     }
 
@@ -170,8 +175,11 @@ final class BigQuerySecrets
     {
         $path = $this->projectDir.'/'.self::SIGN_IN_FILE;
         if ($data === []) {
-            if (is_file($path) && !@unlink($path)) {
-                throw new \RuntimeException('The Google sign-in file could not be removed. Check the permissions of config/secrets.');
+            if (is_file($path)) {
+                if (!@unlink($path)) {
+                    throw new \RuntimeException('The Google sign-in file could not be removed. Check the permissions of config/secrets.');
+                }
+                ConfigurationChanges::record(self::SIGN_IN_FILE);
             }
 
             return;
@@ -195,6 +203,8 @@ final class BigQuerySecrets
             if (@file_put_contents($temporary, $contents) !== strlen($contents) || !@rename($temporary, $path)) {
                 throw new \RuntimeException('The credential file could not be written to config/secrets.');
             }
+            // The file's name only: its contents are a secret.
+            ConfigurationChanges::record(str_starts_with($path, $this->projectDir.'/') ? substr($path, strlen($this->projectDir) + 1) : basename($path));
         } finally {
             if (is_file($temporary)) {
                 @unlink($temporary);

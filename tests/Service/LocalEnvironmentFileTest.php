@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Service;
 
 use App\Service\LocalEnvironmentFile;
+use App\Service\Operations\ConfigurationChanges;
 use PHPUnit\Framework\TestCase;
 
 final class LocalEnvironmentFileTest extends TestCase
@@ -52,6 +53,20 @@ final class LocalEnvironmentFileTest extends TestCase
         self::assertSame("# Written by the setup page\nDATABASE_URL='sqlite:///%kernel.project_dir%/var/data.db'\n# Old\nAPP_SECRET=abc\n", file_get_contents($file));
         self::assertNull($env->get(self::NAME));
         self::assertSame([], glob($this->projectDir.'/.env.local.*'));
+    }
+
+    public function testTheAuditTrailNamesTheVariableButNotItsValue(): void
+    {
+        $env = $this->file();
+        ConfigurationChanges::start();
+        $env->set(self::NAME, 'mysql://user:secret@db/reporting');
+        $env->set(self::NAME, 'mysql://user:secret@db/reporting');
+        self::assertSame(['.env.local' => [self::NAME]], ConfigurationChanges::finish());
+
+        ConfigurationChanges::start();
+        $env->set(self::NAME, 'mysql://user:secret@db/reporting');
+        $env->set('AGGREGATE_LOCAL_FILE_TEST_OTHER', null);
+        self::assertSame([], ConfigurationChanges::finish(), 'saving the same value, or removing a missing one, changes nothing');
     }
 
     public function testANewFileIsPrivate(): void

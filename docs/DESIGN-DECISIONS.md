@@ -573,8 +573,8 @@ running due jobs from web requests.
 and their outcomes in one `audit_trail` table, instead of a status table per
 feature. A run is a row with a type, a subject, a status and failure details; an
 exclusive job holds a lock key that a unique index keeps to one running row. The
-audit trail gets an entry for every finished run and is reserved for
-administrator actions. Maintenance purges both after configurable periods,
+audit trail gets an entry for every finished run, and administrator actions too
+(see below). Maintenance purges both after configurable periods,
 keeping each job's latest success and failure. BigQuery sync and analytics
 maintenance use them, as does the reporting database sync; BigQuery's own status table was dropped without
 migrating its rows.
@@ -592,6 +592,37 @@ run, and the kept latest runs mean a purge never empties the table completely.
 **What would change it.** A job whose results need typed, queryable columns
 beyond those, or a volume of runs the purge cannot keep small, would get a table
 of its own.
+
+### Administrator actions in the audit trail, by area
+
+**Decision.** Administrator actions share the `audit_trail` table with job runs,
+in areas (settings, users, websites, integrations, updates, manual runs, job
+runs, sign-ins) that can each be switched off. A request subscriber records each
+dashboard route listed in `AdminActions` once its controller has run, with the
+outcome taken from the response status and new error messages; a console
+subscriber records the listed commands. Configuration writers report which files
+and settings they changed, by name, while an action runs. Switch changes are
+always recorded. Job runs and the other entries have separate retention periods,
+730 days by default for administrator actions. Sign-ins are off by default.
+
+**Why.** One list of routes, checked by a test against every route that accepts
+POST, keeps new forms from being missed without adding a line to each
+controller. Recording setting names rather than values keeps passwords, keys and
+connection URLs out of the trail by construction, so details need no redaction.
+Areas let an operator keep what their policy needs and drop the rest; recording
+switch changes keeps turning auditing off visible. Audit evidence is usually kept
+longer than job history, hence its own period.
+
+**Trade-off.** An entry says which settings changed but not from what to what,
+so reconstructing a past value needs the configuration's own history or a
+backup. Outcomes are inferred from the response: a page that reports an error
+without an error message or status would be recorded as succeeded. Commands are
+attributed to the operating-system account, not a dashboard user, and updates
+are recorded when they start because they replace the running code.
+
+**What would change it.** A need to show earlier values would call for
+recording non-secret values for an allowlist of settings. A requirement for
+tamper evidence would add a hash chain or an external sink, such as syslog.
 
 ## Platform
 
