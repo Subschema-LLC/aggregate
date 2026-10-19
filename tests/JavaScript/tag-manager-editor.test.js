@@ -245,11 +245,34 @@ function page(rowValues = {}, managerEnabled = '0') {
   const elements = {'tag-manager-enabled': {value: managerEnabled}};
   for (const [name, input] of Object.entries(fields)) elements[`tag-3-${name}`] = input;
   const status = {textContent: ''};
+  const tabs = ['variables', 'tags', 'triggers'].map((id) => {
+    const active = id === 'variables';
+    const set = new Set(active ? ['is-active'] : []);
+    const link = {attrs: {'aria-selected': active ? 'true' : 'false'}, setAttribute(k, v) { this.attrs[k] = v; }};
+    return {
+      dataset: {toggleTab: id, workspaceTab: id},
+      classList: {toggle: (cls, on) => (on ? set.add(cls) : set.delete(cls)), contains: (cls) => set.has(cls)},
+      querySelector: () => link,
+      link
+    };
+  });
+  const panes = ['variables', 'tags', 'triggers'].map((id) => {
+    const active = id === 'variables';
+    const set = new Set(active ? ['is-active'] : []);
+    return {
+      dataset: {togglePane: id, paneName: id},
+      hidden: !active,
+      classList: {toggle: (cls, on) => (on ? set.add(cls) : set.delete(cls)), contains: (cls) => set.has(cls)}
+    };
+  });
   const controller = Object.assign(new Page(), {
-    element: {ownerDocument: {getElementById: (id) => elements[id] ?? null}},
+    element: {
+      ownerDocument: {getElementById: (id) => elements[id] ?? null},
+      querySelectorAll: (sel) => sel.includes('toggle-tab') ? tabs : (sel.includes('toggle-pane') ? panes : [])
+    },
     hasNewRowValue: true, newRowValue: 3, hasStatusTarget: true, statusTarget: status
   });
-  return {controller, fields, changes, status};
+  return {controller, fields, changes, status, tabs, panes};
 }
 
 const addEvent = {params: {url: tracker, id: 'aggregate-tracker'}};
@@ -257,6 +280,9 @@ const addEvent = {params: {url: tracker, id: 'aggregate-tracker'}};
 test('adding the tracker fills only the empty new-tag row and explains what is left to do', () => {
   const empty = page({type: 'call', trigger: 'window_load'});
   empty.controller.addTracker(addEvent);
+  assert.equal(empty.tabs[1].classList.contains('is-active'), true, 'adding the tracker switches to the tags tab');
+  assert.equal(empty.panes[1].hidden, false);
+  assert.equal(empty.panes[0].hidden, true);
   assert.equal(empty.fields.src.value, tracker);
   assert.equal(empty.fields.id.value, 'aggregate-tracker');
   assert.equal(empty.fields.type.value, 'script');

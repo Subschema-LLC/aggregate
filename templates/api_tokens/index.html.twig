@@ -7,11 +7,20 @@
 {% block body %}
 {% import _self as help %}
 <div class="api-tokens-page">
-    <h1 class="title">API tokens</h1>
-    <p class="subtitle">Tokens for the read-only reporting API and AI assistants, which read the reporting views over HTTPS.</p>
-    <div class="buttons">
-        {{ component('Ui:DocsLink', {topic: 'reporting.api', label: 'Reporting API guide'}) }}
-        {{ component('Ui:DocsLink', {topic: 'mcp', label: 'AI assistants (MCP) guide'}) }}
+    <div class="level">
+        <div class="level-left">
+            <div>
+                <h1 class="title">API tokens</h1>
+                <p class="subtitle">Tokens for the read-only reporting API and AI assistants, which read the reporting views over HTTPS.</p>
+                <div class="buttons">
+                    {{ component('Ui:DocsLink', {topic: 'reporting.api', label: 'Reporting API guide'}) }}
+                    {{ component('Ui:DocsLink', {topic: 'mcp', label: 'AI assistants (MCP) guide'}) }}
+                </div>
+            </div>
+        </div>
+        <div class="level-right">
+            {{ component('Ui:CardControls', {class: 'page-card-controls mb-0'}) }}
+        </div>
     </div>
 
     {% if not api_enabled %}

@@ -5,9 +5,18 @@
 {% block body %}
 {% set empty_grant = {websites: {all: false, groups: [], sites: []}, pages: {}} %}
 <div class="settings-page">
-<h1 class="title">Users</h1>
-<p class="subtitle">A permission group is a named set of websites and pages. Assign it to standard users, and changing it changes their access.</p>
-{{ component('Ui:DocsLink', {topic: 'users.permission-groups', label: 'Permission groups guide'}) }}
+<div class="level">
+    <div class="level-left">
+        <div>
+            <h1 class="title">Users</h1>
+            <p class="subtitle">A permission group is a named set of websites and pages. Assign it to standard users, and changing it changes their access.</p>
+            {{ component('Ui:DocsLink', {topic: 'users.permission-groups', label: 'Permission groups guide'}) }}
+        </div>
+    </div>
+    <div class="level-right">
+        {{ component('Ui:CardControls', {class: 'page-card-controls mb-0'}) }}
+    </div>
+</div>
 {% include 'users/_tabs.html.twig' %}
 
 {% if permission_groups_error %}

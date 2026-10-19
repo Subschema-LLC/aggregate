@@ -4,9 +4,18 @@
 
 {% block body %}
 <div class="settings-page">
-<h1 class="title">Page groups</h1>
-<p class="subtitle">Group page paths into content labels for the daily reporting view.</p>
-{{ component('Ui:DocsLink', {topic: 'reporting.page-groups', label: 'How page groups work'}) }}
+<div class="level">
+    <div class="level-left">
+        <div>
+            <h1 class="title">Page groups</h1>
+            <p class="subtitle">Group page paths into content labels for the daily reporting view.</p>
+            {{ component('Ui:DocsLink', {topic: 'reporting.page-groups', label: 'How page groups work'}) }}
+        </div>
+    </div>
+    <div class="level-right">
+        {{ component('Ui:CardControls', {class: 'page-card-controls mb-0'}) }}
+    </div>
+</div>
 <div class="columns is-centered">
 <div class="column is-8-desktop">
 <div class="box">

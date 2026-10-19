@@ -1,0 +1,35 @@
+{% props label, current = '', items = [] %}
+
+{% if items|length > 0 %}
+<div {{ attributes.defaults({
+    class: 'tabs is-toggle is-fullwidth nested-toggle-tabs mb-4',
+    role: 'tablist',
+    'aria-label': label,
+    'data-controller': 'components--ui--toggle-tabs'
+}) }}>
+    <ul>
+        {% for item in items %}
+            {% set is_active = item.active is defined ? item.active : (current != '' ? current == item.id : loop.first) %}
+            {% set pane_id = item.pane_id|default('pane-' ~ item.id) %}
+            {% set tab_id = item.tab_id|default('tab-' ~ item.id) %}
+            <li class="{% if is_active %}is-active{% endif %}" role="presentation" data-toggle-tab="{{ item.id }}" data-workspace-tab="{{ item.id }}">
+                <a href="{{ item.href|default('#' ~ item.id) }}"
+                   id="{{ tab_id }}"
+                   role="tab"
+                   aria-selected="{{ is_active ? 'true' : 'false' }}"
+                   aria-controls="{{ pane_id }}"
+                   data-tab-name="{{ item.id }}"
+                   data-action="click->components--ui--toggle-tabs#switchTab keydown->components--ui--toggle-tabs#onKeydown">
+                    {% if item.icon is defined and item.icon %}
+                        <span class="icon is-small"><i class="{{ item.icon }}" aria-hidden="true"></i></span>
+                    {% endif %}
+                    <span>{{ item.label }}</span>
+                    {% if item.badge is defined and item.badge is not null %}
+                        <span class="tag is-rounded is-small ml-2 {{ item.badge_class|default('is-light') }}">{{ item.badge }}</span>
+                    {% endif %}
+                </a>
+            </li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}

@@ -31,6 +31,7 @@ export default class extends Controller {
             select.value = value;
             select.dispatchEvent(new Event('change', { bubbles: true }));
         }
+        this.activateTab('tags');
         source.value = url;
         source.scrollIntoView?.({ block: 'center' });
         (consent ?? source).focus?.();
@@ -69,5 +70,36 @@ export default class extends Controller {
 
     say(message) {
         if (this.hasStatusTarget) this.statusTarget.textContent = message;
+    }
+
+    switchWorkspaceTab(event) {
+        if (event && typeof event.preventDefault === 'function') event.preventDefault();
+        const target = event?.currentTarget ?? event?.target ?? null;
+        const link = target && typeof target.closest === 'function' ? target.closest('[data-tab-name], a') : target;
+        const name = link?.dataset?.tabName || (typeof link?.getAttribute === 'function' ? (link.getAttribute('href') || '').replace(/^#/, '') : '');
+        if (name) this.activateTab(name);
+    }
+
+    activateTab(name) {
+        if (!this.element || typeof this.element.querySelectorAll !== 'function') return;
+        const tabs = Array.from(this.element.querySelectorAll('[data-toggle-tab], [data-workspace-tab]'));
+        for (const tab of tabs) {
+            const tabId = tab.dataset?.toggleTab || tab.dataset?.workspaceTab;
+            const isActive = tabId === name;
+            tab.classList?.toggle('is-active', isActive);
+            const link = typeof tab.querySelector === 'function' ? tab.querySelector('a') : null;
+            if (link && typeof link.setAttribute === 'function') {
+                link.setAttribute('aria-selected', isActive ? 'true' : 'false');
+            }
+        }
+        const panes = Array.from(this.element.querySelectorAll('[data-toggle-pane], [data-pane-name]'));
+        for (const pane of panes) {
+            const paneId = pane.dataset?.togglePane || pane.dataset?.paneName;
+            const isActive = paneId === name;
+            pane.classList?.toggle('is-active', isActive);
+            pane.hidden = !isActive;
+            if (isActive) pane.removeAttribute?.('hidden');
+            else pane.setAttribute?.('hidden', '');
+        }
     }
 }

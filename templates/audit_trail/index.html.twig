@@ -21,9 +21,18 @@
 {% block body %}
 {% import _self as ui %}
 <div class="audit-trail-page">
-    <h1 class="title">Audit trail</h1>
-    <p class="subtitle">Who changed what and when: settings, users, websites, integrations, updates, manual runs, background job runs and, when turned on, sign-ins.</p>
-    {{ component('Ui:DocsLink', {topic: 'operate.audit-trail', label: 'Audit trail guide'}) }}
+    <div class="level">
+        <div class="level-left">
+            <div>
+                <h1 class="title">Audit trail</h1>
+                <p class="subtitle">Who changed what and when: settings, users, websites, integrations, updates, manual runs, background job runs and, when turned on, sign-ins.</p>
+                {{ component('Ui:DocsLink', {topic: 'operate.audit-trail', label: 'Audit trail guide'}) }}
+            </div>
+        </div>
+        <div class="level-right">
+            {{ component('Ui:CardControls', {class: 'page-card-controls mb-0'}) }}
+        </div>
+    </div>
 
     {% for problem in problems %}
         <div class="notification is-warning is-light" role="status">{{ problem }}</div>
@@ -32,8 +41,8 @@
         <div class="notification is-danger" role="alert">{{ read_error }}</div>
     {% endif %}
 
-    <section class="box" aria-labelledby="audit-filter-title">
-        <h2 class="title is-5" id="audit-filter-title">Filter entries</h2>
+    <details class="box" aria-labelledby="audit-filter-title" open>
+        <summary><h2 class="title is-5" id="audit-filter-title">Filter entries</h2></summary>
         <form method="get" action="{{ path('app_audit_trail') }}" class="audit-trail-filter">
             <div class="columns is-multiline">
                 <div class="column is-one-quarter-desktop is-half-tablet">
@@ -160,20 +169,18 @@
             </div>
             <p class="help" id="audit-export-help">The export has the entries that match the filters, in this order, up to {{ export_limit|number_format }}. Exports are recorded in the audit trail.</p>
         </form>
-    </section>
+    </details>
 
     {% if result %}
-        <section class="box" aria-labelledby="audit-entries-title">
-            <div class="level is-mobile mb-3">
-                <div class="level-left">
-                    <h2 class="title is-5 mb-0" id="audit-entries-title">
-                        {{ result.total|number_format }} {{ result.total == 1 ? 'entry' : 'entries' }}{{ filter.filtered ? ' match' : '' }}
-                    </h2>
-                </div>
+        <details class="box" aria-labelledby="audit-entries-title" open>
+            <summary>
+                <span class="title is-5 mb-0" id="audit-entries-title">
+                    {{ result.total|number_format }} {{ result.total == 1 ? 'entry' : 'entries' }}{{ filter.filtered ? ' match' : '' }}
+                </span>
                 {% if result.total > 0 %}
-                    <div class="level-right"><p class="is-size-7">Page {{ result.page|number_format }} of {{ result.pages|number_format }}</p></div>
+                    <span class="is-size-7 has-text-weight-normal ml-2">Page {{ result.page|number_format }} of {{ result.pages|number_format }}</span>
                 {% endif %}
-            </div>
+            </summary>
 
             {% if filter.filtered %}
                 <div class="tags mb-4" aria-label="Active filters">
@@ -261,11 +268,11 @@
                     </nav>
                 {% endif %}
             {% endif %}
-        </section>
+        </details>
     {% endif %}
 
-    <section class="box" id="audit-switches" aria-labelledby="audit-switches-title">
-        <h2 class="title is-5" id="audit-switches-title">What is recorded</h2>
+    <details class="box" id="audit-switches" aria-labelledby="audit-switches-title" open>
+        <summary><h2 class="title is-5" id="audit-switches-title">What is recorded</h2></summary>
         <p class="mb-2">Turn an area off to stop recording it; its existing entries are kept until they expire. Changes to these switches are always recorded, whatever they are set to.</p>
         {{ component('Ui:DocsLink', {topic: 'operate.audit-trail-areas', label: 'What each area records'}) }}
         {% if switches_error %}
@@ -291,10 +298,10 @@
             </div>
             <button class="button is-primary" type="submit">Save what is recorded</button>
         </form>
-    </section>
+    </details>
 
-    <section class="box" aria-labelledby="audit-retention-title">
-        <h2 class="title is-5" id="audit-retention-title">How long entries are kept</h2>
+    <details class="box" aria-labelledby="audit-retention-title" open>
+        <summary><h2 class="title is-5" id="audit-retention-title">How long entries are kept</h2></summary>
         {% if retention %}
             <p>
                 Background job runs are kept for {{ retention.job_runs == 0 ? 'ever' : retention.job_runs|number_format ~ ' days' }},
@@ -305,6 +312,6 @@
             <p>The data lifecycle settings are invalid, so nothing is removed. Correct them on <a href="{{ path('app_data_lifecycle') }}">Data lifecycle</a>.</p>
         {% endif %}
         <p class="help mt-3">The audit trail never holds passwords, keys, submitted values or visitor data: settings are recorded by name, a failed sign-in names the account only when it exists, and IP addresses are not kept. From the command line: <code>php bin/console app:audit:list --help</code>.</p>
-    </section>
+    </details>
 </div>
 {% endblock %}

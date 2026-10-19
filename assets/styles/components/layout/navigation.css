@@ -233,7 +233,10 @@
 }
 
 .app-navigation-group > summary:hover,
-.app-navigation-group > summary:focus-visible {
+.app-navigation-group > summary:focus-visible,
+.app-navigation-group.is-active > summary,
+.app-navigation-items > .navbar-item.is-active,
+.app-navigation .app-navigation-children .navbar-item.is-active {
     background-color: var(--app-nav-tint-strong);
     text-decoration: none;
 }
