@@ -15,10 +15,13 @@
             </div>
         </div>
         <div class="level-right">
-            <a class="button" href="{{ path('app_dashboard') }}">
-                <span class="icon"><i class="fas fa-arrow-left" aria-hidden="true"></i></span>
-                <span>Dashboard</span>
-            </a>
+            <div class="is-flex is-align-items-center is-flex-wrap-wrap" style="gap: 0.5rem;">
+                {{ component('Ui:CardControls', {class: 'page-card-controls mb-0'}) }}
+                <a class="button is-small" href="{{ path('app_dashboard') }}">
+                    <span class="icon"><i class="fas fa-arrow-left" aria-hidden="true"></i></span>
+                    <span>Dashboard</span>
+                </a>
+            </div>
         </div>
     </div>
 
@@ -48,8 +51,8 @@
     <form method="post" action="{{ path('app_email_save') }}" data-turbo="false" autocomplete="off">
         <input type="hidden" name="_csrf_token" value="{{ csrf_token('email_settings') }}">
 
-        <div class="box">
-            <h2 class="title is-4">Service and sender</h2>
+        <details class="box" open>
+            <summary><h2 class="title is-4">Service and sender</h2></summary>
             <div class="columns is-multiline">
                 <div class="column is-half field">
                     <label class="label" for="email-enabled">Email</label>
@@ -93,38 +96,57 @@
                     {% if overrides.email_reply_to %}{{ help.env_help(overrides, 'email_reply_to') }}{% else %}<p class="help">Where replies go, if someone answers a message. Empty: the from address.</p>{% endif %}
                 </div>
             </div>
-        </div>
+        </details>
 
-        {% for code, provider in providers %}
-            {% set credential = attribute(credentials, code) %}
-            <div class="box email-provider" data-pages--email-settings--index-target="panel" data-provider="{{ code }}">
-                <h2 class="title is-4">{{ provider.label }}</h2>
-                <p class="mb-4">{{ provider.description }}</p>
-                {% include ['email_settings/_provider_' ~ code ~ '.html.twig', 'email_settings/_provider_none.html.twig'] with {settings: settings, overrides: overrides} only %}
-                <div class="field">
-                    <label class="label" for="email-credential-{{ code }}">{{ credential.label }}{% if not credential.required %} <span class="has-text-weight-normal">(optional)</span>{% endif %}</label>
-                    <div class="control">
-                        <input class="input" id="email-credential-{{ code }}" name="credential[{{ credential.key }}]" type="password" maxlength="4096" autocomplete="new-password" spellcheck="false"
-                            placeholder="{{ credential.source ? 'Saved; leave empty to keep it' : '' }}"{% if credential.source == 'environment' %} disabled{% endif %}>
-                    </div>
-                    <p class="help">
-                        {% if credential.source == 'environment' %}
-                            Controlled by <code>{{ credential.variable }}</code>.
-                        {% else %}
-                            {{ credential.help }} Stored in <code>config/secrets/email.yaml</code>, readable only by the application{% if credential.source == 'file' %}; a key is saved{% endif %}.
-                        {% endif %}
-                    </p>
-                    {% if credential.source == 'file' %}
-                        <label class="checkbox mt-1">
-                            <input type="checkbox" name="remove[{{ credential.key }}]" value="1"> Remove the saved {{ credential.label|lower }}
-                        </label>
-                    {% endif %}
-                </div>
-            </div>
+        {% set ordered_provider_codes = [] %}
+        {% if settings.email_provider != '' and attribute(providers, settings.email_provider) is defined %}
+            {% set ordered_provider_codes = [settings.email_provider] %}
+        {% endif %}
+        {% for code in providers|keys %}
+            {% if code not in ordered_provider_codes %}
+                {% set ordered_provider_codes = ordered_provider_codes|merge([code]) %}
+            {% endif %}
         {% endfor %}
 
-        <div class="box email-two-step">
-            <h2 class="title is-4">Two-step sign-in</h2>
+        <div class="email-providers-list mb-5" data-pages--email-settings--index-target="providerList">
+            {% for code in ordered_provider_codes %}
+                {% set provider = attribute(providers, code) %}
+                {% set credential = attribute(credentials, code) %}
+                {% set is_selected = settings.email_provider == code %}
+                <details class="box email-provider" data-pages--email-settings--index-target="panel" data-provider="{{ code }}" data-default-order="{{ loop.index0 }}"{% if is_selected %} open{% endif %}>
+                    <summary>
+                        <span class="is-inline-flex is-align-items-center">
+                            <h2 class="title is-4">{{ provider.label }}</h2>
+                            <span class="tag is-primary is-light ml-2{% if not is_selected %} is-hidden{% endif %}" data-provider-selected-badge{% if not is_selected %} hidden{% endif %}>Selected</span>
+                        </span>
+                    </summary>
+                    <p class="mb-4">{{ provider.description }}</p>
+                    {% include ['email_settings/_provider_' ~ code ~ '.html.twig', 'email_settings/_provider_none.html.twig'] with {settings: settings, overrides: overrides} only %}
+                    <div class="field">
+                        <label class="label" for="email-credential-{{ code }}">{{ credential.label }}{% if not credential.required %} <span class="has-text-weight-normal">(optional)</span>{% endif %}</label>
+                        <div class="control">
+                            <input class="input" id="email-credential-{{ code }}" name="credential[{{ credential.key }}]" type="password" maxlength="4096" autocomplete="new-password" spellcheck="false"
+                                placeholder="{{ credential.source ? 'Saved; leave empty to keep it' : '' }}"{% if credential.source == 'environment' %} disabled{% endif %}>
+                        </div>
+                        <p class="help">
+                            {% if credential.source == 'environment' %}
+                                Controlled by <code>{{ credential.variable }}</code>.
+                            {% else %}
+                                {{ credential.help }} Stored in <code>config/secrets/email.yaml</code>, readable only by the application{% if credential.source == 'file' %}; a key is saved{% endif %}.
+                            {% endif %}
+                        </p>
+                        {% if credential.source == 'file' %}
+                            <label class="checkbox mt-1">
+                                <input type="checkbox" name="remove[{{ credential.key }}]" value="1"> Remove the saved {{ credential.label|lower }}
+                            </label>
+                        {% endif %}
+                    </div>
+                </details>
+            {% endfor %}
+        </div>
+
+        <details class="box email-two-step" open>
+            <summary><h2 class="title is-4">Two-step sign-in</h2></summary>
             <p class="mb-4">Asks every user for a {{ constant('App\\Security\\SignInCode\\SignInCodes::DIGITS') }}-digit code, emailed to the address on their account, after their password. A stolen password alone then signs nobody in, and the email tells the owner their password was used.</p>
             <div class="field">
                 <label class="label" for="mfa-required">Two-step sign-in</label>
@@ -147,10 +169,10 @@
                     {{ mfa ? 'These users cannot sign in' : 'With two-step sign-in, these users could not sign in' }} until they have an email address: <strong>{{ users_without_email|join(', ') }}</strong>. Add addresses on the <a href="{{ path('app_users') }}">Users</a> page.
                 </div>
             {% endif %}
-        </div>
+        </details>
 
-        <div class="box email-sign-in-codes">
-            <h2 class="title is-4">Sign-in codes</h2>
+        <details class="box email-sign-in-codes" open>
+            <summary><h2 class="title is-4">Sign-in codes</h2></summary>
             <p class="mb-4">Lets users sign in with a {{ constant('App\\Security\\SignInCode\\SignInCodes::DIGITS') }}-digit code sent to the email address on their account, instead of their password. A code lasts {{ constant('App\\Security\\SignInCode\\SignInCodes::LIFETIME') // 60 }} minutes and works once, in the browser that asked for it. Someone who forgot their password signs in with a code and sets a new one on their profile.</p>
             <div class="field">
                 <label class="label" for="sign-in-codes-enabled">Sign-in codes</label>
@@ -172,15 +194,15 @@
                     <p class="help">Anyone who controls a user’s mailbox can then sign in as that user, as with any emailed password reset. Users without an email address keep using their password.</p>
                 {% endif %}
             </div>
-        </div>
+        </details>
 
         <div class="buttons">
             <button class="button is-primary" type="submit">Save email settings</button>
         </div>
     </form>
 
-    <div class="box mt-5">
-        <h2 class="title is-4">Test message</h2>
+    <details class="box mt-5" open>
+        <summary><h2 class="title is-4">Test message</h2></summary>
         {% if test_address %}
             <form method="post" action="{{ path('app_email_test') }}" data-turbo="false">
                 <input type="hidden" name="_csrf_token" value="{{ csrf_token('email_test') }}">
@@ -219,6 +241,6 @@
         {% else %}
             <p>Nothing has been sent yet.</p>
         {% endif %}
-    </div>
+    </details>
 </div>
 {% endblock %}

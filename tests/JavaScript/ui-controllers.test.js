@@ -15,6 +15,14 @@ const Clipboard = controller('copy_button');
 const Confirm = controller('confirm');
 const Validation = controller('validation');
 const Notification = controller('notification');
+const Cards = controller('cards');
+const ToggleTabs = controller('toggle_tabs');
+const EmailSettings = vm.runInNewContext(
+  fs.readFileSync(path.join(__dirname, '../../assets/controllers/pages/email_settings/index_controller.js'), 'utf8')
+    .replace(/^import .*;\n/m, '')
+    .replace('export default class', 'class EmailSettingsController') + '\nEmailSettingsController;',
+  {Controller: class {}}
+);
 
 function clipboard({source = {textContent: 'Example snippet'}, writeText = async () => {}, disabled = false} = {}) {
   const selections = [];
@@ -155,4 +163,234 @@ test('dismissing a notification removes only its own component', () => {
   assert.deepEqual(notifications, [second]);
   instance.dismiss();
   assert.deepEqual(notifications, [second]);
+});
+
+test('cards controller enhances cards and expands or collapses all cards on the page', () => {
+  const makeClassList = (initial = []) => {
+    const set = new Set(initial);
+    return {
+      add: (...names) => names.forEach(n => set.add(n)),
+      remove: (...names) => names.forEach(n => set.delete(n)),
+      contains: n => set.has(n),
+      toggle: (n, force) => {
+        const next = force === undefined ? !set.has(n) : Boolean(force);
+        if (next) set.add(n); else set.delete(n);
+        return next;
+      }
+    };
+  };
+
+  const listeners = {};
+  const header = {
+    tagName: 'H2',
+    dataset: {},
+    attributes: {},
+    classList: makeClassList(['title']),
+    hasAttribute(k) { return k in this.attributes; },
+    setAttribute(k, v) { this.attributes[k] = v; },
+    querySelector: () => null,
+    appendChild() {},
+    addEventListener(type, cb) { listeners[type] = cb; }
+  };
+
+  const card = {
+    tagName: 'DIV',
+    dataset: {},
+    hidden: false,
+    classList: makeClassList(['box']),
+    children: [header],
+    querySelector: sel => sel === '.collapsible-card-header' ? header : header
+  };
+
+  const detailsA = {tagName: 'DETAILS', open: false, hidden: false};
+  const detailsB = {tagName: 'DETAILS', open: true, hidden: false};
+  const toolbar1 = {hidden: false};
+  const toolbar2 = {hidden: false};
+
+  const container = {
+    ownerDocument: {createElement: () => ({setAttribute() {}})},
+    querySelectorAll(selector) {
+      if (selector === '.box, .card') return [card];
+      if (selector === '[data-card-controls]') return [toolbar1, toolbar2];
+      if (selector === '.is-collapsible-card') return [card];
+      if (selector.startsWith('details.')) return [detailsA, detailsB];
+      return [];
+    }
+  };
+
+  const instance = Object.assign(new Cards(), {element: container});
+  instance.connect();
+
+  assert.equal(card.classList.contains('is-collapsible-card'), true);
+  assert.equal(header.classList.contains('collapsible-card-header'), true);
+  assert.equal(header.attributes['aria-expanded'], 'true');
+  assert.equal(toolbar1.hidden, true, 'duplicate fallback toolbar is hidden when page has its own toolbar');
+  assert.equal(toolbar2.hidden, false);
+
+  // Clicking the header toggles the card
+  listeners.click({target: header});
+  assert.equal(card.classList.contains('is-collapsed'), true);
+  assert.equal(header.attributes['aria-expanded'], 'false');
+
+  // Expand all opens both details and enhanced cards
+  instance.expandAll();
+  assert.equal(detailsA.open, true);
+  assert.equal(detailsB.open, true);
+  assert.equal(card.classList.contains('is-collapsed'), false);
+  assert.equal(header.attributes['aria-expanded'], 'true');
+
+  // Collapse all closes both details and enhanced cards
+  instance.collapseAll();
+  assert.equal(detailsA.open, false);
+  assert.equal(detailsB.open, false);
+  assert.equal(card.classList.contains('is-collapsed'), true);
+  assert.equal(header.attributes['aria-expanded'], 'false');
+});
+
+test('email settings controller places the selected email service card first and collapses all others', () => {
+  const makeClassList = (initial = []) => {
+    const set = new Set(initial);
+    return {
+      contains: n => set.has(n),
+      toggle: (n, force) => {
+        const next = force === undefined ? !set.has(n) : Boolean(force);
+        if (next) set.add(n); else set.delete(n);
+        return next;
+      }
+    };
+  };
+  const makePanel = (provider, open = false) => {
+    const badge = {hidden: !open, classList: makeClassList(open ? [] : ['is-hidden'])};
+    return {
+      dataset: {provider},
+      open,
+      hidden: false,
+      querySelector: sel => sel === '[data-provider-selected-badge]' ? badge : null,
+      badge
+    };
+  };
+
+  const postmark = makePanel('postmark', false);
+  const sendgrid = makePanel('sendgrid', false);
+  const smtp = makePanel('smtp', false);
+  const order = [postmark, sendgrid, smtp];
+  const providerList = {
+    get firstElementChild() { return order[0]; },
+    prepend(panel) {
+      const idx = order.indexOf(panel);
+      if (idx !== -1) order.splice(idx, 1);
+      order.unshift(panel);
+    }
+  };
+
+  const instance = Object.assign(new EmailSettings(), {
+    hasProviderTarget: true,
+    hasProviderListTarget: true,
+    providerTarget: {value: 'sendgrid'},
+    providerListTarget: providerList,
+    panelTargets: order
+  });
+
+  instance.connect();
+
+  assert.equal(order[0], sendgrid, 'selected provider card is moved first');
+  assert.equal(sendgrid.open, true, 'selected provider card is expanded');
+  assert.equal(sendgrid.badge.hidden, false);
+  assert.equal(sendgrid.badge.classList.contains('is-hidden'), false);
+  assert.equal(postmark.open, false, 'other provider cards are collapsed');
+  assert.equal(postmark.badge.hidden, true);
+  assert.equal(postmark.badge.classList.contains('is-hidden'), true);
+  assert.equal(smtp.open, false, 'other provider cards are collapsed');
+  assert.equal(postmark.hidden, false, 'other provider cards remain collapsible instead of hidden');
+});
+
+test('toggle tabs controller switches nested in-page panes, supports keyboard navigation, and reveals invalid panes', () => {
+  const makeClassList = (initial = []) => {
+    const set = new Set(initial);
+    return {
+      contains: n => set.has(n),
+      toggle: (n, force) => {
+        const next = force === undefined ? !set.has(n) : Boolean(force);
+        if (next) set.add(n); else set.delete(n);
+        return next;
+      }
+    };
+  };
+
+  const makeTab = (id, active = false) => {
+    const attrs = {'aria-selected': active ? 'true' : 'false', 'aria-controls': `pane-${id}`, href: `#${id}`};
+    const link = {
+      dataset: {tabName: id},
+      focused: false,
+      focus() { this.focused = true; },
+      getAttribute: k => attrs[k] ?? null,
+      setAttribute: (k, v) => { attrs[k] = v; },
+      closest: () => link
+    };
+    return {
+      dataset: {toggleTab: id, workspaceTab: id},
+      classList: makeClassList(active ? ['is-active'] : []),
+      querySelector: sel => sel === 'a' ? link : null,
+      link,
+      attrs
+    };
+  };
+
+  const makePane = (id, active = false) => ({
+    id: `pane-${id}`,
+    dataset: {togglePane: id, paneName: id},
+    hidden: !active,
+    classList: makeClassList(active ? ['is-active'] : []),
+    removeAttribute(k) { if (k === 'hidden') this.hidden = false; },
+    setAttribute(k) { if (k === 'hidden') this.hidden = true; }
+  });
+
+  const tabs = [makeTab('variables', true), makeTab('tags', false), makeTab('triggers', false)];
+  const panes = new Map([
+    ['pane-variables', makePane('variables', true)],
+    ['pane-tags', makePane('tags', false)],
+    ['pane-triggers', makePane('triggers', false)]
+  ]);
+  const historyCalls = [];
+  const doc = {
+    getElementById: id => panes.get(id) ?? null,
+    defaultView: {
+      location: {hash: ''},
+      history: {replaceState: (_s, _t, hash) => historyCalls.push(hash)},
+      addEventListener() {},
+      removeEventListener() {}
+    }
+  };
+  const form = {addEventListener() {}, removeEventListener() {}};
+  const element = {
+    ownerDocument: doc,
+    querySelectorAll: () => tabs,
+    closest: () => form
+  };
+
+  const instance = Object.assign(new ToggleTabs(), {element});
+  instance.connect();
+
+  // Click to switch to tags
+  instance.switchTab({preventDefault() {}, currentTarget: tabs[1].link});
+  assert.equal(tabs[0].classList.contains('is-active'), false);
+  assert.equal(tabs[0].attrs['aria-selected'], 'false');
+  assert.equal(panes.get('pane-variables').hidden, true);
+  assert.equal(tabs[1].classList.contains('is-active'), true);
+  assert.equal(tabs[1].attrs['aria-selected'], 'true');
+  assert.equal(panes.get('pane-tags').hidden, false);
+  assert.deepEqual(historyCalls, ['#tags']);
+
+  // Keyboard ArrowRight moves from tags to triggers and focuses link
+  instance.onKeydown({key: 'ArrowRight', currentTarget: tabs[1].link, preventDefault() {}});
+  assert.equal(tabs[2].classList.contains('is-active'), true);
+  assert.equal(tabs[2].link.focused, true);
+  assert.equal(panes.get('pane-triggers').hidden, false);
+  assert.equal(panes.get('pane-tags').hidden, true);
+
+  // Invalid event inside hidden variables pane reveals the variables tab
+  instance.revealInvalid({target: {closest: () => panes.get('pane-variables')}});
+  assert.equal(tabs[0].classList.contains('is-active'), true);
+  assert.equal(panes.get('pane-variables').hidden, false);
+  assert.equal(panes.get('pane-triggers').hidden, true);
 });

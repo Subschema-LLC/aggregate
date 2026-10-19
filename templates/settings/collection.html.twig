@@ -6,13 +6,23 @@
 <div class="settings-page">
 {% set retry_settings = tracking_retry_settings %}
 {% set retry_overrides = tracking_retry_environment_overrides %}
-<h1 class="title">Collection controls</h1>
-<p class="subtitle">Manage collection and local geography{% if scope %} for {{ scope.label }}{% else %} for this deployment{% endif %}.</p>
-{{ component('Ui:DocsLink', {topic: 'privacy.controls', label: 'Collection controls in the privacy guide'}) }}
+<div class="level">
+    <div class="level-left">
+        <div>
+            <h1 class="title">Collection controls</h1>
+            <p class="subtitle">Manage collection and local geography{% if scope %} for {{ scope.label }}{% else %} for this deployment{% endif %}.</p>
+            {{ component('Ui:DocsLink', {topic: 'privacy.controls', label: 'Collection controls in the privacy guide'}) }}
+        </div>
+    </div>
+    <div class="level-right">
+        {{ component('Ui:CardControls', {class: 'page-card-controls mb-0'}) }}
+    </div>
+</div>
 {% include 'partials/website_scope_switcher.html.twig' %}
 <div class="columns is-centered">
 <div class="column is-9-desktop">
-<div class="box">
+<details class="box" open>
+<summary><h2 class="title is-5">Collection settings</h2></summary>
 <p class="mb-4">{% if scope and scope.kind != 'deployment' %}The form shows the settings in effect. Check a section to save it for this scope; leave it unchecked to keep the broader setting. Environment variables still win.{% else %}Save collection controls in <code>config/aggregate.yaml</code>, or edit the active YAML configuration directly. Server environment variables take precedence.{% endif %}</p>
     <form action="{{ path('app_anonymous_settings_save') }}" method="post">
         <input type="hidden" name="_csrf_token" value="{{ csrf_token('anonymous_settings') }}">
@@ -206,7 +216,7 @@
             </div>
         </div>
     </form>
-</div>
+</details>
     <details class="message is-warning is-light mt-5">
         <summary class="message-header is-clickable">
             <p><span class="icon mr-1"><i class="fas fa-shield-halved" aria-hidden="true"></i></span> What rejection means (privacy & legal boundaries)</p>

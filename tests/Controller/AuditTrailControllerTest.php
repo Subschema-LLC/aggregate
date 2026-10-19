@@ -120,7 +120,7 @@ final class AuditTrailControllerTest extends TestCase
             $trail->record('operations', 'glossary_synced', 'succeeded', new \DateTimeImmutable('2026-10-05 10:00:00 UTC'), null, 'scott');
         }
         $crawler = $this->page(['area' => ['operations'], 'per_page' => '25', 'page' => '2']);
-        self::assertSame('Page 2 of 3', $crawler->filter('.level-right')->text());
+        self::assertSame('Page 2 of 3', $crawler->filter('#audit-entries-title + span')->text());
         self::assertSame('/dashboard/audit-trail?'.http_build_query(['area' => ['operations'], 'per_page' => '25', 'page' => 3]), $crawler->filter('.pagination-next')->attr('href'));
         self::assertSame('page', $crawler->filter('.pagination-link.is-current')->attr('aria-current'));
     }

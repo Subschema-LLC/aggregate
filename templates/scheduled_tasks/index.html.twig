@@ -31,12 +31,21 @@
      data-pages--scheduled-tasks--index-status-url-value="{{ path('app_scheduled_tasks_status') }}"
      data-pages--scheduled-tasks--index-running-value="{{ running or run_requested_at ? 'true' : 'false' }}"
      data-pages--scheduled-tasks--index-since-value="{{ run_requested_at ?? 0 }}">
-    <h1 class="title">Scheduled tasks</h1>
-    <p class="subtitle">One scheduled task on the server runs maintenance and the syncs, each when it is due. Set it up once; turn jobs on and off on their own pages.</p>
-    {{ component('Ui:DocsLink', {topic: 'operate.scheduled-tasks', label: 'Scheduled tasks guide'}) }}
+    <div class="level">
+        <div class="level-left">
+            <div>
+                <h1 class="title">Scheduled tasks</h1>
+                <p class="subtitle">One scheduled task on the server runs maintenance and the syncs, each when it is due. Set it up once; turn jobs on and off on their own pages.</p>
+                {{ component('Ui:DocsLink', {topic: 'operate.scheduled-tasks', label: 'Scheduled tasks guide'}) }}
+            </div>
+        </div>
+        <div class="level-right">
+            {{ component('Ui:CardControls', {class: 'page-card-controls mb-0'}) }}
+        </div>
+    </div>
 
-    <section class="box" aria-labelledby="scheduler-status-title">
-        <h2 class="title is-5" id="scheduler-status-title">
+    <details class="box" aria-labelledby="scheduler-status-title" open>
+        <summary><h2 class="title is-5" id="scheduler-status-title">
             {% if health.state == 'working' %}
                 <span class="tag is-success is-medium mr-2">Working</span> The scheduled task ran {{ scheduled.started_at|date('Y-m-d H:i', 'UTC') }} UTC
             {% elseif health.state == 'late' %}
@@ -44,7 +53,7 @@
             {% else %}
                 <span class="tag is-light is-medium mr-2">Not set up</span> The scheduled task has not run yet
             {% endif %}
-        </h2>
+        </h2></summary>
         {% if health.state == 'working' %}
             <p>The server runs the scheduled task. Jobs that are turned on run when they are due.</p>
         {% elseif health.state == 'late' %}
@@ -70,10 +79,10 @@
             </button>
         </form>
         {% if background_problem %}<p class="help">{{ background_problem }}</p>{% endif %}
-    </section>
+    </details>
 
-    <section class="box" aria-labelledby="scheduler-setup-title">
-        <h2 class="title is-4" id="scheduler-setup-title">Set it up</h2>
+    <details class="box" aria-labelledby="scheduler-setup-title" open>
+        <summary><h2 class="title is-4" id="scheduler-setup-title">Set it up</h2></summary>
         {% if plesk %}
             <p>In Plesk, open <strong>Websites &amp; Domains → {{ plesk.subscription }} → Scheduled Tasks → Add Task</strong> and fill in:</p>
             <div class="columns is-multiline mt-2">
@@ -96,10 +105,10 @@
             <p class="help">On Plesk, use a “Run a PHP script” task instead; on servers with systemd, a timer works too. The guide has both.</p>
         {% endif %}
         <p class="help mt-3">From the command line: <code>php bin/console app:scheduler:status</code> shows this page; <code>{{ manual_command }}</code> runs the due jobs once.</p>
-    </section>
+    </details>
 
-    <section class="box" aria-labelledby="scheduler-jobs-title">
-        <h2 class="title is-4" id="scheduler-jobs-title">Jobs</h2>
+    <details class="box" aria-labelledby="scheduler-jobs-title" open>
+        <summary><h2 class="title is-4" id="scheduler-jobs-title">Jobs</h2></summary>
         <div class="table-container">
             <table class="table is-fullwidth is-striped scheduled-tasks-jobs">
                 <thead><tr><th scope="col">Job</th><th scope="col">Schedule</th><th scope="col">Last run</th><th scope="col">Next run</th><th scope="col">Settings</th></tr></thead>
@@ -117,6 +126,6 @@
             </table>
         </div>
         <p class="help">Maintenance runs once a day when archiving, retention or record purging is on. The syncs run at the intervals set on their pages. Each run is also recorded in the <code>processing_tasks</code> table and the audit trail.</p>
-    </section>
+    </details>
 </div>
 {% endblock %}

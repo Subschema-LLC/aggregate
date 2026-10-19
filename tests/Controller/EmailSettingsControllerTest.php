@@ -85,6 +85,11 @@ final class EmailSettingsControllerTest extends TestCase
         self::assertStringContainsString('Email is off', $crawler->filter('.email-status')->text());
         self::assertSame(['', 'postmark', 'sendgrid', 'mailgun', 'smtp', 'dsn'], $crawler->filter('select[name="email_provider"] option')->each(static fn (Crawler $option): string => (string) $option->attr('value')));
         self::assertCount(5, $crawler->filter('.email-provider[data-provider]'));
+        self::assertCount(0, $crawler->filter('.email-provider[open]'), 'Before a service is chosen, all provider cards are collapsed by default');
+        self::assertCount(0, $crawler->filter('[data-provider-selected-badge]:not([hidden])'), 'Before a service is chosen, no provider card shows the Selected badge');
+        self::assertCount(5, $crawler->filter('[data-provider-selected-badge].is-hidden[hidden]'));
+        self::assertCount(1, $crawler->filter('[data-card-controls] button[data-card-action="expand"]'));
+        self::assertCount(1, $crawler->filter('[data-card-controls] button[data-card-action="collapse"]'));
         self::assertCount(1, $crawler->filter('input[name="credential[postmark_server_token]"][type="password"]'));
         self::assertCount(1, $crawler->filter('input[name="email_mailgun_domain"]'));
         self::assertCount(1, $crawler->filter('select[name="email_smtp_encryption"] option[value="starttls"][selected]'));
@@ -119,7 +124,15 @@ final class EmailSettingsControllerTest extends TestCase
         self::assertStringContainsString('Email is on and sends through Postmark', $crawler->filter('.email-status')->text());
         self::assertCount(1, $crawler->filter('form[action="/dashboard/email/test"] button:not([disabled])'));
 
-        $this->call('save', $this->request('POST', '/dashboard/email/save', ['_csrf_token' => 'valid', 'remove' => ['postmark_server_token' => '1']]));
+        $this->call('save', $this->request('POST', '/dashboard/email/save', ['_csrf_token' => 'valid', 'email_provider' => 'sendgrid']));
+        $reordered = $this->crawl($this->call('index', $this->request('GET', '/dashboard/email', [], 'scott@example.com')));
+        $providerOrder = $reordered->filter('.email-provider[data-provider]')->each(static fn (Crawler $node): string => (string) $node->attr('data-provider'));
+        self::assertSame('sendgrid', $providerOrder[0], 'The selected email service card comes first');
+        self::assertSame(['sendgrid'], $reordered->filter('.email-provider[open]')->each(static fn (Crawler $node): string => (string) $node->attr('data-provider')), 'Only the selected email service card is open by default');
+        self::assertCount(1, $reordered->filter('[data-provider-selected-badge]:not([hidden]):not(.is-hidden)'), 'Only the selected email service card shows the Selected badge');
+        self::assertCount(1, $reordered->filter('.email-provider[data-provider="sendgrid"] [data-provider-selected-badge]:not([hidden]):not(.is-hidden)'));
+
+        $this->call('save', $this->request('POST', '/dashboard/email/save', ['_csrf_token' => 'valid', 'email_provider' => 'postmark', 'remove' => ['postmark_server_token' => '1']]));
         self::assertSame([], (new EmailSecrets($this->projectDir))->read());
         self::assertStringContainsString('The Postmark server api token is not set', implode(' ', $this->session->getFlashBag()->get('warning')));
     }

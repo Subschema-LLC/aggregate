@@ -65,7 +65,7 @@
     {% include 'partials/navigation/navigation.html.twig' %}
 
     <section class="section">
-        <div class="container">
+        <div class="container" data-controller="components--ui--cards" data-action="invalid->components--ui--cards#revealInvalid:capture">
             {% for message in app.flashes('success') %}
                 {{ component('Ui:Notification', {message: message, type: 'success'}) }}
             {% endfor %}
@@ -77,6 +77,36 @@
             {% for message in app.flashes('error') %}
                 {{ component('Ui:Notification', {message: message, type: 'danger'}) }}
             {% endfor %}
+
+            {% if app.user is defined and app.user and main_navigation is defined and app.request is defined and app.request %}
+                {% set current_path = app.request.pathInfo %}
+                {% set nav_menu = navigation_menu(main_navigation) %}
+                {% set top_site_tabs = nav_menu.items|default([])|filter(item => item.children is not defined and item.enabled|default(false) and item.url|default('') in ['/dashboard', '/dashboard/website-groups']) %}
+                {% if current_path in ['/dashboard', '/dashboard/website-groups'] and top_site_tabs|length > 1 %}
+                    {{ component('Ui:SectionTabs', {
+                        label: 'Website management pages',
+                        current: current_path,
+                        items: top_site_tabs
+                    }) }}
+                {% endif %}
+                {% for group in nav_menu.items|default([]) %}
+                    {% if group.children is defined %}
+                        {% set internal_children = group.children|filter(c => c.enabled and not c.external|default(false) and c.url) %}
+                        {% set matches_group = internal_children|filter(c => c.url == current_path)|length > 0 %}
+                        {% if matches_group and internal_children|length > 1 %}
+                            {{ component('Ui:SectionTabs', {
+                                label: group.label ~ ' pages',
+                                current: current_path,
+                                items: internal_children
+                            }) }}
+                        {% endif %}
+                    {% endif %}
+                {% endfor %}
+            {% endif %}
+
+            {% block card_controls %}
+                {{ component('Ui:CardControls') }}
+            {% endblock %}
 
             {# On a page the user can only view, forms that save are turned off and the server refuses changes. #}
             {% set page_access = app.user is defined and app.user ? dashboard_page_access() : null %}

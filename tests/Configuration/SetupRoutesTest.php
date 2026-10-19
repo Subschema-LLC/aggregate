@@ -121,7 +121,7 @@ final class SetupRoutesTest extends TestCase
         $crawler = $browser->request('GET', '/dashboard/consent-manager', ['site' => $siteId]);
         self::assertSame(200, $browser->getResponse()->getStatusCode());
         self::assertTrue($browser->getResponse()->headers->hasCacheControlDirective('no-store'));
-        self::assertCount(1, $crawler->filter('a[href="/dashboard/consent-manager"]'), 'the navigation lists the page');
+        self::assertCount(1, $crawler->filter('nav.app-navigation a[href="/dashboard/consent-manager"]'), 'the navigation lists the page');
         $form = $crawler->filter('form#consent-manager-form')->form();
         $form['text[accept]'] = 'Accept all';
         $form['theme[accent]'] = '#1a4f8b';

@@ -108,12 +108,58 @@
     color: var(--app-brand-primary-contrast, #ffffff);
 }
 
-.workspace-pane[hidden] {
+.workspace-pane[hidden],
+.nested-toggle-pane[hidden] {
     display: none !important;
 }
 
-.workspace-pane {
+.workspace-pane,
+.nested-toggle-pane {
     animation: fadeInPane 0.15s ease;
+}
+
+/* Nested In-Page Toggle Tabs (.tabs.is-toggle.is-fullwidth) */
+.tabs.is-toggle.nested-toggle-tabs ul,
+.tabs.is-toggle ul {
+    border-bottom: none;
+}
+
+.tabs.is-toggle li a {
+    align-items: center;
+    background-color: var(--app-brand-surface);
+    border-color: var(--app-brand-border);
+    color: var(--app-brand-text);
+    font-weight: 500;
+    gap: 0.5rem;
+    text-decoration: none;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.tabs.is-toggle li:not(.is-active) a:hover,
+.tabs.is-toggle li:not(.is-active) a:focus-visible {
+    background-color: color-mix(in srgb, var(--app-brand-accent) 10%, var(--app-brand-surface));
+    border-color: color-mix(in srgb, var(--app-brand-accent) 45%, var(--app-brand-border));
+    color: var(--app-brand-text);
+    text-decoration: none;
+}
+
+.tabs.is-toggle li.is-active a,
+.tabs.is-toggle li.is-active a:hover,
+.tabs.is-toggle li.is-active a:focus-visible {
+    background-color: var(--app-brand-accent);
+    border-color: var(--app-brand-accent);
+    color: var(--app-brand-accent-contrast, #ffffff);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.tabs.is-toggle li.is-active a .icon {
+    color: var(--app-brand-accent-contrast, #ffffff);
+}
+
+.tabs.is-toggle li.is-active a .tag {
+    background-color: color-mix(in srgb, var(--app-brand-accent-contrast, #ffffff) 20%, transparent);
+    color: var(--app-brand-accent-contrast, #ffffff);
 }
 
 @keyframes fadeInPane {
@@ -122,7 +168,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .workspace-pane {
+    .workspace-pane,
+    .nested-toggle-pane {
         animation: none !important;
     }
 }

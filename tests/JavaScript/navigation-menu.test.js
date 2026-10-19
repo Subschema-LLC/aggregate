@@ -85,3 +85,51 @@ test('widening past the desktop breakpoint closes the menu', () => {
     assert.equal(app.classes.has('is-open'), false);
     assert.equal(app.toggle.attributes['aria-expanded'], 'false');
 });
+
+test('active route link and its parent group are marked active and outside clicks close open groups', () => {
+    const groupA = {open: true, classes: new Set(), classList: {add: (n) => groupA.classes.add(n)}};
+    const groupB = {open: true, classes: new Set(), classList: {add: (n) => groupB.classes.add(n)}};
+    const linkA = {
+        attrs: {href: '/dashboard/email'},
+        classes: new Set(),
+        getAttribute(k) { return this.attrs[k]; },
+        setAttribute(k, v) { this.attrs[k] = v; },
+        classList: {add: (n) => linkA.classes.add(n)},
+        closest: (sel) => sel === 'details.app-navigation-group' ? groupA : null,
+    };
+    const classes = new Set();
+    let docClick = null;
+    const element = {
+        classList: {
+            add: (...names) => names.forEach((n) => classes.add(n)),
+            remove: (...names) => names.forEach((n) => classes.delete(n)),
+            contains: (n) => classes.has(n),
+            toggle: (n, force) => (force ? classes.add(n) : classes.delete(n)),
+        },
+        querySelectorAll(sel) {
+            if (sel === '.app-navigation-items a.navbar-item[href]') return [linkA];
+            if (sel === 'details.app-navigation-group[open]') return [groupA, groupB].filter((g) => g.open);
+            return [];
+        },
+        ownerDocument: {
+            addEventListener(type, cb) { if (type === 'click') docClick = cb; },
+            removeEventListener() {},
+            defaultView: {
+                location: {pathname: '/dashboard/email'},
+                matchMedia: () => ({matches: false, addEventListener() {}, removeEventListener() {}}),
+            },
+        },
+    };
+    const toggle = {hidden: true, setAttribute() {}, focus() {}};
+    const instance = Object.assign(new NavigationMenu(), {element, toggleTarget: toggle});
+    instance.connect();
+
+    assert.equal(linkA.classes.has('is-active'), true);
+    assert.equal(linkA.attrs['aria-current'], 'page');
+    assert.equal(groupA.classes.has('is-active'), true);
+
+    // Clicking outside any group closes all open dropdown groups
+    docClick({target: {closest: () => null}});
+    assert.equal(groupA.open, false);
+    assert.equal(groupB.open, false);
+});

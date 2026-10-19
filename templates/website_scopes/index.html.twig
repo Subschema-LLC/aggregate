@@ -5,10 +5,15 @@
 {% block body %}
 <div class="websites-page">
     <div class="level mb-5">
-        <div>
-            <h1 class="title mb-1">{{ label.plural }}</h1>
-            <p class="subtitle is-6">Share collection settings and data models across websites. A website setting overrides its {{ label.singular|lower }}, and a {{ label.singular|lower }} overrides the deployment.</p>
-            {{ component('Ui:DocsLink', {topic: 'configuration.website-groups', label: 'Website groups guide'}) }}
+        <div class="level-left">
+            <div>
+                <h1 class="title mb-1">{{ label.plural }}</h1>
+                <p class="subtitle is-6">Share collection settings and data models across websites. A website setting overrides its {{ label.singular|lower }}, and a {{ label.singular|lower }} overrides the deployment.</p>
+                {{ component('Ui:DocsLink', {topic: 'configuration.website-groups', label: 'Website groups guide'}) }}
+            </div>
+        </div>
+        <div class="level-right">
+            {{ component('Ui:CardControls', {class: 'page-card-controls mb-0'}) }}
         </div>
     </div>
 

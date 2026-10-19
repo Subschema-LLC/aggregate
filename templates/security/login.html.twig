@@ -36,7 +36,10 @@
                     </div>
 
                     <div class="field mb-5">
-                        <label class="label" for="password">Password</label>
+                        <div class="is-flex is-justify-content-space-between is-align-items-baseline mb-2">
+                            <label class="label mb-0" for="password">Password</label>
+                            <a class="is-size-7 forgot-password-link" href="{{ sign_in_codes|default(false) ? path('app_login_code') : path('app_forgot_password') }}">Forgot password?</a>
+                        </div>
                         <div class="control has-icons-left">
                             <input class="input" type="password" id="password" name="_password" required autocomplete="current-password" placeholder="Password">
                             <span class="icon is-small is-left">
@@ -61,6 +64,13 @@
                         <a href="{{ path('app_login_code') }}">
                             <span class="icon is-small"><i class="fas fa-envelope" aria-hidden="true"></i></span>
                             <span>Forgot your password? Email me a sign-in code</span>
+                        </a>
+                    </p>
+                {% else %}
+                    <p class="mt-4 has-text-centered forgot-password-help">
+                        <a class="is-size-7" href="{{ path('app_forgot_password') }}">
+                            <span class="icon is-small"><i class="fas fa-key" aria-hidden="true"></i></span>
+                            <span>Forgot your password?</span>
                         </a>
                     </p>
                 {% endif %}
