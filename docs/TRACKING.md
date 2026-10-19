@@ -388,13 +388,13 @@ described in [Step 3](#step-3-consent-management-integration).
        consent: false
      };
    </script>
-   <script src="https://your-analytics-host.com/aggregate.js" async referrerpolicy="no-referrer"></script>
+   <script src="https://your-analytics-host.com/aggregate.js?min=1" async referrerpolicy="no-referrer"></script>
    ```
 
    **Option B: Data Attributes (No inline JS)**
    ```html
    <script
-     src="https://your-analytics-host.com/aggregate.js"
+     src="https://your-analytics-host.com/aggregate.js?min=1"
      data-endpoint="https://your-analytics-host.com/api/receive"
      data-website-token="your-website-token-here"
      data-consent="0"
@@ -494,7 +494,7 @@ Initialize a previously recorded choice before loading the tracker when possible
 2. **If consent was already granted, initialize it via a data attribute**
    ```html
    <script
-     src="https://your-analytics-host.com/aggregate.js"
+     src="https://your-analytics-host.com/aggregate.js?min=1"
      data-endpoint="https://your-analytics-host.com/api/receive"
      data-website-token="your-website-token-here"
      data-consent="1"

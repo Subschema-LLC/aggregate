@@ -5,15 +5,19 @@ declare(strict_types=1);
 namespace App\Service\BigQuery;
 
 use App\Service\Operations\ProcessingTasks;
+use App\Service\ViewSync\ViewCatalog;
+use App\Service\ViewSync\ViewExporter;
+use App\Service\ViewSync\ViewSnapshot;
+use App\Service\ViewSync\ViewSyncException;
 use App\Service\ViewSync\ViewSyncRunner;
 use Psr\Log\LoggerInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
  * Copies the selected reporting views to BigQuery (see ViewSyncRunner). Each
- * view is exported to a temporary file and replaces its BigQuery table with
- * one load job, so a table always holds a complete copy of the view as of its
- * last sync. Each view sync is a processing task of type bigquery_sync.
+ * view's snapshot file replaces its BigQuery table with one load job, so a
+ * table always holds a complete copy of the view as of its last sync. Each
+ * view sync is a processing task of type bigquery_sync.
  *
  * @extends ViewSyncRunner<BigQueryClient>
  */
@@ -30,14 +34,14 @@ class BigQuerySyncRunner extends ViewSyncRunner
     public function __construct(
         BigQuerySettings $settings,
         private readonly BigQueryCredentialsFactory $credentials,
-        private readonly BigQueryViewExporter $exporter,
+        ViewExporter $exporter,
         ProcessingTasks $tasks,
         private readonly HttpClientInterface $http,
         LoggerInterface $logger,
         ?\Closure $clock = null,
         ?\Closure $clientFactory = null,
     ) {
-        parent::__construct($settings, $tasks, $logger, $clock, self::TASK_TYPE, 'BigQuery sync');
+        parent::__construct($settings, $exporter, $tasks, $logger, $clock);
         $this->clientFactory = $clientFactory ?? fn (GoogleCredentials $credentials, string $project, string $location): BigQueryClient => new BigQueryClient($this->http, $credentials, $project, $location);
     }
 
@@ -53,19 +57,19 @@ class BigQuerySyncRunner extends ViewSyncRunner
     {
         $results = [];
         foreach ($views as $view) {
-            $export = $this->exporter->export($view);
+            $export = $this->exporter->export($view, BigQuerySettings::definition()->exportDirectory);
             $file = null;
             if ($outputDirectory !== null) {
                 $file = rtrim($outputDirectory, '/').'/'.$view.'.ndjson';
-                if (!@rename($export['file'], $file)) {
-                    @unlink($export['file']);
+                if (!@rename($export->file, $file)) {
+                    $export->delete();
                     throw new BigQueryException('The export could not be written to '.$outputDirectory.'.');
                 }
-                file_put_contents(rtrim($outputDirectory, '/').'/'.$view.'.schema.json', json_encode($export['fields'], JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT)."\n");
+                file_put_contents(rtrim($outputDirectory, '/').'/'.$view.'.schema.json', json_encode($export->fields, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT)."\n");
             } else {
-                @unlink($export['file']);
+                $export->delete();
             }
-            $results[] = ['view' => $view, 'rows' => $export['rows'], 'bytes' => $export['bytes'], 'fields' => $export['fields'], 'file' => $file];
+            $results[] = ['view' => $view, 'rows' => $export->rows, 'bytes' => $export->bytes, 'fields' => $export->fields, 'file' => $file];
         }
 
         return $results;
@@ -112,28 +116,33 @@ class BigQuerySyncRunner extends ViewSyncRunner
         return $client;
     }
 
-    /** @param BigQueryClient $destination */
-    protected function copy(string $view, object $destination, array $settings, ?string &$externalId): array
+    /**
+     * @param BigQueryClient $destination
+     *
+     * @param-out string $externalId the load or query job
+     */
+    protected function replace(ViewSnapshot $snapshot, object $destination, array $settings, ?string &$externalId): void
     {
-        $export = $this->exporter->export($view);
-        try {
-            $result = $export['rows'] === 0
-                ? $destination->replaceWithEmpty($settings[BigQuerySettings::KEY_DATASET], $view, $export['fields'])
-                : $destination->load($settings[BigQuerySettings::KEY_DATASET], $view, $export['fields'], $export['file'], 'Copy of the Aggregate reporting view '.$view.', replaced on every sync. '.BigQueryViewCatalog::describe($view).'.');
-            $externalId = $result['job_id'];
-            if ($export['rows'] !== 0 && $result['rows'] !== $export['rows']) {
-                throw new BigQueryException(sprintf('BigQuery loaded %d of %d rows.', $result['rows'], $export['rows']));
-            }
-
-            return [
-                'rows' => $export['rows'],
-                'message' => sprintf('Replaced %s.%s.%s with %d row%s.', $destination->project(), $settings[BigQuerySettings::KEY_DATASET], $view, $export['rows'], $export['rows'] === 1 ? '' : 's'),
-            ];
-        } finally {
-            if (is_file($export['file'])) {
-                @unlink($export['file']);
-            }
+        $view = $snapshot->view;
+        $result = $snapshot->rows === 0
+            ? $destination->replaceWithEmpty($settings[BigQuerySettings::KEY_DATASET], $view, $snapshot->fields)
+            : $destination->load($settings[BigQuerySettings::KEY_DATASET], $view, $snapshot->fields, $snapshot->file, 'Copy of the Aggregate reporting view '.$view.', replaced when the view changes. '.ViewCatalog::describe($view).'.');
+        $externalId = $result['job_id'];
+        if ($snapshot->rows !== 0 && $result['rows'] !== $snapshot->rows) {
+            throw new BigQueryException(sprintf('BigQuery loaded %d of %d rows.', $result['rows'], $snapshot->rows));
         }
+    }
+
+    /** @param BigQueryClient $destination */
+    protected function copiedRows(string $view, object $destination, array $settings): ?int
+    {
+        return $destination->tableRows($settings[BigQuerySettings::KEY_DATASET], $view);
+    }
+
+    /** @param BigQueryClient $destination */
+    protected function copyName(string $view, object $destination, array $settings): string
+    {
+        return $destination->project().'.'.$settings[BigQuerySettings::KEY_DATASET].'.'.$view;
     }
 
     protected function setupFailure(\Throwable $e): string
@@ -148,7 +157,8 @@ class BigQuerySyncRunner extends ViewSyncRunner
 
     protected function copyFailure(string $view, \Throwable $e): string
     {
-        if ($e instanceof BigQueryException) {
+        // Reading the view fails with a ViewSyncException, BigQuery with a BigQueryException.
+        if ($e instanceof ViewSyncException) {
             return $e->getMessage();
         }
         $this->logger->error('BigQuery sync of a view failed.', ['view' => $view, 'exception' => $e]);

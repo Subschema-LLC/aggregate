@@ -205,6 +205,7 @@ final class ViewSyncJobTest extends TestCase
         file_put_contents($this->projectDir.'/config/aggregate.yaml', Yaml::dump($values));
         $config = new AggregateConfigLoader($this->projectDir, 'test');
         $runner = $this->createMock($sync === 'BigQuery' ? BigQuerySyncRunner::class : ReportingDatabaseSyncRunner::class);
+        $runner->method('settings')->willReturn($sync === 'BigQuery' ? new BigQuerySettings($config, $this->projectDir) : new ReportingDatabaseSettings($config));
         $runner->method('status')->willReturn($status ?? ['last_run' => null, 'views' => [], 'scheduler_late' => false]);
         if ($run !== null) {
             $runner->method('run')->willReturnCallback($run);
@@ -225,7 +226,7 @@ final class ViewSyncJobTest extends TestCase
         $clock = new MockClock('2026-10-15 03:00:00 UTC');
 
         return $sync === 'BigQuery'
-            ? new BigQuerySyncJob($runner, new BigQuerySettings($config, $this->projectDir), $clock, $logger)
-            : new ReportingDatabaseSyncJob($runner, new ReportingDatabaseSettings($config), $clock, $logger);
+            ? new BigQuerySyncJob($runner, $clock, $logger)
+            : new ReportingDatabaseSyncJob($runner, $clock, $logger);
     }
 }

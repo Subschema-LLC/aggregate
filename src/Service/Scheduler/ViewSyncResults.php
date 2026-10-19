@@ -28,6 +28,9 @@ final class ViewSyncResults
         if (isset($byStatus['synced'])) {
             $parts[] = sprintf('Copied %d view%s.', count($byStatus['synced']), count($byStatus['synced']) === 1 ? '' : 's');
         }
+        if (isset($byStatus['unchanged'])) {
+            $parts[] = sprintf('Kept %d unchanged view%s.', count($byStatus['unchanged']), count($byStatus['unchanged']) === 1 ? '' : 's');
+        }
         foreach ($byStatus['failed'] ?? [] as $view) {
             $parts[] = $view['view'].' failed: '.$view['message'];
         }
@@ -37,7 +40,7 @@ final class ViewSyncResults
 
         return match (true) {
             isset($byStatus['failed']) => ['status' => 'failed', 'message' => implode(' ', $parts)],
-            isset($byStatus['synced']) => ['status' => 'ran', 'message' => implode(' ', $parts)],
+            isset($byStatus['synced']) || isset($byStatus['unchanged']) => ['status' => 'ran', 'message' => implode(' ', $parts)],
             isset($byStatus['busy']) => ['status' => 'busy', 'message' => implode(' ', $parts)],
             default => ['status' => 'not_due', 'message' => 'Not due yet.'],
         };

@@ -15,12 +15,16 @@ use App\Service\Scheduler\SchedulerSetup;
  */
 abstract class ViewSyncBackground
 {
+    private readonly string $command;
+    private readonly string $logFile;
+
     public function __construct(
         private readonly BackgroundCommand $background,
         private readonly SchedulerSetup $scheduler,
-        private readonly string $command,
-        private readonly string $logFile,
+        ViewSyncDefinition $sync,
     ) {
+        $this->command = $sync->command;
+        $this->logFile = $sync->logFile;
     }
 
     /** The crontab line that runs the scheduled jobs, this sync among them, every five minutes. */

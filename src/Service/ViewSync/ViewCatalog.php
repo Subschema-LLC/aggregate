@@ -2,24 +2,28 @@
 
 declare(strict_types=1);
 
-namespace App\Service\BigQuery;
+namespace App\Service\ViewSync;
 
 use App\Service\CustomDataSettings;
 use App\Service\ReportingViewManager;
 
 /**
- * The reporting views BigQuery sync can copy, and the BigQuery column types.
+ * The reporting views a view sync can copy, to BigQuery or the reporting
+ * database, and the type of each of their columns.
  *
  * Approved views are the routine BI contract: suppressed counts and labels.
  * Private views hold row-level or unsuppressed data; each one must be listed
- * separately under bigquery_private_views before it can leave the server.
- * Raw tables are never offered.
+ * separately under the sync's private views setting (bigquery_private_views,
+ * reporting_database_private_views) before it can leave the server. Raw
+ * tables are never offered.
  *
  * Column types follow the documented view contracts rather than database
- * metadata, so a dataset has the same schema whichever engine Aggregate uses
- * (SQLite reports no type for computed view columns).
+ * metadata, so a copy has the same columns and types whichever engine
+ * Aggregate uses (SQLite reports no type for computed view columns). They are
+ * named after BigQuery's types; ReportingTableWriter maps them to the
+ * reporting database's.
  */
-final class BigQueryViewCatalog
+final class ViewCatalog
 {
     public const APPROVED = [
         'bi_anonymous_events_v1' => 'Hourly anonymous event counts, small cells withheld',
@@ -74,7 +78,7 @@ final class BigQueryViewCatalog
         return self::APPROVED[$view] ?? self::PRIVATE[$view] ?? '';
     }
 
-    /** The BigQuery type of one column of a catalog view. */
+    /** The type of one column of a catalog view, one of TYPES. */
     public function columnType(string $view, string $column): string
     {
         if (in_array($view, ReportingViewManager::VIEW_NAMES, true)) {

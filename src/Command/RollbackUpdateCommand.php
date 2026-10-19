@@ -64,7 +64,7 @@ HELP);
             if ($restoreDatabase) {
                 $io->warning('Restoring the database snapshot discards all data recorded since the update started.');
             }
-            if (!$io->confirm(($status['type'] ?? null) === 'deployment'
+            if (!$io->confirm($status['type'] === 'deployment'
                 ? 'Roll back now? Files from your deployment tool stay as they are; redeploy the previous commit with it.'
                 : 'Restore the previous application files now?', false)) {
                 return Command::FAILURE;
