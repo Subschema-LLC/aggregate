@@ -818,6 +818,28 @@ meet, which the roadmap's custom HTML proposal would weigh.
 
 ## Operation and project
 
+### Collected data moves without rewriting privacy
+
+**Decision.** A transfer copies collected rows as they are stored. An anonymous
+row that carries an identifier, an exact URL, or other enhanced detail is
+refused, not stripped and kept. Enhanced rows move only with granted consent.
+Configuration stays in YAML. User accounts move only when the operator asks,
+because they include password hashes. The run is recorded in `processing_tasks`
+and `audit_trail`, with counts and a safe summary, never row values or the
+target database URL.
+
+**Why.** A move is another way stored data leaves the installation. Rewriting a
+row to make it fit would hide that the source already broke the privacy rules,
+and copying settings would replace the target's operator configuration.
+
+**Trade-off.** A package or target that contains one bad row stops that table
+instead of skipping the row. The operator fixes or removes it and runs again.
+A direct copy needs the target URL in the environment, not in a form or a
+command option.
+
+**What would change it.** A reviewed need to quarantine bad rows instead of
+refusing them, with the same refusal still available.
+
 ### Signed release packages that keep the operator's files
 
 **Decision.** Releases are ZIPs signed with a key that the installation already

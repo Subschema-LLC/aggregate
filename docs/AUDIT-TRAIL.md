@@ -33,7 +33,7 @@ Entries belong to areas. Each area can be switched off on its own.
 | Websites and groups | `websites` | Adding and removing websites, their domain rules, and creating, renaming, deleting and assigning website groups | On |
 | Integrations | `integrations` | BigQuery and reporting database connections, keys, Google sign-in, connection tests, and the views and schedules they copy | On |
 | Updates | `updates` | Checking for, uploading and installing updates, rollbacks, recorded deployments, the update method and source, and maintenance mode | On |
-| Manual runs | `operations` | **Sync now**, running the scheduled jobs by hand, publishing columns and regenerating reporting views, glossary sync, building browser scripts, retrying failed tracking and exporting the audit trail | On |
+| Manual runs | `operations` | **Sync now**, running the scheduled jobs by hand, publishing columns and regenerating reporting views, glossary sync, building browser scripts, retrying failed tracking, starting a data transfer and exporting the audit trail | On |
 | Background job runs | `task` | Each finished view sync and maintenance run, scheduled or started by someone | On |
 | Sign-ins | `sign_ins` | Successful and failed sign-ins and sign-outs | Off |
 
