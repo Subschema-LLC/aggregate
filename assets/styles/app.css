@@ -11,6 +11,7 @@
 @import './pages/internal_traffic/index.css';
 @import './pages/bigquery/index.css';
 @import './pages/reporting_database/index.css';
+@import './pages/api_tokens/index.css';
 @import './pages/scheduled_tasks/index.css';
 @import './pages/setup/index.css';
 @import './components/setup/walkthrough.css';

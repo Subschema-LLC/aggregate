@@ -190,6 +190,12 @@ final class DashboardPages
         'app_permission_groups_create' => [self::ADMIN],
         'app_permission_groups_update' => [self::ADMIN],
         'app_permission_groups_delete' => [self::ADMIN],
+        // A reporting API token grants data access outside the dashboard's own
+        // permissions, so issuing one stays with administrators.
+        'app_api_tokens' => [self::ADMIN],
+        'app_api_tokens_create' => [self::ADMIN],
+        'app_api_tokens_revoke' => [self::ADMIN],
+        'app_api_tokens_settings' => [self::ADMIN],
         // Everyone manages their own profile.
         'app_profile' => [self::SIGNED_IN],
         'app_profile_save' => [self::SIGNED_IN],

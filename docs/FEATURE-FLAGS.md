@@ -20,6 +20,9 @@ feature_flags:
   custom_scripts:
     enabled: true
     hide_from_navigation: false
+  reporting_api:
+    enabled: false
+    hide_from_navigation: true
 ```
 
 Saving on the Feature flags page writes every registered feature with both
@@ -40,6 +43,15 @@ YAML but are not served to visitors, their consent categories leave the built-in
 banner, and the Tag manager page cannot add or change custom code. It has no
 navigation entry, so `hide_from_navigation` has no effect on it.
 
+The `reporting_api` flag (off and hidden by default) covers the
+[reporting API](REPORTING-API.md). When disabled, every `/api/v1` address returns
+the application's ordinary 404, no token works, and new tokens cannot be created
+with `app:api:token:create` or the **API tokens** page. As a deliberate
+exception to returning 404 for a disabled feature's pages, the API tokens page
+still lists and revokes tokens while the flag is off, and so does
+`app:api:token:revoke`, so a token can be revoked before the API is turned back
+on. Its menu entry follows the flag.
+
 | `enabled` | `hide_from_navigation` | Behavior |
 | --- | --- | --- |
 | `true` | `false` | Available; navigation links are shown to authorized users. |
@@ -49,7 +61,7 @@ navigation entry, so `hide_from_navigation` has no effect on it.
 
 Omitted options use registered defaults. Updates and custom JavaScript tags
 default to enabled and visible, preserving installations without a
-`feature_flags` mapping. Use real YAML booleans
+`feature_flags` mapping; the reporting API defaults to off and hidden. Use real YAML booleans
 (`true` / `false`); quoted strings, numbers, null values, unknown feature names,
 and unknown options are rejected. Invalid flag configuration makes flagged
 features unavailable and hides their navigation entries. Correct invalid YAML

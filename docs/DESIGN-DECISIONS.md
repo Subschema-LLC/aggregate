@@ -536,6 +536,45 @@ incremental copies of completed time buckets, as for BigQuery; a need for
 indexes or live data would favor database-native replication of the views'
 source tables to a reporting server that hosts the views itself.
 
+### A read-only HTTP API over the same views
+
+**Decision.** The [reporting API](REPORTING-API.md) returns rows from the
+reporting views over HTTPS, one resource per view (`/api/v1/views/{view}`), with
+a small filter syntax (`filter[col][op]=value`), column selection, sorting and
+offset paging. It reads the same view catalog as BigQuery and reporting
+database sync: approved views by default, private views only while
+`reporting_api_private_views` is on and only for tokens granted them one by
+one, raw tables never. Bearer tokens are created by administrators in the
+dashboard or with `app:api:token:create`, shown once, and stored as SHA-256
+hashes in `config/secrets/api-tokens.yaml`. An OpenAPI document is generated
+per token from the catalog; no interactive documentation page is bundled. The
+API is behind a feature flag that starts off.
+
+**Why.** Scripts, notebooks, low-code tools and AI assistants often cannot open
+a database connection, or should not get one. Serving the existing views adds a
+transport, not a data surface: the views already carry suppression, column
+meanings and versioning, so the API inherits them. A view in the path gives
+each view its own address, schema and permission check. OData and GraphQL were
+rejected because their central features, joins between entities and
+server-side aggregation, would let callers recombine or re-aggregate released
+cells without re-applying suppression. Tokens live in YAML because that is
+where operator configuration lives and the API must work headlessly; a
+high-entropy secret needs no slow password hash. A generated OpenAPI document
+cannot drift from the views' real columns, while Swagger UI would be a large
+vendored bundle and another page to secure.
+
+**Trade-off.** No joins, grouping or totals on the server; callers aggregate in
+their own tools, as SQL users do. Offset paging re-runs the view's query for
+every page, so very large views are better read with a date filter or a
+database connection. Timestamps are returned as the views label them, without
+an offset. Token last-use times are not recorded, because that would turn every
+read into a write of the token file.
+
+**What would change it.** A concrete need for keyset paging, CSV output or a
+read-only database account for API queries (all [roadmap](../ROADMAP.md)
+proposals). An OData endpoint for Power BI only if it can be offered without
+joins or aggregation.
+
 ### One scheduled task for every background job
 
 **Decision.** One command, `app:scheduler:run`, runs every five minutes from the

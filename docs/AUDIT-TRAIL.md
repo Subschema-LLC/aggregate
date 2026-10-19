@@ -28,10 +28,10 @@ Entries belong to areas. Each area can be switched off on its own.
 
 | Area | Code | Records | Default |
 | --- | --- | --- | --- |
-| Settings changes | `settings` | Saving a settings page: collection, BI disclosure, data model, glossary, page groups, reporting timezone, branding, general settings, consent and tag manager, organization traffic, feature flags, data lifecycle and the audit switches | On |
+| Settings changes | `settings` | Saving a settings page: collection, BI disclosure, data model, glossary, page groups, reporting timezone, branding, general settings, consent and tag manager, organization traffic, feature flags, data lifecycle, reporting API settings and the audit switches | On |
 | Users | `users` | Installing; creating, changing and deleting users, their access and permission groups; profile changes and passwords; from the dashboard, the installer or the command line | On |
 | Websites and groups | `websites` | Adding and removing websites, their domain rules, and creating, renaming, deleting and assigning website groups | On |
-| Integrations | `integrations` | BigQuery and reporting database connections, keys, Google sign-in, connection tests, and the views and schedules they copy | On |
+| Integrations | `integrations` | BigQuery and reporting database connections, keys, Google sign-in, connection tests, and the views and schedules they copy; creating and revoking reporting API tokens, from the dashboard or the command line | On |
 | Updates | `updates` | Checking for, uploading and installing updates, rollbacks, recorded deployments, the update method and source, and maintenance mode | On |
 | Manual runs | `operations` | **Sync now**, running the scheduled jobs by hand, publishing columns and regenerating reporting views, glossary sync, building browser scripts, retrying failed tracking, starting a data transfer and exporting the audit trail | On |
 | Background job runs | `task` | Each finished view sync and maintenance run, scheduled or started by someone | On |
@@ -56,7 +56,8 @@ Pages that only show something are not recorded, except the CSV export.
 
 Settings nested in a group are named one level down (`feature_flags.updates`).
 Secret files, such as `config/secrets/bigquery-service-account.json`, are named
-without anything about their contents, and `.env.local` changes name the
+without anything about their contents (an API token is named by its public ID,
+never its secret or hash), and `.env.local` changes name the
 variable only.
 
 ## Find entries

@@ -117,3 +117,7 @@ install_controller:
 security_controller:
     resource: ../src/Controller/SecurityController.php
     type: attribute
+
+api_tokens_controller:
+    resource: ../src/Controller/ApiTokensController.php
+    type: attribute

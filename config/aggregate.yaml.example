@@ -43,6 +43,9 @@ feature_flags:
   custom_scripts:
     enabled: true
     hide_from_navigation: false
+  reporting_api:
+    enabled: false
+    hide_from_navigation: true
 # enabled: false blocks update routes/services/commands. Independently, true
 # hide_from_navigation removes their navigation entries. A feature that is off
 # and shown appears greyed out with an Off tag; hide it if that would look like
@@ -50,6 +53,8 @@ feature_flags:
 # options, so this mapping states what is on and what shows. YAML booleans only.
 # custom_scripts: enabled: false keeps tag manager custom JavaScript tags in
 # YAML but stops serving them, and the dashboard cannot add or change them.
+# reporting_api: enabled: true turns on the read-only reporting API under /api/v1
+# and its Reporting → API tokens page (docs/REPORTING-API.md).
 
 # Optional shared tag configuration, selected as Shared configuration in
 # Collection → Tag manager. Per-website tags/CMP use separate files at
@@ -607,3 +612,11 @@ environments:
 #   - bi_anonymous_goals_v1
 # reporting_database_private_views: []       # Row-level or unsuppressed views, each by explicit opt-in
 # reporting_database_interval_minutes: 60    # 15, 30, 60, 120, 180, 360, 720 or 1440
+#
+# Reporting API (optional; see docs/REPORTING-API.md). Needs the reporting_api
+# feature flag. Tokens are kept, hashed, in config/secrets/api-tokens.yaml and
+# managed on Reporting → API tokens or with app:api:token:create, :list and
+# :revoke. Uppercase environment variables with the same names override these.
+#
+# reporting_api_private_views: false   # Whether tokens may be granted row-level or unsuppressed views
+# reporting_api_max_page_size: 10000   # Largest limit a request may ask for, 1 to 1,000,000

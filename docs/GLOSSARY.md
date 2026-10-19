@@ -144,6 +144,11 @@ key keeps two runs of it from overlapping. See
 with its dependencies and compiled assets, signed by the maintainers. Not the
 "Source code" archives GitHub adds automatically.
 
+**Reporting API.** An optional read-only HTTP interface under `/api/v1` that
+returns rows from the reporting views to callers with an API token, behind the
+`reporting_api` feature flag. Private views need `reporting_api_private_views`
+and a grant on each token. See [Reporting API](REPORTING-API.md).
+
 **Reporting views.** The SQL views that BI tools and AI assistants read. The approved ones for routine
 BI users are `bi_anonymous_*`, `bi_dim_*` and `bi_glossary_*`; everything else is
 private. Their names carry a version (`_v1`).

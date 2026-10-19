@@ -198,11 +198,21 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   [current measurement boundaries](docs/PRIVACY-COMPLIANCE.md#insight-without-visit-or-session-ids).
 - **External analysis examples and an MCP integration.** AI assistants can
   already [query the approved views](docs/BI-CONNECTION.md#connect-an-ai-assistant)
-  through a general SQL connector and the read-only reporting account. Package a
+  through a general SQL connector and the read-only reporting account, or over
+  HTTPS through the [reporting API](docs/REPORTING-API.md). Package a
   read-only integration over the approved `bi_anonymous_*` and glossary views,
-  with synthetic sample Python notebooks. Any MCP server needs explicit credential scope and authorization;
+  with synthetic sample Python notebooks; an MCP server can use the API's token
+  scopes. Any MCP server needs explicit credential scope and authorization;
   it must not expose private raw inputs or let consumers undo suppression.
   Charts and analysis remain in external tools.
+- **Reporting API follow-ups.** Proposals for the [reporting API](docs/REPORTING-API.md),
+  each only for a concrete need: an optional read-only database account for API
+  queries (`REPORTING_API_DATABASE_URL`, not possible on SQLite), so database
+  grants still protect the data if the application's allowlist failed; streamed
+  CSV or newline-delimited JSON; conditional requests (`ETag`) for scheduled
+  refreshes; a last-used time per token kept outside the token file; a
+  configurable rate limit; and keyset paging for the custom views, which have a
+  unique `id`. Keep the API read-only, without joins or server-side aggregation.
 - **Branding polish.** Improve the default logo and administration presentation
   while preserving configured white labels, accessibility, and license notices.
 - **Operational email integrations.** Explore Postmark/SendGrid support for a

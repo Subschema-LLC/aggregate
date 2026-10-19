@@ -152,6 +152,19 @@ parameters:
         - power bi
         - tableau
         - copy views
+    'API tokens':
+      description: 'Tokens for the read-only reporting API, and whether it serves private views'
+      synonyms:
+        - api
+        - rest
+        - http
+        - token
+        - bearer
+        - openapi
+        - swagger
+        - integration
+        - notebook
+        - private views
     'BI connection guide':
       description: 'Database schema, view specifications, and query examples'
       synonyms:

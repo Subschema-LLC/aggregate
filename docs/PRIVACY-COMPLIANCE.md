@@ -19,6 +19,7 @@ per-region example configurations and their limits, see
 - [BI exposure and suppression](#bi-exposure-and-suppression)
 - [BigQuery sync](#bigquery-sync)
 - [Reporting database](#reporting-database)
+- [Reporting API](#reporting-api)
 - [Administrative controls](#administrative-controls)
 - [Consent and consent-manager integration](#enhanced-analytics-consent)
 - [Independent consent controls and regional examples](#independent-consent-controls-and-regional-examples)
@@ -460,6 +461,15 @@ The [reporting database](REPORTING-DATABASE.md) sync is off by default. When an 
 - Row-level `analytics_custom_*` views and unsuppressed `analytics_archived_*` views must each be listed under `reporting_database_private_views`, and the admin page requires a confirmation before saving them. Protect a reporting database that holds them as you would the application database.
 - Each sync replaces the tables, so deletions and threshold changes in Aggregate reach the copy at the next sync. Tables of views that are no longer copied, and the reporting database's own backups, stay until deleted. Include them in your retention and rights-request procedures.
 - The connection, `REPORTING_DATABASE_URL`, is kept in `.env.local` or the server environment, like `DATABASE_URL`. The admin page and `app:reporting-database:configure` write it to `.env.local` after a successful test; its password is never shown, logged or kept in the session. Error messages name views, columns and SQL states, never a rejected value.
+
+## Reporting API
+
+The [reporting API](REPORTING-API.md) is off by default, behind the `reporting_api` feature flag. When an administrator turns it on and creates tokens, the views each token may read can be downloaded over HTTP by anyone holding that token.
+
+- Only views can be read, never raw tables. Approved `bi_anonymous_*`, `bi_dim_*_v1` and glossary views keep their suppression; the API offers no joins or aggregation, so it cannot be used to recombine withheld cells beyond what SQL users can already do.
+- Row-level `analytics_custom_*` and unsuppressed `analytics_archived_*` views are served only while `reporting_api_private_views` is on, and only to tokens that were each granted them explicitly, after a confirmation. Turning the setting off stops serving them at once. A token with private views is a credential for raw events: restrict and expire it accordingly, and cover the clients that download rows in your records of processing and rights-request procedures, since their copies are outside Aggregate's retention. See [private views](REPORTING-API.md#private-views).
+- Tokens are stored as SHA-256 hashes in `config/secrets/api-tokens.yaml`, readable only by the application's user. A token is shown once and never logged; tokens sent in a query string are refused. Creating and revoking tokens is in the audit trail; individual API requests are not.
+- Responses are marked `Cache-Control: private, no-store`, and error messages name parameters, views and columns, never data values.
 
 ## Administrative controls
 
