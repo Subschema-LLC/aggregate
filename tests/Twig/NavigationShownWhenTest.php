@@ -135,7 +135,7 @@ final class NavigationShownWhenTest extends TestCase
         self::assertArrayNotHasKey('role', $links['Event examples']);
         self::assertSame(['event_examples', DashboardPages::VIEW], DashboardPages::ROUTES['app_event_examples']);
         foreach ($links as $label => $link) {
-            $adminOnly = isset($link['route']) && DashboardPages::requirement($link['route'])['kind'] === DashboardPages::ADMIN;
+            $adminOnly = isset($link['route'], DashboardPages::ROUTES[$link['route']]) && DashboardPages::requirement($link['route'])['kind'] === DashboardPages::ADMIN;
             if ($adminOnly) {
                 self::assertSame('ROLE_ADMIN', $link['role'] ?? null, $label);
             } else {

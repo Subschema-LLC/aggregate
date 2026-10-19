@@ -62,9 +62,18 @@ scripts on Setup, the tracking failure status and retries on Collection
 controls, and observed properties, downloading, and publishing columns on the
 Data model page.
 
-Grant system-wide pages with care. Edit access to **Updates** installs new
-application code, **General settings** changes the application host, and
-**Audit trail** shows every user's actions.
+Grant system-wide pages with care; some amount to more access than they name:
+
+- Edit on **Website groups** moves websites between groups, so a user granted a
+  group could move other websites into it. Treat it as every website.
+- Edit on **Updates** installs application code, which is as much as an
+  administrator can do.
+- Edit on **General settings** changes the application host and documentation
+  link that every page uses.
+- View on **Audit trail** shows every user's actions.
+
+**Data transfer** is not offered at all: it can import accounts, administrators
+included, and copies every website's events.
 
 ## Permission groups
 

@@ -51,7 +51,7 @@ final class DashboardPages
     public const PAGES = [
         'setup' => ['label' => 'Setup', 'scope' => self::SCOPE_WEBSITES, 'description' => 'Installation steps and script downloads for each website.'],
         'websites' => ['label' => 'Websites', 'scope' => self::SCOPE_WEBSITES, 'description' => 'Install snippets, domain rules and data reception. Editing adds domain rules and removes websites; adding a website also needs every website.'],
-        'website_groups' => ['label' => 'Website groups', 'scope' => self::SCOPE_SYSTEM, 'description' => 'Every group and website, and which website is in which group.'],
+        'website_groups' => ['label' => 'Website groups', 'scope' => self::SCOPE_SYSTEM, 'description' => 'Every group and website, and which website is in which group. Editing can move any website into a group, so treat it as every website.'],
         'tag_manager' => ['label' => 'Tag manager lite', 'scope' => self::SCOPE_WEBSITES, 'description' => 'Tags and variables for each website. Shared settings need every website.'],
         'consent_manager' => ['label' => 'Consent manager lite', 'scope' => self::SCOPE_WEBSITES, 'description' => 'The built-in consent banner for each website.'],
         'collection_controls' => ['label' => 'Collection controls', 'scope' => self::SCOPE_WEBSITES, 'description' => 'Collection settings for a website or group. Deployment settings and tracking retries need every website.'],
@@ -67,7 +67,7 @@ final class DashboardPages
         'data_lifecycle' => ['label' => 'Data lifecycle', 'scope' => self::SCOPE_SYSTEM, 'description' => 'Retention and archiving of collected events.'],
         'scheduled_tasks' => ['label' => 'Scheduled tasks', 'scope' => self::SCOPE_SYSTEM, 'description' => 'Background jobs and running them now.'],
         'audit_trail' => ['label' => 'Audit trail', 'scope' => self::SCOPE_SYSTEM, 'description' => 'Every recorded action by every user, and what is recorded.'],
-        'updates' => ['label' => 'Updates', 'scope' => self::SCOPE_SYSTEM, 'description' => 'Checking for, uploading and installing application updates.'],
+        'updates' => ['label' => 'Updates', 'scope' => self::SCOPE_SYSTEM, 'description' => 'Checking for, uploading and installing application updates. Editing installs code, as much as an administrator can do.'],
         'feature_flags' => ['label' => 'Feature flags', 'scope' => self::SCOPE_SYSTEM, 'description' => 'Turning features on and off for everyone.'],
         'event_examples' => ['label' => 'Event examples', 'scope' => self::SCOPE_REFERENCE, 'description' => 'Example events to copy into a website.', 'levels' => [self::VIEW]],
     ];
