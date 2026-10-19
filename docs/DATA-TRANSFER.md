@@ -120,8 +120,11 @@ target when the people are different.
 Every command records one row in `processing_tasks` with the type
 `data_transfer`. Finishing it, successfully or not, also writes `audit_trail`.
 The dashboard starts those same commands, so a page run is recorded too, with
-the administrator as the actor. The details are the counts and the safe
-summary. They do not include row values, identifiers, or the target URL.
+the administrator as the actor. Starting one from the page is also recorded as
+a manual run (`data_export_started`, `data_import_started` or
+`data_copy_started`), as described in the
+[audit trail guide](AUDIT-TRAIL.md#what-is-recorded). The details are the
+counts and the safe summary. They do not include row values, identifiers, or the target URL.
 
 A second transfer waits while one is running. A run that is killed can hold
 that lock for up to 24 hours; the next start then marks it abandoned. A run

@@ -343,7 +343,7 @@ final class DataTransferTest extends TestCase
 
     private function operationTables(Connection $connection): void
     {
-        $connection->executeStatement('CREATE TABLE processing_tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, task_type TEXT, subject TEXT, status TEXT, triggered_by TEXT, requested_by TEXT, lock_key TEXT, started_at TEXT, finished_at TEXT, row_count TEXT, external_id TEXT, details TEXT)');
+        $connection->executeStatement('CREATE TABLE processing_tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, task_type TEXT, subject TEXT, status TEXT, triggered_by TEXT, requested_by TEXT, lock_key TEXT, started_at TEXT, finished_at TEXT, row_count TEXT, external_id TEXT, details TEXT, fingerprint TEXT)');
         $connection->executeStatement('CREATE UNIQUE INDEX UNIQ_PROCESSING_TASKS_LOCK ON processing_tasks (lock_key)');
         $connection->executeStatement('CREATE TABLE audit_trail (id INTEGER PRIMARY KEY AUTOINCREMENT, occurred_at TEXT, category TEXT, operation TEXT, subject TEXT, outcome TEXT, actor TEXT, processing_task_id INTEGER, details TEXT)');
     }
