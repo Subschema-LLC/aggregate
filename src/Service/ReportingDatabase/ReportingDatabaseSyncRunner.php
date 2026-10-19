@@ -32,7 +32,7 @@ class ReportingDatabaseSyncRunner extends ViewSyncRunner
         LoggerInterface $logger,
         ?\Closure $clock = null,
     ) {
-        parent::__construct($settings, $tasks, $logger, $clock, self::TASK_TYPE, 'the reporting database');
+        parent::__construct($settings, $tasks, $logger, $clock);
     }
 
     /**

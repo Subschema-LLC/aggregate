@@ -47,6 +47,7 @@ final class BigQueryControllerTest extends TestCase
     private array $environment;
     private BigQuerySyncRunner $runner;
     private BigQueryBackgroundSync $background;
+    private ?BigQuerySettings $settings = null;
     private array $httpRequests = [];
     private Session $session;
 
@@ -60,6 +61,8 @@ final class BigQueryControllerTest extends TestCase
         mkdir($this->projectDir.'/config', 0700, true);
         $this->writeYaml(['admin_token' => 'kept', 'app_host' => 'https://analytics.example.com']);
         $this->runner = $this->createMock(BigQuerySyncRunner::class);
+        // The runner shares its settings with the page, as the container does.
+        $this->runner->method('settings')->willReturnCallback(fn (): BigQuerySettings => $this->settings);
         $this->runner->method('status')->willReturnCallback(static fn (array $settings): array => [
             'last_run' => null,
             'views' => array_map(static fn (string $view): array => [
@@ -361,7 +364,7 @@ final class BigQueryControllerTest extends TestCase
     private function controller(?Request $request = null, bool $admin = true): BigQueryController
     {
         $config = new AggregateConfigLoader($this->projectDir, 'test');
-        $settings = new BigQuerySettings($config, $this->projectDir);
+        $settings = $this->settings = new BigQuerySettings($config, $this->projectDir);
         $idToken = 'h.'.rtrim(strtr(base64_encode(json_encode(['email' => 'admin@example.com'])), '+/', '-_'), '=').'.s';
         $http = new MockHttpClient(function (string $method, string $url, array $options) use ($idToken): MockResponse {
             $this->httpRequests[] = [$method, $url, $options['body'] ?? ''];

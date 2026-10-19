@@ -39,7 +39,7 @@ class BigQuerySyncRunner extends ViewSyncRunner
         ?\Closure $clock = null,
         ?\Closure $clientFactory = null,
     ) {
-        parent::__construct($settings, $tasks, $logger, $clock, self::TASK_TYPE, 'BigQuery sync');
+        parent::__construct($settings, $tasks, $logger, $clock);
         $this->clientFactory = $clientFactory ?? fn (GoogleCredentials $credentials, string $project, string $location): BigQueryClient => new BigQueryClient($this->http, $credentials, $project, $location);
     }
 

@@ -181,7 +181,10 @@ same rows and types, the settings every sync has
 ([ViewSyncSettings](../src/Service/ViewSync/ViewSyncSettings.php)), and the
 interval, retry, lock and status of each view
 ([ViewSyncRunner](../src/Service/ViewSync/ViewSyncRunner.php)). Each destination
-adds only how to connect and how to copy one view.
+adds only how to connect and how to copy one view, and defines its task type,
+command and wording once
+([ViewSyncDefinition](../src/Service/ViewSync/ViewSyncDefinition.php)), which
+its runner, scheduler job, dashboard launcher and admin page read.
 
 ## Configuration
 
