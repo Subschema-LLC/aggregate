@@ -6,7 +6,6 @@ namespace App\Service\ReportingApi;
 
 use App\Service\FeatureFlags;
 use App\Service\Operations\ConfigurationChanges;
-use App\Service\ViewSync\ViewCatalog;
 use Psr\Clock\ClockInterface;
 use Symfony\Component\Clock\Clock;
 use Symfony\Component\Yaml\Yaml;
@@ -25,6 +24,7 @@ use Symfony\Component\Yaml\Yaml;
  *             created_at: '2026-10-18T22:30:00+00:00'
  *             created_by: scott
  *             expires_at: '2027-10-18T22:30:00+00:00'   # or ~ for never
+ *             mcp: false          # true: AI assistants may also use it (docs/MCP.md)
  *
  * A token is agg_<id>_<secret>: the ID is public (lists, logs, the audit
  * trail); the secret is 32 random bytes. Only the SHA-256 hash of the whole
@@ -50,7 +50,9 @@ class ApiTokenStore
     private const ID = '/^[a-f0-9]{8}$/D';
     private const TOKEN = '/^agg_([a-f0-9]{8})_([A-Za-z0-9_-]{43})$/D';
     private const HASH = '/^sha256:[a-f0-9]{64}$/D';
-    private const KEYS = ['name', 'hash', 'views', 'private_views', 'created_at', 'created_by', 'expires_at'];
+    private const KEYS = ['name', 'hash', 'views', 'private_views', 'created_at', 'created_by', 'expires_at', 'mcp'];
+    /** Flags that let tokens be created: the reporting API, the MCP server, or both. */
+    public const FEATURES = ['reporting_api', 'mcp_server'];
 
     private readonly ClockInterface $clock;
 
@@ -85,6 +87,18 @@ class ApiTokenStore
         return $this->tokens()[$id] ?? null;
     }
 
+    /** Whether tokens can be created: the reporting API or the MCP server is on. */
+    public function creatable(): bool
+    {
+        foreach (self::FEATURES as $feature) {
+            if ($this->features->isEnabled($feature)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /**
      * The token a caller presented, or null when it is malformed, unknown,
      * revoked or expired. The caller is not told which.
@@ -111,17 +125,23 @@ class ApiTokenStore
      *
      * @param list<string>|null $views        approved views, or null for every approved view
      * @param list<string>      $privateViews private views
+     * @param bool              $mcp          whether AI assistants may also use the token on the MCP server
      *
      * @return array{0: ApiToken, 1: string}
      *
-     * @throws \InvalidArgumentException for an invalid name, scope or expiry
-     * @throws \RuntimeException         when the API is off or the file cannot be written
+     * @throws \InvalidArgumentException for an invalid name, scope or expiry, or an MCP grant while the MCP server is off
+     * @throws \RuntimeException         when both the API and the MCP server are off, or the file cannot be written
      */
-    public function create(string $name, ?array $views, array $privateViews, ?\DateTimeImmutable $expiresAt, string $createdBy): array
+    public function create(string $name, ?array $views, array $privateViews, ?\DateTimeImmutable $expiresAt, string $createdBy, bool $mcp = false): array
     {
-        $this->features->assertEnabled('reporting_api');
+        if (!$this->creatable()) {
+            throw new \RuntimeException('The requested feature is disabled or its configuration is invalid.');
+        }
+        if ($mcp && !$this->features->isEnabled('mcp_server')) {
+            throw new \InvalidArgumentException('The MCP server is turned off (mcp_server in Feature flags). Turn it on before creating a token for AI assistants.');
+        }
         $name = self::name($name);
-        [$views, $privateViews] = self::scope($views, $privateViews);
+        [$views, $privateViews] = ViewScope::validate($views, $privateViews);
         if ($views === [] && $privateViews === []) {
             throw new \InvalidArgumentException('Choose at least one view the token may read.');
         }
@@ -139,7 +159,7 @@ class ApiTokenStore
 
         $created = null;
         $secret = '';
-        $this->update(function (array $tokens) use ($name, $views, $privateViews, $expiresAt, $createdBy, $now, &$created, &$secret): array {
+        $this->update(function (array $tokens) use ($name, $views, $privateViews, $expiresAt, $createdBy, $now, $mcp, &$created, &$secret): array {
             if (count($tokens) >= self::MAX_TOKENS) {
                 throw new \InvalidArgumentException('At most '.self::MAX_TOKENS.' API tokens can be kept. Revoke unused tokens first.');
             }
@@ -153,7 +173,7 @@ class ApiTokenStore
                 $id = bin2hex(random_bytes(4));
             } while (isset($tokens[$id]) || is_numeric($id));
             $secret = self::PREFIX.$id.'_'.rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
-            $created = new ApiToken($id, $name, self::hash($secret), $views, $privateViews, self::second($now), $createdBy, $expiresAt === null ? null : self::second($expiresAt));
+            $created = new ApiToken($id, $name, self::hash($secret), $views, $privateViews, self::second($now), $createdBy, $expiresAt === null ? null : self::second($expiresAt), $mcp);
             $tokens[$id] = $created;
 
             return $tokens;
@@ -242,53 +262,6 @@ class ApiTokenStore
         return $name;
     }
 
-    /**
-     * Validates a scope and puts each list in catalog order. A private view is
-     * accepted only in its own list, so it is never granted by accident.
-     *
-     * @return array{0: list<string>|null, 1: list<string>}
-     */
-    private static function scope(mixed $views, mixed $privateViews): array
-    {
-        if ($views !== null) {
-            $views = self::viewList($views, 'views');
-            foreach ($views as $view) {
-                if (ViewCatalog::isPrivate($view)) {
-                    throw new \InvalidArgumentException($view.' holds row-level or unsuppressed data. Grant it as a private view instead.');
-                }
-                if (!ViewCatalog::isApproved($view)) {
-                    throw new \InvalidArgumentException($view.' is not a reporting view the API can serve.');
-                }
-            }
-            $views = array_values(array_intersect(array_keys(ViewCatalog::APPROVED), $views));
-        }
-        $privateViews = self::viewList($privateViews ?? [], 'private_views');
-        foreach ($privateViews as $view) {
-            if (!ViewCatalog::isPrivate($view)) {
-                throw new \InvalidArgumentException($view.' is not a private reporting view.'.(ViewCatalog::isApproved($view) ? ' Grant approved views as views.' : ''));
-            }
-        }
-
-        return [$views, array_values(array_intersect(array_keys(ViewCatalog::PRIVATE), $privateViews))];
-    }
-
-    /** @return list<string> */
-    private static function viewList(mixed $value, string $key): array
-    {
-        if (!is_array($value) || ($value !== [] && !array_is_list($value))) {
-            throw new \InvalidArgumentException($key.' must be a list of view names.');
-        }
-        $views = [];
-        foreach ($value as $view) {
-            if (!is_string($view) || trim($view) === '') {
-                throw new \InvalidArgumentException($key.' must be a list of view names.');
-            }
-            $views[trim($view)] = true;
-        }
-
-        return array_keys($views);
-    }
-
     private function readFile(): string
     {
         $path = $this->path();
@@ -363,7 +336,11 @@ class ApiTokenStore
         if (!array_key_exists('views', $entry)) {
             throw new \InvalidArgumentException('views must be ~ (every approved view) or a list.');
         }
-        [$views, $privateViews] = self::scope($entry['views'], $entry['private_views'] ?? []);
+        [$views, $privateViews] = ViewScope::validate($entry['views'], $entry['private_views'] ?? []);
+        $mcp = $entry['mcp'] ?? false;
+        if (!is_bool($mcp)) {
+            throw new \InvalidArgumentException('mcp must be true or false.');
+        }
         $createdAt = self::time($entry['created_at'] ?? null, 'created_at') ?? throw new \InvalidArgumentException('created_at is required.');
 
         return new ApiToken(
@@ -375,6 +352,7 @@ class ApiTokenStore
             $createdAt,
             is_scalar($entry['created_by'] ?? null) ? (string) $entry['created_by'] : '',
             self::time($entry['expires_at'] ?? null, 'expires_at'),
+            $mcp,
         );
     }
 
@@ -445,6 +423,7 @@ class ApiTokenStore
                 'created_at' => $token->createdAt->format(\DateTimeInterface::ATOM),
                 'created_by' => $token->createdBy,
                 'expires_at' => $token->expiresAt?->format(\DateTimeInterface::ATOM),
+                'mcp' => $token->mcp,
             ];
         }
         $yaml = "# Reporting API tokens: see docs/REPORTING-API.md. Written by the dashboard and\n"

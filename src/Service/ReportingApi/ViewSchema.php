@@ -12,12 +12,19 @@ use App\Service\ViewSync\ViewReader;
 use App\Service\ViewSync\ViewSyncException;
 
 /**
- * The columns of a reporting view as the API describes and validates them:
- * the names the view actually has (custom columns included), the catalog
- * type of each (ViewCatalog, the same types BigQuery and the reporting
- * database receive), its API type, the filter operators it accepts, its
- * built-in glossary description, and, for time columns, the time zone its
- * values are labelled in.
+ * The columns of a reporting view as the API and the MCP server describe and
+ * validate them: the names the view actually has (custom columns included),
+ * the catalog type of each (ViewCatalog, the same types BigQuery and the
+ * reporting database receive), its API type, the filter operators it accepts,
+ * its label and description, and, for time columns, the time zone its values
+ * are labelled in. Columns holding a glossary dimension (device_class,
+ * referrer_channel and so on) also list their codes with labels.
+ *
+ * Labels, descriptions and code labels come from the published glossary,
+ * bi_glossary_columns_v1 and bi_glossary_values_v1 in the default locale, so
+ * the API says what BI tools read, including an administrator's edits and
+ * custom columns. Until the glossary has been published, or when its views
+ * cannot be read, the built-in text is used instead.
  */
 class ViewSchema
 {
@@ -57,9 +64,13 @@ class ViewSchema
     ];
 
     private const LOCALE = 'en';
+    /** Codes listed for one column; a longer list is cut and says so. */
+    public const MAX_VALUES = 1000;
 
-    /** @var array<string, list<array{name: string, catalog_type: string, type: string, operators: list<string>, description: ?string, timezone: ?string}>> */
+    /** @var array<string, list<array{name: string, catalog_type: string, type: string, operators: list<string>, label: ?string, description: ?string, timezone: ?string, values: ?list<array{code: string, label: string, description: ?string}>, values_truncated: bool}>> */
     private array $columns = [];
+    /** @var array{columns: array<string, array<string, array{label: ?string, description: ?string}>>, values: array<string, list<array{code: string, label: string, description: ?string}>>}|null */
+    private ?array $published = null;
 
     public function __construct(
         private readonly ViewReader $reader,
@@ -69,7 +80,7 @@ class ViewSchema
     }
 
     /**
-     * @return list<array{name: string, catalog_type: string, type: string, operators: list<string>, description: ?string, timezone: ?string}>
+     * @return list<array{name: string, catalog_type: string, type: string, operators: list<string>, label: ?string, description: ?string, timezone: ?string, values: ?list<array{code: string, label: string, description: ?string}>, values_truncated: bool}>
      *
      * @throws ApiProblem when the view does not exist in this database
      */
@@ -83,16 +94,26 @@ class ViewSchema
         } catch (ViewSyncException $error) {
             throw new ApiProblem(503, 'view_unavailable', sprintf('The view %s is not available on this installation.', $view), previous: $error);
         }
+        $published = $this->published();
         $columns = [];
         foreach ($fields as $field) {
             $type = $field['type'];
+            $name = $field['name'];
+            $text = $published['columns'][$view][$name] ?? null;
+            $values = null;
+            if (!ViewCatalog::isMetadata($view) && in_array($name, BuiltinGlossaryCatalog::DIMENSIONS, true)) {
+                $values = $published['values'][$name] ?? $this->builtinValues($name);
+            }
             $columns[] = [
-                'name' => $field['name'],
+                'name' => $name,
                 'catalog_type' => $type,
                 'type' => self::API_TYPES[$type],
                 'operators' => self::OPERATORS[$type],
-                'description' => $this->glossary->text('column', $view, $field['name'], 'description', self::LOCALE),
-                'timezone' => in_array($type, ['DATE', 'TIMESTAMP'], true) ? $this->timezone($view, $field['name']) : null,
+                'label' => $text['label'] ?? $this->glossary->text('column', $view, $name, 'label', self::LOCALE),
+                'description' => $text['description'] ?? $this->glossary->text('column', $view, $name, 'description', self::LOCALE),
+                'timezone' => in_array($type, ['DATE', 'TIMESTAMP'], true) ? $this->timezone($view, $name) : null,
+                'values' => $values === null ? null : array_slice($values, 0, self::MAX_VALUES),
+                'values_truncated' => $values !== null && count($values) > self::MAX_VALUES,
             ];
         }
 
@@ -125,6 +146,84 @@ class ViewSchema
     public static function describe(string $view): string
     {
         return ViewCatalog::describe($view);
+    }
+
+    /**
+     * The published glossary in its default locale, read once per request.
+     * Empty when it has not been published or its views cannot be read; the
+     * caller then uses the built-in text.
+     *
+     * @return array{columns: array<string, array<string, array{label: ?string, description: ?string}>>, values: array<string, list<array{code: string, label: string, description: ?string}>>}
+     */
+    private function published(): array
+    {
+        if ($this->published !== null) {
+            return $this->published;
+        }
+        $published = ['columns' => [], 'values' => []];
+        try {
+            foreach ($this->defaultLocaleRows('bi_glossary_columns_v1') as $row) {
+                $object = (string) ($row['object_name'] ?? '');
+                $column = (string) ($row['column_name'] ?? '');
+                if ($object !== '' && $column !== '') {
+                    $published['columns'][$object][$column] = ['label' => self::text($row['label'] ?? null), 'description' => self::text($row['description'] ?? null)];
+                }
+            }
+            $values = [];
+            foreach ($this->defaultLocaleRows('bi_glossary_values_v1') as $row) {
+                $dimension = (string) ($row['dimension'] ?? '');
+                $code = (string) ($row['code'] ?? '');
+                if ($dimension !== '' && $code !== '') {
+                    $values[$dimension][] = ['sort' => (int) ($row['sort_order'] ?? 0), 'code' => $code, 'label' => self::text($row['label'] ?? null) ?? $code, 'description' => self::text($row['description'] ?? null)];
+                }
+            }
+            foreach ($values as $dimension => $entries) {
+                usort($entries, static fn (array $a, array $b): int => [$a['sort'], $a['code']] <=> [$b['sort'], $b['code']]);
+                $published['values'][$dimension] = array_map(static fn (array $entry): array => ['code' => $entry['code'], 'label' => $entry['label'], 'description' => $entry['description']], $entries);
+            }
+        } catch (ViewSyncException|\Doctrine\DBAL\Exception) {
+            $published = ['columns' => [], 'values' => []];
+        }
+
+        return $this->published = $published;
+    }
+
+    /**
+     * Rows of a glossary view in its default locale, by column name. Filtered
+     * here rather than in SQL: the flag's storage type differs by engine.
+     *
+     * @return iterable<array<string, mixed>>
+     */
+    private function defaultLocaleRows(string $view): iterable
+    {
+        $read = $this->reader->read($view);
+        $names = array_column($read['fields'], 'name');
+        foreach ($read['rows'] as $values) {
+            $row = array_combine($names, $values);
+            if (in_array($row['is_default_locale'] ?? null, [true, 1, '1', 't', 'true'], true)) {
+                yield $row;
+            }
+        }
+    }
+
+    /** @return list<array{code: string, label: string, description: ?string}>|null the built-in codes, or null when they come only from configuration */
+    private function builtinValues(string $dimension): ?array
+    {
+        $codes = $this->glossary->dimensions()[$dimension] ?? [];
+        if ($codes === []) {
+            return null;
+        }
+
+        return array_map(fn (string $code): array => [
+            'code' => $code,
+            'label' => $this->glossary->text('value', $dimension, $code, 'label', self::LOCALE) ?? $code,
+            'description' => $this->glossary->text('value', $dimension, $code, 'description', self::LOCALE),
+        ], array_map('strval', $codes));
+    }
+
+    private static function text(mixed $value): ?string
+    {
+        return is_scalar($value) && trim((string) $value) !== '' ? trim((string) $value) : null;
     }
 
     private function timezone(string $view, string $column): string

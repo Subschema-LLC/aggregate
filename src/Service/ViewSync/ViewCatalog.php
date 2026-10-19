@@ -73,6 +73,17 @@ final class ViewCatalog
         return self::isApproved($view) || self::isPrivate($view);
     }
 
+    /**
+     * Whether an approved view holds only labels and definitions, no traffic:
+     * the bi_dim_*_v1 views and the two glossary views. The reporting API and
+     * the MCP server let every token and assistant connection read them, so a
+     * caller limited to some views can still label and describe them.
+     */
+    public static function isMetadata(string $view): bool
+    {
+        return self::isApproved($view) && (str_starts_with($view, 'bi_dim_') || str_starts_with($view, 'bi_glossary_'));
+    }
+
     public static function describe(string $view): string
     {
         return self::APPROVED[$view] ?? self::PRIVATE[$view] ?? '';

@@ -8,14 +8,23 @@
 {% import _self as help %}
 <div class="api-tokens-page">
     <h1 class="title">API tokens</h1>
-    <p class="subtitle">Tokens for the read-only reporting API, which returns rows from the reporting views over HTTPS.</p>
-    {{ component('Ui:DocsLink', {topic: 'reporting.api', label: 'Reporting API guide'}) }}
+    <p class="subtitle">Tokens for the read-only reporting API and AI assistants, which read the reporting views over HTTPS.</p>
+    <div class="buttons">
+        {{ component('Ui:DocsLink', {topic: 'reporting.api', label: 'Reporting API guide'}) }}
+        {{ component('Ui:DocsLink', {topic: 'mcp', label: 'AI assistants (MCP) guide'}) }}
+    </div>
 
     {% if not api_enabled %}
         <div class="notification is-warning is-light" role="status">
-            The reporting API is turned off in <a href="{{ path('app_feature_flags') }}">Feature flags</a> (<code>reporting_api</code>). Every <code>/api/v1</code> address returns 404 and no token works. You can still revoke tokens here; revoke any you no longer trust before turning the API back on.
+            The reporting API is turned off in <a href="{{ path('app_feature_flags') }}">Feature flags</a> (<code>reporting_api</code>). Every <code>/api/v1</code> address returns 404.{% if mcp_enabled %} Tokens granted to AI assistants still work on the MCP server.{% else %} No token works. You can still revoke tokens here; revoke any you no longer trust before turning the API back on.{% endif %}
         </div>
     {% endif %}
+    {% if not mcp_enabled and (connections is not empty or tokens|filter(t => t.mcp) is not empty) %}
+        <div class="notification is-warning is-light" role="status">
+            The MCP server is turned off in <a href="{{ path('app_feature_flags') }}">Feature flags</a> (<code>mcp_server</code>), so no AI assistant can connect. You can still revoke assistant tokens and connections here.
+        </div>
+    {% endif %}
+    {% if connections_error %}<div class="notification is-danger" role="alert">{{ connections_error }} No assistant can sign in until the file is corrected, and nothing is saved over it.</div>{% endif %}
     {% if tokens_error %}<div class="notification is-danger" role="alert">{{ tokens_error }} No token works until the file is corrected, and nothing is saved over it.</div>{% endif %}
     {% if settings_error %}<div class="notification is-danger" role="alert">{{ settings_error }}</div>{% endif %}
 
@@ -30,7 +39,10 @@
             <p id="api-token-copy-status" class="help" role="status" aria-live="polite"></p>
             <p class="mt-3">Try it:</p>
             {% set example_view = created.token.views is null ? (approved_views|keys|first) : (created.token.views|first ?: created.token.privateViews|first) %}
-            <pre class="api-token-example"><code>curl -H "Authorization: Bearer YOUR_TOKEN" "{{ api_base_url }}/views/{{ example_view }}?limit=10"</code></pre>
+            {% if api_enabled %}<pre class="api-token-example"><code>curl -H "Authorization: Bearer YOUR_TOKEN" "{{ api_base_url }}/views/{{ example_view }}?limit=10"</code></pre>{% endif %}
+            {% if created.token.mcp %}
+                <p class="mt-3">For an AI assistant, add a remote MCP server with the address <code>{{ mcp_url }}</code> and the header <code>Authorization: Bearer YOUR_TOKEN</code>.</p>
+            {% endif %}
             {% if created.token.expiresAt is null %}
                 <div class="notification is-warning is-light mt-3" role="status">{{ never_expires_warning }}</div>
             {% endif %}
@@ -40,7 +52,7 @@
         </section>
     {% endif %}
 
-    {% if api_enabled and not tokens_error %}
+    {% if tokens_creatable and not tokens_error %}
         <details class="box"{% if tokens is empty and not created %} open{% endif %}>
             <summary class="has-text-weight-semibold">Create a token</summary>
             {# A plain form post: the response shows the new token once, so it is never stored in the session. #}
@@ -90,6 +102,16 @@
                     </details>
                 {% endif %}
 
+                {% if mcp_enabled %}
+                    <div class="field mt-3">
+                        <label class="checkbox">
+                            <input type="checkbox" name="mcp" value="1"{% if not api_enabled %} checked{% endif %}>
+                            AI assistants may use this token on the MCP server
+                        </label>
+                        <p class="help">For assistants that take a header, such as command-line and editor tools. Assistants that sign in, such as Claude and ChatGPT, get their own connection instead; leave this off for tokens used by scripts and BI refreshes.</p>
+                    </div>
+                {% endif %}
+
                 <div class="columns mt-3">
                     <div class="column is-narrow field">
                         <label class="label" for="api-token-expires">Expires</label>
@@ -125,7 +147,7 @@
                         {% for token in tokens %}
                             <tr id="token-{{ token.id }}">
                                 <td><code>{{ token.id }}</code></td>
-                                <td>{{ token.name }}</td>
+                                <td>{{ token.name }}{% if token.mcp %} <span class="tag is-info is-light" title="AI assistants may use this token on the MCP server">MCP</span>{% endif %}</td>
                                 <td>
                                     {{ token.views is null ? 'Every approved view' : token.views|join(', ') }}
                                     {% if token.privateViews is not empty %}
@@ -155,7 +177,56 @@
         {% endif %}
     </section>
 
-    {% if api_enabled and settings %}
+    {% if mcp_enabled or connections is not empty %}
+        <section class="box" aria-labelledby="mcp-connections-title">
+            <h2 class="title is-5" id="mcp-connections-title">AI assistant connections</h2>
+            {% if mcp_enabled %}
+                <p>To connect an assistant such as Claude or ChatGPT, add a custom connector or remote MCP server with this address. The assistant then opens a sign-in page here, where an administrator chooses what it may read.</p>
+                <div class="api-token-secret mt-3 mb-3">
+                    <code id="mcp-server-url">{{ mcp_url }}</code>
+                    {{ component('Ui:CopyButton', {target: 'mcp-server-url', status: 'mcp-server-url-status', label: 'Copy address', class: 'button is-small'}) }}
+                </div>
+                <p id="mcp-server-url-status" class="help" role="status" aria-live="polite"></p>
+                <p class="help mb-4">Each tool call an assistant makes is recorded in the <a href="{{ path('app_audit_trail', {area: ['assistant']}) }}">audit trail</a> under AI assistant requests.</p>
+            {% endif %}
+            {% if connections is empty %}
+                <p>No assistants are connected. Headless installations can give assistants a token with <code>php bin/console app:api:token:create --mcp</code>.</p>
+            {% else %}
+                <div class="table-container">
+                    <table class="table is-fullwidth is-striped api-tokens-table">
+                        <thead><tr><th scope="col">ID</th><th scope="col">Assistant</th><th scope="col">Views</th><th scope="col">Approved</th><th scope="col">Expires</th><th scope="col"><span class="is-sr-only">Actions</span></th></tr></thead>
+                        <tbody>
+                            {% for connection in connections %}
+                                <tr id="connection-{{ connection.id }}">
+                                    <td><code>{{ connection.id }}</code></td>
+                                    <td>{{ connection.clientName }}<br><span class="has-text-grey">{{ connection_hosts[connection.id] }}</span></td>
+                                    <td>
+                                        {{ connection.views is null ? 'Every approved view' : connection.views|join(', ') }}
+                                        {% if connection.privateViews is not empty %}
+                                            <br><span class="tag is-warning is-light">Private</span> {{ connection.privateViews|join(', ') }}
+                                            {% if not private_views_allowed %}<span class="has-text-grey">(not served while private views are off)</span>{% endif %}
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ connection.createdAt|date('Y-m-d', 'UTC') }} <span class="has-text-grey">by {{ connection.approvedBy }}</span></td>
+                                    <td>{% if connection.expiresAt is null %}<span class="tag is-warning is-light">Never</span>{% else %}{{ connection.expiresAt|date('Y-m-d', 'UTC') }}{% endif %}</td>
+                                    <td class="has-text-right">
+                                        {% component 'Ui:Confirm' with {message: 'Disconnect ' ~ connection.clientName ~ '? Its requests will fail until it is connected again.', action: path('app_mcp_connection_revoke', {id: connection.id}), method: 'post'} %}
+                                            {% block content %}
+                                                <input type="hidden" name="_csrf_token" value="{{ csrf_token(csrf_token_id) }}">
+                                                <button class="button is-small is-danger is-light" type="submit">Revoke</button>
+                                            {% endblock %}
+                                        {% endcomponent %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% endif %}
+        </section>
+    {% endif %}
+
+    {% if tokens_creatable and settings %}
         <form method="post" action="{{ path('app_api_tokens_settings') }}" class="box" aria-labelledby="api-settings-title">
             <input type="hidden" name="_csrf_token" value="{{ csrf_token(csrf_token_id) }}">
             <h2 class="title is-5" id="api-settings-title">Settings</h2>
@@ -166,12 +237,12 @@
                         <option value="0"{% if not settings.reporting_api_private_views %} selected{% endif %}>Off: approved views only</option>
                         <option value="1"{% if settings.reporting_api_private_views %} selected{% endif %}>On: tokens may be granted private views</option>
                     </select></div></div>
-                    {% if overrides.reporting_api_private_views %}{{ help.env_help(overrides, 'reporting_api_private_views') }}{% else %}<p class="help">While off, no token can be granted a private view, and private views already granted are not served; they work again if this is turned back on.</p>{% endif %}
+                    {% if overrides.reporting_api_private_views %}{{ help.env_help(overrides, 'reporting_api_private_views') }}{% else %}<p class="help">While off, no token or assistant can be granted a private view, and private views already granted are not served; they work again if this is turned back on.</p>{% endif %}
                 </div>
                 <div class="column field">
                     <label class="label" for="api-max-page-size">Maximum rows per request</label>
                     <div class="control"><input class="input" id="api-max-page-size" name="max_page_size" type="number" min="{{ page_size_range[0] }}" max="{{ page_size_range[1] }}" step="1" required value="{{ settings.reporting_api_max_page_size }}"{% if overrides.reporting_api_max_page_size %} disabled{% endif %}></div>
-                    {% if overrides.reporting_api_max_page_size %}{{ help.env_help(overrides, 'reporting_api_max_page_size') }}{% else %}<p class="help">The largest <code>limit</code> a request may ask for, up to {{ page_size_range[1]|number_format }}. Responses are streamed; larger pages take longer to query and download.</p>{% endif %}
+                    {% if overrides.reporting_api_max_page_size %}{{ help.env_help(overrides, 'reporting_api_max_page_size') }}{% else %}<p class="help">The largest <code>limit</code> a request may ask for, up to {{ page_size_range[1]|number_format }}. Responses are streamed; larger pages take longer to query and download. AI assistants get at most 1,000 rows per call.</p>{% endif %}
                 </div>
             </div>
             <button class="button is-primary" type="submit">Save settings</button>

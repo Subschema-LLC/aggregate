@@ -179,6 +179,80 @@ final class ViewQueryRunnerTest extends TestCase
         yield 'SQL Server' => [SQLServerPlatform::class, 'SELECT [event_day], [event_count] FROM [bi_anonymous_daily_v1] WHERE SUBSTRING([page_group], 1, 5) = ? AND [event_count] IN (?, ?) ORDER BY [event_day] DESC, [website_token] ASC OFFSET 100 ROWS FETCH NEXT 51 ROWS ONLY'];
     }
 
+    public function testGroupingSumsTheReleasedRows(): void
+    {
+        $byDay = $this->page(['group' => 'event_day', 'sort' => '-event_count'], 10, 0);
+        self::assertSame([
+            ['event_day' => '2026-10-01', 'event_count' => 49],
+            ['event_day' => '2026-10-02', 'event_count' => 20],
+            ['event_day' => '2026-10-03', 'event_count' => 8],
+        ], $byDay['rows']);
+        self::assertFalse($byDay['more']);
+
+        $filtered = $this->page(['group' => 'website_token,event_day', 'filter' => ['website_token' => 'site-a']], 10, 0);
+        self::assertSame([
+            ['website_token' => 'site-a', 'event_day' => '2026-10-01', 'event_count' => 19],
+            ['website_token' => 'site-a', 'event_day' => '2026-10-02', 'event_count' => 20],
+        ], $filtered['rows'], 'Filters apply before grouping; rows are ordered by the group columns');
+
+        self::assertSame([['event_count' => 77]], $this->page(['group' => ''], 10, 0)['rows'], 'An empty group is the total');
+        self::assertSame([['event_count' => null]], $this->page(['group' => '', 'filter' => ['website_token' => 'nobody']], 10, 0)['rows'], 'No released rows is null, never zero');
+
+        $paged = [$this->page(['group' => 'page_group'], 2, 0), $this->page(['group' => 'page_group'], 2, 2), $this->page(['group' => 'page_group'], 2, 4)];
+        self::assertTrue($paged[0]['more']);
+        self::assertSame([null, '/Blog', '/a%b', '/abc', '/blog', '/pricing'], array_column([...$paged[0]['rows'], ...$paged[1]['rows'], ...$paged[2]['rows']], 'page_group'), 'Grouped pages are stable');
+        self::assertFalse($paged[2]['more']);
+    }
+
+    public function testGroupedQueriesOnOtherEnginesSumAndSortOnTheSum(): void
+    {
+        $connection = $this->createStub(Connection::class);
+        $connection->method('getDatabasePlatform')->willReturn(new PostgreSQLPlatform());
+        $runner = new ViewQueryRunner($connection, $this->createStub(ViewReader::class));
+        $query = new ViewQuery('bi_anonymous_daily_v1', ['event_day', 'event_count'], [], [['column' => 'event_count', 'descending' => true]], 10, 0, ['event_day']);
+
+        self::assertSame(
+            'SELECT "event_day", SUM("event_count") AS "event_count" FROM "bi_anonymous_daily_v1" GROUP BY "event_day" ORDER BY SUM("event_count") DESC, "event_day" ASC LIMIT 11',
+            $runner->build($query, ['website_token', 'event_day', 'page_group', 'event_count'])['sql'],
+        );
+        $total = new ViewQuery('bi_anonymous_daily_v1', ['event_count'], [], [], 10, 0, []);
+        self::assertSame('SELECT SUM("event_count") AS "event_count" FROM "bi_anonymous_daily_v1" LIMIT 11', $runner->build($total, ['website_token'])['sql']);
+    }
+
+    public function testTheSchemaUsesThePublishedGlossaryAndListsCodeLabels(): void
+    {
+        $columns = array_column($this->schema->columns('bi_anonymous_daily_v1'), null, 'name');
+        self::assertNull($columns['page_group']['values'], 'Not a glossary dimension');
+        self::assertNull($columns['website_token']['values'], 'Website codes come only from configuration until published');
+
+        $this->connection->executeStatement('CREATE TABLE glossary (entry_type TEXT, subject TEXT, code TEXT, locale TEXT, label TEXT, description TEXT, sort_order INTEGER, is_default_locale INTEGER)');
+        $this->connection->executeStatement("CREATE VIEW bi_glossary_columns_v1 AS SELECT subject AS object_name, code AS column_name, locale, label, locale AS label_locale, 0 AS is_fallback, description, is_default_locale FROM glossary WHERE entry_type = 'column'");
+        $this->connection->executeStatement("CREATE VIEW bi_glossary_values_v1 AS SELECT subject AS dimension, code, locale, label, locale AS label_locale, 0 AS is_fallback, NULL AS group_label, description, sort_order, is_default_locale FROM glossary WHERE entry_type = 'value'");
+        foreach ([
+            ['column', 'bi_anonymous_daily_v1', 'page_group', 'en', 'Section', 'Edited by an administrator.', 10, 1],
+            ['column', 'bi_anonymous_daily_v1', 'page_group', 'fr', 'Rubrique', 'Pas la langue par défaut.', 10, 0],
+            ['value', 'website_token', 'site-b', 'en', 'Shop', 'shop.example', 20, 1],
+            ['value', 'website_token', 'site-a', 'en', 'Blog', 'blog.example', 10, 1],
+        ] as $row) {
+            $this->connection->insert('glossary', array_combine(['entry_type', 'subject', 'code', 'locale', 'label', 'description', 'sort_order', 'is_default_locale'], $row));
+        }
+        $reader = new ViewReader($this->connection, new ViewCatalog(new CustomDataSettings(new AggregateConfigLoader($this->projectDir, 'test'))));
+        $translator = new Translator('en');
+        $translator->addLoader('yaml', new YamlFileLoader());
+        $translator->addResource('yaml', dirname(__DIR__, 3).'/translations/bi_glossary.en.yaml', 'en', 'bi_glossary');
+        $schema = new ViewSchema($reader, new BuiltinGlossaryCatalog($translator), new ReportingTimezone(new AggregateConfigLoader($this->projectDir, 'test')));
+
+        $published = array_column($schema->columns('bi_anonymous_daily_v1'), null, 'name');
+        self::assertSame('Section', $published['page_group']['label']);
+        self::assertSame('Edited by an administrator.', $published['page_group']['description']);
+        self::assertSame($columns['event_count']['description'], $published['event_count']['description'], 'Columns the glossary does not list keep the built-in text');
+        self::assertSame([
+            ['code' => 'site-a', 'label' => 'Blog', 'description' => 'blog.example'],
+            ['code' => 'site-b', 'label' => 'Shop', 'description' => 'shop.example'],
+        ], $published['website_token']['values'], 'In glossary order, default locale only');
+        self::assertFalse($published['website_token']['values_truncated']);
+    }
+
     public function testOnlyCatalogViewsCanBeQueried(): void
     {
         $this->expectException(\LogicException::class);

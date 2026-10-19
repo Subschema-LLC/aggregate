@@ -173,13 +173,41 @@ final class FeatureFlagsExtensionTest extends TestCase
     {
         $navigation = $this->navigation();
         $navigation['items'] = [];
-        foreach (['unknown_feature', '', null, ['updates']] as $index => $feature) {
+        foreach (['unknown_feature', '', null, [], [''], ['unknown_feature'], ['updates' => 'updates'], [['updates']]] as $index => $feature) {
             $navigation['items'][] = ['label' => 'Unknown '.$index, 'url' => '/custom/'.$index, 'feature' => $feature];
         }
         $crawler = $this->render($this->twig(), $navigation);
 
         self::assertStringNotContainsString('Unknown', $crawler->text());
         self::assertCount(2, $crawler->filter('a[href]'));
+    }
+
+    /**
+     * A link several features share (API tokens serves the reporting API and
+     * the MCP server) is available while any of them is on, and hidden only
+     * when every feature that is on hides it.
+     */
+    public function testALinkTaggedWithSeveralFeaturesFollowsAnyOfThem(): void
+    {
+        $cases = [
+            'both off and hidden' => [[false, true], [false, true], false, true],
+            'both off, one shown' => [[false, false], [false, true], false, false],
+            'one on and shown' => [[true, false], [false, true], true, false],
+            'one on but hidden, the off one shown' => [[true, true], [false, false], true, true],
+            'both on, one shown' => [[true, true], [true, false], true, false],
+        ];
+        foreach ($cases as $case => [[$apiOn, $apiHidden], [$mcpOn, $mcpHidden], $enabled, $hidden]) {
+            file_put_contents($this->projectDir.'/config/aggregate.yaml', Yaml::dump(['feature_flags' => [
+                'reporting_api' => ['enabled' => $apiOn, 'hide_from_navigation' => $apiHidden],
+                'mcp_server' => ['enabled' => $mcpOn, 'hide_from_navigation' => $mcpHidden],
+            ]], 5));
+            $navigation = $this->navigation();
+            $navigation['items'] = [['label' => 'Shared tokens', 'url' => '/shared-tokens', 'feature' => ['reporting_api', 'mcp_server']]];
+            // A fresh loader per case: the loader keeps what it has read.
+            $features = new FeatureFlagsExtension(new FeatureFlags(new AggregateConfigLoader($this->projectDir, 'test')));
+
+            self::assertSame(['enabled' => $enabled, 'hidden' => $hidden], $features->navigationState($navigation['items'][0]), $case);
+        }
     }
 
     public function testSimilarAndExternalUrlsDoNotAcquireAnUnrelatedFeatureRestriction(): void

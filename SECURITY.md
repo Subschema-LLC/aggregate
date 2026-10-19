@@ -36,3 +36,13 @@ The [privacy and compliance guide](docs/PRIVACY-COMPLIANCE.md) describes collect
 limits and operator responsibilities. Follow the [deployment guide](DEPLOYMENT.md)
 for configuration, access controls, and updates, and verify prepared ZIPs as
 described in the [release guide](docs/RELEASES.md).
+
+## Reporting API and MCP server
+
+The [reporting API](docs/REPORTING-API.md) and the [MCP server for AI
+assistants](docs/MCP.md) are off by default. When you turn them on, serve the
+installation over HTTPS only, give tokens and assistant connections the
+narrowest views and shortest expiry that work, and revoke them when they are no
+longer needed. Report a way around a token's or connection's scope, the
+sign-in flow, suppression or the view catalog privately, as above. No
+independent security or privacy audit of either is claimed.

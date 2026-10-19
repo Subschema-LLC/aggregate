@@ -38,7 +38,7 @@ final class AuditTrailSettingsTest extends TestCase
 
         self::assertSame([
             'settings' => true, 'users' => true, 'websites' => true, 'integrations' => true,
-            'updates' => true, 'operations' => true, 'task' => true, 'sign_ins' => false,
+            'updates' => true, 'operations' => true, 'task' => true, 'assistant' => true, 'sign_ins' => false,
         ], $settings->all());
         self::assertTrue($settings->isRecorded(AuditTrailSettings::TASKS));
         self::assertFalse($settings->isRecorded(AuditTrailSettings::SIGN_INS));
