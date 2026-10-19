@@ -44,6 +44,7 @@ final class AdminActions
         'app_bi_glossary_save' => [Area::SETTINGS, 'glossary_saved'],
         'app_bi_page_groups_save' => [Area::SETTINGS, 'page_groups_saved'],
         'app_reporting_timezone_save' => [Area::SETTINGS, 'reporting_timezone_saved'],
+        'app_api_tokens_settings' => [Area::SETTINGS, 'reporting_api_settings_saved'],
         'app_audit_trail_settings' => [Area::SETTINGS, 'audit_settings_saved'],
         // Users.
         'app_install_execute' => [Area::USERS, 'installed'],
@@ -79,6 +80,8 @@ final class AdminActions
         'app_reporting_database_views' => [Area::INTEGRATIONS, 'reporting_database_views_saved'],
         'app_reporting_database_schedule' => [Area::INTEGRATIONS, 'reporting_database_schedule_saved'],
         'app_reporting_database_test' => [Area::INTEGRATIONS, 'reporting_database_connection_tested'],
+        'app_api_tokens_create' => [Area::INTEGRATIONS, 'api_token_created'],
+        'app_api_tokens_revoke' => [Area::INTEGRATIONS, 'api_token_revoked'],
         // Updates.
         'app_updates_refresh' => [Area::UPDATES, 'update_check_refreshed'],
         'app_updates_install' => [Area::UPDATES, 'update_started'],
@@ -113,7 +116,7 @@ final class AdminActions
     public const ALWAYS = ['audit_settings_saved'];
 
     /** Words in action codes that are written differently in a label. */
-    private const LABEL_WORDS = ['bi' => 'BI', 'bigquery' => 'BigQuery', 'csv' => 'CSV', 'js' => 'JS', 'mysql' => 'MySQL', 'oauth' => 'OAuth'];
+    private const LABEL_WORDS = ['api' => 'API', 'bi' => 'BI', 'bigquery' => 'BigQuery', 'csv' => 'CSV', 'js' => 'JS', 'mysql' => 'MySQL', 'oauth' => 'OAuth'];
 
     /** A readable label for an action code: bigquery_sync_started is "BigQuery sync started". */
     public static function label(string $code): string
@@ -193,6 +196,8 @@ final class AdminActions
                 'publish-model' => $end(Area::OPERATIONS, 'reporting_columns_published'),
                 default => null,
             },
+            'app:api:token:create' => $end(Area::INTEGRATIONS, 'api_token_created', $text($argument('name'))),
+            'app:api:token:revoke' => $end(Area::INTEGRATIONS, 'api_token_revoked', $text($argument('id'))),
             'app:reporting-database:configure' => $end(Area::INTEGRATIONS, $option('remove') === true ? 'reporting_database_connection_removed' : 'reporting_database_connection_saved'),
             'app:analytics:reporting-timezone' => $text($argument('timezone')) !== null ? $end(Area::SETTINGS, 'reporting_timezone_saved') : null,
             'app:analytics:mysql-timezones:load' => $end(Area::OPERATIONS, 'mysql_time_zones_loaded'),

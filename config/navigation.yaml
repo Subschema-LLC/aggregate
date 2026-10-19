@@ -75,6 +75,12 @@ parameters:
                     route: 'app_sync'
                     icon: 'fas fa-cloud-arrow-up'
                     shown_when: 'view_sync_on'
+                  # Administrator-only, and absent while the reporting_api flag is off.
+                  - label: 'API tokens'
+                    route: 'app_api_tokens'
+                    icon: 'fas fa-key'
+                    role: 'ROLE_ADMIN'
+                    feature: 'reporting_api'
                   - label: 'BI connection guide'
                     route: 'app_how_it_works_data_visualization'
                     icon: 'fas fa-book-open'

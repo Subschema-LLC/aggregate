@@ -10,6 +10,13 @@ framework:
     #esi: true
     #fragments: true
 
+    rate_limiter:
+        # Requests per reporting API token (docs/REPORTING-API.md#rate-limits).
+        reporting_api:
+            policy: fixed_window
+            limit: 120
+            interval: '1 minute'
+
 when@test:
     framework:
         test: true

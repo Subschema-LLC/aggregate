@@ -1,0 +1,36 @@
+/* API tokens: the one-time token display and the view lists. */
+.api-token-secret {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.api-token-secret code {
+    font-size: 1rem;
+    overflow-wrap: anywhere;
+    padding: 0.5rem 0.75rem;
+}
+
+.api-token-example {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.api-token-scope,
+.api-token-view {
+    display: block;
+    margin: 0 0 0.35rem !important;
+}
+
+.api-token-views {
+    padding-left: 1.5rem;
+}
+
+.api-token-private {
+    margin: 1rem 0;
+}
+
+.api-tokens-table td {
+    vertical-align: middle;
+}

@@ -1,9 +1,10 @@
 # Reporting API v1: design
 
-**Status:** draft for review, implementation in progress on
-`feature/reporting-api-v1`. Items under [later phases](#later-phases) are
-proposals, not delivered features. Once v1 ships, the reference for users lives
-in [Reporting API](../REPORTING-API.md) and the decision is recorded in
+**Status:** reviewed; v1 implemented on `feature/reporting-api-v1`. The
+[decisions](#decisions) section records the answers to the review's open
+questions. Items under [later phases](#later-phases) are proposals, not
+delivered features. The reference for users is
+[Reporting API](../REPORTING-API.md), and the decision is recorded in
 [design decisions](../DESIGN-DECISIONS.md#a-read-only-http-api-over-the-same-views).
 
 ## Summary
@@ -18,7 +19,9 @@ or with a console command. Tokens are stored hashed in a YAML file under
 The API adds a transport, not a new data surface. It reads the same view
 catalog as BigQuery sync and the reporting database sync, with the same rule:
 approved views by default, each private view only when it is listed
-separately, raw tables never.
+separately, raw tables never. A deployment setting,
+`reporting_api_private_views` (off by default), decides whether private views
+can be served at all.
 
 ## Goals
 
@@ -90,7 +93,7 @@ platform.
 | `filter[col][op]` | `filter[event_day][gte]=2026-10-01` | Column compared with value |
 | `fields` | `fields=event_day,page_group,event_count` | Columns to return, in this order (default: all) |
 | `sort` | `sort=-event_day,page_group` | Sort columns; `-` for descending |
-| `limit` | `limit=1000` | Rows per page, 1 to 10,000 (default 100) |
+| `limit` | `limit=1000` | Rows per page: 100 by default, at most `reporting_api_max_page_size` (10,000 unless changed) |
 | `offset` | `offset=1000` | Rows to skip |
 
 Any other parameter is a `400` error, so a typo such as `filters[...]` fails
@@ -200,6 +203,13 @@ the same types BigQuery and the reporting database receive:
 | `DATE` | `date` | `"YYYY-MM-DD"` |
 | `TIMESTAMP` | `timestamp` | `"YYYY-MM-DDTHH:MM:SS"`, no offset (see [time columns](#time-columns)) |
 
+Rows are streamed as the database returns them (`ViewReader` already reads
+large views in batches), with `meta` and `links` after the data array, so the
+page size can be configured without the server holding a page in memory. The
+query runs and its first row is read before the response starts, so a failing
+query still gets a problem response; a failure mid-stream ends the body early,
+which clients detect as invalid JSON.
+
 Responses carry `Cache-Control: private, no-store`: they depend on the token
 and must not be kept by a shared cache.
 
@@ -210,7 +220,7 @@ Errors use [RFC 9457 problem details](https://www.rfc-editor.org/rfc/rfc9457)
 
 ```json
 {
-  "type": "https://github.com/Subschema-LLC/aggregate/blob/master/docs/REPORTING-API.md#errors",
+  "type": "https://subschema-llc.github.io/aggregate/reporting/reporting-api#errors",
   "title": "Unknown column",
   "status": 400,
   "code": "unknown_column",
@@ -222,7 +232,8 @@ Errors use [RFC 9457 problem details](https://www.rfc-editor.org/rfc/rfc9457)
 | --- | --- |
 | 400 | `unknown_parameter`, `invalid_parameter`, `unknown_column`, `unsupported_operator`, `invalid_filter_value`, `token_in_query` |
 | 401 | `missing_token`, `invalid_token` (unknown, revoked or expired; the response does not say which) |
-| 403 | `view_not_permitted` |
+| 403 | `view_not_permitted`, `private_views_disabled` |
+| 405 | `method_not_allowed` |
 | 404 | `unknown_view`, `not_found` |
 | 429 | `rate_limited`, with `Retry-After` |
 | 503 | `view_unavailable` (the view does not exist in this database, for example geography is off), `configuration_invalid` |
@@ -295,8 +306,9 @@ tokens:
 A YAML file rather than a database table, because that is where Aggregate
 keeps operator configuration, it works with the dashboard disabled, and a
 deployment can provision the same file on every replica. The trade-off is that
-the file is read on each API request; it is small, parsed through
-`ParsedYamlCache`, and checked once per request.
+the file is read on each API request; it is small and checked once per
+request. It is not put in the parsed-YAML cache, so token hashes are kept in
+one owner-only file.
 
 ### Scope
 
@@ -305,13 +317,20 @@ the file is read on each API request; it is small, parsed through
 - `private_views` lists row-level or unsuppressed views (`analytics_custom_*`,
   `analytics_archived_*`) one by one, mirroring `bigquery_private_views`. A
   private view is accepted only from this list, so it is never granted by
-  accident, and creating such a token warns that it exposes individual rows.
+  accident, and creating such a token needs a confirmation in the dashboard
+  and warns on the command line that it exposes individual rows.
+- Private views also need the deployment toggle `reporting_api_private_views`.
+  While it is off, no token can be given a private view and grants already in
+  the file are not served (`403 private_views_disabled`); turning it back on
+  restores them without editing tokens.
 - Tokens grant read access to views only. There are no admin or write scopes.
 
 ### Expiry and revocation
 
-Tokens expire after one year by default; `--expires=90d`, a date, or `never`
-can be chosen. Revoking deletes the entry. An expired or revoked token gets
+Tokens expire after one year by default. Any duration (`30d`, `12w`, `6m`,
+`25y`), any future date or `never` can be chosen; there is no upper limit, only
+a warning, in the dashboard and on the command line, when a token never
+expires. Revoking deletes the entry. An expired or revoked token gets
 `401 invalid_token`.
 
 Last-used times are not recorded in v1: writing the YAML file on every request
@@ -342,7 +361,13 @@ and Data transfer: a token grants data access outside the dashboard's own
 permissions, so issuing one is closer to creating an account than to editing a
 setting. The new token is shown once on the page that the create
 form returns, with a copy button, and is never written to the session or a
-flash message.
+flash message. The same page holds the API's settings: the private views
+toggle and the maximum page size.
+
+While the feature flag is off, the page still lists and revokes tokens, so a
+token can be revoked before the API is turned back on; creating tokens and
+saving settings return 404. This is a documented exception to flagged pages
+returning 404.
 
 ### Audit trail
 
@@ -354,10 +379,16 @@ are not audit entries; they are ordinary reads.
 ## Feature flag and headless use
 
 A new flag, `reporting_api`, starts off and hidden, as every new flag does. It
-is the API's only switch: with it off, `/api/v1` returns 404 and the dashboard
-page is unavailable; with it on, the API answers requests that carry a valid
-token. There is no separate `reporting_api_enabled` setting, because having no
-tokens already means nothing can read.
+is the API's only on/off switch: with it off, `/api/v1` returns 404 and no
+token works; with it on, the API answers requests that carry a valid token.
+There is no separate `reporting_api_enabled` setting, because having no tokens
+already means nothing can read. Two settings shape what it serves, in YAML with
+uppercase environment overrides and on the API tokens page:
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `reporting_api_private_views` | `false` | Whether tokens may be granted, and may read, private views |
+| `reporting_api_max_page_size` | `10000` | The largest `limit`, from 1 to 1,000,000 |
 
 Everything works with the dashboard disabled: enable the flag in YAML, create
 tokens with the CLI.
@@ -404,7 +435,8 @@ page that renders the same generated document is the path, not a framework.
 | --- | --- |
 | `Service/ReportingApi/ApiTokenStore` | Read, create and revoke tokens in `config/secrets/api-tokens.yaml`; validation shared by CLI and dashboard |
 | `Service/ReportingApi/ApiToken` | One token's ID, name, scope, timestamps; `mayRead(view)` |
-| `Service/ReportingApi/ApiAuthenticator` | Bearer header to token; constant-time hash comparison; expiry |
+| `Service/ReportingApi/ApiRequestGuard` | Bearer header to token (constant-time hash comparison, expiry), the per-token rate limit, and whether the token may read a view |
+| `Service/ReportingApi/ReportingApiSettings` | `reporting_api_private_views` and `reporting_api_max_page_size`, shared by YAML, the environment, the dashboard and the API |
 | `Service/ReportingApi/ViewQuery` | Parses and validates `filter`, `fields`, `sort`, `limit`, `offset` against a view's columns |
 | `Service/ReportingApi/ViewQueryRunner` | Builds and runs the portable `SELECT` with bound values and platform limit syntax; converts values by catalog type |
 | `Service/ReportingApi/ViewSchema` | Columns, types, descriptions and time zones of a view |
@@ -416,7 +448,8 @@ page that renders the same generated document is the path, not a framework.
 | `EventSubscriber/ReportingApiExceptionSubscriber` | Problem details for unmatched `/api/v1` routes and unexpected errors |
 
 It reuses `ViewCatalog` for the allowlist and column types, `ViewReader`'s
-column discovery, `BuiltinGlossaryCatalog` for descriptions,
+column discovery and streamed reads (gaining `columns()` and a parameterized
+`select()`), `BuiltinGlossaryCatalog` for descriptions,
 `ReportingTimezone` for time labels, `FeatureFlags`, `AdminActions` and
 `ConfigurationChanges` for the audit trail.
 
@@ -440,16 +473,24 @@ Proposals, in rough priority order; none are part of v1.
    token scopes.
 7. **Keyset paging** for the custom views, which have a unique `id`.
 
-## Open questions
+## Decisions
 
-1. **Private views over HTTP.** v1 allows them per token, mirroring BigQuery
-   sync. Should v1 offer approved views only, and add private views later?
-2. **Default expiry.** One year, or require an explicit choice?
-3. **Who manages tokens.** Administrators only (proposed, see
-   [dashboard](#dashboard)), or also a grantable page so standard users can
-   issue approved-view tokens?
-4. **Maximum page size.** 10,000 rows keeps a response to a few megabytes. Is a
-   larger limit needed for Power BI refreshes?
-5. **OpenAPI without a token.** Should `openapi.json` also be available without
-   a token, listing approved views only, so tools can be configured before a
-   token is issued?
+The review answered the draft's open questions:
+
+1. **Private views over HTTP: allowed, behind a toggle.** Tokens can be granted
+   private views one by one, with the risks documented in
+   [private views](../REPORTING-API.md#private-views), and only while the
+   deployment setting `reporting_api_private_views` is on. It is off by
+   default.
+2. **Expiry: configurable, without an upper limit.** One year by default; any
+   duration, date or `never`, with a warning for tokens that never expire.
+3. **Who manages tokens: administrators only.**
+4. **Maximum page size: configurable.** `reporting_api_max_page_size`, 10,000 by
+   default, up to 1,000,000. Responses are streamed so a large page does not
+   cost server memory.
+5. **OpenAPI: token only.** A token-free document would reveal that the API is
+   on and which views and settings an installation has, would add an
+   unauthenticated route that queries the database, and offers little: the
+   approved views are already documented publicly. A public variant built only
+   from the static catalog can be added later behind its own setting if a need
+   appears.
