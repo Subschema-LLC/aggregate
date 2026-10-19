@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Service\BigQuery;
 
 use App\Service\AggregateConfigLoader;
+use App\Service\ViewSync\ViewCatalog;
+use App\Service\ViewSync\ViewSyncDefinition;
 use App\Service\ViewSync\ViewSyncSettings;
 
 /**
@@ -55,7 +57,7 @@ final class BigQuerySettings extends ViewSyncSettings
             self::KEY_AUTH => self::AUTH_SERVICE_ACCOUNT,
             self::KEY_CREDENTIALS_FILE => self::DEFAULT_CREDENTIALS_FILE,
             self::KEY_OAUTH_CLIENT_ID => '',
-            self::KEY_VIEWS => array_keys(BigQueryViewCatalog::APPROVED),
+            self::KEY_VIEWS => array_keys(ViewCatalog::APPROVED),
             self::KEY_PRIVATE_VIEWS => [],
             self::KEY_INTERVAL => 60,
         ];
@@ -129,7 +131,7 @@ final class BigQuerySettings extends ViewSyncSettings
             throw new \InvalidArgumentException('The OAuth client ID must end in .apps.googleusercontent.com. Copy it from the Google Cloud console.');
         }
 
-        [$views, $privateViews] = self::views($values, $enabled, 'BigQuery', 'synced to BigQuery', 'Choose at least one view to sync, or turn BigQuery sync off.');
+        [$views, $privateViews] = self::views($values, $enabled);
         $interval = self::interval($values[self::KEY_INTERVAL]);
 
         return [
@@ -156,9 +158,21 @@ final class BigQuerySettings extends ViewSyncSettings
         return [self::KEY_PROJECT, self::KEY_OAUTH_CLIENT_ID, self::KEY_PRIVATE_VIEWS];
     }
 
-    protected static function name(): string
+    public static function definition(): ViewSyncDefinition
     {
-        return 'BigQuery';
+        return new ViewSyncDefinition(
+            taskType: BigQuerySyncRunner::TASK_TYPE,
+            label: 'BigQuery sync',
+            subject: 'BigQuery sync',
+            settingsName: 'BigQuery',
+            destination: 'BigQuery',
+            selectedFor: 'BigQuery sync',
+            copiedTo: 'synced to BigQuery',
+            noneChosen: 'Choose at least one view to sync, or turn BigQuery sync off.',
+            viewsSaved: 'The views to sync were saved. Tables of views you removed stay in BigQuery until you delete them there.',
+            command: BigQueryBackgroundSync::COMMAND,
+            logFile: 'var/bigquery/last-run.log',
+        );
     }
 
     private static function text(mixed $value): ?string

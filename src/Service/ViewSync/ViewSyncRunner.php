@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Service\ViewSync;
 
-use App\Service\BigQuery\BigQueryViewCatalog;
 use App\Service\Operations\ProcessingTasks;
 use App\Service\Operations\TaskTrigger;
 use Psr\Log\LoggerInterface;
@@ -32,10 +31,10 @@ abstract class ViewSyncRunner
 
     /** @var \Closure(): \DateTimeImmutable */
     protected readonly \Closure $clock;
+    private readonly string $taskType;
 
     /**
-     * @param string                              $taskType    the processing task type of each view sync
-     * @param string                              $selectedFor as in "… is not selected for BigQuery sync."
+     * @param ViewSyncSettings                    $settings the sync's settings, which also define it (ViewSyncSettings::definition())
      * @param \Closure(): \DateTimeImmutable|null $clock
      */
     public function __construct(
@@ -43,10 +42,15 @@ abstract class ViewSyncRunner
         protected readonly ProcessingTasks $tasks,
         protected readonly LoggerInterface $logger,
         ?\Closure $clock,
-        private readonly string $taskType,
-        private readonly string $selectedFor,
     ) {
         $this->clock = $clock ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+        $this->taskType = $settings::definition()->taskType;
+    }
+
+    /** The settings of this sync; their definition() names it. */
+    public function settings(): ViewSyncSettings
+    {
+        return $this->settings;
     }
 
     /**
@@ -95,7 +99,7 @@ abstract class ViewSyncRunner
         $selected = $this->settings::selectedViews($settings);
         foreach ($only ?? [] as $view) {
             if (!in_array($view, $selected, true)) {
-                throw new \InvalidArgumentException($view.' is not selected for '.$this->selectedFor.'.');
+                throw new \InvalidArgumentException($view.' is not selected for '.$this->settings::definition()->selectedFor.'.');
             }
         }
         $views = $only ?? $selected;
@@ -148,8 +152,8 @@ abstract class ViewSyncRunner
             $success = $latest[$view]['success'] ?? null;
             $views[] = [
                 'view' => $view,
-                'private' => BigQueryViewCatalog::isPrivate($view),
-                'description' => BigQueryViewCatalog::describe($view),
+                'private' => ViewCatalog::isPrivate($view),
+                'description' => ViewCatalog::describe($view),
                 'status' => $attempt['status'] ?? 'never',
                 'started_at' => $attempt['started_at'] ?? null,
                 'finished_at' => $attempt['finished_at'] ?? null,

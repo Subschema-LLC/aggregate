@@ -15,6 +15,6 @@ class BigQueryBackgroundSync extends ViewSyncBackground
 
     public function __construct(BackgroundCommand $background, SchedulerSetup $scheduler)
     {
-        parent::__construct($background, $scheduler, self::COMMAND, 'var/bigquery/last-run.log');
+        parent::__construct($background, $scheduler, BigQuerySettings::definition());
     }
 }

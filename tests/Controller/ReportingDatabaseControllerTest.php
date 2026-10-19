@@ -6,7 +6,6 @@ namespace App\Tests\Controller;
 
 use App\Controller\ReportingDatabaseController;
 use App\Service\AggregateConfigLoader;
-use App\Service\BigQuery\BigQueryViewCatalog;
 use App\Service\LocalEnvironmentFile;
 use App\Service\ReportingDatabase\ReportingDatabaseBackgroundSync;
 use App\Service\ReportingDatabase\ReportingDatabaseConfigurator;
@@ -14,6 +13,7 @@ use App\Service\ReportingDatabase\ReportingDatabaseConnection;
 use App\Service\ReportingDatabase\ReportingDatabaseException;
 use App\Service\ReportingDatabase\ReportingDatabaseSettings;
 use App\Service\ReportingDatabase\ReportingDatabaseSyncRunner;
+use App\Service\ViewSync\ViewCatalog;
 use Doctrine\DBAL\DriverManager;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
@@ -48,6 +48,7 @@ final class ReportingDatabaseControllerTest extends TestCase
     private array $environment;
     private ReportingDatabaseSyncRunner $runner;
     private ReportingDatabaseBackgroundSync $background;
+    private ?ReportingDatabaseSettings $settings = null;
     private Session $session;
     private ?string $url = self::URL;
 
@@ -61,6 +62,8 @@ final class ReportingDatabaseControllerTest extends TestCase
         mkdir($this->projectDir.'/config', 0700, true);
         $this->writeYaml([]);
         $this->runner = $this->createMock(ReportingDatabaseSyncRunner::class);
+        // The runner shares its settings with the page, as the container does.
+        $this->runner->method('settings')->willReturnCallback(fn (): ReportingDatabaseSettings => $this->settings);
         $this->runner->method('status')->willReturnCallback(static fn (array $settings): array => [
             'last_run' => null,
             'views' => array_map(static fn (string $view): array => [
@@ -93,8 +96,8 @@ final class ReportingDatabaseControllerTest extends TestCase
         self::assertSame('Reporting database', $crawler->filter('h1')->text());
         self::assertStringContainsString('PostgreSQL database aggregate_reporting on db.example.net:5433', $crawler->text());
         self::assertStringNotContainsString('s3cret-password', $content);
-        self::assertCount(count(BigQueryViewCatalog::APPROVED), $crawler->filter('input[name="views[]"][checked]'));
-        self::assertCount(count(BigQueryViewCatalog::PRIVATE), $crawler->filter('input[name="private_views[]"]'));
+        self::assertCount(count(ViewCatalog::APPROVED), $crawler->filter('input[name="views[]"][checked]'));
+        self::assertCount(count(ViewCatalog::PRIVATE), $crawler->filter('input[name="private_views[]"]'));
         self::assertCount(0, $crawler->filter('input[name="private_views[]"][checked]'));
         // Sync is off by default, so it cannot be started; the connection can be tested.
         self::assertSame('disabled', $crawler->filter('button[form="reporting-database-sync"]')->attr('disabled'));
@@ -302,7 +305,7 @@ final class ReportingDatabaseControllerTest extends TestCase
 
         self::assertFalse($body['running']);
         self::assertNull($body['last_run']);
-        self::assertCount(count(BigQueryViewCatalog::APPROVED), $body['views']);
+        self::assertCount(count(ViewCatalog::APPROVED), $body['views']);
     }
 
     private function page(): Response
@@ -330,9 +333,10 @@ final class ReportingDatabaseControllerTest extends TestCase
         $config = new AggregateConfigLoader($this->projectDir, 'test');
         $application = DriverManager::getConnection(['driver' => 'pdo_sqlite', 'memory' => true]);
         $connection = new ReportingDatabaseConnection($this->url, $this->projectDir, $application);
+        $this->settings = new ReportingDatabaseSettings($config);
         $controller = new ReportingDatabaseController(
             $config,
-            new ReportingDatabaseSettings($config),
+            $this->settings,
             $connection,
             $this->runner,
             $this->background,

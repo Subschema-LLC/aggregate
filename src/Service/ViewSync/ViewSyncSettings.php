@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Service\ViewSync;
 
 use App\Service\AggregateConfigLoader;
-use App\Service\BigQuery\BigQueryViewCatalog;
 
 /**
  * Settings of a view sync, BigQuery or the reporting database: one source for
@@ -49,8 +48,8 @@ abstract class ViewSyncSettings
      */
     abstract protected static function emptyEnvironmentKeys(): array;
 
-    /** These settings as named in "The form contained an unexpected … setting." */
-    abstract protected static function name(): string;
+    /** What sets this sync apart, read by its runner, job, launcher and admin page. */
+    abstract public static function definition(): ViewSyncDefinition;
 
     /**
      * The effective, validated settings.
@@ -88,7 +87,7 @@ abstract class ViewSyncSettings
     public function save(array $candidate): void
     {
         if (array_diff_key($candidate, static::defaults()) !== []) {
-            throw new \InvalidArgumentException('The form contained an unexpected '.static::name().' setting. Nothing was saved.');
+            throw new \InvalidArgumentException('The form contained an unexpected '.static::definition()->settingsName.' setting. Nothing was saved.');
         }
         $current = $this->toArray();
         $overrides = $this->getEnvironmentOverrides();
@@ -140,35 +139,33 @@ abstract class ViewSyncSettings
      * view is accepted only from its own list, so it is never copied by accident.
      *
      * @param array<string, mixed> $values
-     * @param string               $destination as in "may be copied to BigQuery"
-     * @param string               $syncable    as in "a reporting view that can be synced to BigQuery"
-     * @param string               $noneChosen  the message when the sync is on without views
      *
      * @return array{list<string>, list<string>}
      */
-    protected static function views(array $values, bool $enabled, string $destination, string $syncable, string $noneChosen): array
+    protected static function views(array $values, bool $enabled): array
     {
         $keys = static::keys();
+        $sync = static::definition();
         $views = self::viewList($values[$keys['views']], $keys['views']);
         foreach ($views as $view) {
-            if (BigQueryViewCatalog::isPrivate($view)) {
-                throw new \InvalidArgumentException($view.' holds row-level or unsuppressed data. List it under '.$keys['private_views'].' to confirm that it may be copied to '.$destination.'.');
+            if (ViewCatalog::isPrivate($view)) {
+                throw new \InvalidArgumentException($view.' holds row-level or unsuppressed data. List it under '.$keys['private_views'].' to confirm that it may be copied to '.$sync->destination.'.');
             }
-            if (!BigQueryViewCatalog::isApproved($view)) {
-                throw new \InvalidArgumentException($view.' is not a reporting view that can be '.$syncable.'.');
+            if (!ViewCatalog::isApproved($view)) {
+                throw new \InvalidArgumentException($view.' is not a reporting view that can be '.$sync->copiedTo.'.');
             }
         }
         $privateViews = self::viewList($values[$keys['private_views']], $keys['private_views']);
         foreach ($privateViews as $view) {
-            if (!BigQueryViewCatalog::isPrivate($view)) {
+            if (!ViewCatalog::isPrivate($view)) {
                 throw new \InvalidArgumentException($view.' is not a private reporting view. List approved views under '.$keys['views'].'.');
             }
         }
         if ($enabled && $views === [] && $privateViews === []) {
-            throw new \InvalidArgumentException($noneChosen);
+            throw new \InvalidArgumentException($sync->noneChosen);
         }
 
-        return [self::inCatalogOrder($views, BigQueryViewCatalog::APPROVED), self::inCatalogOrder($privateViews, BigQueryViewCatalog::PRIVATE)];
+        return [self::inCatalogOrder($views, ViewCatalog::APPROVED), self::inCatalogOrder($privateViews, ViewCatalog::PRIVATE)];
     }
 
     protected static function interval(mixed $interval): int

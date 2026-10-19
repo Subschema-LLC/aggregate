@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace App\Service\ReportingDatabase;
 
-use App\Service\BigQuery\BigQueryViewCatalog;
+use App\Service\ViewSync\ViewCatalog;
+use App\Service\ViewSync\ViewSyncDefinition;
 use App\Service\ViewSync\ViewSyncSettings;
 
 /**
@@ -27,7 +28,7 @@ final class ReportingDatabaseSettings extends ViewSyncSettings
     {
         return [
             self::KEY_ENABLED => false,
-            self::KEY_VIEWS => array_keys(BigQueryViewCatalog::APPROVED),
+            self::KEY_VIEWS => array_keys(ViewCatalog::APPROVED),
             self::KEY_PRIVATE_VIEWS => [],
             self::KEY_INTERVAL => 60,
         ];
@@ -43,7 +44,7 @@ final class ReportingDatabaseSettings extends ViewSyncSettings
         $values = array_replace(self::defaults(), $values);
 
         $enabled = self::enabled($values[self::KEY_ENABLED], self::KEY_ENABLED);
-        [$views, $privateViews] = self::views($values, $enabled, 'the reporting database', 'copied to the reporting database', 'Choose at least one view to copy, or turn the reporting database sync off.');
+        [$views, $privateViews] = self::views($values, $enabled);
         $interval = self::interval($values[self::KEY_INTERVAL]);
 
         return [
@@ -64,8 +65,20 @@ final class ReportingDatabaseSettings extends ViewSyncSettings
         return [self::KEY_PRIVATE_VIEWS];
     }
 
-    protected static function name(): string
+    public static function definition(): ViewSyncDefinition
     {
-        return 'reporting database';
+        return new ViewSyncDefinition(
+            taskType: ReportingDatabaseSyncRunner::TASK_TYPE,
+            label: 'Reporting database sync',
+            subject: 'The reporting database sync',
+            settingsName: 'reporting database',
+            destination: 'the reporting database',
+            selectedFor: 'the reporting database',
+            copiedTo: 'copied to the reporting database',
+            noneChosen: 'Choose at least one view to copy, or turn the reporting database sync off.',
+            viewsSaved: 'The views to copy were saved. Tables of views you removed stay in the reporting database until you drop them there.',
+            command: ReportingDatabaseBackgroundSync::COMMAND,
+            logFile: 'var/reporting-database/last-run.log',
+        );
     }
 }

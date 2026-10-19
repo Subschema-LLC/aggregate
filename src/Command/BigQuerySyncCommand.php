@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace App\Command;
 
-use App\Service\BigQuery\BigQueryException;
 use App\Service\BigQuery\BigQuerySettings;
 use App\Service\BigQuery\BigQuerySyncRunner;
-use App\Service\BigQuery\BigQueryViewCatalog;
+use App\Service\ViewSync\ViewCatalog;
 use App\Service\ViewSync\ViewSyncConsole;
+use App\Service\ViewSync\ViewSyncException;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -94,7 +94,7 @@ HELP);
                 $views = BigQuerySettings::selectedViews($this->settings->toArray());
             }
             foreach ($views as $view) {
-                if (!BigQueryViewCatalog::isKnown($view)) {
+                if (!ViewCatalog::isKnown($view)) {
                     throw new \InvalidArgumentException($view.' is not a reporting view that can be synced.');
                 }
             }
@@ -102,7 +102,7 @@ HELP);
                 throw new \InvalidArgumentException('--output must be an existing, writable folder.');
             }
             $results = $this->runner->dryRun($views, $directory);
-        } catch (\InvalidArgumentException|BigQueryException $e) {
+        } catch (\InvalidArgumentException|ViewSyncException $e) {
             $io->error($e->getMessage());
 
             return Command::FAILURE;

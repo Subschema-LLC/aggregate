@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Service\BigQuery;
 
 use App\Service\Operations\ProcessingTasks;
+use App\Service\ViewSync\ViewCatalog;
+use App\Service\ViewSync\ViewSyncException;
 use App\Service\ViewSync\ViewSyncRunner;
 use Psr\Log\LoggerInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
@@ -37,7 +39,7 @@ class BigQuerySyncRunner extends ViewSyncRunner
         ?\Closure $clock = null,
         ?\Closure $clientFactory = null,
     ) {
-        parent::__construct($settings, $tasks, $logger, $clock, self::TASK_TYPE, 'BigQuery sync');
+        parent::__construct($settings, $tasks, $logger, $clock);
         $this->clientFactory = $clientFactory ?? fn (GoogleCredentials $credentials, string $project, string $location): BigQueryClient => new BigQueryClient($this->http, $credentials, $project, $location);
     }
 
@@ -119,7 +121,7 @@ class BigQuerySyncRunner extends ViewSyncRunner
         try {
             $result = $export['rows'] === 0
                 ? $destination->replaceWithEmpty($settings[BigQuerySettings::KEY_DATASET], $view, $export['fields'])
-                : $destination->load($settings[BigQuerySettings::KEY_DATASET], $view, $export['fields'], $export['file'], 'Copy of the Aggregate reporting view '.$view.', replaced on every sync. '.BigQueryViewCatalog::describe($view).'.');
+                : $destination->load($settings[BigQuerySettings::KEY_DATASET], $view, $export['fields'], $export['file'], 'Copy of the Aggregate reporting view '.$view.', replaced on every sync. '.ViewCatalog::describe($view).'.');
             $externalId = $result['job_id'];
             if ($export['rows'] !== 0 && $result['rows'] !== $export['rows']) {
                 throw new BigQueryException(sprintf('BigQuery loaded %d of %d rows.', $result['rows'], $export['rows']));
@@ -148,7 +150,8 @@ class BigQuerySyncRunner extends ViewSyncRunner
 
     protected function copyFailure(string $view, \Throwable $e): string
     {
-        if ($e instanceof BigQueryException) {
+        // Reading the view fails with a ViewSyncException, BigQuery with a BigQueryException.
+        if ($e instanceof ViewSyncException) {
             return $e->getMessage();
         }
         $this->logger->error('BigQuery sync of a view failed.', ['view' => $view, 'exception' => $e]);

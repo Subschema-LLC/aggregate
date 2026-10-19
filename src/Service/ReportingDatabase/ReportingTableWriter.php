@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Service\ReportingDatabase;
 
-use App\Service\BigQuery\BigQueryException;
-use App\Service\BigQuery\BigQueryViewExporter;
+use App\Service\ViewSync\ViewReader;
+use App\Service\ViewSync\ViewSyncException;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Exception as DbalException;
 use Doctrine\DBAL\Exception\DriverException;
@@ -197,8 +197,8 @@ final class ReportingTableWriter
     {
         $invalid = static fn (): ReportingDatabaseException => new ReportingDatabaseException(sprintf('The view %s has a value in %s that is not a valid %s; the table was not replaced.', $view, $column, $type));
         try {
-            $value = BigQueryViewExporter::convert($value, $type, $view, $column);
-        } catch (BigQueryException) {
+            $value = ViewReader::convert($value, $type, $view, $column);
+        } catch (ViewSyncException) {
             throw $invalid();
         }
         if ($value === null) {

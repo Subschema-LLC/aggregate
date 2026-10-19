@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service\BigQuery;
 
+use App\Service\ViewSync\ViewCatalog;
 use Symfony\Contracts\HttpClient\Exception\ExceptionInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Symfony\Contracts\HttpClient\ResponseInterface;
@@ -196,7 +197,7 @@ class BigQueryClient
     {
         $schema = [];
         foreach ($fields as $field) {
-            if (preg_match('/^[A-Za-z_][A-Za-z0-9_]{0,299}$/D', $field['name']) !== 1 || !in_array($field['type'], BigQueryViewCatalog::TYPES, true)) {
+            if (preg_match('/^[A-Za-z_][A-Za-z0-9_]{0,299}$/D', $field['name']) !== 1 || !in_array($field['type'], ViewCatalog::TYPES, true)) {
                 throw new BigQueryException('The column '.TokenCache::clean($field['name'], 80).' cannot be used as a BigQuery column name.');
             }
             $schema[] = ['name' => $field['name'], 'type' => $field['type'], 'mode' => 'NULLABLE'];
