@@ -123,6 +123,20 @@ shared `processing_tasks` table and an entry in `audit_trail`
 the same two tables, including their lock for exclusive runs, rather than adding
 their own.
 
+The audit trail also records administrator actions
+([AdminActions](../src/Service/Operations/AdminActions.php) lists them): the
+[AdminAuditSubscriber](../src/EventSubscriber/AdminAuditSubscriber.php) records
+listed dashboard routes once their controller has run and sign-ins, and the
+[AdminCommandAuditSubscriber](../src/EventSubscriber/AdminCommandAuditSubscriber.php)
+records listed console commands. While an action runs, the configuration writers
+report the files and setting names they change to
+[ConfigurationChanges](../src/Service/Operations/ConfigurationChanges.php);
+values never reach the trail.
+[AuditTrailSettings](../src/Service/Operations/AuditTrailSettings.php) holds the
+switch for each area, and [AuditTrailLog](../src/Service/Operations/AuditTrailLog.php)
+reads entries for the Audit trail page and `app:audit:list`. See
+[audit trail](AUDIT-TRAIL.md).
+
 One scheduled task runs every background job: `app:scheduler:run`
 ([Scheduler](../src/Service/Scheduler/Scheduler.php)), every five minutes from
 cron, Plesk or a systemd timer. Each job implements

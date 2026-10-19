@@ -456,6 +456,8 @@ Archiving creates private, unsuppressed aggregate cells and marks the source row
 
 Background jobs (each BigQuery or reporting database view sync and each maintenance run) are recorded in
 the private [`processing_tasks` and `audit_trail` tables](DATABASE.md#processing-tasks-and-audit-trail).
+The [audit trail](AUDIT-TRAIL.md) also records administrator actions and, when
+turned on, sign-ins; its job runs and its other entries have their own periods.
 Maintenance purges them after these periods; `0` keeps them indefinitely. The
 latest success and the latest failure of each job are always kept so schedules
 and status pages still know when it last ran.
@@ -463,7 +465,12 @@ and status pages still know when it last ran.
 | Setting | Environment variable | Default | Range |
 | --- | --- | --- | --- |
 | `processing_tasks_retention_days` | `PROCESSING_TASKS_RETENTION_DAYS` | `90` | `0`–`36500` |
-| `audit_trail_retention_days` | `AUDIT_TRAIL_RETENTION_DAYS` | `365` | `0`–`36500` |
+| `audit_trail_retention_days` | `AUDIT_TRAIL_RETENTION_DAYS` | `365` | `0`–`36500` (job-run entries) |
+| `audit_trail_admin_retention_days` | `AUDIT_TRAIL_ADMIN_RETENTION_DAYS` | `730` | `0`–`36500` (administrator actions and sign-ins) |
+
+What the audit trail records is chosen by area under `audit_trail_areas`, on
+**Administration → Audit trail**; there is no environment variable for it. See
+[turn areas on and off](AUDIT-TRAIL.md#turn-areas-on-and-off).
 
 Purging is on by default, so set up the [scheduled task](SCHEDULED-TASKS.md)
 even when archiving and retention are off. Its dry run shows how many records would be

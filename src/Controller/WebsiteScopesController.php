@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\EventSubscriber\AdminAuditSubscriber;
 use App\Service\AggregateConfigLoader;
 use App\Service\WebsiteConfigManager;
 use App\Service\WebsiteScopeCatalog;
@@ -88,6 +89,7 @@ final class WebsiteScopesController extends AbstractController
         }
         try {
             $id = $this->catalog->createGroup((string) $request->request->get('name', ''));
+            $request->attributes->set(AdminAuditSubscriber::SUBJECT, 'group:'.$id);
             $this->addFlash('success', 'Created. Its shared settings can be edited from Collection controls or the data model.');
             $this->addFlash('info', 'Group id: '.$id);
         } catch (\Throwable $error) {
@@ -106,6 +108,7 @@ final class WebsiteScopesController extends AbstractController
 
             return $this->redirectToRoute('app_website_groups');
         }
+        $request->attributes->set(AdminAuditSubscriber::SUBJECT, 'group:'.$id);
         try {
             $this->catalog->renameGroup($id, (string) $request->request->get('name', ''));
             $this->addFlash('success', 'Name saved. The id used in files stays '.$id.'.');
@@ -125,6 +128,7 @@ final class WebsiteScopesController extends AbstractController
 
             return $this->redirectToRoute('app_website_groups');
         }
+        $request->attributes->set(AdminAuditSubscriber::SUBJECT, 'group:'.$id);
         try {
             $this->catalog->deleteGroup($id);
             $this->addFlash('success', 'Removed. Its websites now use the deployment settings unless they have their own.');

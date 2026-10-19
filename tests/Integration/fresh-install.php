@@ -731,6 +731,62 @@ E2E::step('retention deletes expired data', static function () use ($root): void
     E2E::check((int) $db->fetchOne("SELECT COUNT(*) FROM events WHERE url = '/pricing'") === 6, 'Recent events were deleted.');
 });
 
+E2E::step('the audit trail records administrator actions, filters them, and turns areas on and off', static function () use ($root, $browser, $base): void {
+    $db = connection($root);
+    $entry = static fn (string $action): array|false => $db->fetchAssociative('SELECT category, outcome, actor, subject, details FROM audit_trail WHERE operation = :action ORDER BY id DESC', ['action' => $action]);
+    // The installer, a settings page saved from the dashboard and a command run on the server.
+    $installed = $entry('installed');
+    E2E::check($installed !== false && $installed['category'] === 'users' && $installed['subject'] === 'admin' && $installed['outcome'] === 'succeeded', 'The installation was not audited: '.json_encode($installed));
+    $saved = $entry('bi_disclosure_saved');
+    E2E::check($saved !== false && $saved['actor'] === 'admin' && str_contains((string) $saved['details'], 'anonymous_min_cell_count') && !str_contains((string) $saved['details'], '6'), 'The BI thresholds save was not audited by setting name only: '.json_encode($saved));
+    $created = $entry('website_created');
+    E2E::check($created !== false && $created['category'] === 'websites' && str_ends_with((string) $created['actor'], '(command line)'), 'app:create-website was not audited: '.json_encode($created));
+    E2E::check($entry('signed_in') === false, 'Sign-ins were recorded although they are off by default.');
+
+    // The page lists and filters the entries, and exports them.
+    $page = $browser->request('GET', $base.'/dashboard/audit-trail?'.http_build_query(['area' => ['settings'], 'user' => 'admin']));
+    E2E::check($browser->getInternalResponse()->getStatusCode() === 200 && str_contains($page->filter('.audit-trail-entries')->text(''), 'BI disclosure saved'), 'The filtered audit trail: '.pageProblem($browser));
+    E2E::check(!str_contains($page->filter('.audit-trail-entries')->text(''), 'Website created'), 'The area filter did not narrow the list.');
+    $browser->request('GET', $base.'/dashboard/audit-trail/export?'.http_build_query(['q' => 'cell count']));
+    $csv = $browser->getInternalResponse()->getContent();
+    E2E::check(str_starts_with((string) $browser->getInternalResponse()->getHeader('Content-Type'), 'text/csv') && str_contains($csv, 'Time (UTC)') && str_contains($csv, 'BI disclosure saved') && !str_contains($csv, 'Website created'), 'The CSV export: '.substr($csv, 0, 500));
+    $exported = $entry('audit_trail_exported');
+    E2E::check($exported !== false && $exported['details'] === 'Filtered by text.', 'The export was not audited without its search: '.json_encode($exported));
+    $listed = json_decode(console($root, ['app:audit:list', '--area=websites', '--json']), true);
+    E2E::check(is_array($listed) && $listed !== [] && array_unique(array_column($listed, 'area')) === ['websites'], 'app:audit:list --area=websites: '.json_encode($listed));
+
+    // Turning sign-ins on records the change and then the next sign-in; turning settings off stops those.
+    $form = $browser->request('GET', $base.'/dashboard/audit-trail')->filter('form[action$="/dashboard/audit-trail/settings"]')->form();
+    $form['record[sign_ins]']->tick();
+    $form['record[settings]']->untick();
+    $browser->submit($form);
+    $config = Yaml::parseFile($root.'/config/aggregate.yaml');
+    E2E::check(($config['audit_trail_areas']['sign_ins'] ?? null) === true && ($config['audit_trail_areas']['settings'] ?? null) === false, 'The switches were not saved: '.json_encode($config['audit_trail_areas'] ?? null));
+    $switched = $entry('audit_settings_saved');
+    E2E::check($switched !== false && $switched['details'] !== null && str_contains($switched['details'], 'Turned on: sign_ins.') && str_contains($switched['details'], 'Turned off: settings.'), 'The switch change was not audited: '.json_encode($switched));
+    $logout = $browser->request('GET', $base.'/dashboard')->filter('a[href*="/logout"]');
+    E2E::check($logout->count() > 0, 'No sign-out link on the dashboard.');
+    $browser->click($logout->link());
+    $signedOut = $entry('signed_out');
+    E2E::check($signedOut !== false && $signedOut['actor'] === 'admin', 'The sign-out was not audited: '.json_encode($signedOut));
+    $login = $browser->request('GET', $base.'/login')->filter('form')->form();
+    $login['_username'] = 'admin';
+    $login['_password'] = 'e2e-admin-password';
+    $browser->submit($login);
+    $signedIn = $entry('signed_in');
+    E2E::check($signedIn !== false && $signedIn['actor'] === 'admin', 'The sign-in was not audited after turning sign-ins on: '.json_encode($signedIn));
+    $before = (int) $db->fetchOne("SELECT COUNT(*) FROM audit_trail WHERE operation = 'bi_disclosure_saved'");
+    $privacy = $browser->request('GET', $base.'/dashboard/privacy')->filter('form[action$="/dashboard/settings/analytics-privacy"]')->form();
+    $browser->submit($privacy);
+    E2E::check((int) $db->fetchOne("SELECT COUNT(*) FROM audit_trail WHERE operation = 'bi_disclosure_saved'") === $before, 'A settings save was recorded with the settings area off.');
+
+    // Restore the defaults for the later steps.
+    $form = $browser->request('GET', $base.'/dashboard/audit-trail')->filter('form[action$="/dashboard/audit-trail/settings"]')->form();
+    $form['record[sign_ins]']->untick();
+    $form['record[settings]']->tick();
+    $browser->submit($form);
+});
+
 E2E::step('processing tasks and the audit trail record syncs and maintenance, and are purged', static function () use ($root): void {
     $db = connection($root);
     // Maintenance runs from the earlier steps were recorded.
@@ -758,11 +814,18 @@ E2E::step('processing tasks and the audit trail record syncs and maintenance, an
     $old = new \DateTimeImmutable('-400 days', new \DateTimeZone('UTC'));
     $db->executeStatement("UPDATE processing_tasks SET started_at = :old, finished_at = :old WHERE status <> 'running'", ['old' => $old], ['old' => Types::DATETIME_IMMUTABLE]);
     $db->executeStatement('UPDATE audit_trail SET occurred_at = :old', ['old' => $old], ['old' => Types::DATETIME_IMMUTABLE]);
+    $admin = (int) $db->fetchOne("SELECT COUNT(*) FROM audit_trail WHERE category <> 'task'");
+    E2E::check($admin > 0, 'No administrator actions were recorded before the purge.');
     $kept = (int) $db->fetchOne("SELECT COUNT(*) FROM (SELECT task_type, subject, status FROM processing_tasks WHERE status <> 'running' GROUP BY task_type, subject, status) kept");
     console($root, ['app:analytics:maintain']);
     E2E::check((int) $db->fetchOne("SELECT COUNT(*) FROM processing_tasks WHERE started_at < :recent", ['recent' => new \DateTimeImmutable('-1 day')], ['recent' => Types::DATETIME_IMMUTABLE]) === $kept, 'Old processing tasks were not purged down to the latest of each job.');
-    $audit = $db->fetchAllAssociative('SELECT operation, outcome, details FROM audit_trail');
-    E2E::check(count($audit) === 1 && $audit[0]['operation'] === 'analytics_maintenance' && str_contains((string) $audit[0]['details'], 'audit trail entr'), 'Audit trail after the purge: '.json_encode($audit));
+    $audit = $db->fetchAllAssociative("SELECT operation, outcome, details FROM audit_trail WHERE category = 'task'");
+    E2E::check(count($audit) === 1 && $audit[0]['operation'] === 'analytics_maintenance' && str_contains((string) $audit[0]['details'], 'job run audit trail entr'), 'Audit trail after the purge: '.json_encode($audit));
+    // Administrator actions are kept for their own, longer period (730 days by default).
+    E2E::check((int) $db->fetchOne("SELECT COUNT(*) FROM audit_trail WHERE category <> 'task'") === $admin, 'Administrator actions were purged on the job-run period.');
+    $db->executeStatement("UPDATE audit_trail SET occurred_at = :older WHERE category <> 'task'", ['older' => new \DateTimeImmutable('-800 days', new \DateTimeZone('UTC'))], ['older' => Types::DATETIME_IMMUTABLE]);
+    console($root, ['app:analytics:maintain']);
+    E2E::check((int) $db->fetchOne("SELECT COUNT(*) FROM audit_trail WHERE category <> 'task'") === 0, 'Administrator actions older than their period were not purged.');
     file_put_contents($root.'/config/aggregate.yaml', Yaml::dump($config, 4, 2));
 });
 

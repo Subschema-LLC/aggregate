@@ -254,6 +254,7 @@ environments:
     analytics_maintenance_batch_size: 1000
     processing_tasks_retention_days: 90
     audit_trail_retention_days: 365
+    audit_trail_admin_retention_days: 730
 
   prod:
     rate_limit_per_minute: 100
@@ -295,6 +296,7 @@ environments:
     analytics_maintenance_batch_size: 1000
     processing_tasks_retention_days: 90
     audit_trail_retention_days: 365
+    audit_trail_admin_retention_days: 730
 
   test:
     rate_limit_per_minute: 1000
@@ -335,6 +337,7 @@ environments:
     analytics_maintenance_batch_size: 1000
     processing_tasks_retention_days: 90
     audit_trail_retention_days: 365
+    audit_trail_admin_retention_days: 730
 
 # Configuration options:
 #
@@ -546,7 +549,24 @@ environments:
 #   each job's latest success and failure. 0 keeps them.
 #
 # audit_trail_retention_days (optional, default: 365; range: 0..36500)
-#   Purge audit trail entries after this many days. 0 keeps them.
+#   Purge the audit trail's background job runs after this many days. 0 keeps them.
+#
+# audit_trail_admin_retention_days (optional, default: 730; range: 0..36500)
+#   Purge the audit trail's administrator actions and sign-ins after this many
+#   days. 0 keeps them.
+#
+# audit_trail_areas (optional; edited on Administration → Audit trail)
+#   What the audit trail records, by area. Areas left out take their default;
+#   there is no environment variable. Changes to this setting are always recorded.
+#   audit_trail_areas:
+#     settings: true      # saving settings pages
+#     users: true         # creating users, changing passwords
+#     websites: true      # websites, domain rules and website groups
+#     integrations: true  # BigQuery and reporting database connections
+#     updates: true       # update checks, installs, rollbacks, maintenance mode
+#     operations: true    # Sync now, scheduled job runs started by hand, rebuilds
+#     task: true          # every finished background job run
+#     sign_ins: false     # sign-ins, failed sign-ins and sign-outs
 #
 # When archiving and retention are both enabled, both raw retention periods
 # must be at least analytics_archive_after_days. Whenever retention is enabled,

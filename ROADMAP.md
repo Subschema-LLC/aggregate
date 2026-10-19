@@ -46,12 +46,10 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   currently applies to all events through one UI/YAML setting. Explore per-event
   inclusion where operators need it, keeping one page counter and shared server
   enforcement. Preserve numeric bounds and anonymous collection controls.
-- **Administrator actions in the audit trail.** The `audit_trail` table records
-  every finished processing task and reserves the `admin` category for
-  administrator actions, such as saving settings, managing users and websites, and
-  installing updates. Record those with the acting username, keeping secrets and
-  submitted values out of the details. Other background jobs, such as glossary
-  sync and updates, can record their runs in `processing_tasks` the same way.
+- **More jobs in processing tasks.** Glossary sync and updates are recorded in
+  the [audit trail](docs/AUDIT-TRAIL.md) when an administrator starts them; they
+  could also record their runs and results in `processing_tasks`, as the syncs
+  and maintenance do, so the Scheduled tasks and Audit trail pages show them.
 - **Targeted feature rollout.** Extend
   [deployment-wide feature flags](docs/FEATURE-FLAGS.md) to selected websites or
   administrators where there is a concrete need. Preserve authorization and
@@ -364,6 +362,7 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   totals add up; `bi_anonymous_coverage_v1` reports, in bands, how much of each
   day's traffic each event view releases.
 - [One scheduled task](docs/SCHEDULED-TASKS.md), `app:scheduler:run` every five minutes, for maintenance, BigQuery sync and the reporting database sync, with a Scheduled tasks page and `app:scheduler:status` that give the exact Plesk, cron or systemd setup for the server and show whether the server's task runs. The reporting database connection is entered on its page or with `app:reporting-database:configure`, tested, and saved to `.env.local`.
+- [Administrator actions in the audit trail](docs/AUDIT-TRAIL.md): settings changes (by setting name, never value), users, websites and groups, integrations, updates, manual runs and, when turned on, sign-ins, from the dashboard and the command line. Each area can be switched off; an Audit trail page filters by date, area, action, outcome, user, subject, text and job run, exports CSV, and `app:audit:list` does the same on the command line. Administrator actions have their own retention period (730 days by default).
 - [Processing tasks and an audit trail](docs/DATABASE.md#processing-tasks-and-audit-trail): two shared private tables for background job runs (status, lock, failure details) and their outcomes, used by BigQuery sync, the reporting database sync and maintenance, with UI/YAML purge periods.
 - [Organization traffic markers](docs/PRIVACY-COMPLIANCE.md#organization-traffic), with YAML/UI settings, marking links that set the marker on each tracked website, and a fixed `org_internal_traffic` flag on every event. Filtering uses retained event JSON; grouped BI views and archives do not retain the flag.
 - [Custom data models](docs/DATA-MODEL.md), including UTM/query mappings, per-property consent settings, downloadable YAML, and private reporting columns. All UTMs require consent by default; anonymous attribution should use at most broad `utm_medium` values, with documented warnings for overrides.

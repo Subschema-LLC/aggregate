@@ -34,6 +34,7 @@ final class MaintainAnalyticsCommandTest extends TestCase
         'ANALYTICS_ARCHIVE_RETENTION_DAYS',
         'ANALYTICS_MAINTENANCE_BATCH_SIZE',
         'AUDIT_TRAIL_RETENTION_DAYS',
+        'AUDIT_TRAIL_ADMIN_RETENTION_DAYS',
         'PROCESSING_TASKS_RETENTION_DAYS',
     ];
 
@@ -147,17 +148,20 @@ final class MaintainAnalyticsCommandTest extends TestCase
 
     public function testOldTaskAndAuditRecordsArePurgedAndTheRunIsRecorded(): void
     {
-        $this->writePolicy(['processing_tasks_retention_days' => 30, 'audit_trail_retention_days' => 365]);
+        $this->writePolicy(['processing_tasks_retention_days' => 30, 'audit_trail_retention_days' => 365, 'audit_trail_admin_retention_days' => 730]);
         $operations = OperationsDatabase::connection();
         $tasks = new ProcessingTasks($operations, new AuditTrail($operations));
         foreach ([['events', '2026-06-01 10:00:00'], ['events', '2026-06-02 10:00:00'], ['events', '2026-08-30 10:00:00'], ['goals', '2026-05-01 10:00:00']] as [$view, $started]) {
             $tasks->succeed((int) $tasks->start('bigquery_sync', 'bi_anonymous_'.$view.'_v1', TaskTrigger::schedule(), new \DateTimeImmutable($started.' UTC')), new \DateTimeImmutable($started.' UTC'));
         }
         (new AuditTrail($operations))->record(AuditTrail::CATEGORY_TASK, 'bigquery_sync', 'succeeded', new \DateTimeImmutable('2025-08-01 00:00:00 UTC'));
+        // Administrator actions are kept for their own period: the one from 2025 stays.
+        (new AuditTrail($operations))->record('users', 'user_created', 'succeeded', new \DateTimeImmutable('2025-08-01 00:00:00 UTC'), 'kept', 'scott');
+        (new AuditTrail($operations))->record('settings', 'branding_saved', 'succeeded', new \DateTimeImmutable('2024-08-01 00:00:00 UTC'), null, 'scott');
         $connection = $this->createMock(Connection::class);
         // The maintenance lease is taken, refreshed before each purge and released;
         // archiving and retention are off, so nothing else touches analytics data.
-        $connection->expects(self::exactly(4))->method('executeStatement')
+        $connection->expects(self::exactly(5))->method('executeStatement')
             ->with(self::stringContains('analytics_maintenance_lock'))
             ->willReturn(1);
         $logger = $this->createStub(LoggerInterface::class);
@@ -165,15 +169,16 @@ final class MaintainAnalyticsCommandTest extends TestCase
         $tester = $this->tester($connection, $logger, $operations);
         self::assertSame(Command::SUCCESS, $tester->execute(['--dry-run' => true]));
         self::assertMatchesRegularExpression('/Processing tasks to purge\s+2\b/', $tester->getDisplay());
-        self::assertMatchesRegularExpression('/Audit trail entries to purge\s+1\b/', $tester->getDisplay());
+        self::assertMatchesRegularExpression('/Audit trail entries to purge\s+2\b/', $tester->getDisplay());
 
         self::assertSame(Command::SUCCESS, $tester->execute([]));
         self::assertMatchesRegularExpression('/Processing tasks to purge\s+2\b/', $tester->getDisplay());
         // Old syncs are gone, but each view's latest success is kept.
         self::assertSame(['2026-08-30 10:00:00', '2026-05-01 10:00:00', '2026-09-01 18:00:00'], $operations->fetchFirstColumn('SELECT started_at FROM processing_tasks ORDER BY id'));
         $run = $tasks->latest(AnalyticsMaintenanceRunner::TASK_TYPE)['']['attempt'];
-        self::assertSame(['succeeded', 'schedule', 3], [$run['status'], $run['triggered_by'], $run['row_count']]);
-        self::assertSame('Purged 2 processing tasks from before 2026-08-02; purged 1 audit trail entry from before 2025-09-01.', $run['details']);
+        self::assertSame(['succeeded', 'schedule', 4], [$run['status'], $run['triggered_by'], $run['row_count']]);
+        self::assertSame('Purged 2 processing tasks from before 2026-08-02; purged 1 job run audit trail entry from before 2025-09-01; purged 1 administrator audit trail entry from before 2024-09-01.', $run['details']);
+        self::assertSame(['user_created'], $operations->fetchFirstColumn("SELECT operation FROM audit_trail WHERE category <> 'task'"));
         self::assertSame(
             [['analytics_maintenance', 'succeeded', $run['details']]],
             array_map(static fn (array $row): array => array_values($row), $operations->fetchAllAssociative("SELECT operation, outcome, details FROM audit_trail WHERE operation = 'analytics_maintenance'")),
@@ -210,6 +215,7 @@ final class MaintainAnalyticsCommandTest extends TestCase
             'analytics_archive_retention_days' => 730,
             'analytics_maintenance_batch_size' => 100,
             'audit_trail_retention_days' => 0,
+            'audit_trail_admin_retention_days' => 0,
             'processing_tasks_retention_days' => 0,
         ], $changes);
 

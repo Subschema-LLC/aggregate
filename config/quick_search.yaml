@@ -214,6 +214,19 @@ parameters:
         - audit trail
         - processing tasks
         - jobs
+    'Audit trail':
+      description: 'Who changed what and when: settings, users, websites, integrations, updates, manual runs, job runs and sign-ins'
+      synonyms:
+        - audit
+        - audit log
+        - activity log
+        - history
+        - changes
+        - who changed
+        - admin actions
+        - sign-ins
+        - logins
+        - log
     'Scheduled tasks':
       description: 'Set up the one scheduled task that runs maintenance and syncs, and check that it works'
       synonyms:
