@@ -28,7 +28,7 @@ Configuration has separate sources of truth:
 
 - **Environment files and server variables:** Symfony infrastructure — database connection, the optional [reporting database](#reporting-database) connection, message queue, app secret, and explicit proxy trust. Keep deployment values in untracked local files or server configuration.
 - **`config/aggregate.yaml`** (app-level, example committed): Analytics-specific settings — application branding, privacy measurement controls, internal traffic markers and sharing token, lifecycle policy, BigQuery sync, rate limit, JS namespace, dashboard toggle, and deployment-wide feature flags.
-- **`config/secrets/`** (untracked): Credentials Aggregate writes for itself, such as the BigQuery service account key and Google sign-in, readable only by the application's user and kept by updates.
+- **`config/secrets/`** (untracked): Credentials Aggregate writes for itself, such as the BigQuery service account key and Google sign-in, and the hashes of [reporting API tokens](REPORTING-API.md#tokens) in `api-tokens.yaml`, readable only by the application's user and kept by updates.
 - **`config/goals.yaml`** (app-level, committed): Stable conversion-goal codes and whether each is enabled for anonymous collection. Customize it in `config/goals.local.yaml` (see [Local overrides](#local-overrides-for-shipped-defaults)).
 - **`config/navigation.yaml`** (app-level, committed): Main navigation labels, icons, and link targets. Customize it in `config/navigation.local.yaml`.
 - **`config/quick_search.yaml`** (app-level, committed): Dashboard quick-search synonyms and extra entries. Customize it in `config/quick_search.local.yaml`.
@@ -384,13 +384,17 @@ feature_flags:
   custom_scripts:
     enabled: true
     hide_from_navigation: false
+  reporting_api:
+    enabled: false
+    hide_from_navigation: true
 ```
 
 Updates is enabled and visible by default. Disabling it blocks update routes and
 commands; hiding removes navigation entries independently of availability.
 `custom_scripts` (enabled by default) serves the tag manager's
 [custom JavaScript tags](TAG-MANAGER.md#custom-javascript); disabling it keeps
-their YAML but stops serving them.
+their YAML but stops serving them. `reporting_api` (off and hidden by default)
+turns on the [reporting API](REPORTING-API.md) and its **API tokens** page.
 A feature that is off and shown appears greyed out with an **Off** tag; hide it
 when that would look like a problem. Saving on the Feature flags page writes
 every feature with both options, so the YAML states what is on and what shows,
@@ -522,6 +526,22 @@ and write it to `.env.local`, as the setup page does for `DATABASE_URL`; they
 never show the password back. A value set in the server environment or a file
 that overrides `.env.local` is left alone, and the page says where to change it. See [Reporting database](REPORTING-DATABASE.md) for the database
 setup on each engine, every setting, column types and privacy notes.
+
+## Reporting API
+
+**Reporting → API tokens** at `/dashboard/api-tokens` (administrators only,
+shown while the `reporting_api` feature flag is on) creates and revokes tokens
+for the read-only [reporting API](REPORTING-API.md) and holds its settings:
+
+```yaml
+reporting_api_private_views: false   # may tokens read private (row-level) views?
+reporting_api_max_page_size: 10000   # largest limit a request may use, 1 to 1,000,000
+```
+
+Uppercase environment variables of the same names take precedence and lock the
+matching fields. Tokens are kept, hashed, in `config/secrets/api-tokens.yaml`,
+and managed headlessly with `app:api:token:create`, `app:api:token:list` and
+`app:api:token:revoke`.
 
 ## Main navigation
 
@@ -668,14 +688,15 @@ administration. Each settings page loads the data needed for its own task.
 | Sync | `/dashboard/sync` | Opens the destination that is on; each destination is a tab |
 | Sync: BigQuery | `/dashboard/bigquery` | Sign-in, views, schedule and status of the BigQuery copy |
 | Sync: Reporting database | `/dashboard/reporting-database` | Connection (tested, saved to `.env.local`), views, schedule and status of the reporting database copy |
+| API tokens | `/dashboard/api-tokens` | Reporting API tokens and settings, administrators only ([guide](REPORTING-API.md)) |
 | Data lifecycle | `/dashboard/data-lifecycle` | Archiving, retention, task and audit record purging, and the last maintenance run |
 | Data transfer | `/dashboard/data-transfer` | Export, import, or copy collected rows; the last run comes from the processing task and audit trail ([guide](DATA-TRANSFER.md)) |
 | Scheduled tasks | `/dashboard/scheduled-tasks` | Whether the server runs `app:scheduler:run`, the exact Plesk, cron or systemd settings for this server, each job's last and next run, and **Run due jobs now** ([guide](SCHEDULED-TASKS.md)) |
 
 Administrators can use every page. Standard users can use the pages an
 administrator granted them, at view or edit, for the websites they were granted;
-Users and permission groups stay with administrators, and every user has their
-own profile page. Every dashboard route needs the page and level listed in
+Users, permission groups and API tokens stay with administrators, and every
+user has their own profile page. Every dashboard route needs the page and level listed in
 `App\Security\Access\DashboardPages`; see
 [how access is enforced](USERS-AND-PERMISSIONS.md#how-access-is-enforced).
 Existing POST paths remain available and return to the page that owns the form.

@@ -37,3 +37,7 @@ branding_theme_controller:
 internal_traffic_public_controller:
     resource: ../src/Controller/InternalTrafficPublicController.php
     type: attribute
+
+reporting_api_controller:
+    resource: ../src/Controller/ReportingApiController.php
+    type: attribute

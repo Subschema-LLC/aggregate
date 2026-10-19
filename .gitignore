@@ -39,6 +39,8 @@
 /config/aggregate_*.yaml
 /config/*.local.yaml
 /config/secrets/bigquery-*.json
+/config/secrets/api-tokens.yaml
+/config/secrets/.api-tokens*
 /.env.prod
 /SETUP-CODE.txt
 ###< aggregate-analytics ###

@@ -98,6 +98,7 @@ Details:
 - **AI-ready reporting:** versioned views and a built-in data dictionary that AI assistants can query with the same read-only account as BI tools.
 - **BigQuery sync:** copy the reporting views to a Google BigQuery dataset on a schedule, signing in with a service account key, the Google Cloud host's account or a Google sign-in. Private row-level views need an explicit opt-in. See [Sync to BigQuery](docs/BIGQUERY.md).
 - **Reporting database:** copy the reporting views into tables of a second database on a schedule, so BI users connect without access to the application database. Enter the connection on the admin page or with one command; Aggregate tests it before saving. See [Reporting database](docs/REPORTING-DATABASE.md).
+- **Reporting API (beta):** read the reporting views over HTTPS with a token, for scripts, notebooks and AI tools that cannot open a database connection, with filters, paging and a generated OpenAPI document. Off by default; private views need their own switch. See [Reporting API](docs/REPORTING-API.md).
 - **Optional page depth:** a capped page count shared by events on each page, with tab storage or URL parameter passing configured through UI/YAML. See [storage, URL and reporting boundaries](docs/DATA-MODEL.md#optional-page-depth) before enabling it.
 - **Consent-based enhanced detail:** visitor/session IDs, properties, and exact dimensions when enabled by your consent manager.
 - **Headless operation:** an ingestion API, YAML configuration, and CLI commands, with an optional admin dashboard.
@@ -348,6 +349,7 @@ It is built from these files on `master` and describes the current release.
 | [BI labels and glossary](docs/BI-GLOSSARY.md) | Human-readable labels and definitions for reporting codes and columns, locales, and view-only grants |
 | [Sync to BigQuery](docs/BIGQUERY.md) | Copying reporting views to BigQuery on a schedule: sign-in methods, view selection, scheduling, column types and privacy |
 | [Reporting database](docs/REPORTING-DATABASE.md) | Copying reporting views into a second database for BI users: database setup and grants on each engine, scheduling, column types and privacy |
+| [Reporting API](docs/REPORTING-API.md) | Reading the reporting views over HTTPS: tokens, filters and paging, private views and their risks, errors and the OpenAPI document |
 
 ### Contribute
 

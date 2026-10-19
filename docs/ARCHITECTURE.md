@@ -202,6 +202,22 @@ command and wording once
 ([ViewSyncDefinition](../src/Service/ViewSync/ViewSyncDefinition.php)), which
 its runner, scheduler job, dashboard launcher and admin page read.
 
+The optional [reporting API](REPORTING-API.md) serves the same catalog over
+HTTP instead of copying it
+([ReportingApiController](../src/Controller/ReportingApiController.php)).
+[ApiRequestGuard](../src/Service/ReportingApi/ApiRequestGuard.php) checks the
+bearer token against its hash in `config/secrets/api-tokens.yaml`
+([ApiTokenStore](../src/Service/ReportingApi/ApiTokenStore.php)), the per-token
+rate limit and the views the token may read;
+[ViewQuery](../src/Service/ReportingApi/ViewQuery.php) validates filters, sort,
+columns and page against the view's columns
+([ViewSchema](../src/Service/ReportingApi/ViewSchema.php)), and
+[ViewQueryRunner](../src/Service/ReportingApi/ViewQueryRunner.php) runs one
+portable `SELECT` with bound values, streamed through `ViewReader` and converted
+to the same column types the syncs use. Private views are served only while
+`reporting_api_private_views` allows them
+([ReportingApiSettings](../src/Service/ReportingApi/ReportingApiSettings.php)).
+
 ## Configuration
 
 Settings have one source of truth each (listed in
@@ -243,7 +259,7 @@ services, so a setting has one validation wherever it is changed.
   `app:create-website`, `app:user:create`, `app:user:reset-password`, `app:analytics:maintain`,
   `app:analytics:glossary:sync`, `app:scheduler:run`, `app:scheduler:status`,
   `app:bigquery:sync`, `app:reporting-database:configure`,
-  `app:reporting-database:sync` and `app:updates:apply`.
+  `app:reporting-database:sync`, `app:api:token:create` and `app:updates:apply`.
 - **First run:** a fresh release ZIP starts with a browser setup page,
   [config/setup.php](../config/setup.php) and
   [FirstRunSetup](../src/Setup/FirstRunSetup.php), with its HTML in

@@ -12,8 +12,9 @@ use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
  * Reads one reporting view for a view sync: its columns, with their catalog
  * types, and its rows in that column order. Rows are streamed in batches, so
  * large private views do not have to fit in memory. Both syncs read views
- * through this, so their copies have the same rows and types. Errors name the
- * view and column, never a value.
+ * through this, so their copies have the same rows and types, and the
+ * reporting API reads its pages through select(). Errors name the view and
+ * column, never a value.
  */
 class ViewReader
 {
@@ -44,6 +45,36 @@ class ViewReader
         return ['fields' => $this->fields($view, $sql), 'rows' => $this->rows($sql)];
     }
 
+    /**
+     * A catalog view's columns, in view order, with their catalog types.
+     *
+     * @return list<array{name: string, type: string}>
+     *
+     * @throws ViewSyncException when the view is not in the catalog or cannot be read
+     */
+    public function columns(string $view): array
+    {
+        if (!ViewCatalog::isKnown($view)) {
+            throw new ViewSyncException($view.' is not a reporting view that can be read.');
+        }
+
+        return $this->fields($view, 'SELECT * FROM '.$this->connection->getDatabasePlatform()->quoteSingleIdentifier($view));
+    }
+
+    /**
+     * Streams the rows of a read-only query the caller built over catalog
+     * views, each a list of values in select order, with bound parameters.
+     *
+     * @param list<mixed>                                       $params
+     * @param list<\Doctrine\DBAL\ParameterType|string|int>  $types
+     *
+     * @return iterable<list<mixed>>
+     */
+    public function select(string $sql, array $params = [], array $types = []): iterable
+    {
+        return $this->rows($sql, $params, $types);
+    }
+
     /** @return list<array{name: string, type: string}> */
     private function fields(string $view, string $sql): array
     {
@@ -65,8 +96,13 @@ class ViewReader
         return $fields;
     }
 
-    /** @return iterable<list<mixed>> */
-    private function rows(string $sql): iterable
+    /**
+     * @param list<mixed>                                       $params
+     * @param list<\Doctrine\DBAL\ParameterType|string|int>  $types
+     *
+     * @return iterable<list<mixed>>
+     */
+    private function rows(string $sql, array $params = [], array $types = []): iterable
     {
         $platform = $this->connection->getDatabasePlatform();
         if ($platform instanceof PostgreSQLPlatform) {
@@ -76,7 +112,7 @@ class ViewReader
             $completed = false;
             try {
                 $this->connection->executeStatement('SET TRANSACTION READ ONLY');
-                $this->connection->executeStatement('DECLARE aggregate_view_sync NO SCROLL CURSOR FOR '.$sql);
+                $this->connection->executeStatement('DECLARE aggregate_view_sync NO SCROLL CURSOR FOR '.$sql, $params, $types);
                 do {
                     $batch = $this->connection->fetchAllNumeric('FETCH FORWARD '.self::FETCH_ROWS.' FROM aggregate_view_sync');
                     yield from $batch;
@@ -98,7 +134,7 @@ class ViewReader
             $native->setAttribute(\PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, false);
         }
         try {
-            $result = $this->connection->executeQuery($sql);
+            $result = $this->connection->executeQuery($sql, $params, $types);
             try {
                 yield from $result->iterateNumeric();
             } finally {
