@@ -104,6 +104,38 @@ final class ViewQueryTest extends TestCase
         yield 'limit text' => [['limit' => 'all'], 'invalid_parameter', 'limit'];
         yield 'negative offset' => [['offset' => '-1'], 'invalid_parameter', 'offset'];
         yield 'text too long' => [['filter' => ['page_group' => str_repeat('a', 2049)]], 'invalid_filter_value', '2048'];
+        yield 'grouping by the measure' => [['group' => 'event_day,event_count'], 'invalid_parameter', 'the measure'];
+        yield 'grouped field outside the group' => [['group' => 'event_day', 'fields' => 'event_day,page_group,event_count'], 'invalid_parameter', 'not page_group'];
+        yield 'grouped field missing a group column' => [['group' => 'event_day,page_group', 'fields' => 'event_day,event_count'], 'invalid_parameter', 'page_group is missing'];
+        yield 'grouped sort outside the group' => [['group' => 'event_day', 'sort' => '-share'], 'invalid_parameter', 'not share'];
+        yield 'unknown group column' => [['group' => 'visitor_id'], 'unknown_column', 'visitor_id'];
+    }
+
+    public function testGroupingDefaultsToTheGroupColumnsAndTheSum(): void
+    {
+        $query = $this->parse(['group' => 'event_day, page_group', 'sort' => '-event_count']);
+        self::assertTrue($query->isGrouped());
+        self::assertSame(['event_day', 'page_group'], $query->group);
+        self::assertSame(['event_day', 'page_group', 'event_count'], $query->fields);
+        self::assertSame(['event_day', 'page_group'], $query->uniqueOrder(['website_token', 'event_day']));
+
+        $total = $this->parse(['group' => '']);
+        self::assertSame([], $total->group);
+        self::assertSame(['event_count'], $total->fields);
+
+        self::assertFalse($this->parse([])->isGrouped());
+        self::assertSame(['website_token'], $this->parse([])->uniqueOrder(['website_token']));
+    }
+
+    public function testOnlyAViewWithTheMeasureCanBeGrouped(): void
+    {
+        try {
+            ViewQuery::parse('bi_dim_device_class_v1', ['group' => 'device_class'], [['name' => 'device_class', 'catalog_type' => 'STRING', 'type' => 'string', 'operators' => ViewSchema::OPERATORS['STRING']]], 100, 1000);
+            self::fail('A label view has nothing to sum.');
+        } catch (ApiProblem $problem) {
+            self::assertSame('invalid_parameter', $problem->problemCode);
+            self::assertStringContainsString('cannot be grouped', $problem->getMessage());
+        }
     }
 
     public function testTheMaximumPageSizeIsTheSetting(): void

@@ -82,6 +82,8 @@ final class AdminActions
         'app_reporting_database_test' => [Area::INTEGRATIONS, 'reporting_database_connection_tested'],
         'app_api_tokens_create' => [Area::INTEGRATIONS, 'api_token_created'],
         'app_api_tokens_revoke' => [Area::INTEGRATIONS, 'api_token_revoked'],
+        'app_mcp_connection_revoke' => [Area::INTEGRATIONS, 'assistant_connection_revoked'],
+        'app_mcp_authorize_decide' => [Area::INTEGRATIONS, 'assistant_sign_in_decided'],
         // Updates.
         'app_updates_refresh' => [Area::UPDATES, 'update_check_refreshed'],
         'app_updates_install' => [Area::UPDATES, 'update_started'],
@@ -110,13 +112,17 @@ final class AdminActions
         'app_logout' => 'Sign-outs are recorded from the security events, under sign_ins.',
         'app_bi_glossary_suggestions' => 'Returns suggested labels; changes nothing.',
         'app_home' => 'The home page accepts any method and changes nothing.',
+        'mcp' => 'AI assistant requests; each tool call is recorded by McpUsageLog under assistant.',
+        'mcp_oauth_register' => 'An assistant registering itself before sign-in; an administrator\'s approval is recorded under integrations.',
+        'mcp_oauth_token' => 'An assistant exchanging an approved code or renewing its tokens.',
+        'mcp_oauth_revoke' => 'An assistant revoking its own tokens.',
     ];
 
     /** Actions recorded even while their area is off: turning auditing off must leave a trace. */
     public const ALWAYS = ['audit_settings_saved'];
 
     /** Words in action codes that are written differently in a label. */
-    private const LABEL_WORDS = ['api' => 'API', 'bi' => 'BI', 'bigquery' => 'BigQuery', 'csv' => 'CSV', 'js' => 'JS', 'mysql' => 'MySQL', 'oauth' => 'OAuth'];
+    private const LABEL_WORDS = ['api' => 'API', 'bi' => 'BI', 'bigquery' => 'BigQuery', 'csv' => 'CSV', 'js' => 'JS', 'mcp' => 'MCP', 'mysql' => 'MySQL', 'oauth' => 'OAuth'];
 
     /** A readable label for an action code: bigquery_sync_started is "BigQuery sync started". */
     public static function label(string $code): string
@@ -198,6 +204,7 @@ final class AdminActions
             },
             'app:api:token:create' => $end(Area::INTEGRATIONS, 'api_token_created', $text($argument('name'))),
             'app:api:token:revoke' => $end(Area::INTEGRATIONS, 'api_token_revoked', $text($argument('id'))),
+            'app:mcp:connection:revoke' => $end(Area::INTEGRATIONS, 'assistant_connection_revoked', $text($argument('id'))),
             'app:reporting-database:configure' => $end(Area::INTEGRATIONS, $option('remove') === true ? 'reporting_database_connection_removed' : 'reporting_database_connection_saved'),
             'app:analytics:reporting-timezone' => $text($argument('timezone')) !== null ? $end(Area::SETTINGS, 'reporting_timezone_saved') : null,
             'app:analytics:mysql-timezones:load' => $end(Area::OPERATIONS, 'mysql_time_zones_loaded'),

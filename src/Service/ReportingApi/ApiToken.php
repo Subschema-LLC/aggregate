@@ -4,19 +4,20 @@ declare(strict_types=1);
 
 namespace App\Service\ReportingApi;
 
-use App\Service\ViewSync\ViewCatalog;
-
 /**
  * One reporting API token as ApiTokenStore keeps it: its public ID, name,
  * scope and dates, and the SHA-256 hash of the secret token. The token itself
  * is never stored.
  *
- * Scope: $views null means every approved view, including approved views a
- * later release adds; a list means only those approved views. Private views
- * are granted only through $privateViews, one by one, and only while the
- * deployment allows private views (ReportingApiSettings).
+ * Scope follows ViewScope: $views null means every approved view, a list
+ * means only those approved views, labels and definitions are always
+ * readable, and private views are granted one by one in $privateViews.
+ *
+ * $mcp lets the token also authorize AI assistants on the MCP server
+ * (docs/MCP.md). It is a separate grant, so a token made for a script does not
+ * silently become an assistant credential.
  */
-final readonly class ApiToken
+final readonly class ApiToken implements ViewGrant
 {
     /**
      * @param list<string>|null $views        approved views, in catalog order, or null for every approved view
@@ -31,6 +32,7 @@ final readonly class ApiToken
         public \DateTimeImmutable $createdAt,
         public string $createdBy,
         public ?\DateTimeImmutable $expiresAt,
+        public bool $mcp = false,
     ) {
     }
 
@@ -39,29 +41,13 @@ final readonly class ApiToken
         return $this->expiresAt !== null && $this->expiresAt <= $now;
     }
 
-    /** May this token read the view, given whether the deployment allows private views? */
     public function mayRead(string $view, bool $privateViewsAllowed): bool
     {
-        if (ViewCatalog::isApproved($view)) {
-            return $this->views === null || in_array($view, $this->views, true);
-        }
-        if (ViewCatalog::isPrivate($view)) {
-            return $privateViewsAllowed && in_array($view, $this->privateViews, true);
-        }
-
-        return false;
+        return ViewScope::mayRead($this->views, $this->privateViews, $view, $privateViewsAllowed);
     }
 
-    /**
-     * The views this token may read: approved views in catalog order, then private ones.
-     *
-     * @return list<string>
-     */
     public function readableViews(bool $privateViewsAllowed): array
     {
-        return array_values(array_filter(
-            [...array_keys(ViewCatalog::APPROVED), ...array_keys(ViewCatalog::PRIVATE)],
-            fn (string $view): bool => $this->mayRead($view, $privateViewsAllowed),
-        ));
+        return ViewScope::readable($this->views, $this->privateViews, $privateViewsAllowed);
     }
 }

@@ -59,15 +59,16 @@ for routine BI access.
 
 **Suppression in the view, not the dashboard.** `bi_anonymous_events_v1` and its siblings
 withhold the current bucket and hide any cell below your configured minimum. The threshold
-lives in the database and applies to every consumer of these views. Keep raw input
-tables private when granting a BI connection access.
+is set in YAML and compiled into the views themselves, so it applies to every consumer of
+these views. Keep raw input tables private when granting a BI connection access.
 
 **Ready for AI analysis.** The reporting views keep their names and column meanings
 across releases, and the glossary views label every code and describe every column:
-the context a model needs to write correct SQL instead of guessing. An assistant
-connected with the read-only reporting account gets the same protection as a BI user,
-and what reaches a model provider is released counts, not visitor records. See
-[connect an AI assistant](docs/BI-CONNECTION.md#connect-an-ai-assistant).
+the context a model needs to write correct SQL instead of guessing. The built-in
+[MCP server](docs/MCP.md) lets Claude, ChatGPT and other assistants list, describe and
+query those views directly: an administrator approves each assistant, and it gets the
+same protection as a BI user. What reaches a model provider is released counts, not
+visitor records. See [connect an AI assistant](docs/BI-CONNECTION.md#connect-an-ai-assistant).
 
 **Consent that actually toggles something.** `setConsent(true)` turns on visitor and session
 IDs, custom properties and exact dimensions. `setConsent(false)` drops the identifiers and
@@ -98,7 +99,8 @@ Details:
 - **AI-ready reporting:** versioned views and a built-in data dictionary that AI assistants can query with the same read-only account as BI tools.
 - **BigQuery sync:** copy the reporting views to a Google BigQuery dataset on a schedule, signing in with a service account key, the Google Cloud host's account or a Google sign-in. Private row-level views need an explicit opt-in. See [Sync to BigQuery](docs/BIGQUERY.md).
 - **Reporting database:** copy the reporting views into tables of a second database on a schedule, so BI users connect without access to the application database. Enter the connection on the admin page or with one command; Aggregate tests it before saving. See [Reporting database](docs/REPORTING-DATABASE.md).
-- **Reporting API (beta):** read the reporting views over HTTPS with a token, for scripts, notebooks and AI tools that cannot open a database connection, with filters, paging and a generated OpenAPI document. Off by default; private views need their own switch. See [Reporting API](docs/REPORTING-API.md).
+- **Reporting API (beta):** read the reporting views over HTTPS with a token, for scripts, notebooks and AI tools that cannot open a database connection, with filters, grouped totals, paging and a generated OpenAPI document. Off by default; private views need their own switch. See [Reporting API](docs/REPORTING-API.md).
+- **MCP server for AI assistants (beta):** a read-only Model Context Protocol server at `/mcp`, so Claude, ChatGPT, Copilot, Gemini CLI and other assistants can list, describe and query the reporting views. Assistants sign in through a dashboard approval page or use an API token; every tool call is in the audit trail. Off by default. See [MCP server](docs/MCP.md).
 - **Optional page depth:** a capped page count shared by events on each page, with tab storage or URL parameter passing configured through UI/YAML. See [storage, URL and reporting boundaries](docs/DATA-MODEL.md#optional-page-depth) before enabling it.
 - **Consent-based enhanced detail:** visitor/session IDs, properties, and exact dimensions when enabled by your consent manager.
 - **Headless operation:** an ingestion API, YAML configuration, and CLI commands, with an optional admin dashboard.
@@ -349,7 +351,8 @@ It is built from these files on `master` and describes the current release.
 | [BI labels and glossary](docs/BI-GLOSSARY.md) | Human-readable labels and definitions for reporting codes and columns, locales, and view-only grants |
 | [Sync to BigQuery](docs/BIGQUERY.md) | Copying reporting views to BigQuery on a schedule: sign-in methods, view selection, scheduling, column types and privacy |
 | [Reporting database](docs/REPORTING-DATABASE.md) | Copying reporting views into a second database for BI users: database setup and grants on each engine, scheduling, column types and privacy |
-| [Reporting API](docs/REPORTING-API.md) | Reading the reporting views over HTTPS: tokens, filters and paging, private views and their risks, errors and the OpenAPI document |
+| [Reporting API](docs/REPORTING-API.md) | Reading the reporting views over HTTPS: tokens, filters, grouping and paging, private views and their risks, errors and the OpenAPI document |
+| [MCP server for AI assistants](docs/MCP.md) | Connecting AI assistants: sign-in and tokens, which assistants work, the tools, reading results correctly, the usage log and privacy |
 
 ### Contribute
 

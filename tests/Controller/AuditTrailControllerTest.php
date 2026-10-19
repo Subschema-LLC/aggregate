@@ -141,7 +141,7 @@ final class AuditTrailControllerTest extends TestCase
 
         self::assertStringContainsString('could not be read', $crawler->filter('.notification.is-danger')->text());
         self::assertCount(0, $crawler->filter('.audit-trail-entries'));
-        self::assertCount(8, $crawler->filter('#audit-switches input[type="checkbox"]'));
+        self::assertCount(count(AuditTrailSettings::AREAS), $crawler->filter('#audit-switches input[type="checkbox"]'));
         self::assertNull($crawler->filter('#audit-area-sign_ins')->attr('checked'));
         self::assertSame('checked', $crawler->filter('#audit-area-settings')->attr('checked'));
     }

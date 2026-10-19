@@ -28,6 +28,9 @@ final class FeatureFlagsExtension extends AbstractExtension
     {
         $names = [];
         if (array_key_exists('feature', $link)) {
+            if (is_array($link['feature'])) {
+                return $this->anyOf($link['feature']);
+            }
             if (!is_string($link['feature']) || $link['feature'] === '') {
                 return ['enabled' => false, 'hidden' => true];
             }
@@ -47,6 +50,36 @@ final class FeatureFlagsExtension extends AbstractExtension
         }
 
         return ['enabled' => $enabled, 'hidden' => $hidden];
+    }
+
+    /**
+     * A link several features share, such as API tokens for the reporting API
+     * and the MCP server: available while any of them is on, and hidden only
+     * when every feature that is on hides it (or, with all off, every one does).
+     *
+     * @param array<mixed> $names
+     *
+     * @return array{enabled: bool, hidden: bool}
+     */
+    private function anyOf(array $names): array
+    {
+        if ($names === [] || !array_is_list($names)) {
+            return ['enabled' => false, 'hidden' => true];
+        }
+        foreach ($names as $name) {
+            if (!is_string($name) || $name === '') {
+                return ['enabled' => false, 'hidden' => true];
+            }
+        }
+        $names = array_values(array_unique($names));
+        $on = array_values(array_filter($names, fn (string $name): bool => $this->features->isEnabled($name)));
+        $deciding = $on === [] ? $names : $on;
+        $hidden = true;
+        foreach ($deciding as $name) {
+            $hidden = $this->features->isHiddenFromNavigation($name) && $hidden;
+        }
+
+        return ['enabled' => $on !== [], 'hidden' => $hidden];
     }
 
     private function linksToUpdates(array $link): bool

@@ -33,6 +33,12 @@ class FeatureFlags
             'enabled' => false,
             'hide_from_navigation' => true,
         ],
+        'mcp_server' => [
+            'label' => 'MCP server for AI assistants',
+            'description' => 'A read-only Model Context Protocol server at /mcp that lets AI assistants list, describe and query the reporting views, with API tokens granted to assistants or an administrator\'s sign-in approval. When off, /mcp and its sign-in addresses return 404 and assistants cannot connect; tokens and connections are kept and can still be revoked.',
+            'enabled' => false,
+            'hide_from_navigation' => true,
+        ],
     ];
 
     private const OPTIONS = ['enabled', 'hide_from_navigation'];

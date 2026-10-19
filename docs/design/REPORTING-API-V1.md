@@ -468,9 +468,8 @@ Proposals, in rough priority order; none are part of v1.
    skip unchanged pages.
 4. **Last-used time per token**, kept in `var/` rather than the YAML file.
 5. **A configurable rate limit**, in YAML and on the API tokens page.
-6. **An MCP server** over the API for AI assistants, as the
-   [roadmap](../../ROADMAP.md#proposals-to-explore) proposes, with the same
-   token scopes.
+6. **An MCP server** over the API for AI assistants, with the same token
+   scopes. Delivered: see [MCP v1](MCP-V1.md) and [MCP server](../MCP.md).
 7. **Keyset paging** for the custom views, which have a unique `id`.
 
 ## Decisions
