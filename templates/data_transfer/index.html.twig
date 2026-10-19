@@ -3,9 +3,18 @@
 {% block title %}Data transfer - {{ app_branding.name }}{% endblock %}
 
 {% block body %}
-<h1 class="title">Data transfer</h1>
-<p class="subtitle">Copy collected events and archive cells to another installation. Configuration stays in YAML and is not copied.</p>
-{{ component('Ui:DocsLink', {topic: 'operate.data-transfer', label: 'Data transfer guide'}) }}
+<div class="level">
+    <div class="level-left">
+        <div>
+            <h1 class="title">Data transfer</h1>
+            <p class="subtitle">Copy collected events and archive cells to another installation. Configuration stays in YAML and is not copied.</p>
+            {{ component('Ui:DocsLink', {topic: 'operate.data-transfer', label: 'Data transfer guide'}) }}
+        </div>
+    </div>
+    <div class="level-right">
+        {{ component('Ui:CardControls', {class: 'page-card-controls mb-0'}) }}
+    </div>
+</div>
 
 <section class="box" aria-labelledby="data-transfer-last-title">
     <h2 class="title is-5" id="data-transfer-last-title">Last run</h2>

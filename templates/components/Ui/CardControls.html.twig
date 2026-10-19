@@ -1,0 +1,13 @@
+{% props label = 'Page cards', expand_label = 'Expand all', collapse_label = 'Collapse all' %}
+<div {{ attributes.defaults({class: 'page-card-controls is-flex is-justify-content-flex-end is-align-items-center mb-4', role: 'toolbar', 'aria-label': label}) }} data-card-controls>
+    <div class="buttons are-small mb-0">
+        <button type="button" class="button is-light" data-action="components--ui--cards#expandAll" data-card-action="expand">
+            <span class="icon"><i class="fas fa-angles-down" aria-hidden="true"></i></span>
+            <span>{{ expand_label }}</span>
+        </button>
+        <button type="button" class="button is-light" data-action="components--ui--cards#collapseAll" data-card-action="collapse">
+            <span class="icon"><i class="fas fa-angles-up" aria-hidden="true"></i></span>
+            <span>{{ collapse_label }}</span>
+        </button>
+    </div>
+</div>

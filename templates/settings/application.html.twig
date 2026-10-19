@@ -4,15 +4,24 @@
 
 {% block body %}
 <div class="settings-page">
-<h1 class="title">General settings</h1>
-<p class="subtitle">Configure the public endpoint, tracker namespace, request budget, documentation links, reporting timezone, and page speed.</p>
-{{ component('Ui:DocsLink', {topic: 'configuration.application', label: 'Application settings reference'}) }}
-<div class="box">
+<div class="level">
+    <div class="level-left">
+        <div>
+            <h1 class="title">General settings</h1>
+            <p class="subtitle">Configure the public endpoint, tracker namespace, request budget, documentation links, reporting timezone, and page speed.</p>
+            {{ component('Ui:DocsLink', {topic: 'configuration.application', label: 'Application settings reference'}) }}
+        </div>
+    </div>
+    <div class="level-right">
+        {{ component('Ui:CardControls', {class: 'page-card-controls mb-0'}) }}
+    </div>
+</div>
+<details class="box" open>
+<summary><h2 class="title is-5">Application configuration</h2></summary>
 <div class="columns">
     <div class="column is-7-desktop">
         <form action="{{ path('app_settings_save') }}" method="post">
             <input type="hidden" name="_csrf_token" value="{{ csrf_token('app_settings') }}">
-            <h2 class="title is-5">Application configuration</h2>
             <p class="subtitle is-6">Stored in <code>config/aggregate.yaml</code></p>
 
             <div class="field">
@@ -107,26 +116,24 @@
     </div>
 
     <div class="column is-5-desktop">
-        <div class="message is-info">
-            <div class="message-header">
-                <p>YAML Fallback</p>
-            </div>
+        <details class="message is-info" open>
+            <summary class="message-header"><span>YAML Fallback</span><span class="message-toggle" aria-hidden="true"><svg viewBox="0 0 24 24" width="14" height="14" focusable="false"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6"/></svg></span></summary>
             <div class="message-body content">
                 <p>You can always edit these settings directly in:</p>
                 <pre><code>config/aggregate.yaml</code></pre>
                 <p>Manual changes in the YAML file will be reflected in this UI after a page refresh.</p>
                 <p>Settings supplied as server environment variables take precedence over values saved here.</p>
             </div>
-        </div>
+        </details>
     </div>
 </div>
-</div>
+</details>
 {% include 'settings/_reporting_timezone.html.twig' with {timezone: reporting_timezone} only %}
 {% set tracker = page_speed.tracker %}
-<section class="box page-speed" id="page-speed" aria-labelledby="page-speed-title"
+<details class="box page-speed" id="page-speed" aria-labelledby="page-speed-title" open
     data-controller="pages--settings--page-speed"
     data-pages--settings--page-speed-url-value="{{ path('aggregate_script', {min: 1}) }}">
-    <h2 class="title is-5" id="page-speed-title"><span class="icon has-text-success" aria-hidden="true"><i class="fas fa-gauge-high"></i></span> Page speed</h2>
+    <summary><h2 class="title is-5" id="page-speed-title"><span class="icon has-text-success" aria-hidden="true"><i class="fas fa-gauge-high"></i></span> Page speed</h2></summary>
     <p class="mb-3">Aggregate's scripts load on every page you track. These page speed savers keep them small and out of the way of your pages.</p>
     {% if tracker %}
         <p class="mb-3 page-speed-summary">
@@ -220,7 +227,7 @@
     </table>
     </div>
     {{ component('Ui:DocsLink', {topic: 'page-speed', label: 'Page speed guide'}) }}
-</section>
+</details>
 <details class="box">
     <summary class="has-text-weight-semibold">Worker operation</summary>
     <div class="notification is-light">

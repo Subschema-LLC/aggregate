@@ -4,9 +4,18 @@
 
 {% block body %}
 <div class="settings-page">
-<h1 class="title">Users</h1>
-<p class="subtitle">Administrators can do everything. Standard users can use the websites and pages you grant them, directly or through permission groups.</p>
-{{ component('Ui:DocsLink', {topic: 'users.permissions', label: 'Users and permissions guide'}) }}
+<div class="level">
+    <div class="level-left">
+        <div>
+            <h1 class="title">Users</h1>
+            <p class="subtitle">Administrators can do everything. Standard users can use the websites and pages you grant them, directly or through permission groups.</p>
+            {{ component('Ui:DocsLink', {topic: 'users.permissions', label: 'Users and permissions guide'}) }}
+        </div>
+    </div>
+    <div class="level-right">
+        {{ component('Ui:CardControls', {class: 'page-card-controls mb-0'}) }}
+    </div>
+</div>
 {% include 'users/_tabs.html.twig' %}
 
 {% if permission_groups_error %}

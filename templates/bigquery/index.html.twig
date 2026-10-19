@@ -12,8 +12,17 @@
      data-pages--bigquery--index-status-url-value="{{ path('app_bigquery_status') }}"
      data-pages--bigquery--index-running-value="{{ running or sync_requested_at ? 'true' : 'false' }}"
      data-pages--bigquery--index-since-value="{{ sync_requested_at ?? 0 }}">
-    <h1 class="title">Sync</h1>
-    <p class="subtitle">Copy reporting views to another destination on a schedule.</p>
+    <div class="level">
+        <div class="level-left">
+            <div>
+                <h1 class="title">Sync</h1>
+                <p class="subtitle">Copy reporting views to another destination on a schedule.</p>
+            </div>
+        </div>
+        <div class="level-right">
+            {{ component('Ui:CardControls', {class: 'page-card-controls mb-0'}) }}
+        </div>
+    </div>
     {{ component('Sync:Navigation', {current: 'app_bigquery', destinations: sync_destinations}) }}
     <p class="mb-3">Copy reporting views to a Google BigQuery dataset, for Looker Studio, Connected Sheets or anything else that reads BigQuery.</p>
     {{ component('Ui:DocsLink', {topic: 'reporting.bigquery', label: 'BigQuery sync guide'}) }}

@@ -1,0 +1,29 @@
+{% props label, current = '', items = [] %}
+
+{% set visible_items = items|filter(item =>
+    (item.url is defined and item.url)
+    or (item.route is defined and (item.route == current or dashboard_allowed(item.route)))
+) %}
+{% if visible_items|length > 0 %}
+<nav {{ attributes.defaults({class: 'section-tabs-nav mb-5', 'aria-label': label}) }}>
+    <div class="tabs section-underline-tabs">
+        <ul>
+            {% for item in visible_items %}
+                {% set is_active = item.active is defined ? item.active : (item.route is defined ? (current == item.route) : (current != '' and current == (item.url ?? ''))) %}
+                {% set href = item.url is defined ? item.url : path(item.route, item.params|default({})) %}
+                <li class="{% if is_active %}is-active{% endif %}">
+                    <a href="{{ href }}"{% if is_active %} aria-current="page"{% endif %}>
+                        {% if item.icon is defined and item.icon %}
+                            <span class="icon is-small mr-1"><i class="{{ item.icon }}" aria-hidden="true"></i></span>
+                        {% endif %}
+                        <span>{{ item.label }}</span>
+                        {% if item.badge is defined and item.badge is not null %}
+                            <span class="tag {{ item.badge_class|default('is-light') }} ml-2">{{ item.badge }}</span>
+                        {% endif %}
+                    </a>
+                </li>
+            {% endfor %}
+        </ul>
+    </div>
+</nav>
+{% endif %}

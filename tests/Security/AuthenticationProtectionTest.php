@@ -187,10 +187,11 @@ final class AuthenticationProtectionTest extends TestCase
         self::assertFalse($container->has(SecurityController::class));
         $routes = $container->get('router')->getRouteCollection();
         self::assertNull($routes->get('app_login'));
+        self::assertNull($routes->get('app_forgot_password'));
         self::assertNull($routes->get('app_logout'));
 
         foreach (['GET', 'POST'] as $method) {
-            foreach (['/login', '/logout'] as $path) {
+            foreach (['/login', '/login/forgot-password', '/logout'] as $path) {
                 $browser->request($method, $path, [
                     '_username' => 'beta-admin',
                     '_password' => AuthenticationTestUserProvider::PASSWORD,
@@ -199,6 +200,26 @@ final class AuthenticationProtectionTest extends TestCase
                 self::assertSame(404, $browser->getResponse()->getStatusCode());
             }
         }
+        $this->assertNoDatabaseConnection();
+    }
+
+    public function testLoginShowsForgotPasswordLinkAndGuidancePage(): void
+    {
+        $browser = $this->browser();
+        $crawler = $browser->request('GET', '/login');
+        self::assertSame(200, $browser->getResponse()->getStatusCode());
+        $link = $crawler->filter('a.forgot-password-link');
+        self::assertCount(1, $link);
+        self::assertSame('/login/forgot-password', $link->attr('href'));
+
+        $forgotCrawler = $browser->click($link->link());
+        self::assertSame(200, $browser->getResponse()->getStatusCode());
+        self::assertStringContainsString('Reset your password', $forgotCrawler->filter('h1')->text());
+        self::assertStringContainsString('app:user:reset-password', $forgotCrawler->text());
+
+        $this->login($browser);
+        $browser->request('GET', '/login/forgot-password');
+        $this->assertRedirectPath($browser, '/dashboard');
         $this->assertNoDatabaseConnection();
     }
 
