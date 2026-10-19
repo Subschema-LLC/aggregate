@@ -1,0 +1,8 @@
+{% extends 'email/layout.html.twig' %}
+
+{% block body %}
+    <p style="margin:0 0 16px;">Use this code to sign in to {{ brand_name }}:</p>
+    <p style="margin:0 0 16px;font-size:32px;font-weight:700;letter-spacing:6px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;">{{ code }}</p>
+    <p style="margin:0 0 16px;">It works once, in the browser where you asked for it, for {{ minutes }} minutes.</p>
+    <p style="margin:0;">If you did not ask for a code, ignore this message: nobody can sign in without it. Never share the code; {{ brand_name }} will never ask you for it.</p>
+{% endblock %}

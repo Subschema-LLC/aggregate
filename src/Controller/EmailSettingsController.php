@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Entity\User;
+use App\Repository\UserRepository;
+use App\Security\SignInCode\SignInCodeAuthenticator;
+use App\Security\SignInCode\SignInCodeSettings;
 use App\Service\AggregateConfigLoader;
 use App\Service\Email\EmailPurpose;
 use App\Service\Email\EmailSecrets;
@@ -37,6 +40,8 @@ final class EmailSettingsController extends AbstractController
         private readonly EmailSecrets $secrets,
         private readonly TransactionalMailer $mailer,
         private readonly ProcessingTasks $tasks,
+        private readonly SignInCodeSettings $signInCodes,
+        private readonly UserRepository $users,
         private readonly LoggerInterface $logger,
     ) {
     }
@@ -89,8 +94,18 @@ final class EmailSettingsController extends AbstractController
         }
 
         $user = $this->getUser();
+        try {
+            $signInCodes = $this->signInCodes->isEnabled();
+        } catch (\Throwable) {
+            $signInCodes = false;
+        }
 
         return $this->render('email_settings/index.html.twig', [
+            'sign_in_codes' => $signInCodes,
+            'sign_in_codes_override' => $this->signInCodes->isEnvironmentControlled(),
+            'mfa' => $this->signInCodes->isSecondStepRequired(),
+            'mfa_override' => $this->signInCodes->isSecondStepEnvironmentControlled(),
+            'users_without_email' => $this->usersWithoutEmail(),
             'settings' => $settings,
             'overrides' => $this->settings->environmentOverrides(),
             'providers' => $this->settings->providers()->all(),
@@ -119,7 +134,9 @@ final class EmailSettingsController extends AbstractController
         // Credentials arrive as credential[<key>] (a new value) and remove[<key>].
         $newCredentials = $submitted['credential'] ?? [];
         $removals = $submitted['remove'] ?? [];
-        unset($submitted['credential'], $submitted['remove']);
+        $signInCodes = $submitted[SignInCodeSettings::KEY] ?? null;
+        $mfa = $submitted[SignInCodeSettings::KEY_MFA] ?? null;
+        unset($submitted['credential'], $submitted['remove'], $submitted[SignInCodeSettings::KEY], $submitted[SignInCodeSettings::KEY_MFA]);
         if (!is_array($newCredentials) || !is_array($removals)) {
             $this->addFlash('error', 'The email form was not valid. Nothing was saved.');
 
@@ -166,6 +183,12 @@ final class EmailSettingsController extends AbstractController
         }
         try {
             $this->settings->validate([...$current, ...$candidate]);
+            if ($signInCodes !== null) {
+                SignInCodeSettings::validate($signInCodes);
+            }
+            if ($mfa !== null) {
+                SignInCodeSettings::validate($mfa, SignInCodeSettings::KEY_MFA);
+            }
             foreach ($changes as [$credential, $value]) {
                 if ($this->secrets->isEnvironmentControlled($credential)) {
                     throw new \InvalidArgumentException(sprintf('The %s is set by %s and cannot be changed here.', strtolower($credential->label), $credential->environmentVariable));
@@ -185,6 +208,7 @@ final class EmailSettingsController extends AbstractController
                 $value === null ? $this->secrets->remove($credential) : $this->secrets->set($credential, $value);
             }
             $saved = $this->settings->save($candidate);
+            $codesOn = $signInCodes !== null ? $this->signInCodes->save($signInCodes) : $this->signInCodes->isEnabled();
         } catch (\InvalidArgumentException $e) {
             $this->addFlash('error', $e->getMessage());
 
@@ -198,11 +222,72 @@ final class EmailSettingsController extends AbstractController
 
         $this->addFlash('success', 'Email settings were saved.');
         $problem = $this->mailer->problem($saved);
+        $mfaOn = $this->saveSecondStep($mfa, $problem);
         if (EmailSettings::isEnabled($saved) && $problem !== null) {
             $this->addFlash('warning', 'Email is on, but nothing can be sent yet: '.$problem);
+        } elseif ($codesOn && $problem !== null && !$mfaOn) {
+            $this->addFlash('warning', 'Sign-in codes are on, but the sign-in page will not offer them until email can be sent: '.$problem);
+        }
+        if ($mfaOn && $problem !== null) {
+            $this->addFlash('error', 'Two-step sign-in is required, but email cannot be sent, so nobody can finish signing in: '.$problem);
         }
 
         return $this->redirectToRoute('app_email');
+    }
+
+    /**
+     * Turns two-step sign-in on or off. Turning it on needs working email and
+     * an address on the administrator's own account, so the change cannot
+     * lock them out; this session counts as having passed the second step,
+     * and every other session signs in again. Returns whether it is required.
+     */
+    private function saveSecondStep(mixed $value, ?string $problem): bool
+    {
+        $was = $this->signInCodes->isSecondStepRequired();
+        if ($value === null) {
+            return $was;
+        }
+        $wanted = SignInCodeSettings::validate($value, SignInCodeSettings::KEY_MFA);
+        if ($wanted === $was || $this->signInCodes->isSecondStepEnvironmentControlled()) {
+            return $was;
+        }
+        if (!$wanted) {
+            $this->signInCodes->saveSecondStep(false);
+            $this->addFlash('success', 'Two-step sign-in is off: a password signs in on its own again.');
+
+            return false;
+        }
+        $user = $this->getUser();
+        if ($problem !== null) {
+            $this->addFlash('error', 'Two-step sign-in was not turned on: email must work first. '.$problem);
+
+            return false;
+        }
+        if (!$user instanceof User || $user->getEmail() === null) {
+            $this->addFlash('error', 'Two-step sign-in was not turned on: add an email address to your profile first, or you could not sign in again.');
+
+            return false;
+        }
+        $this->signInCodes->saveSecondStep(true);
+        $token = $this->container->get('security.token_storage')->getToken();
+        $token?->setAttribute(SignInCodeAuthenticator::SECOND_STEP_ATTRIBUTE, time());
+        $without = $this->usersWithoutEmail();
+        $this->addFlash('success', 'Two-step sign-in is now required. Other sessions sign in again on their next page; this one stays signed in, so sign out and back in from another browser to try it.'
+            .($without !== [] ? ' These users have no email address and cannot sign in until they get one: '.implode(', ', $without).'.' : ''));
+
+        return true;
+    }
+
+    /** @return list<string> */
+    private function usersWithoutEmail(): array
+    {
+        try {
+            return $this->users->usernamesWithoutEmail();
+        } catch (\Throwable $e) {
+            $this->logger->error('Users without an email address could not be listed.', ['error_type' => $e::class]);
+
+            return [];
+        }
     }
 
     #[Route('/dashboard/email/test', name: 'app_email_test', methods: ['POST'])]

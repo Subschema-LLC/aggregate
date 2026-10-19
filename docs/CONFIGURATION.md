@@ -577,8 +577,18 @@ fields. Credentials are not settings: they are kept in
 `EMAIL_SENDGRID_API_KEY`, `EMAIL_MAILGUN_API_KEY`, `EMAIL_SMTP_PASSWORD` or
 `EMAIL_DSN`, which take precedence over the file. `app:email:status` and
 `app:email:test` work with the dashboard disabled. Each send is recorded as a
-processing task and an audit entry, without the recipient. See
-[Transactional email](EMAIL.md).
+processing task and an audit entry, without the recipient.
+
+`sign_in_codes_enabled: true` (`SIGN_IN_CODES_ENABLED`, or the same page) lets
+users sign in with a code emailed to them, which also serves as a password
+reset; it is off by default and offered only while email can be sent. See
+[Transactional email](EMAIL.md) and [sign-in codes](EMAIL.md#sign-in-codes).
+
+`mfa_required: true` (`MFA_REQUIRED`, or the same page) requires
+[two-step sign-in](EMAIL.md#two-step-sign-in) for every user: an emailed code
+after the password. It is off by default and fails closed: an invalid value
+counts as required, and while email cannot be sent nobody can finish signing
+in, so set it to `false` on the server to recover.
 
 ## Main navigation
 

@@ -986,6 +986,149 @@ E2E::step('the Email page saves a service and a test send is recorded without th
     E2E::check(($status['ready'] ?? false) === true && ($status['sends']['test']['status'] ?? null) === 'succeeded', 'app:email:status: '.json_encode($status));
 });
 
+E2E::step('a user signs in with an emailed code and sets a new password', static function () use ($root, $browser, $base): void {
+    // A local SMTP server catches the code (tests/Integration/smtp-catcher.php).
+    $probe = stream_socket_server('tcp://127.0.0.1:0');
+    $smtpPort = (int) substr((string) stream_socket_get_name($probe, false), strrpos((string) stream_socket_get_name($probe, false), ':') + 1);
+    fclose($probe);
+    $mailbox = $root.'/var/e2e-mailbox';
+    (new \Symfony\Component\Filesystem\Filesystem())->mkdir($mailbox, 0700);
+    $catcher = new Process(['php', $root.'/tests/Integration/smtp-catcher.php', (string) $smtpPort, $mailbox], $root, cleanEnvironment(), null, null);
+    $catcher->start();
+    $catcher->waitUntil(static fn (string $type, string $output): bool => str_contains($output, 'listening'));
+    try {
+        $config = Yaml::parseFile($root.'/config/aggregate.yaml');
+        file_put_contents($root.'/config/aggregate.yaml', Yaml::dump(['audit_trail_areas' => ['sign_ins' => true] + ($config['audit_trail_areas'] ?? [])] + $config, 4, 2));
+        $crawler = $browser->request('GET', $base.'/dashboard/email');
+        $form = $crawler->filter('form[action$="/dashboard/email/save"]')->form();
+        $form['email_provider'] = 'smtp';
+        $form['email_smtp_host'] = '127.0.0.1';
+        $form['email_smtp_port'] = (string) $smtpPort;
+        $form['email_smtp_encryption'] = 'none';
+        $form['sign_in_codes_enabled'] = '1';
+        $browser->submit($form);
+        E2E::check((Yaml::parseFile($root.'/config/aggregate.yaml')['sign_in_codes_enabled'] ?? null) === true, 'Sign-in codes were not turned on. '.pageProblem($browser));
+
+        $visitor = new HttpBrowser(HttpClient::create(['timeout' => 300, 'max_duration' => 600]));
+        $crawler = $visitor->request('GET', $base.'/login');
+        $link = $crawler->filter('.sign-in-code-link a');
+        E2E::check($link->count() === 1, 'The sign-in page does not offer a code. '.pageProblem($visitor));
+        $crawler = $visitor->click($link->link());
+        $form = $crawler->filter('form.sign-in-code-request')->form();
+        $form['identifier'] = 'Admin-E2E@example.org';
+        $crawler = $visitor->submit($form);
+        E2E::check($crawler->filter('form.sign-in-code-verify')->count() === 1, 'The code form did not appear. '.pageProblem($visitor));
+        $files = glob($mailbox.'/*.eml') ?: [];
+        E2E::check(count($files) === 1, 'Expected one message in the mailbox, found '.count($files).'.');
+        $message = (string) file_get_contents($files[0]);
+        E2E::check(preg_match('/^ {4}([0-9]{6})\r?$/m', $message, $match) === 1 && str_contains($message, 'admin-e2e@example.org'), "The message has no code:\n".substr($message, 0, 2000));
+        $code = $match[1];
+
+        $form = $crawler->filter('form.sign-in-code-verify')->form();
+        $form['code'] = $code === '000000' ? '000001' : '000000';
+        $crawler = $visitor->submit($form);
+        E2E::check($crawler->filter('.sign-in-code-error')->count() === 1, 'A wrong code did not show an error. '.pageProblem($visitor));
+        $form = $crawler->filter('form.sign-in-code-verify')->form();
+        $form['code'] = substr($code, 0, 3).' '.substr($code, 3);
+        $visitor->submit($form);
+        E2E::check(str_contains((string) $visitor->getHistory()->current()->getUri(), '/dashboard'), 'The code did not sign in. '.pageProblem($visitor));
+
+        // The code stands in for the forgotten password for a few minutes.
+        $crawler = $visitor->request('GET', $base.'/dashboard/profile');
+        E2E::check($crawler->filter('input[name="current_password"]')->count() === 0, 'The profile still asks for the current password. '.pageProblem($visitor));
+        $form = $crawler->filter('form.account-password-form')->form();
+        $form['new_password'] = 'e2e-new-password-after-code';
+        $form['confirm_password'] = 'e2e-new-password-after-code';
+        $visitor->submit($form);
+        E2E::check(str_contains((string) $visitor->getResponse()->getContent(), 'Password changed'), 'The new password was not saved. '.pageProblem($visitor));
+        $returning = new HttpBrowser(HttpClient::create(['timeout' => 300]));
+        $form = $returning->request('GET', $base.'/login')->filter('form')->form();
+        $form['_username'] = 'admin';
+        $form['_password'] = 'e2e-new-password-after-code';
+        $returning->submit($form);
+        E2E::check(str_contains((string) $returning->getHistory()->current()->getUri(), '/dashboard'), 'The new password does not sign in. '.pageProblem($returning));
+
+        $db = connection($root);
+        $send = $db->fetchAssociative("SELECT status, triggered_by, requested_by FROM processing_tasks WHERE task_type = 'email_send' AND subject = 'sign_in_code'");
+        E2E::check($send === ['status' => 'succeeded', 'triggered_by' => 'request', 'requested_by' => 'admin'], 'The code send: '.json_encode($send));
+        $signIns = $db->fetchAllAssociative("SELECT operation, outcome, actor, details FROM audit_trail WHERE category = 'sign_ins' AND operation IN ('sign_in_code_requested', 'sign_in_failed', 'signed_in') ORDER BY id");
+        $summary = array_map(static fn (array $row): string => $row['operation'].':'.$row['outcome'].':'.$row['actor'], $signIns);
+        E2E::check(array_slice($summary, 0, 3) === ['sign_in_code_requested:succeeded:admin', 'sign_in_failed:failed:admin', 'signed_in:succeeded:admin'] && $signIns[2]['details'] === 'With an emailed sign-in code.', 'Sign-in audit entries: '.json_encode($signIns));
+        $stored = json_encode([$db->fetchAllAssociative('SELECT * FROM processing_tasks'), $db->fetchAllAssociative('SELECT * FROM audit_trail')]);
+        E2E::check(!str_contains((string) $stored, $code) && !str_contains((string) $stored, 'admin-e2e@example.org'), 'The code or the address was stored.');
+    } finally {
+        $catcher->stop(1);
+    }
+});
+
+E2E::step('two-step sign-in asks for an emailed code after the password and signs out older sessions', static function () use ($root, $base): void {
+    $probe = stream_socket_server('tcp://127.0.0.1:0');
+    $smtpPort = (int) substr((string) stream_socket_get_name($probe, false), strrpos((string) stream_socket_get_name($probe, false), ':') + 1);
+    fclose($probe);
+    $mailbox = $root.'/var/e2e-mailbox-mfa';
+    (new \Symfony\Component\Filesystem\Filesystem())->mkdir($mailbox, 0700);
+    $catcher = new Process(['php', $root.'/tests/Integration/smtp-catcher.php', (string) $smtpPort, $mailbox], $root, cleanEnvironment(), null, null);
+    $catcher->start();
+    $catcher->waitUntil(static fn (string $type, string $output): bool => str_contains($output, 'listening'));
+    $signIn = static function (string $password) use ($base): HttpBrowser {
+        $browser = new HttpBrowser(HttpClient::create(['timeout' => 300, 'max_duration' => 600]));
+        $form = $browser->request('GET', $base.'/login')->filter('form')->form();
+        $form['_username'] = 'admin';
+        $form['_password'] = $password;
+        $browser->submit($form);
+
+        return $browser;
+    };
+    try {
+        $admin = $signIn('e2e-new-password-after-code');
+        $stale = $signIn('e2e-new-password-after-code');
+        E2E::check(str_contains((string) $stale->getHistory()->current()->getUri(), '/dashboard'), 'A password did not sign in before two-step sign-in. '.pageProblem($stale));
+
+        $form = $admin->request('GET', $base.'/dashboard/email')->filter('form[action$="/dashboard/email/save"]')->form();
+        $form['email_smtp_port'] = (string) $smtpPort;
+        $form['mfa_required'] = '1';
+        $admin->submit($form);
+        E2E::check(str_contains((string) $admin->getResponse()->getContent(), 'Two-step sign-in is now required'), 'Two-step sign-in was not turned on. '.pageProblem($admin));
+        E2E::check((Yaml::parseFile($root.'/config/aggregate.yaml')['mfa_required'] ?? null) === true, 'mfa_required was not saved.');
+        $admin->request('GET', $base.'/dashboard/email');
+        E2E::check($admin->getInternalResponse()->getStatusCode() === 200 && str_contains((string) $admin->getHistory()->current()->getUri(), '/dashboard/email'), 'The administrator who turned it on was signed out. '.pageProblem($admin));
+        $stale->request('GET', $base.'/dashboard');
+        E2E::check(str_ends_with((string) $stale->getHistory()->current()->getUri(), '/login') && str_contains((string) $stale->getResponse()->getContent(), 'Two-step sign-in is now required'), 'An older session was not signed out. '.pageProblem($stale));
+        E2E::check($stale->getCrawler()->filter('.sign-in-code-link')->count() === 0, 'Sign-in codes are still offered while two-step sign-in is required.');
+
+        $visitor = $signIn('e2e-new-password-after-code');
+        E2E::check(str_contains((string) $visitor->getHistory()->current()->getUri(), '/login/code') && $visitor->getCrawler()->filter('.sign-in-second-step')->count() === 1, 'The password did not lead to the second step. '.pageProblem($visitor));
+        $visitor->request('GET', $base.'/dashboard');
+        E2E::check(str_ends_with((string) $visitor->getHistory()->current()->getUri(), '/login'), 'The password alone opened the dashboard. '.pageProblem($visitor));
+        $files = glob($mailbox.'/*.eml') ?: [];
+        E2E::check(count($files) === 1, 'Expected one message in the mailbox, found '.count($files).'.');
+        $message = (string) file_get_contents($files[0]);
+        E2E::check(preg_match('/^ {4}([0-9]{6})\r?$/m', $message, $match) === 1 && str_contains($message, 'Your password was just used'), "The message has no code:\n".substr($message, 0, 2000));
+
+        // Signing in again sends a new code, as the page suggests; that one finishes the sign-in.
+        $visitor = $signIn('e2e-new-password-after-code');
+        $files = glob($mailbox.'/*.eml') ?: [];
+        sort($files, SORT_NATURAL);
+        preg_match('/^ {4}([0-9]{6})\r?$/m', (string) file_get_contents((string) end($files)), $match);
+        $form = $visitor->getCrawler()->filter('form.sign-in-code-verify')->form();
+        $form['code'] = $match[1];
+        $visitor->submit($form);
+        E2E::check(str_contains((string) $visitor->getHistory()->current()->getUri(), '/dashboard'), 'The second step did not sign in. '.pageProblem($visitor));
+        $visitor->request('GET', $base.'/dashboard/profile');
+        E2E::check($visitor->getInternalResponse()->getStatusCode() === 200 && $visitor->getCrawler()->filter('input[name="current_password"]')->count() === 1, 'After two steps the profile should ask for the current password. '.pageProblem($visitor));
+
+        $db = connection($root);
+        $steps = $db->fetchAllAssociative("SELECT operation, outcome, actor, details FROM audit_trail WHERE category = 'sign_ins' AND operation IN ('password_accepted', 'signed_in') ORDER BY id DESC");
+        E2E::check(($steps[0]['operation'] ?? null) === 'signed_in' && str_contains((string) $steps[0]['details'], 'two-step') && ($steps[1]['operation'] ?? null) === 'password_accepted', 'Two-step audit entries: '.json_encode(array_slice($steps, 0, 3)));
+        $sends = $db->fetchFirstColumn("SELECT triggered_by FROM processing_tasks WHERE task_type = 'email_send' AND subject = 'sign_in_second_step' AND status = 'succeeded'");
+        E2E::check(count($sends) === 2 && array_unique($sends) === ['request'], 'Second-step sends: '.json_encode($sends));
+        $stored = json_encode([$db->fetchAllAssociative('SELECT * FROM processing_tasks'), $db->fetchAllAssociative('SELECT * FROM audit_trail')]);
+        E2E::check(!str_contains((string) $stored, $match[1]), 'A second-step code was stored.');
+    } finally {
+        $catcher->stop(1);
+    }
+});
+
 $version =(string) connection($root)->fetchOne(match ($driver) {
     'mysql' => 'SELECT VERSION()',
     'pgsql' => 'SHOW server_version',

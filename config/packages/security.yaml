@@ -52,6 +52,11 @@ security:
                 check_path: /login
                 default_target_path: /dashboard
                 enable_csrf: true
+            # Signing in with an emailed code (docs/EMAIL.md#sign-in-codes);
+            # the password form stays where signing in starts.
+            custom_authenticators:
+                - App\Security\SignInCode\SignInCodeAuthenticator
+            entry_point: form_login
             login_throttling:
                 max_attempts: 5
                 interval: '1 minute'

@@ -7,6 +7,8 @@ namespace App\Controller;
 use App\Entity\User;
 use App\EventSubscriber\AdminAuditSubscriber;
 use App\Security\Access\UserAdministration;
+use App\Security\SignInCode\SignInCodeAuthenticator;
+use App\Security\SignInCode\SignInCodeSettings;
 use App\Service\AggregateConfigLoader;
 use App\Service\WebsiteConfigManager;
 use App\Service\WebsiteScopeCatalog;
@@ -28,6 +30,7 @@ final class ProfileController extends AbstractController
         private readonly UserAdministration $administration,
         private readonly WebsiteConfigManager $websites,
         private readonly WebsiteScopeCatalog $websiteGroups,
+        private readonly SignInCodeSettings $signIn,
     ) {
     }
 
@@ -58,6 +61,7 @@ final class ProfileController extends AbstractController
 
         return $this->renderDashboardPage('users/profile.html.twig', [
             'profile' => $user,
+            'password_reset' => $this->signedInWithCode(),
             'website_names' => $names,
             'group_names' => $groups,
             'website_group_label' => $this->websiteGroups->hasLoadError() ? WebsiteScopeCatalog::DEFAULT_PLURAL : $this->websiteGroups->label()['plural'],
@@ -76,7 +80,11 @@ final class ProfileController extends AbstractController
         }
         $request->attributes->set(AdminAuditSubscriber::SUBJECT, $user->getUsername());
         try {
-            $this->administration->updateProfile($user, (string) $request->request->get('display_name', ''), (string) $request->request->get('email', ''));
+            $email = (string) $request->request->get('email', '');
+            if (trim($email) === '' && $this->signIn->isSecondStepRequired()) {
+                throw new \InvalidArgumentException('Two-step sign-in is required, so your account needs an email address: without one you could not sign in again.');
+            }
+            $this->administration->updateProfile($user, (string) $request->request->get('display_name', ''), $email);
             $this->addFlash('success', 'Profile saved.');
         } catch (\InvalidArgumentException $e) {
             $this->addFlash('error', $e->getMessage());
@@ -101,7 +109,11 @@ final class ProfileController extends AbstractController
         $request->attributes->set(AdminAuditSubscriber::DETAILS, 'Changed their own password.');
         $new = (string) $request->request->get('new_password', '');
         try {
-            if (!$this->administration->isCurrentPassword($user, (string) $request->request->get('current_password', ''))) {
+            // Right after signing in with an emailed code, the code stands in for the
+            // forgotten password (SignInCodeAuthenticator::PASSWORD_RESET_WINDOW).
+            if ($this->signedInWithCode()) {
+                $request->attributes->set(AdminAuditSubscriber::DETAILS, 'Set a new password after signing in with an emailed code.');
+            } elseif (!$this->administration->isCurrentPassword($user, (string) $request->request->get('current_password', ''))) {
                 throw new \InvalidArgumentException('Your current password is not correct.');
             }
             if ($new !== (string) $request->request->get('confirm_password', '')) {
@@ -109,6 +121,7 @@ final class ProfileController extends AbstractController
             }
             // This session stays signed in; other sessions of this account sign out.
             $this->administration->changePassword($user, $new);
+            $this->endPasswordReset();
             $this->addFlash('success', 'Password changed. Your other sessions are signed out.');
         } catch (\InvalidArgumentException $e) {
             $this->addFlash('error', $e->getMessage());
@@ -117,6 +130,22 @@ final class ProfileController extends AbstractController
         }
 
         return $this->redirectToRoute('app_profile');
+    }
+
+    private function signedInWithCode(): bool
+    {
+        return SignInCodeAuthenticator::recentlySignedInWithCode($this->container->get('security.token_storage')->getToken());
+    }
+
+    /** A new password ends the reset window, so the current one is asked for again. */
+    private function endPasswordReset(): void
+    {
+        $token = $this->container->get('security.token_storage')->getToken();
+        if ($token !== null && $token->hasAttribute(SignInCodeAuthenticator::TOKEN_ATTRIBUTE)) {
+            $attributes = $token->getAttributes();
+            unset($attributes[SignInCodeAuthenticator::TOKEN_ATTRIBUTE]);
+            $token->setAttributes($attributes);
+        }
     }
 
     private function currentUser(): User

@@ -1,0 +1,87 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}{{ second_step ? 'Enter your code' : 'Sign in with a code' }} | {{ app_branding.name }}{% endblock %}
+
+{% block body %}
+<div class="columns is-centered py-5">
+    <div class="column is-10-mobile is-6-tablet is-4-desktop">
+        <div class="card">
+            <div class="card-content p-5">
+                <div class="has-text-centered mb-4">
+                    <div class="mb-3">
+                        {{ component('Branding:Identity', {branding: app_branding}) }}
+                    </div>
+                    <h1 class="title is-4 mb-1">{{ second_step ? 'One more step' : 'Sign in with a code' }}</h1>
+                    <p class="subtitle is-6">{{ pending ? 'Check your email' : 'We will email you a code' }}</p>
+                </div>
+
+                {% if error %}
+                    <div class="notification is-danger is-light mb-4 sign-in-code-error" role="alert">
+                        {{ error.messageKey|trans(error.messageData, 'security') }}
+                    </div>
+                {% endif %}
+
+                {% if pending %}
+                    {% if second_step %}
+                    <p class="mb-4 sign-in-second-step">Your password was right. To finish signing in, enter the {{ digits }}-digit code we just emailed to the address on your account. It works in this browser until {{ pending.expires_at|date('H:i', 'UTC') }} UTC{% if pending.attempts_left < 5 %}, for {{ pending.attempts_left }} more {{ pending.attempts_left == 1 ? 'try' : 'tries' }}{% endif %}.</p>
+                    {% else %}
+                    <p class="mb-4">If an account matches what you entered and has an email address, a {{ digits }}-digit code is on its way to it. It works in this browser until {{ pending.expires_at|date('H:i', 'UTC') }} UTC{% if pending.attempts_left < 5 %}, for {{ pending.attempts_left }} more {{ pending.attempts_left == 1 ? 'try' : 'tries' }}{% endif %}.</p>
+                    {% endif %}
+                    <form method="post" action="{{ path('app_login_code_verify') }}" class="sign-in-code-verify">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token(verify_token_id) }}">
+                        <div class="field mb-5">
+                            <label class="label" for="sign-in-code">Code</label>
+                            <div class="control has-icons-left">
+                                <input class="input is-family-monospace" type="text" id="sign-in-code" name="code" required autofocus
+                                    inputmode="numeric" autocomplete="one-time-code" maxlength="{{ digits + 4 }}" placeholder="{{ digits }} digits" aria-describedby="sign-in-code-help">
+                                <span class="icon is-small is-left"><i class="fas fa-key" aria-hidden="true"></i></span>
+                            </div>
+                            <p class="help" id="sign-in-code-help">The code from the email; spaces are fine.</p>
+                        </div>
+                        <div class="field">
+                            <div class="control">
+                                <button type="submit" class="button is-primary is-fullwidth">
+                                    <span class="icon is-small mr-1"><i class="fas fa-arrow-right-to-bracket" aria-hidden="true"></i></span>
+                                    <span>Sign in</span>
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                    {% if second_step %}
+                        <p class="mt-4 has-text-centered is-size-7">No code? <a href="{{ path('app_login') }}">Sign in again</a> to get a new one.</p>
+                    {% else %}
+                        <p class="mt-4 has-text-centered is-size-7"><a href="{{ path('app_login_code', {new: 1}) }}">Ask for a new code</a></p>
+                    {% endif %}
+                {% else %}
+                    <form method="post" action="{{ path('app_login_code_request') }}" class="sign-in-code-request">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token('login_code_request') }}">
+                        <div class="field mb-5">
+                            <label class="label" for="sign-in-code-identifier">Username or email address</label>
+                            <div class="control has-icons-left">
+                                <input class="input" type="text" id="sign-in-code-identifier" name="identifier" required autofocus autocomplete="username" maxlength="254">
+                                <span class="icon is-small is-left"><i class="fas fa-user" aria-hidden="true"></i></span>
+                            </div>
+                            <p class="help">The code goes to the email address on the account and lasts {{ minutes }} minutes.</p>
+                        </div>
+                        <div class="field">
+                            <div class="control">
+                                <button type="submit" class="button is-primary is-fullwidth">
+                                    <span class="icon is-small mr-1"><i class="fas fa-envelope" aria-hidden="true"></i></span>
+                                    <span>Email me a code</span>
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="has-text-centered mt-4">
+            <a class="is-size-7" href="{{ path('app_login') }}">
+                <span class="icon is-small"><i class="fas fa-lock" aria-hidden="true"></i></span>
+                <span>Sign in with your password</span>
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

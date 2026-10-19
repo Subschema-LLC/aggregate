@@ -619,7 +619,7 @@ environments:
 # reporting_database_interval_minutes: 60    # 15, 30, 60, 120, 180, 360, 720 or 1440
 #
 # Transactional email (optional; see docs/EMAIL.md). Aggregate's own messages to
-# its users, through one email service. Off until
+# its users, such as sign-in codes, through one email service. Off until
 # email_enabled is true; a test (app:email:test) works while it is off. Also
 # managed on Administration → Email. Uppercase environment variables with the
 # same names override these values. Credentials are never kept here: they go in
@@ -639,6 +639,15 @@ environments:
 # email_smtp_port: 587
 # email_smtp_username: ''
 # email_smtp_encryption: starttls       # starttls (required), tls (port 465) or none (local relay only)
+#
+# Let users sign in with a six-digit code emailed to them (also their password
+# reset), offered only while email can be sent. See docs/EMAIL.md#sign-in-codes.
+# sign_in_codes_enabled: false
+#
+# Two-step sign-in: every user enters a code emailed to them after their
+# password. Fails closed; set false here (or MFA_REQUIRED=0) to recover when
+# email cannot be sent. See docs/EMAIL.md#two-step-sign-in.
+# mfa_required: false
 #
 # Reporting API (optional; see docs/REPORTING-API.md). Needs the reporting_api
 # feature flag. Tokens are kept, hashed, in config/secrets/api-tokens.yaml and
