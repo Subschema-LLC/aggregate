@@ -13,11 +13,13 @@ namespace App\Service\Email;
 enum EmailPurpose: string
 {
     case Test = 'test';
+    case SignInCode = 'sign_in_code';
 
     public function label(): string
     {
         return match ($this) {
             self::Test => 'Test email',
+            self::SignInCode => 'Sign-in code',
         };
     }
 
@@ -25,6 +27,7 @@ enum EmailPurpose: string
     {
         return match ($this) {
             self::Test => sprintf('Test email from %s', $brand),
+            self::SignInCode => sprintf('Your %s sign-in code', $brand),
         };
     }
 
@@ -33,6 +36,7 @@ enum EmailPurpose: string
     {
         return match ($this) {
             self::Test => true,
+            self::SignInCode => false,
         };
     }
 }

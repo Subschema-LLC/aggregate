@@ -16,6 +16,22 @@ class UserRepository extends ServiceEntityRepository implements PasswordUpgrader
         parent::__construct($registry, User::class);
     }
 
+    /**
+     * The one user with this email address, ignoring case; null when no user
+     * or several share it.
+     */
+    public function findOnlyByEmail(string $email): ?User
+    {
+        $matches = $this->createQueryBuilder('u')
+            ->where('LOWER(u.email) = :email')
+            ->setParameter('email', mb_strtolower(trim($email)))
+            ->setMaxResults(2)
+            ->getQuery()
+            ->getResult();
+
+        return count($matches) === 1 && $matches[0] instanceof User ? $matches[0] : null;
+    }
+
     public function upgradePassword(PasswordAuthenticatedUserInterface $user, string $newHashedPassword): void
     {
         if (!$user instanceof User) {

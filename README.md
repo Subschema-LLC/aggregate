@@ -104,7 +104,7 @@ Details:
 - **Optional page depth:** a capped page count shared by events on each page, with tab storage or URL parameter passing configured through UI/YAML. See [storage, URL and reporting boundaries](docs/DATA-MODEL.md#optional-page-depth) before enabling it.
 - **Consent-based enhanced detail:** visitor/session IDs, properties, and exact dimensions when enabled by your consent manager.
 - **Headless operation:** an ingestion API, YAML configuration, and CLI commands, with an optional admin dashboard.
-- **Transactional email:** Aggregate's own messages to its users through Postmark, SendGrid, Mailgun, any SMTP server or another Symfony Mailer transport, set up on one page or in YAML. Each send is recorded without the recipient. See [Transactional email](docs/EMAIL.md).
+- **Transactional email and sign-in codes:** Aggregate's own messages to its users, such as an optional six-digit sign-in code that also resets a forgotten password, through Postmark, SendGrid, Mailgun, any SMTP server or another Symfony Mailer transport, set up on one page or in YAML. Each send is recorded without the recipient. See [Transactional email](docs/EMAIL.md).
 - **Server-side collection:** send page views and goals from your backend, with no script on the page. See the [server-side guide](docs/SERVER-SIDE.md) for PHP, Java, .NET, Node.js, Python, Ruby and Go examples.
 - **Organization traffic markers:** mark team browsers on each tracked website through marking links, with a configurable cookie or local storage entry defaulting to `orgInternalTraffic=true`; every event reports `org_internal_traffic` as true or false for filtering in BI reports.
 - **Configurable branding and lifecycle:** dashboard name, logo, colors, fonts, archiving, and retention policies.

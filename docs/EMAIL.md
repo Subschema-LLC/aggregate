@@ -2,14 +2,16 @@
 
 [README](../README.md) · [Configuration](CONFIGURATION.md) · [Audit trail](AUDIT-TRAIL.md)
 
-Aggregate sends a small number of messages to its own users through an email
-service you choose. It never emails website visitors or
-analytics data. Email is off until an administrator turns it on.
+Aggregate sends a small number of messages to its own users, such as
+[sign-in codes](#sign-in-codes), through an email service you choose. It never
+emails website visitors or analytics data. Email is off until an administrator
+turns it on.
 
 - [Choose a service](#choose-a-service)
 - [Set it up on the Email page](#set-it-up-on-the-email-page)
 - [Set it up in YAML](#set-it-up-in-yaml)
 - [Send a test message](#send-a-test-message)
+- [Sign-in codes](#sign-in-codes)
 - [What is recorded](#what-is-recorded)
 - [What a message carries](#what-a-message-carries)
 - [Another service, or failover](#another-service-or-failover)
@@ -41,7 +43,8 @@ refuses mail from an unverified sender.
 ## Set it up on the Email page
 
 **Administration → Email** at `/dashboard/email` is for administrators only,
-because a credential sends mail as your organization.
+because a credential sends mail as your organization and messages carry
+sign-in codes.
 
 1. Choose the **service** and enter the **from address**. The from name
    defaults to the [brand name](CONFIGURATION.md#application-settings); a
@@ -107,13 +110,52 @@ checked before email is turned on; every other message waits until it is on.
 The command prints the service's message ID, which finds the message in the
 service's activity log. A failure prints the service's reason.
 
+## Sign-in codes
+
+With `sign_in_codes_enabled: true` (or **Sign-in codes: On** on the Email page,
+or `SIGN_IN_CODES_ENABLED`), the sign-in page offers **Forgot your password?
+Email me a sign-in code**. The user enters their username or email address
+and gets a six-digit code at the address on their account, which signs them in
+instead of their password. The option appears only while email can be sent,
+and only users with an email address can use it; everyone keeps their password.
+
+- **A code lasts 10 minutes, allows 5 tries and works once,** in the browser
+  that asked for it. Asking again replaces it. An address that several users
+  share matches none of them; those users sign in by username.
+- **It doubles as a password reset.** For 15 minutes after signing in with a
+  code, the profile lets the user set a new password without the current one.
+- **The page never says whether an account exists.** It answers the same for
+  any username or address, and the email is sent after the response, so its
+  timing does not tell either.
+- **Guessing is bounded.** Each code allows 5 tries; wrong codes also count
+  against the sign-in throttling that protects passwords (5 failures a minute
+  for an account from one address); and after 10 wrong codes in 24 hours from any browser,
+  code sign-in pauses for that account, while its password still works. An
+  account gets at most 3 codes in 15 minutes, and one address may ask 10 times
+  in 15 minutes. The limits are in `config/packages/framework.yaml`.
+- **Nothing is stored.** The code exists only in the email and, as an HMAC keyed
+  with `APP_SECRET`, in the server-side session of the browser that asked:
+  no table, no YAML. Servers behind a load balancer must share sessions,
+  as signing in already requires.
+
+Anyone who can read a user's email can sign in as that user, as with any
+emailed password reset. Keep the option off where that is not acceptable, for
+example when users' mailboxes are shared.
+
+Each request for a code is recorded under **Sign-ins** in the audit trail (when
+that area is on), naming the account only when it exists; each sign-in with a
+code says so; each code sent is an `email_send` task with subject
+`sign_in_code`, started by `request` for that account. The code itself is never
+recorded.
+
 ## What is recorded
 
 Each send is one row in `processing_tasks` and one entry in `audit_trail`
 (see [task and audit records](DATABASE.md#processing-tasks-and-audit-trail)):
 
-- **task type** `email_send`, **subject** the kind of message (`test`), how it
-  was started (`dashboard`, `command`) and by whom;
+- **task type** `email_send`, **subject** the kind of message (`test`,
+  `sign_in_code`), how it was started (`dashboard`, `command`, or `request` for
+  a code asked for on the sign-in page) and by whom;
 - **external ID** the service's message ID;
 - **details** the service used, or the reason a send failed.
 
@@ -149,8 +191,8 @@ tracking are account settings. Turn them off for the key Aggregate uses: open
 tracking adds a pixel, and click tracking rewrites links.
 
 Messages go straight to the service, not through the Messenger queue, so a
-message's content never waits in a queue table and the task records the
-service's real answer.
+sign-in code never waits in a queue table and the task records the service's
+real answer.
 
 ## Another service, or failover
 

@@ -237,8 +237,14 @@ parameters:
         - processing tasks
         - jobs
     Email:
-      description: 'The service that sends transactional email, the sender and a test message'
+      description: 'The service that sends transactional email, the sender, a test message and sign-in codes'
       synonyms:
+        - sign-in codes
+        - passcode
+        - one-time code
+        - passwordless
+        - forgot password
+        - password reset
         - mail
         - smtp
         - postmark

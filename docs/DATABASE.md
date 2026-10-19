@@ -733,8 +733,10 @@ status table per feature:
   `email_send`) and `subject` what it worked on (the view, for the syncs; the
   kind of message, for [email](EMAIL.md#what-is-recorded), never its recipient). `status` is `running`, `succeeded` or `failed`;
   `triggered_by` is `schedule` (the scheduled command doing what is due),
-  `command` (a person running a command for a specific job) or `dashboard`, with
-  the administrator in `requested_by`. `started_at` and `finished_at` are UTC;
+  `command` (a person running a command for a specific job), `dashboard`, with
+  the administrator in `requested_by`, or `request`, for work started without
+  signing in, such as a [sign-in code](EMAIL.md#sign-in-codes), with the account
+  it was for. `started_at` and `finished_at` are UTC;
   `row_count`, `external_id` (such as a BigQuery job ID or an email service's
   message ID), `details` (the result
   or the failure, redacted) and, for a successful view sync, `fingerprint` (of
