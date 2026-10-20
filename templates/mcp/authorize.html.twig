@@ -49,7 +49,7 @@
         </fieldset>
 
         {% if private_views_allowed %}
-            <details class="api-token-private">
+            <details class="api-token-private" open>
                 <summary class="has-text-weight-semibold">Private views</summary>
                 <div class="notification is-warning is-light mt-3">
                     These views hold individual retained events or unsuppressed counts. An assistant granted them can send that data to its provider. Grant them only for an approved raw-data workflow.
@@ -68,6 +68,11 @@
                     I confirm that this assistant may read row-level or unsuppressed data.
                 </label>
             </details>
+        {% else %}
+            <div class="field api-token-private">
+                <p class="label mb-1">Private views</p>
+                <p class="help">Custom and archive views (<code>analytics_custom_*</code>, <code>analytics_archived_*</code>) are turned off under Reporting → API tokens → Settings.</p>
+            </div>
         {% endif %}
 
         <div class="columns mt-3">
