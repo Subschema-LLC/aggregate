@@ -31,6 +31,10 @@
     margin: 1rem 0;
 }
 
+.api-token-private > summary {
+    cursor: pointer;
+}
+
 .api-tokens-table td {
     vertical-align: middle;
 }

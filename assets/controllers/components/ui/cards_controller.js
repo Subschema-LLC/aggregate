@@ -144,7 +144,7 @@ export default class extends Controller {
         if (!this.element || typeof this.element.querySelectorAll !== 'function') return;
 
         const detailsList = this.element.querySelectorAll(
-            'details.box, details.card, details.account-card, details.data-structure-section, details[data-property-row], details.tag-row, details.glossary-entry, details.message'
+            'details.box, details.card, details.account-card, details.data-structure-section, details[data-property-row], details.tag-row, details.glossary-entry, details.message, details.api-token-private, details.bigquery-private'
         );
         detailsList.forEach((details) => {
             if (details.hidden) return;
