@@ -71,6 +71,7 @@ final class ApiTokensControllerTest extends TestCase
         self::assertStringContainsString('Never', $crawler->filter('.api-tokens-table')->text());
         self::assertCount(1, $crawler->filter('.api-tokens-table form[action$="/revoke"]'));
         self::assertCount(0, $crawler->filter('input[name="private_views[]"]'), 'Private views are not offered while they are off');
+        self::assertStringContainsString('analytics_custom_*', $crawler->filter('.api-token-private')->text());
         self::assertSame('0', $crawler->filter('select[name="private_views"] option[selected]')->attr('value'));
         self::assertSame('10000', $crawler->filter('input[name="max_page_size"]')->attr('value'));
         self::assertStringNotContainsString('sha256:', $crawler->html());
@@ -103,7 +104,9 @@ final class ApiTokensControllerTest extends TestCase
         $this->assertRedirectsWithError('create', [...$form, 'private_views_confirmed' => '1'], 'Private views are turned off');
 
         $this->configure(['reporting_api_private_views' => true]);
-        self::assertCount(count(\App\Service\ViewSync\ViewCatalog::PRIVATE), $this->crawl($this->call('index', $this->request('GET', '/dashboard/api-tokens')))->filter('input[name="private_views[]"]'));
+        $index = $this->crawl($this->call('index', $this->request('GET', '/dashboard/api-tokens')));
+        self::assertCount(1, $index->filter('details.api-token-private[open]'));
+        self::assertCount(count(\App\Service\ViewSync\ViewCatalog::PRIVATE), $index->filter('input[name="private_views[]"]'));
         $response = $this->call('create', $this->request('POST', '/dashboard/api-tokens/create', [...$form, 'private_views_confirmed' => '1']));
         self::assertSame(200, $response->getStatusCode());
         self::assertStringContainsString('row-level or unsuppressed data: analytics_custom_events_v1', $this->crawl($response)->filter('.api-token-created')->text());

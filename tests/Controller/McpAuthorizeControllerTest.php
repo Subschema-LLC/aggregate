@@ -81,6 +81,7 @@ final class McpAuthorizeControllerTest extends TestCase
         self::assertSame('xyz', $page->filter('input[name="state"]')->attr('value'));
         self::assertCount(1, $page->filter('button[name="decision"][value="approve"]'));
         self::assertCount(1, $page->filter('button[name="decision"][value="deny"]'));
+        self::assertStringContainsString('analytics_custom_*', $page->filter('.api-token-private')->text());
         self::assertCount(0, $page->filter('.notification.is-warning'), 'localhost counts as local development');
 
         $request = Request::create('http://analytics.example/dashboard/oauth/authorize', 'GET', [...$this->query(), 'resource' => 'http://analytics.example/mcp']);

@@ -49,8 +49,8 @@ final class ViewQueryRunnerTest extends TestCase
         $this->connection = DriverManager::getConnection(['driver' => 'pdo_sqlite', 'memory' => true]);
         $this->connection->executeStatement('CREATE TABLE daily (website_token TEXT, event_day TEXT, page_group TEXT, event_count INTEGER)');
         $this->connection->executeStatement('CREATE VIEW bi_anonymous_daily_v1 AS SELECT website_token, event_day, page_group, event_count FROM daily');
-        $this->connection->executeStatement('CREATE TABLE raw (id INTEGER, website_token TEXT, page_path TEXT, created_at TEXT, archived_at TEXT)');
-        $this->connection->executeStatement('CREATE VIEW analytics_custom_events_v1 AS SELECT id, website_token, page_path, created_at, archived_at FROM raw');
+        $this->connection->executeStatement('CREATE TABLE raw (id INTEGER, website_token TEXT, page_path TEXT, privacy_mode TEXT, utm_medium TEXT, created_at TEXT, archived_at TEXT)');
+        $this->connection->executeStatement('CREATE VIEW analytics_custom_events_v1 AS SELECT id, website_token, page_path, privacy_mode, utm_medium, created_at, archived_at FROM raw');
         foreach ([
             ['site-a', '2026-10-01', '/blog', 12],
             ['site-a', '2026-10-01', '/Blog', 7],
@@ -234,6 +234,7 @@ final class ViewQueryRunnerTest extends TestCase
             ['column', 'bi_anonymous_daily_v1', 'page_group', 'fr', 'Rubrique', 'Pas la langue par défaut.', 10, 0],
             ['value', 'website_token', 'site-b', 'en', 'Shop', 'shop.example', 20, 1],
             ['value', 'website_token', 'site-a', 'en', 'Blog', 'blog.example', 10, 1],
+            ['value', 'utm_medium', 'email', 'en', 'Email newsletter', 'Scheduled campaign.', 10, 1],
         ] as $row) {
             $this->connection->insert('glossary', array_combine(['entry_type', 'subject', 'code', 'locale', 'label', 'description', 'sort_order', 'is_default_locale'], $row));
         }
@@ -252,6 +253,10 @@ final class ViewQueryRunnerTest extends TestCase
             ['code' => 'site-b', 'label' => 'Shop', 'description' => 'shop.example'],
         ], $published['website_token']['values'], 'In glossary order, default locale only');
         self::assertFalse($published['website_token']['values_truncated']);
+
+        $customDescribed = array_column($schema->described('analytics_custom_events_v1'), null, 'name');
+        self::assertSame(['anonymous', 'enhanced'], array_column($customDescribed['privacy_mode']['values'], 'code'));
+        self::assertSame([['code' => 'email', 'label' => 'Email newsletter', 'description' => 'Scheduled campaign.']], $customDescribed['utm_medium']['values']);
     }
 
     public function testOnlyCatalogViewsCanBeQueried(): void
