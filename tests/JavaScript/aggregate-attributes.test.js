@@ -175,16 +175,21 @@ test('declared number and boolean types convert only their plain written form; o
 test('invalid and reserved event names send nothing and explain themselves once in the console', () => {
   const runtime = page();
   const bad = runtime.body.child('button', {'data-aggregate-event': 'user-12345-click'});
+  const opaque = runtime.body.child('button', {'data-aggregate-event': 'event_abcdefghijklmnop1234567890'});
+  const versioned = runtime.body.child('a', {'data-aggregate-event': 'cta_click--Download_Beta_v2026.10.12_ZIP'});
   const view = runtime.body.child('a', {'data-aggregate-event': 'view'});
   const empty = runtime.body.child('a', {'data-aggregate-event': ''});
   runtime.click(bad);
   runtime.click(bad);
+  runtime.click(opaque);
+  runtime.click(versioned);
   runtime.click(view);
   runtime.click(empty);
-  assert.equal(runtime.requests.length, 0);
-  assert.equal(runtime.warnings.length, 3);
+  assert.deepEqual(sent(runtime), [['cta_click--Download_Beta_v2026.10.12_ZIP', undefined, null]]);
+  assert.equal(runtime.warnings.length, 4);
   assert.match(runtime.warnings[0], /^\[Aggregate\] data-aggregate-event="user-12345-click" is not a valid event name/);
-  assert.match(runtime.warnings[1], /reserved for page views/);
+  assert.match(runtime.warnings[1], /^\[Aggregate\] data-aggregate-event="event_abcdefghijklmnop1234567890" is not a valid event name/);
+  assert.match(runtime.warnings[2], /reserved for page views/);
 });
 
 test('attribute names follow the configured namespace for white-labelled installations', () => {
