@@ -65,9 +65,11 @@ final class PrivacySanitizerTest extends TestCase
     {
         self::assertSame('nav:click', $this->sanitizer->sanitizeEventName(' nav:click '));
         self::assertSame('checkout.completed', $this->sanitizer->sanitizeEventName('checkout.completed'));
+        self::assertSame('cta_click--Download_Beta_v2026.10.12_ZIP', $this->sanitizer->sanitizeEventName('cta_click--Download_Beta_v2026.10.12_ZIP'));
         self::assertSame('view', $this->sanitizer->sanitizeEventName(null));
         self::assertNull($this->sanitizer->sanitizeEventName('person@example.com'));
         self::assertNull($this->sanitizer->sanitizeEventName('order_123456'));
+        self::assertNull($this->sanitizer->sanitizeEventName('event_abcdefghijklmnop1234567890'));
         self::assertNull($this->sanitizer->sanitizeEventName(str_repeat('a', 101)));
         self::assertNull($this->sanitizer->sanitizeEventName(['click']));
     }

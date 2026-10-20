@@ -799,7 +799,7 @@
       var looksLikeUuid = /(?:^|[^a-f0-9])[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[89ab][a-f0-9]{3}-[a-f0-9]{12}(?:$|[^a-f0-9])/i.test(normalized);
       var looksNumeric = /(?:^|[-_])\d{4,}(?:$|[-_])/.test(normalized);
       var looksLikeHexToken = /^[a-f0-9]{16,}$/i.test(normalized);
-      var looksLikeOpaqueToken = normalized.length >= 24 && /\d/.test(normalized) && /[a-z]/i.test(normalized);
+      var looksLikeOpaqueToken = /(?:^|[^a-z0-9])(?=[a-z0-9]*[a-z])(?=[a-z0-9]*\d)[a-z0-9]{24,}/i.test(normalized);
 
       return hasSafeGrammar && !looksLikeUuid && !looksNumeric && !looksLikeHexToken && !looksLikeOpaqueToken
         ? normalized
@@ -827,7 +827,7 @@
           var looksLikeUuid = /(?:^|[^a-f0-9])[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[89ab][a-f0-9]{3}-[a-f0-9]{12}(?:$|[^a-f0-9])/i.test(decodedSegment);
           var looksNumeric = /^\d+$/.test(decodedSegment) || /(?:^|[-_])\d{4,}(?:$|[-_])/.test(decodedSegment);
           var looksLikeHexToken = /^[a-f0-9]{16,}$/i.test(decodedSegment);
-          var looksLikeOpaqueToken = decodedSegment.length >= 24 && /\d/.test(decodedSegment) && /[a-z]/i.test(decodedSegment);
+          var looksLikeOpaqueToken = /(?:^|[^a-z0-9])(?=[a-z0-9]*[a-z])(?=[a-z0-9]*\d)[a-z0-9]{24,}/i.test(decodedSegment);
 
           if (looksLikeEmail || looksLikeUuid || looksNumeric || looksLikeHexToken || looksLikeOpaqueToken) {
             sanitized.push('_redacted');
