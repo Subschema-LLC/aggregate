@@ -344,9 +344,7 @@ final class PrivacySanitizer
             || preg_match('/(?:^|[^a-f0-9])[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[89ab][a-f0-9]{3}-[a-f0-9]{12}(?:$|[^a-f0-9])/Di', $segment) === 1
             || preg_match('/(?:^|[-_])[0-9]{4,}(?:$|[-_])/D', $segment) === 1
             || preg_match('/^[a-f0-9]{16,}$/Di', $segment) === 1
-            || (strlen($segment) >= 24
-                && preg_match('/[a-z]/i', $segment) === 1
-                && preg_match('/[0-9]/', $segment) === 1);
+            || preg_match('/(?:^|[^a-z0-9])(?=[a-z0-9]*[a-z])(?=[a-z0-9]*[0-9])[a-z0-9]{24,}/Di', $segment) === 1;
     }
 
     private function hostMatches(string $host, array $knownHosts): bool
