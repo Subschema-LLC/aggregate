@@ -31,3 +31,4 @@ For UI changes, describe how you checked the interaction and keyboard use. -->
 
 - [ ] I reviewed the complete diff for secrets, personal data, and unintended or generated files.
 - [ ] I preserved the project's license notices and considered any added dependencies' licenses.
+- [ ] Each commit is signed off (`git commit -s`) under the [Developer Certificate of Origin](https://github.com/Subschema-LLC/aggregate/blob/development/CONTRIBUTING.md#sign-off-your-commits-dco).

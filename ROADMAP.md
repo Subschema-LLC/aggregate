@@ -14,9 +14,12 @@ an assertion that a release gate has passed.
 
 ## Public beta priorities
 
+The repository is public. The history reviews before the switch and the GitHub
+settings checked after it are recorded in
+[public release preparation](docs/PUBLIC-RELEASE.md#post-visibility-review-2026-10-19).
+
 | Priority | Work | Completion evidence |
 | --- | --- | --- |
-| Before making the repository public | Review all published Git history and refs for secrets and private material; verify private security/conduct contacts; configure GitHub protections and contribution settings. | Maintainer sign-off against [public release preparation](docs/PUBLIC-RELEASE.md#before-changing-repository-visibility), with any real exposed credentials rotated. |
 | Before inviting adopters to a beta candidate | Exercise a fresh install, anonymous/enhanced consent boundaries, headless operation, and routine BI access on a named commit. Resolve known authorization, disclosure, and data-loss blockers. | A promotion PR or test record identifies the commit, runtime/database versions, scenarios, failures, and remaining limitations using the [beta checklist](docs/BETA-TESTING.md#test-checklist). |
 | During beta | Execute migrations, reporting views, and lifecycle operations against disposable PostgreSQL, MySQL, MariaDB, SQL Server, and SQLite databases at documented versions. The fresh-install CI job now does this for a fresh install on SQLite, MySQL 8.0, MariaDB 10.11, PostgreSQL 16, and SQL Server 2017, 2019 and 2022; still open are the remaining documented versions (such as MySQL 8.4, MariaDB 10.6/11.4, PostgreSQL 13–15, Azure SQL) and upgrades from earlier releases. | Record which versions actually passed; SQL-string assertions and mocked tests do not establish engine compatibility. |
 | During beta | Rehearse upgrades, worker restart, and backup restoration; test extracted signed packages on a server without build tools. Extend runtime coverage as newer PHP versions are verified. | Reproducible install/upgrade reports, package verification with an independently trusted key, and separate file/database recovery results. |
@@ -50,6 +53,13 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   the [audit trail](docs/AUDIT-TRAIL.md) when an administrator starts them; they
   could also record their runs and results in `processing_tasks`, as the syncs
   and maintenance do, so the Scheduled tasks and Audit trail pages show them.
+- **Audit trail export to Excel and from the command line.** The Audit trail
+  page already [exports CSV](docs/AUDIT-TRAIL.md#export-entries), which Excel
+  opens. Still open: an Excel (`.xlsx`) download beside it, and CSV output from
+  `app:audit:list` so headless installations can export too. Reuse the CSV
+  export's columns, filters, 100,000-entry limit, formula escaping and
+  recording of each export, and add `.xlsx` only if it needs no heavy
+  dependency.
 - **Targeted feature rollout.** Extend
   [deployment-wide feature flags](docs/FEATURE-FLAGS.md) to selected websites or
   administrators where there is a concrete need. Preserve authorization and
