@@ -128,7 +128,7 @@ class ViewSchema
             $name = $column['name'];
             $text = $published['columns'][$view][$name] ?? null;
             $values = null;
-            if (!ViewCatalog::isMetadata($view) && in_array($name, BuiltinGlossaryCatalog::DIMENSIONS, true)) {
+            if (!ViewCatalog::isMetadata($view)) {
                 $values = $published['values'][$name] ?? $this->builtinValues($name);
             }
             $described[] = [
