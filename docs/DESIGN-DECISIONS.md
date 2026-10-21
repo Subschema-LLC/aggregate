@@ -233,6 +233,42 @@ use it to report a sensitive page under another path.
 **What would change it.** A reason to retire the short form, such as a tracker
 size budget it no longer fits, which would need a deprecation period first.
 
+### Campaign values kept for the tab only by choice, consent-required ones only after consent
+
+**Decision.** By default the tracker reads mapped query parameters from the
+current page only. `query_parameter_persistence` (`off`, `consented` or
+`always`) keeps the arrival page's mapped values in the tab's `sessionStorage`
+for later events. Consent-required values are never written before an
+affirmative choice: they wait in the document's memory, and a later page that
+starts without consent, or a withdrawal, removes them. `always` also keeps
+consent-free properties before a choice. The referrer channel of the arrival
+page is kept with them as the built-in `entry_channel`, a separate property
+rather than a change to `referrer_channel`. See
+[keeping values for the tab session](TRACKING.md#keep-values-for-the-tab-session).
+
+**Why.** A campaign tag or search referrer appears on the landing page only, so
+current-page reads attribute one page view and none of the conversions that
+follow it. Holding consent-required values in memory gives the result an
+operator expects from "store them until the visitor decides" (accept on the
+landing page and they persist, decline and they are gone) without writing
+campaign details to the device before consent. Tab session storage ends with the
+tab and is not an identifier. `referrer_channel` keeps meaning the referrer of
+each page, so existing BI reports do not change meaning; the arrival channel is
+a fixed code, so it can follow the consent-free rules safely.
+
+**Trade-off.** "Starts without consent" is decided when the tracker reads its
+initial settings, as for identifier cleanup, so a consent manager that reports a
+returning visitor's choice later loses the kept consent-required values on that
+page. Writing consent-free values before a choice is device storage that some
+markets require consent for, which is why `consented` exists and `off` is the
+default. A value repeated on every event reaches event-count thresholds sooner
+than one seen on a single page. A page script can read or alter the stored
+values, like any same-origin storage; the server still enforces consent and the
+`entry_channel` codes.
+
+**What would change it.** A consent signal that is reliably known before the
+tracker starts would let pages wait for it instead of removing values early.
+
 ### Organization traffic marked on each website, reported on every event
 
 **Decision.** Team members mark a browser through [marking links](PRIVACY-COMPLIANCE.md#organization-traffic)
@@ -414,10 +450,10 @@ columns after the deployed ones, and syncs the glossary, as saving page groups
 or disclosure thresholds regenerates the BI views. Deployed columns keep their
 order whichever kind a new column is. Removing or renaming a deployed column is
 left to **Force recreate views** (or `--force`), because it drops the views and
-their grants. The two properties Aggregate records itself,
-`org_internal_traffic` and `page_sequence`, are built in: their type is fixed,
-consent does not apply, the default model gives each a column, and the form
-offers only a checkbox and a column name.
+their grants. The properties Aggregate records itself,
+`org_internal_traffic`, `page_sequence` and `entry_channel`, are built in: their
+type is fixed, consent does not apply, the default model gives each a column,
+and the form offers only a checkbox and a column name.
 
 **Why.** Getting the organization-traffic flag or page depth into a report took
 four steps: knowing to add the property, choosing the right type and consent
@@ -431,7 +467,7 @@ only for what is actually a choice removes the rest.
 whose DDL commits as it goes, a failure can leave some views updated (the
 message says to retry). Column order in long-lived views reflects when columns
 were added, not the model's order. Models saved before this version keep their
-own properties, so the two built-in columns appear only after their boxes are
+own properties, so the built-in columns appear only after their boxes are
 ticked once.
 
 **What would change it.** Views that need a planned layout, or installations

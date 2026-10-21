@@ -165,7 +165,7 @@
             <section class="box">
                 <h2 class="title is-4">UTM and query parameters</h2>
                 <p>Map selected parameters from the current page URL to defined properties. For aliases sharing a destination, the first configured parameter with a nonblank value wins. Explicit properties passed to <code>emit()</code> take precedence.</p>
-                <p class="help mb-3">Matching is case-sensitive. The tracker does not save attribution to cookies or local storage, carry it across pages, or capture the full query string. Removing a mapping stops automatic capture of that parameter. URL parameters are strings; send numeric and boolean typed values through emit() or JSON requests instead.</p>
+                <p class="help mb-3">Matching is case-sensitive. The tracker never saves attribution to cookies or local storage or captures the full query string; it carries mapped values to later pages only when <a href="#query-persistence">Keep values for the tab session</a> is on. Removing a mapping stops automatic capture of that parameter. URL parameters are strings; send numeric and boolean typed values through emit() or JSON requests instead.</p>
                 <div class="table-container">
                     <table class="table is-fullwidth model-mappings">
                         <thead><tr><th>URL parameter</th><th>Destination JSON key</th><th><span class="is-sr-only">Actions</span></th></tr></thead>
@@ -180,6 +180,26 @@
                     <button class="button" type="button" id="add-mapping" data-action="pages--data-model--index#addMapping">Add parameter mapping</button>
                 </div>
                 <p class="help">Up to 100 mappings. Names begin with a letter and may contain letters, digits, underscores, dots, or hyphens (64 characters maximum). The organization marker cannot be set through a query parameter.</p>
+            </section>
+
+            <section class="box" aria-labelledby="query-persistence-heading">
+                <h2 class="title is-4" id="query-persistence-heading">Keep values for the tab session</h2>
+                <div class="field">
+                    <label class="label" for="query-persistence">Send mapped values with later pages</label>
+                    <div class="control">
+                        <div class="select">
+                            <select id="query-persistence" name="query_parameter_persistence" aria-describedby="query-persistence-help query-persistence-consented query-persistence-always">
+                                <option value="off"{% if model.query_parameter_persistence == 'off' %} selected{% endif %}>Off — current page only (default)</option>
+                                <option value="consented"{% if model.query_parameter_persistence == 'consented' %} selected{% endif %}>With consent only</option>
+                                <option value="always"{% if model.query_parameter_persistence == 'always' %} selected{% endif %}>Consent-free properties always, others with consent</option>
+                            </select>
+                        </div>
+                    </div>
+                    <p class="help" id="query-persistence-help">Keeps the mapped values of the page a visitor arrived on in browser session storage for that tab, and sends them with every later page view and event until the tab closes, a page brings new mapped values, or the visitor arrives from another website without them. Each property still follows its consent setting on every event. The strict profile keeps nothing.</p>
+                    <p class="help" id="query-persistence-consented"><strong>With consent only:</strong> nothing is written before an affirmative analytics choice. Values from the arrival page are held in memory until then; without a choice on that page they are gone on the next one. Withdrawal, or a later page that starts without consent, removes them.</p>
+                    <p class="help" id="query-persistence-always"><strong>Consent-free properties always:</strong> properties set to “Allow without consent”, such as <code>utm_medium</code>, are also written before a choice and kept after a rejection, so they reach every anonymous event in the tab. Consent-required properties behave as above. This writes to the visitor’s device before consent: review storage consent requirements with your legal team. Repeating one value on every event also lets a rare or identifying value pass event-count thresholds sooner; keep consent-free values to broad channel codes.</p>
+                </div>
+                {{ component('Ui:DocsLink', {topic: 'tracking.query-persistence', label: 'Keeping values for the tab session', class: 'mb-0'}) }}
             </section>
         </div>
 
@@ -223,7 +243,7 @@
         {% if scope is defined and scope and scope.kind != 'deployment' %}
             <label class="checkbox">
                 <input type="hidden" name="model_override" value="0">
-                <input type="checkbox" name="model_override" value="1"{% if 'custom_data_properties' in scope.overrides or 'query_parameter_mappings' in scope.overrides or 'page_sequence_enabled' in scope.overrides or 'page_sequence_method' in scope.overrides %} checked{% endif %}>
+                <input type="checkbox" name="model_override" value="1"{% if 'custom_data_properties' in scope.overrides or 'query_parameter_mappings' in scope.overrides or 'page_sequence_enabled' in scope.overrides or 'page_sequence_method' in scope.overrides or 'query_parameter_persistence' in scope.overrides %} checked{% endif %}>
                 Save this data model for {{ scope.label }}
             </label>
             <p class="help">Unchecked keeps the broader model. Checked replaces it for this scope. Reporting views still use the deployment model until its columns are published from Every website.</p>
