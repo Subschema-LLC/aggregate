@@ -150,7 +150,34 @@ Administrators configure the custom data model in YAML or **Data model**. A prop
 
 The six standard UTM properties—`utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`, and `utm_id`—all require consent by default. For anonymous attribution, the recommendation is **no more granular than `utm_medium`**, using reviewed channel codes such as `email`, `social`, or `cpc`. This recommendation is advisory: each property can be allowed separately. More detailed UTMs can reveal campaign membership, search text, identifiers, or sensitive context. Review those values and their purpose before overriding the recommendation. The setting allows a key, not a fixed list of values; even `utm_medium` can contain unexpected or personal text if an implementation puts it there.
 
-Properties use bounded scalar values; nested objects and arrays are discarded. Only configured query parameters are extracted from the current page URL, with no attribution cookie or session storage. The `org_internal_traffic` flag is derived separately and cannot be set through a query parameter or event property. See the [data model guide](DATA-MODEL.md) for configuration and [tracking guide](TRACKING.md#utm-and-custom-data-collection) for precedence and SDK overrides.
+Properties use bounded scalar values; nested objects and arrays are discarded. Only configured query parameters are extracted from the current page URL. By default there is no attribution cookie or session storage; the optional tab-session setting below changes that. The `org_internal_traffic` flag is derived separately and cannot be set through a query parameter or event property. See the [data model guide](DATA-MODEL.md) for configuration and [tracking guide](TRACKING.md#utm-and-custom-data-collection) for precedence and SDK overrides.
+
+### Keeping campaign values for the tab session
+
+`query_parameter_persistence` defaults to `off`. When it is on, the tracker keeps
+the arrival page's mapped values, and the built-in `entry_channel` code, in the
+tab's `sessionStorage` so that later pages send them:
+
+- `consented` writes nothing before an affirmative analytics choice. Values from
+  the arrival page wait in that document's memory, and a page that starts
+  without consent, or a withdrawal, removes everything kept.
+- `always` also writes consent-free properties and `entry_channel` before a
+  choice and keeps them after a rejection or withdrawal. Consent-required
+  properties are never written before consent; they are removed on withdrawal
+  and when a later page starts without consent.
+
+Storage is an operator choice, not an exemption. `always` stores information on
+the visitor's device before consent; under rules such as Article 5(3) of the
+ePrivacy Directive that can need consent even though no identifier is involved,
+so assess it with counsel and choose `consented` where it would. Repetition is
+the second risk: a kept value accompanies every event in the tab, so a rare or
+identifying value reaches event-count thresholds sooner than one seen on a
+single landing page. Keep consent-free values to broad channel codes, review
+them, and remember that thresholds count events, not people. The server applies
+each property's consent rule to every event, accepts only the fixed
+`entry_channel` codes, and drops `entry_channel` while the setting is off. The
+strict profile keeps nothing. See
+[keeping values for the tab session](TRACKING.md#keep-values-for-the-tab-session).
 
 ## Optional page depth
 
@@ -730,6 +757,10 @@ For the URL method, use language matching that behavior instead:
 >
 > If you accept enhanced analytics, we also use short-lived session information, a returning-visitor identifier, custom interaction details, and exact server timestamps. You can withdraw that consent at any time. Withdrawal stops future enhanced collection and removes analytics identifiers from this browser; it does not automatically erase records already collected. Contact us at [privacy contact] to exercise applicable privacy rights.
 
+If query values are kept for the tab session with `always`, also disclose that storage:
+
+> When you arrive through a link with campaign tags, we keep the campaign's broad channel [such as email or social] and how you arrived [search, social, email, referral or direct] in this tab's session storage, and include them with later analytics events in this tab, even when enhanced analytics is rejected. They contain no identifier and are removed when the tab closes. If you accept enhanced analytics, we also keep the other campaign details there until you withdraw.
+
 Do not call anonymous-mode rows "completely anonymous." Hour bucketing and identifier removal reduce risk, but the operator must assess paths, event and goal names, traffic volume, access, logs, and reasonably available means of relating data to a person.
 
 ## Infrastructure and logging
@@ -796,6 +827,7 @@ See the [manual update steps](../DEPLOYMENT.md#manual-update-steps) and the [dat
 - [ ] Use a fixed, reviewed event-name taxonomy with no user-derived values.
 - [ ] Review every `config/goals.yaml` definition; keep codes fixed, use `anonymous: false` where appropriate, and never treat rejection warnings as sensitive-data detection.
 - [ ] Review each consent-free custom property's actual values; prefer no more UTM detail than medium and document any override.
+- [ ] If query values are kept for the tab session, assess the storage rules for `always`, prefer `consented` where consent would be required, and disclose what is kept.
 - [ ] Review paths for personal or sensitive data and configure exclusions.
 - [ ] Decide whether anonymous-mode measurement is appropriate in each jurisdiction and context, and whether the strict collection profile better fits that assessment.
 - [ ] If you rely on strict collection, serve `aggregate.js` from this installation or opt static copies into strict, and review any consent tool or tags that still store data.

@@ -197,6 +197,10 @@ class Event
                 $this->approvedAnonymousCustomData[CustomDataSettings::PAGE_SEQUENCE_PROPERTY] = $pageSequence;
             }
         }
+        if (array_key_exists(CustomDataSettings::ENTRY_CHANNEL_PROPERTY, $this->approvedAnonymousCustomData)
+            && !CustomDataSettings::isEntryChannel($this->approvedAnonymousCustomData[CustomDataSettings::ENTRY_CHANNEL_PROPERTY])) {
+            unset($this->approvedAnonymousCustomData[CustomDataSettings::ENTRY_CHANNEL_PROPERTY]);
+        }
         $this->customData = $this->approvedAnonymousCustomData ?: null;
 
         return $this;

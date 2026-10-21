@@ -206,9 +206,10 @@ final class EventExampleGeneratorTest extends TestCase
 
         self::assertSame($expected, array_keys($bundle['examples']));
         self::assertTrue($bundle['synthetic']);
-        // Six UTM properties and the two built-in ones, which are never submitted.
-        self::assertCount(8, $bundle['properties']);
-        self::assertSame(['not_submittable', 'not_submittable'], array_column(array_slice($bundle['properties'], 6), 'collection'));
+        // Six UTM properties and the three built-in ones, which are never
+        // submitted: entry_channel only while query persistence is on.
+        self::assertCount(9, $bundle['properties']);
+        self::assertSame(['not_submittable', 'not_submittable', 'not_submittable'], array_column(array_slice($bundle['properties'], 6), 'collection'));
         self::assertNotEmpty($bundle['notes']);
     }
 
@@ -309,6 +310,21 @@ final class EventExampleGeneratorTest extends TestCase
         }
         $payload = (array) $generator->generate()['examples']['anonymous']['payload']['customData'];
         self::assertSame(['utm_medium' => 'email', 'page_sequence' => 2], $payload);
+    }
+
+    public function testEntryChannelAppearsAsAFixedCodeOnlyWhileQueryValuesAreKept(): void
+    {
+        $kept = $this->generator(['query_parameter_persistence' => 'always']);
+        $bundle = $kept->generate();
+        self::assertSame('search', ((array) $bundle['examples']['anonymous']['payload']['customData'])['entry_channel']);
+        self::assertSame('search', ((array) $bundle['examples']['enhanced']['payload']['customData'])['entry_channel']);
+        self::assertArrayNotHasKey('entry_channel', (array) ($bundle['tracker']['event']['customData'] ?? []), 'the tracker adds it; emit() does not pass it');
+        self::assertStringContainsString('entry_channel: "search"', implode(' ', $bundle['notes']));
+
+        $off = $this->generator([])->generate();
+        self::assertArrayNotHasKey('entry_channel', (array) ($off['examples']['anonymous']['payload']['customData'] ?? []));
+        self::assertArrayNotHasKey('entry_channel', (array) ($off['examples']['enhanced']['payload']['customData'] ?? []));
+        self::assertStringNotContainsString('entry_channel', implode(' ', $off['notes']));
     }
 
     public function testDisabledPageSequenceReportingDefinitionDoesNotEnableCollectionInExamples(): void

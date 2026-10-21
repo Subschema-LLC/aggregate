@@ -82,6 +82,7 @@ final class DataModelControllerTest extends TestCase
         $request = $this->request([
             'page_sequence_enabled' => '1',
             'page_sequence_method' => 'url_parameter',
+            'query_parameter_persistence' => 'always',
             'properties' => [
                 ['key' => ' utm_medium ', 'description' => ' Marketing channel ', 'column' => ' marketing_channel ', 'consent_required' => '0'],
                 ['key' => 'plan', 'description' => '', 'column' => '', 'consent_required' => '1'],
@@ -106,6 +107,7 @@ final class DataModelControllerTest extends TestCase
         self::assertSame('https://test.example', $written['environments']['test']['app_host']);
         self::assertTrue($written['environments']['test']['page_sequence_enabled']);
         self::assertSame('url_parameter', $written['environments']['test']['page_sequence_method']);
+        self::assertSame('always', $written['environments']['test']['query_parameter_persistence']);
         self::assertSame(['page_sequence' => 2], $this->settings->filterEventData(['page_sequence' => 2], false));
         // A form without the built-in box keeps their definitions, here the defaults.
         self::assertSame([
@@ -113,6 +115,7 @@ final class DataModelControllerTest extends TestCase
             'plan' => ['description' => '', 'consent_required' => true, 'column' => ''],
             'org_internal_traffic' => CustomDataSettings::builtinDefinition('org_internal_traffic', 'org_internal_traffic'),
             'page_sequence' => CustomDataSettings::builtinDefinition('page_sequence', 'page_sequence'),
+            'entry_channel' => CustomDataSettings::builtinDefinition('entry_channel', 'entry_channel'),
         ], $written['environments']['test']['custom_data_properties']);
         self::assertSame(['Data model saved. Collection changes apply to future events. The reporting views already match it.'], $request->getSession()->getFlashBag()->peek('success'));
         self::assertSame(['utm_medium' => 'utm_medium', 'channel' => 'utm_medium'], $written['environments']['test']['query_parameter_mappings']);
@@ -144,6 +147,9 @@ final class DataModelControllerTest extends TestCase
         }
         foreach ([null, true, false, '', 'url', 'URL_PARAMETER', ['url_parameter']] as $index => $value) {
             yield 'invalid page depth method '.$index => [$base + ['page_sequence_method' => $value]];
+        }
+        foreach ([null, true, '', 'ALWAYS', 'session', ['always']] as $index => $value) {
+            yield 'invalid query persistence '.$index => [$base + ['query_parameter_persistence' => $value]];
         }
         yield 'duplicate property' => [array_replace($base, ['properties' => [$row, array_replace($row, ['key' => ' plan '])]])];
         yield 'duplicate alias' => [array_replace($base, ['properties' => [$row, array_replace($row, ['key' => 'tier'])]])];
@@ -386,6 +392,22 @@ final class DataModelControllerTest extends TestCase
         self::assertCount(1, $crawler->filter('#data-model-form'));
         self::assertCount(0, $crawler->filter('form[action="/dashboard/data-model/regenerate"]'));
         self::assertCount(1, $crawler->filter('a[href="/dashboard/data-model/reporting"]'));
+    }
+
+    public function testQueryPersistenceShowsTheSavedChoiceItsStorageWarningAndTheEntryChannelBox(): void
+    {
+        $request = $this->request([], 'GET');
+        $crawler = new Crawler((string) $this->controller($request)->index($request)->getContent());
+        self::assertSame('off', $crawler->filter('#query-persistence option[selected]')->attr('value'));
+        self::assertSame(['off', 'consented', 'always'], $crawler->filter('#query-persistence option')->each(static fn (Crawler $option): string => (string) $option->attr('value')));
+        self::assertCount(1, $crawler->filter('label[for="query-persistence"]'));
+
+        $this->config->set('query_parameter_persistence', 'always');
+        $crawler = new Crawler((string) $this->controller($request)->index($request)->getContent());
+        self::assertSame('always', $crawler->filter('#query-persistence option[selected]')->attr('value'));
+        self::assertStringContainsString('writes to the visitor’s device before consent', $crawler->filter('#query-persistence-always')->text());
+        self::assertStringContainsString('nothing is written before an affirmative analytics choice', $crawler->filter('#query-persistence-consented')->text());
+        self::assertStringContainsString('Entry channel', $crawler->filter('#built-in-properties')->text());
     }
 
     public function testPageDepthToggleUsesSavedYamlAndCanBeDisabledWithoutChangingOtherSettings(): void

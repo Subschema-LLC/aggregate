@@ -17,7 +17,7 @@ The [strict collection profile](PRIVACY-COMPLIANCE.md#strict-collection-profile)
 
 ## Configure collection
 
-The default model defines `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`, and `utm_id`. Each maps from the identically named page query parameter, has a reporting column with the same name, and **requires enhanced consent**. It also gives the two [built-in properties](#built-in-properties), `org_internal_traffic` and `page_sequence`, a reporting column each. The private reporting views are created the first time you save the model, or when you [regenerate them](#reporting-views).
+The default model defines `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`, and `utm_id`. Each maps from the identically named page query parameter, has a reporting column with the same name, and **requires enhanced consent**. It also gives the three [built-in properties](#built-in-properties), `org_internal_traffic`, `page_sequence` and `entry_channel`, a reporting column each. The private reporting views are created the first time you save the model, or when you [regenerate them](#reporting-views).
 
 Select **Allow without consent** for individual properties to whitelist them for anonymous events. The server enforces this independently of the tracker. Unlisted properties continue to require enhanced consent; the model does not restrict which properties enhanced events may contain.
 
@@ -36,6 +36,7 @@ custom_data_properties:
   plan: { description: 'Published pricing tier, supplied by emit().', consent_required: true, column: plan_name }
   org_internal_traffic: { column: org_internal_traffic }
   page_sequence: { numeric_column: page_sequence }
+  entry_channel: { column: entry_channel }
 query_parameter_mappings:
   utm_source: utm_source
   utm_medium: utm_medium
@@ -49,7 +50,7 @@ query_parameter_mappings:
 
 Changing `utm_campaign.consent_required` to `false` deliberately overrides the recommendation and allows all its mapped inputs without consent. No additional bypass flag is required.
 
-The last two lines are the [built-in properties](#built-in-properties): they need only a column name.
+The last three property lines are the [built-in properties](#built-in-properties): they need only a column name.
 
 Rules:
 
@@ -57,7 +58,7 @@ Rules:
 - Definitions support `description` (default empty, at most 1,000 bytes), `consent_required` (a YAML boolean, default `true`), `column` (optional text reporting alias), `type` (optional collection type), and `numeric_column` (optional numeric reporting alias). Empty reporting aliases collect the property without projecting it in custom reporting views.
 - Property keys and parameter names are case-sensitive, start with a letter, and contain up to 64 letters, digits, underscores, dots, or hyphens. Prototype-related names are rejected. Dots are literal top-level keys, not nested paths.
 - Up to 50 properties and 100 parameter mappings are supported. Each source maps to one defined property; multiple sources can share a destination. Configuration order determines priority: the first nonblank parameter value wins, including repeated occurrences of one parameter. Explicit scalar `emit()` properties override URL values, including `false`, `0`, and `null`.
-- The SDK reads the current page URL for each event. Attribution is not persisted, carried to later pages, or derived from the referrer. Selected values go into the payload's `customData` object and are stored in `events.custom_data`; full query strings and fragments are still discarded.
+- The SDK reads the current page URL for each event. By default attribution is not persisted, carried to later pages, or derived from the referrer. `query_parameter_persistence` (`off`, `consented` or `always`) keeps the arrival page's mapped values for the browser tab and adds the built-in `entry_channel`; see [keeping values for the tab session](TRACKING.md#keep-values-for-the-tab-session). Selected values go into the payload's `customData` object and are stored in `events.custom_data`; full query strings and fragments are still discarded.
 - [Marked clicks and form submissions](TRACKING.md#track-clicks-and-forms-with-data-attributes) supply properties from `data-aggregate-prop-<key>` attributes, as `emit()` properties. Attribute names are lowercase, so those keys must be too. A property declared `integer`, `float`, `double` or `boolean` accepts only that type's plain written form, such as `1299` or `true`, and is converted; other text is left out.
 - The tracker's own script URL can also supply string values for the automatic page view as `cd.<property>=<value>`. They follow the same definitions, consent rules and bounds as `emit()` properties and override query mappings for that view; see [custom data in the script URL](TRACKING.md#custom-data-in-the-script-url).
 - Properties remain flat scalars or null, with at most 50 retained keys and strings limited to 500 UTF-8 bytes. Nested values are discarded. Anonymous protections for identifiers, exact dimensions, and UTC hour timestamps remain in place.
@@ -68,7 +69,7 @@ Static/CDN copies need matching public `customData` settings as described in the
 
 ## Built-in properties
 
-Aggregate records two properties itself. Their type is fixed and consent does not
+Aggregate records three properties itself. Their type is fixed and consent does not
 apply to them, so the only choice is whether each gets a column in the private
 [reporting views](#reporting-views), and its name.
 
@@ -76,6 +77,7 @@ apply to them, so the only choice is whether each gets a column in the private
 | --- | --- | --- | --- |
 | `org_internal_traffic` | `true` for a browser marked as your team's with the [organization-traffic marker](PRIVACY-COMPLIANCE.md#organization-traffic), `false` otherwise | On every standard-profile event, in both privacy modes | `org_internal_traffic`, text: `true` or `false` |
 | `page_sequence` | [Page depth](#optional-page-depth): `1` for the first tracked page in a browser tab, up to `20` (20 or more) | On every event while page depth is on | `page_sequence`, a whole number |
+| `entry_channel` | How the visitor arrived in the browser tab: the referrer channel (`direct`, `search`, `social`, `email`, `referral` or `internal`) of the page that began the [kept query values](TRACKING.md#keep-values-for-the-tab-session) | On every event while `query_parameter_persistence` is on, in both privacy modes | `entry_channel`, text |
 
 On **Collection → Data model**, the **Built-in properties** box at the top of
 the Properties tab has a checkbox and a column name for each. Tick a box, adjust
@@ -83,7 +85,7 @@ the name if you like, and save the model: the column is added to the views
 straight away. Unticking removes the property's column from the model; see
 [Reporting views](#reporting-views) for what that means for deployed views.
 
-The default model gives both a column. A model you saved before this version
+The default model gives each a column. A model you saved before this version
 keeps its own properties, so tick them once. In YAML, a column name is enough:
 
 ```yaml
@@ -91,14 +93,24 @@ custom_data_properties:
   # ...your other properties...
   org_internal_traffic: { column: org_internal_traffic }
   page_sequence: { numeric_column: page_sequence }
+  entry_channel: { column: entry_channel }
 ```
 
-A `type` may be left out (`boolean` and `integer` are assumed) and any
+A `type` may be left out (`boolean`, `integer` and `string` are assumed) and any
 `consent_required` setting is ignored. A different type is refused:
-`org_internal_traffic` accepts only `boolean` or `scalar`, and `page_sequence`
-only `integer` while page depth is on. Query parameters and submitted event
-properties cannot set either value, and the marker's browser-side name is not a
-reserved property. A `page_sequence` column stays empty while page depth is off.
+`org_internal_traffic` accepts only `boolean` or `scalar`, `page_sequence`
+only `integer` while page depth is on, and `entry_channel` only `string` or
+`scalar`. Query parameters and submitted event properties cannot set any of
+them, and the marker's browser-side name is not a reserved property. A
+`page_sequence` column stays empty while page depth is off, and an
+`entry_channel` column while query persistence is off. The server accepts only
+the six `entry_channel` codes; it cannot verify that a direct client's claim
+matches how the visitor arrived.
+
+`entry_channel` is reserved from this version. If an earlier model used that
+name for a property of its own, incoming values other than the six codes are
+now stripped (all of them while query persistence is off); rename the property
+and plan a reporting migration before upgrading.
 
 ## Optional page depth
 
