@@ -29,6 +29,7 @@ final class ScopeKeys
         CustomDataSettings::MAPPINGS_KEY,
         CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY,
         CustomDataSettings::PAGE_SEQUENCE_METHOD_KEY,
+        CustomDataSettings::QUERY_PERSISTENCE_KEY,
     ];
 
     /**
@@ -119,6 +120,9 @@ final class ScopeKeys
             if ($key === CustomDataSettings::PAGE_SEQUENCE_METHOD_KEY
                 && (!is_string($value) || !in_array($value, CustomDataSettings::PAGE_SEQUENCE_METHODS, true))) {
                 return 'page_sequence_method must be session_storage or url_parameter in a website or group file.';
+            }
+            if ($key === CustomDataSettings::QUERY_PERSISTENCE_KEY && !CustomDataSettings::isQueryPersistenceMode($value)) {
+                return 'query_parameter_persistence must be off, consented or always in a website or group file.';
             }
             if (in_array($key, [CustomDataSettings::PROPERTIES_KEY, CustomDataSettings::MAPPINGS_KEY], true)
                 && (!is_array($value) || ($value !== [] && array_is_list($value)))) {

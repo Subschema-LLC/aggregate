@@ -45,7 +45,7 @@ final class CustomDataSettingsTest extends TestCase
         self::assertSame($utm, $settings->filterEventData($utm, true));
         self::assertSame([], $settings->toBrowserConfig()['consentFreeProperties']);
         self::assertSame(array_combine(array_keys($utm), array_keys($utm)), $settings->toBrowserConfig()['queryParameters']);
-        self::assertSame(array_combine(array_keys($utm), array_keys($utm)) + ['org_internal_traffic' => 'org_internal_traffic'], $settings->reportingColumns());
+        self::assertSame(array_combine(array_keys($utm), array_keys($utm)) + ['org_internal_traffic' => 'org_internal_traffic', 'entry_channel' => 'entry_channel'], $settings->reportingColumns());
     }
 
     public function testTheDefaultModelGivesBothBuiltInPropertiesAReportingColumn(): void
@@ -162,6 +162,63 @@ final class CustomDataSettingsTest extends TestCase
         }
     }
 
+    public function testQueryPersistenceDefaultsOffAndIsACeilingTheServedTrackerNarrowsForStrictOrNoAnonymousCollection(): void
+    {
+        $default = $this->settings([]);
+        self::assertSame('off', $default->toArray()['query_parameter_persistence']);
+        self::assertSame('off', $default->toBrowserConfig()['queryParameterPersistence']);
+        self::assertSame('off', Yaml::parse($default->exportYaml())['query_parameter_persistence']);
+
+        foreach (CustomDataSettings::QUERY_PERSISTENCE_MODES as $mode) {
+            self::assertSame($mode, $this->settings(['query_parameter_persistence' => $mode])->toBrowserConfig()['queryParameterPersistence']);
+        }
+        // Nothing consent-free is recorded without anonymous collection, so
+        // nothing is kept before consent either; strict keeps nothing at all.
+        self::assertSame('consented', $this->settings(['query_parameter_persistence' => 'always', 'anonymous_tracking_enabled' => false])->toBrowserConfig()['queryParameterPersistence']);
+        self::assertSame('consented', $this->settings(['query_parameter_persistence' => 'consented', 'anonymous_tracking_enabled' => false])->toBrowserConfig()['queryParameterPersistence']);
+        self::assertSame('off', $this->settings(['query_parameter_persistence' => 'always', 'collection_profile' => 'strict'])->toBrowserConfig()['queryParameterPersistence']);
+    }
+
+    public function testModelSavesWithoutThePersistenceFieldKeepTheLatestSavedChoice(): void
+    {
+        $settings = $this->settings(['query_parameter_persistence' => 'off']);
+        $settings->toArray();
+        file_put_contents($this->projectDir.'/config/aggregate.yaml', "query_parameter_persistence: always\nunrelated: preserve-me\n");
+
+        $settings->save(['custom_data_properties' => [], 'query_parameter_mappings' => []]);
+
+        $saved = Yaml::parseFile($this->projectDir.'/config/aggregate.yaml');
+        self::assertSame('always', $saved['query_parameter_persistence']);
+        self::assertSame('preserve-me', $saved['unrelated']);
+        $settings->save(['custom_data_properties' => [], 'query_parameter_mappings' => [], 'query_parameter_persistence' => 'consented']);
+        self::assertSame('consented', Yaml::parseFile($this->projectDir.'/config/aggregate.yaml')['query_parameter_persistence']);
+    }
+
+    #[DataProvider('entryChannelValues')]
+    public function testEntryChannelIsAFixedCodeAcceptedInBothModesOnlyWhilePersistenceIsOn(string $mode, mixed $value, bool $accepted): void
+    {
+        $settings = $this->settings(['query_parameter_persistence' => $mode]);
+        $expected = $accepted ? ['entry_channel' => $value] : null;
+
+        self::assertSame($expected, $settings->filterEventData(['entry_channel' => $value], false));
+        self::assertSame($expected, $settings->filterEventData(['entry_channel' => $value], true));
+        self::assertNotContains('entry_channel', $settings->toBrowserConfig()['consentFreeProperties']);
+        self::assertArrayNotHasKey('entry_channel', $settings->toBrowserConfig()['propertyTypes'] ?? []);
+        self::assertSame(CustomDataSettings::builtinDefinition('entry_channel', 'entry_channel'), $settings->properties()['entry_channel']);
+    }
+
+    public static function entryChannelValues(): iterable
+    {
+        foreach (CustomDataSettings::QUERY_PERSISTENCE_MODES as $mode) {
+            foreach (CustomDataSettings::ENTRY_CHANNELS as $channel) {
+                yield $mode.' '.$channel => [$mode, $channel, $mode !== 'off'];
+            }
+            foreach (['unknown', 'paid', 'SEARCH', ' search', 'user@example.com', '', 1, true] as $index => $invalid) {
+                yield $mode.' invalid '.$index => [$mode, $invalid, false];
+            }
+        }
+    }
+
     #[DataProvider('reservedPageSequenceQueryMappings')]
     public function testReservedPageSequenceUrlParameterCannotBecomeAnOrdinaryProperty(string $method, bool $enabled): void
     {
@@ -240,6 +297,15 @@ final class CustomDataSettingsTest extends TestCase
         }
         yield 'property declared as another type' => [['page_sequence_enabled' => true, 'custom_data_properties' => ['page_sequence' => ['type' => 'string', 'consent_required' => false]]]];
         yield 'organization flag declared as a number' => [['custom_data_properties' => ['org_internal_traffic' => ['type' => 'integer']], 'query_parameter_mappings' => []]];
+        foreach ([null, true, false, 1, [], '', 'ALWAYS', 'session_storage', ' always', ['always']] as $index => $invalid) {
+            yield 'invalid query persistence '.$index => [['query_parameter_persistence' => $invalid]];
+        }
+        yield 'entry channel declared as a number' => [['custom_data_properties' => ['entry_channel' => ['type' => 'integer']], 'query_parameter_mappings' => []]];
+        yield 'entry channel query mapping' => [[
+            'query_parameter_persistence' => 'always',
+            'custom_data_properties' => ['entry_channel' => ['consent_required' => false]],
+            'query_parameter_mappings' => ['channel' => 'entry_channel'],
+        ]];
         yield 'query mapping' => [[
             'page_sequence_enabled' => true,
             'custom_data_properties' => ['page_sequence' => ['type' => 'integer', 'consent_required' => false]],
@@ -370,6 +436,7 @@ final class CustomDataSettingsTest extends TestCase
             'consentFreeProperties' => ['quantity'],
             'pageSequenceEnabled' => false,
             'pageSequenceMethod' => 'session_storage',
+            'queryParameterPersistence' => 'off',
             'propertyTypes' => ['quantity' => 'integer', 'revenue' => 'double'],
         ], $settings->toBrowserConfig());
         self::assertSame($settings->toArray(), Yaml::parse($settings->exportYaml()));
@@ -531,6 +598,7 @@ final class CustomDataSettingsTest extends TestCase
             'query_parameter_mappings' => ['utm_medium' => 'utm_medium', 'channel' => 'utm_medium'],
             'page_sequence_enabled' => true,
             'page_sequence_method' => 'url_parameter',
+            'query_parameter_persistence' => 'always',
         ];
 
         $settings->save($model);

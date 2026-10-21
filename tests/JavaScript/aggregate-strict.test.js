@@ -203,6 +203,26 @@ test('browser configuration cannot loosen a served strict profile', () => {
   assertStorageUntouched(runtime);
 });
 
+test('query persistence keeps nothing under a served strict profile, whatever the page asks', () => {
+  const runtime = loadSdk({
+    servedProfile: 'strict',
+    inline: {consent: true, customData: {queryParameterPersistence: 'always', consentFreeProperties: ['utm_medium']}}
+  });
+
+  runtime.api.configure({customData: {queryParameterPersistence: 'always'}});
+  runtime.triggerPageView();
+  runtime.api.setConsent(true);
+  runtime.api.setConsent(false);
+  runtime.api.emit('button_click');
+
+  assert.deepEqual(runtime.requests.map((payload) => Object.keys(payload).sort()), [
+    ['eventName', 'pagePath', 'websiteToken'],
+    ['eventName', 'goalEvent', 'pagePath', 'websiteToken']
+  ]);
+  assertNoDeviceAccess(runtime.accesses);
+  assertStorageUntouched(runtime);
+});
+
 test('an unrecognized served profile fails closed to strict collection', () => {
   const runtime = loadSdk({servedProfile: 'relaxed'});
 

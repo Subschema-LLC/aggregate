@@ -107,6 +107,7 @@ final class ScriptControllerTest extends TestCase
             'consentFreeProperties' => ['campaign'],
             'pageSequenceEnabled' => false,
             'pageSequenceMethod' => 'session_storage',
+            'queryParameterPersistence' => 'off',
         ], $this->customDataBrowserConfig($script));
         self::assertStringNotContainsString('private implementation instructions', $script);
         self::assertStringNotContainsString('organization_traffic', $script);
@@ -120,6 +121,7 @@ final class ScriptControllerTest extends TestCase
             'consentFreeProperties' => [],
             'pageSequenceEnabled' => false,
             'pageSequenceMethod' => 'session_storage',
+            'queryParameterPersistence' => 'off',
         ], $this->customDataBrowserConfig((string) $this->response([])->getContent()));
     }
 
@@ -135,7 +137,7 @@ final class ScriptControllerTest extends TestCase
         ];
         $settings['page_sequence_enabled'] = true;
         $settings['page_sequence_method'] = 'url_parameter';
-        $expected = ['queryParameters' => [], 'consentFreeProperties' => ['quantity'], 'pageSequenceEnabled' => true, 'pageSequenceMethod' => 'url_parameter', 'pageSequenceExcludedPaths' => [], 'propertyTypes' => ['quantity' => 'integer', 'revenue' => 'double']];
+        $expected = ['queryParameters' => [], 'consentFreeProperties' => ['quantity'], 'pageSequenceEnabled' => true, 'pageSequenceMethod' => 'url_parameter', 'queryParameterPersistence' => 'off', 'pageSequenceExcludedPaths' => [], 'propertyTypes' => ['quantity' => 'integer', 'revenue' => 'double']];
         $source = (string) $this->response($settings)->getContent();
         self::assertSame($expected, $this->customDataBrowserConfig($source));
         $minified = (string) $this->response($settings, Request::create('/aggregate.js?min=1'), $this->buildFixture())->getContent();
@@ -203,7 +205,7 @@ final class ScriptControllerTest extends TestCase
         $public = json_decode($matches[1], true, flags: JSON_THROW_ON_ERROR);
         self::assertSame($settings['js_namespace'], $public[0]);
         self::assertSame($settings['internal_traffic_value'], $public[1]['value']);
-        self::assertSame(['queryParameters' => ['utm_medium' => 'medium'], 'consentFreeProperties' => ['medium'], 'pageSequenceEnabled' => false, 'pageSequenceMethod' => 'session_storage'], $public[2]);
+        self::assertSame(['queryParameters' => ['utm_medium' => 'medium'], 'consentFreeProperties' => ['medium'], 'pageSequenceEnabled' => false, 'pageSequenceMethod' => 'session_storage', 'queryParameterPersistence' => 'off'], $public[2]);
 
         $settings['internal_traffic_value'] = 'updated-without-rebuilding';
         self::assertStringContainsString('updated-without-rebuilding', (string) $this->response($settings, Request::create('/aggregate.js?min=1'), $directory)->getContent());
@@ -276,7 +278,7 @@ final class ScriptControllerTest extends TestCase
             'page_sequence_enabled' => true,
             'page_sequence_method' => 'url_parameter',
         ];
-        $withheld = ['queryParameters' => [], 'consentFreeProperties' => [], 'pageSequenceEnabled' => false, 'pageSequenceMethod' => 'url_parameter', 'propertyTypes' => ['medium' => 'string']];
+        $withheld = ['queryParameters' => [], 'consentFreeProperties' => [], 'pageSequenceEnabled' => false, 'pageSequenceMethod' => 'url_parameter', 'queryParameterPersistence' => 'off', 'propertyTypes' => ['medium' => 'string']];
 
         $source = (string) $this->response($settings)->getContent();
         self::assertSame(['profile' => 'strict'], $this->collectionBrowserConfig($source));

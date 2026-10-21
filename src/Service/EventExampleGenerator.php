@@ -31,6 +31,7 @@ final class EventExampleGenerator
                 ...$this->ecommerceModel(),
                 CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY => $model[CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY],
                 CustomDataSettings::PAGE_SEQUENCE_METHOD_KEY => $model[CustomDataSettings::PAGE_SEQUENCE_METHOD_KEY],
+                CustomDataSettings::QUERY_PERSISTENCE_KEY => $model[CustomDataSettings::QUERY_PERSISTENCE_KEY],
             ]);
         }
         $ecommerceValues = [
@@ -44,6 +45,10 @@ final class EventExampleGenerator
         }
         $candidates = [];
         foreach ($exampleProperties as $key => $definition) {
+            if ($key === CustomDataSettings::ENTRY_CHANNEL_PROPERTY) {
+                $candidates[$key] = 'search';
+                continue;
+            }
             $candidates[$key] = $key === CustomDataSettings::PAGE_SEQUENCE_PROPERTY ? 2 : ($ecommerce ? $ecommerceValues[$key] : match ($definition['type'] ?? 'scalar') {
                 'integer' => 2,
                 'float', 'double' => 12.5,
@@ -164,6 +169,9 @@ final class EventExampleGenerator
             $bundle['notes'][] = $model[CustomDataSettings::PAGE_SEQUENCE_METHOD_KEY] === 'url_parameter'
                 ? 'The URL parameter method carries page depth through aggregate_page_sequence on eligible links. Copied, edited, or shared URLs can carry arbitrary counts; the number does not prove where navigation started.'
                 : 'The session storage method keeps a bounded counter for this website in the browser tab; storage restrictions and tab restoration can affect continuity.';
+        }
+        if ($model[CustomDataSettings::QUERY_PERSISTENCE_KEY] !== 'off') {
+            $bundle['notes'][] = 'entry_channel: "search" is the referrer channel of the page that began the query values kept for this browser tab; the tracker adds it to every event while query persistence is on. It is one of direct, internal, search, social, email or referral, not a campaign or visitor identifier, and a direct client\'s value is unverified.';
         }
         if ($ecommerce) {
             $bundle['recommended_model'] = $model;

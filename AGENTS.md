@@ -124,6 +124,14 @@ deployment model until columns are published. See
   with warnings in the UI and documentation. This recommendation is advisory;
   do not turn it into a hard ban. Even an allowed medium value can contain
   identifying text. Preserve scalar bounds, sanitization, and alias handling.
+  Optional `query_parameter_persistence` (`off` by default, `consented`,
+  `always`) is the only way mapped values reach later pages: tab
+  `sessionStorage`, never cookies or local storage. Never write
+  consent-required values before consent; remove them on withdrawal and when a
+  page starts without consent. A served setting is a ceiling pages can only
+  narrow. `entry_channel` stays a fixed referrer-channel code, accepted by the
+  server only while persistence is on. See
+  [keeping values for the tab session](docs/TRACKING.md#keep-values-for-the-tab-session).
 - Keep anonymous goal codes explicitly permitted and the organization-traffic
   flag a boolean under the fixed key `org_internal_traffic`. Marker values,
   marking codes and sharing tokens are not event properties. Do not let query

@@ -67,6 +67,10 @@
   // A script served with a narrower Google Consent Mode setting (updates or
   // off) keeps it; page options cannot widen what the installation chose.
   var googleConsentModeLocked = Object.prototype.hasOwnProperty.call(customDataDefaults, 'googleConsentMode');
+  // A served tracker's query persistence is a ceiling: page options can narrow
+  // it but never widen it. A static copy keeps nothing unless a page asks.
+  var queryPersistenceCeiling = Object.prototype.hasOwnProperty.call(customDataDefaults, 'queryParameterPersistence')
+    ? customDataDefaults.queryParameterPersistence : 'always';
   try {
     var s = document.currentScript || (function(){var ss=document.getElementsByTagName('script'); return ss[ss.length-1];})();
     if (s && s.dataset && s.dataset.namespace) {
@@ -86,6 +90,16 @@
     pageSequences: Object.create(null),
     pageSequenceUrlInitial: null,
     pageSequenceUrlTrimAttempted: false,
+    // Query persistence for this document: the mapped values its URL brought,
+    // held in memory only, and the copy kept in session storage, read once.
+    // Nothing is kept until every initial setting has been read.
+    queryHeld: null,
+    queryStored: undefined,
+    queryReady: false,
+    // How the visitor arrived in this tab: the referrer channel of the page
+    // that began the kept values, sent as customData.entry_channel.
+    queryEntry: null,
+    queryEntryOwn: false,
 
     requireStrictCollection: function(profile){
       if (profile !== 'strict') return;
@@ -95,6 +109,9 @@
       this.pageSequences = Object.create(null);
       this.pageSequenceUrlInitial = null;
       this.pageSequenceUrlTrimAttempted = false;
+      this.queryHeld = null;
+      this.queryStored = undefined;
+      this.queryEntry = null;
     },
 
     configureInternalTraffic: function(options){
@@ -159,6 +176,11 @@
           this.config.customData.consentFreeProperties = Array.isArray(options.consentFreeProperties)
             ? options.consentFreeProperties.filter(this.isCustomDataKey.bind(this))
             : [];
+        }
+
+        // off, consented or always; queryPersistence() applies the ceiling.
+        if (Object.prototype.hasOwnProperty.call(options, 'queryParameterPersistence')) {
+          this.config.customData.queryParameterPersistence = options.queryParameterPersistence;
         }
 
         if (Object.prototype.hasOwnProperty.call(options, 'propertyTypes')) {
@@ -431,44 +453,25 @@
           && (!settings.propertyTypes || typeof settings.propertyTypes !== 'object' || Array.isArray(settings.propertyTypes))) return null;
         var tracker = this;
         var canInclude = function(key){
-          return tracker.isCustomDataKey(key) && key !== 'org_internal_traffic' && key !== 'page_sequence'
+          return tracker.isCustomDataKey(key) && key !== 'org_internal_traffic' && key !== 'page_sequence' && key !== 'entry_channel'
             && (tracker.consent || settings.consentFreeProperties.indexOf(key) !== -1);
         };
-        var cleanValue = function(key, value){
-          var type = settings.propertyTypes && Object.prototype.hasOwnProperty.call(settings.propertyTypes, key)
-            ? settings.propertyTypes[key] : 'scalar';
-          if (['scalar', 'string', 'integer', 'float', 'double', 'boolean'].indexOf(type) === -1) return undefined;
-          if (value !== null) {
-            if (type === 'string' && typeof value !== 'string') return undefined;
-            if (type === 'boolean' && typeof value !== 'boolean') return undefined;
-            if (['integer', 'float', 'double'].indexOf(type) !== -1 && (typeof value !== 'number' || !isFinite(value))) return undefined;
-            if (type === 'integer' && (Math.floor(value) !== value || Math.abs(value) > 9007199254740991)) return undefined;
-          }
-          // Match the server's flat, bounded scalar property model. Keep at
-          // most 500 UTF-8 bytes without splitting a character.
-          if (typeof value === 'string') {
-            var characters = Array.from(value.replace(/[\u0000-\u001f\u007f]/g, ''));
-            var result = '';
-            var bytes = 0;
-            for (var i = 0; i < characters.length; i++) {
-              var point = characters[i].codePointAt(0);
-              if (point >= 0xd800 && point <= 0xdfff) continue;
-              var size = point < 0x80 ? 1 : (point < 0x800 ? 2 : (point < 0x10000 ? 3 : 4));
-              if (bytes + size > 500) break;
-              result += characters[i];
-              bytes += size;
-            }
-            return result;
-          }
-          if (value === null || typeof value === 'boolean' || (typeof value === 'number' && isFinite(value))) return value;
-          return undefined;
-        };
+        var cleanValue = function(key, value){ return tracker.cleanCustomValue(key, value); };
 
         // The sequence is generated independently of event properties and URL
         // mappings, and uses one of the existing bounded custom-data slots.
         var pageSequence = this.pageSequenceForEvent(advancePage);
         if (pageSequence !== null) {
           clean.page_sequence = pageSequence;
+          count++;
+        }
+
+        // Query persistence adds the entry channel itself, like page depth:
+        // a fixed referrer channel code that event properties cannot replace.
+        var fromUrl = this.queryValues();
+        var remembered = this.rememberQueryValues(fromUrl);
+        if (remembered && this.queryEntry) {
+          clean.entry_channel = this.queryEntry;
           count++;
         }
 
@@ -492,32 +495,211 @@
           }
         }
 
-        // Read only explicitly mapped parameters from this page's current URL.
-        // Attribution is never persisted in cookies or browser storage.
+        // Read only explicitly mapped parameters from this page's current URL,
+        // then, while query persistence is on, the values kept for this tab.
+        // Attribution is never written to cookies or local storage.
+        var mapped = [fromUrl, remembered];
+        for (var m = 0; m < mapped.length; m++) {
+          if (!mapped[m]) continue;
+          var destinations = Object.keys(mapped[m]);
+          for (var j = 0; j < destinations.length && count < 50; j++) {
+            var destination = destinations[j];
+            if (!canInclude(destination) || Object.prototype.hasOwnProperty.call(clean, destination)) continue;
+            var queryValue = cleanValue(destination, mapped[m][destination]);
+            if (typeof queryValue !== 'string' || !queryValue) continue;
+            clean[destination] = queryValue;
+            count++;
+          }
+        }
+
+        return count ? clean : null;
+      }
+      return null;
+    },
+
+    // Match the server's flat, bounded scalar property model and the
+    // property's declared type. Strings keep at most 500 UTF-8 bytes without
+    // splitting a character. Returns undefined for a value to leave out.
+    cleanCustomValue: function(key, value){
+      var types = this.config.customData.propertyTypes;
+      var type = types && Object.prototype.hasOwnProperty.call(types, key) ? types[key] : 'scalar';
+      if (['scalar', 'string', 'integer', 'float', 'double', 'boolean'].indexOf(type) === -1) return undefined;
+      if (value !== null) {
+        if (type === 'string' && typeof value !== 'string') return undefined;
+        if (type === 'boolean' && typeof value !== 'boolean') return undefined;
+        if (['integer', 'float', 'double'].indexOf(type) !== -1 && (typeof value !== 'number' || !isFinite(value))) return undefined;
+        if (type === 'integer' && (Math.floor(value) !== value || Math.abs(value) > 9007199254740991)) return undefined;
+      }
+      if (typeof value === 'string') {
+        var characters = Array.from(value.replace(/[\u0000-\u001f\u007f]/g, ''));
+        var result = '';
+        var bytes = 0;
+        for (var i = 0; i < characters.length; i++) {
+          var point = characters[i].codePointAt(0);
+          if (point >= 0xd800 && point <= 0xdfff) continue;
+          var size = point < 0x80 ? 1 : (point < 0x800 ? 2 : (point < 0x10000 ? 3 : 4));
+          if (bytes + size > 500) break;
+          result += characters[i];
+          bytes += size;
+        }
+        return result;
+      }
+      if (value === null || typeof value === 'boolean' || (typeof value === 'number' && isFinite(value))) return value;
+      return undefined;
+    },
+
+    // The mapped values in this page's URL by destination property, in
+    // mapping order: for each property the first source with a nonblank value
+    // wins. Consent is applied afterwards, to each event and each write.
+    queryValues: function(){
+      var values = Object.create(null);
+      if (withStandardProfile) {
         try {
+          var mappings = this.config.customData.queryParameters;
           var pageUrl = new URL(location.origin);
           pageUrl.search = location.search || '';
-          var sources = Object.keys(settings.queryParameters);
-          for (var j = 0; j < sources.length && count < 50; j++) {
+          var sources = Object.keys(mappings);
+          for (var j = 0; j < sources.length; j++) {
             if (sources[j] === 'aggregate_page_sequence') continue;
-            var destination = settings.queryParameters[sources[j]];
-            if (!canInclude(destination) || Object.prototype.hasOwnProperty.call(clean, destination)) continue;
-            var values = pageUrl.searchParams.getAll(sources[j]);
-            for (var k = 0; k < values.length; k++) {
-              var queryValue = cleanValue(destination, values[k]);
+            var destination = mappings[sources[j]];
+            if (!this.isCustomDataKey(destination) || Object.prototype.hasOwnProperty.call(values, destination)) continue;
+            var found = pageUrl.searchParams.getAll(sources[j]);
+            for (var k = 0; k < found.length; k++) {
+              var value = this.cleanCustomValue(destination, found[k]);
               // Query values are strings. Numeric/boolean types must be sent as
               // JSON values through emit(); never guess or coerce URL values.
-              if (typeof queryValue !== 'string') continue;
-              queryValue = queryValue.trim();
-              if (!queryValue) continue;
-              clean[destination] = queryValue;
-              count++;
+              if (typeof value !== 'string') continue;
+              value = value.trim();
+              if (!value) continue;
+              values[destination] = value;
               break;
             }
           }
         } catch(e) {}
+      }
+      return values;
+    },
 
-        return count ? clean : null;
+    // off (the default), consented or always, never more than the served
+    // tracker allows. A missing or unknown value keeps nothing.
+    queryPersistence: function(){
+      var modes = ['off', 'consented', 'always'];
+      var configured = this.config.customData.queryParameterPersistence;
+      return modes[Math.min(Math.max(modes.indexOf(queryPersistenceCeiling), 0), Math.max(modes.indexOf(configured), 0))];
+    },
+
+    queryStorageKey: function(){
+      var token = this.config.websiteToken;
+      try {
+        return typeof token === 'string' && token ? 'aggregate_attribution:' + encodeURIComponent(token) : null;
+      } catch(e) {
+        return null;
+      }
+    },
+
+    // Query persistence keeps the mapped values a visitor arrived with in this
+    // tab's session storage, so later pages send them too. Without consent it
+    // writes only consent-free properties, and only in the always mode.
+    // Consent-required values stay in this document's memory until consent
+    // is granted; withdrawal, or a later page that starts without consent,
+    // removes them. A page with new mapped values replaces the set, and an
+    // arrival from another website without them ends it. fromUrl is this
+    // page's queryValues(), read here when not given. Returns the values this
+    // document may send, each still subject to its consent rule, or null
+    // while persistence is off.
+    rememberQueryValues: function(fromUrl){
+      if (strictCollection || !this.queryReady) return null;
+      if (withStandardProfile) {
+        var mode = this.queryPersistence();
+        var key = this.queryStorageKey();
+        if (mode === 'off' || !key) return null;
+        if (!fromUrl) fromUrl = this.queryValues();
+        var settings = this.config.customData;
+        var tracker = this;
+        var mappedTo = Object.create(null);
+        try {
+          var sources = Object.keys(settings.queryParameters);
+          for (var i = 0; i < sources.length; i++) {
+            if (sources[i] !== 'aggregate_page_sequence') mappedTo[settings.queryParameters[sources[i]]] = true;
+          }
+        } catch(e) {
+          return null;
+        }
+        var keep = function(name){
+          return Object.prototype.hasOwnProperty.call(mappedTo, name) && tracker.isCustomDataKey(name)
+            && name !== 'org_internal_traffic' && name !== 'page_sequence' && name !== 'entry_channel'
+            && (tracker.consent || (mode === 'always' && Array.isArray(settings.consentFreeProperties)
+              && settings.consentFreeProperties.indexOf(name) !== -1));
+        };
+        // The entry channel is a fixed code, so it may be kept without
+        // consent in the always mode, like a consent-free property.
+        var keepEntry = this.consent || mode === 'always';
+        var entryChannels = ['direct', 'internal', 'search', 'social', 'email', 'referral'];
+        var arriving = Object.keys(fromUrl).length > 0;
+
+        if (typeof this.queryStored === 'undefined') {
+          this.queryStored = null;
+          try {
+            var saved = sessionStorage.getItem(key);
+            if (typeof saved === 'string') {
+              var parsed = null;
+              try { parsed = saved.length <= 40000 ? JSON.parse(saved) : null; } catch(e) {}
+              if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                this.queryStored = Object.create(null);
+                var savedNames = Object.keys(parsed);
+                for (var j = 0; j < savedNames.length && j < 50; j++) {
+                  if (this.isCustomDataKey(savedNames[j]) && typeof parsed[savedNames[j]] === 'string') {
+                    this.queryStored[savedNames[j]] = parsed[savedNames[j]];
+                  }
+                }
+              } else {
+                // Malformed browser state is dropped rather than repaired.
+                sessionStorage.removeItem(key);
+              }
+            }
+          } catch(e) {}
+          // Arriving from another website without mapped values ends the
+          // campaign that brought the visitor earlier in this tab. Either kind
+          // of arrival sets the entry channel; other pages keep the one kept,
+          // and a first page without a referrer is a direct entry.
+          var channel = this.getReferrerChannel();
+          var external = ['search', 'social', 'email', 'referral'].indexOf(channel) !== -1;
+          if (!arriving && external) this.queryHeld = Object.create(null);
+          var savedEntry = keepEntry && this.queryStored ? this.queryStored.entry_channel : null;
+          this.queryEntryOwn = arriving || external || entryChannels.indexOf(savedEntry) === -1;
+          if (arriving || external) this.queryEntry = entryChannels.indexOf(channel) !== -1 ? channel : null;
+          else if (!this.queryEntryOwn) this.queryEntry = savedEntry;
+          else this.queryEntry = channel === 'direct' ? 'direct' : null;
+        }
+        if (arriving) this.queryHeld = fromUrl;
+
+        var source = this.queryHeld || this.queryStored || Object.create(null);
+        var next = Object.create(null);
+        var count = 0;
+        // In consented mode, withdrawal forgets an entry channel that an
+        // earlier page kept; this page's own channel stays, as its URL does.
+        if (!keepEntry && !this.queryEntryOwn) this.queryEntry = null;
+        if (keepEntry && this.queryEntry) {
+          next.entry_channel = this.queryEntry;
+          count++;
+        }
+        var names = Object.keys(source);
+        for (var k = 0; k < names.length && count < 50; k++) {
+          if (!keep(names[k])) continue;
+          next[names[k]] = source[names[k]];
+          count++;
+        }
+        var before = JSON.stringify(this.queryStored || {});
+        var after = JSON.stringify(next);
+        this.queryStored = next;
+        if (after !== before) {
+          // Blocked storage leaves this document's memory working.
+          try {
+            if (count) sessionStorage.setItem(key, after);
+            else sessionStorage.removeItem(key);
+          } catch(e) {}
+        }
+        return this.queryHeld || next;
       }
       return null;
     },
@@ -1083,6 +1265,9 @@
         if (!this.consent) {
           this.clearIdentifiers();
         }
+        // A grant writes the values held from this page; withdrawal leaves
+        // only what query persistence may keep without consent.
+        this.rememberQueryValues();
       }
     },
 
@@ -1332,6 +1517,7 @@
       Analytics.setConsent(opts.consent);
     }
     if (Analytics.pageSequenceMethod() === 'url_parameter') Analytics.pageSequenceForEvent(false);
+    Analytics.rememberQueryValues();
   };
 
   // Apply an inline strict opt-in before any consent value is read, so a
@@ -1419,6 +1605,15 @@
   // Do not leave identifiers from an earlier consented visit behind when this
   // load starts in anonymous mode. A CMP can opt in again with setConsent(true).
   if (!Analytics.consent) Analytics.clearIdentifiers();
+
+  // Query persistence starts once every initial setting is known. A page that
+  // starts without consent keeps only what may be kept without it, so values
+  // an earlier page stored with consent are removed here; this page's mapped
+  // values are held, and written as consent allows.
+  if (withStandardProfile) {
+    Analytics.queryReady = true;
+    Analytics.rememberQueryValues();
+  }
 
   // A server-side disable also removes the counter left by an earlier page.
   if (Analytics.config.customData.pageSequenceEnabled !== true) Analytics.clearPageSequence();

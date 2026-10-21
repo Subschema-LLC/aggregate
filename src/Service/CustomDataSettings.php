@@ -17,6 +17,22 @@ class CustomDataSettings
     public const PAGE_SEQUENCE_QUERY_PARAMETER = 'aggregate_page_sequence';
     public const PAGE_SEQUENCE_PROPERTY = 'page_sequence';
     public const PAGE_SEQUENCE_MAXIMUM = 20;
+    /**
+     * Whether mapped query values are kept for the rest of a browser tab's
+     * session: off (the default, only the current page URL), consented (kept
+     * only once enhanced analytics is granted) or always (consent-free
+     * properties are also kept before a choice and after a rejection;
+     * consent-required ones still only with consent).
+     */
+    public const QUERY_PERSISTENCE_KEY = 'query_parameter_persistence';
+    public const QUERY_PERSISTENCE_MODES = ['off', 'consented', 'always'];
+    /**
+     * How the visitor arrived in the browser tab: the referrer channel of the
+     * page that began the kept values. The tracker adds it while query
+     * persistence is on; the server accepts only these codes.
+     */
+    public const ENTRY_CHANNEL_PROPERTY = 'entry_channel';
+    public const ENTRY_CHANNELS = ['direct', 'internal', 'search', 'social', 'email', 'referral'];
     public const GOOGLE_CONSENT_MODE_KEY = 'google_consent_mode';
     /**
      * How the tracker follows Google Consent Mode analytics_storage signals:
@@ -33,9 +49,10 @@ class CustomDataSettings
     public const MAXIMUM_SAFE_INTEGER = 9_007_199_254_740_991;
     /**
      * Properties Aggregate records itself: the organization-traffic flag on
-     * every event, and page depth while it is on. Their type is fixed and they
-     * need no consent setting, so a definition only chooses the reporting
-     * column (`alias`: text or numeric). Both are in the default model.
+     * every event, page depth while it is on, and the entry channel while
+     * query persistence is on. Their type is fixed and they need no consent
+     * setting, so a definition only chooses the reporting column (`alias`:
+     * text or numeric). All are in the default model.
      */
     public const BUILTIN_PROPERTIES = [
         InternalTrafficSettings::JSON_KEY => [
@@ -47,6 +64,11 @@ class CustomDataSettings
             'description' => 'Page depth; 20 means 20 or more.',
             'type' => 'integer',
             'alias' => 'numeric_column',
+        ],
+        self::ENTRY_CHANNEL_PROPERTY => [
+            'description' => 'How the visitor arrived in this browser tab: direct, search, social, email, referral or internal.',
+            'type' => 'string',
+            'alias' => 'column',
         ],
     ];
     public const RESERVED_COLUMNS = [
@@ -87,6 +109,7 @@ class CustomDataSettings
             self::MAPPINGS_KEY => array_combine(self::UTM_KEYS, self::UTM_KEYS),
             self::PAGE_SEQUENCE_ENABLED_KEY => false,
             self::PAGE_SEQUENCE_METHOD_KEY => 'session_storage',
+            self::QUERY_PERSISTENCE_KEY => 'off',
         ];
     }
 
@@ -130,6 +153,7 @@ class CustomDataSettings
             self::MAPPINGS_KEY => array_key_exists(self::MAPPINGS_KEY, $raw) ? $raw[self::MAPPINGS_KEY] : $defaultMappings,
             self::PAGE_SEQUENCE_ENABLED_KEY => array_key_exists(self::PAGE_SEQUENCE_ENABLED_KEY, $raw) ? $raw[self::PAGE_SEQUENCE_ENABLED_KEY] : false,
             self::PAGE_SEQUENCE_METHOD_KEY => array_key_exists(self::PAGE_SEQUENCE_METHOD_KEY, $raw) ? $raw[self::PAGE_SEQUENCE_METHOD_KEY] : 'session_storage',
+            self::QUERY_PERSISTENCE_KEY => array_key_exists(self::QUERY_PERSISTENCE_KEY, $raw) ? $raw[self::QUERY_PERSISTENCE_KEY] : 'off',
         ]);
     }
 
@@ -142,6 +166,11 @@ class CustomDataSettings
             if (!array_key_exists(self::PAGE_SEQUENCE_METHOD_KEY, $settings)) {
                 $settings[self::PAGE_SEQUENCE_METHOD_KEY] = array_key_exists(self::PAGE_SEQUENCE_METHOD_KEY, $current)
                     ? $current[self::PAGE_SEQUENCE_METHOD_KEY] : 'session_storage';
+            }
+            // Likewise keep query persistence when a caller leaves it out.
+            if (!array_key_exists(self::QUERY_PERSISTENCE_KEY, $settings)) {
+                $settings[self::QUERY_PERSISTENCE_KEY] = array_key_exists(self::QUERY_PERSISTENCE_KEY, $current)
+                    ? $current[self::QUERY_PERSISTENCE_KEY] : 'off';
             }
             return $this->validate($settings);
         });
@@ -254,7 +283,7 @@ class CustomDataSettings
         return null;
     }
 
-    /** @return array{queryParameters: array<string, string>, consentFreeProperties: list<string>, pageSequenceEnabled: bool, pageSequenceMethod: string, googleConsentMode?: string, pageSequenceExcludedPaths?: list<string>, propertyTypes?: array<string, string>} */
+    /** @return array{queryParameters: array<string, string>, consentFreeProperties: list<string>, pageSequenceEnabled: bool, pageSequenceMethod: string, queryParameterPersistence: string, googleConsentMode?: string, pageSequenceExcludedPaths?: list<string>, propertyTypes?: array<string, string>} */
 
     public function toBrowserConfig(): array
     {
@@ -262,9 +291,10 @@ class CustomDataSettings
         $consentFree = [];
         $types = [];
         foreach ($settings[self::PROPERTIES_KEY] as $key => $definition) {
-            // Generated page depth has its own opt-in and cannot become an
-            // ordinary property through browser allowlists or URL mappings.
-            if ($key === self::PAGE_SEQUENCE_PROPERTY) {
+            // Generated page depth and entry channel have their own opt-ins
+            // and cannot become ordinary properties through browser
+            // allowlists or URL mappings.
+            if ($key === self::PAGE_SEQUENCE_PROPERTY || $key === self::ENTRY_CHANNEL_PROPERTY) {
                 continue;
             }
             if (!$definition['consent_required'] && $key !== InternalTrafficSettings::JSON_KEY) {
@@ -283,11 +313,19 @@ class CustomDataSettings
             $consentFree = [];
         }
         $pageSequenceEnabled = !$strict && $settings[self::PAGE_SEQUENCE_ENABLED_KEY] && $privacyPolicy->isAnonymousTrackingEnabled();
+        // The served value is a ceiling: page options can narrow it, never
+        // widen it. Without anonymous collection nothing consent-free is
+        // recorded, so nothing is kept before consent either.
+        $queryPersistence = $strict ? 'off' : $settings[self::QUERY_PERSISTENCE_KEY];
+        if ($queryPersistence === 'always' && !$privacyPolicy->isAnonymousTrackingEnabled()) {
+            $queryPersistence = 'consented';
+        }
         $browserConfig = [
             'queryParameters' => $strict ? [] : $settings[self::MAPPINGS_KEY],
             'consentFreeProperties' => $consentFree,
             'pageSequenceEnabled' => $pageSequenceEnabled,
             'pageSequenceMethod' => $settings[self::PAGE_SEQUENCE_METHOD_KEY],
+            'queryParameterPersistence' => $queryPersistence,
         ];
         if ($pageSequenceEnabled) {
             $browserConfig['pageSequenceExcludedPaths'] = $privacyPolicy->excludedPaths();
@@ -345,6 +383,13 @@ class CustomDataSettings
                 }
                 continue;
             }
+            if ($key === self::ENTRY_CHANNEL_PROPERTY) {
+                // A fixed code in either mode, only while persistence is on.
+                if ($settings[self::QUERY_PERSISTENCE_KEY] === 'off' || !self::isEntryChannel($item)) {
+                    unset($clean[$key]);
+                }
+                continue;
+            }
             $type = $settings[self::PROPERTIES_KEY][$key]['type'] ?? 'scalar';
             if ($key === InternalTrafficSettings::JSON_KEY || !self::isValidPropertyKey($key)
                 || (!$enhancedConsent && ($settings[self::PROPERTIES_KEY][$key]['consent_required'] ?? true))
@@ -358,6 +403,12 @@ class CustomDataSettings
         }
 
         return $clean ?: null;
+    }
+
+    /** Whether a value is one of the entry channel codes. */
+    public static function isEntryChannel(mixed $value): bool
+    {
+        return is_string($value) && in_array($value, self::ENTRY_CHANNELS, true);
     }
 
     /** Validate page depth at ingestion and when approving anonymous entity data. */
@@ -397,10 +448,10 @@ class CustomDataSettings
 
     public function validate(array $settings): array
     {
-        if (array_diff(array_keys($settings), [self::PROPERTIES_KEY, self::MAPPINGS_KEY, self::PAGE_SEQUENCE_ENABLED_KEY, self::PAGE_SEQUENCE_METHOD_KEY]) !== []
+        if (array_diff(array_keys($settings), [self::PROPERTIES_KEY, self::MAPPINGS_KEY, self::PAGE_SEQUENCE_ENABLED_KEY, self::PAGE_SEQUENCE_METHOD_KEY, self::QUERY_PERSISTENCE_KEY]) !== []
             || !array_key_exists(self::PROPERTIES_KEY, $settings)
             || !array_key_exists(self::MAPPINGS_KEY, $settings)) {
-            throw new \InvalidArgumentException('Provide custom_data_properties, query_parameter_mappings, and optional page_sequence_enabled and page_sequence_method only.');
+            throw new \InvalidArgumentException('Provide custom_data_properties, query_parameter_mappings, and optional page_sequence_enabled, page_sequence_method and query_parameter_persistence only.');
         }
         $pageSequenceEnabled = array_key_exists(self::PAGE_SEQUENCE_ENABLED_KEY, $settings) ? $settings[self::PAGE_SEQUENCE_ENABLED_KEY] : false;
         if (!is_bool($pageSequenceEnabled)) {
@@ -409,6 +460,10 @@ class CustomDataSettings
         $pageSequenceMethod = array_key_exists(self::PAGE_SEQUENCE_METHOD_KEY, $settings) ? $settings[self::PAGE_SEQUENCE_METHOD_KEY] : 'session_storage';
         if (!is_string($pageSequenceMethod) || !in_array($pageSequenceMethod, self::PAGE_SEQUENCE_METHODS, true)) {
             throw new \InvalidArgumentException('page_sequence_method must be session_storage or url_parameter.');
+        }
+        $queryPersistence = array_key_exists(self::QUERY_PERSISTENCE_KEY, $settings) ? $settings[self::QUERY_PERSISTENCE_KEY] : 'off';
+        if (!self::isQueryPersistenceMode($queryPersistence)) {
+            throw new \InvalidArgumentException('query_parameter_persistence must be off, consented or always.');
         }
         $properties = $settings[self::PROPERTIES_KEY];
         $mappings = $settings[self::MAPPINGS_KEY];
@@ -443,6 +498,9 @@ class CustomDataSettings
             if (!self::isValidPropertyKey($key)) {
                 throw new \InvalidArgumentException('Property names must start with a letter and use up to 64 letters, digits, underscores, dots, or hyphens.');
             }
+            if ($key === self::ENTRY_CHANNEL_PROPERTY && !in_array($type, ['scalar', 'string'], true)) {
+                throw new \InvalidArgumentException('entry_channel is a text code such as search or email: leave its type out or use type: string.');
+            }
             if ($key === InternalTrafficSettings::JSON_KEY && !in_array($type, ['scalar', 'boolean'], true)) {
                 throw new \InvalidArgumentException('org_internal_traffic supports only the scalar or boolean type; its value is always the true or false organization-traffic flag.');
             }
@@ -472,8 +530,8 @@ class CustomDataSettings
         }
 
         foreach ($mappings as $parameter => $property) {
-            if (!self::isValidPropertyKey($parameter) || !self::isValidPropertyKey($property) || !isset($normalized[$property]) || $property === InternalTrafficSettings::JSON_KEY || $property === self::PAGE_SEQUENCE_PROPERTY || $parameter === self::PAGE_SEQUENCE_QUERY_PARAMETER) {
-                throw new \InvalidArgumentException('Each query parameter must map to a defined custom property. The organization marker, page_sequence, and reserved aggregate_page_sequence parameter cannot use query mappings.');
+            if (!self::isValidPropertyKey($parameter) || !self::isValidPropertyKey($property) || !isset($normalized[$property]) || $property === InternalTrafficSettings::JSON_KEY || $property === self::PAGE_SEQUENCE_PROPERTY || $property === self::ENTRY_CHANNEL_PROPERTY || $parameter === self::PAGE_SEQUENCE_QUERY_PARAMETER) {
+                throw new \InvalidArgumentException('Each query parameter must map to a defined custom property. The organization marker, page_sequence, entry_channel, and reserved aggregate_page_sequence parameter cannot use query mappings.');
             }
         }
 
@@ -482,6 +540,12 @@ class CustomDataSettings
             self::MAPPINGS_KEY => $mappings,
             self::PAGE_SEQUENCE_ENABLED_KEY => $pageSequenceEnabled,
             self::PAGE_SEQUENCE_METHOD_KEY => $pageSequenceMethod,
+            self::QUERY_PERSISTENCE_KEY => $queryPersistence,
         ];
+    }
+
+    public static function isQueryPersistenceMode(mixed $value): bool
+    {
+        return is_string($value) && in_array($value, self::QUERY_PERSISTENCE_MODES, true);
     }
 }

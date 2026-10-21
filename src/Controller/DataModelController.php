@@ -120,10 +120,16 @@ final class DataModelController extends AbstractController
             }
             $items[] = [
                 'key' => $key,
-                'label' => $key === CustomDataSettings::PAGE_SEQUENCE_PROPERTY ? 'Page depth' : 'Organization traffic',
-                'help' => $key === CustomDataSettings::PAGE_SEQUENCE_PROPERTY
-                    ? '1 for the first tracked page in a browser tab, then 2, 3 and so on; 20 means 20 or more. Recorded while page depth is on.'
-                    : 'true when the browser carries your team’s marker, false otherwise. Recorded on every event, so reports can leave out your own visits.',
+                'label' => match ($key) {
+                    CustomDataSettings::PAGE_SEQUENCE_PROPERTY => 'Page depth',
+                    CustomDataSettings::ENTRY_CHANNEL_PROPERTY => 'Entry channel',
+                    default => 'Organization traffic',
+                },
+                'help' => match ($key) {
+                    CustomDataSettings::PAGE_SEQUENCE_PROPERTY => '1 for the first tracked page in a browser tab, then 2, 3 and so on; 20 means 20 or more. Recorded while page depth is on.',
+                    CustomDataSettings::ENTRY_CHANNEL_PROPERTY => 'How the visitor arrived in the browser tab: direct, search, social, email, referral or internal, kept for the pages that follow. Recorded while values are kept for the tab session.',
+                    default => 'true when the browser carries your team’s marker, false otherwise. Recorded on every event, so reports can leave out your own visits.',
+                },
                 'kind' => $builtin['alias'] === 'numeric_column' ? 'number' : 'text',
                 'included' => $included,
                 'column' => $column !== '' ? $column : $key,
@@ -392,7 +398,7 @@ final class DataModelController extends AbstractController
 
     private function modelFromForm(array $submitted): array
     {
-        if (array_diff(array_keys($submitted), ['_csrf_token', 'properties', 'builtin', 'mappings', CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY, CustomDataSettings::PAGE_SEQUENCE_METHOD_KEY]) !== []) {
+        if (array_diff(array_keys($submitted), ['_csrf_token', 'properties', 'builtin', 'mappings', CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY, CustomDataSettings::PAGE_SEQUENCE_METHOD_KEY, CustomDataSettings::QUERY_PERSISTENCE_KEY]) !== []) {
             throw new \InvalidArgumentException('The model form contained an unexpected setting. Nothing was saved.');
         }
         $pageSequenceEnabled = array_key_exists(CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY, $submitted)
@@ -466,6 +472,10 @@ final class DataModelController extends AbstractController
         // the current choice under its write lock instead of enabling storage.
         if (array_key_exists(CustomDataSettings::PAGE_SEQUENCE_METHOD_KEY, $submitted)) {
             $model[CustomDataSettings::PAGE_SEQUENCE_METHOD_KEY] = $submitted[CustomDataSettings::PAGE_SEQUENCE_METHOD_KEY];
+        }
+        // The same for query persistence: an older form keeps the saved choice.
+        if (array_key_exists(CustomDataSettings::QUERY_PERSISTENCE_KEY, $submitted)) {
+            $model[CustomDataSettings::QUERY_PERSISTENCE_KEY] = $submitted[CustomDataSettings::QUERY_PERSISTENCE_KEY];
         }
 
         return $model;
@@ -602,6 +612,8 @@ final class DataModelController extends AbstractController
             CustomDataSettings::MAPPINGS_KEY => $mappingRows !== [] ? $mappings : $currentModel[CustomDataSettings::MAPPINGS_KEY],
             CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY => ($submitted[CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY] ?? '0') === '1',
             CustomDataSettings::PAGE_SEQUENCE_METHOD_KEY => (string) ($submitted[CustomDataSettings::PAGE_SEQUENCE_METHOD_KEY] ?? $currentModel[CustomDataSettings::PAGE_SEQUENCE_METHOD_KEY]),
+            CustomDataSettings::QUERY_PERSISTENCE_KEY => is_string($submitted[CustomDataSettings::QUERY_PERSISTENCE_KEY] ?? null)
+                ? $submitted[CustomDataSettings::QUERY_PERSISTENCE_KEY] : $currentModel[CustomDataSettings::QUERY_PERSISTENCE_KEY],
         ];
     }
 }

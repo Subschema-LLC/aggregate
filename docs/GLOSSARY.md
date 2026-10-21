@@ -40,7 +40,7 @@ consent manager served at `/cmp-lite/sites/<site-id>/consent.js`, configured per
 website. CMP stands for consent management platform. See the
 [consent manager guide](CONSENT-MANAGER.md).
 
-**Built-in property.** `org_internal_traffic` or `page_sequence`: a property
+**Built-in property.** `org_internal_traffic`, `page_sequence` or `entry_channel`: a property
 Aggregate records itself, with a fixed type, so the data model only chooses its
 reporting column. See [built-in properties](DATA-MODEL.md#built-in-properties).
 
@@ -76,6 +76,12 @@ device class, viewport bucket, event name, goal code or geography area.
 include visitor and session IDs, allowed properties, exact dimensions and the
 exact time. Withdrawing consent stops future enhanced detail but does not erase
 stored history.
+
+**Entry channel.** `entry_channel`: how a visitor arrived in the browser tab
+(`direct`, `search`, `social`, `email`, `referral` or `internal`), added to every
+event while `query_parameter_persistence` keeps query values for the tab. Unlike
+the referrer channel, it does not become `internal` on later pages. See
+[keeping values for the tab session](TRACKING.md#keep-values-for-the-tab-session).
 
 **Event.** One thing that happened on a page, such as a page view (`view`) or a
 named action. Page views are events.

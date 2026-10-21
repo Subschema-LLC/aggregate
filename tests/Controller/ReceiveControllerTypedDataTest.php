@@ -241,6 +241,55 @@ final class ReceiveControllerTypedDataTest extends TestCase
         }
     }
 
+    #[DataProvider('entryChannelRequests')]
+    public function testEntryChannelDirectRequestsAcceptOnlyFixedCodesWhilePersistenceIsOn(string $mode, string $valueJson, ?string $accepted, bool $enhanced): void
+    {
+        $expected = ['utm_medium' => 'email', ...($accepted === null ? [] : ['entry_channel' => $accepted]), ...($enhanced ? ['private' => 'detail'] : [])];
+        $stored = [...$expected, InternalTrafficSettings::JSON_KEY => false];
+        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager->expects(self::once())->method('persist')->willReturnCallback(static function (object $event) use ($stored, $enhanced): void {
+            self::assertInstanceOf(Event::class, $event);
+            if (!$enhanced) {
+                // Approved anonymous values survive a later attempt to swap
+                // the code for free text.
+                $event->setCustomData(['entry_channel' => 'private-identifier', 'private' => 'detail']);
+            }
+            $event->enforcePrivacyInvariants();
+            self::assertSame($stored, $event->getCustomData());
+        });
+        $entityManager->expects(self::once())->method('flush');
+        $bus = $this->createMock(MessageBusInterface::class);
+        $trackingFailures = $this->createStub(TrackingFailureRetryRunner::class);
+        if ($enhanced) {
+            $bus->expects(self::once())->method('dispatch')->willReturnCallback(static function (object $message) use ($entityManager, $expected, $trackingFailures): Envelope {
+                self::assertInstanceOf(TrackEventMessage::class, $message);
+                self::assertSame($expected, $message->eventData);
+                (new TrackEventHandler($entityManager, $trackingFailures, new NullLogger()))(unserialize(serialize($message)));
+
+                return new Envelope($message);
+            });
+        } else {
+            $bus->expects(self::never())->method('dispatch');
+        }
+        $rawJson = '{"websiteToken":"example-token","eventName":"button_click","pagePath":"/example","consentState":"'.($enhanced ? 'granted' : 'denied').'",'
+            .'"customData":{"utm_medium":"email","entry_channel":'.$valueJson.',"private":"detail"}}';
+
+        $response = $this->ingest([], ['utm_medium' => ['consent_required' => false]], $entityManager, $bus, $rawJson, ['query_parameter_persistence' => $mode]);
+
+        self::assertSame(202, $response->getStatusCode());
+    }
+
+    public static function entryChannelRequests(): iterable
+    {
+        foreach ([false, true] as $enhanced) {
+            foreach (CustomDataSettings::QUERY_PERSISTENCE_MODES as $mode) {
+                foreach (['"search"' => 'search', '"direct"' => 'direct', '"paid"' => null, '"SEARCH"' => null, '"unknown"' => null, '"jane@example.com"' => null, '1' => null, 'true' => null, 'null' => null, '{}' => null] as $value => $accepted) {
+                    yield ($enhanced ? 'enhanced' : 'denied').' '.$mode.' '.$value => [$mode, (string) $value, $mode === 'off' ? null : $accepted, $enhanced];
+                }
+            }
+        }
+    }
+
     #[DataProvider('invalidPageSequenceSettings')]
     public function testMalformedPageSequenceSettingStopsIngestion(array $settings): void
     {

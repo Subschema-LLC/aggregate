@@ -251,9 +251,9 @@ A new event starts from `eventName` and an empty `customData`:
   up to 500 bytes, a number, `true`, `false` or `null`. `goalEvent` names a goal
   from `config/goals.yaml` and `pagePath` a virtual page path such as
   `/checkout/step-2`; both are optional. Any value can be a variable instead.
-- The tracker sets every other request field, and adds `page_sequence` and
-  `org_internal_traffic` to `customData` itself, so the event cannot include
-  them. Saving refuses an event with anything else, and the editor checks the
+- The tracker sets every other request field, and adds `page_sequence`,
+  `entry_channel` and `org_internal_traffic` to `customData` itself, so the
+  event cannot include them. Saving refuses an event with anything else, and the editor checks the
   event as you type.
 - A push's values are not copied into the event, and a variable gives one value,
   so name each property. A missing value skips the event.
