@@ -62,13 +62,11 @@ final class TransferCatalog
                 'event_hour' => ['kind' => 'datetime'],
                 'privacy_mode' => ['kind' => 'privacy_mode'],
                 'event_name' => ['kind' => 'event_name'],
-                'page_path' => ['kind' => 'path'],
-                'referrer_channel' => ['kind' => 'referrer_channel'],
+                'page_path' => ['kind' => 'text', 'max' => 1048576],
+                'referrer_channel' => ['kind' => 'text', 'max' => 1048576],
                 'device_class' => ['kind' => 'enum', 'values' => self::DEVICE_CLASSES],
                 'viewport_bucket' => ['kind' => 'enum', 'values' => self::VIEWPORT_BUCKETS],
                 'event_count' => ['kind' => 'bigint'],
-                'first_archived_at' => ['kind' => 'datetime'],
-                'last_archived_at' => ['kind' => 'datetime'],
             ],
         ],
         'analytics_archive_goals' => [
@@ -83,8 +81,6 @@ final class TransferCatalog
                 'privacy_mode' => ['kind' => 'privacy_mode'],
                 'goal_event' => ['kind' => 'event_name'],
                 'event_count' => ['kind' => 'bigint'],
-                'first_archived_at' => ['kind' => 'datetime'],
-                'last_archived_at' => ['kind' => 'datetime'],
             ],
         ],
         'analytics_archive_geo_events' => [
@@ -100,8 +96,6 @@ final class TransferCatalog
                 'event_name' => ['kind' => 'event_name'],
                 'geo_area' => ['kind' => 'geo_area'],
                 'event_count' => ['kind' => 'bigint'],
-                'first_archived_at' => ['kind' => 'datetime'],
-                'last_archived_at' => ['kind' => 'datetime'],
             ],
         ],
         'users' => [
