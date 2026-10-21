@@ -143,6 +143,20 @@ final class RowCodec
     /** @param array<string, mixed> $row */
     private static function assertPrivacy(string $table, array $row, int $line): void
     {
+        if ($table === 'analytics_archive_events') {
+            if ($row['privacy_mode'] === 'anonymous') {
+                if (!is_string($row['page_path']) || !self::isSanitizedPath($row['page_path'], 512)) {
+                    throw new DataTransferException(self::place($table, $line).' is anonymous but its page path is not a sanitized path, so it was not copied.');
+                }
+                if (!is_string($row['referrer_channel']) || !in_array($row['referrer_channel'], TransferCatalog::ANONYMOUS_REFERRERS, true)) {
+                    throw new DataTransferException(self::place($table, $line).' is anonymous but its referrer channel is not a coarse channel, so it was not copied.');
+                }
+            } elseif (!is_string($row['page_path']) || $row['page_path'] === '' || !is_string($row['referrer_channel']) || $row['referrer_channel'] === '') {
+                throw new DataTransferException(self::place($table, $line).' has an empty page path or referrer channel, so it was not copied.');
+            }
+
+            return;
+        }
         if ($table !== 'events') {
             return;
         }
