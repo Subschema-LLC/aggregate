@@ -288,7 +288,32 @@ The tracker reads `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_c
 
 `query_parameter_mappings` maps each source parameter to a defined JSON property. Multiple parameters may target the same property. Configuration order determines priority: the first source with a nonblank value wins; repeated occurrences use the first nonblank value. Names match exactly, including case. Explicit scalar values passed to `emit()` take precedence, including `false`, `0`, an empty string, and `null`.
 
-Mapped values accompany page views and named events when consent permits. The tracker reads the current page query for each event, never the referrer, and does not persist attribution in cookies or browser storage. A subsequent page without the parameter has no carried-forward campaign value. Unmapped parameters and URL fragments are omitted. Values in the tracker's own script URL are a separate, explicit source; see below.
+Mapped values accompany page views and named events when consent permits. By default the tracker reads the current page query for each event, never the referrer, and does not persist attribution in cookies or browser storage, so a subsequent page without the parameter has no carried-forward campaign value. To send them with later pages too, turn on [keeping values for the tab session](#keep-values-for-the-tab-session). Unmapped parameters and URL fragments are omitted. Values in the tracker's own script URL are a separate, explicit source; see below.
+
+### Keep values for the tab session
+
+`query_parameter_persistence` (**Collection → Data model → Campaigns → Keep values for the tab session**, or YAML) carries the mapped values of the page a visitor arrived on to every later page view and event in that browser tab. It is off by default.
+
+| Setting | Before consent, after a rejection or withdrawal | After an affirmative analytics choice |
+| --- | --- | --- |
+| `off` (default) | Current page only, as above | Current page only |
+| `consented` | Nothing is written. The arrival page's values are held in memory and sent as their consent rules allow, on that page only | Every mapped value, kept for the tab |
+| `always` | Properties with `consent_required: false`, such as `utm_medium`, are kept for the tab. Consent-required ones are held in memory only | Every mapped value, kept for the tab |
+
+Every event still applies each property's consent rule, and the server enforces it again. Kept values are stored in `sessionStorage` under `aggregate_attribution:<website token>`, never in cookies or local storage:
+
+- **A grant** on the arrival page writes the held values, including after a page script has cleaned the address bar. Without a grant on that page, they are gone on the next one.
+- **A page that starts without consent** removes consent-required values (in `consented` mode, everything) before it sends anything. "Starts" means by the time the tracker has read its initial settings: preload the consent state (inline `consent`, `data-consent`, or a Google Consent Mode update already in the data layer) so a returning, consenting visitor keeps them. A choice that arrives later does not bring removed values back.
+- **Withdrawal** (`setConsent(false)` or a Consent Mode denial) removes consent-required values at once; consent-free ones keep going in `always` mode.
+- **A page with new mapped values** replaces the whole set. **An arrival from another website** (a search, social, email or referral referrer) without mapped values ends it. A direct arrival, such as a bookmark in the same tab, keeps it.
+- The set ends when the tab closes. Turning the setting off stops reading and writing it; values a tab already holds stay there unused until it closes. The strict profile keeps nothing.
+- Path exclusions (`anonymous_excluded_paths`) stop the events of excluded pages, not the values a visitor arrived with: a visitor who lands on an excluded page with campaign tags keeps them for the allowed pages that follow. Leave campaign tags off links to excluded pages.
+
+While the setting is on, the tracker also adds the built-in [`entry_channel`](DATA-MODEL.md#built-in-properties) property to every event: the referrer channel (`direct`, `search`, `social`, `email`, `referral` or `internal`) of the page that began the kept set. It is how a visitor who arrived from a search engine, with no campaign tags, is still recognized as search traffic on page five, where `referrerChannel` says `internal`. `referrerChannel` keeps meaning the referrer of each page. `entry_channel` is a fixed code, so it is sent in both privacy modes and kept like a consent-free property: in `always` mode without consent, in `consented` mode only after a grant. Events cannot supply it and query parameters cannot map to it.
+
+A static or CDN copy of the tracker keeps nothing unless the page sets `customData.queryParameterPersistence`. A served tracker treats the installation's setting as a ceiling: `Aggregate.configure({customData: {queryParameterPersistence: 'off'}})` narrows it, but a page cannot widen it. Without anonymous collection (`anonymous_tracking_enabled: false`), `always` is served as `consented`.
+
+Keeping a consent-free value writes to the visitor's device before consent; review storage rules for your markets with your legal team, or use `consented`. Repeating one value on every event in a tab also lets a rare value reach event-count thresholds sooner, so keep consent-free values to broad channel codes. See [custom properties and UTM consent](PRIVACY-COMPLIANCE.md#custom-properties-and-utm-consent).
 
 ### Custom data in the script URL
 
@@ -321,12 +346,13 @@ window.Aggregate = {
   websiteToken: 'your-website-token',
   customData: {
     consentFreeProperties: ['utm_medium'],
+    queryParameterPersistence: 'always',
     propertyTypes: {currency: 'string', total_minor: 'integer', discount_rate: 'double'}
   }
 };
 ```
 
-After loading, `Aggregate.configure({customData: {...}})` accepts the same settings. `consentFreeProperties` is a list of JSON keys, `queryParameters` is a source-to-key mapping, and optional `propertyTypes` maps JSON keys to `scalar`, `string`, `integer`, `float`, `double`, or `boolean`. Supplying a field replaces that field; `{queryParameters: {}}` disables URL collection. Omitted fields retain their current settings. Browser overrides cannot weaken server-side consent or type checks. Descriptions and reporting aliases are not needed in browser configuration.
+After loading, `Aggregate.configure({customData: {...}})` accepts the same settings. `consentFreeProperties` is a list of JSON keys, `queryParameters` is a source-to-key mapping, `queryParameterPersistence` is `off`, `consented` or `always`, and optional `propertyTypes` maps JSON keys to `scalar`, `string`, `integer`, `float`, `double`, or `boolean`. Supplying a field replaces that field; `{queryParameters: {}}` disables URL collection. Omitted fields retain their current settings. Browser overrides cannot weaken server-side consent or type checks. Descriptions and reporting aliases are not needed in browser configuration.
 
 The tracker sends an event's properties in the collection request's `customData`
 object; server-side and other direct clients do the same (see the

@@ -106,7 +106,12 @@ Treat these as constraints on implementation and documentation:
   same-origin links. It defaults off, applies to all event types, and respects
   kill switches and path exclusions before counter storage or URL propagation.
   Keep the chosen method's consent/storage/URL disclosure
-  distinct from a claim of legal anonymity. All UTMs require consent by default.
+  distinct from a claim of legal anonymity. Optional
+  `query_parameter_persistence` (default `off`) keeps mapped query values in
+  tab `sessionStorage` only: consent-required values are never written before
+  consent and are removed on withdrawal or when a page starts without it, and
+  the built-in `entry_channel` is one of six fixed referrer-channel codes that
+  events and query mappings cannot set. All UTMs require consent by default.
   Recommend at most broad `utm_medium` values for anonymous attribution, while
   allowing per-property overrides with the documented warning about detailed
   values. See [Data model](docs/DATA-MODEL.md). Browser overrides never authorize

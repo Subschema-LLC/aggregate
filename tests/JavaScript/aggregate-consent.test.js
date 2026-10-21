@@ -676,6 +676,282 @@ test('query collection uses the current page only and never persists attribution
   assert.equal(runtime.cookieWrites.every((value) => value.startsWith('aggregate_session=')), true);
 });
 
+const attributionKey = 'aggregate_attribution:site-token';
+const campaignSearch = '?utm_source=newsletter&utm_medium=email&utm_campaign=fall';
+const fullCampaign = {utm_source: 'newsletter', utm_medium: 'email', utm_campaign: 'fall'};
+const entry = (channel, values) => Object.assign({entry_channel: channel}, values || {});
+
+function servedPersistence(mode, extra) {
+  return Object.assign({
+    queryParameters: {utm_source: 'utm_source', utm_medium: 'utm_medium', utm_campaign: 'utm_campaign'},
+    consentFreeProperties: ['utm_medium'],
+    queryParameterPersistence: mode
+  }, extra || {});
+}
+
+// The next document in the same tab: same session storage, an internal referrer.
+function nextPage(previous, options) {
+  return loadSdk(Object.assign({
+    sessionStorageInstance: previous.sessionStorage,
+    referrer: 'https://www.example.com/pricing',
+    location: {pathname: '/features'}
+  }, options));
+}
+
+function keptValues(runtime) {
+  return runtime.sessionStorage.has(attributionKey) ? JSON.parse(runtime.sessionStorage.getItem(attributionKey)) : null;
+}
+
+function attributionWrites(runtime) {
+  return runtime.sessionStorage.writes.filter(([key]) => key === attributionKey);
+}
+
+test('always persistence carries consent-free values through the tab and never writes consent-required ones before consent', () => {
+  const landing = loadSdk({serverCustomData: servedPersistence('always'), location: {search: campaignSearch}, referrer: 'https://outlook.live.com/'});
+  landing.triggerPageView();
+
+  assert.deepEqual(landing.requests[0].customData, entry('email', {utm_medium: 'email'}));
+  assert.deepEqual(attributionWrites(landing), [[attributionKey, '{"entry_channel":"email","utm_medium":"email"}']]);
+
+  const second = nextPage(landing, {serverCustomData: servedPersistence('always')});
+  second.triggerPageView();
+  second.window.Aggregate.emit('button_click', {}, 'signup');
+
+  assert.equal(second.requests.length, 2);
+  for (const payload of second.requests) {
+    assert.deepEqual(payload.customData, entry('email', {utm_medium: 'email'}));
+    assert.equal(payload.consentState, 'unknown');
+    assert.equal(payload.visitorId, undefined);
+    assert.equal(payload.sessionId, undefined);
+  }
+  assert.equal(second.requests[0].referrerChannel, 'internal', 'the page referrer keeps its own meaning');
+  for (const runtime of [landing, second]) {
+    assert.equal(JSON.stringify(runtime.sessionStorage.writes).includes('newsletter'), false);
+    assert.equal(JSON.stringify(runtime.localStorage.writes).includes('email'), false);
+    assert.equal(runtime.cookieWrites.some((value) => value.includes('utm') || value.includes('entry')), false);
+  }
+});
+
+test('a grant on the arrival page writes the held values, even after the address bar was cleaned', () => {
+  const landing = loadSdk({serverCustomData: servedPersistence('always'), location: {search: campaignSearch}});
+  landing.triggerPageView();
+  landing.window.location.search = '';
+  landing.window.Aggregate.setConsent(true);
+  landing.window.Aggregate.emit('button_click');
+
+  assert.deepEqual(landing.requests.at(-1).customData, entry('direct', fullCampaign));
+  assert.deepEqual(keptValues(landing), entry('direct', fullCampaign));
+
+  const second = nextPage(landing, {serverCustomData: servedPersistence('always'), inline: {consent: true}});
+  second.triggerPageView();
+  assert.deepEqual(second.requests[0].customData, entry('direct', fullCampaign));
+  assert.equal(second.requests[0].consentState, 'granted');
+});
+
+test('a page that starts without consent removes consent-required values, and a later grant does not restore them', () => {
+  const landing = loadSdk({serverCustomData: servedPersistence('always'), inline: {consent: true}, location: {search: campaignSearch}});
+  landing.triggerPageView();
+  assert.deepEqual(keptValues(landing), entry('direct', fullCampaign));
+
+  const second = nextPage(landing, {serverCustomData: servedPersistence('always')});
+  assert.deepEqual(keptValues(second), entry('direct', {utm_medium: 'email'}), 'removed when the page starts, before any event');
+  second.triggerPageView();
+  second.window.Aggregate.setConsent(true);
+  second.window.Aggregate.emit('button_click');
+
+  assert.deepEqual(second.requests.map((payload) => payload.customData), [entry('direct', {utm_medium: 'email'}), entry('direct', {utm_medium: 'email'})]);
+  assert.deepEqual(keptValues(second), entry('direct', {utm_medium: 'email'}));
+});
+
+test('withdrawal removes consent-required values at once and keeps sending the consent-free ones', () => {
+  const landing = loadSdk({serverCustomData: servedPersistence('always'), inline: {consent: true}, location: {search: campaignSearch}});
+  landing.triggerPageView();
+  const second = nextPage(landing, {serverCustomData: servedPersistence('always'), inline: {consent: true}});
+  second.triggerPageView();
+  second.window.Aggregate.setConsent(false);
+  assert.deepEqual(keptValues(second), entry('direct', {utm_medium: 'email'}));
+  second.window.Aggregate.emit('button_click');
+  second.window.Aggregate.setConsent(true);
+  second.window.Aggregate.emit('button_click');
+
+  assert.deepEqual(second.requests.map((payload) => payload.customData), [
+    entry('direct', fullCampaign), entry('direct', {utm_medium: 'email'}), entry('direct', {utm_medium: 'email'})
+  ]);
+  assert.equal(second.requests[1].consentState, 'denied');
+});
+
+test('consented persistence writes nothing before consent and removes everything when a page starts without it', () => {
+  const anonymous = loadSdk({serverCustomData: servedPersistence('consented'), location: {search: campaignSearch}});
+  anonymous.triggerPageView();
+  assert.deepEqual(anonymous.requests[0].customData, entry('direct', {utm_medium: 'email'}), 'the arrival page still sends its own values');
+  assert.deepEqual(attributionWrites(anonymous), []);
+  const anonymousNext = nextPage(anonymous, {serverCustomData: servedPersistence('consented')});
+  anonymousNext.triggerPageView();
+  assert.equal(anonymousNext.requests[0].customData, undefined);
+
+  const consented = loadSdk({serverCustomData: servedPersistence('consented'), inline: {consent: true}, location: {search: campaignSearch}});
+  consented.triggerPageView();
+  assert.deepEqual(keptValues(consented), entry('direct', fullCampaign));
+  const consentedNext = nextPage(consented, {serverCustomData: servedPersistence('consented'), inline: {consent: true}});
+  consentedNext.triggerPageView();
+  assert.deepEqual(consentedNext.requests[0].customData, entry('direct', fullCampaign));
+  consentedNext.window.Aggregate.setConsent(false);
+  consentedNext.window.Aggregate.emit('button_click');
+  assert.equal(consentedNext.requests.at(-1).customData, undefined);
+  assert.equal(consentedNext.sessionStorage.has(attributionKey), false);
+
+  const restarted = loadSdk({serverCustomData: servedPersistence('consented'), inline: {consent: true}, location: {search: campaignSearch}});
+  restarted.triggerPageView();
+  const withoutConsent = nextPage(restarted, {serverCustomData: servedPersistence('consented')});
+  assert.equal(withoutConsent.sessionStorage.has(attributionKey), false);
+  withoutConsent.triggerPageView();
+  assert.equal(withoutConsent.requests[0].customData, undefined);
+});
+
+test('new mapped values replace the kept set, another website ends it, and a direct arrival keeps it', () => {
+  const options = {serverCustomData: servedPersistence('always'), inline: {consent: true}};
+  const landing = loadSdk(Object.assign({location: {search: campaignSearch}}, options));
+  landing.triggerPageView();
+
+  const tagged = nextPage(landing, Object.assign({}, options, {location: {search: '?utm_medium=social'}, referrer: 'https://www.facebook.com/'}));
+  tagged.triggerPageView();
+  assert.deepEqual(tagged.requests[0].customData, entry('social', {utm_medium: 'social'}));
+  assert.deepEqual(keptValues(tagged), entry('social', {utm_medium: 'social'}));
+
+  const direct = nextPage(tagged, Object.assign({}, options, {referrer: ''}));
+  direct.triggerPageView();
+  assert.deepEqual(direct.requests[0].customData, entry('social', {utm_medium: 'social'}));
+
+  const search = nextPage(direct, Object.assign({}, options, {referrer: 'https://www.google.com/'}));
+  search.triggerPageView();
+  assert.deepEqual(search.requests[0].customData, entry('search'));
+  assert.deepEqual(keptValues(search), entry('search'));
+});
+
+test('organic arrivals without campaign tags carry their entry channel, which pages cannot supply or map', () => {
+  const landing = loadSdk({serverCustomData: servedPersistence('always'), referrer: 'https://www.google.com/search?q=private'});
+  landing.triggerPageView();
+  assert.deepEqual(landing.requests[0].customData, entry('search'));
+  assert.equal(landing.requests[0].referrerChannel, 'search');
+
+  const second = nextPage(landing, {serverCustomData: servedPersistence('always')});
+  second.triggerPageView();
+  second.window.Aggregate.emit('button_click', {entry_channel: 'paid', plan: 'pro'});
+  assert.deepEqual(second.requests.map((payload) => payload.customData), [entry('search'), entry('search')]);
+  assert.equal(JSON.stringify(second.sessionStorage.writes).includes('private'), false);
+
+  const mapped = loadSdk({
+    serverCustomData: servedPersistence('always', {queryParameters: {utm_medium: 'utm_medium', channel: 'entry_channel'}, consentFreeProperties: ['utm_medium', 'entry_channel']}),
+    inline: {consent: true},
+    location: {search: '?channel=paid'}
+  });
+  mapped.triggerPageView();
+  assert.deepEqual(mapped.requests[0].customData, entry('direct'));
+  assert.deepEqual(keptValues(mapped), entry('direct'));
+
+  const fresh = nextPage({sessionStorage: undefined}, {serverCustomData: servedPersistence('always')});
+  fresh.triggerPageView();
+  assert.equal(fresh.requests[0].customData, undefined, 'a first page reached from this site has no known entry');
+
+  const consented = loadSdk({serverCustomData: servedPersistence('consented'), referrer: 'https://www.bing.com/'});
+  consented.triggerPageView();
+  assert.deepEqual(consented.requests[0].customData, entry('search'));
+  assert.deepEqual(attributionWrites(consented), []);
+  const consentedNext = nextPage(consented, {serverCustomData: servedPersistence('consented')});
+  consentedNext.triggerPageView();
+  assert.equal(consentedNext.requests[0].customData, undefined);
+
+  const off = loadSdk({serverCustomData: servedPersistence('off'), referrer: 'https://www.google.com/'});
+  off.triggerPageView();
+  assert.equal(off.requests[0].customData, undefined);
+});
+
+test('a served persistence setting is a ceiling that pages can narrow but not widen, and unknown values keep nothing', () => {
+  const capped = loadSdk({
+    serverCustomData: servedPersistence('consented'),
+    inline: {customData: {queryParameterPersistence: 'always'}},
+    location: {search: campaignSearch}
+  });
+  capped.window.Aggregate.configure({customData: {queryParameterPersistence: 'always'}});
+  capped.triggerPageView();
+  assert.deepEqual(attributionWrites(capped), []);
+
+  const narrowed = loadSdk({serverCustomData: servedPersistence('always'), location: {search: campaignSearch}});
+  assert.deepEqual(attributionWrites(narrowed), [[attributionKey, '{"entry_channel":"direct","utm_medium":"email"}']]);
+  narrowed.window.Aggregate.configure({customData: {queryParameterPersistence: 'off'}});
+  narrowed.window.Aggregate.setConsent(true);
+  narrowed.triggerPageView();
+  assert.equal(attributionWrites(narrowed).length, 1);
+  assert.deepEqual(narrowed.requests[0].customData, fullCampaign, 'the current page keeps its own values, without the entry channel');
+
+  for (const value of ['ALWAYS', true, 1, null, {}, ['always']]) {
+    const invalid = loadSdk({serverCustomData: servedPersistence(value), inline: {consent: true}, location: {search: campaignSearch}});
+    invalid.triggerPageView();
+    assert.equal(invalid.sessionStorage.reads.includes(attributionKey), false, JSON.stringify(value));
+    assert.deepEqual(attributionWrites(invalid), [], JSON.stringify(value));
+    assert.deepEqual(invalid.requests[0].customData, fullCampaign, JSON.stringify(value));
+  }
+});
+
+test('a static tracker keeps nothing by default and persists only when the page asks', () => {
+  const unconfigured = loadSdk({inline: {consent: true, customData: {consentFreeProperties: ['utm_medium']}}, location: {search: campaignSearch}});
+  unconfigured.triggerPageView();
+  unconfigured.window.Aggregate.setConsent(false);
+  assert.equal(unconfigured.sessionStorage.reads.includes(attributionKey), false);
+  assert.equal(unconfigured.sessionStorage.removals.includes(attributionKey), false);
+  assert.deepEqual(attributionWrites(unconfigured), []);
+  assert.equal(Object.prototype.hasOwnProperty.call(unconfigured.requests[0].customData, 'entry_channel'), false);
+
+  const configured = loadSdk({
+    inline: {customData: {consentFreeProperties: ['utm_medium'], queryParameterPersistence: 'always'}},
+    location: {search: campaignSearch + '&utm_term=private-search'}
+  });
+  configured.triggerPageView();
+  assert.deepEqual(keptValues(configured), entry('direct', {utm_medium: 'email'}));
+});
+
+test('kept values are scoped by website token, limited to mapped properties and dropped when malformed', () => {
+  const malformed = loadSdk({serverCustomData: servedPersistence('always'), sessionStorage: {[attributionKey]: '[1,2]'}});
+  assert.equal(malformed.sessionStorage.removals.includes(attributionKey), true);
+  malformed.triggerPageView();
+  assert.deepEqual(malformed.requests[0].customData, entry('direct'));
+
+  const tampered = loadSdk({
+    serverCustomData: servedPersistence('always', {queryParameters: {utm_medium: 'utm_medium'}, propertyTypes: {utm_medium: 'string'}}),
+    inline: {consent: true},
+    referrer: 'https://www.example.com/pricing',
+    sessionStorage: {[attributionKey]: JSON.stringify({entry_channel: 'paid', utm_medium: 'email', utm_source: 'unmapped', org_internal_traffic: 'true', page_sequence: '3', constructor: 'x'})}
+  });
+  tampered.triggerPageView();
+  assert.deepEqual(tampered.requests[0].customData, {utm_medium: 'email'}, 'an unknown kept channel is not sent');
+  assert.equal(tampered.requests[0].org_internal_traffic, false);
+  assert.deepEqual(keptValues(tampered), {utm_medium: 'email'});
+
+  const otherSite = loadSdk({
+    serverCustomData: servedPersistence('always'),
+    inline: {websiteToken: 'other-token'},
+    sessionStorage: {[attributionKey]: '{"entry_channel":"search","utm_medium":"email"}'}
+  });
+  otherSite.triggerPageView();
+  assert.deepEqual(otherSite.requests[0].customData, entry('direct'));
+  assert.equal(otherSite.sessionStorage.has('aggregate_attribution:other-token'), true);
+});
+
+test('typed query destinations are not filled from kept text, and blocked storage still serves the current document', () => {
+  const typed = loadSdk({
+    serverCustomData: servedPersistence('always', {propertyTypes: {utm_medium: 'integer'}}),
+    sessionStorage: {[attributionKey]: '{"utm_medium":"5"}'}
+  });
+  typed.triggerPageView();
+  assert.deepEqual(typed.requests[0].customData, entry('direct'));
+
+  const blocked = loadSdk({serverCustomData: servedPersistence('always'), sessionStorageUnavailable: true, location: {search: campaignSearch}});
+  blocked.triggerPageView();
+  blocked.window.location.search = '';
+  blocked.window.Aggregate.emit('button_click');
+  assert.deepEqual(blocked.requests.map((payload) => payload.customData), [entry('direct', {utm_medium: 'email'}), entry('direct', {utm_medium: 'email'})]);
+});
+
 test('query names match case exactly and malformed query encoding does not break tracking', () => {
   const runtime = loadSdk({
     inline: {customData: {consentFreeProperties: ['utm_source']}},

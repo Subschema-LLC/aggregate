@@ -323,8 +323,9 @@ in three generated views:
 Each modeled property becomes a text column, and numeric properties can also get
 a number column for calculations; missing values, JSON `null`, arrays and objects
 become SQL `NULL`. By default the views also have `org_internal_traffic`
-(`true` for your team's marked browsers, so reports can filter them out) and
-`page_sequence` (page depth, while it is on); see
+(`true` for your team's marked browsers, so reports can filter them out),
+`page_sequence` (page depth, while it is on) and `entry_channel` (how the
+visitor arrived in the tab, while query values are kept for the tab session); see
 [built-in properties](DATA-MODEL.md#built-in-properties). These views show individual raw rows without
 suppression, so they need separately approved raw-data access and are not part of
 the routine BI contract. They include retained rows that were already archived,
@@ -358,7 +359,7 @@ the physical type differs between database engines.
 | `visitor_id` | Nullable string (191) | Enhanced only; always null in anonymous mode. |
 | `session_id` | Nullable string (191) | Enhanced only; always null in anonymous mode. |
 | `consent_state` | Nullable string (20) | `granted` for enhanced rows; null in anonymous mode. |
-| `custom_data` | Nullable JSON | Allowed scalar properties, optional `page_sequence`, and the organization-traffic flag `org_internal_traffic` (true or false). Anonymous rows keep only properties configured for collection without consent. Not included in the approved views or the archives. |
+| `custom_data` | Nullable JSON | Allowed scalar properties, optional `page_sequence` and `entry_channel`, and the organization-traffic flag `org_internal_traffic` (true or false). Anonymous rows keep only properties configured for collection without consent. Not included in the approved views or the archives. |
 | `goal_event` | Nullable string (191) | An enabled goal code; kept on anonymous rows only when the goal allows anonymous use. |
 | `created_at` | UTC date and time | The UTC hour for anonymous rows; the exact server time for enhanced rows. |
 | `archived_at` | Nullable UTC date and time | Set when maintenance has counted the row into the [archive tables](DATABASE.md#analytics-archive-and-maintenance). The row stays until retention deletes it. |

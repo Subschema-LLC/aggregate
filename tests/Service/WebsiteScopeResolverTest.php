@@ -18,6 +18,7 @@ use App\Service\GoalEventRegistry;
 use App\Service\InternalTrafficSettings;
 use App\Service\PrivacyPolicy;
 use App\Service\PrivacySanitizer;
+use App\Service\ScopeKeys;
 use App\Service\SiteScriptConfig;
 use App\Service\WebsiteScopeCatalog;
 use App\Service\WebsiteScopeEditor;
@@ -332,6 +333,24 @@ final class WebsiteScopeResolverTest extends TestCase
         self::assertFalse((new PrivacyPolicy($closed))->isAnonymousTrackingEnabled());
         self::assertFalse($loader->isScopeInvalid());
         self::assertFalse((new CustomDataSettings($loader))->toArray()[CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY]);
+    }
+
+    public function testAWebsiteCanKeepQueryValuesWhileTheDeploymentDoesNot(): void
+    {
+        [$directory, $loader] = $this->deployment(['anonymous_tracking_enabled' => true]);
+        $catalog = new WebsiteScopeCatalog($directory, 'test');
+        $catalog->saveOverlay('websites', SiteScriptConfig::idForToken('store-token'), [
+            CustomDataSettings::QUERY_PERSISTENCE_KEY => 'always',
+        ], []);
+        $resolver = new WebsiteScopeResolver($loader, $catalog);
+
+        self::assertSame('always', (new CustomDataSettings($resolver->forToken('store-token')))->toBrowserConfig()['queryParameterPersistence']);
+        self::assertSame('off', (new CustomDataSettings($loader))->toBrowserConfig()['queryParameterPersistence']);
+        self::assertSame('query_parameter_persistence must be off, consented or always in a website or group file.', ScopeKeys::errors([CustomDataSettings::QUERY_PERSISTENCE_KEY => 'sometimes']));
+        $this->expectExceptionMessage('query_parameter_persistence must be off, consented or always in a website or group file.');
+        $catalog->saveOverlay('websites', SiteScriptConfig::idForToken('blog-token'), [
+            CustomDataSettings::QUERY_PERSISTENCE_KEY => 'sometimes',
+        ], []);
     }
 
     public function testATokenizedTrackerEmbedsThatWebsitesProfile(): void

@@ -76,6 +76,7 @@ final class WebsiteScopePublisher
             CustomDataSettings::MAPPINGS_KEY => $mappings,
             CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY => $deployment[CustomDataSettings::PAGE_SEQUENCE_ENABLED_KEY],
             CustomDataSettings::PAGE_SEQUENCE_METHOD_KEY => $deployment[CustomDataSettings::PAGE_SEQUENCE_METHOD_KEY],
+            CustomDataSettings::QUERY_PERSISTENCE_KEY => $deployment[CustomDataSettings::QUERY_PERSISTENCE_KEY],
         ]);
 
         return $added;

@@ -6,6 +6,11 @@ namespace App\Tests\Service;
 
 use App\Command\ExportDataCommand;
 use App\Command\ImportDataCommand;
+use App\Entity\AnalyticsArchiveEvent;
+use App\Entity\AnalyticsArchiveGeoEvent;
+use App\Entity\AnalyticsArchiveGoal;
+use App\Entity\Event;
+use App\Entity\User;
 use App\Service\DataTransfer\DataTransfer;
 use App\Service\DataTransfer\DataTransferException;
 use App\Service\DataTransfer\TransferCatalog;
@@ -20,6 +25,9 @@ use Doctrine\DBAL\Types\BigIntType;
 use Doctrine\DBAL\Types\DateTimeImmutableType;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Mapping\UnderscoreNamingStrategy;
+use Doctrine\ORM\ORMSetup;
 use PHPUnit\Framework\TestCase;
 use Psr\Clock\ClockInterface;
 use Psr\Log\NullLogger;
@@ -63,11 +71,17 @@ final class DataTransferTest extends TestCase
         $this->insert($source, 'events', $this->anonymous(1, 'site-a'));
         $this->insert($source, 'events', $this->enhanced(2, 'site-b'));
         $this->insert($source, 'analytics_archive_events', $this->archiveCell('aa', 'site-a'));
+        $this->insert($source, 'analytics_archive_events', [
+            ...$this->archiveCell('bb', 'site-b'),
+            'privacy_mode' => 'enhanced',
+            'page_path' => 'https://example.com/account?user=42',
+            'referrer_channel' => 'https://referrer.example/',
+        ]);
         $this->insert($source, 'users', $this->user(7, 'ada'));
 
         $exported = (new DataTransfer($source, $this->directory))->export('move-1', null, [], true, true, false, false);
 
-        self::assertSame(4, $exported->written);
+        self::assertSame(5, $exported->written);
         self::assertStringContainsString('Keep it private', $exported->summary());
         $package = $this->directory.'/var/data-transfer/move-1';
         self::assertSame(0600, fileperms($package.'/events.jsonl') & 0777);
@@ -85,11 +99,11 @@ final class DataTransferTest extends TestCase
         $this->schema($target);
         $imported = (new DataTransfer($target, $this->directory))->import('move-1', null, [], [], true, 'fail', false, false);
 
-        self::assertSame(4, $imported->written);
+        self::assertSame(5, $imported->written);
         self::assertSame('site-a', $target->fetchOne('SELECT website_token FROM events WHERE id = 1'));
         self::assertNull($target->fetchOne('SELECT visitor_id FROM events WHERE id = 1'));
         self::assertSame('visitor-2', $target->fetchOne('SELECT visitor_id FROM events WHERE id = 2'));
-        self::assertSame('3', (string) $target->fetchOne('SELECT event_count FROM analytics_archive_events'));
+        self::assertSame('6', (string) $target->fetchOne('SELECT SUM(event_count) FROM analytics_archive_events'));
         self::assertSame('ada', $target->fetchOne('SELECT username FROM users WHERE id = 7'));
         self::assertSame(0, (int) $target->fetchOne("SELECT COUNT(*) FROM sqlite_master WHERE name = 'analytics_glossary'"));
     }
@@ -139,6 +153,17 @@ final class DataTransferTest extends TestCase
             self::assertStringNotContainsString('should-not-travel', $e->getMessage());
         }
         self::assertDirectoryDoesNotExist($this->directory.'/var/data-transfer/bad');
+
+        $badArchive = $this->archiveCell('aa', 'site-a');
+        $badArchive['page_path'] = 'https://example.com/pricing?email=secret';
+        $this->insert($source, 'analytics_archive_events', $badArchive);
+        try {
+            (new DataTransfer($source, $this->directory))->export('bad-archive', ['archives'], [], false, false, false, false);
+            self::fail('An unsanitized anonymous archive path should stop the export.');
+        } catch (DataTransferException $e) {
+            self::assertStringContainsString('anonymous', $e->getMessage());
+            self::assertStringNotContainsString('secret', $e->getMessage());
+        }
     }
 
     public function testEnhancedWithoutConsentIsRefused(): void
@@ -311,6 +336,37 @@ final class DataTransferTest extends TestCase
         self::assertStringNotContainsString('old_token', (string) $target->fetchOne('SELECT details FROM audit_trail'));
     }
 
+    public function testCatalogColumnsMatchMappedEntities(): void
+    {
+        $config = ORMSetup::createAttributeMetadataConfig([dirname(__DIR__, 2).'/src/Entity'], true);
+        $config->setNamingStrategy(new UnderscoreNamingStrategy(\CASE_LOWER));
+        if (\PHP_VERSION_ID >= 80400) {
+            $config->enableNativeLazyObjects(true);
+        } else {
+            $config->setProxyDir(sys_get_temp_dir());
+            $config->setProxyNamespace('AggregateTestProxies');
+        }
+        $manager = new EntityManager(DriverManager::getConnection(['driver' => 'pdo_sqlite', 'memory' => true], $config), $config);
+
+        foreach ([
+            'events' => Event::class,
+            'analytics_archive_events' => AnalyticsArchiveEvent::class,
+            'analytics_archive_goals' => AnalyticsArchiveGoal::class,
+            'analytics_archive_geo_events' => AnalyticsArchiveGeoEvent::class,
+        ] as $table => $entity) {
+            self::assertSame(
+                array_values($manager->getClassMetadata($entity)->getColumnNames()),
+                array_keys(TransferCatalog::columns($table)),
+                $table,
+            );
+        }
+
+        $userColumns = array_values($manager->getClassMetadata(User::class)->getColumnNames());
+        foreach (array_keys(TransferCatalog::columns('users')) as $column) {
+            self::assertContains($column, $userColumns);
+        }
+    }
+
     private function sqliteUrl(string $path): string
     {
         return 'sqlite:///'.$path;
@@ -418,8 +474,6 @@ final class DataTransferTest extends TestCase
             'device_class' => 'desktop',
             'viewport_bucket' => 'large',
             'event_count' => '3',
-            'first_archived_at' => '2026-10-18 19:00:00',
-            'last_archived_at' => '2026-10-18 19:00:00',
         ];
     }
 
