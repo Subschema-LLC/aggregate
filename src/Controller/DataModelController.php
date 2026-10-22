@@ -45,7 +45,14 @@ final class DataModelController extends AbstractController
         $scope = null;
         $settings = $this->settings;
         if ($this->scopes !== null) {
-            $scope = $this->permittedScopeSelection($this->scopes, $request->query->get('scope'), 'app_data_model');
+            $rawScope = $request->query->get('scope');
+            if ($rawScope === null && $request->cookies->has('aggregate_scope')) {
+                $cookieScope = (string) $request->cookies->get('aggregate_scope');
+                if ($cookieScope !== '' && $this->canUseScope($cookieScope)) {
+                    $rawScope = $cookieScope;
+                }
+            }
+            $scope = $this->permittedScopeSelection($this->scopes, $rawScope, 'app_data_model');
             $settings = new CustomDataSettings($this->scopes->configFor($scope));
         } elseif (!$this->canUseEveryWebsite()) {
             throw $this->createAccessDeniedException('The deployment data model needs access to every website.');

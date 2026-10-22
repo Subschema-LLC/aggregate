@@ -80,6 +80,10 @@ class WebsitesController extends AbstractController
                 // Only a status already computed: the page never waits on the
                 // events database. The page loads fresh ones from app_website_activity.
                 $website['activity'] = $activityService?->cachedStatusForToken((string) ($website['token'] ?? ''));
+                $website['id'] = WebsiteConfigManager::idForToken((string) ($website['token'] ?? ''));
+                $website['group_id'] = ($this->scopes !== null && !$this->scopes->hasLoadError())
+                    ? $this->scopes->groupIdForToken((string) ($website['token'] ?? ''))
+                    : null;
 
                 return $website;
             }, $this->visibleWebsites($this->websiteManager->getWebsites())),

@@ -1,5 +1,32 @@
 {% props label = 'Page cards', expand_label = 'Expand all', collapse_label = 'Collapse all' %}
+{% set selector_data = global_website_selector_options is defined ? global_website_selector_options() : null %}
 <div {{ attributes.defaults({class: 'page-card-controls is-flex is-justify-content-flex-end is-align-items-center mb-4', role: 'toolbar', 'aria-label': label}) }} data-card-controls>
+    {% if selector_data and selector_data.websites|length > 0 %}
+        <div class="field mb-0 mr-2" data-global-website-selector-wrapper>
+            <div class="control has-icons-left">
+                <div class="select is-small">
+                    <select class="global-website-select" aria-label="Website or group selection" data-controller="components--ui--website-selector" data-action="change->components--ui--website-selector#change">
+                        <option value="all">All websites</option>
+                        {% if selector_data.groups|length > 0 %}
+                            <optgroup label="{{ selector_data.group_label }}">
+                                {% for group in selector_data.groups %}
+                                    <option value="{{ group.value }}" data-group-id="{{ group.id }}">{{ group.name }}</option>
+                                {% endfor %}
+                            </optgroup>
+                        {% endif %}
+                        <optgroup label="Websites">
+                            {% for site in selector_data.websites %}
+                                <option value="{{ site.value }}" data-token="{{ site.token }}" data-site-id="{{ site.id }}" data-group-id="{{ site.group_id|default('') }}">{{ site.name }}{% if site.domain %} ({{ site.domain }}){% endif %}</option>
+                            {% endfor %}
+                        </optgroup>
+                    </select>
+                </div>
+                <span class="icon is-small is-left">
+                    <i class="fas fa-globe" aria-hidden="true"></i>
+                </span>
+            </div>
+        </div>
+    {% endif %}
     <div class="buttons are-small mb-0">
         <button type="button" class="button is-light" data-action="components--ui--cards#expandAll" data-card-action="expand">
             <span class="icon"><i class="fas fa-angles-down" aria-hidden="true"></i></span>
