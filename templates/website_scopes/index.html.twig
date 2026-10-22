@@ -59,11 +59,15 @@
         </div>
     {% endif %}
 
+    <div class="website-groups-list" data-groups-list>
     {% for id, group in groups %}
-        <article class="box">
+        <article class="box" data-group-card="{{ id }}">
             <div class="level">
                 <div>
-                    <h2 class="title is-5 mb-1">{{ group.name }}</h2>
+                    <h2 class="title is-5 mb-1">
+                        <span>{{ group.name }}</span>
+                        <span class="tag is-primary is-light is-rounded ml-2 scope-matched-badge" data-scope-matched-badge hidden>Selected</span>
+                    </h2>
                     <p class="help mb-0">Id <code>{{ id }}</code>. Settings are saved in <code>config/website-scopes/groups/{{ id }}.yaml</code>.</p>
                 </div>
                 <div class="buttons">
@@ -99,6 +103,7 @@
             </div>
         </article>
     {% endfor %}
+    </div>
 
     {% if websites is not empty and not catalog_error %}
         <form class="box" method="post" action="{{ path('app_website_groups_assign') }}">

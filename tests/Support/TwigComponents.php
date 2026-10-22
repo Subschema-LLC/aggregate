@@ -43,6 +43,7 @@ final class TwigComponents
                     new TwigFunction('dashboard_can_edit', static fn (string $page): bool => true),
                     new TwigFunction('dashboard_page_access', static fn (): ?array => null),
                     new TwigFunction('dashboard_access_summary', static fn (mixed $user = null): ?array => null),
+                    new TwigFunction('global_website_selector_options', static fn (): ?array => null),
                 ];
             }
         });

@@ -46,7 +46,11 @@ final class TagManagerController extends AbstractController
         if ($websites === [] && !$this->canUseEveryWebsite()) {
             throw $this->createAccessDeniedException('No websites are assigned to you yet. Ask an administrator for access.');
         }
-        $siteId = array_key_exists('site', $query) ? $query['site'] : ($websites[0]['id'] ?? '');
+        $cookieSite = $request?->cookies->get('aggregate_site');
+        $fallbackSiteId = (is_string($cookieSite) && $cookieSite !== '' && $this->canUseSiteId($cookieSite))
+            ? $cookieSite
+            : ($websites[0]['id'] ?? '');
+        $siteId = array_key_exists('site', $query) ? $query['site'] : $fallbackSiteId;
         $this->denyUnlessSiteUsable($siteId);
         try {
             $site = $this->selectedSite($siteId);

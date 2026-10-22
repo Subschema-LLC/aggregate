@@ -40,7 +40,14 @@ class CollectionSettingsController extends AbstractController
         $scope = null;
         $config = $this->config;
         if ($this->scopes !== null) {
-            $scope = $this->permittedScopeSelection($this->scopes, $request->query->get('scope'), 'app_collection_settings');
+            $rawScope = $request->query->get('scope');
+            if ($rawScope === null && $request->cookies->has('aggregate_scope')) {
+                $cookieScope = (string) $request->cookies->get('aggregate_scope');
+                if ($cookieScope !== '' && $this->canUseScope($cookieScope)) {
+                    $rawScope = $cookieScope;
+                }
+            }
+            $scope = $this->permittedScopeSelection($this->scopes, $rawScope, 'app_collection_settings');
             $config = $this->scopes->configFor($scope);
         } elseif (!$this->canUseEveryWebsite()) {
             throw $this->createAccessDeniedException('Deployment collection settings need access to every website.');
