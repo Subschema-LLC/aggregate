@@ -112,9 +112,11 @@
     </div>
 {% endif %}
 
+<div class="websites-list" data-websites-list>
 {% for website in websites %}
     {{ component('Websites:SiteCard', {website: website, index: loop.index, include_tags: include_tags, snippet_format: snippet_format, can_edit: can_edit, can_setup: dashboard_allowed('app_setup'), include_cmp: include_cmp}) }}
 {% endfor %}
+</div>
 
 <details class="box mt-5">
     <summary class="has-text-weight-semibold">

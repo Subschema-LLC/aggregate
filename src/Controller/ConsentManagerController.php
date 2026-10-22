@@ -43,7 +43,11 @@ final class ConsentManagerController extends AbstractController
         $this->denyUnlessPermitted();
         $websites = $this->visibleWebsites($this->sites->sites());
         $query = $request->query->all();
-        $siteId = array_key_exists('site', $query) ? $query['site'] : ($websites[0]['id'] ?? null);
+        $cookieSite = $request->cookies->get('aggregate_site');
+        $fallbackSiteId = (is_string($cookieSite) && $cookieSite !== '' && $this->canUseSiteId($cookieSite))
+            ? $cookieSite
+            : ($websites[0]['id'] ?? null);
+        $siteId = array_key_exists('site', $query) ? $query['site'] : $fallbackSiteId;
         if ($siteId !== null && (!is_string($siteId) || !$this->canUseSiteId($siteId))) {
             throw $this->createNotFoundException('Choose a website you can use.');
         }

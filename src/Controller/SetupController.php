@@ -27,7 +27,11 @@ final class SetupController extends AbstractController
         $this->authorize();
         $websites = $this->visibleWebsites($this->scripts->websites());
         $query = $request->query->all();
-        $token = $query['website'] ?? ($websites[0]['token'] ?? '');
+        $cookieToken = $request->cookies->get('aggregate_token');
+        $fallbackToken = (is_string($cookieToken) && $cookieToken !== '' && $this->canUseWebsiteToken($cookieToken))
+            ? $cookieToken
+            : ($websites[0]['token'] ?? '');
+        $token = $query['website'] ?? $fallbackToken;
         if (is_string($token) && $token !== '' && !$this->canUseWebsiteToken($token)) {
             throw $this->createNotFoundException('Choose a website you can use.');
         }

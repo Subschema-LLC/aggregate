@@ -830,3 +830,24 @@ button:focus-visible,
     object-fit: contain;
     width: auto;
 }
+
+/* Global Website Selector */
+.page-card-controls [data-global-website-selector-wrapper] .select select {
+    max-width: 260px;
+    text-overflow: ellipsis;
+}
+
+/* Selected Scope card highlights */
+.box.is-scope-matched,
+.card.is-scope-matched,
+details.box.is-scope-matched,
+article.box.is-scope-matched {
+    border-left: 3px solid var(--bulma-primary, #00d1b2) !important;
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--bulma-primary, #00d1b2) 30%, transparent), var(--bulma-box-shadow, 0 0.5em 1em -0.125em rgba(10, 10, 10, 0.1)) !important;
+}
+
+.scope-matched-badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    vertical-align: middle;
+}
