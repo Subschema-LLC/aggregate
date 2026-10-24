@@ -7,10 +7,15 @@ namespace App\Tests\Twig;
 use App\Entity\User;
 use App\Service\WebsiteConfigManager;
 use App\Service\WebsiteScopeCatalog;
+use App\Tests\Support\TwigComponents;
 use App\Twig\WebsiteSelectorExtension;
 use PHPUnit\Framework\TestCase;
 use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\Yaml\Yaml;
+use Twig\Environment;
+use Twig\Loader\ArrayLoader;
+use Twig\Loader\ChainLoader;
+use Twig\Loader\FilesystemLoader;
 
 final class WebsiteSelectorExtensionTest extends TestCase
 {
@@ -81,5 +86,51 @@ final class WebsiteSelectorExtensionTest extends TestCase
         self::assertSame('main-brand', $options['websites'][0]['group_id']);
         self::assertSame('Main Brand', $options['websites'][0]['group_name']);
         self::assertNull($options['websites'][1]['group_id']);
+    }
+
+    public function testCardControlsRendersGlobalWebsiteSelector(): void
+    {
+        file_put_contents($this->projectDir . '/config/websites.yaml', Yaml::dump([
+            'websites' => [
+                ['name' => 'Site A', 'domain' => 'a.com', 'token' => 'token-a-12345678901234567890123456'],
+                ['name' => 'Site B', 'domain' => 'b.com', 'token' => 'token-b-12345678901234567890123456'],
+            ],
+        ]));
+
+        file_put_contents($this->projectDir . '/config/website-scopes.yaml', Yaml::dump([
+            'label' => ['singular' => 'Brand', 'plural' => 'Brands'],
+            'groups' => [
+                'main-brand' => [
+                    'name' => 'Main Brand',
+                    'members' => ['token-a-12345678901234567890123456'],
+                ],
+            ],
+        ]));
+
+        $user = new User();
+        $security = $this->createMock(Security::class);
+        $security->method('getUser')->willReturn($user);
+
+        $extension = new WebsiteSelectorExtension(
+            $security,
+            new WebsiteConfigManager($this->projectDir),
+            new WebsiteScopeCatalog($this->projectDir, 'test'),
+        );
+
+        $twig = new Environment(new ChainLoader([
+            new ArrayLoader(['test_card_controls.html.twig' => '{{ component("Ui:CardControls") }}']),
+            new FilesystemLoader(dirname(__DIR__, 2) . '/templates'),
+        ]), ['strict_variables' => true]);
+        $twig->addExtension($extension);
+        TwigComponents::register($twig);
+
+        $html = $twig->render('test_card_controls.html.twig');
+
+        self::assertStringContainsString('class="global-website-select"', $html);
+        self::assertStringContainsString('<option value="all">All websites</option>', $html);
+        self::assertStringContainsString('<optgroup label="Brands">', $html);
+        self::assertStringContainsString('<option value="group:main-brand" data-group-id="main-brand">Main Brand</option>', $html);
+        self::assertStringContainsString('Site A (a.com)</option>', $html);
+        self::assertStringContainsString('Site B (b.com)</option>', $html);
     }
 }

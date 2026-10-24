@@ -1,6 +1,6 @@
 {% props label = 'Page cards', expand_label = 'Expand all', collapse_label = 'Collapse all' %}
-{% set selector_data = global_website_selector_options is defined ? global_website_selector_options() : null %}
-<div {{ attributes.defaults({class: 'page-card-controls is-flex is-justify-content-flex-end is-align-items-center mb-4', role: 'toolbar', 'aria-label': label}) }} data-card-controls>
+{% set selector_data = global_website_selector_options() %}
+<div {{ attributes.defaults({class: 'page-card-controls is-flex is-flex-wrap-wrap is-justify-content-flex-end is-align-items-center mb-4', role: 'toolbar', 'aria-label': label}) }} data-card-controls>
     {% if selector_data and selector_data.websites|length > 0 %}
         <div class="field mb-0 mr-2" data-global-website-selector-wrapper>
             <div class="control has-icons-left">
