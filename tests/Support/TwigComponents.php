@@ -6,6 +6,7 @@ namespace App\Tests\Support;
 
 use App\Service\DocumentationLinks;
 use App\Twig\DocumentationExtension;
+use App\Twig\WebsiteSelectorExtension;
 use Symfony\Component\DependencyInjection\ServiceLocator;
 use Symfony\Component\EventDispatcher\EventDispatcher;
 use Symfony\Component\PropertyAccess\PropertyAccess;
@@ -35,16 +36,25 @@ final class TwigComponents
     public static function register(Environment $twig, string $documentationUrl = DocumentationLinks::DEFAULT_URL): void
     {
         $twig->addExtension(new DocumentationExtension(FixedDocumentationLinks::create($documentationUrl)));
-        $twig->addExtension(new class extends AbstractExtension {
+        $hasWebsiteSelector = $twig->hasExtension(WebsiteSelectorExtension::class);
+        $twig->addExtension(new class($hasWebsiteSelector) extends AbstractExtension {
+            public function __construct(private readonly bool $hasWebsiteSelector)
+            {
+            }
+
             public function getFunctions(): array
             {
-                return [
+                $functions = [
                     new TwigFunction('dashboard_allowed', static fn (string $route): bool => true),
                     new TwigFunction('dashboard_can_edit', static fn (string $page): bool => true),
                     new TwigFunction('dashboard_page_access', static fn (): ?array => null),
                     new TwigFunction('dashboard_access_summary', static fn (mixed $user = null): ?array => null),
-                    new TwigFunction('global_website_selector_options', static fn (): ?array => null),
                 ];
+                if (!$this->hasWebsiteSelector) {
+                    $functions[] = new TwigFunction('global_website_selector_options', static fn (): ?array => null);
+                }
+
+                return $functions;
             }
         });
         $dispatcher = new EventDispatcher();
