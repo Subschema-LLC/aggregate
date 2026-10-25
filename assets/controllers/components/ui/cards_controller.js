@@ -16,46 +16,49 @@ export default class extends Controller {
         const candidates = this.element.querySelectorAll('.box, .card');
         candidates.forEach((card) => {
             if (!this.shouldEnhance(card)) return;
-            const header = this.findHeader(card);
-            if (!header) return;
+            const headers = this.findHeaders(card);
+            if (headers.length === 0) return;
 
             card.classList.add('is-collapsible-card');
-            header.classList.add('collapsible-card-header');
-            if (!header.hasAttribute('role')) {
-                header.setAttribute('role', 'button');
-            }
-            if (!header.hasAttribute('tabindex')) {
-                header.setAttribute('tabindex', '0');
-            }
-
             const startCollapsed = card.dataset?.collapsed === 'true' || card.classList.contains('is-collapsed');
             card.classList.toggle('is-collapsed', startCollapsed);
-            header.setAttribute('aria-expanded', startCollapsed ? 'false' : 'true');
 
-            if (!header.querySelector || !header.querySelector('.collapsible-card-chevron')) {
+            const chevronHeader = headers[headers.length - 1];
+            headers.forEach((header) => {
+                header.classList.add('collapsible-card-header');
+                if (!header.hasAttribute('role')) {
+                    header.setAttribute('role', 'button');
+                }
+                if (!header.hasAttribute('tabindex')) {
+                    header.setAttribute('tabindex', '0');
+                }
+                header.setAttribute('aria-expanded', startCollapsed ? 'false' : 'true');
+
+                if (!header.dataset?.collapsibleBound) {
+                    if (header.dataset) header.dataset.collapsibleBound = '1';
+                    if (typeof header.addEventListener === 'function') {
+                        header.addEventListener('click', (event) => {
+                            if (this.isInteractiveTarget(event.target, header)) return;
+                            this.toggleCard(card, header);
+                        });
+                        header.addEventListener('keydown', (event) => {
+                            if (this.isInteractiveTarget(event.target, header)) return;
+                            if (event.key === 'Enter' || event.key === ' ') {
+                                if (typeof event.preventDefault === 'function') event.preventDefault();
+                                this.toggleCard(card, header);
+                            }
+                        });
+                    }
+                }
+            });
+
+            if (!chevronHeader.querySelector || !chevronHeader.querySelector('.collapsible-card-chevron')) {
                 const doc = this.element.ownerDocument;
-                if (doc && typeof doc.createElement === 'function' && typeof header.appendChild === 'function') {
+                if (doc && typeof doc.createElement === 'function' && typeof chevronHeader.appendChild === 'function') {
                     const chevron = doc.createElement('span');
                     chevron.className = 'collapsible-card-chevron';
                     chevron.setAttribute('aria-hidden', 'true');
-                    header.appendChild(chevron);
-                }
-            }
-
-            if (!header.dataset?.collapsibleBound) {
-                if (header.dataset) header.dataset.collapsibleBound = '1';
-                if (typeof header.addEventListener === 'function') {
-                    header.addEventListener('click', (event) => {
-                        if (this.isInteractiveTarget(event.target, header)) return;
-                        this.toggleCard(card, header);
-                    });
-                    header.addEventListener('keydown', (event) => {
-                        if (this.isInteractiveTarget(event.target, header)) return;
-                        if (event.key === 'Enter' || event.key === ' ') {
-                            if (typeof event.preventDefault === 'function') event.preventDefault();
-                            this.toggleCard(card, header);
-                        }
-                    });
+                    chevronHeader.appendChild(chevron);
                 }
             }
         });
@@ -71,9 +74,40 @@ export default class extends Controller {
         return true;
     }
 
-    findHeader(card) {
-        if (!card || typeof card.querySelector !== 'function') return null;
+    findHeaders(card) {
+        if (!card || typeof card.querySelector !== 'function') return [];
 
+        const direct = this.findDirectHeader(card);
+        if (direct) return [direct];
+
+        const children = Array.from(card.children || []);
+        const columns = children.find(
+            (child) => child.classList && child.classList.contains('columns')
+        );
+        if (columns) {
+            const colHeaders = Array.from(columns.children || [])
+                .filter((col) => col.classList && col.classList.contains('column'))
+                .map((col) => Array.from(col.children || []).find((el) => {
+                    const tag = String(el.tagName || '').toLowerCase();
+                    return ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag) || Boolean(el.classList && el.classList.contains('title'));
+                }))
+                .filter(Boolean);
+            if (colHeaders.length > 0) {
+                return colHeaders;
+            }
+        }
+
+        // First heading inside .card-content or first column
+        const nestedHeading = card.querySelector('h1, h2, h3, h4, .title');
+        return nestedHeading ? [nestedHeading] : [];
+    }
+
+    findHeader(card) {
+        const headers = this.findHeaders(card);
+        return headers[0] || null;
+    }
+
+    findDirectHeader(card) {
         // Direct card-header for Bulma .card elements
         const cardHeader = Array.from(card.children || []).find(
             (child) => child.classList && child.classList.contains('card-header')
@@ -100,9 +134,7 @@ export default class extends Controller {
             }
         }
 
-        // First heading inside .card-content or first column
-        const nestedHeading = card.querySelector('h1, h2, h3, h4, .title');
-        return nestedHeading || null;
+        return null;
     }
 
     isInteractiveTarget(target, header) {
@@ -118,10 +150,18 @@ export default class extends Controller {
 
     setCardState(card, expanded, header = null) {
         card.classList.toggle('is-collapsed', !expanded);
-        const h = header || (typeof card.querySelector === 'function' ? card.querySelector('.collapsible-card-header') : null);
-        if (h && typeof h.setAttribute === 'function') {
-            h.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        const headers = typeof card.querySelectorAll === 'function'
+            ? Array.from(card.querySelectorAll('.collapsible-card-header'))
+            : [];
+        if (headers.length === 0) {
+            const single = header || (typeof card.querySelector === 'function' ? card.querySelector('.collapsible-card-header') : null);
+            if (single) headers.push(single);
         }
+        headers.forEach((h) => {
+            if (h && typeof h.setAttribute === 'function') {
+                h.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+            }
+        });
     }
 
     deduplicateToolbars() {

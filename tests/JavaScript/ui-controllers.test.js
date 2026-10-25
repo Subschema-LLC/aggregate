@@ -247,6 +247,82 @@ test('cards controller enhances cards and expands or collapses all cards on the 
   assert.equal(header.attributes['aria-expanded'], 'false');
 });
 
+test('cards controller places the chevron on the rightmost column header in multi-column boxes', () => {
+  const makeClassList = (initial = []) => {
+    const set = new Set(initial);
+    return {
+      add: (...names) => names.forEach(n => set.add(n)),
+      contains: n => set.has(n),
+      toggle: (n, force) => {
+        const next = force === undefined ? !set.has(n) : Boolean(force);
+        if (next) set.add(n); else set.delete(n);
+        return next;
+      }
+    };
+  };
+
+  const makeHeader = () => {
+    const children = [];
+    const listeners = {};
+    return {
+      tagName: 'H2',
+      dataset: {},
+      attributes: {},
+      children,
+      listeners,
+      classList: makeClassList(['title', 'is-5']),
+      hasAttribute(k) { return k in this.attributes; },
+      setAttribute(k, v) { this.attributes[k] = v; },
+      querySelector: () => null,
+      appendChild(child) { children.push(child); },
+      addEventListener(type, cb) { listeners[type] = cb; }
+    };
+  };
+
+  const leftHeader = makeHeader();
+  const rightHeader = makeHeader();
+  const columns = {
+    tagName: 'DIV',
+    classList: makeClassList(['columns']),
+    children: [
+      {tagName: 'DIV', classList: makeClassList(['column']), children: [leftHeader]},
+      {tagName: 'DIV', classList: makeClassList(['column']), children: [rightHeader]}
+    ]
+  };
+  const card = {
+    tagName: 'DIV',
+    dataset: {},
+    hidden: false,
+    classList: makeClassList(['box']),
+    children: [columns],
+    querySelector: () => leftHeader,
+    querySelectorAll: sel => sel === '.collapsible-card-header' ? [leftHeader, rightHeader] : []
+  };
+
+  const container = {
+    ownerDocument: {createElement: () => ({setAttribute() {}})},
+    querySelectorAll(selector) {
+      if (selector === '.box, .card') return [card];
+      if (selector === '.is-collapsible-card') return [card];
+      return [];
+    }
+  };
+
+  const instance = Object.assign(new Cards(), {element: container});
+  instance.connect();
+
+  assert.equal(leftHeader.classList.contains('collapsible-card-header'), true);
+  assert.equal(rightHeader.classList.contains('collapsible-card-header'), true);
+  assert.equal(leftHeader.children.length, 0, 'left column header does not get the chevron');
+  assert.equal(rightHeader.children.length, 1, 'right column header gets the chevron');
+  assert.equal(rightHeader.children[0].className, 'collapsible-card-chevron');
+
+  leftHeader.listeners.click({target: leftHeader});
+  assert.equal(card.classList.contains('is-collapsed'), true);
+  assert.equal(leftHeader.attributes['aria-expanded'], 'false');
+  assert.equal(rightHeader.attributes['aria-expanded'], 'false');
+});
+
 test('email settings controller places the selected email service card first and collapses all others', () => {
   const makeClassList = (initial = []) => {
     const set = new Set(initial);
