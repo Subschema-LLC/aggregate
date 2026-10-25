@@ -7,24 +7,26 @@
 {% set can_add = dashboard_allowed('app_website_create') %}
 
 <div class="websites-page" data-controller="pages--websites--index pages--websites--activity" data-pages--websites--activity-url-value="{{ path('app_website_activity') }}" data-action="turbo:before-cache@document->pages--websites--index#reset">
-<div class="level mb-5">
+<div class="level is-align-items-flex-start mb-5">
     <div class="level-left">
         <div>
             <h1 class="title mb-1">Websites</h1>
-            <p class="subtitle is-6">Manage website tokens, allowed domains, and tracker installation.</p>
-            {% if dashboard_allowed('app_website_groups') %}<p class="help"><a href="{{ path('app_website_groups') }}">Website groups</a> share collection settings and data models. A website setting overrides its group.</p>{% endif %}
+            <p class="subtitle is-6 mb-3">Manage website tokens, allowed domains, and tracker installation.</p>
+            {% if can_add %}
+            <div class="mb-3">
+                <button type="button" class="button is-primary" id="add-website-trigger" data-pages--websites--index-target="trigger" data-action="pages--websites--index#open">
+                    <span class="icon" aria-hidden="true"><i class="fas fa-plus"></i></span>
+                    <span>Add Website</span>
+                </button>
+            </div>
+            {% endif %}
+            {% if dashboard_allowed('app_website_groups') %}<p class="help mb-1"><a href="{{ path('app_website_groups') }}">Website groups</a> share collection settings and data models. A website setting overrides its group.</p>{% endif %}
             {{ component('Ui:DocsLink', {topic: 'configuration.websites', label: 'Website domains guide'}) }}
         </div>
     </div>
-    <div class="level-right">
+    <div class="level-right is-align-self-flex-start">
         <div class="is-flex is-align-items-center is-flex-wrap-wrap" style="gap: 0.5rem;">
             {{ component('Ui:CardControls', {class: 'page-card-controls mb-0'}) }}
-            {% if can_add %}
-            <button type="button" class="button is-primary" id="add-website-trigger" data-pages--websites--index-target="trigger" data-action="pages--websites--index#open">
-                <span class="icon" aria-hidden="true"><i class="fas fa-plus"></i></span>
-                <span>Add Website</span>
-            </button>
-            {% endif %}
         </div>
     </div>
 </div>
@@ -49,36 +51,39 @@
 
 {% if websites is not empty %}
     <div class="box mb-5">
-        <h2 class="title is-5 mb-3" id="website-installation-method">Installation method</h2>
-        <nav class="buttons mb-3" aria-labelledby="website-installation-method">
-            <a class="button is-small{% if not include_tags and snippet_format == 'window' %} is-primary{% endif %}" href="{{ path('app_dashboard', {format: 'window', cmp: include_cmp ? null : '0'}) }}"{% if not include_tags and snippet_format == 'window' %} aria-current="true"{% endif %}>Window configuration</a>
-            <a class="button is-small{% if not include_tags and snippet_format == 'query' %} is-primary{% endif %}" href="{{ path('app_dashboard', {format: 'query', cmp: include_cmp ? null : '0'}) }}"{% if not include_tags and snippet_format == 'query' %} aria-current="true"{% endif %}>URL query parameters</a>
-            <a class="button is-small{% if include_tags %} is-primary{% endif %}" href="{{ path('app_dashboard', {format: 'window', tags: '1', cmp: include_cmp ? null : '0'}) }}"{% if include_tags %} aria-current="true"{% endif %}>Tag manager</a>
-        </nav>
-        <p class="help">
-            {% if include_tags %}
-                Install the website's tag container and enabled consent controls. Configure a script action in the Tag manager to load the tracker URL shown below.
-            {% elseif snippet_format == 'query' %}
-                Load the tracker with its public website token, endpoint, and initial denied consent in the script URL.
-            {% else %}
-                Configure the tracker through <code>window</code> before loading it. The website's enabled consent controls load first.
-            {% endif %}
-        </p>
-
-        <hr class="my-4">
-
-        <h2 class="title is-5 mb-3" id="website-consent-controls">Consent banner (CMP)</h2>
-        <nav class="buttons mb-3" aria-labelledby="website-consent-controls">
-            <a class="button is-small{% if include_cmp %} is-primary{% endif %}" href="{{ path('app_dashboard', {format: snippet_format, tags: include_tags ? '1' : null, cmp: '1'}) }}"{% if include_cmp %} aria-current="true"{% endif %}>Include built-in banner (cmp-lite)</a>
-            <a class="button is-small{% if not include_cmp %} is-primary{% endif %}" href="{{ path('app_dashboard', {format: snippet_format, tags: include_tags ? '1' : null, cmp: '0'}) }}"{% if not include_cmp %} aria-current="true"{% endif %}>Without banner / My own CMP</a>
-        </nav>
-        <p class="help">
-            {% if include_cmp %}
-                Includes the built-in Consent manager lite script (<code>cmp-lite</code>) for websites where it is enabled.
-            {% else %}
-                Omits <code>cmp-lite</code> from the snippet. Connect your own consent management platform to <code>window.{{ js_namespace }}.setConsent(true)</code> on user consent.
-            {% endif %}
-        </p>
+        <div class="columns">
+            <div class="column">
+                <h2 class="title is-5 mb-3" id="website-installation-method">Installation method</h2>
+                <nav class="buttons mb-3" aria-labelledby="website-installation-method">
+                    <a class="button is-small{% if not include_tags and snippet_format == 'window' %} is-primary{% endif %}" href="{{ path('app_dashboard', {format: 'window', cmp: include_cmp ? null : '0'}) }}"{% if not include_tags and snippet_format == 'window' %} aria-current="true"{% endif %}>Window configuration</a>
+                    <a class="button is-small{% if not include_tags and snippet_format == 'query' %} is-primary{% endif %}" href="{{ path('app_dashboard', {format: 'query', cmp: include_cmp ? null : '0'}) }}"{% if not include_tags and snippet_format == 'query' %} aria-current="true"{% endif %}>URL query parameters</a>
+                    <a class="button is-small{% if include_tags %} is-primary{% endif %}" href="{{ path('app_dashboard', {format: 'window', tags: '1', cmp: include_cmp ? null : '0'}) }}"{% if include_tags %} aria-current="true"{% endif %}>Tag manager</a>
+                </nav>
+                <p class="help">
+                    {% if include_tags %}
+                        Install the website's tag container and enabled consent controls. Configure a script action in the Tag manager to load the tracker URL shown below.
+                    {% elseif snippet_format == 'query' %}
+                        Load the tracker with its public website token, endpoint, and initial denied consent in the script URL.
+                    {% else %}
+                        Configure the tracker through <code>window</code> before loading it. The website's enabled consent controls load first.
+                    {% endif %}
+                </p>
+            </div>
+            <div class="column">
+                <h2 class="title is-5 mb-3" id="website-consent-controls">Consent banner (CMP)</h2>
+                <nav class="buttons mb-3" aria-labelledby="website-consent-controls">
+                    <a class="button is-small{% if include_cmp %} is-primary{% endif %}" href="{{ path('app_dashboard', {format: snippet_format, tags: include_tags ? '1' : null, cmp: '1'}) }}"{% if include_cmp %} aria-current="true"{% endif %}>Include built-in banner (cmp-lite)</a>
+                    <a class="button is-small{% if not include_cmp %} is-primary{% endif %}" href="{{ path('app_dashboard', {format: snippet_format, tags: include_tags ? '1' : null, cmp: '0'}) }}"{% if not include_cmp %} aria-current="true"{% endif %}>Without banner / My own CMP</a>
+                </nav>
+                <p class="help">
+                    {% if include_cmp %}
+                        Includes the built-in Consent manager lite script (<code>cmp-lite</code>) for websites where it is enabled.
+                    {% else %}
+                        Omits <code>cmp-lite</code> from the snippet. Connect your own consent management platform to <code>window.{{ js_namespace }}.setConsent(true)</code> on user consent.
+                    {% endif %}
+                </p>
+            </div>
+        </div>
     </div>
 {% endif %}
 
@@ -87,23 +92,11 @@
         <div class="level-left">
             <div class="field mb-0">
                 <div class="control has-icons-left">
-                    <input type="search" class="input is-small is-rounded" placeholder="Filter websites by name or domain..." aria-label="Filter websites" data-action="input->pages--websites--index#filter">
+                    <input type="search" class="input" placeholder="Filter by name or domain..." aria-label="Filter websites" data-action="input->pages--websites--index#filter">
                     <span class="icon is-small is-left">
                         <i class="fas fa-search" aria-hidden="true"></i>
                     </span>
                 </div>
-            </div>
-        </div>
-        <div class="level-right">
-            <div class="buttons are-small mb-0">
-                <button type="button" class="button is-light" data-action="pages--websites--index#expandAll">
-                    <span class="icon"><i class="fas fa-angles-down" aria-hidden="true"></i></span>
-                    <span>Expand all</span>
-                </button>
-                <button type="button" class="button is-light" data-action="pages--websites--index#collapseAll">
-                    <span class="icon"><i class="fas fa-angles-up" aria-hidden="true"></i></span>
-                    <span>Collapse all</span>
-                </button>
             </div>
         </div>
     </div>
