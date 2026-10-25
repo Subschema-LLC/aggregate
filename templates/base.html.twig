@@ -105,7 +105,9 @@
             {% endif %}
 
             {% block card_controls %}
-                {{ component('Ui:CardControls') }}
+                {% if not (app.request.pathInfo starts with '/login') %}
+                    {{ component('Ui:CardControls') }}
+                {% endif %}
             {% endblock %}
 
             {# On a page the user can only view, forms that save are turned off and the server refuses changes. #}
