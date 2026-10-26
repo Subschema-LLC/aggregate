@@ -453,7 +453,12 @@ left to **Force recreate views** (or `--force`), because it drops the views and
 their grants. The properties Aggregate records itself,
 `org_internal_traffic`, `page_sequence` and `entry_channel`, are built in: their
 type is fixed, consent does not apply, the default model gives each a column,
-and the form offers only a checkbox and a column name.
+and the form offers only a checkbox and a column name. `website_group` is an
+optional built-in reporting dimension (off by default) that compiles a `CASE`
+expression from `config/website-scopes.yaml` into both the approved
+`bi_anonymous_*` views and the private `analytics_custom_*` views, projecting
+each grouped website's group display name and `(ungrouped)` for unassigned
+websites while keeping per-website suppression intact.
 
 **Why.** Getting the organization-traffic flag or page depth into a report took
 four steps: knowing to add the property, choosing the right type and consent

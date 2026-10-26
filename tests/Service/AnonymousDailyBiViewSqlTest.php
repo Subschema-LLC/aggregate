@@ -134,4 +134,89 @@ final class AnonymousDailyBiViewSqlTest extends TestCase
             );
         }
     }
+
+    public function testWebsiteGroupColumnCompilesDisplayNamesAndUngroupedFallbackAcrossAllApprovedViews(): void
+    {
+        $groups = [
+            'amazon' => ['name' => 'Amazon', 'members' => ['site-a', 'site-b']],
+            'retail' => ['name' => 'Retail', 'members' => ['site-c']],
+            'empty' => ['name' => 'Empty', 'members' => []],
+        ];
+        $postgres = new AnonymousBiViewSqlBuilder(new PostgreSQLPlatform(), 'UTC', 'website_group', $groups);
+        $mysql = new AnonymousBiViewSqlBuilder(new MySQL80Platform(), 'UTC', 'brand', $groups);
+        $noGroupsPostgres = new AnonymousBiViewSqlBuilder(new PostgreSQLPlatform(), 'UTC', 'website_group', []);
+
+        self::assertStringContainsString("WHEN event_counts.website_token IN ('site-a', 'site-b') THEN 'Amazon'", $postgres->eventViewSql(5));
+        self::assertStringContainsString("WHEN event_counts.website_token = 'site-c' THEN 'Retail'", $postgres->eventViewSql(5));
+        self::assertStringContainsString("ELSE '(ungrouped)'\n        END AS website_group", $postgres->eventViewSql(5));
+        self::assertStringNotContainsString('Empty', $postgres->eventViewSql(5));
+        self::assertStringContainsString("ELSE '(ungrouped)'\n        END AS website_group", $postgres->goalViewSql(5));
+        self::assertSame(2, substr_count($postgres->geoViewSql(25), 'END AS website_group'));
+        self::assertStringContainsString("ELSE '(ungrouped)'\n        END AS website_group", $postgres->dailyViewSql(5));
+        self::assertSame(5, substr_count($postgres->rollupViewSql(5), 'END AS website_group'));
+        self::assertStringContainsString("ELSE '(ungrouped)'\n        END AS website_group", $postgres->coverageViewSql(5));
+        self::assertStringContainsString("THEN 'Amazon' COLLATE utf8mb4_unicode_ci", $mysql->dailyViewSql(5));
+        self::assertStringContainsString("ELSE '(ungrouped)' COLLATE utf8mb4_unicode_ci\n        END AS brand", $mysql->dailyViewSql(5));
+        self::assertStringContainsString("CAST('(ungrouped)' AS text) AS website_group", $noGroupsPostgres->dailyViewSql(5));
+    }
+
+    public function testInvalidWebsiteGroupDefinitionsAreRejectedBeforeEnteringSql(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        new AnonymousBiViewSqlBuilder(new PostgreSQLPlatform(), 'UTC', 'website_group', [
+            'a' => ['name' => 'Brand A', 'members' => ['same-token']],
+            'b' => ['name' => 'Brand B', 'members' => ['same-token']],
+        ]);
+    }
+
+    public function testSqliteExecutesAllApprovedBiViewsWithWebsiteGroupRollup(): void
+    {
+        $python = (new \Symfony\Component\Process\ExecutableFinder())->find('python3');
+        if ($python === null) {
+            self::markTestSkipped('Python SQLite is required for SQL execution checks.');
+        }
+        $builder = new AnonymousBiViewSqlBuilder(new SQLitePlatform(), 'UTC', 'website_group', [
+            'amazon' => ['name' => 'Amazon', 'members' => ['site-a', 'site-b']],
+        ]);
+        $views = [
+            $builder->eventViewSql(5),
+            $builder->goalViewSql(5),
+            $builder->geoViewSql(10),
+            $builder->dailyViewSql(5),
+            $builder->rollupViewSql(5),
+            $builder->coverageViewSql(5),
+        ];
+        $process = new \Symfony\Component\Process\Process([$python, '-c', <<<'PY'
+import datetime, json, sqlite3, sys
+db = sqlite3.connect(':memory:')
+db.execute('CREATE TABLE events (id INTEGER PRIMARY KEY, website_token TEXT, created_at TEXT, event_name TEXT, url TEXT, referrer TEXT, device_class TEXT, viewport_bucket TEXT, privacy_mode TEXT, archived_at TEXT, goal_event TEXT, geo_area TEXT)')
+db.execute('CREATE TABLE analytics_archive_events (website_token TEXT, event_hour TEXT, event_name TEXT, page_path TEXT, referrer_channel TEXT, device_class TEXT, viewport_bucket TEXT, privacy_mode TEXT, event_count INTEGER)')
+db.execute('CREATE TABLE analytics_archive_goals (website_token TEXT, event_day TEXT, goal_event TEXT, privacy_mode TEXT, event_count INTEGER)')
+db.execute('CREATE TABLE analytics_archive_geo_events (website_token TEXT, event_day TEXT, event_name TEXT, geo_area TEXT, privacy_mode TEXT, event_count INTEGER)')
+yesterday = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1)).strftime('%Y-%m-%d')
+hour = yesterday + ' 10:00:00'
+db.execute("INSERT INTO analytics_archive_events VALUES ('site-a', ?, 'view', '/', 'direct', 'desktop', 'large', 'anonymous', 6)", (hour,))
+db.execute("INSERT INTO analytics_archive_events VALUES ('site-b', ?, 'view', '/', 'direct', 'desktop', 'large', 'anonymous', 8)", (hour,))
+db.execute("INSERT INTO analytics_archive_events VALUES ('site-c', ?, 'view', '/', 'direct', 'desktop', 'large', 'anonymous', 5)", (hour,))
+db.execute("INSERT INTO analytics_archive_events VALUES ('site-small', ?, 'view', '/', 'direct', 'desktop', 'large', 'anonymous', 3)", (hour,))
+db.execute("INSERT INTO analytics_archive_goals VALUES ('site-a', ?, 'signup', 'anonymous', 5)", (yesterday,))
+db.execute("INSERT INTO analytics_archive_geo_events VALUES ('site-b', ?, 'view', 'country:US', 'anonymous', 12)", (yesterday,))
+for sql in json.load(sys.stdin):
+    db.executescript(sql)
+rollup = db.execute('SELECT website_group, SUM(event_count) FROM bi_anonymous_daily_rollup_v1 GROUP BY website_group ORDER BY website_group').fetchall()
+assert rollup == [('(ungrouped)', 5), ('Amazon', 14)], rollup
+goals = db.execute('SELECT website_token, website_group, event_count FROM bi_anonymous_goals_v1').fetchall()
+assert goals == [('site-a', 'Amazon', 5)], goals
+geo = db.execute('SELECT website_token, website_group, event_count FROM bi_anonymous_geo_events_v1').fetchall()
+assert geo == [('site-b', 'Amazon', 12)], geo
+coverage = db.execute("SELECT DISTINCT website_token, website_group FROM bi_anonymous_coverage_v1 ORDER BY website_token").fetchall()
+assert coverage == [('site-a', 'Amazon'), ('site-b', 'Amazon'), ('site-c', '(ungrouped)')], coverage
+print('SQLite BI views website_group rollup verified')
+PY]);
+        $process->setInput(json_encode($views, JSON_THROW_ON_ERROR));
+        $process->run();
+
+        self::assertSame(0, $process->getExitCode(), $process->getErrorOutput());
+        self::assertStringContainsString('SQLite BI views website_group rollup verified', $process->getOutput());
+    }
 }

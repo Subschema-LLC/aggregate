@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service\Glossary;
 
 use App\Service\AggregateConfigLoader;
+use App\Service\AnonymousBiViewManager;
 use App\Service\CustomDataSettings;
 use App\Service\PrivacySanitizer;
 use App\Service\ReportingViewManager;
@@ -63,6 +64,12 @@ class BiGlossarySettings
         $customColumns = [...array_keys($this->customData->reportingColumns()), ...array_keys($this->customData->numericReportingColumns())];
         foreach (ReportingViewManager::VIEW_NAMES as $view) {
             $views[$view] = [...$views[$view], ...$customColumns];
+        }
+        $websiteGroupColumn = $this->customData->websiteGroupColumn();
+        if ($websiteGroupColumn !== null) {
+            foreach (AnonymousBiViewManager::VIEW_NAMES as $view) {
+                $views[$view][] = $websiteGroupColumn;
+            }
         }
 
         return $views;

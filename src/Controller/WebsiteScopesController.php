@@ -6,8 +6,13 @@ namespace App\Controller;
 
 use App\EventSubscriber\AdminAuditSubscriber;
 use App\Service\AggregateConfigLoader;
+use App\Service\AnalyticsPrivacySettings;
+use App\Service\AnonymousBiViewManager;
+use App\Service\CustomDataSettings;
+use App\Service\ReportingViewManager;
 use App\Service\WebsiteConfigManager;
 use App\Service\WebsiteScopeCatalog;
+use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -22,6 +27,11 @@ final class WebsiteScopesController extends AbstractController
         private readonly AggregateConfigLoader $config,
         private readonly WebsiteScopeCatalog $catalog,
         private readonly WebsiteConfigManager $websites,
+        private readonly ?CustomDataSettings $customData = null,
+        private readonly ?ReportingViewManager $reportingViews = null,
+        private readonly ?AnonymousBiViewManager $biViews = null,
+        private readonly ?AnalyticsPrivacySettings $thresholds = null,
+        private readonly ?LoggerInterface $logger = null,
     ) {
     }
 
@@ -111,6 +121,7 @@ final class WebsiteScopesController extends AbstractController
         $request->attributes->set(AdminAuditSubscriber::SUBJECT, 'group:'.$id);
         try {
             $this->catalog->renameGroup($id, (string) $request->request->get('name', ''));
+            $this->regenerateGroupReportingViews();
             $this->addFlash('success', 'Name saved. The id used in files stays '.$id.'.');
         } catch (\Throwable $error) {
             $this->addFlash('error', $error->getMessage());
@@ -131,6 +142,7 @@ final class WebsiteScopesController extends AbstractController
         $request->attributes->set(AdminAuditSubscriber::SUBJECT, 'group:'.$id);
         try {
             $this->catalog->deleteGroup($id);
+            $this->regenerateGroupReportingViews();
             $this->addFlash('success', 'Removed. Its websites now use the deployment settings unless they have their own.');
         } catch (\Throwable $error) {
             $this->addFlash('error', $error->getMessage());
@@ -156,11 +168,29 @@ final class WebsiteScopesController extends AbstractController
                 }
                 $this->catalog->assign($token, $groupId === '' ? null : $groupId);
             }
+            $this->regenerateGroupReportingViews();
             $this->addFlash('success', 'Website membership saved.');
         } catch (\Throwable $error) {
             $this->addFlash('error', $error->getMessage());
         }
 
         return $this->redirectToRoute('app_website_groups');
+    }
+
+    private function regenerateGroupReportingViews(): void
+    {
+        if ($this->customData?->websiteGroupColumn() === null) {
+            return;
+        }
+        try {
+            $this->reportingViews?->regenerate();
+            if ($this->biViews !== null && $this->thresholds !== null) {
+                $minimums = $this->thresholds->getMinimumCellCounts();
+                $this->biViews->regenerate($minimums['anonymous'], $minimums['geo']);
+            }
+        } catch (\Throwable $error) {
+            $this->logger?->error('Failed to regenerate reporting views after updating website groups.', ['exception' => $error]);
+            $this->addFlash('warning', 'Website groups were saved, but the reporting views were not regenerated. Run php bin/console app:analytics:views:regenerate and php bin/console app:analytics:bi-views:regenerate after correcting the problem.');
+        }
     }
 }

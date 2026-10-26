@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Service\Glossary;
 
+use App\Service\AnonymousBiViewManager;
+use App\Service\CustomDataSettings;
+
 /**
  * The BI glossary page's form: applies one submitted entry, reset or locale
  * change to the current settings, and lays out the page's rows. Only the
@@ -155,9 +158,16 @@ final class GlossaryForm
         return $resolved;
     }
 
-    /** The custom property behind a column of an analytics_custom_* view. */
+    /** The custom property behind a column of an analytics_custom_* view, or the website_group column on bi_anonymous_*. */
     public function property(string $view, string $column): ?array
     {
+        if (in_array($view, AnonymousBiViewManager::VIEW_NAMES, true)) {
+            $group = $this->settings->properties()[CustomDataSettings::WEBSITE_GROUP_PROPERTY] ?? null;
+
+            return ($group['column'] ?? '') === $column && $column !== ''
+                ? ['key' => CustomDataSettings::WEBSITE_GROUP_PROPERTY, ...$group]
+                : null;
+        }
         if (!str_starts_with($view, 'analytics_custom_')) {
             return null;
         }

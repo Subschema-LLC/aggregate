@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace App\Command;
 
+use App\Service\AnalyticsPrivacySettings;
+use App\Service\AnonymousBiViewManager;
+use App\Service\CustomDataSettings;
+use App\Service\ReportingViewManager;
 use App\Service\WebsiteConfigManager;
 use App\Service\WebsiteScopeCatalog;
 use App\Service\WebsiteScopePublisher;
@@ -25,6 +29,10 @@ final class WebsiteScopesCommand extends Command
         private readonly WebsiteScopeCatalog $catalog,
         private readonly WebsiteConfigManager $websites,
         private readonly WebsiteScopePublisher $publisher,
+        private readonly ?CustomDataSettings $customData = null,
+        private readonly ?ReportingViewManager $reportingViews = null,
+        private readonly ?AnonymousBiViewManager $biViews = null,
+        private readonly ?AnalyticsPrivacySettings $thresholds = null,
     ) {
         parent::__construct();
     }
@@ -154,6 +162,7 @@ HELP);
             return Command::INVALID;
         }
         $this->catalog->renameGroup($id, $name);
+        $this->regenerateGroupReportingViews($io);
         $io->success(sprintf('Renamed %s to %s.', $id, $name));
 
         return Command::SUCCESS;
@@ -168,6 +177,7 @@ HELP);
             return Command::INVALID;
         }
         $this->catalog->deleteGroup($id);
+        $this->regenerateGroupReportingViews($io);
         $io->success(sprintf('Deleted %s. Its websites now use the deployment settings unless they have their own.', $id));
 
         return Command::SUCCESS;
@@ -184,9 +194,26 @@ HELP);
         $group = $input->getOption('group');
         $groupId = is_string($group) && $group !== '' ? $group : null;
         $this->catalog->assign($token, $groupId);
+        $this->regenerateGroupReportingViews($io);
         $io->success($groupId === null ? 'Website removed from its group.' : 'Website assigned.');
 
         return Command::SUCCESS;
+    }
+
+    private function regenerateGroupReportingViews(SymfonyStyle $io): void
+    {
+        if ($this->customData?->websiteGroupColumn() === null) {
+            return;
+        }
+        try {
+            $this->reportingViews?->regenerate();
+            if ($this->biViews !== null && $this->thresholds !== null) {
+                $minimums = $this->thresholds->getMinimumCellCounts();
+                $this->biViews->regenerate($minimums['anonymous'], $minimums['geo']);
+            }
+        } catch (\Throwable $error) {
+            $io->warning('Website groups were saved, but the reporting views were not regenerated: '.$error->getMessage());
+        }
     }
 
     private function publish(SymfonyStyle $io): int

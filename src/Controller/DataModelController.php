@@ -6,6 +6,8 @@ namespace App\Controller;
 
 use App\Security\Access\DashboardAccessVoter;
 use App\Service\AggregateConfigLoader;
+use App\Service\AnalyticsPrivacySettings;
+use App\Service\AnonymousBiViewManager;
 use App\Service\CustomDataSettings;
 use App\Service\Glossary\GlossarySync;
 use App\Service\ReportingViewManager;
@@ -32,6 +34,8 @@ final class DataModelController extends AbstractController
         private readonly GlossarySync $glossary,
         private readonly ?WebsiteScopeEditor $scopes = null,
         private readonly ?WebsiteScopePublisher $publisher = null,
+        private readonly ?AnonymousBiViewManager $biViews = null,
+        private readonly ?AnalyticsPrivacySettings $privacySettings = null,
     ) {
     }
 
@@ -130,11 +134,13 @@ final class DataModelController extends AbstractController
                 'label' => match ($key) {
                     CustomDataSettings::PAGE_SEQUENCE_PROPERTY => 'Page depth',
                     CustomDataSettings::ENTRY_CHANNEL_PROPERTY => 'Entry channel',
+                    CustomDataSettings::WEBSITE_GROUP_PROPERTY => 'Website group',
                     default => 'Organization traffic',
                 },
                 'help' => match ($key) {
                     CustomDataSettings::PAGE_SEQUENCE_PROPERTY => '1 for the first tracked page in a browser tab, then 2, 3 and so on; 20 means 20 or more. Recorded while page depth is on.',
                     CustomDataSettings::ENTRY_CHANNEL_PROPERTY => 'How the visitor arrived in the browser tab: direct, search, social, email, referral or internal, kept for the pages that follow. Recorded while values are kept for the tab session.',
+                    CustomDataSettings::WEBSITE_GROUP_PROPERTY => 'The display name of the website’s group from Website groups, or (ungrouped) when the website is not in a group. Added to both the approved bi_anonymous_* views and the private reporting views for roll-up reporting.',
                     default => 'true when the browser carries your team’s marker, false otherwise. Recorded on every event, so reports can leave out your own visits.',
                 },
                 'kind' => $builtin['alias'] === 'numeric_column' ? 'number' : 'text',
@@ -338,6 +344,10 @@ final class DataModelController extends AbstractController
                 return;
             }
             $this->views->regenerate();
+            if ($this->biViews !== null && $this->privacySettings !== null && $this->settings->websiteGroupColumn() !== null) {
+                $thresholds = $this->privacySettings->getMinimumCellCounts();
+                $this->biViews->regenerate($thresholds['anonymous'], $thresholds['geo']);
+            }
         } catch (\InvalidArgumentException $e) {
             $this->addFlash('success', $saved);
             $this->addFlash('warning', 'The reporting views were not updated: '.$e->getMessage());
@@ -371,6 +381,10 @@ final class DataModelController extends AbstractController
         $force = (bool) $request->request->get('force', false);
         try {
             $names = $this->views->regenerate($force);
+            if ($this->biViews !== null && $this->privacySettings !== null && ($force || $this->settings->websiteGroupColumn() !== null)) {
+                $thresholds = $this->privacySettings->getMinimumCellCounts();
+                $this->biViews->regenerate($thresholds['anonymous'], $thresholds['geo'], $force);
+            }
             $msg = $force
                 ? 'Dropped and recreated '.implode(', ', $names).' with the updated column schema.'
                 : 'Regenerated '.implode(', ', $names).'.';

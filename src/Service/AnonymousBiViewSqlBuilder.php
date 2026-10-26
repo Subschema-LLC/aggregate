@@ -31,12 +31,21 @@ final class AnonymousBiViewSqlBuilder
     private ?bool $shifts = null;
     private ?ReportingTimeSql $timeSql = null;
 
+    /**
+     * @param array<string, array{name: string, members: list<string>}> $websiteGroups
+     */
     public function __construct(
         private readonly AbstractPlatform $platform,
         private readonly string $reportingTimezone = ReportingTimezone::DEFAULT,
+        private readonly ?string $websiteGroupColumn = null,
+        private readonly array $websiteGroups = [],
     ) {
         if ($this->reportingTimezone !== ReportingTimezone::DEFAULT) {
             ReportingTimezone::validate($this->reportingTimezone);
+        }
+        if ($this->websiteGroupColumn !== null && $this->websiteGroupColumn !== '') {
+            self::assertValidColumnName($this->websiteGroupColumn);
+            self::validateWebsiteGroups($this->websiteGroups);
         }
     }
 
@@ -68,10 +77,10 @@ SELECT
     event_counts.referrer_channel,
     event_counts.device_class,
     event_counts.viewport_bucket,
-    event_counts.event_count
+    event_counts.event_count%2$s
 FROM event_counts
-WHERE %s
-SQL, self::hourlyCellReleased('event_counts.event_count', $minimumCellCount));
+WHERE %1$s
+SQL, self::hourlyCellReleased('event_counts.event_count', $minimumCellCount), $this->websiteGroupSelect('event_counts.website_token'));
     }
 
     public function goalViewSql(int $minimumCellCount): string
@@ -115,10 +124,10 @@ SELECT
     goal_counts.website_token,
     goal_counts.event_day,
     goal_counts.goal_event,
-    goal_counts.event_count
+    goal_counts.event_count%5$s
 FROM goal_counts
 WHERE goal_counts.event_count >= %4$d
-SQL, $this->completedDayPredicate('archived_goals.event_day'), $this->eventDayExpression('events.created_at'), $this->completedDayPredicate('events.created_at'), $minimumCellCount);
+SQL, $this->completedDayPredicate('archived_goals.event_day'), $this->eventDayExpression('events.created_at'), $this->completedDayPredicate('events.created_at'), $minimumCellCount, $this->websiteGroupSelect('goal_counts.website_token'));
     }
 
     public function geoViewSql(int $geoMinimumCellCount): string
@@ -222,7 +231,7 @@ SELECT
     event_day,
     event_name,
     geo_area,
-    event_count
+    event_count%5$s
 FROM classified_geo_counts
 WHERE event_count >= minimum_cell_count
   AND pool_in_other = 0
@@ -235,7 +244,7 @@ SELECT
         WHEN geo_level = 'country' THEN 'country:other'
         ELSE 'continent:other'
     END AS geo_area,
-    SUM(event_count) AS event_count
+    SUM(event_count) AS event_count%5$s
 FROM classified_geo_counts
 WHERE pool_in_other = 1
 GROUP BY
@@ -245,7 +254,7 @@ GROUP BY
     geo_level,
     minimum_cell_count
 HAVING SUM(event_count) >= minimum_cell_count
-SQL, $this->completedDayPredicate('archived_geo.event_day'), $this->eventDayExpression('events.created_at'), $this->completedDayPredicate('events.created_at'), $geoMinimumCellCount);
+SQL, $this->completedDayPredicate('archived_geo.event_day'), $this->eventDayExpression('events.created_at'), $this->completedDayPredicate('events.created_at'), $geoMinimumCellCount, $this->websiteGroupSelect('website_token'));
     }
 
     /**
@@ -273,14 +282,14 @@ SELECT
     daily_cells.page_group,
     daily_cells.referrer_channel,
     daily_cells.device_class,
-    daily_cells.event_count
+    daily_cells.event_count%2$s
 FROM daily_cells
 WHERE daily_cells.event_count >= %1$d
   AND (
       daily_cells.event_count = daily_cells.released_hourly_count
       OR daily_cells.event_count - daily_cells.released_hourly_count >= %1$d
   )
-SQL, $minimumCellCount);
+SQL, $minimumCellCount, $this->websiteGroupSelect('daily_cells.website_token'));
     }
 
     /**
@@ -377,7 +386,7 @@ SELECT
     referrer_channel,
     device_class,
     event_count,
-    %1$s AS detail_level
+    %1$s AS detail_level%6$s
 FROM level_full
 WHERE is_released = 1
 UNION ALL
@@ -389,7 +398,7 @@ SELECT
     referrer_channel,
     '(other)' AS device_class,
     SUM(event_count) AS event_count,
-    %2$s AS detail_level
+    %2$s AS detail_level%6$s
 FROM level_page_channel
 WHERE is_released = 1
 GROUP BY website_token, event_day, event_name, page_group, referrer_channel
@@ -402,7 +411,7 @@ SELECT
     '(other)' AS referrer_channel,
     '(other)' AS device_class,
     SUM(event_count) AS event_count,
-    %3$s AS detail_level
+    %3$s AS detail_level%6$s
 FROM level_page
 WHERE is_released = 1
 GROUP BY website_token, event_day, event_name, page_group
@@ -415,7 +424,7 @@ SELECT
     referrer_channel,
     '(other)' AS device_class,
     SUM(event_count) AS event_count,
-    %4$s AS detail_level
+    %4$s AS detail_level%6$s
 FROM level_channel
 WHERE is_released = 1
 GROUP BY website_token, event_day, event_name, referrer_channel
@@ -428,7 +437,7 @@ SELECT
     '(other)' AS referrer_channel,
     '(other)' AS device_class,
     SUM(event_count) AS event_count,
-    %5$s AS detail_level
+    %5$s AS detail_level%6$s
 FROM level_day
 WHERE is_released = 1
 GROUP BY website_token, event_day, event_name
@@ -438,6 +447,7 @@ SQL,
                 $this->label('page'),
                 $this->label('channel'),
                 $this->label('day'),
+                $this->websiteGroupSelect('website_token'),
             );
     }
 
@@ -516,7 +526,7 @@ SELECT
         WHEN COALESCE(released.released_count, 0) * 2 >= day_totals.total_count THEN %9$s
         WHEN COALESCE(released.released_count, 0) * 10 >= day_totals.total_count THEN %10$s
         ELSE %11$s
-    END AS coverage_band
+    END AS coverage_band%12$s
 FROM day_totals
 CROSS JOIN view_names
 LEFT JOIN released
@@ -540,6 +550,7 @@ SQL,
             $this->label('50-90'),
             $this->label('10-50'),
             $this->label('0-10'),
+            $this->websiteGroupSelect('day_totals.website_token'),
         );
     }
 
@@ -729,6 +740,90 @@ SQL;
         }
 
         return "CASE\n            ".implode("\n            ", $cases)."\n            ELSE ".$column."\n        END";
+    }
+
+    /**
+     * A CASE expression mapping a website token column to its group's display
+     * name from config/website-scopes.yaml, or "(ungrouped)" when the website
+     * belongs to no group.
+     *
+     * @param array<string, array{name: string, members: list<string>}>|null $websiteGroups
+     */
+    public function websiteGroupExpression(string $column, ?array $websiteGroups = null): string
+    {
+        $groups = self::validateWebsiteGroups($websiteGroups ?? $this->websiteGroups);
+        $fallback = $this->label(CustomDataSettings::UNGROUPED_WEBSITE_GROUP);
+        $cases = [];
+        foreach ($groups as $group) {
+            if ($group['members'] === []) {
+                continue;
+            }
+            $tokens = array_map($this->platform->quoteStringLiteral(...), $group['members']);
+            $condition = count($tokens) === 1
+                ? sprintf('%s = %s', $column, $tokens[0])
+                : sprintf('%s IN (%s)', $column, implode(', ', $tokens));
+            $cases[] = sprintf('WHEN %s THEN %s', $condition, $this->label($group['name']));
+        }
+        if ($cases === []) {
+            return $this->platform instanceof PostgreSQLPlatform ? sprintf('CAST(%s AS text)', $fallback) : $fallback;
+        }
+
+        return "CASE\n            ".implode("\n            ", $cases)."\n            ELSE ".$fallback."\n        END";
+    }
+
+    private function websiteGroupSelect(string $tokenColumn): string
+    {
+        if ($this->websiteGroupColumn === null || $this->websiteGroupColumn === '') {
+            return '';
+        }
+
+        return ",\n    ".$this->websiteGroupExpression($tokenColumn).' AS '.$this->websiteGroupColumn;
+    }
+
+    /**
+     * @param array<mixed> $websiteGroups
+     *
+     * @return list<array{name: string, members: list<string>}>
+     */
+    private static function validateWebsiteGroups(array $websiteGroups): array
+    {
+        if (count($websiteGroups) > WebsiteScopeCatalog::MAX_GROUPS) {
+            throw new \InvalidArgumentException('At most '.WebsiteScopeCatalog::MAX_GROUPS.' website groups can be compiled into a view.');
+        }
+        $validated = [];
+        $seenTokens = [];
+        foreach ($websiteGroups as $group) {
+            if (!is_array($group) || !is_string($group['name'] ?? null) || !is_array($group['members'] ?? null)) {
+                throw new \InvalidArgumentException('Each website group must provide a name and a list of member tokens.');
+            }
+            $name = trim($group['name']);
+            if ($name === '' || strlen($name) > WebsiteScopeCatalog::MAX_NAME || preg_match('/\p{C}/u', $name) === 1) {
+                throw new \InvalidArgumentException('A website group name must be 1 to '.WebsiteScopeCatalog::MAX_NAME.' characters without control characters.');
+            }
+            $members = $group['members'];
+            if (($members !== [] && !array_is_list($members)) || count($members) > WebsiteScopeCatalog::MAX_MEMBERS) {
+                throw new \InvalidArgumentException('A website group membership list is not valid.');
+            }
+            $tokens = [];
+            foreach ($members as $token) {
+                if (!is_string($token) || $token === '' || strlen($token) > 191 || preg_match('/\s/', $token) === 1 || isset($seenTokens[$token])) {
+                    throw new \InvalidArgumentException('Each website token in a group must be valid and belong to at most one group.');
+                }
+                $seenTokens[$token] = true;
+                $tokens[] = $token;
+            }
+            $validated[] = ['name' => $name, 'members' => $tokens];
+        }
+
+        return $validated;
+    }
+
+    private static function assertValidColumnName(string $column): void
+    {
+        if (preg_match('/^[a-z][a-z0-9_]{0,62}$/D', $column) !== 1
+            || in_array($column, CustomDataSettings::RESERVED_COLUMNS, true)) {
+            throw new \InvalidArgumentException('The website group reporting column must be a lowercase SQL identifier (up to 63 characters) and cannot use a built-in column name.');
+        }
     }
 
     private function pageGroupCondition(string $column, string $pattern): string
