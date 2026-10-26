@@ -32,6 +32,7 @@ final class RegenerateBiViewsCommand extends Command
     {
         $this
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Print the SQL without changing the database')
+            ->addOption('force', 'f', InputOption::VALUE_NONE, 'Drop and recreate views when removing or renaming the website group column')
             ->setHelp(<<<'HELP'
 Reads anonymous_min_cell_count, anonymous_geo_min_cell_count, bi_page_groups
 and reporting_timezone from the active aggregate YAML (ANONYMOUS_MIN_CELL_COUNT,
@@ -57,15 +58,16 @@ HELP);
 
         try {
             $thresholds = $this->settings->getMinimumCellCounts();
+            $force = (bool) $input->getOption('force');
             if ($input->getOption('dry-run')) {
-                foreach ($this->views->previewSql($thresholds['anonymous'], $thresholds['geo']) as $sql) {
+                foreach ($this->views->previewSql($thresholds['anonymous'], $thresholds['geo'], $force) as $sql) {
                     $output->writeln($sql.";\n", OutputInterface::OUTPUT_RAW);
                 }
 
                 return Command::SUCCESS;
             }
 
-            $this->views->regenerate($thresholds['anonymous'], $thresholds['geo']);
+            $this->views->regenerate($thresholds['anonymous'], $thresholds['geo'], $force);
         } catch (\Throwable $e) {
             $io->error('The BI views were not regenerated: '.$e->getMessage());
 

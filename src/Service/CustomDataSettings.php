@@ -33,6 +33,8 @@ class CustomDataSettings
      */
     public const ENTRY_CHANNEL_PROPERTY = 'entry_channel';
     public const ENTRY_CHANNELS = ['direct', 'internal', 'search', 'social', 'email', 'referral'];
+    public const WEBSITE_GROUP_PROPERTY = 'website_group';
+    public const UNGROUPED_WEBSITE_GROUP = '(ungrouped)';
     public const GOOGLE_CONSENT_MODE_KEY = 'google_consent_mode';
     /**
      * How the tracker follows Google Consent Mode analytics_storage signals:
@@ -70,12 +72,18 @@ class CustomDataSettings
             'type' => 'string',
             'alias' => 'column',
         ],
+        self::WEBSITE_GROUP_PROPERTY => [
+            'description' => 'Website group display name from config/website-scopes.yaml, or (ungrouped) when the website is not in a group.',
+            'type' => 'string',
+            'alias' => 'column',
+        ],
     ];
     public const RESERVED_COLUMNS = [
         'id', 'website_token', 'event_name', 'page_path', 'referrer_channel', 'privacy_mode',
         'device_class', 'viewport_bucket', 'geo_area', 'goal_event', 'created_at', 'archived_at',
         'url', 'referrer', 'screen_width', 'visitor_id', 'session_id', 'consent_state',
         'custom_data', 'generalized_user_agent', 'event_hour', 'event_day', 'event_count',
+        'page_group', 'detail_level', 'view_name', 'coverage_band', 'geo_level',
     ];
 
     public function __construct(private readonly AggregateConfigLoader $config)
@@ -101,6 +109,9 @@ class CustomDataSettings
         }
 
         foreach (self::BUILTIN_PROPERTIES as $key => $builtin) {
+            if ($key === self::WEBSITE_GROUP_PROPERTY) {
+                continue;
+            }
             $properties[$key] = self::builtinDefinition($key, $key);
         }
 
@@ -202,6 +213,14 @@ class CustomDataSettings
         return $columns;
     }
 
+    /** The reporting column name for the website group dimension, or null when not enabled. */
+    public function websiteGroupColumn(): ?string
+    {
+        $column = $this->properties()[self::WEBSITE_GROUP_PROPERTY]['column'] ?? '';
+
+        return $column !== '' ? $column : null;
+    }
+
     /** @return array<string, array{property: string, type: string}> SQL alias => numeric projection */
     public function numericReportingColumns(): array
     {
@@ -291,10 +310,10 @@ class CustomDataSettings
         $consentFree = [];
         $types = [];
         foreach ($settings[self::PROPERTIES_KEY] as $key => $definition) {
-            // Generated page depth and entry channel have their own opt-ins
-            // and cannot become ordinary properties through browser
+            // Generated page depth, entry channel and the reporting-only
+            // website group cannot become ordinary properties through browser
             // allowlists or URL mappings.
-            if ($key === self::PAGE_SEQUENCE_PROPERTY || $key === self::ENTRY_CHANNEL_PROPERTY) {
+            if ($key === self::PAGE_SEQUENCE_PROPERTY || $key === self::ENTRY_CHANNEL_PROPERTY || $key === self::WEBSITE_GROUP_PROPERTY) {
                 continue;
             }
             if (!$definition['consent_required'] && $key !== InternalTrafficSettings::JSON_KEY) {
@@ -388,6 +407,10 @@ class CustomDataSettings
                 if ($settings[self::QUERY_PERSISTENCE_KEY] === 'off' || !self::isEntryChannel($item)) {
                     unset($clean[$key]);
                 }
+                continue;
+            }
+            if ($key === self::WEBSITE_GROUP_PROPERTY) {
+                unset($clean[$key]);
                 continue;
             }
             $type = $settings[self::PROPERTIES_KEY][$key]['type'] ?? 'scalar';
@@ -501,6 +524,9 @@ class CustomDataSettings
             if ($key === self::ENTRY_CHANNEL_PROPERTY && !in_array($type, ['scalar', 'string'], true)) {
                 throw new \InvalidArgumentException('entry_channel is a text code such as search or email: leave its type out or use type: string.');
             }
+            if ($key === self::WEBSITE_GROUP_PROPERTY && !in_array($type, ['scalar', 'string'], true)) {
+                throw new \InvalidArgumentException('website_group is a text group name: leave its type out or use type: string.');
+            }
             if ($key === InternalTrafficSettings::JSON_KEY && !in_array($type, ['scalar', 'boolean'], true)) {
                 throw new \InvalidArgumentException('org_internal_traffic supports only the scalar or boolean type; its value is always the true or false organization-traffic flag.');
             }
@@ -530,8 +556,8 @@ class CustomDataSettings
         }
 
         foreach ($mappings as $parameter => $property) {
-            if (!self::isValidPropertyKey($parameter) || !self::isValidPropertyKey($property) || !isset($normalized[$property]) || $property === InternalTrafficSettings::JSON_KEY || $property === self::PAGE_SEQUENCE_PROPERTY || $property === self::ENTRY_CHANNEL_PROPERTY || $parameter === self::PAGE_SEQUENCE_QUERY_PARAMETER) {
-                throw new \InvalidArgumentException('Each query parameter must map to a defined custom property. The organization marker, page_sequence, entry_channel, and reserved aggregate_page_sequence parameter cannot use query mappings.');
+            if (!self::isValidPropertyKey($parameter) || !self::isValidPropertyKey($property) || !isset($normalized[$property]) || $property === InternalTrafficSettings::JSON_KEY || $property === self::PAGE_SEQUENCE_PROPERTY || $property === self::ENTRY_CHANNEL_PROPERTY || $property === self::WEBSITE_GROUP_PROPERTY || $parameter === self::PAGE_SEQUENCE_QUERY_PARAMETER) {
+                throw new \InvalidArgumentException('Each query parameter must map to a defined custom property. The organization marker, page_sequence, entry_channel, website_group, and reserved aggregate_page_sequence parameter cannot use query mappings.');
             }
         }
 

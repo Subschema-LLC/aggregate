@@ -32,14 +32,16 @@ final class AnonymousBiViewManager
         private readonly ?BiPageGroups $pageGroups = null,
         private readonly ?ReportingTimezone $reportingTimezone = null,
         private readonly ?MysqlTimeZoneTables $timeZones = null,
+        private readonly ?CustomDataSettings $customData = null,
+        private readonly ?WebsiteScopeCatalog $scopes = null,
     ) {
     }
 
-    public function regenerate(int $minimumCellCount, int $geoMinimumCellCount): void
+    public function regenerate(int $minimumCellCount, int $geoMinimumCellCount, bool $force = false): void
     {
         $platform = $this->connection->getDatabasePlatform();
         $this->assertConfiguredTimezoneCanBeCompiled();
-        $statements = $this->statements($platform, $minimumCellCount, $geoMinimumCellCount);
+        $statements = $this->statements($platform, $minimumCellCount, $geoMinimumCellCount, $force);
 
         if ($platform instanceof AbstractMySQLPlatform) {
             foreach ($statements as $statement) {
@@ -66,11 +68,11 @@ final class AnonymousBiViewManager
      *
      * @return list<string>
      */
-    public function previewSql(int $minimumCellCount, int $geoMinimumCellCount): array
+    public function previewSql(int $minimumCellCount, int $geoMinimumCellCount, bool $force = false): array
     {
         $this->assertConfiguredTimezoneCanBeCompiled();
 
-        return $this->statements($this->connection->getDatabasePlatform(), $minimumCellCount, $geoMinimumCellCount);
+        return $this->statements($this->connection->getDatabasePlatform(), $minimumCellCount, $geoMinimumCellCount, $force);
     }
 
     /**
@@ -83,9 +85,17 @@ final class AnonymousBiViewManager
     }
 
     /** @return list<string> */
-    private function statements(AbstractPlatform $platform, int $minimumCellCount, int $geoMinimumCellCount): array
+    private function statements(AbstractPlatform $platform, int $minimumCellCount, int $geoMinimumCellCount, bool $force = false): array
     {
-        $sql = new AnonymousBiViewSqlBuilder($platform, $this->reportingTimezoneName());
+        $websiteGroupColumn = $this->customData?->websiteGroupColumn();
+        $websiteGroups = [];
+        if ($websiteGroupColumn !== null) {
+            if ($this->scopes?->hasLoadError()) {
+                throw new \RuntimeException('Website group configuration is invalid. Correct config/website-scopes.yaml before regenerating views.');
+            }
+            $websiteGroups = $this->scopes?->groups() ?? [];
+        }
+        $sql = new AnonymousBiViewSqlBuilder($platform, $this->reportingTimezoneName(), $websiteGroupColumn, $websiteGroups);
         // Read and validate page groups before any statement runs, so invalid
         // YAML leaves every existing view in place.
         $pageGroups = $this->pageGroups?->rules() ?? [];
@@ -99,6 +109,16 @@ final class AnonymousBiViewManager
         ];
 
         $statements = [];
+        if ($force && !$platform instanceof SQLitePlatform) {
+            foreach (array_reverse(self::VIEW_NAMES) as $name) {
+                $statements[] = $sql->dropViewIfExistsSql($name);
+            }
+            foreach ($views as [, $createSql]) {
+                $statements[] = $createSql;
+            }
+
+            return $statements;
+        }
         foreach ($views as [$name, $createSql]) {
             if ($platform instanceof SQLitePlatform) {
                 $statements[] = $sql->dropViewIfExistsSql($name);

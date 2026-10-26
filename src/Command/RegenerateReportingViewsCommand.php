@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Command;
 
+use App\Service\AnalyticsPrivacySettings;
+use App\Service\AnonymousBiViewManager;
 use App\Service\CustomDataSettings;
 use App\Service\Glossary\GlossarySync;
 use App\Service\ReportingViewManager;
@@ -25,6 +27,8 @@ final class RegenerateReportingViewsCommand extends Command
         private readonly ReportingViewManager $views,
         private readonly CustomDataSettings $settings,
         private readonly GlossarySync $glossary,
+        private readonly ?AnonymousBiViewManager $biViews = null,
+        private readonly ?AnalyticsPrivacySettings $privacySettings = null,
     ) {
         parent::__construct();
     }
@@ -106,6 +110,10 @@ final class RegenerateReportingViewsCommand extends Command
 
             $force = (bool) $input->getOption('force');
             $names = $this->views->regenerate($force);
+            if ($this->biViews !== null && $this->privacySettings !== null && ($force || $this->settings->websiteGroupColumn() !== null)) {
+                $thresholds = $this->privacySettings->getMinimumCellCounts();
+                $this->biViews->regenerate($thresholds['anonymous'], $thresholds['geo'], $force);
+            }
             try {
                 $this->glossary->sync();
             } catch (\Throwable $error) {
