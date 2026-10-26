@@ -677,7 +677,12 @@ final class CustomDataSettingsTest extends TestCase
         yield 'numeric aliases must be unique' => [array_replace($base, ['custom_data_properties' => ['plan' => ['type' => 'integer', 'numeric_column' => 'metric'], 'revenue' => ['type' => 'float', 'numeric_column' => 'metric']]])];
         yield 'organization flag cannot acquire string type' => [array_replace($base, ['custom_data_properties' => [InternalTrafficSettings::JSON_KEY => ['type' => 'string']]])];
         yield 'organization flag cannot acquire numeric alias' => [array_replace($base, ['custom_data_properties' => [InternalTrafficSettings::JSON_KEY => ['type' => 'integer', 'numeric_column' => 'metric']]])];
-        foreach (['id', 'event_hour', 'event_count', 'visitor_id', 'custom_data', 'Plan', 'a.b', 'select;drop', str_repeat('a', 64)] as $column) {
+        yield 'website group cannot acquire numeric type' => [array_replace($base, ['custom_data_properties' => [CustomDataSettings::WEBSITE_GROUP_PROPERTY => ['type' => 'integer']]])];
+        yield 'website group cannot use query mapping' => [array_replace($base, [
+            'custom_data_properties' => [CustomDataSettings::WEBSITE_GROUP_PROPERTY => ['column' => 'website_group']],
+            'query_parameter_mappings' => ['group' => CustomDataSettings::WEBSITE_GROUP_PROPERTY],
+        ])];
+        foreach (['id', 'event_hour', 'event_count', 'visitor_id', 'custom_data', 'page_group', 'detail_level', 'view_name', 'coverage_band', 'geo_level', 'Plan', 'a.b', 'select;drop', str_repeat('a', 64)] as $column) {
             yield 'invalid SQL column '.$column => [array_replace($base, ['custom_data_properties' => ['plan' => ['column' => $column]]])];
         }
         yield 'column collision' => [array_replace($base, ['custom_data_properties' => ['plan' => ['column' => 'tier'], 'level' => ['column' => 'tier']]])];
@@ -769,6 +774,27 @@ final class CustomDataSettingsTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('Google Consent Mode signals must be one of all, updates, off.');
         $settings->saveGoogleConsentMode('sometimes');
+    }
+
+    public function testWebsiteGroupBuiltInPropertyIsOptionalAndNeverAcceptedFromEvents(): void
+    {
+        $default = $this->settings([]);
+        self::assertNull($default->websiteGroupColumn());
+        self::assertArrayNotHasKey('website_group', $default->reportingColumns());
+
+        $enabled = $this->settings([
+            'custom_data_properties' => [
+                CustomDataSettings::WEBSITE_GROUP_PROPERTY => ['column' => 'brand'],
+            ],
+            'query_parameter_mappings' => [],
+        ]);
+        self::assertSame('brand', $enabled->websiteGroupColumn());
+        self::assertSame(['brand' => CustomDataSettings::WEBSITE_GROUP_PROPERTY], $enabled->reportingColumns());
+        self::assertSame([], $enabled->toBrowserConfig()['consentFreeProperties']);
+        self::assertArrayNotHasKey('propertyTypes', $enabled->toBrowserConfig());
+        foreach ([false, true] as $consent) {
+            self::assertNull($enabled->filterEventData(['website_group' => 'Amazon'], $consent));
+        }
     }
 
     private function settings(array $values): CustomDataSettings

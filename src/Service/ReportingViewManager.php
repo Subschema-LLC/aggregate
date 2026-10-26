@@ -45,6 +45,7 @@ class ReportingViewManager
     public function __construct(
         private readonly Connection $connection,
         private readonly CustomDataSettings $settings,
+        private readonly ?WebsiteScopeCatalog $scopes = null,
     ) {
     }
 
@@ -278,7 +279,9 @@ class ReportingViewManager
     {
         $expressions = [];
         foreach ($this->settings->reportingColumns() as $column => $key) {
-            $expressions[$column] = $this->scalarExpression($platform, $key);
+            $expressions[$column] = $key === CustomDataSettings::WEBSITE_GROUP_PROPERTY
+                ? $this->websiteGroupExpression($platform)
+                : $this->scalarExpression($platform, $key);
         }
         foreach ($this->settings->numericReportingColumns() as $column => $definition) {
             $expressions[$column] = $this->numericExpression($platform, $definition['property'], $definition['type']);
@@ -298,6 +301,18 @@ class ReportingViewManager
         }
 
         return $selects;
+    }
+
+    private function websiteGroupExpression(AbstractPlatform $platform): string
+    {
+        if ($this->scopes?->hasLoadError()) {
+            throw new \RuntimeException('Website group configuration is invalid. Correct config/website-scopes.yaml before regenerating views.');
+        }
+
+        return (new AnonymousBiViewSqlBuilder($platform))->websiteGroupExpression(
+            'events.website_token',
+            $this->scopes?->groups() ?? [],
+        );
     }
 
     private function scalarExpression(AbstractPlatform $platform, string $key): string

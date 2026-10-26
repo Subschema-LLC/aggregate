@@ -470,10 +470,13 @@ final class DataModelControllerTest extends TestCase
         self::assertSame('org_internal_traffic', $box->filter('input[name="builtin[org_internal_traffic][column]"]')->attr('value'));
         self::assertSame('checked', $box->filter('input[name="builtin[page_sequence][include]"]')->attr('checked'));
         self::assertSame('numeric_column', $box->filter('input[name="builtin[page_sequence][column]"]')->attr('data-field'));
+        self::assertNull($box->filter('input[name="builtin[website_group][include]"]')->attr('checked'));
+        self::assertSame('website_group', $box->filter('input[name="builtin[website_group][column]"]')->attr('value'));
+        self::assertStringContainsString('Website group', $box->text());
         self::assertStringContainsString('Page depth is off', $box->text());
         self::assertCount(0, $box->filter('select'));
         $keys = $crawler->filter('#property-rows input[data-field="key"]')->each(static fn (Crawler $input): string => (string) $input->attr('value'));
-        self::assertSame([], array_intersect($keys, ['org_internal_traffic', 'page_sequence']));
+        self::assertSame([], array_intersect($keys, ['org_internal_traffic', 'page_sequence', 'website_group']));
         self::assertContains('utm_medium', $keys);
     }
 

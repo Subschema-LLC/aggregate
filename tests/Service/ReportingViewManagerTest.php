@@ -572,4 +572,46 @@ SQL;
         self::assertStringStartsWith("DROP VIEW IF EXISTS", $executed[0]);
         self::assertStringStartsWith("CREATE VIEW", $executed[1]);
     }
+
+    public function testWebsiteGroupColumnProjectsGroupDisplayNameAndUngroupedFallbackInSqlite(): void
+    {
+        $python = (new ExecutableFinder())->find('python3');
+        if ($python === null) {
+            self::markTestSkipped('Python SQLite is required for SQL execution checks.');
+        }
+        $directory = sys_get_temp_dir().'/aggregate-reporting-groups-'.bin2hex(random_bytes(4));
+        mkdir($directory.'/config', 0700, true);
+        file_put_contents($directory.'/config/website-scopes.yaml', "label:\n  singular: Brand\n  plural: Brands\ngroups:\n  amazon:\n    name: Amazon\n    members:\n      - site-a\n      - site-b\n");
+        try {
+            $connection = $this->createStub(Connection::class);
+            $connection->method('getDatabasePlatform')->willReturn(new SQLitePlatform());
+            $settings = $this->createStub(CustomDataSettings::class);
+            $settings->method('reportingColumns')->willReturn(['website_group' => CustomDataSettings::WEBSITE_GROUP_PROPERTY]);
+            $settings->method('numericReportingColumns')->willReturn([]);
+            $catalog = new \App\Service\WebsiteScopeCatalog($directory, 'test');
+            $sql = (new ReportingViewManager($connection, $settings, $catalog))->previewSql();
+
+            $process = new Process([$python, '-c', <<<'PY'
+import json, sqlite3, sys
+db = sqlite3.connect(':memory:')
+db.execute('CREATE TABLE events (id INTEGER PRIMARY KEY, website_token TEXT, event_name TEXT, url TEXT, referrer TEXT, privacy_mode TEXT, device_class TEXT, viewport_bucket TEXT, geo_area TEXT, goal_event TEXT, created_at TEXT, archived_at TEXT, custom_data TEXT)')
+db.execute("INSERT INTO events(id, website_token, event_name, custom_data) VALUES (1, 'site-a', 'view', '{\"website_group\":\"spoofed\"}')")
+db.execute("INSERT INTO events(id, website_token, event_name, custom_data) VALUES (2, 'site-c', 'view', NULL)")
+for sql in json.load(sys.stdin).values():
+    db.executescript(sql)
+rows = db.execute('SELECT website_token, website_group FROM analytics_custom_events_v1 ORDER BY id').fetchall()
+assert rows == [('site-a', 'Amazon'), ('site-c', '(ungrouped)')], rows
+print('SQLite website_group reporting views verified')
+PY]);
+            $process->setInput(json_encode($sql, JSON_THROW_ON_ERROR));
+            $process->run();
+
+            self::assertSame(0, $process->getExitCode(), $process->getErrorOutput());
+            self::assertStringContainsString('SQLite website_group reporting views verified', $process->getOutput());
+        } finally {
+            @unlink($directory.'/config/website-scopes.yaml');
+            @rmdir($directory.'/config');
+            @rmdir($directory);
+        }
+    }
 }

@@ -87,7 +87,7 @@
                             <label class="label is-small" for="builtin-{{ item.key }}-column">Column name</label>
                             <input class="input" id="builtin-{{ item.key }}-column" name="builtin[{{ item.key }}][column]" value="{{ item.column }}" maxlength="63" pattern="[a-z][a-z0-9_]{0,62}" data-field="{{ item.kind == 'number' ? 'numeric_column' : 'column' }}" data-builtin-column data-action="input->pages--data-model--index#validateColumn">
                             <div class="field-feedback is-size-7 mt-1" {{ item.kind == 'number' ? 'data-numeric-column-feedback' : 'data-column-feedback' }}></div>
-                            <p class="help">{{ item.kind == 'number' ? 'A whole-number column.' : 'A text column: true or false.' }}{% if item.text_column %} The text column <code>{{ item.text_column }}</code> from an earlier model stays as it is.{% endif %}</p>
+                            <p class="help">{{ item.kind == 'number' ? 'A whole-number column.' : (item.key == 'website_group' ? 'A text column with the group name, or (ungrouped).' : (item.key == 'entry_channel' ? 'A text column with the referrer channel code.' : 'A text column: true or false.')) }}{% if item.text_column %} The text column <code>{{ item.text_column }}</code> from an earlier model stays as it is.{% endif %}</p>
                         </div>
                     </div>
                 {% endfor %}

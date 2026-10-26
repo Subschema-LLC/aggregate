@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service\Glossary;
 
+use App\Service\AnonymousBiViewManager;
 use App\Service\ReportingViewManager;
 
 /** Resolves declared metadata in PHP. Never queries events, archives or views. */
@@ -43,7 +44,7 @@ class GlossaryResolver
                     } elseif ($type === 'value' && $subject === 'website_token' && isset($websites[$code])) {
                         // A website's name and domain are default-locale text from websites.yaml.
                         $sourceText = array_filter(['label' => $websites[$code]['name'], 'description' => $websites[$code]['domain']], 'is_string');
-                    } elseif ($type === 'column' && in_array($subject, ReportingViewManager::VIEW_NAMES, true) && isset($descriptions[$code])) {
+                    } elseif ($type === 'column' && (in_array($subject, ReportingViewManager::VIEW_NAMES, true) || in_array($subject, AnonymousBiViewManager::VIEW_NAMES, true)) && isset($descriptions[$code])) {
                         $sourceText['description'] = $descriptions[$code];
                     }
                     $entry = $settings[$type === 'value' ? 'values' : 'columns'][$subject][$code] ?? [];

@@ -69,15 +69,15 @@ Static/CDN copies need matching public `customData` settings as described in the
 
 ## Built-in properties
 
-Aggregate records three properties itself. Their type is fixed and consent does not
-apply to them, so the only choice is whether each gets a column in the private
-[reporting views](#reporting-views), and its name.
+Aggregate provides four built-in properties. Their type is fixed and consent does not
+apply to them, so the only choice is whether each gets a reporting column, and its name.
 
-| Property | Value | Recorded | Default column |
+| Property | Value | Recorded / Derived | Default column |
 | --- | --- | --- | --- |
 | `org_internal_traffic` | `true` for a browser marked as your team's with the [organization-traffic marker](PRIVACY-COMPLIANCE.md#organization-traffic), `false` otherwise | On every standard-profile event, in both privacy modes | `org_internal_traffic`, text: `true` or `false` |
 | `page_sequence` | [Page depth](#optional-page-depth): `1` for the first tracked page in a browser tab, up to `20` (20 or more) | On every event while page depth is on | `page_sequence`, a whole number |
 | `entry_channel` | How the visitor arrived in the browser tab: the referrer channel (`direct`, `search`, `social`, `email`, `referral` or `internal`) of the page that began the [kept query values](TRACKING.md#keep-values-for-the-tab-session) | On every event while `query_parameter_persistence` is on, in both privacy modes | `entry_channel`, text |
+| `website_group` | Display name of the website's group from [Website groups](CONFIGURATION.md#website-groups) (`config/website-scopes.yaml`), or `(ungrouped)` when the website is not in a group | Derived from `website_token` in both `bi_anonymous_*` and `analytics_custom_*` views (per-website suppression is unchanged) | Off by default (`website_group` when ticked) |
 
 On **Collection → Data model**, the **Built-in properties** box at the top of
 the Properties tab has a checkbox and a column name for each. Tick a box, adjust
@@ -85,7 +85,7 @@ the name if you like, and save the model: the column is added to the views
 straight away. Unticking removes the property's column from the model; see
 [Reporting views](#reporting-views) for what that means for deployed views.
 
-The default model gives each a column. A model you saved before this version
+The default model gives `org_internal_traffic`, `page_sequence` and `entry_channel` a column; `website_group` starts off so existing reporting contracts stay unchanged until enabled. A model you saved before this version
 keeps its own properties, so tick them once. In YAML, a column name is enough:
 
 ```yaml
@@ -94,6 +94,7 @@ custom_data_properties:
   org_internal_traffic: { column: org_internal_traffic }
   page_sequence: { numeric_column: page_sequence }
   entry_channel: { column: entry_channel }
+  website_group: { column: website_group }
 ```
 
 A `type` may be left out (`boolean`, `integer` and `string` are assumed) and any

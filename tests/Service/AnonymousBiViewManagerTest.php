@@ -7,7 +7,9 @@ namespace App\Tests\Service;
 use App\Service\AggregateConfigLoader;
 use App\Service\AnonymousBiViewManager;
 use App\Service\BiPageGroups;
+use App\Service\CustomDataSettings;
 use App\Service\ReportingTimezone;
+use App\Service\WebsiteScopeCatalog;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\MariaDB1060Platform;
@@ -174,6 +176,49 @@ final class AnonymousBiViewManagerTest extends TestCase
             self::assertStringContainsString('bi_page_groups is invalid', $e->getMessage());
         }
         self::assertSame([], $executed);
+    }
+
+    public function testWebsiteGroupColumnIsCompiledFromCatalogAndForceDropsViewsInReverseOrder(): void
+    {
+        $directory = sys_get_temp_dir().'/aggregate-bi-groups-'.bin2hex(random_bytes(4));
+        mkdir($directory.'/config', 0700, true);
+        file_put_contents($directory.'/config/aggregate.yaml', "custom_data_properties:\n  website_group:\n    column: brand\nquery_parameter_mappings: {}\n");
+        file_put_contents($directory.'/config/website-scopes.yaml', "label:\n  singular: Brand\n  plural: Brands\ngroups:\n  amazon:\n    name: Amazon\n    members:\n      - site-a\n");
+
+        $executed = [];
+        $connection = $this->connection(new PostgreSQLPlatform(), $executed);
+        $config = new AggregateConfigLoader($directory, 'test');
+        $customData = new CustomDataSettings($config);
+        $catalog = new \App\Service\WebsiteScopeCatalog($directory, 'test');
+        $manager = new AnonymousBiViewManager($connection, null, null, null, $customData, $catalog);
+
+        try {
+            $manager->regenerate(5, 25);
+            self::assertCount(6, $executed);
+            foreach ($executed as $statement) {
+                self::assertStringContainsString(" = 'site-a' THEN 'Amazon'", $statement);
+                self::assertStringContainsString('END AS brand', $statement);
+            }
+
+            $forced = [];
+            $forceConnection = $this->connection(new PostgreSQLPlatform(), $forced);
+            (new AnonymousBiViewManager($forceConnection, null, null, null, $customData, $catalog))->regenerate(5, 25, true);
+            self::assertCount(12, $forced);
+            self::assertSame('DROP VIEW IF EXISTS bi_anonymous_coverage_v1', $forced[0]);
+            self::assertSame('DROP VIEW IF EXISTS bi_anonymous_events_v1', $forced[5]);
+            self::assertStringStartsWith('CREATE VIEW bi_anonymous_events_v1 AS', $forced[6]);
+
+            file_put_contents($directory.'/config/website-scopes.yaml', "groups: [invalid\n");
+            $catalog->reset();
+            $this->expectException(\RuntimeException::class);
+            $this->expectExceptionMessage('Website group configuration is invalid');
+            $manager->regenerate(5, 25);
+        } finally {
+            @unlink($directory.'/config/aggregate.yaml');
+            @unlink($directory.'/config/website-scopes.yaml');
+            @rmdir($directory.'/config');
+            @rmdir($directory);
+        }
     }
 
     /** @param list<array<string, string>> $rules */
