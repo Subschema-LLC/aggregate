@@ -23,6 +23,8 @@ jobs:
     timeout-minutes: 30
     outputs:
       tag: ${{ steps.release.outputs.tag }}
+      branch: ${{ steps.release.outputs.branch }}
+      commit: ${{ steps.release.outputs.commit }}
     env:
       RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
@@ -37,12 +39,6 @@ jobs:
           extensions: ctype, iconv, pdo_sqlite, pdo_mysql, mbstring, xml, curl, intl, sodium, zip
           coverage: none
           tools: composer:v2
-      - name: Check release signing setup
-        # Fails in seconds, before tests and packaging, when the signing secret
-        # or the committed public key is missing or they do not match.
-        env:
-          RELEASE_SIGNING_PRIVATE_KEY: ${{ secrets.RELEASE_SIGNING_PRIVATE_KEY }}
-        run: php scripts/sign-release.php --check-key
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
@@ -54,14 +50,14 @@ jobs:
         run: |
           echo "RELEASE_OUTPUT=$RUNNER_TEMP/aggregate-release" >> "$GITHUB_ENV"
           cp .env.prod.example .env
-          composer validate --strict --no-check-publish --no-interaction
-          composer install --no-interaction --prefer-dist --no-scripts
+          composer validate --strict --no-check-publish --no-plugins --no-interaction
+          composer install --no-interaction --prefer-dist --no-plugins --no-scripts
           npm ci --ignore-scripts --no-audit --no-fund
       - name: Install UI JavaScript test dependencies
         run: php bin/console importmap:install --env=test --no-debug --no-interaction
       - name: Audit locked build and runtime dependencies
         run: |
-          composer audit --locked --no-interaction
+          composer audit --locked --no-plugins --no-interaction
           npm audit
       - name: Verify release tag and publishing branch
         id: release
@@ -91,8 +87,8 @@ jobs:
         run: |
           # Fresh vendor directory prevents development packages surviving a build.
           rm -rf vendor src/DataFixtures
-          composer install --no-dev --no-interaction --prefer-dist --no-scripts --optimize-autoloader
-          composer check-platform-reqs --no-dev
+          composer install --no-dev --no-interaction --prefer-dist --no-plugins --no-scripts --optimize-autoloader
+          composer check-platform-reqs --no-dev --no-plugins
           php bin/console importmap:install
           php bin/console assets:install public
           php bin/console asset-map:compile
@@ -104,35 +100,6 @@ jobs:
           RELEASE_COMMIT: ${{ steps.release.outputs.commit }}
         run: |
           python3 scripts/build-release.py --output-dir "$RELEASE_OUTPUT" --version "$RELEASE_TAG" --branch "$RELEASE_BRANCH" --commit "$RELEASE_COMMIT"
-      - name: Sign release manifest
-        env:
-          RELEASE_SIGNING_PRIVATE_KEY: ${{ secrets.RELEASE_SIGNING_PRIVATE_KEY }}
-        run: php scripts/sign-release.php "$RELEASE_OUTPUT/aggregate-release.json"
-      - name: Verify signed package using the application verifier
-        env:
-          APP_ENV: prod
-          APP_DEBUG: '0'
-          APP_SECRET: release-verification-only-not-a-deployment-secret
-          DATABASE_URL: 'mysql://build:build@127.0.0.1:3306/aggregate?serverVersion=8.0.0'
-          RELEASE_BRANCH: ${{ steps.release.outputs.branch }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          # This temporary channel selection is created after packaging. The
-          # verifier trusts the checkout's configured public key, not the ZIP.
-          php <<'PHP'
-          <?php
-          require 'vendor/autoload.php';
-          $branch = App\Service\UpdateSettings::validateBranch(getenv('RELEASE_BRANCH'));
-          $yaml = Symfony\Component\Yaml\Yaml::dump(['updates_branch' => $branch]);
-          $handle = @fopen('config/aggregate_prod.yaml', 'xb');
-          if ($handle === false || fwrite($handle, $yaml) !== strlen($yaml)) {
-              throw new RuntimeException('Cannot create temporary verification configuration.');
-          }
-          fclose($handle);
-          PHP
-          trap 'rm -f config/aggregate_prod.yaml' EXIT
-          php bin/console app:updates:verify-package "$RELEASE_OUTPUT/aggregate-${RELEASE_TAG#v}.zip" "$RELEASE_OUTPUT/aggregate-release.json" "$RELEASE_OUTPUT/aggregate-release.json.sig"
       - name: Smoke test packaged application without Git or build tools
         env:
           APP_ENV: prod
@@ -152,22 +119,105 @@ jobs:
           DASHBOARD_ENABLED=0 php bin/console lint:container
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: signed-release-package
+          name: unsigned-release-package
           path: ${{ runner.temp }}/aggregate-release/*
           if-no-files-found: error
           retention-days: 7
 
-  draft-release:
+  sign:
     needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release-signing
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.build.outputs.commit }}
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/sign-release.php
+            config/release-signing.pub
+          sparse-checkout-cone-mode: false
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
+        with:
+          php-version: '8.2'
+          extensions: sodium
+          coverage: none
+          tools: none
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: unsigned-release-package
+          path: release
+      - name: Check release signing setup and sign release manifest
+        env:
+          RELEASE_SIGNING_PRIVATE_KEY: ${{ secrets.RELEASE_SIGNING_PRIVATE_KEY }}
+        run: |
+          php scripts/sign-release.php --check-key config/release-signing.pub
+          php scripts/sign-release.php release/aggregate-release.json config/release-signing.pub
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: signed-release-package
+          path: release/*
+          if-no-files-found: error
+          retention-days: 7
+
+  draft-release:
+    needs: [build, sign]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.build.outputs.commit }}
+          persist-credentials: false
+          sparse-checkout: |
+            config/release-signing.pub
+          sparse-checkout-cone-mode: false
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
+        with:
+          php-version: '8.2'
+          extensions: ctype, iconv, pdo_sqlite, pdo_mysql, mbstring, xml, curl, intl, sodium, zip
+          coverage: none
+          tools: none
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: signed-release-package
           path: release
+      - name: Verify signed package using the application verifier
+        env:
+          APP_ENV: prod
+          APP_DEBUG: '0'
+          APP_SECRET: release-verification-only-not-a-deployment-secret
+          DATABASE_URL: 'mysql://build:build@127.0.0.1:3306/aggregate?serverVersion=8.0.0'
+          RELEASE_BRANCH: ${{ needs.build.outputs.branch }}
+          RELEASE_TAG: ${{ needs.build.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="$PWD/release/aggregate-${RELEASE_TAG#v}.zip"
+          manifest="$PWD/release/aggregate-release.json"
+          signature="$PWD/release/aggregate-release.json.sig"
+          trusted_key="$PWD/config/release-signing.pub"
+          verifier="$RUNNER_TEMP/aggregate-release-verify"
+          python3 -m zipfile -e "$package" "$verifier"
+          cp "$trusted_key" "$verifier/config/release-signing.pub"
+          cd "$verifier"
+          php <<'PHP'
+          <?php
+          require 'vendor/autoload.php';
+          $branch = App\Service\UpdateSettings::validateBranch(getenv('RELEASE_BRANCH'));
+          $yaml = Symfony\Component\Yaml\Yaml::dump(['updates_branch' => $branch]);
+          $handle = @fopen('config/aggregate_prod.yaml', 'xb');
+          if ($handle === false || fwrite($handle, $yaml) !== strlen($yaml)) {
+              throw new RuntimeException('Cannot create temporary verification configuration.');
+          }
+          fclose($handle);
+          PHP
+          php bin/console app:updates:verify-package "$package" "$manifest" "$signature"
       - name: Attach the package to the release, or create a draft for review
         env:
           GH_TOKEN: ${{ github.token }}

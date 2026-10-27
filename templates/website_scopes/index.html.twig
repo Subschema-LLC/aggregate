@@ -96,7 +96,7 @@
                         </div>
                     </div>
                 </form>
-                <form method="post" action="{{ path('app_website_groups_delete', {id: id}) }}" onsubmit="return confirm('Remove this {{ label.singular|lower }}? Its websites keep their own settings and otherwise use the deployment settings.');">
+                <form method="post" action="{{ path('app_website_groups_delete', {id: id}) }}" data-controller="components--ui--confirm" data-action="submit->components--ui--confirm#confirm" data-components--ui--confirm-message-value="Remove this {{ label.singular|lower }}? Its websites keep their own settings and otherwise use the deployment settings.">
                     <input type="hidden" name="_csrf_token" value="{{ csrf_token('website_scopes') }}">
                     <button class="button is-danger is-light" type="submit">Remove</button>
                 </form>

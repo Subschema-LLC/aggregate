@@ -8,19 +8,15 @@ restriction before exposing the application publicly. Prefer
 the name and password, or takes them from `--username` and `--password` or the
 `ADMIN_USERNAME` and `ADMIN_PASSWORD` environment variables for an unattended
 install; an environment variable keeps the password out of the shell history.
-The web installer is a first-run bootstrap flow: its CSRF protection prevents
-forged browser submissions, but anyone who can reach an uninitialized
-installation can open the form and create the first account. Keep `/install`
-and `/install/execute` restricted until setup completes. Headless deployments
-should disable the dashboard as described in the
+The web installer (`/install`) and the release-ZIP
+[setup page](docs/RELEASES.md#install-or-deploy-a-verified-package) both require
+the one-time code from `SETUP-CODE.txt` in the application directory (created
+automatically on first visit when not yet installed), plus CSRF protection, so a
+visitor who cannot read the server's files cannot configure the database or
+create the first account. Keep `/install` and `/install/execute` restricted
+until setup completes, and delete or complete setup promptly. Headless
+deployments should disable the dashboard as described in the
 [configuration guide](docs/CONFIGURATION.md).
-
-A release ZIP extracted without any environment configuration starts with the
-browser [setup page](docs/RELEASES.md#install-or-deploy-a-verified-package)
-instead. It and `/install` require the one-time code from `SETUP-CODE.txt` in the
-application directory, so a visitor who cannot read the server's files cannot
-configure the database or create the first account. Installations configured
-by hand (`.env.local` or environment variables) keep the behavior above.
 
 ## Table of Contents
 
@@ -87,6 +83,8 @@ panel-specific steps belong.
 
 ## Docker Deployment
 
+> **Development-only configuration:** The checked-in `compose.yaml` is for local development (`APP_ENV=dev`, `APP_DEBUG=1`, mounted working tree). Database ports are bound to `127.0.0.1`, images are pinned by digest, and database passwords (`MYSQL_PASSWORD`, `MYSQL_ROOT_PASSWORD`, `POSTGRES_PASSWORD`, `MARIADB_PASSWORD`, `MARIADB_ROOT_PASSWORD`) must be set in the environment before starting a database profile. For production, use a [release ZIP](#release-zip-on-a-web-host), [native deployment](#native-deployment), or a dedicated production container image with `APP_ENV=prod` and `APP_DEBUG=0`.
+
 ### Quick Start
 
 ```bash
@@ -98,7 +96,8 @@ cd aggregate-sy
 cp config/aggregate.yaml.example config/aggregate.yaml
 nano config/aggregate.yaml
 
-# Start services
+# Set local database passwords and start services
+export MYSQL_PASSWORD="$(openssl rand -hex 16)" MYSQL_ROOT_PASSWORD="$(openssl rand -hex 16)"
 make start-mysql
 
 # Run migrations
@@ -215,8 +214,11 @@ php bin/console app:analytics:glossary:sync
 php bin/console asset-map:compile
 
 # 6. Give the PHP process access to runtime data, not application code
-chmod -R 775 var/
 chown -R www-data:www-data var/
+find var -type d -exec chmod 750 {} +
+# Or grant ACL access for the PHP user and your deployment user:
+# setfacl -dR -m u:www-data:rwX -m u:"$(whoami)":rwX var
+# setfacl -R -m u:www-data:rwX -m u:"$(whoami)":rwX var
 # Keep public/ and application code owned by the deployment user.
 # See Production Considerations for writable admin configuration and uploads.
 
@@ -422,6 +424,7 @@ sudo certbot --nginx -d analytics.example.com
 - Never commit `.env` (server-specific env file) to version control — it is gitignored by default
 - Keep `config/aggregate.yaml`, environment-specific `config/aggregate_*.yaml`, `config/websites.yaml`, `config/website-scopes.yaml`, `config/website-scopes/` and `config/tag-manager/sites/` private; commit only sanitized example files
 - Use a unique, strong `APP_SECRET` in the server environment
+- Optionally set `AGGREGATE_SECRETS_KEY` (at least 32 characters, e.g. `openssl rand -hex 32`) in the server environment or `.env.local` to encrypt credential files under `config/secrets/` (`email.yaml`, `bigquery-service-account.json`, `bigquery-google-sign-in.json`, `mcp-oauth.yaml`) at rest
 - Review anonymous path exclusions and set both BI minimum-cell thresholds before collection (`anonymous_min_cell_count`, default `5`; `anonymous_geo_min_cell_count`, default `25`), on the BI disclosure page or in YAML followed by `php bin/console app:analytics:bi-views:regenerate`
 - Review every code in `config/goals.yaml`; keep values fixed and non-identifying, and set `anonymous: false` where enhanced consent is appropriate
 - Leave coarse geography disabled unless its purpose, legal basis, notice, traffic volume, and local MMDB lifecycle have been reviewed
@@ -774,8 +777,8 @@ php bin/console messenger:consume async -vv
 ### Permission errors
 
 ```bash
-chmod -R 775 var/
-chown -R www-data:www-data var/ public/
+chown -R www-data:www-data var/
+find var -type d -exec chmod 750 {} +
 ```
 
 ### Database connection errors

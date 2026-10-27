@@ -51,14 +51,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}{{ app_branding.name }}{% endblock %}</title>
+    {% set csp_nonce = app is defined and app.request is defined and app.request ? app.request.attributes.get('csp_nonce', '') : (csp_nonce|default('')) %}
     {# Apply a saved preference before styles paint; interaction belongs to ThemeToggle. #}
-    <script src="{{ asset('theme-preference.js') }}"></script>
+    <script src="{{ asset('theme-preference.js') }}"{% if csp_nonce %} nonce="{{ csp_nonce }}"{% endif %}></script>
     <link rel="stylesheet" href="{{ asset('styles/vendor/bulma/bulma.min.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="{{ asset('styles/app.css') }}">
     <link rel="stylesheet" href="{{ path('app_branding_theme') }}">
     {% block stylesheets %}{% endblock %}
-    {% block javascripts %}{{ importmap('app') }}{% endblock %}
+    {% block javascripts %}{{ importmap('app', csp_nonce ? {nonce: csp_nonce} : {}) }}{% endblock %}
 </head>
 <body>
 

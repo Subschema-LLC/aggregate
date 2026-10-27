@@ -35,9 +35,9 @@ php scripts/sign-release.php --generate-keypair \
   config/release-signing.pub
 ```
 
-The helper creates a private file with mode `0600` and refuses to overwrite existing destinations. It prints file paths, never key contents. Commit **only** `config/release-signing.pub`, which contains the base64 public key. Add the contents of the private file as the repository's GitHub Actions secret **`RELEASE_SIGNING_PRIVATE_KEY`**. Back up the private key securely; never place it in application YAML, an environment example, or a ZIP.
+The helper creates a private file with mode `0600` and refuses to overwrite existing destinations. It prints file paths, never key contents. Commit **only** `config/release-signing.pub`, which contains the base64 public key. Add the contents of the private file as the **`RELEASE_SIGNING_PRIVATE_KEY`** secret in the **`release-signing`** GitHub Actions environment (configured with required reviewers), which is used only by the isolated `sign` job after packaging completes. Back up the private key securely; never place it in application YAML, an environment example, or a ZIP.
 
-The public key and Actions secret are intentionally not generated or populated by this source change. Until both are configured and match, the release workflow stops at its first step, **Check release signing setup**, which names the problem: the secret is empty, is not base64, holds the public key instead of the private key, or does not match `config/release-signing.pub`. Check a key locally the same way without printing it:
+The public key and Actions secret are intentionally not generated or populated by this source change. Until both are configured and match, the release workflow stops in the `sign` job, which names the problem: the secret is empty, is not base64, holds the public key instead of the private key, or does not match `config/release-signing.pub`. Check a key locally the same way without printing it:
 
 ```bash
 RELEASE_SIGNING_PRIVATE_KEY="$(cat "$HOME/.config/aggregate-release/private.key")" \

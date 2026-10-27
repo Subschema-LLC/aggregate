@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service\BigQuery;
 
 use App\Service\Operations\ConfigurationChanges;
+use App\Service\SecretFileEncryption;
 
 /**
  * Credential files for BigQuery sync, kept in config/secrets (preserved by
@@ -34,9 +35,15 @@ final class BigQuerySecrets
         if (!is_file($path)) {
             return null;
         }
-        $json = @file_get_contents($path, false, null, 0, ServiceAccountKey::MAX_BYTES + 1);
+        $json = @file_get_contents($path, false, null, 0, ServiceAccountKey::MAX_BYTES * 2 + 256);
         if (!is_string($json)) {
             throw new \InvalidArgumentException('The service account key file exists but cannot be read by the application.');
+        }
+        $relative = str_starts_with($path, $this->projectDir.'/') ? substr($path, strlen($this->projectDir) + 1) : BigQuerySettings::DEFAULT_CREDENTIALS_FILE;
+        try {
+            $json = SecretFileEncryption::decode($json, $relative);
+        } catch (\RuntimeException $e) {
+            throw new \InvalidArgumentException($e->getMessage(), 0, $e);
         }
 
         return ServiceAccountKey::fromJson($json);
@@ -157,9 +164,10 @@ final class BigQuerySecrets
         if (!is_file($path)) {
             return [];
         }
-        $json = @file_get_contents($path, false, null, 0, 65537);
+        $json = @file_get_contents($path, false, null, 0, 131072);
         try {
-            $data = is_string($json) ? json_decode($json, true, 4, JSON_THROW_ON_ERROR) : null;
+            $decoded = is_string($json) ? SecretFileEncryption::decode($json, self::SIGN_IN_FILE) : null;
+            $data = is_string($decoded) && strlen($decoded) <= 65536 ? json_decode($decoded, true, 4, JSON_THROW_ON_ERROR) : null;
         } catch (\JsonException) {
             $data = null;
         }
@@ -190,6 +198,8 @@ final class BigQuerySecrets
     /** Writes a secret file atomically, readable only by the application's user. */
     private function write(string $path, #[\SensitiveParameter] string $contents): void
     {
+        $relative = str_starts_with($path, $this->projectDir.'/') ? substr($path, strlen($this->projectDir) + 1) : basename($path);
+        $payload = SecretFileEncryption::encode($contents, $relative);
         $directory = dirname($path);
         if (!is_dir($directory) && !@mkdir($directory, 0700, true) && !is_dir($directory)) {
             throw new \RuntimeException('config/secrets could not be created. Make it writable by the web server user, or place the key file on the server yourself.');
@@ -200,11 +210,11 @@ final class BigQuerySecrets
         }
         try {
             @chmod($temporary, 0600);
-            if (@file_put_contents($temporary, $contents) !== strlen($contents) || !@rename($temporary, $path)) {
+            if (@file_put_contents($temporary, $payload) !== strlen($payload) || !@rename($temporary, $path)) {
                 throw new \RuntimeException('The credential file could not be written to config/secrets.');
             }
             // The file's name only: its contents are a secret.
-            ConfigurationChanges::record(str_starts_with($path, $this->projectDir.'/') ? substr($path, strlen($this->projectDir) + 1) : basename($path));
+            ConfigurationChanges::record($relative);
         } finally {
             if (is_file($temporary)) {
                 @unlink($temporary);

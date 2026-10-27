@@ -247,12 +247,13 @@ final class InstallControllerInternalTrafficTest extends TestCase
 
     public function testInstallerAsksOtherBrowsersForTheSetupCode(): void
     {
-        $code = (new SetupCode($this->projectDir))->ensure();
         $config = $this->writeConfig('');
         $renders = [];
         $controller = $this->controller($config, runsMigrations: false, capturesRender: $renders);
 
         $controller->install(Request::create('https://analytics.example.test/install'));
+        $code = (new SetupCode($this->projectDir))->current();
+        self::assertNotNull($code);
         $request = Request::create('https://analytics.example.test/install');
         $request->cookies->set(SetupCode::COOKIE, $code);
         $controller->install($request);
@@ -275,6 +276,7 @@ final class InstallControllerInternalTrafficTest extends TestCase
     {
         return Request::create('/install/execute', 'POST', [
             '_csrf_token' => 'valid-install-token',
+            'setup_code' => (new SetupCode($this->projectDir))->ensure(),
             'admin_username' => 'admin',
             'admin_password' => 'correct-password',
             'js_namespace' => 'Aggregate',
@@ -367,7 +369,7 @@ final class InstallControllerInternalTrafficTest extends TestCase
         if ($rendersInstaller) {
             $twig = $this->createMock(Environment::class);
             $twig->expects(self::once())->method('render')->with('install/index.html.twig', [
-                'setup_code_required' => false,
+                'setup_code_required' => true,
                 'setup_code_file' => SetupCode::FILE,
                 'app_host' => 'https://analytics.example.test',
             ])->willReturn('installer');

@@ -104,6 +104,38 @@ final class DatabasePlatformConfigurationTest extends TestCase
         }
     }
 
+    public function testComposePinsDigestsBindsDatabasePortsToLoopbackAndRequiresPasswords(): void
+    {
+        $compose = Yaml::parseFile(dirname(__DIR__, 2).'/compose.yaml');
+
+        foreach ($compose['services'] as $name => $service) {
+            self::assertStringContainsString('@sha256:', (string) ($service['image'] ?? ''), $name);
+            self::assertStringNotContainsString('latest', (string) ($service['image'] ?? ''), $name);
+        }
+
+        foreach (['database-mysql', 'database-postgres', 'database-mariadb'] as $dbService) {
+            foreach ($compose['services'][$dbService]['ports'] as $portMapping) {
+                self::assertStringStartsWith('127.0.0.1:', (string) $portMapping, $dbService);
+            }
+            $envText = implode("\n", array_map('strval', $compose['services'][$dbService]['environment']));
+            self::assertStringNotContainsString('!ChangeMe!', $envText, $dbService);
+            self::assertStringContainsString(':?', $envText, $dbService);
+        }
+    }
+
+    public function testReleaseWorkflowIsolatesSigningKeyInDedicatedEnvironmentJob(): void
+    {
+        $workflow = Yaml::parseFile(dirname(__DIR__, 2).'/.github/workflows/release.yml');
+        $raw = (string) file_get_contents(dirname(__DIR__, 2).'/.github/workflows/release.yml');
+
+        self::assertArrayHasKey('sign', $workflow['jobs']);
+        self::assertSame('release-signing', $workflow['jobs']['sign']['environment'] ?? null);
+
+        $buildYaml = Yaml::dump($workflow['jobs']['build'], 6);
+        self::assertStringNotContainsString('RELEASE_SIGNING_PRIVATE_KEY', $buildYaml);
+        self::assertStringContainsString('--no-plugins', $raw);
+    }
+
     #[DataProvider('installerVersions')]
     public function testShellInstallerBuildsSupportedMysqlFamilyConnections(
         int $choice,

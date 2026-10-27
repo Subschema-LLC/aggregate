@@ -53,11 +53,12 @@ class InstallController extends AbstractController
             ]);
         }
 
+        $this->setupCode->ensure();
+
         return $this->render('install/index.html.twig', [
             // A browser setup started from a release ZIP: the browser that entered
             // the setup code carries it in a cookie; any other browser must enter it.
-            'setup_code_required' => $this->setupCode->isPending()
-                && !$this->setupCode->matches($request->cookies->get(SetupCode::COOKIE)),
+            'setup_code_required' => !$this->setupCode->matches($request->cookies->get(SetupCode::COOKIE)),
             'setup_code_file' => SetupCode::FILE,
             'app_host' => $this->suggestedAppHost($request),
         ]);
@@ -84,8 +85,8 @@ class InstallController extends AbstractController
             return $this->redirectToRoute('app_install');
         }
 
-        if ($this->setupCode->isPending()
-            && !$this->setupCode->matches($request->cookies->get(SetupCode::COOKIE))
+        $this->setupCode->ensure();
+        if (!$this->setupCode->matches($request->cookies->get(SetupCode::COOKIE))
             && !$this->setupCode->matches($request->request->all()['setup_code'] ?? null)) {
             $this->addFlash('error', sprintf('Enter the setup code from %s in the application folder.', SetupCode::FILE));
             return $this->redirectToRoute('app_install');
