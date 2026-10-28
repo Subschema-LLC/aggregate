@@ -171,7 +171,7 @@ final class McpAuthorizeController extends AbstractController
             $response->setStatusCode(Response::HTTP_UNPROCESSABLE_ENTITY);
         }
         // The page must not be framed by another site, or a click could be stolen.
-        return DashboardSecurityHeadersSubscriber::apply($response, DashboardSecurityHeadersSubscriber::nonceFor($request));
+        return DashboardSecurityHeadersSubscriber::apply($response, DashboardSecurityHeadersSubscriber::nonceFor($request), $request->isSecure());
     }
 
     private function failure(Request $request, string $message, int $status = 400): Response
@@ -179,7 +179,7 @@ final class McpAuthorizeController extends AbstractController
         $response = $this->renderDashboardPage('mcp/authorize_error.html.twig', ['message' => $message]);
         $response->setStatusCode($status);
 
-        return DashboardSecurityHeadersSubscriber::apply($response, DashboardSecurityHeadersSubscriber::nonceFor($request));
+        return DashboardSecurityHeadersSubscriber::apply($response, DashboardSecurityHeadersSubscriber::nonceFor($request), $request->isSecure());
     }
 
     /** @param array<string, string> $parameters */

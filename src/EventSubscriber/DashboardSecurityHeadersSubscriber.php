@@ -55,7 +55,7 @@ final class DashboardSecurityHeadersSubscriber implements EventSubscriberInterfa
             return;
         }
 
-        self::apply($event->getResponse(), self::nonceFor($request));
+        self::apply($event->getResponse(), self::nonceFor($request), $request->isSecure());
     }
 
     public static function appliesTo(Request $request): bool
@@ -76,12 +76,20 @@ final class DashboardSecurityHeadersSubscriber implements EventSubscriberInterfa
         return $nonce;
     }
 
-    public static function apply(Response $response, string $nonce): Response
+    /**
+     * HSTS goes only on HTTPS responses, and without includeSubDomains: an
+     * installation served under a path of a company's main domain must not
+     * force HTTPS on every other subdomain. Operators can widen it in the web
+     * server.
+     */
+    public static function apply(Response $response, string $nonce, bool $secure = true): Response
     {
         $response->headers->set('Content-Security-Policy', self::csp($nonce));
         $response->headers->set('X-Frame-Options', 'DENY');
         $response->headers->set('X-Content-Type-Options', 'nosniff');
-        $response->headers->set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+        if ($secure) {
+            $response->headers->set('Strict-Transport-Security', 'max-age=31536000');
+        }
         if (!$response->headers->has('Referrer-Policy')) {
             $response->headers->set('Referrer-Policy', 'same-origin');
         }

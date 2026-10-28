@@ -104,7 +104,7 @@ final class DatabasePlatformConfigurationTest extends TestCase
         }
     }
 
-    public function testComposePinsDigestsBindsDatabasePortsToLoopbackAndRequiresPasswords(): void
+    public function testComposePinsDigestsAndBindsDatabasePortsToLoopback(): void
     {
         $compose = Yaml::parseFile(dirname(__DIR__, 2).'/compose.yaml');
 
@@ -117,9 +117,6 @@ final class DatabasePlatformConfigurationTest extends TestCase
             foreach ($compose['services'][$dbService]['ports'] as $portMapping) {
                 self::assertStringStartsWith('127.0.0.1:', (string) $portMapping, $dbService);
             }
-            $envText = implode("\n", array_map('strval', $compose['services'][$dbService]['environment']));
-            self::assertStringNotContainsString('!ChangeMe!', $envText, $dbService);
-            self::assertStringContainsString(':?', $envText, $dbService);
         }
     }
 
@@ -134,6 +131,22 @@ final class DatabasePlatformConfigurationTest extends TestCase
         $buildYaml = Yaml::dump($workflow['jobs']['build'], 6);
         self::assertStringNotContainsString('RELEASE_SIGNING_PRIVATE_KEY', $buildYaml);
         self::assertStringContainsString('--no-plugins', $raw);
+
+        // Code from the package runs only in the read-only verify job, never where releases are written.
+        self::assertSame(['contents' => 'read'], $workflow['jobs']['verify']['permissions'] ?? null);
+        self::assertStringContainsString('app:updates:verify-package', Yaml::dump($workflow['jobs']['verify'], 6));
+        self::assertStringNotContainsString('bin/console', Yaml::dump($workflow['jobs']['draft-release'], 6));
+        self::assertContains('verify', (array) $workflow['jobs']['draft-release']['needs']);
+
+        // symfony/runtime's Composer plugin writes vendor/autoload_runtime.php, which
+        // bin/console and public/index.php require, so installs must keep plugins on.
+        foreach (['.github/workflows/ci.yml', '.github/workflows/release.yml', 'install.sh', 'plesk-setup.sh'] as $file) {
+            foreach (preg_split('/\R/', (string) file_get_contents(dirname(__DIR__, 2).'/'.$file)) as $line) {
+                if (str_contains($line, 'composer install')) {
+                    self::assertStringNotContainsString('--no-plugins', $line, $file);
+                }
+            }
+        }
     }
 
     #[DataProvider('installerVersions')]

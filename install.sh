@@ -84,7 +84,7 @@ fi
 # Install dependencies
 echo ""
 echo "Installing Composer dependencies..."
-composer install --no-dev --no-plugins --optimize-autoloader
+composer install --no-dev --optimize-autoloader
 
 # Configure environment
 echo ""

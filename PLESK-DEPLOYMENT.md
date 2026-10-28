@@ -356,7 +356,7 @@ cd /var/www/vhosts/your-domain.com/analytics
 
 # Replace aggregate_admin with your actual Plesk domain user
 chown -R aggregate_admin:psacln var/
-find var -type d -exec chmod 750 {} +
+find var -type d -exec chmod u+rwx,g-w,o-rwx {} +
 ```
 
 ### 9. Optional: Complete Dashboard Setup via Web Installer
@@ -576,7 +576,7 @@ sudo systemctl stop analytics-worker
 
 # Fix permissions
 chown -R aggregate_admin:psacln var/
-find var -type d -exec chmod 750 {} +
+find var -type d -exec chmod u+rwx,g-w,o-rwx {} +
 
 # Restart the worker when using async mode, then resume the collection endpoint
 sudo systemctl restart analytics-worker
@@ -613,7 +613,7 @@ or fonts does not require rebuilding assets.
 2. Check Nginx error log (if enabled): `/var/www/vhosts/your-domain.com/logs/proxy_error_log`
 3. App logs in production are written to `php://stderr`, so they appear in web server logs above (not `var/log/prod.log` by default)
 4. Verify `.env` exists and has correct values (especially `APP_ENV=prod`)
-5. Verify permissions: `chown -R aggregate_admin:psacln var/ && find var -type d -exec chmod 750 {} +`
+5. Verify permissions: `chown -R aggregate_admin:psacln var/ && find var -type d -exec chmod u+rwx,g-w,o-rwx {} +`
 
 ### Database connection errors
 
@@ -648,7 +648,7 @@ If Composer runs as a different user (e.g. root during SSH), reset permissions:
 
 ```bash
 chown -R aggregate_admin:psacln var/
-find var -type d -exec chmod 750 {} +
+find var -type d -exec chmod u+rwx,g-w,o-rwx {} +
 ```
 
 ### CORS / 403 Forbidden

@@ -49,7 +49,7 @@ jobs:
         run: |
           cp .env.prod.example .env
           composer validate --strict --no-check-publish --no-plugins --no-interaction
-          composer install --no-interaction --prefer-dist --no-plugins --no-scripts
+          composer install --no-interaction --prefer-dist --no-scripts
           composer check-platform-reqs --no-plugins
       - name: Install UI JavaScript dependencies
         run: php bin/console importmap:install --env=test --no-debug --no-interaction
@@ -98,7 +98,7 @@ jobs:
           coverage: none
           tools: composer:v2, phpstan:2.1.8
       - name: Install PHP dependencies
-        run: composer install --no-interaction --prefer-dist --no-plugins --no-scripts
+        run: composer install --no-interaction --prefer-dist --no-scripts
       - name: Analyse src at level 5
         run: phpstan analyse --memory-limit=1G --no-progress --error-format=github
 
@@ -157,7 +157,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install PHP dependencies for the branch and signing checks
-        run: composer install --no-interaction --prefer-dist --no-plugins --no-scripts
+        run: composer install --no-interaction --prefer-dist --no-scripts
       - name: Run packaging, branch configuration, signing, and DCO checker tests
         run: python3 -m unittest discover -s tests/Release -p 'test_*.py' -v
 
@@ -285,7 +285,7 @@ jobs:
           APP_SECRET: build-only
           DATABASE_URL: 'sqlite:///:memory:'
         run: |
-          composer install --no-interaction --prefer-dist --no-plugins --no-scripts
+          composer install --no-interaction --prefer-dist --no-scripts
           php bin/console importmap:install --no-interaction
           php bin/console asset-map:compile
       - name: Install Microsoft's ODBC driver for SQL Server

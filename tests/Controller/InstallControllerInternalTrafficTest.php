@@ -262,6 +262,21 @@ final class InstallControllerInternalTrafficTest extends TestCase
         self::assertFalse($renders[1]['setup_code_required']);
     }
 
+    public function testUnwritableFolderKeepsTheInstallerLockedWithAMessageInsteadOfAnError(): void
+    {
+        $config = $this->writeConfig('');
+        $renders = [];
+        $controller = $this->controller($config, runsMigrations: false, capturesRender: $renders, setupCodeDir: $this->projectDir.'/missing-folder');
+
+        $controller->install(Request::create('https://analytics.example.test/install'));
+
+        self::assertTrue($renders[0]['setup_code_required']);
+        self::assertFileDoesNotExist($this->projectDir.'/missing-folder/'.SetupCode::FILE);
+        $errors = $this->session->getFlashBag()->peek('error');
+        self::assertCount(1, $errors);
+        self::assertStringContainsString('php bin/console app:install', $errors[0]);
+    }
+
     private function writeConfig(string $token): AggregateConfigLoader
     {
         file_put_contents($this->projectDir.'/config/aggregate.yaml', Yaml::dump([
@@ -292,6 +307,7 @@ final class InstallControllerInternalTrafficTest extends TestCase
         bool $hashFails = false,
         int $glossaryResult = Command::SUCCESS,
         ?array &$capturesRender = null,
+        ?string $setupCodeDir = null,
     ): InstallController {
         $checker = $this->createStub(InstallationChecker::class);
         $checker->method('isInstalled')->willReturn($alreadyInstalled);
@@ -341,7 +357,7 @@ final class InstallControllerInternalTrafficTest extends TestCase
             $passwordHasher,
             $kernel,
             new InternalTrafficSettings($config),
-            new SetupCode($this->projectDir),
+            new SetupCode($setupCodeDir ?? $this->projectDir),
         );
         $router = $this->createStub(UrlGeneratorInterface::class);
         $router->method('generate')->willReturnCallback(static fn (string $route): string => '/'.$route);

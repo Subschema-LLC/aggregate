@@ -83,7 +83,7 @@ panel-specific steps belong.
 
 ## Docker Deployment
 
-> **Development-only configuration:** The checked-in `compose.yaml` is for local development (`APP_ENV=dev`, `APP_DEBUG=1`, mounted working tree). Database ports are bound to `127.0.0.1`, images are pinned by digest, and database passwords (`MYSQL_PASSWORD`, `MYSQL_ROOT_PASSWORD`, `POSTGRES_PASSWORD`, `MARIADB_PASSWORD`, `MARIADB_ROOT_PASSWORD`) must be set in the environment before starting a database profile. For production, use a [release ZIP](#release-zip-on-a-web-host), [native deployment](#native-deployment), or a dedicated production container image with `APP_ENV=prod` and `APP_DEBUG=0`.
+> **Development-only configuration:** The checked-in `compose.yaml` is for local development (`APP_ENV=dev`, `APP_DEBUG=1`, mounted working tree). Database ports are bound to `127.0.0.1` and images are pinned by digest. The database passwords default to the development values in `.env.dev`; set `MYSQL_PASSWORD`, `POSTGRES_PASSWORD` or `MARIADB_PASSWORD` (and the matching root password) in the environment to use your own. For production, use a [release ZIP](#release-zip-on-a-web-host), [native deployment](#native-deployment), or a dedicated production container image with `APP_ENV=prod` and `APP_DEBUG=0`.
 
 ### Quick Start
 
@@ -96,8 +96,7 @@ cd aggregate-sy
 cp config/aggregate.yaml.example config/aggregate.yaml
 nano config/aggregate.yaml
 
-# Set local database passwords and start services
-export MYSQL_PASSWORD="$(openssl rand -hex 16)" MYSQL_ROOT_PASSWORD="$(openssl rand -hex 16)"
+# Start services
 make start-mysql
 
 # Run migrations
@@ -215,7 +214,7 @@ php bin/console asset-map:compile
 
 # 6. Give the PHP process access to runtime data, not application code
 chown -R www-data:www-data var/
-find var -type d -exec chmod 750 {} +
+find var -type d -exec chmod u+rwx,g-w,o-rwx {} +
 # Or grant ACL access for the PHP user and your deployment user:
 # setfacl -dR -m u:www-data:rwX -m u:"$(whoami)":rwX var
 # setfacl -R -m u:www-data:rwX -m u:"$(whoami)":rwX var
@@ -424,7 +423,7 @@ sudo certbot --nginx -d analytics.example.com
 - Never commit `.env` (server-specific env file) to version control — it is gitignored by default
 - Keep `config/aggregate.yaml`, environment-specific `config/aggregate_*.yaml`, `config/websites.yaml`, `config/website-scopes.yaml`, `config/website-scopes/` and `config/tag-manager/sites/` private; commit only sanitized example files
 - Use a unique, strong `APP_SECRET` in the server environment
-- Optionally set `AGGREGATE_SECRETS_KEY` (at least 32 characters, e.g. `openssl rand -hex 32`) in the server environment or `.env.local` to encrypt credential files under `config/secrets/` (`email.yaml`, `bigquery-service-account.json`, `bigquery-google-sign-in.json`, `mcp-oauth.yaml`) at rest
+- Optionally set `AGGREGATE_SECRETS_KEY` (at least 32 characters, e.g. `openssl rand -hex 32`) in the server environment or `.env.local` to encrypt credential files under `config/secrets/` (`email.yaml`, `bigquery-service-account.json`, `bigquery-google-sign-in.json`, `mcp-oauth.yaml`) at rest. Keep a copy of the key outside the application folder: without it, encrypted files cannot be read until the key is set again, or the files are deleted and the credentials entered again. Files written before the key was set stay readable and are encrypted the next time they are saved
 - Review anonymous path exclusions and set both BI minimum-cell thresholds before collection (`anonymous_min_cell_count`, default `5`; `anonymous_geo_min_cell_count`, default `25`), on the BI disclosure page or in YAML followed by `php bin/console app:analytics:bi-views:regenerate`
 - Review every code in `config/goals.yaml`; keep values fixed and non-identifying, and set `anonymous: false` where enhanced consent is appropriate
 - Leave coarse geography disabled unless its purpose, legal basis, notice, traffic volume, and local MMDB lifecycle have been reviewed
@@ -778,7 +777,7 @@ php bin/console messenger:consume async -vv
 
 ```bash
 chown -R www-data:www-data var/
-find var -type d -exec chmod 750 {} +
+find var -type d -exec chmod u+rwx,g-w,o-rwx {} +
 ```
 
 ### Database connection errors

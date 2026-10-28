@@ -1,4 +1,6 @@
 # Development-only Docker Compose stack. See DEPLOYMENT.md for production deployment guidance.
+# Database ports listen on 127.0.0.1 only, so the dev-only default passwords (shared with .env.dev) are not
+# reachable from other machines. Override them in the environment if you need to.
 services:
   php:
     image: dunglas/frankenphp:${FRANKENPHP_VERSION:-1-php8.2@sha256:ef1cd0757b85f3d713e67afb6d2b54b116becb7259a4bf6c6ae64862952d1ef6}
@@ -14,7 +16,7 @@ services:
     environment:
       - APP_ENV=${APP_ENV:-dev}
       - APP_DEBUG=${APP_DEBUG:-1}
-      - DATABASE_URL=${DOCKER_DATABASE_URL:-mysql://${MYSQL_USER:-app}:${MYSQL_PASSWORD:?Set MYSQL_PASSWORD or DOCKER_DATABASE_URL}@database:3306/${MYSQL_DATABASE:-aggregate_analytics}?serverVersion=${MYSQL_SERVER_VERSION:-8.0.0}}
+      - DATABASE_URL=${DOCKER_DATABASE_URL:-mysql://${MYSQL_USER:-app}:${MYSQL_PASSWORD:-!ChangeMe!}@database:3306/${MYSQL_DATABASE:-aggregate_analytics}?serverVersion=${MYSQL_SERVER_VERSION:-8.0.0}}
     depends_on:
       asset-compile:
         condition: service_completed_successfully
@@ -37,7 +39,7 @@ services:
     environment:
       - APP_ENV=${APP_ENV:-dev}
       - APP_DEBUG=${APP_DEBUG:-1}
-      - DATABASE_URL=${DOCKER_DATABASE_URL:-mysql://${MYSQL_USER:-app}:${MYSQL_PASSWORD:?Set MYSQL_PASSWORD or DOCKER_DATABASE_URL}@database:3306/${MYSQL_DATABASE:-aggregate_analytics}?serverVersion=${MYSQL_SERVER_VERSION:-8.0.0}}
+      - DATABASE_URL=${DOCKER_DATABASE_URL:-mysql://${MYSQL_USER:-app}:${MYSQL_PASSWORD:-!ChangeMe!}@database:3306/${MYSQL_DATABASE:-aggregate_analytics}?serverVersion=${MYSQL_SERVER_VERSION:-8.0.0}}
     command: php -d variables_order=EGPCS bin/console messenger:consume async -vv
     restart: unless-stopped
 
@@ -46,9 +48,9 @@ services:
     image: mysql:${MYSQL_VERSION:-8.0@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b}
     environment:
       MYSQL_DATABASE: ${MYSQL_DATABASE:-aggregate_analytics}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
       MYSQL_USER: ${MYSQL_USER:-app}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-!ChangeMe!}
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       timeout: 5s
@@ -69,7 +71,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-aggregate_analytics}
       POSTGRES_USER: ${POSTGRES_USER:-app}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-!ChangeMe!}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app} -d ${POSTGRES_DB:-aggregate_analytics}"]
       timeout: 5s
@@ -88,9 +90,9 @@ services:
     image: mariadb:${MARIADB_VERSION:-11.4@sha256:d1891ede5a559f1086f55053bb8cc1569b0298338c4d72d71725a7f74f6ba620}
     environment:
       MARIADB_DATABASE: ${MARIADB_DATABASE:-aggregate_analytics}
-      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?Set MARIADB_ROOT_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-root}
       MARIADB_USER: ${MARIADB_USER:-app}
-      MARIADB_PASSWORD: ${MARIADB_PASSWORD:?Set MARIADB_PASSWORD}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:-!ChangeMe!}
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       timeout: 5s

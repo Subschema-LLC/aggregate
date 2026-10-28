@@ -21,7 +21,7 @@ final class DashboardSecurityHeadersSubscriberTest extends TestCase
     {
         $subscriber = new DashboardSecurityHeadersSubscriber();
         $kernel = $this->createStub(HttpKernelInterface::class);
-        $request = Request::create($path);
+        $request = Request::create('https://analytics.example.test'.$path);
         $response = new Response('<html></html>');
 
         $subscriber->onRequest(new RequestEvent($kernel, $request, HttpKernelInterface::MAIN_REQUEST));
@@ -39,9 +39,23 @@ final class DashboardSecurityHeadersSubscriberTest extends TestCase
         self::assertStringContainsString("base-uri 'none'", $csp);
         self::assertSame('DENY', $response->headers->get('X-Frame-Options'));
         self::assertSame('nosniff', $response->headers->get('X-Content-Type-Options'));
-        self::assertSame('max-age=31536000; includeSubDomains', $response->headers->get('Strict-Transport-Security'));
+        self::assertSame('max-age=31536000', $response->headers->get('Strict-Transport-Security'));
         self::assertSame('same-origin', $response->headers->get('Referrer-Policy'));
         self::assertSame('camera=(), microphone=(), geolocation=(), payment=(), usb=()', $response->headers->get('Permissions-Policy'));
+    }
+
+    public function testPlainHttpResponsesGetCspButNoHsts(): void
+    {
+        $subscriber = new DashboardSecurityHeadersSubscriber();
+        $kernel = $this->createStub(HttpKernelInterface::class);
+        $request = Request::create('http://localhost:8000/install');
+        $response = new Response('<html></html>');
+
+        $subscriber->onRequest(new RequestEvent($kernel, $request, HttpKernelInterface::MAIN_REQUEST));
+        $subscriber->onResponse(new ResponseEvent($kernel, $request, HttpKernelInterface::MAIN_REQUEST, $response));
+
+        self::assertStringContainsString("frame-ancestors 'none'", (string) $response->headers->get('Content-Security-Policy'));
+        self::assertFalse($response->headers->has('Strict-Transport-Security'));
     }
 
     public static function protectedPaths(): iterable

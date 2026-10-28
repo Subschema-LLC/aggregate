@@ -69,7 +69,7 @@ fi
 echo ""
 echo "Step 2/7: Installing dependencies..."
 echo "-------------------------------------"
-composer install --no-dev --no-plugins --optimize-autoloader
+composer install --no-dev --optimize-autoloader
 
 echo ""
 echo "Step 3/7: Setting up environment..."

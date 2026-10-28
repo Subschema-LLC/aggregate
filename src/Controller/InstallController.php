@@ -53,7 +53,7 @@ class InstallController extends AbstractController
             ]);
         }
 
-        $this->setupCode->ensure();
+        $this->ensureSetupCode();
 
         return $this->render('install/index.html.twig', [
             // A browser setup started from a release ZIP: the browser that entered
@@ -85,7 +85,7 @@ class InstallController extends AbstractController
             return $this->redirectToRoute('app_install');
         }
 
-        $this->setupCode->ensure();
+        $this->ensureSetupCode();
         if (!$this->setupCode->matches($request->cookies->get(SetupCode::COOKIE))
             && !$this->setupCode->matches($request->request->all()['setup_code'] ?? null)) {
             $this->addFlash('error', sprintf('Enter the setup code from %s in the application folder.', SetupCode::FILE));
@@ -179,6 +179,23 @@ class InstallController extends AbstractController
         } catch (\Exception) {
             $this->addFlash('error', 'Installation failed. Run php bin/console app:install on the server for diagnostics.');
             return $this->redirectToRoute('app_install');
+        }
+    }
+
+    /**
+     * Create SETUP-CODE.txt when it does not exist yet. A folder PHP cannot
+     * write to keeps the installer locked, with a message that says how to
+     * finish instead of an error page.
+     */
+    private function ensureSetupCode(): void
+    {
+        try {
+            $this->setupCode->ensure();
+        } catch (\RuntimeException) {
+            $this->addFlash('error', sprintf(
+                '%s could not be created in the application folder. Make the folder writable by PHP and reload this page, or create the administrator on the server with php bin/console app:install.',
+                SetupCode::FILE,
+            ));
         }
     }
 
