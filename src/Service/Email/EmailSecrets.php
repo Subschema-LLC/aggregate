@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service\Email;
 
 use App\Service\Operations\ConfigurationChanges;
+use App\Service\SecretFileEncryption;
 use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
 
@@ -116,7 +117,11 @@ class EmailSecrets
             return [];
         }
         $contents = @file_get_contents($path);
-        if (!is_string($contents) || strlen($contents) > 65536) {
+        if (!is_string($contents) || strlen($contents) > 131072) {
+            throw new \RuntimeException(self::FILE.' could not be read.');
+        }
+        $contents = SecretFileEncryption::decode($contents, self::FILE);
+        if (strlen($contents) > 65536) {
             throw new \RuntimeException(self::FILE.' could not be read.');
         }
         try {
@@ -196,6 +201,7 @@ class EmailSecrets
         $yaml = "# Email credentials: see docs/EMAIL.md. Written by the Email page; environment\n"
             ."# variables named EMAIL_<KEY> take precedence. Keep this file private.\n"
             .($secrets === [] ? "{}\n" : Yaml::dump($secrets, 1, 2));
+        $payload = SecretFileEncryption::encode($yaml, self::FILE);
         $directory = dirname($this->path());
         $temporary = @tempnam($directory, '.email-');
         if ($temporary === false) {
@@ -203,7 +209,7 @@ class EmailSecrets
         }
         try {
             @chmod($temporary, 0600);
-            if (@file_put_contents($temporary, $yaml) !== strlen($yaml) || !@rename($temporary, $this->path())) {
+            if (@file_put_contents($temporary, $payload) !== strlen($payload) || !@rename($temporary, $this->path())) {
                 throw new \RuntimeException(self::FILE.' could not be written.');
             }
         } finally {

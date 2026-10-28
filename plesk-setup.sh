@@ -36,9 +36,8 @@ if ! command -v composer &> /dev/null; then
     echo ""
     echo "Install Composer in Plesk:"
     echo "1. SSH to your server"
-    echo "2. Run: curl -sS https://getcomposer.org/installer | php"
-    echo "3. Run: mv composer.phar /usr/local/bin/composer"
-    echo "   Or use: php composer.phar instead of 'composer' in this script"
+    echo "2. Use Plesk's bundled Composer: /opt/psa/var/modules/composer/composer.phar"
+    echo "   Or verify the installer SHA-384 against https://composer.github.io/installer.sig before running php"
     exit 1
 fi
 
@@ -113,7 +112,12 @@ fi
 echo ""
 echo "Step 6/7: Setting up file permissions..."
 echo "-----------------------------------------"
-chmod -R 777 var/cache var/log 2>/dev/null || chmod -R 775 var/cache var/log
+mkdir -p var/cache var/log
+chmod 750 var var/cache var/log
+find var/cache var/log -type d -exec chmod 750 {} +
+if [ -f "var/data.db" ]; then
+    chmod 600 var/data.db
+fi
 
 echo ""
 echo "Step 7/7: Compiling assets..."

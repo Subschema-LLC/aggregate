@@ -7,5 +7,6 @@
     </div>
     <noscript>JavaScript is required to mark this browser.</noscript>
 </div>
+{% set script_nonce = not (standalone|default(false)) and app is defined and app.request is defined and app.request ? app.request.attributes.get('csp_nonce', '') : (csp_nonce|default('')) %}
 <script type="application/json" id="internal-traffic-config">{{ browser_config|json_encode(15)|raw }}</script>
-<script>{% include 'internal_traffic/marker.js.twig' %}</script>
+<script{% if script_nonce %} nonce="{{ script_nonce }}"{% endif %}>{% include 'internal_traffic/marker.js.twig' %}</script>

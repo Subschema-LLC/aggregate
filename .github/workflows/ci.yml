@@ -48,14 +48,14 @@ jobs:
       - name: Install PHP dependencies
         run: |
           cp .env.prod.example .env
-          composer validate --strict --no-check-publish --no-interaction
+          composer validate --strict --no-check-publish --no-plugins --no-interaction
           composer install --no-interaction --prefer-dist --no-scripts
-          composer check-platform-reqs
+          composer check-platform-reqs --no-plugins
       - name: Install UI JavaScript dependencies
         run: php bin/console importmap:install --env=test --no-debug --no-interaction
       - name: Audit locked PHP dependencies
         if: matrix.php == '8.2'
-        run: composer audit --locked --no-interaction
+        run: composer audit --locked --no-plugins --no-interaction
       - name: Check PHP syntax and Symfony configuration
         run: |
           git ls-files -z -- '*.php' | xargs -0 -n 1 php -l

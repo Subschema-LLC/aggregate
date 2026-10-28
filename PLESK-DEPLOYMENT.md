@@ -355,8 +355,8 @@ include compiled assets.
 cd /var/www/vhosts/your-domain.com/analytics
 
 # Replace aggregate_admin with your actual Plesk domain user
-chown -R aggregate_admin:psacln var/ public/
-chmod -R 775 var/
+chown -R aggregate_admin:psacln var/
+find var -type d -exec chmod u+rwx,g-w,o-rwx {} +
 ```
 
 ### 9. Optional: Complete Dashboard Setup via Web Installer
@@ -576,7 +576,7 @@ sudo systemctl stop analytics-worker
 
 # Fix permissions
 chown -R aggregate_admin:psacln var/
-chmod -R 775 var/
+find var -type d -exec chmod u+rwx,g-w,o-rwx {} +
 
 # Restart the worker when using async mode, then resume the collection endpoint
 sudo systemctl restart analytics-worker
@@ -613,7 +613,7 @@ or fonts does not require rebuilding assets.
 2. Check Nginx error log (if enabled): `/var/www/vhosts/your-domain.com/logs/proxy_error_log`
 3. App logs in production are written to `php://stderr`, so they appear in web server logs above (not `var/log/prod.log` by default)
 4. Verify `.env` exists and has correct values (especially `APP_ENV=prod`)
-5. Verify permissions: `chown -R aggregate_admin:psacln var/ && chmod -R 775 var/`
+5. Verify permissions: `chown -R aggregate_admin:psacln var/ && find var -type d -exec chmod u+rwx,g-w,o-rwx {} +`
 
 ### Database connection errors
 
@@ -648,7 +648,7 @@ If Composer runs as a different user (e.g. root during SSH), reset permissions:
 
 ```bash
 chown -R aggregate_admin:psacln var/
-chmod -R 775 var/
+find var -type d -exec chmod u+rwx,g-w,o-rwx {} +
 ```
 
 ### CORS / 403 Forbidden
@@ -674,7 +674,7 @@ allow their primary domain and all subdomains. Invalid explicit rules reject eve
 - [ ] `.env` is not publicly accessible (it's outside `public/`, so this is automatic)
 - [ ] Database user has minimal required privileges
 - [ ] Routine BI users can query only approved `bi_anonymous_events_v1` / `bi_anonymous_daily_v1` / `bi_anonymous_daily_rollup_v1` / `bi_anonymous_coverage_v1` / `bi_anonymous_goals_v1` / `bi_anonymous_geo_events_v1` views, not raw `events`
-- [ ] File permissions correct (`775` on `var/`, not `777`)
+- [ ] File permissions correct (`750` on `var/` directories, not `777`)
 - [ ] Worker running as non-root user
 - [ ] Regular database backups configured
 
