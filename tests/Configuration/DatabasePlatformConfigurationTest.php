@@ -138,6 +138,18 @@ final class DatabasePlatformConfigurationTest extends TestCase
         self::assertStringNotContainsString('bin/console', Yaml::dump($workflow['jobs']['draft-release'], 6));
         self::assertContains('verify', (array) $workflow['jobs']['draft-release']['needs']);
 
+        // The verify job runs package code, so it checks out nothing; and no release
+        // job restores an Actions cache another run could have written.
+        foreach ($workflow['jobs']['verify']['steps'] as $step) {
+            self::assertStringNotContainsString('actions/checkout', (string) ($step['uses'] ?? ''));
+        }
+        foreach ($workflow['jobs'] as $name => $job) {
+            foreach ($job['steps'] as $step) {
+                self::assertArrayNotHasKey('cache', (array) ($step['with'] ?? []), (string) $name);
+                self::assertStringNotContainsString('actions/cache', (string) ($step['uses'] ?? ''), (string) $name);
+            }
+        }
+
         // symfony/runtime's Composer plugin writes vendor/autoload_runtime.php, which
         // bin/console and public/index.php require, so installs must keep plugins on.
         foreach (['.github/workflows/ci.yml', '.github/workflows/release.yml', 'install.sh', 'plesk-setup.sh'] as $file) {

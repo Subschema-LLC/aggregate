@@ -39,10 +39,11 @@ jobs:
           extensions: ctype, iconv, pdo_sqlite, pdo_mysql, mbstring, xml, curl, intl, sodium, zip
           coverage: none
           tools: composer:v2
+      # No dependency cache: a signed release never restores an Actions cache
+      # that another workflow run could have written.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
-          cache: npm
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
@@ -162,24 +163,29 @@ jobs:
           path: release/*
           if-no-files-found: error
           retention-days: 7
+      # The verify job checks the package against this same trusted key, so it
+      # never has to check out the release commit itself.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-trusted-key
+          path: config/release-signing.pub
+          if-no-files-found: error
+          retention-days: 7
 
   verify:
-    # Runs the packaged application's own verifier against the trusted key from
-    # the tagged commit. Code from the package runs here, with a read-only token
-    # and no secrets, never in the job that can write releases.
+    # Runs the packaged application's own verifier against the trusted key the
+    # sign job used. Code from the package runs here, with a read-only token, no
+    # secrets and no checkout, never in the job that can write releases.
     needs: [build, sign]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          ref: ${{ needs.build.outputs.commit }}
-          persist-credentials: false
-          sparse-checkout: |
-            config/release-signing.pub
-          sparse-checkout-cone-mode: false
+          name: release-trusted-key
+          path: trusted-key
       - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
         with:
           php-version: '8.2'
@@ -204,7 +210,7 @@ jobs:
           package="$PWD/release/aggregate-${RELEASE_TAG#v}.zip"
           manifest="$PWD/release/aggregate-release.json"
           signature="$PWD/release/aggregate-release.json.sig"
-          trusted_key="$PWD/config/release-signing.pub"
+          trusted_key="$PWD/trusted-key/release-signing.pub"
           verifier="$RUNNER_TEMP/aggregate-release-verify"
           python3 -m zipfile -e "$package" "$verifier"
           cp "$trusted_key" "$verifier/config/release-signing.pub"
