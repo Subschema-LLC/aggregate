@@ -75,6 +75,7 @@ export default class extends Controller {
                 const scopeVal = val === 'deployment' ? 'all' : val;
                 this.saveScope(scopeVal);
                 this.syncAllSelects(scopeVal);
+                scopeSelect.form?.submit();
             });
         }
     }

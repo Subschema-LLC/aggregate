@@ -26,5 +26,6 @@
         </table>
         <p class="marking-help">The tracker must load on each website’s home page. If a website does not bring you back, its home page does not load the tracker: go back to this page and use the links for the remaining websites. The links stop working after 30 minutes; this page renews them.</p>
     {% endif %}
+{% set script_nonce = not (standalone|default(false)) and app is defined and app.request is defined and app.request ? app.request.attributes.get('csp_nonce', '') : (csp_nonce|default('')) %}
 </section>
-<script>{% include 'internal_traffic/marking.js.twig' %}</script>
+<script{% if script_nonce %} nonce="{{ script_nonce }}"{% endif %}>{% include 'internal_traffic/marking.js.twig' %}</script>

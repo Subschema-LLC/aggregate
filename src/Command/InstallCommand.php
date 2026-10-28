@@ -7,6 +7,7 @@ use App\Repository\UserRepository;
 use App\Service\AggregateConfigLoader;
 use App\Service\AppBranding;
 use App\Service\InternalTrafficSettings;
+use App\Setup\SetupCode;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -31,6 +32,7 @@ class InstallCommand extends Command
         private readonly AggregateConfigLoader $config,
         private readonly AppBranding $branding,
         private readonly InternalTrafficSettings $internalTrafficSettings,
+        private readonly ?SetupCode $setupCode = null,
     ) {
         parent::__construct();
     }
@@ -108,6 +110,7 @@ class InstallCommand extends Command
         $this->em->flush();
 
         $this->config->set('installed', true);
+        $this->setupCode?->remove();
 
         $io->success([
             'Admin setup completed successfully!',

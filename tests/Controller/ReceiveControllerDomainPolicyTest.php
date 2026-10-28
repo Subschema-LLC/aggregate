@@ -73,7 +73,23 @@ final class ReceiveControllerDomainPolicyTest extends TestCase
         self::assertStringNotContainsString('https://', serialize($stored));
         if ($origin) {
             self::assertSame($origin, $response->headers->get('Access-Control-Allow-Origin'));
+            self::assertSame('Content-Type', $response->headers->get('Access-Control-Allow-Headers'));
         }
+    }
+
+    public function testCorsAllowsOnlyContentTypeAndNeverEchoesRequestedHeaders(): void
+    {
+        $controller = new ReceiveController();
+        $request = Request::create('/api/receive', 'OPTIONS', server: [
+            'HTTP_ORIGIN' => 'https://example.com',
+            'HTTP_ACCESS_CONTROL_REQUEST_HEADERS' => 'X-Custom-Header, Authorization, X-Injected',
+        ]);
+
+        $response = $controller->options($request);
+
+        self::assertSame(204, $response->getStatusCode());
+        self::assertSame('https://example.com', $response->headers->get('Access-Control-Allow-Origin'));
+        self::assertSame('Content-Type', $response->headers->get('Access-Control-Allow-Headers'));
     }
 
     public static function domainRequests(): iterable

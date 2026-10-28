@@ -247,18 +247,34 @@ final class InstallControllerInternalTrafficTest extends TestCase
 
     public function testInstallerAsksOtherBrowsersForTheSetupCode(): void
     {
-        $code = (new SetupCode($this->projectDir))->ensure();
         $config = $this->writeConfig('');
         $renders = [];
         $controller = $this->controller($config, runsMigrations: false, capturesRender: $renders);
 
         $controller->install(Request::create('https://analytics.example.test/install'));
+        $code = (new SetupCode($this->projectDir))->current();
+        self::assertNotNull($code);
         $request = Request::create('https://analytics.example.test/install');
         $request->cookies->set(SetupCode::COOKIE, $code);
         $controller->install($request);
 
         self::assertTrue($renders[0]['setup_code_required']);
         self::assertFalse($renders[1]['setup_code_required']);
+    }
+
+    public function testUnwritableFolderKeepsTheInstallerLockedWithAMessageInsteadOfAnError(): void
+    {
+        $config = $this->writeConfig('');
+        $renders = [];
+        $controller = $this->controller($config, runsMigrations: false, capturesRender: $renders, setupCodeDir: $this->projectDir.'/missing-folder');
+
+        $controller->install(Request::create('https://analytics.example.test/install'));
+
+        self::assertTrue($renders[0]['setup_code_required']);
+        self::assertFileDoesNotExist($this->projectDir.'/missing-folder/'.SetupCode::FILE);
+        $errors = $this->session->getFlashBag()->peek('error');
+        self::assertCount(1, $errors);
+        self::assertStringContainsString('php bin/console app:install', $errors[0]);
     }
 
     private function writeConfig(string $token): AggregateConfigLoader
@@ -275,6 +291,7 @@ final class InstallControllerInternalTrafficTest extends TestCase
     {
         return Request::create('/install/execute', 'POST', [
             '_csrf_token' => 'valid-install-token',
+            'setup_code' => (new SetupCode($this->projectDir))->ensure(),
             'admin_username' => 'admin',
             'admin_password' => 'correct-password',
             'js_namespace' => 'Aggregate',
@@ -290,6 +307,7 @@ final class InstallControllerInternalTrafficTest extends TestCase
         bool $hashFails = false,
         int $glossaryResult = Command::SUCCESS,
         ?array &$capturesRender = null,
+        ?string $setupCodeDir = null,
     ): InstallController {
         $checker = $this->createStub(InstallationChecker::class);
         $checker->method('isInstalled')->willReturn($alreadyInstalled);
@@ -339,7 +357,7 @@ final class InstallControllerInternalTrafficTest extends TestCase
             $passwordHasher,
             $kernel,
             new InternalTrafficSettings($config),
-            new SetupCode($this->projectDir),
+            new SetupCode($setupCodeDir ?? $this->projectDir),
         );
         $router = $this->createStub(UrlGeneratorInterface::class);
         $router->method('generate')->willReturnCallback(static fn (string $route): string => '/'.$route);
@@ -367,7 +385,7 @@ final class InstallControllerInternalTrafficTest extends TestCase
         if ($rendersInstaller) {
             $twig = $this->createMock(Environment::class);
             $twig->expects(self::once())->method('render')->with('install/index.html.twig', [
-                'setup_code_required' => false,
+                'setup_code_required' => true,
                 'setup_code_file' => SetupCode::FILE,
                 'app_host' => 'https://analytics.example.test',
             ])->willReturn('installer');
