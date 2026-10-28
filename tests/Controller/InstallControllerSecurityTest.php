@@ -8,9 +8,12 @@ use App\Kernel;
 use App\Service\AggregateConfigLoader;
 use App\Service\InstallationChecker;
 use App\Service\TrackerNamespace;
+use App\Setup\SetupCode;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
+use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
+use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\Filesystem\Filesystem;
 
 final class InstallControllerSecurityTest extends TestCase
@@ -24,6 +27,7 @@ final class InstallControllerSecurityTest extends TestCase
         $this->environment = [$_ENV, $_SERVER];
         $_ENV['DASHBOARD_ENABLED'] = $_SERVER['DASHBOARD_ENABLED'] = '1';
         $this->temporaryDirectory = sys_get_temp_dir().'/aggregate-install-security-'.bin2hex(random_bytes(8));
+        (new Filesystem())->mkdir($this->temporaryDirectory, 0700);
     }
 
     protected function tearDown(): void
@@ -57,9 +61,14 @@ final class InstallControllerSecurityTest extends TestCase
     public function testAnInvalidNamespaceStopsTheInstallBeforeConfigurationOrDatabaseChanges(): void
     {
         $browser = $this->browser();
-        $token = $browser->request('GET', '/install')->filter('form input[name="_csrf_token"]')->attr('value');
+        $crawler = $browser->request('GET', '/install');
+        $token = $crawler->filter('form input[name="_csrf_token"]')->attr('value');
+        self::assertCount(1, $crawler->filter('form input[name="setup_code"]'));
+        $code = (new SetupCode($this->temporaryDirectory))->current();
+        self::assertNotNull($code);
         $browser->request('POST', '/install/execute', [
             '_csrf_token' => $token,
+            'setup_code' => $code,
             'admin_username' => 'admin',
             'admin_password' => 'a-long-enough-password',
             'js_namespace' => 'my analytics',
@@ -67,6 +76,32 @@ final class InstallControllerSecurityTest extends TestCase
 
         self::assertSame('/install', $browser->getResponse()->headers->get('Location'));
         self::assertContains(TrackerNamespace::RULE, $browser->getRequest()->getSession()->getFlashBag()->peek('error'));
+        self::assertFileDoesNotExist($this->temporaryDirectory.'/config/aggregate.yaml');
+    }
+
+    public function testHandConfiguredInstallCreatesSetupCodeOnGetAndRequiresItOnSubmit(): void
+    {
+        $browser = $this->browser();
+        self::assertFileDoesNotExist($this->temporaryDirectory.'/'.SetupCode::FILE);
+
+        $crawler = $browser->request('GET', '/install');
+        self::assertSame(200, $browser->getResponse()->getStatusCode());
+        self::assertFileExists($this->temporaryDirectory.'/'.SetupCode::FILE);
+        self::assertCount(1, $crawler->filter('form input[name="setup_code"]'));
+
+        $token = $crawler->filter('form input[name="_csrf_token"]')->attr('value');
+        $browser->request('POST', '/install/execute', [
+            '_csrf_token' => $token,
+            'admin_username' => 'admin',
+            'admin_password' => 'a-long-enough-password',
+            'js_namespace' => 'Aggregate',
+        ]);
+
+        self::assertSame('/install', $browser->getResponse()->headers->get('Location'));
+        self::assertContains(
+            'Enter the setup code from SETUP-CODE.txt in the application folder.',
+            $browser->getRequest()->getSession()->getFlashBag()->peek('error'),
+        );
         self::assertFileDoesNotExist($this->temporaryDirectory.'/config/aggregate.yaml');
     }
 
@@ -107,7 +142,7 @@ final class InstallControllerSecurityTest extends TestCase
     }
 }
 
-final class InstallSecurityTestKernel extends Kernel
+final class InstallSecurityTestKernel extends Kernel implements CompilerPassInterface
 {
     public function __construct(private readonly string $temporaryDirectory)
     {
@@ -127,5 +162,12 @@ final class InstallSecurityTestKernel extends Kernel
     protected function getContainerClass(): string
     {
         return parent::getContainerClass().'_'.md5($this->temporaryDirectory);
+    }
+
+    public function process(ContainerBuilder $container): void
+    {
+        if ($container->hasDefinition(SetupCode::class)) {
+            $container->getDefinition(SetupCode::class)->setArgument('$projectDir', $this->temporaryDirectory);
+        }
     }
 }

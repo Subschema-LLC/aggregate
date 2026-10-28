@@ -7,6 +7,7 @@ namespace App\Service\Mcp\OAuth;
 use App\Service\Mcp\McpConnection;
 use App\Service\Operations\ConfigurationChanges;
 use App\Service\ReportingApi\ViewScope;
+use App\Service\SecretFileEncryption;
 use Psr\Clock\ClockInterface;
 use Symfony\Component\Clock\Clock;
 use Symfony\Component\Yaml\Yaml;
@@ -482,14 +483,17 @@ class OAuthStore
         $path = $this->path();
         $yaml = '';
         if (is_file($path)) {
-            if (filesize($path) > self::MAX_BYTES) {
+            if (filesize($path) > self::MAX_BYTES * 2) {
                 throw new \RuntimeException(self::FILE.' is too large.');
             }
             $contents = @file_get_contents($path);
             if (!is_string($contents)) {
                 throw new \RuntimeException(self::FILE.' cannot be read by the application.');
             }
-            $yaml = $contents;
+            $yaml = SecretFileEncryption::decode($contents, self::FILE);
+            if (strlen($yaml) > self::MAX_BYTES) {
+                throw new \RuntimeException(self::FILE.' is too large.');
+            }
         }
 
         return $this->parse($yaml);
@@ -798,6 +802,7 @@ class OAuthStore
         $yaml = "# AI assistant sign-in for the MCP server: see docs/MCP.md. Written by the sign-in\n"
             ."# endpoints, the API tokens page and app:mcp:connection:revoke. Only hashes are stored.\n"
             .Yaml::dump($document, 4, 2, Yaml::DUMP_OBJECT_AS_MAP | Yaml::DUMP_NULL_AS_TILDE | Yaml::DUMP_EMPTY_ARRAY_AS_SEQUENCE);
+        $payload = SecretFileEncryption::encode($yaml, self::FILE);
         $directory = dirname($this->path());
         $temporary = @tempnam($directory, '.mcp-oauth-');
         if ($temporary === false) {
@@ -805,7 +810,7 @@ class OAuthStore
         }
         try {
             @chmod($temporary, 0600);
-            if (@file_put_contents($temporary, $yaml) !== strlen($yaml) || !@rename($temporary, $this->path())) {
+            if (@file_put_contents($temporary, $payload) !== strlen($payload) || !@rename($temporary, $this->path())) {
                 throw new \RuntimeException(self::FILE.' could not be written.');
             }
         } finally {

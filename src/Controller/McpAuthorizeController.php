@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\EventSubscriber\DashboardSecurityHeadersSubscriber;
 use App\Service\AggregateConfigLoader;
 use App\Service\FeatureFlags;
 use App\Service\Mcp\OAuth\AuthorizationRequest;
@@ -70,7 +71,7 @@ final class McpAuthorizeController extends AbstractController
         $form = $request->request;
         $token = $form->get('_csrf_token');
         if (!is_string($token) || !$this->isCsrfTokenValid(self::CSRF_TOKEN_ID, $token)) {
-            return $this->failure('The page expired or its security token is invalid. Start the connection again from the assistant.');
+            return $this->failure($request, 'The page expired or its security token is invalid. Start the connection again from the assistant.');
         }
 
         return $this->handle($request, $form->all(), $form->get('decision'));
@@ -86,7 +87,7 @@ final class McpAuthorizeController extends AbstractController
         try {
             $sign = $this->oauth->client($parameters);
         } catch (OAuthError $error) {
-            return $this->failure($error->getMessage(), $error->status >= 500 ? 503 : 400);
+            return $this->failure($request, $error->getMessage(), $error->status >= 500 ? 503 : 400);
         }
         try {
             $challenge = $this->oauth->challenge($parameters, $base);
@@ -170,19 +171,15 @@ final class McpAuthorizeController extends AbstractController
             $response->setStatusCode(Response::HTTP_UNPROCESSABLE_ENTITY);
         }
         // The page must not be framed by another site, or a click could be stolen.
-        $response->headers->set('X-Frame-Options', 'DENY');
-        $response->headers->set('Content-Security-Policy', "frame-ancestors 'none'");
-
-        return $response;
+        return DashboardSecurityHeadersSubscriber::apply($response, DashboardSecurityHeadersSubscriber::nonceFor($request), $request->isSecure());
     }
 
-    private function failure(string $message, int $status = 400): Response
+    private function failure(Request $request, string $message, int $status = 400): Response
     {
         $response = $this->renderDashboardPage('mcp/authorize_error.html.twig', ['message' => $message]);
         $response->setStatusCode($status);
-        $response->headers->set('X-Frame-Options', 'DENY');
 
-        return $response;
+        return DashboardSecurityHeadersSubscriber::apply($response, DashboardSecurityHeadersSubscriber::nonceFor($request), $request->isSecure());
     }
 
     /** @param array<string, string> $parameters */

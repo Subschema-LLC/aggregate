@@ -54,6 +54,20 @@ final class ShellInstallerInternalTrafficTest extends TestCase
         self::assertSame($existing, file_get_contents($this->projectDir.'/config/aggregate.yaml'));
     }
 
+    public function testShellInstallersUseRestrictivePermissionsAndVerifyComposerChecksum(): void
+    {
+        $install = (string) file_get_contents(dirname(__DIR__, 2).'/install.sh');
+        $plesk = (string) file_get_contents(dirname(__DIR__, 2).'/plesk-setup.sh');
+
+        self::assertStringNotContainsString('chmod -R 755 var/ public/', $install);
+        self::assertStringNotContainsString('chmod -R 777', $plesk);
+        self::assertStringNotContainsString('chmod -R 775', $plesk);
+        self::assertStringContainsString('chmod 750 var var/cache var/log', $install);
+        self::assertStringContainsString('chmod 750 var var/cache var/log', $plesk);
+        self::assertStringContainsString('https://composer.github.io/installer.sig', $install);
+        self::assertStringContainsString("hash_file('sha384', 'composer-setup.php')", $install);
+    }
+
     private function runConfigurationBlock(string $input): void
     {
         $installer = file_get_contents(dirname(__DIR__, 2).'/install.sh');

@@ -104,6 +104,63 @@ final class DatabasePlatformConfigurationTest extends TestCase
         }
     }
 
+    public function testComposePinsDigestsAndBindsDatabasePortsToLoopback(): void
+    {
+        $compose = Yaml::parseFile(dirname(__DIR__, 2).'/compose.yaml');
+
+        foreach ($compose['services'] as $name => $service) {
+            self::assertStringContainsString('@sha256:', (string) ($service['image'] ?? ''), $name);
+            self::assertStringNotContainsString('latest', (string) ($service['image'] ?? ''), $name);
+        }
+
+        foreach (['database-mysql', 'database-postgres', 'database-mariadb'] as $dbService) {
+            foreach ($compose['services'][$dbService]['ports'] as $portMapping) {
+                self::assertStringStartsWith('127.0.0.1:', (string) $portMapping, $dbService);
+            }
+        }
+    }
+
+    public function testReleaseWorkflowIsolatesSigningKeyInDedicatedEnvironmentJob(): void
+    {
+        $workflow = Yaml::parseFile(dirname(__DIR__, 2).'/.github/workflows/release.yml');
+        $raw = (string) file_get_contents(dirname(__DIR__, 2).'/.github/workflows/release.yml');
+
+        self::assertArrayHasKey('sign', $workflow['jobs']);
+        self::assertSame('release-signing', $workflow['jobs']['sign']['environment'] ?? null);
+
+        $buildYaml = Yaml::dump($workflow['jobs']['build'], 6);
+        self::assertStringNotContainsString('RELEASE_SIGNING_PRIVATE_KEY', $buildYaml);
+        self::assertStringContainsString('--no-plugins', $raw);
+
+        // Code from the package runs only in the read-only verify job, never where releases are written.
+        self::assertSame(['contents' => 'read'], $workflow['jobs']['verify']['permissions'] ?? null);
+        self::assertStringContainsString('app:updates:verify-package', Yaml::dump($workflow['jobs']['verify'], 6));
+        self::assertStringNotContainsString('bin/console', Yaml::dump($workflow['jobs']['draft-release'], 6));
+        self::assertContains('verify', (array) $workflow['jobs']['draft-release']['needs']);
+
+        // The verify job runs package code, so it checks out nothing; and no release
+        // job restores an Actions cache another run could have written.
+        foreach ($workflow['jobs']['verify']['steps'] as $step) {
+            self::assertStringNotContainsString('actions/checkout', (string) ($step['uses'] ?? ''));
+        }
+        foreach ($workflow['jobs'] as $name => $job) {
+            foreach ($job['steps'] as $step) {
+                self::assertArrayNotHasKey('cache', (array) ($step['with'] ?? []), (string) $name);
+                self::assertStringNotContainsString('actions/cache', (string) ($step['uses'] ?? ''), (string) $name);
+            }
+        }
+
+        // symfony/runtime's Composer plugin writes vendor/autoload_runtime.php, which
+        // bin/console and public/index.php require, so installs must keep plugins on.
+        foreach (['.github/workflows/ci.yml', '.github/workflows/release.yml', 'install.sh', 'plesk-setup.sh'] as $file) {
+            foreach (preg_split('/\R/', (string) file_get_contents(dirname(__DIR__, 2).'/'.$file)) as $line) {
+                if (str_contains($line, 'composer install')) {
+                    self::assertStringNotContainsString('--no-plugins', $line, $file);
+                }
+            }
+        }
+    }
+
     #[DataProvider('installerVersions')]
     public function testShellInstallerBuildsSupportedMysqlFamilyConnections(
         int $choice,

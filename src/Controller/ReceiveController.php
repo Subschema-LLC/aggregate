@@ -46,13 +46,10 @@ class ReceiveController
             return;
         }
 
-        $requestHeaders = $request->headers->get('Access-Control-Request-Headers');
-        $allowHeaders = $requestHeaders ?: 'Content-Type';
-
         $response->headers->set('Access-Control-Allow-Origin', $origin);
         $response->headers->set('Vary', 'Origin');
         $response->headers->set('Access-Control-Allow-Methods', 'POST, OPTIONS');
-        $response->headers->set('Access-Control-Allow-Headers', $allowHeaders);
+        $response->headers->set('Access-Control-Allow-Headers', 'Content-Type');
         $response->headers->set('Access-Control-Max-Age', '86400');
     }
 }

@@ -65,7 +65,16 @@ echo ""
 echo "Checking Composer..."
 if ! command -v composer &> /dev/null; then
     echo -e "${YELLOW}Composer not found. Installing...${NC}"
-    curl -sS https://getcomposer.org/installer | php
+    EXPECTED_CHECKSUM="$(curl -fsSL https://composer.github.io/installer.sig)"
+    curl -fsSL https://getcomposer.org/installer -o composer-setup.php
+    ACTUAL_CHECKSUM="$(php -r "echo hash_file('sha384', 'composer-setup.php');")"
+    if [ "$EXPECTED_CHECKSUM" != "$ACTUAL_CHECKSUM" ]; then
+        rm -f composer-setup.php
+        echo -e "${RED}Error: Invalid Composer installer checksum.${NC}" >&2
+        exit 1
+    fi
+    php composer-setup.php --quiet
+    rm -f composer-setup.php
     sudo mv composer.phar /usr/local/bin/composer
     echo -e "${GREEN}✓ Composer installed${NC}"
 else
@@ -301,7 +310,12 @@ php bin/console asset-map:compile
 # Set permissions
 echo ""
 echo "Setting permissions..."
-chmod -R 755 var/ public/
+mkdir -p var/cache var/log
+chmod 750 var var/cache var/log
+find var/cache var/log -type d -exec chmod 750 {} +
+if [ -f var/data.db ]; then
+    chmod 600 var/data.db
+fi
 echo -e "${GREEN}✓ Permissions set${NC}"
 
 # Optional admin setup for dashboard users
