@@ -55,6 +55,29 @@ final class ReportingDatabaseSettings extends ViewSyncSettings
         ];
     }
 
+    /**
+     * Turns the sync on for every approved view and no private view, the
+     * usual setup of a reporting copy for BI users, keeping the interval
+     * unless one is given. Settings the environment controls keep their
+     * values (see save()), so the result says what is in effect.
+     *
+     * @return array{reporting_database_enabled: bool, reporting_database_views: list<string>, reporting_database_private_views: list<string>, reporting_database_interval_minutes: int}
+     */
+    public function enableApprovedViews(?int $interval = null): array
+    {
+        $candidate = [
+            self::KEY_ENABLED => true,
+            self::KEY_VIEWS => array_keys(ViewCatalog::APPROVED),
+            self::KEY_PRIVATE_VIEWS => [],
+        ];
+        if ($interval !== null) {
+            $candidate[self::KEY_INTERVAL] = $interval;
+        }
+        $this->save($candidate);
+
+        return $this->toArray();
+    }
+
     public static function keys(): array
     {
         return ['enabled' => self::KEY_ENABLED, 'views' => self::KEY_VIEWS, 'private_views' => self::KEY_PRIVATE_VIEWS, 'interval' => self::KEY_INTERVAL];

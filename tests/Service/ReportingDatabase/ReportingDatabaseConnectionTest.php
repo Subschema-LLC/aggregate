@@ -107,4 +107,31 @@ final class ReportingDatabaseConnectionTest extends TestCase
     {
         return DriverManager::getConnection(['driver' => 'pdo_sqlite', 'memory' => true]);
     }
+
+    public function testAMarkIsTheWordAggregateReportingCopyInTheDatabaseComment(): void
+    {
+        self::assertSame(['source' => 'aggregate'], ReportingDatabaseConnection::parseMark('Read-only reporting copy for BI tools [aggregate-reporting-copy source=aggregate]'));
+        self::assertSame(['source' => null], ReportingDatabaseConnection::parseMark('aggregate-reporting-copy'));
+        self::assertSame(['source' => 'Stats_1'], ReportingDatabaseConnection::parseMark('AGGREGATE-REPORTING-COPY Source=Stats_1'));
+        self::assertNull(ReportingDatabaseConnection::parseMark(''));
+        self::assertNull(ReportingDatabaseConnection::parseMark('not-aggregate-reporting-copy-really'));
+        self::assertNull(ReportingDatabaseConnection::parseMark('aggregate reporting copy'));
+        self::assertSame('', ReportingDatabaseConnection::markSentence(null));
+        self::assertSame('It is marked as a read-only reporting copy for BI users of aggregate, so only approved views are copied to it.', ReportingDatabaseConnection::markSentence(['source' => 'aggregate']));
+    }
+
+    public function testSqliteDatabasesHaveNoMark(): void
+    {
+        $dir = sys_get_temp_dir().'/aggregate-mark-'.bin2hex(random_bytes(4));
+        mkdir($dir.'/var', 0700, true);
+        try {
+            $connection = new ReportingDatabaseConnection('sqlite:///%kernel.project_dir%/var/reporting.db', $dir, DriverManager::getConnection(['driver' => 'pdo_sqlite', 'memory' => true]));
+            self::assertNull($connection->mark());
+            self::assertNull($connection->probe()['mark']);
+        } finally {
+            @unlink($dir.'/var/reporting.db');
+            rmdir($dir.'/var');
+            rmdir($dir);
+        }
+    }
 }
