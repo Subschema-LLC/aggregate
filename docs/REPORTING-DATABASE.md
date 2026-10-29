@@ -10,6 +10,7 @@ tables, and no way to reach the raw tables.
 - [When to use it](#when-to-use-it)
 - [How the sync works](#how-the-sync-works)
 - [Create the database](#create-the-database)
+- [Mark it as a read-only reporting copy](#mark-it-as-a-read-only-reporting-copy)
 - [Connect Aggregate to it](#connect-aggregate-to-it)
 - [Choose the views](#choose-the-views)
 - [Schedule the sync](#schedule-the-sync)
@@ -147,6 +148,37 @@ suits a BI tool on the same server that reads a file. Anyone who can read the
 file reads every table in it, so keep it outside `public/` and limit the file's
 permissions.
 
+## Mark it as a read-only reporting copy
+
+BI users with read access to the reporting database can read every table in
+it. A reporting database meant for them should therefore hold the approved
+views only. Mark it as such in the database's own comment, with the word
+`aggregate-reporting-copy`, and Aggregate keeps it that way: a private view
+selected for a marked database fails with a message on every sync instead of
+being copied. Follow the word with `source=` and the name of the application
+database, and an installation whose database has another name refuses to write
+to it at all, so two installations cannot replace each other's tables.
+
+**MariaDB** (10.5 or later)
+
+```sql
+ALTER DATABASE aggregate_reporting
+    COMMENT 'Read-only reporting copy for BI tools [aggregate-reporting-copy source=aggregate]';
+```
+
+**PostgreSQL** (as the database's owner, such as `aggregate_sync`)
+
+```sql
+COMMENT ON DATABASE aggregate_reporting
+    IS 'Read-only reporting copy for BI tools [aggregate-reporting-copy source=aggregate]';
+```
+
+Aggregate reads the mark each time it connects; **Test connection** and
+`app:reporting-database:check` report it. MySQL, SQL Server and SQLite databases
+keep no comment Aggregate reads, so they cannot be marked. A hosting panel can
+create the database, both users and the mark in one step; the mark is only a
+comment, so anyone who can alter the database can also remove it.
+
 ## Connect Aggregate to it
 
 Open **Reporting → Sync** and choose the **Reporting database** tab (before any
@@ -167,8 +199,14 @@ saved one while the type, server and user stay the same. **Remove connection**
 deletes the line from `.env.local`; tables already copied stay in the reporting
 database.
 
-From the command line, `app:reporting-database:configure` does the same. It asks
-for the password, or reads it from standard input, so it stays out of the shell
+Leave **Then turn the sync on for the approved views** ticked (it appears while
+the sync is off) to turn the sync on in the same step, for every approved view
+and no private view, every hour. You can change the views and interval below
+afterwards.
+
+From the command line, `app:reporting-database:configure` does the same; add
+`--enable` to turn the sync on for the approved views too. It asks for the
+password, or reads it from standard input, so it stays out of the shell
 history:
 
 ```bash
@@ -177,6 +215,11 @@ php bin/console app:reporting-database:configure --type=pgsql \
 
 printf '%s\n' "$PASSWORD" | php bin/console app:reporting-database:configure \
     --type=mysql --database=aggregate_reporting --user=aggregate_sync --password-stdin
+
+# Save the connection and turn the sync on for every approved view, every 30 minutes
+printf '%s\n' "$PASSWORD" | php bin/console app:reporting-database:configure \
+    --type=mysql --host=127.0.0.1 --database=aggregate_reporting --user=aggregate_sync \
+    --password-stdin --enable --interval=30
 
 php bin/console app:reporting-database:configure --type=sqlite   # var/reporting.db
 php bin/console app:reporting-database:configure --remove
@@ -191,6 +234,8 @@ php bin/console app:reporting-database:configure --remove
 | `--password-stdin` | Read the password from standard input instead of asking |
 | `--trust-certificate` | SQL Server: trust a self-signed server certificate |
 | `--url-stdin` | Read a complete URL, written like `DATABASE_URL`, from standard input |
+| `--enable` | Once the connection is saved, turn the sync on for every approved view and no private view (it replaces the view selection) |
+| `--interval` | With `--enable`: minutes between syncs, 15, 30, 60, 120, 180, 360, 720 or 1440 (default: keep the current one) |
 | `--remove` | Remove `REPORTING_DATABASE_URL` from `.env.local` |
 
 ### Set it by hand
@@ -327,7 +372,8 @@ reporting database after changing its connection.
 - **Private views are row-level.** Select them only for an approved purpose, and
   restrict access to their tables as you would to the raw `events` table. A
   reporting database that holds private views needs the same protection as the
-  application database.
+  application database. A database [marked as a read-only reporting
+  copy](#mark-it-as-a-read-only-reporting-copy) never receives them.
 - **Retention.** Each sync replaces the tables, so data Aggregate deletes leaves
   the copy at the next sync. Tables of deselected views, or of all views after
   the sync is turned off, stay until you drop them; so do the reporting
@@ -354,6 +400,8 @@ See the [privacy guide](PRIVACY-COMPLIANCE.md#reporting-database).
 | "names the application database" | Create a separate database for reporting; it can be on the same server. |
 | "The reporting database could not be reached" | Check the host, port, database name, user name and password (encoded as in `DATABASE_URL`), and that the server accepts connections from the Aggregate server. |
 | "cannot create and drop tables, which every sync does" | Grant the sync user the privileges [above](#create-the-database). |
+| "… holds row-level or unsuppressed data, and the reporting database is marked as a read-only reporting copy" | Remove the private view from `reporting_database_private_views`, or copy it to another reporting database. See [the mark](#mark-it-as-a-read-only-reporting-copy). |
+| "marked as the reporting copy of the database …, not of this installation's database" | The database belongs to another installation. Create a reporting database of its own, or change `source=` in its comment if it now belongs to this one. |
 | "The view … cannot be read in this database" | Run the database migrations; regenerate the custom views; turn on geography for `bi_anonymous_geo_events_v1`. |
 | A lock time-out during the swap | A BI query held the table for over 60 seconds. The sync retries after 15 minutes; schedule long refreshes away from the sync. |
 | BI users lose access after a sync | Their access was granted on single tables. Grant it on the database or schema [instead](#create-the-database). |

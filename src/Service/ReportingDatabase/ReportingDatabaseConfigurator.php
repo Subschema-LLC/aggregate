@@ -42,7 +42,7 @@ class ReportingDatabaseConfigurator
      *
      * @param array{type?: mixed, host?: mixed, port?: mixed, database?: mixed, user?: mixed, password?: mixed, trust_certificate?: mixed} $fields
      *
-     * @return array{engine: string, host: ?string, port: ?int, database: string, server_version: string, tables: list<string>}
+     * @return array{engine: string, host: ?string, port: ?int, database: string, server_version: string, tables: list<string>, mark: array{source: ?string}|null}
      *
      * @throws \InvalidArgumentException|ReportingDatabaseException with a message for the administrator
      */
@@ -67,7 +67,7 @@ class ReportingDatabaseConfigurator
     /**
      * Tests and saves a complete URL, written like DATABASE_URL.
      *
-     * @return array{engine: string, host: ?string, port: ?int, database: string, server_version: string, tables: list<string>}
+     * @return array{engine: string, host: ?string, port: ?int, database: string, server_version: string, tables: list<string>, mark: array{source: ?string}|null}
      *
      * @throws \InvalidArgumentException|ReportingDatabaseException with a message for the administrator
      */

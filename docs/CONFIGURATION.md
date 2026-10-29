@@ -530,7 +530,9 @@ The connection is the documented exception to keeping settings in YAML:
 password, so it lives in `.env.local` or the server environment and has no YAML
 key. The admin page and `app:reporting-database:configure` test a connection
 and write it to `.env.local`, as the setup page does for `DATABASE_URL`; they
-never show the password back. A value set in the server environment or a file
+never show the password back, and can turn the sync on for every approved view
+in the same step (`--enable`). A reporting database marked in its own comment as
+a read-only reporting copy receives approved views only. A value set in the server environment or a file
 that overrides `.env.local` is left alone, and the page says where to change it. See [Reporting database](REPORTING-DATABASE.md) for the database
 setup on each engine, every setting, column types and privacy notes.
 

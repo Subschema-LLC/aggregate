@@ -91,7 +91,7 @@ final class ReportingDatabaseCommandsTest extends TestCase
             'succeeded_at' => null, 'row_count' => null, 'message' => null, 'next_due' => null,
         ]]]);
         $runner->method('check')->willReturnOnConsecutiveCalls(
-            ['engine' => 'MySQL or MariaDB', 'host' => 'localhost', 'port' => 3306, 'database' => 'aggregate_reporting', 'server_version' => '8.0.39', 'tables' => []],
+            ['engine' => 'MySQL or MariaDB', 'host' => 'localhost', 'port' => 3306, 'database' => 'aggregate_reporting', 'server_version' => '8.0.39', 'tables' => [], 'mark' => null],
             self::throwException(new ReportingDatabaseException('The reporting database could not be reached (SQLSTATE HY000): Access denied.')),
         );
         $runner->expects(self::exactly(2))->method('check');

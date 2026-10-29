@@ -103,6 +103,25 @@ final class ReportingDatabaseSettingsTest extends TestCase
         self::assertFalse($settings->getEnvironmentOverrides()['reporting_database_enabled']);
     }
 
+    public function testEnablingTurnsTheSyncOnForEveryApprovedViewAndNoPrivateOne(): void
+    {
+        $settings = $this->settings([
+            'reporting_database_views' => ['bi_anonymous_events_v1'],
+            'reporting_database_private_views' => ['analytics_custom_events_v1'],
+            'reporting_database_interval_minutes' => 120,
+        ]);
+
+        $enabled = $settings->enableApprovedViews();
+        self::assertTrue($enabled['reporting_database_enabled']);
+        self::assertSame(array_keys(ViewCatalog::APPROVED), $enabled['reporting_database_views']);
+        self::assertSame([], $enabled['reporting_database_private_views']);
+        self::assertSame(120, $enabled['reporting_database_interval_minutes'], 'The interval is kept unless one is given.');
+        self::assertSame(30, $settings->enableApprovedViews(30)['reporting_database_interval_minutes']);
+
+        $_ENV['REPORTING_DATABASE_ENABLED'] = 'false';
+        self::assertFalse($this->settings([])->enableApprovedViews()['reporting_database_enabled'], 'The environment still decides.');
+    }
+
     public function testNothingIsSavedWhenAnyValueIsInvalidOrUnexpected(): void
     {
         $settings = $this->settings(['reporting_database_views' => ['bi_dim_geo_area_v1']]);

@@ -572,6 +572,16 @@ the page explains instead of saving. Recreated tables lose per-table grants, so 
 the database or schema. The tables have no indexes. Tables of deselected views
 stay until an administrator drops them.
 
+A database can be marked as a read-only reporting copy for BI users in its
+own comment (`aggregate-reporting-copy`, optionally `source=<application
+database>`). A marked database gets approved views only, and one marked for
+another application database is not written. The mark is read from the
+database rather than set in YAML because it describes who reads that database,
+which its owner (a hosting panel, a DBA) decides when creating it; a setting
+in Aggregate could not stop a second installation from writing there. Only
+MariaDB and PostgreSQL keep database comments, so MySQL, SQL Server and SQLite
+copies cannot be marked.
+
 **What would change it.** Views too large to copy whole would call for
 incremental copies of completed time buckets, as for BigQuery; a need for
 indexes or live data would favor database-native replication of the views'

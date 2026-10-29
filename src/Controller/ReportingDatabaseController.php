@@ -35,7 +35,7 @@ final class ReportingDatabaseController extends AbstractController
     private const SESSION_SYNC_REQUESTED = 'reporting_database_sync_requested_at';
     /** Fields of a connection that failed its test, shown again without the password. */
     private const SESSION_CONNECTION_FORM = 'reporting_database_connection_form';
-    private const CONNECTION_FIELDS = ['type', 'host', 'port', 'database', 'user', 'password', 'trust_certificate'];
+    private const CONNECTION_FIELDS = ['type', 'host', 'port', 'database', 'user', 'password', 'trust_certificate', 'enable'];
 
     public function __construct(
         private readonly AggregateConfigLoader $config,
@@ -84,12 +84,16 @@ final class ReportingDatabaseController extends AbstractController
         try {
             $check = $this->configurator->save($fields);
             $request->getSession()->remove(self::SESSION_CONNECTION_FORM);
-            $this->addFlash('success', sprintf(
-                'Connected to %s (server version %s) and saved to .env.local. This user can create and drop tables. %s',
+            $this->addFlash('success', trim(sprintf(
+                'Connected to %s (server version %s) and saved to .env.local. This user can create and drop tables. %s %s',
                 ReportingDatabaseConnection::label($check),
                 $check['server_version'],
                 $check['tables'] === [] ? 'No views have been copied yet.' : count($check['tables']).' copied view'.(count($check['tables']) === 1 ? '' : 's').' found.',
-            ));
+                ReportingDatabaseConnection::markSentence($check['mark']),
+            )));
+            if (($request->request->get('enable') ?? '') === '1') {
+                $this->enableApprovedViews();
+            }
         } catch (\InvalidArgumentException|ReportingDatabaseException $e) {
             unset($fields['password']);
             $request->getSession()->set(self::SESSION_CONNECTION_FORM, $fields);
@@ -116,6 +120,24 @@ final class ReportingDatabaseController extends AbstractController
         }
 
         return $this->redirectToRoute(self::ROUTE);
+    }
+
+    /** After a connection is saved: the sync on for every approved view, as app:reporting-database:configure --enable. */
+    private function enableApprovedViews(): void
+    {
+        try {
+            $settings = $this->settings->enableApprovedViews();
+            if ($settings[ReportingDatabaseSettings::KEY_ENABLED]) {
+                $this->addFlash('success', 'The sync is on for the '.count($settings[ReportingDatabaseSettings::KEY_VIEWS]).' approved views. Use Sync now to copy them right away.');
+            } else {
+                $this->addFlash('warning', 'The sync stays off: '.strtoupper(ReportingDatabaseSettings::KEY_ENABLED).' in the server environment controls it.');
+            }
+        } catch (\Throwable $e) {
+            $this->addFlash('error', 'The connection is saved, but the sync was not turned on: '.($e instanceof \InvalidArgumentException ? $e->getMessage() : 'see the application log.'));
+            if (!$e instanceof \InvalidArgumentException) {
+                $this->logger->error('Failed to turn the reporting database sync on.', ['exception' => $e]);
+            }
+        }
     }
 
     private function syncRunner(): ReportingDatabaseSyncRunner
@@ -189,12 +211,13 @@ final class ReportingDatabaseController extends AbstractController
         }
         try {
             $check = $this->runner->check();
-            $this->addFlash('success', sprintf(
-                'Connected to %s (server version %s). This user can create and drop tables. %s',
+            $this->addFlash('success', trim(sprintf(
+                'Connected to %s (server version %s). This user can create and drop tables. %s %s',
                 ReportingDatabaseConnection::label($check),
                 $check['server_version'],
                 $check['tables'] === [] ? 'No views have been copied yet.' : count($check['tables']).' copied view'.(count($check['tables']) === 1 ? '' : 's').' found.',
-            ));
+                ReportingDatabaseConnection::markSentence($check['mark']),
+            )));
         } catch (ReportingDatabaseException $e) {
             $this->addFlash('error', 'The connection test failed: '.$e->getMessage());
         } catch (\Throwable $e) {
