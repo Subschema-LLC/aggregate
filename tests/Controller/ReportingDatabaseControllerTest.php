@@ -230,12 +230,12 @@ final class ReportingDatabaseControllerTest extends TestCase
     public function testTestConnectionReportsTheDatabaseOrTheProblem(): void
     {
         $this->runner->method('check')->willReturnOnConsecutiveCalls(
-            ['engine' => 'PostgreSQL', 'host' => 'db.example.net', 'port' => 5433, 'database' => 'aggregate_reporting', 'server_version' => '16.4', 'tables' => ['bi_anonymous_events_v1']],
+            ['engine' => 'PostgreSQL', 'host' => 'db.example.net', 'port' => 5433, 'database' => 'aggregate_reporting', 'server_version' => '16.4', 'tables' => ['bi_anonymous_events_v1'], 'mark' => ['source' => 'aggregate']],
             self::throwException(new ReportingDatabaseException('Connected, but this database user cannot create and drop tables, which every sync does (SQLSTATE 42501): permission denied for schema public')),
         );
         $request = $this->post();
         $this->controller($request)->test($request);
-        self::assertSame(['Connected to PostgreSQL database aggregate_reporting on db.example.net:5433 (server version 16.4). This user can create and drop tables. 1 copied view found.'], $this->session->getFlashBag()->get('success'));
+        self::assertSame(['Connected to PostgreSQL database aggregate_reporting on db.example.net:5433 (server version 16.4). This user can create and drop tables. 1 copied view found. It is marked as a read-only reporting copy for BI users of aggregate, so only approved views are copied to it.'], $this->session->getFlashBag()->get('success'));
 
         $this->controller($request)->test($request);
         self::assertStringContainsString('permission denied for schema public', implode(' ', $this->session->getFlashBag()->get('error')));
@@ -276,6 +276,24 @@ final class ReportingDatabaseControllerTest extends TestCase
         $this->controller($request)->removeConnection($request);
         self::assertStringContainsString('removed from .env.local', implode(' ', $this->session->getFlashBag()->get('success')));
         self::assertStringNotContainsString('REPORTING_DATABASE_URL', (string) file_get_contents($this->projectDir.'/.env.local'));
+    }
+
+    public function testSavingWithEnableTurnsTheSyncOnForTheApprovedViews(): void
+    {
+        $this->url = null;
+        mkdir($this->projectDir.'/var');
+        $crawler = new Crawler((string) $this->page()->getContent());
+        self::assertSame('checked', $crawler->filter('form#reporting-database-connection input[name="enable"]')->attr('checked'), 'Offered, and ticked, while the sync is off.');
+
+        $request = $this->post(['type' => 'sqlite', 'database' => 'var/reporting.db', 'host' => '', 'port' => '', 'user' => '', 'password' => '', 'enable' => '1']);
+        $this->controller($request)->saveConnection($request);
+
+        self::assertStringContainsString('The sync is on for the '.count(\App\Service\ViewSync\ViewCatalog::APPROVED).' approved views.', implode(' ', $this->session->getFlashBag()->get('success')));
+        $yaml = Yaml::parseFile($this->projectDir.'/config/aggregate.yaml');
+        self::assertTrue($yaml['reporting_database_enabled']);
+        self::assertSame(array_keys(\App\Service\ViewSync\ViewCatalog::APPROVED), $yaml['reporting_database_views']);
+        self::assertSame([], $yaml['reporting_database_private_views']);
+        self::assertSame('kept', $yaml['admin_token']);
     }
 
     public function testAFailedConnectionKeepsTheFieldsButNotThePassword(): void

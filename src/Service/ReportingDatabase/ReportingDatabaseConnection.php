@@ -9,6 +9,8 @@ use App\Service\ViewSync\ViewCatalog;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
 use Doctrine\DBAL\Exception\MalformedDsnException;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Tools\DsnParser;
 
 /**
@@ -59,6 +61,13 @@ class ReportingDatabaseConnection
         'sqlite' => ['label' => 'SQLite file', 'scheme' => 'sqlite', 'extension' => 'pdo_sqlite', 'port' => null],
     ];
     public const DEFAULT_SQLITE_FILE = 'var/reporting.db';
+    /**
+     * The word that marks a database, in its own comment, as a read-only
+     * reporting copy for BI users, optionally followed by source=<the
+     * application database>, for example
+     * "Read-only reporting copy for BI tools [aggregate-reporting-copy source=aggregate]".
+     */
+    public const MARK = 'aggregate-reporting-copy';
     private const CHECK_TABLE = 'aggregate_sync_check';
 
     private ?Connection $connection = null;
@@ -182,9 +191,11 @@ class ReportingDatabaseConnection
 
     /**
      * Connects, and creates and drops a small table to prove the sync may
-     * replace tables, without touching the copied views.
+     * replace tables, without touching the copied views. Reports the
+     * database's mark, and refuses a database marked as another
+     * installation's copy.
      *
-     * @return array{engine: string, host: ?string, port: ?int, database: string, server_version: string, tables: list<string>}
+     * @return array{engine: string, host: ?string, port: ?int, database: string, server_version: string, tables: list<string>, mark: array{source: ?string}|null}
      *
      * @throws ReportingDatabaseException with a message for the administrator
      */
@@ -208,10 +219,98 @@ class ReportingDatabaseConnection
         } catch (\Throwable $e) {
             throw new ReportingDatabaseException(self::firstLine($e, 'Connected, but this database user cannot create and drop tables, which every sync does'), previous: $e);
         }
+        $mark = $this->assertMarkAllowsSync();
         $writer = new ReportingTableWriter($connection);
         $copied = array_values(array_filter(array_keys(ViewCatalog::APPROVED + ViewCatalog::PRIVATE), $writer->tableExists(...)));
 
-        return [...$location, 'server_version' => $version, 'tables' => $copied];
+        return [...$location, 'server_version' => $version, 'tables' => $copied, 'mark' => $mark];
+    }
+
+    /**
+     * The reporting database's mark, from its own comment, or null when it has
+     * none. A marked database is a read-only reporting copy for BI users: they
+     * read every table in it, so only approved views are copied there. MariaDB
+     * (10.5 and later) and PostgreSQL keep database comments; MySQL, SQL
+     * Server and SQLite databases have none, and so no mark.
+     *
+     * @return array{source: ?string}|null
+     *
+     * @throws ReportingDatabaseException when the URL is missing or invalid
+     */
+    public function mark(): ?array
+    {
+        $connection = $this->connection();
+        try {
+            $platform = $connection->getDatabasePlatform();
+            $comment = match (true) {
+                // MySQL has no SCHEMA_COMMENT column; the query fails there, and that is no mark.
+                $platform instanceof AbstractMySQLPlatform => $connection->fetchOne('SELECT SCHEMA_COMMENT FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = DATABASE()'),
+                $platform instanceof PostgreSQLPlatform => $connection->fetchOne("SELECT pg_catalog.shobj_description(oid, 'pg_database') FROM pg_catalog.pg_database WHERE datname = current_database()"),
+                default => null,
+            };
+        } catch (\Doctrine\DBAL\Exception) {
+            return null;
+        }
+
+        return self::parseMark(is_string($comment) ? $comment : '');
+    }
+
+    /**
+     * The mark in a database comment: the word aggregate-reporting-copy, on
+     * its own, optionally followed by source=<database name>.
+     *
+     * @return array{source: ?string}|null
+     */
+    public static function parseMark(string $comment): ?array
+    {
+        if (preg_match('/(?<![A-Za-z0-9_-])'.preg_quote(self::MARK, '/').'(?![A-Za-z0-9_-])(?:\s+source=([A-Za-z0-9_$-]{1,64}))?/i', $comment, $match) !== 1) {
+            return null;
+        }
+
+        return ['source' => ($match[1] ?? '') !== '' ? $match[1] : null];
+    }
+
+    /**
+     * The mark, after checking it allows this installation to write the
+     * copy: a database marked as the copy of another database belongs to
+     * another installation, whose tables a sync from here would replace.
+     *
+     * @return array{source: ?string}|null
+     *
+     * @throws ReportingDatabaseException when the mark names another source
+     */
+    public function assertMarkAllowsSync(): ?array
+    {
+        $mark = $this->mark();
+        $application = $this->applicationDatabase();
+        if ($mark !== null && $mark['source'] !== null && $application !== null && strcasecmp($mark['source'], $application) !== 0) {
+            throw new ReportingDatabaseException(sprintf(
+                'The reporting database is marked as the reporting copy of the database %s, not of this installation\'s database %s, so Aggregate does not write to it. Use a reporting database of its own, or change the mark in the database\'s comment if this copy now belongs to this installation.',
+                $mark['source'],
+                $application,
+            ));
+        }
+
+        return $mark;
+    }
+
+    /** The application database's name on a database server, or null for SQLite. */
+    public function applicationDatabase(): ?string
+    {
+        $name = $this->application->getParams()['dbname'] ?? null;
+
+        return is_string($name) && $name !== '' ? $name : null;
+    }
+
+    /**
+     * What a mark means, for messages; empty for an unmarked database.
+     *
+     * @param array{source: ?string}|null $mark
+     */
+    public static function markSentence(?array $mark): string
+    {
+        return $mark === null ? '' : 'It is marked as a read-only reporting copy for BI users'
+            .($mark['source'] !== null ? ' of '.$mark['source'] : '').', so only approved views are copied to it.';
     }
 
     /**

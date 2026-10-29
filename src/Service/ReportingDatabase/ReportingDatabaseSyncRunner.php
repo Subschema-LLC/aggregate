@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service\ReportingDatabase;
 
 use App\Service\Operations\ProcessingTasks;
+use App\Service\ViewSync\ViewCatalog;
 use App\Service\ViewSync\ViewExporter;
 use App\Service\ViewSync\ViewSnapshot;
 use App\Service\ViewSync\ViewSyncException;
@@ -18,11 +19,19 @@ use Psr\Log\LoggerInterface;
  * its view (see ReportingTableWriter). Each view sync is a processing task of
  * type reporting_database_sync.
  *
+ * A reporting database marked as a read-only reporting copy for BI users (see
+ * ReportingDatabaseConnection::mark()) gets approved views only: its readers
+ * see every table, so a private view selected for it fails instead of being
+ * copied. One marked as another installation's copy is not written at all.
+ *
  * @extends ViewSyncRunner<ReportingTableWriter>
  */
 class ReportingDatabaseSyncRunner extends ViewSyncRunner
 {
     public const TASK_TYPE = 'reporting_database_sync';
+
+    /** @var array{source: ?string}|null the open reporting database's mark */
+    private ?array $mark = null;
 
     /** @param \Closure(): \DateTimeImmutable|null $clock */
     public function __construct(
@@ -40,7 +49,7 @@ class ReportingDatabaseSyncRunner extends ViewSyncRunner
      * Connects, and creates and drops a small table to prove the sync may
      * replace tables, without touching the copied views.
      *
-     * @return array{engine: string, host: ?string, port: ?int, database: string, server_version: string, tables: list<string>}
+     * @return array{engine: string, host: ?string, port: ?int, database: string, server_version: string, tables: list<string>, mark: array{source: ?string}|null}
      *
      * @throws ReportingDatabaseException with a message for the administrator
      */
@@ -58,10 +67,21 @@ class ReportingDatabaseSyncRunner extends ViewSyncRunner
 
     protected function open(array $settings): ReportingTableWriter
     {
+        $this->mark = null;
         $connection = $this->database->connection();
         $connection->getServerVersion();
+        $this->mark = $this->database->assertMarkAllowsSync();
 
         return new ReportingTableWriter($connection);
+    }
+
+    protected function refusal(string $view, object $destination, array $settings): ?string
+    {
+        if ($this->mark === null || !ViewCatalog::isPrivate($view)) {
+            return null;
+        }
+
+        return $view.' holds row-level or unsuppressed data, and the reporting database is marked as a read-only reporting copy for BI users, who can read every table in it. Only approved views are copied to it: remove '.$view.' from '.ReportingDatabaseSettings::KEY_PRIVATE_VIEWS.', or use another reporting database for it.';
     }
 
     /**
