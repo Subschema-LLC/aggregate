@@ -396,6 +396,7 @@ checkout, or a small accessibility fix. Keep each PR focused and target
 - [Bot traffic](docs/PRIVACY-COMPLIANCE.md#bot-traffic): crawlers, monitors and automated browsers are recognized on the server and either labelled `device_class = 'bot'` (the default) or dropped before anything is stored.
 - [BigQuery sync](docs/BIGQUERY.md) of selected reporting views on an interval, with service account key, Google Cloud and Google sign-in authentication, explicit opt-in for private views, a status page and headless commands.
 - [Reporting database](docs/REPORTING-DATABASE.md): selected reporting views copied into same-named tables of a second database on any supported engine, swapped in whole at each sync, so BI users connect without access to the application database. Same view opt-ins, schedule, status page and headless commands as BigQuery sync.
+- [Forensic database](docs/FORENSIC-DATABASE.md): the raw events, archive tables and private views copied into a separate, restricted database for investigating problems, with visitor and session IDs replaced by HMAC hashes under a new random key at each sync. Writes only to a database marked `aggregate-forensic-copy`, or confirmed restricted where the engine cannot be marked. Administrator-only settings page, headless commands, no in-app view of the rows.
 - [YAML disclosure thresholds](docs/CONFIGURATION.md#bi-disclosure-thresholds):
   `anonymous_min_cell_count` and `anonymous_geo_min_cell_count` live in the
   aggregate YAML with environment overrides, are edited on the BI disclosure page

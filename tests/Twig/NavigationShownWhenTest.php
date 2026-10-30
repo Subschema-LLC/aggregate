@@ -9,6 +9,7 @@ use App\Service\BigQuery\BigQuerySettings;
 use App\Service\FeatureFlags;
 use App\Security\Access\DashboardPages;
 use App\Service\NavigationConditions;
+use App\Service\ForensicDatabase\ForensicDatabaseSettings;
 use App\Service\ReportingDatabase\ReportingDatabaseSettings;
 use App\Service\ViewSync\ViewSyncDestinations;
 use App\Twig\FeatureFlagsExtension;
@@ -108,8 +109,12 @@ final class NavigationShownWhenTest extends TestCase
         self::assertSame('app_bigquery', $this->destinations([])->landingRoute());
         self::assertSame('app_reporting_database', $this->destinations(['reporting_database_enabled' => true])->landingRoute());
         self::assertSame('app_bigquery', $this->destinations(['reporting_database_enabled' => true, 'bigquery_enabled' => true])->landingRoute());
+        // The forensic database is administrators-only: a standard user lands on a page they may open.
+        $forensicOnly = $this->destinations(['forensic_database_enabled' => true, 'forensic_database_access_restricted' => true]);
+        self::assertSame('app_forensic_database', $forensicOnly->landingRoute());
+        self::assertSame('app_bigquery', $forensicOnly->landingRoute(static fn (string $route): bool => $route !== 'app_forensic_database'));
         self::assertSame(
-            ['bigquery' => null, 'reporting_database' => false],
+            ['bigquery' => null, 'reporting_database' => false, 'forensic_database' => false],
             array_map(static fn (array $destination): ?bool => $destination['on'], $this->destinations(['bigquery_interval_minutes' => 7])->all()),
         );
     }
@@ -177,7 +182,7 @@ final class NavigationShownWhenTest extends TestCase
         file_put_contents($this->projectDir.'/config/aggregate.yaml', Yaml::dump($config));
         $loader = new AggregateConfigLoader($this->projectDir, 'test');
 
-        return new ViewSyncDestinations(new BigQuerySettings($loader, $this->projectDir), new ReportingDatabaseSettings($loader));
+        return new ViewSyncDestinations(new BigQuerySettings($loader, $this->projectDir), new ReportingDatabaseSettings($loader), new ForensicDatabaseSettings($loader));
     }
 
     private function navigation(): array

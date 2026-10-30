@@ -618,6 +618,28 @@ environments:
 # reporting_database_private_views: []       # Row-level or unsuppressed views, each by explicit opt-in
 # reporting_database_interval_minutes: 60    # 15, 30, 60, 120, 180, 360, 720 or 1440
 #
+# Forensic database (optional; see docs/FORENSIC-DATABASE.md). Copies the raw
+# events, the archive tables and the private views into a separate database
+# that only the people who investigate problems can read. Visitor and session
+# IDs are replaced by hashes made with a new random key at every sync, never
+# stored. The connection is FORENSIC_DATABASE_URL in .env.local or the server
+# environment, never YAML. Aggregate writes there only when the database's
+# comment carries aggregate-forensic-copy (MariaDB 10.5+, PostgreSQL) or, on
+# MySQL, SQL Server and SQLite, forensic_database_access_restricted is true.
+# Also managed on Reporting → Sync → Forensic database (administrators only).
+# Uppercase environment variables with the same names override these values.
+#
+# forensic_database_enabled: false
+# forensic_database_tables:                  # Raw-table copies; default: all of them
+#   - forensic_events_v1
+#   - forensic_archive_events_v1
+#   - forensic_archive_geo_events_v1
+#   - forensic_archive_goals_v1
+# forensic_database_views:                   # Private views; default: all of them
+#   - analytics_custom_events_v1
+# forensic_database_interval_minutes: 1440   # 15, 30, 60, 120, 180, 360, 720 or 1440
+# forensic_database_access_restricted: false # Engines that cannot be marked only
+#
 # Transactional email (optional; see docs/EMAIL.md). Aggregate's own messages to
 # its users, such as sign-in codes, through one email service. Off until
 # email_enabled is true; a test (app:email:test) works while it is off. Also

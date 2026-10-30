@@ -12,6 +12,7 @@ use App\Service\ReportingDatabase\ReportingDatabaseBackgroundSync;
 use App\Service\ReportingDatabase\ReportingDatabaseConfigurator;
 use App\Service\ReportingDatabase\ReportingDatabaseConnection;
 use App\Service\ReportingDatabase\ReportingDatabaseException;
+use App\Service\ForensicDatabase\ForensicDatabaseSettings;
 use App\Service\ReportingDatabase\ReportingDatabaseSettings;
 use App\Service\ReportingDatabase\ReportingDatabaseSyncRunner;
 use App\Service\ViewSync\ViewCatalog;
@@ -367,7 +368,7 @@ final class ReportingDatabaseControllerTest extends TestCase
             $this->background,
             new ReportingDatabaseConfigurator(new LocalEnvironmentFile($this->projectDir, 'test'), $connection),
             new NullLogger(),
-            new ViewSyncDestinations(new BigQuerySettings($config, $this->projectDir), $this->settings),
+            new ViewSyncDestinations(new BigQuerySettings($config, $this->projectDir), $this->settings, new ForensicDatabaseSettings($config)),
         );
         $request ??= Request::create('/dashboard/reporting-database');
         $request->setSession($this->session);
@@ -414,6 +415,9 @@ final class ReportingDatabaseControllerTest extends TestCase
         }
         if ($name === 'app_bigquery') {
             return '/dashboard/bigquery';
+        }
+        if ($name === 'app_forensic_database') {
+            return '/dashboard/forensic-database';
         }
 
         return '/dashboard/reporting-database'.match ($name) {

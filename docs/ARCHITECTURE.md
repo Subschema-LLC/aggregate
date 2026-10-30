@@ -186,7 +186,10 @@ BigQuery ([BigQuerySyncRunner](../src/Service/BigQuery/BigQuerySyncRunner.php))
 and to tables of a second database, for BI users who should not connect to the
 application database
 ([ReportingDatabaseSyncRunner](../src/Service/ReportingDatabase/ReportingDatabaseSyncRunner.php),
-see [Reporting database](REPORTING-DATABASE.md)). What the two syncs do alike
+see [Reporting database](REPORTING-DATABASE.md)), and to a restricted forensic
+database with identifiers hashed per copy
+([ForensicDatabaseSyncRunner](../src/Service/ForensicDatabase/ForensicDatabaseSyncRunner.php),
+see [Forensic database](FORENSIC-DATABASE.md)). What the syncs do alike
 lives once in [src/Service/ViewSync](../src/Service/ViewSync): the views that can
 be copied and their column types
 ([ViewCatalog](../src/Service/ViewSync/ViewCatalog.php)), reading a view

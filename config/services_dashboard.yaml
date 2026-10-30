@@ -31,6 +31,7 @@ services:
     App\Controller\InternalTrafficController: ~
     App\Controller\BigQueryController: ~
     App\Controller\ReportingDatabaseController: ~
+    App\Controller\ForensicDatabaseController: ~
     App\Controller\ViewSyncController: ~
     App\Controller\ApiTokensController: ~
     App\Controller\EmailSettingsController: ~

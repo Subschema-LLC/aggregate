@@ -38,11 +38,12 @@ class Scheduler
         ScheduledJob $maintenance,
         ScheduledJob $bigQuery,
         ScheduledJob $reportingDatabase,
+        ScheduledJob $forensicDatabase,
         private readonly string $projectDir,
         private readonly ClockInterface $clock,
         private readonly LoggerInterface $logger,
     ) {
-        $this->jobs = [$maintenance, $bigQuery, $reportingDatabase];
+        $this->jobs = [$maintenance, $bigQuery, $reportingDatabase, $forensicDatabase];
     }
 
     /** @return list<ScheduledJob> */

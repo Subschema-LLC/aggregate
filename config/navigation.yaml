@@ -68,7 +68,8 @@ parameters:
                   - label: 'Page groups'
                     route: 'app_bi_page_groups'
                     icon: 'fas fa-layer-group'
-                  # BigQuery and the reporting database, as tabs of one page.
+                  # BigQuery, the reporting database and the forensic database
+                  # (administrators only), as tabs of one page.
                   # Shown once either is on; until then, open it from quick
                   # search or the BI connection guide.
                   - label: 'Sync'
