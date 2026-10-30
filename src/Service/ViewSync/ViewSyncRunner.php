@@ -97,6 +97,18 @@ abstract class ViewSyncRunner
      */
     abstract protected function copyName(string $view, object $destination, array $settings): string;
 
+    /**
+     * Why the destination refuses a view, before it is read, or null when it
+     * takes it; safe to store and show.
+     *
+     * @param TDestination         $destination
+     * @param array<string, mixed> $settings
+     */
+    protected function refusal(string $view, object $destination, array $settings): ?string
+    {
+        return null;
+    }
+
     /** Why the destination could not be opened, safe to store and show. */
     abstract protected function setupFailure(\Throwable $e): string;
 
@@ -235,6 +247,12 @@ abstract class ViewSyncRunner
             $this->tasks->fail($task, ($this->clock)(), $setupError);
 
             return ['view' => $view, 'status' => 'failed', 'rows' => null, 'message' => $setupError];
+        }
+        $refusal = $this->refusal($view, $destination, $settings);
+        if ($refusal !== null) {
+            $this->tasks->fail($task, ($this->clock)(), $refusal);
+
+            return ['view' => $view, 'status' => 'failed', 'rows' => null, 'message' => $refusal];
         }
         $externalId = null;
         $snapshot = null;

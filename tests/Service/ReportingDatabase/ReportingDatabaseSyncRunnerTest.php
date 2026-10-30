@@ -231,14 +231,70 @@ final class ReportingDatabaseSyncRunnerTest extends TestCase
         $this->runner()->run(true, ['analytics_archived_events_v1']);
     }
 
-    private function runner(array $values = [], ?string $url = 'sqlite:///%kernel.project_dir%/var/reporting.db', ?AbstractLogger $logger = null): ReportingDatabaseSyncRunner
+    public function testAMarkedReportingCopyGetsApprovedViewsOnly(): void
+    {
+        $result = $this->runner([], connection: $this->markedConnection(['source' => null]))->run();
+
+        self::assertSame(['synced', 'synced', 'failed'], array_column($result['results'], 'status'));
+        self::assertSame('analytics_custom_events_v1', $result['results'][2]['view']);
+        self::assertStringContainsString('marked as a read-only reporting copy for BI users', $result['results'][2]['message']);
+        self::assertStringContainsString('remove analytics_custom_events_v1 from reporting_database_private_views', $result['results'][2]['message']);
+        $tables = $this->reporting()->createSchemaManager()->listTableNames();
+        self::assertContains('bi_anonymous_events_v1', $tables);
+        self::assertNotContains('analytics_custom_events_v1', $tables, 'The private view is refused before it is read or written.');
+    }
+
+    public function testACopyMarkedForAnotherInstallationIsNotWritten(): void
+    {
+        $result = $this->runner([], connection: $this->markedConnection(['source' => 'other_aggregate'], 'aggregate'))->run();
+
+        self::assertSame(['failed', 'failed', 'failed'], array_column($result['results'], 'status'));
+        self::assertStringContainsString('marked as the reporting copy of the database other_aggregate, not of this installation\'s database aggregate', $result['results'][0]['message']);
+        self::assertSame([], $this->reporting()->createSchemaManager()->listTableNames());
+    }
+
+    public function testACopyMarkedForThisInstallationIsWritten(): void
+    {
+        $result = $this->runner(['reporting_database_private_views' => []], connection: $this->markedConnection(['source' => 'AGGREGATE'], 'aggregate'))->run();
+
+        self::assertSame(['synced', 'synced'], array_column($result['results'], 'status'));
+    }
+
+    /**
+     * A reporting connection whose database carries a mark, standing in for a
+     * MariaDB or PostgreSQL database comment (SQLite has none).
+     *
+     * @param array{source: ?string} $mark
+     */
+    private function markedConnection(array $mark, ?string $applicationDatabase = null): ReportingDatabaseConnection
+    {
+        return new class('sqlite:///%kernel.project_dir%/var/reporting.db', $this->projectDir, $this->application, $mark, $applicationDatabase) extends ReportingDatabaseConnection {
+            /** @param array{source: ?string} $fakeMark */
+            public function __construct(string $url, string $projectDir, Connection $application, private readonly array $fakeMark, private readonly ?string $fakeApplication)
+            {
+                parent::__construct($url, $projectDir, $application);
+            }
+
+            public function mark(): array
+            {
+                return $this->fakeMark;
+            }
+
+            public function applicationDatabase(): ?string
+            {
+                return $this->fakeApplication;
+            }
+        };
+    }
+
+    private function runner(array $values = [], ?string $url = 'sqlite:///%kernel.project_dir%/var/reporting.db', ?AbstractLogger $logger = null, ?ReportingDatabaseConnection $connection = null): ReportingDatabaseSyncRunner
     {
         $customData = $this->createStub(CustomDataSettings::class);
         $customData->method('numericReportingColumns')->willReturn([]);
 
         return new ReportingDatabaseSyncRunner(
             $this->settings($values),
-            new ReportingDatabaseConnection($url, $this->projectDir, $this->application),
+            $connection ?? new ReportingDatabaseConnection($url, $this->projectDir, $this->application),
             new ViewExporter(new ViewReader($this->application, new ViewCatalog($customData)), $this->projectDir),
             $this->tasks(),
             $logger ?? new NullLogger(),

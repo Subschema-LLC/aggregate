@@ -112,12 +112,17 @@
                 <div class="field" data-pages--reporting-database--index-target="sqlsrvFields">
                     <label class="checkbox"><input type="checkbox" name="trust_certificate" value="1"{% if connection.trust_certificate %} checked{% endif %}> Trust the server certificate <span class="has-text-grey">(SQL Server with a self-signed certificate)</span></label>
                 </div>
+                {% if not settings.reporting_database_enabled and not overrides.reporting_database_enabled %}
+                    <div class="field">
+                        <label class="checkbox"><input type="checkbox" name="enable" value="1" checked> Then turn the sync on for the approved views <span class="has-text-grey">(every approved view, no private views; change them below)</span></label>
+                    </div>
+                {% endif %}
                 <div class="buttons">
                     <button class="button is-primary" type="submit">Test and save</button>
                     {% if connection_saved_here %}<button class="button is-danger is-light" type="submit" form="reporting-database-remove-connection">Remove connection</button>{% endif %}
                 </div>
             </form>
-            <p class="help">The password is stored only in <code>.env.local</code>, never shown here or logged. Leave it empty to keep the saved one while the type, server and user stay the same. Give BI users read-only access to the reporting database only. From the command line: <code>php bin/console app:reporting-database:configure</code>.</p>
+            <p class="help">The password is stored only in <code>.env.local</code>, never shown here or logged. Leave it empty to keep the saved one while the type, server and user stay the same. Give BI users read-only access to the reporting database only. A database whose comment marks it as a read-only reporting copy (<code>aggregate-reporting-copy</code>) gets approved views only. From the command line: <code>php bin/console app:reporting-database:configure --enable</code>.</p>
         {% endif %}
     </section>
 

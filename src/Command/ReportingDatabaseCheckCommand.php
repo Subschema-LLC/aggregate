@@ -71,12 +71,13 @@ final class ReportingDatabaseCheckCommand extends Command
 
             return Command::FAILURE;
         }
-        $io->success(sprintf(
-            'Connected to %s (server version %s). This user can create and drop tables. %s',
+        $io->success(trim(sprintf(
+            'Connected to %s (server version %s). This user can create and drop tables. %s %s',
             ReportingDatabaseConnection::label($check),
             $check['server_version'],
             $check['tables'] === [] ? 'No views have been copied yet.' : count($check['tables']).' copied view'.(count($check['tables']) === 1 ? '' : 's').' found.',
-        ));
+            ReportingDatabaseConnection::markSentence($check['mark']),
+        )));
 
         return Command::SUCCESS;
     }
