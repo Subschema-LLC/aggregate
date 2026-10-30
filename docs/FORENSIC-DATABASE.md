@@ -31,9 +31,9 @@ are read in the forensic database itself, with its own read-only accounts.
 
 ## When to use it
 
-- **Investigating a problem needs the raw rows.** The [reporting
-  database](REPORTING-DATABASE.md) and the BI views hold counts with small cells
-  withheld. A forensic copy holds every retained event with every column, so
+- **Investigating a problem needs the raw rows.** The
+  [reporting database](REPORTING-DATABASE.md) and the BI views hold counts with
+  small cells withheld. A forensic copy holds every retained event with every column, so
   you can see exactly what was recorded and in what order.
 - **Investigations should not load the server that collects events.** Put the
   forensic database on another server; long queries run there. Only the sync
@@ -181,8 +181,8 @@ restricted, and checks this at every sync:
   that only the people who investigate can read the database.
 
 On an engine that keeps comments, the confirmation is not enough: the database
-must be marked. A database marked `aggregate-reporting-copy` (a [read-only
-reporting copy for BI users](REPORTING-DATABASE.md#mark-it-as-a-read-only-reporting-copy))
+must be marked. A database marked `aggregate-reporting-copy` (a
+[read-only reporting copy for BI users](REPORTING-DATABASE.md#mark-it-as-a-read-only-reporting-copy))
 is always refused. Until the mark or the confirmation is in place, every copy
 fails with the reason and nothing is written.
 

@@ -556,9 +556,9 @@ database whose comment carries `aggregate-forensic-copy` (MariaDB 10.5 and
 later, PostgreSQL) or, on engines that keep no comment (MySQL, SQL Server,
 SQLite), when `forensic_database_access_restricted` confirms that access is
 restricted. It refuses the application database, the reporting database and any
-database marked as a read-only reporting copy. See [Forensic
-database](FORENSIC-DATABASE.md) for the database setup, the hashing, every
-setting and privacy notes.
+database marked as a read-only reporting copy. See
+[Forensic database](FORENSIC-DATABASE.md) for the database setup, the hashing,
+every setting and privacy notes.
 
 ## Reporting API and AI assistants
 
