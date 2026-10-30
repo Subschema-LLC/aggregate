@@ -61,6 +61,12 @@ class ReportingDatabaseConnection
         'sqlite' => ['label' => 'SQLite file', 'scheme' => 'sqlite', 'extension' => 'pdo_sqlite', 'port' => null],
     ];
     public const DEFAULT_SQLITE_FILE = 'var/reporting.db';
+    /** The environment variable that holds the connection; ForensicDatabaseConnection has its own. */
+    public const VARIABLE = 'REPORTING_DATABASE_URL';
+    /** The database's name in messages, as in "the reporting database guide". */
+    protected const NAME = 'reporting database';
+    /** The database name in example URLs. */
+    protected const EXAMPLE_DATABASE = 'aggregate_reporting';
     /**
      * The word that marks a database, in its own comment, as a read-only
      * reporting copy for BI users, optionally followed by source=<the
@@ -105,9 +111,9 @@ class ReportingDatabaseConnection
         }
         $database = trim($database);
         if ($type === 'sqlite') {
-            $path = $database === '' ? self::DEFAULT_SQLITE_FILE : $database;
+            $path = $database === '' ? static::DEFAULT_SQLITE_FILE : $database;
             if (preg_match('/[\x00-\x1f\x7f\'"\\\\%?#]/', $path) === 1 || str_contains('/'.$path.'/', '/../')) {
-                throw new \InvalidArgumentException('Enter the SQLite file as a plain path, such as '.self::DEFAULT_SQLITE_FILE.'.');
+                throw new \InvalidArgumentException('Enter the SQLite file as a plain path, such as '.static::DEFAULT_SQLITE_FILE.'.');
             }
 
             return 'sqlite:///'.(str_starts_with($path, '/') ? $path : ProjectDirEnvVarProcessor::TOKEN.'/'.$path);
@@ -120,7 +126,7 @@ class ReportingDatabaseConnection
             throw new \InvalidArgumentException('The port must be between 1 and 65535.');
         }
         if ($database === '' || strlen($database) > 128 || preg_match('/[\x00-\x1f\x7f]/', $database) === 1) {
-            throw new \InvalidArgumentException('Enter the reporting database’s name.');
+            throw new \InvalidArgumentException('Enter the '.static::NAME.'’s name.');
         }
         if (trim($user) === '' || strlen($user) > 128 || preg_match('/[\x00-\x1f\x7f]/', $user) === 1) {
             throw new \InvalidArgumentException('Enter the database user name.');
@@ -208,7 +214,7 @@ class ReportingDatabaseConnection
         } catch (ReportingDatabaseException $e) {
             throw $e;
         } catch (\Throwable $e) {
-            throw new ReportingDatabaseException(self::firstLine($e, 'The reporting database could not be reached'), previous: $e);
+            throw new ReportingDatabaseException(self::firstLine($e, 'The '.static::NAME.' could not be reached'), previous: $e);
         }
         try {
             $platform = $connection->getDatabasePlatform();
@@ -221,9 +227,19 @@ class ReportingDatabaseConnection
         }
         $mark = $this->assertMarkAllowsSync();
         $writer = new ReportingTableWriter($connection);
-        $copied = array_values(array_filter(array_keys(ViewCatalog::APPROVED + ViewCatalog::PRIVATE), $writer->tableExists(...)));
+        $copied = array_values(array_filter($this->copyableTables(), $writer->tableExists(...)));
 
         return [...$location, 'server_version' => $version, 'tables' => $copied, 'mark' => $mark];
+    }
+
+    /**
+     * The tables a sync can write here, which probe() looks for.
+     *
+     * @return list<string>
+     */
+    protected function copyableTables(): array
+    {
+        return array_keys(ViewCatalog::APPROVED + ViewCatalog::PRIVATE);
     }
 
     /**
@@ -239,20 +255,36 @@ class ReportingDatabaseConnection
      */
     public function mark(): ?array
     {
+        $comment = $this->comment();
+
+        return $comment === null ? null : self::parseMark($comment);
+    }
+
+    /**
+     * The database's own comment: an empty string when it has none, and null
+     * when the engine keeps no database comments (MySQL, MariaDB before 10.5,
+     * SQL Server and SQLite), so the database cannot be marked.
+     *
+     * @throws ReportingDatabaseException when the URL is missing or invalid
+     */
+    protected function comment(): ?string
+    {
         $connection = $this->connection();
         try {
             $platform = $connection->getDatabasePlatform();
-            $comment = match (true) {
-                // MySQL has no SCHEMA_COMMENT column; the query fails there, and that is no mark.
-                $platform instanceof AbstractMySQLPlatform => $connection->fetchOne('SELECT SCHEMA_COMMENT FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = DATABASE()'),
-                $platform instanceof PostgreSQLPlatform => $connection->fetchOne("SELECT pg_catalog.shobj_description(oid, 'pg_database') FROM pg_catalog.pg_database WHERE datname = current_database()"),
-                default => null,
-            };
+            if ($platform instanceof AbstractMySQLPlatform) {
+                // MySQL has no SCHEMA_COMMENT column; the query fails there, and that is no comment.
+                $comment = $connection->fetchOne('SELECT SCHEMA_COMMENT FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = DATABASE()');
+            } elseif ($platform instanceof PostgreSQLPlatform) {
+                $comment = $connection->fetchOne("SELECT pg_catalog.shobj_description(oid, 'pg_database') FROM pg_catalog.pg_database WHERE datname = current_database()");
+            } else {
+                return null;
+            }
         } catch (\Doctrine\DBAL\Exception) {
             return null;
         }
 
-        return self::parseMark(is_string($comment) ? $comment : '');
+        return is_string($comment) ? $comment : '';
     }
 
     /**
@@ -380,7 +412,7 @@ class ReportingDatabaseConnection
     {
         if ($this->connection === null) {
             $params = $this->params();
-            $this->assertSeparateFromApplication($params);
+            $this->assertSeparate($params);
             $this->connection = DriverManager::getConnection($params);
         }
 
@@ -388,26 +420,28 @@ class ReportingDatabaseConnection
     }
 
     /** @return array<string, mixed> */
-    private function params(): array
+    protected function params(): array
     {
+        $variable = static::VARIABLE;
+        $example = 'postgresql://user:password@host:5432/'.static::EXAMPLE_DATABASE;
         if (!$this->isConfigured()) {
-            throw new ReportingDatabaseException('REPORTING_DATABASE_URL is not set. Add it to .env.local or the server environment; see the reporting database guide.');
+            throw new ReportingDatabaseException($variable.' is not set. Add it to .env.local or the server environment; see the '.static::NAME.' guide.');
         }
         try {
             $params = (new DsnParser(self::SCHEME_MAP))->parse(str_replace(ProjectDirEnvVarProcessor::TOKEN, $this->projectDir, trim((string) $this->url)));
         } catch (MalformedDsnException) {
-            throw new ReportingDatabaseException('REPORTING_DATABASE_URL is not a valid database URL. Write it like DATABASE_URL, for example postgresql://user:password@host:5432/aggregate_reporting.');
+            throw new ReportingDatabaseException($variable.' is not a valid database URL. Write it like DATABASE_URL, for example '.$example.'.');
         }
         $driver = $params['driver'] ?? null;
         if (!is_string($driver) || !isset(self::ENGINES[$driver])) {
-            throw new ReportingDatabaseException('REPORTING_DATABASE_URL must use a MySQL, MariaDB, PostgreSQL, SQL Server or SQLite database URL.');
+            throw new ReportingDatabaseException($variable.' must use a MySQL, MariaDB, PostgreSQL, SQL Server or SQLite database URL.');
         }
         if (in_array($driver, ['pdo_sqlite', 'sqlite3'], true)) {
             if (($params['memory'] ?? false) || !is_string($params['path'] ?? null) || in_array($params['path'], ['', ':memory:'], true)) {
-                throw new ReportingDatabaseException('A SQLite reporting database needs a file path, for example sqlite:///%kernel.project_dir%/var/reporting.db.');
+                throw new ReportingDatabaseException('A SQLite '.static::NAME.' needs a file path, for example sqlite:///%kernel.project_dir%/'.static::DEFAULT_SQLITE_FILE.'.');
             }
         } elseif (!is_string($params['dbname'] ?? null) || $params['dbname'] === '') {
-            throw new ReportingDatabaseException('REPORTING_DATABASE_URL must name a database, for example postgresql://user:password@host:5432/aggregate_reporting.');
+            throw new ReportingDatabaseException($variable.' must name a database, for example '.$example.'.');
         }
         if (in_array($driver, ['pdo_mysql', 'mysqli'], true)) {
             $params['charset'] ??= 'utf8mb4';
@@ -422,26 +456,38 @@ class ReportingDatabaseConnection
      * that, and a sync would replace tables next to the application's own.
      *
      * @param array<string, mixed> $params
+     *
+     * @throws ReportingDatabaseException
      */
-    private function assertSeparateFromApplication(array $params): void
+    protected function assertSeparate(array $params): void
     {
-        $application = $this->application->getParams();
-        $sameEngine = self::ENGINES[$params['driver']][0] === (self::ENGINES[$application['driver'] ?? ''][0] ?? null);
-        if (!$sameEngine) {
-            return;
-        }
-        if (in_array($params['driver'], ['pdo_sqlite', 'sqlite3'], true)) {
-            $reporting = self::realPath((string) $params['path']);
-            $same = is_string($application['path'] ?? null) && $reporting === self::realPath($application['path']);
-        } else {
-            $defaultPort = self::ENGINES[$params['driver']][1];
-            $same = strcasecmp((string) $params['dbname'], (string) ($application['dbname'] ?? '')) === 0
-                && (int) ($params['port'] ?? $defaultPort) === (int) ($application['port'] ?? $defaultPort)
-                && self::host($params) === self::host($application);
-        }
-        if ($same) {
+        if (self::sameDatabase($params, $this->application->getParams())) {
             throw new ReportingDatabaseException('REPORTING_DATABASE_URL names the application database. Create a separate database for reporting (it can be on the same server), so BI users never get access to the raw tables.');
         }
+    }
+
+    /**
+     * Whether two sets of connection parameters lead to the same database: the
+     * same SQLite file, or the same database name, port and host on the same
+     * engine.
+     *
+     * @param array<string, mixed> $params
+     * @param array<string, mixed> $other
+     */
+    protected static function sameDatabase(array $params, array $other): bool
+    {
+        $sameEngine = self::ENGINES[$params['driver']][0] === (self::ENGINES[$other['driver'] ?? ''][0] ?? null);
+        if (!$sameEngine) {
+            return false;
+        }
+        if (in_array($params['driver'], ['pdo_sqlite', 'sqlite3'], true)) {
+            return is_string($other['path'] ?? null) && self::realPath((string) $params['path']) === self::realPath($other['path']);
+        }
+        $defaultPort = self::ENGINES[$params['driver']][1];
+
+        return strcasecmp((string) $params['dbname'], (string) ($other['dbname'] ?? '')) === 0
+            && (int) ($params['port'] ?? $defaultPort) === (int) ($other['port'] ?? $defaultPort)
+            && self::host($params) === self::host($other);
     }
 
     /** @param array<string, mixed> $params */

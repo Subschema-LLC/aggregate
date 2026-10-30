@@ -151,6 +151,17 @@ final class DashboardPages
         'app_reporting_database_schedule' => ['sync', self::EDIT],
         'app_reporting_database_test' => ['sync', self::EDIT],
         'app_reporting_database_sync' => ['sync', self::EDIT],
+        // The forensic database holds raw events: administrators only, even
+        // for standard users who may manage the other syncs.
+        'app_forensic_database' => [self::ADMIN],
+        'app_forensic_database_status' => [self::ADMIN],
+        'app_forensic_database_access' => [self::ADMIN],
+        'app_forensic_database_connection' => [self::ADMIN],
+        'app_forensic_database_connection_remove' => [self::ADMIN],
+        'app_forensic_database_views' => [self::ADMIN],
+        'app_forensic_database_schedule' => [self::ADMIN],
+        'app_forensic_database_test' => [self::ADMIN],
+        'app_forensic_database_sync' => [self::ADMIN],
         // Administration.
         'app_application_settings' => ['general_settings', self::VIEW],
         'app_settings_save' => ['general_settings', self::EDIT],

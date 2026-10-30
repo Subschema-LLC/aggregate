@@ -33,6 +33,7 @@ final class ScheduledTasksController extends AbstractController
         'analytics_maintenance' => ['route' => 'app_data_lifecycle', 'label' => 'Data lifecycle'],
         'bigquery_sync' => ['route' => 'app_bigquery', 'label' => 'BigQuery sync'],
         'reporting_database_sync' => ['route' => 'app_reporting_database', 'label' => 'Reporting database'],
+        'forensic_database_sync' => ['route' => 'app_forensic_database', 'label' => 'Forensic database'],
     ];
 
     public function __construct(

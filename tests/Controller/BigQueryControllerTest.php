@@ -12,6 +12,7 @@ use App\Service\BigQuery\BigQuerySecrets;
 use App\Service\BigQuery\BigQuerySettings;
 use App\Service\BigQuery\BigQuerySyncRunner;
 use App\Service\BigQuery\GoogleSignIn;
+use App\Service\ForensicDatabase\ForensicDatabaseSettings;
 use App\Service\ReportingDatabase\ReportingDatabaseSettings;
 use App\Service\ViewSync\ViewSyncDestinations;
 use App\Service\ViewSync\ViewCatalog;
@@ -96,9 +97,10 @@ final class BigQueryControllerTest extends TestCase
         $crawler = new Crawler((string) $this->page()->getContent());
 
         self::assertSame('Sync', $crawler->filter('h1')->text());
-        // Both destinations are tabs of one Sync page; each says whether it is on.
+        // Every destination is a tab of one Sync page; each says whether it is on.
+        // (The forensic database tab is hidden from standard users by dashboard_allowed.)
         $tabs = $crawler->filter('nav[aria-label="Sync destinations"] li');
-        self::assertCount(2, $tabs);
+        self::assertCount(3, $tabs);
         self::assertSame('/dashboard/bigquery', $tabs->eq(0)->filter('a[aria-current="page"]')->attr('href'));
         self::assertStringContainsString('Off', $tabs->eq(0)->text());
         self::assertSame('/dashboard/reporting-database', $tabs->eq(1)->filter('a')->attr('href'));
@@ -382,7 +384,7 @@ final class BigQueryControllerTest extends TestCase
                 ? new MockResponse('', ['http_code' => 200])
                 : new MockResponse(json_encode(['access_token' => 'a', 'refresh_token' => 'refresh-token', 'scope' => 'https://www.googleapis.com/auth/bigquery openid', 'id_token' => $idToken]), ['http_code' => 200]);
         });
-        $controller = new BigQueryController($config, $settings, new BigQuerySecrets($settings, $this->projectDir), $this->runner, $this->background, new GoogleSignIn($http), new NullLogger(), new ViewSyncDestinations($settings, new ReportingDatabaseSettings($config)));
+        $controller = new BigQueryController($config, $settings, new BigQuerySecrets($settings, $this->projectDir), $this->runner, $this->background, new GoogleSignIn($http), new NullLogger(), new ViewSyncDestinations($settings, new ReportingDatabaseSettings($config), new ForensicDatabaseSettings($config)));
         $request ??= Request::create('/dashboard/bigquery');
         $request->setSession($this->session);
         $authorization = $this->createStub(AuthorizationCheckerInterface::class);
@@ -428,6 +430,9 @@ final class BigQueryControllerTest extends TestCase
         }
         if ($name === 'app_reporting_database') {
             return '/dashboard/reporting-database';
+        }
+        if ($name === 'app_forensic_database') {
+            return '/dashboard/forensic-database';
         }
 
         return '/dashboard/bigquery'.match ($name) {

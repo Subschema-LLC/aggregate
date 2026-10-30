@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Security\Access\DashboardAccessVoter;
 use App\Service\AggregateConfigLoader;
 use App\Service\ViewSync\ViewSyncDestinations;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -30,6 +31,8 @@ final class ViewSyncController extends AbstractController
     {
         $this->denyUnlessPermitted();
 
-        return $this->redirectToRoute($this->destinations->landingRoute());
+        // A destination the user may not open (the forensic database, for a
+        // standard user) is never the landing page.
+        return $this->redirectToRoute($this->destinations->landingRoute(fn (string $route): bool => $this->isGranted(DashboardAccessVoter::ROUTE, $route)));
     }
 }

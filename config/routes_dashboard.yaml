@@ -94,6 +94,10 @@ reporting_database_controller:
     resource: ../src/Controller/ReportingDatabaseController.php
     type: attribute
 
+forensic_database_controller:
+    resource: ../src/Controller/ForensicDatabaseController.php
+    type: attribute
+
 view_sync_controller:
     resource: ../src/Controller/ViewSyncController.php
     type: attribute

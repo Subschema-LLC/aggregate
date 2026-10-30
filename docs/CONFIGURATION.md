@@ -536,6 +536,30 @@ a read-only reporting copy receives approved views only. A value set in the serv
 that overrides `.env.local` is left alone, and the page says where to change it. See [Reporting database](REPORTING-DATABASE.md) for the database
 setup on each engine, every setting, column types and privacy notes.
 
+### Forensic database
+
+**Reporting → Sync → Forensic database** at `/dashboard/forensic-database`
+(administrators only) copies the raw events, the archive tables and the private
+views into a separate, restricted database on an interval, for investigating
+problems without long queries on the application database. Visitor and session
+IDs are replaced by hashes made with a new random key at every sync, which is
+never stored. The page holds settings and status only; it never shows forensic
+rows. The `forensic_database_*` keys in the active YAML environment hold the
+settings, with uppercase environment-variable overrides that lock the matching
+fields; the [scheduled task](SCHEDULED-TASKS.md), `app:forensic-database:sync`,
+`app:forensic-database:check` and `app:forensic-database:configure` work with the
+dashboard disabled.
+
+The connection, `FORENSIC_DATABASE_URL`, is kept like `REPORTING_DATABASE_URL`:
+in `.env.local` or the server environment, never YAML. Aggregate writes only to a
+database whose comment carries `aggregate-forensic-copy` (MariaDB 10.5 and
+later, PostgreSQL) or, on engines that keep no comment (MySQL, SQL Server,
+SQLite), when `forensic_database_access_restricted` confirms that access is
+restricted. It refuses the application database, the reporting database and any
+database marked as a read-only reporting copy. See [Forensic
+database](FORENSIC-DATABASE.md) for the database setup, the hashing, every
+setting and privacy notes.
+
 ## Reporting API and AI assistants
 
 **Reporting → API tokens** at `/dashboard/api-tokens` (administrators only,
@@ -966,6 +990,7 @@ Each variable is the setting's name in uppercase. List settings such as
 with them: the [organization-traffic marker](PRIVACY-COMPLIANCE.md#organization-traffic)
 (`INTERNAL_TRAFFIC_*`), [BigQuery](BIGQUERY.md) (`BIGQUERY_*`), the
 [reporting database](REPORTING-DATABASE.md) (`REPORTING_DATABASE_*`), the
+[forensic database](FORENSIC-DATABASE.md) (`FORENSIC_DATABASE_*`), the
 [BI disclosure thresholds](#bi-disclosure-thresholds) and the
 [reporting timezone](BI-CONNECTION.md#reporting-timezone).
 
