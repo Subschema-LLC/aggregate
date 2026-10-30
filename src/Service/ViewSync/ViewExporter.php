@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace App\Service\ViewSync;
 
 /**
- * Writes one reporting view, read through ViewReader, to a temporary
+ * Writes one reporting view, read through ViewReader (or another ViewSource,
+ * such as the forensic database's reader), to a temporary
  * newline-delimited JSON file with every value in the view's catalog type,
  * and fingerprints its content. Both syncs copy from this snapshot: BigQuery
  * loads the file, and the reporting database reads its rows back. Rows are
@@ -24,7 +25,7 @@ class ViewExporter
     private const FINGERPRINT_FORMAT = 'v1';
 
     public function __construct(
-        private readonly ViewReader $reader,
+        private readonly ViewSource $reader,
         private readonly string $projectDir,
     ) {
     }

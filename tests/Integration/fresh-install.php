@@ -842,7 +842,7 @@ E2E::step('one scheduled task runs the due jobs and the dashboard shows that it 
 
     // Without a terminal, as cron and Plesk run it.
     $run = json_decode(console($root, ['app:scheduler:run', '--json']), true);
-    E2E::check(($run['trigger'] ?? null) === 'schedule' && array_column($run['results'] ?? [], 'status', 'job') === ['analytics_maintenance' => 'ran', 'bigquery_sync' => 'off', 'reporting_database_sync' => 'off'], 'app:scheduler:run: '.json_encode($run));
+    E2E::check(($run['trigger'] ?? null) === 'schedule' && array_column($run['results'] ?? [], 'status', 'job') === ['analytics_maintenance' => 'ran', 'bigquery_sync' => 'off', 'reporting_database_sync' => 'off', 'forensic_database_sync' => 'off'], 'app:scheduler:run: '.json_encode($run));
     $latest = $db->fetchAssociative("SELECT status, triggered_by FROM processing_tasks WHERE task_type = 'analytics_maintenance' AND started_at > :earlier ORDER BY id DESC", ['earlier' => $earlier->modify('+1 day')], ['earlier' => Types::DATETIME_IMMUTABLE]);
     E2E::check($latest === ['status' => 'succeeded', 'triggered_by' => 'schedule'], 'The scheduled maintenance run was not recorded: '.json_encode($latest));
     // Nothing is due now, so the next run prints nothing for cron to mail.

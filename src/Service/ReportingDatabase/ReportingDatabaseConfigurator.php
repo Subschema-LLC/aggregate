@@ -15,25 +15,25 @@ use App\Service\LocalEnvironmentFile;
  */
 class ReportingDatabaseConfigurator
 {
-    public const VARIABLE = 'REPORTING_DATABASE_URL';
-    private const COMMENT = 'Reporting database for BI users; saved by Aggregate after a successful connection test.';
+    public const VARIABLE = ReportingDatabaseConnection::VARIABLE;
+    protected const COMMENT = 'Reporting database for BI users; saved by Aggregate after a successful connection test.';
 
     public function __construct(
         private readonly LocalEnvironmentFile $environment,
-        private readonly ReportingDatabaseConnection $current,
+        protected readonly ReportingDatabaseConnection $current,
     ) {
     }
 
     /** Why the connection cannot be saved from Aggregate, or null when it can. */
     public function problem(): ?string
     {
-        return $this->environment->problem(self::VARIABLE);
+        return $this->environment->problem(static::VARIABLE);
     }
 
     /** Whether .env.local holds the connection, so Aggregate can remove it. */
     public function isSavedHere(): bool
     {
-        return $this->environment->get(self::VARIABLE) !== null;
+        return $this->environment->get(static::VARIABLE) !== null;
     }
 
     /**
@@ -61,7 +61,7 @@ class ReportingDatabaseConfigurator
         }
         $trust = in_array($fields['trust_certificate'] ?? null, [true, '1', 1, 'on'], true);
 
-        return $this->saveUrl(ReportingDatabaseConnection::buildUrl($type, $text('host'), $port === '' ? null : (int) $port, $text('database'), $text('user'), $password, $trust));
+        return $this->saveUrl($this->current::buildUrl($type, $text('host'), $port === '' ? null : (int) $port, $text('database'), $text('user'), $password, $trust));
     }
 
     /**
@@ -83,7 +83,7 @@ class ReportingDatabaseConfigurator
         }
         $probe = $this->current->withUrl($url)->probe();
         try {
-            $this->environment->set(self::VARIABLE, $url, self::COMMENT);
+            $this->environment->set(static::VARIABLE, $url, static::COMMENT);
         } catch (\RuntimeException $e) {
             throw new ReportingDatabaseException('The connection works, but '.$e->getMessage());
         }
@@ -98,6 +98,6 @@ class ReportingDatabaseConfigurator
         if ($problem !== null) {
             throw new ReportingDatabaseException($problem);
         }
-        $this->environment->set(self::VARIABLE, null, self::COMMENT);
+        $this->environment->set(static::VARIABLE, null, static::COMMENT);
     }
 }

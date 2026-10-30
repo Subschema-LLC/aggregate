@@ -39,13 +39,14 @@ final class SchedulerTest extends TestCase
             $this->job('analytics_maintenance', ['status' => 'ran', 'message' => 'Done.']),
             $this->job('bigquery_sync', new \RuntimeException('secret detail')),
             $this->job('reporting_database_sync', ['status' => 'not_due', 'message' => 'Not due yet.']),
+            $this->job('forensic_database_sync', ['status' => 'off', 'message' => 'The forensic database sync is turned off.']),
         );
 
         $run = $scheduler->run(TaskTrigger::schedule());
 
         self::assertTrue($run['ran']);
-        self::assertSame([['analytics_maintenance', 'schedule'], ['bigquery_sync', 'schedule'], ['reporting_database_sync', 'schedule']], $this->calls);
-        self::assertSame(['ran', 'failed', 'not_due'], array_column($run['results'], 'status'));
+        self::assertSame([['analytics_maintenance', 'schedule'], ['bigquery_sync', 'schedule'], ['reporting_database_sync', 'schedule'], ['forensic_database_sync', 'schedule']], $this->calls);
+        self::assertSame(['ran', 'failed', 'not_due', 'off'], array_column($run['results'], 'status'));
         self::assertSame('The job failed (RuntimeException); see the application log.', $run['results'][1]['message']);
     }
 
@@ -101,12 +102,12 @@ final class SchedulerTest extends TestCase
 
     private function scheduler(ScheduledJob ...$jobs): Scheduler
     {
-        $jobs = array_pad($jobs, 3, null);
+        $jobs = array_pad($jobs, 4, null);
         foreach ($jobs as $index => $job) {
             $jobs[$index] = $job ?? $this->job('spare_'.$index, ['status' => 'off', 'message' => '']);
         }
 
-        return new Scheduler($jobs[0], $jobs[1], $jobs[2], $this->projectDir, $this->clock, new NullLogger());
+        return new Scheduler($jobs[0], $jobs[1], $jobs[2], $jobs[3], $this->projectDir, $this->clock, new NullLogger());
     }
 
     /** @param array{status: string, message: string}|\Throwable $result */

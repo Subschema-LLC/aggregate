@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service\ViewSync;
 
 use App\Service\BigQuery\BigQuerySettings;
+use App\Service\ForensicDatabase\ForensicDatabaseSettings;
 use App\Service\ReportingDatabase\ReportingDatabaseSettings;
 
 /**
@@ -17,6 +18,7 @@ final class ViewSyncDestinations
     public function __construct(
         private readonly BigQuerySettings $bigQuery,
         private readonly ReportingDatabaseSettings $reportingDatabase,
+        private readonly ForensicDatabaseSettings $forensicDatabase,
     ) {
     }
 
@@ -31,6 +33,8 @@ final class ViewSyncDestinations
         return [
             'bigquery' => ['label' => 'BigQuery', 'route' => 'app_bigquery', 'on' => $this->isOn($this->bigQuery)],
             'reporting_database' => ['label' => 'Reporting database', 'route' => 'app_reporting_database', 'on' => $this->isOn($this->reportingDatabase)],
+            // Administrators only; the tab is hidden from standard users.
+            'forensic_database' => ['label' => 'Forensic database', 'route' => 'app_forensic_database', 'on' => $this->isOn($this->forensicDatabase)],
         ];
     }
 
@@ -49,17 +53,23 @@ final class ViewSyncDestinations
         return false;
     }
 
-    /** The page the Sync menu entry opens: the first destination that is on, or the first one. */
-    public function landingRoute(): string
+    /**
+     * The page the Sync menu entry opens: the first destination that is on, or
+     * the first one, among those the user may open.
+     *
+     * @param (callable(string): bool)|null $allowed whether the user may open a route; every route when null
+     */
+    public function landingRoute(?callable $allowed = null): string
     {
-        $destinations = $this->all();
+        $destinations = array_values(array_filter($this->all(), static fn (array $destination): bool => $allowed === null || $allowed($destination['route'])));
+        $destinations = $destinations === [] ? array_values($this->all()) : $destinations;
         foreach ($destinations as $destination) {
             if ($destination['on'] === true) {
                 return $destination['route'];
             }
         }
 
-        return $destinations[array_key_first($destinations)]['route'];
+        return $destinations[0]['route'];
     }
 
     private function isOn(ViewSyncSettings $settings): ?bool

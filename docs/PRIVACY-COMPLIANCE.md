@@ -490,6 +490,16 @@ The [reporting database](REPORTING-DATABASE.md) sync is off by default. When an 
 - Each sync replaces the tables, so deletions and threshold changes in Aggregate reach the copy at the next sync. Tables of views that are no longer copied, and the reporting database's own backups, stay until deleted. Include them in your retention and rights-request procedures.
 - The connection, `REPORTING_DATABASE_URL`, is kept in `.env.local` or the server environment, like `DATABASE_URL`. The admin page and `app:reporting-database:configure` write it to `.env.local` after a successful test; its password is never shown, logged or kept in the session. Error messages name views, columns and SQL states, never a rejected value.
 
+## Forensic database
+
+The [forensic database](FORENSIC-DATABASE.md) sync is off by default and managed by administrators only. When it is turned on, the raw `events` table, the archive tables and the selected private views are copied into a separate database that the operator runs, for the people who investigate problems. It is the one sync that copies raw tables.
+
+- Visitor and session IDs are replaced in Aggregate, before anything is written, by HMAC-SHA-256 hashes under a random key made for each copy and wiped when it is written; the key is never stored or logged. A hash therefore cannot be traced back to a browser's ID or matched across copies. Within one copy, one browser's events stay linked, alongside page paths, a generalized user agent, screen width, coarse geography, consent state and enhanced custom properties, so the copies are pseudonymous personal data, not anonymous. Exact enhanced-mode timestamps can still be matched with records kept elsewhere, such as web server logs.
+- Aggregate writes only to a database whose own comment marks it `aggregate-forensic-copy` (MariaDB 10.5 and later, PostgreSQL) or, on engines that keep no comment, after an administrator confirms with `forensic_database_access_restricted` that access is restricted. It refuses the application database, the reporting database and any database marked as a read-only reporting copy for BI users. The mark and the confirmation record a decision; the database's grants enforce it.
+- The dashboard never shows forensic rows, and the copies are not offered to the reporting database, BigQuery, the reporting API or the MCP server.
+- Each sync replaces the copies, so deletions and retention in Aggregate reach them at the next sync. Deselected copies and the forensic database's own backups stay until deleted; include them in your retention and deletion procedures. Because a browser's ID cannot be turned into its hash, rights requests are handled in the application database, and the copy follows at the next sync.
+- Document the purpose, the people who may read the copies and their retention in your records of processing. Whether this processing is appropriate is the operator's decision, with qualified counsel.
+
 ## Reporting API
 
 The [reporting API](REPORTING-API.md) is off by default, behind the `reporting_api` feature flag. When an administrator turns it on and creates tokens, the views each token may read can be downloaded over HTTP by anyone holding that token.
@@ -841,6 +851,7 @@ See the [manual update steps](../DEPLOYMENT.md#manual-update-steps) and the [dat
 - [ ] Provide a server-side rights-request process for enhanced data.
 - [ ] Restrict routine BI users to the approved `bi_anonymous_*` fact views and `bi_dim_*`/`bi_glossary_*` metadata views they need; keep raw `events` and `analytics_glossary` private.
 - [ ] If BigQuery sync is on, document the transfer to Google, restrict the dataset's readers, include it in retention and rights-request procedures, and confirm that any private views synced there are approved.
+- [ ] If the forensic database sync is on, limit the forensic database's readers to the people who investigate problems, mark it or confirm restricted access, document the purpose, and include its copies and backups in retention and deletion procedures.
 - [ ] Review glossary codes and text for identifying information, especially declarations for consent-gated properties.
 - [ ] Validate `anonymous_min_cell_count` against event and goal volumes and re-identification risk.
 - [ ] If geography is enabled, document its legal basis and notice, prefer macro-region, and verify that only the local MMDB is used.

@@ -81,7 +81,7 @@ final class ScheduledTasksControllerTest extends TestCase
         self::assertSame('app:scheduler:run', $crawler->filter('#scheduler-plesk-arguments')->attr('value'));
         self::assertSame('*/5 * * * *', $crawler->filter('#scheduler-plesk-run')->attr('value'));
         self::assertSame(PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION, $crawler->filter('#scheduler-plesk-php')->attr('value'));
-        self::assertSame(['Data lifecycle', 'BigQuery sync', 'Reporting database'], $crawler->filter('.scheduled-tasks-jobs a')->each(static fn (Crawler $link): string => $link->text()));
+        self::assertSame(['Data lifecycle', 'BigQuery sync', 'Reporting database', 'Forensic database'], $crawler->filter('.scheduled-tasks-jobs a')->each(static fn (Crawler $link): string => $link->text()));
     }
 
     public function testOtherServersGetACrontabLineAndTheStateFollowsScheduledRuns(): void
@@ -165,7 +165,7 @@ final class ScheduledTasksControllerTest extends TestCase
     private function scheduler(): Scheduler
     {
         $jobs = [];
-        foreach (['analytics_maintenance' => 'Analytics maintenance', 'bigquery_sync' => 'BigQuery sync', 'reporting_database_sync' => 'Reporting database sync'] as $name => $label) {
+        foreach (['analytics_maintenance' => 'Analytics maintenance', 'bigquery_sync' => 'BigQuery sync', 'reporting_database_sync' => 'Reporting database sync', 'forensic_database_sync' => 'Forensic database sync'] as $name => $label) {
             $job = $this->createStub(ScheduledJob::class);
             $job->method('name')->willReturn($name);
             $job->method('label')->willReturn($label);
@@ -174,7 +174,7 @@ final class ScheduledTasksControllerTest extends TestCase
             $jobs[] = $job;
         }
 
-        return new Scheduler($jobs[0], $jobs[1], $jobs[2], $this->projectDir, $this->clock, new NullLogger());
+        return new Scheduler($jobs[0], $jobs[1], $jobs[2], $jobs[3], $this->projectDir, $this->clock, new NullLogger());
     }
 
     private function controller(Request $request, bool $admin = true): ScheduledTasksController
@@ -234,6 +234,7 @@ final class ScheduledTasksControllerTest extends TestCase
             'app_data_lifecycle' => '/dashboard/data-lifecycle',
             'app_bigquery' => '/dashboard/bigquery',
             'app_reporting_database' => '/dashboard/reporting-database',
+            'app_forensic_database' => '/dashboard/forensic-database',
         };
     }
 }
