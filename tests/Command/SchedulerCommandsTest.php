@@ -36,6 +36,7 @@ final class SchedulerCommandsTest extends TestCase
             'analytics_maintenance' => ['status' => 'not_due', 'message' => 'Not due yet.'],
             'bigquery_sync' => ['status' => 'off', 'message' => 'BigQuery sync is turned off.'],
             'reporting_database_sync' => ['status' => 'not_due', 'message' => 'Not due yet.'],
+            'forensic_database_sync' => ['status' => 'off', 'message' => 'The forensic database sync is turned off.'],
         ];
     }
 
@@ -53,7 +54,7 @@ final class SchedulerCommandsTest extends TestCase
 
         self::assertSame(Command::SUCCESS, $tester->execute([], ['interactive' => false]));
         self::assertSame('', $tester->getDisplay());
-        self::assertSame(['schedule', 'schedule', 'schedule'], $this->triggers);
+        self::assertSame(['schedule', 'schedule', 'schedule', 'schedule'], $this->triggers);
 
         $tester->execute([], ['interactive' => false, 'verbosity' => OutputInterface::VERBOSITY_VERBOSE]);
         self::assertStringContainsString('BigQuery sync is turned off.', $tester->getDisplay());
@@ -80,8 +81,8 @@ final class SchedulerCommandsTest extends TestCase
         $json = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
         self::assertTrue($json['ran']);
         self::assertSame('dashboard', $json['trigger']);
-        self::assertSame(['not_due', 'off', 'not_due'], array_column($json['results'], 'status'));
-        self::assertSame(['dashboard', 'dashboard', 'dashboard'], $this->triggers);
+        self::assertSame(['not_due', 'off', 'not_due', 'off'], array_column($json['results'], 'status'));
+        self::assertSame(['dashboard', 'dashboard', 'dashboard', 'dashboard'], $this->triggers);
     }
 
     public function testStatusSaysWhetherTheScheduledTaskRunsAndHowToSetItUp(): void
@@ -110,7 +111,7 @@ final class SchedulerCommandsTest extends TestCase
         self::assertSame('late', $json['state']);
         self::assertSame('2026-10-15T22:00:00+00:00', $json['last_scheduled_run']['started_at']);
         self::assertSame('httpdocs/bin/console', $json['setup']['plesk']['script_path']);
-        self::assertSame(['analytics_maintenance', 'bigquery_sync', 'reporting_database_sync'], array_column($json['jobs'], 'job'));
+        self::assertSame(['analytics_maintenance', 'bigquery_sync', 'reporting_database_sync', 'forensic_database_sync'], array_column($json['jobs'], 'job'));
     }
 
     public function testOtherServersAreShownTheCrontabLine(): void
@@ -138,7 +139,7 @@ final class SchedulerCommandsTest extends TestCase
             $jobs[] = $job;
         }
 
-        return new Scheduler($jobs[0], $jobs[1], $jobs[2], $this->projectDir, $this->clock, new NullLogger());
+        return new Scheduler($jobs[0], $jobs[1], $jobs[2], $jobs[3], $this->projectDir, $this->clock, new NullLogger());
     }
 
     private function schedulerSetup(string $projectDir): SchedulerSetup

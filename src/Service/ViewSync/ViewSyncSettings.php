@@ -180,7 +180,7 @@ abstract class ViewSyncSettings
         return $interval;
     }
 
-    private static function boolean(mixed $value): ?bool
+    protected static function boolean(mixed $value): ?bool
     {
         if (is_bool($value)) {
             return $value;
@@ -200,7 +200,7 @@ abstract class ViewSyncSettings
     }
 
     /** @return list<string> */
-    private static function viewList(mixed $value, string $key): array
+    protected static function viewList(mixed $value, string $key): array
     {
         if ($value === null || $value === '') {
             return [];
@@ -227,11 +227,11 @@ abstract class ViewSyncSettings
 
     /**
      * @param list<string>          $views
-     * @param array<string, string> $catalog
+     * @param array<string, mixed>  $catalog
      *
      * @return list<string>
      */
-    private static function inCatalogOrder(array $views, array $catalog): array
+    protected static function inCatalogOrder(array $views, array $catalog): array
     {
         return array_values(array_filter(array_keys($catalog), static fn (string $view): bool => in_array($view, $views, true)));
     }

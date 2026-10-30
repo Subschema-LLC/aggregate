@@ -81,7 +81,7 @@ class ReportingDatabaseSyncRunner extends ViewSyncRunner
             return null;
         }
 
-        return $view.' holds row-level or unsuppressed data, and the reporting database is marked as a read-only reporting copy for BI users, who can read every table in it. Only approved views are copied to it: remove '.$view.' from '.ReportingDatabaseSettings::KEY_PRIVATE_VIEWS.', or use another reporting database for it.';
+        return $view.' holds row-level or unsuppressed data, and the reporting database is marked as a read-only reporting copy for BI users, who can read every table in it. Only approved views are copied to it: remove '.$view.' from '.ReportingDatabaseSettings::KEY_PRIVATE_VIEWS.', and to keep row-level data for investigating problems, copy it to the forensic database instead.';
     }
 
     /**

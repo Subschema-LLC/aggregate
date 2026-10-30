@@ -176,7 +176,11 @@ Raw `events`, archive tables, unsuppressed operational views, and
 `analytics_custom_*` projections are private inputs. [BigQuery sync](docs/BIGQUERY.md)
 copies views, never tables: approved views by default, private views only when
 each is listed under `bigquery_private_views`. Keep its credentials in
-`config/secrets` and out of logs and messages. Custom-property projections
+`config/secrets` and out of logs and messages. The [forensic database](docs/FORENSIC-DATABASE.md)
+is the one sync that copies raw tables: keep its identifiers hashed in the
+application under a per-copy key that is never stored, its writes limited to a
+marked or confirmed database, its page administrator-only with no view of the
+rows, and its copies out of `ViewCatalog`. Custom-property projections
 must not weaken the existing anonymous BI contracts or silently expose new data.
 Keep column names and meanings stable for existing BI connections. Coordinate
 destructive or semantic changes through documented migrations. Do not create

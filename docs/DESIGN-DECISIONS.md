@@ -587,6 +587,50 @@ incremental copies of completed time buckets, as for BigQuery; a need for
 indexes or live data would favor database-native replication of the views'
 source tables to a reporting server that hosts the views itself.
 
+### Raw tables copied, with identifiers hashed per copy, into a restricted forensic database
+
+**Decision.** The [forensic database](FORENSIC-DATABASE.md) sync is the one
+exception to copying views only: it copies the raw `events` table, the archive
+tables and the private views into a database of their own that
+`FORENSIC_DATABASE_URL` names, for the people who investigate problems.
+`visitor_id` and `session_id` are replaced, as each row is read and before it is
+written anywhere, by HMAC-SHA-256 under 32 random bytes made for that copy and
+wiped when it is written ([ForensicPseudonyms](../src/Service/ForensicDatabase/ForensicPseudonyms.php)).
+Aggregate writes only to a database whose comment carries
+`aggregate-forensic-copy`, or, where the engine keeps no comment, after
+`forensic_database_access_restricted` confirms restricted access; it refuses the
+application database, the reporting database and any database marked as a
+read-only reporting copy. It reuses the reporting database's connection, table
+writer, schedule and processing tasks. Its page is administrator-only and holds
+settings and status, never rows, and its copies stay out of the view catalog,
+so no BI sync, API token or assistant can reach them.
+
+**Why.** Investigating a collection bug or a consent setting needs the rows
+themselves, which suppressed views cannot give, and running those queries on
+the application database loads the server that collects events. A key that
+lives for one copy keeps one browser's events linked within that copy, which an
+investigation needs, while making a hash impossible to trace back to a
+browser's ID or to match across copies, for anyone, server administrators
+included. Hashing in the application, rather than in a view, keeps the IDs out
+of the export file and the forensic database entirely. The mark follows the
+reporting copy's: who may read a database is decided by its owner, and is read
+from the database itself.
+
+**Trade-off.** Every sync re-reads the whole tables and rewrites
+`forensic_events_v1`, because its hashes change; the daily default keeps that
+load low, and incremental copies would need a stable key, which would allow
+lookups. A hash noted in a ticket matches only its own copy. The copies cannot
+be searched for one person's events, so rights requests stay with the
+application database. The copies are pseudonymous, not anonymous: event `id`,
+exact enhanced timestamps and paths remain, and the mark records a decision that
+only the database's grants enforce. MySQL, SQL Server and SQLite cannot be
+marked, so a YAML confirmation stands in for the mark there.
+
+**What would change it.** A need to follow one browser across copies would call
+for a key kept for a set period, with the lookups that allows; tables too large
+to re-read daily would call for incremental copies of completed time buckets,
+under the same constraint.
+
 ### A read-only HTTP API over the same views
 
 **Decision.** The [reporting API](REPORTING-API.md) returns rows from the

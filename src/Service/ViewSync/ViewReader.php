@@ -16,7 +16,7 @@ use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
  * reporting API reads its pages through select(). Errors name the view and
  * column, never a value.
  */
-class ViewReader
+class ViewReader implements ViewSource
 {
     private const FETCH_ROWS = 2000;
 
@@ -63,7 +63,8 @@ class ViewReader
 
     /**
      * Streams the rows of a read-only query the caller built over catalog
-     * views, each a list of values in select order, with bound parameters.
+     * views (or, for the forensic database, over the tables ForensicCatalog
+     * lists), each a list of values in select order, with bound parameters.
      *
      * @param list<mixed>                                       $params
      * @param list<\Doctrine\DBAL\ParameterType|string|int>  $types

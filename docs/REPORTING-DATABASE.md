@@ -400,7 +400,7 @@ See the [privacy guide](PRIVACY-COMPLIANCE.md#reporting-database).
 | "names the application database" | Create a separate database for reporting; it can be on the same server. |
 | "The reporting database could not be reached" | Check the host, port, database name, user name and password (encoded as in `DATABASE_URL`), and that the server accepts connections from the Aggregate server. |
 | "cannot create and drop tables, which every sync does" | Grant the sync user the privileges [above](#create-the-database). |
-| "… holds row-level or unsuppressed data, and the reporting database is marked as a read-only reporting copy" | Remove the private view from `reporting_database_private_views`, or copy it to another reporting database. See [the mark](#mark-it-as-a-read-only-reporting-copy). |
+| "… holds row-level or unsuppressed data, and the reporting database is marked as a read-only reporting copy" | Remove the private view from `reporting_database_private_views`. To keep row-level data for investigating problems, copy it to the [forensic database](FORENSIC-DATABASE.md) instead. See [the mark](#mark-it-as-a-read-only-reporting-copy). |
 | "marked as the reporting copy of the database …, not of this installation's database" | The database belongs to another installation. Create a reporting database of its own, or change `source=` in its comment if it now belongs to this one. |
 | "The view … cannot be read in this database" | Run the database migrations; regenerate the custom views; turn on geography for `bi_anonymous_geo_events_v1`. |
 | A lock time-out during the swap | A BI query held the table for over 60 seconds. The sync retries after 15 minutes; schedule long refreshes away from the sync. |
