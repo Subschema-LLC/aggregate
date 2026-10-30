@@ -202,7 +202,11 @@ php bin/console app:forensic-database:configure --type=pgsql --host=db.example.n
     --database=aggregate_forensic --user=aggregate_forensic_sync
 ```
 
-The password is asked for, or read with `--password-stdin`. You can also set
+The password is asked for, or read with `--password-stdin`. Add `--enable` to
+turn the sync on in the same step, for the tables and views selected (all of
+them unless changed), and `--interval=1440` to choose how often it copies them;
+the scheduled task then makes the first copy within five minutes. Hosting panels
+such as PRAGMA run it this way. You can also set
 `FORENSIC_DATABASE_URL` yourself in `.env.local` or the server environment,
 written like `DATABASE_URL`, and check it with
 `php bin/console app:forensic-database:check`.
@@ -222,7 +226,7 @@ everything at once.
 | `app:forensic-database:sync --force` | Copy everything now |
 | `app:forensic-database:sync --view=forensic_events_v1` | Limit a run to selected copies (repeatable) |
 | `app:forensic-database:check` | Show the settings and status, then test the connection (`--no-connect` skips the test) |
-| `app:forensic-database:configure` | Test a connection and save it to `.env.local` ([above](#connect-aggregate-to-it)) |
+| `app:forensic-database:configure` | Test a connection and save it to `.env.local`; `--enable [--interval=…]` also turns the sync on ([above](#connect-aggregate-to-it)) |
 
 A sync writes each copy to a temporary file in `var/forensic-database` before it
 loads it, so leave free space there for the largest table; the file is deleted
