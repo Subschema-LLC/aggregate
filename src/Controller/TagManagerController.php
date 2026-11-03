@@ -81,7 +81,8 @@ final class TagManagerController extends AbstractController
         $trackerUrl = $this->trackerUrl($site);
         $trackerTag = null;
         foreach ($settings['tags'] as $tag) {
-            if ($trackerUrl !== null && ($tag['src'] ?? null) === $trackerUrl && ($tag['type'] ?? 'script') === 'script') {
+            $tagSrc = $tag['src'] ?? null;
+            if ($trackerUrl !== null && is_string($tagSrc) && ($tagSrc === $trackerUrl || str_starts_with($tagSrc, $trackerUrl.'&')) && ($tag['type'] ?? 'script') === 'script') {
                 $trackerTag = $tag['id'];
                 break;
             }

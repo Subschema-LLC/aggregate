@@ -68,6 +68,24 @@ export default class extends Controller {
         }
     }
 
+    // Keeps the variable alias datalist in step with the aliases typed on the Variables tab.
+    refreshVariableAliases(event) {
+        const field = event?.target;
+        if (!field || typeof field.matches !== 'function' || !field.matches('input[name^="variables["][name$="[alias]"]')) return;
+        const document = this.element.ownerDocument;
+        const list = typeof document?.getElementById === 'function' ? document.getElementById('tag-variable-aliases') : null;
+        if (!list || typeof list.replaceChildren !== 'function') return;
+        const inputs = Array.from(this.element.querySelectorAll('input[name^="variables["][name$="[alias]"]'));
+        const aliases = inputs
+            .map((input) => (input.value ?? '').trim())
+            .filter((alias, index, all) => /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(alias) && all.indexOf(alias) === index);
+        list.replaceChildren(...aliases.map((alias) => {
+            const option = document.createElement('option');
+            option.value = alias;
+            return option;
+        }));
+    }
+
     say(message) {
         if (this.hasStatusTarget) this.statusTarget.textContent = message;
     }

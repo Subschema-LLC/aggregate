@@ -50,6 +50,175 @@ function isReference(value) {
     return isPlainObject(value) && Object.keys(value).length === 1 && Object.prototype.hasOwnProperty.call(value, '$var');
 }
 
+function isValidAlias(alias) {
+    return typeof alias === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(alias);
+}
+
+/**
+ * Turns an event JSON string into the state for the key-value editor, or null
+ * when the JSON is malformed or contains unsupported fields/nesting.
+ */
+function parseEventForKv(json) {
+    if (!json.trim()) {
+        return { eventNameType: 'string', eventName: '', customData: [], goalEventType: 'string', goalEvent: '', pagePathType: 'string', pagePath: '' };
+    }
+    let event;
+    try {
+        event = JSON.parse(json);
+    } catch (error) {
+        return null;
+    }
+    if (!isPlainObject(event) || Object.keys(event).some((key) => !eventFields.includes(key))) return null;
+    let eventNameType = 'string';
+    let eventName = '';
+    if (Object.prototype.hasOwnProperty.call(event, 'eventName')) {
+        if (isReference(event.eventName) && typeof event.eventName.$var === 'string') {
+            eventNameType = 'var';
+            eventName = event.eventName.$var;
+        } else if (typeof event.eventName === 'string') {
+            eventName = event.eventName;
+        } else {
+            return null;
+        }
+    }
+    const customData = [];
+    if (Object.prototype.hasOwnProperty.call(event, 'customData')) {
+        const data = event.customData;
+        if (Array.isArray(data) && data.length === 0) {
+            // Empty list is treated as no custom properties.
+        } else if (isPlainObject(data)) {
+            for (const [key, val] of Object.entries(data)) {
+                if (isReference(val) && typeof val.$var === 'string') {
+                    customData.push({ key, type: 'var', value: val.$var });
+                } else if (val === null) {
+                    customData.push({ key, type: 'null', value: '' });
+                } else if (typeof val === 'boolean') {
+                    customData.push({ key, type: 'boolean', value: val ? 'true' : 'false' });
+                } else if (typeof val === 'number' && Number.isFinite(val)) {
+                    customData.push({ key, type: 'number', value: String(val) });
+                } else if (typeof val === 'string') {
+                    customData.push({ key, type: 'string', value: val });
+                } else {
+                    return null;
+                }
+            }
+        } else {
+            return null;
+        }
+    }
+    let goalEventType = 'string';
+    let goalEvent = '';
+    if (Object.prototype.hasOwnProperty.call(event, 'goalEvent')) {
+        if (event.goalEvent === null) {
+            goalEventType = 'null';
+        } else if (isReference(event.goalEvent) && typeof event.goalEvent.$var === 'string') {
+            goalEventType = 'var';
+            goalEvent = event.goalEvent.$var;
+        } else if (typeof event.goalEvent === 'string') {
+            goalEvent = event.goalEvent;
+        } else {
+            return null;
+        }
+    }
+    let pagePathType = 'string';
+    let pagePath = '';
+    if (Object.prototype.hasOwnProperty.call(event, 'pagePath')) {
+        if (isReference(event.pagePath) && typeof event.pagePath.$var === 'string') {
+            pagePathType = 'var';
+            pagePath = event.pagePath.$var;
+        } else if (typeof event.pagePath === 'string') {
+            pagePath = event.pagePath;
+        } else {
+            return null;
+        }
+    }
+    return { eventNameType, eventName, customData, goalEventType, goalEvent, pagePathType, pagePath };
+}
+
+/**
+ * Builds the event JSON string and any key-value row validation message from
+ * the structured key-value editor state.
+ */
+function buildEventFromKv(state) {
+    let error = '';
+    const event = {};
+    if (state.eventNameType === 'var') {
+        const alias = state.eventName.trim();
+        event.eventName = { $var: alias };
+        if (!isValidAlias(alias)) error = error || 'The event: eventName needs a valid variable alias, such as "event_name".';
+    } else {
+        event.eventName = state.eventName;
+    }
+
+    const customData = {};
+    const seenKeys = new Set();
+    for (const row of state.customData) {
+        const key = row.key;
+        const type = row.type || 'string';
+        const rawValue = row.value ?? '';
+        if (key === '' && rawValue === '' && !['boolean', 'null'].includes(type)) continue;
+        if (key === '') {
+            error = error || 'The event: enter a property name in customData, or clear the row.';
+            continue;
+        }
+        if (seenKeys.has(key)) {
+            error = error || 'The event: customData has duplicate property "' + key + '". Give each property a unique name.';
+        }
+        seenKeys.add(key);
+        if (type === 'var') {
+            const alias = String(rawValue).trim();
+            customData[key] = { $var: alias };
+            if (!isValidAlias(alias)) error = error || 'The event: customData.' + key + ' needs a valid variable alias, such as "plan".';
+        } else if (type === 'null') {
+            customData[key] = null;
+        } else if (type === 'boolean') {
+            customData[key] = rawValue === 'true' || rawValue === true;
+        } else if (type === 'number') {
+            const trimmed = String(rawValue).trim();
+            const parsed = trimmed === '' ? NaN : Number(trimmed);
+            if (!Number.isFinite(parsed) || (Number.isInteger(parsed) && !Number.isSafeInteger(parsed))) {
+                error = error || 'The event: customData.' + key + ' must be a finite number, such as 1299 or 0.5.';
+                customData[key] = rawValue;
+            } else {
+                customData[key] = parsed;
+            }
+        } else {
+            customData[key] = String(rawValue);
+        }
+    }
+    event.customData = customData;
+
+    if (state.goalEventType === 'null') {
+        event.goalEvent = null;
+    } else if (state.goalEventType === 'var') {
+        const alias = state.goalEvent.trim();
+        if (alias !== '') {
+            event.goalEvent = { $var: alias };
+            if (!isValidAlias(alias)) error = error || 'The event: goalEvent needs a valid variable alias.';
+        }
+    } else if (state.goalEvent !== '') {
+        event.goalEvent = state.goalEvent;
+    }
+
+    if (state.pagePathType === 'var') {
+        const alias = state.pagePath.trim();
+        if (alias !== '') {
+            event.pagePath = { $var: alias };
+            if (!isValidAlias(alias)) error = error || 'The event: pagePath needs a valid variable alias.';
+        }
+    } else if (state.pagePath !== '') {
+        event.pagePath = state.pagePath;
+    }
+
+    if (event.eventName === '' && Object.keys(event.customData).length === 0
+        && !Object.prototype.hasOwnProperty.call(event, 'goalEvent')
+        && !Object.prototype.hasOwnProperty.call(event, 'pagePath')) {
+        return { json: emptyEvent, error };
+    }
+
+    return { json: JSON.stringify(event, null, 4), error };
+}
+
 function parsedArguments(method, argumentsJson, namespaces) {
     if (!namespaces.some((namespace) => method.trim() === namespace + '.emit')) return null;
     try {
@@ -159,11 +328,15 @@ function templates(document) {
 
 export default class extends Controller {
     static targets = ['actionType', 'trigger', 'actionFields', 'eventField', 'source', 'sourceNote', 'template', 'code', 'codeStatus',
-        'method', 'arguments', 'argumentsStatus', 'argumentsMessage', 'argumentsFix', 'event', 'eventStatus'];
+        'method', 'arguments', 'argumentsStatus', 'argumentsMessage', 'argumentsFix', 'event', 'eventStatus',
+        'eventModeButton', 'eventJsonPane', 'eventKvPane', 'eventNameType', 'eventNameInput',
+        'customDataRows', 'addCustomDataButton', 'goalEventType', 'goalEventInput', 'pagePathType', 'pagePathInput'];
 
-    static values = { namespaces: Array };
+    static values = { namespaces: Array, defaultId: String, defaultSrc: String };
 
     connect() {
+        this.eventMode = 'json';
+        this.kvError = '';
         this.update();
     }
 
@@ -171,18 +344,43 @@ export default class extends Controller {
         for (const fields of this.actionFieldsTargets) {
             const selected = fields.dataset.actionFields === this.actionTypeTarget.value;
             fields.hidden = !selected;
-            for (const input of fields.querySelectorAll('input, textarea')) {
+            for (const input of fields.querySelectorAll('input, textarea, select, button')) {
                 input.disabled = !selected;
             }
         }
+        this.syncDefaultTracker();
         const eventNeeded = ['document_event', 'window_event', 'data_layer'].includes(this.triggerTarget.value);
         this.eventFieldTarget.hidden = !eventNeeded;
         this.eventFieldTarget.querySelector('input').disabled = !eventNeeded;
         // A new event starts from its two usual fields.
         if (this.hasEventTarget && this.actionTypeTarget.value === 'event' && !this.eventTarget.value.trim()) this.eventTarget.value = emptyEvent;
+        if (this.actionTypeTarget.value === 'event') {
+            if (this.eventMode !== 'kv') this.syncKvFromEvent();
+            this.updateKvControls();
+        }
         this.checkCode();
         this.checkArguments();
         this.checkEvent();
+    }
+
+    // Clears the prepopulated tracker ID and URL on the new-tag row when the
+    // user switches its action away from script, and restores them if switched
+    // back while still empty.
+    syncDefaultTracker() {
+        if (!this.hasDefaultSrcValue || !this.defaultSrcValue || !this.hasSourceTarget) return;
+        const idInput = this.element?.querySelector?.('input[name$="[id]"]');
+        const defaultId = this.hasDefaultIdValue ? this.defaultIdValue : '';
+        if (this.actionTypeTarget.value !== 'script') {
+            if (this.sourceTarget.value === this.defaultSrcValue && (!idInput || !defaultId || idInput.value === defaultId)) {
+                this.sourceTarget.value = '';
+                if (idInput && defaultId && idInput.value === defaultId) idInput.value = '';
+                this._clearedDefaultTracker = true;
+            }
+        } else if (this._clearedDefaultTracker && this.sourceTarget.value === '' && (!idInput || idInput.value === '')) {
+            this.sourceTarget.value = this.defaultSrcValue;
+            if (idInput && defaultId) idInput.value = defaultId;
+            this._clearedDefaultTracker = false;
+        }
     }
 
     // For a method tag calling the tracker's emit(), says what would be lost,
@@ -211,18 +409,219 @@ export default class extends Controller {
     convertToEvent() {
         if (!this.convertedEvent || !this.hasEventTarget) return;
         this.eventTarget.value = JSON.stringify(this.convertedEvent, null, 4);
+        this.kvError = '';
+        this.syncKvFromEvent();
         this.actionTypeTarget.value = 'event';
         this.update();
         if (typeof this.eventTarget.focus === 'function') this.eventTarget.focus();
     }
 
+    // Toggles the event tag editor between raw JSON and structured key-value pairs.
+    switchEventMode(event) {
+        const mode = typeof event === 'string' ? event : (event?.params?.mode || event?.currentTarget?.dataset?.eventMode);
+        if (mode !== 'kv' && mode !== 'json') return false;
+        if (mode === 'kv') {
+            if (!this.hasEventTarget) return false;
+            const parsed = parseEventForKv(this.eventTarget.value);
+            if (parsed === null) {
+                this.eventMode = 'json';
+                this.checkEvent();
+                if (this.hasEventStatusTarget && !this.eventStatusTarget.textContent) {
+                    const fallback = 'Fix the JSON object before switching to key-value pairs.';
+                    this.eventStatusTarget.textContent = fallback;
+                    this.eventStatusTarget.classList.add('is-danger');
+                }
+                return false;
+            }
+            this.kvError = '';
+            this.applyKvState(parsed);
+            this.eventMode = 'kv';
+        } else {
+            if (this.eventMode === 'kv') this.syncEventFromKv();
+            this.eventMode = 'json';
+        }
+        if (this.hasEventJsonPaneTarget) this.eventJsonPaneTarget.hidden = this.eventMode === 'kv';
+        if (this.hasEventKvPaneTarget) this.eventKvPaneTarget.hidden = this.eventMode !== 'kv';
+        if (this.hasEventModeButtonTarget) {
+            for (const button of this.eventModeButtonTargets) {
+                const active = button.dataset?.eventMode === this.eventMode;
+                button.classList?.toggle('is-primary', active);
+                button.classList?.toggle('is-selected', active);
+                button.setAttribute?.('aria-pressed', active ? 'true' : 'false');
+            }
+        }
+        this.updateKvControls();
+        this.checkEvent();
+        return true;
+    }
+
+    syncKvFromEvent() {
+        if (!this.hasEventTarget || !this.hasCustomDataRowsTarget) return false;
+        const parsed = parseEventForKv(this.eventTarget.value);
+        if (parsed === null) return false;
+        this.applyKvState(parsed);
+        return true;
+    }
+
+    applyKvState(parsed) {
+        if (this.hasEventNameTypeTarget) this.eventNameTypeTarget.value = parsed.eventNameType;
+        if (this.hasEventNameInputTarget) this.eventNameInputTarget.value = parsed.eventName;
+        if (this.hasGoalEventTypeTarget) this.goalEventTypeTarget.value = parsed.goalEventType;
+        if (this.hasGoalEventInputTarget) this.goalEventInputTarget.value = parsed.goalEvent;
+        if (this.hasPagePathTypeTarget) this.pagePathTypeTarget.value = parsed.pagePathType;
+        if (this.hasPagePathInputTarget) this.pagePathInputTarget.value = parsed.pagePath;
+        if (this.hasCustomDataRowsTarget) {
+            const entries = parsed.customData.length ? parsed.customData : [{ key: '', type: 'string', value: '' }];
+            const rows = entries.map((entry) => this.createCustomDataRow(entry)).filter(Boolean);
+            if (typeof this.customDataRowsTarget.replaceChildren === 'function') {
+                this.customDataRowsTarget.replaceChildren(...rows);
+            }
+        }
+        this.updateKvControls();
+    }
+
+    createCustomDataRow(entry = { key: '', type: 'string', value: '' }) {
+        if (!this.hasCustomDataRowsTarget) return null;
+        if (typeof this.customDataRowsTarget.createRow === 'function') {
+            return this.customDataRowsTarget.createRow(entry);
+        }
+        if (!this._rowTemplate) {
+            const first = this.customDataRowsTarget.querySelector?.('[data-custom-data-row]');
+            if (first && typeof first.cloneNode === 'function') this._rowTemplate = first.cloneNode(true);
+        }
+        if (!this._rowTemplate || typeof this._rowTemplate.cloneNode !== 'function') return null;
+        const row = this._rowTemplate.cloneNode(true);
+        const keyInput = row.querySelector('[data-cd-key]');
+        const typeSelect = row.querySelector('[data-cd-type]');
+        const valueInput = row.querySelector('[data-cd-value]');
+        const boolSelect = row.querySelector('[data-cd-bool]');
+        if (keyInput) keyInput.value = entry.key ?? '';
+        if (typeSelect) typeSelect.value = entry.type ?? 'string';
+        if (valueInput) valueInput.value = ['boolean', 'null'].includes(entry.type) ? '' : (entry.value ?? '');
+        if (boolSelect) boolSelect.value = entry.value === 'false' ? 'false' : 'true';
+        return row;
+    }
+
+    addCustomDataRow() {
+        if (!this.hasCustomDataRowsTarget) return;
+        const current = Array.from(this.customDataRowsTarget.querySelectorAll('[data-custom-data-row]'));
+        if (current.length >= 32) return;
+        const row = this.createCustomDataRow({ key: '', type: 'string', value: '' });
+        if (!row) return;
+        this.customDataRowsTarget.appendChild?.(row);
+        this.updateKvControls();
+        row.querySelector?.('[data-cd-key]')?.focus?.();
+    }
+
+    removeCustomDataRow(event) {
+        if (!this.hasCustomDataRowsTarget) return;
+        const target = event?.currentTarget ?? event?.target ?? null;
+        const row = target && typeof target.closest === 'function' ? target.closest('[data-custom-data-row]') : null;
+        const rows = Array.from(this.customDataRowsTarget.querySelectorAll('[data-custom-data-row]'));
+        if (!row || !rows.includes(row)) return;
+        if (rows.length <= 1) {
+            const keyInput = row.querySelector?.('[data-cd-key]');
+            const typeSelect = row.querySelector?.('[data-cd-type]');
+            const valueInput = row.querySelector?.('[data-cd-value]');
+            const boolSelect = row.querySelector?.('[data-cd-bool]');
+            if (keyInput) keyInput.value = '';
+            if (typeSelect) typeSelect.value = 'string';
+            if (valueInput) valueInput.value = '';
+            if (boolSelect) boolSelect.value = 'true';
+        } else {
+            row.remove?.();
+        }
+        this.syncEventFromKv();
+    }
+
+    updateKvControls() {
+        const active = this.actionTypeTarget?.value === 'event';
+        if (this.hasEventNameTypeTarget && this.hasEventNameInputTarget) {
+            const isVar = this.eventNameTypeTarget.value === 'var';
+            this.eventNameInputTarget.placeholder = isVar ? 'event_name' : 'login';
+            if (isVar) this.eventNameInputTarget.setAttribute?.('list', 'tag-variable-aliases');
+            else this.eventNameInputTarget.removeAttribute?.('list');
+        }
+        if (this.hasGoalEventTypeTarget && this.hasGoalEventInputTarget) {
+            const type = this.goalEventTypeTarget.value;
+            this.goalEventInputTarget.disabled = !active || type === 'null';
+            if (type === 'null') this.goalEventInputTarget.value = '';
+            this.goalEventInputTarget.placeholder = type === 'var' ? 'goal_code' : (type === 'null' ? 'null' : 'signup');
+            if (type === 'var') this.goalEventInputTarget.setAttribute?.('list', 'tag-variable-aliases');
+            else this.goalEventInputTarget.removeAttribute?.('list');
+        }
+        if (this.hasPagePathTypeTarget && this.hasPagePathInputTarget) {
+            const isVar = this.pagePathTypeTarget.value === 'var';
+            this.pagePathInputTarget.placeholder = isVar ? 'page_path' : '/checkout/step-2';
+            if (isVar) this.pagePathInputTarget.setAttribute?.('list', 'tag-variable-aliases');
+            else this.pagePathInputTarget.removeAttribute?.('list');
+        }
+        if (!this.hasCustomDataRowsTarget) return;
+        const rows = Array.from(this.customDataRowsTarget.querySelectorAll('[data-custom-data-row]'));
+        for (const row of rows) {
+            const type = row.querySelector?.('[data-cd-type]')?.value || 'string';
+            const valueWrap = row.querySelector?.('[data-cd-value-wrap]');
+            const boolWrap = row.querySelector?.('[data-cd-bool-wrap]');
+            const valueInput = row.querySelector?.('[data-cd-value]');
+            const boolSelect = row.querySelector?.('[data-cd-bool]');
+            if (valueWrap) valueWrap.hidden = type === 'boolean';
+            if (boolWrap) boolWrap.hidden = type !== 'boolean';
+            if (valueInput) {
+                valueInput.disabled = !active || type === 'null' || type === 'boolean';
+                if (type === 'null') valueInput.value = '';
+                valueInput.placeholder = type === 'var' ? 'Variable alias (e.g. plan)' : (type === 'number' ? '0' : (type === 'null' ? 'null' : 'Value'));
+                if (type === 'var') valueInput.setAttribute?.('list', 'tag-variable-aliases');
+                else valueInput.removeAttribute?.('list');
+            }
+            if (boolSelect) boolSelect.disabled = !active || type !== 'boolean';
+        }
+        if (this.hasAddCustomDataButtonTarget) {
+            this.addCustomDataButtonTarget.disabled = !active || rows.length >= 32;
+        }
+    }
+
+    readKvState() {
+        const rows = this.hasCustomDataRowsTarget
+            ? Array.from(this.customDataRowsTarget.querySelectorAll('[data-custom-data-row]')).map((row) => {
+                const type = row.querySelector?.('[data-cd-type]')?.value || 'string';
+                const value = type === 'boolean'
+                    ? (row.querySelector?.('[data-cd-bool]')?.value || 'true')
+                    : (type === 'null' ? '' : (row.querySelector?.('[data-cd-value]')?.value ?? ''));
+                return { key: row.querySelector?.('[data-cd-key]')?.value ?? '', type, value };
+            })
+            : [];
+        return {
+            eventNameType: this.hasEventNameTypeTarget ? this.eventNameTypeTarget.value : 'string',
+            eventName: this.hasEventNameInputTarget ? this.eventNameInputTarget.value : '',
+            customData: rows,
+            goalEventType: this.hasGoalEventTypeTarget ? this.goalEventTypeTarget.value : 'string',
+            goalEvent: this.hasGoalEventInputTarget ? this.goalEventInputTarget.value : '',
+            pagePathType: this.hasPagePathTypeTarget ? this.pagePathTypeTarget.value : 'string',
+            pagePath: this.hasPagePathInputTarget ? this.pagePathInputTarget.value : ''
+        };
+    }
+
+    syncEventFromKv() {
+        if (!this.hasEventTarget) return;
+        this.updateKvControls();
+        const { json, error } = buildEventFromKv(this.readKvState());
+        this.kvError = error;
+        this.eventTarget.value = json;
+        this.checkEvent();
+    }
+
     // Checks the event as the server will, and blocks saving one it would refuse.
     checkEvent() {
         if (!this.hasEventTarget) return;
+        if (this.eventMode !== 'kv') this.kvError = '';
         // The untouched starting point is not an error yet; the server skips it on an empty new row.
-        const untouched = this.eventTarget.value.replace(/\s+/g, '') === emptyEvent.replace(/\s+/g, '');
-        const message = this.eventTarget.disabled || untouched ? '' : eventProblem(this.eventTarget.value);
-        if (typeof this.eventTarget.setCustomValidity === 'function') this.eventTarget.setCustomValidity(message);
+        const untouched = !this.kvError && this.eventTarget.value.replace(/\s+/g, '') === emptyEvent.replace(/\s+/g, '');
+        const message = this.eventTarget.disabled || untouched ? '' : (this.kvError || eventProblem(this.eventTarget.value));
+        const kvVisible = this.eventMode === 'kv' && this.hasEventNameInputTarget;
+        if (typeof this.eventTarget.setCustomValidity === 'function') this.eventTarget.setCustomValidity(kvVisible ? '' : message);
+        if (this.hasEventNameInputTarget && typeof this.eventNameInputTarget.setCustomValidity === 'function') {
+            this.eventNameInputTarget.setCustomValidity(kvVisible ? message : '');
+        }
         if (!this.hasEventStatusTarget) return;
         this.eventStatusTarget.textContent = message;
         this.eventStatusTarget.classList.toggle('is-danger', message !== '');

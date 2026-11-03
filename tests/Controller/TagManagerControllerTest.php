@@ -234,6 +234,13 @@ final class TagManagerControllerTest extends TestCase
         self::assertSame(['eventName' => 'login', 'customData' => ['app' => 'facilitation', 'method' => ['$var' => 'login_method']], 'goalEvent' => null],
             json_decode($row->filter('textarea[name="tags[1][event_json]"]')->text(), true, flags: JSON_THROW_ON_ERROR));
         self::assertSame('tag-1-event-object-status tag-1-event-object-help', $row->filter('#tag-1-event-object')->attr('aria-describedby'));
+        self::assertSame(['Key-value pairs', 'JSON'], $row->filter('[data-event-mode]')->each(static fn (Crawler $button): string => $button->text()));
+        self::assertSame('string', $row->filter('#tag-1-event-name-type option[selected]')->attr('value'));
+        self::assertSame('login', $row->filter('#tag-1-event-name')->attr('value'));
+        self::assertSame(['app', 'method'], $row->filter('[data-custom-data-row] [data-cd-key]')->each(static fn (Crawler $input): string => (string) $input->attr('value')));
+        self::assertSame(['string', 'var'], $row->filter('[data-custom-data-row] [data-cd-type] option[selected]')->each(static fn (Crawler $option): string => (string) $option->attr('value')));
+        self::assertSame(['facilitation', 'login_method'], $row->filter('[data-custom-data-row] [data-cd-value]')->each(static fn (Crawler $input): string => (string) $input->attr('value')));
+        self::assertSame('null', $row->filter('#tag-1-goal-event-type option[selected]')->attr('value'));
     }
 
     public function testAnEventFormFieldIsRefusedOutsideItsActionAndWhenItIsNotAJsonObject(): void
@@ -324,7 +331,7 @@ final class TagManagerControllerTest extends TestCase
         self::assertSame('Second shop', $other->filter('#tag-manager-scope')->text());
         self::assertSame('0', $other->filter('#tag-manager-enabled option[selected]')->attr('value'));
         self::assertCount(1, $other->filter('a[href="/dashboard/consent-manager?site='.$this->otherSiteId.'"].button'));
-        self::assertSame('', $other->filter('#tag-0-id')->attr('value'));
+        self::assertSame(TagManagerController::TRACKER_TAG_ID, $other->filter('#tag-0-id')->attr('value'));
 
         $legacyRequest = Request::create('/dashboard/tag-manager', 'GET', ['site' => '']);
         $legacy = new Crawler((string) $this->controller($legacyRequest)->index($legacyRequest)->getContent());
@@ -332,6 +339,7 @@ final class TagManagerControllerTest extends TestCase
         self::assertSame('Shared configuration', $legacy->filter('#tag-manager-scope')->text());
         self::assertSame('Shared configuration', $legacy->filter('#tag-manager-site option[selected]')->text());
         self::assertStringNotContainsString('Consent manager lite: ', $legacy->text());
+        self::assertSame('', $legacy->filter('#tag-0-id')->attr('value'));
     }
 
     public function testDownloadExportsOnlySelectedPublicSettingsAndRequiresAdmin(): void
@@ -463,7 +471,7 @@ final class TagManagerControllerTest extends TestCase
 
         $again = $this->view($request, ['site' => $this->siteId]);
         self::assertStringNotContainsString('Values preserved', $again->text());
-        self::assertSame('', $again->filter('#tag-0-id')->attr('value'));
+        self::assertSame(TagManagerController::TRACKER_TAG_ID, $again->filter('#tag-0-id')->attr('value'));
     }
 
     public function testRejectedFormIsNotShownForAnotherWebsite(): void
@@ -475,7 +483,7 @@ final class TagManagerControllerTest extends TestCase
 
         $other = $this->view($request, ['site' => $this->otherSiteId]);
         self::assertStringNotContainsString('Values preserved', $other->text());
-        self::assertSame('', $other->filter('#tag-0-id')->attr('value'));
+        self::assertSame(TagManagerController::TRACKER_TAG_ID, $other->filter('#tag-0-id')->attr('value'));
         $first = $this->view($request, ['site' => $this->siteId]);
         self::assertStringNotContainsString('Values preserved', $first->text(), 'a rejected form is offered once');
     }
@@ -519,14 +527,20 @@ final class TagManagerControllerTest extends TestCase
         self::assertSame($tracker, $add->attr('data-pages--tag-manager--index-url-param'));
         self::assertSame(TagManagerController::TRACKER_TAG_ID, $add->attr('data-pages--tag-manager--index-id-param'));
         self::assertSame('0', $view->filter('.tag-settings')->attr('data-pages--tag-manager--index-new-row-value'));
+        self::assertSame(TagManagerController::TRACKER_TAG_ID, $view->filter('#tag-0-id')->attr('value'), 'the new row is prepopulated with the tracker tag ID');
+        self::assertSame($tracker, $view->filter('#tag-0-src')->attr('value'), 'the new row is prepopulated with the website tracker URL');
+        self::assertSame('Add a tag', $view->filter('[data-tag-row] legend')->eq(0)->text());
+        self::assertCount(0, $view->filter('input[name="tags[0][remove]"]'));
         self::assertSame('tag-script-suggestions', $view->filter('#tag-0-src')->attr('list'));
         self::assertSame($tracker, $view->filter('#tag-script-suggestions option')->attr('value'));
 
-        $this->sites->save($this->siteId, ['enabled' => true, 'tags' => [['id' => 'sdk', 'src' => $tracker, 'consent' => 'none']]], ['enabled' => true, 'name' => 'First shop']);
+        $this->sites->save($this->siteId, ['enabled' => true, 'variables' => ['page_type' => 'page.type'], 'tags' => [['id' => 'sdk', 'src' => $tracker.'&cd.page_type={{page_type}}', 'consent' => 'none']]], ['enabled' => true, 'name' => 'First shop']);
         $configured = new Crawler((string) $this->controller($request)->index($request)->getContent());
         self::assertStringContainsString('loaded by the tag sdk', $configured->filter('#tag-manager-tracker-title')->ancestors()->first()->text());
         self::assertCount(0, $configured->filter('[data-action="pages--tag-manager--index#addTracker"]'));
         self::assertCount(0, $configured->filter('#tag-script-suggestions'));
+        self::assertSame('', $configured->filter('#tag-1-id')->attr('value'), 'once a tag loads the tracker, the new row stays empty');
+        self::assertSame('', $configured->filter('#tag-1-src')->attr('value'));
         self::assertNull($configured->filter('#tag-1-src')->attr('list'));
 
         $shared = Request::create('/dashboard/tag-manager', 'GET', ['site' => '']);

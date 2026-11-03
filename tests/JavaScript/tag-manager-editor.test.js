@@ -423,3 +423,206 @@ test('"Run after" lists follow the IDs typed into other rows and keep the curren
   other.controller.refreshRunAfter({target: {matches: () => false}});
   assert.deepEqual(other.choices(0), [''], 'typing in other fields changes nothing');
 });
+
+function kvEditor(initialJson = '{\n    "eventName": "",\n    "customData": {}\n}') {
+  const makeControl = (value = '') => ({
+    value, disabled: false, hidden: false, placeholder: '', attrs: {}, validity: '',
+    setAttribute(k, v) { this.attrs[k] = v; },
+    removeAttribute(k) { delete this.attrs[k]; },
+    setCustomValidity(msg) { this.validity = msg; },
+    focus() { this.focused = true; }
+  });
+  const createRow = (entry = {key: '', type: 'string', value: ''}) => {
+    const controls = {
+      '[data-cd-key]': makeControl(entry.key ?? ''),
+      '[data-cd-type]': makeControl(entry.type ?? 'string'),
+      '[data-cd-value]': makeControl(['boolean', 'null'].includes(entry.type) ? '' : (entry.value ?? '')),
+      '[data-cd-bool]': makeControl(entry.value === 'false' ? 'false' : 'true'),
+      '[data-cd-value-wrap]': {hidden: entry.type === 'boolean'},
+      '[data-cd-bool-wrap]': {hidden: entry.type !== 'boolean'}
+    };
+    const row = {
+      controls,
+      querySelector: (sel) => controls[sel] ?? null,
+      closest: (sel) => sel === '[data-custom-data-row]' ? row : null,
+      remove: () => { rows = rows.filter((item) => item !== row); }
+    };
+    return row;
+  };
+  let rows = [createRow()];
+  const customDataRows = {
+    createRow,
+    querySelectorAll: () => rows,
+    replaceChildren: (...next) => { rows = next; },
+    appendChild: (row) => { rows.push(row); }
+  };
+  const eventInput = makeControl(initialJson);
+  const eventStatus = {textContent: '', classList: classes()};
+  const eventJsonPane = {hidden: false};
+  const eventKvPane = {hidden: true};
+  const kvButton = {dataset: {eventMode: 'kv'}, classList: classes(), attrs: {}, setAttribute(k, v) { this.attrs[k] = v; }};
+  const jsonButton = {dataset: {eventMode: 'json'}, classList: classes(), attrs: {}, setAttribute(k, v) { this.attrs[k] = v; }};
+  const eventNameType = makeControl('string');
+  const eventNameInput = makeControl('');
+  const goalEventType = makeControl('string');
+  const goalEventInput = makeControl('');
+  const pagePathType = makeControl('string');
+  const pagePathInput = makeControl('');
+  const addCustomDataButton = makeControl('');
+  const controller = Object.assign(new Editor(), {
+    actionTypeTarget: {value: 'event'},
+    triggerTarget: {value: 'dom_ready'},
+    actionFieldsTargets: [{dataset: {actionFields: 'event'}, querySelectorAll: () => [eventInput, eventNameInput, goalEventInput, pagePathInput]}],
+    eventFieldTarget: {querySelector: () => makeControl('')},
+    hasEventTarget: true, eventTarget: eventInput,
+    hasEventStatusTarget: true, eventStatusTarget: eventStatus,
+    hasEventJsonPaneTarget: true, eventJsonPaneTarget: eventJsonPane,
+    hasEventKvPaneTarget: true, eventKvPaneTarget: eventKvPane,
+    hasEventModeButtonTarget: true, eventModeButtonTargets: [kvButton, jsonButton],
+    hasEventNameTypeTarget: true, eventNameTypeTarget: eventNameType,
+    hasEventNameInputTarget: true, eventNameInputTarget: eventNameInput,
+    hasCustomDataRowsTarget: true, customDataRowsTarget: customDataRows,
+    hasAddCustomDataButtonTarget: true, addCustomDataButtonTarget: addCustomDataButton,
+    hasGoalEventTypeTarget: true, goalEventTypeTarget: goalEventType,
+    hasGoalEventInputTarget: true, goalEventInputTarget: goalEventInput,
+    hasPagePathTypeTarget: true, pagePathTypeTarget: pagePathType,
+    hasPagePathInputTarget: true, pagePathInputTarget: pagePathInput
+  });
+  controller.connect();
+  return {
+    controller, eventInput, eventStatus, eventJsonPane, eventKvPane, kvButton, jsonButton,
+    eventNameType, eventNameInput, goalEventType, goalEventInput, pagePathType, pagePathInput,
+    addCustomDataButton, getRows: () => rows
+  };
+}
+
+test('the event editor toggles between JSON and key-value pairs and syncs every value type', () => {
+  const initial = JSON.stringify({
+    eventName: 'purchase',
+    customData: {plan: 'pro', sku: {$var: 'first_sku'}, total_minor: 1299, is_trial: false, coupon: null},
+    goalEvent: 'checkout',
+    pagePath: '/checkout/complete'
+  }, null, 4);
+  const ed = kvEditor(initial);
+  assert.equal(ed.controller.switchEventMode({params: {mode: 'kv'}}), true);
+  assert.equal(ed.eventJsonPane.hidden, true);
+  assert.equal(ed.eventKvPane.hidden, false);
+  assert.equal(ed.kvButton.classList.contains('is-primary'), true);
+  assert.equal(ed.jsonButton.classList.contains('is-primary'), false);
+  assert.equal(ed.eventNameType.value, 'string');
+  assert.equal(ed.eventNameInput.value, 'purchase');
+  assert.equal(ed.goalEventType.value, 'string');
+  assert.equal(ed.goalEventInput.value, 'checkout');
+  assert.equal(ed.pagePathType.value, 'string');
+  assert.equal(ed.pagePathInput.value, '/checkout/complete');
+
+  const rows = ed.getRows();
+  assert.equal(rows.length, 5);
+  assert.deepEqual(rows.map((r) => [r.querySelector('[data-cd-key]').value, r.querySelector('[data-cd-type]').value]), [
+    ['plan', 'string'], ['sku', 'var'], ['total_minor', 'number'], ['is_trial', 'boolean'], ['coupon', 'null']
+  ]);
+  assert.equal(rows[1].querySelector('[data-cd-value]').attrs.list, 'tag-variable-aliases');
+  assert.equal(rows[3].querySelector('[data-cd-value-wrap]').hidden, true);
+  assert.equal(rows[3].querySelector('[data-cd-bool-wrap]').hidden, false);
+  assert.equal(rows[3].querySelector('[data-cd-bool]').value, 'false');
+  assert.equal(rows[4].querySelector('[data-cd-value]').disabled, true);
+
+  // Add a property row, remove coupon, and switch goalEvent to null and eventName to a variable.
+  ed.controller.addCustomDataRow();
+  assert.equal(ed.getRows().length, 6);
+  const added = ed.getRows()[5];
+  added.querySelector('[data-cd-key]').value = 'currency';
+  added.querySelector('[data-cd-type]').value = 'string';
+  added.querySelector('[data-cd-value]').value = 'USD';
+  ed.controller.removeCustomDataRow({currentTarget: rows[4]});
+  assert.equal(ed.getRows().length, 5);
+
+  ed.eventNameType.value = 'var';
+  ed.eventNameInput.value = 'dynamic_event';
+  ed.goalEventType.value = 'null';
+  ed.pagePathType.value = 'var';
+  ed.pagePathInput.value = 'virtual_path';
+  ed.controller.syncEventFromKv();
+
+  assert.equal(ed.eventStatus.textContent, '');
+  assert.deepEqual(JSON.parse(ed.eventInput.value), {
+    eventName: {$var: 'dynamic_event'},
+    customData: {plan: 'pro', sku: {$var: 'first_sku'}, total_minor: 1299, is_trial: false, currency: 'USD'},
+    goalEvent: null,
+    pagePath: {$var: 'virtual_path'}
+  });
+
+  assert.equal(ed.controller.switchEventMode('json'), true);
+  assert.equal(ed.eventJsonPane.hidden, false);
+  assert.equal(ed.eventKvPane.hidden, true);
+});
+
+test('key-value pairs validate duplicate keys, numbers and variable aliases, and invalid JSON stays in JSON mode', () => {
+  const ed = kvEditor();
+  ed.controller.switchEventMode('kv');
+  ed.eventNameInput.value = 'login';
+  const first = ed.getRows()[0];
+  first.querySelector('[data-cd-key]').value = 'attempts';
+  first.querySelector('[data-cd-type]').value = 'number';
+  first.querySelector('[data-cd-value]').value = 'not-a-number';
+  ed.controller.syncEventFromKv();
+  assert.equal(ed.eventStatus.textContent, 'The event: customData.attempts must be a finite number, such as 1299 or 0.5.');
+  assert.equal(ed.eventNameInput.validity, ed.eventStatus.textContent);
+  assert.equal(ed.eventInput.validity, '', 'hidden JSON textarea does not hold custom validity while in key-value mode');
+
+  first.querySelector('[data-cd-value]').value = '3';
+  ed.controller.addCustomDataRow();
+  const second = ed.getRows()[1];
+  second.querySelector('[data-cd-key]').value = 'attempts';
+  second.querySelector('[data-cd-value]').value = 'duplicate';
+  ed.controller.syncEventFromKv();
+  assert.equal(ed.eventStatus.textContent, 'The event: customData has duplicate property "attempts". Give each property a unique name.');
+
+  second.querySelector('[data-cd-key]').value = 'method';
+  second.querySelector('[data-cd-type]').value = 'var';
+  second.querySelector('[data-cd-value]').value = 'bad alias!';
+  ed.controller.syncEventFromKv();
+  assert.equal(ed.eventStatus.textContent, 'The event: customData.method needs a valid variable alias, such as "plan".');
+
+  // Invalid JSON in the textarea cannot switch to key-value mode until fixed.
+  ed.controller.switchEventMode('json');
+  ed.eventInput.value = '{"eventName": "login",';
+  assert.equal(ed.controller.switchEventMode('kv'), false);
+  assert.equal(ed.eventJsonPane.hidden, false);
+  assert.match(ed.eventStatus.textContent, /^The event must be a JSON object/);
+});
+
+test('prepopulated tracker values on the new row clear when switching to another action and restore when switching back', () => {
+  const row = editor('script', 'dom_ready');
+  const idInput = {value: 'aggregate-tracker'};
+  row.scriptInput.value = tracker;
+  Object.assign(row.controller, {
+    element: {querySelector: () => idInput},
+    hasSourceTarget: true, sourceTarget: row.scriptInput,
+    hasDefaultIdValue: true, defaultIdValue: 'aggregate-tracker',
+    hasDefaultSrcValue: true, defaultSrcValue: tracker
+  });
+
+  row.controller.actionTypeTarget.value = 'call';
+  row.controller.update();
+  assert.equal(idInput.value, '', 'switching away from script clears the prepopulated tracker ID');
+  assert.equal(row.scriptInput.value, '', 'switching away from script clears the prepopulated tracker URL');
+
+  row.controller.actionTypeTarget.value = 'script';
+  row.controller.update();
+  assert.equal(idInput.value, 'aggregate-tracker', 'switching back to an untouched script row restores the tracker ID');
+  assert.equal(row.scriptInput.value, tracker, 'switching back to an untouched script row restores the tracker URL');
+});
+
+test('typing variable aliases refreshes the datalist used by key-value variable fields', () => {
+  const list = {options: [], replaceChildren(...opts) { this.options = opts; }};
+  const inputs = [{value: 'plan'}, {value: 'login_method'}, {value: 'plan'}, {value: 'bad-alias'}];
+  const controller = Object.assign(new Page(), {
+    element: {
+      ownerDocument: {getElementById: (id) => id === 'tag-variable-aliases' ? list : null, createElement: () => ({value: ''})},
+      querySelectorAll: () => inputs
+    }
+  });
+  controller.refreshVariableAliases({target: {matches: (sel) => sel === 'input[name^="variables["][name$="[alias]"]'}});
+  assert.deepEqual(list.options.map((o) => o.value), ['plan', 'login_method']);
+});
