@@ -80,6 +80,28 @@ final class ForensicDatabaseSettings extends ViewSyncSettings
         ];
     }
 
+    /**
+     * Turns the sync on, keeping the tables and views selected (every one of
+     * them unless changed) and the interval unless one is given. Settings the
+     * environment controls keep their values (see save()), so the result says
+     * what is in effect.
+     *
+     * @return array{forensic_database_enabled: bool, forensic_database_tables: list<string>, forensic_database_views: list<string>, forensic_database_interval_minutes: int, forensic_database_access_restricted: bool}
+     *
+     * @throws \InvalidArgumentException when nothing is selected to copy, or the interval is invalid
+     * @throws \RuntimeException         when the configuration cannot be written
+     */
+    public function enable(?int $interval = null): array
+    {
+        $candidate = [self::KEY_ENABLED => true];
+        if ($interval !== null) {
+            $candidate[self::KEY_INTERVAL] = $interval;
+        }
+        $this->save($candidate);
+
+        return $this->toArray();
+    }
+
     /** Whether the administrator confirmed that access to an unmarkable forensic database is restricted. */
     public function accessRestricted(): bool
     {
