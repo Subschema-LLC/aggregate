@@ -405,12 +405,12 @@ Follow the [code of conduct](CODE_OF_CONDUCT.md), review the [roadmap](ROADMAP.m
 
 | Capability | AGGREGATE | GA4 | Plausible / Umami | Matomo |
 | :--- | :--- | :--- | :--- | :--- |
-| **Architecture** | Curated SQL views + Dashboard | Cloud Ad-Tech | Dashboard only | Legacy suite |
-| **Stack** | **PHP + MariaDB 10.6+ or SQLite** | SaaS only | Docker + ClickHouse | PHP + MySQL |
+| **Architecture** | Curated SQL views + Dashboard | Cloud Ad-Tech | Dashboard only | Large, full suite |
+| **Stack** | **PHP + MariaDB 10.6+/MS SQL/PostgreSQL or SQLite** | SaaS only | Docker + ClickHouse | PHP + MySQL |
 | **Default Privacy** | **Zero IPs, zero visitor IDs** | Cloud tracking | Cookieless hash | Config required |
 | **Built-in Consent & Tag Manager** | **Yes (`cmp-lite` + Tag Manager Lite)** | No (Paid CMP + GTM) | No | Plugin required |
 | **Direct BI / SQL Views** | **Documented SQL Views + Reporting API v1** | Paid BigQuery export | Raw tables only | Raw tables only |
-| **Native AI Integration** | **Built-in Read-Only MCP Server** | None | None | None |
+| **Native AI Integration** | **Built-in Read-Only MCP Server** | AI Assistant in UI | Native MCP Server | Native MCP Server |
 
 ## License & Commercial Portal Usage (AGPL-3.0)
 
