@@ -808,7 +808,7 @@ tamper evidence would add a hash chain or an external sink, such as syslog.
 ### Transactional email through Symfony Mailer's bridges, not vendor SDKs
 
 **Decision.** Aggregate sends its own email through Symfony Mailer, with the
-official Postmark, SendGrid and Mailgun bridges, a generic SMTP choice and a raw
+official Postmark, SendGrid, Mailgun and Resend bridges, a generic SMTP choice and a raw
 mailer DSN for any other transport. Each service is one small `EmailProvider`
 class that turns its YAML settings and its one credential into a transport;
 settings, credentials, templates, sending, redaction and recording are shared
@@ -829,7 +829,7 @@ message content out of a queue table, and a test can run before email is turned
 on.
 
 **Trade-off.** A send waits for the service in the request or command that
-causes it, with no automatic retry. Services beyond the built-in three need
+causes it, with no automatic retry. Services beyond the built-in four need
 their bridge installed, which release updates do not preserve, so first-class
 support means shipping the bridge and a provider class. Message IDs and redacted
 failure reasons are all the records hold, so investigating a delivery problem

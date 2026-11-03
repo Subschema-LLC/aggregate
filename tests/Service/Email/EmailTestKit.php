@@ -8,6 +8,7 @@ use Psr\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\Mailer\Bridge\Mailgun\Transport\MailgunTransportFactory;
 use Symfony\Component\Mailer\Bridge\Postmark\Transport\PostmarkTransportFactory;
+use Symfony\Component\Mailer\Bridge\Resend\Transport\ResendTransportFactory;
 use Symfony\Component\Mailer\Bridge\Sendgrid\Transport\SendgridTransportFactory;
 use Symfony\Component\Mailer\Transport;
 use Symfony\Component\Mailer\Transport\NullTransportFactory;
@@ -22,6 +23,7 @@ final class EmailTestKit
             new PostmarkTransportFactory($dispatcher, $client),
             new SendgridTransportFactory($dispatcher, $client),
             new MailgunTransportFactory($dispatcher, $client),
+            new ResendTransportFactory($dispatcher, $client),
             new NullTransportFactory($dispatcher, $client),
             new EsmtpTransportFactory($dispatcher, $client),
         ]);

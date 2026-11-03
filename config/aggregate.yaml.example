@@ -646,10 +646,10 @@ environments:
 # managed on Administration → Email. Uppercase environment variables with the
 # same names override these values. Credentials are never kept here: they go in
 # config/secrets/email.yaml (postmark_server_token, sendgrid_api_key,
-# mailgun_api_key, smtp_password or dsn) or EMAIL_<KEY> variables.
+# mailgun_api_key, resend_api_key, smtp_password or dsn) or EMAIL_<KEY> variables.
 #
 # email_enabled: false
-# email_provider: ''                    # postmark, sendgrid, mailgun, smtp or dsn
+# email_provider: ''                    # postmark, sendgrid, mailgun, resend, smtp or dsn
 # email_from_address: no-reply@example.com
 # email_from_name: ''                   # Empty: the brand name
 # email_reply_to: ''
@@ -657,6 +657,7 @@ environments:
 # email_sendgrid_region: global         # global or eu
 # email_mailgun_domain: mg.example.com
 # email_mailgun_region: us              # us or eu
+# email_resend_domain: send.example.com
 # email_smtp_host: smtp.example.com
 # email_smtp_port: 587
 # email_smtp_username: ''
