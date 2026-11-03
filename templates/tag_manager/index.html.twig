@@ -4,10 +4,13 @@
 
 {% block body %}
 {% set rows = settings.tags %}
+{% set existing_tag_ids = rows|map(row => row.id|default(''))|filter(id => id != '') %}
 {% set has_new_row = rows|length < max_tags %}
-{% if has_new_row %}{% set rows = rows|merge([{id: '', src: '', type: 'script', enabled: true, consent: 'analytics', trigger: {type: 'dom_ready'}}]) %}{% endif %}
 {% set suggest_tracker = tracker_url and not tracker_tag %}
-<div class="tag-settings" data-site-id="{{ selected_site }}" data-controller="pages--tag-manager--index" data-action="input->pages--tag-manager--index#refreshRunAfter"{% if has_new_row %} data-pages--tag-manager--index-new-row-value="{{ rows|length - 1 }}"{% endif %}>
+{% set prepopulate_tracker = suggest_tracker and not restored_form|default(false) %}
+{% set new_row_id = prepopulate_tracker and (tracker_tag_id|default('aggregate-tracker') not in existing_tag_ids) ? tracker_tag_id|default('aggregate-tracker') : '' %}
+{% if has_new_row %}{% set rows = rows|merge([{id: new_row_id, src: prepopulate_tracker ? tracker_url : '', type: 'script', enabled: true, consent: 'analytics', trigger: {type: 'dom_ready'}, is_new: true}]) %}{% endif %}
+<div class="tag-settings" data-site-id="{{ selected_site }}" data-controller="pages--tag-manager--index" data-action="input->pages--tag-manager--index#refreshRunAfter input->pages--tag-manager--index#refreshVariableAliases"{% if has_new_row %} data-pages--tag-manager--index-new-row-value="{{ rows|length - 1 }}"{% endif %}>
     <div class="level">
         <div class="level-left">
             <div>
@@ -146,11 +149,12 @@
             </div>
 
             <div id="pane-tags" class="workspace-pane nested-toggle-pane" role="tabpanel" aria-labelledby="tab-tags" data-toggle-pane="tags" data-pane-name="tags" hidden>
-                {% set tag_ids = rows|map(row => row.id|default(''))|filter(id => id != '') %}
+                {% set tag_ids = existing_tag_ids %}
                 {% for tag in rows %}
                     {{ component('TagManager:TagRow', {index: loop.index0, tag: tag, script_suggestions: suggest_tracker, custom_scripts_enabled: custom_scripts_enabled, custom_templates: custom_templates, tag_ids: tag_ids, tracker_namespaces: tracker_namespaces}) }}
                 {% endfor %}
                 {% if suggest_tracker %}<datalist id="tag-script-suggestions"><option value="{{ tracker_url }}">This website's tracker</option></datalist>{% endif %}
+                <datalist id="tag-variable-aliases">{% for alias in variable_rows|map(row => row.alias|default(''))|filter(alias => alias != '') %}<option value="{{ alias }}"></option>{% endfor %}</datalist>
                 {# Starter templates for custom JavaScript, read by the tag row editor. #}
                 <script type="application/json" id="tag-custom-templates">{{ custom_templates_json|raw }}</script>
                 <datalist id="tag-consent-categories"><option value="analytics">Analytics</option><option value="functional">Functional</option><option value="marketing">Marketing</option><option value="none">No consent required</option></datalist>
