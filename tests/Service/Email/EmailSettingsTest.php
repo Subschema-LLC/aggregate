@@ -38,6 +38,7 @@ final class EmailSettingsTest extends TestCase
         self::assertSame('outbound', $settings['email_postmark_message_stream']);
         self::assertSame('global', $settings['email_sendgrid_region']);
         self::assertSame('us', $settings['email_mailgun_region']);
+        self::assertSame('', $settings['email_resend_domain']);
         self::assertSame(587, $settings['email_smtp_port']);
         self::assertSame('starttls', $settings['email_smtp_encryption']);
     }
@@ -47,7 +48,7 @@ final class EmailSettingsTest extends TestCase
         foreach ([
             [['email_enabled' => true], 'Choose the email service'],
             [['email_enabled' => true, 'email_provider' => 'postmark'], 'Enter the address email is sent from'],
-            [['email_provider' => 'acme'], 'email_provider must be one of postmark, sendgrid, mailgun, smtp, dsn'],
+            [['email_provider' => 'acme'], 'email_provider must be one of postmark, sendgrid, mailgun, resend, smtp, dsn'],
             [['email_from_address' => 'not an address'], 'email_from_address must be an email address'],
             [['email_reply_to' => 'nobody@'], 'email_reply_to must be an email address'],
             [['email_from_name' => "Two\nlines"], 'email_from_name must be a name'],

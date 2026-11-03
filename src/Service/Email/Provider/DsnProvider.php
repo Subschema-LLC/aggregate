@@ -14,7 +14,7 @@ use Symfony\Component\Mime\Email;
 
 /**
  * Any transport Symfony Mailer can build from a DSN: another service whose
- * bridge package is installed (Amazon SES, Brevo, Resend and others), or
+ * bridge package is installed (Amazon SES, Brevo, Mailtrap and others), or
  * failover(…) and roundrobin(…) between several. The whole DSN is the
  * credential, since it carries the key.
  */

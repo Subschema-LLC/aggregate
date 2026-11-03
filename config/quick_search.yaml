@@ -256,6 +256,7 @@ parameters:
         - postmark
         - sendgrid
         - mailgun
+        - resend
         - transactional email
         - sender
         - from address
