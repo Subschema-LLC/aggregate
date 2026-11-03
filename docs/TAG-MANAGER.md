@@ -233,8 +233,11 @@ tag_manager:
       trigger: {type: data_layer, event: login}
 ```
 
-In the dashboard, choose **Send an Aggregate event** and enter the event as JSON.
-A new event starts from `eventName` and an empty `customData`:
+In the dashboard, choose **Send an Aggregate event** and edit the event as
+**JSON** or toggle to **Key-value pairs** to set `eventName`, each `customData`
+property with its value type (text, variable, number, boolean or null), and
+optional `goalEvent` and `pagePath` fields. A new event starts from `eventName`
+and an empty `customData`:
 
 ```json
 {
@@ -332,10 +335,10 @@ element, markup or a `<noscript>` pixel is rejected. Custom HTML tags are a
 The manager runs your code as the body of this function:
 
 ```javascript
-function (tag) {
+(function (tag) {
   'use strict';
   // your code
-}
+})
 ```
 
 Variables and functions you declare stay inside the tag, so two tags cannot
@@ -610,9 +613,10 @@ still read page and browser information.
 ### Load the tracker through the manager
 
 The Tag manager page shows the selected website's tracker URL above its
-settings. **Add as a new tag** fills the empty tag row with that URL, a
-**Document ready** trigger and the ID `aggregate-tracker`, without saving; empty
-script URL fields also offer it as a suggestion. Both installation pages offer
+settings and prepopulates the new-tag row with that URL, a **Document ready**
+trigger and the ID `aggregate-tracker` until a tag loads the tracker. **Add as
+a new tag** also fills or jumps to the new-tag row without saving, and empty
+script URL fields offer the URL as a suggestion. Both installation pages offer
 the same URL with **Copy tracker URL** in tag-manager mode. Choose `none` to
 allow anonymous tracking before an analytics choice, or `analytics` to wait for
 analytics consent before loading any tracker code. Enable the tag manager and
