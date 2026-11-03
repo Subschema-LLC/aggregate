@@ -401,6 +401,25 @@ Contributions developed with AI coding agents are welcome. Bring your own expert
 
 Follow the [code of conduct](CODE_OF_CONDUCT.md), review the [roadmap](ROADMAP.md) before proposing substantial work, and use the [security policy](SECURITY.md) for private vulnerability reports.
 
+## How AGGREGATE Compares
+
+| Capability | AGGREGATE | GA4 | Plausible / Umami | Matomo |
+| :--- | :--- | :--- | :--- | :--- |
+| **Architecture** | Curated SQL views + Dashboard | Cloud Ad-Tech | Dashboard only | Large, full suite |
+| **Stack** | **PHP + MariaDB 10.6+/MS SQL/PostgreSQL or SQLite** | SaaS only | Docker + ClickHouse | PHP + MySQL |
+| **Default Privacy** | **Zero IPs, zero visitor IDs** | Cloud tracking | Cookieless hash | Config required |
+| **Built-in Consent & Tag Manager** | **Yes (`cmp-lite` + Tag Manager Lite)** | No (Paid CMP + GTM) | No | Plugin required |
+| **Direct BI / SQL Views** | **Documented SQL Views + Reporting API v1** | Paid BigQuery export | Raw tables only | Raw tables only |
+| **Native AI Integration** | **Built-in Read-Only MCP Server** | AI Assistant in UI | Native MCP Server | Native MCP Server |
+
+## License & Commercial Portal Usage (AGPL-3.0)
+
+AGGREGATE is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.
+
+- **Tracking Proprietary Websites:** Loading `aggregate.js` or `consent.js` on your proprietary website or enterprise portal happens over standard HTTP calls and **does not** subject your website's code to the AGPL-3.0.
+- **Querying Data:** Connecting Power BI, Tableau, scripts, or AI assistants to AGGREGATE's SQL views, Reporting API, or MCP server **does not** trigger copyleft requirements on your external tools.
+- **Modifying AGGREGATE:** Copyleft source-sharing requirements apply when you modify AGGREGATE and convey it or make the modified version available for network use, subject to the AGPL-3.0.
+
 ## License
 
 The license split is:
