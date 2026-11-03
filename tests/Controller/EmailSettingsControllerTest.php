@@ -83,15 +83,17 @@ final class EmailSettingsControllerTest extends TestCase
 
         self::assertSame('Email - Example Analytics', $crawler->filter('title')->text());
         self::assertStringContainsString('Email is off', $crawler->filter('.email-status')->text());
-        self::assertSame(['', 'postmark', 'sendgrid', 'mailgun', 'smtp', 'dsn'], $crawler->filter('select[name="email_provider"] option')->each(static fn (Crawler $option): string => (string) $option->attr('value')));
-        self::assertCount(5, $crawler->filter('.email-provider[data-provider]'));
+        self::assertSame(['', 'postmark', 'sendgrid', 'mailgun', 'resend', 'smtp', 'dsn'], $crawler->filter('select[name="email_provider"] option')->each(static fn (Crawler $option): string => (string) $option->attr('value')));
+        self::assertCount(6, $crawler->filter('.email-provider[data-provider]'));
         self::assertCount(0, $crawler->filter('.email-provider[open]'), 'Before a service is chosen, all provider cards are collapsed by default');
         self::assertCount(0, $crawler->filter('[data-provider-selected-badge]:not([hidden])'), 'Before a service is chosen, no provider card shows the Selected badge');
-        self::assertCount(5, $crawler->filter('[data-provider-selected-badge].is-hidden[hidden]'));
+        self::assertCount(6, $crawler->filter('[data-provider-selected-badge].is-hidden[hidden]'));
         self::assertCount(1, $crawler->filter('[data-card-controls] button[data-card-action="expand"]'));
         self::assertCount(1, $crawler->filter('[data-card-controls] button[data-card-action="collapse"]'));
         self::assertCount(1, $crawler->filter('input[name="credential[postmark_server_token]"][type="password"]'));
         self::assertCount(1, $crawler->filter('input[name="email_mailgun_domain"]'));
+        self::assertCount(1, $crawler->filter('input[name="email_resend_domain"]'));
+        self::assertCount(1, $crawler->filter('input[name="credential[resend_api_key]"][type="password"]'));
         self::assertCount(1, $crawler->filter('select[name="email_smtp_encryption"] option[value="starttls"][selected]'));
         self::assertStringContainsString('Add an email address to your profile', $crawler->filter('body')->text(), 'The signed-in administrator has no address yet');
     }
@@ -141,6 +143,7 @@ final class EmailSettingsControllerTest extends TestCase
     {
         foreach ([
             [['email_enabled' => '1', 'email_provider' => 'mailgun', 'email_from_address' => 'a@example.com', 'credential' => ['mailgun_api_key' => 'k']], 'Enter the Mailgun sending domain'],
+            [['email_enabled' => '1', 'email_provider' => 'resend', 'email_from_address' => 'a@send.gtu.com', 'credential' => ['resend_api_key' => 'k']], 'Enter the Resend sending domain'],
             [['email_provider' => 'postmark', 'credential' => ['unknown_key' => 'x']], 'unknown credential'],
             [['email_provider' => 'postmark', 'credential' => ['postmark_server_token' => "two\nlines"]], 'one line'],
             [['email_provider' => ['array']], 'unexpected setting'],

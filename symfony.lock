@@ -233,6 +233,15 @@
             "./config/packages/property_info.yaml"
         ]
     },
+    "symfony/resend-mailer": {
+        "version": "7.4",
+        "recipe": {
+            "repo": "github.com/symfony/recipes",
+            "branch": "main",
+            "version": "7.1",
+            "ref": "487735bc20cbd1547ec311692ef0261a7687a3f0"
+        }
+    },
     "symfony/routing": {
         "version": "7.3",
         "recipe": {

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service\Email;
 
 use App\Service\AggregateConfigLoader;
+use App\Service\Email\Provider\ResendProvider;
 
 /**
  * Transactional email settings: one source for the Email page, YAML
@@ -141,25 +142,29 @@ class EmailSettings
             throw new \InvalidArgumentException('Choose the email service before turning email on.');
         }
 
+        $providerSettings = [];
+        foreach ($this->providers->all() as $code => $definition) {
+            $providerSettings += $definition->validate($values, $enabled && $code === $provider);
+        }
+
         $fromAddress = self::address($values[self::KEY_FROM_ADDRESS], self::KEY_FROM_ADDRESS);
+        if ($fromAddress === '' && $provider === 'resend' && is_string($providerSettings[ResendProvider::KEY_DOMAIN] ?? null) && $providerSettings[ResendProvider::KEY_DOMAIN] !== '') {
+            $fromAddress = 'no-reply@'.$providerSettings[ResendProvider::KEY_DOMAIN];
+        }
         if ($enabled && $fromAddress === '') {
             throw new \InvalidArgumentException('Enter the address email is sent from before turning email on.');
         }
         $fromName = self::name($values[self::KEY_FROM_NAME]);
         $replyTo = self::address($values[self::KEY_REPLY_TO], self::KEY_REPLY_TO);
 
-        $validated = [
+        return [
             self::KEY_ENABLED => $enabled,
             self::KEY_PROVIDER => $provider,
             self::KEY_FROM_ADDRESS => $fromAddress,
             self::KEY_FROM_NAME => $fromName,
             self::KEY_REPLY_TO => $replyTo,
+            ...$providerSettings,
         ];
-        foreach ($this->providers->all() as $code => $definition) {
-            $validated += $definition->validate($values, $enabled && $code === $provider);
-        }
-
-        return $validated;
     }
 
     /** @param array<string, mixed> $settings validated settings */
