@@ -1,8 +1,40 @@
 {% props index, tag, script_suggestions = false, custom_scripts_enabled = true, custom_templates = [], tag_ids = [], tracker_namespaces = ['Aggregate'] %}
+{% set is_new = tag.is_new|default(false) %}
+{% set event_data = tag.event is defined and tag.event is iterable ? tag.event : {} %}
+{% set event_name_is_var = event_data.eventName is defined and event_data.eventName is iterable and event_data.eventName['$var'] is defined %}
+{% set event_name_val = event_name_is_var ? event_data.eventName['$var'] : (event_data.eventName|default('')) %}
+{% set custom_data_entries = [] %}
+{% if event_data.customData is defined and event_data.customData is iterable %}
+    {% for cd_key, cd_val in event_data.customData %}
+        {% set cd_json = cd_val|json_encode %}
+        {% if cd_val is iterable and cd_val['$var'] is defined %}
+            {% set custom_data_entries = custom_data_entries|merge([{key: cd_key, type: 'var', value: cd_val['$var']}]) %}
+        {% elseif cd_val is same as(null) %}
+            {% set custom_data_entries = custom_data_entries|merge([{key: cd_key, type: 'null', value: ''}]) %}
+        {% elseif cd_val is same as(true) or cd_val is same as(false) %}
+            {% set custom_data_entries = custom_data_entries|merge([{key: cd_key, type: 'boolean', value: cd_val ? 'true' : 'false'}]) %}
+        {% elseif cd_json starts with '"' %}
+            {% set custom_data_entries = custom_data_entries|merge([{key: cd_key, type: 'string', value: cd_val}]) %}
+        {% else %}
+            {% set custom_data_entries = custom_data_entries|merge([{key: cd_key, type: 'number', value: cd_json}]) %}
+        {% endif %}
+    {% endfor %}
+{% endif %}
+{% if custom_data_entries is empty %}
+    {% set custom_data_entries = [{key: '', type: 'string', value: ''}] %}
+{% endif %}
+{% set goal_has_key = 'goalEvent' in (event_data|keys) %}
+{% set goal_is_var = goal_has_key and event_data.goalEvent is iterable and event_data.goalEvent['$var'] is defined %}
+{% set goal_is_null = goal_has_key and event_data.goalEvent is same as(null) %}
+{% set goal_type = goal_is_var ? 'var' : (goal_is_null ? 'null' : 'string') %}
+{% set goal_val = goal_is_var ? event_data.goalEvent['$var'] : (goal_is_null ? '' : (event_data.goalEvent|default(''))) %}
+{% set page_path_is_var = event_data.pagePath is defined and event_data.pagePath is iterable and event_data.pagePath['$var'] is defined %}
+{% set page_path_type = page_path_is_var ? 'var' : 'string' %}
+{% set page_path_val = page_path_is_var ? event_data.pagePath['$var'] : (event_data.pagePath|default('')) %}
 
 <div class="box">
-    <fieldset class="tag-settings-fieldset" data-tag-row data-controller="components--tag-manager--tag-row" data-components--tag-manager--tag-row-namespaces-value="{{ tracker_namespaces|json_encode }}" aria-describedby="tag-{{ index }}-help">
-        <legend class="title is-5">{% if tag.id %}Tag {{ index + 1 }}: {{ tag.id }}{% else %}Add a tag{% endif %}</legend>
+    <fieldset class="tag-settings-fieldset" data-tag-row data-controller="components--tag-manager--tag-row" data-components--tag-manager--tag-row-namespaces-value="{{ tracker_namespaces|json_encode }}"{% if is_new and tag.src|default('') %} data-components--tag-manager--tag-row-default-id-value="{{ tag.id }}" data-components--tag-manager--tag-row-default-src-value="{{ tag.src }}"{% endif %} aria-describedby="tag-{{ index }}-help">
+        <legend class="title is-5">{% if tag.id and not is_new %}Tag {{ index + 1 }}: {{ tag.id }}{% else %}Add a tag{% endif %}</legend>
         <p class="help mb-3" id="tag-{{ index }}-help">Choose one action and a trigger. Leave a new row's ID, URL, method, event and code empty to keep the current list.</p>
         <div class="field"><label class="label" for="tag-{{ index }}-id">ID</label><div class="control"><input class="input" id="tag-{{ index }}-id" name="tags[{{ index }}][id]" value="{{ tag.id }}" maxlength="64" pattern="[A-Za-z][A-Za-z0-9_\-]{0,63}" autocomplete="off" placeholder="purchase-event"></div></div>
         <div class="field">
@@ -24,10 +56,120 @@
         </div>
         <div data-components--tag-manager--tag-row-target="actionFields" data-action-fields="event">
             <div class="field">
-                <label class="label" for="tag-{{ index }}-event-object">Event (JSON object)</label>
-                <div class="control"><textarea class="textarea" id="tag-{{ index }}-event-object" name="tags[{{ index }}][event_json]" rows="8" spellcheck="false" autocomplete="off" placeholder="{&quot;eventName&quot;: &quot;login&quot;, &quot;customData&quot;: {&quot;method&quot;: {&quot;$var&quot;: &quot;login_method&quot;}}}" data-components--tag-manager--tag-row-target="event" data-action="input->components--tag-manager--tag-row#checkEvent" aria-describedby="tag-{{ index }}-event-object-status tag-{{ index }}-event-object-help">{{ tag.event_json is defined ? tag.event_json : (tag.event is defined ? tag.event|json_encode(448) : '') }}</textarea></div>
+                <div class="level is-mobile mb-2">
+                    <div class="level-left">
+                        <label class="label mb-0" id="tag-{{ index }}-event-label" for="tag-{{ index }}-event-object">Event (JSON object)</label>
+                    </div>
+                    <div class="level-right">
+                        <div class="buttons has-addons mb-0" role="group" aria-label="Event editor format">
+                            <button type="button" class="button is-small" data-event-mode="kv" data-components--tag-manager--tag-row-target="eventModeButton" data-action="components--tag-manager--tag-row#switchEventMode" data-components--tag-manager--tag-row-mode-param="kv" aria-pressed="false">Key-value pairs</button>
+                            <button type="button" class="button is-small is-primary is-selected" data-event-mode="json" data-components--tag-manager--tag-row-target="eventModeButton" data-action="components--tag-manager--tag-row#switchEventMode" data-components--tag-manager--tag-row-mode-param="json" aria-pressed="true">JSON</button>
+                        </div>
+                    </div>
+                </div>
+                <div data-components--tag-manager--tag-row-target="eventJsonPane">
+                    <div class="control"><textarea class="textarea" id="tag-{{ index }}-event-object" name="tags[{{ index }}][event_json]" rows="8" spellcheck="false" autocomplete="off" placeholder="{&quot;eventName&quot;: &quot;login&quot;, &quot;customData&quot;: {&quot;method&quot;: {&quot;$var&quot;: &quot;login_method&quot;}}}" data-components--tag-manager--tag-row-target="event" data-action="input->components--tag-manager--tag-row#checkEvent" aria-describedby="tag-{{ index }}-event-object-status tag-{{ index }}-event-object-help">{{ tag.event_json is defined ? tag.event_json : (tag.event is defined ? tag.event|json_encode(448) : '') }}</textarea></div>
+                </div>
+                <div class="box is-shadowless p-3 mb-2" data-components--tag-manager--tag-row-target="eventKvPane" hidden>
+                    <div class="field">
+                        <label class="label is-small" for="tag-{{ index }}-event-name">Event name</label>
+                        <div class="field has-addons mb-0">
+                            <div class="control">
+                                <div class="select is-small">
+                                    <select id="tag-{{ index }}-event-name-type" aria-label="Event name source" data-components--tag-manager--tag-row-target="eventNameType" data-action="change->components--tag-manager--tag-row#syncEventFromKv">
+                                        <option value="string"{% if not event_name_is_var %} selected{% endif %}>Fixed name</option>
+                                        <option value="var"{% if event_name_is_var %} selected{% endif %}>Variable ($var)</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="control is-expanded">
+                                <input class="input is-small" type="text" id="tag-{{ index }}-event-name" value="{{ event_name_val }}" maxlength="100" autocomplete="off" placeholder="{{ event_name_is_var ? 'event_name' : 'login' }}"{% if event_name_is_var %} list="tag-variable-aliases"{% endif %} data-components--tag-manager--tag-row-target="eventNameInput" data-action="input->components--tag-manager--tag-row#syncEventFromKv">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label class="label is-small">Custom data properties (key-value pairs)</label>
+                        <div data-components--tag-manager--tag-row-target="customDataRows">
+                            {% for prop in custom_data_entries %}
+                                <div class="field is-grouped mb-2" data-custom-data-row>
+                                    <div class="control is-expanded">
+                                        <input class="input is-small" type="text" data-cd-key value="{{ prop.key }}" maxlength="64" autocomplete="off" placeholder="Property key (e.g. plan)" aria-label="Custom data property key" data-action="input->components--tag-manager--tag-row#syncEventFromKv">
+                                    </div>
+                                    <div class="control">
+                                        <div class="select is-small">
+                                            <select data-cd-type aria-label="Custom data property type" data-action="change->components--tag-manager--tag-row#syncEventFromKv">
+                                                <option value="string"{% if prop.type == 'string' %} selected{% endif %}>Text</option>
+                                                <option value="var"{% if prop.type == 'var' %} selected{% endif %}>Variable ($var)</option>
+                                                <option value="number"{% if prop.type == 'number' %} selected{% endif %}>Number</option>
+                                                <option value="boolean"{% if prop.type == 'boolean' %} selected{% endif %}>Boolean</option>
+                                                <option value="null"{% if prop.type == 'null' %} selected{% endif %}>Null</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="control is-expanded"{% if prop.type == 'boolean' %} hidden{% endif %} data-cd-value-wrap>
+                                        <input class="input is-small" type="text" data-cd-value value="{{ prop.type in ['boolean', 'null'] ? '' : prop.value }}" maxlength="500" autocomplete="off" placeholder="{{ prop.type == 'var' ? 'Variable alias (e.g. plan)' : (prop.type == 'number' ? '0' : (prop.type == 'null' ? 'null' : 'Value')) }}"{% if prop.type == 'var' %} list="tag-variable-aliases"{% endif %}{% if prop.type == 'null' %} disabled{% endif %} aria-label="Custom data property value" data-action="input->components--tag-manager--tag-row#syncEventFromKv">
+                                    </div>
+                                    <div class="control is-expanded"{% if prop.type != 'boolean' %} hidden{% endif %} data-cd-bool-wrap>
+                                        <div class="select is-small is-fullwidth">
+                                            <select data-cd-bool aria-label="Custom data boolean value" data-action="change->components--tag-manager--tag-row#syncEventFromKv">
+                                                <option value="true"{% if prop.value != 'false' %} selected{% endif %}>true</option>
+                                                <option value="false"{% if prop.value == 'false' %} selected{% endif %}>false</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="control">
+                                        <button type="button" class="button is-small is-light" data-cd-remove aria-label="Remove property" data-action="components--tag-manager--tag-row#removeCustomDataRow">Remove</button>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                        <button type="button" class="button is-small is-light mt-1" data-components--tag-manager--tag-row-target="addCustomDataButton" data-action="components--tag-manager--tag-row#addCustomDataRow">
+                            <span class="icon is-small"><i class="fas fa-plus" aria-hidden="true"></i></span>
+                            <span>Add property</span>
+                        </button>
+                    </div>
+                    <div class="columns is-multiline mb-0">
+                        <div class="column is-half py-1">
+                            <div class="field">
+                                <label class="label is-small" for="tag-{{ index }}-goal-event">Goal code (optional)</label>
+                                <div class="field has-addons mb-0">
+                                    <div class="control">
+                                        <div class="select is-small">
+                                            <select id="tag-{{ index }}-goal-event-type" aria-label="Goal code source" data-components--tag-manager--tag-row-target="goalEventType" data-action="change->components--tag-manager--tag-row#syncEventFromKv">
+                                                <option value="string"{% if goal_type == 'string' %} selected{% endif %}>Goal code</option>
+                                                <option value="var"{% if goal_type == 'var' %} selected{% endif %}>Variable ($var)</option>
+                                                <option value="null"{% if goal_type == 'null' %} selected{% endif %}>Null</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="control is-expanded">
+                                        <input class="input is-small" type="text" id="tag-{{ index }}-goal-event" value="{{ goal_val }}" maxlength="100" autocomplete="off" placeholder="{{ goal_type == 'var' ? 'goal_code' : (goal_type == 'null' ? 'null' : 'signup') }}"{% if goal_type == 'var' %} list="tag-variable-aliases"{% endif %}{% if goal_type == 'null' %} disabled{% endif %} data-components--tag-manager--tag-row-target="goalEventInput" data-action="input->components--tag-manager--tag-row#syncEventFromKv">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="column is-half py-1">
+                            <div class="field">
+                                <label class="label is-small" for="tag-{{ index }}-page-path">Virtual page path (optional)</label>
+                                <div class="field has-addons mb-0">
+                                    <div class="control">
+                                        <div class="select is-small">
+                                            <select id="tag-{{ index }}-page-path-type" aria-label="Virtual page path source" data-components--tag-manager--tag-row-target="pagePathType" data-action="change->components--tag-manager--tag-row#syncEventFromKv">
+                                                <option value="string"{% if page_path_type == 'string' %} selected{% endif %}>Page path</option>
+                                                <option value="var"{% if page_path_type == 'var' %} selected{% endif %}>Variable ($var)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="control is-expanded">
+                                        <input class="input is-small" type="text" id="tag-{{ index }}-page-path" value="{{ page_path_val }}" maxlength="512" autocomplete="off" placeholder="{{ page_path_type == 'var' ? 'page_path' : '/checkout/step-2' }}"{% if page_path_type == 'var' %} list="tag-variable-aliases"{% endif %} data-components--tag-manager--tag-row-target="pagePathInput" data-action="input->components--tag-manager--tag-row#syncEventFromKv">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <p class="help custom-code-status" id="tag-{{ index }}-event-object-status" role="status" aria-live="polite" data-components--tag-manager--tag-row-target="eventStatus"></p>
-                <p class="help" id="tag-{{ index }}-event-object-help">Sends an event through this website's tracker, as <code>{{ tracker_namespaces|first }}.emit({…})</code> would. <code>eventName</code> names it; <code>customData</code> holds its own properties, each text, a number, true, false or null, or <code>{"$var": "alias"}</code> to read one from the page. <code>goalEvent</code> and <code>pagePath</code>, a virtual page path, are optional. The tag waits for the tracker to load, so it needs no tag chaining. {% if docs_url('tracking.tag-manager') %}<a href="{{ docs_url('tracking.tag-manager') }}#send-an-aggregate-event" target="_blank" rel="noopener noreferrer">Aggregate events<span class="is-sr-only"> (opens in a new tab)</span></a>{% endif %}</p>
+                <p class="help" id="tag-{{ index }}-event-object-help">Sends an event through this website's tracker, as <code>{{ tracker_namespaces|first }}.emit({…})</code> would. <code>eventName</code> names it; <code>customData</code> holds its own properties, each text, a number, true, false or null, or <code>{"$var": "alias"}</code> to read one from the page. Toggle between <strong>Key-value pairs</strong> and <strong>JSON</strong> to edit properties either way. <code>goalEvent</code> and <code>pagePath</code>, a virtual page path, are optional. The tag waits for the tracker to load, so it needs no tag chaining. {% if docs_url('tracking.tag-manager') %}<a href="{{ docs_url('tracking.tag-manager') }}#send-an-aggregate-event" target="_blank" rel="noopener noreferrer">Aggregate events<span class="is-sr-only"> (opens in a new tab)</span></a>{% endif %}</p>
             </div>
         </div>
         <div data-components--tag-manager--tag-row-target="actionFields" data-action-fields="custom">
@@ -91,6 +233,6 @@ tag.emit('newsletter_signup', {plan: tag.get('plan')});" data-components--tag-ma
             </select></div></div>
             <p class="help" id="tag-{{ index }}-after-help">Run after another tag: this tag waits until that tag has finished, meaning its script has loaded or its method call or custom code is done. Use it to run code after the tracker or a vendor library has loaded. Choose a tag that runs once per page; if it never runs, this one does not either.</p>
         </div>
-        {% if tag.id %}<label class="checkbox"><input type="checkbox" name="tags[{{ index }}][remove]" value="1"{% if tag.remove|default(false) %} checked{% endif %}> Remove this tag when saving</label>{% endif %}
+        {% if tag.id and not is_new %}<label class="checkbox"><input type="checkbox" name="tags[{{ index }}][remove]" value="1"{% if tag.remove|default(false) %} checked{% endif %}> Remove this tag when saving</label>{% endif %}
     </fieldset>
 </div>
