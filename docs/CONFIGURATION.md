@@ -228,11 +228,15 @@ uses that hostname. An existing restricted registration must have a nonempty
 list. Older creation clients that omit both policy form fields retain the legacy
 creation behavior.
 
-For headless creation, the CLI still asks for the website name and primary domain:
+For headless creation, the CLI asks for the website name and primary domain, or
+takes them from `--name` and `--domain`. A run without a terminal (`-n`, a
+script or a pipeline) needs both options:
 
 ```bash
 # Default: only the primary hostname
 php bin/console app:create-website
+# Without questions, for scripts
+php bin/console app:create-website -n --name="Shop" --domain=shop.example.com
 # Several exact/wildcard hosts under one newly generated token
 php bin/console app:create-website --allowed-domain=example.com --allowed-domain='*.example.com'
 # Any source with the newly generated token

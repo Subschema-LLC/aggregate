@@ -221,8 +221,10 @@ Every message has a plain-text and an HTML part, from
 images, remote resources or tracking pixels. It also carries:
 
 - `Auto-Submitted: auto-generated`, so out-of-office responders stay quiet;
-- the kind of message as a tag: a Postmark tag, a SendGrid category, a
-  Mailgun tag or a Resend tag, so the service's statistics separate them;
+- the kind of message as a tag: a Postmark tag, a SendGrid category or a
+  Mailgun tag, so the service's statistics separate them. Resend messages go
+  without it: symfony/resend-mailer does not send tags in the shape Resend's
+  Emails API takes, so the tag is left out rather than risk a refused message;
 - the task ID as metadata (Postmark metadata, SendGrid custom arguments, Mailgun
   variables, or an `X-Metadata-aggregate_task` header on Resend and over SMTP), which ties
   the service's events to the task.

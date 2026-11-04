@@ -99,6 +99,9 @@ final class DashboardPages
         'app_tag_manager' => ['tag_manager', self::VIEW],
         'app_tag_manager_save' => ['tag_manager', self::EDIT],
         'app_tag_manager_download' => ['tag_manager', self::VIEW],
+        // Testing a tag saves nothing, but it runs the editor's unsaved changes, so it goes with editing.
+        'app_tag_manager_preview' => ['tag_manager', self::EDIT],
+        'app_tag_manager_preview_script' => ['tag_manager', self::EDIT],
         'app_consent_manager' => ['consent_manager', self::VIEW],
         'app_consent_manager_save' => ['consent_manager', self::EDIT],
         'app_collection_settings' => ['collection_controls', self::VIEW],
