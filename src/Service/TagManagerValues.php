@@ -166,16 +166,22 @@ final class TagManagerValues
         return $validated;
     }
 
-    /** A literal accepted by $valid, or a {$var: alias} reference to a declared variable. */
+    /**
+     * A literal accepted by $valid, or a {$var: alias} reference to a declared
+     * variable (optionally with from: "recent" or "event").
+     */
     private static function eventValue(mixed $value, array $variables, string $label, \Closure $valid, string $rule): mixed
     {
-        if (self::isReference($value)) {
+        if (is_array($value) && !array_is_list($value) && array_key_exists('$var', $value)) {
+            if (!self::isReference($value)) {
+                throw new \InvalidArgumentException($label.' uses {"$var": …}; an optional "from" field must be "recent" or "event".');
+            }
             $alias = $value['$var'];
             if (!is_string($alias) || !array_key_exists($alias, $variables)) {
                 throw new \InvalidArgumentException($label.' uses {"$var": …} with a variable that is not defined. Add it under Variables.');
             }
 
-            return ['$var' => $alias];
+            return ($value['from'] ?? 'recent') === 'event' ? ['$var' => $alias, 'from' => 'event'] : ['$var' => $alias];
         }
         if (!$valid($value)) {
             throw new \InvalidArgumentException($label.' '.$rule.(is_array($value) ? '. To read a value from the page, use {"$var": "alias"}.' : '.'));
@@ -186,7 +192,11 @@ final class TagManagerValues
 
     private static function isReference(mixed $value): bool
     {
-        return is_array($value) && count($value) === 1 && array_key_exists('$var', $value);
+        return is_array($value)
+            && !array_is_list($value)
+            && array_key_exists('$var', $value)
+            && array_diff(array_keys($value), ['$var', 'from']) === []
+            && (!array_key_exists('from', $value) || in_array($value['from'], ['recent', 'event'], true));
     }
 
     /** @param array<string, mixed> $variables Already validated alias definitions. */
@@ -231,16 +241,16 @@ final class TagManagerValues
             throw new \InvalidArgumentException('Tag arguments support JSON literals with at most '.self::MAX_ENTRIES.' entries per container and '.self::MAX_DEPTH.' nested containers.');
         }
 
-        if (array_key_exists('$var', $value)) {
+        if (!array_is_list($value) && array_key_exists('$var', $value)) {
             $alias = $value['$var'];
-            if (count($value) !== 1 || !is_string($alias) || $alias === '' || strlen($alias) > 64
+            if (!self::isReference($value) || !is_string($alias) || $alias === '' || strlen($alias) > 64
                 || in_array($alias, self::BLOCKED_MAP_KEYS, true) || !array_key_exists($alias, $variables)) {
-                throw new \InvalidArgumentException('A variable reference must contain only $var with a known variable alias.');
+                throw new \InvalidArgumentException('A variable reference must contain only $var with a known variable alias, and an optional "from" set to "recent" or "event".');
             }
             // Count and validate the reference's alias as its sole scalar child.
             self::validateValue($alias, $variables, $depth + 1, $nodes);
 
-            return ['$var' => $alias];
+            return ($value['from'] ?? 'recent') === 'event' ? ['$var' => $alias, 'from' => 'event'] : ['$var' => $alias];
         }
 
         $isList = array_is_list($value);

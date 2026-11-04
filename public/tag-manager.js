@@ -23,6 +23,7 @@
   var executing = Object.create(null);
   var variablePaths = Object.create(null);
   var dataState = Object.create(null);
+  var pushedEvents = new WeakMap();
   var subscribedCmp = null;
   var unsubscribe = null;
   var started = false;
@@ -162,15 +163,51 @@
 
   var configured = validConfiguration(tagManagerConfig) && tagManagerConfig.enabled === true;
 
-  function readVariable(alias, context) {
+  function readPath(root, parts, index, source, eventName, requireEventMatch) {
+    if (index >= parts.length) return (!requireEventMatch && scalar(root)) ? root : MISSING;
+    if (!root || typeof root !== 'object') return MISSING;
+    var part = parts[index];
+    if (Array.isArray(root)) {
+      if (source === 'event' && eventName) {
+        var sawEventItem = false;
+        for (var m = root.length - 1; m >= 0; m--) {
+          var candidate = own(root, String(m));
+          if (!record(candidate)) continue;
+          var candidateEvent = own(candidate, 'event');
+          if (candidateEvent !== MISSING) sawEventItem = true;
+          if (candidateEvent === eventName) {
+            var nextIndex = /^[0-9]+$/.test(part) ? index + 1 : index;
+            var found = readPath(candidate, parts, nextIndex, source, eventName, false);
+            if (found !== MISSING) return found;
+          }
+        }
+        if (requireEventMatch || sawEventItem) return MISSING;
+      }
+      if (!/^[0-9]+$/.test(part)) {
+        for (var r = root.length - 1; r >= 0; r--) {
+          var latest = own(root, String(r));
+          var resolved = readPath(latest, parts, index, source, eventName, requireEventMatch);
+          if (resolved !== MISSING) return resolved;
+        }
+        return MISSING;
+      }
+    }
+    var next = own(root, part);
+    if (next === MISSING) return MISSING;
+    return readPath(next, parts, index + 1, source, eventName, requireEventMatch);
+  }
+
+  function readVariable(alias, context, source) {
     var parts = variablePaths[alias];
     if (!parts) return MISSING;
-    var value = context;
-    for (var i = 0; i < parts.length; i++) {
-      value = own(value, parts[i]);
-      if (value === MISSING) return MISSING;
+    if (source === 'event') {
+      var pushed = context && typeof context === 'object' ? pushedEvents.get(context) : null;
+      if (!pushed) return MISSING;
+      var fromEntry = readPath(pushed.entry, parts, 0, 'event', pushed.event, false);
+      if (fromEntry !== MISSING) return fromEntry;
+      return readPath(context, parts, 0, 'event', pushed.event, true);
     }
-    return scalar(value) ? value : MISSING;
+    return readPath(context, parts, 0, 'recent', null, false);
   }
 
   function scriptUrl(template, context) {
@@ -197,8 +234,10 @@
       var keys = Object.keys(input);
       if (keys.length > 32) throw new Error('Argument limit');
       if (!Array.isArray(input) && Object.prototype.hasOwnProperty.call(input, '$var')) {
-        if (keys.length !== 1 || ++nodes > 128) throw new Error('Invalid variable reference');
-        var resolved = readVariable(own(input, '$var'), context);
+        var from = Object.prototype.hasOwnProperty.call(input, 'from') ? own(input, 'from') : 'recent';
+        if ((keys.length !== 1 && (keys.length !== 2 || !Object.prototype.hasOwnProperty.call(input, 'from')))
+            || (from !== 'recent' && from !== 'event') || ++nodes > 128) throw new Error('Invalid variable reference');
+        var resolved = readVariable(own(input, '$var'), context, from);
         if (resolved === MISSING) throw new Error('Missing variable');
         return resolved;
       }
@@ -341,8 +380,8 @@
       id: tag.id,
       event: Object.freeze(event),
       data: plain(when.type === 'data_layer' ? context : dataState) || {},
-      get: function (alias) {
-        var value = readVariable(String(alias), context);
+      get: function (alias, from) {
+        var value = readVariable(String(alias), context, from === 'event' ? 'event' : 'recent');
         return value === MISSING ? undefined : value;
       },
       consent: function (category) {
@@ -594,7 +633,10 @@
     if (!record(combined)) return;
     dataState = combined;
     var event = own(update, 'event');
-    if (typeof event === 'string') fire('data_layer', event, combined, entry.grants);
+    if (typeof event === 'string') {
+      pushedEvents.set(combined, {event: event, entry: update});
+      fire('data_layer', event, combined, entry.grants);
+    }
   }
 
   function captureEntries(entries) {
@@ -651,7 +693,11 @@
     var detail;
     try { detail = snapshot(event.detail); } catch (error) { detail = undefined; }
     var context = Object.assign(Object.create(null), dataState);
-    context.event = {type: eventName, detail: detail};
+    var currentEvent = {type: eventName, detail: detail};
+    context.event = currentEvent;
+    var entry = Object.create(null);
+    entry.event = currentEvent;
+    pushedEvents.set(context, {event: eventName, entry: entry});
     fire(type, eventName, context);
   }
 

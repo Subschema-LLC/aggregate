@@ -804,3 +804,67 @@ test('a custom tag without its compiled function, or with a malformed namespace,
   const namespace = runtime({config: {enabled: true, namespace: 'not valid', tags: [scriptTag('other', {type: 'dom_ready'})]}});
   assert.equal(namespace.appended.length, 0);
 });
+
+test('variable references can read either the most recent merged state or the pushed event and matching array object', () => {
+  const page = runtime({globals: {results: []}, config: {
+    enabled: true,
+    namespace: 'Shop',
+    variables: {
+      promo: 'promo',
+      sku: 'ecommerce.items.sku',
+      indexed_sku: 'ecommerce.items[0].sku'
+    },
+    tags: [{
+      id: 'purchase-event', type: 'event', consent: 'none', trigger: {type: 'data_layer', event: 'purchase'},
+      event: {
+        eventName: 'purchase',
+        customData: {
+          recent_promo: {$var: 'promo'},
+          recent_sku: {$var: 'sku'},
+          event_sku: {$var: 'sku', from: 'event'},
+          event_indexed_sku: {$var: 'indexed_sku', from: 'event'}
+        }
+      }
+    }, {
+      id: 'require-event-promo', type: 'event', consent: 'none', trigger: {type: 'data_layer', event: 'purchase'},
+      event: {
+        eventName: 'purchase_with_promo',
+        customData: {promo: {$var: 'promo', from: 'event'}}
+      }
+    }, customTag('inspect', {type: 'data_layer', event: 'purchase'})]
+  }, custom: {
+    inspect: "window.results.push({recent: tag.get('sku'), event: tag.get('sku', 'event'), promoEvent: tag.get('promo', 'event')});"
+  }});
+  const sent = [];
+  page.window.Shop = {emit(...args) { sent.push(clean(args)); return true; }};
+  page.dispatch('aggregate:tracker-ready', {namespace: 'Shop'});
+
+  page.window.dataLayer.push({
+    promo: 'SUMMER',
+    ecommerce: {
+      items: [
+        {event: 'add_to_cart', sku: 'SKU-CART'},
+        {event: 'purchase', sku: 'SKU-PURCHASE'},
+        {event: 'view_footer', sku: 'SKU-LATEST'}
+      ]
+    }
+  });
+  // Trigger purchase without re-sending promo; event-scoped promo is missing, while array item matching event: "purchase" resolves.
+  page.window.dataLayer.push({event: 'purchase'});
+
+  assert.deepEqual(sent, [[{
+    eventName: 'purchase',
+    customData: {
+      recent_promo: 'SUMMER',
+      recent_sku: 'SKU-LATEST',
+      event_sku: 'SKU-PURCHASE',
+      event_indexed_sku: 'SKU-PURCHASE'
+    }
+  }]]);
+  assert.deepEqual(clean(page.window.results), [{recent: 'SKU-LATEST', event: 'SKU-PURCHASE', promoEvent: undefined}]);
+
+  // When the pushed event itself includes promo, the second event tag also runs.
+  page.window.dataLayer.push({event: 'purchase', promo: 'FLASH'});
+  assert.equal(sent.length, 3);
+  assert.deepEqual(sent[2], [{eventName: 'purchase_with_promo', customData: {promo: 'FLASH'}}]);
+});
