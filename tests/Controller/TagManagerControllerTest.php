@@ -408,6 +408,20 @@ final class TagManagerControllerTest extends TestCase
         ];
     }
 
+    /** The examples a user copies must be paths the runtime resolves: data-layer paths, not page globals. */
+    public function testVariableHelpAndPlaceholdersShowPathsThatResolve(): void
+    {
+        $request = Request::create('/dashboard/tag-manager', 'GET', ['site' => $this->siteId]);
+        $crawler = new Crawler((string) $this->controller($request)->index($request)->getContent());
+
+        $help = $crawler->filter('#pane-variables .content')->text();
+        self::assertStringContainsString('ecommerce.items[0].category reads Nursing', $help);
+        self::assertStringContainsString('They do not read other page globals such as window.siteData', $help);
+        self::assertStringNotContainsString('dataLayer[0]', $help);
+        self::assertSame('category', $crawler->filter('#variable-0-alias')->attr('placeholder'));
+        self::assertSame('ecommerce.items[0].category', $crawler->filter('#variable-0-path')->attr('placeholder'));
+    }
+
     private static function validForm(): array
     {
         return ['site' => '', 'enabled' => '1', 'variables' => [], 'tags' => [['id' => 'analytics', 'src' => 'https://scripts.example/analytics.js', 'enabled' => '1', 'consent' => 'analytics']]];

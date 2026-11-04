@@ -233,11 +233,13 @@ tag_manager:
       trigger: {type: data_layer, event: login}
 ```
 
-In the dashboard, choose **Send an Aggregate event** and edit the event as
-**JSON** or toggle to **Key-value pairs** to set `eventName`, each `customData`
-property with its value type (text, **Variable (most recent)**, **Variable
+In the dashboard, choose **Send an Aggregate event**. The event opens in
+**Key-value pairs**, which set `eventName`, each `customData` property with its
+value type (text, **Variable (most recent)**, **Variable
 (pushed event)**, number, boolean or null), and optional `goalEvent` and
-`pagePath` fields. A new event starts from `eventName` and an empty `customData`:
+`pagePath` fields; toggle to **JSON** to edit the object itself. An event the
+key-value editor cannot show, such as JSON that does not parse yet, opens in
+JSON. A new event starts from `eventName` and an empty `customData`:
 
 ```json
 {

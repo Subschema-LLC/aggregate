@@ -139,7 +139,11 @@
             <div id="pane-variables" class="workspace-pane nested-toggle-pane is-active" role="tabpanel" aria-labelledby="tab-variables" data-toggle-pane="variables" data-pane-name="variables">
                 <details class="box" open>
                     <summary class="has-text-weight-semibold">Variables — read values from this page</summary>
-                    <div class="content mt-3"><p>Give each value an alias and a path, such as <code>plan</code> → <code>window.siteData.plan</code> or <code>category</code> → <code>dataLayer[0].ecommerce.items[0].category</code>. Paths read own data properties; they do not run JavaScript or getters.</p><p>Use <code>{% verbatim %}{{plan}}{% endverbatim %}</code> in a script URL's path or query, or <code>{"$var":"plan"}</code> in method arguments. URL substitutions are encoded; the host stays fixed. Missing or invalid values skip that tag.</p></div>
+                    <div class="content mt-3">
+                        <p>Give each value you want to use a name and its path in the data layer. After <code>dataLayer.push({event: 'view_item', page_type: 'program', ecommerce: {items: [{category: 'Nursing'}]}})</code>, the path <code>page_type</code> reads <code>program</code> and <code>ecommerce.items[0].category</code> reads <code>Nursing</code>.</p>
+                        <p>Paths read what the page has pushed to <code>window.dataLayer</code>, merged across pushes, and <code>event.detail</code> for document and window events. They do not read other page globals such as <code>window.siteData</code>, and they never run JavaScript. When a value is missing, the tag that uses it is skipped.</p>
+                        <details><summary>Use a variable in a script URL, method arguments or event JSON</summary><p class="mt-2">Write <code>{% verbatim %}{{category}}{% endverbatim %}</code> in a script URL's path or query, or <code>{"$var": "category"}</code> in method arguments and event JSON. URL values are encoded; the host stays fixed. The event editor's key-value pairs choose variables for you.</p></details>
+                    </div>
                     {% if variable_rows|length < max_variables %}{% set variable_rows = variable_rows|merge([{alias: '', path: ''}]) %}{% endif %}
                     {% for variable in variable_rows %}
                         {{ component('TagManager:VariableRow', {index: loop.index0, variable: variable}) }}

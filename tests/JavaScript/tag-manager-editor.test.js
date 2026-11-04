@@ -627,3 +627,24 @@ test('typing variable aliases refreshes the datalist used by key-value variable 
   controller.refreshVariableAliases({target: {matches: (sel) => sel === 'input[name^="variables["][name$="[alias]"]'}});
   assert.deepEqual(list.options.map((o) => o.value), ['plan', 'login_method']);
 });
+
+test('event tags open in key-value pairs, and JSON the editor cannot show stays in JSON without an error', () => {
+  const saved = kvEditor(JSON.stringify({eventName: 'request_info', customData: {program: {$var: 'program'}}}, null, 4));
+  assert.equal(saved.eventKvPane.hidden, false, 'a saved event opens in key-value pairs');
+  assert.equal(saved.eventJsonPane.hidden, true);
+  assert.equal(saved.kvButton.attrs['aria-pressed'], 'true');
+  assert.equal(saved.eventNameInput.value, 'request_info');
+  assert.deepEqual(saved.getRows().map((row) => [row.querySelector('[data-cd-key]').value, row.querySelector('[data-cd-type]').value, row.querySelector('[data-cd-value]').value]), [['program', 'var', 'program']]);
+
+  const fresh = kvEditor();
+  assert.equal(fresh.eventKvPane.hidden, false, 'a new event opens in key-value pairs too');
+  assert.equal(fresh.eventStatus.textContent, '', 'the untouched starting point is not an error');
+
+  const broken = kvEditor('{"eventName": "login",');
+  assert.equal(broken.eventJsonPane.hidden, false, 'JSON that does not parse stays where it can be fixed');
+  assert.equal(broken.eventKvPane.hidden, true);
+  assert.match(broken.eventStatus.textContent, /^The event must be a JSON object/);
+
+  const nested = kvEditor('{"eventName": "login", "customData": {"cart": {"total": 1}}}');
+  assert.equal(nested.eventJsonPane.hidden, false, 'an event the key-value editor cannot represent stays in JSON');
+});

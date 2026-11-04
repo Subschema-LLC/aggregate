@@ -358,6 +358,11 @@ export default class extends Controller {
         this.eventMode = 'json';
         this.kvError = '';
         this.update();
+        // Events open in the key-value editor, the easier of the two. An event
+        // it cannot show, such as JSON that does not parse yet, stays in JSON.
+        if (this.hasEventKvPaneTarget && this.hasEventTarget && parseEventForKv(this.eventTarget.value) !== null) {
+            this.switchEventMode('kv');
+        }
     }
 
     update() {
