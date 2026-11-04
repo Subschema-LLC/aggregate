@@ -133,4 +133,36 @@ final class WebsiteSelectorExtensionTest extends TestCase
         self::assertStringContainsString('Site A (a.com)</option>', $html);
         self::assertStringContainsString('Site B (b.com)</option>', $html);
     }
+
+    /** The tag and consent manager pages choose their website themselves, including the shared configuration. */
+    public function testCardControlsLeaveTheGlobalWebsiteSelectorOutWhenAPageTurnsItOff(): void
+    {
+        file_put_contents($this->projectDir . '/config/websites.yaml', Yaml::dump([
+            'websites' => [
+                ['name' => 'Site A', 'domain' => 'a.com', 'token' => 'token-a-12345678901234567890123456'],
+            ],
+        ]));
+        $security = $this->createMock(Security::class);
+        $security->method('getUser')->willReturn(new User());
+        $twig = new Environment(new ChainLoader([
+            new ArrayLoader(['without_selector.html.twig' => '{{ component("Ui:CardControls", {website_selector: false}) }}']),
+            new FilesystemLoader(dirname(__DIR__, 2) . '/templates'),
+        ]), ['strict_variables' => true]);
+        $twig->addExtension(new WebsiteSelectorExtension($security, new WebsiteConfigManager($this->projectDir)));
+        TwigComponents::register($twig);
+
+        $html = $twig->render('without_selector.html.twig');
+
+        self::assertStringNotContainsString('global-website-select', $html);
+        self::assertStringNotContainsString('data-global-website-selector-wrapper', $html);
+        self::assertStringContainsString('Expand all', $html, 'The card buttons stay.');
+    }
+
+    public function testTheTagAndConsentManagerPagesTurnTheGlobalWebsiteSelectorOff(): void
+    {
+        foreach (['tag_manager/index.html.twig', 'consent_manager/index.html.twig'] as $template) {
+            $source = (string) file_get_contents(dirname(__DIR__, 2) . '/templates/' . $template);
+            self::assertStringContainsString("component('Ui:CardControls', {class: 'page-card-controls mb-0', website_selector: false})", $source, $template);
+        }
+    }
 }
