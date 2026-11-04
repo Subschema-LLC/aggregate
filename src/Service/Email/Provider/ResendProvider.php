@@ -7,6 +7,7 @@ namespace App\Service\Email\Provider;
 use App\Service\Email\AbstractEmailProvider;
 use App\Service\Email\EmailCredential;
 use Symfony\Component\DependencyInjection\Attribute\AsTaggedItem;
+use Symfony\Component\Mailer\Header\TagHeader;
 use Symfony\Component\Mailer\Transport\Dsn;
 use Symfony\Component\Mime\Address;
 use Symfony\Component\Mime\Email;
@@ -60,9 +61,26 @@ final class ResendProvider extends AbstractEmailProvider
         return new Dsn('resend+api', 'default', $credential);
     }
 
-    /** Sends from the verified Resend sending domain while keeping the configured sender local-part and display name. */
+    /**
+     * Sends from the verified Resend sending domain while keeping the
+     * configured sender local-part and display name, and leaves out the
+     * message's purpose tag.
+     *
+     * symfony/resend-mailer sends a tag as {"X-Tag": "<value>"}, while Resend's
+     * Emails API takes each tag as {"name": …, "value": …}. Rather than risk a
+     * refused message, Resend messages go without the tag; the purpose is still
+     * recorded with the task, and the X-Metadata-aggregate_task header still
+     * ties Resend's events to it.
+     */
     public function prepare(Email $email, array $settings): void
     {
+        $headers = $email->getHeaders();
+        foreach ($headers->all() as $header) {
+            if ($header instanceof TagHeader) {
+                $headers->remove($header->getName());
+            }
+        }
+
         $domain = $settings[self::KEY_DOMAIN] ?? '';
         if (!is_string($domain) || $domain === '') {
             return;

@@ -124,7 +124,9 @@ final class EmailProvidersTest extends TestCase
         $payload = $this->json($this->requests[0]['options']);
         self::assertSame('no-reply@send.gtu.com', $payload['from']);
         self::assertSame(['person@example.org'], $payload['to']);
-        self::assertSame([['X-Tag' => 'test']], $payload['tags']);
+        // The bridge would send {"X-Tag": "test"}, which is not Resend's {"name", "value"} tag shape.
+        self::assertArrayNotHasKey('tags', $payload);
+        self::assertArrayNotHasKey('X-Tag', $payload['headers'] ?? []);
         self::assertSame('7', $payload['headers']['X-Metadata-aggregate_task'] ?? null);
     }
 
