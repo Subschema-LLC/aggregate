@@ -2,5 +2,5 @@
 <div class="field">
     <label class="label" for="email-resend-domain">Sending domain</label>
     <div class="control"><input class="input" id="email-resend-domain" name="email_resend_domain" type="text" maxlength="253" value="{{ settings.email_resend_domain }}" placeholder="send.example.com"{% if overrides.email_resend_domain %} disabled{% endif %}></div>
-    {% if overrides.email_resend_domain %}{{ help.env_help(overrides, 'email_resend_domain') }}{% else %}<p class="help">A domain verified in Resend, such as <code>send.example.com</code>. Turn off open and click tracking on the domain in Resend.</p>{% endif %}
+    {% if overrides.email_resend_domain %}{{ help.env_help(overrides, 'email_resend_domain') }}{% else %}<p class="help">A domain verified in Resend, such as <code>send.example.com</code>. Email is sent from this domain: the sender address keeps its name before the @ and uses this domain, so <code>info@example.com</code> sends as <code>info@send.example.com</code>. Turn off open and click tracking on the domain in Resend.</p>{% endif %}
 </div>

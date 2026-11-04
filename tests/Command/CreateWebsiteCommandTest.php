@@ -83,6 +83,55 @@ final class CreateWebsiteCommandTest extends TestCase
         yield 'empty domain' => [['--allowed-domain' => ['']]];
     }
 
+    public function testNameAndDomainOptionsCreateAWebsiteWithoutATerminal(): void
+    {
+        $tester = $this->tester(new WebsiteConfigManager($this->directory));
+
+        self::assertSame(Command::SUCCESS, $tester->execute(['--name' => ' Shop ', '--domain' => 'https://SHOP.Example.com/'], ['interactive' => false]));
+        $website = Yaml::parseFile($this->directory.'/config/websites.yaml')['websites'][1];
+        self::assertSame('Shop', $website['name']);
+        self::assertSame('shop.example.com', $website['domain']);
+        self::assertSame(['mode' => 'restricted', 'domains' => ['shop.example.com']], $website['domain_policy']);
+    }
+
+    /** Without a terminal the questions have no answer; this used to fail with a TypeError. */
+    #[DataProvider('missingOptionsWithoutATerminal')]
+    public function testMissingOptionsWithoutATerminalSayWhatToPass(array $options, string $missing): void
+    {
+        $before = file_get_contents($this->directory.'/config/websites.yaml');
+        $tester = $this->tester(new WebsiteConfigManager($this->directory));
+
+        self::assertSame(Command::INVALID, $tester->execute($options, ['interactive' => false]));
+        self::assertSame($before, file_get_contents($this->directory.'/config/websites.yaml'));
+        self::assertStringContainsString('Pass '.$missing.' when running without a terminal', preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '');
+        self::assertStringNotContainsString('<script>', $tester->getDisplay());
+    }
+
+    public static function missingOptionsWithoutATerminal(): iterable
+    {
+        yield 'both' => [[], '--name and --domain'];
+        yield 'domain' => [['--name' => 'Shop'], '--domain'];
+        yield 'name' => [['--domain' => 'shop.example.com'], '--name'];
+    }
+
+    #[DataProvider('invalidNameAndDomainOptions')]
+    public function testInvalidNameOrDomainOptionsChangeNothing(array $options, string $message): void
+    {
+        $before = file_get_contents($this->directory.'/config/websites.yaml');
+        $tester = $this->tester(new WebsiteConfigManager($this->directory));
+
+        self::assertSame(Command::INVALID, $tester->execute($options, ['interactive' => false]));
+        self::assertSame($before, file_get_contents($this->directory.'/config/websites.yaml'));
+        self::assertStringContainsString($message, $tester->getDisplay());
+    }
+
+    public static function invalidNameAndDomainOptions(): iterable
+    {
+        yield 'blank name' => [['--name' => '  ', '--domain' => 'shop.example.com'], 'Website name cannot be empty.'];
+        yield 'blank domain' => [['--name' => 'Shop', '--domain' => ' '], 'Domain cannot be empty.'];
+        yield 'control character' => [['--name' => 'Shop', '--domain' => "shop.example.com\n"], 'control characters'];
+    }
+
     public function testFailedSaveDoesNotClaimWebsiteCreationSucceeded(): void
     {
         $manager = $this->createMock(WebsiteConfigManager::class);

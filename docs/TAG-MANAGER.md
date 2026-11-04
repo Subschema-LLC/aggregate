@@ -9,6 +9,11 @@ variables from a data layer. The manager itself can load without consent. Each
 tag defaults to analytics consent; choose another category or explicitly use
 `none` for an action that needs no consent.
 
+In the dashboard each tag row reads in that order: its trigger (and, for an
+event trigger, the **Event to listen for**), then its action, then its
+**Consent**, chosen from a list (**No consent required** is `none`) or typed
+as **Another category…**.
+
 The manager is disabled by default. Each registered website has its own YAML,
 consent banner settings, and remotely hosted scripts. Nothing is stored in a tag database
 table, and script serving works with `dashboard_enabled: false`.
@@ -16,8 +21,11 @@ table, and script serving works with `dashboard_enabled: false`.
 Open **Collection → Tag manager lite**, choose a website, and edit its variables,
 actions, triggers, and consent categories. The built-in consent banner has its own
 page, **Collection → Consent manager lite**; see the
-[consent manager guide](CONSENT-MANAGER.md). Save to add another row, disable tags
-without deleting them, or select **Remove this tag when saving**. If a save is
+[consent manager guide](CONSENT-MANAGER.md). **Add another tag** and **Add another
+variable** add rows before you save, up to 20 tags and 32 variables, and a row
+added this way can be discarded until it is saved; save once for all of them. A
+new row left empty is not saved. Disable tags without deleting them, or select
+**Remove this tag when saving**. If a save is
 rejected, nothing is written and the page shows the values you entered once
 more, with the error, so you can correct them without retyping. **Setup** copies
 or downloads the selected website's installation snippet and drop-ins.
@@ -233,11 +241,13 @@ tag_manager:
       trigger: {type: data_layer, event: login}
 ```
 
-In the dashboard, choose **Send an Aggregate event** and edit the event as
-**JSON** or toggle to **Key-value pairs** to set `eventName`, each `customData`
-property with its value type (text, **Variable (most recent)**, **Variable
-(pushed event)**, number, boolean or null), and optional `goalEvent` and
-`pagePath` fields. A new event starts from `eventName` and an empty `customData`:
+In the dashboard, choose **Send an Aggregate event**. The event opens in
+**Key-value pairs**, which set `eventName`, each `customData` property with its
+value type (text, **Variable: latest value**, **Variable: this event's
+value**, number, boolean or null), and optional `goalEvent` and
+`pagePath` fields; toggle to **JSON** to edit the object itself. An event the
+key-value editor cannot show, such as JSON that does not parse yet, opens in
+JSON. A new event starts from `eventName` and an empty `customData`:
 
 ```json
 {
@@ -254,10 +264,10 @@ property with its value type (text, **Variable (most recent)**, **Variable
   up to 500 bytes, a number, `true`, `false` or `null`. `goalEvent` names a goal
   from `config/goals.yaml` and `pagePath` a virtual page path such as
   `/checkout/step-2`; both are optional. Any value can be a variable instead:
-  `{"$var": "alias"}` (**Variable (most recent)**) reads from the merged
+  `{"$var": "alias"}` (**Variable: latest value**) reads from the merged
   `dataLayer` state (and the most recent item when a path crosses an unindexed
-  array), while `{"$var": "alias", "from": "event"}` (**Variable (pushed
-  event)**) reads from the pushed event payload or the array object whose
+  array), while `{"$var": "alias", "from": "event"}` (**Variable: this event's
+  value**) reads from the pushed event payload or the array object whose
   `event` matches the triggered event.
 - The tracker sets every other request field, and adds `page_sequence`,
   `entry_channel` and `org_internal_traffic` to `customData` itself, so the
@@ -265,6 +275,9 @@ property with its value type (text, **Variable (most recent)**, **Variable
   event as you type.
 - A push's values are not copied into the event, and a variable gives one value,
   so name each property. A missing value skips the event.
+- When the event uses a variable that is not defined yet, the editor asks for its
+  data path and adds it to the **Variables** tab, to be saved with the rest of
+  the form.
 - The action waits for the tracker. Until the tracker has loaded and sent its
   page view, events are held, up to 20 a page, then sent in order if the tag
   still has consent. It needs no [tag chaining](#tag-chaining), and it uses the
@@ -475,6 +488,29 @@ served, and their consent categories leave the built-in banner. The Tag manager
 page shows their code read-only and does not offer the action for new rows;
 saving can keep or remove them but cannot add or change custom code. Other tags
 are unaffected. Turning the flag back on serves the kept tags again.
+
+## Test a tag before saving
+
+Each tag row has **Test this tag**. It runs the tag as it is on the page, before
+you save, against a sample: the `dataLayer` push for a dataLayer trigger, the
+event's `detail` for a document or window event, or the data layer when the page
+is ready or loaded. The sample starts with the trigger's event name and an
+`"example"` value at each path the tag's variables read; edit it to match what
+your page sends. Untick **The visitor has allowed this tag's consent category**
+to see what happens before a choice.
+
+The result says whether the tag would run and what it would do: the event it
+would send to Aggregate, the script URL it would load (with variables filled
+in), or the method it would call and its arguments. A table shows each variable
+with the value the tag manager read from the sample, or that it was not found.
+When the tag would not run, the result says why: the sample's event does not
+match, a variable has no value, or consent is missing.
+
+The test runs `public/tag-manager.js` itself, in a background worker in your
+browser, with stand-ins for the page, the tracker and other libraries. Nothing
+is loaded, sent or saved. Custom JavaScript does not run in the test; the result
+shows only whether it would. A tag set to run after another assumes that one has
+finished. The test needs the tag manager page at edit level.
 
 ## Trigger and browser-event dictionary
 

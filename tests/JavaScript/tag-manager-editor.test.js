@@ -627,3 +627,265 @@ test('typing variable aliases refreshes the datalist used by key-value variable 
   controller.refreshVariableAliases({target: {matches: (sel) => sel === 'input[name^="variables["][name$="[alias]"]'}});
   assert.deepEqual(list.options.map((o) => o.value), ['plan', 'login_method']);
 });
+
+test('event tags open in key-value pairs, and JSON the editor cannot show stays in JSON without an error', () => {
+  const saved = kvEditor(JSON.stringify({eventName: 'request_info', customData: {program: {$var: 'program'}}}, null, 4));
+  assert.equal(saved.eventKvPane.hidden, false, 'a saved event opens in key-value pairs');
+  assert.equal(saved.eventJsonPane.hidden, true);
+  assert.equal(saved.kvButton.attrs['aria-pressed'], 'true');
+  assert.equal(saved.eventNameInput.value, 'request_info');
+  assert.deepEqual(saved.getRows().map((row) => [row.querySelector('[data-cd-key]').value, row.querySelector('[data-cd-type]').value, row.querySelector('[data-cd-value]').value]), [['program', 'var', 'program']]);
+
+  const fresh = kvEditor();
+  assert.equal(fresh.eventKvPane.hidden, false, 'a new event opens in key-value pairs too');
+  assert.equal(fresh.eventStatus.textContent, '', 'the untouched starting point is not an error');
+
+  const broken = kvEditor('{"eventName": "login",');
+  assert.equal(broken.eventJsonPane.hidden, false, 'JSON that does not parse stays where it can be fixed');
+  assert.equal(broken.eventKvPane.hidden, true);
+  assert.match(broken.eventStatus.textContent, /^The event must be a JSON object/);
+
+  const nested = kvEditor('{"eventName": "login", "customData": {"cart": {"total": 1}}}');
+  assert.equal(nested.eventJsonPane.hidden, false, 'an event the key-value editor cannot represent stays in JSON');
+});
+
+function consentRow(value) {
+  const options = ['none', 'analytics', 'functional', 'marketing', ''].map((option) => ({value: option}));
+  const choice = {value: options.some((option) => option.value === value && value !== '') ? value : '', options};
+  const other = {hidden: choice.value !== ''};
+  const input = {value, focus() { this.focused = true; }};
+  const row = editor();
+  Object.assign(row.controller, {
+    hasConsentChoiceTarget: true, consentChoiceTarget: choice,
+    hasConsentOtherTarget: true, consentOtherTarget: other,
+    hasConsentTarget: true, consentTarget: input
+  });
+  return {controller: row.controller, choice, other, input};
+}
+
+test('the consent list sets the submitted category and shows a field only for another category', () => {
+  const row = consentRow('analytics');
+  row.choice.value = 'none';
+  row.controller.chooseConsent();
+  assert.equal(row.input.value, 'none', 'a listed choice is what is submitted');
+  assert.equal(row.other.hidden, true);
+
+  row.choice.value = '';
+  row.controller.chooseConsent();
+  assert.equal(row.other.hidden, false, '"Another category…" shows its field');
+  assert.equal(row.input.value, '', 'and clears a listed value so it is not submitted by mistake');
+  assert.equal(row.input.focused, true);
+  row.input.value = 'advertising';
+  row.controller.typeConsent();
+  assert.equal(row.choice.value, '');
+  assert.equal(row.other.hidden, false);
+
+  const template = consentRow('analytics');
+  template.input.value = 'marketing';
+  template.controller.update();
+  assert.equal(template.choice.value, 'marketing', 'a value set by a template or the tracker suggestion shows in the list');
+  template.input.value = 'advertising';
+  template.controller.update();
+  assert.equal(template.choice.value, '');
+  assert.equal(template.other.hidden, false);
+
+  const custom = consentRow('advertising');
+  custom.choice.value = '';
+  custom.controller.chooseConsent();
+  assert.equal(custom.input.value, 'advertising', 'choosing "Another category…" keeps a typed category');
+});
+
+test('the event label points at the field that is showing', () => {
+  const ed = kvEditor();
+  const label = {attrs: {}, setAttribute(k, v) { this.attrs[k] = v; }};
+  ed.eventInput.id = 'tag-3-event-object';
+  ed.eventNameInput.id = 'tag-3-event-name';
+  Object.assign(ed.controller, {hasEventLabelTarget: true, eventLabelTarget: label});
+  ed.controller.switchEventMode('kv');
+  assert.equal(label.attrs.for, 'tag-3-event-name');
+  ed.controller.switchEventMode('json');
+  assert.equal(label.attrs.for, 'tag-3-event-object');
+});
+
+// A minimal element with attributes, for renumbering and row lookups.
+function element(attrs = {}, children = []) {
+  const node = {
+    attrs: {...attrs}, children, parent: null, removed: false,
+    getAttribute(name) { return Object.prototype.hasOwnProperty.call(this.attrs, name) ? this.attrs[name] : null; },
+    setAttribute(name, value) { this.attrs[name] = String(value); },
+    querySelectorAll() { const all = []; const walk = (n) => n.children.forEach((c) => { all.push(c); walk(c); }); walk(this); return all; },
+    remove() { this.removed = true; }
+  };
+  children.forEach((child) => { child.parent = node; });
+  return node;
+}
+
+function variableRow(index, alias = '', path = '') {
+  const aliasInput = element({id: `variable-${index}-alias`, name: `variables[${index}][alias]`});
+  const pathInput = element({id: `variable-${index}-path`, name: `variables[${index}][path]`});
+  aliasInput.value = alias;
+  pathInput.value = path;
+  const label = element({for: `variable-${index}-alias`});
+  const row = element({'data-variable-row': ''}, [label, aliasInput, pathInput]);
+  row.querySelector = (selector) => (selector.includes('[alias]') ? aliasInput : selector.includes('[path]') ? pathInput : null);
+  row.matches = (selector) => selector === '[data-tag-row]' ? false : selector.includes('data-variable-row');
+  return row;
+}
+
+function variablePage(rows, max = 32) {
+  let current = rows;
+  const list = {options: [], replaceChildren(...options) { this.options = options; }};
+  const container = {querySelectorAll: (selector) => (selector === '[data-variable-row]' ? current.filter((row) => !row.removed) : [])};
+  const controller = Object.assign(new Page(), {
+    element: {
+      ownerDocument: {getElementById: (id) => (id === 'tag-variable-aliases' ? list : null), createElement: () => ({value: ''})},
+      querySelectorAll: (selector) => (selector.startsWith('input[name^="variables["]') ? current.filter((row) => !row.removed).map((row) => row.querySelector('[alias]')) : [])
+    },
+    hasVariableRowsTarget: true, variableRowsTarget: container,
+    hasVariableTemplateTarget: false, maxVariablesValue: max,
+    hasRowStatusTarget: true, rowStatusTarget: {textContent: ''}
+  });
+  return {controller, list, rows: () => current.filter((row) => !row.removed)};
+}
+
+test('a tag row can create the variable it needs: an empty variable row is filled and the alias list updated', () => {
+  const page = variablePage([variableRow(0, 'plan', 'plan'), variableRow(1)]);
+  const created = {detail: {alias: 'program', path: 'program_name'}};
+  page.controller.createVariable(created);
+  assert.equal(created.detail.added, true);
+  assert.equal(page.rows()[1].querySelector('[alias]').value, 'program');
+  assert.equal(page.rows()[1].querySelector('[path]').value, 'program_name');
+  assert.deepEqual(page.list.options.map((option) => option.value), ['plan', 'program']);
+
+  for (const [detail, message] of [
+    [{alias: 'plan', path: 'other'}, /already on the Variables tab/],
+    [{alias: 'campus', path: 'window.siteData.campus['}, /Enter a data path/],
+    [{alias: 'campus', path: ''}, /Enter a data path/],
+    [{alias: 'campus', path: 'campus'}, /no room for another variable/]
+  ]) {
+    const event = {detail: {...detail}};
+    page.controller.createVariable(event);
+    assert.equal(event.detail.added, undefined, JSON.stringify(detail));
+    assert.match(event.detail.error, message, JSON.stringify(detail));
+  }
+});
+
+test('discarding an unsaved row renumbers the rows after it, so the form stays a list numbered from 0', () => {
+  const rows = [variableRow(0, 'plan', 'plan'), variableRow(1, 'a', 'a'), variableRow(2, 'b', 'b')];
+  const page = variablePage(rows);
+  page.controller.discardRow({currentTarget: {closest: () => rows[1]}});
+  assert.equal(rows[1].removed, true);
+  const last = page.rows()[1];
+  assert.equal(last.querySelector('[alias]').attrs.name, 'variables[1][alias]');
+  assert.equal(last.querySelector('[alias]').attrs.id, 'variable-1-alias');
+  assert.equal(last.children[0].attrs.for, 'variable-1-alias');
+  assert.equal(page.rows()[0].querySelector('[alias]').attrs.name, 'variables[0][alias]', 'earlier rows keep their numbers');
+  assert.deepEqual(page.list.options.map((option) => option.value), ['plan', 'b']);
+  assert.match(page.controller.rowStatusTarget.textContent, /Discarded the new variable/);
+});
+
+test('an event using an undefined variable offers to create it, and the offer follows the alias list', () => {
+  const ed = kvEditor(JSON.stringify({eventName: 'request_info', customData: {program: {$var: 'program'}, plan: {$var: 'plan'}}}));
+  const aliases = {options: [{value: 'plan'}]};
+  const offer = {hidden: true};
+  const name = {textContent: ''};
+  const path = {value: '', focus() { this.focused = true; }};
+  const status = {textContent: '', classList: classes()};
+  const dispatched = [];
+  Object.assign(ed.controller, {
+    element: {ownerDocument: {getElementById: (id) => (id === 'tag-variable-aliases' ? aliases : null)}},
+    hasNewVariableTarget: true, newVariableTarget: offer,
+    hasNewVariableNameTarget: true, newVariableNameTarget: name,
+    hasNewVariablePathTarget: true, newVariablePathTarget: path,
+    hasNewVariableStatusTarget: true, newVariableStatusTarget: status,
+    dispatch: (eventName, {detail}) => {
+      dispatched.push([eventName, {...detail}]);
+      if (detail.path === 'program_name') { detail.added = true; aliases.options.push({value: detail.alias}); } else detail.error = 'Enter a data path such as page_type.';
+    }
+  });
+  ed.controller.checkEvent();
+  assert.equal(offer.hidden, false);
+  assert.equal(name.textContent, 'program', 'the first undefined variable is offered; plan is defined');
+
+  ed.controller.createVariable();
+  assert.match(status.textContent, /Enter a data path/);
+  assert.equal(status.classList.contains('is-danger'), true);
+  assert.equal(path.focused, true);
+
+  path.value = ' program_name ';
+  ed.controller.createVariable();
+  assert.deepEqual(dispatched.at(-1), ['createVariable', {alias: 'program', path: 'program_name'}]);
+  assert.equal(offer.hidden, true, 'nothing else is missing');
+  assert.equal(status.textContent, 'Added program on the Variables tab. Save to keep it.');
+  assert.equal(path.value, '');
+
+  aliases.options = [{value: 'program'}];
+  ed.controller.offerNewVariable();
+  assert.equal(offer.hidden, false, 'removing plan from the Variables tab offers it');
+  assert.equal(name.textContent, 'plan');
+  assert.equal(status.textContent, '', 'and clears the earlier message');
+});
+
+test('a test sample starts from the trigger, with an example at each path the tag reads', () => {
+  const row = kvEditor(JSON.stringify({eventName: 'request_info', customData: {program: {$var: 'program'}, sku: {$var: 'first_sku', from: 'event'}, fixed: 'x'}}));
+  const sample = {value: ''};
+  const label = {textContent: ''};
+  const help = {textContent: ''};
+  const variableRows = [['program', 'program_name'], ['first_sku', 'ecommerce.items[0].sku'], ['unused', 'other']].map(([alias, path]) => {
+    const pathInput = {value: path};
+    return {value: alias, closest: () => ({querySelector: () => pathInput})};
+  });
+  Object.assign(row.controller, {
+    element: {ownerDocument: {querySelectorAll: () => variableRows}},
+    hasPreviewSampleTarget: true, previewSampleTarget: sample,
+    hasPreviewSampleLabelTarget: true, previewSampleLabelTarget: label,
+    hasPreviewSampleHelpTarget: true, previewSampleHelpTarget: help
+  });
+  row.controller.triggerTarget.value = 'data_layer';
+  row.controller.eventFieldTarget = {querySelector: () => ({value: ' form_submit '})};
+  row.controller.resetPreviewSample();
+  assert.deepEqual(JSON.parse(sample.value), {event: 'form_submit', program_name: 'example', ecommerce: {items: [{sku: 'example'}]}});
+  assert.equal(label.textContent, 'Sample dataLayer push');
+
+  variableRows[0].closest = () => ({querySelector: () => ({value: 'event.detail.program'})});
+  row.controller.triggerTarget.value = 'document_event';
+  row.controller.eventFieldTarget = {querySelector: () => ({value: 'program:chosen'})};
+  row.controller.resetPreviewSample();
+  assert.deepEqual(JSON.parse(sample.value), {program: 'example'}, 'a page event sample is its detail; data-layer paths are not part of it');
+  assert.equal(label.textContent, 'Sample event detail');
+});
+
+test('the test result says whether the tag ran, what it did, and why not', () => {
+  // The controller runs in a VM; compare what it builds as plain data.
+  const plain = (value) => JSON.parse(JSON.stringify(value));
+  const plan = {
+    tag: {id: 'request-info', type: 'event', consent: 'analytics', trigger: {type: 'data_layer', event: 'form_submit'}},
+    probes: {p1: {alias: 'program', from: 'recent', path: 'program_name'}},
+    notes: ['This tag is disabled, so it does not run on the website until you enable it. The test runs it anyway.']
+  };
+  const ran = Editor.previewOutcome({plan, sample: {event: 'form_submit'}, consent: true,
+    records: {emits: [[{eventName: 'request_info', customData: {program: 'Nursing'}}]], probes: {p1: 'Nursing'}, warnings: [], errors: []}});
+  assert.equal(ran.ran, true);
+  assert.equal(ran.done[0].label, 'Sends this event to Aggregate');
+  assert.deepEqual(JSON.parse(ran.done[0].detail), {eventName: 'request_info', customData: {program: 'Nursing'}});
+  assert.deepEqual(plain(ran.variables.map((v) => [v.alias, v.checked, v.found, v.value])), [['program', true, true, 'Nursing']]);
+  assert.deepEqual(plain(ran.reasons), []);
+  assert.match(ran.notes[0], /This tag is disabled/);
+
+  const missing = Editor.previewOutcome({plan, sample: {event: 'form_submit'}, consent: true, records: {emits: [], probes: {}}});
+  assert.deepEqual(plain(missing.reasons), ['A variable it uses has no value in the sample, so the tag is skipped: program (program_name).']);
+
+  const wrongEvent = Editor.previewOutcome({plan, sample: {event: 'page_view'}, consent: true, records: {emits: [], probes: {}}});
+  assert.deepEqual(plain(wrongEvent.reasons), ['The sample pushes the event "page_view", but this tag listens for "form_submit".'], 'variables are not called missing when nothing triggered');
+  assert.equal(wrongEvent.variables[0].checked, false);
+
+  const noEvent = Editor.previewOutcome({plan, sample: {}, consent: true, records: {}});
+  assert.match(noEvent.reasons[0], /^The sample has no "event"/);
+
+  const noConsent = Editor.previewOutcome({plan, sample: {event: 'form_submit'}, consent: false, records: {emits: [], probes: {p1: 'Nursing'}}});
+  assert.deepEqual(plain(noConsent.reasons), ['The visitor has not allowed analytics, so the tag does not run.']);
+
+  const script = Editor.previewOutcome({plan: {tag: {id: 'helper', type: 'script', consent: 'none', trigger: {type: 'dom_ready'}}, probes: {}},
+    sample: {}, consent: true, records: {scripts: [{tag: 'other', src: 'https://a.example/x.js'}, {tag: 'helper', src: 'https://scripts.example/h.js'}]}});
+  assert.deepEqual(plain(script.done), [{label: 'Loads this script', detail: 'https://scripts.example/h.js'}], 'only the tested tag\'s script counts');
+});

@@ -4,13 +4,16 @@
 
 {% block body %}
 {% set rows = settings.tags %}
+{% set preview_url = path('app_tag_manager_preview') %}
+{% set worker_url = asset('tag_manager/preview_worker.js') %}
+{% set preview_base = site ? 'https://' ~ site.domain ~ '/' : 'https://www.example.com/' %}
 {% set existing_tag_ids = rows|map(row => row.id|default(''))|filter(id => id != '') %}
 {% set has_new_row = rows|length < max_tags %}
 {% set suggest_tracker = tracker_url and not tracker_tag %}
 {% set prepopulate_tracker = suggest_tracker and not restored_form|default(false) %}
 {% set new_row_id = prepopulate_tracker and (tracker_tag_id|default('aggregate-tracker') not in existing_tag_ids) ? tracker_tag_id|default('aggregate-tracker') : '' %}
 {% if has_new_row %}{% set rows = rows|merge([{id: new_row_id, src: prepopulate_tracker ? tracker_url : '', type: 'script', enabled: true, consent: 'analytics', trigger: {type: 'dom_ready'}, is_new: true}]) %}{% endif %}
-<div class="tag-settings" data-site-id="{{ selected_site }}" data-controller="pages--tag-manager--index" data-action="input->pages--tag-manager--index#refreshRunAfter input->pages--tag-manager--index#refreshVariableAliases"{% if has_new_row %} data-pages--tag-manager--index-new-row-value="{{ rows|length - 1 }}"{% endif %}>
+<div class="tag-settings" data-site-id="{{ selected_site }}" data-controller="pages--tag-manager--index" data-action="input->pages--tag-manager--index#refreshRunAfter input->pages--tag-manager--index#refreshVariableAliases components--tag-manager--tag-row:createVariable->pages--tag-manager--index#createVariable" data-pages--tag-manager--index-max-tags-value="{{ max_tags }}" data-pages--tag-manager--index-max-variables-value="{{ max_variables }}"{% if has_new_row %} data-pages--tag-manager--index-new-row-value="{{ rows|length - 1 }}"{% endif %}>
     <div class="level">
         <div class="level-left">
             <div>
@@ -20,7 +23,7 @@
             </div>
         </div>
         <div class="level-right">
-            {{ component('Ui:CardControls', {class: 'page-card-controls mb-0'}) }}
+            {{ component('Ui:CardControls', {class: 'page-card-controls mb-0', website_selector: false}) }}
         </div>
     </div>
     {{ component('TagManager:Navigation', {current_page: 'app_tag_manager', selected_site: selected_site}) }}
@@ -61,11 +64,14 @@
     <div class="content">
         {% if site %}
             <p>These settings belong to <strong>{{ site.domain }}</strong>. They are saved separately from other websites and shared configuration. New websites start with tags disabled.</p>
-            <p>Headless configuration: <code>config/tag-manager/sites/{{ selected_site }}.yaml</code>. The same validation applies to UI and YAML changes.</p>
         {% else %}
             <p>These shared settings are used by the unscoped tag script. Website-specific scripts use their own files and do not inherit these tags.</p>
         {% endif %}
-        <p><a href="{{ path('app_setup', site ? {website: site.token, step: 3, tags: '1'} : {step: 3, tags: '1'}) }}">Open setup to copy or download scripts, or build compact versions.</a></p>
+        <details>
+            <summary>Advanced: YAML file and installation scripts</summary>
+            {% if site %}<p class="mt-2">Headless configuration: <code>config/tag-manager/sites/{{ selected_site }}.yaml</code>. The same validation applies to UI and YAML changes.</p>{% endif %}
+            <p class="mt-2"><a href="{{ path('app_setup', site ? {website: site.token, step: 3, tags: '1'} : {step: 3, tags: '1'}) }}">Open setup to copy or download scripts, or build compact versions.</a></p>
+        </details>
     </div>
 
     {% if tracker_url and not configuration_error %}
@@ -87,7 +93,7 @@
                 {{ component('Ui:CopyButton', {target: 'tag-manager-tracker-url', status: 'tag-manager-tracker-status', label: 'Copy tracker URL', class: 'button'}) }}
             </div>
             <p class="help" id="tag-manager-tracker-status" role="status" aria-live="polite" data-pages--tag-manager--index-target="status"></p>
-            <p class="help">To send custom data with the page view, add <code>&amp;cd.&lt;property&gt;=&lt;value&gt;</code> to the URL, for example <code>&amp;cd.page_type={% verbatim %}{{page_type}}{% endverbatim %}</code> with a variable below. Each property must be defined in the <a href="{{ path('app_data_model') }}">data model</a>, and those requiring consent are recorded only after an analytics choice. If a variable is missing on a page, the whole tag is skipped and the tracker does not load there.</p>
+            <details class="help mt-2"><summary>Send custom data with the page view</summary><p class="mt-1">Add <code>&amp;cd.&lt;property&gt;=&lt;value&gt;</code> to the URL, for example <code>&amp;cd.page_type={% verbatim %}{{page_type}}{% endverbatim %}</code> with a variable below. Each property must be defined in the <a href="{{ path('app_data_model') }}">data model</a>, and those requiring consent are recorded only after an analytics choice. If a variable is missing on a page, the whole tag is skipped and the tracker does not load there.</p></details>
         </section>
     {% endif %}
 
@@ -139,27 +145,52 @@
             <div id="pane-variables" class="workspace-pane nested-toggle-pane is-active" role="tabpanel" aria-labelledby="tab-variables" data-toggle-pane="variables" data-pane-name="variables">
                 <details class="box" open>
                     <summary class="has-text-weight-semibold">Variables — read values from this page</summary>
-                    <div class="content mt-3"><p>Give each value an alias and a path, such as <code>plan</code> → <code>window.siteData.plan</code> or <code>category</code> → <code>dataLayer[0].ecommerce.items[0].category</code>. Paths read own data properties; they do not run JavaScript or getters.</p><p>Use <code>{% verbatim %}{{plan}}{% endverbatim %}</code> in a script URL's path or query, or <code>{"$var":"plan"}</code> in method arguments. URL substitutions are encoded; the host stays fixed. Missing or invalid values skip that tag.</p></div>
+                    <div class="content mt-3">
+                        <p>Give each value you want to use a name and its path in the data layer. After <code>dataLayer.push({event: 'view_item', page_type: 'program', ecommerce: {items: [{category: 'Nursing'}]}})</code>, the path <code>page_type</code> reads <code>program</code> and <code>ecommerce.items[0].category</code> reads <code>Nursing</code>.</p>
+                        <p>Paths read what the page has pushed to <code>window.dataLayer</code>, merged across pushes, and <code>event.detail</code> for document and window events. They do not read other page globals such as <code>window.siteData</code>, and they never run JavaScript. When a value is missing, the tag that uses it is skipped.</p>
+                        <details><summary>Use a variable in a script URL, method arguments or event JSON</summary><p class="mt-2">Write <code>{% verbatim %}{{category}}{% endverbatim %}</code> in a script URL's path or query, or <code>{"$var": "category"}</code> in method arguments and event JSON. URL values are encoded; the host stays fixed. The event editor's key-value pairs choose variables for you.</p></details>
+                    </div>
                     {% if variable_rows|length < max_variables %}{% set variable_rows = variable_rows|merge([{alias: '', path: ''}]) %}{% endif %}
+                    <div data-pages--tag-manager--index-target="variableRows">
                     {% for variable in variable_rows %}
                         {{ component('TagManager:VariableRow', {index: loop.index0, variable: variable}) }}
                     {% endfor %}
-                    <p class="help">Up to {{ max_variables }} variables. Save to add another row. Leave both fields empty to keep the current list.</p>
+                    </div>
+                    {# A blank row the page copies for "Add another variable"; __INDEX__ becomes the next row number. #}
+                    <template data-pages--tag-manager--index-target="variableTemplate">{{ component('TagManager:VariableRow', {index: '__INDEX__', variable: {alias: '', path: ''}, added: true}) }}</template>
+                    <div class="buttons mb-2">
+                        <button type="button" class="button is-small" data-pages--tag-manager--index-target="addVariableButton" data-action="pages--tag-manager--index#addVariableRow"{% if variable_rows|length >= max_variables %} disabled{% endif %}>
+                            <span class="icon is-small"><i class="fas fa-plus" aria-hidden="true"></i></span>
+                            <span>Add another variable</span>
+                        </button>
+                    </div>
+                    <p class="help">Up to {{ max_variables }} variables. Add as many as you need, then save once; a row left empty is not saved.</p>
                 </details>
             </div>
 
             <div id="pane-tags" class="workspace-pane nested-toggle-pane" role="tabpanel" aria-labelledby="tab-tags" data-toggle-pane="tags" data-pane-name="tags" hidden>
                 {% set tag_ids = existing_tag_ids %}
+                <div data-pages--tag-manager--index-target="tagRows">
                 {% for tag in rows %}
-                    {{ component('TagManager:TagRow', {index: loop.index0, tag: tag, script_suggestions: suggest_tracker, custom_scripts_enabled: custom_scripts_enabled, custom_templates: custom_templates, tag_ids: tag_ids, tracker_namespaces: tracker_namespaces}) }}
+                    {{ component('TagManager:TagRow', {index: loop.index0, tag: tag, script_suggestions: suggest_tracker, custom_scripts_enabled: custom_scripts_enabled, custom_templates: custom_templates, tag_ids: tag_ids, tracker_namespaces: tracker_namespaces, preview_url: preview_url, worker_url: worker_url, preview_base: preview_base}) }}
                 {% endfor %}
+                </div>
+                {# A blank tag the page copies for "Add another tag"; __INDEX__ becomes the next row number. #}
+                <template data-pages--tag-manager--index-target="tagTemplate">{{ component('TagManager:TagRow', {index: '__INDEX__', tag: {id: '', src: '', type: 'script', enabled: true, consent: 'analytics', trigger: {type: 'dom_ready'}, is_new: true, added: true}, script_suggestions: suggest_tracker, custom_scripts_enabled: custom_scripts_enabled, custom_templates: custom_templates, tag_ids: tag_ids, tracker_namespaces: tracker_namespaces, preview_url: preview_url, worker_url: worker_url, preview_base: preview_base}) }}</template>
+                <div class="buttons mb-2">
+                    <button type="button" class="button" data-pages--tag-manager--index-target="addTagButton" data-action="pages--tag-manager--index#addTagRow"{% if rows|length >= max_tags %} disabled{% endif %}>
+                        <span class="icon is-small"><i class="fas fa-plus" aria-hidden="true"></i></span>
+                        <span>Add another tag</span>
+                    </button>
+                </div>
+                <p class="help" role="status" aria-live="polite" data-pages--tag-manager--index-target="rowStatus"></p>
                 {% if suggest_tracker %}<datalist id="tag-script-suggestions"><option value="{{ tracker_url }}">This website's tracker</option></datalist>{% endif %}
                 <datalist id="tag-variable-aliases">{% for alias in variable_rows|map(row => row.alias|default(''))|filter(alias => alias != '') %}<option value="{{ alias }}"></option>{% endfor %}</datalist>
                 {# Starter templates for custom JavaScript, read by the tag row editor. #}
                 <script type="application/json" id="tag-custom-templates">{{ custom_templates_json|raw }}</script>
                 <datalist id="tag-consent-categories"><option value="analytics">Analytics</option><option value="functional">Functional</option><option value="marketing">Marketing</option><option value="none">No consent required</option></datalist>
                 <datalist id="tag-event-examples"><option value="click"></option><option value="submit"></option><option value="change"></option><option value="cart:updated"></option><option value="purchase"></option><option value="checkout_complete"></option></datalist>
-                <p class="help mb-3">Up to {{ max_tags }} tags. Save a new tag to add another row. Hosted scripts and downloaded tag loaders receive saved changes within five minutes; browsers reuse a script that long.</p>
+                <p class="help mb-3">Up to {{ max_tags }} tags. Add as many as you need, then save once; a new tag left empty is not saved. Hosted scripts and downloaded tag loaders receive saved changes within five minutes; browsers reuse a script that long.</p>
             </div>
 
             <div id="pane-triggers" class="workspace-pane nested-toggle-pane" role="tabpanel" aria-labelledby="tab-triggers" data-toggle-pane="triggers" data-pane-name="triggers" hidden>
