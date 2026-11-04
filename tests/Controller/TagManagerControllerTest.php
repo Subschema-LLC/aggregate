@@ -450,6 +450,49 @@ final class TagManagerControllerTest extends TestCase
         self::assertCount(1, $crawler->filter('details > summary')->reduce(static fn (Crawler $summary): bool => $summary->text() === 'Send custom data with the page view'));
     }
 
+    /** "Add another" copies a blank row from a <template>, which is never part of the submitted form. */
+    public function testAddAnotherTagAndVariableUseTemplatesThatAreNotSubmitted(): void
+    {
+        $request = $this->request($this->siteForm());
+        $this->controller($request)->save($request);
+        $view = Request::create('/dashboard/tag-manager', 'GET', ['site' => $this->siteId]);
+        $crawler = new Crawler((string) $this->controller($view)->index($view)->getContent(), 'https://analytics.example/dashboard/tag-manager');
+
+        $tagTemplate = $crawler->filter('template[data-pages--tag-manager--index-target="tagTemplate"]');
+        $variableTemplate = $crawler->filter('template[data-pages--tag-manager--index-target="variableTemplate"]');
+        self::assertCount(1, $tagTemplate);
+        self::assertCount(1, $variableTemplate);
+        self::assertStringContainsString('name="tags[__INDEX__][id]"', $tagTemplate->html());
+        self::assertStringContainsString('Discard this new tag', $tagTemplate->html());
+        self::assertStringContainsString('name="variables[__INDEX__][alias]"', $variableTemplate->html());
+        self::assertStringContainsString('Discard this variable', $variableTemplate->html());
+        self::assertStringNotContainsString('Discard', $crawler->filter('[data-pages--tag-manager--index-target="tagRows"]')->html(), 'rows from the server are kept or removed with their checkbox');
+
+        $values = $crawler->selectButton('Save script settings')->form()->getPhpValues();
+        self::assertSame([0, 1, 2], array_keys($values['tags']), 'two saved tags and the new row; the template adds nothing');
+        self::assertSame([0, 1], array_keys($values['variables']));
+        self::assertCount(1, $crawler->filter('button[data-action="pages--tag-manager--index#addTagRow"]:not([disabled])'));
+        self::assertCount(1, $crawler->filter('button[data-action="pages--tag-manager--index#addVariableRow"]:not([disabled])'));
+        self::assertSame((string) TagManagerSettings::MAX_TAGS, $crawler->filter('[data-controller="pages--tag-manager--index"]')->attr('data-pages--tag-manager--index-max-tags-value'));
+        self::assertStringContainsString('Add as many as you need, then save once', $crawler->filter('#pane-tags')->text());
+    }
+
+    public function testAddAnotherTagIsOffWhenTheTagListIsFull(): void
+    {
+        $form = $this->siteForm();
+        $form['tags'] = [];
+        for ($i = 0; $i < TagManagerSettings::MAX_TAGS; ++$i) {
+            $form['tags'][] = ['id' => 'tag'.$i, 'type' => 'script', 'src' => 'https://scripts.example/'.$i.'.js', 'enabled' => '1', 'consent' => 'none', 'trigger' => ['type' => 'dom_ready', 'event' => '']];
+        }
+        $request = $this->request($form);
+        $this->controller($request)->save($request);
+        $view = Request::create('/dashboard/tag-manager', 'GET', ['site' => $this->siteId]);
+        $crawler = new Crawler((string) $this->controller($view)->index($view)->getContent());
+
+        self::assertCount(1, $crawler->filter('button[data-action="pages--tag-manager--index#addTagRow"][disabled]'));
+        self::assertCount(TagManagerSettings::MAX_TAGS, $crawler->filter('[data-pages--tag-manager--index-target="tagRows"] [data-tag-row]'));
+    }
+
     /** The examples a user copies must be paths the runtime resolves: data-layer paths, not page globals. */
     public function testVariableHelpAndPlaceholdersShowPathsThatResolve(): void
     {

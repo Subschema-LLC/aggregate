@@ -234,6 +234,21 @@ function buildEventFromKv(state) {
     return { json: JSON.stringify(event, null, 4), error };
 }
 
+/** The variable aliases an event refers to, in order, without repeats. */
+function eventAliases(json) {
+    let event;
+    try {
+        event = JSON.parse(json);
+    } catch (error) {
+        return [];
+    }
+    if (!isPlainObject(event)) return [];
+    const values = [event.eventName, event.goalEvent, event.pagePath];
+    if (isPlainObject(event.customData)) values.push(...Object.values(event.customData));
+    const aliases = values.filter((value) => isReference(value) && isValidAlias(value.$var)).map((value) => value.$var);
+    return aliases.filter((alias, index) => aliases.indexOf(alias) === index);
+}
+
 function parsedArguments(method, argumentsJson, namespaces) {
     if (!namespaces.some((namespace) => method.trim() === namespace + '.emit')) return null;
     try {
@@ -351,7 +366,8 @@ export default class extends Controller {
         'method', 'arguments', 'argumentsStatus', 'argumentsMessage', 'argumentsFix', 'event', 'eventStatus',
         'eventModeButton', 'eventJsonPane', 'eventKvPane', 'eventNameType', 'eventNameInput',
         'customDataRows', 'addCustomDataButton', 'goalEventType', 'goalEventInput', 'pagePathType', 'pagePathInput',
-        'eventLabel', 'consentChoice', 'consentOther', 'consent'];
+        'eventLabel', 'consentChoice', 'consentOther', 'consent',
+        'newVariable', 'newVariableName', 'newVariablePath', 'newVariableStatus'];
 
     static values = { namespaces: Array, defaultId: String, defaultSrc: String };
 
@@ -683,6 +699,7 @@ export default class extends Controller {
     // Checks the event as the server will, and blocks saving one it would refuse.
     checkEvent() {
         if (!this.hasEventTarget) return;
+        this.offerNewVariable();
         if (this.eventMode !== 'kv') this.kvError = '';
         // The untouched starting point is not an error yet; the server skips it on an empty new row.
         const untouched = !this.kvError && this.eventTarget.value.replace(/\s+/g, '') === emptyEvent.replace(/\s+/g, '');
@@ -695,6 +712,50 @@ export default class extends Controller {
         if (!this.hasEventStatusTarget) return;
         this.eventStatusTarget.textContent = message;
         this.eventStatusTarget.classList.toggle('is-danger', message !== '');
+    }
+
+    // The aliases defined on the Variables tab, as the page keeps them in its list.
+    knownAliases() {
+        const document = this.element?.ownerDocument;
+        const list = typeof document?.getElementById === 'function' ? document.getElementById('tag-variable-aliases') : null;
+        return new Set(Array.from(list?.options ?? list?.children ?? []).map((option) => option.value));
+    }
+
+    // Offers to create the first variable this event uses that is not defined yet.
+    offerNewVariable() {
+        if (!this.hasNewVariableTarget || !this.hasEventTarget) return;
+        const known = this.knownAliases();
+        const missing = this.eventTarget.disabled ? undefined : eventAliases(this.eventTarget.value).find((alias) => !known.has(alias));
+        if (missing !== this.offeredAlias && this.hasNewVariableStatusTarget) this.newVariableStatusTarget.textContent = '';
+        this.offeredAlias = missing;
+        this.newVariableTarget.hidden = missing === undefined;
+        if (missing !== undefined && this.hasNewVariableNameTarget) this.newVariableNameTarget.textContent = missing;
+    }
+
+    // Asks the page to add the variable to the Variables tab; it is saved with the form.
+    createVariable() {
+        if (!this.offeredAlias || !this.hasNewVariablePathTarget) return;
+        const alias = this.offeredAlias;
+        const detail = {alias, path: this.newVariablePathTarget.value.trim()};
+        if (typeof this.dispatch === 'function') this.dispatch('createVariable', {detail});
+        const status = this.hasNewVariableStatusTarget ? this.newVariableStatusTarget : null;
+        if (!detail.added) {
+            if (status) {
+                status.textContent = detail.error || 'The variable could not be added. Add it on the Variables tab.';
+                status.classList?.toggle('is-success', false);
+                status.classList?.toggle('is-danger', true);
+            }
+            this.newVariablePathTarget.focus?.();
+            return;
+        }
+        this.newVariablePathTarget.value = '';
+        // Offers the next missing variable, if any; the message below stays.
+        this.offerNewVariable();
+        if (status) {
+            status.textContent = 'Added ' + alias + ' on the Variables tab. Save to keep it.';
+            status.classList?.toggle('is-danger', false);
+            status.classList?.toggle('is-success', true);
+        }
     }
 
     checkCode() {

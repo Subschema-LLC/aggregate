@@ -706,3 +706,122 @@ test('the event label points at the field that is showing', () => {
   ed.controller.switchEventMode('json');
   assert.equal(label.attrs.for, 'tag-3-event-object');
 });
+
+// A minimal element with attributes, for renumbering and row lookups.
+function element(attrs = {}, children = []) {
+  const node = {
+    attrs: {...attrs}, children, parent: null, removed: false,
+    getAttribute(name) { return Object.prototype.hasOwnProperty.call(this.attrs, name) ? this.attrs[name] : null; },
+    setAttribute(name, value) { this.attrs[name] = String(value); },
+    querySelectorAll() { const all = []; const walk = (n) => n.children.forEach((c) => { all.push(c); walk(c); }); walk(this); return all; },
+    remove() { this.removed = true; }
+  };
+  children.forEach((child) => { child.parent = node; });
+  return node;
+}
+
+function variableRow(index, alias = '', path = '') {
+  const aliasInput = element({id: `variable-${index}-alias`, name: `variables[${index}][alias]`});
+  const pathInput = element({id: `variable-${index}-path`, name: `variables[${index}][path]`});
+  aliasInput.value = alias;
+  pathInput.value = path;
+  const label = element({for: `variable-${index}-alias`});
+  const row = element({'data-variable-row': ''}, [label, aliasInput, pathInput]);
+  row.querySelector = (selector) => (selector.includes('[alias]') ? aliasInput : selector.includes('[path]') ? pathInput : null);
+  row.matches = (selector) => selector === '[data-tag-row]' ? false : selector.includes('data-variable-row');
+  return row;
+}
+
+function variablePage(rows, max = 32) {
+  let current = rows;
+  const list = {options: [], replaceChildren(...options) { this.options = options; }};
+  const container = {querySelectorAll: (selector) => (selector === '[data-variable-row]' ? current.filter((row) => !row.removed) : [])};
+  const controller = Object.assign(new Page(), {
+    element: {
+      ownerDocument: {getElementById: (id) => (id === 'tag-variable-aliases' ? list : null), createElement: () => ({value: ''})},
+      querySelectorAll: (selector) => (selector.startsWith('input[name^="variables["]') ? current.filter((row) => !row.removed).map((row) => row.querySelector('[alias]')) : [])
+    },
+    hasVariableRowsTarget: true, variableRowsTarget: container,
+    hasVariableTemplateTarget: false, maxVariablesValue: max,
+    hasRowStatusTarget: true, rowStatusTarget: {textContent: ''}
+  });
+  return {controller, list, rows: () => current.filter((row) => !row.removed)};
+}
+
+test('a tag row can create the variable it needs: an empty variable row is filled and the alias list updated', () => {
+  const page = variablePage([variableRow(0, 'plan', 'plan'), variableRow(1)]);
+  const created = {detail: {alias: 'program', path: 'program_name'}};
+  page.controller.createVariable(created);
+  assert.equal(created.detail.added, true);
+  assert.equal(page.rows()[1].querySelector('[alias]').value, 'program');
+  assert.equal(page.rows()[1].querySelector('[path]').value, 'program_name');
+  assert.deepEqual(page.list.options.map((option) => option.value), ['plan', 'program']);
+
+  for (const [detail, message] of [
+    [{alias: 'plan', path: 'other'}, /already on the Variables tab/],
+    [{alias: 'campus', path: 'window.siteData.campus['}, /Enter a data path/],
+    [{alias: 'campus', path: ''}, /Enter a data path/],
+    [{alias: 'campus', path: 'campus'}, /no room for another variable/]
+  ]) {
+    const event = {detail: {...detail}};
+    page.controller.createVariable(event);
+    assert.equal(event.detail.added, undefined, JSON.stringify(detail));
+    assert.match(event.detail.error, message, JSON.stringify(detail));
+  }
+});
+
+test('discarding an unsaved row renumbers the rows after it, so the form stays a list numbered from 0', () => {
+  const rows = [variableRow(0, 'plan', 'plan'), variableRow(1, 'a', 'a'), variableRow(2, 'b', 'b')];
+  const page = variablePage(rows);
+  page.controller.discardRow({currentTarget: {closest: () => rows[1]}});
+  assert.equal(rows[1].removed, true);
+  const last = page.rows()[1];
+  assert.equal(last.querySelector('[alias]').attrs.name, 'variables[1][alias]');
+  assert.equal(last.querySelector('[alias]').attrs.id, 'variable-1-alias');
+  assert.equal(last.children[0].attrs.for, 'variable-1-alias');
+  assert.equal(page.rows()[0].querySelector('[alias]').attrs.name, 'variables[0][alias]', 'earlier rows keep their numbers');
+  assert.deepEqual(page.list.options.map((option) => option.value), ['plan', 'b']);
+  assert.match(page.controller.rowStatusTarget.textContent, /Discarded the new variable/);
+});
+
+test('an event using an undefined variable offers to create it, and the offer follows the alias list', () => {
+  const ed = kvEditor(JSON.stringify({eventName: 'request_info', customData: {program: {$var: 'program'}, plan: {$var: 'plan'}}}));
+  const aliases = {options: [{value: 'plan'}]};
+  const offer = {hidden: true};
+  const name = {textContent: ''};
+  const path = {value: '', focus() { this.focused = true; }};
+  const status = {textContent: '', classList: classes()};
+  const dispatched = [];
+  Object.assign(ed.controller, {
+    element: {ownerDocument: {getElementById: (id) => (id === 'tag-variable-aliases' ? aliases : null)}},
+    hasNewVariableTarget: true, newVariableTarget: offer,
+    hasNewVariableNameTarget: true, newVariableNameTarget: name,
+    hasNewVariablePathTarget: true, newVariablePathTarget: path,
+    hasNewVariableStatusTarget: true, newVariableStatusTarget: status,
+    dispatch: (eventName, {detail}) => {
+      dispatched.push([eventName, {...detail}]);
+      if (detail.path === 'program_name') { detail.added = true; aliases.options.push({value: detail.alias}); } else detail.error = 'Enter a data path such as page_type.';
+    }
+  });
+  ed.controller.checkEvent();
+  assert.equal(offer.hidden, false);
+  assert.equal(name.textContent, 'program', 'the first undefined variable is offered; plan is defined');
+
+  ed.controller.createVariable();
+  assert.match(status.textContent, /Enter a data path/);
+  assert.equal(status.classList.contains('is-danger'), true);
+  assert.equal(path.focused, true);
+
+  path.value = ' program_name ';
+  ed.controller.createVariable();
+  assert.deepEqual(dispatched.at(-1), ['createVariable', {alias: 'program', path: 'program_name'}]);
+  assert.equal(offer.hidden, true, 'nothing else is missing');
+  assert.equal(status.textContent, 'Added program on the Variables tab. Save to keep it.');
+  assert.equal(path.value, '');
+
+  aliases.options = [{value: 'program'}];
+  ed.controller.offerNewVariable();
+  assert.equal(offer.hidden, false, 'removing plan from the Variables tab offers it');
+  assert.equal(name.textContent, 'plan');
+  assert.equal(status.textContent, '', 'and clears the earlier message');
+});

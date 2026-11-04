@@ -1,10 +1,11 @@
-{% props index, variable %}
+{% props index, variable, added = false %}
 
-<div class="box">
+<div class="box" data-variable-row>
     <fieldset class="tag-settings-fieldset">
         <legend class="has-text-weight-semibold">{{ variable.alias ? 'Variable ' ~ (index + 1) : 'Add a variable' }}</legend>
         <div class="field"><label class="label" for="variable-{{ index }}-alias">Alias</label><div class="control"><input class="input" id="variable-{{ index }}-alias" name="variables[{{ index }}][alias]" value="{{ variable.alias }}" maxlength="64" pattern="[A-Za-z][A-Za-z0-9_]{0,63}" placeholder="category" autocomplete="off"></div></div>
         <div class="field"><label class="label" for="variable-{{ index }}-path">Data path</label><div class="control"><input class="input" id="variable-{{ index }}-path" name="variables[{{ index }}][path]" value="{{ variable.path }}" maxlength="256" placeholder="ecommerce.items[0].category" autocomplete="off"></div></div>
+        {% if added %}<button type="button" class="button is-small is-light" data-action="pages--tag-manager--index#discardRow">Discard this variable</button>{% endif %}
         {% if variable.alias %}<label class="checkbox"><input type="checkbox" name="variables[{{ index }}][remove]" value="1"{% if variable.remove|default(false) %} checked{% endif %}> Remove this variable when saving</label>{% endif %}
     </fieldset>
 </div>

@@ -21,8 +21,11 @@ table, and script serving works with `dashboard_enabled: false`.
 Open **Collection → Tag manager lite**, choose a website, and edit its variables,
 actions, triggers, and consent categories. The built-in consent banner has its own
 page, **Collection → Consent manager lite**; see the
-[consent manager guide](CONSENT-MANAGER.md). Save to add another row, disable tags
-without deleting them, or select **Remove this tag when saving**. If a save is
+[consent manager guide](CONSENT-MANAGER.md). **Add another tag** and **Add another
+variable** add rows before you save, up to 20 tags and 32 variables, and a row
+added this way can be discarded until it is saved; save once for all of them. A
+new row left empty is not saved. Disable tags without deleting them, or select
+**Remove this tag when saving**. If a save is
 rejected, nothing is written and the page shows the values you entered once
 more, with the error, so you can correct them without retyping. **Setup** copies
 or downloads the selected website's installation snippet and drop-ins.
@@ -272,6 +275,9 @@ JSON. A new event starts from `eventName` and an empty `customData`:
   event as you type.
 - A push's values are not copied into the event, and a variable gives one value,
   so name each property. A missing value skips the event.
+- When the event uses a variable that is not defined yet, the editor asks for its
+  data path and adds it to the **Variables** tab, to be saved with the rest of
+  the form.
 - The action waits for the tracker. Until the tracker has loaded and sent its
   page view, events are held, up to 20 a page, then sent in order if the tag
   still has consent. It needs no [tag chaining](#tag-chaining), and it uses the
