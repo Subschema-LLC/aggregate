@@ -237,9 +237,15 @@ final class TagManagerControllerTest extends TestCase
         self::assertSame(['Key-value pairs', 'JSON'], $row->filter('[data-event-mode]')->each(static fn (Crawler $button): string => $button->text()));
         self::assertSame('string', $row->filter('#tag-1-event-name-type option[selected]')->attr('value'));
         self::assertSame('login', $row->filter('#tag-1-event-name')->attr('value'));
+<<<<<<< HEAD
         self::assertSame(['app', 'method', 'event_plan'], $row->filter('[data-custom-data-row] [data-cd-key]')->each(static fn (Crawler $input): string => (string) $input->attr('value')));
         self::assertSame(['string', 'var', 'var_event'], $row->filter('[data-custom-data-row] [data-cd-type] option[selected]')->each(static fn (Crawler $option): string => (string) $option->attr('value')));
         self::assertSame(['facilitation', 'login_method', 'plan'], $row->filter('[data-custom-data-row] [data-cd-value]')->each(static fn (Crawler $input): string => (string) $input->attr('value')));
+=======
+        self::assertSame(['app', 'method'], $row->filter('[data-custom-data-row] [data-cd-key]')->each(static fn (Crawler $input): string => (string) $input->attr('value')));
+        self::assertSame(['string', 'var'], $row->filter('[data-custom-data-row] [data-cd-type] option[selected]')->each(static fn (Crawler $option): string => (string) $option->attr('value')));
+        self::assertSame(['facilitation', 'login_method'], $row->filter('[data-custom-data-row] [data-cd-value]')->each(static fn (Crawler $input): string => (string) $input->attr('value')));
+>>>>>>> origin/development
         self::assertSame('null', $row->filter('#tag-1-goal-event-type option[selected]')->attr('value'));
     }
 

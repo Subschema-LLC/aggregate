@@ -2,15 +2,22 @@
 {% set is_new = tag.is_new|default(false) %}
 {% set event_data = tag.event is defined and tag.event is iterable ? tag.event : {} %}
 {% set event_name_is_var = event_data.eventName is defined and event_data.eventName is iterable and event_data.eventName['$var'] is defined %}
+<<<<<<< HEAD
 {% set event_name_type = event_name_is_var ? ((event_data.eventName.from|default('recent')) == 'event' ? 'var_event' : 'var') : 'string' %}
+=======
+>>>>>>> origin/development
 {% set event_name_val = event_name_is_var ? event_data.eventName['$var'] : (event_data.eventName|default('')) %}
 {% set custom_data_entries = [] %}
 {% if event_data.customData is defined and event_data.customData is iterable %}
     {% for cd_key, cd_val in event_data.customData %}
         {% set cd_json = cd_val|json_encode %}
         {% if cd_val is iterable and cd_val['$var'] is defined %}
+<<<<<<< HEAD
             {% set cd_var_type = (cd_val.from|default('recent')) == 'event' ? 'var_event' : 'var' %}
             {% set custom_data_entries = custom_data_entries|merge([{key: cd_key, type: cd_var_type, value: cd_val['$var']}]) %}
+=======
+            {% set custom_data_entries = custom_data_entries|merge([{key: cd_key, type: 'var', value: cd_val['$var']}]) %}
+>>>>>>> origin/development
         {% elseif cd_val is same as(null) %}
             {% set custom_data_entries = custom_data_entries|merge([{key: cd_key, type: 'null', value: ''}]) %}
         {% elseif cd_val is same as(true) or cd_val is same as(false) %}
@@ -28,10 +35,17 @@
 {% set goal_has_key = 'goalEvent' in (event_data|keys) %}
 {% set goal_is_var = goal_has_key and event_data.goalEvent is iterable and event_data.goalEvent['$var'] is defined %}
 {% set goal_is_null = goal_has_key and event_data.goalEvent is same as(null) %}
+<<<<<<< HEAD
 {% set goal_type = goal_is_var ? ((event_data.goalEvent.from|default('recent')) == 'event' ? 'var_event' : 'var') : (goal_is_null ? 'null' : 'string') %}
 {% set goal_val = goal_is_var ? event_data.goalEvent['$var'] : (goal_is_null ? '' : (event_data.goalEvent|default(''))) %}
 {% set page_path_is_var = event_data.pagePath is defined and event_data.pagePath is iterable and event_data.pagePath['$var'] is defined %}
 {% set page_path_type = page_path_is_var ? ((event_data.pagePath.from|default('recent')) == 'event' ? 'var_event' : 'var') : 'string' %}
+=======
+{% set goal_type = goal_is_var ? 'var' : (goal_is_null ? 'null' : 'string') %}
+{% set goal_val = goal_is_var ? event_data.goalEvent['$var'] : (goal_is_null ? '' : (event_data.goalEvent|default(''))) %}
+{% set page_path_is_var = event_data.pagePath is defined and event_data.pagePath is iterable and event_data.pagePath['$var'] is defined %}
+{% set page_path_type = page_path_is_var ? 'var' : 'string' %}
+>>>>>>> origin/development
 {% set page_path_val = page_path_is_var ? event_data.pagePath['$var'] : (event_data.pagePath|default('')) %}
 
 <div class="box">
@@ -79,9 +93,14 @@
                             <div class="control">
                                 <div class="select is-small">
                                     <select id="tag-{{ index }}-event-name-type" aria-label="Event name source" data-components--tag-manager--tag-row-target="eventNameType" data-action="change->components--tag-manager--tag-row#syncEventFromKv">
+<<<<<<< HEAD
                                         <option value="string"{% if event_name_type == 'string' %} selected{% endif %}>Fixed name</option>
                                         <option value="var"{% if event_name_type == 'var' %} selected{% endif %}>Variable (most recent)</option>
                                         <option value="var_event"{% if event_name_type == 'var_event' %} selected{% endif %}>Variable (pushed event)</option>
+=======
+                                        <option value="string"{% if not event_name_is_var %} selected{% endif %}>Fixed name</option>
+                                        <option value="var"{% if event_name_is_var %} selected{% endif %}>Variable ($var)</option>
+>>>>>>> origin/development
                                     </select>
                                 </div>
                             </div>
@@ -94,7 +113,10 @@
                         <label class="label is-small">Custom data properties (key-value pairs)</label>
                         <div data-components--tag-manager--tag-row-target="customDataRows">
                             {% for prop in custom_data_entries %}
+<<<<<<< HEAD
                                 {% set prop_is_var = prop.type in ['var', 'var_event'] %}
+=======
+>>>>>>> origin/development
                                 <div class="field is-grouped mb-2" data-custom-data-row>
                                     <div class="control is-expanded">
                                         <input class="input is-small" type="text" data-cd-key value="{{ prop.key }}" maxlength="64" autocomplete="off" placeholder="Property key (e.g. plan)" aria-label="Custom data property key" data-action="input->components--tag-manager--tag-row#syncEventFromKv">
@@ -103,8 +125,12 @@
                                         <div class="select is-small">
                                             <select data-cd-type aria-label="Custom data property type" data-action="change->components--tag-manager--tag-row#syncEventFromKv">
                                                 <option value="string"{% if prop.type == 'string' %} selected{% endif %}>Text</option>
+<<<<<<< HEAD
                                                 <option value="var"{% if prop.type == 'var' %} selected{% endif %}>Variable (most recent)</option>
                                                 <option value="var_event"{% if prop.type == 'var_event' %} selected{% endif %}>Variable (pushed event)</option>
+=======
+                                                <option value="var"{% if prop.type == 'var' %} selected{% endif %}>Variable ($var)</option>
+>>>>>>> origin/development
                                                 <option value="number"{% if prop.type == 'number' %} selected{% endif %}>Number</option>
                                                 <option value="boolean"{% if prop.type == 'boolean' %} selected{% endif %}>Boolean</option>
                                                 <option value="null"{% if prop.type == 'null' %} selected{% endif %}>Null</option>
@@ -112,7 +138,11 @@
                                         </div>
                                     </div>
                                     <div class="control is-expanded"{% if prop.type == 'boolean' %} hidden{% endif %} data-cd-value-wrap>
+<<<<<<< HEAD
                                         <input class="input is-small" type="text" data-cd-value value="{{ prop.type in ['boolean', 'null'] ? '' : prop.value }}" maxlength="500" autocomplete="off" placeholder="{{ prop_is_var ? 'Variable alias (e.g. plan)' : (prop.type == 'number' ? '0' : (prop.type == 'null' ? 'null' : 'Value')) }}"{% if prop_is_var %} list="tag-variable-aliases"{% endif %}{% if prop.type == 'null' %} disabled{% endif %} aria-label="Custom data property value" data-action="input->components--tag-manager--tag-row#syncEventFromKv">
+=======
+                                        <input class="input is-small" type="text" data-cd-value value="{{ prop.type in ['boolean', 'null'] ? '' : prop.value }}" maxlength="500" autocomplete="off" placeholder="{{ prop.type == 'var' ? 'Variable alias (e.g. plan)' : (prop.type == 'number' ? '0' : (prop.type == 'null' ? 'null' : 'Value')) }}"{% if prop.type == 'var' %} list="tag-variable-aliases"{% endif %}{% if prop.type == 'null' %} disabled{% endif %} aria-label="Custom data property value" data-action="input->components--tag-manager--tag-row#syncEventFromKv">
+>>>>>>> origin/development
                                     </div>
                                     <div class="control is-expanded"{% if prop.type != 'boolean' %} hidden{% endif %} data-cd-bool-wrap>
                                         <div class="select is-small is-fullwidth">
@@ -142,14 +172,22 @@
                                         <div class="select is-small">
                                             <select id="tag-{{ index }}-goal-event-type" aria-label="Goal code source" data-components--tag-manager--tag-row-target="goalEventType" data-action="change->components--tag-manager--tag-row#syncEventFromKv">
                                                 <option value="string"{% if goal_type == 'string' %} selected{% endif %}>Goal code</option>
+<<<<<<< HEAD
                                                 <option value="var"{% if goal_type == 'var' %} selected{% endif %}>Variable (most recent)</option>
                                                 <option value="var_event"{% if goal_type == 'var_event' %} selected{% endif %}>Variable (pushed event)</option>
+=======
+                                                <option value="var"{% if goal_type == 'var' %} selected{% endif %}>Variable ($var)</option>
+>>>>>>> origin/development
                                                 <option value="null"{% if goal_type == 'null' %} selected{% endif %}>Null</option>
                                             </select>
                                         </div>
                                     </div>
                                     <div class="control is-expanded">
+<<<<<<< HEAD
                                         <input class="input is-small" type="text" id="tag-{{ index }}-goal-event" value="{{ goal_val }}" maxlength="100" autocomplete="off" placeholder="{{ goal_is_var ? 'goal_code' : (goal_type == 'null' ? 'null' : 'signup') }}"{% if goal_is_var %} list="tag-variable-aliases"{% endif %}{% if goal_type == 'null' %} disabled{% endif %} data-components--tag-manager--tag-row-target="goalEventInput" data-action="input->components--tag-manager--tag-row#syncEventFromKv">
+=======
+                                        <input class="input is-small" type="text" id="tag-{{ index }}-goal-event" value="{{ goal_val }}" maxlength="100" autocomplete="off" placeholder="{{ goal_type == 'var' ? 'goal_code' : (goal_type == 'null' ? 'null' : 'signup') }}"{% if goal_type == 'var' %} list="tag-variable-aliases"{% endif %}{% if goal_type == 'null' %} disabled{% endif %} data-components--tag-manager--tag-row-target="goalEventInput" data-action="input->components--tag-manager--tag-row#syncEventFromKv">
+>>>>>>> origin/development
                                     </div>
                                 </div>
                             </div>
@@ -162,13 +200,21 @@
                                         <div class="select is-small">
                                             <select id="tag-{{ index }}-page-path-type" aria-label="Virtual page path source" data-components--tag-manager--tag-row-target="pagePathType" data-action="change->components--tag-manager--tag-row#syncEventFromKv">
                                                 <option value="string"{% if page_path_type == 'string' %} selected{% endif %}>Page path</option>
+<<<<<<< HEAD
                                                 <option value="var"{% if page_path_type == 'var' %} selected{% endif %}>Variable (most recent)</option>
                                                 <option value="var_event"{% if page_path_type == 'var_event' %} selected{% endif %}>Variable (pushed event)</option>
+=======
+                                                <option value="var"{% if page_path_type == 'var' %} selected{% endif %}>Variable ($var)</option>
+>>>>>>> origin/development
                                             </select>
                                         </div>
                                     </div>
                                     <div class="control is-expanded">
+<<<<<<< HEAD
                                         <input class="input is-small" type="text" id="tag-{{ index }}-page-path" value="{{ page_path_val }}" maxlength="512" autocomplete="off" placeholder="{{ page_path_is_var ? 'page_path' : '/checkout/step-2' }}"{% if page_path_is_var %} list="tag-variable-aliases"{% endif %} data-components--tag-manager--tag-row-target="pagePathInput" data-action="input->components--tag-manager--tag-row#syncEventFromKv">
+=======
+                                        <input class="input is-small" type="text" id="tag-{{ index }}-page-path" value="{{ page_path_val }}" maxlength="512" autocomplete="off" placeholder="{{ page_path_type == 'var' ? 'page_path' : '/checkout/step-2' }}"{% if page_path_type == 'var' %} list="tag-variable-aliases"{% endif %} data-components--tag-manager--tag-row-target="pagePathInput" data-action="input->components--tag-manager--tag-row#syncEventFromKv">
+>>>>>>> origin/development
                                     </div>
                                 </div>
                             </div>
@@ -176,7 +222,11 @@
                     </div>
                 </div>
                 <p class="help custom-code-status" id="tag-{{ index }}-event-object-status" role="status" aria-live="polite" data-components--tag-manager--tag-row-target="eventStatus"></p>
+<<<<<<< HEAD
                 <p class="help" id="tag-{{ index }}-event-object-help">Sends an event through this website's tracker, as <code>{{ tracker_namespaces|first }}.emit({…})</code> would. <code>eventName</code> names it; <code>customData</code> holds its own properties, each text, a number, true, false or null, <code>{"$var": "alias"}</code> for the most recent <code>dataLayer</code> value, or <code>{"$var": "alias", "from": "event"}</code> for the pushed event's value. Toggle between <strong>Key-value pairs</strong> and <strong>JSON</strong> to edit properties either way. <code>goalEvent</code> and <code>pagePath</code>, a virtual page path, are optional. The tag waits for the tracker to load, so it needs no tag chaining. {% if docs_url('tracking.tag-manager') %}<a href="{{ docs_url('tracking.tag-manager') }}#send-an-aggregate-event" target="_blank" rel="noopener noreferrer">Aggregate events<span class="is-sr-only"> (opens in a new tab)</span></a>{% endif %}</p>
+=======
+                <p class="help" id="tag-{{ index }}-event-object-help">Sends an event through this website's tracker, as <code>{{ tracker_namespaces|first }}.emit({…})</code> would. <code>eventName</code> names it; <code>customData</code> holds its own properties, each text, a number, true, false or null, or <code>{"$var": "alias"}</code> to read one from the page. Toggle between <strong>Key-value pairs</strong> and <strong>JSON</strong> to edit properties either way. <code>goalEvent</code> and <code>pagePath</code>, a virtual page path, are optional. The tag waits for the tracker to load, so it needs no tag chaining. {% if docs_url('tracking.tag-manager') %}<a href="{{ docs_url('tracking.tag-manager') }}#send-an-aggregate-event" target="_blank" rel="noopener noreferrer">Aggregate events<span class="is-sr-only"> (opens in a new tab)</span></a>{% endif %}</p>
+>>>>>>> origin/development
             </div>
         </div>
         <div data-components--tag-manager--tag-row-target="actionFields" data-action-fields="custom">

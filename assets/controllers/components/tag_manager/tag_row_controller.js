@@ -234,6 +234,175 @@ function buildEventFromKv(state) {
     return { json: JSON.stringify(event, null, 4), error };
 }
 
+function isValidAlias(alias) {
+    return typeof alias === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(alias);
+}
+
+/**
+ * Turns an event JSON string into the state for the key-value editor, or null
+ * when the JSON is malformed or contains unsupported fields/nesting.
+ */
+function parseEventForKv(json) {
+    if (!json.trim()) {
+        return { eventNameType: 'string', eventName: '', customData: [], goalEventType: 'string', goalEvent: '', pagePathType: 'string', pagePath: '' };
+    }
+    let event;
+    try {
+        event = JSON.parse(json);
+    } catch (error) {
+        return null;
+    }
+    if (!isPlainObject(event) || Object.keys(event).some((key) => !eventFields.includes(key))) return null;
+    let eventNameType = 'string';
+    let eventName = '';
+    if (Object.prototype.hasOwnProperty.call(event, 'eventName')) {
+        if (isReference(event.eventName) && typeof event.eventName.$var === 'string') {
+            eventNameType = 'var';
+            eventName = event.eventName.$var;
+        } else if (typeof event.eventName === 'string') {
+            eventName = event.eventName;
+        } else {
+            return null;
+        }
+    }
+    const customData = [];
+    if (Object.prototype.hasOwnProperty.call(event, 'customData')) {
+        const data = event.customData;
+        if (Array.isArray(data) && data.length === 0) {
+            // Empty list is treated as no custom properties.
+        } else if (isPlainObject(data)) {
+            for (const [key, val] of Object.entries(data)) {
+                if (isReference(val) && typeof val.$var === 'string') {
+                    customData.push({ key, type: 'var', value: val.$var });
+                } else if (val === null) {
+                    customData.push({ key, type: 'null', value: '' });
+                } else if (typeof val === 'boolean') {
+                    customData.push({ key, type: 'boolean', value: val ? 'true' : 'false' });
+                } else if (typeof val === 'number' && Number.isFinite(val)) {
+                    customData.push({ key, type: 'number', value: String(val) });
+                } else if (typeof val === 'string') {
+                    customData.push({ key, type: 'string', value: val });
+                } else {
+                    return null;
+                }
+            }
+        } else {
+            return null;
+        }
+    }
+    let goalEventType = 'string';
+    let goalEvent = '';
+    if (Object.prototype.hasOwnProperty.call(event, 'goalEvent')) {
+        if (event.goalEvent === null) {
+            goalEventType = 'null';
+        } else if (isReference(event.goalEvent) && typeof event.goalEvent.$var === 'string') {
+            goalEventType = 'var';
+            goalEvent = event.goalEvent.$var;
+        } else if (typeof event.goalEvent === 'string') {
+            goalEvent = event.goalEvent;
+        } else {
+            return null;
+        }
+    }
+    let pagePathType = 'string';
+    let pagePath = '';
+    if (Object.prototype.hasOwnProperty.call(event, 'pagePath')) {
+        if (isReference(event.pagePath) && typeof event.pagePath.$var === 'string') {
+            pagePathType = 'var';
+            pagePath = event.pagePath.$var;
+        } else if (typeof event.pagePath === 'string') {
+            pagePath = event.pagePath;
+        } else {
+            return null;
+        }
+    }
+    return { eventNameType, eventName, customData, goalEventType, goalEvent, pagePathType, pagePath };
+}
+
+/**
+ * Builds the event JSON string and any key-value row validation message from
+ * the structured key-value editor state.
+ */
+function buildEventFromKv(state) {
+    let error = '';
+    const event = {};
+    if (state.eventNameType === 'var') {
+        const alias = state.eventName.trim();
+        event.eventName = { $var: alias };
+        if (!isValidAlias(alias)) error = error || 'The event: eventName needs a valid variable alias, such as "event_name".';
+    } else {
+        event.eventName = state.eventName;
+    }
+
+    const customData = {};
+    const seenKeys = new Set();
+    for (const row of state.customData) {
+        const key = row.key;
+        const type = row.type || 'string';
+        const rawValue = row.value ?? '';
+        if (key === '' && rawValue === '' && !['boolean', 'null'].includes(type)) continue;
+        if (key === '') {
+            error = error || 'The event: enter a property name in customData, or clear the row.';
+            continue;
+        }
+        if (seenKeys.has(key)) {
+            error = error || 'The event: customData has duplicate property "' + key + '". Give each property a unique name.';
+        }
+        seenKeys.add(key);
+        if (type === 'var') {
+            const alias = String(rawValue).trim();
+            customData[key] = { $var: alias };
+            if (!isValidAlias(alias)) error = error || 'The event: customData.' + key + ' needs a valid variable alias, such as "plan".';
+        } else if (type === 'null') {
+            customData[key] = null;
+        } else if (type === 'boolean') {
+            customData[key] = rawValue === 'true' || rawValue === true;
+        } else if (type === 'number') {
+            const trimmed = String(rawValue).trim();
+            const parsed = trimmed === '' ? NaN : Number(trimmed);
+            if (!Number.isFinite(parsed) || (Number.isInteger(parsed) && !Number.isSafeInteger(parsed))) {
+                error = error || 'The event: customData.' + key + ' must be a finite number, such as 1299 or 0.5.';
+                customData[key] = rawValue;
+            } else {
+                customData[key] = parsed;
+            }
+        } else {
+            customData[key] = String(rawValue);
+        }
+    }
+    event.customData = customData;
+
+    if (state.goalEventType === 'null') {
+        event.goalEvent = null;
+    } else if (state.goalEventType === 'var') {
+        const alias = state.goalEvent.trim();
+        if (alias !== '') {
+            event.goalEvent = { $var: alias };
+            if (!isValidAlias(alias)) error = error || 'The event: goalEvent needs a valid variable alias.';
+        }
+    } else if (state.goalEvent !== '') {
+        event.goalEvent = state.goalEvent;
+    }
+
+    if (state.pagePathType === 'var') {
+        const alias = state.pagePath.trim();
+        if (alias !== '') {
+            event.pagePath = { $var: alias };
+            if (!isValidAlias(alias)) error = error || 'The event: pagePath needs a valid variable alias.';
+        }
+    } else if (state.pagePath !== '') {
+        event.pagePath = state.pagePath;
+    }
+
+    if (event.eventName === '' && Object.keys(event.customData).length === 0
+        && !Object.prototype.hasOwnProperty.call(event, 'goalEvent')
+        && !Object.prototype.hasOwnProperty.call(event, 'pagePath')) {
+        return { json: emptyEvent, error };
+    }
+
+    return { json: JSON.stringify(event, null, 4), error };
+}
+
 function parsedArguments(method, argumentsJson, namespaces) {
     if (!namespaces.some((namespace) => method.trim() === namespace + '.emit')) return null;
     try {
@@ -557,13 +726,18 @@ export default class extends Controller {
     updateKvControls() {
         const active = this.actionTypeTarget?.value === 'event';
         if (this.hasEventNameTypeTarget && this.hasEventNameInputTarget) {
+<<<<<<< HEAD
             const isVar = isVariableType(this.eventNameTypeTarget.value);
+=======
+            const isVar = this.eventNameTypeTarget.value === 'var';
+>>>>>>> origin/development
             this.eventNameInputTarget.placeholder = isVar ? 'event_name' : 'login';
             if (isVar) this.eventNameInputTarget.setAttribute?.('list', 'tag-variable-aliases');
             else this.eventNameInputTarget.removeAttribute?.('list');
         }
         if (this.hasGoalEventTypeTarget && this.hasGoalEventInputTarget) {
             const type = this.goalEventTypeTarget.value;
+<<<<<<< HEAD
             const isVar = isVariableType(type);
             this.goalEventInputTarget.disabled = !active || type === 'null';
             if (type === 'null') this.goalEventInputTarget.value = '';
@@ -573,6 +747,16 @@ export default class extends Controller {
         }
         if (this.hasPagePathTypeTarget && this.hasPagePathInputTarget) {
             const isVar = isVariableType(this.pagePathTypeTarget.value);
+=======
+            this.goalEventInputTarget.disabled = !active || type === 'null';
+            if (type === 'null') this.goalEventInputTarget.value = '';
+            this.goalEventInputTarget.placeholder = type === 'var' ? 'goal_code' : (type === 'null' ? 'null' : 'signup');
+            if (type === 'var') this.goalEventInputTarget.setAttribute?.('list', 'tag-variable-aliases');
+            else this.goalEventInputTarget.removeAttribute?.('list');
+        }
+        if (this.hasPagePathTypeTarget && this.hasPagePathInputTarget) {
+            const isVar = this.pagePathTypeTarget.value === 'var';
+>>>>>>> origin/development
             this.pagePathInputTarget.placeholder = isVar ? 'page_path' : '/checkout/step-2';
             if (isVar) this.pagePathInputTarget.setAttribute?.('list', 'tag-variable-aliases');
             else this.pagePathInputTarget.removeAttribute?.('list');
@@ -581,7 +765,10 @@ export default class extends Controller {
         const rows = Array.from(this.customDataRowsTarget.querySelectorAll('[data-custom-data-row]'));
         for (const row of rows) {
             const type = row.querySelector?.('[data-cd-type]')?.value || 'string';
+<<<<<<< HEAD
             const isVar = isVariableType(type);
+=======
+>>>>>>> origin/development
             const valueWrap = row.querySelector?.('[data-cd-value-wrap]');
             const boolWrap = row.querySelector?.('[data-cd-bool-wrap]');
             const valueInput = row.querySelector?.('[data-cd-value]');
@@ -591,8 +778,13 @@ export default class extends Controller {
             if (valueInput) {
                 valueInput.disabled = !active || type === 'null' || type === 'boolean';
                 if (type === 'null') valueInput.value = '';
+<<<<<<< HEAD
                 valueInput.placeholder = isVar ? 'Variable alias (e.g. plan)' : (type === 'number' ? '0' : (type === 'null' ? 'null' : 'Value'));
                 if (isVar) valueInput.setAttribute?.('list', 'tag-variable-aliases');
+=======
+                valueInput.placeholder = type === 'var' ? 'Variable alias (e.g. plan)' : (type === 'number' ? '0' : (type === 'null' ? 'null' : 'Value'));
+                if (type === 'var') valueInput.setAttribute?.('list', 'tag-variable-aliases');
+>>>>>>> origin/development
                 else valueInput.removeAttribute?.('list');
             }
             if (boolSelect) boolSelect.disabled = !active || type !== 'boolean';

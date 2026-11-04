@@ -235,9 +235,15 @@ tag_manager:
 
 In the dashboard, choose **Send an Aggregate event** and edit the event as
 **JSON** or toggle to **Key-value pairs** to set `eventName`, each `customData`
+<<<<<<< HEAD
 property with its value type (text, **Variable (most recent)**, **Variable
 (pushed event)**, number, boolean or null), and optional `goalEvent` and
 `pagePath` fields. A new event starts from `eventName` and an empty `customData`:
+=======
+property with its value type (text, variable, number, boolean or null), and
+optional `goalEvent` and `pagePath` fields. A new event starts from `eventName`
+and an empty `customData`:
+>>>>>>> origin/development
 
 ```json
 {

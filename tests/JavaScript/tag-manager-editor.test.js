@@ -499,7 +499,11 @@ function kvEditor(initialJson = '{\n    "eventName": "",\n    "customData": {}\n
 test('the event editor toggles between JSON and key-value pairs and syncs every value type', () => {
   const initial = JSON.stringify({
     eventName: 'purchase',
+<<<<<<< HEAD
     customData: {plan: 'pro', sku: {$var: 'first_sku'}, event_sku: {$var: 'first_sku', from: 'event'}, total_minor: 1299, is_trial: false, coupon: null},
+=======
+    customData: {plan: 'pro', sku: {$var: 'first_sku'}, total_minor: 1299, is_trial: false, coupon: null},
+>>>>>>> origin/development
     goalEvent: 'checkout',
     pagePath: '/checkout/complete'
   }, null, 4);
@@ -517,6 +521,7 @@ test('the event editor toggles between JSON and key-value pairs and syncs every 
   assert.equal(ed.pagePathInput.value, '/checkout/complete');
 
   const rows = ed.getRows();
+<<<<<<< HEAD
   assert.equal(rows.length, 6);
   assert.deepEqual(rows.map((r) => [r.querySelector('[data-cd-key]').value, r.querySelector('[data-cd-type]').value]), [
     ['plan', 'string'], ['sku', 'var'], ['event_sku', 'var_event'], ['total_minor', 'number'], ['is_trial', 'boolean'], ['coupon', 'null']
@@ -539,6 +544,29 @@ test('the event editor toggles between JSON and key-value pairs and syncs every 
   assert.equal(ed.getRows().length, 6);
 
   ed.eventNameType.value = 'var_event';
+=======
+  assert.equal(rows.length, 5);
+  assert.deepEqual(rows.map((r) => [r.querySelector('[data-cd-key]').value, r.querySelector('[data-cd-type]').value]), [
+    ['plan', 'string'], ['sku', 'var'], ['total_minor', 'number'], ['is_trial', 'boolean'], ['coupon', 'null']
+  ]);
+  assert.equal(rows[1].querySelector('[data-cd-value]').attrs.list, 'tag-variable-aliases');
+  assert.equal(rows[3].querySelector('[data-cd-value-wrap]').hidden, true);
+  assert.equal(rows[3].querySelector('[data-cd-bool-wrap]').hidden, false);
+  assert.equal(rows[3].querySelector('[data-cd-bool]').value, 'false');
+  assert.equal(rows[4].querySelector('[data-cd-value]').disabled, true);
+
+  // Add a property row, remove coupon, and switch goalEvent to null and eventName to a variable.
+  ed.controller.addCustomDataRow();
+  assert.equal(ed.getRows().length, 6);
+  const added = ed.getRows()[5];
+  added.querySelector('[data-cd-key]').value = 'currency';
+  added.querySelector('[data-cd-type]').value = 'string';
+  added.querySelector('[data-cd-value]').value = 'USD';
+  ed.controller.removeCustomDataRow({currentTarget: rows[4]});
+  assert.equal(ed.getRows().length, 5);
+
+  ed.eventNameType.value = 'var';
+>>>>>>> origin/development
   ed.eventNameInput.value = 'dynamic_event';
   ed.goalEventType.value = 'null';
   ed.pagePathType.value = 'var';
@@ -547,8 +575,13 @@ test('the event editor toggles between JSON and key-value pairs and syncs every 
 
   assert.equal(ed.eventStatus.textContent, '');
   assert.deepEqual(JSON.parse(ed.eventInput.value), {
+<<<<<<< HEAD
     eventName: {$var: 'dynamic_event', from: 'event'},
     customData: {plan: 'pro', sku: {$var: 'first_sku'}, event_sku: {$var: 'first_sku', from: 'event'}, total_minor: 1299, is_trial: false, currency: 'USD'},
+=======
+    eventName: {$var: 'dynamic_event'},
+    customData: {plan: 'pro', sku: {$var: 'first_sku'}, total_minor: 1299, is_trial: false, currency: 'USD'},
+>>>>>>> origin/development
     goalEvent: null,
     pagePath: {$var: 'virtual_path'}
   });
