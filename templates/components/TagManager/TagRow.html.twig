@@ -1,4 +1,4 @@
-{% props index, tag, script_suggestions = false, custom_scripts_enabled = true, custom_templates = [], tag_ids = [], tracker_namespaces = ['Aggregate'] %}
+{% props index, tag, script_suggestions = false, custom_scripts_enabled = true, custom_templates = [], tag_ids = [], tracker_namespaces = ['Aggregate'], preview_url = '', worker_url = '', preview_base = '' %}
 {% set is_new = tag.is_new|default(false) %}
 {% set event_data = tag.event is defined and tag.event is iterable ? tag.event : {} %}
 {% set event_name_is_var = event_data.eventName is defined and event_data.eventName is iterable and event_data.eventName['$var'] is defined %}
@@ -35,10 +35,14 @@
 {% set page_path_val = page_path_is_var ? event_data.pagePath['$var'] : (event_data.pagePath|default('')) %}
 
 <div class="box">
-    <fieldset class="tag-settings-fieldset" data-tag-row data-controller="components--tag-manager--tag-row" data-components--tag-manager--tag-row-namespaces-value="{{ tracker_namespaces|json_encode }}"{% if is_new and tag.src|default('') %} data-components--tag-manager--tag-row-default-id-value="{{ tag.id }}" data-components--tag-manager--tag-row-default-src-value="{{ tag.src }}"{% endif %} aria-describedby="tag-{{ index }}-help">
+    <fieldset class="tag-settings-fieldset" data-tag-row data-controller="components--tag-manager--tag-row" data-action="tag-manager:variables-changed@document->components--tag-manager--tag-row#offerNewVariable" data-components--tag-manager--tag-row-namespaces-value="{{ tracker_namespaces|json_encode }}"{% if preview_url and worker_url %} data-components--tag-manager--tag-row-preview-url-value="{{ preview_url }}" data-components--tag-manager--tag-row-worker-url-value="{{ worker_url }}" data-components--tag-manager--tag-row-preview-base-value="{{ preview_base }}"{% endif %}{% if is_new and tag.src|default('') %} data-components--tag-manager--tag-row-default-id-value="{{ tag.id }}" data-components--tag-manager--tag-row-default-src-value="{{ tag.src }}"{% endif %} aria-describedby="tag-{{ index }}-help">
         <legend class="title is-5">{% if tag.id and not is_new %}Tag {{ index + 1 }}: {{ tag.id }}{% else %}Add a tag{% endif %}</legend>
-        <p class="help mb-3" id="tag-{{ index }}-help">Choose one action and a trigger. Leave a new row's ID, URL, method, event and code empty to keep the current list.</p>
+        <p class="help mb-3" id="tag-{{ index }}-help">Choose when the tag runs, then what it does. A new tag left empty is not saved.</p>
         <div class="field"><label class="label" for="tag-{{ index }}-id">ID</label><div class="control"><input class="input" id="tag-{{ index }}-id" name="tags[{{ index }}][id]" value="{{ tag.id }}" maxlength="64" pattern="[A-Za-z][A-Za-z0-9_\-]{0,63}" autocomplete="off" placeholder="purchase-event"></div></div>
+        <div class="field"><label class="label" for="tag-{{ index }}-trigger">Trigger</label><div class="control select"><select id="tag-{{ index }}-trigger" name="tags[{{ index }}][trigger][type]" data-tag-trigger data-components--tag-manager--tag-row-target="trigger" data-action="change->components--tag-manager--tag-row#update" required>
+            {% for type, label in {dom_ready: 'Document ready', window_load: 'Window finished loading', document_event: 'Document event', window_event: 'Window event', data_layer: 'dataLayer event'} %}<option value="{{ type }}"{% if tag.trigger.type == type %} selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select></div></div>
+        <div class="field" data-event-field data-components--tag-manager--tag-row-target="eventField"><label class="label" for="tag-{{ index }}-event">Event to listen for</label><div class="control"><input class="input" id="tag-{{ index }}-event" name="tags[{{ index }}][trigger][event]" value="{{ tag.trigger.event|default('') }}" maxlength="100" pattern="[A-Za-z][A-Za-z0-9_.:\-]{0,99}" list="tag-event-examples" placeholder="purchase"></div><p class="help">The exact name the page uses, such as <code>purchase</code> in <code>dataLayer.push({event: 'purchase'})</code>. Its values reach the tag only through variables.</p></div>
         <div class="field">
             <label class="label" for="tag-{{ index }}-type">Action</label>
             <div class="control select"><select id="tag-{{ index }}-type" name="tags[{{ index }}][type]" data-tag-type data-components--tag-manager--tag-row-target="actionType" data-action="change->components--tag-manager--tag-row#update" required>
@@ -60,7 +64,7 @@
             <div class="field">
                 <div class="level is-mobile mb-2">
                     <div class="level-left">
-                        <label class="label mb-0" id="tag-{{ index }}-event-label" for="tag-{{ index }}-event-object">Event (JSON object)</label>
+                        <label class="label mb-0" id="tag-{{ index }}-event-label" for="tag-{{ index }}-event-object" data-components--tag-manager--tag-row-target="eventLabel">Event</label>
                     </div>
                     <div class="level-right">
                         <div class="buttons has-addons mb-0" role="group" aria-label="Event editor format">
@@ -80,8 +84,8 @@
                                 <div class="select is-small">
                                     <select id="tag-{{ index }}-event-name-type" aria-label="Event name source" data-components--tag-manager--tag-row-target="eventNameType" data-action="change->components--tag-manager--tag-row#syncEventFromKv">
                                        <option value="string"{% if event_name_type == 'string' %} selected{% endif %}>Fixed name</option>
-                                       <option value="var"{% if event_name_type == 'var' %} selected{% endif %}>Variable (most recent)</option>
-                                       <option value="var_event"{% if event_name_type == 'var_event' %} selected{% endif %}>Variable (pushed event)</option>
+                                       <option value="var"{% if event_name_type == 'var' %} selected{% endif %}>Variable: latest value</option>
+                                       <option value="var_event"{% if event_name_type == 'var_event' %} selected{% endif %}>Variable: this event's value</option>
                                     </select>
                                 </div>
                             </div>
@@ -103,8 +107,8 @@
                                         <div class="select is-small">
                                             <select data-cd-type aria-label="Custom data property type" data-action="change->components--tag-manager--tag-row#syncEventFromKv">
                                                 <option value="string"{% if prop.type == 'string' %} selected{% endif %}>Text</option>
-                                                <option value="var"{% if prop.type == 'var' %} selected{% endif %}>Variable (most recent)</option>
-                                                <option value="var_event"{% if prop.type == 'var_event' %} selected{% endif %}>Variable (pushed event)</option>
+                                                <option value="var"{% if prop.type == 'var' %} selected{% endif %}>Variable: latest value</option>
+                                                <option value="var_event"{% if prop.type == 'var_event' %} selected{% endif %}>Variable: this event's value</option>
                                                 <option value="number"{% if prop.type == 'number' %} selected{% endif %}>Number</option>
                                                 <option value="boolean"{% if prop.type == 'boolean' %} selected{% endif %}>Boolean</option>
                                                 <option value="null"{% if prop.type == 'null' %} selected{% endif %}>Null</option>
@@ -132,6 +136,7 @@
                             <span class="icon is-small"><i class="fas fa-plus" aria-hidden="true"></i></span>
                             <span>Add property</span>
                         </button>
+                        <p class="help mb-3"><strong>Variable: latest value</strong> reads the data layer as it is when the tag runs, so an earlier push can fill it. <strong>Variable: this event's value</strong> reads only the push or page event that triggered the tag.</p>
                     </div>
                     <div class="columns is-multiline mb-0">
                         <div class="column is-half py-1">
@@ -142,8 +147,8 @@
                                         <div class="select is-small">
                                             <select id="tag-{{ index }}-goal-event-type" aria-label="Goal code source" data-components--tag-manager--tag-row-target="goalEventType" data-action="change->components--tag-manager--tag-row#syncEventFromKv">
                                                 <option value="string"{% if goal_type == 'string' %} selected{% endif %}>Goal code</option>
-                                                <option value="var"{% if goal_type == 'var' %} selected{% endif %}>Variable (most recent)</option>
-                                                <option value="var_event"{% if goal_type == 'var_event' %} selected{% endif %}>Variable (pushed event)</option>
+                                                <option value="var"{% if goal_type == 'var' %} selected{% endif %}>Variable: latest value</option>
+                                                <option value="var_event"{% if goal_type == 'var_event' %} selected{% endif %}>Variable: this event's value</option>
                                                 <option value="null"{% if goal_type == 'null' %} selected{% endif %}>Null</option>
                                             </select>
                                         </div>
@@ -162,8 +167,8 @@
                                         <div class="select is-small">
                                             <select id="tag-{{ index }}-page-path-type" aria-label="Virtual page path source" data-components--tag-manager--tag-row-target="pagePathType" data-action="change->components--tag-manager--tag-row#syncEventFromKv">
                                                 <option value="string"{% if page_path_type == 'string' %} selected{% endif %}>Page path</option>
-                                                <option value="var"{% if page_path_type == 'var' %} selected{% endif %}>Variable (most recent)</option>
-                                                <option value="var_event"{% if page_path_type == 'var_event' %} selected{% endif %}>Variable (pushed event)</option>
+                                                <option value="var"{% if page_path_type == 'var' %} selected{% endif %}>Variable: latest value</option>
+                                                <option value="var_event"{% if page_path_type == 'var_event' %} selected{% endif %}>Variable: this event's value</option>
                                             </select>
                                         </div>
                                     </div>
@@ -175,8 +180,17 @@
                         </div>
                     </div>
                 </div>
+                <div class="notification is-info is-light py-3 px-4 mb-2" data-components--tag-manager--tag-row-target="newVariable" hidden>
+                    <p><strong data-components--tag-manager--tag-row-target="newVariableName"></strong> is not a variable yet. Where is its value in the data layer?</p>
+                    <div class="field has-addons mt-2 mb-1">
+                        <div class="control is-expanded"><input class="input is-small" type="text" id="tag-{{ index }}-new-variable-path" maxlength="256" autocomplete="off" spellcheck="false" placeholder="ecommerce.items[0].category" aria-label="Data path for the new variable" data-components--tag-manager--tag-row-target="newVariablePath" data-action="keydown.enter->components--tag-manager--tag-row#createVariable:prevent"></div>
+                        <div class="control"><button type="button" class="button is-small is-info" data-action="components--tag-manager--tag-row#createVariable">Add variable</button></div>
+                    </div>
+                </div>
+                <p class="help is-success" role="status" aria-live="polite" data-components--tag-manager--tag-row-target="newVariableStatus"></p>
                 <p class="help custom-code-status" id="tag-{{ index }}-event-object-status" role="status" aria-live="polite" data-components--tag-manager--tag-row-target="eventStatus"></p>
-                <p class="help" id="tag-{{ index }}-event-object-help">Sends an event through this website's tracker, as <code>{{ tracker_namespaces|first }}.emit({…})</code> would. <code>eventName</code> names it; <code>customData</code> holds its own properties, each text, a number, true, false or null, <code>{"$var": "alias"}</code> for the most recent <code>dataLayer</code> value, or <code>{"$var": "alias", "from": "event"}</code> for the pushed event's value. Toggle between <strong>Key-value pairs</strong> and <strong>JSON</strong> to edit properties either way. <code>goalEvent</code> and <code>pagePath</code>, a virtual page path, are optional. The tag waits for the tracker to load, so it needs no tag chaining. {% if docs_url('tracking.tag-manager') %}<a href="{{ docs_url('tracking.tag-manager') }}#send-an-aggregate-event" target="_blank" rel="noopener noreferrer">Aggregate events<span class="is-sr-only"> (opens in a new tab)</span></a>{% endif %}</p>
+                <p class="help" id="tag-{{ index }}-event-object-help">Sends this event to Aggregate through the website's tracker. The tag waits for the tracker to load, so it needs no tag chaining, and a missing variable skips the event. {% if docs_url('tracking.tag-manager') %}<a href="{{ docs_url('tracking.tag-manager') }}#send-an-aggregate-event" target="_blank" rel="noopener noreferrer">Aggregate events<span class="is-sr-only"> (opens in a new tab)</span></a>{% endif %}</p>
+                <details class="help mt-1"><summary>JSON format</summary><p class="mt-1">The event is the object <code>{{ tracker_namespaces|first }}.emit({…})</code> takes. <code>eventName</code> names it; <code>customData</code> holds its properties, each text, a number, true, false or null, <code>{"$var": "alias"}</code> for a variable's latest value, or <code>{"$var": "alias", "from": "event"}</code> for this event's value. <code>goalEvent</code> and <code>pagePath</code>, a virtual page path, are optional.</p></details>
 
             </div>
         </div>
@@ -225,12 +239,19 @@ tag.emit('newsletter_signup', {plan: tag.get('plan')});" data-components--tag-ma
                 <p class="help" id="tag-{{ index }}-code-help">Runs on visitors' pages with full access to them, so review code as you would a script on your own site. The server checks it again when you save; up to 20,000 bytes per tag. {% if docs_url('tracking.tag-manager') %}<a href="{{ docs_url('tracking.tag-manager') }}#custom-javascript" target="_blank" rel="noopener noreferrer">Custom JavaScript guide<span class="is-sr-only"> (opens in a new tab)</span></a>{% endif %}</p>
             </div>
         </div>
-        <div class="field"><label class="label" for="tag-{{ index }}-consent">Consent category</label><div class="control"><input class="input" id="tag-{{ index }}-consent" name="tags[{{ index }}][consent]" value="{{ tag.consent }}" list="tag-consent-categories" maxlength="32" pattern="[a-z][a-z0-9_\-]{0,31}" required></div><p class="help">Use analytics, functional, marketing, or another lowercase category. Enter none for <strong>No consent required</strong>; that action may run before a choice and after rejection.</p></div>
+        {% set consent = tag.consent|default('analytics') %}
+        {% set common_consent = {none: 'No consent required', analytics: 'Analytics', functional: 'Functional', marketing: 'Marketing'} %}
+        {% set other_consent = consent not in common_consent|keys %}
+        <div class="field">
+            <label class="label" for="tag-{{ index }}-consent-choice">Consent</label>
+            <div class="control"><div class="select"><select id="tag-{{ index }}-consent-choice" aria-describedby="tag-{{ index }}-consent-help" data-components--tag-manager--tag-row-target="consentChoice" data-action="change->components--tag-manager--tag-row#chooseConsent">
+                {% for value, label in common_consent %}<option value="{{ value }}"{% if consent == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                <option value=""{% if other_consent %} selected{% endif %}>Another category…</option>
+            </select></div></div>
+            <div class="control mt-2" data-components--tag-manager--tag-row-target="consentOther"{% if not other_consent %} hidden{% endif %}><input class="input" id="tag-{{ index }}-consent" name="tags[{{ index }}][consent]" value="{{ consent }}" list="tag-consent-categories" maxlength="32" pattern="[a-z][a-z0-9_\-]{0,31}" required aria-label="Consent category name" placeholder="advertising" data-components--tag-manager--tag-row-target="consent" data-action="input->components--tag-manager--tag-row#typeConsent"></div>
+            <p class="help" id="tag-{{ index }}-consent-help">The tag runs once the visitor allows this category. <strong>No consent required</strong> runs before a choice and after a refusal. Another category is a lowercase name, such as <code>advertising</code>, that the consent banner asks about.</p>
+        </div>
         <div class="field"><label class="label" for="tag-{{ index }}-enabled">Availability</label><div class="control select"><select id="tag-{{ index }}-enabled" name="tags[{{ index }}][enabled]" required><option value="1"{% if tag.enabled %} selected{% endif %}>Enabled</option><option value="0"{% if not tag.enabled %} selected{% endif %}>Disabled</option></select></div></div>
-        <div class="field"><label class="label" for="tag-{{ index }}-trigger">Trigger</label><div class="control select"><select id="tag-{{ index }}-trigger" name="tags[{{ index }}][trigger][type]" data-tag-trigger data-components--tag-manager--tag-row-target="trigger" data-action="change->components--tag-manager--tag-row#update" required>
-            {% for type, label in {dom_ready: 'Document ready', window_load: 'Window finished loading', document_event: 'Document event', window_event: 'Window event', data_layer: 'dataLayer event'} %}<option value="{{ type }}"{% if tag.trigger.type == type %} selected{% endif %}>{{ label }}</option>{% endfor %}
-        </select></div></div>
-        <div class="field" data-event-field data-components--tag-manager--tag-row-target="eventField"><label class="label" for="tag-{{ index }}-event">Event name</label><div class="control"><input class="input" id="tag-{{ index }}-event" name="tags[{{ index }}][trigger][event]" value="{{ tag.trigger.event|default('') }}" maxlength="100" pattern="[A-Za-z][A-Za-z0-9_.:\-]{0,99}" list="tag-event-examples" placeholder="purchase"></div><p class="help">Enter the exact name for a document, window or dataLayer event. Leave empty for document ready or window load. The event is a trigger; its payload is not copied into arguments automatically.</p></div>
         {% set after = tag.after|default('') %}
         <div class="field">
             <label class="label" for="tag-{{ index }}-after">Tag chaining</label>
@@ -241,6 +262,24 @@ tag.emit('newsletter_signup', {plan: tag.get('plan')});" data-components--tag-ma
             </select></div></div>
             <p class="help" id="tag-{{ index }}-after-help">Run after another tag: this tag waits until that tag has finished, meaning its script has loaded or its method call or custom code is done. Use it to run code after the tracker or a vendor library has loaded. Choose a tag that runs once per page; if it never runs, this one does not either.</p>
         </div>
+        {% if preview_url and worker_url %}
+        <details class="box is-shadowless tag-preview mb-3" data-components--tag-manager--tag-row-target="preview" data-action="toggle->components--tag-manager--tag-row#openPreview">
+            <summary class="has-text-weight-semibold">Test this tag</summary>
+            <p class="help mt-2">Runs this tag as it is on this page, before you save, against a sample event in your browser. Nothing is loaded, sent or saved. {% if docs_url('tracking.tag-manager') %}<a href="{{ docs_url('tracking.tag-manager') }}#test-a-tag-before-saving" target="_blank" rel="noopener noreferrer">Testing tags<span class="is-sr-only"> (opens in a new tab)</span></a>{% endif %}</p>
+            <div class="field mt-2">
+                <label class="label is-small" for="tag-{{ index }}-preview-sample" data-components--tag-manager--tag-row-target="previewSampleLabel">Sample event</label>
+                <div class="control"><textarea class="textarea is-small" id="tag-{{ index }}-preview-sample" rows="6" spellcheck="false" autocomplete="off" aria-describedby="tag-{{ index }}-preview-sample-help" data-components--tag-manager--tag-row-target="previewSample"></textarea></div>
+                <p class="help" id="tag-{{ index }}-preview-sample-help" data-components--tag-manager--tag-row-target="previewSampleHelp"></p>
+            </div>
+            <label class="checkbox"><input type="checkbox" checked data-components--tag-manager--tag-row-target="previewConsent"> The visitor has allowed this tag's consent category</label>
+            <div class="buttons mt-2 mb-2">
+                <button type="button" class="button is-small is-info" data-components--tag-manager--tag-row-target="previewRun" data-action="components--tag-manager--tag-row#runPreview">Run test</button>
+                <button type="button" class="button is-small is-light" data-action="components--tag-manager--tag-row#resetPreviewSample">Reset sample</button>
+            </div>
+            <div role="status" aria-live="polite" data-components--tag-manager--tag-row-target="previewResult"></div>
+        </details>
+        {% endif %}
+        {% if tag.added|default(false) %}<button type="button" class="button is-small is-light" data-action="pages--tag-manager--index#discardRow">Discard this new tag</button>{% endif %}
         {% if tag.id and not is_new %}<label class="checkbox"><input type="checkbox" name="tags[{{ index }}][remove]" value="1"{% if tag.remove|default(false) %} checked{% endif %}> Remove this tag when saving</label>{% endif %}
     </fieldset>
 </div>
