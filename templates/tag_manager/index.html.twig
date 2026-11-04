@@ -4,6 +4,9 @@
 
 {% block body %}
 {% set rows = settings.tags %}
+{% set preview_url = path('app_tag_manager_preview') %}
+{% set worker_url = asset('tag_manager/preview_worker.js') %}
+{% set preview_base = site ? 'https://' ~ site.domain ~ '/' : 'https://www.example.com/' %}
 {% set existing_tag_ids = rows|map(row => row.id|default(''))|filter(id => id != '') %}
 {% set has_new_row = rows|length < max_tags %}
 {% set suggest_tracker = tracker_url and not tracker_tag %}
@@ -169,11 +172,11 @@
                 {% set tag_ids = existing_tag_ids %}
                 <div data-pages--tag-manager--index-target="tagRows">
                 {% for tag in rows %}
-                    {{ component('TagManager:TagRow', {index: loop.index0, tag: tag, script_suggestions: suggest_tracker, custom_scripts_enabled: custom_scripts_enabled, custom_templates: custom_templates, tag_ids: tag_ids, tracker_namespaces: tracker_namespaces}) }}
+                    {{ component('TagManager:TagRow', {index: loop.index0, tag: tag, script_suggestions: suggest_tracker, custom_scripts_enabled: custom_scripts_enabled, custom_templates: custom_templates, tag_ids: tag_ids, tracker_namespaces: tracker_namespaces, preview_url: preview_url, worker_url: worker_url, preview_base: preview_base}) }}
                 {% endfor %}
                 </div>
                 {# A blank tag the page copies for "Add another tag"; __INDEX__ becomes the next row number. #}
-                <template data-pages--tag-manager--index-target="tagTemplate">{{ component('TagManager:TagRow', {index: '__INDEX__', tag: {id: '', src: '', type: 'script', enabled: true, consent: 'analytics', trigger: {type: 'dom_ready'}, is_new: true, added: true}, script_suggestions: suggest_tracker, custom_scripts_enabled: custom_scripts_enabled, custom_templates: custom_templates, tag_ids: tag_ids, tracker_namespaces: tracker_namespaces}) }}</template>
+                <template data-pages--tag-manager--index-target="tagTemplate">{{ component('TagManager:TagRow', {index: '__INDEX__', tag: {id: '', src: '', type: 'script', enabled: true, consent: 'analytics', trigger: {type: 'dom_ready'}, is_new: true, added: true}, script_suggestions: suggest_tracker, custom_scripts_enabled: custom_scripts_enabled, custom_templates: custom_templates, tag_ids: tag_ids, tracker_namespaces: tracker_namespaces, preview_url: preview_url, worker_url: worker_url, preview_base: preview_base}) }}</template>
                 <div class="buttons mb-2">
                     <button type="button" class="button" data-pages--tag-manager--index-target="addTagButton" data-action="pages--tag-manager--index#addTagRow"{% if rows|length >= max_tags %} disabled{% endif %}>
                         <span class="icon is-small"><i class="fas fa-plus" aria-hidden="true"></i></span>

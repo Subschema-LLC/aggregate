@@ -9,10 +9,13 @@ use App\Service\DropInScripts;
 use App\Service\SiteScriptConfig;
 use App\Service\TagManagerCustomCode;
 use App\Service\TagManagerForm;
+use App\Service\TagManagerPreview;
+use App\Service\TagManagerScriptUnavailable;
 use App\Service\TagManagerSettings;
 use App\Service\TagManagerVariables;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
@@ -27,6 +30,12 @@ final class TagManagerController extends AbstractController
     public const SUBMITTED_FORM_KEY = 'tag_manager_submitted_form';
     /** Suggested ID when the page adds the website's tracker as a tag. */
     public const TRACKER_TAG_ID = 'aggregate-tracker';
+    /** Session key for the latest "Test this tag" run, read once by its script. */
+    public const PREVIEW_KEY = 'tag_manager_preview';
+    /** ID a new tag is tested under before it has one. */
+    public const PREVIEW_TAG_ID = 'tag-being-tested';
+
+    private readonly TagManagerPreview $preview;
 
     public function __construct(
         private readonly AggregateConfigLoader $config,
@@ -34,7 +43,9 @@ final class TagManagerController extends AbstractController
         private readonly LoggerInterface $logger,
         private readonly SiteScriptConfig $sites,
         private readonly ?DropInScripts $scripts = null,
+        ?TagManagerPreview $preview = null,
     ) {
+        $this->preview = $preview ?? new TagManagerPreview();
     }
 
     #[Route('/dashboard/tag-manager', name: 'app_tag_manager', methods: ['GET'])]
@@ -147,6 +158,112 @@ final class TagManagerController extends AbstractController
         }
 
         return $this->back($siteId);
+    }
+
+    /**
+     * "Test this tag": checks one row of the page's form as saving would,
+     * without saving, and prepares the script the browser's test runs. The
+     * row is tested with its variables, and the tag it runs after is assumed
+     * to have finished. Nothing is written but the user's own session.
+     */
+    #[Route('/dashboard/tag-manager/preview', name: 'app_tag_manager_preview', methods: ['POST'])]
+    public function preview(Request $request): Response
+    {
+        $this->denyUnlessPermitted();
+        $submitted = $request->request->all();
+        $raw = array_key_exists('site', $submitted) ? $submitted['site'] : '';
+        if (is_string($raw)) {
+            $this->denyUnlessSiteUsable($raw);
+        }
+        $csrf = $submitted['_csrf_token'] ?? null;
+        if (!is_string($csrf) || !$this->isCsrfTokenValid(self::CSRF_TOKEN_ID, $csrf)) {
+            return $this->previewError('Invalid security token. Reload the page and try again.', Response::HTTP_FORBIDDEN);
+        }
+        $index = $submitted['preview_tag'] ?? null;
+        $rows = $submitted['tags'] ?? null;
+        if (!is_string($index) || preg_match('/^(0|[1-9][0-9]{0,2})$/D', $index) !== 1 || !is_array($rows) || !is_array($rows[(int) $index] ?? null)) {
+            return $this->previewError('Choose a tag to test.');
+        }
+        if (!$request->hasSession()) {
+            return $this->previewError('The test needs a signed-in session.');
+        }
+
+        $row = $rows[(int) $index];
+        if (TagManagerForm::isBlankRow($row)) {
+            return $this->previewError('Fill in this tag before testing it: choose when it runs and what it does.');
+        }
+        unset($row['remove']);
+        if (($row['id'] ?? '') === '') {
+            $row['id'] = self::PREVIEW_TAG_ID;
+        }
+        $tagId = is_string($row['id'] ?? null) ? $row['id'] : '';
+        $tags = [$row];
+        $after = $row['after'] ?? '';
+        if (is_string($after) && $after !== '' && $after !== $tagId) {
+            // Only the order matters: the test replaces this tag with a stand-in that finishes at once.
+            array_unshift($tags, ['id' => $after, 'type' => 'script', 'src' => TagManagerPreview::STAND_IN_HOST.'after.js', 'enabled' => '1', 'consent' => 'none', 'trigger' => ['type' => 'dom_ready']]);
+        }
+        $form = [
+            'site' => is_string($raw) ? $raw : '',
+            'enabled' => in_array($submitted['enabled'] ?? null, ['0', '1'], true) ? $submitted['enabled'] : '0',
+            'variables' => $submitted['variables'] ?? [],
+            'tags' => $tags,
+        ];
+
+        try {
+            $this->selectedSite($form['site']);
+            $settings = TagManagerForm::settings($form);
+            $plan = $this->preview->plan($settings, $tagId, $this->settings->trackerNamespace(), $this->settings->customScriptsEnabled());
+        } catch (\InvalidArgumentException $e) {
+            // A new tag is tested before it has an ID; its messages say "this tag".
+            $message = strtr($e->getMessage(), ['Tag '.self::PREVIEW_TAG_ID.':' => 'This tag:', 'Tag '.self::PREVIEW_TAG_ID.' ' => 'This tag ', self::PREVIEW_TAG_ID => 'this tag']);
+
+            return $this->previewError($message);
+        } catch (\Throwable $e) {
+            $this->logFailure('preview', $e);
+
+            return $this->previewError('The test could not be prepared. Check the YAML configuration.', Response::HTTP_SERVICE_UNAVAILABLE);
+        }
+
+        $token = bin2hex(random_bytes(16));
+        // One run at a time: a new test replaces the last one.
+        $request->getSession()->set(self::PREVIEW_KEY, ['token' => $token, 'config' => $plan['config'], 'custom' => $plan['custom']]);
+        $categories = $plan['tag']['consent'] !== 'none' ? [$plan['tag']['consent']] : [];
+
+        return $this->privateResponse(new JsonResponse([
+            'script' => $this->generateUrl('app_tag_manager_preview_script', ['token' => $token]),
+            'namespace' => $plan['config']['namespace'],
+            'probeMethod' => TagManagerPreview::PROBE_METHOD,
+            'methods' => array_values(array_unique(array_filter([$plan['tag']['method'], TagManagerPreview::PROBE_METHOD]))),
+            'probes' => $plan['probes'],
+            'tag' => $plan['tag'],
+            'categories' => $categories,
+            'notes' => $plan['notes'],
+        ]));
+    }
+
+    /** The script for the latest test, from the user's own session. */
+    #[Route('/dashboard/tag-manager/preview/{token}.js', name: 'app_tag_manager_preview_script', requirements: ['token' => '[a-f0-9]{32}'], methods: ['GET'])]
+    public function previewScript(Request $request, string $token): Response
+    {
+        $this->denyUnlessPermitted();
+        $stored = $request->hasSession() ? $request->getSession()->get(self::PREVIEW_KEY) : null;
+        if (!is_array($stored) || !is_string($stored['token'] ?? null) || !hash_equals($stored['token'], $token)
+            || !is_array($stored['config'] ?? null) || !is_array($stored['custom'] ?? null)) {
+            return $this->privateResponse(new Response('This test has expired. Run it again.', Response::HTTP_NOT_FOUND, ['Content-Type' => 'text/plain; charset=UTF-8']));
+        }
+        try {
+            $content = $this->preview->script($stored['config'], array_values(array_filter($stored['custom'], 'is_string')));
+        } catch (TagManagerScriptUnavailable $e) {
+            return $this->privateResponse(new Response($e->getMessage(), Response::HTTP_SERVICE_UNAVAILABLE, ['Content-Type' => 'text/plain; charset=UTF-8']));
+        }
+
+        return $this->privateResponse(new Response($content, headers: ['Content-Type' => 'text/javascript; charset=UTF-8']));
+    }
+
+    private function previewError(string $message, int $status = Response::HTTP_UNPROCESSABLE_ENTITY): Response
+    {
+        return $this->privateResponse(new JsonResponse(['error' => $message], $status));
     }
 
     /**

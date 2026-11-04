@@ -65,6 +65,15 @@ final class TagManagerForm
         return [$settings, $variableRows];
     }
 
+    /** A submitted tag row with nothing filled in, which saving skips. */
+    public static function isBlankRow(array $row): bool
+    {
+        $text = static fn (string $key): string => is_string($row[$key] ?? null) ? $row[$key] : '';
+
+        return $text('id') === '' && $text('src') === '' && $text('method') === '' && trim($text('code')) === ''
+            && in_array(trim($text('args_json')), ['', '[]'], true) && self::blankEvent(trim($text('event_json')));
+    }
+
     /** An event field left empty, or as the editor's untouched starting point. */
     private static function blankEvent(string $event): bool
     {
@@ -116,7 +125,7 @@ final class TagManagerForm
             $args = trim($tag['args_json'] ?? '');
             $event = trim($tag['event_json'] ?? '');
             $code = $tag['code'] ?? '';
-            if ($tag['id'] === '' && $src === '' && $method === '' && trim($code) === '' && in_array($args, ['', '[]'], true) && self::blankEvent($event)) continue;
+            if (self::isBlankRow($tag)) continue;
             if ($type !== 'event' && !self::blankEvent($event)) {
                 throw new \InvalidArgumentException('Only a Send an Aggregate event action uses an event. Clear it or choose that action.');
             }

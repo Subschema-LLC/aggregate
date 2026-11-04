@@ -493,6 +493,94 @@ final class TagManagerControllerTest extends TestCase
         self::assertCount(TagManagerSettings::MAX_TAGS, $crawler->filter('[data-pages--tag-manager--index-target="tagRows"] [data-tag-row]'));
     }
 
+    /** "Test this tag" checks the edited row as saving would, writes nothing, and serves its script once from the session. */
+    public function testPreviewChecksTheEditedRowWithoutSavingAndServesItsScript(): void
+    {
+        $save = $this->request($this->siteForm());
+        $this->controller($save)->save($save);
+        $file = $this->projectDir.'/config/tag-manager/sites/'.$this->siteId.'.yaml';
+        $before = file_get_contents($file);
+
+        $form = $this->siteForm();
+        $form['tags'][] = ['id' => '', 'type' => 'event', 'event_json' => '{"eventName": "request_info", "customData": {"plan": {"$var": "plan"}}}', 'enabled' => '0', 'consent' => 'analytics', 'trigger' => ['type' => 'data_layer', 'event' => 'form_submit'], 'after' => 'helper'];
+        $request = $this->request($form + ['preview_tag' => '2']);
+        $response = $this->controller($request)->preview($request);
+
+        self::assertSame(200, $response->getStatusCode(), (string) $response->getContent());
+        self::assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+        self::assertSame($before, file_get_contents($file), 'nothing is saved');
+        $plan = json_decode((string) $response->getContent(), true, flags: JSON_THROW_ON_ERROR);
+        self::assertSame(['id' => TagManagerController::PREVIEW_TAG_ID, 'type' => 'event', 'consent' => 'analytics', 'trigger' => ['type' => 'data_layer', 'event' => 'form_submit'], 'method' => null], $plan['tag']);
+        self::assertSame(['analytics'], $plan['categories']);
+        self::assertSame(['AggregateTagPreview.read'], $plan['methods']);
+        self::assertSame([['alias' => 'plan', 'from' => 'recent', 'path' => 'window.siteData.plan']], array_values($plan['probes']));
+        self::assertStringContainsString('This tag is disabled', implode(' ', $plan['notes']));
+        self::assertStringContainsString('This tag runs after helper', implode(' ', $plan['notes']));
+
+        $stored = $request->getSession()->get(TagManagerController::PREVIEW_KEY);
+        self::assertMatchesRegularExpression('/^[a-f0-9]{32}$/D', $stored['token']);
+        $scriptRequest = Request::create('/dashboard/tag-manager/preview/'.$stored['token'].'.js');
+        $scriptRequest->setSession($request->getSession());
+        $script = $this->controller($scriptRequest)->previewScript($scriptRequest, $stored['token']);
+        self::assertSame(200, $script->getStatusCode());
+        self::assertSame('text/javascript; charset=UTF-8', $script->headers->get('Content-Type'));
+        self::assertStringContainsString('"eventName":"request_info"', (string) $script->getContent());
+        self::assertStringNotContainsString('purchase', (string) $script->getContent(), 'other tags are not part of the test');
+
+        $wrong = Request::create('/dashboard/tag-manager/preview/'.str_repeat('0', 32).'.js');
+        $wrong->setSession($request->getSession());
+        self::assertSame(404, $this->controller($wrong)->previewScript($wrong, str_repeat('0', 32))->getStatusCode());
+    }
+
+    public function testPreviewExplainsWhyAnEditedTagCannotBeTested(): void
+    {
+        $form = $this->siteForm();
+        $form['tags'][] = ['id' => '', 'type' => 'event', 'event_json' => '{"eventName": "", "customData": {"plan": "pro"}}', 'enabled' => '1', 'consent' => 'analytics', 'trigger' => ['type' => 'data_layer', 'event' => 'form_submit']];
+        $request = $this->request($form + ['preview_tag' => '2']);
+        $response = $this->controller($request)->preview($request);
+
+        self::assertSame(422, $response->getStatusCode());
+        $error = json_decode((string) $response->getContent(), true, flags: JSON_THROW_ON_ERROR)['error'];
+        self::assertStringStartsWith('This tag: the event: eventName', $error);
+        self::assertStringNotContainsString(TagManagerController::PREVIEW_TAG_ID, $error);
+        self::assertFalse($request->getSession()->has(TagManagerController::PREVIEW_KEY));
+
+        $blank = $this->siteForm();
+        $blank['tags'][] = ['id' => '', 'type' => 'script', 'src' => '', 'enabled' => '1', 'consent' => 'analytics', 'trigger' => ['type' => 'dom_ready']];
+        $empty = $this->request($blank + ['preview_tag' => '2']);
+        $response = $this->controller($empty)->preview($empty);
+        self::assertSame('Fill in this tag before testing it: choose when it runs and what it does.', json_decode((string) $response->getContent(), true, flags: JSON_THROW_ON_ERROR)['error']);
+
+        foreach (['', '7', 'x', '-1'] as $index) {
+            $missing = $this->request($this->siteForm() + ['preview_tag' => $index]);
+            self::assertSame(422, $this->controller($missing)->preview($missing)->getStatusCode(), 'row '.$index);
+        }
+    }
+
+    public function testPreviewNeedsAValidTokenAndAWebsiteTheUserCanUse(): void
+    {
+        $request = $this->request($this->siteForm() + ['preview_tag' => '0']);
+        $response = $this->controller($request, csrfValid: false)->preview($request);
+        self::assertSame(403, $response->getStatusCode());
+        self::assertFalse($request->getSession()->has(TagManagerController::PREVIEW_KEY));
+
+        // Refused at the page check, before its token is looked at.
+        $viewer = Request::create('/dashboard/tag-manager/preview', 'POST', $this->siteForm() + ['preview_tag' => '0']);
+        $viewer->setSession(new Session(new MockArraySessionStorage()));
+        try {
+            $this->controller($viewer, admin: false)->preview($viewer);
+            self::fail('A user without the tag manager page cannot test tags.');
+        } catch (AccessDeniedException) {
+        }
+
+        $form = $this->siteForm();
+        $form['site'] = str_repeat('f', 24);
+        $unknown = $this->request($form + ['preview_tag' => '0']);
+        $response = $this->controller($unknown)->preview($unknown);
+        self::assertSame(422, $response->getStatusCode(), 'an unregistered website is refused, as saving refuses it');
+        self::assertFalse($unknown->getSession()->has(TagManagerController::PREVIEW_KEY));
+    }
+
     /** The examples a user copies must be paths the runtime resolves: data-layer paths, not page globals. */
     public function testVariableHelpAndPlaceholdersShowPathsThatResolve(): void
     {
@@ -812,6 +900,8 @@ final class TagManagerControllerTest extends TestCase
                 'app_tag_manager' => '/dashboard/tag-manager',
                 'app_tag_manager_save' => '/dashboard/tag-manager/save',
                 'app_tag_manager_download' => '/dashboard/tag-manager/download',
+                'app_tag_manager_preview' => '/dashboard/tag-manager/preview',
+                'app_tag_manager_preview_script' => '/dashboard/tag-manager/preview/'.($parameters['token'] ?? '').'.js',
                 'app_setup' => '/dashboard/setup',
                 'app_data_model' => '/dashboard/data-model',
                 'app_consent_manager' => '/dashboard/consent-manager',

@@ -233,6 +233,32 @@ use it to report a sensitive page under another path.
 **What would change it.** A reason to retire the short form, such as a tracker
 size budget it no longer fits, which would need a deprecation period first.
 
+### Testing a tag runs the real runtime, never the tag's own code
+
+**Decision.** **Test this tag** on the tag manager page runs `public/tag-manager.js`
+with one tag, as edited and unsaved, in a Web Worker on the dashboard, against a
+sample event and stand-ins for the page, the tracker and libraries. Scripts are
+recorded, not loaded; a custom JavaScript tag is replaced by a stand-in that
+records that it would have run. Each variable the tag reads gets a probe, a
+method tag on the same trigger, so the runtime itself reports which values it
+found.
+
+**Why.** "Why didn't my tag fire?" is the usual tag manager question, and the
+answer depends on the runtime's own rules: merged data-layer state, event-scoped
+values, consent and missing variables. Running the real runtime keeps the test
+from drifting from what visitors get; a copy of its rules would. A Worker needs
+no change to the dashboard's Content-Security-Policy, which blocks frames, and
+leaving custom code out means nothing a tag author wrote runs with the signed-in
+user's session.
+
+**Trade-off.** Custom JavaScript is not exercised, and third-party scripts and
+libraries are stand-ins, so the test shows what a tag would do with the sample,
+not what a vendor's script then does. The runtime takes at most 20 tags, so a
+test checks at most 19 of the variables one tag uses.
+
+**What would change it.** A way to run custom code in an origin of its own, such
+as a separate preview host, could let the test run it too.
+
 ### Campaign values kept for the tab only by choice, consent-required ones only after consent
 
 **Decision.** By default the tracker reads mapped query parameters from the

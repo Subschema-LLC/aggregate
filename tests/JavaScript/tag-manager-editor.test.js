@@ -825,3 +825,67 @@ test('an event using an undefined variable offers to create it, and the offer fo
   assert.equal(name.textContent, 'plan');
   assert.equal(status.textContent, '', 'and clears the earlier message');
 });
+
+test('a test sample starts from the trigger, with an example at each path the tag reads', () => {
+  const row = kvEditor(JSON.stringify({eventName: 'request_info', customData: {program: {$var: 'program'}, sku: {$var: 'first_sku', from: 'event'}, fixed: 'x'}}));
+  const sample = {value: ''};
+  const label = {textContent: ''};
+  const help = {textContent: ''};
+  const variableRows = [['program', 'program_name'], ['first_sku', 'ecommerce.items[0].sku'], ['unused', 'other']].map(([alias, path]) => {
+    const pathInput = {value: path};
+    return {value: alias, closest: () => ({querySelector: () => pathInput})};
+  });
+  Object.assign(row.controller, {
+    element: {ownerDocument: {querySelectorAll: () => variableRows}},
+    hasPreviewSampleTarget: true, previewSampleTarget: sample,
+    hasPreviewSampleLabelTarget: true, previewSampleLabelTarget: label,
+    hasPreviewSampleHelpTarget: true, previewSampleHelpTarget: help
+  });
+  row.controller.triggerTarget.value = 'data_layer';
+  row.controller.eventFieldTarget = {querySelector: () => ({value: ' form_submit '})};
+  row.controller.resetPreviewSample();
+  assert.deepEqual(JSON.parse(sample.value), {event: 'form_submit', program_name: 'example', ecommerce: {items: [{sku: 'example'}]}});
+  assert.equal(label.textContent, 'Sample dataLayer push');
+
+  variableRows[0].closest = () => ({querySelector: () => ({value: 'event.detail.program'})});
+  row.controller.triggerTarget.value = 'document_event';
+  row.controller.eventFieldTarget = {querySelector: () => ({value: 'program:chosen'})};
+  row.controller.resetPreviewSample();
+  assert.deepEqual(JSON.parse(sample.value), {program: 'example'}, 'a page event sample is its detail; data-layer paths are not part of it');
+  assert.equal(label.textContent, 'Sample event detail');
+});
+
+test('the test result says whether the tag ran, what it did, and why not', () => {
+  // The controller runs in a VM; compare what it builds as plain data.
+  const plain = (value) => JSON.parse(JSON.stringify(value));
+  const plan = {
+    tag: {id: 'request-info', type: 'event', consent: 'analytics', trigger: {type: 'data_layer', event: 'form_submit'}},
+    probes: {p1: {alias: 'program', from: 'recent', path: 'program_name'}},
+    notes: ['This tag is disabled, so it does not run on the website until you enable it. The test runs it anyway.']
+  };
+  const ran = Editor.previewOutcome({plan, sample: {event: 'form_submit'}, consent: true,
+    records: {emits: [[{eventName: 'request_info', customData: {program: 'Nursing'}}]], probes: {p1: 'Nursing'}, warnings: [], errors: []}});
+  assert.equal(ran.ran, true);
+  assert.equal(ran.done[0].label, 'Sends this event to Aggregate');
+  assert.deepEqual(JSON.parse(ran.done[0].detail), {eventName: 'request_info', customData: {program: 'Nursing'}});
+  assert.deepEqual(plain(ran.variables.map((v) => [v.alias, v.checked, v.found, v.value])), [['program', true, true, 'Nursing']]);
+  assert.deepEqual(plain(ran.reasons), []);
+  assert.match(ran.notes[0], /This tag is disabled/);
+
+  const missing = Editor.previewOutcome({plan, sample: {event: 'form_submit'}, consent: true, records: {emits: [], probes: {}}});
+  assert.deepEqual(plain(missing.reasons), ['A variable it uses has no value in the sample, so the tag is skipped: program (program_name).']);
+
+  const wrongEvent = Editor.previewOutcome({plan, sample: {event: 'page_view'}, consent: true, records: {emits: [], probes: {}}});
+  assert.deepEqual(plain(wrongEvent.reasons), ['The sample pushes the event "page_view", but this tag listens for "form_submit".'], 'variables are not called missing when nothing triggered');
+  assert.equal(wrongEvent.variables[0].checked, false);
+
+  const noEvent = Editor.previewOutcome({plan, sample: {}, consent: true, records: {}});
+  assert.match(noEvent.reasons[0], /^The sample has no "event"/);
+
+  const noConsent = Editor.previewOutcome({plan, sample: {event: 'form_submit'}, consent: false, records: {emits: [], probes: {p1: 'Nursing'}}});
+  assert.deepEqual(plain(noConsent.reasons), ['The visitor has not allowed analytics, so the tag does not run.']);
+
+  const script = Editor.previewOutcome({plan: {tag: {id: 'helper', type: 'script', consent: 'none', trigger: {type: 'dom_ready'}}, probes: {}},
+    sample: {}, consent: true, records: {scripts: [{tag: 'other', src: 'https://a.example/x.js'}, {tag: 'helper', src: 'https://scripts.example/h.js'}]}});
+  assert.deepEqual(plain(script.done), [{label: 'Loads this script', detail: 'https://scripts.example/h.js'}], 'only the tested tag\'s script counts');
+});

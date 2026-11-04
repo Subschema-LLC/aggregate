@@ -122,6 +122,7 @@ final class AdminActions
         'app_login_code_request' => 'Asking for a sign-in code is recorded by SignInCodeRequests, under sign_ins.',
         'app_login_code_verify' => 'Signing in with a code is recorded from the security events, under sign_ins.',
         'app_bi_glossary_suggestions' => 'Returns suggested labels; changes nothing.',
+        'app_tag_manager_preview' => 'Tests a tag from the editor without saving it; changes nothing but the user\'s own session.',
         'app_home' => 'The home page accepts any method and changes nothing.',
         'mcp' => 'AI assistant requests; each tool call is recorded by McpUsageLog under assistant.',
         'mcp_oauth_register' => 'An assistant registering itself before sign-in; an administrator\'s approval is recorded under integrations.',

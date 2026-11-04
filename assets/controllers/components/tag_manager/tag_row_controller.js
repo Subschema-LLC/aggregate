@@ -249,6 +249,67 @@ function eventAliases(json) {
     return aliases.filter((alias, index) => aliases.indexOf(alias) === index);
 }
 
+/** [alias, from] pairs a value refers to, in order, without repeats. */
+function references(value, found = []) {
+    if (isReference(value) && isValidAlias(value.$var)) {
+        const from = value.from === 'event' ? 'event' : 'recent';
+        if (!found.some(([alias, source]) => alias === value.$var && source === from)) found.push([value.$var, from]);
+    } else if (value !== null && typeof value === 'object') {
+        for (const member of Object.values(value)) references(member, found);
+    }
+    return found;
+}
+
+// Splits a variable path the way the runtime does (pathParts in public/tag-manager.js).
+function pathSegments(path) {
+    if (typeof path !== 'string' || !/^[A-Za-z_$][A-Za-z0-9_$]*(?:(?:\.[A-Za-z_$][A-Za-z0-9_$]*)|(?:\[(?:0|[1-9][0-9]*)\]))*$/.test(path)) return null;
+    return path.match(/[A-Za-z_$][A-Za-z0-9_$]*|[0-9]+/g);
+}
+
+function setSampleValue(target, segments, value) {
+    let node = target;
+    segments.forEach((segment, index) => {
+        const last = index === segments.length - 1;
+        if (last) {
+            if (!(segment in node)) node[segment] = value;
+            return;
+        }
+        const nextIsIndex = /^[0-9]+$/.test(segments[index + 1]);
+        if (node[segment] === null || typeof node[segment] !== 'object') node[segment] = nextIsIndex ? [] : {};
+        node = node[segment];
+    });
+}
+
+/**
+ * A starting sample for a test: the dataLayer push (or the page event's
+ * detail, or the data layer when the page is ready) with an example value at
+ * each path the tag's variables read.
+ */
+function sampleFor(trigger, aliases, paths) {
+    const sample = trigger.type === 'data_layer' ? {event: trigger.event || 'example_event'} : {};
+    const domEvent = trigger.type === 'document_event' || trigger.type === 'window_event';
+    for (const alias of aliases) {
+        let segments = pathSegments(paths[alias]);
+        if (!segments) continue;
+        if (domEvent) {
+            if (segments[0] !== 'event' || segments[1] !== 'detail' || segments.length < 3) continue;
+            segments = segments.slice(2);
+        } else if (segments[0] === 'event' && segments.length === 1) {
+            continue;
+        }
+        setSampleValue(sample, segments, 'example');
+    }
+    return sample;
+}
+
+const sampleLabels = {
+    data_layer: ['Sample dataLayer push', 'What the page pushes, such as {"event": "purchase", "plan": "pro"}. Its event must match the event this tag listens for.'],
+    document_event: ['Sample event detail', 'The detail of the event the page fires on the document. Variables read it as event.detail.…'],
+    window_event: ['Sample event detail', 'The detail of the event the page fires on the window. Variables read it as event.detail.…'],
+    dom_ready: ['Data layer when the page is ready', 'What the page has pushed to the data layer by then, merged into one object.'],
+    window_load: ['Data layer when the page has loaded', 'What the page has pushed to the data layer by then, merged into one object.']
+};
+
 function parsedArguments(method, argumentsJson, namespaces) {
     if (!namespaces.some((namespace) => method.trim() === namespace + '.emit')) return null;
     try {
@@ -367,9 +428,10 @@ export default class extends Controller {
         'eventModeButton', 'eventJsonPane', 'eventKvPane', 'eventNameType', 'eventNameInput',
         'customDataRows', 'addCustomDataButton', 'goalEventType', 'goalEventInput', 'pagePathType', 'pagePathInput',
         'eventLabel', 'consentChoice', 'consentOther', 'consent',
-        'newVariable', 'newVariableName', 'newVariablePath', 'newVariableStatus'];
+        'newVariable', 'newVariableName', 'newVariablePath', 'newVariableStatus',
+        'preview', 'previewSample', 'previewSampleLabel', 'previewSampleHelp', 'previewConsent', 'previewRun', 'previewResult'];
 
-    static values = { namespaces: Array, defaultId: String, defaultSrc: String };
+    static values = { namespaces: Array, defaultId: String, defaultSrc: String, previewUrl: String, workerUrl: String, previewBase: String };
 
     connect() {
         this.eventMode = 'json';
@@ -756,6 +818,225 @@ export default class extends Controller {
             status.classList?.toggle('is-danger', false);
             status.classList?.toggle('is-success', true);
         }
+    }
+
+    // ---- Test this tag ----
+
+    /** The trigger as the row shows it. */
+    previewTrigger() {
+        const type = this.triggerTarget.value;
+        const input = this.eventFieldTarget?.querySelector?.('input');
+        return ['document_event', 'window_event', 'data_layer'].includes(type) ? {type, event: (input?.value ?? '').trim()} : {type};
+    }
+
+    /** The variables this tag uses, from its event, arguments or script URL. */
+    previewAliases() {
+        const type = this.actionTypeTarget.value;
+        if (type === 'event' && this.hasEventTarget) {
+            try { return references(JSON.parse(this.eventTarget.value)).map(([alias]) => alias); } catch (error) { return []; }
+        }
+        if (type === 'call' && this.hasArgumentsTarget) {
+            try { return references(JSON.parse(this.argumentsTarget.value || '[]')).map(([alias]) => alias); } catch (error) { return []; }
+        }
+        if (type === 'script' && this.hasSourceTarget) {
+            return Array.from(this.sourceTarget.value.matchAll(/\{\{([A-Za-z][A-Za-z0-9_]{0,63})\}\}/g), (match) => match[1]);
+        }
+        return [];
+    }
+
+    /** Alias => data path, as typed on the Variables tab. */
+    variablePaths() {
+        const document = this.element?.ownerDocument;
+        const paths = {};
+        const aliases = typeof document?.querySelectorAll === 'function' ? document.querySelectorAll('input[name^="variables["][name$="[alias]"]') : [];
+        for (const input of aliases) {
+            const path = input.closest?.('[data-variable-row]')?.querySelector?.('input[name$="[path]"]');
+            const alias = (input.value ?? '').trim();
+            if (alias && path) paths[alias] = (path.value ?? '').trim();
+        }
+        return paths;
+    }
+
+    openPreview() {
+        if (!this.hasPreviewTarget || !this.previewTarget.open) return;
+        if (this.hasPreviewSampleTarget && !this.previewSampleTarget.value.trim()) this.resetPreviewSample();
+        else this.labelPreviewSample();
+    }
+
+    resetPreviewSample() {
+        if (!this.hasPreviewSampleTarget) return;
+        this.previewSampleTarget.value = JSON.stringify(sampleFor(this.previewTrigger(), this.previewAliases(), this.variablePaths()), null, 2);
+        this.labelPreviewSample();
+    }
+
+    labelPreviewSample() {
+        const [label, help] = sampleLabels[this.triggerTarget.value] || sampleLabels.data_layer;
+        if (this.hasPreviewSampleLabelTarget) this.previewSampleLabelTarget.textContent = label;
+        if (this.hasPreviewSampleHelpTarget) this.previewSampleHelpTarget.textContent = help;
+    }
+
+    /** The row's number in the form, from its field names. */
+    rowIndex() {
+        const name = this.element?.querySelector?.('input[name$="[id]"]')?.name ?? '';
+        const match = /^tags\[(\d+)\]/.exec(name);
+        return match ? match[1] : null;
+    }
+
+    async runPreview() {
+        if (!this.hasPreviewResultTarget) return;
+        const document = this.element.ownerDocument;
+        const view = document.defaultView;
+        const form = this.element.closest?.('form');
+        const index = this.rowIndex();
+        let sample;
+        try {
+            sample = JSON.parse(this.hasPreviewSampleTarget ? this.previewSampleTarget.value : '{}');
+        } catch (error) {
+            sample = undefined;
+        }
+        if (sample === null || typeof sample !== 'object' || Array.isArray(sample)) {
+            this.showPreview({error: 'The sample must be a JSON object, such as {"event": "purchase"}.'});
+            return;
+        }
+        if (!form || index === null || !this.previewUrlValue || !this.workerUrlValue || typeof view?.fetch !== 'function' || typeof view.Worker !== 'function') {
+            this.showPreview({error: 'This browser cannot run the test.'});
+            return;
+        }
+        // The key-value editor writes the event as you type; make sure the JSON is current.
+        if (this.actionTypeTarget.value === 'event' && this.eventMode === 'kv') this.syncEventFromKv();
+        if (this.hasPreviewRunTarget) this.previewRunTarget.disabled = true;
+        this.showPreview({pending: true});
+        try {
+            const body = new view.FormData(form);
+            body.append('preview_tag', index);
+            const response = await view.fetch(this.previewUrlValue, {method: 'POST', body, credentials: 'same-origin', headers: {Accept: 'application/json'}});
+            const plan = await response.json().catch(() => ({error: 'The test could not be prepared.'}));
+            if (!response.ok || plan.error) {
+                this.showPreview({error: plan.error || 'The test could not be prepared.'});
+                return;
+            }
+            const records = await this.runWorker(view, plan, sample);
+            this.showPreview({plan, sample, records, consent: !this.hasPreviewConsentTarget || this.previewConsentTarget.checked});
+        } catch (error) {
+            this.showPreview({error: error?.message || 'The test could not run.'});
+        } finally {
+            if (this.hasPreviewRunTarget) this.previewRunTarget.disabled = false;
+        }
+    }
+
+    runWorker(view, plan, sample) {
+        return new Promise((resolve, reject) => {
+            const worker = new view.Worker(this.workerUrlValue);
+            const timer = view.setTimeout(() => {
+                worker.terminate();
+                reject(new Error('The test did not finish within a few seconds, so it was stopped.'));
+            }, 4000);
+            worker.onmessage = (message) => {
+                view.clearTimeout(timer);
+                worker.terminate();
+                if (message.data?.error) reject(new Error(message.data.error));
+                else resolve(message.data?.records ?? {});
+            };
+            worker.onerror = () => {
+                view.clearTimeout(timer);
+                worker.terminate();
+                reject(new Error('The test could not start in this browser.'));
+            };
+            worker.postMessage({
+                scriptUrl: new view.URL(plan.script, view.location.href).href,
+                namespace: plan.namespace,
+                methods: plan.methods,
+                probeMethod: plan.probeMethod,
+                categories: plan.categories,
+                consent: !this.hasPreviewConsentTarget || this.previewConsentTarget.checked,
+                trigger: plan.tag.trigger,
+                sample,
+                baseURI: this.previewBaseValue || 'https://www.example.com/'
+            });
+        });
+    }
+
+    /** What the test found, for showPreview(): whether the tag ran, what it did and why not. */
+    static previewOutcome({plan, sample, records, consent}) {
+        const tag = plan.tag;
+        const done = [];
+        if (tag.type === 'event') {
+            for (const args of records.emits ?? []) done.push({label: 'Sends this event to Aggregate', detail: JSON.stringify(args.length === 1 ? args[0] : args, null, 2)});
+        } else if (tag.type === 'script') {
+            for (const script of (records.scripts ?? []).filter((entry) => entry.tag === tag.id)) done.push({label: 'Loads this script', detail: script.src});
+        } else if (tag.type === 'call') {
+            for (const call of (records.calls ?? []).filter((entry) => entry.method === tag.method)) done.push({label: 'Calls ' + call.method + ' with', detail: JSON.stringify(call.args, null, 2)});
+            for (const args of records.emits ?? []) done.push({label: 'Calls ' + tag.method + ' with', detail: JSON.stringify(args, null, 2)});
+        } else if (tag.type === 'custom' && (records.custom ?? []).includes(tag.id)) {
+            done.push({label: 'Runs its custom JavaScript', detail: ''});
+        }
+        // Variables are read only when the trigger fires, so an event that does not match checks none.
+        const triggered = tag.trigger.type !== 'data_layer' || sample.event === tag.trigger.event;
+        const variables = Object.entries(plan.probes ?? {}).map(([id, probe]) => {
+            const found = Object.prototype.hasOwnProperty.call(records.probes ?? {}, id);
+            return {...probe, checked: triggered, found, value: found ? records.probes[id] : undefined};
+        });
+        const reasons = [];
+        if (done.length === 0) {
+            if (tag.consent !== 'none' && !consent) reasons.push('The visitor has not allowed ' + tag.consent + ', so the tag does not run.');
+            if (!triggered) {
+                reasons.push(typeof sample.event === 'string'
+                    ? 'The sample pushes the event "' + sample.event + '", but this tag listens for "' + tag.trigger.event + '".'
+                    : 'The sample has no "event", so it does not trigger the tag. Add "event": "' + tag.trigger.event + '".');
+            }
+            const missing = triggered ? variables.filter((variable) => !variable.found).map((variable) => variable.alias + (variable.path ? ' (' + variable.path + ')' : '')) : [];
+            if (missing.length) reasons.push('A variable it uses has no value in the sample, so the tag is skipped: ' + missing.join(', ') + '.');
+            if (!reasons.length) reasons.push('Nothing in the sample triggers it. Check the trigger, the event name and the sample.');
+        }
+        return {ran: done.length > 0, done, variables, reasons, notes: [...(plan.notes ?? []), ...(records.warnings ?? [])], errors: records.errors ?? []};
+    }
+
+    showPreview(state) {
+        if (!this.hasPreviewResultTarget) return;
+        const document = this.element.ownerDocument;
+        const make = (tag, text, className) => {
+            const node = document.createElement(tag);
+            if (text !== undefined) node.textContent = text;
+            if (className) node.className = className;
+            return node;
+        };
+        const box = make('div', undefined, 'notification is-light mt-2 mb-0');
+        if (state.pending) {
+            box.classList.add('is-info');
+            box.append(make('p', 'Testing…'));
+        } else if (state.error) {
+            box.classList.add('is-danger');
+            box.append(make('p', state.error));
+        } else {
+            const outcome = this.constructor.previewOutcome(state);
+            box.classList.add(outcome.ran ? 'is-success' : 'is-warning');
+            box.append(make('p', outcome.ran ? 'This tag would run.' : 'This tag would not run.', 'has-text-weight-semibold'));
+            for (const action of outcome.done) {
+                box.append(make('p', action.label + (action.detail ? ':' : '.'), 'mt-2'));
+                if (action.detail) box.append(make('pre', action.detail, 'mt-1 p-2'));
+            }
+            for (const reason of outcome.reasons) box.append(make('p', reason, 'mt-2'));
+            if (outcome.variables.length) {
+                const table = make('table', undefined, 'table is-narrow is-fullwidth mt-2 mb-0');
+                const head = make('tr');
+                for (const title of ['Variable', 'Path', 'Value in the sample']) head.append(make('th', title));
+                table.append(make('thead'));
+                table.firstChild.append(head);
+                const body = make('tbody');
+                for (const variable of outcome.variables) {
+                    const row = make('tr');
+                    row.append(make('td', variable.alias + (variable.from === 'event' ? " (this event's value)" : '')));
+                    row.append(make('td', variable.path));
+                    row.append(make('td', !variable.checked ? 'Not checked: the tag was not triggered' : (variable.found ? JSON.stringify(variable.value) : 'Not found')));
+                    body.append(row);
+                }
+                table.append(body);
+                box.append(table);
+            }
+            for (const note of outcome.notes) box.append(make('p', note, 'help mt-2'));
+            for (const error of outcome.errors) box.append(make('p', error, 'help has-text-danger mt-1'));
+        }
+        this.previewResultTarget.replaceChildren(box);
     }
 
     checkCode() {

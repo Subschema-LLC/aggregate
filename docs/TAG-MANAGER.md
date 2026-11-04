@@ -489,6 +489,29 @@ page shows their code read-only and does not offer the action for new rows;
 saving can keep or remove them but cannot add or change custom code. Other tags
 are unaffected. Turning the flag back on serves the kept tags again.
 
+## Test a tag before saving
+
+Each tag row has **Test this tag**. It runs the tag as it is on the page, before
+you save, against a sample: the `dataLayer` push for a dataLayer trigger, the
+event's `detail` for a document or window event, or the data layer when the page
+is ready or loaded. The sample starts with the trigger's event name and an
+`"example"` value at each path the tag's variables read; edit it to match what
+your page sends. Untick **The visitor has allowed this tag's consent category**
+to see what happens before a choice.
+
+The result says whether the tag would run and what it would do: the event it
+would send to Aggregate, the script URL it would load (with variables filled
+in), or the method it would call and its arguments. A table shows each variable
+with the value the tag manager read from the sample, or that it was not found.
+When the tag would not run, the result says why: the sample's event does not
+match, a variable has no value, or consent is missing.
+
+The test runs `public/tag-manager.js` itself, in a background worker in your
+browser, with stand-ins for the page, the tracker and other libraries. Nothing
+is loaded, sent or saved. Custom JavaScript does not run in the test; the result
+shows only whether it would. A tag set to run after another assumes that one has
+finished. The test needs the tag manager page at edit level.
+
 ## Trigger and browser-event dictionary
 
 | YAML trigger | Browser equivalent | When it runs |

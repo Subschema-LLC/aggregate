@@ -1,4 +1,4 @@
-{% props index, tag, script_suggestions = false, custom_scripts_enabled = true, custom_templates = [], tag_ids = [], tracker_namespaces = ['Aggregate'] %}
+{% props index, tag, script_suggestions = false, custom_scripts_enabled = true, custom_templates = [], tag_ids = [], tracker_namespaces = ['Aggregate'], preview_url = '', worker_url = '', preview_base = '' %}
 {% set is_new = tag.is_new|default(false) %}
 {% set event_data = tag.event is defined and tag.event is iterable ? tag.event : {} %}
 {% set event_name_is_var = event_data.eventName is defined and event_data.eventName is iterable and event_data.eventName['$var'] is defined %}
@@ -35,7 +35,7 @@
 {% set page_path_val = page_path_is_var ? event_data.pagePath['$var'] : (event_data.pagePath|default('')) %}
 
 <div class="box">
-    <fieldset class="tag-settings-fieldset" data-tag-row data-controller="components--tag-manager--tag-row" data-action="tag-manager:variables-changed@document->components--tag-manager--tag-row#offerNewVariable" data-components--tag-manager--tag-row-namespaces-value="{{ tracker_namespaces|json_encode }}"{% if is_new and tag.src|default('') %} data-components--tag-manager--tag-row-default-id-value="{{ tag.id }}" data-components--tag-manager--tag-row-default-src-value="{{ tag.src }}"{% endif %} aria-describedby="tag-{{ index }}-help">
+    <fieldset class="tag-settings-fieldset" data-tag-row data-controller="components--tag-manager--tag-row" data-action="tag-manager:variables-changed@document->components--tag-manager--tag-row#offerNewVariable" data-components--tag-manager--tag-row-namespaces-value="{{ tracker_namespaces|json_encode }}"{% if preview_url and worker_url %} data-components--tag-manager--tag-row-preview-url-value="{{ preview_url }}" data-components--tag-manager--tag-row-worker-url-value="{{ worker_url }}" data-components--tag-manager--tag-row-preview-base-value="{{ preview_base }}"{% endif %}{% if is_new and tag.src|default('') %} data-components--tag-manager--tag-row-default-id-value="{{ tag.id }}" data-components--tag-manager--tag-row-default-src-value="{{ tag.src }}"{% endif %} aria-describedby="tag-{{ index }}-help">
         <legend class="title is-5">{% if tag.id and not is_new %}Tag {{ index + 1 }}: {{ tag.id }}{% else %}Add a tag{% endif %}</legend>
         <p class="help mb-3" id="tag-{{ index }}-help">Choose when the tag runs, then what it does. A new tag left empty is not saved.</p>
         <div class="field"><label class="label" for="tag-{{ index }}-id">ID</label><div class="control"><input class="input" id="tag-{{ index }}-id" name="tags[{{ index }}][id]" value="{{ tag.id }}" maxlength="64" pattern="[A-Za-z][A-Za-z0-9_\-]{0,63}" autocomplete="off" placeholder="purchase-event"></div></div>
@@ -262,6 +262,23 @@ tag.emit('newsletter_signup', {plan: tag.get('plan')});" data-components--tag-ma
             </select></div></div>
             <p class="help" id="tag-{{ index }}-after-help">Run after another tag: this tag waits until that tag has finished, meaning its script has loaded or its method call or custom code is done. Use it to run code after the tracker or a vendor library has loaded. Choose a tag that runs once per page; if it never runs, this one does not either.</p>
         </div>
+        {% if preview_url and worker_url %}
+        <details class="box is-shadowless tag-preview mb-3" data-components--tag-manager--tag-row-target="preview" data-action="toggle->components--tag-manager--tag-row#openPreview">
+            <summary class="has-text-weight-semibold">Test this tag</summary>
+            <p class="help mt-2">Runs this tag as it is on this page, before you save, against a sample event in your browser. Nothing is loaded, sent or saved. {% if docs_url('tracking.tag-manager') %}<a href="{{ docs_url('tracking.tag-manager') }}#test-a-tag-before-saving" target="_blank" rel="noopener noreferrer">Testing tags<span class="is-sr-only"> (opens in a new tab)</span></a>{% endif %}</p>
+            <div class="field mt-2">
+                <label class="label is-small" for="tag-{{ index }}-preview-sample" data-components--tag-manager--tag-row-target="previewSampleLabel">Sample event</label>
+                <div class="control"><textarea class="textarea is-small" id="tag-{{ index }}-preview-sample" rows="6" spellcheck="false" autocomplete="off" aria-describedby="tag-{{ index }}-preview-sample-help" data-components--tag-manager--tag-row-target="previewSample"></textarea></div>
+                <p class="help" id="tag-{{ index }}-preview-sample-help" data-components--tag-manager--tag-row-target="previewSampleHelp"></p>
+            </div>
+            <label class="checkbox"><input type="checkbox" checked data-components--tag-manager--tag-row-target="previewConsent"> The visitor has allowed this tag's consent category</label>
+            <div class="buttons mt-2 mb-2">
+                <button type="button" class="button is-small is-info" data-components--tag-manager--tag-row-target="previewRun" data-action="components--tag-manager--tag-row#runPreview">Run test</button>
+                <button type="button" class="button is-small is-light" data-action="components--tag-manager--tag-row#resetPreviewSample">Reset sample</button>
+            </div>
+            <div role="status" aria-live="polite" data-components--tag-manager--tag-row-target="previewResult"></div>
+        </details>
+        {% endif %}
         {% if tag.added|default(false) %}<button type="button" class="button is-small is-light" data-action="pages--tag-manager--index#discardRow">Discard this new tag</button>{% endif %}
         {% if tag.id and not is_new %}<label class="checkbox"><input type="checkbox" name="tags[{{ index }}][remove]" value="1"{% if tag.remove|default(false) %} checked{% endif %}> Remove this tag when saving</label>{% endif %}
     </fieldset>
