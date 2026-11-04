@@ -493,7 +493,7 @@ final class TagManagerControllerTest extends TestCase
         self::assertCount(TagManagerSettings::MAX_TAGS, $crawler->filter('[data-pages--tag-manager--index-target="tagRows"] [data-tag-row]'));
     }
 
-    /** "Test this tag" checks the edited row as saving would, writes nothing, and serves its script once from the session. */
+    /** "Test this tag" checks the edited row as saving would, writes nothing, and serves its script from the session. */
     public function testPreviewChecksTheEditedRowWithoutSavingAndServesItsScript(): void
     {
         $save = $this->request($this->siteForm());
@@ -579,6 +579,11 @@ final class TagManagerControllerTest extends TestCase
         $response = $this->controller($unknown)->preview($unknown);
         self::assertSame(422, $response->getStatusCode(), 'an unregistered website is refused, as saving refuses it');
         self::assertFalse($unknown->getSession()->has(TagManagerController::PREVIEW_KEY));
+
+        $form['site'] = [$this->siteId];
+        $malformed = $this->request($form + ['preview_tag' => '0']);
+        self::assertSame(422, $this->controller($malformed)->preview($malformed)->getStatusCode(), 'a malformed site is not read as the shared configuration');
+        self::assertFalse($malformed->getSession()->has(TagManagerController::PREVIEW_KEY));
     }
 
     /** The examples a user copies must be paths the runtime resolves: data-layer paths, not page globals. */

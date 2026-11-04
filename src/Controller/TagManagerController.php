@@ -30,7 +30,7 @@ final class TagManagerController extends AbstractController
     public const SUBMITTED_FORM_KEY = 'tag_manager_submitted_form';
     /** Suggested ID when the page adds the website's tracker as a tag. */
     public const TRACKER_TAG_ID = 'aggregate-tracker';
-    /** Session key for the latest "Test this tag" run, read once by its script. */
+    /** Session key for the latest "Test this tag" run; a new run replaces it. */
     public const PREVIEW_KEY = 'tag_manager_preview';
     /** ID a new tag is tested under before it has one. */
     public const PREVIEW_TAG_ID = 'tag-being-tested';
@@ -211,7 +211,8 @@ final class TagManagerController extends AbstractController
         ];
 
         try {
-            $this->selectedSite($form['site']);
+            // As saving does: a malformed site is refused, not read as the shared configuration.
+            $this->selectedSite($raw);
             $settings = TagManagerForm::settings($form);
             $plan = $this->preview->plan($settings, $tagId, $this->settings->trackerNamespace(), $this->settings->customScriptsEnabled());
         } catch (\InvalidArgumentException $e) {

@@ -242,10 +242,7 @@ function eventAliases(json) {
     } catch (error) {
         return [];
     }
-    if (!isPlainObject(event)) return [];
-    const values = [event.eventName, event.goalEvent, event.pagePath];
-    if (isPlainObject(event.customData)) values.push(...Object.values(event.customData));
-    const aliases = values.filter((value) => isReference(value) && isValidAlias(value.$var)).map((value) => value.$var);
+    const aliases = references(event).map(([alias]) => alias);
     return aliases.filter((alias, index) => aliases.indexOf(alias) === index);
 }
 
