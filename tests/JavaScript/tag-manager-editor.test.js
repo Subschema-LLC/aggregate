@@ -648,3 +648,61 @@ test('event tags open in key-value pairs, and JSON the editor cannot show stays 
   const nested = kvEditor('{"eventName": "login", "customData": {"cart": {"total": 1}}}');
   assert.equal(nested.eventJsonPane.hidden, false, 'an event the key-value editor cannot represent stays in JSON');
 });
+
+function consentRow(value) {
+  const options = ['none', 'analytics', 'functional', 'marketing', ''].map((option) => ({value: option}));
+  const choice = {value: options.some((option) => option.value === value && value !== '') ? value : '', options};
+  const other = {hidden: choice.value !== ''};
+  const input = {value, focus() { this.focused = true; }};
+  const row = editor();
+  Object.assign(row.controller, {
+    hasConsentChoiceTarget: true, consentChoiceTarget: choice,
+    hasConsentOtherTarget: true, consentOtherTarget: other,
+    hasConsentTarget: true, consentTarget: input
+  });
+  return {controller: row.controller, choice, other, input};
+}
+
+test('the consent list sets the submitted category and shows a field only for another category', () => {
+  const row = consentRow('analytics');
+  row.choice.value = 'none';
+  row.controller.chooseConsent();
+  assert.equal(row.input.value, 'none', 'a listed choice is what is submitted');
+  assert.equal(row.other.hidden, true);
+
+  row.choice.value = '';
+  row.controller.chooseConsent();
+  assert.equal(row.other.hidden, false, '"Another category…" shows its field');
+  assert.equal(row.input.value, '', 'and clears a listed value so it is not submitted by mistake');
+  assert.equal(row.input.focused, true);
+  row.input.value = 'advertising';
+  row.controller.typeConsent();
+  assert.equal(row.choice.value, '');
+  assert.equal(row.other.hidden, false);
+
+  const template = consentRow('analytics');
+  template.input.value = 'marketing';
+  template.controller.update();
+  assert.equal(template.choice.value, 'marketing', 'a value set by a template or the tracker suggestion shows in the list');
+  template.input.value = 'advertising';
+  template.controller.update();
+  assert.equal(template.choice.value, '');
+  assert.equal(template.other.hidden, false);
+
+  const custom = consentRow('advertising');
+  custom.choice.value = '';
+  custom.controller.chooseConsent();
+  assert.equal(custom.input.value, 'advertising', 'choosing "Another category…" keeps a typed category');
+});
+
+test('the event label points at the field that is showing', () => {
+  const ed = kvEditor();
+  const label = {attrs: {}, setAttribute(k, v) { this.attrs[k] = v; }};
+  ed.eventInput.id = 'tag-3-event-object';
+  ed.eventNameInput.id = 'tag-3-event-name';
+  Object.assign(ed.controller, {hasEventLabelTarget: true, eventLabelTarget: label});
+  ed.controller.switchEventMode('kv');
+  assert.equal(label.attrs.for, 'tag-3-event-name');
+  ed.controller.switchEventMode('json');
+  assert.equal(label.attrs.for, 'tag-3-event-object');
+});

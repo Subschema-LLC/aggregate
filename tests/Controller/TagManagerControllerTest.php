@@ -408,6 +408,48 @@ final class TagManagerControllerTest extends TestCase
         ];
     }
 
+    /** Each row reads "when, then what": the trigger comes before the action, with plain labels and a consent list. */
+    public function testTagRowsPutTheTriggerFirstAndChooseConsentFromAList(): void
+    {
+        $form = $this->siteForm();
+        $form['tags'][] = ['id' => 'ads', 'type' => 'event', 'event_json' => '{"eventName": "lead", "customData": {"plan": {"$var": "plan", "from": "event"}}}', 'enabled' => '1', 'consent' => 'advertising', 'trigger' => ['type' => 'data_layer', 'event' => 'lead']];
+        $request = $this->request($form);
+        $this->controller($request)->save($request);
+        $view = Request::create('/dashboard/tag-manager', 'GET', ['site' => $this->siteId]);
+        $crawler = new Crawler((string) $this->controller($view)->index($view)->getContent(), 'https://analytics.example/dashboard/tag-manager');
+
+        $row = $crawler->filter('#tag-2-id')->closest('fieldset');
+        $order = $row->filter('select[id="tag-2-trigger"], input[id="tag-2-event"], select[id="tag-2-type"], select[id="tag-2-consent-choice"], select[id="tag-2-enabled"]')
+            ->each(static fn (Crawler $field): string => (string) $field->attr('id'));
+        self::assertSame(['tag-2-trigger', 'tag-2-event', 'tag-2-type', 'tag-2-consent-choice', 'tag-2-enabled'], $order);
+        self::assertSame('Event to listen for', $crawler->filter('label[for="tag-2-event"]')->text());
+        self::assertSame('Event', $crawler->filter('#tag-2-event-label')->text());
+        self::assertSame(['Text', 'Variable: latest value', "Variable: this event's value", 'Number', 'Boolean', 'Null'], $row->filter('select[data-cd-type]')->first()->filter('option')->each(static fn (Crawler $option): string => $option->text()));
+        self::assertSame('var_event', $row->filter('select[data-cd-type] option[selected]')->attr('value'));
+
+        // Listed categories are chosen from the list; the submitted field holds the value either way.
+        self::assertSame('none', $crawler->filter('#tag-0-consent-choice option[selected]')->attr('value'));
+        self::assertNotNull($crawler->filter('#tag-0-consent')->ancestors()->first()->attr('hidden'), 'a listed category hides the typed field');
+        self::assertSame('analytics', $crawler->filter('#tag-1-consent-choice option[selected]')->attr('value'));
+        self::assertSame('', $crawler->filter('#tag-2-consent-choice option[selected]')->attr('value'), 'another category selects "Another category…"');
+        self::assertNull($crawler->filter('#tag-2-consent')->ancestors()->first()->attr('hidden'), 'and shows its own field');
+        self::assertNull($crawler->filter('#tag-2-consent-choice')->attr('name'), 'the list itself is not submitted');
+        $values = $crawler->selectButton('Save script settings')->form()->getPhpValues()['tags'];
+        self::assertSame(['none', 'analytics', 'advertising'], array_slice(array_column($values, 'consent'), 0, 3));
+    }
+
+    public function testYamlPathAndCustomDataSyntaxAreFoldedUnderAdvancedSections(): void
+    {
+        $request = Request::create('/dashboard/tag-manager', 'GET', ['site' => $this->siteId]);
+        $crawler = new Crawler((string) $this->controller($request)->index($request)->getContent());
+
+        $advanced = $crawler->filter('details')->reduce(static fn (Crawler $details): bool => str_starts_with($details->filter('summary')->text(), 'Advanced: YAML file'));
+        self::assertCount(1, $advanced);
+        self::assertStringContainsString('config/tag-manager/sites/'.$this->siteId.'.yaml', $advanced->text());
+        self::assertCount(1, $advanced->filter('a[href^="/dashboard/setup"]'));
+        self::assertCount(1, $crawler->filter('details > summary')->reduce(static fn (Crawler $summary): bool => $summary->text() === 'Send custom data with the page view'));
+    }
+
     /** The examples a user copies must be paths the runtime resolves: data-layer paths, not page globals. */
     public function testVariableHelpAndPlaceholdersShowPathsThatResolve(): void
     {

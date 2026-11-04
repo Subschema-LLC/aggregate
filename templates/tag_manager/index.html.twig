@@ -61,11 +61,14 @@
     <div class="content">
         {% if site %}
             <p>These settings belong to <strong>{{ site.domain }}</strong>. They are saved separately from other websites and shared configuration. New websites start with tags disabled.</p>
-            <p>Headless configuration: <code>config/tag-manager/sites/{{ selected_site }}.yaml</code>. The same validation applies to UI and YAML changes.</p>
         {% else %}
             <p>These shared settings are used by the unscoped tag script. Website-specific scripts use their own files and do not inherit these tags.</p>
         {% endif %}
-        <p><a href="{{ path('app_setup', site ? {website: site.token, step: 3, tags: '1'} : {step: 3, tags: '1'}) }}">Open setup to copy or download scripts, or build compact versions.</a></p>
+        <details>
+            <summary>Advanced: YAML file and installation scripts</summary>
+            {% if site %}<p class="mt-2">Headless configuration: <code>config/tag-manager/sites/{{ selected_site }}.yaml</code>. The same validation applies to UI and YAML changes.</p>{% endif %}
+            <p class="mt-2"><a href="{{ path('app_setup', site ? {website: site.token, step: 3, tags: '1'} : {step: 3, tags: '1'}) }}">Open setup to copy or download scripts, or build compact versions.</a></p>
+        </details>
     </div>
 
     {% if tracker_url and not configuration_error %}
@@ -87,7 +90,7 @@
                 {{ component('Ui:CopyButton', {target: 'tag-manager-tracker-url', status: 'tag-manager-tracker-status', label: 'Copy tracker URL', class: 'button'}) }}
             </div>
             <p class="help" id="tag-manager-tracker-status" role="status" aria-live="polite" data-pages--tag-manager--index-target="status"></p>
-            <p class="help">To send custom data with the page view, add <code>&amp;cd.&lt;property&gt;=&lt;value&gt;</code> to the URL, for example <code>&amp;cd.page_type={% verbatim %}{{page_type}}{% endverbatim %}</code> with a variable below. Each property must be defined in the <a href="{{ path('app_data_model') }}">data model</a>, and those requiring consent are recorded only after an analytics choice. If a variable is missing on a page, the whole tag is skipped and the tracker does not load there.</p>
+            <details class="help mt-2"><summary>Send custom data with the page view</summary><p class="mt-1">Add <code>&amp;cd.&lt;property&gt;=&lt;value&gt;</code> to the URL, for example <code>&amp;cd.page_type={% verbatim %}{{page_type}}{% endverbatim %}</code> with a variable below. Each property must be defined in the <a href="{{ path('app_data_model') }}">data model</a>, and those requiring consent are recorded only after an analytics choice. If a variable is missing on a page, the whole tag is skipped and the tracker does not load there.</p></details>
         </section>
     {% endif %}
 

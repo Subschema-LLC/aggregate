@@ -350,7 +350,8 @@ export default class extends Controller {
     static targets = ['actionType', 'trigger', 'actionFields', 'eventField', 'source', 'sourceNote', 'template', 'code', 'codeStatus',
         'method', 'arguments', 'argumentsStatus', 'argumentsMessage', 'argumentsFix', 'event', 'eventStatus',
         'eventModeButton', 'eventJsonPane', 'eventKvPane', 'eventNameType', 'eventNameInput',
-        'customDataRows', 'addCustomDataButton', 'goalEventType', 'goalEventInput', 'pagePathType', 'pagePathInput'];
+        'customDataRows', 'addCustomDataButton', 'goalEventType', 'goalEventInput', 'pagePathType', 'pagePathInput',
+        'eventLabel', 'consentChoice', 'consentOther', 'consent'];
 
     static values = { namespaces: Array, defaultId: String, defaultSrc: String };
 
@@ -374,6 +375,7 @@ export default class extends Controller {
             }
         }
         this.syncDefaultTracker();
+        this.syncConsentChoice();
         const eventNeeded = ['document_event', 'window_event', 'data_layer'].includes(this.triggerTarget.value);
         this.eventFieldTarget.hidden = !eventNeeded;
         this.eventFieldTarget.querySelector('input').disabled = !eventNeeded;
@@ -386,6 +388,42 @@ export default class extends Controller {
         this.checkCode();
         this.checkArguments();
         this.checkEvent();
+    }
+
+    // The consent list sets the submitted category; "Another category…" shows
+    // the field for a name of the administrator's own.
+    chooseConsent() {
+        if (!this.hasConsentChoiceTarget || !this.hasConsentTarget) return;
+        const choice = this.consentChoiceTarget.value;
+        const other = choice === '';
+        if (!other) {
+            this.consentTarget.value = choice;
+        } else if (Array.from(this.consentChoiceTarget.options ?? []).some((option) => option.value !== '' && option.value === this.consentTarget.value)) {
+            this.consentTarget.value = '';
+        }
+        if (this.hasConsentOtherTarget) this.consentOtherTarget.hidden = !other;
+        if (other) this.consentTarget.focus?.();
+    }
+
+    // A typed category stays in its field while typing, even one the list
+    // has; the next page load shows a listed one selected in the list.
+    typeConsent() {
+        this.syncConsentChoice();
+    }
+
+    // Shows the submitted category in the list, for values set by a template
+    // or the tracker suggestion as well as typed ones.
+    syncConsentChoice() {
+        if (!this.hasConsentChoiceTarget || !this.hasConsentTarget) return;
+        const value = this.consentTarget.value;
+        const listed = Array.from(this.consentChoiceTarget.options ?? []).some((option) => option.value !== '' && option.value === value);
+        const otherShown = this.hasConsentOtherTarget && !this.consentOtherTarget.hidden;
+        if (listed && !otherShown) {
+            this.consentChoiceTarget.value = value;
+        } else if (!listed) {
+            this.consentChoiceTarget.value = '';
+            if (this.hasConsentOtherTarget) this.consentOtherTarget.hidden = false;
+        }
     }
 
     // Clears the prepopulated tracker ID and URL on the new-tag row when the
@@ -467,6 +505,11 @@ export default class extends Controller {
         }
         if (this.hasEventJsonPaneTarget) this.eventJsonPaneTarget.hidden = this.eventMode === 'kv';
         if (this.hasEventKvPaneTarget) this.eventKvPaneTarget.hidden = this.eventMode !== 'kv';
+        // The label names the field that is showing.
+        if (this.hasEventLabelTarget) {
+            const field = this.eventMode === 'kv' && this.hasEventNameInputTarget ? this.eventNameInputTarget : this.eventTarget;
+            if (field?.id) this.eventLabelTarget.setAttribute?.('for', field.id);
+        }
         if (this.hasEventModeButtonTarget) {
             for (const button of this.eventModeButtonTargets) {
                 const active = button.dataset?.eventMode === this.eventMode;

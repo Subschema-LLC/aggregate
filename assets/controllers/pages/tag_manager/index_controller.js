@@ -14,6 +14,7 @@ export default class extends Controller {
         const method = field('method');
         const trigger = field('trigger');
         const consent = field('consent');
+        const consentChoice = field('consent-choice');
         const { url, id: suggestedId } = event.params;
         if (!this.hasNewRowValue || !source || !url) return;
 
@@ -34,11 +35,11 @@ export default class extends Controller {
         this.activateTab('tags');
         source.value = url;
         source.scrollIntoView?.({ block: 'center' });
-        (consent ?? source).focus?.();
+        (consentChoice ?? consent ?? source).focus?.();
 
         const manager = document.getElementById('tag-manager-enabled');
         const category = consent?.value || 'analytics';
-        this.say(`Added to the new tag row with the ${category} consent category. Change it to none to allow anonymous tracking before a choice, then save.`
+        this.say(`Added to the new tag row with the ${category} consent category. Choose No consent required to allow anonymous tracking before a choice, then save.`
             + (manager && manager.value !== '1' ? ' The tag manager is disabled, so enable it too before the tracker can load.' : ''));
     }
 

@@ -9,6 +9,11 @@ variables from a data layer. The manager itself can load without consent. Each
 tag defaults to analytics consent; choose another category or explicitly use
 `none` for an action that needs no consent.
 
+In the dashboard each tag row reads in that order: its trigger (and, for an
+event trigger, the **Event to listen for**), then its action, then its
+**Consent**, chosen from a list (**No consent required** is `none`) or typed
+as **Another category…**.
+
 The manager is disabled by default. Each registered website has its own YAML,
 consent banner settings, and remotely hosted scripts. Nothing is stored in a tag database
 table, and script serving works with `dashboard_enabled: false`.
@@ -235,8 +240,8 @@ tag_manager:
 
 In the dashboard, choose **Send an Aggregate event**. The event opens in
 **Key-value pairs**, which set `eventName`, each `customData` property with its
-value type (text, **Variable (most recent)**, **Variable
-(pushed event)**, number, boolean or null), and optional `goalEvent` and
+value type (text, **Variable: latest value**, **Variable: this event's
+value**, number, boolean or null), and optional `goalEvent` and
 `pagePath` fields; toggle to **JSON** to edit the object itself. An event the
 key-value editor cannot show, such as JSON that does not parse yet, opens in
 JSON. A new event starts from `eventName` and an empty `customData`:
@@ -256,10 +261,10 @@ JSON. A new event starts from `eventName` and an empty `customData`:
   up to 500 bytes, a number, `true`, `false` or `null`. `goalEvent` names a goal
   from `config/goals.yaml` and `pagePath` a virtual page path such as
   `/checkout/step-2`; both are optional. Any value can be a variable instead:
-  `{"$var": "alias"}` (**Variable (most recent)**) reads from the merged
+  `{"$var": "alias"}` (**Variable: latest value**) reads from the merged
   `dataLayer` state (and the most recent item when a path crosses an unindexed
-  array), while `{"$var": "alias", "from": "event"}` (**Variable (pushed
-  event)**) reads from the pushed event payload or the array object whose
+  array), while `{"$var": "alias", "from": "event"}` (**Variable: this event's
+  value**) reads from the pushed event payload or the array object whose
   `event` matches the triggered event.
 - The tracker sets every other request field, and adds `page_sequence`,
   `entry_channel` and `org_internal_traffic` to `customData` itself, so the
