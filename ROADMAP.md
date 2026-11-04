@@ -239,7 +239,7 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   (WebAuthn), whose per-user secrets would live on `users`; remembered devices;
   and one-time recovery codes, so a forgotten password need not wait for an
   administrator.
-- **Email delivery events.** Receive the Postmark, SendGrid and Mailgun
+- **Email delivery events.** Receive the Postmark, SendGrid, Mailgun and Resend
   webhooks (bounces, spam complaints) through the bridges' signed webhook
   parsers and record them in the audit trail against the send's task ID, which
   every message already carries as metadata. Store no recipient addresses.

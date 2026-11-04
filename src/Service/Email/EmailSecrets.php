@@ -17,6 +17,7 @@ use Symfony\Component\Yaml\Yaml;
  *     postmark_server_token: '…'
  *     sendgrid_api_key: '…'
  *     mailgun_api_key: '…'
+ *     resend_api_key: '…'
  *     smtp_password: '…'
  *     dsn: '…'
  *

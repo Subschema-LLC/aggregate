@@ -235,9 +235,9 @@ tag_manager:
 
 In the dashboard, choose **Send an Aggregate event** and edit the event as
 **JSON** or toggle to **Key-value pairs** to set `eventName`, each `customData`
-property with its value type (text, variable, number, boolean or null), and
-optional `goalEvent` and `pagePath` fields. A new event starts from `eventName`
-and an empty `customData`:
+property with its value type (text, **Variable (most recent)**, **Variable
+(pushed event)**, number, boolean or null), and optional `goalEvent` and
+`pagePath` fields. A new event starts from `eventName` and an empty `customData`:
 
 ```json
 {
@@ -245,7 +245,7 @@ and an empty `customData`:
     "customData": {
         "app": "shop",
         "method": {"$var": "login_method"},
-        "user_role": {"$var": "user_role"}
+        "user_role": {"$var": "user_role", "from": "event"}
     }
 }
 ```
@@ -253,7 +253,12 @@ and an empty `customData`:
 - `eventName` is required. `customData` holds at most 32 properties, each text of
   up to 500 bytes, a number, `true`, `false` or `null`. `goalEvent` names a goal
   from `config/goals.yaml` and `pagePath` a virtual page path such as
-  `/checkout/step-2`; both are optional. Any value can be a variable instead.
+  `/checkout/step-2`; both are optional. Any value can be a variable instead:
+  `{"$var": "alias"}` (**Variable (most recent)**) reads from the merged
+  `dataLayer` state (and the most recent item when a path crosses an unindexed
+  array), while `{"$var": "alias", "from": "event"}` (**Variable (pushed
+  event)**) reads from the pushed event payload or the array object whose
+  `event` matches the triggered event.
 - The tracker sets every other request field, and adds `page_sequence`,
   `entry_channel` and `org_internal_traffic` to `customData` itself, so the
   event cannot include them. Saving refuses an event with anything else, and the editor checks the
@@ -533,7 +538,12 @@ Paths use dot-separated keys and numeric bracket indexes, with at most 16
 segments, 256 characters, and array indexes up to 10000. No expressions or
 arbitrary globals are read. Prototype keys, getters, inherited values and quoted
 bracket keys are unsupported. References resolve scalars; choose a deeper path
-to select a property from an object or array.
+to select a property from an object or array. When a path crosses an array
+without a numeric index (such as `ecommerce.items.sku`), `{"$var": "alias"}`
+reads the most recent matching item in that array, while
+`{"$var": "alias", "from": "event"}` (and `tag.get('alias', 'event')` in custom
+JavaScript) reads from the pushed event payload or the array object whose
+`event` matches the triggered event.
 
 For document/window triggers, `event.type` and an explicitly supplied
 `CustomEvent.detail` are available alongside the latest data-layer model:

@@ -27,10 +27,11 @@ turns it on.
 | Postmark | `postmark` | Server API token (`postmark_server_token`) | `email_postmark_message_stream` (default `outbound`) |
 | SendGrid | `sendgrid` | API key with Mail Send (`sendgrid_api_key`) | `email_sendgrid_region`: `global` (default) or `eu` |
 | Mailgun | `mailgun` | Sending API key or private API key (`mailgun_api_key`) | `email_mailgun_domain` (required), `email_mailgun_region`: `us` (default) or `eu` |
+| Resend | `resend` | Sending API key or full-access API key (`resend_api_key`) | `email_resend_domain` (required, such as `send.example.com`) |
 | Any SMTP server | `smtp` | Password, optional (`smtp_password`) | `email_smtp_host`, `email_smtp_port` (587), `email_smtp_username`, `email_smtp_encryption` |
 | Another service | `dsn` | A mailer DSN (`dsn`) | None; see [another service](#another-service-or-failover) |
 
-Postmark, SendGrid and Mailgun are reached over their HTTPS APIs, which work on
+Postmark, SendGrid, Mailgun and Resend are reached over their HTTPS APIs, which work on
 hosts that block outgoing SMTP ports. Each uses Symfony Mailer's own bridge for
 that service, shipped with Aggregate.
 
@@ -73,7 +74,7 @@ Everything the page does works without the dashboard. In
 
 ```yaml
 email_enabled: true
-email_provider: postmark            # postmark, sendgrid, mailgun, smtp or dsn
+email_provider: postmark            # postmark, sendgrid, mailgun, resend, smtp or dsn
 email_from_address: no-reply@example.com
 email_from_name: ''                 # empty: the brand name
 email_reply_to: ''
@@ -91,7 +92,7 @@ Every setting has an uppercase environment variable of the same name, such as
 `EMAIL_PROVIDER` or `EMAIL_SMTP_HOST`, which takes precedence over YAML and
 locks the field on the page. Each credential can also come from the
 environment, as `EMAIL_` plus its key in capitals: `EMAIL_POSTMARK_SERVER_TOKEN`,
-`EMAIL_SENDGRID_API_KEY`, `EMAIL_MAILGUN_API_KEY`, `EMAIL_SMTP_PASSWORD` or
+`EMAIL_SENDGRID_API_KEY`, `EMAIL_MAILGUN_API_KEY`, `EMAIL_RESEND_API_KEY`, `EMAIL_SMTP_PASSWORD` or
 `EMAIL_DSN`. An environment variable wins over the file, and the page cannot
 change it.
 
@@ -220,16 +221,17 @@ Every message has a plain-text and an HTML part, from
 images, remote resources or tracking pixels. It also carries:
 
 - `Auto-Submitted: auto-generated`, so out-of-office responders stay quiet;
-- the kind of message as a tag: a Postmark tag, a SendGrid category or a
-  Mailgun tag, so the service's statistics separate them;
+- the kind of message as a tag: a Postmark tag, a SendGrid category, a
+  Mailgun tag or a Resend tag, so the service's statistics separate them;
 - the task ID as metadata (Postmark metadata, SendGrid custom arguments, Mailgun
-  variables, or an `X-Metadata-aggregate_task` header over SMTP), which ties
+  variables, or an `X-Metadata-aggregate_task` header on Resend and over SMTP), which ties
   the service's events to the task.
 
 Mailgun messages turn tracking off (`o:tracking=no`). Postmark tracks opens and
-links only when the server or stream is set to; SendGrid's click and open
-tracking are account settings. Turn them off for the key Aggregate uses: open
-tracking adds a pixel, and click tracking rewrites links.
+links only when the server or stream is set to; Resend's open and click tracking
+are per-domain settings; SendGrid's click and open tracking are account settings.
+Turn them off for the domain or key Aggregate uses: open tracking adds a pixel,
+and click tracking rewrites links.
 
 Messages go straight to the service, not through the Messenger queue, so a
 sign-in code never waits in a queue table and the task records the service's
@@ -247,7 +249,7 @@ dsn: 'failover(postmark+api://TOKEN@default sendgrid+api://KEY@default)'
 ```
 
 `failover(…)` tries the next service when one is unreachable; `roundrobin(…)`
-spreads messages across them. A service other than the built-in three also
+spreads messages across them. A service other than the built-in four also
 needs its Symfony Mailer bridge package installed with Composer (for example
 `symfony/amazon-mailer` for Amazon SES), and an application update removes
 packages the release does not ship, so such a setup is for installations that

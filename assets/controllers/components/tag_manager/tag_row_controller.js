@@ -47,7 +47,22 @@ function isPlainObject(value) {
 }
 
 function isReference(value) {
-    return isPlainObject(value) && Object.keys(value).length === 1 && Object.prototype.hasOwnProperty.call(value, '$var');
+    if (!isPlainObject(value) || !Object.prototype.hasOwnProperty.call(value, '$var')) return false;
+    const keys = Object.keys(value);
+    if (keys.length === 1) return true;
+    return keys.length === 2 && Object.prototype.hasOwnProperty.call(value, 'from') && ['recent', 'event'].includes(value.from);
+}
+
+function isVariableType(type) {
+    return type === 'var' || type === 'var_event';
+}
+
+function referenceType(value) {
+    return value.from === 'event' ? 'var_event' : 'var';
+}
+
+function buildReference(alias, type) {
+    return type === 'var_event' ? { $var: alias, from: 'event' } : { $var: alias };
 }
 
 function isValidAlias(alias) {
@@ -73,7 +88,7 @@ function parseEventForKv(json) {
     let eventName = '';
     if (Object.prototype.hasOwnProperty.call(event, 'eventName')) {
         if (isReference(event.eventName) && typeof event.eventName.$var === 'string') {
-            eventNameType = 'var';
+            eventNameType = referenceType(event.eventName);
             eventName = event.eventName.$var;
         } else if (typeof event.eventName === 'string') {
             eventName = event.eventName;
@@ -89,7 +104,7 @@ function parseEventForKv(json) {
         } else if (isPlainObject(data)) {
             for (const [key, val] of Object.entries(data)) {
                 if (isReference(val) && typeof val.$var === 'string') {
-                    customData.push({ key, type: 'var', value: val.$var });
+                    customData.push({ key, type: referenceType(val), value: val.$var });
                 } else if (val === null) {
                     customData.push({ key, type: 'null', value: '' });
                 } else if (typeof val === 'boolean') {
@@ -112,7 +127,7 @@ function parseEventForKv(json) {
         if (event.goalEvent === null) {
             goalEventType = 'null';
         } else if (isReference(event.goalEvent) && typeof event.goalEvent.$var === 'string') {
-            goalEventType = 'var';
+            goalEventType = referenceType(event.goalEvent);
             goalEvent = event.goalEvent.$var;
         } else if (typeof event.goalEvent === 'string') {
             goalEvent = event.goalEvent;
@@ -124,7 +139,7 @@ function parseEventForKv(json) {
     let pagePath = '';
     if (Object.prototype.hasOwnProperty.call(event, 'pagePath')) {
         if (isReference(event.pagePath) && typeof event.pagePath.$var === 'string') {
-            pagePathType = 'var';
+            pagePathType = referenceType(event.pagePath);
             pagePath = event.pagePath.$var;
         } else if (typeof event.pagePath === 'string') {
             pagePath = event.pagePath;
@@ -142,9 +157,9 @@ function parseEventForKv(json) {
 function buildEventFromKv(state) {
     let error = '';
     const event = {};
-    if (state.eventNameType === 'var') {
+    if (isVariableType(state.eventNameType)) {
         const alias = state.eventName.trim();
-        event.eventName = { $var: alias };
+        event.eventName = buildReference(alias, state.eventNameType);
         if (!isValidAlias(alias)) error = error || 'The event: eventName needs a valid variable alias, such as "event_name".';
     } else {
         event.eventName = state.eventName;
@@ -165,9 +180,9 @@ function buildEventFromKv(state) {
             error = error || 'The event: customData has duplicate property "' + key + '". Give each property a unique name.';
         }
         seenKeys.add(key);
-        if (type === 'var') {
+        if (isVariableType(type)) {
             const alias = String(rawValue).trim();
-            customData[key] = { $var: alias };
+            customData[key] = buildReference(alias, type);
             if (!isValidAlias(alias)) error = error || 'The event: customData.' + key + ' needs a valid variable alias, such as "plan".';
         } else if (type === 'null') {
             customData[key] = null;
@@ -190,20 +205,20 @@ function buildEventFromKv(state) {
 
     if (state.goalEventType === 'null') {
         event.goalEvent = null;
-    } else if (state.goalEventType === 'var') {
+    } else if (isVariableType(state.goalEventType)) {
         const alias = state.goalEvent.trim();
         if (alias !== '') {
-            event.goalEvent = { $var: alias };
+            event.goalEvent = buildReference(alias, state.goalEventType);
             if (!isValidAlias(alias)) error = error || 'The event: goalEvent needs a valid variable alias.';
         }
     } else if (state.goalEvent !== '') {
         event.goalEvent = state.goalEvent;
     }
 
-    if (state.pagePathType === 'var') {
+    if (isVariableType(state.pagePathType)) {
         const alias = state.pagePath.trim();
         if (alias !== '') {
-            event.pagePath = { $var: alias };
+            event.pagePath = buildReference(alias, state.pagePathType);
             if (!isValidAlias(alias)) error = error || 'The event: pagePath needs a valid variable alias.';
         }
     } else if (state.pagePath !== '') {
@@ -286,7 +301,12 @@ function eventProblem(json) {
         return 'The event has ' + unknown + ', but it takes only eventName, customData, goalEvent and pagePath. '
             + (trackerFields.includes(unknown) ? 'The tracker sets ' + unknown + ' itself.' : 'Put the event\'s properties in customData.');
     }
-    const literal = (value, valid, label, rule) => isReference(value) || valid(value) ? '' : label + ' ' + rule + (value !== null && typeof value === 'object' ? '. To read a value from the page, use {"$var": "alias"}.' : '.');
+    const literal = (value, valid, label, rule) => {
+        if (isPlainObject(value) && Object.prototype.hasOwnProperty.call(value, '$var')) {
+            return isReference(value) ? '' : label + ' uses {"$var": …}; an optional "from" field must be "recent" or "event".';
+        }
+        return valid(value) ? '' : label + ' ' + rule + (value !== null && typeof value === 'object' ? '. To read a value from the page, use {"$var": "alias"}.' : '.');
+    };
     if (!Object.prototype.hasOwnProperty.call(event, 'eventName')) return 'The event needs an eventName, such as "login".';
     const name = literal(event.eventName, (value) => typeof value === 'string' && /^[A-Za-z][A-Za-z0-9_.:-]{0,99}$/.test(value), 'The event: eventName',
         'must be a fixed name such as "login": a letter, then up to 99 letters, digits, _ . : or -');
@@ -537,21 +557,22 @@ export default class extends Controller {
     updateKvControls() {
         const active = this.actionTypeTarget?.value === 'event';
         if (this.hasEventNameTypeTarget && this.hasEventNameInputTarget) {
-            const isVar = this.eventNameTypeTarget.value === 'var';
+            const isVar = isVariableType(this.eventNameTypeTarget.value);
             this.eventNameInputTarget.placeholder = isVar ? 'event_name' : 'login';
             if (isVar) this.eventNameInputTarget.setAttribute?.('list', 'tag-variable-aliases');
             else this.eventNameInputTarget.removeAttribute?.('list');
         }
         if (this.hasGoalEventTypeTarget && this.hasGoalEventInputTarget) {
             const type = this.goalEventTypeTarget.value;
+            const isVar = isVariableType(type);
             this.goalEventInputTarget.disabled = !active || type === 'null';
             if (type === 'null') this.goalEventInputTarget.value = '';
-            this.goalEventInputTarget.placeholder = type === 'var' ? 'goal_code' : (type === 'null' ? 'null' : 'signup');
-            if (type === 'var') this.goalEventInputTarget.setAttribute?.('list', 'tag-variable-aliases');
+            this.goalEventInputTarget.placeholder = isVar ? 'goal_code' : (type === 'null' ? 'null' : 'signup');
+            if (isVar) this.goalEventInputTarget.setAttribute?.('list', 'tag-variable-aliases');
             else this.goalEventInputTarget.removeAttribute?.('list');
         }
         if (this.hasPagePathTypeTarget && this.hasPagePathInputTarget) {
-            const isVar = this.pagePathTypeTarget.value === 'var';
+            const isVar = isVariableType(this.pagePathTypeTarget.value);
             this.pagePathInputTarget.placeholder = isVar ? 'page_path' : '/checkout/step-2';
             if (isVar) this.pagePathInputTarget.setAttribute?.('list', 'tag-variable-aliases');
             else this.pagePathInputTarget.removeAttribute?.('list');
@@ -560,6 +581,7 @@ export default class extends Controller {
         const rows = Array.from(this.customDataRowsTarget.querySelectorAll('[data-custom-data-row]'));
         for (const row of rows) {
             const type = row.querySelector?.('[data-cd-type]')?.value || 'string';
+            const isVar = isVariableType(type);
             const valueWrap = row.querySelector?.('[data-cd-value-wrap]');
             const boolWrap = row.querySelector?.('[data-cd-bool-wrap]');
             const valueInput = row.querySelector?.('[data-cd-value]');
@@ -569,8 +591,8 @@ export default class extends Controller {
             if (valueInput) {
                 valueInput.disabled = !active || type === 'null' || type === 'boolean';
                 if (type === 'null') valueInput.value = '';
-                valueInput.placeholder = type === 'var' ? 'Variable alias (e.g. plan)' : (type === 'number' ? '0' : (type === 'null' ? 'null' : 'Value'));
-                if (type === 'var') valueInput.setAttribute?.('list', 'tag-variable-aliases');
+                valueInput.placeholder = isVar ? 'Variable alias (e.g. plan)' : (type === 'number' ? '0' : (type === 'null' ? 'null' : 'Value'));
+                if (isVar) valueInput.setAttribute?.('list', 'tag-variable-aliases');
                 else valueInput.removeAttribute?.('list');
             }
             if (boolSelect) boolSelect.disabled = !active || type !== 'boolean';

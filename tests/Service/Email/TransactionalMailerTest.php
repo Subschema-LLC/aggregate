@@ -143,6 +143,9 @@ final class TransactionalMailerTest extends TestCase
         $this->configure(['email_provider' => 'mailgun', 'email_enabled' => false]);
         self::assertSame('Enter the Mailgun sending domain, such as mg.example.com.', $this->mailer([])->problem(null, false));
 
+        $this->configure(['email_provider' => 'resend', 'email_enabled' => false]);
+        self::assertSame('Enter the Resend sending domain, such as send.example.com.', $this->mailer([])->problem(null, false));
+
         $this->configure(['email_from_address' => 'nobody']);
         $result = $this->mailer([])->send(EmailPurpose::Test, self::RECIPIENT, [], TaskTrigger::command());
         self::assertSame('Not sent: the email settings are invalid. email_from_address must be an email address, such as [address].', $result->error);

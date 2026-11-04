@@ -208,7 +208,7 @@ class TransactionalMailer
         // RFC 3834: tells out-of-office responders not to answer.
         $headers->addTextHeader('Auto-Submitted', 'auto-generated');
         // Filed under the purpose by the provider (a Postmark tag, a SendGrid
-        // category, a Mailgun tag); the task ID ties its events to the record.
+        // category, a Mailgun or Resend tag); the task ID ties its events to the record.
         $headers->add(new TagHeader($purpose->value));
         if ($taskId !== null) {
             $headers->add(new MetadataHeader('aggregate_task', (string) $taskId));

@@ -10,6 +10,7 @@ use App\Service\Email\EmailSettings;
 use App\Service\Email\Provider\DsnProvider;
 use App\Service\Email\Provider\MailgunProvider;
 use App\Service\Email\Provider\PostmarkProvider;
+use App\Service\Email\Provider\ResendProvider;
 use App\Service\Email\Provider\SendgridProvider;
 use App\Service\Email\Provider\SmtpProvider;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -18,6 +19,7 @@ use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
 use Symfony\Component\Mailer\Bridge\Mailgun\Transport\MailgunApiTransport;
 use Symfony\Component\Mailer\Bridge\Postmark\Transport\PostmarkApiTransport;
+use Symfony\Component\Mailer\Bridge\Resend\Transport\ResendApiTransport;
 use Symfony\Component\Mailer\Bridge\Sendgrid\Transport\SendgridApiTransport;
 use Symfony\Component\Mailer\Header\MetadataHeader;
 use Symfony\Component\Mailer\Header\TagHeader;
@@ -32,7 +34,7 @@ final class EmailProvidersTest extends TestCase
 
     public function testTheBuiltInProvidersAreListedInMenuOrder(): void
     {
-        self::assertSame(['postmark', 'sendgrid', 'mailgun', 'smtp', 'dsn'], EmailProviders::builtIn()->codes());
+        self::assertSame(['postmark', 'sendgrid', 'mailgun', 'resend', 'smtp', 'dsn'], EmailProviders::builtIn()->codes());
     }
 
     public function testEveryProviderSettingIsNamespacedAndEveryCredentialHasItsOwnVariable(): void
@@ -44,7 +46,7 @@ final class EmailProvidersTest extends TestCase
             }
             $variables[] = $provider->credential()->environmentVariable;
         }
-        self::assertSame(['EMAIL_POSTMARK_SERVER_TOKEN', 'EMAIL_SENDGRID_API_KEY', 'EMAIL_MAILGUN_API_KEY', 'EMAIL_SMTP_PASSWORD', 'EMAIL_DSN'], $variables);
+        self::assertSame(['EMAIL_POSTMARK_SERVER_TOKEN', 'EMAIL_SENDGRID_API_KEY', 'EMAIL_MAILGUN_API_KEY', 'EMAIL_RESEND_API_KEY', 'EMAIL_SMTP_PASSWORD', 'EMAIL_DSN'], $variables);
         $settingVariables = array_map('strtoupper', array_keys($this->settings()->defaults()));
         self::assertSame([], array_intersect($variables, $settingVariables), 'A credential variable never doubles as a setting override');
     }
@@ -106,6 +108,33 @@ final class EmailProvidersTest extends TestCase
         $this->validated(['email_enabled' => true, 'email_provider' => 'mailgun', 'email_from_address' => 'no-reply@example.com']);
     }
 
+    public function testResendSendsToItsApiWithTheApiKeyAndSendingDomain(): void
+    {
+        $settings = $this->validated(['email_provider' => 'resend', 'email_resend_domain' => 'Send.GTU.com']);
+        $provider = new ResendProvider();
+        $transport = $provider->transport($this->factory(['id' => 're-1']), $settings, 'resend-key');
+        $email = $this->email();
+        $provider->prepare($email, $settings);
+
+        self::assertSame('no-reply@send.gtu.com', $settings['email_from_address']);
+        self::assertInstanceOf(ResendApiTransport::class, $transport);
+        self::assertSame('re-1', $transport->send($email)?->getMessageId());
+        self::assertSame('https://api.resend.com/emails', $this->requests[0]['url']);
+        self::assertSame(['Authorization: Bearer resend-key'], $this->requests[0]['options']['normalized_headers']['authorization']);
+        $payload = $this->json($this->requests[0]['options']);
+        self::assertSame('no-reply@send.gtu.com', $payload['from']);
+        self::assertSame(['person@example.org'], $payload['to']);
+        self::assertSame([['X-Tag' => 'test']], $payload['tags']);
+        self::assertSame('7', $payload['headers']['X-Metadata-aggregate_task'] ?? null);
+    }
+
+    public function testResendNeedsADomainOnceChosen(): void
+    {
+        $this->expectExceptionMessage('Enter the Resend sending domain');
+
+        $this->validated(['email_enabled' => true, 'email_provider' => 'resend', 'email_from_address' => 'no-reply@send.gtu.com']);
+    }
+
     /** @return iterable<string, array{string, string, int, bool}> */
     public static function smtpEncryption(): iterable
     {
@@ -135,6 +164,7 @@ final class EmailProvidersTest extends TestCase
         yield 'a Postmark stream with spaces' => [['email_postmark_message_stream' => 'my stream'], 'email_postmark_message_stream'];
         yield 'an unknown SendGrid region' => [['email_sendgrid_region' => 'apac'], 'email_sendgrid_region must be global or eu'];
         yield 'a Mailgun domain that is a URL' => [['email_mailgun_domain' => 'https://mg.example.com'], 'email_mailgun_domain'];
+        yield 'a Resend domain that is a URL' => [['email_resend_domain' => 'https://send.gtu.com'], 'email_resend_domain'];
         yield 'an SMTP port out of range' => [['email_smtp_port' => 70000], 'email_smtp_port'];
         yield 'an SMTP host with a path' => [['email_smtp_host' => 'smtp.example.com/x'], 'email_smtp_host'];
         yield 'an unknown SMTP encryption' => [['email_smtp_encryption' => 'ssl'], 'email_smtp_encryption must be starttls, tls or none'];

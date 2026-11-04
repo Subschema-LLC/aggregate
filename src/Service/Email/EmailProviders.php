@@ -7,6 +7,7 @@ namespace App\Service\Email;
 use App\Service\Email\Provider\DsnProvider;
 use App\Service\Email\Provider\MailgunProvider;
 use App\Service\Email\Provider\PostmarkProvider;
+use App\Service\Email\Provider\ResendProvider;
 use App\Service\Email\Provider\SendgridProvider;
 use App\Service\Email\Provider\SmtpProvider;
 use Symfony\Component\DependencyInjection\Attribute\AutowireIterator;
@@ -32,7 +33,7 @@ final class EmailProviders
     /** The providers that ship with the application, for tests and tools that run without the container. */
     public static function builtIn(): self
     {
-        return new self([new PostmarkProvider(), new SendgridProvider(), new MailgunProvider(), new SmtpProvider(), new DsnProvider()]);
+        return new self([new PostmarkProvider(), new SendgridProvider(), new MailgunProvider(), new ResendProvider(), new SmtpProvider(), new DsnProvider()]);
     }
 
     /** @return array<string, EmailProvider> */

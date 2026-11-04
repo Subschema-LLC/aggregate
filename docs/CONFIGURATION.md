@@ -584,13 +584,13 @@ signed in are kept in `config/secrets/mcp-oauth.yaml` and managed with
 
 **Administration → Email** at `/dashboard/email` (administrators only) chooses
 the service that sends Aggregate's own messages to its users (Postmark,
-SendGrid, Mailgun, any SMTP server, or another Symfony Mailer transport), the
+SendGrid, Mailgun, Resend, any SMTP server, or another Symfony Mailer transport), the
 sender, and each service's credential, and sends a test message. Email is off
 until `email_enabled` is true:
 
 ```yaml
 email_enabled: false
-email_provider: ''                  # postmark, sendgrid, mailgun, smtp or dsn
+email_provider: ''                  # postmark, sendgrid, mailgun, resend, smtp or dsn
 email_from_address: ''              # required once email is on
 email_from_name: ''                 # empty: the brand name
 email_reply_to: ''
@@ -601,7 +601,7 @@ Each service adds `email_<service>_*` keys, listed in
 environment variables of the same names take precedence and lock the matching
 fields. Credentials are not settings: they are kept in
 `config/secrets/email.yaml`, or come from `EMAIL_POSTMARK_SERVER_TOKEN`,
-`EMAIL_SENDGRID_API_KEY`, `EMAIL_MAILGUN_API_KEY`, `EMAIL_SMTP_PASSWORD` or
+`EMAIL_SENDGRID_API_KEY`, `EMAIL_MAILGUN_API_KEY`, `EMAIL_RESEND_API_KEY`, `EMAIL_SMTP_PASSWORD` or
 `EMAIL_DSN`, which take precedence over the file. `app:email:status` and
 `app:email:test` work with the dashboard disabled. Each send is recorded as a
 processing task and an audit entry, without the recipient.
