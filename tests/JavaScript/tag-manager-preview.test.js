@@ -23,19 +23,24 @@ function probe(id, alias, trigger, from) {
   return {id, type: 'call', method: probeMethod, args: [id, from === 'event' ? {$var: alias, from: 'event'} : {$var: alias}], consent: 'none', trigger};
 }
 
+const workerLocation = new URL('https://analytics.example/assets/tag_manager/preview_worker-abc.js');
+const previewUrl = 'https://analytics.example/dashboard/tag-manager/preview/' + 'a'.repeat(32) + '.js';
+
 function run({tags, variables = {}, custom = [], namespace = 'Aggregate', job}) {
   const config = {enabled: true, variables, tags, namespace};
   const script = runtimeSource
     .replace('var tagManagerConfig = {enabled: false, tags: []};', 'var tagManagerConfig = ' + JSON.stringify(config) + ';')
     .replace('var customScripts = {};', 'var customScripts = {' + custom.map(standIn).join(',\n') + '};');
   return new Promise((resolve) => {
-    const context = vm.createContext({setTimeout, clearTimeout, URL});
+    const context = vm.createContext({setTimeout, clearTimeout, URL, location: workerLocation});
     context.self = context;
-    context.importScripts = () => vm.runInContext(script, context);
+    context.imported = [];
+    context.importScripts = (url) => { context.imported.push(url); vm.runInContext(script, context); };
+    run.lastContext = context;
     // The worker's objects come from the VM's realm; compare them as plain data.
     context.postMessage = (message) => resolve(JSON.parse(JSON.stringify(message)));
     vm.runInContext(workerSource, context);
-    context.onmessage({data: {scriptUrl: '/dashboard/tag-manager/preview/x.js', namespace, probeMethod, methods: [probeMethod], categories: [], consent: true, baseURI: 'https://www.gtu.example/', ...job}});
+    context.onmessage({data: {scriptUrl: previewUrl, namespace, probeMethod, methods: [probeMethod], categories: [], consent: true, baseURI: 'https://www.gtu.example/', ...job}});
   });
 }
 
@@ -118,4 +123,25 @@ test('settings the runtime refuses are reported, not run', async () => {
 
   assert.deepEqual(result.records.scripts, []);
   assert.deepEqual(result.records.emits, []);
+});
+
+test('the worker loads only this installation\'s own preview script', async () => {
+  for (const scriptUrl of ['https://elsewhere.example/dashboard/tag-manager/preview/' + 'a'.repeat(32) + '.js', 'https://analytics.example/lib.js',
+    previewUrl + '?x=1', 'javascript:alert(1)', 'data:text/javascript,1']) {
+    const result = await run({tags: [], job: {scriptUrl, trigger: {type: 'dom_ready'}, sample: {}}});
+    assert.equal(result.error, 'The test was given a script it does not load.', scriptUrl);
+    assert.deepEqual(run.lastContext.imported, [], scriptUrl);
+  }
+  const relative = await run({tags: [], job: {scriptUrl: '/dashboard/tag-manager/preview/' + 'b'.repeat(32) + '.js', trigger: {type: 'dom_ready'}, sample: {}}});
+  assert.equal(relative.error, undefined, 'a path on the same origin is fine');
+  assert.deepEqual(run.lastContext.imported, ['https://analytics.example/dashboard/tag-manager/preview/' + 'b'.repeat(32) + '.js']);
+});
+
+test('method stand-ins skip prototype keys and anything that is not a library.method path', async () => {
+  await run({tags: [], job: {methods: ['__proto__.polluted', 'Acme.constructor.x', 'Acme.prototype', 'notAPath', 'Acme.track'], trigger: {type: 'dom_ready'}, sample: {}}});
+  const context = run.lastContext;
+  assert.equal(vm.runInContext('({}).polluted', context), undefined, 'Object.prototype is untouched');
+  assert.equal(typeof context.window.Acme.track, 'function');
+  assert.equal(Object.prototype.hasOwnProperty.call(context.window.Acme, 'prototype'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(context.window, 'notAPath'), false);
 });

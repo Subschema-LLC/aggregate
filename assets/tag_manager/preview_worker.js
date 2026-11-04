@@ -13,6 +13,27 @@
  */
 'use strict';
 
+// The only script the test loads: this installation's own preview script for one run.
+function previewScriptUrl(value) {
+    try {
+        var url = new URL(String(value), self.location.href);
+        if (url.origin === self.location.origin && url.search === '' && url.hash === ''
+            && /\/dashboard\/tag-manager\/preview\/[a-f0-9]{32}\.js$/.test(url.pathname)) return url.href;
+    } catch (error) {}
+    return null;
+}
+
+// A library.method path as the server allows it: identifiers, no prototype keys.
+function methodPath(value) {
+    var parts = String(value).split('.');
+    if (parts.length < 2 || parts.length > 8) return null;
+    for (var i = 0; i < parts.length; i++) {
+        var part = parts[i];
+        if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(part) || part === '__proto__' || part === 'prototype' || part === 'constructor') return null;
+    }
+    return parts;
+}
+
 function copy(value) {
     try {
         return JSON.parse(JSON.stringify(value));
@@ -103,15 +124,19 @@ self.onmessage = function (message) {
     };
     // Each method the tag or a probe calls, as a recorder.
     (Array.isArray(job.methods) ? job.methods : []).forEach(function (path) {
-        var parts = String(path).split('.');
+        var parts = methodPath(path);
+        if (!parts) return;
         var receiver = fakeWindow;
         for (var i = 0; i < parts.length - 1; i++) {
-            if (!receiver[parts[i]] || typeof receiver[parts[i]] !== 'object') receiver[parts[i]] = {};
-            receiver = receiver[parts[i]];
+            var name = parts[i];
+            if (!Object.prototype.hasOwnProperty.call(receiver, name) || !receiver[name] || typeof receiver[name] !== 'object') {
+                Object.defineProperty(receiver, name, {value: {}, writable: true, enumerable: true, configurable: true});
+            }
+            receiver = receiver[name];
         }
-        receiver[parts[parts.length - 1]] = path === job.probeMethod
+        Object.defineProperty(receiver, parts[parts.length - 1], {writable: true, enumerable: true, configurable: true, value: path === job.probeMethod
             ? function (id, value) { records.probes[String(id)] = copy(value); }
-            : function () { records.calls.push({method: path, args: copy(Array.prototype.slice.call(arguments))}); };
+            : function () { records.calls.push({method: path, args: copy(Array.prototype.slice.call(arguments))}); }});
     });
     // Stand-in for custom JavaScript, which the server compiles in instead of the tag's code.
     self.AggregateTagPreviewCustom = function (id) { records.custom.push(String(id)); };
@@ -122,8 +147,13 @@ self.onmessage = function (message) {
     self.window = fakeWindow;
     self.document = fakeDocument;
 
+    var scriptUrl = previewScriptUrl(job.scriptUrl);
+    if (!scriptUrl) {
+        finish({error: 'The test was given a script it does not load.'});
+        return;
+    }
     try {
-        importScripts(job.scriptUrl);
+        importScripts(scriptUrl);
     } catch (error) {
         finish({error: 'The test could not load the tag manager. Run it again; if it still fails, reload the page.'});
         return;
