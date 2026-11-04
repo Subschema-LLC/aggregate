@@ -176,7 +176,6 @@
                     </div>
                 </div>
                 <p class="help custom-code-status" id="tag-{{ index }}-event-object-status" role="status" aria-live="polite" data-components--tag-manager--tag-row-target="eventStatus"></p>
-<<<<<<< HEAD
                 <p class="help" id="tag-{{ index }}-event-object-help">Sends an event through this website's tracker, as <code>{{ tracker_namespaces|first }}.emit({…})</code> would. <code>eventName</code> names it; <code>customData</code> holds its own properties, each text, a number, true, false or null, <code>{"$var": "alias"}</code> for the most recent <code>dataLayer</code> value, or <code>{"$var": "alias", "from": "event"}</code> for the pushed event's value. Toggle between <strong>Key-value pairs</strong> and <strong>JSON</strong> to edit properties either way. <code>goalEvent</code> and <code>pagePath</code>, a virtual page path, are optional. The tag waits for the tracker to load, so it needs no tag chaining. {% if docs_url('tracking.tag-manager') %}<a href="{{ docs_url('tracking.tag-manager') }}#send-an-aggregate-event" target="_blank" rel="noopener noreferrer">Aggregate events<span class="is-sr-only"> (opens in a new tab)</span></a>{% endif %}</p>
 
             </div>

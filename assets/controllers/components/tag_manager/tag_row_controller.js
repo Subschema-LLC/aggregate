@@ -557,18 +557,13 @@ export default class extends Controller {
     updateKvControls() {
         const active = this.actionTypeTarget?.value === 'event';
         if (this.hasEventNameTypeTarget && this.hasEventNameInputTarget) {
-<<<<<<< HEAD
             const isVar = isVariableType(this.eventNameTypeTarget.value);
-=======
-            const isVar = this.eventNameTypeTarget.value === 'var';
->>>>>>> origin/development
             this.eventNameInputTarget.placeholder = isVar ? 'event_name' : 'login';
             if (isVar) this.eventNameInputTarget.setAttribute?.('list', 'tag-variable-aliases');
             else this.eventNameInputTarget.removeAttribute?.('list');
         }
         if (this.hasGoalEventTypeTarget && this.hasGoalEventInputTarget) {
             const type = this.goalEventTypeTarget.value;
-<<<<<<< HEAD
             const isVar = isVariableType(type);
             this.goalEventInputTarget.disabled = !active || type === 'null';
             if (type === 'null') this.goalEventInputTarget.value = '';
@@ -578,16 +573,6 @@ export default class extends Controller {
         }
         if (this.hasPagePathTypeTarget && this.hasPagePathInputTarget) {
             const isVar = isVariableType(this.pagePathTypeTarget.value);
-=======
-            this.goalEventInputTarget.disabled = !active || type === 'null';
-            if (type === 'null') this.goalEventInputTarget.value = '';
-            this.goalEventInputTarget.placeholder = type === 'var' ? 'goal_code' : (type === 'null' ? 'null' : 'signup');
-            if (type === 'var') this.goalEventInputTarget.setAttribute?.('list', 'tag-variable-aliases');
-            else this.goalEventInputTarget.removeAttribute?.('list');
-        }
-        if (this.hasPagePathTypeTarget && this.hasPagePathInputTarget) {
-            const isVar = this.pagePathTypeTarget.value === 'var';
->>>>>>> origin/development
             this.pagePathInputTarget.placeholder = isVar ? 'page_path' : '/checkout/step-2';
             if (isVar) this.pagePathInputTarget.setAttribute?.('list', 'tag-variable-aliases');
             else this.pagePathInputTarget.removeAttribute?.('list');
@@ -596,10 +581,7 @@ export default class extends Controller {
         const rows = Array.from(this.customDataRowsTarget.querySelectorAll('[data-custom-data-row]'));
         for (const row of rows) {
             const type = row.querySelector?.('[data-cd-type]')?.value || 'string';
-<<<<<<< HEAD
             const isVar = isVariableType(type);
-=======
->>>>>>> origin/development
             const valueWrap = row.querySelector?.('[data-cd-value-wrap]');
             const boolWrap = row.querySelector?.('[data-cd-bool-wrap]');
             const valueInput = row.querySelector?.('[data-cd-value]');
@@ -609,13 +591,8 @@ export default class extends Controller {
             if (valueInput) {
                 valueInput.disabled = !active || type === 'null' || type === 'boolean';
                 if (type === 'null') valueInput.value = '';
-<<<<<<< HEAD
                 valueInput.placeholder = isVar ? 'Variable alias (e.g. plan)' : (type === 'number' ? '0' : (type === 'null' ? 'null' : 'Value'));
                 if (isVar) valueInput.setAttribute?.('list', 'tag-variable-aliases');
-=======
-                valueInput.placeholder = type === 'var' ? 'Variable alias (e.g. plan)' : (type === 'number' ? '0' : (type === 'null' ? 'null' : 'Value'));
-                if (type === 'var') valueInput.setAttribute?.('list', 'tag-variable-aliases');
->>>>>>> origin/development
                 else valueInput.removeAttribute?.('list');
             }
             if (boolSelect) boolSelect.disabled = !active || type !== 'boolean';

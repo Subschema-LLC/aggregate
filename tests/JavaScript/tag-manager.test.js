@@ -861,7 +861,7 @@ test('variable references can read either the most recent merged state or the pu
       event_indexed_sku: 'SKU-PURCHASE'
     }
   }]]);
-  assert.deepEqual(clean(page.window.results), [{recent: 'SKU-LATEST', event: 'SKU-PURCHASE', promoEvent: undefined}]);
+  assert.deepEqual(clean(page.window.results), [{recent: 'SKU-LATEST', event: 'SKU-PURCHASE'}]);
 
   // When the pushed event itself includes promo, the second event tag also runs.
   page.window.dataLayer.push({event: 'purchase', promo: 'FLASH'});

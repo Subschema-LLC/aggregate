@@ -499,11 +499,7 @@ function kvEditor(initialJson = '{\n    "eventName": "",\n    "customData": {}\n
 test('the event editor toggles between JSON and key-value pairs and syncs every value type', () => {
   const initial = JSON.stringify({
     eventName: 'purchase',
-<<<<<<< HEAD
     customData: {plan: 'pro', sku: {$var: 'first_sku'}, event_sku: {$var: 'first_sku', from: 'event'}, total_minor: 1299, is_trial: false, coupon: null},
-=======
-    customData: {plan: 'pro', sku: {$var: 'first_sku'}, total_minor: 1299, is_trial: false, coupon: null},
->>>>>>> origin/development
     goalEvent: 'checkout',
     pagePath: '/checkout/complete'
   }, null, 4);
