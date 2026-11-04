@@ -216,7 +216,7 @@ final class TagManagerControllerTest extends TestCase
     {
         $form = $this->siteForm();
         $form['variables'][] = ['alias' => 'login_method', 'path' => 'method'];
-        $form['tags'][1] = ['id' => 'login-event', 'type' => 'event', 'event_json' => '{"eventName": "login", "customData": {"app": "facilitation", "method": {"$var": "login_method"}}, "goalEvent": null}',
+        $form['tags'][1] = ['id' => 'login-event', 'type' => 'event', 'event_json' => '{"eventName": "login", "customData": {"app": "facilitation", "method": {"$var": "login_method"}, "event_plan": {"$var": "plan", "from": "event"}}, "goalEvent": null}',
             'enabled' => '1', 'consent' => 'analytics', 'trigger' => ['type' => 'data_layer', 'event' => 'login']];
         // The new-tag row with the editor's starting point for an event, left alone.
         $form['tags'][] = ['id' => '', 'type' => 'event', 'event_json' => "{\n    \"eventName\": \"\",\n    \"customData\": {}\n}", 'enabled' => '1', 'consent' => 'analytics', 'trigger' => ['type' => 'dom_ready', 'event' => '']];
@@ -226,20 +226,20 @@ final class TagManagerControllerTest extends TestCase
         self::assertSame([], $request->getSession()->getFlashBag()->peek('error'));
         $saved = Yaml::parseFile($this->sitePath($this->siteId))['tag_manager']['tags'];
         self::assertCount(2, $saved);
-        self::assertSame(['id' => 'login-event', 'event' => ['eventName' => 'login', 'customData' => ['app' => 'facilitation', 'method' => ['$var' => 'login_method']], 'goalEvent' => null],
+        self::assertSame(['id' => 'login-event', 'event' => ['eventName' => 'login', 'customData' => ['app' => 'facilitation', 'method' => ['$var' => 'login_method'], 'event_plan' => ['$var' => 'plan', 'from' => 'event']], 'goalEvent' => null],
             'enabled' => true, 'consent' => 'analytics', 'trigger' => ['type' => 'data_layer', 'event' => 'login'], 'type' => 'event'], $saved[1]);
 
         $row = $this->view($request, ['site' => $this->siteId])->filter('[data-tag-row]')->eq(1);
         self::assertSame('event', $row->filter('select[name="tags[1][type]"] option[selected]')->attr('value'));
-        self::assertSame(['eventName' => 'login', 'customData' => ['app' => 'facilitation', 'method' => ['$var' => 'login_method']], 'goalEvent' => null],
+        self::assertSame(['eventName' => 'login', 'customData' => ['app' => 'facilitation', 'method' => ['$var' => 'login_method'], 'event_plan' => ['$var' => 'plan', 'from' => 'event']], 'goalEvent' => null],
             json_decode($row->filter('textarea[name="tags[1][event_json]"]')->text(), true, flags: JSON_THROW_ON_ERROR));
         self::assertSame('tag-1-event-object-status tag-1-event-object-help', $row->filter('#tag-1-event-object')->attr('aria-describedby'));
         self::assertSame(['Key-value pairs', 'JSON'], $row->filter('[data-event-mode]')->each(static fn (Crawler $button): string => $button->text()));
         self::assertSame('string', $row->filter('#tag-1-event-name-type option[selected]')->attr('value'));
         self::assertSame('login', $row->filter('#tag-1-event-name')->attr('value'));
-        self::assertSame(['app', 'method'], $row->filter('[data-custom-data-row] [data-cd-key]')->each(static fn (Crawler $input): string => (string) $input->attr('value')));
-        self::assertSame(['string', 'var'], $row->filter('[data-custom-data-row] [data-cd-type] option[selected]')->each(static fn (Crawler $option): string => (string) $option->attr('value')));
-        self::assertSame(['facilitation', 'login_method'], $row->filter('[data-custom-data-row] [data-cd-value]')->each(static fn (Crawler $input): string => (string) $input->attr('value')));
+        self::assertSame(['app', 'method', 'event_plan'], $row->filter('[data-custom-data-row] [data-cd-key]')->each(static fn (Crawler $input): string => (string) $input->attr('value')));
+        self::assertSame(['string', 'var', 'var_event'], $row->filter('[data-custom-data-row] [data-cd-type] option[selected]')->each(static fn (Crawler $option): string => (string) $option->attr('value')));
+        self::assertSame(['facilitation', 'login_method', 'plan'], $row->filter('[data-custom-data-row] [data-cd-value]')->each(static fn (Crawler $input): string => (string) $input->attr('value')));
         self::assertSame('null', $row->filter('#tag-1-goal-event-type option[selected]')->attr('value'));
     }
 

@@ -60,6 +60,10 @@ final class TagManagerValuesTest extends TestCase
         ];
         $variables = ['plan' => ['source' => 'global'], 'page_path' => ['source' => 'location']];
         self::assertSame($arguments, TagManagerValues::validateArguments($arguments, $variables));
+        self::assertSame(
+            [['$var' => 'plan'], ['$var' => 'plan', 'from' => 'event']],
+            TagManagerValues::validateArguments([['$var' => 'plan', 'from' => 'recent'], ['$var' => 'plan', 'from' => 'event']], $variables),
+        );
         self::assertSame([], TagManagerValues::validateArguments([], []));
     }
 
@@ -104,6 +108,7 @@ final class TagManagerValuesTest extends TestCase
         yield 'too many total nodes' => [[array_fill(0, 32, false), array_fill(0, 32, false), array_fill(0, 32, false), array_fill(0, 28, false)]];
         yield 'unknown variable' => [[['$var' => 'unknown']]];
         yield 'extra reference key' => [[['$var' => 'page', 'default' => 'value']], ['page' => []]];
+        yield 'invalid reference from' => [[['$var' => 'page', 'from' => 'window']], ['page' => []]];
         yield 'array alias' => [[['$var' => ['page']]], ['page' => []]];
         yield 'null alias' => [[['$var' => null]]];
         yield 'empty alias' => [[['$var' => '']], ['' => []]];
@@ -172,6 +177,10 @@ final class TagManagerValuesTest extends TestCase
         self::assertSame(['eventName' => 'login'], TagManagerValues::validateEvent(['eventName' => 'login', 'customData' => []], []), 'empty customData is left out');
         self::assertSame(['eventName' => ['$var' => 'login_method'], 'goalEvent' => null, 'pagePath' => ['$var' => 'login_method']],
             TagManagerValues::validateEvent(['eventName' => ['$var' => 'login_method'], 'goalEvent' => null, 'pagePath' => ['$var' => 'login_method']], $variables));
+        self::assertSame(
+            ['eventName' => ['$var' => 'login_method', 'from' => 'event'], 'customData' => ['method' => ['$var' => 'login_method', 'from' => 'event'], 'recent_method' => ['$var' => 'login_method']]],
+            TagManagerValues::validateEvent(['eventName' => ['$var' => 'login_method', 'from' => 'event'], 'customData' => ['method' => ['$var' => 'login_method', 'from' => 'event'], 'recent_method' => ['$var' => 'login_method', 'from' => 'recent']]], $variables),
+        );
     }
 
     #[DataProvider('invalidEvents')]
@@ -202,6 +211,7 @@ final class TagManagerValuesTest extends TestCase
         yield 'page depth' => [['eventName' => 'login', 'customData' => ['page_sequence' => 2]], 'the tracker adds customData.page_sequence itself'];
         yield 'too many properties' => [['eventName' => 'login', 'customData' => array_fill_keys(array_map(static fn (int $i): string => 'p'.$i, range(1, 33)), 1)], 'customData may hold at most 32 properties.'];
         yield 'an undefined variable' => [['eventName' => 'login', 'customData' => ['method' => ['$var' => 'missing']]], 'Tag login: the event: customData.method uses {"$var": …} with a variable that is not defined. Add it under Variables.'];
+        yield 'an invalid variable source' => [['eventName' => 'login', 'customData' => ['method' => ['$var' => 'login_method', 'from' => 'other']]], 'Tag login: the event: customData.method uses {"$var": …}; an optional "from" field must be "recent" or "event".'];
         yield 'a goal with spaces' => [['eventName' => 'login', 'goalEvent' => ' signup'], 'goalEvent must name a goal from config/goals.yaml, or be null.'];
         yield 'an empty goal' => [['eventName' => 'login', 'goalEvent' => ''], 'goalEvent must name a goal'];
         yield 'a query in the path' => [['eventName' => 'login', 'pagePath' => '/search?q=x'], 'pagePath must be a path on the site such as /checkout/step-2, without a query or fragment.'];
