@@ -110,10 +110,11 @@ Three mechanisms switch things on and off. Use the one that answers the question
   feature's other settings, on its own page and in YAML. Do not duplicate it as
   a flag.
 - **A menu condition** (`shown_when` in `config/navigation.yaml`) keeps a page's
-  menu entry out of the way until its setting is in use, as the **Sync** entry
-  does until BigQuery or the reporting database sync is on. The YAML entry
-  states the rule, and the dashboard search still finds the page. See
-  [main navigation](CONFIGURATION.md#main-navigation).
+  menu entry out of the way until a setting on another page is in use. The
+  YAML entry states the rule, and the dashboard search still finds the page.
+  Never put one on the page that holds the setting: people look for it in the
+  menu, not the search. That is why the **Sync** entry is always shown, even
+  before any sync is on. See [main navigation](CONFIGURATION.md#main-navigation).
 
 ## Add a feature as a developer
 

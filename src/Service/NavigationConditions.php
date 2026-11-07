@@ -10,13 +10,14 @@ use App\Service\ViewSync\ViewSyncDestinations;
  * Named conditions a navigation link can state with shown_when, so the menu
  * leaves out a page until it is in use and config/navigation.yaml still says
  * when it appears. Presentation only: the page itself enforces access, and
- * quick search still finds a link whose condition is not met.
+ * quick search still finds a link whose condition is not met. Never give one
+ * to the page where the condition is turned on: the shipped Sync entry has none.
  */
 final class NavigationConditions
 {
     /** Each condition and when it is met, as the configuration guide describes it. */
     public const CONDITIONS = [
-        'view_sync_on' => 'BigQuery sync or the reporting database sync is turned on, or its settings need repair.',
+        'view_sync_on' => 'BigQuery, reporting database or forensic database sync is turned on, or its settings need repair.',
     ];
 
     public function __construct(private readonly ViewSyncDestinations $sync)

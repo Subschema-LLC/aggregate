@@ -11,7 +11,8 @@
 # every page, and standard users see what an administrator granted them.
 # A link may also name a shown_when condition (App\Service\NavigationConditions):
 # the menu leaves it out until the condition is met, and quick search still
-# finds it. Hidden/inaccessible children are filtered before empty groups are
+# finds it. Never give one to the page where that condition is turned on.
+# Hidden/inaccessible children are filtered before empty groups are
 # removed; disabling a group makes every remaining child unclickable.
 # Navigation does not grant access: destination routes enforce authorization.
 # Clear the production cache after changing this file.
@@ -70,12 +71,12 @@ parameters:
                     icon: 'fas fa-layer-group'
                   # BigQuery, the reporting database and the forensic database
                   # (administrators only), as tabs of one page.
-                  # Shown once either is on; until then, open it from quick
-                  # search or the BI connection guide.
+                  # Always shown to those who can open it: each sync is turned
+                  # on from this page, so hiding it until one is on would hide
+                  # the only way to turn one on.
                   - label: 'Sync'
                     route: 'app_sync'
                     icon: 'fas fa-cloud-arrow-up'
-                    shown_when: 'view_sync_on'
                   # Administrator-only, and absent while both the reporting_api and
                   # mcp_server flags are off: the page manages tokens for both.
                   - label: 'API tokens'

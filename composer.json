@@ -73,6 +73,9 @@
             "symfony/runtime": true
         },
         "bump-after-update": true,
+        "platform": {
+            "php": "8.2.0"
+        },
         "sort-packages": true
     },
     "autoload": {

@@ -499,9 +499,9 @@ purged, and each run records what it archived, deleted and purged.
 an interval. Each destination is a tab of the Sync page with its own address:
 BigQuery at `/dashboard/bigquery` and the reporting database at
 `/dashboard/reporting-database`. `/dashboard/sync` opens the destination that
-is on. The menu entry appears once either destination is on, or its settings
-need repair; until then, find **Sync** with the dashboard search, or follow the
-link in the BI connection guide. See [main navigation](#main-navigation).
+is on, or BigQuery when none is. The menu entry is always shown to those who
+can open the page, because each destination is turned on from its tab. See
+[main navigation](#main-navigation).
 
 ### BigQuery sync
 
@@ -636,11 +636,15 @@ list or anything other than names hides the link. See
 A link can also state when it appears with `shown_when` and a condition name,
 so the YAML says why an entry is missing instead of the menu leaving it out
 silently. The menu leaves the link out until the condition is met; the
-dashboard search still finds it, so the page can be opened to turn it on.
+dashboard search still finds it. Use a condition only for a page whose switch
+lives on another page. Do not put `view_sync_on` on **Sync** itself: every sync
+is turned on from there, and administrators look for it in the menu, not the
+search. The shipped menu always shows **Sync**; if a customized
+`navigation.local.yaml` still has `shown_when: view_sync_on` on it, remove it.
 
 | Condition | Met when |
 | --- | --- |
-| `view_sync_on` | BigQuery sync or the reporting database sync is turned on, or either one's settings are invalid and need its page |
+| `view_sync_on` | BigQuery, reporting database or forensic database sync is turned on, or one's settings are invalid and need its page |
 
 An unknown condition name hides the link, like an unknown feature name.
 `shown_when` belongs on links; a group that sets it is omitted, and a group
@@ -662,7 +666,7 @@ parameters:
           - { label: 'Data model', route: app_data_model }
       - label: Reporting
         children:
-          - { label: Sync, route: app_sync, shown_when: view_sync_on }
+          - { label: Sync, route: app_sync }
       - label: Administration
         children:
           - { label: Users, route: app_users, role: ROLE_ADMIN }

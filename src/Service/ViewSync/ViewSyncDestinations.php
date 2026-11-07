@@ -10,8 +10,9 @@ use App\Service\ReportingDatabase\ReportingDatabaseSettings;
 
 /**
  * The destinations a view sync can copy reporting views to, in the order the
- * Sync page shows them as tabs, and whether each is turned on. The dashboard's
- * Sync menu entry appears once one is on (navigation condition view_sync_on).
+ * Sync page shows them as tabs, and whether each is turned on. Each one is
+ * turned on from its tab, so the shipped menu always shows Sync; the
+ * navigation condition view_sync_on is for operators' own menu entries.
  */
 final class ViewSyncDestinations
 {
@@ -40,7 +41,7 @@ final class ViewSyncDestinations
 
     /**
      * Whether a destination is on, or its settings are invalid and need its
-     * page; both keep the Sync menu entry visible.
+     * page (navigation condition view_sync_on).
      */
     public function anyNeedsThePage(): bool
     {

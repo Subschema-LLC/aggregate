@@ -181,10 +181,9 @@ comment, so anyone who can alter the database can also remove it.
 
 ## Connect Aggregate to it
 
-Open **Reporting → Sync** and choose the **Reporting database** tab (before any
-sync is on, the menu has no **Sync** entry yet: type "Sync" or "reporting
-database" in the dashboard search). Fill in **1. Connect the reporting
-database**: the database type, server, port (empty for the type's default), the
+Open **Reporting → Sync** and choose the **Reporting database** tab. Fill in
+**1. Connect the reporting database**: the database type, server, port (empty
+for the type's default), the
 sync user's name and password, and the database name (for SQLite, a file such
 as `var/reporting.db`). For SQL Server with a self-signed certificate, tick
 **Trust the server certificate**. Click **Test and save**.

@@ -25,7 +25,8 @@ use Symfony\Component\Yaml\Yaml;
 /**
  * A link's shown_when condition keeps it out of the menu until the page is in
  * use, while config/navigation.yaml still says when it appears and quick
- * search still finds it.
+ * search still finds it. The fixtures put the condition on a Sync link, as an
+ * operator's navigation.local.yaml may; the shipped menu always shows Sync.
  */
 final class NavigationShownWhenTest extends TestCase
 {
@@ -52,7 +53,17 @@ final class NavigationShownWhenTest extends TestCase
         rmdir($this->projectDir);
     }
 
-    public function testSyncStaysOutOfTheMenuUntilADestinationIsOnButQuickSearchFindsIt(): void
+    public function testTheShippedMenuShowsSyncBeforeAnySyncIsOn(): void
+    {
+        $navigation = Yaml::parseFile(dirname(__DIR__, 2).'/config/navigation.yaml')['parameters']['app.main_navigation'];
+        $reporting = array_values(array_filter($navigation['items'], static fn (array $item): bool => $item['label'] === 'Reporting'));
+        $menu = $this->extension([])->menu(['items' => $reporting]);
+
+        self::assertContains('Sync', array_column($menu['items'][0]['children'], 'label'));
+        self::assertSame([], $menu['search_only']);
+    }
+
+    public function testALinkWaitingOnItsConditionStaysOutOfTheMenuButQuickSearchFindsIt(): void
     {
         $extension = $this->extension([]);
         $menu = $extension->menu($this->navigation());
@@ -66,7 +77,7 @@ final class NavigationShownWhenTest extends TestCase
         self::assertStringContainsString('bigquery', $sync[0]['keywords']);
     }
 
-    public function testSyncAppearsOnceEitherDestinationIsOn(): void
+    public function testALinkWaitingOnViewSyncOnAppearsOnceADestinationIsOn(): void
     {
         foreach (['bigquery_enabled', 'reporting_database_enabled'] as $key) {
             $extension = $this->extension([$key => true]);
@@ -129,7 +140,15 @@ final class NavigationShownWhenTest extends TestCase
             }
         }
 
-        self::assertSame('view_sync_on', $links['Sync']['shown_when']);
+        // Each sync is turned on from the Sync page, so hiding the entry until
+        // one is on would leave nothing in the menu to turn one on with.
+        self::assertArrayNotHasKey('shown_when', $links['Sync'], 'The Sync entry must not wait for a sync to be on.');
+        $syncPages = ['app_sync', ...array_column($this->destinations([])->all(), 'route')];
+        foreach ($links as $label => $link) {
+            if (($link['shown_when'] ?? null) === 'view_sync_on') {
+                self::assertNotContains($link['route'] ?? null, $syncPages, sprintf('"%s" opens a page where a sync is turned on, so it must not wait for one to be on.', $label));
+            }
+        }
         self::assertSame('app_sync', $links['Sync']['route']);
         self::assertSame('Reporting', $links['Sync']['group']);
         self::assertArrayNotHasKey('BigQuery sync', $links);

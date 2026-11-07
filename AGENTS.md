@@ -50,9 +50,12 @@ remain straightforward. Favor understandable designs over feature count.
   deployment configuration. Document any necessary exception or existing gap.
 - **Keep the dashboard small.** Fold a single setting into an existing page
   rather than adding a menu entry. A page that only matters once something is
-  turned on gets a `shown_when` condition in `config/navigation.yaml`, so the
-  YAML states when it appears and the dashboard search still finds it. New
-  feature flags start off and hidden (`FeatureFlagDefaultsTest`). See
+  turned on elsewhere may get a `shown_when` condition in
+  `config/navigation.yaml`, so the YAML states when it appears and the
+  dashboard search still finds it. Never hide the page where that thing is
+  turned on: people look for it in the menu, not the search, which is why
+  **Sync** is always shown. New feature flags start off and hidden
+  (`FeatureFlagDefaultsTest`). See
   [flags, settings and menu conditions](docs/FEATURE-FLAGS.md#flags-settings-and-menu-conditions).
 - **Give every dashboard route a permission.** Administrators can do
   everything; standard users get pages at view or edit and websites, directly
@@ -71,7 +74,13 @@ remain straightforward. Favor understandable designs over feature count.
   SQL Server, and SQLite at their documented versions. Use portable Doctrine
   operations where possible and explicit platform SQL where necessary. Keep
   dependencies modest; do not assume Docker, a particular hosting panel, or
-  build tools on a server installing a prepared release ZIP.
+  build tools on a server installing a prepared release ZIP. Stay on the most
+  recent Symfony LTS (7.4.*, PHP 8.2+) and move every `symfony/*` package to
+  the next LTS together; never merge a single package's major bump.
+  `config.platform.php` in `composer.json` is the minimum supported PHP
+  (8.2.0), so every update resolves for it; raise it only with the documented
+  minimum and the CI matrix. See
+  [PHP and Symfony](docs/DESIGN-DECISIONS.md#php-and-symfony).
 
 BI disclosure thresholds (`anonymous_min_cell_count`,
 `anonymous_geo_min_cell_count`) and `reporting_timezone` are YAML settings
