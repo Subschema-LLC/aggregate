@@ -934,7 +934,9 @@ and remembered devices or recovery codes.
 It stays on Symfony's most recent long-term support release, currently 7.4,
 and takes its patch releases; every `symfony/*` package moves to a new LTS
 together, as one planned change. Dependabot does not propose Symfony major
-versions.
+versions. `composer.json` sets `config.platform.php` to the minimum supported
+PHP, 8.2.0, so every `composer update`, a contributor's or Dependabot's,
+chooses only versions that install on it.
 
 **Why.** PHP runs on inexpensive shared hosting and every major hosting panel,
 where the people this project serves already run websites. Symfony provides
@@ -943,11 +945,14 @@ Messenger gives an optional queue without new infrastructure. An LTS release
 gets security fixes for years, while a non-LTS release is supported for eight
 months. Symfony 8 needs PHP 8.4, so moving to it would stop installations on
 PHP 8.2 and 8.3, which self-hosted sites update in place. Single packages
-bumped to 8.x leave a lock file that cannot install at all.
+bumped to 8.x leave a lock file that cannot install at all. Without the
+platform setting, Composer resolves for whichever PHP runs the update, and
+proposed PHPUnit 13 and Symfony 8 packages that need PHP 8.4.
 
 **Trade-off.** Ingestion is not as fast as a purpose-built collector. Large sites
 scale through the database and an optional worker. New Symfony features wait
-for the next LTS.
+for the next LTS. Development tools stay on versions that run on PHP 8.2:
+PHPUnit 11, which no longer gets bug fixes but is not part of release packages.
 
 **What would change it.** Measured workloads that a PHP deployment cannot handle
 with those options. For the Symfony version: the next LTS (8.4) and PHP 8.4 on
