@@ -74,7 +74,10 @@ remain straightforward. Favor understandable designs over feature count.
   SQL Server, and SQLite at their documented versions. Use portable Doctrine
   operations where possible and explicit platform SQL where necessary. Keep
   dependencies modest; do not assume Docker, a particular hosting panel, or
-  build tools on a server installing a prepared release ZIP.
+  build tools on a server installing a prepared release ZIP. Stay on the most
+  recent Symfony LTS (7.4.*, PHP 8.2+) and move every `symfony/*` package to
+  the next LTS together; never merge a single package's major bump. See
+  [PHP and Symfony](docs/DESIGN-DECISIONS.md#php-and-symfony).
 
 BI disclosure thresholds (`anonymous_min_cell_count`,
 `anonymous_geo_min_cell_count`) and `reporting_timezone` are YAML settings

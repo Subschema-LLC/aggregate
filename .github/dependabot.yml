@@ -6,6 +6,12 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # Stay on the most recent Symfony LTS (7.4, PHP 8.2+). Moving to the next
+      # LTS is one planned change to every symfony/* package, not single bumps.
+      # This also holds back major versions of Symfony UX and the bundles.
+      - dependency-name: "symfony/*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: npm
     directory: /
     target-branch: development
