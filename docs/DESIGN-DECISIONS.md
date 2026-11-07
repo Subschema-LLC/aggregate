@@ -931,17 +931,27 @@ and remembered devices or recovery codes.
 ### PHP and Symfony
 
 **Decision.** The server is a PHP 8.2+ Symfony application using Doctrine.
+It stays on Symfony's most recent long-term support release, currently 7.4,
+and takes its patch releases; every `symfony/*` package moves to a new LTS
+together, as one planned change. Dependabot does not propose Symfony major
+versions.
 
 **Why.** PHP runs on inexpensive shared hosting and every major hosting panel,
 where the people this project serves already run websites. Symfony provides
 mature security, forms and routing, Doctrine supports all five databases, and
-Messenger gives an optional queue without new infrastructure.
+Messenger gives an optional queue without new infrastructure. An LTS release
+gets security fixes for years, while a non-LTS release is supported for eight
+months. Symfony 8 needs PHP 8.4, so moving to it would stop installations on
+PHP 8.2 and 8.3, which self-hosted sites update in place. Single packages
+bumped to 8.x leave a lock file that cannot install at all.
 
 **Trade-off.** Ingestion is not as fast as a purpose-built collector. Large sites
-scale through the database and an optional worker.
+scale through the database and an optional worker. New Symfony features wait
+for the next LTS.
 
 **What would change it.** Measured workloads that a PHP deployment cannot handle
-with those options.
+with those options. For the Symfony version: the next LTS (8.4) and PHP 8.4 on
+the hosts this project supports.
 
 ### Five database engines
 
@@ -1072,25 +1082,32 @@ its views are regenerated, so a YAML edit needs that explicit step.
 **Decision.** A single setting is a section of an existing page, not a menu
 entry: the reporting timezone is part of General settings. Related pages share
 one entry with tabs: BigQuery and the reporting database are tabs of **Sync**.
-A page that matters only once something is on carries a `shown_when` condition
-in `config/navigation.yaml`, so **Sync** joins the menu once a destination is
-on, and the dashboard search finds it before that. A feature flag that is off
-but shown is greyed out with an **Off** tag, and the Feature flags page writes
-and displays every flag with both options. New flags start off and hidden.
+A page that matters only once something is turned on elsewhere may carry a
+`shown_when` condition in `config/navigation.yaml`. The page where something is
+turned on never does, so **Sync** is always in the menu for those who can open
+it. A feature flag that is off but shown is greyed out with an **Off** tag, and
+the Feature flags page writes and displays every flag with both options. New
+flags start off and hidden.
 
 **Why.** A long menu makes a small product look bloated and hides the pages
 people use. Leaving entries out silently, or greying them out without a reason,
 looks like a fault. Stating the rule in the YAML, and showing what a save
 writes, keeps what the files say and what the screen shows the same.
 
-**Trade-off.** A page waiting on its condition is one search away rather than
-one click. Separate tab pages keep their own addresses, so the Google sign-in
-callback stays the same, but the two sync forms are not on one screen.
-Operators with a customized `navigation.local.yaml` keep their old entries
-until they edit it; the old addresses still work.
+**Revised.** **Sync** first joined the menu only once a destination was on, and
+the dashboard search or the BI connection guide reached it before that. An
+administrator who wanted to turn a sync on looked in the menu, found nothing,
+and concluded it could not be done. Each sync is turned on from its Sync tab,
+so the condition hid the only way to meet it. The entry is now always shown.
 
-**What would change it.** Evidence that administrators cannot find pages that
-are not yet in the menu.
+**Trade-off.** Reporting has one more entry before any sync is on. Separate tab
+pages keep their own addresses, so the Google sign-in callback stays the same,
+but the sync forms are not on one screen. Operators with a customized
+`navigation.local.yaml` keep their own entries, including a copied
+`shown_when: view_sync_on`, until they edit it; the old addresses still work.
+
+**What would change it.** Evidence that the extra entry crowds out pages people
+use more often.
 
 ### Administrators and standard users, with page and website grants
 

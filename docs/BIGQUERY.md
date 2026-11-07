@@ -65,9 +65,8 @@ them after their retention periods.
 
 1. **Prepare Google Cloud.** Pick or create a project and
    [enable the BigQuery API](https://console.cloud.google.com/apis/library/bigquery.googleapis.com).
-2. **Connect.** Open **Reporting → Sync** and choose the **BigQuery** tab. The
-   menu shows **Sync** once a destination is on; before that, type "Sync" or
-   "BigQuery" in the dashboard search. Choose how Aggregate signs in
+2. **Connect.** Open **Reporting → Sync** and choose the **BigQuery** tab.
+   Choose how Aggregate signs in
    (below), enter the project ID if it is not detected, a dataset name (default
    `aggregate`) and a location such as `US`, `EU` or `europe-west2`. Save, then
    use **Test connection**: it signs in, checks the dataset and confirms that the
