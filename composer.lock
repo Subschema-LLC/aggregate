@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "9f0c2aaf030fcc35b20d6c09bc700390",
+    "content-hash": "54a33f629303201feb92c19a3cedc00c",
     "packages": [
         {
             "name": "composer/semver",
@@ -4796,35 +4796,33 @@
         },
         {
             "name": "symfony/notifier",
-            "version": "v7.4.23",
+            "version": "v8.1.11",
             "source": {
                 "type": "git",
                 "url": "https://github.com/symfony/notifier.git",
-                "reference": "18ab122a67aa13f90a0899add642c21c6ab10e8d"
+                "reference": "056e5c8e0f485d993a24e557ba6a09a957c0b489"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/symfony/notifier/zipball/18ab122a67aa13f90a0899add642c21c6ab10e8d",
-                "reference": "18ab122a67aa13f90a0899add642c21c6ab10e8d",
+                "url": "https://api.github.com/repos/symfony/notifier/zipball/056e5c8e0f485d993a24e557ba6a09a957c0b489",
+                "reference": "056e5c8e0f485d993a24e557ba6a09a957c0b489",
                 "shasum": ""
             },
             "require": {
-                "php": ">=8.2",
+                "php": ">=8.4.1",
                 "psr/log": "^1|^2|^3"
             },
             "conflict": {
-                "symfony/event-dispatcher": "<6.4",
                 "symfony/event-dispatcher-contracts": "<2.5",
-                "symfony/http-client-contracts": "<2.5",
-                "symfony/http-kernel": "<6.4"
+                "symfony/http-client-contracts": "<2.5"
             },
             "require-dev": {
                 "symfony/event-dispatcher": "^6.4|^7.0|^8.0",
                 "symfony/event-dispatcher-contracts": "^2.5|^3",
-                "symfony/http-client": "^6.4|^7.0|^8.0",
+                "symfony/http-client": "^7.4|^8.0",
                 "symfony/http-client-contracts": "^2.5|^3",
-                "symfony/http-foundation": "^6.4|^7.0|^8.0",
-                "symfony/messenger": "^6.4|^7.0|^8.0"
+                "symfony/http-foundation": "^7.4|^8.0",
+                "symfony/messenger": "^7.4|^8.0"
             },
             "type": "library",
             "autoload": {
@@ -4856,7 +4854,7 @@
                 "notifier"
             ],
             "support": {
-                "source": "https://github.com/symfony/notifier/tree/v7.4.23"
+                "source": "https://github.com/symfony/notifier/tree/v8.1.11"
             },
             "funding": [
                 {
@@ -4876,7 +4874,7 @@
                     "type": "tidelift"
                 }
             ],
-            "time": "2026-11-01T22:26:51+00:00"
+            "time": "2026-11-01T22:27:46+00:00"
         },
         {
             "name": "symfony/options-resolver",
