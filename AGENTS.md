@@ -50,9 +50,12 @@ remain straightforward. Favor understandable designs over feature count.
   deployment configuration. Document any necessary exception or existing gap.
 - **Keep the dashboard small.** Fold a single setting into an existing page
   rather than adding a menu entry. A page that only matters once something is
-  turned on gets a `shown_when` condition in `config/navigation.yaml`, so the
-  YAML states when it appears and the dashboard search still finds it. New
-  feature flags start off and hidden (`FeatureFlagDefaultsTest`). See
+  turned on elsewhere may get a `shown_when` condition in
+  `config/navigation.yaml`, so the YAML states when it appears and the
+  dashboard search still finds it. Never hide the page where that thing is
+  turned on: people look for it in the menu, not the search, which is why
+  **Sync** is always shown. New feature flags start off and hidden
+  (`FeatureFlagDefaultsTest`). See
   [flags, settings and menu conditions](docs/FEATURE-FLAGS.md#flags-settings-and-menu-conditions).
 - **Give every dashboard route a permission.** Administrators can do
   everything; standard users get pages at view or edit and websites, directly
