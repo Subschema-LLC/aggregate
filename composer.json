@@ -61,7 +61,7 @@
         "symfony/ux-turbo": "^2.26",
         "symfony/ux-twig-component": "^2.36",
         "symfony/validator": "7.4.*",
-        "symfony/web-link": "7.4.*",
+        "symfony/web-link": "8.1.*",
         "symfony/yaml": "7.4.*",
         "twig/extra-bundle": "^2.12|^3.0",
         "twig/twig": "^3.27"
