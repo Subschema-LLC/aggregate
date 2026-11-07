@@ -23,6 +23,10 @@ final class TurboBroadcastTest extends KernelTestCase
 
         $events = $container->get(EntityManagerInterface::class)->getEventManager();
         foreach ([Events::onFlush, Events::postFlush] as $event) {
+            if (!$events->hasListeners($event)) {
+                continue;
+            }
+
             foreach ($events->getListeners($event) as $listener) {
                 self::assertNotInstanceOf(BroadcastListener::class, $listener, $event);
             }
