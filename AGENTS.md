@@ -76,7 +76,10 @@ remain straightforward. Favor understandable designs over feature count.
   dependencies modest; do not assume Docker, a particular hosting panel, or
   build tools on a server installing a prepared release ZIP. Stay on the most
   recent Symfony LTS (7.4.*, PHP 8.2+) and move every `symfony/*` package to
-  the next LTS together; never merge a single package's major bump. See
+  the next LTS together; never merge a single package's major bump.
+  `config.platform.php` in `composer.json` is the minimum supported PHP
+  (8.2.0), so every update resolves for it; raise it only with the documented
+  minimum and the CI matrix. See
   [PHP and Symfony](docs/DESIGN-DECISIONS.md#php-and-symfony).
 
 BI disclosure thresholds (`anonymous_min_cell_count`,
