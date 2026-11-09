@@ -72,6 +72,26 @@ final class RedirectUri
         return is_string($host) ? strtolower($host) : '';
     }
 
+    /**
+     * The redirect's scheme://host[:port] as a Content-Security-Policy
+     * source, or null when CSP cannot express the host (the IPv6 loopback
+     * [::1]). A loopback redirect keeps the port of this request.
+     */
+    public static function origin(string $uri): ?string
+    {
+        $parts = parse_url($uri);
+        if (!is_array($parts) || !isset($parts['scheme'], $parts['host'])) {
+            return null;
+        }
+        $scheme = strtolower($parts['scheme']);
+        $host = strtolower($parts['host']);
+        if (!in_array($scheme, ['http', 'https'], true) || preg_match('/^[a-z0-9-]+(?:\.[a-z0-9-]+)*$/', $host) !== 1) {
+            return null;
+        }
+
+        return $scheme.'://'.$host.(isset($parts['port']) ? ':'.$parts['port'] : '');
+    }
+
     private static function isLoopbackHost(string $host): bool
     {
         return in_array(strtolower($host), self::LOOPBACK_HOSTS, true);

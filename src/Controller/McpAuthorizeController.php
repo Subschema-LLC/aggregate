@@ -170,8 +170,16 @@ final class McpAuthorizeController extends AbstractController
         if ($error !== null) {
             $response->setStatusCode(Response::HTTP_UNPROCESSABLE_ENTITY);
         }
+        // Connect and Deny post here and are answered with a redirect to the
+        // assistant. Browsers check that redirect against form-action, so the
+        // verified redirect's origin joins 'self' (and only on this page).
+        $redirectOrigin = RedirectUri::origin($sign->redirectUri);
+        if ($redirectOrigin !== null) {
+            DashboardSecurityHeadersSubscriber::allowFormAction($request, $redirectOrigin);
+        }
+
         // The page must not be framed by another site, or a click could be stolen.
-        return DashboardSecurityHeadersSubscriber::apply($response, DashboardSecurityHeadersSubscriber::nonceFor($request), $request->isSecure());
+        return DashboardSecurityHeadersSubscriber::apply($response, DashboardSecurityHeadersSubscriber::nonceFor($request), $request->isSecure(), DashboardSecurityHeadersSubscriber::formActionsFor($request));
     }
 
     private function failure(Request $request, string $message, int $status = 400): Response

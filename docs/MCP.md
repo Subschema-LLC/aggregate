@@ -425,6 +425,7 @@ Queries have no time limit of their own beyond PHP's and the database's. Use
 | `401` with a token | The token lacks the MCP grant, or is mistyped, revoked or expired |
 | The assistant cannot find sign-in, or says it cannot reach the server | The installation is not reachable from the assistant's servers, `/.well-known/` is blocked by the web server, or the dashboard is disabled |
 | "This connection cannot continue" on the approval page | The assistant's registration expired or its return address does not match; remove and add the connector again |
+| **Connect** or **Deny** does nothing, and the browser console reports a `form-action 'self'` violation | Releases v2026.10.16 and v2026.11.01 block the return to the assistant with the approval page's security policy; update the installation |
 | The assistant reconnects every time | Its refresh token was refused, for example after the connection was revoked or a replaced refresh token came back |
 | `view_not_permitted` | The token or connection was not granted that view, or `get_coverage` needs `bi_anonymous_coverage_v1` |
 | `view_unavailable` | The view does not exist on this installation, for example geography is off |
