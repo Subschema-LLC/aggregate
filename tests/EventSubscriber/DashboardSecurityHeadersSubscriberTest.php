@@ -58,6 +58,49 @@ final class DashboardSecurityHeadersSubscriberTest extends TestCase
         self::assertFalse($response->headers->has('Strict-Transport-Security'));
     }
 
+    public function testAnAllowedFormActionOriginJoinsSelfOnThatResponseOnly(): void
+    {
+        $subscriber = new DashboardSecurityHeadersSubscriber();
+        $kernel = $this->createStub(HttpKernelInterface::class);
+        $request = Request::create('https://analytics.example.test/dashboard/oauth/authorize');
+        $response = new Response('<html></html>');
+
+        $subscriber->onRequest(new RequestEvent($kernel, $request, HttpKernelInterface::MAIN_REQUEST));
+        DashboardSecurityHeadersSubscriber::allowFormAction($request, 'https://assistant.example');
+        DashboardSecurityHeadersSubscriber::allowFormAction($request, 'https://assistant.example');
+        DashboardSecurityHeadersSubscriber::allowFormAction($request, 'http://127.0.0.1:53682');
+        $subscriber->onResponse(new ResponseEvent($kernel, $request, HttpKernelInterface::MAIN_REQUEST, $response));
+
+        self::assertStringContainsString(
+            "form-action 'self' https://assistant.example http://127.0.0.1:53682; ",
+            (string) $response->headers->get('Content-Security-Policy'),
+        );
+
+        $other = new Response('<html></html>');
+        $otherRequest = Request::create('https://analytics.example.test/dashboard');
+        $subscriber->onResponse(new ResponseEvent($kernel, $otherRequest, HttpKernelInterface::MAIN_REQUEST, $other));
+        self::assertStringContainsString("form-action 'self'; ", (string) $other->headers->get('Content-Security-Policy'));
+    }
+
+    #[DataProvider('unsafeFormActionSources')]
+    public function testFormActionSourcesThatCouldWidenOrBreakThePolicyAreRefused(string $source): void
+    {
+        self::assertStringContainsString("form-action 'self'; ", DashboardSecurityHeadersSubscriber::csp('n', [$source]));
+
+        $this->expectException(\InvalidArgumentException::class);
+        DashboardSecurityHeadersSubscriber::allowFormAction(Request::create('/dashboard/oauth/authorize'), $source);
+    }
+
+    public static function unsafeFormActionSources(): iterable
+    {
+        yield 'whole scheme' => ['https:'];
+        yield 'wildcard' => ['*'];
+        yield 'directive break' => ['https://a.example; script-src *'];
+        yield 'keyword' => ["'unsafe-inline'"];
+        yield 'custom scheme' => ['cursor://callback'];
+        yield 'with path' => ['https://a.example/callback'];
+    }
+
     public static function protectedPaths(): iterable
     {
         yield 'dashboard root' => ['/dashboard'];
