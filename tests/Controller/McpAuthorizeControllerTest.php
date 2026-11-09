@@ -74,6 +74,11 @@ final class McpAuthorizeControllerTest extends TestCase
 
         self::assertSame(200, $response->getStatusCode());
         self::assertSame('DENY', $response->headers->get('X-Frame-Options'));
+        self::assertStringContainsString(
+            "form-action 'self' https://assistant.example; ",
+            (string) $response->headers->get('Content-Security-Policy'),
+            'Browsers check the redirect after Connect or Deny against form-action',
+        );
         $page = new Crawler((string) $response->getContent());
         self::assertStringContainsString('Connect Example assistant?', $page->filter('h1')->text());
         self::assertStringContainsString('assistant.example', $page->filter('.mcp-authorize-facts')->text());
@@ -87,6 +92,26 @@ final class McpAuthorizeControllerTest extends TestCase
         $request = Request::create('http://analytics.example/dashboard/oauth/authorize', 'GET', [...$this->query(), 'resource' => 'http://analytics.example/mcp']);
         $insecure = new Crawler((string) $this->controller($request)->authorize($request)->getContent());
         self::assertStringContainsString('not opened over HTTPS', $insecure->filter('.notification.is-warning')->text());
+    }
+
+    public function testALoopbackRedirectIsAllowedOnTheRequestedPort(): void
+    {
+        $native = (new OAuthStore($this->projectDir))->registerClient('Native assistant', ['http://127.0.0.1/oauth/callback']);
+        $response = $this->get([...$this->query(), 'client_id' => $native->id, 'redirect_uri' => 'http://127.0.0.1:53682/oauth/callback']);
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertStringContainsString(
+            "form-action 'self' http://127.0.0.1:53682; ",
+            (string) $response->headers->get('Content-Security-Policy'),
+        );
+    }
+
+    public function testAnUnverifiableRedirectIsNotAddedToFormAction(): void
+    {
+        $response = $this->get([...$this->query(), 'redirect_uri' => 'https://evil.example/steal']);
+
+        self::assertSame(400, $response->getStatusCode());
+        self::assertStringNotContainsString('evil.example', (string) $response->headers->get('Content-Security-Policy'));
     }
 
     public function testAnUnverifiableClientOrRedirectIsNeverRedirected(): void
