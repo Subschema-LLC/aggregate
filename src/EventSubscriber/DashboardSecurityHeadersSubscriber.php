@@ -137,7 +137,7 @@ final class DashboardSecurityHeadersSubscriber implements EventSubscriberInterfa
     {
         $formAction = implode(' ', array_unique([
             "'self'",
-            ...array_filter($formActions, static fn (mixed $source): bool => is_string($source) && preg_match(self::FORM_ACTION_SOURCE, $source) === 1),
+            ...array_filter($formActions, static fn (string $source): bool => preg_match(self::FORM_ACTION_SOURCE, $source) === 1),
         ]));
 
         return "default-src 'none'; "
