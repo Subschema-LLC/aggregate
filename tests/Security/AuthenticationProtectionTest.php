@@ -208,6 +208,9 @@ final class AuthenticationProtectionTest extends TestCase
         $browser = $this->browser();
         $crawler = $browser->request('GET', '/login');
         self::assertSame(200, $browser->getResponse()->getStatusCode());
+        // The sign-in card uses the navigation color in both modes, so a logo
+        // chosen for the navigation is visible on it too.
+        self::assertCount(1, $crawler->filter('.card.app-navbar-surface[data-surface-scheme="dark"]'));
         $link = $crawler->filter('a.forgot-password-link');
         self::assertCount(1, $link);
         self::assertSame('/login/forgot-password', $link->attr('href'));
@@ -215,6 +218,7 @@ final class AuthenticationProtectionTest extends TestCase
         $forgotCrawler = $browser->click($link->link());
         self::assertSame(200, $browser->getResponse()->getStatusCode());
         self::assertStringContainsString('Reset your password', $forgotCrawler->filter('h1')->text());
+        self::assertCount(1, $forgotCrawler->filter('.card.app-navbar-surface[data-surface-scheme="dark"]'));
         self::assertStringContainsString('app:user:reset-password', $forgotCrawler->text());
 
         $this->login($browser);

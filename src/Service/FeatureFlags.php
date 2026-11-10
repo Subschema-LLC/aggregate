@@ -39,6 +39,12 @@ class FeatureFlags
             'enabled' => false,
             'hide_from_navigation' => true,
         ],
+        'alerts' => [
+            'label' => 'Alerts',
+            'description' => 'Threshold rules on completed UTC hours for event gaps and tracking failures, delivered by signed generic JSON webhooks and email.',
+            'enabled' => false,
+            'hide_from_navigation' => true,
+        ],
     ];
 
     private const OPTIONS = ['enabled', 'hide_from_navigation'];

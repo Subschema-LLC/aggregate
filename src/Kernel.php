@@ -46,6 +46,7 @@ class Kernel extends BaseKernel
             'App\\Controller\\ViewSyncController',
             'App\\Controller\\ApiTokensController',
             'App\\Controller\\ScheduledTasksController',
+            'App\\Controller\\AlertsController',
             'App\\Controller\\AuditTrailController',
             'App\\Controller\\UpdatesController',
             'App\\Controller\\InstallController',

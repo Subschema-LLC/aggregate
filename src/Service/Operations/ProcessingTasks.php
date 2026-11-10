@@ -129,6 +129,44 @@ class ProcessingTasks
     }
 
     /**
+     * Counts failed tracking_event_store and tracking_ingest tasks for one
+     * website in [from, to) up to $cap rows.
+     */
+    public function countTrackingFailuresUpTo(
+        string $websiteToken,
+        \DateTimeImmutable $from,
+        \DateTimeImmutable $to,
+        int $cap,
+    ): int {
+        $websiteToken = trim($websiteToken);
+        if ($websiteToken === '' || $cap < 1 || $to <= $from) {
+            return 0;
+        }
+
+        $platform = $this->connection->getDatabasePlatform();
+        $type = Type::getType(Types::DATETIME_IMMUTABLE);
+        $fromUtc = AuditTrail::utc($from);
+        $toUtc = AuditTrail::utc($to);
+
+        $where = 'task_type IN (?, ?) AND status = ? AND subject IN (?, ?, ?) AND started_at >= ? AND started_at < ?';
+        $params = [
+            'tracking_event_store',
+            'tracking_ingest',
+            self::FAILED,
+            $websiteToken,
+            'anonymous:'.$websiteToken,
+            'enhanced:'.$websiteToken,
+            $type->convertToDatabaseValue($fromUtc, $platform),
+            $type->convertToDatabaseValue($toUtc, $platform),
+        ];
+
+        $inner = $platform->modifyLimitQuery('SELECT 1 AS c FROM '.self::TABLE.' WHERE '.$where, $cap);
+        $sql = 'SELECT COUNT(*) FROM ('.$inner.') AS t';
+
+        return (int) $this->connection->fetchOne($sql, $params);
+    }
+
+    /**
      * Deletes runs that started and ended before the cutoff, in batches.
      * The latest success and failure of each type and subject are kept, so
      * schedules and status pages still know when a job last ran.

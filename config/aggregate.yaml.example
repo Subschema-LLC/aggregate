@@ -49,6 +49,9 @@ feature_flags:
   mcp_server:
     enabled: false
     hide_from_navigation: true
+  alerts:
+    enabled: false
+    hide_from_navigation: true
 # enabled: false blocks update routes/services/commands. Independently, true
 # hide_from_navigation removes their navigation entries. A feature that is off
 # and shown appears greyed out with an Off tag; hide it if that would look like
@@ -394,7 +397,8 @@ environments:
 #   Secondary accent color.
 #
 # brand_navbar_color (optional, default: "#14161A")
-#   Navigation bar background color.
+#   Navigation bar background color, also used for the sign-in cards in both
+#   light and dark mode, so choose a logo that is visible on it.
 #
 # brand_background_color (optional, default: "#F5F5F5")
 #   Application page background color.

@@ -282,7 +282,7 @@ environments:
 - `brand_logo_path`: Optional PNG, JPEG, or WebP logo path; use an absolute path or a path relative to the project root
 - `brand_primary_color`: Primary interactive and emphasis color (default: `#00D1B2`)
 - `brand_accent_color`: Secondary accent color (default: `#485FC7`)
-- `brand_navbar_color`: Navigation bar background color (default: `#14161A`)
+- `brand_navbar_color`: Navigation bar background color, also used for the sign-in, sign-in code and password help cards so a logo that suits the navigation is visible there (default: `#14161A`)
 - `brand_background_color`: Application page background color (default: `#F5F5F5`)
 - `brand_surface_color`: Cards, panels, and other raised surface color (default: `#FFFFFF`)
 - `brand_text_color`: Main application text color (default: `#363636`)
@@ -324,7 +324,7 @@ environments:
 
 Logo images may be at most 2 MiB, 4096 pixels per axis, and 16 megapixels in total. The settings UI validates and copies uploaded logos below `var/branding` in an environment-specific directory; keep `var/branding` on persistent storage shared by all application replicas, make it writable by the PHP process, and include it in backups. Replicas that use the settings UI must also share the active `aggregate.yaml` file (or otherwise coordinate and deploy each saved revision) so every replica switches logo references together. Uploaded bytes are served as supplied, so remove EXIF/XMP or other embedded metadata before uploading. A configured `brand_logo_path` is resolved from the project root when relative, while absolute local filesystem paths are also supported. Leave it empty for a text-only identity.
 
-Theme colors accept `#RGB` or `#RRGGBB` hex values; three-digit colors are normalized to six-digit form. Quote them in YAML so `#` is not parsed as a comment. Text must maintain at least 4.5:1 contrast against both page and surface colors; the UI rejects lower-contrast palettes and YAML/env palettes fall back to safe defaults. Filled primary, accent, and navigation elements automatically use a contrasting black or white foreground. Font settings accept safe comma-separated local/system font stacks and do not download or embed web fonts. The deployer remains responsible for checking overall legibility and focus visibility.
+Theme colors accept `#RGB` or `#RRGGBB` hex values; three-digit colors are normalized to six-digit form. Quote them in YAML so `#` is not parsed as a comment. Text must maintain at least 4.5:1 contrast against both page and surface colors; the UI rejects lower-contrast palettes and YAML/env palettes fall back to safe defaults. Filled primary, accent, and navigation elements automatically use a contrasting black or white foreground. On the sign-in cards, which use the navigation color in both light and dark mode, text uses that contrasting foreground, links use the accent color only where it reaches 4.5:1 against the navigation color, and the sign-in button uses the primary color where it reaches 3:1 against the navigation color and the navigation colors inverted otherwise. Font settings accept safe comma-separated local/system font stacks and do not download or embed web fonts. The deployer remains responsible for checking overall legibility and focus visibility.
 
 The navigation's light/dark control starts with the site's configured palette.
 That palette is preserved in its matching light or dark mode. Switching to the

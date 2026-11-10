@@ -1192,6 +1192,39 @@ command option.
 **What would change it.** A reviewed need to quarantine bad rows instead of
 refusing them, with the same refusal still available.
 
+### Alerts evaluate completed UTC hours and keep state in processing_tasks
+
+**Decision.** Event-gap and tracking-failure alert rules run once per completed
+UTC hour in the scheduler, count rows in `[T − W, T)` with a query capped at the
+rule's threshold `N`, store per-`rule:website` state (`ok`, `firing:<since>` or
+`recovered:<window_end>:<since>`) and each destination's last delivered alert ID
+in `processing_tasks.fingerprint`, and record deliveries in `audit_trail` with
+`always: true`. An alert a destination did not receive is retried hourly for
+24 hours; delivery is at least once, with a stable `id` to de-duplicate on.
+Loading checks a rule's shape only, so a rule whose website, group or retention
+no longer matches is skipped and shown as not checked instead of stopping every
+rule. Webhook targets receive a signed generic
+JSON v1 payload over HTTPS (`NoPrivateNetworkHttpClient`), and email targets go
+through `TransactionalMailer`. There is no separate alerts table. See
+[Alerts](ALERTS.md).
+
+**Why.** Anonymous events are bucketed to the UTC hour on collection, so the
+current open hour is incomplete until it closes. Keeping delivery per
+destination means a receiver that was down is told once it is back, instead of
+the state moving on without it. Counting only up to `N` uses
+the existing `(website_token, created_at)` index and avoids scanning busy
+websites over 24-hour or 168-hour windows. Storing state in
+`processing_tasks.fingerprint` and deliveries in `audit_trail` reuses the
+existing operational tables and retention rules without adding schema
+migrations.
+
+**Trade-off.** Alerts are checked on UTC hour boundaries rather than in real
+time, and webhook receivers that want Slack or PagerDuty formatting use a small
+relay or transform until native channel templates are added.
+
+**What would change it.** A requirement for sub-hour enhanced-event alerts or
+per-incident acknowledgement state that cannot fit in `processing_tasks`.
+
 ### Signed release packages that keep the operator's files
 
 **Decision.** Releases are ZIPs signed with a key that the installation already

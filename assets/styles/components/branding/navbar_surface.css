@@ -1,0 +1,92 @@
+/*
+ * A surface painted with the navigation color outside the navigation bar.
+ * The sign-in cards use it so that a logo chosen to sit on the navigation bar
+ * stays visible on them too.
+ *
+ * The navigation color is the same in light and dark mode, so this surface
+ * looks the same in both. Everything inside it follows the navigation color's
+ * own scheme rather than the page mode: text uses the navigation contrast
+ * color, and status notices pick their light or dark tokens from the
+ * data-surface-scheme attribute the template sets alongside this class.
+ * Colors that must meet a contrast ratio (links and the primary button) are
+ * computed by App\Service\BrandingTheme::navbarSurfaceColors(); the outline
+ * and placeholder mixes follow the measured quick-search input (80% and 92%).
+ *
+ * Usage: class="card app-navbar-surface"
+ *        data-surface-scheme="{{ app_branding.theme.navbar_color_scheme }}"
+ */
+.app-navbar-surface {
+    color-scheme: var(--app-brand-navbar-scheme);
+    --app-brand-surface: var(--app-brand-navbar);
+    --app-brand-background: var(--app-brand-navbar);
+    --app-brand-text: var(--app-brand-navbar-contrast);
+    --app-brand-primary: var(--app-brand-navbar-button);
+    --app-brand-primary-contrast: var(--app-brand-navbar-button-contrast);
+    --app-brand-primary-text: var(--app-brand-navbar-link);
+    --app-brand-accent-text: var(--app-brand-navbar-link);
+    --app-brand-focus: var(--app-brand-navbar-contrast);
+    --app-brand-border: color-mix(in srgb, var(--app-brand-navbar-contrast) 18%, transparent);
+    --app-brand-border-weak: color-mix(in srgb, var(--app-brand-navbar-contrast) 10%, transparent);
+    /* Bulma tokens mapped in base.css resolve on :root, so map them again here. */
+    --bulma-border: var(--app-brand-border);
+    --bulma-border-weak: var(--app-brand-border-weak);
+    --bulma-body-color: var(--app-brand-text);
+    --bulma-link-text: var(--app-brand-accent-text);
+    --bulma-scheme-main: var(--app-brand-surface);
+    --bulma-strong-color: var(--app-brand-text);
+    --bulma-text: var(--app-brand-text);
+    --bulma-text-strong: var(--app-brand-text);
+    background-color: var(--app-brand-navbar);
+    color: var(--app-brand-text);
+}
+
+/* Fields keep the surface fill, so their text has the same contrast as the
+   card's, and a strong outline marks the field (3:1 or better). */
+.app-navbar-surface .input,
+.app-navbar-surface .textarea,
+.app-navbar-surface .select select {
+    background-color: var(--app-brand-navbar);
+    border-color: color-mix(in srgb, var(--app-brand-navbar-contrast) 80%, var(--app-brand-navbar));
+    color: var(--app-brand-navbar-contrast);
+}
+
+.app-navbar-surface .input:hover,
+.app-navbar-surface .textarea:hover,
+.app-navbar-surface .select select:hover,
+.app-navbar-surface .input:focus,
+.app-navbar-surface .textarea:focus,
+.app-navbar-surface .select select:focus {
+    border-color: var(--app-brand-navbar-contrast);
+}
+
+.app-navbar-surface .input::placeholder,
+.app-navbar-surface .textarea::placeholder {
+    color: color-mix(in srgb, var(--app-brand-navbar-contrast) 92%, var(--app-brand-navbar));
+    opacity: 1;
+}
+
+/* Bulma declares its field-icon colors on .control itself. */
+.app-navbar-surface .control {
+    --bulma-input-icon-color: color-mix(in srgb, var(--app-brand-navbar-contrast) 85%, var(--app-brand-navbar));
+    --bulma-input-icon-hover-color: var(--app-brand-navbar-contrast);
+    --bulma-input-icon-focus-color: var(--app-brand-navbar-contrast);
+}
+
+/* Links may share the text color on some navigation colors, so underline them. */
+.app-navbar-surface a:not(.button) {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.app-navbar-surface .has-text-grey {
+    color: var(--app-brand-navbar-contrast) !important;
+}
+
+.app-navbar-surface pre {
+    border: 1px solid var(--app-brand-border);
+}
+
+.app-navbar-surface .notification > .delete {
+    --bulma-delete-color: var(--app-brand-navbar-contrast);
+    background-color: color-mix(in srgb, var(--app-brand-navbar-contrast) 25%, transparent);
+}

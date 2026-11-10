@@ -94,35 +94,18 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   - starter prompts, if they cost nothing to maintain.
   Keep it read-only, with structured queries and no SQL tool.
 - **Microsoft Fabric Connector.** Similar to the BigQuery Sync connector, but for Microsoft Fabric.
-- **Alerts rules engine.** Notify administrators when collection looks wrong, so
-  a broken tag, a removed tracker or a misconfigured consent banner is noticed
-  within hours instead of at the next report. Administrators define rules such
-  as "fewer than 200 events for this website in a completed hour", "no `signup`
-  goal events for 24 hours" or "more than 50 tracking failures in a day", with a
-  threshold, a time window, the websites it covers and its recipients.
-  - **Configuration:** rules live in YAML, like every other operator setting,
-    with an **Alerts** page in the dashboard and command-line equivalents that
-    share one validation service. The page manages rules and recipients, sends
-    a test alert and lists recent alerts; it does not chart traffic, which stays
-    in BI tools.
-  - **Evaluation:** a job of the [scheduled task](docs/SCHEDULED-TASKS.md),
-    like maintenance, evaluates rules on completed time buckets, so
-    hour-bucketed anonymous events and partial hours do not cause false alarms.
-    It works with the dashboard disabled. A cooldown and a recovery notice keep
-    a persistent problem from sending repeated alerts.
-  - **Records:** each evaluation run is recorded in `processing_tasks` and each
-    alert sent, suppressed or failed in `audit_trail`, through
-    `App\Service\Operations`, with no alerts table of its own.
-  - **Delivery:** email through the delivered
-    [transactional email](docs/EMAIL.md) service (`TransactionalMailer`, with
-    an alert purpose), and SMS through a provider still to be chosen, since
-    the email services send email only (Twilio, SendGrid's parent company, is
-    one option). Credentials stay in `config/secrets` or the environment, never
-    in YAML, messages or logs.
-  - **Privacy:** an alert carries the rule, website, threshold, window and
-    observed count, never event rows, page paths, custom property values or
-    visitor data. Recipients' email addresses and phone numbers are personal
-    data too; keep them out of logs and the audit trail details.
+- **Alerts follow-ups.** Threshold rules on completed UTC hours for event gaps
+  (`no_events`, `fewer_than`) and tracking failures (`more_than`), delivered by
+  signed generic JSON webhooks and email (`TransactionalMailer`), are in place
+  ([alerts](docs/ALERTS.md)). Still planned:
+  - anomaly baselines, consent-rate drop ratios, and quiet hours or maintenance
+    windows;
+  - native Slack and Microsoft Teams payload templates, plus SMS through a
+    provider still to be chosen (Twilio, SendGrid's parent company, is one
+    option), with phone numbers kept in `config/secrets` and out of logs and
+    audit trail details;
+  - letting standard users with website permissions view or manage rules scoped
+    to their granted websites.
 - **Medallion Architecture.** Add a means to define and generate silver and gold views. Also docs: events table and glossary are bronze.
 - **Snowflake Integration** Add a Snowflake connector.
 - **Agency deployments.** Agencies serve each client with a separate Aggregate

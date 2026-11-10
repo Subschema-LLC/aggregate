@@ -41,6 +41,8 @@
 /config/secrets/bigquery-*.json
 /config/secrets/api-tokens.yaml
 /config/secrets/.api-tokens*
+/config/secrets/alerts.yaml
+/config/secrets/.alerts*
 /.env.prod
 /SETUP-CODE.txt
 ###< aggregate-analytics ###

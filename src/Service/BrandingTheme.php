@@ -147,6 +147,10 @@ final class BrandingTheme
      *     primary_contrast_color: string,
      *     accent_contrast_color: string,
      *     navbar_contrast_color: string,
+     *     navbar_color_scheme: string,
+     *     navbar_link_color: string,
+     *     navbar_button_color: string,
+     *     navbar_button_contrast_color: string,
      *     primary_text_color: string,
      *     accent_text_color: string,
      *     focus_color: string,
@@ -167,6 +171,7 @@ final class BrandingTheme
         $primaryColor = $this->resolveColor('brand_primary_color', self::DEFAULT_PRIMARY_COLOR);
         $accentColor = $this->resolveColor('brand_accent_color', self::DEFAULT_ACCENT_COLOR);
         $navbarColor = $this->resolveColor('brand_navbar_color', self::DEFAULT_NAVBAR_COLOR);
+        $navbarSurface = self::navbarSurfaceColors($navbarColor, $primaryColor, $accentColor);
         $configuredContrastColors = $this->getConfiguredContrastColors();
         $backgroundColor = $configuredContrastColors['background_color'];
         $surfaceColor = $configuredContrastColors['surface_color'];
@@ -202,7 +207,11 @@ final class BrandingTheme
             'heading_font_family_css' => $headingFontFamily['css'],
             'primary_contrast_color' => self::contrastColor($primaryColor),
             'accent_contrast_color' => self::contrastColor($accentColor),
-            'navbar_contrast_color' => self::contrastColor($navbarColor),
+            'navbar_contrast_color' => $navbarSurface['navbar_contrast_color'],
+            'navbar_color_scheme' => $navbarSurface['navbar_color_scheme'],
+            'navbar_link_color' => $navbarSurface['navbar_link_color'],
+            'navbar_button_color' => $navbarSurface['navbar_button_color'],
+            'navbar_button_contrast_color' => $navbarSurface['navbar_button_contrast_color'],
             'primary_text_color' => self::readableBrandTextColor($primaryColor, $textColor, $backgroundColor, $surfaceColor),
             'accent_text_color' => self::readableBrandTextColor($accentColor, $textColor, $backgroundColor, $surfaceColor),
             'focus_color' => self::readableBrandTextColor($accentColor, $textColor, $backgroundColor, $surfaceColor, 3.0),
@@ -308,6 +317,36 @@ final class BrandingTheme
 
         return self::contrastRatio($textColor, $backgroundColor) >= 4.5
             && self::contrastRatio($textColor, $surfaceColor) >= 4.5;
+    }
+
+    /**
+     * Colors for content placed on the navigation color outside the navigation
+     * bar, such as the sign-in card. A logo chosen for the navigation stays
+     * visible there, and text, links and the primary button stay readable.
+     * The navigation color is shared by both light and dark modes.
+     *
+     * @return array{
+     *     navbar_contrast_color: string,
+     *     navbar_color_scheme: string,
+     *     navbar_link_color: string,
+     *     navbar_button_color: string,
+     *     navbar_button_contrast_color: string
+     * }
+     */
+    public static function navbarSurfaceColors(string $navbarColor, string $primaryColor, string $accentColor): array
+    {
+        $contrastColor = self::contrastColor($navbarColor);
+        // A filled button needs 3:1 against its surroundings to be seen as a
+        // control (WCAG 1.4.11). Below that, invert the navigation colors.
+        $primaryVisible = self::contrastRatio($primaryColor, $navbarColor) >= 3.0;
+
+        return [
+            'navbar_contrast_color' => $contrastColor,
+            'navbar_color_scheme' => $contrastColor === '#FFFFFF' ? 'dark' : 'light',
+            'navbar_link_color' => self::readableBrandTextColor($accentColor, $contrastColor, $navbarColor, $navbarColor),
+            'navbar_button_color' => $primaryVisible ? $primaryColor : $contrastColor,
+            'navbar_button_contrast_color' => $primaryVisible ? self::contrastColor($primaryColor) : $navbarColor,
+        ];
     }
 
     private static function readableBrandTextColor(

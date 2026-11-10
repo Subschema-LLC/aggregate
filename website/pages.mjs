@@ -67,6 +67,7 @@ export const sections = [
     items: [
       { source: 'docs/DATA-TRANSFER.md', route: 'operate/data-transfer', label: 'Data transfer' },
       { source: 'docs/SCHEDULED-TASKS.md', route: 'operate/scheduled-tasks', label: 'Scheduled tasks' },
+      { source: 'docs/ALERTS.md', route: 'operate/alerts', label: 'Alerts' },
       { source: 'docs/AUDIT-TRAIL.md', route: 'operate/audit-trail', label: 'Audit trail' },
       { source: 'docs/UPDATES.md', route: 'operate/updates', label: 'Updating' },
       { source: 'docs/RELEASES.md', route: 'operate/releases', label: 'Signed release packages' },
