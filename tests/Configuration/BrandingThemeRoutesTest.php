@@ -58,6 +58,13 @@ final class BrandingThemeRoutesTest extends TestCase
         $css = (string) $response->getContent();
         self::assertStringContainsString('--app-brand-primary: #AABBCC;', $css);
         self::assertStringContainsString('--app-brand-font-family: "Open Sans", serif;', $css);
+        foreach ([':root', 'html[data-theme="light"]', 'html[data-theme="dark"]'] as $selector) {
+            $palette = $this->paletteCss($css, $selector);
+            self::assertStringContainsString('--app-brand-navbar-scheme: dark;', $palette, $selector);
+            self::assertStringContainsString('--app-brand-navbar-link: #FFFFFF;', $palette, $selector);
+            self::assertStringContainsString('--app-brand-navbar-button: #AABBCC;', $palette, $selector);
+            self::assertStringContainsString('--app-brand-navbar-button-contrast: #000000;', $palette, $selector);
+        }
         self::assertStringContainsString('color-scheme: light;', $this->paletteCss($css, ':root'));
         self::assertStringContainsString('color-scheme: light;', $this->paletteCss($css, 'html[data-theme="light"]'));
         self::assertStringContainsString('color-scheme: dark;', $this->paletteCss($css, 'html[data-theme="dark"]'));

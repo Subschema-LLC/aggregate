@@ -82,6 +82,10 @@ final class BrandingThemeTest extends TestCase
             'primary_contrast_color' => '#000000',
             'accent_contrast_color' => '#FFFFFF',
             'navbar_contrast_color' => '#FFFFFF',
+            'navbar_color_scheme' => 'dark',
+            'navbar_link_color' => '#FFFFFF',
+            'navbar_button_color' => '#00D1B2',
+            'navbar_button_contrast_color' => '#000000',
             'primary_text_color' => '#363636',
             'accent_text_color' => '#485FC7',
             'focus_color' => '#485FC7',
@@ -217,7 +221,7 @@ final class BrandingThemeTest extends TestCase
         self::assertNotSame($palettes['light']['background_color'], $palettes['dark']['background_color']);
         foreach ($palettes as $mode => $palette) {
             self::assertSame($mode, $palette['color_scheme']);
-            foreach (['primary_color', 'accent_color', 'navbar_color', 'primary_contrast_color', 'accent_contrast_color', 'navbar_contrast_color', 'font_family_css', 'heading_font_family_css'] as $key) {
+            foreach (['primary_color', 'accent_color', 'navbar_color', 'primary_contrast_color', 'accent_contrast_color', 'navbar_contrast_color', 'navbar_color_scheme', 'navbar_link_color', 'navbar_button_color', 'navbar_button_contrast_color', 'font_family_css', 'heading_font_family_css'] as $key) {
                 self::assertSame($configured[$key], $palette[$key], $key.' must retain the configured brand identity.');
             }
             foreach (['text_color', 'primary_text_color', 'accent_text_color'] as $key) {
@@ -258,6 +262,95 @@ final class BrandingThemeTest extends TestCase
             'brand_surface_color' => '#0C4A6E',
             'brand_text_color' => '#E0F2FE',
         ], 'dark'];
+    }
+
+    #[DataProvider('navbarSurfaces')]
+    public function testNavbarSurfaceKeepsTextLinksAndButtonReadableOnTheNavigationColor(
+        string $navbar,
+        string $primary,
+        string $accent,
+        array $expected,
+    ): void {
+        $this->writeConfig([
+            'brand_navbar_color' => $navbar,
+            'brand_primary_color' => $primary,
+            'brand_accent_color' => $accent,
+        ]);
+        $theme = $this->createTheme();
+        $configured = $theme->toArray();
+
+        self::assertSame($expected, array_intersect_key($configured, $expected));
+        self::assertSame(
+            BrandingTheme::navbarSurfaceColors($navbar, $primary, $accent),
+            array_intersect_key($configured, array_flip([
+                'navbar_contrast_color',
+                'navbar_color_scheme',
+                'navbar_link_color',
+                'navbar_button_color',
+                'navbar_button_contrast_color',
+            ])),
+        );
+        self::assertGreaterThanOrEqual(4.5, BrandingTheme::contrastRatio($configured['navbar_contrast_color'], $navbar));
+        self::assertGreaterThanOrEqual(4.5, BrandingTheme::contrastRatio($configured['navbar_link_color'], $navbar));
+        self::assertGreaterThanOrEqual(3.0, BrandingTheme::contrastRatio($configured['navbar_button_color'], $navbar));
+        self::assertGreaterThanOrEqual(4.5, BrandingTheme::contrastRatio(
+            $configured['navbar_button_contrast_color'],
+            $configured['navbar_button_color'],
+        ));
+        // The navigation color is shared by both modes, so the sign-in card
+        // (and a logo chosen for the navigation) looks the same in each.
+        foreach ($theme->toModePalettes() as $palette) {
+            self::assertSame($expected, array_intersect_key($palette, $expected));
+        }
+    }
+
+    public static function navbarSurfaces(): iterable
+    {
+        yield 'default dark navigation keeps the primary button, accent link too dim' => [
+            '#14161A', '#00D1B2', '#485FC7', [
+                'navbar_contrast_color' => '#FFFFFF',
+                'navbar_color_scheme' => 'dark',
+                'navbar_link_color' => '#FFFFFF',
+                'navbar_button_color' => '#00D1B2',
+                'navbar_button_contrast_color' => '#000000',
+            ],
+        ];
+        yield 'white navigation keeps the accent link, inverts a pale primary button' => [
+            '#FFFFFF', '#00D1B2', '#485FC7', [
+                'navbar_contrast_color' => '#000000',
+                'navbar_color_scheme' => 'light',
+                'navbar_link_color' => '#485FC7',
+                'navbar_button_color' => '#000000',
+                'navbar_button_contrast_color' => '#FFFFFF',
+            ],
+        ];
+        yield 'navigation the same as the primary color inverts the button' => [
+            '#00D1B2', '#00D1B2', '#485FC7', [
+                'navbar_contrast_color' => '#000000',
+                'navbar_color_scheme' => 'light',
+                'navbar_link_color' => '#000000',
+                'navbar_button_color' => '#000000',
+                'navbar_button_contrast_color' => '#00D1B2',
+            ],
+        ];
+        yield 'mid-tone navigation' => [
+            '#6B7280', '#FDE047', '#1D4ED8', [
+                'navbar_contrast_color' => '#FFFFFF',
+                'navbar_color_scheme' => 'dark',
+                'navbar_link_color' => '#FFFFFF',
+                'navbar_button_color' => '#FDE047',
+                'navbar_button_contrast_color' => '#000000',
+            ],
+        ];
+        yield 'dark brand navigation with a readable accent' => [
+            '#713F12', '#123456', '#FDE047', [
+                'navbar_contrast_color' => '#FFFFFF',
+                'navbar_color_scheme' => 'dark',
+                'navbar_link_color' => '#FDE047',
+                'navbar_button_color' => '#FFFFFF',
+                'navbar_button_contrast_color' => '#713F12',
+            ],
+        ];
     }
 
     public function testEnvironmentPaletteDeterminesDefaultModeWithoutChangingConfiguredValues(): void
