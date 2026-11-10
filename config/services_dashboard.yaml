@@ -35,6 +35,7 @@ services:
     App\Controller\ViewSyncController: ~
     App\Controller\ApiTokensController: ~
     App\Controller\EmailSettingsController: ~
+    App\Controller\AlertsController: ~
     App\Controller\McpAuthorizeController: ~
     App\Controller\ScheduledTasksController: ~
     App\Controller\AuditTrailController: ~

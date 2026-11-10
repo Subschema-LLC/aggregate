@@ -52,4 +52,52 @@ class EventRepository extends ServiceEntityRepository
 
         return $results;
     }
+
+    /**
+     * Counts events for one website in [from, to) up to $cap rows, so a busy
+     * website stops at the rule's threshold instead of scanning the full window.
+     *
+     * Uses the (website_token, created_at) or (privacy_mode, website_token, created_at)
+     * index on all five supported database engines. SQL Server requires a column
+     * alias on TOP subqueries and a table alias on derived tables.
+     */
+    public function countEventsUpTo(
+        string $token,
+        \DateTimeImmutable $from,
+        \DateTimeImmutable $to,
+        int $cap,
+        string $privacyMode = 'all',
+        ?string $eventName = null,
+    ): int {
+        $token = trim($token);
+        if ($token === '' || $cap < 1 || $to <= $from) {
+            return 0;
+        }
+
+        $connection = $this->getEntityManager()->getConnection();
+        $platform = $connection->getDatabasePlatform();
+        $type = Type::getType(Types::DATETIME_IMMUTABLE);
+        $utc = new \DateTimeZone('UTC');
+
+        $where = 'website_token = ? AND created_at >= ? AND created_at < ?';
+        $params = [
+            $token,
+            $type->convertToDatabaseValue($from->setTimezone($utc), $platform),
+            $type->convertToDatabaseValue($to->setTimezone($utc), $platform),
+        ];
+
+        if ($privacyMode === 'anonymous' || $privacyMode === 'enhanced') {
+            $where .= ' AND privacy_mode = ?';
+            $params[] = $privacyMode;
+        }
+        if ($eventName !== null && trim($eventName) !== '') {
+            $where .= ' AND event_name = ?';
+            $params[] = trim($eventName);
+        }
+
+        $inner = $platform->modifyLimitQuery('SELECT 1 AS c FROM events WHERE '.$where, $cap);
+        $sql = 'SELECT COUNT(*) FROM ('.$inner.') AS t';
+
+        return (int) $connection->fetchOne($sql, $params);
+    }
 }

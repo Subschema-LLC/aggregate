@@ -284,6 +284,17 @@ parameters:
         - plesk
         - background jobs
         - schedule
+    'Alerts':
+      description: 'Threshold rules on completed UTC hours for event gaps and tracking failures, delivered by signed webhook and email'
+      synonyms:
+        - alerts
+        - alert rules
+        - webhook
+        - webhooks
+        - event gap
+        - notifications
+        - threshold
+        - tracking failures
     'Updates':
       description: 'Version status, git updates, and signed release packages'
       synonyms:

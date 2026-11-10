@@ -219,6 +219,21 @@ final class DashboardPages
         'app_email' => [self::ADMIN],
         'app_email_save' => [self::ADMIN],
         'app_email_test' => [self::ADMIN],
+        // Alerts send webhooks and email across websites and manage webhook
+        // signing secrets, so they stay with administrators in v1.
+        'app_alerts' => [self::ADMIN],
+        'app_alerts_rule_new' => [self::ADMIN],
+        'app_alerts_rule_edit' => [self::ADMIN],
+        'app_alerts_rule_save' => [self::ADMIN],
+        'app_alerts_rule_delete_confirm' => [self::ADMIN],
+        'app_alerts_rule_delete' => [self::ADMIN],
+        'app_alerts_destination_new' => [self::ADMIN],
+        'app_alerts_destination_edit' => [self::ADMIN],
+        'app_alerts_destination_save' => [self::ADMIN],
+        'app_alerts_destination_delete_confirm' => [self::ADMIN],
+        'app_alerts_destination_delete' => [self::ADMIN],
+        'app_alerts_secret_save' => [self::ADMIN],
+        'app_alerts_test' => [self::ADMIN],
         // Everyone manages their own profile.
         'app_profile' => [self::SIGNED_IN],
         'app_profile_save' => [self::SIGNED_IN],

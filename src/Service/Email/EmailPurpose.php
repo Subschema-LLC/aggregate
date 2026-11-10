@@ -15,6 +15,7 @@ enum EmailPurpose: string
     case Test = 'test';
     case SignInCode = 'sign_in_code';
     case SecondStep = 'sign_in_second_step';
+    case Alert = 'alert';
 
     public function label(): string
     {
@@ -22,6 +23,7 @@ enum EmailPurpose: string
             self::Test => 'Test email',
             self::SignInCode => 'Sign-in code',
             self::SecondStep => 'Two-step sign-in code',
+            self::Alert => 'Alert',
         };
     }
 
@@ -31,6 +33,7 @@ enum EmailPurpose: string
             self::Test => sprintf('Test email from %s', $brand),
             self::SignInCode => sprintf('Your %s sign-in code', $brand),
             self::SecondStep => sprintf('Your %s verification code', $brand),
+            self::Alert => sprintf('Alert from %s', $brand),
         };
     }
 
@@ -41,6 +44,7 @@ enum EmailPurpose: string
             self::Test => true,
             self::SignInCode => false,
             self::SecondStep => false,
+            self::Alert => false,
         };
     }
 }
