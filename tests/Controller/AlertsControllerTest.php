@@ -281,6 +281,53 @@ final class AlertsControllerTest extends TestCase
         self::assertStringContainsString('Threshold (N) must be between 1 and', $errCrawler->filter('[role="alert"]')->text());
     }
 
+    public function testARuleWhoseWebsiteWasRemovedStaysEditableAndDeletable(): void
+    {
+        $this->writeConfig(['alerts' => [
+            'destinations' => [['id' => 'geektown-hub', 'label' => 'Geektown Hub', 'type' => 'webhook', 'url' => 'https://hooks.geektown.example/in']],
+            'rules' => [['id' => 'gone-site', 'covers' => 'website:019c7e21-0000-7cde-8f01-000000000000', 'condition' => 'no_events', 'window' => 'day', 'destinations' => ['geektown-hub']]],
+        ]]);
+
+        $index = $this->request('/dashboard/alerts');
+        $html = (string) $this->controller($index)->index($index)->getContent();
+        self::assertStringContainsString('Not checked:', $html);
+        self::assertStringNotContainsString('alert settings in YAML are invalid', $html);
+
+        $edit = $this->request('/dashboard/alerts/rules/gone-site/edit');
+        self::assertSame(200, $this->controller($edit)->editRule('gone-site')->getStatusCode());
+
+        $delete = $this->request('/dashboard/alerts/rules/gone-site/delete', 'POST', ['_csrf_token' => 'valid-token']);
+        $this->controller($delete)->deleteRule($delete, 'gone-site');
+        self::assertSame([], Yaml::parseFile($this->projectDir.'/config/aggregate.yaml')['alerts']['rules'] ?? null);
+    }
+
+    public function testADestinationCanGenerateItsOwnSecretWhichTheTableThenNames(): void
+    {
+        (new AlertSecrets($this->projectDir))->set('shared-secret-value');
+        $save = $this->request('/dashboard/alerts/destinations/save', 'POST', [
+            '_csrf_token' => 'valid-token',
+            '_editing' => '0',
+            'id' => 'geektown-hub',
+            'label' => 'Geektown Hub',
+            'type' => 'webhook',
+            'url' => 'https://hooks.geektown.example/in',
+            'secret_choice' => 'generate',
+        ]);
+        $response = $this->controller($save)->saveDestination($save);
+        $html = (string) $response->getContent();
+        $own = (string) (new AlertSecrets($this->projectDir))->get('geektown-hub');
+
+        self::assertNotSame('shared-secret-value', $own);
+        self::assertStringContainsString($own, $html, 'The new secret is shown once.');
+        self::assertStringContainsString('New signing secret for Geektown Hub.', $html);
+        self::assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+
+        $index = $this->request('/dashboard/alerts');
+        $page = (string) $this->controller($index)->index($index)->getContent();
+        self::assertStringNotContainsString($own, $page);
+        self::assertStringContainsString('Own secret (config/secrets/alerts.yaml)', $page);
+    }
+
     /**
      * @param array<string, mixed> $submitted
      * @param array<string, mixed> $query

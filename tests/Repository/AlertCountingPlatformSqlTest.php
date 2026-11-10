@@ -18,6 +18,7 @@ use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Platforms\SQLitePlatform;
 use Doctrine\DBAL\Platforms\SQLServerPlatform;
 use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Mapping\UnderscoreNamingStrategy;
 use Doctrine\ORM\ORMSetup;
 use Doctrine\ORM\Tools\SchemaTool;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -96,6 +97,8 @@ final class AlertCountingPlatformSqlTest extends TestCase
         }
 
         $config = ORMSetup::createAttributeMetadataConfiguration([dirname(__DIR__, 2).'/src/Entity'], true);
+        // As config/packages/doctrine.yaml: the index columns are snake_case.
+        $config->setNamingStrategy(new UnderscoreNamingStrategy(\CASE_LOWER, true));
         $connection = DriverManager::getConnection(['driver' => 'pdo_sqlite', 'memory' => true], $config);
         $em = new EntityManager($connection, $config);
         (new SchemaTool($em))->createSchema([$em->getClassMetadata(Event::class)]);
@@ -113,8 +116,9 @@ final class AlertCountingPlatformSqlTest extends TestCase
         $this->insertEvent($em, 'site-a', 'enhanced', 'page_view', new \DateTimeImmutable('2025-06-02 14:00:00 UTC'));
         $em->flush();
 
-        /** @var EventRepository $repo */
-        $repo = $em->getRepository(Event::class);
+        $registry = $this->createStub(\Doctrine\Persistence\ManagerRegistry::class);
+        $registry->method('getManagerForClass')->willReturn($em);
+        $repo = new EventRepository($registry);
 
         self::assertSame(1, $repo->countEventsUpTo('site-a', $from, $to, 1), 'Stops at cap=1');
         self::assertSame(2, $repo->countEventsUpTo('site-a', $from, $to, 2), 'Stops at cap=2');
@@ -165,6 +169,13 @@ final class AlertCountingPlatformSqlTest extends TestCase
         $event->setWebsiteToken($token);
         $event->setPrivacyMode($mode);
         $event->setEventName($name);
+        $event->setUrl('/');
+        $event->setReferrer('direct');
+        $event->setDeviceClass('desktop');
+        $event->setViewportBucket('large');
+        if ($mode === 'enhanced') {
+            $event->setConsentState('granted');
+        }
         $event->setCreatedAt($createdAt);
         $em->persist($event);
     }

@@ -13,11 +13,14 @@ use Symfony\Component\Yaml\Yaml;
  * Webhook signing secrets in config/secrets/alerts.yaml (an operator path
  * updates never replace and releases never ship).
  *
- * A shared secret is kept under webhook_secret (or ALERTS_WEBHOOK_SECRET in
- * the environment), and a destination-specific secret under webhook_<id> (or
- * ALERTS_WEBHOOK_SECRET_<ID> in the environment). Values are never shown again
- * once saved, and never written to logs, task details or the audit trail: the
- * audit trail records only which key changed (ConfigurationChanges).
+ * A destination signs with its own secret when it has one, from
+ * ALERTS_WEBHOOK_SECRET_<ID> in the environment or webhook_<id> in the file;
+ * otherwise with the shared secret, from ALERTS_WEBHOOK_SECRET or
+ * webhook_secret. describe() names the one in use, so rotating the shared
+ * secret is never mistaken for rotating a destination's own. Values are never
+ * shown again once saved, and never written to logs, task details or the
+ * audit trail: the audit trail records only which key changed
+ * (ConfigurationChanges).
  */
 class AlertSecrets
 {
@@ -93,6 +96,50 @@ class AlertSecrets
         } catch (\RuntimeException) {
             return null;
         }
+    }
+
+    /**
+     * Which secret a destination signs with, in words for the Alerts page and
+     * app:alerts:status, without the value.
+     */
+    public function describe(string $destinationId): string
+    {
+        if (self::environment(self::envNameFor($destinationId)) !== null) {
+            return 'Own secret ('.self::envNameFor($destinationId).')';
+        }
+        if ($this->hasOwnInFile($destinationId)) {
+            return 'Own secret ('.self::FILE.')';
+        }
+        if (self::environment(self::ENV_DEFAULT) !== null) {
+            return 'Shared secret ('.self::ENV_DEFAULT.')';
+        }
+        try {
+            if (isset($this->read()[self::DEFAULT_KEY])) {
+                return 'Shared secret ('.self::FILE.')';
+            }
+        } catch (\RuntimeException) {
+            return 'Unreadable: '.self::FILE;
+        }
+
+        return 'No signing secret';
+    }
+
+    /** Whether the destination has its own secret in the file (not the environment). */
+    public function hasOwnInFile(string $destinationId): bool
+    {
+        try {
+            $file = $this->read();
+        } catch (\RuntimeException) {
+            return false;
+        }
+
+        return isset($file[self::keyFor($destinationId)]) || isset($file[$destinationId]);
+    }
+
+    /** Whether the destination's own secret comes from the environment. */
+    public function hasOwnInEnvironment(string $destinationId): bool
+    {
+        return self::environment(self::envNameFor($destinationId)) !== null;
     }
 
     public function isEnvironmentControlled(?string $destinationId = null): bool
@@ -256,8 +303,9 @@ class AlertSecrets
     /** @param array<string, string> $secrets */
     private function write(array $secrets): void
     {
-        $yaml = "# Alert webhook signing secrets: see docs/ALERTS.md. Written by the Alerts page;\n"
-            ."# ALERTS_WEBHOOK_SECRET takes precedence. Keep this file private.\n"
+        $yaml = "# Alert webhook signing secrets: see docs/ALERTS.md. Written by the Alerts page.\n"
+            ."# A destination's own secret (webhook_<id>, or ALERTS_WEBHOOK_SECRET_<ID>) wins over\n"
+            ."# the shared webhook_secret (or ALERTS_WEBHOOK_SECRET). Keep this file private.\n"
             .($secrets === [] ? "{}\n" : Yaml::dump($secrets, 1, 2));
         $payload = SecretFileEncryption::encode($yaml, self::FILE);
         $directory = dirname($this->path());

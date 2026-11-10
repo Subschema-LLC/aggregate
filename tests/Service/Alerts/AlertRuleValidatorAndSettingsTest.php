@@ -276,6 +276,81 @@ final class AlertRuleValidatorAndSettingsTest extends TestCase
         self::assertTrue($secrets->isEnvironmentControlled());
     }
 
+    public function testADestinationsOwnSecretWinsAndDescribeSaysWhichSecretSigns(): void
+    {
+        $secrets = new AlertSecrets($this->projectDir);
+        self::assertSame('No signing secret', $secrets->describe('geektown-hub'));
+
+        $secrets->set('shared-secret');
+        self::assertSame('Shared secret ('.AlertSecrets::FILE.')', $secrets->describe('geektown-hub'));
+        self::assertSame('shared-secret', $secrets->get('geektown-hub'));
+
+        $own = $secrets->generate('geektown-hub');
+        $secrets->set('rotated-shared-secret');
+        self::assertSame($own, $secrets->get('geektown-hub'), 'Rotating the shared secret does not change a destination with its own.');
+        self::assertSame('Own secret ('.AlertSecrets::FILE.')', $secrets->describe('geektown-hub'));
+        self::assertTrue($secrets->hasOwnInFile('geektown-hub'));
+
+        $_ENV['ALERTS_WEBHOOK_SECRET_GEEKTOWN_HUB'] = $_SERVER['ALERTS_WEBHOOK_SECRET_GEEKTOWN_HUB'] = 'env-own';
+        self::assertSame('Own secret (ALERTS_WEBHOOK_SECRET_GEEKTOWN_HUB)', $secrets->describe('geektown-hub'));
+        self::assertTrue($secrets->hasOwnInEnvironment('geektown-hub'));
+        unset($_ENV['ALERTS_WEBHOOK_SECRET_GEEKTOWN_HUB'], $_SERVER['ALERTS_WEBHOOK_SECRET_GEEKTOWN_HUB']);
+
+        $secrets->remove('geektown-hub');
+        self::assertSame('Shared secret ('.AlertSecrets::FILE.')', $secrets->describe('geektown-hub'));
+    }
+
+    public function testDestinationIdsThatWouldShareASecretAreRejected(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('would share a signing secret');
+
+        $this->validator()->validateAll(['destinations' => [
+            ['id' => 'geektown-hub', 'label' => 'Hub', 'type' => 'webhook', 'url' => 'https://hooks.geektown.example/a'],
+            ['id' => 'geektown_hub', 'label' => 'Hub 2', 'type' => 'webhook', 'url' => 'https://hooks.geektown.example/b'],
+        ]]);
+    }
+
+    public function testLoadingKeepsARuleWhoseWebsiteWasRemovedAndNamesTheProblem(): void
+    {
+        $settings = $this->settings();
+        $settings->saveDestination(['id' => 'geektown-hub', 'label' => 'Hub', 'type' => 'webhook', 'url' => 'https://hooks.geektown.example/a']);
+        $settings->saveRule(['id' => 'eu-hourly', 'covers' => 'website:'.self::TOKEN_B, 'condition' => 'no_events', 'window' => 'day', 'destinations' => ['geektown-hub']]);
+        $settings->saveRule(['id' => 'usa-hourly', 'covers' => 'website:'.self::TOKEN_A, 'condition' => 'no_events', 'window' => 'day', 'destinations' => ['geektown-hub']]);
+
+        file_put_contents($this->projectDir.'/config/websites.yaml', Yaml::dump([
+            'websites' => [['name' => 'Geektown USA', 'token' => self::TOKEN_A, 'domain' => 'some.domain.com']],
+        ], 6, 2));
+        $settings = $this->settings();
+
+        $rules = $settings->rules();
+        self::assertCount(2, $rules);
+        self::assertStringContainsString('is not registered', (string) $settings->referenceProblem($rules['eu-hourly']));
+        self::assertNull($settings->referenceProblem($rules['usa-hourly']));
+
+        // Other rules can still be saved, and the stale one deleted.
+        $settings->saveRule(['id' => 'usa-daily', 'covers' => 'website:'.self::TOKEN_A, 'condition' => 'no_events', 'window' => 'day', 'destinations' => ['geektown-hub']]);
+        $settings->deleteRule('eu-hourly');
+        self::assertSame(['usa-hourly', 'usa-daily'], array_keys($this->settings()->rules()));
+
+        // Saving the stale rule itself still checks its website.
+        $this->expectExceptionMessage('is not registered');
+        $this->settings()->saveRule(['id' => 'eu-again', 'covers' => 'website:'.self::TOKEN_B, 'condition' => 'no_events', 'window' => 'day', 'destinations' => ['geektown-hub']]);
+    }
+
+    public function testThresholdIsCappedSoACountNeverReadsMoreThanOneHundredThousandRows(): void
+    {
+        $this->expectExceptionMessage('between 1 and 100000');
+        $this->validator()->validateRule([
+            'id' => 'too-big',
+            'covers' => 'website:'.self::TOKEN_A,
+            'condition' => 'fewer_than',
+            'threshold' => 100001,
+            'window' => 'day',
+            'destinations' => ['geektown-hub'],
+        ], ['geektown-hub']);
+    }
+
     public function testInstallationUrlNormalizationLowercasesSchemeAndHostAndPreservesSubfolder(): void
     {
         self::assertSame(

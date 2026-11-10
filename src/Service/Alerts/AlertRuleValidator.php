@@ -67,7 +67,11 @@ class AlertRuleValidator
     public const MAX_URL = 2000;
     public const MAX_ADDRESS = 254;
     public const MAX_RECIPIENTS = 50;
-    public const MAX_THRESHOLD = 1_000_000_000;
+    /**
+     * The counting query stops at N rows, so N is also the most rows one check
+     * may read for a website. Keep it well below "count everything".
+     */
+    public const MAX_THRESHOLD = 100_000;
 
     public function __construct(
         private readonly ?WebsiteConfigManager $websites = null,
@@ -79,11 +83,17 @@ class AlertRuleValidator
     /**
      * Validates a complete alerts mapping (destinations and rules).
      *
+     * Loading checks the shape of every rule but not whether the websites,
+     * groups and retention it depends on still match: a website removed from
+     * config/websites.yaml must not make every other rule stop. Use
+     * referenceProblem() to find rules that can no longer be checked; saving a
+     * rule checks its references (validateRule() with $checkReferences).
+     *
      * @param mixed $config
      *
      * @return array{destinations: array<string, DestinationConfig>, rules: array<string, RuleConfig>}
      */
-    public function validateAll(mixed $config): array
+    public function validateAll(mixed $config, bool $checkReferences = false): array
     {
         if ($config === null || $config === []) {
             return ['destinations' => [], 'rules' => []];
@@ -112,6 +122,7 @@ class AlertRuleValidator
             if (isset($destinations[$validated['id']])) {
                 throw new \InvalidArgumentException(sprintf('Duplicate alert destination ID "%s".', $validated['id']));
             }
+            self::assertSecretNameIsFree($validated['id'], array_keys($destinations));
             $destinations[$validated['id']] = $validated;
         }
 
@@ -127,7 +138,7 @@ class AlertRuleValidator
             if (is_string($key) && !isset($rawRule['id']) && !isset($rawRule['rule'])) {
                 $rawRule['id'] = $key;
             }
-            $validated = $this->validateRule($rawRule, array_keys($destinations));
+            $validated = $this->validateRule($rawRule, array_keys($destinations), $checkReferences);
             if (isset($rules[$validated['id']])) {
                 throw new \InvalidArgumentException(sprintf('Duplicate alert rule ID "%s".', $validated['id']));
             }
@@ -291,10 +302,11 @@ class AlertRuleValidator
     /**
      * @param array<string, mixed> $candidate
      * @param list<string>|null    $knownDestinationIds when provided, each destination on the rule must be in this list
+     * @param bool                 $checkReferences     also require the covered website or group to exist and the window to fit retention
      *
      * @return RuleConfig
      */
-    public function validateRule(array $candidate, ?array $knownDestinationIds = null): array
+    public function validateRule(array $candidate, ?array $knownDestinationIds = null, bool $checkReferences = true): array
     {
         $allowedKeys = [
             'id', 'rule', 'enabled', 'covers', 'website', 'websites', 'group', 'website_group',
@@ -313,7 +325,7 @@ class AlertRuleValidator
         $id = trim($id);
 
         $enabled = self::parseBoolean($candidate['enabled'] ?? true, 'enabled');
-        $covers = $this->validateCovers($candidate);
+        $covers = $this->validateCovers($candidate, $checkReferences);
 
         $source = $candidate['source'] ?? self::SOURCE_EVENTS;
         $source = is_string($source) ? strtolower(trim($source)) : null;
@@ -340,9 +352,6 @@ class AlertRuleValidator
         }
 
         $rawEventName = $candidate['event_name'] ?? $filter['event_name'] ?? '';
-        if ($rawEventName === null) {
-            $rawEventName = '';
-        }
         if (!is_string($rawEventName)) {
             throw new \InvalidArgumentException('Event name filter must be text.');
         }
@@ -377,7 +386,9 @@ class AlertRuleValidator
         }
 
         $window = self::normalizeWindow($candidate['window'] ?? null);
-        $this->assertWindowFitsRetention($source, $privacyMode, $window);
+        if ($checkReferences) {
+            $this->assertWindowFitsRetention($source, $privacyMode, $window);
+        }
 
         $rawDestinations = $candidate['destinations'] ?? [];
         if (is_string($rawDestinations) && trim($rawDestinations) !== '') {
@@ -412,6 +423,26 @@ class AlertRuleValidator
             'window' => $window,
             'destinations' => $destinations,
         ];
+    }
+
+    /**
+     * Why a loaded rule cannot be checked any more, or null when it can: the
+     * website or group it covers was removed, or its window became longer than
+     * the live retention. Such a rule is skipped and shown with this reason
+     * while every other rule keeps running.
+     *
+     * @param RuleConfig $rule
+     */
+    public function referenceProblem(array $rule): ?string
+    {
+        try {
+            $this->assertCoversExist($rule['covers']);
+            $this->assertWindowFitsRetention($rule['source'], $rule['privacy_mode'], $rule['window']);
+        } catch (\InvalidArgumentException $e) {
+            return $e->getMessage();
+        }
+
+        return null;
     }
 
     /**
@@ -483,7 +514,7 @@ class AlertRuleValidator
     }
 
     /** @param array<string, mixed> $candidate */
-    private function validateCovers(array $candidate): string
+    private function validateCovers(array $candidate, bool $checkReferences): string
     {
         $covers = $candidate['covers'] ?? null;
         if ($covers === null) {
@@ -513,22 +544,57 @@ class AlertRuleValidator
             if ($groupId === '' || preg_match('/^[a-z0-9][a-z0-9-]{0,62}$/D', $groupId) !== 1) {
                 throw new \InvalidArgumentException('Choose a valid website group.');
             }
+            $covers = 'group:'.$groupId;
+        } else {
+            $token = str_starts_with($covers, 'website:') ? substr($covers, 8) : $covers;
+            if ($token === '' || strlen($token) > 191 || preg_match('/[\x00-\x20\x7f]/', $token) === 1) {
+                throw new \InvalidArgumentException('Choose a valid website token.');
+            }
+            $covers = 'website:'.$token;
+        }
+
+        if ($checkReferences) {
+            $this->assertCoversExist($covers);
+        }
+
+        return $covers;
+    }
+
+    private function assertCoversExist(string $covers): void
+    {
+        if (str_starts_with($covers, 'group:')) {
+            $groupId = substr($covers, 6);
             if ($this->scopes !== null && !$this->scopes->hasGroup($groupId)) {
                 throw new \InvalidArgumentException(sprintf('Website group "%s" does not exist.', $groupId));
             }
 
-            return 'group:'.$groupId;
+            return;
         }
+        if (str_starts_with($covers, 'website:')) {
+            $token = substr($covers, 8);
+            if ($this->websites !== null && $this->websites->findOneByToken($token) === null) {
+                throw new \InvalidArgumentException(sprintf('Website "%s" is not registered in config/websites.yaml.', $token));
+            }
+        }
+    }
 
-        $token = str_starts_with($covers, 'website:') ? substr($covers, 8) : $covers;
-        if ($token === '' || strlen($token) > 191 || preg_match('/[\x00-\x20\x7f]/', $token) === 1) {
-            throw new \InvalidArgumentException('Choose a valid website token.');
+    /**
+     * Destination IDs that differ only by "-" and "_" would share one secret
+     * key in config/secrets/alerts.yaml and one environment variable name.
+     *
+     * @param list<string> $existingIds
+     */
+    public static function assertSecretNameIsFree(string $id, array $existingIds): void
+    {
+        foreach ($existingIds as $existing) {
+            if ($existing !== $id && AlertSecrets::envNameFor($existing) === AlertSecrets::envNameFor($id)) {
+                throw new \InvalidArgumentException(sprintf(
+                    'Destination ID "%s" is too close to "%s": IDs that differ only by "-" and "_" would share a signing secret. Choose another ID.',
+                    $id,
+                    $existing,
+                ));
+            }
         }
-        if ($this->websites !== null && $this->websites->findOneByToken($token) === null) {
-            throw new \InvalidArgumentException(sprintf('Website "%s" is not registered in config/websites.yaml.', $token));
-        }
-
-        return 'website:'.$token;
     }
 
     /** @return 'hour'|'day'|'week' */

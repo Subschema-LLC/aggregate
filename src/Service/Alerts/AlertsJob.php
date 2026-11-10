@@ -71,7 +71,8 @@ final class AlertsJob implements ScheduledJob
         }
 
         $enabledRules = array_filter($configured['rules'], static fn (array $r): bool => $r['enabled']);
-        $status['enabled'] = $enabledRules !== [];
+        // A rule turned off while firing still needs one more check to close its incident.
+        $status['enabled'] = $enabledRules !== [] || $this->evaluator->hasOpenIncidents();
         if ($status['enabled']) {
             $now = $this->now();
             $completedHour = $this->evaluator->completedUtcHour($now);

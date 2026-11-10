@@ -33,7 +33,7 @@ class Scheduler
     /** @var list<ScheduledJob> */
     private readonly array $jobs;
 
-    /** The jobs run in this order; see config/services.yaml. */
+    /** The jobs run in this order, alerts first when given; see config/services.yaml. */
     public function __construct(
         ScheduledJob $maintenance,
         ScheduledJob $bigQuery,
@@ -44,11 +44,10 @@ class Scheduler
         private readonly LoggerInterface $logger,
         ?ScheduledJob $alerts = null,
     ) {
-        $jobs = [$maintenance, $bigQuery, $reportingDatabase, $forensicDatabase];
-        if ($alerts !== null) {
-            $jobs[] = $alerts;
-        }
-        $this->jobs = $jobs;
+        // Alerts go first: they are quick, and must not wait behind a long
+        // maintenance run or sync to arrive within minutes of an hour ending.
+        $jobs = $alerts !== null ? [$alerts] : [];
+        $this->jobs = [...$jobs, $maintenance, $bigQuery, $reportingDatabase, $forensicDatabase];
     }
 
     /** @return list<ScheduledJob> */

@@ -11,6 +11,7 @@ use PHPUnit\Framework\TestCase;
 use Psr\Log\AbstractLogger;
 use Symfony\Component\Clock\MockClock;
 use Symfony\Component\Filesystem\Filesystem;
+use Symfony\Component\HttpClient\Exception\TransportException;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
 
@@ -103,7 +104,7 @@ final class WebhookSenderTest extends TestCase
 
         self::assertFalse($result['sent']);
         self::assertSame(3, $result['attempts']);
-        self::assertSame('No answer after 3 tries: the receiver answered HTTP 503.', $result['reason']);
+        self::assertSame('Failed after 3 tries: the receiver answered HTTP 503.', $result['reason']);
         self::assertCount(3, array_unique($signatures), 'Each retry signs a fresh timestamp.');
         self::assertCount(1, array_unique($idempotencyKeys), 'All retries share the same Idempotency-Key.');
     }
@@ -161,6 +162,68 @@ final class WebhookSenderTest extends TestCase
      *     window_end: string
      * }
      */
+    public function testWaitsBetweenAttemptsAndDoesNotRetryAnAnswerThatWillNotChange(): void
+    {
+        $clock = new MockClock('2025-06-02 14:05:00 UTC');
+        $times = [];
+        $client = new MockHttpClient(function () use (&$times, $clock): MockResponse {
+            $times[] = $clock->now()->getTimestamp();
+
+            return new MockResponse('', ['http_code' => 500]);
+        });
+        $destination = ['id' => 'geektown-hub', 'label' => 'Geektown Hub', 'url' => 'https://hooks.geektown.example/in'];
+
+        $this->sender($client, $clock)->send($destination, $this->samplePayload());
+        self::assertSame([0, 1, 4], array_map(static fn (int $t): int => $t - $times[0], $times), 'Waits 1 s, then 3 s.');
+
+        $calls = 0;
+        $notFound = new MockHttpClient(function () use (&$calls): MockResponse {
+            ++$calls;
+
+            return new MockResponse('', ['http_code' => 404]);
+        });
+        $result = $this->sender($notFound, $clock)->send($destination, $this->samplePayload());
+        self::assertSame(1, $calls, 'A 404 is not retried.');
+        self::assertSame('Failed: the receiver answered HTTP 404.', $result['reason']);
+
+        $calls = 0;
+        $busy = new MockHttpClient(function () use (&$calls): MockResponse {
+            ++$calls;
+
+            return new MockResponse('', ['http_code' => 429]);
+        });
+        $this->sender($busy, $clock)->send($destination, $this->samplePayload());
+        self::assertSame(3, $calls, 'A 429 is retried.');
+    }
+
+    public function testBlockedPrivateAddressIsReportedOnceAndAHostNamedPrivateIsNot(): void
+    {
+        $clock = new MockClock('2025-06-02 14:05:00 UTC');
+        $calls = 0;
+        $blocked = new MockHttpClient(function (string $method, string $url) use (&$calls): MockResponse {
+            ++$calls;
+            throw new TransportException(sprintf('Host "hooks.geektown.example" is blocked for "%s".', $url));
+        });
+        $result = $this->sender($blocked, $clock)->send(
+            ['id' => 'geektown-hub', 'label' => 'Geektown Hub', 'url' => 'https://hooks.geektown.example/in'],
+            $this->samplePayload(),
+        );
+        self::assertSame(1, $calls);
+        self::assertSame('Failed: the destination resolved to a private or reserved network address.', $result['reason']);
+
+        $calls = 0;
+        $dnsError = new MockHttpClient(function () use (&$calls): MockResponse {
+            ++$calls;
+            throw new TransportException('Could not resolve host: private-hooks.example.com');
+        });
+        $result = $this->sender($dnsError, $clock)->send(
+            ['id' => 'geektown-hub', 'label' => 'Geektown Hub', 'url' => 'https://private-hooks.example.com/in'],
+            $this->samplePayload(),
+        );
+        self::assertSame(3, $calls, 'An ordinary DNS error is retried.');
+        self::assertStringStartsWith('No answer after 3 tries:', $result['reason']);
+    }
+
     private function samplePayload(): array
     {
         return [

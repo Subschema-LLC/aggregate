@@ -95,6 +95,49 @@
                 </p>
             </div>
 
+            <fieldset class="box has-background-light mb-4" aria-describedby="destination-secret-help">
+                <legend class="label mb-2">Signing secret (for webhook destinations)</legend>
+                <p id="destination-secret-help" class="help mb-3">
+                    Each request is signed with <code>X-Aggregate-Signature</code>. A destination with its own secret signs with it;
+                    otherwise it uses the shared secret on the Alerts page.
+                    {% if secret_label %}Now: <strong>{{ secret_label }}</strong>.{% endif %}
+                    {{ component('Ui:DocsLink', {topic: 'alerts.signature', label: 'Check the signature'}) }}
+                </p>
+                {% if own_secret_in_environment %}
+                    <p class="help">Set in the environment, so it cannot be changed here.</p>
+                {% else %}
+                    <div class="field">
+                        <div class="control">
+                            <label class="radio">
+                                <input type="radio" name="secret_choice" value="keep" checked>
+                                {{ is_editing ? 'Keep the current secret' : (shared_secret_set ? 'Use the shared secret' : 'Set a secret later') }}
+                            </label>
+                        </div>
+                        <div class="control">
+                            <label class="radio">
+                                <input type="radio" name="secret_choice" value="generate">
+                                Generate its own secret (shown once after saving)
+                            </label>
+                        </div>
+                        {% if own_secret_in_file %}
+                            <div class="control">
+                                <label class="radio">
+                                    <input type="radio" name="secret_choice" value="shared">
+                                    Remove its own secret and use the shared secret
+                                </label>
+                            </div>
+                        {% endif %}
+                    </div>
+                    <div class="field">
+                        <label class="label is-small" for="destination-secret">Or paste its own secret (write-only)</label>
+                        <div class="control" style="max-width: 28rem;">
+                            <input id="destination-secret" name="secret" class="input is-small" type="password" autocomplete="new-password"
+                                   placeholder="{{ own_secret_in_file ? 'Saved; leave empty to keep it' : 'Leave empty to use the choice above' }}">
+                        </div>
+                    </div>
+                {% endif %}
+            </fieldset>
+
             <div class="field">
                 <label class="label" for="destination-recipients">Recipient email addresses (for email destinations)</label>
                 <div class="control">

@@ -1196,15 +1196,22 @@ refusing them, with the same refusal still available.
 
 **Decision.** Event-gap and tracking-failure alert rules run once per completed
 UTC hour in the scheduler, count rows in `[T − W, T)` with a query capped at the
-rule's threshold `N`, store per-`rule:website` firing state (`ok` or
-`firing:<since_iso>`) in `processing_tasks.fingerprint`, and record deliveries
-in `audit_trail` with `always: true`. Webhook targets receive a signed generic
+rule's threshold `N`, store per-`rule:website` state (`ok`, `firing:<since>` or
+`recovered:<window_end>:<since>`) and each destination's last delivered alert ID
+in `processing_tasks.fingerprint`, and record deliveries in `audit_trail` with
+`always: true`. An alert a destination did not receive is retried hourly for
+24 hours; delivery is at least once, with a stable `id` to de-duplicate on.
+Loading checks a rule's shape only, so a rule whose website, group or retention
+no longer matches is skipped and shown as not checked instead of stopping every
+rule. Webhook targets receive a signed generic
 JSON v1 payload over HTTPS (`NoPrivateNetworkHttpClient`), and email targets go
 through `TransactionalMailer`. There is no separate alerts table. See
 [Alerts](ALERTS.md).
 
 **Why.** Anonymous events are bucketed to the UTC hour on collection, so the
-current open hour is incomplete until it closes. Counting only up to `N` uses
+current open hour is incomplete until it closes. Keeping delivery per
+destination means a receiver that was down is told once it is back, instead of
+the state moving on without it. Counting only up to `N` uses
 the existing `(website_token, created_at)` index and avoids scanning busy
 websites over 24-hour or 168-hour windows. Storing state in
 `processing_tasks.fingerprint` and deliveries in `audit_trail` reuses the

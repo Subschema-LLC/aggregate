@@ -11,7 +11,9 @@ and when it recovers.
 - [How rules are evaluated](#how-rules-are-evaluated)
 - [Rule sources, filters, conditions and windows](#rule-sources-filters-conditions-and-windows)
   - [Catching a broken consent banner](#catching-a-broken-consent-banner)
+- [Rules that cannot be checked](#rules-that-cannot-be-checked)
 - [YAML configuration](#yaml-configuration)
+  - [Signing secrets](#signing-secrets)
 - [CLI commands](#cli-commands)
 - [Webhook payload v1](#webhook-payload-v1)
 - [Check the signature](#check-the-signature)
@@ -53,14 +55,24 @@ UTC hours**:
 - For the `tracking_failures` source, `ProcessingTasks::countTrackingFailuresUpTo()`
   counts failed `tracking_event_store` and `tracking_ingest` rows in
   `processing_tasks` in `[T − W, T)` up to `N + 1`.
-- Each rule's per-website state (`ok` or `firing:<since_iso>`) is stored in
-  `processing_tasks.fingerprint` (under `task_type = 'alerts'`,
-  `subject = '<rule>:<website>'`), which `ProcessingTasks::purgeBefore()`
-  preserves across retention purges.
+- Each rule's per-website state is stored in `processing_tasks.fingerprint`
+  (`task_type = 'alerts'`, `subject = '<rule>:<website>'`): `ok`,
+  `firing:<since>` or `recovered:<window_end>:<since>`. The state names the
+  current alert. Each destination's last delivered alert ID is stored the same
+  way (`task_type = 'alerts_delivery'`, `subject = '<rule>:<destination>:<website>'`).
+  `ProcessingTasks::purgeBefore()` keeps the latest of each, so retention
+  purges never lose them.
 - A continuing breach sends **one** `firing` alert, then **one** `recovered`
-  alert when a completed window is no longer breached.
+  alert when a completed window is no longer breached. A destination that
+  never received the `firing` alert is not sent its `recovered` alert either.
 - A rule that covers a website group or all websites evaluates each member
   website on its own and sends one alert per website.
+- A rule that is turned off, or no longer covers a website, closes the open
+  incident with a `recovered` alert at the next hourly check (not in the hour
+  it fired, so the recovery's `window_end` is always later). A rule that is
+  deleted while firing has no destinations left: its state is reset, so a new
+  rule with the same ID starts fresh, and the audit trail notes that no
+  recovery was sent.
 
 ## Rule sources, filters, conditions and windows
 
@@ -70,7 +82,7 @@ UTC hours**:
 | `privacy_mode` | `all` (default), `enhanced`, `anonymous` | Optional filter for the `events` source. Ignored/rejected for `tracking_failures`. |
 | `event_name` | Safe event name (e.g. `page_view`) or empty | Optional filter for the `events` source. Leave empty to count all event names. |
 | `condition` | `no_events`, `fewer_than`, `more_than` | `no_events` (`0` events) or `fewer_than` (`< N` events) for `events`; `more_than` (`> N` failures) for `tracking_failures`. |
-| `threshold` | Integer `N` | `0` for `no_events`; `>= 1` for `fewer_than`; `>= 0` for `more_than`. |
+| `threshold` | Integer `N`, at most 100,000 | `0` for `no_events`; `>= 1` for `fewer_than`; `>= 0` for `more_than`. |
 | `window` | `hour` (`1h`), `day` (`24h`), `week` (`168h`) | Sliding window of completed UTC hours (`[T − W, T)`). Must not exceed the live retention period. |
 
 ### Catching a broken consent banner
@@ -89,11 +101,32 @@ or group to distinguish a broken consent banner from a removed tracker script:
 If the first rule fires while the second stays `OK`, the tracker is still
 sending anonymous events and the consent signal is what stopped.
 
+Counting stops at `N`, so a busy website is not counted in full. An
+`event_name` filter is the exception to watch: no index includes the event
+name, so a rule such as "fewer than 5 `purchase` events per week" on a busy
+website reads that website's rows for the whole window until it has found
+five, every hour. Prefer a day window for rare events on busy websites.
+
+## Rules that cannot be checked
+
+A rule keeps loading when something it depends on changes elsewhere, so one
+stale rule never stops the others. The Alerts page and `app:alerts:status`
+show it as **Not checked**, with the reason, and it is skipped until it is
+fixed or deleted:
+
+- the website or website group it covers was removed;
+- its window became longer than the live event retention (or
+  `processing_tasks_retention_days` for tracking failures);
+- it covers a group with no websites.
+
+Saving a rule on the page or with `app:alerts:rule` still checks all of these.
+
 ## YAML configuration
 
 Alert destinations and rules live under `alerts` in `config/aggregate.yaml`.
-Webhook signing secrets live in `config/secrets/alerts.yaml` (or
-`ALERTS_WEBHOOK_SECRET` in the environment), never in `config/aggregate.yaml`.
+Webhook signing secrets live in `config/secrets/alerts.yaml` or the
+environment, never in `config/aggregate.yaml` (see
+[signing secrets](#signing-secrets)).
 Saving on the Alerts page or via `app:alerts:*` rewrites `config/aggregate.yaml`;
 hand-written YAML comments are not preserved.
 
@@ -124,6 +157,23 @@ alerts:
         - ops-email
 ```
 
+### Signing secrets
+
+A webhook destination signs with its own secret when it has one, and with the
+shared secret otherwise:
+
+| Secret | Environment | `config/secrets/alerts.yaml` |
+| --- | --- | --- |
+| A destination's own | `ALERTS_WEBHOOK_SECRET_<ID>` (ID upper-cased, `-` as `_`) | `webhook_<id>` |
+| Shared | `ALERTS_WEBHOOK_SECRET` | `webhook_secret` |
+
+For each, the environment wins over the file. The Signing column on the Alerts
+page and in `app:alerts:status` names the secret each destination uses, so
+rotating the shared secret is never mistaken for rotating a destination's own.
+Set, generate or remove a destination's own secret on its Edit page or with
+`app:alerts:destination secret --id=<id>`. Destination IDs that differ only by
+`-` and `_` are refused, because they would share a secret.
+
 ## CLI commands
 
 Every action on the Alerts page is available from the command line and shares
@@ -137,7 +187,9 @@ php bin/console app:alerts:status --json
 # Create, edit, list, or delete destinations and webhook signing secrets
 php bin/console app:alerts:destination create --id=geektown-hub --label="Geektown Hub" --type=webhook --url="https://hooks.example.com/alerts/ingest" --generate-secret
 php bin/console app:alerts:destination create --id=ops-email --label="Ops email" --type=email --recipient=ops@example.com
-php bin/console app:alerts:destination secret --generate-secret
+php bin/console app:alerts:destination secret --generate-secret                   # shared secret
+php bin/console app:alerts:destination secret --id=geektown-hub --generate-secret   # its own secret
+php bin/console app:alerts:destination secret --id=geektown-hub --use-shared        # back to the shared one
 
 # Create, edit, list, or delete rules
 php bin/console app:alerts:rule create --id=geektown-weekly --website=019c7e21-89ab-7cde-8f01-23456789abcd --source=events --condition=fewer_than --threshold=5 --window=week --destination=geektown-hub
@@ -216,16 +268,30 @@ To verify a webhook in your receiver:
 ## Retries, catch-up and deduplication
 
 - **Within a run**: `WebhookSender` allows up to 5 seconds per attempt, follows
-  no HTTP redirects, reads at most 4 KiB of the response body, and retries up
-  to 3 times on network errors or non-2xx responses. Each retry signs a fresh
-  `t` timestamp while keeping the same `id` and `Idempotency-Key`.
+  no HTTP redirects and reads at most 4 KiB of the response body. It makes up
+  to 3 attempts, waiting 1 and then 3 seconds, and only retries what can
+  succeed later: no answer, a 5xx, 408, 425 or 429. A redirect or another 4xx
+  (such as 401 or 404) fails at once. Each attempt signs a fresh `t` timestamp
+  while keeping the same `id` and `Idempotency-Key`.
+- **Across runs**: an alert a destination did not receive is retried at each
+  hourly check until its `window_end` is 24 hours old, then given up; the
+  Recent alerts list says which. A newer alert for the same rule and website
+  replaces it. An email destination counts as delivered when at least one
+  listed recipient got the message, so working recipients are not sent it
+  again.
 - **Missed scheduler runs**: If the scheduler was stopped and resumes later,
   `AlertEvaluator` catches up across at most 24 completed UTC hours and sends
-  only the newest transition per rule and website so receivers are never
-  flooded after an outage.
-- **Deduplication**: Before sending, `AlertEvaluator` checks `audit_trail` for
-  an existing `sent` record for the same transition and records every delivery
-  with `always: true`.
+  only the net change per rule and website: an incident that opened and closed
+  during the outage sends nothing, and one that closed and opened again sends
+  the closing `recovered` and then the new `firing`.
+- **Deduplication**: a destination's delivery record holds the last alert ID it
+  received, so an alert is never sent to it twice. If the process stops between
+  a send and that record, the alert is sent again at the next check with the
+  same `id`, so receivers should de-duplicate on `id`. Every delivery is
+  recorded in `audit_trail` with `always: true`; a continuing breach adds no
+  rows, so Recent alerts keeps showing the alerts that were sent.
+- **Scheduling**: the `alerts` job runs first in each scheduler run, so a long
+  maintenance run or sync does not delay it.
 
 ## Privacy and redaction
 

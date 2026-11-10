@@ -115,6 +115,8 @@
                                                 <span class="tag is-success is-light">&#10003; {{ rule.status.label }}</span>
                                             {% elseif rule.status.state == 'off' %}
                                                 <span class="tag is-light">{{ rule.status.label }}</span>
+                                            {% elseif rule.status.state == 'problem' %}
+                                                <span class="has-text-warning-dark is-size-7">&#9888; {{ rule.status.label }}</span>
                                             {% else %}
                                                 <span class="tag is-info is-light">&#9719; {{ rule.status.label }}</span>
                                             {% endif %}
@@ -167,7 +169,7 @@
                                     <th scope="col">Label</th>
                                     <th scope="col">Type</th>
                                     <th scope="col">Target (redacted)</th>
-                                    <th scope="col">Signing / Service</th>
+                                    <th scope="col">Signing / service</th>
                                     <th scope="col">Actions</th>
                                 </tr>
                             </thead>
@@ -248,16 +250,20 @@
 
                 {# Webhook signing secret box #}
                 <div class="box has-background-light">
-                    <h3 class="title is-6 mb-2">Webhook signing secret</h3>
+                    <h3 class="title is-6 mb-2">Shared webhook signing secret</h3>
                     <p id="alerts-secret-help" class="help mb-3">
                         Stored in <code>config/secrets/alerts.yaml</code> (or <code>ALERTS_WEBHOOK_SECRET</code> in the environment) and used to sign
-                        <code>X-Aggregate-Signature: t=&lt;unix&gt;,v1=&lt;hmac&gt;</code> on every webhook request.
+                        <code>X-Aggregate-Signature: t=&lt;unix&gt;,v1=&lt;hmac&gt;</code> for webhook destinations that have no secret of their own.
+                        The Signing column shows which secret each destination uses; set its own secret on its Edit page.
                         {{ component('Ui:DocsLink', {topic: 'alerts.signature', label: 'Check the signature'}) }}
                     </p>
 
                     {% if generated_secret %}
                         <div class="notification is-warning is-light mb-3" role="status" aria-live="polite" data-controller="clipboard">
-                            <p class="has-text-weight-semibold mb-1">Shown once. Copy it now.</p>
+                            <p class="has-text-weight-semibold mb-1">
+                                {% if generated_secret_destination %}New signing secret for {{ generated_secret_destination }}.{% else %}New shared signing secret.{% endif %}
+                                Shown once. Copy it now.
+                            </p>
                             <div class="field has-addons mb-1">
                                 <div class="control is-expanded">
                                     <input
@@ -369,8 +375,8 @@
                             </tbody>
                         </table>
                     </div>
-                    {% if older_removed %}
-                        <p class="help has-text-grey mt-2">Older entries were removed or are available in <a href="{{ path('app_audit_trail') }}">Audit trail</a>.</p>
+                    {% if has_more %}
+                        <p class="help has-text-grey mt-2">Older entries are on <a href="{{ path('app_audit_trail') }}">Audit trail</a>.</p>
                     {% endif %}
                 {% endif %}
             </div>

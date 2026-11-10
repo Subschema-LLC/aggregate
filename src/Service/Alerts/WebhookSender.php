@@ -8,6 +8,7 @@ use App\Service\Email\TransactionalMailer;
 use Psr\Clock\ClockInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Clock\Clock;
+use Symfony\Component\Clock\ClockInterface as SymfonyClock;
 use Symfony\Component\HttpClient\NoPrivateNetworkHttpClient;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
@@ -17,9 +18,12 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  * X-Aggregate-Signature (`t=<unix>,v1=<HMAC-SHA256("t.body")>`) and
  * Idempotency-Key (`<alert.id>`).
  *
- * Retries up to MAX_ATTEMPTS times within the run, signing each attempt with a
- * fresh timestamp while keeping the same alert id. Full webhook URLs and
- * secrets are redacted from every error message and log entry.
+ * Makes up to MAX_ATTEMPTS attempts within the run, waiting RETRY_DELAYS
+ * between them, and only retries what can succeed later: no answer, a 5xx,
+ * 408, 425 or 429. Each attempt is signed with a fresh timestamp and keeps the
+ * same alert id. An alert that still fails is retried at the next hourly check
+ * by AlertEvaluator. Full webhook URLs and secrets are redacted from every
+ * error message and log entry.
  *
  * @phpstan-type AlertPayload array{
  *     schema_version: '1',
@@ -39,6 +43,10 @@ class WebhookSender
     public const TIMEOUT = 5.0;
     public const MAX_RESPONSE_BYTES = 4096;
     public const MAX_ATTEMPTS = 3;
+    /** Seconds to wait before the second and third attempts. */
+    public const RETRY_DELAYS = [1, 3];
+    public const USER_AGENT = 'Alert-Webhook/1';
+    private const RETRYABLE_STATUS = [408, 425, 429];
 
     private readonly HttpClientInterface $httpClient;
     private readonly ClockInterface $clock;
@@ -66,8 +74,8 @@ class WebhookSender
      */
     public function send(array $destination, array $payload): array
     {
-        $url = (string) ($destination['url'] ?? '');
-        $destinationId = (string) ($destination['id'] ?? '');
+        $url = $destination['url'];
+        $destinationId = $destination['id'];
         $secret = null;
 
         try {
@@ -103,9 +111,15 @@ class WebhookSender
 
         $body = json_encode([$payload], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         $lastStatus = null;
-        $lastError = 'No answer from receiver.';
+        $lastError = 'no answer from the receiver';
+        $answered = false;
+        $attempts = 0;
 
-        for ($attempt = 1; $attempt <= self::MAX_ATTEMPTS; ++$attempt) {
+        while ($attempts < self::MAX_ATTEMPTS) {
+            if ($attempts > 0) {
+                $this->wait(self::RETRY_DELAYS[$attempts - 1]);
+            }
+            ++$attempts;
             $timestamp = $this->clock->now()->getTimestamp();
             $signature = self::sign($timestamp, $body, $secret);
 
@@ -114,7 +128,7 @@ class WebhookSender
                     'headers' => [
                         'Content-Type' => 'application/json',
                         'Accept' => 'application/json, text/plain, */*',
-                        'User-Agent' => 'Aggregate-Webhook/1',
+                        'User-Agent' => self::USER_AGENT,
                         'X-Aggregate-Signature' => sprintf('t=%d,v1=%s', $timestamp, $signature),
                         'Idempotency-Key' => $payload['id'],
                     ],
@@ -127,9 +141,10 @@ class WebhookSender
 
                 $statusCode = $response->getStatusCode();
                 $lastStatus = $statusCode;
+                $answered = true;
                 $readBytes = 0;
                 foreach ($this->httpClient->stream($response) as $chunk) {
-                    $readBytes += strlen($chunk->getContent(false));
+                    $readBytes += strlen($chunk->getContent());
                     if ($readBytes > self::MAX_RESPONSE_BYTES) {
                         $response->cancel();
                         break;
@@ -140,7 +155,7 @@ class WebhookSender
                     return [
                         'sent' => true,
                         'status_code' => $statusCode,
-                        'attempts' => $attempt,
+                        'attempts' => $attempts,
                         'reason' => sprintf('HTTP %d (id %s)', $statusCode, $payload['id']),
                     ];
                 }
@@ -151,18 +166,29 @@ class WebhookSender
                 }
 
                 $lastError = sprintf('the receiver answered HTTP %d', $statusCode);
+                if ($statusCode < 500 && !in_array($statusCode, self::RETRYABLE_STATUS, true)) {
+                    break; // A 4xx such as 401 or 404 will not change on retry.
+                }
             } catch (\Throwable $e) {
-                $lastError = self::redact($e->getMessage(), [$url, $secret]);
-                if (str_contains(strtolower($lastError), 'private') || str_contains(strtolower($lastError), 'reserved') || str_contains(strtolower($lastError), 'blocked')) {
-                    $lastError = 'destination resolved to a private or reserved network address';
+                if (preg_match('/^(?:Host|IP) "[^"]*" is blocked for /', $e->getMessage()) === 1) {
+                    $lastError = 'the destination resolved to a private or reserved network address';
                     break;
                 }
+                if ($lastStatus === null) {
+                    $answered = false;
+                }
+                $lastError = self::redact($e->getMessage(), [$url, $secret]);
             }
         }
 
-        $reason = self::MAX_ATTEMPTS > 1 && ($attempt ?? 1) >= self::MAX_ATTEMPTS
-            ? sprintf('No answer after %d tries: %s.', self::MAX_ATTEMPTS, rtrim($lastError, '.'))
-            : sprintf('Failed: %s.', rtrim($lastError, '.'));
+        $error = rtrim($lastError, '.');
+        if ($attempts < 2) {
+            $reason = sprintf('Failed: %s.', $error);
+        } elseif ($answered) {
+            $reason = sprintf('Failed after %d tries: %s.', $attempts, $error);
+        } else {
+            $reason = sprintf('No answer after %d tries: %s.', $attempts, $error);
+        }
         $reason = self::redact($reason, [$url, $secret]);
 
         $this->logger->warning('An alert webhook delivery failed.', [
@@ -175,9 +201,19 @@ class WebhookSender
         return [
             'sent' => false,
             'status_code' => $lastStatus,
-            'attempts' => min($attempt ?? self::MAX_ATTEMPTS, self::MAX_ATTEMPTS),
+            'attempts' => $attempts,
             'reason' => $reason,
         ];
+    }
+
+    private function wait(int $seconds): void
+    {
+        if ($this->clock instanceof SymfonyClock) {
+            $this->clock->sleep($seconds);
+
+            return;
+        }
+        sleep($seconds);
     }
 
     public static function sign(int $timestamp, string $body, #[\SensitiveParameter] string $secret): string

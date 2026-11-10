@@ -20,21 +20,32 @@ use Psr\Log\LoggerInterface;
 use Symfony\Component\Clock\Clock;
 
 /**
- * Evaluates alert rules on completed UTC hours, persists per-rule/website
- * firing state in processing_tasks.fingerprint, and delivers firing, recovery,
- * and test alerts through WebhookSender and TransactionalMailer.
+ * Evaluates alert rules on completed UTC hours, keeps per-rule/website firing
+ * state in processing_tasks.fingerprint, and delivers firing, recovery and
+ * test alerts through WebhookSender and TransactionalMailer.
  *
- * Every delivery attempt (sent, suppressed, or failed) is recorded in
- * audit_trail with always: true so disabling an audit switch never hides
- * recent alerts or breaks deduplication.
+ * State per rule and website (task type `alerts`, subject `<rule>:<website>`):
+ * `ok`, `firing:<since>` or `recovered:<window_end>:<since>`. The state names
+ * the current alert, and each destination's last delivered alert ID is kept
+ * under task type `alerts_delivery`, so an alert that could not be delivered
+ * is retried at the next hourly check (for up to RETRY_HOURS) instead of being
+ * lost, and a delivered one is never sent twice.
+ *
+ * Every delivery (sent, suppressed or failed) is recorded in audit_trail with
+ * always: true, so turning off an audit switch never hides recent alerts.
  *
  * @phpstan-import-type DestinationConfig from AlertRuleValidator
  * @phpstan-import-type RuleConfig from AlertRuleValidator
  * @phpstan-import-type AlertPayload from WebhookSender
+ *
+ * @phpstan-type Site array{token: string, name: string, domain: string}
+ * @phpstan-type Alert array{type: 'firing'|'recovered', window_end: string, since: string}
+ * @phpstan-type Counts array{sent: int, suppressed: int, failed: int}
  */
 class AlertEvaluator
 {
     public const TASK_TYPE = 'alerts';
+    public const DELIVERY_TASK_TYPE = 'alerts_delivery';
     public const AUDIT_CATEGORY = 'operations';
     public const OP_FIRING = 'alert_firing';
     public const OP_RECOVERED = 'alert_recovered';
@@ -48,10 +59,15 @@ class AlertEvaluator
     public const STATE_FIRING = 'firing';
     public const STATE_WAITING = 'waiting';
     public const STATE_OFF = 'off';
+    public const STATE_PROBLEM = 'problem';
 
     public const LEASE_SECONDS = 900;
     public const MAX_CATCHUP_HOURS = 24;
+    /** An undelivered alert is retried at each hourly check until its window ended this many hours ago. */
+    public const RETRY_HOURS = 24;
     public const RECENT_LIMIT = 20;
+
+    private const ISO_HOUR_LENGTH = 20;
 
     private readonly ClockInterface $clock;
 
@@ -82,50 +98,57 @@ class AlertEvaluator
     }
 
     /**
+     * Whether a rule and website is still firing although its rule was turned
+     * off, deleted or no longer covers the website: the next check closes it.
+     */
+    public function hasOpenIncidents(): bool
+    {
+        try {
+            $latest = $this->tasks->latest(self::TASK_TYPE);
+        } catch (\Throwable) {
+            return false;
+        }
+        foreach ($latest as $subject => $item) {
+            if ($subject !== '' && self::parseState($item['success']['fingerprint'] ?? null)['kind'] === self::STATE_FIRING) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Evaluates all enabled rules over completed UTC hours since the last
-     * successful run (up to 24 hours of catch-up).
+     * successful run (up to 24 hours of catch-up), retries alerts that could
+     * not be delivered, and closes incidents of rules that were turned off.
      *
      * @return array{status: 'off'|'not_due'|'busy'|'ran'|'failed', evaluated_hours: int, sent: int, suppressed: int, failed: int, window_end: ?string, message: string}
      */
     public function evaluate(TaskTrigger $trigger, bool $force = false): array
     {
+        $result = static fn (string $status, string $message, ?string $windowEnd = null, int $hours = 0, int $sent = 0, int $suppressed = 0, int $failed = 0): array => [
+            'status' => $status,
+            'evaluated_hours' => $hours,
+            'sent' => $sent,
+            'suppressed' => $suppressed,
+            'failed' => $failed,
+            'window_end' => $windowEnd,
+            'message' => $message,
+        ];
+
         if (!$this->features->isEnabled('alerts')) {
-            return [
-                'status' => 'off',
-                'evaluated_hours' => 0,
-                'sent' => 0,
-                'suppressed' => 0,
-                'failed' => 0,
-                'window_end' => null,
-                'message' => 'Alerts are turned off.',
-            ];
+            return $result('off', 'Alerts are turned off.');
         }
 
         try {
             $configured = $this->settings->toArray();
         } catch (\Throwable $e) {
-            return [
-                'status' => 'failed',
-                'evaluated_hours' => 0,
-                'sent' => 0,
-                'suppressed' => 0,
-                'failed' => 0,
-                'window_end' => null,
-                'message' => 'The alert settings in YAML are invalid'.($e instanceof \InvalidArgumentException ? ': '.$e->getMessage() : '.'),
-            ];
+            return $result('failed', 'The alert settings in YAML are invalid'.($e instanceof \InvalidArgumentException ? ': '.$e->getMessage() : '.'));
         }
 
         $enabledRules = array_filter($configured['rules'], static fn (array $r): bool => $r['enabled']);
-        if ($enabledRules === []) {
-            return [
-                'status' => 'off',
-                'evaluated_hours' => 0,
-                'sent' => 0,
-                'suppressed' => 0,
-                'failed' => 0,
-                'window_end' => null,
-                'message' => 'No alert rules are enabled.',
-            ];
+        if ($enabledRules === [] && !$this->hasOpenIncidents()) {
+            return $result('off', 'No alert rules are enabled.');
         }
 
         $now = $this->now();
@@ -133,173 +156,86 @@ class AlertEvaluator
         $completedIso = self::formatIsoHour($completedHour);
 
         $latest = $this->tasks->latest(self::TASK_TYPE);
-        $cursorFingerprint = $latest['']['success']['fingerprint'] ?? null;
-        $cursorHour = self::parseIsoHour($cursorFingerprint);
+        $cursorHour = self::parseIsoHour($latest['']['success']['fingerprint'] ?? null);
 
         if (!$force && $cursorHour !== null && $cursorHour >= $completedHour) {
-            return [
-                'status' => 'not_due',
-                'evaluated_hours' => 0,
-                'sent' => 0,
-                'suppressed' => 0,
-                'failed' => 0,
-                'window_end' => $completedIso,
-                'message' => 'Not due yet.',
-            ];
+            return $result('not_due', 'Not due yet.', $completedIso);
         }
 
         $taskId = $this->tasks->start(self::TASK_TYPE, null, $trigger, $now, self::LEASE_SECONDS);
         if ($taskId === null) {
-            return [
-                'status' => 'busy',
-                'evaluated_hours' => 0,
-                'sent' => 0,
-                'suppressed' => 0,
-                'failed' => 0,
-                'window_end' => $completedIso,
-                'message' => 'Another alert evaluation is in progress.',
-            ];
+            return $result('busy', 'Another alert evaluation is in progress.', $completedIso);
         }
 
         $hours = $this->hoursToEvaluate($cursorHour, $completedHour);
-        $sent = 0;
-        $suppressed = 0;
-        $failed = 0;
+        /** @var Counts $counts */
+        $counts = ['sent' => 0, 'suppressed' => 0, 'failed' => 0];
+        $skipped = 0;
 
         try {
             $installation = $this->installationUrl();
             $destinations = $configured['destinations'];
+            $delivered = $this->tasks->latest(self::DELIVERY_TASK_TYPE);
+            $checked = [];
 
             foreach ($enabledRules as $rule) {
-                $websites = $this->settings->coveredWebsites($rule);
-                foreach ($websites as $site) {
-                    $subjectKey = $rule['id'].':'.$site['token'];
-                    $persistedFingerprint = $latest[$subjectKey]['success']['fingerprint'] ?? null;
-                    $state = $persistedFingerprint;
-                    $transition = null;
-                    $continuingBreach = false;
+                if ($this->settings->referenceProblem($rule) !== null) {
+                    ++$skipped;
+                    continue;
+                }
+                foreach ($this->settings->coveredWebsites($rule) as $site) {
+                    $subject = self::stateSubject($rule['id'], $site['token']);
+                    $checked[$subject] = true;
+                    $persisted = $latest[$subject]['success']['fingerprint'] ?? null;
+                    [$state, $closing] = $this->walk($rule, $site['token'], $hours, $persisted);
 
-                    foreach ($hours as $hourEnd) {
-                        $breached = $this->isWindowBreached($rule, $site['token'], $hourEnd);
-                        $isFiring = $state !== null && str_starts_with($state, 'firing:');
-
-                        if ($breached) {
-                            if (!$isFiring) {
-                                $sinceIso = self::formatIsoHour($hourEnd);
-                                $state = 'firing:'.$sinceIso;
-                                $transition = [
-                                    'type' => 'firing',
-                                    'window_end' => $hourEnd,
-                                    'since_iso' => $sinceIso,
-                                ];
-                                $continuingBreach = false;
-                            } else {
-                                $sinceIso = substr((string) $state, 7);
-                                if ($transition === null) {
-                                    $continuingBreach = true;
-                                }
-                            }
-                        } else {
-                            if ($isFiring) {
-                                $sinceIso = substr((string) $state, 7);
-                                $state = 'ok';
-                                $transition = [
-                                    'type' => 'recovered',
-                                    'window_end' => $hourEnd,
-                                    'since_iso' => $sinceIso,
-                                ];
-                                $continuingBreach = false;
-                            } elseif ($state === null) {
-                                $state = 'ok';
-                            }
-                        }
+                    if ($closing !== null) {
+                        // Recovered and broke again during catch-up: close the earlier incident first.
+                        $this->deliverToAll($closing, $rule, $site, $destinations, $installation, $delivered, $completedHour, $trigger, $taskId, $counts, false);
                     }
-
-                    if ($transition !== null) {
-                        $payload = $this->buildPayload(
-                            $transition['type'],
-                            $rule,
-                            $site,
-                            $installation,
-                            $transition['window_end'],
-                            $transition['since_iso'],
-                        );
-                        foreach ($rule['destinations'] as $destId) {
-                            $destination = $destinations[$destId] ?? null;
-                            if ($destination === null) {
-                                continue;
-                            }
-                            $outcome = $this->deliver($destination, $rule, $payload, $trigger, $taskId);
-                            if ($outcome === self::OUTCOME_SENT) {
-                                ++$sent;
-                            } elseif ($outcome === self::OUTCOME_SUPPRESSED) {
-                                ++$suppressed;
-                            } else {
-                                ++$failed;
-                            }
-                        }
-                    } elseif ($continuingBreach && $state !== null && str_starts_with($state, 'firing:')) {
-                        $sinceIso = substr($state, 7);
-                        $payload = $this->buildPayload('firing', $rule, $site, $installation, $completedHour, $sinceIso);
-                        foreach ($rule['destinations'] as $destId) {
-                            $destination = $destinations[$destId] ?? null;
-                            if ($destination === null) {
-                                continue;
-                            }
-                            $this->recordDelivery(
-                                self::OP_FIRING,
-                                self::OUTCOME_SUPPRESSED,
-                                $rule['id'],
-                                $site['domain'] !== '' ? $site['domain'] : $site['token'],
-                                $destination['label'],
-                                $trigger->requestedBy,
-                                $taskId,
-                                sprintf('Already alerted for this gap (since %s).', $sinceIso),
-                            );
-                            ++$suppressed;
-                        }
+                    $current = self::alertForState($state);
+                    if ($current !== null) {
+                        $this->deliverToAll($current, $rule, $site, $destinations, $installation, $delivered, $completedHour, $trigger, $taskId, $counts, true);
                     }
-
-                    if ($state !== null && $state !== $persistedFingerprint) {
-                        $this->saveRuleWebsiteState($subjectKey, $state, $trigger, $this->now());
+                    if ($state !== $persisted) {
+                        $this->saveState($subject, $state, $trigger);
                     }
                 }
             }
 
+            $this->closeUncheckedIncidents($configured['rules'], $checked, $latest, $destinations, $installation, $delivered, $completedHour, $trigger, $taskId, $counts);
+
             $summary = sprintf(
                 'Evaluated %d rule%s for window ending %s: %d sent, %d suppressed, %d failed.',
-                count($enabledRules),
-                count($enabledRules) === 1 ? '' : 's',
+                count($enabledRules) - $skipped,
+                count($enabledRules) - $skipped === 1 ? '' : 's',
                 $completedIso,
-                $sent,
-                $suppressed,
-                $failed,
+                $counts['sent'],
+                $counts['suppressed'],
+                $counts['failed'],
             );
-            $this->tasks->succeed($taskId, $this->now(), $sent, $summary, null, $completedIso);
+            if ($skipped > 0) {
+                $summary .= sprintf(' %d rule%s skipped: see the Alerts page.', $skipped, $skipped === 1 ? '' : 's');
+            }
+            // The evaluation itself succeeded (and moves the hourly cursor);
+            // failed deliveries are recorded per destination and retried.
+            $this->tasks->succeed($taskId, $this->now(), $counts['sent'], $summary, null, $completedIso);
 
-            return [
-                'status' => $failed > 0 && $sent === 0 ? 'failed' : 'ran',
-                'evaluated_hours' => count($hours),
-                'sent' => $sent,
-                'suppressed' => $suppressed,
-                'failed' => $failed,
-                'window_end' => $completedIso,
-                'message' => $summary,
-            ];
+            return $result(
+                $counts['failed'] > 0 && $counts['sent'] === 0 ? 'failed' : 'ran',
+                $summary,
+                $completedIso,
+                count($hours),
+                $counts['sent'],
+                $counts['suppressed'],
+                $counts['failed'],
+            );
         } catch (\Throwable $e) {
             $reason = WebhookSender::redact($e->getMessage());
             $this->logger->error('Alert evaluation failed.', ['exception_class' => $e::class, 'error' => $reason]);
             $this->tasks->fail($taskId, $this->now(), 'Alert evaluation failed: '.$reason);
 
-            return [
-                'status' => 'failed',
-                'evaluated_hours' => 0,
-                'sent' => $sent,
-                'suppressed' => $suppressed,
-                'failed' => $failed + 1,
-                'window_end' => $completedIso,
-                'message' => 'Alert evaluation failed: '.$reason,
-            ];
+            return $result('failed', 'Alert evaluation failed: '.$reason, $completedIso, 0, $counts['sent'], $counts['suppressed'], $counts['failed'] + 1);
         }
     }
 
@@ -448,7 +384,7 @@ class AlertEvaluator
      *     last_window_end: ?string,
      *     firing_count: int,
      *     rules: array<string, array{
-     *         state: 'ok'|'firing'|'waiting'|'off',
+     *         state: 'ok'|'firing'|'waiting'|'off'|'problem',
      *         label: string,
      *         since: ?string,
      *         since_formatted: ?string
@@ -463,9 +399,10 @@ class AlertEvaluator
             $latest = [];
         }
 
-        $jobSuccess = $latest['']['success'] ?? null;
-        $jobAttempt = $latest['']['attempt'] ?? null;
-        $lastCheck = $jobAttempt['finished_at'] ?? $jobAttempt['started_at'] ?? null;
+        $job = $latest[''] ?? null;
+        $jobSuccess = $job !== null ? $job['success'] : null;
+        $jobAttempt = $job !== null ? $job['attempt'] : null;
+        $lastCheck = $jobAttempt !== null ? ($jobAttempt['finished_at'] ?? $jobAttempt['started_at']) : null;
         $lastWindowEnd = $jobSuccess['fingerprint'] ?? null;
 
         try {
@@ -474,44 +411,46 @@ class AlertEvaluator
             $rules = [];
         }
 
+        $status = static fn (string $state, string $label, ?string $since = null, ?string $sinceFormatted = null): array => [
+            'state' => $state,
+            'label' => $label,
+            'since' => $since,
+            'since_formatted' => $sinceFormatted,
+        ];
+
         $ruleStatuses = [];
         $firingCount = 0;
 
         foreach ($rules as $id => $rule) {
             if (!$rule['enabled']) {
-                $ruleStatuses[$id] = [
-                    'state' => self::STATE_OFF,
-                    'label' => 'Off',
-                    'since' => null,
-                    'since_formatted' => null,
-                ];
+                $ruleStatuses[$id] = $status(self::STATE_OFF, 'Off');
+                continue;
+            }
+
+            $problem = $this->settings->referenceProblem($rule);
+            if ($problem !== null) {
+                $ruleStatuses[$id] = $status(self::STATE_PROBLEM, 'Not checked: '.$problem);
                 continue;
             }
 
             $sites = $this->settings->coveredWebsites($rule);
             if ($sites === []) {
-                $ruleStatuses[$id] = [
-                    'state' => self::STATE_WAITING,
-                    'label' => 'Waiting for the first full hour',
-                    'since' => null,
-                    'since_formatted' => null,
-                ];
+                $ruleStatuses[$id] = $status(self::STATE_PROBLEM, 'Not checked: it covers no websites.');
                 continue;
             }
 
             $earliestFiring = null;
             $anyEvaluated = false;
             foreach ($sites as $site) {
-                $fp = $latest[$id.':'.$site['token']]['success']['fingerprint'] ?? null;
-                if ($fp === null) {
+                $fingerprint = $latest[self::stateSubject($id, $site['token'])]['success']['fingerprint'] ?? null;
+                if ($fingerprint === null) {
                     continue;
                 }
                 $anyEvaluated = true;
-                if (str_starts_with($fp, 'firing:')) {
-                    $sinceIso = substr($fp, 7);
-                    if ($earliestFiring === null || strcmp($sinceIso, $earliestFiring) < 0) {
-                        $earliestFiring = $sinceIso;
-                    }
+                $parsed = self::parseState($fingerprint);
+                if ($parsed['kind'] === self::STATE_FIRING && $parsed['since'] !== null
+                    && ($earliestFiring === null || strcmp($parsed['since'], $earliestFiring) < 0)) {
+                    $earliestFiring = $parsed['since'];
                 }
             }
 
@@ -519,26 +458,11 @@ class AlertEvaluator
                 ++$firingCount;
                 $sinceDate = self::parseIsoHour($earliestFiring);
                 $formatted = $sinceDate !== null ? $sinceDate->format('Y-m-d H:00').' UTC' : $earliestFiring;
-                $ruleStatuses[$id] = [
-                    'state' => self::STATE_FIRING,
-                    'label' => 'Firing since '.$formatted,
-                    'since' => $earliestFiring,
-                    'since_formatted' => $formatted,
-                ];
+                $ruleStatuses[$id] = $status(self::STATE_FIRING, 'Firing since '.$formatted, $earliestFiring, $formatted);
             } elseif ($anyEvaluated) {
-                $ruleStatuses[$id] = [
-                    'state' => self::STATE_OK,
-                    'label' => 'OK',
-                    'since' => null,
-                    'since_formatted' => null,
-                ];
+                $ruleStatuses[$id] = $status(self::STATE_OK, 'OK');
             } else {
-                $ruleStatuses[$id] = [
-                    'state' => self::STATE_WAITING,
-                    'label' => 'Waiting for the first full hour',
-                    'since' => null,
-                    'since_formatted' => null,
-                ];
+                $ruleStatuses[$id] = $status(self::STATE_WAITING, 'Waiting for the first full hour');
             }
         }
 
@@ -566,7 +490,7 @@ class AlertEvaluator
      *         outcome_label: string,
      *         reason: string
      *     }>,
-     *     older_removed: bool
+     *     has_more: bool
      * }
      */
     public function recentAlerts(int $limit = self::RECENT_LIMIT): array
@@ -588,7 +512,7 @@ class AlertEvaluator
                 ['ops' => ArrayParameterType::STRING],
             );
         } catch (\Throwable) {
-            return ['entries' => [], 'older_removed' => false];
+            return ['entries' => [], 'has_more' => false];
         }
 
         $entries = [];
@@ -599,7 +523,7 @@ class AlertEvaluator
                 : new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
 
             $parts = explode(' · ', (string) ($row['subject'] ?? ''), 3);
-            $ruleId = $parts[0] ?? '';
+            $ruleId = $parts[0];
             $website = $parts[1] ?? '';
             $destination = $parts[2] ?? '';
 
@@ -638,7 +562,7 @@ class AlertEvaluator
 
         return [
             'entries' => $entries,
-            'older_removed' => $total > $limit,
+            'has_more' => $total > $limit,
         ];
     }
 
@@ -717,8 +641,287 @@ class AlertEvaluator
     }
 
     /**
-     * @param RuleConfig                                      $rule
-     * @param array{token: string, name: string, domain: string} $site
+     * Walks the hours to evaluate for one rule and website and works out the
+     * new state. Only the net change is reported: an incident that opened and
+     * closed during catch-up sends nothing, and one that closed and opened
+     * again closes the earlier incident (returned as the closing alert) before
+     * the new one fires.
+     *
+     * @param RuleConfig               $rule
+     * @param list<\DateTimeImmutable> $hours
+     *
+     * @return array{0: string, 1: ?Alert}
+     */
+    private function walk(array $rule, string $token, array $hours, ?string $persisted): array
+    {
+        $before = self::parseState($persisted);
+        $wasFiring = $before['kind'] === self::STATE_FIRING;
+        $firing = $wasFiring;
+        $since = $before['since'];
+        $persistedClosedAt = null;
+
+        foreach ($hours as $hourEnd) {
+            $breached = $this->isWindowBreached($rule, $token, $hourEnd);
+            if ($breached && !$firing) {
+                $firing = true;
+                $since = self::formatIsoHour($hourEnd);
+            } elseif (!$breached && $firing) {
+                if ($wasFiring && $persistedClosedAt === null && $since === $before['since']) {
+                    $persistedClosedAt = self::formatIsoHour($hourEnd);
+                }
+                $firing = false;
+            }
+        }
+
+        $closesPersisted = $wasFiring && $persistedClosedAt !== null && $before['since'] !== null;
+        if ($firing && $since !== null && (!$wasFiring || $since !== $before['since'])) {
+            $closing = $closesPersisted
+                ? ['type' => 'recovered', 'window_end' => (string) $persistedClosedAt, 'since' => (string) $before['since']]
+                : null;
+
+            return ['firing:'.$since, $closing];
+        }
+        if ($closesPersisted) {
+            return ['recovered:'.$persistedClosedAt.':'.$before['since'], null];
+        }
+
+        return [$persisted ?? 'ok', null];
+    }
+
+    /**
+     * Closes incidents that the main loop did not check: a rule turned off or
+     * no longer covering a website sends a recovery to its destinations; a
+     * deleted rule has no destinations left, so its state is reset and the
+     * audit trail says no recovery was sent. Recoveries that could not be
+     * delivered are retried here too.
+     *
+     * @param array<string, RuleConfig>                                     $rules
+     * @param array<string, true>                                           $checked
+     * @param array<string, array{attempt: array<string, mixed>, success: ?array<string, mixed>}> $latest
+     * @param array<string, DestinationConfig>                              $destinations
+     * @param array<string, array{attempt: array<string, mixed>, success: ?array<string, mixed>}> $delivered
+     * @param Counts                                                        $counts
+     */
+    private function closeUncheckedIncidents(
+        array $rules,
+        array $checked,
+        array $latest,
+        array $destinations,
+        string $installation,
+        array &$delivered,
+        \DateTimeImmutable $completedHour,
+        TaskTrigger $trigger,
+        int $taskId,
+        array &$counts,
+    ): void {
+        foreach ($latest as $subject => $item) {
+            $subject = (string) $subject;
+            if ($subject === '' || isset($checked[$subject])) {
+                continue;
+            }
+            $before = self::parseState(isset($item['success']['fingerprint']) ? (string) $item['success']['fingerprint'] : null);
+            if ($before['kind'] !== self::STATE_FIRING && $before['kind'] !== 'recovered') {
+                continue;
+            }
+            $parts = explode(':', $subject, 2);
+            if (count($parts) !== 2 || $before['since'] === null) {
+                continue;
+            }
+            [$ruleId, $token] = $parts;
+            if (str_starts_with($token, '#')) {
+                continue;
+            }
+            $rule = $rules[$ruleId] ?? null;
+
+            if ($rule === null) {
+                if ($before['kind'] === self::STATE_FIRING) {
+                    $this->saveState($subject, 'ok', $trigger);
+                    $this->recordDelivery(self::OP_RECOVERED, self::OUTCOME_SUPPRESSED, $ruleId, $token, '(none)', $trigger->requestedBy, $taskId, 'The rule was deleted while firing, so no recovery was sent.');
+                    ++$counts['suppressed'];
+                }
+                continue;
+            }
+
+            $covered = null;
+            foreach ($this->settings->coveredWebsites($rule) as $site) {
+                if ($site['token'] === $token) {
+                    $covered = $site;
+                    break;
+                }
+            }
+            if ($rule['enabled'] && $covered !== null) {
+                // An enabled rule that still covers the website but was skipped
+                // (see referenceProblem()): its state is unknown, so keep it.
+                continue;
+            }
+            $site = $covered ?? $this->settings->website($token) ?? ['token' => $token, 'name' => $token, 'domain' => ''];
+
+            if ($before['kind'] === self::STATE_FIRING) {
+                $closeAt = self::formatIsoHour($completedHour);
+                if (strcmp($closeAt, $before['since']) <= 0) {
+                    // Turned off in the hour it fired: close at the next check, so
+                    // the recovery's window_end is later than the firing alert's.
+                    continue;
+                }
+                $closing = ['type' => 'recovered', 'window_end' => $closeAt, 'since' => $before['since']];
+                $this->deliverToAll($closing, $rule, $site, $destinations, $installation, $delivered, $completedHour, $trigger, $taskId, $counts, true);
+                $this->saveState($subject, 'recovered:'.$closing['window_end'].':'.$before['since'], $trigger);
+                continue;
+            }
+
+            $current = self::alertForState('recovered:'.$before['recovered_at'].':'.$before['since']);
+            if ($current !== null) {
+                $this->deliverToAll($current, $rule, $site, $destinations, $installation, $delivered, $completedHour, $trigger, $taskId, $counts, true);
+            }
+        }
+    }
+
+    /**
+     * @param Alert                            $alert
+     * @param RuleConfig                       $rule
+     * @param Site                             $site
+     * @param array<string, DestinationConfig> $destinations
+     * @param array<string, array{attempt: array<string, mixed>, success: ?array<string, mixed>}> $delivered
+     * @param Counts                           $counts
+     */
+    private function deliverToAll(
+        array $alert,
+        array $rule,
+        array $site,
+        array $destinations,
+        string $installation,
+        array &$delivered,
+        \DateTimeImmutable $completedHour,
+        TaskTrigger $trigger,
+        int $taskId,
+        array &$counts,
+        bool $retryable,
+    ): void {
+        $windowEnd = self::parseIsoHour($alert['window_end']);
+        if ($windowEnd === null) {
+            return;
+        }
+        $payload = $this->buildPayload($alert['type'], $rule, $site, $installation, $windowEnd, $alert['since']);
+
+        foreach ($rule['destinations'] as $destinationId) {
+            $destination = $destinations[$destinationId] ?? null;
+            if ($destination !== null) {
+                $this->deliverOne($destination, $rule, $site, $payload, $alert['since'], $windowEnd, $installation, $delivered, $completedHour, $trigger, $taskId, $counts, $retryable);
+            }
+        }
+    }
+
+    /**
+     * Sends one alert to one destination unless it already has it.
+     *
+     * @param DestinationConfig $destination
+     * @param RuleConfig        $rule
+     * @param Site              $site
+     * @param AlertPayload      $payload
+     * @param array<string, array{attempt: array<string, mixed>, success: ?array<string, mixed>}> $delivered
+     * @param Counts            $counts
+     */
+    private function deliverOne(
+        array $destination,
+        array $rule,
+        array $site,
+        array $payload,
+        string $since,
+        \DateTimeImmutable $windowEnd,
+        string $installation,
+        array &$delivered,
+        \DateTimeImmutable $completedHour,
+        TaskTrigger $trigger,
+        int $taskId,
+        array &$counts,
+        bool $retryable,
+    ): void {
+        $subject = self::deliverySubject($rule['id'], $site['token'], $destination['id']);
+        $last = $delivered[$subject]['success']['fingerprint'] ?? null;
+        $operation = $payload['type'] === 'recovered' ? self::OP_RECOVERED : self::OP_FIRING;
+
+        if ($last === $payload['id']) {
+            if ($payload['type'] === 'firing' && $retryable) {
+                ++$counts['suppressed'];
+            }
+
+            return;
+        }
+
+        if ($payload['type'] === 'recovered') {
+            $firingId = self::computeAlertId($installation, $rule['id'], $site['token'], 'firing', $since);
+            if ($last !== $firingId) {
+                $this->markDelivered($subject, $payload['id'], 'Recovery not sent: the firing alert never reached this destination.', $trigger, $delivered);
+                $this->recordDelivery($operation, self::OUTCOME_SUPPRESSED, $payload['rule'], $payload['host'], $destination['label'], $trigger->requestedBy, $taskId, 'Not sent: the firing alert for this incident never reached this destination, so its recovery is not sent either.');
+                ++$counts['suppressed'];
+
+                return;
+            }
+        }
+
+        $retryUntil = $windowEnd->modify('+'.self::RETRY_HOURS.' hours');
+        if ($retryable && $retryUntil <= $completedHour) {
+            return; // Retries ran out earlier; the last failure is in the audit trail.
+        }
+        $lastAttempt = !$retryable || $retryUntil <= $completedHour->modify('+1 hour');
+
+        if ($destination['type'] === AlertRuleValidator::TYPE_WEBHOOK) {
+            $result = $this->webhookSender->send($destination, $payload);
+            $sent = $result['sent'];
+            $reason = $result['reason'];
+        } else {
+            [$sent, $reason] = $this->emailAll($destination['recipients'] ?? [], $rule, $payload, $trigger);
+        }
+
+        if ($sent) {
+            $this->markDelivered($subject, $payload['id'], sprintf('Delivered %s alert %s.', $payload['type'], $payload['id']), $trigger, $delivered);
+            $this->recordDelivery($operation, self::OUTCOME_SENT, $payload['rule'], $payload['host'], $destination['label'], $trigger->requestedBy, $taskId, $reason);
+            ++$counts['sent'];
+
+            return;
+        }
+
+        if ($retryable) {
+            $reason = rtrim($reason, '.').'. '.($lastAttempt ? 'Gave up: no more retries for this alert.' : 'Will retry at the next hourly check.');
+        }
+        $this->recordDelivery($operation, self::OUTCOME_FAILED, $payload['rule'], $payload['host'], $destination['label'], $trigger->requestedBy, $taskId, $reason);
+        ++$counts['failed'];
+    }
+
+    /**
+     * @param list<string> $recipients
+     * @param RuleConfig   $rule
+     * @param AlertPayload $payload
+     *
+     * @return array{0: bool, 1: string}
+     */
+    private function emailAll(array $recipients, array $rule, array $payload, TaskTrigger $trigger): array
+    {
+        $sentCount = 0;
+        $lastError = null;
+        foreach ($recipients as $address) {
+            $emailResult = $this->sendAlertEmail($address, $rule, $payload, $trigger);
+            if ($emailResult['sent']) {
+                ++$sentCount;
+            } else {
+                $lastError = $emailResult['reason'];
+            }
+        }
+
+        if ($sentCount === 0) {
+            return [false, $lastError ?? 'Not sent: no recipient is listed.'];
+        }
+        if ($sentCount < count($recipients)) {
+            // Retrying would send the alert again to the recipients who already have it.
+            return [true, sprintf('Delivered to %d of %d listed recipients (id %s); the others failed: %s', $sentCount, count($recipients), $payload['id'], rtrim((string) $lastError, '.'))];
+        }
+
+        return [true, sprintf('Delivered to listed recipients (id %s)', $payload['id'])];
+    }
+
+    /**
+     * @param RuleConfig $rule
+     * @param Site       $site
      *
      * @return AlertPayload
      */
@@ -738,7 +941,7 @@ class AlertEvaluator
             'schema_version' => '1',
             'id' => $alertId,
             'incident' => $incidentId,
-            'type' => $type,
+            'type' => $type === 'recovered' ? 'recovered' : 'firing',
             'rule' => $rule['id'],
             'website' => $site['token'],
             'host' => $site['domain'] !== '' ? $site['domain'] : $site['token'],
@@ -746,87 +949,6 @@ class AlertEvaluator
             'alert_condition' => AlertRuleValidator::formatAlertCondition($rule),
             'window_end' => $windowEndIso,
         ];
-    }
-
-    /**
-     * @param DestinationConfig $destination
-     * @param RuleConfig        $rule
-     * @param AlertPayload      $payload
-     *
-     * @return 'sent'|'suppressed'|'failed'
-     */
-    private function deliver(
-        array $destination,
-        array $rule,
-        array $payload,
-        TaskTrigger $trigger,
-        int $taskId,
-    ): string {
-        $operation = $payload['type'] === 'recovered' ? self::OP_RECOVERED : self::OP_FIRING;
-        $subject = self::formatSubject($payload['rule'], $payload['host'], $destination['label']);
-
-        if ($this->alreadySent($operation, $subject, $payload['id'])) {
-            $this->recordDelivery(
-                $operation,
-                self::OUTCOME_SUPPRESSED,
-                $payload['rule'],
-                $payload['host'],
-                $destination['label'],
-                $trigger->requestedBy,
-                $taskId,
-                sprintf('Already alerted for this gap (id %s).', $payload['id']),
-            );
-
-            return self::OUTCOME_SUPPRESSED;
-        }
-
-        if ($destination['type'] === AlertRuleValidator::TYPE_WEBHOOK) {
-            $result = $this->webhookSender->send($destination, $payload);
-            $outcome = $result['sent'] ? self::OUTCOME_SENT : self::OUTCOME_FAILED;
-            $this->recordDelivery(
-                $operation,
-                $outcome,
-                $payload['rule'],
-                $payload['host'],
-                $destination['label'],
-                $trigger->requestedBy,
-                $taskId,
-                $result['reason'],
-            );
-
-            return $outcome;
-        }
-
-        $recipients = $destination['recipients'] ?? [];
-        $sentCount = 0;
-        $lastError = null;
-        foreach ($recipients as $address) {
-            $emailResult = $this->sendAlertEmail($address, $rule, $payload, $trigger);
-            if ($emailResult['sent']) {
-                ++$sentCount;
-            } else {
-                $lastError = $emailResult['reason'];
-            }
-        }
-
-        $allSent = $sentCount === count($recipients) && $sentCount > 0;
-        $outcome = $allSent ? self::OUTCOME_SENT : self::OUTCOME_FAILED;
-        $reason = $allSent
-            ? sprintf('Delivered to listed recipients (id %s)', $payload['id'])
-            : ($lastError ?? 'Not sent: no recipient could be reached.');
-
-        $this->recordDelivery(
-            $operation,
-            $outcome,
-            $payload['rule'],
-            $payload['host'],
-            $destination['label'],
-            $trigger->requestedBy,
-            $taskId,
-            $reason,
-        );
-
-        return $outcome;
     }
 
     /**
@@ -869,25 +991,6 @@ class AlertEvaluator
         return ['sent' => false, 'reason' => TransactionalMailer::redact((string) $result->error, [$recipient])];
     }
 
-    private function alreadySent(string $operation, string $subject, string $alertId): bool
-    {
-        try {
-            $found = $this->connection->fetchOne(
-                'SELECT id FROM audit_trail WHERE operation = :op AND subject = :sub AND outcome = :out AND details LIKE :id LIMIT 1',
-                [
-                    'op' => $operation,
-                    'sub' => $subject,
-                    'out' => self::OUTCOME_SENT,
-                    'id' => '%'.$alertId.'%',
-                ],
-            );
-
-            return $found !== false && $found !== null;
-        } catch (\Throwable) {
-            return false;
-        }
-    }
-
     private function recordDelivery(
         string $operation,
         string $outcome,
@@ -916,12 +1019,95 @@ class AlertEvaluator
         return sprintf('%s · %s · %s', $ruleId, $websiteHost, $destinationLabel);
     }
 
-    private function saveRuleWebsiteState(string $subjectKey, string $fingerprint, TaskTrigger $trigger, \DateTimeImmutable $now): void
+    private function saveState(string $subject, string $fingerprint, TaskTrigger $trigger): void
     {
-        $id = $this->tasks->start(self::TASK_TYPE, $subjectKey, $trigger, $now);
+        $now = $this->now();
+        $id = $this->tasks->start(self::TASK_TYPE, $subject, $trigger, $now);
         if ($id !== null) {
             $this->tasks->succeed($id, $now, null, 'State: '.$fingerprint, null, $fingerprint);
         }
+    }
+
+    /**
+     * Records that a destination has an alert, so it is neither retried nor sent twice.
+     *
+     * @param array<string, array{attempt: array<string, mixed>, success: ?array<string, mixed>}> $delivered
+     */
+    private function markDelivered(string $subject, string $alertId, string $details, TaskTrigger $trigger, array &$delivered): void
+    {
+        $now = $this->now();
+        $id = $this->tasks->start(self::DELIVERY_TASK_TYPE, $subject, $trigger, $now);
+        if ($id !== null) {
+            $this->tasks->succeed($id, $now, null, $details, null, $alertId);
+        }
+        $delivered[$subject]['success']['fingerprint'] = $alertId;
+    }
+
+    /**
+     * @return array{kind: 'none'|'ok'|'firing'|'recovered', since: ?string, recovered_at: ?string}
+     */
+    public static function parseState(?string $fingerprint): array
+    {
+        if ($fingerprint === null) {
+            return ['kind' => 'none', 'since' => null, 'recovered_at' => null];
+        }
+        if (str_starts_with($fingerprint, 'firing:')) {
+            $since = substr($fingerprint, 7);
+            if (self::parseIsoHour($since) !== null) {
+                return ['kind' => 'firing', 'since' => $since, 'recovered_at' => null];
+            }
+        }
+        if (str_starts_with($fingerprint, 'recovered:')) {
+            $rest = substr($fingerprint, 10);
+            $recoveredAt = substr($rest, 0, self::ISO_HOUR_LENGTH);
+            $since = substr($rest, self::ISO_HOUR_LENGTH + 1);
+            if (self::parseIsoHour($recoveredAt) !== null && self::parseIsoHour($since) !== null) {
+                return ['kind' => 'recovered', 'since' => $since, 'recovered_at' => $recoveredAt];
+            }
+        }
+
+        return ['kind' => 'ok', 'since' => null, 'recovered_at' => null];
+    }
+
+    /**
+     * The alert a state stands for (its current alert), or null for none.
+     *
+     * @return Alert|null
+     */
+    private static function alertForState(string $state): ?array
+    {
+        $parsed = self::parseState($state);
+        if ($parsed['kind'] === 'firing' && $parsed['since'] !== null) {
+            return ['type' => 'firing', 'window_end' => $parsed['since'], 'since' => $parsed['since']];
+        }
+        if ($parsed['kind'] === 'recovered' && $parsed['since'] !== null && $parsed['recovered_at'] !== null) {
+            return ['type' => 'recovered', 'window_end' => $parsed['recovered_at'], 'since' => $parsed['since']];
+        }
+
+        return null;
+    }
+
+    /**
+     * Subject of a rule and website's state; a website token too long for
+     * processing_tasks' 191 characters is hashed (and such a state is not
+     * closed automatically, since its website cannot be read back).
+     */
+    public static function stateSubject(string $ruleId, string $websiteToken): string
+    {
+        $subject = $ruleId.':'.$websiteToken;
+
+        return strlen($subject) <= 191 ? $subject : $ruleId.':#'.hash('sha256', $websiteToken);
+    }
+
+    /**
+     * Subject of a destination's delivery record; long website tokens are
+     * hashed so the subject stays within processing_tasks' 191 characters.
+     */
+    public static function deliverySubject(string $ruleId, string $websiteToken, string $destinationId): string
+    {
+        $subject = $ruleId.':'.$destinationId.':'.$websiteToken;
+
+        return strlen($subject) <= 191 ? $subject : $ruleId.':'.$destinationId.':#'.hash('sha256', $websiteToken);
     }
 
     /**

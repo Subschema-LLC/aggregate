@@ -74,7 +74,10 @@ final class AlertsController extends AbstractController
         $this->denyUnlessPermitted();
         $this->denyUnlessEnabled();
 
-        $rule = $this->settings->rule($id);
+        $rule = $this->lookup(fn (): ?array => $this->settings->rule($id));
+        if ($rule instanceof Response) {
+            return $rule;
+        }
         if ($rule === null) {
             throw $this->createNotFoundException(sprintf('Alert rule "%s" does not exist.', $id));
         }
@@ -148,7 +151,10 @@ final class AlertsController extends AbstractController
         $this->denyUnlessPermitted();
         $this->denyUnlessEnabled();
 
-        $rule = $this->settings->rule($id);
+        $rule = $this->lookup(fn (): ?array => $this->settings->rule($id));
+        if ($rule instanceof Response) {
+            return $rule;
+        }
         if ($rule === null) {
             throw $this->createNotFoundException(sprintf('Alert rule "%s" does not exist.', $id));
         }
@@ -200,7 +206,10 @@ final class AlertsController extends AbstractController
         $this->denyUnlessPermitted();
         $this->denyUnlessEnabled();
 
-        $destination = $this->settings->destination($id);
+        $destination = $this->lookup(fn (): ?array => $this->settings->destination($id));
+        if ($destination instanceof Response) {
+            return $destination;
+        }
         if ($destination === null) {
             throw $this->createNotFoundException(sprintf('Alert destination "%s" does not exist.', $id));
         }
@@ -237,13 +246,13 @@ final class AlertsController extends AbstractController
         ];
         if ($type === AlertRuleValidator::TYPE_WEBHOOK) {
             $url = trim((string) ($submitted['url'] ?? ''));
-            if ($url === '' && $existing !== null && ($existing['type'] ?? '') === AlertRuleValidator::TYPE_WEBHOOK) {
+            if ($url === '' && $existing !== null && $existing['type'] === AlertRuleValidator::TYPE_WEBHOOK) {
                 $url = (string) ($existing['url'] ?? '');
             }
             $candidate['url'] = $url;
         } else {
             $recipientsInput = trim((string) ($submitted['recipients'] ?? ''));
-            if ($recipientsInput === '' && $existing !== null && ($existing['type'] ?? '') === AlertRuleValidator::TYPE_EMAIL) {
+            if ($recipientsInput === '' && $existing !== null && $existing['type'] === AlertRuleValidator::TYPE_EMAIL) {
                 $candidate['recipients'] = $existing['recipients'] ?? [];
             } else {
                 $candidate['recipients'] = $recipientsInput;
@@ -251,14 +260,37 @@ final class AlertsController extends AbstractController
         }
 
         $secretValue = trim((string) ($submitted['secret'] ?? ''));
+        $secretChoice = (string) ($submitted['secret_choice'] ?? 'keep');
 
         try {
             if (!$isEditing && $id !== '' && $this->settings->destination($id) !== null) {
                 throw new \InvalidArgumentException(sprintf('Alert destination "%s" already exists.', $id));
             }
+            $changesOwnSecret = $type === AlertRuleValidator::TYPE_WEBHOOK
+                && ($secretValue !== '' || in_array($secretChoice, ['generate', 'shared'], true));
+            if ($changesOwnSecret && $id !== '' && $this->secrets->hasOwnInEnvironment($id)) {
+                throw new \InvalidArgumentException(sprintf('This destination\'s signing secret is set by %s in the environment and cannot be changed here.', AlertSecrets::envNameFor($id)));
+            }
             $saved = $this->settings->saveDestination($candidate);
-            if ($type === AlertRuleValidator::TYPE_WEBHOOK && $secretValue !== '') {
-                $this->secrets->set($secretValue, $saved['id']);
+            $generated = null;
+            if ($type === AlertRuleValidator::TYPE_WEBHOOK) {
+                if ($secretChoice === 'generate') {
+                    $generated = $this->secrets->generate($saved['id']);
+                } elseif ($secretChoice === 'shared') {
+                    $this->secrets->remove($saved['id']);
+                } elseif ($secretValue !== '') {
+                    $this->secrets->set($secretValue, $saved['id']);
+                }
+            } elseif ($existing !== null && $existing['type'] === AlertRuleValidator::TYPE_WEBHOOK) {
+                // A webhook turned into an email destination keeps no signing secret.
+                $this->secrets->remove($saved['id']);
+            }
+
+            if ($generated !== null) {
+                return $this->renderIndex($request, [
+                    'generated_secret' => $generated,
+                    'generated_secret_destination' => $saved['label'],
+                ]);
             }
             $this->addFlash('success', sprintf('Saved destination "%s".', $saved['label']));
 
@@ -293,7 +325,10 @@ final class AlertsController extends AbstractController
         $this->denyUnlessPermitted();
         $this->denyUnlessEnabled();
 
-        $destination = $this->settings->destination($id);
+        $destination = $this->lookup(fn (): ?array => $this->settings->destination($id));
+        if ($destination instanceof Response) {
+            return $destination;
+        }
         if ($destination === null) {
             throw $this->createNotFoundException(sprintf('Alert destination "%s" does not exist.', $id));
         }
@@ -475,7 +510,7 @@ final class AlertsController extends AbstractController
         } catch (\Throwable $e) {
             $this->logger->error('The alert settings could not be read.', ['exception_class' => $e::class]);
             $configured = ['destinations' => [], 'rules' => []];
-            $configurationError = 'The alert settings in YAML are invalid'.($e instanceof \InvalidArgumentException ? ': '.$e->getMessage() : '.').' Correct config/aggregate.yaml or save a rule to replace them.';
+            $configurationError = 'The alert settings in YAML are invalid'.($e instanceof \InvalidArgumentException ? ': '.$e->getMessage() : '.').' Correct the alerts section of config/aggregate.yaml.';
         }
 
         $secretsError = null;
@@ -489,7 +524,7 @@ final class AlertsController extends AbstractController
         $recent = $this->evaluator->recentAlerts(AlertEvaluator::RECENT_LIMIT);
         $emailProblem = $this->mailer->problem();
         $schedulerHealth = $this->scheduler->health();
-        $schedulerLate = in_array($schedulerHealth['state'] ?? 'never', ['late', 'never'], true);
+        $schedulerLate = in_array($schedulerHealth['state'], ['late', 'never'], true);
 
         $destinationsView = [];
         $hasEmailDestination = false;
@@ -501,7 +536,7 @@ final class AlertsController extends AbstractController
                     'label' => $dest['label'],
                     'type' => 'webhook',
                     'target' => $dest['host'] ?? '',
-                    'signing_label' => 'HMAC-SHA256 in '.AlertSecrets::FILE,
+                    'signing_label' => $this->secrets->describe($id),
                     'secret_source' => $secretSource,
                     'test_problem' => $secretSource === null ? 'Set or generate a webhook signing secret before sending a test.' : null,
                     'recipient_options' => [],
@@ -511,7 +546,7 @@ final class AlertsController extends AbstractController
                 $recipients = $dest['recipients'] ?? [];
                 $count = count($recipients);
                 $options = [];
-                foreach (array_values($recipients) as $idx => $addr) {
+                foreach ($recipients as $idx => $addr) {
                     $options[] = [
                         'index' => (string) $idx,
                         'label' => self::maskEmailForConfirmation($addr, $idx + 1),
@@ -566,17 +601,20 @@ final class AlertsController extends AbstractController
             'last_window_end' => $statuses['last_window_end'],
             'firing_count' => $statuses['firing_count'],
             'scheduler_late' => $schedulerLate,
-            'scheduler_state' => $schedulerHealth['state'] ?? 'never',
+            'scheduler_state' => $schedulerHealth['state'],
             'email_problem' => $hasEmailDestination ? $emailProblem : null,
             'secret_source' => $this->secrets->source(),
             'secret_env_controlled' => $this->secrets->isEnvironmentControlled(),
             'confirm_destination' => $confirmDestination,
             'recent_alerts' => $recent['entries'],
-            'older_removed' => $recent['older_removed'],
+            'has_more' => $recent['has_more'],
             'generated_secret' => $extra['generated_secret'] ?? null,
+            'generated_secret_destination' => $extra['generated_secret_destination'] ?? null,
             'test_result' => $extra['test_result'] ?? null,
         ]);
         $response->setStatusCode($status);
+        // The page can show a newly generated signing secret once.
+        $response->headers->set('Cache-Control', 'private, no-store');
 
         return $response;
     }
@@ -679,7 +717,8 @@ final class AlertsController extends AbstractController
             'recipients' => [],
         ];
         $values = array_replace($defaults, $destination ?? []);
-        $secretSource = $isEditing && $values['id'] !== '' ? $this->secrets->source((string) $values['id']) : $this->secrets->source();
+        $id = (string) $values['id'];
+        $secretSource = $isEditing && $id !== '' ? $this->secrets->source($id) : $this->secrets->source();
 
         $response = $this->renderDashboardPage('alerts/destination_form.html.twig', [
             'destination' => [
@@ -692,6 +731,10 @@ final class AlertsController extends AbstractController
             'is_editing' => $isEditing,
             'errors' => $errors,
             'secret_source' => $secretSource,
+            'secret_label' => $isEditing && $id !== '' ? $this->secrets->describe($id) : null,
+            'own_secret_in_file' => $isEditing && $id !== '' && $this->secrets->hasOwnInFile($id),
+            'own_secret_in_environment' => $id !== '' && $this->secrets->hasOwnInEnvironment($id),
+            'shared_secret_set' => $this->secrets->source() !== null,
         ]);
         $response->setStatusCode($status);
 
@@ -803,6 +846,27 @@ final class AlertsController extends AbstractController
             str_contains($lower, 'recipient') || str_contains($lower, 'email') => 'destination-recipients',
             default => 'destination-label',
         };
+    }
+
+    /**
+     * Runs a settings lookup, turning unreadable YAML into a message on the
+     * Alerts page instead of an error page.
+     *
+     * @template T
+     *
+     * @param callable(): T $lookup
+     *
+     * @return T|Response
+     */
+    private function lookup(callable $lookup): mixed
+    {
+        try {
+            return $lookup();
+        } catch (\InvalidArgumentException|\RuntimeException $e) {
+            $this->addFlash('error', 'The alert settings could not be read: '.$e->getMessage());
+
+            return $this->redirectToRoute('app_alerts');
+        }
     }
 
     private function denyUnlessEnabled(): void

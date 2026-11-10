@@ -65,6 +65,7 @@ final class AlertsStatusCommand extends Command
                     'type' => 'webhook',
                     'target' => $dest['host'] ?? '',
                     'secret_source' => $secretSource,
+                    'signing' => $this->secrets->describe($id),
                     'ready' => $secretSource !== null,
                 ];
             } else {
@@ -150,11 +151,12 @@ final class AlertsStatusCommand extends Command
 
         if ($destinationsSummary !== []) {
             $io->table(
-                ['Destination', 'Type', 'Target (redacted)', 'Ready'],
+                ['Destination', 'Type', 'Target (redacted)', 'Signing', 'Ready'],
                 array_map(static fn (array $d): array => [
                     $d['label'].' ('.$d['id'].')',
                     $d['type'],
                     $d['target'],
+                    $d['signing'] ?? 'TransactionalMailer',
                     $d['ready'] ? 'yes' : 'no',
                 ], array_values($destinationsSummary)),
             );

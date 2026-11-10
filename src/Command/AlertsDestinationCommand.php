@@ -41,7 +41,8 @@ final class AlertsDestinationCommand extends Command
             ->addOption('url', null, InputOption::VALUE_REQUIRED, 'HTTPS webhook URL (webhook destinations only)')
             ->addOption('recipient', null, InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY, 'Recipient email address (email destinations only, repeatable)')
             ->addOption('secret', null, InputOption::VALUE_REQUIRED, 'Webhook signing secret to save in config/secrets/alerts.yaml')
-            ->addOption('generate-secret', null, InputOption::VALUE_NONE, 'Generate and store a new random webhook signing secret');
+            ->addOption('generate-secret', null, InputOption::VALUE_NONE, 'Generate and store a new random webhook signing secret')
+            ->addOption('use-shared', null, InputOption::VALUE_NONE, 'With secret --id: remove the destination\'s own secret so it signs with the shared one');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -156,16 +157,25 @@ final class AlertsDestinationCommand extends Command
         $id = $input->getOption('id') !== null && trim((string) $input->getOption('id')) !== ''
             ? trim((string) $input->getOption('id'))
             : null;
-        if ($input->getOption('generate-secret') === true) {
-            $generated = $this->secrets->generate($id);
-            $io->writeln('Webhook signing secret (shown once, copy it now): '.$generated);
-            $io->success('Generated and saved the webhook signing secret in '.AlertSecrets::FILE.'.');
+        $which = $id === null ? 'the shared webhook signing secret' : sprintf('the signing secret of destination "%s"', $id);
+        if ($id !== null && $input->getOption('use-shared') === true) {
+            $this->secrets->remove($id);
+            $io->success(sprintf('Destination "%s" now signs with: %s.', $id, $this->secrets->describe($id)));
 
             return Command::SUCCESS;
         }
-        $secret = (string) ($input->getOption('secret') ?? '');
-        $this->secrets->set($secret, $id);
-        $io->success('Saved the webhook signing secret in '.AlertSecrets::FILE.'.');
+        if ($input->getOption('generate-secret') === true) {
+            $generated = $this->secrets->generate($id);
+            $io->writeln('Webhook signing secret (shown once, copy it now): '.$generated);
+            $io->success('Generated and saved '.$which.' in '.AlertSecrets::FILE.'.');
+        } else {
+            $secret = (string) ($input->getOption('secret') ?? '');
+            $this->secrets->set($secret, $id);
+            $io->success('Saved '.$which.' in '.AlertSecrets::FILE.'.');
+        }
+        if ($id === null) {
+            $io->note('Destinations with a secret of their own keep signing with it; app:alerts:status shows which secret each one uses.');
+        }
 
         return Command::SUCCESS;
     }

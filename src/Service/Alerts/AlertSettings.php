@@ -34,6 +34,11 @@ class AlertSettings
     }
 
     /**
+     * The configured destinations and rules, checked for shape only. A rule
+     * whose website, group or retention no longer matches still loads, so it
+     * can be shown, edited and deleted; referenceProblem() says why it is
+     * skipped.
+     *
      * @return array{destinations: array<string, DestinationConfig>, rules: array<string, RuleConfig>}
      */
     public function toArray(): array
@@ -41,6 +46,16 @@ class AlertSettings
         $this->config->assertHealthy();
 
         return $this->validator->validateAll($this->config->get(self::KEY, []));
+    }
+
+    /**
+     * Why a configured rule is skipped, or null when it can be checked.
+     *
+     * @param RuleConfig $rule
+     */
+    public function referenceProblem(array $rule): ?string
+    {
+        return $this->validator->referenceProblem($rule);
     }
 
     /** @return array<string, DestinationConfig> */
@@ -79,6 +94,7 @@ class AlertSettings
         $validated = $this->validator->validateDestination($candidate);
         $this->config->updateMany(function (array $current) use ($validated): array {
             $state = $this->validator->validateAll($current[self::KEY] ?? []);
+            AlertRuleValidator::assertSecretNameIsFree($validated['id'], array_keys($state['destinations']));
             $state['destinations'][$validated['id']] = $validated;
 
             return [self::KEY => self::serialize($state)];
@@ -194,6 +210,25 @@ class AlertSettings
     }
 
     /**
+     * A registered website by token, or null when it is not in config/websites.yaml.
+     *
+     * @return array{token: string, name: string, domain: string}|null
+     */
+    public function website(string $token): ?array
+    {
+        $site = $this->websites->findOneByToken($token);
+        if ($site === null) {
+            return null;
+        }
+
+        return [
+            'token' => $token,
+            'name' => (string) ($site['name'] ?? 'Unnamed'),
+            'domain' => self::bareHost((string) ($site['domain'] ?? '')),
+        ];
+    }
+
+    /**
      * Human-readable description of what a rule covers.
      *
      * @param RuleConfig $rule
@@ -235,7 +270,6 @@ class AlertSettings
             AlertRuleValidator::WINDOW_HOUR => '1 hour (1 h)',
             AlertRuleValidator::WINDOW_DAY => '1 day (24 h)',
             AlertRuleValidator::WINDOW_WEEK => '1 week (168 h)',
-            default => $rule['window'],
         };
 
         if ($rule['source'] === AlertRuleValidator::SOURCE_TRACKING_FAILURES) {
