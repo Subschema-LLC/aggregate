@@ -394,7 +394,8 @@ environments:
 #   Secondary accent color.
 #
 # brand_navbar_color (optional, default: "#14161A")
-#   Navigation bar background color.
+#   Navigation bar background color, also used for the sign-in cards in both
+#   light and dark mode, so choose a logo that is visible on it.
 #
 # brand_background_color (optional, default: "#F5F5F5")
 #   Application page background color.
