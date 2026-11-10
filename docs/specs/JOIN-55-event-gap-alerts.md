@@ -26,7 +26,8 @@ One request per alert. The body is a JSON array that always holds **exactly one*
 [
   {
     "schema_version": "1",
-    "id": "97987789878yuhu",
+    "id": "97987789878yuhu", // unique id per alert 
+    "incident":"789787g7ddhj", // incident id to connect alerts to a single incident
     "type": "firing",
     "rule": "geektown-weekly",
     "website": "898s098gs098sg098gs98",
