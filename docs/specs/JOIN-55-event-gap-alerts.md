@@ -132,6 +132,22 @@ The Product Owner covered scope, so I add only the Alerts page design. It is one
 
 _By -UX Designer-._
 
+**Second opinion:**
+
+**What I would change or sharpen (most important first)**
+- **Break the rule form into three predictable steps so `source` switching cannot cause threshold or filter mistakes:** A single inline sentence breaks down once `source` (`events` vs `tracking_failures`), `filter` (`privacy_mode`, `event_name`), and `window` (`hour`, `day`, `week`) are added, because switching to `tracking_failures` flips the threshold direction (*fewer than N* to *more than N*) and makes filters inapplicable. Instead, show a live plain-language summary banner at the top of the form (*"Alert when **Geektown USA** records **fewer than 5 enhanced events** in **1 week (168 completed UTC hours)**"*) and three stacked fieldsets:
+  1. **What to watch (`id`, `covers`, `source`):** Rule ID (`rule` slug, e.g. `geektown-weekly`), covered websites or website group, and source (`Events` or `Tracking failures`).
+  2. **Filter which events count (`privacy_mode`, `event_name` — shown only when `source` is `events`):** Privacy mode (`All privacy modes` by default, `Enhanced only (consent granted)`, `Anonymous only`) and optional `Event name` (e.g. `page_view`). When `source` is `tracking_failures`, this fieldset is hidden (`hidden` + disabled inputs) with a short note that tracking failures count `tracking_event_store` and `tracking_ingest` errors across all events.When `Enhanced only` is chosen, show an inline tip: *"If all site traffic stops, this rule also fires. Pair it with an 'All privacy modes' rule to tell a broken consent banner apart from a removed tag."*
+  3. **Threshold and window (`condition`, `threshold`, `window`):**
+     - When `source = events`: condition choices are `No events (0)` and `Fewer than N events` (which enables the integer `N` input, `min="1"`).
+     - When `source = tracking_failures`: condition locks to `More than N tracking failures` (with integer `N` input, `min="0"`), so no one can accidentally set "fewer than N failures".
+     - Window choices match the v1 spec: `1 hour (1 completed UTC hour)`, `1 day (24 completed UTC hours)`, and `1 week (168 completed UTC hours)`. Always state the exact hour count in the option label, and keep the UTC timezone reminder below it. Show the quiet-site warning when `1 hour` is chosen on `events`.
+- **Let administrators test any listed email recipient in the test confirmation step while keeping `audit_trail` and the main table redacted:** To satisfy AC9 and AC11 together, the Destinations summary table on `/dashboard/alerts` shows only the destination **label** and recipient count (e.g. `Ops email · 3 recipients`) or webhook **host** (`hooks.geektown.example`). Clicking **Send a test** on an email destination opens the confirmation step with a `<select name="recipient">` listing that destination's configured addresses (or `"All listed recipients"` / a specific address) so the administrator can pick which listed recipient gets the test. The resulting `processing_tasks` row, `audit_trail` entry, and **Recent alerts** table still record only the destination label (`Ops email`), never the email address.
+- **Protect the Rule ID (`rule`) after creation to avoid orphaned incidents:** Because webhook receivers correlate `firing` and `recovered` alerts on `rule` (and `incident` hashes the rule ID), editing a rule's ID while it is firing would orphan the open incident in Geektown's hub. Make the Rule ID read-only when editing an existing rule, with helper text: *"Used as `rule` in webhook payloads. To change this ID, delete the rule and add a new one."* Also add a standard YAML note above the Save button: *"Saving updates `config/aggregate.yaml`. Hand-written YAML comments are not preserved."*
+- **Drop the `'Unknown'` status state:** Since firing state is stored in `processing_tasks.fingerprint` (`ok` or `firing:<since_iso>`) and preserved across retention purges, every enabled rule has a known state: `OK`, `Firing since YYYY-MM-DD HH:00 UTC`, `Waiting for the first full hour`, or `Off`.
+
+_By -UX/UI Designer-._
+
 ## Back-end Architect/Engineer
 
 I agree with the Product Owner's scope and the UX/UI Designer's page. My part is where firing state lives, how rules are evaluated and how webhooks are delivered safely. Firing and recovery are worked out from the events table on each run, so they don't depend on audit_trail, which can be pruned, and they don't need an alerts table. Webhooks reuse the public-address-only HTTP client already used in `src/Service/Mcp/OAuth/ClientResolver.php`. Secrets follow the pattern of `EmailSecrets` and `ApiTokenStore`. I found no merged or open PR that builds alerts or webhooks.
@@ -180,7 +196,7 @@ _The work this spec plans, as `- [ ] …` items, each naming the role that does 
 - [ ] Product Owner: revise the anchor `docs/features/event-gap-alerts.md` with the v1 rule shape, sources, filters, windows and the thread's decisions
 - [ ] Architect: confirm that tracking-failure counts per window can be read from retained `processing_tasks`, and update the back-end section for sources, filters and day and week windows
 - [ ] DBA: confirm the index for counting capped events by `website_token` and `created_at` with optional `privacy_mode` and `event_name` filters on all five engines
-- [ ] UX/UI Designer: add the source, filter, and day and week windows to the rule form, and show the email test to any listed recipient
+- [x] UX/UI Designer: add the source, filter, and day and week windows to the rule form, and show the email test to any listed recipient (done in JOIN-55)
 - [ ] Back end: write `AlertSettings`, `AlertRuleValidator`, the YAML writer and the `app:alerts:*` commands
 - [ ] Back end: write `AlertEvaluator` and `AlertsJob` with the fingerprint state in `processing_tasks`, wired in `Scheduler` and `config/services.yaml`
 - [ ] Back end: write `WebhookSender` (HTTPS only, private addresses blocked, signed, URL redacted from errors) and alert email through `TransactionalMailer`
