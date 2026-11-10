@@ -9,6 +9,10 @@
     --app-brand-focus: #485FC7;
     --app-brand-navbar: #14161A;
     --app-brand-navbar-contrast: #FFFFFF;
+    --app-brand-navbar-scheme: dark;
+    --app-brand-navbar-link: #FFFFFF;
+    --app-brand-navbar-button: #00D1B2;
+    --app-brand-navbar-button-contrast: #000000;
     --app-brand-background: #F5F5F5;
     --app-brand-surface: #FFFFFF;
     --app-brand-text: #363636;
@@ -41,8 +45,16 @@
     --bulma-scheme-main-bis: var(--app-brand-background);
     --bulma-scheme-main-ter: var(--app-brand-background);
     --bulma-background: var(--app-brand-background);
+}
 
-    /* Standardized semantic message tokens (deliberately non-brandable status feedback) */
+/*
+ * Standardized semantic message tokens (deliberately non-brandable status
+ * feedback). They follow the page's light or dark mode, except inside a
+ * surface that sets its own scheme, such as the sign-in card on the navigation
+ * color (see .app-navbar-surface), where they follow that surface instead.
+ */
+:root,
+[data-surface-scheme="light"] {
     --app-status-info: #2563eb;
     --app-status-info-bg: #eff6ff;
     --app-status-info-border: #bfdbfe;
@@ -68,7 +80,8 @@
     --app-status-success-accent: #22c55e;
 }
 
-html[data-theme="dark"] {
+html[data-theme="dark"],
+[data-surface-scheme="dark"] {
     --app-status-info: #60a5fa;
     --app-status-info-bg: rgba(37, 99, 235, 0.16);
     --app-status-info-border: rgba(96, 165, 250, 0.35);
