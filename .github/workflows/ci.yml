@@ -298,7 +298,7 @@ jobs:
             echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/ubuntu/$(lsb_release -rs)/prod $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/mssql-release.list
           fi
           sudo apt-get update -qq
-          sudo ACCEPT_EULA=Y apt-get install -y -qq msodbcsql18
+          sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a ACCEPT_EULA=Y apt-get install -y -qq msodbcsql18
           odbcinst -q -d
       - name: Create the SQL Server database and its owner login
         if: matrix.driver == 'sqlsrv'
