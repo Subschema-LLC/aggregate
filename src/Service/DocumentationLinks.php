@@ -100,6 +100,8 @@ final class DocumentationLinks
         'users.profile' => ['configure/users-and-permissions#your-profile-and-access', 'docs/USERS-AND-PERMISSIONS.md'],
         'operate.scheduled-tasks' => ['operate/scheduled-tasks', 'docs/SCHEDULED-TASKS.md'],
         'operate.scheduled-tasks-plesk' => ['operate/scheduled-tasks#plesk', 'docs/SCHEDULED-TASKS.md'],
+        'alerts' => ['operate/alerts', 'docs/ALERTS.md'],
+        'alerts.signature' => ['operate/alerts#check-the-signature', 'docs/ALERTS.md'],
         'operate.audit-trail' => ['operate/audit-trail', 'docs/AUDIT-TRAIL.md'],
         'operate.audit-trail-areas' => ['operate/audit-trail#what-is-recorded', 'docs/AUDIT-TRAIL.md'],
         'updates' => ['operate/updates', 'docs/UPDATES.md'],

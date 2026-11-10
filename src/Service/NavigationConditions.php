@@ -18,10 +18,13 @@ final class NavigationConditions
     /** Each condition and when it is met, as the configuration guide describes it. */
     public const CONDITIONS = [
         'view_sync_on' => 'BigQuery, reporting database or forensic database sync is turned on, or its settings need repair.',
+        'alerts_on' => 'The alerts feature flag is turned on.',
     ];
 
-    public function __construct(private readonly ViewSyncDestinations $sync)
-    {
+    public function __construct(
+        private readonly ViewSyncDestinations $sync,
+        private readonly ?FeatureFlags $features = null,
+    ) {
     }
 
     public static function has(mixed $name): bool
@@ -33,6 +36,7 @@ final class NavigationConditions
     {
         return match ($name) {
             'view_sync_on' => $this->sync->anyNeedsThePage(),
+            'alerts_on' => $this->features?->isEnabled('alerts') ?? false,
             default => false,
         };
     }

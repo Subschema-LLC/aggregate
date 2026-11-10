@@ -130,6 +130,10 @@ email_settings_controller:
     resource: ../src/Controller/EmailSettingsController.php
     type: attribute
 
+alerts_controller:
+    resource: ../src/Controller/AlertsController.php
+    type: attribute
+
 mcp_authorize_controller:
     resource: ../src/Controller/McpAuthorizeController.php
     type: attribute

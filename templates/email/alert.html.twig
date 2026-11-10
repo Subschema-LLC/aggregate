@@ -1,0 +1,19 @@
+{% extends 'email/layout.html.twig' %}
+
+{% block body %}
+    <p style="margin:0 0 16px;font-size:18px;font-weight:600;">{{ alert_title|default('Alert notification') }}</p>
+    <p style="margin:0 0 12px;">
+        <strong>Type:</strong> {{ alert_type|default('firing') }}<br>
+        <strong>Rule:</strong> <code>{{ alert_rule|default('test-rule') }}</code><br>
+        <strong>Website:</strong> {{ alert_host|default('') }}{% if alert_website is defined and alert_website %} (<code>{{ alert_website }}</code>){% endif %}<br>
+        <strong>Condition:</strong> {{ alert_condition_description|default(alert_condition|default('')) }}{% if alert_condition is defined and alert_condition %} (<code>{{ alert_condition }}</code>){% endif %}<br>
+        <strong>Completed UTC window end:</strong> {{ alert_window_end|default('') }}<br>
+        <strong>Alert ID:</strong> <code>{{ alert_id|default('') }}</code><br>
+        <strong>Incident ID:</strong> <code>{{ alert_incident|default('') }}</code>
+    </p>
+    {% if alert_installation is defined and alert_installation %}
+        <p style="margin:0;">Installation: <a href="{{ alert_installation }}" style="color:#1f5bd8;">{{ alert_installation }}</a>.</p>
+    {% elseif app_url %}
+        <p style="margin:0;">Installation: <a href="{{ app_url }}" style="color:#1f5bd8;">{{ app_url }}</a>.</p>
+    {% endif %}
+{% endblock %}

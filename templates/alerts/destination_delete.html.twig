@@ -1,0 +1,31 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Delete alert destination - {{ app_branding.name }}{% endblock %}
+
+{% block body %}
+<section class="section">
+    <div class="container">
+        <h1 class="title is-3 mb-2">Delete alert destination</h1>
+        <p class="subtitle is-6">Confirm removal of alert destination <strong>{{ destination.label }}</strong> (<code>{{ destination.id }}</code>).</p>
+    <div class="box">
+        <p class="mb-3">
+            Delete alert destination <strong>{{ destination.label }}</strong> (<code>{{ destination.id }}</code>)?
+        </p>
+        <ul class="mb-4">
+            <li><strong>Type:</strong> {{ destination.type }}</li>
+            <li><strong>Target:</strong> {{ destination.target }}</li>
+        </ul>
+        <p class="help mb-4">
+            Saving updates <code>config/aggregate.yaml</code>. Hand-written YAML comments are not preserved.
+        </p>
+        <form method="post" action="{{ path('app_alerts_destination_delete', {id: destination.id}) }}">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token(constant('App\\Controller\\AlertsController::CSRF_DESTINATION')) }}">
+            <div class="buttons">
+                <button type="submit" class="button is-danger">Delete destination</button>
+                <a href="{{ path('app_alerts') }}" class="button is-light">Cancel</a>
+            </div>
+        </form>
+    </div>
+    </div>
+</section>
+{% endblock %}

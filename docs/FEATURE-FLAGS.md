@@ -26,6 +26,9 @@ feature_flags:
   mcp_server:
     enabled: false
     hide_from_navigation: true
+  alerts:
+    enabled: false
+    hide_from_navigation: true
 ```
 
 Saving on the Feature flags page writes every registered feature with both
@@ -67,6 +70,13 @@ page serves both flags, so its menu entry names both
 on. The reporting API and the MCP server are separate flags so that one can be
 offered without the other, for example API access for scripts without AI
 assistants.
+
+The `alerts` flag (off and hidden by default) covers [Alerts](ALERTS.md):
+threshold rules on completed UTC hours for event gaps and tracking failures,
+delivered by signed generic JSON webhooks and email. When disabled, the
+scheduled `alerts` job does not run, rule and destination management routes and
+commands refuse changes, and the **Alerts** menu entry stays hidden
+(`shown_when: alerts_on`).
 
 | `enabled` | `hide_from_navigation` | Behavior |
 | --- | --- | --- |

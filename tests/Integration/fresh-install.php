@@ -842,7 +842,7 @@ E2E::step('one scheduled task runs the due jobs and the dashboard shows that it 
 
     // Without a terminal, as cron and Plesk run it.
     $run = json_decode(console($root, ['app:scheduler:run', '--json']), true);
-    E2E::check(($run['trigger'] ?? null) === 'schedule' && array_column($run['results'] ?? [], 'status', 'job') === ['analytics_maintenance' => 'ran', 'bigquery_sync' => 'off', 'reporting_database_sync' => 'off', 'forensic_database_sync' => 'off'], 'app:scheduler:run: '.json_encode($run));
+    E2E::check(($run['trigger'] ?? null) === 'schedule' && array_column($run['results'] ?? [], 'status', 'job') === ['alerts' => 'off', 'analytics_maintenance' => 'ran', 'bigquery_sync' => 'off', 'reporting_database_sync' => 'off', 'forensic_database_sync' => 'off'], 'app:scheduler:run: '.json_encode($run));
     $latest = $db->fetchAssociative("SELECT status, triggered_by FROM processing_tasks WHERE task_type = 'analytics_maintenance' AND started_at > :earlier ORDER BY id DESC", ['earlier' => $earlier->modify('+1 day')], ['earlier' => Types::DATETIME_IMMUTABLE]);
     E2E::check($latest === ['status' => 'succeeded', 'triggered_by' => 'schedule'], 'The scheduled maintenance run was not recorded: '.json_encode($latest));
     // Nothing is due now, so the next run prints nothing for cron to mail.
@@ -984,6 +984,63 @@ E2E::step('the Email page saves a service and a test send is recorded without th
     E2E::check(!str_contains((string) $stored, 'admin-e2e@example.org') && !str_contains((string) $stored, 'null://'), 'A recipient address or the DSN was stored in processing_tasks or audit_trail.');
     $status = json_decode(console($root, ['app:email:status', '--json']), true);
     E2E::check(($status['ready'] ?? false) === true && ($status['sends']['test']['status'] ?? null) === 'succeeded', 'app:email:status: '.json_encode($status));
+});
+
+// The alert counting queries, delivery records and the Alerts page on this
+// engine. Email still uses the null transport from the previous step.
+E2E::step('alerts count events and tracking failures, deliver once, reset a deleted rule and store no address', static function () use ($root, $browser, $base, $token): void {
+    $config = Yaml::parseFile($root.'/config/aggregate.yaml');
+    $config['feature_flags'] = [
+        ...($config['feature_flags'] ?? []),
+        'alerts' => ['enabled' => true, 'hide_from_navigation' => false],
+    ];
+    file_put_contents($root.'/config/aggregate.yaml', Yaml::dump($config, 4, 2));
+
+    console($root, ['app:alerts:destination', 'create', '--id=ops-email', '--label=Ops email', '--type=email', '--recipient=ops-e2e@example.org']);
+    // Breached: no event of this name is ever sent.
+    console($root, ['app:alerts:rule', 'create', '--id=no-signups', '--website='.$token, '--privacy-mode=anonymous', '--event-name=e2e_never_sent', '--condition=no_events', '--window=day', '--destination=ops-email']);
+    // Exercises the capped count with a threshold above one.
+    console($root, ['app:alerts:rule', 'create', '--id=few-views', '--website='.$token, '--condition=fewer_than', '--threshold=3', '--window=day', '--destination=ops-email']);
+    // Breached by the failure recorded below.
+    console($root, ['app:alerts:rule', 'create', '--id=failures', '--website='.$token, '--source=tracking_failures', '--condition=more_than', '--threshold=0', '--window=day', '--destination=ops-email']);
+
+    $db = connection($root);
+    $failedAt = (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->modify('-90 minutes');
+    $db->insert('processing_tasks', [
+        'task_type' => 'tracking_ingest',
+        'subject' => 'anonymous:'.$token,
+        'status' => 'failed',
+        'triggered_by' => 'worker',
+        'started_at' => $failedAt,
+        'finished_at' => $failedAt,
+        'details' => 'E2E tracking failure.',
+    ], ['started_at' => Types::DATETIME_IMMUTABLE, 'finished_at' => Types::DATETIME_IMMUTABLE]);
+
+    $first = json_decode(console($root, ['app:alerts:evaluate', '--json']), true);
+    E2E::check(($first['status'] ?? null) === 'ran' && ($first['sent'] ?? 0) >= 2 && ($first['failed'] ?? 1) === 0, 'The first alert check: '.json_encode($first));
+    $firing = $db->fetchFirstColumn("SELECT subject FROM processing_tasks WHERE task_type = 'alerts_delivery' AND status = 'succeeded' ORDER BY subject");
+    E2E::check(in_array('no-signups:ops-email:'.$token, $firing, true) && in_array('failures:ops-email:'.$token, $firing, true), 'Delivery records: '.json_encode($firing));
+
+    // Checking the same hour again sends nothing new.
+    $again = json_decode(console($root, ['app:alerts:evaluate', '--force', '--json']), true);
+    E2E::check(($again['sent'] ?? null) === 0 && ($again['suppressed'] ?? 0) >= 2, 'A second check sent alerts again: '.json_encode($again));
+
+    // Deleting a firing rule resets its state, so a new rule with the same ID starts fresh.
+    console($root, ['app:alerts:rule', 'delete', '--id=failures']);
+    $closed = json_decode(console($root, ['app:alerts:evaluate', '--force', '--json']), true);
+    E2E::check(($closed['sent'] ?? null) === 0, 'A check after deleting a rule sent alerts: '.json_encode($closed));
+    E2E::check((int) $db->fetchOne("SELECT COUNT(*) FROM audit_trail WHERE operation = 'alert_recovered' AND outcome = 'suppressed' AND details LIKE '%deleted while firing%'") === 1, 'The deleted firing rule was not recorded.');
+    E2E::check($db->fetchOne("SELECT fingerprint FROM processing_tasks WHERE task_type = 'alerts' AND subject = :subject ORDER BY id DESC", ['subject' => 'failures:'.$token]) === 'ok', 'The deleted rule\'s state was not reset.');
+
+    $status = json_decode(console($root, ['app:alerts:status', '--json']), true);
+    $states = array_column($status['rules'] ?? [], 'state', 'id');
+    E2E::check(($states['no-signups'] ?? null) === 'firing' && !isset($states['failures']), 'app:alerts:status: '.json_encode($states));
+
+    $page = $browser->request('GET', $base.'/dashboard/alerts');
+    E2E::check($browser->getInternalResponse()->getStatusCode() === 200 && str_contains($page->text(''), 'no-signups') && str_contains($page->text(''), 'Firing since'), 'The Alerts page: '.pageProblem($browser));
+
+    $stored = json_encode([$db->fetchAllAssociative('SELECT * FROM processing_tasks'), $db->fetchAllAssociative('SELECT * FROM audit_trail')]);
+    E2E::check(!str_contains((string) $stored, 'ops-e2e@example.org'), 'An alert recipient address was stored in processing_tasks or audit_trail.');
 });
 
 E2E::step('a user signs in with an emailed code and sets a new password', static function () use ($root, $browser, $base): void {
