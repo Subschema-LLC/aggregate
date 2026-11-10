@@ -1192,6 +1192,32 @@ command option.
 **What would change it.** A reviewed need to quarantine bad rows instead of
 refusing them, with the same refusal still available.
 
+### Alerts evaluate completed UTC hours and keep state in processing_tasks
+
+**Decision.** Event-gap and tracking-failure alert rules run once per completed
+UTC hour in the scheduler, count rows in `[T − W, T)` with a query capped at the
+rule's threshold `N`, store per-`rule:website` firing state (`ok` or
+`firing:<since_iso>`) in `processing_tasks.fingerprint`, and record deliveries
+in `audit_trail` with `always: true`. Webhook targets receive a signed generic
+JSON v1 payload over HTTPS (`NoPrivateNetworkHttpClient`), and email targets go
+through `TransactionalMailer`. There is no separate alerts table. See
+[Alerts](ALERTS.md).
+
+**Why.** Anonymous events are bucketed to the UTC hour on collection, so the
+current open hour is incomplete until it closes. Counting only up to `N` uses
+the existing `(website_token, created_at)` index and avoids scanning busy
+websites over 24-hour or 168-hour windows. Storing state in
+`processing_tasks.fingerprint` and deliveries in `audit_trail` reuses the
+existing operational tables and retention rules without adding schema
+migrations.
+
+**Trade-off.** Alerts are checked on UTC hour boundaries rather than in real
+time, and webhook receivers that want Slack or PagerDuty formatting use a small
+relay or transform until native channel templates are added.
+
+**What would change it.** A requirement for sub-hour enhanced-event alerts or
+per-incident acknowledgement state that cannot fit in `processing_tasks`.
+
 ### Signed release packages that keep the operator's files
 
 **Decision.** Releases are ZIPs signed with a key that the installation already

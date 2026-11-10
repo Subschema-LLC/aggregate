@@ -1,0 +1,381 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Alerts - {{ app_branding.name }}{% endblock %}
+
+{% block body %}
+<section class="section">
+    <div class="container">
+        <div class="mb-5">
+            <h1 class="title is-3 mb-2">Alerts</h1>
+            <p class="subtitle is-6">
+                Threshold rules evaluated on completed UTC hours for event gaps and tracking failures, delivered by signed generic JSON webhooks and email.
+                {{ component('Ui:DocsLink', {topic: 'alerts'}) }}
+            </p>
+        </div>
+    {% if not feature_enabled %}
+        <div class="notification is-light" role="status">
+            <p class="has-text-weight-semibold mb-1">Alerts are off</p>
+            <p>
+                Turn on the <code>alerts</code> feature flag on
+                <a href="{{ path('app_feature_flags') }}">Feature flags</a>
+                to evaluate alert rules and send webhook or email notifications.
+            </p>
+        </div>
+    {% else %}
+        {% if configuration_error %}
+            <div class="notification is-danger is-light" role="alert">
+                <p>{{ configuration_error }}</p>
+            </div>
+        {% endif %}
+        {% if secrets_error %}
+            <div class="notification is-danger is-light" role="alert">
+                <p>{{ secrets_error }}</p>
+            </div>
+        {% endif %}
+
+        {% if test_result %}
+            <div class="notification {{ test_result.sent ? 'is-success' : 'is-danger' }} is-light" role="status">
+                <p>{{ test_result.message }}</p>
+            </div>
+        {% endif %}
+
+        {# 1. Status banner #}
+        <div class="box mb-4" role="status">
+            <div class="is-flex is-justify-content-space-between is-align-items-center is-flex-wrap-wrap" style="gap: 0.75rem;">
+                <div>
+                    <span class="tag {{ firing_count > 0 ? 'is-warning' : 'is-success' }} is-light mr-2">
+                        {{ firing_count > 0 ? 'Firing' : 'Active' }}
+                    </span>
+                    <strong>Alerts are on:</strong>
+                    {{ rules|length }} rule{{ rules|length == 1 ? '' : 's' }}, {{ firing_count }} firing now.
+                    <span class="has-text-grey">Checked on completed UTC hours.</span>
+                </div>
+                <div class="is-size-7 has-text-grey">
+                    {% if last_check %}
+                        As of the last check: <strong class="has-text-dark">{{ last_check|date('Y-m-d H:i', 'UTC') }} UTC</strong>
+                    {% else %}
+                        Waiting for the first scheduled check
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if scheduler_late %}
+                <div class="notification is-warning is-light mt-3 mb-0" role="alert">
+                    <p>
+                        <strong>Scheduled task is late:</strong>
+                        <code>app:scheduler:run</code> has not run on schedule ({{ scheduler_state }}).
+                        Rules will not fire or recover until <a href="{{ path('app_scheduled_tasks') }}">Scheduled tasks</a> run.
+                    </p>
+                </div>
+            {% endif %}
+        </div>
+
+        {# 2. Alert rules #}
+        <details class="box mb-4" open>
+            <summary class="is-clickable">
+                <span class="title is-5">Alert rules ({{ rules|length }})</span>
+            </summary>
+            <div class="mt-4">
+                <div class="is-flex is-justify-content-space-between is-align-items-center is-flex-wrap-wrap mb-3" style="gap: 0.75rem;">
+                    <p class="help m-0">Group rules evaluate and send one alert per website.</p>
+                    <a href="{{ path('app_alerts_rule_new') }}" class="button is-primary is-small">+ Add rule</a>
+                </div>
+
+                {% if rules is empty %}
+                    <div class="notification is-light" role="status">
+                        <p class="has-text-weight-semibold mb-1">No alert rules yet</p>
+                        <p class="mb-3">Add a rule to watch for event gaps or tracking failures across a website, a website group, or all websites.</p>
+                        <a href="{{ path('app_alerts_rule_new') }}" class="button is-primary is-small">Add your first rule</a>
+                    </div>
+                {% else %}
+                    <div class="table-container">
+                        <table class="table is-fullwidth is-striped is-hoverable">
+                            <caption class="is-sr-only">Configured alert rules and their status</caption>
+                            <thead>
+                                <tr>
+                                    <th scope="col">Name</th>
+                                    <th scope="col">Covers</th>
+                                    <th scope="col">Condition (completed UTC hours)</th>
+                                    <th scope="col">Destinations</th>
+                                    <th scope="col">Status</th>
+                                    <th scope="col">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for rule in rules %}
+                                    <tr>
+                                        <td><code>{{ rule.id }}</code></td>
+                                        <td>{{ rule.covers_label }}</td>
+                                        <td>{{ rule.condition_label }}</td>
+                                        <td>{{ rule.destinations_label }}</td>
+                                        <td>
+                                            {% if rule.status.state == 'firing' %}
+                                                <span class="tag is-danger is-light">&#9650; {{ rule.status.label }}</span>
+                                            {% elseif rule.status.state == 'ok' %}
+                                                <span class="tag is-success is-light">&#10003; {{ rule.status.label }}</span>
+                                            {% elseif rule.status.state == 'off' %}
+                                                <span class="tag is-light">{{ rule.status.label }}</span>
+                                            {% else %}
+                                                <span class="tag is-info is-light">&#9719; {{ rule.status.label }}</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <div class="buttons are-small">
+                                                <a href="{{ path('app_alerts_rule_edit', {id: rule.id}) }}" class="button is-light">Edit</a>
+                                                <a href="{{ path('app_alerts_rule_delete_confirm', {id: rule.id}) }}" class="button is-danger is-light">Delete</a>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% endif %}
+            </div>
+        </details>
+
+        {# 3. Destinations & Webhook signing secret #}
+        <details class="box mb-4" open>
+            <summary class="is-clickable">
+                <span class="title is-5">Destinations ({{ destinations|length }})</span>
+            </summary>
+            <div class="mt-4">
+                <div class="is-flex is-justify-content-space-between is-align-items-center is-flex-wrap-wrap mb-3" style="gap: 0.75rem;">
+                    <p class="help m-0">
+                        Only the webhook <strong>host</strong> or <strong>recipient count</strong> is shown here. Full URLs, email addresses, and signing secrets are never displayed.
+                    </p>
+                    <a href="{{ path('app_alerts_destination_new') }}" class="button is-light is-small">+ Add destination</a>
+                </div>
+
+                {% if email_problem %}
+                    <div id="alerts-email-problem" class="notification is-warning is-light mb-3" role="status">
+                        <p>
+                            <strong>Email service is not ready:</strong> {{ email_problem }}
+                            Set up and turn on <a href="{{ path('app_email') }}">Email</a> before email alert destinations can send.
+                        </p>
+                    </div>
+                {% endif %}
+
+                {% if destinations is empty %}
+                    <p class="has-text-grey mb-4">No alert destinations yet. Add a webhook or email destination before creating a rule.</p>
+                {% else %}
+                    <div class="table-container mb-4">
+                        <table class="table is-fullwidth is-striped is-hoverable">
+                            <caption class="is-sr-only">Configured alert destinations with redacted targets</caption>
+                            <thead>
+                                <tr>
+                                    <th scope="col">Label</th>
+                                    <th scope="col">Type</th>
+                                    <th scope="col">Target (redacted)</th>
+                                    <th scope="col">Signing / Service</th>
+                                    <th scope="col">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for dest in destinations %}
+                                    <tr>
+                                        <td>
+                                            <strong>{{ dest.label }}</strong>
+                                            <span class="is-size-7 has-text-grey">(<code>{{ dest.id }}</code>)</span>
+                                        </td>
+                                        <td><span class="tag is-light">{{ dest.type }}</span></td>
+                                        <td>
+                                            {% if dest.type == 'webhook' %}
+                                                <code>{{ dest.target }}</code>
+                                            {% else %}
+                                                {{ dest.target }}
+                                            {% endif %}
+                                        </td>
+                                        <td class="is-size-7 has-text-grey">{{ dest.signing_label }}</td>
+                                        <td>
+                                            <div class="buttons are-small">
+                                                {% if dest.test_problem %}
+                                                    <button type="button" class="button is-light" disabled aria-describedby="{{ dest.type == 'email' ? 'alerts-email-problem' : 'alerts-secret-help' }}" title="{{ dest.test_problem }}">
+                                                        Send a test
+                                                    </button>
+                                                {% else %}
+                                                    <a href="{{ path('app_alerts', {test: dest.id}) }}#confirm-test" class="button is-light">Send a test</a>
+                                                {% endif %}
+                                                <a href="{{ path('app_alerts_destination_edit', {id: dest.id}) }}" class="button is-light">Edit</a>
+                                                <a href="{{ path('app_alerts_destination_delete_confirm', {id: dest.id}) }}" class="button is-danger is-light">Delete</a>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% endif %}
+
+                {% if confirm_destination %}
+                    <div id="confirm-test" class="notification is-info is-light mb-4" role="region" aria-labelledby="confirm-test-heading">
+                        <h3 id="confirm-test-heading" class="title is-6 mb-2">
+                            Confirm test alert — {{ confirm_destination.label }}
+                        </h3>
+                        <p class="mb-3">
+                            This sends a test to <strong>{{ confirm_destination.label }}</strong>
+                            ({{ confirm_destination.type == 'webhook' ? confirm_destination.target : confirm_destination.target }})
+                            with <code>"type": "test"</code> and a fresh <code>id</code>. It will not change any rule’s status.
+                        </p>
+                        <form method="post" action="{{ path('app_alerts_test') }}">
+                            <input type="hidden" name="_csrf_token" value="{{ csrf_token(constant('App\\Controller\\AlertsController::CSRF_TEST')) }}">
+                            <input type="hidden" name="destination" value="{{ confirm_destination.id }}">
+
+                            {% if confirm_destination.type == 'email' %}
+                                <div class="field" style="max-width: 24rem;">
+                                    <label class="label is-small" for="test-recipient">Send test email to</label>
+                                    <div class="control">
+                                        <div class="select is-small is-fullwidth">
+                                            <select id="test-recipient" name="recipient_index">
+                                                <option value="__all__">All listed recipients ({{ confirm_destination.recipient_count }})</option>
+                                                {% for opt in confirm_destination.recipient_options %}
+                                                    <option value="{{ opt.index }}">{{ opt.label }}</option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <p class="help">All listed recipients on this destination are available for testing. The chosen address is never written to logs or the audit trail.</p>
+                                </div>
+                            {% endif %}
+
+                            <div class="buttons are-small mt-3">
+                                <button type="submit" class="button is-primary">Confirm and send test</button>
+                                <a href="{{ path('app_alerts') }}" class="button is-light">Cancel</a>
+                            </div>
+                        </form>
+                    </div>
+                {% endif %}
+
+                {# Webhook signing secret box #}
+                <div class="box has-background-light">
+                    <h3 class="title is-6 mb-2">Webhook signing secret</h3>
+                    <p id="alerts-secret-help" class="help mb-3">
+                        Stored in <code>config/secrets/alerts.yaml</code> (or <code>ALERTS_WEBHOOK_SECRET</code> in the environment) and used to sign
+                        <code>X-Aggregate-Signature: t=&lt;unix&gt;,v1=&lt;hmac&gt;</code> on every webhook request.
+                        {{ component('Ui:DocsLink', {topic: 'alerts.signature', label: 'Check the signature'}) }}
+                    </p>
+
+                    {% if generated_secret %}
+                        <div class="notification is-warning is-light mb-3" role="status" aria-live="polite" data-controller="clipboard">
+                            <p class="has-text-weight-semibold mb-1">Shown once. Copy it now.</p>
+                            <div class="field has-addons mb-1">
+                                <div class="control is-expanded">
+                                    <input
+                                        id="generated-webhook-secret"
+                                        class="input is-small is-family-monospace"
+                                        type="text"
+                                        readonly
+                                        value="{{ generated_secret }}"
+                                        aria-label="Generated webhook signing secret"
+                                        data-clipboard-target="source"
+                                    >
+                                </div>
+                                <div class="control">
+                                    {{ component('Ui:CopyButton', {
+                                        target: 'generated-webhook-secret',
+                                        status: 'generated-webhook-secret-status',
+                                        label: 'Copy secret',
+                                    }) }}
+                                </div>
+                            </div>
+                            <p id="generated-webhook-secret-status" class="help">This value will not be displayed again after you leave or reload the page.</p>
+                        </div>
+                    {% endif %}
+
+                    <form method="post" action="{{ path('app_alerts_secret_save') }}">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token(constant('App\\Controller\\AlertsController::CSRF_SECRET')) }}">
+                        <div class="field">
+                            <label class="label is-small" for="webhook-secret">Signing secret (write-only)</label>
+                            <div class="control" style="max-width: 28rem;">
+                                <input
+                                    id="webhook-secret"
+                                    name="webhook_secret"
+                                    class="input is-small"
+                                    type="password"
+                                    autocomplete="new-password"
+                                    placeholder="{{ secret_source ? 'Saved; leave empty to keep it' : 'Paste a secret or click Generate a secret' }}"
+                                    {% if secret_env_controlled %}disabled{% endif %}
+                                >
+                            </div>
+                            {% if secret_env_controlled %}
+                                <p class="help">Set by <code>ALERTS_WEBHOOK_SECRET</code> in the environment.</p>
+                            {% elseif secret_source == 'file' %}
+                                <p class="help">Saved in <code>config/secrets/alerts.yaml</code>; leave empty to keep it.</p>
+                            {% endif %}
+                        </div>
+                        <div class="buttons are-small">
+                            <button type="submit" name="secret_action" value="save" class="button is-primary" {% if secret_env_controlled %}disabled{% endif %}>
+                                Save secret
+                            </button>
+                            <button type="submit" name="secret_action" value="generate" class="button is-light" {% if secret_env_controlled %}disabled{% endif %}>
+                                Generate a secret
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </details>
+
+        {# 4. Recent alerts #}
+        <details class="box" open>
+            <summary class="is-clickable">
+                <span class="title is-5">Recent alerts (last 20)</span>
+            </summary>
+            <div class="mt-4">
+                <div class="is-flex is-justify-content-space-between is-align-items-center is-flex-wrap-wrap mb-3" style="gap: 0.75rem;">
+                    <p class="help m-0">Recorded in <code>audit_trail</code> even if audit switches are turned off. Full history is on <a href="{{ path('app_audit_trail') }}">Audit trail</a>.</p>
+                </div>
+
+                {% if recent_alerts is empty %}
+                    <p class="has-text-grey">No alerts yet.</p>
+                {% else %}
+                    <div class="table-container">
+                        <table class="table is-fullwidth is-striped is-hoverable">
+                            <caption class="is-sr-only">The 20 most recent alert deliveries and suppressions</caption>
+                            <thead>
+                                <tr>
+                                    <th scope="col">Time (UTC)</th>
+                                    <th scope="col">Rule</th>
+                                    <th scope="col">Website</th>
+                                    <th scope="col">Type</th>
+                                    <th scope="col">Destination</th>
+                                    <th scope="col">Result &amp; plain reason</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for entry in recent_alerts %}
+                                    <tr>
+                                        <td class="is-family-monospace is-size-7">{{ entry.occurred_at|date('Y-m-d H:i', 'UTC') }} UTC</td>
+                                        <td><code>{{ entry.rule }}</code></td>
+                                        <td>{{ entry.website }}</td>
+                                        <td>
+                                            {% if entry.type == 'firing' %}
+                                                <span class="tag is-danger is-light">Firing</span>
+                                            {% elseif entry.type == 'recovered' %}
+                                                <span class="tag is-success is-light">Recovered</span>
+                                            {% else %}
+                                                <span class="tag is-info is-light">Test</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ entry.destination }}</td>
+                                        <td>
+                                            <strong>{{ entry.outcome_label }}</strong>
+                                            {% if entry.reason %}
+                                                — <span class="has-text-grey">{{ entry.reason }}</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% if older_removed %}
+                        <p class="help has-text-grey mt-2">Older entries were removed or are available in <a href="{{ path('app_audit_trail') }}">Audit trail</a>.</p>
+                    {% endif %}
+                {% endif %}
+            </div>
+        </details>
+    {% endif %}
+    </div>
+</section>
+{% endblock %}

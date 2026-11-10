@@ -46,6 +46,8 @@ final class AdminActions
         'app_reporting_timezone_save' => [Area::SETTINGS, 'reporting_timezone_saved'],
         'app_api_tokens_settings' => [Area::SETTINGS, 'reporting_api_settings_saved'],
         'app_audit_trail_settings' => [Area::SETTINGS, 'audit_settings_saved'],
+        'app_alerts_rule_save' => [Area::SETTINGS, 'alert_rule_saved'],
+        'app_alerts_rule_delete' => [Area::SETTINGS, 'alert_rule_deleted'],
         // Users.
         'app_install_execute' => [Area::USERS, 'installed'],
         'app_user_create' => [Area::USERS, 'user_created'],
@@ -91,6 +93,9 @@ final class AdminActions
         'app_mcp_connection_revoke' => [Area::INTEGRATIONS, 'assistant_connection_revoked'],
         'app_mcp_authorize_decide' => [Area::INTEGRATIONS, 'assistant_sign_in_decided'],
         'app_email_save' => [Area::INTEGRATIONS, 'email_settings_saved'],
+        'app_alerts_destination_save' => [Area::INTEGRATIONS, 'alert_destination_saved'],
+        'app_alerts_destination_delete' => [Area::INTEGRATIONS, 'alert_destination_deleted'],
+        'app_alerts_secret_save' => [Area::INTEGRATIONS, 'alert_secret_saved'],
         // Updates.
         'app_updates_refresh' => [Area::UPDATES, 'update_check_refreshed'],
         'app_updates_install' => [Area::UPDATES, 'update_started'],
@@ -108,6 +113,7 @@ final class AdminActions
         'app_setup_build_scripts' => [Area::OPERATIONS, 'browser_scripts_built'],
         'app_tracking_retry_now' => [Area::OPERATIONS, 'tracking_retry_started'],
         'app_email_test' => [Area::OPERATIONS, 'test_email_requested'],
+        'app_alerts_test' => [Area::OPERATIONS, 'test_alert_sent'],
         'app_data_transfer_export' => [Area::OPERATIONS, 'data_export_started'],
         'app_data_transfer_import' => [Area::OPERATIONS, 'data_import_started'],
         'app_data_transfer_copy' => [Area::OPERATIONS, 'data_copy_started'],
@@ -227,6 +233,19 @@ final class AdminActions
             'app:assets:build-js' => $end(Area::OPERATIONS, 'browser_scripts_built'),
             'app:tracking:retry-failed' => $end(Area::OPERATIONS, 'tracking_retry_started'),
             'app:email:test' => $end(Area::OPERATIONS, 'test_email_requested'),
+            'app:alerts:rule', 'app:alerts:rules' => match ($argument('action')) {
+                'create', 'add', 'edit', 'update' => $end(Area::SETTINGS, 'alert_rule_saved', $text($option('id'))),
+                'delete', 'remove' => $end(Area::SETTINGS, 'alert_rule_deleted', $text($option('id'))),
+                default => null,
+            },
+            'app:alerts:destination', 'app:alerts:destinations' => match ($argument('action')) {
+                'create', 'add', 'edit', 'update' => $end(Area::INTEGRATIONS, 'alert_destination_saved', $text($option('id'))),
+                'delete', 'remove' => $end(Area::INTEGRATIONS, 'alert_destination_deleted', $text($option('id'))),
+                'secret' => $end(Area::INTEGRATIONS, 'alert_secret_saved', $text($option('id'))),
+                default => null,
+            },
+            'app:alerts:test' => $end(Area::OPERATIONS, 'test_alert_sent', $text($argument('destination'))),
+            'app:alerts:evaluate', 'app:alerts:run' => $end(Area::OPERATIONS, 'alerts_evaluated'),
             'app:updates:method' => $text($argument('method')) !== null ? $end(Area::UPDATES, 'update_method_changed') : null,
             'app:updates:maintenance' => match ($argument('action')) {
                 'on' => $end(Area::UPDATES, 'maintenance_turned_on'),

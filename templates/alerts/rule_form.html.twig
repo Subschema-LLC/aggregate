@@ -1,0 +1,305 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}{{ is_editing ? 'Edit alert rule' : 'Add alert rule' }} - {{ app_branding.name }}{% endblock %}
+
+{% block body %}
+<section class="section">
+    <div class="container">
+        <div class="mb-5">
+            <h1 class="title is-3 mb-2">{{ is_editing ? 'Edit alert rule' : 'Add alert rule' }}</h1>
+            <p class="subtitle is-6">
+                Define a threshold rule evaluated on completed UTC hours.
+                <a href="{{ path('app_alerts') }}">Back to Alerts</a>
+                · {{ component('Ui:DocsLink', {topic: 'alerts'}) }}
+            </p>
+        </div>
+    {% if errors is not empty %}
+        <div class="notification is-danger is-light" role="alert" tabindex="-1">
+            <p class="has-text-weight-semibold mb-1">Please correct the following problem:</p>
+            <ul>
+                {% for error in errors %}
+                    <li><a href="#{{ error.field }}">{{ error.message }}</a></li>
+                {% endfor %}
+            </ul>
+        </div>
+    {% endif %}
+
+    <div class="box" data-controller="pages--alerts--rule-form">
+        <div class="notification is-info is-light mb-4" role="status" aria-live="polite">
+            <span class="is-size-7 has-text-weight-bold is-uppercase has-text-grey">Rule summary</span>
+            <p class="mt-1 mb-0" data-pages--alerts--rule-form-target="summary">{{ summary_text }}</p>
+            <p class="is-size-7 has-text-grey mt-1 mb-0">
+                Webhook <code>alert_condition</code>: <code data-pages--alerts--rule-form-target="conditionPreview">{{ alert_condition_preview }}</code>
+            </p>
+        </div>
+
+        <form method="post" action="{{ path('app_alerts_rule_save') }}">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token(constant('App\\Controller\\AlertsController::CSRF_RULE')) }}">
+            <input type="hidden" name="_editing" value="{{ is_editing ? '1' : '0' }}">
+
+            {# Step 1: What to watch #}
+            <fieldset class="box mb-4">
+                <legend class="label is-size-6 mb-2">1. What to watch</legend>
+
+                <div class="columns is-multiline">
+                    <div class="column is-6">
+                        <div class="field">
+                            <label class="label" for="rule-id">Rule ID (<code>rule</code>)</label>
+                            <div class="control">
+                                <input
+                                    id="rule-id"
+                                    name="id"
+                                    class="input {{ is_editing ? 'has-background-light' : '' }}"
+                                    type="text"
+                                    value="{{ rule.id }}"
+                                    required
+                                    pattern="[a-z0-9][a-z0-9_-]{0,62}"
+                                    {% if is_editing %}readonly{% endif %}
+                                    aria-describedby="rule-id-help"
+                                >
+                            </div>
+                            <p id="rule-id-help" class="help">
+                                {% if is_editing %}
+                                    Used as <code>rule</code> in webhook payloads. To change this ID, delete the rule and add a new one.
+                                {% else %}
+                                    Lowercase letters, numbers, hyphens or underscores (e.g. <code>geektown-weekly</code>). Sent as <code>rule</code> in webhook payloads.
+                                {% endif %}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="column is-6">
+                        <div class="field">
+                            <label class="label" for="rule-covers">Website or website group</label>
+                            <div class="control">
+                                <div class="select is-fullwidth">
+                                    <select
+                                        id="rule-covers"
+                                        name="covers"
+                                        aria-describedby="rule-covers-help"
+                                        data-pages--alerts--rule-form-target="covers"
+                                        data-action="change->pages--alerts--rule-form#refresh"
+                                    >
+                                        {% for choice in covers_choices %}
+                                            <option value="{{ choice.value }}" {% if rule.covers == choice.value %}selected{% endif %}>
+                                                {{ choice.label }}
+                                            </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                            <p id="rule-covers-help" class="help">A group rule evaluates each member website on its own and sends one alert per website.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label class="label" for="rule-source">Source</label>
+                    <div class="control">
+                        <div class="select">
+                            <select
+                                id="rule-source"
+                                name="source"
+                                aria-describedby="rule-source-help"
+                                data-pages--alerts--rule-form-target="source"
+                                data-action="change->pages--alerts--rule-form#refresh"
+                            >
+                                <option value="events" {% if rule.source == 'events' %}selected{% endif %}>Events — count recorded events in the events table</option>
+                                <option value="tracking_failures" {% if rule.source == 'tracking_failures' %}selected{% endif %}>Tracking failures — count failed ingest/store tasks in processing_tasks</option>
+                            </select>
+                        </div>
+                    </div>
+                    <p id="rule-source-help" class="help">Choose whether to watch for a drop in recorded events or a spike in tracking failures.</p>
+                </div>
+            </fieldset>
+
+            {# Step 2: Filter which events count (events source only) #}
+            <fieldset
+                class="box mb-4"
+                data-pages--alerts--rule-form-target="filterSection"
+                {% if rule.source == 'tracking_failures' %}hidden{% endif %}
+            >
+                <legend class="label is-size-6 mb-2">2. Filter which events count (optional)</legend>
+
+                <div class="columns is-multiline">
+                    <div class="column is-6">
+                        <div class="field">
+                            <label class="label" for="privacy-mode">Privacy mode</label>
+                            <div class="control">
+                                <div class="select is-fullwidth">
+                                    <select
+                                        id="privacy-mode"
+                                        name="privacy_mode"
+                                        aria-describedby="privacy-mode-help"
+                                        data-pages--alerts--rule-form-target="privacyMode"
+                                        data-action="change->pages--alerts--rule-form#refresh"
+                                        {% if rule.source == 'tracking_failures' %}disabled{% endif %}
+                                    >
+                                        <option value="all" {% if rule.privacy_mode == 'all' %}selected{% endif %}>All privacy modes (anonymous + enhanced)</option>
+                                        <option value="enhanced" {% if rule.privacy_mode == 'enhanced' %}selected{% endif %}>Enhanced only (consent granted)</option>
+                                        <option value="anonymous" {% if rule.privacy_mode == 'anonymous' %}selected{% endif %}>Anonymous only</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <p id="privacy-mode-help" class="help">Use <em>Enhanced only</em> to catch a broken consent banner when anonymous events keep arriving.</p>
+                            <div
+                                class="notification is-info is-light is-size-7 mt-2 mb-0"
+                                data-pages--alerts--rule-form-target="enhancedTip"
+                                {% if rule.privacy_mode != 'enhanced' %}hidden{% endif %}
+                            >
+                                <strong>Tip:</strong> If all site traffic stops, this rule also fires. Pair it with an <em>All privacy modes</em> rule to tell a broken consent banner apart from a removed tag.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="column is-6">
+                        <div class="field">
+                            <label class="label" for="event-name">Event name (optional)</label>
+                            <div class="control">
+                                <input
+                                    id="event-name"
+                                    name="event_name"
+                                    class="input"
+                                    type="text"
+                                    value="{{ rule.event_name }}"
+                                    placeholder="Leave blank for all event names, or e.g. page_view"
+                                    aria-describedby="event-name-help"
+                                    data-pages--alerts--rule-form-target="eventName"
+                                    data-action="input->pages--alerts--rule-form#refresh"
+                                    {% if rule.source == 'tracking_failures' %}disabled{% endif %}
+                                >
+                            </div>
+                            <p id="event-name-help" class="help">Uses the safe event-name format. Leave empty to count every event name.</p>
+                        </div>
+                    </div>
+                </div>
+            </fieldset>
+
+            {# Step 3: Threshold, window, and destinations #}
+            <fieldset class="box mb-4">
+                <legend class="label is-size-6 mb-2">3. Threshold, window, and destinations</legend>
+
+                <div class="columns is-multiline">
+                    <div class="column is-4">
+                        <div class="field">
+                            <label class="label" for="condition">Condition</label>
+                            <div class="control">
+                                <div class="select is-fullwidth">
+                                    <select
+                                        id="condition"
+                                        name="condition"
+                                        data-pages--alerts--rule-form-target="condition"
+                                        data-action="change->pages--alerts--rule-form#refresh"
+                                    >
+                                        <option value="no_events" {% if rule.condition == 'no_events' %}selected{% endif %} {% if rule.source == 'tracking_failures' %}disabled{% endif %}>No events (0)</option>
+                                        <option value="fewer_than" {% if rule.condition == 'fewer_than' %}selected{% endif %} {% if rule.source == 'tracking_failures' %}disabled{% endif %}>Fewer than N events</option>
+                                        <option value="more_than" {% if rule.condition == 'more_than' %}selected{% endif %} {% if rule.source == 'events' %}disabled{% endif %}>More than N tracking failures</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="column is-3">
+                        <div class="field">
+                            <label class="label" for="threshold">Threshold (<code>N</code>)</label>
+                            <div class="control">
+                                <input
+                                    id="threshold"
+                                    name="threshold"
+                                    class="input"
+                                    type="number"
+                                    min="{{ rule.source == 'tracking_failures' or rule.condition == 'no_events' ? 0 : 1 }}"
+                                    step="1"
+                                    value="{{ rule.condition == 'no_events' ? 0 : rule.threshold }}"
+                                    aria-describedby="threshold-help"
+                                    data-pages--alerts--rule-form-target="threshold"
+                                    data-action="input->pages--alerts--rule-form#refresh"
+                                    {% if rule.condition == 'no_events' %}readonly{% endif %}
+                                >
+                            </div>
+                            <p id="threshold-help" class="help">Capped query stops counting at <code>N</code>.</p>
+                        </div>
+                    </div>
+
+                    <div class="column is-5">
+                        <div class="field">
+                            <label class="label" for="window">Sliding window (completed UTC hours)</label>
+                            <div class="control">
+                                <div class="select is-fullwidth">
+                                    <select
+                                        id="window"
+                                        name="window"
+                                        aria-describedby="window-help"
+                                        data-pages--alerts--rule-form-target="window"
+                                        data-action="change->pages--alerts--rule-form#refresh"
+                                    >
+                                        <option value="hour" {% if rule.window == 'hour' %}selected{% endif %}>1 hour (1 completed UTC hour)</option>
+                                        <option value="day" {% if rule.window == 'day' %}selected{% endif %}>1 day (24 completed UTC hours)</option>
+                                        <option value="week" {% if rule.window == 'week' %}selected{% endif %}>1 week (168 completed UTC hours)</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <p id="window-help" class="help">
+                                Evaluated once per completed UTC hour over the trailing <code>[T − W, T)</code> window.
+                                {% if non_utc_timezone %}
+                                    <strong>These are UTC hours, not your reporting time zone ({{ reporting_timezone }}).</strong>
+                                {% endif %}
+                            </p>
+                            <div
+                                class="notification is-warning is-light is-size-7 mt-2 mb-0"
+                                data-pages--alerts--rule-form-target="hourWarning"
+                                {% if rule.window != 'hour' or rule.source != 'events' %}hidden{% endif %}
+                            >
+                                Quiet sites often have empty hours overnight, so a 1-hour window may alert often. Consider <em>1 day</em> or <em>1 week</em> unless the site receives steady traffic every hour.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="field mt-2" id="destinations-group">
+                    <span class="label">Destinations</span>
+                    {% if destinations is empty %}
+                        <p class="help is-danger">
+                            No destinations are configured yet. <a href="{{ path('app_alerts_destination_new') }}">Add a destination</a> first.
+                        </p>
+                    {% else %}
+                        <div class="control">
+                            {% for dest in destinations %}
+                                <label class="checkbox mr-4">
+                                    <input
+                                        type="checkbox"
+                                        name="destinations[]"
+                                        value="{{ dest.id }}"
+                                        {% if dest.id in rule.destinations %}checked{% endif %}
+                                    >
+                                    {{ dest.label }}
+                                    <span class="has-text-grey is-size-7">({{ dest.type }} · {{ dest.target }})</span>
+                                </label>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+
+                <div class="field mt-3">
+                    <input type="hidden" name="enabled" value="0">
+                    <label class="checkbox">
+                        <input type="checkbox" name="enabled" value="1" {% if rule.enabled %}checked{% endif %}>
+                        Rule enabled
+                    </label>
+                </div>
+            </fieldset>
+
+            <p class="help mb-3">
+                Saving updates <code>config/aggregate.yaml</code>. Hand-written YAML comments are not preserved.
+            </p>
+
+            <div class="buttons">
+                <button type="submit" class="button is-primary">Save rule</button>
+                <a href="{{ path('app_alerts') }}" class="button is-light">Cancel</a>
+            </div>
+        </form>
+    </div>
+    </div>
+</section>
+{% endblock %}

@@ -31,6 +31,7 @@ on or off happens on that job's own page.
 | BigQuery sync | Each selected view once per interval (15 minutes to 24 hours), while the sync is on | **Reporting → Sync → BigQuery**, see [BigQuery](BIGQUERY.md#schedule-the-sync) |
 | Reporting database sync | Each selected view once per interval, while the sync is on | **Reporting → Sync → Reporting database**, see [Reporting database](REPORTING-DATABASE.md#schedule-the-sync) |
 | Forensic database sync | Each selected table and view once per interval (daily by default), while the sync is on | **Reporting → Sync → Forensic database** (administrators), see [Forensic database](FORENSIC-DATABASE.md#schedule-the-sync) |
+| Alerts | Once per completed UTC hour, while the `alerts` feature flag is on and at least one rule is enabled | **Administration → Alerts** (administrators), see [Alerts](ALERTS.md) |
 
 Maintenance is due 24 hours after the last maintenance run started, whoever
 started it. A run within ten minutes of that time counts, so a task every five

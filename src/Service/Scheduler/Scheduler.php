@@ -42,8 +42,13 @@ class Scheduler
         private readonly string $projectDir,
         private readonly ClockInterface $clock,
         private readonly LoggerInterface $logger,
+        ?ScheduledJob $alerts = null,
     ) {
-        $this->jobs = [$maintenance, $bigQuery, $reportingDatabase, $forensicDatabase];
+        $jobs = [$maintenance, $bigQuery, $reportingDatabase, $forensicDatabase];
+        if ($alerts !== null) {
+            $jobs[] = $alerts;
+        }
+        $this->jobs = $jobs;
     }
 
     /** @return list<ScheduledJob> */

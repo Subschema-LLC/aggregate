@@ -1,0 +1,19 @@
+{{ alert_title|default('Alert notification') }}
+
+Type: {{ alert_type|default('firing') }}
+Rule: {{ alert_rule|default('test-rule') }}
+Website: {{ alert_host|default('') }}{% if alert_website is defined and alert_website %} ({{ alert_website }}){% endif %}
+
+Condition: {{ alert_condition_description|default(alert_condition|default('')) }}{% if alert_condition is defined and alert_condition %} ({{ alert_condition }}){% endif %}
+
+Completed UTC window end: {{ alert_window_end|default('') }}
+Alert ID: {{ alert_id|default('') }}
+Incident ID: {{ alert_incident|default('') }}
+{% if alert_installation is defined and alert_installation %}
+Installation: {{ alert_installation }}
+{% elseif app_url %}
+Installation: {{ app_url }}
+{% endif %}
+
+--
+This message was sent automatically by {{ brand_name }}. Replies may not be read.

@@ -99,6 +99,10 @@ services:
         arguments:
             $projectDir: '%kernel.project_dir%'
 
+    App\Service\Alerts\AlertSecrets:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
     App\Service\ParsedYamlCache:
         arguments:
             $directory: '%kernel.cache_dir%/parsed-yaml'
@@ -232,6 +236,7 @@ services:
             $bigQuery: '@App\Service\Scheduler\BigQuerySyncJob'
             $reportingDatabase: '@App\Service\Scheduler\ReportingDatabaseSyncJob'
             $forensicDatabase: '@App\Service\Scheduler\ForensicDatabaseSyncJob'
+            $alerts: '@App\Service\Alerts\AlertsJob'
             $projectDir: '%kernel.project_dir%'
 
     App\Service\Scheduler\SchedulerSetup:

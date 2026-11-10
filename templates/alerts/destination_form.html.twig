@@ -1,0 +1,127 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}{{ is_editing ? 'Edit alert destination' : 'Add alert destination' }} - {{ app_branding.name }}{% endblock %}
+
+{% block body %}
+<section class="section">
+    <div class="container">
+        <h1 class="title is-3 mb-2">{{ is_editing ? 'Edit alert destination' : 'Add alert destination' }}</h1>
+        <p class="subtitle is-6">
+            Configure a signed HTTPS webhook or email recipient list for alert rules.
+            <a href="{{ path('app_alerts') }}">Back to Alerts</a>
+            · {{ component('Ui:DocsLink', {topic: 'alerts'}) }}
+        </p>
+    {% if errors is not empty %}
+        <div class="notification is-danger is-light" role="alert" tabindex="-1">
+            <p class="has-text-weight-semibold mb-1">Please correct the following problem:</p>
+            <ul>
+                {% for error in errors %}
+                    <li><a href="#{{ error.field }}">{{ error.message }}</a></li>
+                {% endfor %}
+            </ul>
+        </div>
+    {% endif %}
+
+    <div class="box">
+        <form method="post" action="{{ path('app_alerts_destination_save') }}">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token(constant('App\\Controller\\AlertsController::CSRF_DESTINATION')) }}">
+            <input type="hidden" name="_editing" value="{{ is_editing ? '1' : '0' }}">
+
+            <div class="columns is-multiline">
+                <div class="column is-6">
+                    <div class="field">
+                        <label class="label" for="destination-label">Label</label>
+                        <div class="control">
+                            <input
+                                id="destination-label"
+                                name="label"
+                                class="input"
+                                type="text"
+                                value="{{ destination.label }}"
+                                required
+                                maxlength="80"
+                                placeholder="e.g. Geektown Hub or Ops email"
+                            >
+                        </div>
+                        <p class="help">Shown in the Alert rules form and Recent alerts table.</p>
+                    </div>
+                </div>
+
+                <div class="column is-6">
+                    <div class="field">
+                        <label class="label" for="destination-id">Destination ID</label>
+                        <div class="control">
+                            <input
+                                id="destination-id"
+                                name="id"
+                                class="input {{ is_editing ? 'has-background-light' : '' }}"
+                                type="text"
+                                value="{{ destination.id }}"
+                                placeholder="Derived from label if left empty, e.g. geektown-hub"
+                                {% if is_editing %}readonly{% endif %}
+                            >
+                        </div>
+                        <p class="help">Used in <code>config/aggregate.yaml</code> and <code>app:alerts:*</code> commands.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="field">
+                <label class="label" for="destination-type">Type</label>
+                <div class="control">
+                    <div class="select">
+                        <select id="destination-type" name="type">
+                            <option value="webhook" {% if destination.type == 'webhook' %}selected{% endif %}>Webhook (HTTPS JSON POST)</option>
+                            <option value="email" {% if destination.type == 'email' %}selected{% endif %}>Email (TransactionalMailer)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="field">
+                <label class="label" for="destination-url">Webhook HTTPS URL (for webhook destinations)</label>
+                <div class="control">
+                    <input
+                        id="destination-url"
+                        name="url"
+                        class="input"
+                        type="url"
+                        placeholder="{{ is_editing and destination.host ? 'Saved (' ~ destination.host ~ '); leave empty to keep it' : 'https://hooks.example.com/alerts/ingest' }}"
+                        aria-describedby="destination-url-help"
+                    >
+                </div>
+                <p id="destination-url-help" class="help">
+                    Must use <code>https://</code> and a public address (private, loopback, and link-local addresses are blocked). Only the host is shown after saving.
+                </p>
+            </div>
+
+            <div class="field">
+                <label class="label" for="destination-recipients">Recipient email addresses (for email destinations)</label>
+                <div class="control">
+                    <textarea
+                        id="destination-recipients"
+                        name="recipients"
+                        class="textarea"
+                        rows="3"
+                        placeholder="{{ is_editing and destination.recipient_count > 0 ? 'Saved (' ~ destination.recipient_count ~ ' listed recipients); leave empty to keep them' : 'ops@example.com, alerts@example.com' }}"
+                        aria-describedby="destination-recipients-help"
+                    ></textarea>
+                </div>
+                <p id="destination-recipients-help" class="help">
+                    One or more email addresses separated by commas or newlines. Only the recipient count is shown on the Alerts page after saving.
+                </p>
+            </div>
+
+            <p class="help mb-3">
+                Saving updates <code>config/aggregate.yaml</code>. Hand-written YAML comments are not preserved.
+            </p>
+
+            <div class="buttons">
+                <button type="submit" class="button is-primary">Save destination</button>
+                <a href="{{ path('app_alerts') }}" class="button is-light">Cancel</a>
+            </div>
+        </form>
+    </div>
+    </div>
+</section>
+{% endblock %}

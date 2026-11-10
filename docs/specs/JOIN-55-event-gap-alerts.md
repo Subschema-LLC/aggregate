@@ -147,6 +147,8 @@ _By -UX Designer-._
 - **Protect the Rule ID (`rule`) after creation to avoid orphaned incidents:** Because webhook receivers correlate `firing` and `recovered` alerts on `rule` (and `incident` hashes the rule ID), editing a rule's ID while it is firing would orphan the open incident in Geektown's hub. Make the Rule ID read-only when editing an existing rule, with helper text: *"Used as `rule` in webhook payloads. To change this ID, delete the rule and add a new one."* Also add a standard YAML note above the Save button: *"Saving updates `config/aggregate.yaml`. Hand-written YAML comments are not preserved."*
 - **Drop the `'Unknown'` status state:** Since firing state is stored in `processing_tasks.fingerprint` (`ok` or `firing:<since_iso>`) and preserved across retention purges, every enabled rule has a known state: `OK`, `Firing since YYYY-MM-DD HH:00 UTC`, `Waiting for the first full hour`, or `Off`.
 
+See visuals: https://join.subschema.io/visuals/2cf4d63151e89aae48681a0f56ff8bd6
+
 _By -UX/UI Designer-._
 
 ## Back-end Architect/Engineer
@@ -157,7 +159,7 @@ I agree with the Product Owner's scope and the UX/UI Designer's page. My part is
 - New `src/Service/Alerts/AlertsJob.php` implements `ScheduledJob` (`src/Service/Scheduler/ScheduledJob.php`). It gets an `alerts` entry in `SchedulerSetup` and is due once per completed UTC hour, so the 5-minute scheduler sends an alert within one run after the hour closes. It records each run through `ProcessingTasks` and each send, suppression or failure through `AuditTrail` (`src/Service/Operations/`).
 - No stored firing state, which answers the Product Owner's retention risk and the UX/UI Designer's 'Unknown' status. For each completed hour h, a rule is breached when the count over [h−W, h) is below N. It fires when hour h is breached and hour h−1 was not, and recovers in the reverse case. 'Firing since' comes from walking back hour by hour (capped at 7 days). The page and the job use the same `AlertEvaluator`, so a cache clear or an audit_trail prune can't make them disagree.
 - Missed runs: the cursor is the last successful `alerts` processing task. Catch-up covers at most 24 hours and sends only the newest transition per rule and website, so a long outage doesn't flood receivers. If the cursor is missing, only the latest hour is evaluated.
-- Counting: add `EventRepository::countEventsUpTo(token, from, to, cap)` (`src/Repository/EventRepository.php`) as `SELECT COUNT(*) FROM (SELECT 1 … WHERE website_token=? AND created_at>=? AND created_at<? LIMIT cap)`. It uses the existing (website_token, created_at) index, and the row limit is applied per platform through Doctrine for SQL Server. Capping at N means busy sites are never fully counted. The query runs once per website, like `findLastEventDatesByTokens`. The DBA needs to confirm only that this index serves the query on all five engines. No schema change.
+- Counting: add `EventRepository::countEventsUpTo(token, from, to, cap)` (`src/Repository/EventRepository.php`) as `SELECT COUNT(*) FROM (SELECT 1 AS c … WHERE website_token=? AND created_at>=? AND created_at<? LIMIT cap) AS t` with optional `privacy_mode` and `event_name` filters, and `ProcessingTasks::countTrackingFailuresUpTo(token, from, to, cap)` (`src/Service/Operations/ProcessingTasks.php`) over retained `tracking_event_store` and `tracking_ingest` failed rows for `hour` (1h), `day` (24h), and `week` (168h) windows. `ProcessingTasks::purgeBefore()` retains all rows newer than `processing_tasks_retention_days` (90 days by default), so window counts are supported directly. The queries use the existing `(website_token, created_at)`, `(privacy_mode, website_token, created_at)`, and `(task_type, subject, started_at)` indexes, and the row limit is applied per platform through Doctrine (`$platform->modifyLimitQuery('SELECT 1 AS c …', $cap)`) for PostgreSQL, MySQL, MariaDB, SQL Server, and SQLite. Capping at N means busy sites are never fully counted. No schema change.
 - Config: `AlertSettings` plus one `AlertRuleValidator`, used by the page, `app:alerts:*` commands and YAML loading. Rules and destinations live under `alerts:` in `config/aggregate.yaml`, and website groups resolve through `WebsiteConfigManager`. Webhook secrets go in `config/secrets/alerts.yaml` through a new `AlertSecrets` built on `EmailSecrets` and `SecretFileEncryption`. They're already preserved by `UpdatePaths`.
 - Delivery: `WebhookSender` wraps `HttpClientInterface` in `NoPrivateNetworkHttpClient`. It allows HTTPS only, no redirects, a 5 s timeout and reads at most 4 KiB of the response. Headers: `X-Aggregate-Signature: t=…,v1=HMAC-SHA256(t.body)` and an `Idempotency-Key` built from rule, website, hour and type. It makes 3 attempts within the run. A hard failure is recorded and the job moves on. Before sending, it checks audit_trail for a sent record with the same key, so a re-run doesn't send twice. Email goes through `TransactionalMailer` with an `alert` purpose.
 - Building on the Product Owner's point about `WebsiteActivityService`: it measures in days, from the last event, and doesn't use thresholds. Alerts reuse only its website list and its UTC basis. The page links to it but doesn't rewrite it.
@@ -194,15 +196,15 @@ _By -Architect-._
 
 _The work this spec plans, as `- [ ] …` items, each naming the role that does it. Whoever finishes an item checks it off in the same commit as the work: `- [x] … (done in JOIN-41)`._
 
-- [ ] Product Owner: revise the anchor `docs/features/event-gap-alerts.md` with the v1 rule shape, sources, filters, windows and the thread's decisions
-- [ ] Architect: confirm that tracking-failure counts per window can be read from retained `processing_tasks`, and update the back-end section for sources, filters and day and week windows
-- [ ] DBA: confirm the index for counting capped events by `website_token` and `created_at` with optional `privacy_mode` and `event_name` filters on all five engines
+- [x] Product Owner: revise the anchor `docs/features/event-gap-alerts.md` with the v1 rule shape, sources, filters, windows and the thread's decisions (done in JOIN-55)
+- [x] Architect: confirm that tracking-failure counts per window can be read from retained `processing_tasks`, and update the back-end section for sources, filters and day and week windows (done in JOIN-55)
+- [x] DBA: confirm the index for counting capped events by `website_token` and `created_at` with optional `privacy_mode` and `event_name` filters on all five engines (done in JOIN-55)
 - [x] UX/UI Designer: add the source, filter, and day and week windows to the rule form, and show the email test to any listed recipient (done in JOIN-55)
-- [ ] Back end: write `AlertSettings`, `AlertRuleValidator`, the YAML writer and the `app:alerts:*` commands
-- [ ] Back end: write `AlertEvaluator` and `AlertsJob` with the fingerprint state in `processing_tasks`, wired in `Scheduler` and `config/services.yaml`
-- [ ] Back end: write `WebhookSender` (HTTPS only, private addresses blocked, signed, URL redacted from errors) and alert email through `TransactionalMailer`
-- [ ] Front end: build the Alerts page, the feature flag, the `shown_when` menu entry and the `DashboardPages` entries
-- [ ] Docs: write `docs/ALERTS.md` with the payload contract and signature check, a `DocumentationLinks` topic, an update to `ROADMAP.md`, and an entry in `docs/DESIGN-DECISIONS.md`
-- [ ] Tests: privacy and redaction regressions, fire, recover and no-duplicate behavior, and the five engines
+- [x] Back end: write `AlertSettings`, `AlertRuleValidator`, the YAML writer and the `app:alerts:*` commands (done in JOIN-55)
+- [x] Back end: write `AlertEvaluator` and `AlertsJob` with the fingerprint state in `processing_tasks`, wired in `Scheduler` and `config/services.yaml` (done in JOIN-55)
+- [x] Back end: write `WebhookSender` (HTTPS only, private addresses blocked, signed, URL redacted from errors) and alert email through `TransactionalMailer` (done in JOIN-55)
+- [x] Front end: build the Alerts page, the feature flag, the `shown_when` menu entry and the `DashboardPages` entries (done in JOIN-55)
+- [x] Docs: write `docs/ALERTS.md` with the payload contract and signature check, a `DocumentationLinks` topic, an update to `ROADMAP.md`, and an entry in `docs/DESIGN-DECISIONS.md` (done in JOIN-55)
+- [x] Tests: privacy and redaction regressions, fire, recover and no-duplicate behavior, and the five engines (done in JOIN-55)
 
 _By -Product Owner- (claude-opus-5-5)._

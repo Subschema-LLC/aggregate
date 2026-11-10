@@ -49,6 +49,9 @@ feature_flags:
   mcp_server:
     enabled: false
     hide_from_navigation: true
+  alerts:
+    enabled: false
+    hide_from_navigation: true
 # enabled: false blocks update routes/services/commands. Independently, true
 # hide_from_navigation removes their navigation entries. A feature that is off
 # and shown appears greyed out with an Off tag; hide it if that would look like
