@@ -329,13 +329,15 @@ jobs:
           - name: PostgreSQL 16
             image: postgres:16
             port: 5432
-            health: --health-cmd="pg_isready -U aggregate" --health-interval=5s --health-timeout=5s --health-retries=30
+            # Docker gives /dev/shm 64 MB; PostgreSQL's parallel queries
+            # over a 10 million row table need more, as on a real server.
+            options: --shm-size=1g --health-cmd="pg_isready -U aggregate" --health-interval=5s --health-timeout=5s --health-retries=30
             # As the setup page writes it: connections stay open between requests.
             url: 'postgresql://aggregate:load-test@127.0.0.1:5432/aggregate?serverVersion=16&persistent=true'
           - name: MySQL 8.0
             image: mysql:8.0
             port: 3306
-            health: --health-cmd="mysqladmin ping -h 127.0.0.1 -proot-load" --health-interval=5s --health-timeout=5s --health-retries=30
+            options: --health-cmd="mysqladmin ping -h 127.0.0.1 -proot-load" --health-interval=5s --health-timeout=5s --health-retries=30
             url: 'mysql://aggregate:load-test@127.0.0.1:3306/aggregate?serverVersion=8.0.0'
         exclude:
           # Anonymous events are written during the request and never queue.
@@ -354,7 +356,7 @@ jobs:
           POSTGRES_DB: aggregate
           POSTGRES_USER: aggregate
           POSTGRES_PASSWORD: load-test
-        options: ${{ matrix.db.health }}
+        options: ${{ matrix.db.options }}
     env:
       HEAD_ROOT: /srv/head
       K6_VERSION: v1.0.0

@@ -56,8 +56,9 @@ if ($platform instanceof PostgreSQLPlatform) {
         FROM generate_series(CAST(:first AS bigint), CAST(:last AS bigint)) AS g
         SQL;
     // VACUUM also marks the pages all-visible, so autovacuum does not
-    // start on the new rows in the middle of a measurement.
-    $analyze = 'VACUUM (ANALYZE) events';
+    // start on the new rows in the middle of a measurement. Without parallel
+    // workers it needs no dynamic shared memory, which Docker limits to 64 MB.
+    $analyze = 'VACUUM (ANALYZE, PARALLEL 0) events';
 } elseif ($platform instanceof AbstractMySQLPlatform) {
     $connection->executeStatement('SET SESSION cte_max_recursion_depth = 1000001');
     $select = static fn (): string => <<<SQL
