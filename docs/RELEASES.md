@@ -166,7 +166,9 @@ be resumed with `--resume` after an interruption. A lock prevents two updates at
    written last. If this step fails, the files are restored automatically.
 5. **Continue with the new code.** A fresh `app:updates:apply --resume` process runs
    migrations, `app:analytics:glossary:sync`, cache warmup and the worker restart
-   signal, then leaves maintenance mode and removes the staging copy.
+   signal, writes `var/php-reload-requested` for a panel that
+   [reloads PHP](UPDATES.md#reload-php-after-an-update), then leaves maintenance
+   mode and removes the staging copy.
 
 How files are treated:
 

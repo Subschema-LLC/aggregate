@@ -409,6 +409,7 @@ final class ApplicationUpdaterTest extends TestCase
         // The fresh process continues after the handoff and records the deployment.
         $finished = $updater->resume($this->record(...));
         self::assertSame('completed', $finished['status']);
+        self::assertSame('deployment', json_decode($this->read('var/php-reload-requested'), true)['reason'], 'A hosting panel can reload PHP-FPM when this appears.');
         self::assertSame($commit, (new DeploymentState($this->project))->record()['commit']);
         self::assertNull((new MaintenanceMode($this->project))->status());
         self::assertSame($commit, $this->updater(settings: ['updates_method' => 'deployment'])->status()['to']['commit']);
