@@ -13,6 +13,7 @@ use App\Security\Access\UserAccessResolver;
 use App\Service\AggregateConfigLoader;
 use App\Service\WebsiteScopeCatalog;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\DependencyInjection\ServiceLocator;
 use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -22,6 +23,7 @@ use Symfony\Component\HttpKernel\Event\ControllerEvent;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorage;
+use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
 use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
 use Symfony\Component\Security\Core\Authorization\AuthorizationCheckerInterface;
 use Symfony\Component\Security\Core\Exception\AccessDeniedException;
@@ -166,6 +168,16 @@ final class DashboardAccessSubscriberTest extends TestCase
         $urls = $this->createStub(UrlGeneratorInterface::class);
         $urls->method('generate')->willReturnCallback(static fn (string $route): string => '/generated/'.$route);
 
-        return new DashboardAccessSubscriber($authorization, $this->tokens, $this->resolver, $urls, new AggregateConfigLoader($this->projectDir, 'test'));
+        $services = [
+            AuthorizationCheckerInterface::class => $authorization,
+            TokenStorageInterface::class => $this->tokens,
+            UserAccessResolver::class => $this->resolver,
+            UrlGeneratorInterface::class => $urls,
+        ];
+
+        return new DashboardAccessSubscriber(
+            new ServiceLocator(array_map(static fn (object $service): \Closure => static fn (): object => $service, $services)),
+            new AggregateConfigLoader($this->projectDir, 'test'),
+        );
     }
 }

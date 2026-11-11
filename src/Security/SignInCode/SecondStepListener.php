@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Security\SignInCode;
 
 use App\Entity\User;
+use Psr\Container\ContainerInterface;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpKernel\Event\RequestEvent;
@@ -17,6 +18,7 @@ use Symfony\Component\Security\Http\Authenticator\Debug\TraceableAuthenticator;
 use Symfony\Component\Security\Http\Event\LoginSuccessEvent;
 use Symfony\Component\Security\Http\SecurityRequestAttributes;
 use Symfony\Component\Security\Http\Util\TargetPathTrait;
+use Symfony\Contracts\Service\ServiceSubscriberInterface;
 
 /**
  * Two-step sign-in (mfa_required). A correct password never makes a session
@@ -32,7 +34,7 @@ use Symfony\Component\Security\Http\Util\TargetPathTrait;
  * The audit trail records the password step as password_accepted, or as a
  * failed sign-in with the reason, through OUTCOME_ATTRIBUTE.
  */
-class SecondStepListener implements EventSubscriberInterface
+class SecondStepListener implements EventSubscriberInterface, ServiceSubscriberInterface
 {
     use TargetPathTrait;
 
@@ -40,12 +42,24 @@ class SecondStepListener implements EventSubscriberInterface
     /** Request attribute: [action, outcome, details] for AdminAuditSubscriber instead of signed_in. */
     public const OUTCOME_ATTRIBUTE = '_aggregate_sign_in_outcome';
 
+    /**
+     * The locator builds the settings (and through them the mailer and Twig),
+     * the code requests and the URL generator only for a signed-in session or
+     * a sign-in, so collection requests never load them.
+     */
     public function __construct(
-        private readonly SignInCodeSettings $settings,
-        private readonly SignInCodeRequests $requests,
+        private readonly ContainerInterface $locator,
         private readonly TokenStorageInterface $tokens,
-        private readonly UrlGeneratorInterface $urls,
     ) {
+    }
+
+    public static function getSubscribedServices(): array
+    {
+        return [
+            SignInCodeSettings::class => SignInCodeSettings::class,
+            SignInCodeRequests::class => SignInCodeRequests::class,
+            UrlGeneratorInterface::class => UrlGeneratorInterface::class,
+        ];
     }
 
     public static function getSubscribedEvents(): array
@@ -60,7 +74,7 @@ class SecondStepListener implements EventSubscriberInterface
 
     public function onLoginSuccess(LoginSuccessEvent $event): void
     {
-        if ($event->getFirewallName() !== self::FIREWALL || self::isCode($event->getAuthenticator()) || !$this->settings->isSecondStepRequired()) {
+        if ($event->getFirewallName() !== self::FIREWALL || self::isCode($event->getAuthenticator()) || !$this->settings()->isSecondStepRequired()) {
             return;
         }
         $request = $event->getRequest();
@@ -69,16 +83,16 @@ class SecondStepListener implements EventSubscriberInterface
         $this->tokens->setToken(null);
 
         $problem = $user instanceof User ? null : 'This account cannot use two-step sign-in. Ask an administrator.';
-        if ($problem === null && $this->settings->secondStepProblem() !== null) {
+        if ($problem === null && $this->settings()->secondStepProblem() !== null) {
             $problem = 'Two-step sign-in is required, but email cannot be sent right now, so no code can reach you. Try again later, or ask an administrator.';
         }
         if ($problem === null && $user instanceof User) {
-            $problem = $this->requests->startSecondStep($request, $user);
+            $problem = $this->locator->get(SignInCodeRequests::class)->startSecondStep($request, $user);
         }
         if ($problem !== null) {
             $request->attributes->set(self::OUTCOME_ATTRIBUTE, ['sign_in_failed', 'failed', 'The password was right, but the second step could not start: '.$problem]);
             $request->getSession()->set(SecurityRequestAttributes::AUTHENTICATION_ERROR, new CustomUserMessageAuthenticationException($problem));
-            $event->setResponse(new RedirectResponse($this->urls->generate('app_login')));
+            $event->setResponse(new RedirectResponse($this->locator->get(UrlGeneratorInterface::class)->generate('app_login')));
 
             return;
         }
@@ -89,7 +103,7 @@ class SecondStepListener implements EventSubscriberInterface
             $this->saveTargetPath($request->getSession(), self::FIREWALL, $target);
         }
         $request->attributes->set(self::OUTCOME_ATTRIBUTE, ['password_accepted', 'succeeded', 'The password was right; a code was emailed for the second step.']);
-        $event->setResponse(new RedirectResponse($this->urls->generate('app_login_code')));
+        $event->setResponse(new RedirectResponse($this->locator->get(UrlGeneratorInterface::class)->generate('app_login_code')));
     }
 
     public function onRequest(RequestEvent $event): void
@@ -98,7 +112,7 @@ class SecondStepListener implements EventSubscriberInterface
             return;
         }
         $token = $this->tokens->getToken();
-        if ($token === null || !$token->getUser() instanceof User || SignInCodeAuthenticator::completedSecondStep($token) || !$this->settings->isSecondStepRequired()) {
+        if ($token === null || !$token->getUser() instanceof User || SignInCodeAuthenticator::completedSecondStep($token) || !$this->settings()->isSecondStepRequired()) {
             return;
         }
         $this->tokens->setToken(null);
@@ -110,7 +124,12 @@ class SecondStepListener implements EventSubscriberInterface
                 $session->getFlashBag()->add('warning', 'Two-step sign-in is now required. Sign in again to get a code by email.');
             }
         }
-        $event->setResponse(new RedirectResponse($this->urls->generate('app_login')));
+        $event->setResponse(new RedirectResponse($this->locator->get(UrlGeneratorInterface::class)->generate('app_login')));
+    }
+
+    private function settings(): SignInCodeSettings
+    {
+        return $this->locator->get(SignInCodeSettings::class);
     }
 
     private static function isCode(AuthenticatorInterface $authenticator): bool

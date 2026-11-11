@@ -12,6 +12,7 @@ use App\Service\Operations\AdminAudit;
 use App\Service\Operations\AuditTrailSettings;
 use App\Service\Operations\TaskTrigger;
 use Psr\Log\LoggerInterface;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\DependencyInjection\Attribute\Target;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpFoundation\Request;
@@ -39,10 +40,17 @@ class SignInCodeRequests implements EventSubscriberInterface, ResetInterface
     /** @var list<array{username: string, address: string, code: string, purpose: EmailPurpose}> */
     private array $outbox = [];
 
+    /**
+     * The repository, mailer and audit trail are lazy: this subscriber runs on
+     * every request's terminate event, and only a sign-in uses them.
+     */
     public function __construct(
         private readonly SignInCodes $codes,
+        #[Autowire(lazy: true)]
         private readonly UserRepository $users,
+        #[Autowire(lazy: true)]
         private readonly TransactionalMailer $mailer,
+        #[Autowire(lazy: true)]
         private readonly AdminAudit $audit,
         private readonly LoggerInterface $logger,
         #[Target('sign_in_code_request')]
