@@ -9,7 +9,7 @@ use App\Message\TrackEventMessage;
 use App\MessageHandler\TrackEventHandler;
 use App\Service\InternalTrafficSettings;
 use App\Service\TrackingFailureRetryRunner;
-use Doctrine\ORM\EntityManagerInterface;
+use App\Service\EventRowWriter;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
@@ -19,16 +19,15 @@ final class TrackEventHandlerPrivacyTest extends TestCase
     public function testHandlerCreatesEnhancedEventWithMessageOccurrenceTimeUnchanged(): void
     {
         $persisted = null;
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::once())
-            ->method('persist')
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::once())
+            ->method('insert')
             ->willReturnCallback(static function (object $entity) use (&$persisted): void {
                 $persisted = $entity;
             });
-        $entityManager->expects(self::once())->method('flush');
 
         $occurredAt = new \DateTimeImmutable('2026-07-24 12:34:56.987654-05:00');
-        $handler = new TrackEventHandler($entityManager, $this->createStub(TrackingFailureRetryRunner::class), new NullLogger());
+        $handler = new TrackEventHandler($eventWriter, $this->createStub(TrackingFailureRetryRunner::class), new NullLogger());
         $handler(new TrackEventMessage(
             websiteToken: 'site-token',
             eventName: 'purchase.completed',
@@ -64,7 +63,7 @@ final class TrackEventHandlerPrivacyTest extends TestCase
         self::assertSame('purchase', $persisted->getGoalEvent());
         self::assertSame($occurredAt, $persisted->getCreatedAt());
 
-        // Doctrine invokes this on persist. Enhanced events keep exact time.
+        // EventRowWriter::insert() runs this first. Enhanced events keep exact time.
         $persisted->enforcePrivacyInvariants();
         self::assertSame($occurredAt, $persisted->getCreatedAt());
     }
@@ -73,13 +72,12 @@ final class TrackEventHandlerPrivacyTest extends TestCase
     public function testHandlerOverridesReservedCustomDataWithExplicitTrafficMetadata(?bool $internalTraffic): void
     {
         $persisted = null;
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::once())
-            ->method('persist')
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::once())
+            ->method('insert')
             ->willReturnCallback(static function (object $event) use (&$persisted): void {
                 $persisted = $event;
             });
-        $entityManager->expects(self::once())->method('flush');
         $message = new TrackEventMessage(
             websiteToken: 'site-token',
             eventName: 'view',
@@ -98,7 +96,7 @@ final class TrackEventHandlerPrivacyTest extends TestCase
         );
         $message = unserialize(serialize($message));
 
-        (new TrackEventHandler($entityManager, $this->createStub(TrackingFailureRetryRunner::class), new NullLogger()))($message);
+        (new TrackEventHandler($eventWriter, $this->createStub(TrackingFailureRetryRunner::class), new NullLogger()))($message);
 
         self::assertInstanceOf(Event::class, $persisted);
         self::assertSame($internalTraffic === true, $persisted->isInternalTraffic());
@@ -126,12 +124,11 @@ final class TrackEventHandlerPrivacyTest extends TestCase
 
     public function testPersistenceFailuresAreRecordedForRetry(): void
     {
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::once())->method('persist');
-        $entityManager->expects(self::once())->method('flush')->willThrowException(new \RuntimeException('db down'));
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::once())->method('insert')->willThrowException(new \RuntimeException('db down'));
         $runner = $this->createMock(TrackingFailureRetryRunner::class);
         $runner->expects(self::once())->method('recordFailure');
-        $handler = new TrackEventHandler($entityManager, $runner, new NullLogger());
+        $handler = new TrackEventHandler($eventWriter, $runner, new NullLogger());
         $message = new TrackEventMessage(
             websiteToken: 'site-token',
             eventName: 'view',

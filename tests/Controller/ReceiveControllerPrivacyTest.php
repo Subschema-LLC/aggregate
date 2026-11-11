@@ -19,7 +19,7 @@ use App\Service\InternalTrafficSettings;
 use App\Service\PrivacyPolicy;
 use App\Service\PrivacySanitizer;
 use App\Service\WebsiteConfigManager;
-use Doctrine\ORM\EntityManagerInterface;
+use App\Service\EventRowWriter;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
@@ -37,10 +37,9 @@ final class ReceiveControllerPrivacyTest extends TestCase
         file_put_contents($directory.'/config/aggregate.yaml', "bi_glossary:\n  locales: [invalid_LOCALE]\n  values: private-glossary-text\n");
         try {
             $config = new AggregateConfigLoader($directory, 'test');
-            $entityManager = $this->createMock(EntityManagerInterface::class);
-            $entityManager->expects(self::once())->method('persist');
-            $entityManager->expects(self::once())->method('flush');
-            $recorder = new AnonymousEventRecorder($entityManager);
+            $eventWriter = $this->createMock(EventRowWriter::class);
+            $eventWriter->expects(self::once())->method('insert');
+            $recorder = new AnonymousEventRecorder($eventWriter);
             $bus = $this->createMock(MessageBusInterface::class);
             $bus->expects(self::never())->method('dispatch');
             $response = $this->invoke(
@@ -60,13 +59,12 @@ final class ReceiveControllerPrivacyTest extends TestCase
     public function testAnonymousEventsRetainOnlyExplicitlyApprovedSanitizedProperties(string $consentState): void
     {
         $persisted = null;
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::once())
-            ->method('persist')
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::once())
+            ->method('insert')
             ->willReturnCallback(static function (object $event) use (&$persisted): void {
                 $persisted = $event;
             });
-        $entityManager->expects(self::once())->method('flush');
         $bus = $this->createMock(MessageBusInterface::class);
         $bus->expects(self::never())->method('dispatch');
 
@@ -91,7 +89,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
                 ],
             ],
             bus: $bus,
-            recorder: new AnonymousEventRecorder($entityManager),
+            recorder: new AnonymousEventRecorder($eventWriter),
             config: $this->privacyConfig(
                 customDataProperties: [
                     'plan' => ['consent_required' => false],
@@ -135,8 +133,8 @@ final class ReceiveControllerPrivacyTest extends TestCase
     {
         $persisted = null;
         $queued = null;
-        $entityManager = $this->createStub(EntityManagerInterface::class);
-        $entityManager->method('persist')->willReturnCallback(static function (object $event) use (&$persisted): void {
+        $eventWriter = $this->createStub(EventRowWriter::class);
+        $eventWriter->method('insert')->willReturnCallback(static function (object $event) use (&$persisted): void {
             $persisted = $event;
         });
         $bus = $this->createStub(MessageBusInterface::class);
@@ -149,7 +147,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
         $response = $this->invoke(
             payload: ['websiteToken' => 'public-site-token', 'pagePath' => '/pricing', 'eventName' => 'plan_selected', 'consentState' => $consentState] + $properties,
             bus: $bus,
-            recorder: new AnonymousEventRecorder($entityManager),
+            recorder: new AnonymousEventRecorder($eventWriter),
             config: $this->privacyConfig(customDataProperties: [
                 'plan' => ['consent_required' => false],
                 'email' => ['consent_required' => true],
@@ -191,9 +189,8 @@ final class ReceiveControllerPrivacyTest extends TestCase
 
     public function testInvalidCustomPropertyPolicyPreventsRecordingInsteadOfGrantingConsent(): void
     {
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::never())->method('persist');
-        $entityManager->expects(self::never())->method('flush');
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::never())->method('insert');
         $bus = $this->createMock(MessageBusInterface::class);
         $bus->expects(self::never())->method('dispatch');
 
@@ -205,7 +202,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
                 'customData' => ['email' => 'private@example.com'],
             ],
             bus: $bus,
-            recorder: new AnonymousEventRecorder($entityManager),
+            recorder: new AnonymousEventRecorder($eventWriter),
             config: $this->privacyConfig(customDataProperties: [
                 'email' => ['consent_required' => 'false'],
             ]),
@@ -225,9 +222,9 @@ final class ReceiveControllerPrivacyTest extends TestCase
         $persisted = null;
         $queued = null;
         $enhanced = $consentState === 'granted';
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects($enhanced ? self::never() : self::once())
-            ->method('persist')
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects($enhanced ? self::never() : self::once())
+            ->method('insert')
             ->willReturnCallback(static function (object $event) use (&$persisted): void {
                 $persisted = $event;
             });
@@ -262,7 +259,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
         $response = $this->invoke(
             payload: $payload,
             bus: $bus,
-            recorder: new AnonymousEventRecorder($entityManager),
+            recorder: new AnonymousEventRecorder($eventWriter),
             config: $this->privacyConfig(customDataProperties: [
                 'plan' => ['consent_required' => false],
                 InternalTrafficSettings::JSON_KEY => ['type' => 'boolean', 'consent_required' => false, 'column' => 'staff'],
@@ -301,13 +298,12 @@ final class ReceiveControllerPrivacyTest extends TestCase
     public function testDeniedNamedClickIsRecordedAnonymouslyWithoutQueueingEnhancedFields(): void
     {
         $persisted = null;
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::once())
-            ->method('persist')
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::once())
+            ->method('insert')
             ->willReturnCallback(static function (object $event) use (&$persisted): void {
                 $persisted = $event;
             });
-        $entityManager->expects(self::once())->method('flush');
         $bus = $this->createMock(MessageBusInterface::class);
         $bus->expects(self::never())->method('dispatch');
         $geoResolver = $this->createMock(GeoIpResolverInterface::class);
@@ -333,7 +329,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
                 'customData' => ['email' => 'person@example.com'],
             ],
             bus: $bus,
-            recorder: new AnonymousEventRecorder($entityManager),
+            recorder: new AnonymousEventRecorder($eventWriter),
             geoResolver: $geoResolver,
         );
 
@@ -364,8 +360,8 @@ final class ReceiveControllerPrivacyTest extends TestCase
     public function testUnknownNamedEventIsAlsoAcceptedAnonymously(): void
     {
         $persisted = null;
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->method('persist')
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->method('insert')
             ->willReturnCallback(static function (object $event) use (&$persisted): void {
                 $persisted = $event;
             });
@@ -381,7 +377,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
                 'sessionId' => 'must-not-imply-consent',
             ],
             bus: $bus,
-            recorder: new AnonymousEventRecorder($entityManager),
+            recorder: new AnonymousEventRecorder($eventWriter),
             geoResolver: $this->geoResolver(GeoArea::country('US')),
         );
 
@@ -401,8 +397,8 @@ final class ReceiveControllerPrivacyTest extends TestCase
     public function testTheJsonBodyIsReadWhateverItsContentType(string $contentType): void
     {
         $persisted = null;
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::once())->method('persist')
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::once())->method('insert')
             ->willReturnCallback(static function (object $event) use (&$persisted): void {
                 $persisted = $event;
             });
@@ -412,7 +408,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
         $response = $this->invoke(
             payload: ['websiteToken' => 'public-site-token', 'pagePath' => '/pricing', 'eventName' => 'view', 'consentState' => 'denied'],
             bus: $bus,
-            recorder: new AnonymousEventRecorder($entityManager),
+            recorder: new AnonymousEventRecorder($eventWriter),
             contentType: $contentType,
         );
 
@@ -432,15 +428,15 @@ final class ReceiveControllerPrivacyTest extends TestCase
     /** Without a preflight, the website's domain rules still refuse another site's page. */
     public function testAPlainTextEventFromAnotherSiteIsStillRefused(): void
     {
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::never())->method('persist');
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::never())->method('insert');
         $bus = $this->createMock(MessageBusInterface::class);
         $bus->expects(self::never())->method('dispatch');
 
         $response = $this->invoke(
             payload: ['websiteToken' => 'public-site-token', 'pagePath' => '/pricing', 'eventName' => 'view', 'consentState' => 'denied'],
             bus: $bus,
-            recorder: new AnonymousEventRecorder($entityManager),
+            recorder: new AnonymousEventRecorder($eventWriter),
             contentType: 'text/plain;charset=UTF-8',
             origin: 'https://other-site.test',
         );
@@ -450,9 +446,8 @@ final class ReceiveControllerPrivacyTest extends TestCase
 
     public function testGrantedEventQueuesSanitizedFieldsWithOneExactOccurrenceTime(): void
     {
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::never())->method('persist');
-        $entityManager->expects(self::never())->method('flush');
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::never())->method('insert');
         $queued = null;
         $bus = $this->createMock(MessageBusInterface::class);
         $bus->expects(self::once())
@@ -481,7 +476,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
                 'sessionId' => 'session_abc',
             ],
             bus: $bus,
-            recorder: new AnonymousEventRecorder($entityManager),
+            recorder: new AnonymousEventRecorder($eventWriter),
             geoResolver: $this->geoResolver(GeoArea::country('US')),
         );
         $after = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
@@ -511,9 +506,8 @@ final class ReceiveControllerPrivacyTest extends TestCase
 
     public function testInvalidIdentifierLikeEventNameIsRejectedBeforeStorage(): void
     {
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::never())->method('persist');
-        $entityManager->expects(self::never())->method('flush');
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::never())->method('insert');
         $bus = $this->createMock(MessageBusInterface::class);
         $bus->expects(self::never())->method('dispatch');
 
@@ -525,7 +519,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
                 'consentState' => 'denied',
             ],
             bus: $bus,
-            recorder: new AnonymousEventRecorder($entityManager),
+            recorder: new AnonymousEventRecorder($eventWriter),
         );
 
         self::assertSame(400, $response->getStatusCode());
@@ -536,13 +530,12 @@ final class ReceiveControllerPrivacyTest extends TestCase
     public function testRejectedAnonymousGoalDoesNotRejectTheUnderlyingEventOrEchoTheCandidate(string $candidate): void
     {
         $persisted = null;
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::once())
-            ->method('persist')
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::once())
+            ->method('insert')
             ->willReturnCallback(static function (object $event) use (&$persisted): void {
                 $persisted = $event;
             });
-        $entityManager->expects(self::once())->method('flush');
         $bus = $this->createMock(MessageBusInterface::class);
         $bus->expects(self::never())->method('dispatch');
         $response = $this->invoke(
@@ -554,7 +547,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
                 'consentState' => 'denied',
             ],
             bus: $bus,
-            recorder: new AnonymousEventRecorder($entityManager),
+            recorder: new AnonymousEventRecorder($eventWriter),
         );
 
         self::assertSame(202, $response->getStatusCode());
@@ -581,13 +574,12 @@ final class ReceiveControllerPrivacyTest extends TestCase
     public function testMissingAndBlankAnonymousGoalsDoNotProduceWarnings(bool $includeGoal, mixed $candidate): void
     {
         $persisted = null;
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::once())
-            ->method('persist')
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::once())
+            ->method('insert')
             ->willReturnCallback(static function (object $event) use (&$persisted): void {
                 $persisted = $event;
             });
-        $entityManager->expects(self::once())->method('flush');
         $bus = $this->createMock(MessageBusInterface::class);
         $bus->expects(self::never())->method('dispatch');
         $payload = [
@@ -603,7 +595,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
         $response = $this->invoke(
             payload: $payload,
             bus: $bus,
-            recorder: new AnonymousEventRecorder($entityManager),
+            recorder: new AnonymousEventRecorder($eventWriter),
         );
 
         self::assertSame(202, $response->getStatusCode());
@@ -625,8 +617,8 @@ final class ReceiveControllerPrivacyTest extends TestCase
 
     public function testRejectedEnhancedGoalIsOmittedWhileTheEventIsQueued(): void
     {
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::never())->method('persist');
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::never())->method('insert');
         $queued = null;
         $bus = $this->createMock(MessageBusInterface::class);
         $bus->expects(self::once())
@@ -646,7 +638,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
                 'consentState' => 'granted',
             ],
             bus: $bus,
-            recorder: new AnonymousEventRecorder($entityManager),
+            recorder: new AnonymousEventRecorder($eventWriter),
         );
 
         self::assertSame(202, $response->getStatusCode());
@@ -660,8 +652,8 @@ final class ReceiveControllerPrivacyTest extends TestCase
 
     public function testDeploymentKillSwitchBlocksEvenGrantedEvents(): void
     {
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::never())->method('persist');
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::never())->method('insert');
         $bus = $this->createMock(MessageBusInterface::class);
         $bus->expects(self::never())->method('dispatch');
         $rateLimiter = $this->createMock(IpRateLimiter::class);
@@ -677,7 +669,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
                 'consentState' => 'granted',
             ],
             bus: $bus,
-            recorder: new AnonymousEventRecorder($entityManager),
+            recorder: new AnonymousEventRecorder($eventWriter),
             config: $this->privacyConfig(enabled: false),
             rateLimiter: $rateLimiter,
             geoResolver: $geoResolver,
@@ -689,8 +681,8 @@ final class ReceiveControllerPrivacyTest extends TestCase
 
     public function testCanonicalizedExcludedPathBlocksEvenGrantedEvents(): void
     {
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::never())->method('persist');
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::never())->method('insert');
         $bus = $this->createMock(MessageBusInterface::class);
         $bus->expects(self::never())->method('dispatch');
         $rateLimiter = $this->createMock(IpRateLimiter::class);
@@ -706,7 +698,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
                 'consentState' => 'granted',
             ],
             bus: $bus,
-            recorder: new AnonymousEventRecorder($entityManager),
+            recorder: new AnonymousEventRecorder($eventWriter),
             config: $this->privacyConfig(excludedPaths: ['/account/**']),
             rateLimiter: $rateLimiter,
             geoResolver: $geoResolver,
@@ -720,13 +712,12 @@ final class ReceiveControllerPrivacyTest extends TestCase
     public function testStrictProfileStoresOnlyPathEventNameAndGoalFromAnyDirectRequest(array $payload, string $userAgent): void
     {
         $persisted = null;
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::once())
-            ->method('persist')
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::once())
+            ->method('insert')
             ->willReturnCallback(static function (object $event) use (&$persisted): void {
                 $persisted = $event;
             });
-        $entityManager->expects(self::once())->method('flush');
         $bus = $this->createMock(MessageBusInterface::class);
         $bus->expects(self::never())->method('dispatch');
         $geoResolver = $this->createMock(GeoIpResolverInterface::class);
@@ -735,7 +726,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
         $response = $this->invoke(
             payload: $payload,
             bus: $bus,
-            recorder: new AnonymousEventRecorder($entityManager),
+            recorder: new AnonymousEventRecorder($eventWriter),
             config: $this->privacyConfig(
                 customDataProperties: [
                     'utm_medium' => ['consent_required' => false],
@@ -800,8 +791,8 @@ final class ReceiveControllerPrivacyTest extends TestCase
     public function testBotsAreLabelledByDefaultEvenWhenTheClientSendsADesktopClass(): void
     {
         $persisted = null;
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::once())->method('persist')
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::once())->method('insert')
             ->willReturnCallback(static function (object $event) use (&$persisted): void {
                 $persisted = $event;
             });
@@ -811,7 +802,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
         $response = $this->invoke(
             payload: ['websiteToken' => 'public-site-token', 'pagePath' => '/pricing', 'eventName' => 'page_view', 'deviceClass' => 'desktop', 'viewportBucket' => 'large'],
             bus: $bus,
-            recorder: new AnonymousEventRecorder($entityManager),
+            recorder: new AnonymousEventRecorder($eventWriter),
             userAgent: 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Googlebot/2.1; +http://www.google.com/bot.html) Chrome/129.0.6668.70 Safari/537.36',
         );
 
@@ -825,8 +816,8 @@ final class ReceiveControllerPrivacyTest extends TestCase
     public function testEnhancedEventsFromAutomatedBrowsersAreLabelledToo(): void
     {
         $queued = null;
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::never())->method('persist');
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::never())->method('insert');
         $bus = $this->createMock(MessageBusInterface::class);
         $bus->expects(self::once())->method('dispatch')
             ->willReturnCallback(static function (object $message) use (&$queued): Envelope {
@@ -838,7 +829,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
         $this->invoke(
             payload: ['websiteToken' => 'public-site-token', 'pagePath' => '/pricing', 'eventName' => 'page_view', 'deviceClass' => 'bot', 'consentState' => 'granted', 'visitorId' => 'visitor_abc'],
             bus: $bus,
-            recorder: new AnonymousEventRecorder($entityManager),
+            recorder: new AnonymousEventRecorder($eventWriter),
         );
 
         self::assertInstanceOf(TrackEventMessage::class, $queued);
@@ -861,8 +852,8 @@ final class ReceiveControllerPrivacyTest extends TestCase
     #[DataProvider('botRequests')]
     public function testDroppedBotEventsCreateNoRowMessageBucketOrLookup(array $payload, string $userAgent): void
     {
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::never())->method('persist');
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::never())->method('insert');
         $bus = $this->createMock(MessageBusInterface::class);
         $bus->expects(self::never())->method('dispatch');
         $rateLimiter = $this->createMock(IpRateLimiter::class);
@@ -873,7 +864,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
         $response = $this->invoke(
             payload: $payload,
             bus: $bus,
-            recorder: new AnonymousEventRecorder($entityManager),
+            recorder: new AnonymousEventRecorder($eventWriter),
             config: $this->privacyConfig(botTraffic: 'drop', botUserAgents: ['exampleuptimemonitor']),
             rateLimiter: $rateLimiter,
             geoResolver: $geoResolver,
@@ -887,8 +878,8 @@ final class ReceiveControllerPrivacyTest extends TestCase
     public function testHttpClientsAreNotBotsSoServerSideCollectionContinues(): void
     {
         $persisted = null;
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::once())->method('persist')
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::once())->method('insert')
             ->willReturnCallback(static function (object $event) use (&$persisted): void {
                 $persisted = $event;
             });
@@ -896,7 +887,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
         $response = $this->invoke(
             payload: ['websiteToken' => 'public-site-token', 'pagePath' => '/checkout', 'eventName' => 'order_completed'],
             bus: $this->createStub(MessageBusInterface::class),
-            recorder: new AnonymousEventRecorder($entityManager),
+            recorder: new AnonymousEventRecorder($eventWriter),
             config: $this->privacyConfig(botTraffic: 'drop'),
             userAgent: 'curl/8.5.0',
         );
@@ -908,8 +899,8 @@ final class ReceiveControllerPrivacyTest extends TestCase
     public function testTheStrictProfileClassifiesNoBots(): void
     {
         $persisted = null;
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::once())->method('persist')
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::once())->method('insert')
             ->willReturnCallback(static function (object $event) use (&$persisted): void {
                 $persisted = $event;
             });
@@ -917,7 +908,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
         $this->invoke(
             payload: ['websiteToken' => 'public-site-token', 'pagePath' => '/pricing', 'eventName' => 'page_view', 'deviceClass' => 'bot'],
             bus: $this->createStub(MessageBusInterface::class),
-            recorder: new AnonymousEventRecorder($entityManager),
+            recorder: new AnonymousEventRecorder($eventWriter),
             config: $this->privacyConfig(collectionProfile: 'strict', botTraffic: 'drop'),
             userAgent: 'Mozilla/5.0 (compatible; Googlebot/2.1)',
         );
@@ -927,8 +918,8 @@ final class ReceiveControllerPrivacyTest extends TestCase
 
     public function testStrictProfileStillAppliesTheKillSwitchAndPathExclusions(): void
     {
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::never())->method('persist');
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::never())->method('insert');
         $bus = $this->createMock(MessageBusInterface::class);
         $bus->expects(self::never())->method('dispatch');
         $payload = ['websiteToken' => 'public-site-token', 'pagePath' => '/account/settings', 'eventName' => 'view'];
@@ -937,7 +928,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
             $this->privacyConfig(enabled: false, collectionProfile: 'strict'),
             $this->privacyConfig(excludedPaths: ['/account/**'], collectionProfile: 'strict'),
         ] as $config) {
-            $response = $this->invoke(payload: $payload, bus: $bus, recorder: new AnonymousEventRecorder($entityManager), config: $config);
+            $response = $this->invoke(payload: $payload, bus: $bus, recorder: new AnonymousEventRecorder($eventWriter), config: $config);
 
             self::assertSame(['status' => 'ignored'], json_decode((string) $response->getContent(), true));
         }
@@ -945,8 +936,8 @@ final class ReceiveControllerPrivacyTest extends TestCase
 
     public function testIngestionFailureLogsNoPayloadOrRequestMetadata(): void
     {
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->method('persist')->willThrowException(
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->method('insert')->willThrowException(
             new \RuntimeException('database rejected private@example.com'),
         );
         $logger = $this->createMock(LoggerInterface::class);
@@ -972,7 +963,7 @@ final class ReceiveControllerPrivacyTest extends TestCase
                 'consentState' => 'denied',
             ],
             bus: $this->createStub(MessageBusInterface::class),
-            recorder: new AnonymousEventRecorder($entityManager),
+            recorder: new AnonymousEventRecorder($eventWriter),
             logger: $logger,
         );
 
