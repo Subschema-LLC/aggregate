@@ -427,6 +427,49 @@ in a release's `.env` are appended; existing values stay. The
 [release guide](RELEASES.md#update-an-installation) lists how every kind of file is
 treated.
 
+## Reload PHP after an update
+
+PHP keeps running the code from before an update until PHP-FPM or the web
+server reloads when OPcache [preloads Aggregate's classes](../DEPLOYMENT.md#performance)
+or does not revalidate file timestamps (`opcache.validate_timestamps=0`). An update
+cannot reload PHP itself: it runs from the command line, often as a user that may
+not reload services. So each finished update, including the
+[post-deployment steps](#after-each-deployment), writes `var/php-reload-requested`
+(the time and the kind of update, as JSON).
+
+- **Reload by hand:** `sudo systemctl reload php8.3-fpm` (your PHP version), with
+  [`process_control_timeout`](../DEPLOYMENT.md#performance) set so busy requests
+  finish.
+- **Let the server do it:** a hosting panel, or a systemd path unit run as root,
+  can watch for the file, reload PHP-FPM and delete it. For example:
+
+  ```ini
+  # /etc/systemd/system/aggregate-php-reload.path
+  [Path]
+  # Fires when the update writes the file. A failed reload leaves it in place,
+  # and the Updates page keeps saying so.
+  PathChanged=/var/www/aggregate/var/php-reload-requested
+
+  [Install]
+  WantedBy=multi-user.target
+  ```
+
+  ```ini
+  # /etc/systemd/system/aggregate-php-reload.service
+  [Service]
+  Type=oneshot
+  ExecStart=/bin/systemctl reload php8.3-fpm
+  ExecStartPost=/bin/rm -f /var/www/aggregate/var/php-reload-requested
+  ```
+
+  Then `sudo systemctl enable --now aggregate-php-reload.path`.
+
+The [system check](#troubleshooting) on the Updates page reports OPcache and
+preloading, deletes the file once PHP has started again since the update, and
+until then shows **PHP reloaded after the update: Not yet**. Without preloading,
+or with timestamps revalidated, it deletes the file at once: that PHP already
+runs the new code.
+
 ## When an update fails
 
 Changed files are backed up under `var/updates/backups/` (the last three updates
@@ -506,7 +549,8 @@ checks for the command-line user.
 | **PHP runtime** on the command line: missing mbstring, curl, intl or zip | This is another PHP than the website's. Use the one the message names, or on Plesk `/opt/plesk/php/8.3/bin/php`. |
 | **Dashboard button can start updates**: the command-line PHP could not be found, or does not match | Add `PHP_PATH` with the command-line PHP of the website's version to `.env.local`, as [above](#command-reference). |
 | "The update check could not run on the command line with …" | The message gives the PHP binary, its exit code and its first error line. Fix that, or set `PHP_PATH`. Earlier releases showed only "The command-line console could not run the update preflight"; on Plesk, see [updating without the dashboard button](../PLESK-DEPLOYMENT.md#updating-without-the-dashboard-button). |
-| The site still runs old code after an update | PHP OPcache is not revalidating files (`opcache.validate_timestamps=0`); reload PHP-FPM or the web server. |
+| The site still runs old code after an update, or **PHP reloaded after the update: Not yet** | OPcache preloads Aggregate's classes or does not revalidate files; [reload PHP-FPM or the web server](#reload-php-after-an-update). |
+| **PHP OPcache**: preloads … which is not part of this installation | Another site's `opcache.preload` is set for the PHP-FPM that serves Aggregate, so every site it serves gets those classes. Serve Aggregate from a PHP-FPM that preloads nothing or Aggregate's own `config/preload.php`. |
 | Installed updates disappear later | Another deployment tool overwrote the files; turn off its automatic deployments. |
 | **Post-deployment steps: Not recorded yet**, or files changed since | Run the [post-deployment commands](#after-each-deployment), and add them to your tool's deployment action. |
 | The deployed commit is unknown | Give `app:updates:deployed` `--git-dir` (the folder your tool keeps the repository in) or `--commit`. |
