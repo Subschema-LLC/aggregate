@@ -4,7 +4,7 @@ name: Load test
 # style site: Nginx with the documented configuration, PHP 8.3 FPM with
 # OPcache, and SQLite, PostgreSQL 16 or MySQL 8.0, in anonymous and enhanced
 # mode. The load generator, k6, runs on the same machine, so numbers describe
-# this runner, not a production server. Four suites:
+# this runner, not a production server. Five suites:
 #
 #   load     Step test at rising rates; reports the sustained capacity.
 #            PostgreSQL installs keep connections open between requests, as
@@ -19,12 +19,16 @@ name: Load test
 #   cache    Steady traffic while the Symfony cache is cleared, with and
 #            without a PHP-FPM reload, and while PHP-FPM restarts; reports
 #            failures and response times in each stage.
+#   database How much of a shared database one server uses (phase 3's gate):
+#            a step test on PostgreSQL or MySQL with a preloaded events table
+#            and the database's own counters, then half the capacity without
+#            and with BI reads. Enhanced runs with and without the queue.
 #
 # Start one from Actions -> Load test -> Run workflow, or add a label to a
 # pull request: load-test, load-test-tuned, profile, compare,
-# compare-persistent, compare-preload or cache-clear. A load run uses about
-# 60 minutes of runner time, profile about 25, each compare about 60 and
-# cache about 30.
+# compare-persistent, compare-preload, cache-clear or database-headroom. A
+# load run uses about 60 minutes of runner time, profile about 25, each
+# compare about 60, cache about 30 and database about 150.
 # See docs/LOAD-TESTING.md.
 
 on:
@@ -33,14 +37,17 @@ on:
       suite:
         description: Which measurement to run
         type: choice
-        options: [load, profile, compare, cache]
+        options: [load, profile, compare, cache, database]
         default: load
       rates:
-        description: 'load: requests per second for each stage, comma-separated'
+        description: 'load and database: requests per second for each stage, comma-separated'
         default: '50,100,150,200,250,300,350,400,500,600'
       stage_seconds:
-        description: 'load: seconds per stage'
+        description: 'load and database: seconds per stage'
         default: '30'
+      rows:
+        description: 'database: rows preloaded into the events table'
+        default: '10000000'
       base_ref:
         description: 'compare (code): branch, tag or commit to compare against'
         default: development
@@ -65,7 +72,7 @@ concurrency:
 jobs:
   measure:
     name: ${{ github.event_name == 'workflow_dispatch' && inputs.suite || github.event.label.name }} - ${{ matrix.db.name }}, ${{ matrix.mode }}
-    if: github.event_name == 'workflow_dispatch' || contains(fromJSON('["load-test", "load-test-tuned", "profile", "compare", "compare-persistent", "compare-preload", "cache-clear"]'), github.event.label.name)
+    if: (github.event_name == 'workflow_dispatch' && inputs.suite != 'database') || contains(fromJSON('["load-test", "load-test-tuned", "profile", "compare", "compare-persistent", "compare-preload", "cache-clear"]'), github.event.label.name)
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     strategy:
@@ -302,3 +309,176 @@ jobs:
             --note "Stage 4: cache:clear (${clear3}), then a PHP-FPM reload with process_control_timeout 10s (${reload2})." \
             --note "Stage 5: a PHP-FPM restart (${restart})." \
             --note "Application errors logged: ${app_errors}."
+
+  headroom:
+    # Slice 0 of scaling phase 3 (docs/specs/JOIN-59-server-roles.md): how much
+    # of a shared database one application server uses, on PostgreSQL and
+    # MySQL, with a large events table and both queue setups. Everything runs
+    # on one machine, so tests/Load/headroom.py estimates from costs per event
+    # rather than measuring two servers; see docs/LOAD-TESTING.md.
+    name: database - ${{ matrix.db.name }}, ${{ matrix.mode }}, ${{ matrix.queue }}
+    if: (github.event_name == 'workflow_dispatch' && inputs.suite == 'database') || github.event.label.name == 'database-headroom'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [anonymous, enhanced]
+        queue: ['sync://', 'doctrine://default']
+        db:
+          - name: PostgreSQL 16
+            image: postgres:16
+            port: 5432
+            health: --health-cmd="pg_isready -U aggregate" --health-interval=5s --health-timeout=5s --health-retries=30
+            # As the setup page writes it: connections stay open between requests.
+            url: 'postgresql://aggregate:load-test@127.0.0.1:5432/aggregate?serverVersion=16&persistent=true'
+          - name: MySQL 8.0
+            image: mysql:8.0
+            port: 3306
+            health: --health-cmd="mysqladmin ping -h 127.0.0.1 -proot-load" --health-interval=5s --health-timeout=5s --health-retries=30
+            url: 'mysql://aggregate:load-test@127.0.0.1:3306/aggregate?serverVersion=8.0.0'
+        exclude:
+          # Anonymous events are written during the request and never queue.
+          - mode: anonymous
+            queue: 'doctrine://default'
+    services:
+      database:
+        image: ${{ matrix.db.image }}
+        ports:
+          - ${{ matrix.db.port }}:${{ matrix.db.port }}
+        env:
+          MYSQL_ROOT_PASSWORD: root-load
+          MYSQL_DATABASE: aggregate
+          MYSQL_USER: aggregate
+          MYSQL_PASSWORD: load-test
+          POSTGRES_DB: aggregate
+          POSTGRES_USER: aggregate
+          POSTGRES_PASSWORD: load-test
+        options: ${{ matrix.db.health }}
+    env:
+      HEAD_ROOT: /srv/head
+      K6_VERSION: v1.0.0
+      RATES: ${{ inputs.rates || '50,100,150,200,250,300,350,400,500,600' }}
+      STAGE_SECONDS: ${{ inputs.stage_seconds || '30' }}
+      ROWS: ${{ inputs.rows || '10000000' }}
+      DATABASE_IMAGE: ${{ matrix.db.image }}
+      DATABASE_PORT: ${{ matrix.db.port }}
+      QUEUE: ${{ matrix.queue }}
+      LABEL: ${{ matrix.db.name }}, ${{ matrix.mode }}, ${{ matrix.queue }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Nginx and PHP 8.3 with PHP-FPM
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq time nginx php8.3-fpm php8.3-cli php8.3-common php8.3-intl \
+            php8.3-mbstring php8.3-xml php8.3-curl php8.3-zip php8.3-sqlite3 php8.3-pgsql php8.3-mysql php8.3-opcache
+          sudo update-alternatives --set php /usr/bin/php8.3
+
+      - name: Give the database a quarter of the memory
+        run: |
+          # The images' defaults (128 MB) would read a 10 million row table
+          # from disk; a database server would be given far more.
+          bytes=$(( $(free -b | awk '/^Mem:/ {print $2}') / 4 ))
+          cid=$(docker ps -q --filter "ancestor=${DATABASE_IMAGE}" | head -n 1)
+          case "$DATABASE_IMAGE" in
+            postgres*)
+              docker exec "$cid" psql -U aggregate -d aggregate -c "ALTER SYSTEM SET shared_buffers = '$(( bytes / 1048576 ))MB'" -c "ALTER SYSTEM SET track_wal_io_timing = on"
+              docker restart "$cid"
+              until docker exec "$cid" pg_isready -U aggregate > /dev/null 2>&1; do sleep 1; done
+              docker exec "$cid" psql -U aggregate -d aggregate -At -c 'SHOW shared_buffers' ;;
+            mysql*)
+              docker exec "$cid" mysql -uroot -proot-load -e "SET GLOBAL innodb_buffer_pool_size = ${bytes}; SELECT @@innodb_buffer_pool_size, @@log_bin, @@sync_binlog" ;;
+          esac
+          echo "DATABASE_MEMORY=$(( bytes / 1073741824 )) GB" >> "$GITHUB_ENV"
+
+      - name: Install the application
+        run: |
+          tests/Load/server/install.sh "$GITHUB_WORKSPACE" "$HEAD_ROOT" '${{ matrix.db.url }}'
+          if [ "$QUEUE" != 'sync://' ]; then
+            echo "MESSENGER_TRANSPORT_DSN=${QUEUE}" >> "$HEAD_ROOT/.env.local"
+            (cd "$HEAD_ROOT" && php bin/console messenger:setup-transports --no-interaction && php bin/console cache:clear)
+          fi
+
+      - name: Preload the events table
+        run: |
+          php tests/Load/preload-events.php "$HEAD_ROOT" "$ROWS"
+          (cd "$HEAD_ROOT" && php bin/console app:analytics:bi-views:regenerate --no-interaction)
+          # Write the preload's changes to disk now, not during the measurement.
+          cid=$(docker ps -q --filter "ancestor=${DATABASE_IMAGE}" | head -n 1)
+          case "$DATABASE_IMAGE" in
+            postgres*) docker exec "$cid" psql -U aggregate -d aggregate -c 'CHECKPOINT' ;;
+            mysql*)
+              mysql_root() { docker exec "$cid" mysql -uroot -proot-load -N -B -e "$1" 2> /dev/null; }
+              mysql_root 'SET GLOBAL innodb_max_dirty_pages_pct = 0'
+              for _ in $(seq 300); do
+                dirty=$(mysql_root "SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Innodb_buffer_pool_pages_dirty'")
+                [ "${dirty:-0}" -lt 1000 ] && break
+                sleep 1
+              done
+              mysql_root 'SET GLOBAL innodb_max_dirty_pages_pct = DEFAULT'
+              echo "Dirty pages left: $dirty" ;;
+          esac
+
+      - name: Configure and start PHP-FPM and Nginx
+        run: |
+          tests/Load/server/configure-php.sh
+          tests/Load/server/configure-nginx.sh "80:$HEAD_ROOT"
+          tests/Load/server/smoke.sh http://127.0.0.1 "$(cat "$HEAD_ROOT/var/load-test-token")"
+          workers=$(sed -n 's/^FPM_WORKERS=//p' "$GITHUB_ENV" | tail -n 1)
+          consumers=0
+          if [ "$QUEUE" != 'sync://' ]; then
+            # Half a consumer per vCPU, alongside PHP-FPM, as on a server with
+            # the role all.
+            consumers=$(( $(nproc) / 2 ))
+            for _ in $(seq "$consumers"); do
+              (cd "$HEAD_ROOT" && nohup php bin/console messenger:consume async --time-limit=5400 --memory-limit=256M --quiet > /dev/null 2>&1 &)
+            done
+          fi
+          echo "CONSUMERS=$consumers" >> "$GITHUB_ENV"
+          model=$(lscpu | sed -n 's/^Model name: *//p' | head -n 1)
+          echo "SERVER=$(nproc) vCPU (${model}), $(free -g | awk '/^Mem:/ {print $2}') GB RAM, Nginx, PHP $(php -r 'echo PHP_VERSION;') FPM with ${workers} workers, ${consumers} queue consumers, the database given ${DATABASE_MEMORY}, k6 on the same machine" >> "$GITHUB_ENV"
+
+      - name: Install k6
+        run: tests/Load/server/install-k6.sh
+
+      - name: Measure the disk
+        run: python3 tests/Load/fsync_bench.py "$RUNNER_TEMP" 5 | tee fsync.json
+
+      - name: Step test with the database's counters
+        run: |
+          # Count the application's connections from this side, with ss, so
+          # sampling adds no work inside the database's container.
+          ( while true; do
+              echo "{\"connections\": $(ss -Htn state established "dst 127.0.0.1:${DATABASE_PORT}" | wc -l)}"
+              sleep 1
+            done ) > connections.log &
+          sampler=$!
+          DRAIN_QUEUE=1 DATABASE_COUNTERS=1 tests/Load/server/measure.sh step http://127.0.0.1 "$HEAD_ROOT" ${{ matrix.mode }} "$RATES" "$STAGE_SECONDS" "$DATABASE_IMAGE"
+          kill "$sampler"
+          python3 tests/Load/report.py --github --summary step/k6-summary.json --label "$LABEL" --server "$SERVER" \
+            --vmstat step/vmstat.log --stored step/stored.json --php-log step/php-fpm.log --web-log step/nginx-error.log \
+            --cpu-before step/cpu-before.json --cpu-after step/cpu-after.json --k6-time step/k6-time.txt \
+            --json-out load-result.json
+
+      - name: Half capacity, without and with BI reads
+        run: |
+          capacity=$(python3 -c 'import json; print(json.load(open("load-result.json")).get("capacity_rps") or 0)')
+          rate=$(( capacity / 20 * 10 )); [ "$rate" -ge 20 ] || rate=20
+          DRAIN_QUEUE=1 WARMUP_SECONDS=5 tests/Load/server/measure.sh quiet http://127.0.0.1 "$HEAD_ROOT" ${{ matrix.mode }} "$rate" 60 "$DATABASE_IMAGE"
+          python3 tests/Load/bi_loop.py --image "$DATABASE_IMAGE" --seconds 75 > bi.log &
+          bi=$!
+          DRAIN_QUEUE=1 WARMUP_SECONDS=5 tests/Load/server/measure.sh busy http://127.0.0.1 "$HEAD_ROOT" ${{ matrix.mode }} "$rate" 60 "$DATABASE_IMAGE"
+          wait "$bi"
+
+      - name: Report the headroom
+        if: always()
+        run: |
+          persistent=''
+          case '${{ matrix.db.url }}' in *persistent=true*) persistent=--persistent ;; esac
+          python3 tests/Load/headroom.py --github --label "$LABEL" --server "$SERVER" --rows "$ROWS" \
+            --cores "$(nproc)" --fpm-workers "$(sed -n 's/^FPM_WORKERS=//p' "$GITHUB_ENV" | tail -n 1)" --consumers "${CONSUMERS:-0}" $persistent \
+            --step step --load-json load-result.json --connections connections.log --fsync fsync.json \
+            --quiet quiet --busy busy --bi-log bi.log --json-out headroom-result.json

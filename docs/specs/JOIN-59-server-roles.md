@@ -34,17 +34,16 @@ Phase 3 lets one Aggregate installation run on several servers that share one da
 
 Phase 3 starts ahead of phase 2 only on a measured gate. The amendment to `ROADMAP.md` ("Each phase starts only when …") goes in this slice and replaces the unconditional rule with that gate, not with an exception.
 
-Run a **database headroom** test (`docs/LOAD-TESTING.md`):
+Run a **database headroom** test (the `database` suite, [`docs/LOAD-TESTING.md`](../LOAD-TESTING.md#database-headroom)). Scott chose to estimate on one machine first (option B): the database's own costs per event, measured on one GitHub runner, turned into how many application servers it keeps up with. The run with one database server fed by two application servers on dedicated machines is slice 8.
 
-- One database server, fed by two load generators, so it carries twice one application server's load.
 - Both queue setups: `sync://` (enhanced events written during the request) and `doctrine://` with consumer workers.
-- A large `events` table (10 and 50 million rows), and a BI-style query loop over the `bi_anonymous_*` views running at the same time, because BI reads stay on the primary.
+- A large `events` table (10 million rows; the `rows` input takes more where the runner's disk allows, and 50 million is left to slice 8), and a BI-style query loop over the `bi_anonymous_*` views at half capacity, because BI reads stay on the primary.
 - Per engine and mode, report:
-  - database CPU and I/O;
+  - database CPU per event, and the CPU and disk headroom estimated from it;
   - connection count;
-  - commit (fsync) wait;
-  - queue statements per enhanced event;
-  - for PostgreSQL, the `pg_stat_user_indexes` use of each `events` index.
+  - log syncs per event (MySQL's binary log included) and, on PostgreSQL, their wait;
+  - queue table row changes and reads per enhanced event;
+  - each `events` index's reads (`pg_stat_user_indexes` on PostgreSQL, the performance schema on MySQL).
 
 **The gate:** where an engine and mode show less than about 2× headroom, phase 3 waits for phase 2's batching there. MySQL anonymous is the likely case: phase 1 found it stopped on per-event commits waiting for the disk.
 
@@ -193,7 +192,7 @@ The anchor's criteria, changed as the team asked:
 | 5 | `--files-only`, the additivity checks for tables and message classes, the Updates page server list | 3 |
 | 6 | Queue retention: a bounded age for failed and undelivered rows | — |
 | 7 | Two-servers-one-database fresh-install CI job | 3 |
-| 8 | Multi-server load test on rented machines (four to six for a few hours per run), with the BI query loop, on `sync://` and on `doctrine://` | 2–5, 7 |
+| 8 | Multi-server load test on rented machines (four to six for a few hours per run): one database server fed by two application servers, checking slice 0's estimate, with the BI query loop and 50 million rows, on `sync://` and on `doctrine://` | 2–5, 7 |
 | G1 | Docs: the generic Linux guide for a cluster, followed on fresh servers | 2–5 |
 | G2 | Docs: the Plesk guide for a cluster, extending `PLESK-DEPLOYMENT.md`, followed on a Plesk server | 2–5 |
 | P1 | PRAGMA: install Aggregate with a role (`SERVER_ROLE`, `CLUSTER_KEY`, `ADMINISTRATION_URL` in `.env.local`), the pull timer and Messenger workers | 2, 3 |
@@ -422,7 +421,8 @@ _The work this spec plans, as `- [ ] …` items, each naming the role that does 
 - [ ] Approver: answer the remaining open questions (engines, database hosting, BI on the primary, queue retention, balancer, `APP_SECRET`)
 - [ ] Product Owner: bring the anchor's done criteria in line with the answers
 - [ ] DBA: run the slice 0 database headroom test and write its report into `docs/LOAD-TESTING.md`
-- [ ] Product Owner: amend `ROADMAP.md`: the measured gate, and phase 3's text (scheduled task on administration, rate limits after #456, API and MCP on administration)
+- [x] Product Owner: amend `ROADMAP.md`: the measured gate, and phase 3's text (scheduled task on administration, rate limits after #456, API and MCP on administration) (done in JOIN-59)
+- [x] Back end: the `database` load-test suite for slice 0 (done in JOIN-59)
 - [ ] Back end: `collection_base_url` (slice 1)
 - [ ] Back end: `ServerRole`, the route split, controller removal generated from the route files, the command listener and service guards, the SQLite refusal, `app:server:role` with versioned JSON, and the dead mail routing removed (slice 2)
 - [ ] Back end: `app:cluster:sync`, `ClusterConfigPublisher` with the `cluster_config` fingerprint in `processing_tasks`, the configuration endpoint, signed health metadata, `var/cluster_state.json`, the pause when behind or unverified, and the alert through JOIN-55's destinations (slice 3)

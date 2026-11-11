@@ -13,6 +13,7 @@ rates until the server falls behind.
 - [Where the time goes](#where-the-time-goes)
 - [Optimizations](#optimizations)
 - [Clearing the cache under traffic](#clearing-the-cache-under-traffic)
+- [Database headroom](#database-headroom)
 - [Run the test](#run-the-test)
 
 ## At a glance: hits per day
@@ -306,6 +307,63 @@ Avoid restarting PHP-FPM during traffic. The updater's
 [maintenance mode](UPDATES.md) answers every request, including collection,
 with 503 while it works; schedule updates for quiet hours.
 
+## Database headroom
+
+Before collection is spread over several servers sharing one database
+([scaling phase 3](../ROADMAP.md#scaling-in-three-phases)), the `database` suite
+estimates how many application servers one database could keep up with. Phase 3
+goes ahead only for the engines and modes where that headroom is about 2× or
+more; elsewhere it waits for phase 2's batching. The gate and its reasons are in
+the [JOIN-59 spec](specs/JOIN-59-server-roles.md#slice-0-measure-the-shared-database-first).
+No results yet: they will be added here after the first run.
+
+Each job installs a fresh copy on PostgreSQL 16 or MySQL 8.0 and gives the
+database a quarter of the runner's memory. It fills `events` with 10 million
+synthetic rows (the `rows` input changes that): 90 days of hours, every fifth
+row enhanced. It refreshes the BI views and writes the preload to disk before
+measuring, then runs:
+
+1. A measurement of the disk: how many 8 KiB writes per second it completes,
+   each followed by `fsync`. That caps commits when none are grouped.
+2. The step test, with the database's own counters read just outside the window
+   in which CPU is counted ([db_stats.py](../tests/Load/db_stats.py)):
+   transactions, log syncs and bytes (and MySQL's binary log syncs; MySQL 8.0
+   turns that log on by default), blocks read from disk, the queue table's row
+   changes and reads, and each `events` index's reads. Open connections are
+   counted every second from the application's side.
+3. A minute at half the measured capacity without, then with, a loop of BI
+   reads, each reading a whole `bi_anonymous_*` view the way a BI refresh does.
+
+Enhanced traffic runs twice: with `sync://`, where the request writes the event,
+and with `doctrine://default` and half a queue consumer per vCPU, where the
+request queues it. The run waits for the queue to empty before counting.
+Anonymous events never queue, so they run once. That makes six jobs.
+
+[headroom.py](../tests/Load/headroom.py) turns this into an estimate. All three
+parts share one machine, so it works from costs per event, not from a test with
+two application servers:
+
+| Estimate | How |
+| --- | --- |
+| One application server's rate | vCPUs ÷ (PHP-FPM, Nginx and queue consumer CPU per event): what a server of this size could take with the database and k6 elsewhere |
+| CPU headroom | vCPUs ÷ (that rate × database CPU per event): how many such application servers a database server of the same size keeps up with |
+| Disk headroom | the disk's syncs per second ÷ (that rate × log syncs per event). Under more load the database groups commits into fewer syncs, so this is a floor |
+
+The lower of the two is the headroom, reported per job with what limited it.
+Connections are reported beside it, not in it, because `max_connections` is a
+setting: PostgreSQL holds one per PHP-FPM worker and consumer (the setup page
+keeps them open), MySQL only those in flight. When the limit would stop servers
+from being added first, the report says what to raise it to.
+
+Start it from **Actions → Load test → Run workflow** with the suite `database`,
+or with the label `database-headroom` on a pull request. Each job takes about
+15 minutes on PostgreSQL and 30 on MySQL, most of it filling the table.
+
+What it cannot show: CPU and the disk are shared with PHP and k6, so it is the
+database's costs per event that carry over, not its capacity on this machine.
+A run with the database on its own machine, fed by two application servers, is
+still the real test, planned as slice 8 of JOIN-59.
+
 ## Run the test
 
 The test is [tests/Load/receive.js](../tests/Load/receive.js), a
@@ -318,7 +376,7 @@ stores tens of thousands. Never run it against a production server.
 The **Load test** workflow
 ([.github/workflows/load-test.yml](../.github/workflows/load-test.yml)) installs
 a fresh copy for each of SQLite, PostgreSQL 16 and MySQL 8.0 and runs anonymous
-and enhanced traffic on each. It has four suites:
+and enhanced traffic on each. It has five suites:
 
 | Suite | What it measures | Pull request label | Runner time |
 | --- | --- | --- | ---: |
@@ -326,6 +384,7 @@ and enhanced traffic on each. It has four suites:
 | `profile` | xhprof profiles at 20 requests per second: PHP time per request by step and the functions with the most own time | `profile` | about 25 minutes |
 | `compare` | The pull request's code against its base on one machine: change in server CPU per event and response times | `compare` | about 60 minutes |
 | `cache` | Steady traffic while the cache is cleared and PHP-FPM reloads or restarts: failures and response times in each stage | `cache-clear` | about 30 minutes |
+| `database` | [Database headroom](#database-headroom) on PostgreSQL and MySQL with a 10 million row table, with and without the queue for enhanced events | `database-headroom` | about 150 minutes |
 
 The `compare` suite can also keep the code the same and change one setting on
 the head side: label `compare-persistent` for persistent database connections,
@@ -392,15 +451,17 @@ A request counts as stored only when the response says the event was
 
 - A load generator on its own machine and a dedicated server, which would
   remove both the shared-runner noise and k6's share of the CPU.
-- A queue: `doctrine://` with background workers for enhanced events.
+- A queue on a dedicated machine. The [database headroom](#database-headroom)
+  suite runs `doctrine://` with consumers, but on the same machine as everything
+  else.
 - FrankenPHP (including its worker mode, which keeps the application loaded
   between requests) and Apache, SQL Server and MariaDB, and other PHP-FPM
   worker counts.
 - PgBouncer, an alternative to persistent connections for PostgreSQL.
 - Servers with other than 4 vCPU, and TLS between browsers and Nginx.
-- Writing anonymous events with a direct insert instead of Doctrine ORM.
 - Requests for the tracker, consent and tag manager scripts, dashboard use, and
-  `app:analytics:maintain` running during load.
+  `app:analytics:maintain` running during load. BI reads during load are in the
+  [database headroom](#database-headroom) suite.
 - An installation with many registered websites.
 
 Phase 1 of the [scaling roadmap](../ROADMAP.md#scaling-in-three-phases) tracks this work.
