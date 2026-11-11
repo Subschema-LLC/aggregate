@@ -53,6 +53,7 @@ class SystemCheck
         private readonly ?PhpRequirementResolver $phpRequirement = null,
         private readonly ?DeploymentState $deployment = null,
         private readonly string $environment = 'prod',
+        private readonly ?PhpReloadRequest $reload = null,
     ) {
     }
 
@@ -178,11 +179,10 @@ class SystemCheck
             ? 'SQLite: a snapshot is saved automatically before migrations run.'
             : ucfirst($this->databaseName()).': back up the database before updating. Migrations cannot be reversed automatically, so you will be asked to confirm a backup.');
 
-        $opcache = function_exists('opcache_get_status') && filter_var(ini_get('opcache.enable'), FILTER_VALIDATE_BOOL)
-            && !filter_var(ini_get('opcache.validate_timestamps'), FILTER_VALIDATE_BOOL);
-        $add('opcache', 'PHP OPcache', $opcache ? self::WARNING : self::OK, $opcache
-            ? 'opcache.validate_timestamps is off, so PHP keeps running old code after an update until PHP is reloaded (for example PHP-FPM or the web server). Reload it after each update.'
-            : 'PHP picks up changed files after an update.');
+        // OPcache, preloading, and whether PHP reloaded after the last update.
+        foreach (($this->reload ?? new PhpReloadRequest($this->projectDir))->checks() as $row) {
+            $add($row['id'], $row['label'], $row['status'], $row['detail']);
+        }
 
         $maintenance = $this->maintenance->status();
         $add('maintenance', 'Maintenance mode', $maintenance !== null && $maintenance['active'] ? self::WARNING : self::OK,

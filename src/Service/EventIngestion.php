@@ -10,6 +10,7 @@ use App\Service\GeoIp\ConfiguredGeoIpResolver;
 use App\Service\GeoIp\GeoIpResolverInterface;
 use App\Service\GeoIp\MmdbGeoCodeLookupInterface;
 use Psr\Log\LoggerInterface;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Messenger\MessageBusInterface;
@@ -41,6 +42,9 @@ final class EventIngestion
 
     public function __construct(
         private readonly WebsiteConfigManager $websites,
+        // Lazy: only enhanced events dispatch, and only failures are recorded,
+        // so an anonymous event never builds the bus or the failure runner.
+        #[Autowire(lazy: true)]
         private readonly MessageBusInterface $bus,
         private readonly IpRateLimiter $rateLimiter,
         private readonly PrivacySanitizer $sanitizer,
@@ -50,6 +54,7 @@ final class EventIngestion
         private readonly AnonymousEventRecorder $anonymousRecorder,
         private readonly LoggerInterface $logger,
         private readonly CustomDataSettings $customDataSettings,
+        #[Autowire(lazy: true)]
         private readonly ?TrackingFailureRetryRunner $trackingFailures = null,
         private readonly ?WebsiteScopeResolver $scopes = null,
         private readonly ?MmdbGeoCodeLookupInterface $geoLookup = null,

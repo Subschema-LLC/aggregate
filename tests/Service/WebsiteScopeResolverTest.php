@@ -27,7 +27,7 @@ use App\Service\WebsiteScopeResolver;
 use App\Service\WebsiteConfigManager;
 use App\Security\IpRateLimiter;
 use Doctrine\DBAL\Connection;
-use Doctrine\ORM\EntityManagerInterface;
+use App\Service\EventRowWriter;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
 use Symfony\Component\HttpFoundation\Request;
@@ -111,7 +111,7 @@ final class WebsiteScopeResolverTest extends TestCase
                 new GoalEventRegistry($sanitizer, []),
                 new PrivacyPolicy($loader),
                 $this->createStub(GeoIpResolverInterface::class),
-                new AnonymousEventRecorder($this->createStub(EntityManagerInterface::class)),
+                new AnonymousEventRecorder($this->createStub(EventRowWriter::class)),
                 new NullLogger(),
                 new CustomDataSettings($loader),
                 scopes: $resolver,
@@ -239,11 +239,10 @@ final class WebsiteScopeResolverTest extends TestCase
         ], []);
         $resolver = new WebsiteScopeResolver($loader, $catalog);
         $persisted = null;
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::once())->method('persist')->willReturnCallback(static function (object $event) use (&$persisted): void {
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::once())->method('insert')->willReturnCallback(static function (object $event) use (&$persisted): void {
             $persisted = $event;
         });
-        $entityManager->expects(self::once())->method('flush');
         $bus = $this->createMock(MessageBusInterface::class);
         $bus->expects(self::never())->method('dispatch');
         $geoResolver = $this->createMock(GeoIpResolverInterface::class);
@@ -288,7 +287,7 @@ final class WebsiteScopeResolverTest extends TestCase
                     ]),
                 new PrivacyPolicy($loader),
                 $geoResolver,
-                new AnonymousEventRecorder($entityManager),
+                new AnonymousEventRecorder($eventWriter),
                 new NullLogger(),
                 new CustomDataSettings($loader),
                 scopes: $resolver,
@@ -403,20 +402,19 @@ final class WebsiteScopeResolverTest extends TestCase
         $first = $health();
         $brokenWebsites = $this->createMock(WebsiteConfigManager::class);
         $brokenWebsites->expects(self::never())->method('findOneByToken');
-        $broken = $this->receive($resolver, $loader, $brokenWebsites, 'broken-token', $this->createStub(EntityManagerInterface::class));
+        $broken = $this->receive($resolver, $loader, $brokenWebsites, 'broken-token', $this->createStub(EventRowWriter::class));
         $persisted = null;
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::once())->method('persist')->willReturnCallback(static function (object $event) use (&$persisted): void {
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::once())->method('insert')->willReturnCallback(static function (object $event) use (&$persisted): void {
             $persisted = $event;
         });
-        $entityManager->expects(self::once())->method('flush');
         $healthyWebsites = $this->createMock(WebsiteConfigManager::class);
         $healthyWebsites->expects(self::once())->method('findOneByToken')->with('healthy-token')->willReturn([
             'name' => 'Healthy',
             'domain' => 'healthy.example',
             'token' => 'healthy-token',
         ]);
-        $healthy = $this->receive($resolver, $loader, $healthyWebsites, 'healthy-token', $entityManager, 'https://healthy.example');
+        $healthy = $this->receive($resolver, $loader, $healthyWebsites, 'healthy-token', $eventWriter, 'https://healthy.example');
 
         self::assertSame(503, $first->getStatusCode());
         self::assertSame('error', json_decode((string) $first->getContent(), true)['checks']['configuration']['status']);
@@ -460,7 +458,7 @@ final class WebsiteScopeResolverTest extends TestCase
         AggregateConfigLoader $loader,
         WebsiteConfigManager $websites,
         string $token,
-        EntityManagerInterface $entityManager,
+        EventRowWriter $eventWriter,
         string $origin = 'https://store.example',
     ): \Symfony\Component\HttpFoundation\Response {
         $rateLimiter = $this->createStub(IpRateLimiter::class);
@@ -485,7 +483,7 @@ final class WebsiteScopeResolverTest extends TestCase
                 new GoalEventRegistry(new PrivacySanitizer(), []),
                 new PrivacyPolicy($loader),
                 $this->createStub(GeoIpResolverInterface::class),
-                new AnonymousEventRecorder($entityManager),
+                new AnonymousEventRecorder($eventWriter),
                 new NullLogger(),
                 new CustomDataSettings($loader),
                 scopes: $resolver,

@@ -4,8 +4,8 @@ namespace App\MessageHandler;
 
 use App\Entity\Event;
 use App\Message\TrackEventMessage;
+use App\Service\EventRowWriter;
 use App\Service\TrackingFailureRetryRunner;
-use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
@@ -13,7 +13,7 @@ use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 class TrackEventHandler
 {
     public function __construct(
-        private readonly EntityManagerInterface $em,
+        private readonly EventRowWriter $writer,
         private readonly TrackingFailureRetryRunner $trackingFailures,
         private readonly LoggerInterface $logger,
     ) {}
@@ -40,8 +40,7 @@ class TrackEventHandler
             ->setCreatedAt($msg->occurredAt);
 
         try {
-            $this->em->persist($event);
-            $this->em->flush();
+            $this->writer->insert($event);
         } catch (\Throwable $error) {
             $this->logger->error('Enhanced event persistence failed.', ['exception_class' => $error::class]);
             try {

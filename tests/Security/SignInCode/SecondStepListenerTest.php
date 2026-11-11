@@ -11,6 +11,7 @@ use App\Security\SignInCode\SignInCodeRequests;
 use App\Security\SignInCode\SignInCodes;
 use App\Security\SignInCode\SignInCodeSettings;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\DependencyInjection\ServiceLocator;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Session\Session;
@@ -168,6 +169,10 @@ final class SecondStepListenerTest extends TestCase
         $urls = $this->createStub(UrlGeneratorInterface::class);
         $urls->method('generate')->willReturnCallback(static fn (string $route): string => '/generated/'.$route);
 
-        return new SecondStepListener($settings, $requests, $this->tokens, $urls);
+        return new SecondStepListener(new ServiceLocator([
+            SignInCodeSettings::class => static fn (): SignInCodeSettings => $settings,
+            SignInCodeRequests::class => static fn (): SignInCodeRequests => $requests,
+            UrlGeneratorInterface::class => static fn (): UrlGeneratorInterface => $urls,
+        ]), $this->tokens);
     }
 }

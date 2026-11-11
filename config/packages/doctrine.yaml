@@ -26,7 +26,11 @@ doctrine:
                 dir: '%kernel.project_dir%/src/Entity'
                 prefix: 'App\Entity'
                 alias: App
+        # No controller takes an entity as an argument. Left on, the resolver
+        # built the entity manager for every controller argument with a class
+        # type, such as the collection endpoint's EventIngestion.
         controller_resolver:
+            enabled: false
             auto_mapping: false
 
 when@test:
