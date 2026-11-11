@@ -19,10 +19,15 @@ CPU and the disk. It is an estimate, not a measurement with two servers:
                              floor
 
 The lower of the two is the headroom. Connections are reported beside it,
-not in it: max_connections is a setting, raised or pooled, not hardware. A
-second pair of phases at half the measured capacity, without and then with a
-loop of BI reads, shows what reporting on the same database does to
-collection.
+not in it: max_connections is a setting, raised or pooled, not hardware.
+
+The estimate sees only CPU and log syncs. When the step test stopped with the
+CPU well short of busy, something else limited collection first (locks,
+waits on commits, the queue table); more servers would meet it sooner, so
+the verdict is held rather than passed. What the database's connections were
+waiting for at half capacity is reported to show what that was. A second
+pair of phases at half the measured capacity, without and then with a loop
+of BI reads, shows what reporting on the same database does to collection.
 
     python3 tests/Load/headroom.py --github --label "PostgreSQL 16, enhanced, doctrine://" ...
 """
@@ -41,6 +46,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from report import annotation_escape, property_escape, stage_rows  # noqa: E402
 
 GATE = 2.0
+# Below this share of CPU busy where the step test first fell behind, CPU was
+# not what stopped it.
+CPU_BOUND_PCT = 80.0
 
 
 def load(path: str | None) -> dict:
@@ -80,6 +88,7 @@ def main() -> None:
     parser.add_argument("--quiet", help="measure.sh output directory, half capacity, no BI reads")
     parser.add_argument("--busy", help="measure.sh output directory, half capacity, with BI reads")
     parser.add_argument("--bi-log", help="bi_loop.py output")
+    parser.add_argument("--waits", help="wait_sampler.py output from the phase without BI reads")
     parser.add_argument("--json-out")
     parser.add_argument("--github", action="store_true")
     args = parser.parse_args()
@@ -88,7 +97,11 @@ def main() -> None:
     events = load(str(step / "stored.json")).get("total", 0)
     cpu_before, cpu_after = load(str(step / "cpu-before.json")), load(str(step / "cpu-after.json"))
     db_before, db_after = load(str(step / "db-before.json")), load(str(step / "db-after.json"))
-    capacity = load(args.load_json).get("capacity_rps")
+    load_result = load(args.load_json)
+    capacity = load_result.get("capacity_rps")
+    first_miss = next((row for row in load_result.get("stages", []) if not row.get("sustained")), None)
+    miss_cpu = first_miss.get("cpu_busy_pct") if first_miss else None
+    not_cpu_bound = miss_cpu is not None and miss_cpu < CPU_BOUND_PCT
     if events <= 0:
         raise SystemExit("No events were stored during the step test.")
 
@@ -118,7 +131,15 @@ def main() -> None:
         headroom["disk"] = fsync_rate / (server_rate * syncs)
     limit = min(headroom, key=headroom.get) if headroom else None
     overall = headroom[limit] if limit else None
-    verdict = (f"about {overall:.1f}x, limited by {limit}: " + ("phase 3 can go ahead here" if overall >= GATE else "under 2x, so phase 3 waits for phase 2's batching here")) if overall else "not enough data for an estimate"
+    if not overall:
+        verdict = "not enough data for an estimate"
+    elif not_cpu_bound:
+        verdict = (f"about {overall:.1f}x by CPU and disk, but held: the step test fell behind at {first_miss['target_rps']} requests/s"
+                   f" with the CPU only {miss_cpu:.0f}% busy, so something this estimate cannot see limited it first")
+    elif overall >= GATE:
+        verdict = f"about {overall:.1f}x, limited by {limit}: phase 3 can go ahead here"
+    else:
+        verdict = f"about {overall:.1f}x, limited by {limit}: under 2x, so phase 3 waits for phase 2's batching here"
     servers_by_connections = max_connections / per_server if max_connections and per_server else None
     connection_note = None
     if servers_by_connections is not None and overall and servers_by_connections < min(overall, 2 * GATE):
@@ -175,6 +196,20 @@ def main() -> None:
         text = (f"BI reads during that phase: {len(bi)}, median {statistics.median(bi_ok):.1f} s, longest {max(bi_ok):.1f} s"
                 if bi_ok else f"BI reads during that phase: {len(bi)}, none succeeded")
         lines.append(text + (f"; {len(bi_failed)} failed, first: {bi_failed[0]}" if bi_failed else "") + ".")
+    waits: dict[str, float] = {}
+    wait_samples = 0
+    if args.waits and Path(args.waits).is_file():
+        for line in Path(args.waits).read_text().splitlines():
+            if line.strip():
+                wait_samples += 1
+                for name, count in json.loads(line).get("waits", {}).items():
+                    waits[name] = waits.get(name, 0) + count
+    if wait_samples:
+        busy_total = sum(waits.values())
+        top = sorted(waits.items(), key=lambda item: -item[1])[:6]
+        lines += ["", f"At half capacity without BI reads, {busy_total / wait_samples:.1f} database connections were busy on average"
+                  + ("; they were " + ", ".join(f"{name} {count / busy_total * 100:.0f}%" for name, count in top) if busy_total else "")
+                  + f" ({wait_samples} samples)."]
     index_before, index_after = db_before.get("index_scans", {}), db_after.get("index_scans", {})
     index_reads = {name: index_after[name] - index_before.get(name, 0) for name in sorted(index_after)}
     if any(index_reads.values()):
@@ -189,7 +224,10 @@ def main() -> None:
         "app_cpu_ms_per_event": app_ms, "db_cpu_ms_per_event": db_ms, "server_rate": server_rate,
         "per_event": per_event, "index_reads": index_reads, "log_sync_ms_each": sync_wait_ms, "fsync_per_second": fsync_rate,
         "connections": {"peak": peak, "per_server": per_server, "max": max_connections, "servers": servers_by_connections},
-        "headroom": headroom, "limit": limit, "overall": overall, "passes_gate": bool(overall and overall >= GATE),
+        "headroom": headroom, "limit": limit, "overall": overall, "passes_gate": bool(overall and overall >= GATE and not not_cpu_bound),
+        "first_missed_stage": {"rps": first_miss["target_rps"], "cpu_busy_pct": miss_cpu} if first_miss else None,
+        "held_not_cpu_bound": not_cpu_bound,
+        "waits": {"samples": wait_samples, "counts": waits},
         "p95_ms": {"without_bi": quiet_p95, "with_bi": busy_p95},
         "failure_rate": {"without_bi": quiet["failure_rate"] if quiet else None, "with_bi": busy["failure_rate"] if busy else None},
         "bi_reads": {"count": len(bi), "median_s": statistics.median(bi_ok) if bi_ok else None, "max_s": max(bi_ok) if bi_ok else None, "failed": len(bi_failed)},

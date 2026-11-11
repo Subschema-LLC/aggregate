@@ -333,6 +333,8 @@ measuring, then runs:
    counted every second from the application's side.
 3. A minute at half the measured capacity without, then with, a loop of BI
    reads, each reading a whole `bi_anonymous_*` view the way a BI refresh does.
+   During the first minute, what the database's busy connections wait for is
+   sampled every second ([wait_sampler.py](../tests/Load/wait_sampler.py)).
 
 Enhanced traffic runs twice: with `sync://`, where the request writes the event,
 and with `doctrine://default` and half a queue consumer per vCPU, where the
@@ -350,6 +352,11 @@ two application servers:
 | Disk headroom | the disk's syncs per second ÷ (that rate × log syncs per event). Under more load the database groups commits into fewer syncs, so this is a floor |
 
 The lower of the two is the headroom, reported per job with what limited it.
+The estimate sees only CPU and log syncs, so when the step test fell behind
+with the CPU less than 80% busy, something it cannot see stopped collection
+first, such as a lock or waits on commits. More servers would meet that sooner,
+so the verdict is then held, not passed, and the sampled waits show what it
+was.
 Connections are reported beside it, not in it, because `max_connections` is a
 setting: PostgreSQL holds one per PHP-FPM worker and consumer (the setup page
 keeps them open), MySQL only those in flight. When the limit would stop servers

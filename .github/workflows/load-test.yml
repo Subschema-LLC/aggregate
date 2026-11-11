@@ -469,7 +469,11 @@ jobs:
         run: |
           capacity=$(python3 -c 'import json; print(json.load(open("load-result.json")).get("capacity_rps") or 0)')
           rate=$(( capacity / 20 * 10 )); [ "$rate" -ge 20 ] || rate=20
+          # What the database's connections wait for; this phase is not in the CPU estimate.
+          python3 tests/Load/wait_sampler.py --image "$DATABASE_IMAGE" > waits.log &
+          waits=$!
           DRAIN_QUEUE=1 WARMUP_SECONDS=5 tests/Load/server/measure.sh quiet http://127.0.0.1 "$HEAD_ROOT" ${{ matrix.mode }} "$rate" 60 "$DATABASE_IMAGE"
+          kill "$waits"
           python3 tests/Load/bi_loop.py --image "$DATABASE_IMAGE" --seconds 75 > bi.log &
           bi=$!
           DRAIN_QUEUE=1 WARMUP_SECONDS=5 tests/Load/server/measure.sh busy http://127.0.0.1 "$HEAD_ROOT" ${{ matrix.mode }} "$rate" 60 "$DATABASE_IMAGE"
@@ -483,7 +487,7 @@ jobs:
           python3 tests/Load/headroom.py --github --label "$LABEL" --server "$SERVER" --rows "$ROWS" \
             --cores "$(nproc)" --fpm-workers "${FPM_WORKERS:-0}" --consumers "${CONSUMERS:-0}" $persistent \
             --step step --load-json load-result.json --connections connections.log --fsync fsync.json \
-            --quiet quiet --busy busy --bi-log bi.log --json-out headroom-result.json
+            --quiet quiet --busy busy --bi-log bi.log --waits waits.log --json-out headroom-result.json
 
       - name: Keep the measurements
         if: always()
@@ -500,5 +504,6 @@ jobs:
             connections.log
             fsync.json
             bi.log
+            waits.log
           if-no-files-found: ignore
           retention-days: 30
