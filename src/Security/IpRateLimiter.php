@@ -94,7 +94,7 @@ class IpRateLimiter
         $success = false;
         // Creates the entry with the expiry when it does not exist yet.
         $count = apcu_inc(self::APCU_PREFIX.$bucketId, 1, $success, self::BUCKET_TTL);
-        if (!$success || !is_int($count)) {
+        if (!$success) {
             return null;
         }
 
