@@ -185,35 +185,47 @@ per event, not its memory or database, so the first phase cuts that.
 - **Phase 1: more events per server.** Cut PHP time per collection request,
   with no new service, PHP extension, setting or install step. Target: at least
   30% less server CPU per event with OPcache preloading on, and at least 15% as
-  installed, on MySQL, PostgreSQL and SQLite, measured with the `compare` and
-  `load` suites against the November 2026 baseline.
-  - *Direct insert:* write event rows, anonymous and enhanced, with one DBAL
-    insert instead of Doctrine ORM. Move the checks in
-    `Event::enforcePrivacyInvariants()` into one guard that the entity and the
-    writer both call, so the rules cannot drift, and record the choice in the
-    [design decisions](docs/DESIGN-DECISIONS.md). Anonymous rows are still
-    written during the request.
-  - *A lean collection path:* `/api/receive` builds Twig and the translator
-    and loads about 650 classes; load only what collection needs.
-  - *Preloading where Aggregate controls PHP:* on in the Docker image and in
-    hosting-panel templates that can reload PHP-FPM after each update.
-    Elsewhere, the Updates page's system check reports OPcache, preloading and
-    APCu, with the [deployment guide's](DEPLOYMENT.md#performance) lines.
+  installed, for MySQL, PostgreSQL and SQLite in both modes, measured with the
+  `compare` suite, which runs base and head on one machine. Throughput is
+  reported too, but not judged for MySQL anonymous: in November it stopped on
+  per-event commits waiting for the disk, which is phase 2's batching.
+  - *Measurements first:* before the first change lands, run a load generator
+    and server on separate dedicated machines at 2, 4 and 8 vCPU, so the sizing
+    table's before and after come from the same machines.
+  - *Direct insert:* write event rows, anonymous and enhanced, with
+    `Connection::insert()` and Doctrine's column types instead of Doctrine ORM,
+    without reading back the new ID. The rules now in the `Event` entity's
+    setters and in `Event::enforcePrivacyInvariants()` move into one function
+    that normalizes a whole row or throws, called by both the entity and the
+    writer, with a test that the two paths store the same rows on every engine.
+    Record the choice in the [design decisions](docs/DESIGN-DECISIONS.md).
+    Anonymous rows are still written during the request, and enhanced events
+    keep Messenger, whose handler uses the same writer.
+  - *A lean collection path:* `/api/receive` loads about 650 classes and builds
+    Twig and the translator. Give `DashboardAccessSubscriber` a lazy service
+    locator, as `AdminAuditSubscriber` has, so it builds its security services
+    only for dashboard routes; make `EventIngestion`'s message bus and failure
+    runner lazy; and confirm the remaining listeners with a call-graph trace. A
+    kernel test fails if a collection request builds those services again.
+  - *Preloading where PHP is reloaded after updates:* on in hosting-panel
+    templates that reload PHP-FPM after each update. Aggregate has no production
+    container image, and `app:updates:apply` cannot reload PHP-FPM, so elsewhere
+    the Updates page's system check reports OPcache, preloading and APCu, with
+    the [deployment guide's](DEPLOYMENT.md#performance) lines.
   - *Smaller savings, each kept only if `compare` shows at least 3%:*
     rate-limit buckets in APCu when the extension is loaded, with the same HMAC
-    keys and expiry; a compiled environment file with a reliable freshness
-    check; and calling the event writer directly when Messenger's transport is
-    `sync://`.
-  - *FrankenPHP worker mode* for the Docker deployment, after a state audit and
-    an entry in the load-test matrix.
-  - *Measurements still missing:* a load generator and server on separate
-    dedicated machines at 2, 4 and 8 vCPU, replacing the extrapolated sizing
-    rows; a large events table (10 and 50 million rows) on 8 and 32 GB of
-    memory, with the reporting views and `app:analytics:maintain` running during
-    load; `doctrine://` with background workers; FrankenPHP, Apache, SQL Server
-    and MariaDB, and other PHP-FPM worker counts; requests for the tracker,
-    consent and tag manager scripts, and dashboard use, during load; and an
-    installation with many registered websites.
+    keys and expiry, and a compiled environment file with a reliable freshness
+    check.
+  - *FrankenPHP worker mode* for native FrankenPHP installations, after a state
+    audit and an entry in the load-test matrix. Like preloading, it keeps old
+    code after an in-place update, so the update must restart the workers.
+  - *Measurements still missing:* a large events table (10 and 50 million rows)
+    on 8 and 32 GB of memory, with the reporting views and
+    `app:analytics:maintain` running during load; `doctrine://` with background
+    workers; FrankenPHP, Apache, SQL Server and MariaDB, and other PHP-FPM worker
+    counts; requests for the tracker, consent and tag manager scripts, and
+    dashboard use, during load; and an installation with many registered
+    websites.
 - **Phase 2: one application server, separated workloads.** Still one
   installation, with the heaviest work moved off the collection request and off
   the application database.
@@ -262,8 +274,8 @@ per event, not its memory or database, so the first phase cuts that.
     scheduled task) or `balancer`. The YAML-first design already lets a
     collection server run without a login page.
   - *The balancer role:* a reference configuration for the web server already
-    in front, rather than a proxy of Aggregate's own: Caddy in the Docker
-    deployment, Nginx on Nginx and PHP-FPM servers and in hosting panels. It
+    in front, rather than a proxy of Aggregate's own: Caddy on FrankenPHP
+    servers, Nginx on Nginx and PHP-FPM servers and in hosting panels. It
     spreads collection requests over the collection servers, keeps access logs
     off, sets forwarded headers and trusted proxies so rate limits and
     geography see the visitor's address, checks each server's `/api/health`
