@@ -21,7 +21,7 @@ use App\Service\PrivacyPolicy;
 use App\Service\PrivacySanitizer;
 use App\Service\TrackingFailureRetryRunner;
 use App\Service\WebsiteConfigManager;
-use Doctrine\ORM\EntityManagerInterface;
+use App\Service\EventRowWriter;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
@@ -132,9 +132,8 @@ final class ReceiveControllerEventExamplesTest extends TestCase
     {
         $config = $this->config($controls);
         $payload = (new EventExampleGenerator(new CustomDataSettings($config)))->generate()['examples'][$mode]['payload'];
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::never())->method('persist');
-        $entityManager->expects(self::never())->method('flush');
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::never())->method('insert');
         $bus = $this->createMock(MessageBusInterface::class);
         $bus->expects(self::never())->method('dispatch');
         $websites = $this->createMock(WebsiteConfigManager::class);
@@ -144,7 +143,7 @@ final class ReceiveControllerEventExamplesTest extends TestCase
         $geo = $this->createMock(GeoIpResolverInterface::class);
         $geo->expects(self::never())->method('resolve');
 
-        $response = $this->invoke($payload, $config, $entityManager, $bus, $websites, $limiter, $geo);
+        $response = $this->invoke($payload, $config, $eventWriter, $bus, $websites, $limiter, $geo);
 
         self::assertSame(202, $response->getStatusCode());
         self::assertSame(['status' => 'ignored'], json_decode((string) $response->getContent(), true, flags: JSON_THROW_ON_ERROR));
@@ -161,21 +160,20 @@ final class ReceiveControllerEventExamplesTest extends TestCase
     private function ingestAndPersist(array $payload, AggregateConfigLoader $config, string $mode): Event
     {
         $persisted = null;
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::once())->method('persist')->willReturnCallback(static function (object $event) use (&$persisted): void {
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::once())->method('insert')->willReturnCallback(static function (object $event) use (&$persisted): void {
             self::assertInstanceOf(Event::class, $event);
             $event->enforcePrivacyInvariants();
             $persisted = $event;
         });
-        $entityManager->expects(self::once())->method('flush');
         $bus = $this->createMock(MessageBusInterface::class);
         $trackingFailures = $this->createStub(TrackingFailureRetryRunner::class);
         if ($mode === 'enhanced') {
-            $bus->expects(self::once())->method('dispatch')->willReturnCallback(static function (object $message) use ($entityManager, $trackingFailures): Envelope {
+            $bus->expects(self::once())->method('dispatch')->willReturnCallback(static function (object $message) use ($eventWriter, $trackingFailures): Envelope {
                 self::assertInstanceOf(TrackEventMessage::class, $message);
                 self::assertStringNotContainsString('203.0.113.42', serialize($message));
                 self::assertStringNotContainsString('Chrome/126.0', serialize($message));
-                (new TrackEventHandler($entityManager, $trackingFailures, new NullLogger()))($message);
+                (new TrackEventHandler($eventWriter, $trackingFailures, new NullLogger()))($message);
 
                 return new Envelope($message);
             });
@@ -190,7 +188,7 @@ final class ReceiveControllerEventExamplesTest extends TestCase
         $geo = $this->createStub(GeoIpResolverInterface::class);
         $geo->method('resolve')->willReturn(null);
 
-        $response = $this->invoke($payload, $config, $entityManager, $bus, $websites, $limiter, $geo);
+        $response = $this->invoke($payload, $config, $eventWriter, $bus, $websites, $limiter, $geo);
 
         self::assertSame(202, $response->getStatusCode());
         self::assertSame($mode, json_decode((string) $response->getContent(), true, flags: JSON_THROW_ON_ERROR)['mode']);
@@ -203,7 +201,7 @@ final class ReceiveControllerEventExamplesTest extends TestCase
     private function invoke(
         array $payload,
         AggregateConfigLoader $config,
-        EntityManagerInterface $entityManager,
+        EventRowWriter $eventWriter,
         MessageBusInterface $bus,
         WebsiteConfigManager $websites,
         IpRateLimiter $limiter,
@@ -227,7 +225,7 @@ final class ReceiveControllerEventExamplesTest extends TestCase
                 new GoalEventRegistry($sanitizer, []),
                 new PrivacyPolicy($config),
                 $geo,
-                new AnonymousEventRecorder($entityManager),
+                new AnonymousEventRecorder($eventWriter),
                 new NullLogger(),
                 new CustomDataSettings($config),
             ),

@@ -5,12 +5,11 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Entity\Event;
-use Doctrine\ORM\EntityManagerInterface;
 
-/** Persists one identifier-free, hour-bucketed anonymous event synchronously. */
+/** Writes one identifier-free, hour-bucketed anonymous event during the request. */
 final class AnonymousEventRecorder
 {
-    public function __construct(private readonly EntityManagerInterface $entityManager)
+    public function __construct(private readonly EventRowWriter $writer)
     {
     }
 
@@ -50,7 +49,6 @@ final class AnonymousEventRecorder
             ->setInternalTraffic($internalTraffic)
             ->setCreatedAt($hourBucket);
 
-        $this->entityManager->persist($event);
-        $this->entityManager->flush();
+        $this->writer->insert($event);
     }
 }

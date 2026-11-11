@@ -95,7 +95,10 @@ reduced to a country or continent code. Collection makes no network calls.
 
 Both modes write to the same `events` table ([Event](../src/Entity/Event.php)),
 told apart by its `privacy_mode` column. The table is private: routine BI users
-never get access to it.
+never get access to it. Both build the row as an `Event`, whose setters and
+`enforcePrivacyInvariants()` check it, and
+[EventRowWriter](../src/Service/EventRowWriter.php) saves it with one insert
+rather than through Doctrine ORM's unit of work.
 
 ### 4. Maintenance archives and deletes it
 
@@ -336,6 +339,7 @@ that an engine accepts it. See [tests and checks](../CONTRIBUTING.md#tests-and-c
 | --- | --- | --- |
 | Add an operator setting | The service that owns the behavior, reading it through `AggregateConfigLoader` | The dashboard form (optional), `config/aggregate.yaml.example`, [CONFIGURATION.md](CONFIGURATION.md), and tests with the dashboard off |
 | Collect a new dimension | Discuss it in an issue first; it changes the privacy model | `PrivacySanitizer`, `EventIngestion`, the strict profile, the views, and the [privacy guide](PRIVACY-COMPLIANCE.md) |
+| Add a column to `events` | A migration and the [Event](../src/Entity/Event.php) mapping | `EventRowWriter::COLUMN_TYPES` and `::row()`, which `EventRowWriterTest` checks against the mapping |
 | Change what a reporting view returns | A new migration that adds a new versioned view (such as `_v2`), keeping the old one | SQL for all five engines, the fresh-install test, [DATABASE.md](DATABASE.md) |
 | Write engine-specific SQL | A platform branch (`instanceof PostgreSQLPlatform` and so on), as in the existing migrations | The fresh-install CI run on every engine |
 | Add a dashboard page | A controller for that page using the `DashboardAccess` trait, with form parsing and validation in a service (such as `CollectionControlsForm`); [templates/README.md](../templates/README.md) conventions and `config/navigation.yaml` | Registration in `config/routes_dashboard.yaml`, `config/services_dashboard.yaml` and the list in [Kernel](../src/Kernel.php) that removes dashboard controllers when the dashboard is off; a command-line or YAML equivalent for any setting it changes |
