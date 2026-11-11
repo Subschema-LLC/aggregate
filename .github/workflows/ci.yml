@@ -39,7 +39,9 @@ jobs:
       - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: ctype, iconv, pdo_sqlite, pdo_mysql, mbstring, xml, curl, intl, sodium, zip
+          # APCu for the rate limiter's tests, which a step below runs with it
+          # turned on for the command line.
+          extensions: ctype, iconv, pdo_sqlite, pdo_mysql, mbstring, xml, curl, intl, sodium, zip, apcu
           coverage: none
           tools: composer:v2
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -66,6 +68,8 @@ jobs:
           php bin/console lint:container
       - name: Run PHPUnit
         run: php bin/phpunit
+      - name: Run the rate limiter's APCu tests
+        run: php -d apc.enable_cli=1 bin/phpunit tests/Security/IpRateLimiterTest.php
       - name: Check the production container and compile UI assets
         env:
           APP_ENV: prod
