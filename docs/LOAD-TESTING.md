@@ -331,7 +331,9 @@ The `compare` suite can also keep the code the same and change one setting on
 the head side: label `compare-persistent` for persistent database connections,
 or `compare-preload` for OPcache preloading. Start any suite from **Actions →
 Load test → Run workflow**, where you can also change the stage rates, the
-comparison base and the variant. Runner time is the total of the six jobs, which
+comparison base and the variant, and add PHP extensions (`php_extensions`,
+Ubuntu's `php8.3-*` names such as `apcu`), installed once so both sides of a
+comparison have them. Runner time is the total of the six jobs, which
 run in parallel. Results appear in each job's summary and as a notice on the
 run.
 

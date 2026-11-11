@@ -54,8 +54,11 @@ this order and stops at the first one that fails:
    rate-limit bucket or lookup. Neither value is stored.
 4. **Rate limit.** [IpRateLimiter](../src/Security/IpRateLimiter.php) counts
    requests per client in one-minute windows. Each window's bucket name is an
-   HMAC of the window and the address, so the file on disk cannot link the
-   address across windows and the address is never stored.
+   HMAC of the window and the address, so the stored name cannot link the
+   address across windows and the address is never stored. Buckets live in
+   APCu when the server's PHP workers share it (PHP-FPM, Apache's module,
+   FrankenPHP), otherwise in files under `var/rate_limit/`; both expire after
+   about two minutes.
 5. **Website token and origin.** The public token must belong to a registered
    website ([WebsiteConfigManager](../src/Service/WebsiteConfigManager.php)), and
    the `Origin` (or `Referer`) must pass that website's domain rules
