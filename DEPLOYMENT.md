@@ -540,6 +540,13 @@ process_control_timeout = 10s
 With it, reloads during traffic failed no requests. Prefer a reload to a
 restart, which always dropped some.
 
+**APCu (optional):** with the APCu extension (on Ubuntu, `php8.3-apcu`) loaded
+and shared by PHP's workers (PHP-FPM, Apache's module or FrankenPHP), Aggregate
+keeps its per-minute rate-limit buckets in memory instead of files in
+`var/rate_limit/`: 2–6% less server CPU per anonymous event in the
+[load test](docs/LOAD-TESTING.md). Nothing to configure; the Updates page's
+system check says whether it is used.
+
 **4. Use PostgreSQL or MySQL:**
 SQLite is fine for small deployments, but use PostgreSQL or MySQL for production.
 With PostgreSQL, keep connections open between requests with
