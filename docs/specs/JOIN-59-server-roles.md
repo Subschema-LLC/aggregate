@@ -1,6 +1,6 @@
 # Scaling phase 3: server roles sharing one database
 
-_Spec for JOIN-59. Scott's decisions of 11 November are folded in. The first section is the consolidated spec, written by Claude Code in Scott's session from its draft ([Claude Doc](https://claude.ai/artifact/6JTyoWhMbWDEq9JKGDMAbi)) and the team's replies in Slack. The team's replies follow it as they wrote them. Each section names who wrote it. The anchor is [`docs/features/server-roles.md`](../features/server-roles.md)._
+_Spec for JOIN-59. Scott's decisions of 11 November are folded in, including the revised pause rule. The first section is the consolidated spec, written by Claude Code in Scott's session from its draft ([Claude Doc](https://claude.ai/artifact/6JTyoWhMbWDEq9JKGDMAbi)) and the team's replies in Slack. The team's replies follow it as they wrote them. Each section names who wrote it. The anchor is [`docs/features/server-roles.md`](../features/server-roles.md)._
 
 ## Consolidated spec
 
@@ -15,12 +15,16 @@ Phase 3 lets one Aggregate installation run on several servers that share one da
 - **The scheduled task runs on the administration server,** where its credentials are; worker servers run Messenger consumers only (spec; the Product Owner asks the roadmap to match).
 - **SQLite supports only `all`.** A file database cannot be shared; `app:server:role` refuses another role on SQLite and says why (Product Owner, DBA).
 - **No schema change for roles.** The `cluster` list and the configuration version stay in YAML; there is no cluster table (DBA).
-- **A server with stale configuration pauses and alerts** (Scott). A collection server that has not pulled configuration for 5 minutes stops recording, and an alert goes out. Privacy rules never run more than 5 minutes behind the administration server. The cost is availability: if the administration server is down for longer, collection pauses everywhere. See [Configuration pull](#configuration-pull).
+- **A server that is behind pauses and alerts** (Scott; revised the same day with the Architect). A collection or worker server pauses collection (`503`) in two cases:
+  - the administration server has recorded a configuration version newer than the server's own, and the server has not caught up within 5 minutes;
+  - the server has not checked for 5 minutes.
+
+  Being unable to reach the administration server does not, alone, pause a server. While the administration server is down, nobody can change the rules, so the servers already have the newest ones. The version is recorded as a `processing_tasks` fingerprint by `app:cluster:sync`, which runs every minute on every server. See [Configuration pull](#configuration-pull).
 - **PRAGMA's side is part of JOIN-59** (Scott): installing a role, the shared database and firewall, the balancer site, and MCP plan-and-approve. JOIN-59 is done when PRAGMA can set up every role from a plan a person approved.
 - **PRAGMA is one way to set up a cluster, never a requirement** (Scott). Every step PRAGMA automates is also a documented manual step. A **generic Linux guide** (Nginx or Caddy, PHP-FPM, systemd timers, MySQL/MariaDB or PostgreSQL remote access, `ufw` or `nftables`) and a **Plesk guide**, extending `PLESK-DEPLOYMENT.md`, take an operator through every role without PRAGMA. In Plesk, that means:
   - the domains;
   - PHP settings;
-  - scheduled tasks for the pull and the Messenger consumers;
+  - scheduled tasks for `app:cluster:sync` and the Messenger consumers;
   - the database server's remote access;
   - the firewall extension;
   - additional Nginx directives on the balancer's domain.
@@ -53,9 +57,9 @@ These are also phase 1's still-missing measurements (the large table, `doctrine:
 | Role | Serves over HTTP | Runs |
 | --- | --- | --- |
 | `all` (default) | Everything, as today | The scheduled task, Messenger consumers, migrations |
-| `administration` | Dashboard and setup (`routes_dashboard.yaml`, including `McpAuthorizeController`), home and how-it-works (`HomeController`), the reporting API, MCP with its OAuth metadata and token endpoints (`/oauth/*`, `/.well-known/*` on `McpController`), branding, `/api/health`, and the configuration endpoint | Migrations, updates, the scheduled task |
-| `collection` | `/api/receive`, the browser scripts, `/internal-traffic`, `/branding/*`, `/api/health` | The configuration pull |
-| `worker` | `/api/health` | `messenger:consume`, the configuration pull |
+| `administration` | Dashboard and setup (`routes_dashboard.yaml`, including `McpAuthorizeController`), home and how-it-works (`HomeController`), the reporting API, MCP with its OAuth metadata and token endpoints (`/oauth/*`, `/.well-known/*` on `McpController`), branding, `/api/health`, and the configuration endpoint | Migrations, updates, the scheduled task, `app:cluster:sync` every minute (records the configuration version) |
+| `collection` | `/api/receive`, the browser scripts, `/internal-traffic`, `/branding/*`, `/api/health` | `app:cluster:sync` every minute (pulls) |
+| `worker` | `/api/health` | `messenger:consume`, `app:cluster:sync` every minute (pulls) |
 | `balancer` | Nothing of Aggregate's | `app:server:balancer-config` (open question: role or only a command) |
 
 How the gating works (Architect, with the second opinion's corrections):
@@ -81,17 +85,35 @@ Snippets, scripts and the consent UI point at `collection_base_url`, which defau
   - Included: `config/aggregate*.yaml`, `config/websites.yaml`, `config/website-scopes*`, `config/goals.local.yaml`, `config/tag-manager/sites/*.yaml`, and `var/branding/`.
   - Never included: `config/secrets/`, `.env*`, users, and dashboard-only files.
 - **Signed requests:** an HMAC with `CLUSTER_KEY` over the method, path, timestamp and body hash. A request older than a minute, or from an address not in `cluster`, gets the same `404` as an unknown route.
-- **`app:cluster:pull`** writes each pulled file to a sibling temporary file and `rename()`s it into place. It does not rename the whole directory, because `config/` also holds shipped framework files that are not in the bundle.
+- **One command on every server, every minute: `app:cluster:sync`.** It does what the server's role needs, so the Linux guide, the Plesk guide and PRAGMA all set up the same single timer. The administration server's scheduled task runs only every five minutes, which is too slow for this.
+  - **On the administration server it publishes.** `ClusterConfigPublisher` hashes the whole bundle. When the hash differs from the last recorded one, it records the new version as the fingerprint of a successful `cluster_config` run in `processing_tasks` (`ProcessingTasks::succeed()`). It runs in three places: at the end of each dashboard or CLI configuration save, when `ClusterConfigController` serves the bundle, and every minute through `app:cluster:sync`.
+  - The minute run catches writers that bypass `AggregateConfigLoader::save()`, such as `LocalEnvironmentFile`, and files edited by hand. One publisher over the whole bundle replaces hooks in each writer.
+  - **Why `processing_tasks`, not `audit_trail`:** `AuditTrail::purgeBefore()` deletes every row past its retention, so a configuration left unchanged that long would lose its record and every server would fail closed. `ProcessingTasks` keeps the latest row per `(task_type, subject, status)` through its purges (`eachPurgeableBatch()`), and `ProcessingTasks::latest('cluster_config')` reads it with one indexed query. It is an operational record, not a setting, and needs no schema change.
+  - **Elsewhere it pulls.** It writes each pulled file to a sibling temporary file and `rename()`s it into place. It does not rename the whole directory, because `config/` also holds shipped framework files that are not in the bundle.
 - **No cache clear is needed:** `ParsedYamlCache` keys entries by an xxh128 hash of the content, and `AggregateConfigLoader` resets between Messenger messages.
 - **The local role is kept.** The pull preserves the server's own `server_role` key when it writes `config/aggregate*.yaml`. Otherwise a node that sets its role in YAML would become `administration`.
 - **Health metadata only for the cluster:** `/api/health` is public, so the release and configuration version are returned only on requests carrying a valid cluster signature. The anonymous response is unchanged.
-- **Freshness:** the administration server asks every server in `cluster` to pull right after a configuration save, which cuts the usual lag from up to 60 seconds to seconds. The one-minute timer stays as the backstop. A server that has never pulled does not collect.
-- **Pause and alert after 5 minutes without a pull** (decided):
-  - **Pausing.** `/api/receive` answers `503` and records nothing, and `/api/health` answers `503` with the reason "configuration stale". The balancer takes the server out of rotation: Caddy through its health check, Nginx by passing a `503` on to the next server, which is safe because the paused server recorded nothing. The server resumes with the first successful pull.
-  - **Alerting.** The administration server records each server's last successful pull (in `var/`, not a table). When one passes 5 minutes, it raises an alert through the alert destinations from JOIN-55 (signed webhook and email), and the Updates page shows the server as paused.
-  - **When the administration server itself is down,** it cannot alert, and every collection server pauses after 5 minutes. A paused server's `503` on `/api/health` is what the hosting provider's or operator's uptime monitoring sees. The event-gap alerts fire once the administration server is back.
-  - **A long update does not pause collection.** `/api/cluster/config` keeps answering, with the configuration as it stood, while the administration server is in maintenance mode.
+- **No push from the administration server.** Collection servers' web ports are open only to the balancer, and they have no route for it. A dashboard save is recorded at once, and servers take it up on their next minute.
+- **Deciding whether a server is behind** (decided; see Decisions). Each `app:cluster:sync` run on a collection or worker server writes `var/cluster_state.json`: the bundle version it has, `verified_at`, and `behind_since`.
+  - **The pull succeeds:** the server has the newest configuration. `verified_at` is now, and `behind_since` is cleared.
+  - **The pull fails, and the recorded version is the server's own:** no rules have changed. `verified_at` is now, and collection continues. `/api/health` answers `200` and notes that the administration server is unreachable.
+  - **The pull fails, and a newer version is recorded:** the server is behind. `behind_since` is set on the first such run and kept after that.
+  - **No version is recorded, or the database cannot be reached:** nothing is verified, and `verified_at` stays where it was. A server that cannot reach its database cannot record events anyway.
+  - **The comparison uses the version stored at pull time,** never a fresh hash of the local files. Each server keeps its own `server_role` in its YAML, so its files never hash the same as the bundle.
+  - The database read is one indexed single-row query per server per minute, in the sync command, never on `/api/receive`.
+- **Pausing.** `/api/receive` and `/api/health` read only the state file, never the database. They answer `503`, and `/api/receive` records nothing, when either is true:
+  - `behind_since` is more than `cluster_config_max_age_minutes` ago;
+  - `verified_at` is more than that long ago. This also catches a dead timer.
+
+  A server with no state file has never verified, and does not collect.
+  - The balancer takes a paused server out of rotation: Caddy through its health check, Nginx by passing a `503` on to the next server. That is safe because the paused server recorded nothing.
+  - The server resumes on its first good run.
   - The limit is `cluster_config_max_age_minutes` in YAML, 5 by default. It cannot be turned off.
+- **Alerting.** The administration server records each server's last successful pull (in `var/`, not a table). When one passes 5 minutes, it raises an alert through the alert destinations from JOIN-55 (signed webhook and email), and the Updates page shows the server as behind or paused.
+  - Collection servers cannot alert themselves, because `config/secrets/` stays on the administration server.
+  - An outage of the administration server no longer stops collection, so it is ordinary uptime monitoring rather than a data-loss incident.
+- **A long update does not pause collection.** `/api/cluster/config` keeps answering, with the configuration as it stood, while the administration server is in maintenance mode.
+- **What is left:** a hand edit on the administration server that crashes before the edit is hashed. That edit was never served either, so no server ever ran on it.
 
 ### The balancer
 
@@ -145,7 +167,7 @@ The anchor's criteria, changed as the team asked:
 - [ ] Two collection servers handle at least 1.8× one server's events per second at the same p95, for PostgreSQL and MySQL/MariaDB enhanced, and for anonymous wherever slice 0 showed headroom. This is measured with `sync://` and with `doctrine://` and workers. Where the database is the limit (connections, commit wait, queue churn), the load test says so instead of failing silently.
 - [ ] A server with no `server_role` behaves exactly as today, and SQLite refuses every role except `all`.
 - [ ] Routes, controllers, commands, configuration writers and scheduled jobs outside a role are not registered or refuse to run, naming the administration server, with a test per role.
-- [ ] Collection and worker servers get configuration only from the administration server, with signed requests and per-file atomic writes that keep the local role. A server that has not pulled for 5 minutes pauses collection (`503`, out of the balancer's rotation), and the administration server raises an alert. A long update on the administration server does not pause collection.
+- [ ] Collection and worker servers get configuration only from the administration server, with signed requests and per-file atomic writes that keep the local role. A server pauses collection (`503`, out of the balancer's rotation) when a newer recorded configuration version has gone unapplied for 5 minutes, or when it has not verified its version for 5 minutes. An unreachable administration server alone does not pause it, and a long update on the administration server does not either. The administration server alerts on any server that has not pulled for 5 minutes. Tests cover a network split (newer version, pull failing), an administration outage (same version), and a dead timer.
 - [ ] `app:server:role` gives the role, release, configuration version, queue, connection budget and requirement checks, as text and versioned JSON. The Updates page shows the same for every server.
 - [ ] The Nginx and Caddy references spread collection, limit `/api/receive` per address, keep addresses out of logs, and overwrite `X-Forwarded-For`.
 - [ ] Updates run migrations once on the administration server and files only elsewhere. CI rejects non-additive migrations on the collection path's tables and non-additive changes to message classes.
@@ -166,7 +188,7 @@ The anchor's criteria, changed as the team asked:
 | 0 | Database headroom measurement, the `ROADMAP.md` gate, and the roadmap's phase 3 text corrected (scheduled task on administration, rate limits after #456, API and MCP on administration) | — |
 | 1 | `collection_base_url` | — |
 | 2 | `ServerRole`, route split, controller removal, command listener and service guards, SQLite refusal, `app:server:role`, dead mail routing removed | 0 |
-| 3 | Configuration pull, signed health metadata, pull-after-save, pause and alert after 5 minutes | 2 |
+| 3 | `app:cluster:sync` (publish and pull), `ClusterConfigPublisher`, signed health metadata, the state file, pause when behind and alert | 2 |
 | 4 | `app:server:balancer-config` for Nginx and Caddy | 1, 2 |
 | 5 | `--files-only`, the additivity checks for tables and message classes, the Updates page server list | 3 |
 | 6 | Queue retention: a bounded age for failed and undelivered rows | — |
@@ -189,9 +211,9 @@ Index changes on `events` or `messenger_messages` come only after slice 0 or 8 s
 - **Heavy BI queries or a large archive delete on the one primary slow every collection server at once.** Slice 0 and slice 8 run with a BI query loop.
 - **PostgreSQL bloat on `messenger_messages` and on a fast-growing `events` table,** if autovacuum falls behind several writers.
 - **A composite index on `messenger_messages` may read as schema drift** to Doctrine's tooling, or be dropped by a later sync.
-- **Privacy lag.** A kill switch or path exclusion reaches collection servers after a pull: seconds with pull-after-save, at most a minute from the timer, and never more than 5 minutes because of the pause.
+- **Privacy lag.** A kill switch or path exclusion reaches collection servers on their next minute. A server cut off from the administration server, but not from the database, keeps collecting under the old rules for at most 5 minutes after the change is recorded, then pauses.
 - **Guides drift from PRAGMA.** PRAGMA automates the same steps the guides describe, so a change to one needs the other. Each PRAGMA slice links the guide section it automates, and `app:server:role` checks the result the same way whichever way a server was set up.
-- **The administration server becomes critical for collection.** Under the pause rule, an administration server outage longer than 5 minutes pauses collection everywhere. Monitor it like the database. Its maintenance mode keeps serving configuration so updates do not count as an outage.
+- **A split from the database as well.** A server that can reach neither the administration server nor the database stops verifying and pauses after 5 minutes. It could not have recorded events anyway.
 - **The DBA has not yet read the retention code's batch size and locking,** nor whether `TrackingFailureRetryRunner` purges the failed transport. That is checked in slice 6.
 
 ### Open questions for the approver
@@ -214,7 +236,13 @@ Index changes on `events` or `messenger_messages` come only after slice 0 or 8 s
 | Build order: gating, pull, balancer, files-only, load test | Product Owner | Rollout |
 | PRAGMA out of done; a stable JSON contract instead | Product Owner | Decided otherwise: PRAGMA is part of JOIN-59; the versioned JSON contract stays |
 | Fix the roadmap: scheduled task on administration; rate limits after #456 | Product Owner | Slice 0 |
-| Privacy timing needs an acceptance criterion; fail closed when stale | Product Owner, Architect | Decided: pause and alert after 5 minutes (Configuration pull, Done when) |
+| Privacy timing needs an acceptance criterion; fail closed when stale | Product Owner, Architect | Decided: pause when behind a recorded version for 5 minutes, or unverified for 5 minutes (Configuration pull, Done when) |
+| Unreachable is not the same as behind: a split looks like a crash; let the shared database decide | Architect, both models | Decided: `processing_tasks` fingerprint, checked by `app:cluster:sync` |
+| No push from the administration server to collection servers | Architect (second opinion) | Configuration pull |
+| `processing_tasks`, not `audit_trail`, because the audit trail is purged | Architect (second opinion) | Configuration pull |
+| One publisher over the whole bundle, not hooks in each writer | Architect (second opinion) | Configuration pull |
+| A local state file read by `/api/receive` and `/api/health`, with a `verified_at` limit for a dead timer | Architect (second opinion) | Configuration pull |
+| One `app:cluster:sync` every minute on every server, since the scheduled task runs every five; compare the version stored at pull time | Claude Code | Configuration pull |
 | A cluster needs `doctrine://`; fail a server on `sync://` | Architect | Decided otherwise: `sync://` clusters are supported; `app:server:role` explains, does not fail |
 | Additivity beyond `events`: views, other tables, message classes | Product Owner, Architect, DBA | Updates across servers |
 | Updates page list stays inside the existing page | Product Owner | Updates across servers |
@@ -303,6 +331,60 @@ _By -Architect- (claude-opus-5-5)._
 
 _By -Architect- (gemini-4-argon), second opinion on claude-opus-5-5._
 
+**Follow-up on stale configuration, after Scott's first decision:**
+
+_Second opinion (gemini-4-argon):_
+
+**What I would change or dispute**
+- Do not treat "administration unreachable" as safe to keep collecting for 24 hours. A firewall change or network partition between collection-2 and administration looks identical to an administration crash (connection timeout or refused) from collection-2's side while administration is still up and an operator is enabling a kill switch or path exclusion. Showing "not yet applied on collection-2" on save—or nothing at all when YAML is edited via CLI—is a warning rather than server-side enforcement, which violates AGENTS.md ("a warning or a consent checkbox is not enforcement").
+- Do not make saves connect to or wait on collection servers. In docs/specs/JOIN-59-server-roles.md, collection serves only /api/receive, browser scripts, /internal-traffic, /branding/*, and /api/health, with its firewall "open only to the balancer". The administration server has neither a route nor network access to push to collection servers and await confirmation.
+- app:cluster:pull cannot reliably separate "refused" from "broken" over HTTP. The spec defines GET /api/cluster/config to answer 404 on bad signatures or unlisted IPs, which is indistinguishable from a reverse proxy answering 404 while the upstream app is down or misrouted.
+
+**What it missed**
+- Verify whether rules actually changed via audit_trail in the shared database. Every server already reaches the shared database (docs/features/server-roles.md). If the administration server logs each new config bundle's content hash in audit_trail (src/Service/Operations/AuditTrail.php—an operational record, keeping settings in YAML and requiring no schema change), a collection server whose HTTP pull fails can check the latest recorded hash: if it matches the local version, no rules changed and collection safely continues; if a newer hash exists, it pauses after 5 minutes.
+
+**What I agree with**
+- I agree that collection servers cannot send alerts themselves because config/secrets/ stays on the administration server, and that an administration outage when no rules have changed should not halt collection.
+
+_-Architect- (claude-opus-5-5):_
+
+Recommendation: keep the pause, but trigger it on "newer rules exist that I don't have", not on "I couldn't reach the administration server." The shared database can tell the two apart, and every collection server already depends on it.
+
+**Why neither earlier answer is enough**
+- The spec as written (docs/specs/JOIN-59-server-roles.md, Configuration pull) pauses every collection server whenever the administration server is down for 5 minutes. While it's down, nobody can edit YAML, so those servers already have the newest rules. Pausing them protects nothing and loses data.
+- My first reply's "keep collecting if unreachable" is unsafe. My second reply was right about that: a firewall change or network split looks exactly like a crash. Meanwhile the administration server could be up, with someone turning on a kill switch that a cut-off collection server never receives. Showing a warning on save is not enforcement (AGENTS.md).
+
+**Design: the database decides whether a server is behind**
+- Administration side: whenever the bundle's content hash changes, the server records the new hash in the shared database. That happens after a dashboard save, a CLI write, or a hand edit noticed by the 1-minute task. The record goes through App\Service\Operations, either an audit_trail entry next to the ConfigurationChanges record the writers already produce, or a processing_tasks run. It's an operational record, not a setting, and needs no new table.
+- Collection and worker side: app:cluster:pull runs every minute. On success it works as today. On failure it reads the latest published hash from the database:
+  - Same as the local version: no rules have changed, so keep collecting. /api/health reports "administration unreachable" but answers 200.
+  - Newer than the local version: the server is behind. It pauses after cluster_config_max_age_minutes (5), exactly as Scott decided.
+  - No record, or the database is unreachable: fail closed. A server without its database can't record events anyway.
+- Cost: one indexed single-row read per server per minute, in the pull command, never on /api/receive. That doesn't matter for the bottleneck question in this thread.
+- Files: ClusterConfigController, app:cluster:pull, a small publisher next to AggregateConfigLoader::save() and the other writers, and src/Controller/HealthController.php. No schema change and no push from the administration server to collection servers, so the firewall stays as specified.
+
+**What's left**
+- A hand edit on the administration server that it crashes before hashing. That edit was never served either, so no server ever ran on it.
+- Alerting: an outage of the administration server no longer stops collection, so it becomes ordinary uptime monitoring rather than a data-loss incident. A stuck collection server is still caught by the administration server's existing 5-minute alert.
+
+**Before I update the spec, I need**
+- An approver to confirm this replaces the anchor's decision "pauses after 5 minutes without a pull" with "pauses after 5 minutes behind a published version". Then the anchor and the spec's Configuration pull section change together.
+- The DBA's view on audit_trail versus processing_tasks for the record. I haven't checked whether AuditTrailSettings lets operators turn auditing off or shorten its retention. If it can, processing_tasks is the safer place, because the check must never find "no record" by accident.
+
+_Second opinion (gemini-4-argon) on that reply:_
+
+**What I would change or dispute**
+- Use ProcessingTasks (processing_tasks.fingerprint), not AuditTrail, and don't leave it as an open question. In src/Service/Operations/AuditTrail.php, AuditTrail::purgeBefore() deletes all rows older than audit_trail_admin_retention_days (even when recorded with $always = true), so an installation whose configuration hasn't changed for that retention window would lose its latest hash record and falsely fail closed. By contrast, ProcessingTasks::eachPurgeableBatch() (src/Service/Operations/ProcessingTasks.php) explicitly preserves MAX(id) per (task_type, subject, status) across retention purges, and ProcessingTasks::succeed() already takes a 64-character $fingerprint (cluster_config task type, hash in fingerprint), read via ProcessingTasks::latest('cluster_config').
+- Do not wire the publisher into AggregateConfigLoader::save() and individual config writers. Several writers (BrandingLogoManager, LocalEnvironmentFile, or CLI/manual file edits) either bypass AggregateConfigLoader::save() or write multiple files in one action. Instead, have one ClusterConfigPublisher service compute the bundle hash across all bundled paths, called once at the end of admin config saves, in ClusterConfigController when serving the bundle, and in the 1-minute scheduled task.
+
+**What it missed**
+- How /api/receive and /api/health evaluate the pause without querying the database. Previously, collection servers only needed the age of the last successful HTTP pull. Now app:cluster:pull must write a local state file (e.g., var/cluster_state.json with version, verified_at, and behind_since) on each run. /api/receive and /api/health must answer 503 in two cases: when behind_since exceeds cluster_config_max_age_minutes (5), or when verified_at exceeds 5 minutes (so a dead local cron/systemd timer or broken database connection still fails closed).
+
+**What I agree with**
+- I agree with pausing collection only when a newer published configuration hash exists that the server has not applied within 5 minutes, rather than whenever the administration server is unreachable over HTTP.
+
+_Resolved in the consolidated spec: the approver confirmed the change. Claude Code checked the code: `AuditTrail::purgeBefore()` deletes every row past retention, and `ProcessingTasks` keeps the latest row per type through purges. The spec adds two corrections. The administration server's scheduled task runs every five minutes, not every minute, so `app:cluster:sync` gets its own one-minute timer. The comparison uses the version stored at pull time, because each server keeps its own `server_role`._
+
 ## DBA
 
 Yes, the shared database becomes the limit, and it is what the 1.8x test will measure. I agree with the Product Owner and the Architect on measuring first, so I add only the database side. The limits come in this order. (1) Connections: the Architect covered the budget, and I add pooling per engine. (2) Commit wait: per-event commits on MySQL anonymous, which is phase 2's batching. (3) Index write amplification on events. (4) messenger_messages churn under doctrine://. (5) BI reads on the same primary. Server roles need no schema change: the cluster list and config version stay in YAML, and no cluster table is added. The only schema work is optional and measured: possible index changes on events and on messenger_messages.
@@ -343,7 +425,7 @@ _The work this spec plans, as `- [ ] …` items, each naming the role that does 
 - [ ] Product Owner: amend `ROADMAP.md`: the measured gate, and phase 3's text (scheduled task on administration, rate limits after #456, API and MCP on administration)
 - [ ] Back end: `collection_base_url` (slice 1)
 - [ ] Back end: `ServerRole`, the route split, controller removal generated from the route files, the command listener and service guards, the SQLite refusal, `app:server:role` with versioned JSON, and the dead mail routing removed (slice 2)
-- [ ] Back end: the configuration pull, signed health metadata, pull-after-save, and the pause after 5 minutes with its alert through JOIN-55's destinations (slice 3)
+- [ ] Back end: `app:cluster:sync`, `ClusterConfigPublisher` with the `cluster_config` fingerprint in `processing_tasks`, the configuration endpoint, signed health metadata, `var/cluster_state.json`, the pause when behind or unverified, and the alert through JOIN-55's destinations (slice 3)
 - [ ] Back end: `app:server:balancer-config` for Nginx and Caddy (slice 4)
 - [ ] Back end: `--files-only`, the additivity checks for tables and message classes, and the Updates page server list (slice 5)
 - [ ] DBA: confirm retention batch size and locking and whether the failed transport is purged; then a bounded age and purge for queued payloads (slice 6)
