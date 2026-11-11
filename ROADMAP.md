@@ -207,15 +207,18 @@ per event, not its memory or database, so the first phase cuts that.
     only for dashboard routes; make `EventIngestion`'s message bus and failure
     runner lazy; and confirm the remaining listeners with a call-graph trace. A
     kernel test fails if a collection request builds those services again.
-  - *Preloading where PHP is reloaded after updates:* on in hosting-panel
-    templates that reload PHP-FPM after each update. Aggregate has no production
-    container image, and `app:updates:apply` cannot reload PHP-FPM, so elsewhere
-    the Updates page's system check reports OPcache, preloading and APCu, with
-    the [deployment guide's](DEPLOYMENT.md#performance) lines.
-  - *Smaller savings, each kept only if `compare` shows at least 3%:*
-    rate-limit buckets in APCu when the extension is loaded, with the same HMAC
-    keys and expiry, and a compiled environment file with a reliable freshness
-    check.
+  - *Preloading where PHP is reloaded after updates:* each finished update
+    writes `var/php-reload-requested`, and the Updates page's system check
+    reports OPcache, preloading, APCu and whether PHP has reloaded since, with
+    the [deployment guide's](DEPLOYMENT.md#performance) lines. PRAGMA offers
+    preloading per Aggregate site, while its PHP version serves that site alone,
+    and reloads PHP-FPM when the file appears. Aggregate has no production
+    container image, and `app:updates:apply` cannot reload PHP-FPM itself.
+  - *Smaller savings:* rate-limit buckets in APCu, when the extension is loaded
+    and PHP's workers share it, are in; `compare` showed 2–6% less server CPU
+    per anonymous event and none for enhanced events. A compiled environment
+    file with a reliable freshness check is kept only if `compare` shows at
+    least 3%.
   - *FrankenPHP worker mode* for native FrankenPHP installations, after a state
     audit and an entry in the load-test matrix. Like preloading, it keeps old
     code after an in-place update, so the update must restart the workers.
