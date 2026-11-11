@@ -170,6 +170,19 @@ final class InternalTrafficMarkingTest extends TestCase
         );
     }
 
+    public function testContinueUrlUsesTheCollectionAddressWhenSet(): void
+    {
+        self::assertSame(
+            'https://collect.example.com/internal-traffic/continue',
+            $this->marking($this->config(['app_host' => 'https://analytics.example.com', 'collection_base_url' => 'https://collect.example.com']))->continueUrl('https://fallback.test/internal-traffic/continue'),
+        );
+        self::assertSame(
+            'https://fallback.test/internal-traffic/continue',
+            $this->marking($this->config(['app_host' => 'https://analytics.example.com', 'collection_base_url' => 'not a url']))->continueUrl('https://fallback.test/internal-traffic/continue'),
+            'an invalid address falls back to the page the tracker was on, not to the administration host',
+        );
+    }
+
     private function config(array $values = []): AggregateConfigLoader
     {
         file_put_contents($this->projectDir.'/config/aggregate.yaml', Yaml::dump([

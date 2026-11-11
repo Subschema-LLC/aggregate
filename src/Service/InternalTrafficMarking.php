@@ -132,10 +132,10 @@ final class InternalTrafficMarking
         return '';
     }
 
-    /** Where the tracker sends the browser after marking: this server's continue page. */
+    /** Where the tracker sends the browser after marking: the continue page at the collection address. */
     public function continueUrl(string $fallback): string
     {
-        $host = DropInScripts::normalizeAppHost($this->config->getWithEnvFallback('app_host', ''));
+        $host = (new CollectionAddress($this->config))->baseUrl();
 
         return $host !== null ? $host.'/internal-traffic/continue' : $fallback;
     }

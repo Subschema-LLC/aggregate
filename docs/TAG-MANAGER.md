@@ -66,8 +66,9 @@ https://analytics.example.com/standalone-cmp/sites/<site-id>/consent.js
 
 These are generated responses under separate URL directories, not copies of
 operator YAML in the public web root. Each website references its own scripts
-remotely. If Aggregate runs in a subdirectory, include it in `app_host`; generated
-URLs retain that prefix. The URL selects the instance explicitly rather than
+remotely, at `collection_base_url` when it is set and `app_host` otherwise. If
+Aggregate runs in a subdirectory, include it in that address; generated URLs
+retain that prefix. The URL selects the instance explicitly rather than
 inferring it from a visitor's domain or Referer. Configuration is public, so the
 instance ID is not an access-control boundary. Install one CMP/tag-manager
 instance per page.
