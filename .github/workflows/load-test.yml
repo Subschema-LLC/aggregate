@@ -481,6 +481,24 @@ jobs:
           persistent=''
           case '${{ matrix.db.url }}' in *persistent=true*) persistent=--persistent ;; esac
           python3 tests/Load/headroom.py --github --label "$LABEL" --server "$SERVER" --rows "$ROWS" \
-            --cores "$(nproc)" --fpm-workers "$(sed -n 's/^FPM_WORKERS=//p' "$GITHUB_ENV" | tail -n 1)" --consumers "${CONSUMERS:-0}" $persistent \
+            --cores "$(nproc)" --fpm-workers "${FPM_WORKERS:-0}" --consumers "${CONSUMERS:-0}" $persistent \
             --step step --load-json load-result.json --connections connections.log --fsync fsync.json \
             --quiet quiet --busy busy --bi-log bi.log --json-out headroom-result.json
+
+      - name: Keep the measurements
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          # The raw files, so the report can be run again offline.
+          name: database-headroom-${{ matrix.db.image == 'postgres:16' && 'postgresql' || 'mysql' }}-${{ matrix.mode }}-${{ matrix.queue == 'sync://' && 'sync' || 'doctrine' }}
+          path: |
+            step/
+            quiet/
+            busy/
+            load-result.json
+            headroom-result.json
+            connections.log
+            fsync.json
+            bi.log
+          if-no-files-found: ignore
+          retention-days: 30
