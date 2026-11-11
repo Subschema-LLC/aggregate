@@ -1,6 +1,6 @@
 # Scaling phase 3: server roles sharing one database
 
-_Spec for JOIN-59. The first section is the consolidated spec, written by Claude Code in Scott's session from its draft ([Claude Doc](https://claude.ai/artifact/6JTyoWhMbWDEq9JKGDMAbi)) and the team's replies in Slack. The team's replies follow it as they wrote them. Each section names who wrote it. The anchor is [`docs/features/server-roles.md`](../features/server-roles.md)._
+_Spec for JOIN-59. Scott's decisions of 11 November are folded in. The first section is the consolidated spec, written by Claude Code in Scott's session from its draft ([Claude Doc](https://claude.ai/artifact/6JTyoWhMbWDEq9JKGDMAbi)) and the team's replies in Slack. The team's replies follow it as they wrote them. Each section names who wrote it. The anchor is [`docs/features/server-roles.md`](../features/server-roles.md)._
 
 ## Consolidated spec
 
@@ -15,6 +15,16 @@ Phase 3 lets one Aggregate installation run on several servers that share one da
 - **The scheduled task runs on the administration server,** where its credentials are; worker servers run Messenger consumers only (spec; the Product Owner asks the roadmap to match).
 - **SQLite supports only `all`.** A file database cannot be shared; `app:server:role` refuses another role on SQLite and says why (Product Owner, DBA).
 - **No schema change for roles.** The `cluster` list and the configuration version stay in YAML; there is no cluster table (DBA).
+- **A server with stale configuration pauses and alerts** (Scott). A collection server that has not pulled configuration for 5 minutes stops recording, and an alert goes out. Privacy rules never run more than 5 minutes behind the administration server. The cost is availability: if the administration server is down for longer, collection pauses everywhere. See [Configuration pull](#configuration-pull).
+- **PRAGMA's side is part of JOIN-59** (Scott): installing a role, the shared database and firewall, the balancer site, and MCP plan-and-approve. JOIN-59 is done when PRAGMA can set up every role from a plan a person approved.
+- **PRAGMA is one way to set up a cluster, never a requirement** (Scott). Every step PRAGMA automates is also a documented manual step. A **generic Linux guide** (Nginx or Caddy, PHP-FPM, systemd timers, MySQL/MariaDB or PostgreSQL remote access, `ufw` or `nftables`) and a **Plesk guide**, extending `PLESK-DEPLOYMENT.md`, take an operator through every role without PRAGMA. In Plesk, that means:
+  - the domains;
+  - PHP settings;
+  - scheduled tasks for the pull and the Messenger consumers;
+  - the database server's remote access;
+  - the firewall extension;
+  - additional Nginx directives on the balancer's domain.
+- **Clusters without a queue are supported** (Scott). Collection servers may write enhanced events themselves on `sync://`, with no worker servers. `worker` is optional, `app:server:role` explains the trade-off but does not fail on `sync://`, and slices 0 and 8 measure both setups.
 
 ### Slice 0: measure the shared database first
 
@@ -75,10 +85,13 @@ Snippets, scripts and the consent UI point at `collection_base_url`, which defau
 - **No cache clear is needed:** `ParsedYamlCache` keys entries by an xxh128 hash of the content, and `AggregateConfigLoader` resets between Messenger messages.
 - **The local role is kept.** The pull preserves the server's own `server_role` key when it writes `config/aggregate*.yaml`. Otherwise a node that sets its role in YAML would become `administration`.
 - **Health metadata only for the cluster:** `/api/health` is public, so the release and configuration version are returned only on requests carrying a valid cluster signature. The anonymous response is unchanged.
-- **Staleness:** behaviour past a limit is an open question below. Either way:
-  - the administration server asks every server in `cluster` to pull right after a configuration save, which cuts the usual lag from up to 60 seconds to seconds;
-  - the one-minute timer stays as the backstop;
-  - a server that has never pulled does not collect.
+- **Freshness:** the administration server asks every server in `cluster` to pull right after a configuration save, which cuts the usual lag from up to 60 seconds to seconds. The one-minute timer stays as the backstop. A server that has never pulled does not collect.
+- **Pause and alert after 5 minutes without a pull** (decided):
+  - **Pausing.** `/api/receive` answers `503` and records nothing, and `/api/health` answers `503` with the reason "configuration stale". The balancer takes the server out of rotation: Caddy through its health check, Nginx by passing a `503` on to the next server, which is safe because the paused server recorded nothing. The server resumes with the first successful pull.
+  - **Alerting.** The administration server records each server's last successful pull (in `var/`, not a table). When one passes 5 minutes, it raises an alert through the alert destinations from JOIN-55 (signed webhook and email), and the Updates page shows the server as paused.
+  - **When the administration server itself is down,** it cannot alert, and every collection server pauses after 5 minutes. A paused server's `503` on `/api/health` is what the hosting provider's or operator's uptime monitoring sees. The event-gap alerts fire once the administration server is back.
+  - **A long update does not pause collection.** `/api/cluster/config` keeps answering, with the configuration as it stood, while the administration server is in maintenance mode.
+  - The limit is `cluster_config_max_age_minutes` in YAML, 5 by default. It cannot be turned off.
 
 ### The balancer
 
@@ -118,7 +131,7 @@ Stock Caddy has no rate limiter: its reference relies on each server's backstop,
 `app:server:role --json` prints:
 
 - the role, the release and the configuration version;
-- the queue transport, with a note that `sync://` keeps enhanced writes on the request path;
+- the queue transport. On `sync://` it notes that enhanced writes stay on the request path and worker servers are not needed (supported, decided); on `doctrine://` it notes the queue's load on the shared database;
 - the connection budget;
 - a `requirements` list with a check result and the fix for each.
 
@@ -129,14 +142,22 @@ The JSON carries a `schema_version`. Fields are only ever added, never renamed o
 The anchor's criteria, changed as the team asked:
 
 - [ ] The slice 0 report exists per engine and mode, and `ROADMAP.md`'s phase rule is a measured gate.
-- [ ] Two collection servers handle at least 1.8× one server's events per second at the same p95, for PostgreSQL and MySQL/MariaDB enhanced, and for anonymous wherever slice 0 showed headroom. Where the database is the limit (connections, commit wait, queue churn), the load test says so instead of failing silently.
+- [ ] Two collection servers handle at least 1.8× one server's events per second at the same p95, for PostgreSQL and MySQL/MariaDB enhanced, and for anonymous wherever slice 0 showed headroom. This is measured with `sync://` and with `doctrine://` and workers. Where the database is the limit (connections, commit wait, queue churn), the load test says so instead of failing silently.
 - [ ] A server with no `server_role` behaves exactly as today, and SQLite refuses every role except `all`.
 - [ ] Routes, controllers, commands, configuration writers and scheduled jobs outside a role are not registered or refuse to run, naming the administration server, with a test per role.
-- [ ] Collection and worker servers get configuration only from the administration server, with signed requests and per-file atomic writes that keep the local role. The staleness rule from the open question is met.
+- [ ] Collection and worker servers get configuration only from the administration server, with signed requests and per-file atomic writes that keep the local role. A server that has not pulled for 5 minutes pauses collection (`503`, out of the balancer's rotation), and the administration server raises an alert. A long update on the administration server does not pause collection.
 - [ ] `app:server:role` gives the role, release, configuration version, queue, connection budget and requirement checks, as text and versioned JSON. The Updates page shows the same for every server.
 - [ ] The Nginx and Caddy references spread collection, limit `/api/receive` per address, keep addresses out of logs, and overwrite `X-Forwarded-For`.
 - [ ] Updates run migrations once on the administration server and files only elsewhere. CI rejects non-additive migrations on the collection path's tables and non-additive changes to message classes.
 - [ ] No visitor address, User-Agent string or exact timestamp passes between servers beyond what one server handles today. `config/secrets/` and unbounded queued payloads stay where the rules above put them.
+- [ ] PRAGMA sets up every role:
+  - install with a role;
+  - the shared MariaDB, with per-address users and port 3306 open only to the application servers;
+  - collection servers open only to the balancer;
+  - the pull timer and Messenger workers;
+  - the balancer site.
+- [ ] A generic Linux guide and a Plesk guide take an operator through every role, the shared database, the firewall and the balancer without PRAGMA. Each is followed once on fresh servers as an acceptance check, and no step needs PRAGMA.
+- [ ] The same setup works through PRAGMA's MCP server. An agent's plan changes nothing until a person approves it in PRAGMA's web interface, and an approved plan that is stale or older than 30 minutes is refused.
 
 ### Rollout
 
@@ -145,12 +166,18 @@ The anchor's criteria, changed as the team asked:
 | 0 | Database headroom measurement, the `ROADMAP.md` gate, and the roadmap's phase 3 text corrected (scheduled task on administration, rate limits after #456, API and MCP on administration) | — |
 | 1 | `collection_base_url` | — |
 | 2 | `ServerRole`, route split, controller removal, command listener and service guards, SQLite refusal, `app:server:role`, dead mail routing removed | 0 |
-| 3 | Configuration pull, signed health metadata, pull-after-save | 2 |
+| 3 | Configuration pull, signed health metadata, pull-after-save, pause and alert after 5 minutes | 2 |
 | 4 | `app:server:balancer-config` for Nginx and Caddy | 1, 2 |
 | 5 | `--files-only`, the additivity checks for tables and message classes, the Updates page server list | 3 |
 | 6 | Queue retention: a bounded age for failed and undelivered rows | — |
 | 7 | Two-servers-one-database fresh-install CI job | 3 |
-| 8 | Multi-server load test on rented machines (four to six for a few hours per run), with the BI query loop | 2–5, 7 |
+| 8 | Multi-server load test on rented machines (four to six for a few hours per run), with the BI query loop, on `sync://` and on `doctrine://` | 2–5, 7 |
+| G1 | Docs: the generic Linux guide for a cluster, followed on fresh servers | 2–5 |
+| G2 | Docs: the Plesk guide for a cluster, extending `PLESK-DEPLOYMENT.md`, followed on a Plesk server | 2–5 |
+| P1 | PRAGMA: install Aggregate with a role (`SERVER_ROLE`, `CLUSTER_KEY`, `ADMINISTRATION_URL` in `.env.local`), the pull timer and Messenger workers | 2, 3 |
+| P2 | PRAGMA: the shared MariaDB (private bind, one user per address, 3306 open to those addresses only) and the firewall between servers | P1 |
+| P3 | PRAGMA: the balancer site from `app:server:balancer-config --nginx` | 4, P1 |
+| P4 | PRAGMA: MCP `plan_aggregate_role` and `apply_plan`, with approval in the web interface | P1–P3 |
 
 Index changes on `events` or `messenger_messages` come only after slice 0 or 8 shows they are needed.
 
@@ -162,18 +189,13 @@ Index changes on `events` or `messenger_messages` come only after slice 0 or 8 s
 - **Heavy BI queries or a large archive delete on the one primary slow every collection server at once.** Slice 0 and slice 8 run with a BI query loop.
 - **PostgreSQL bloat on `messenger_messages` and on a fast-growing `events` table,** if autovacuum falls behind several writers.
 - **A composite index on `messenger_messages` may read as schema drift** to Doctrine's tooling, or be dropped by a later sync.
-- **Privacy lag.** A kill switch or path exclusion reaches collection servers after a pull. Asking servers to pull after each save makes that seconds rather than up to a minute; a partition between servers makes it longer. See the open question.
+- **Privacy lag.** A kill switch or path exclusion reaches collection servers after a pull: seconds with pull-after-save, at most a minute from the timer, and never more than 5 minutes because of the pause.
+- **Guides drift from PRAGMA.** PRAGMA automates the same steps the guides describe, so a change to one needs the other. Each PRAGMA slice links the guide section it automates, and `app:server:role` checks the result the same way whichever way a server was set up.
+- **The administration server becomes critical for collection.** Under the pause rule, an administration server outage longer than 5 minutes pauses collection everywhere. Monitor it like the database. Its maintenance mode keeps serving configuration so updates do not count as an outage.
 - **The DBA has not yet read the retention code's batch size and locking,** nor whether `TrackingFailureRetryRunner` purges the failed transport. That is checked in slice 6.
 
 ### Open questions for the approver
 
-- [ ] **Staleness.** When a collection server cannot pull, does it keep collecting on the last configuration it has, or fail closed (`503`) after a limit such as 5 or 10 minutes?
-  - Failing closed matches AGENTS.md's fail-closed rule, but an administration server outage, including a long update in maintenance, then stops all collection.
-  - Claude Code recommends keeping collection going on the last configuration, with pull-after-save and an alert when a server is stale. The Product Owner and Architect lean toward failing closed.
-- [ ] **PRAGMA.** Is PRAGMA's side (install with a role, shared MariaDB and firewall, balancer site, MCP plan-and-approve) part of JOIN-59's done criteria, or its own thread building on `app:server:role --json`? The Product Owner recommends its own thread; the anchor marks it as open.
-- [ ] **Queue.** Is a cluster on `sync://` supported, with collection servers writing enhanced events themselves and no worker servers?
-  - If yes, `worker` is optional, slice 8 covers both setups, and `app:server:role` warns rather than fails on `sync://`. Claude Code recommends yes: `sync://` keeps queue churn off the shared database.
-  - If no, collection servers must use `doctrine://`.
 - [ ] **Engines.** Which engines and modes must meet 1.8×? Is SQL Server supported for roles but not load-tested?
 - [ ] **Database hosting.** Is the shared database usually self-run or managed (RDS, Cloud SQL)? This decides whether the docs recommend PgBouncer or ProxySQL, or only `max_connections`.
 - [ ] **BI on the primary.** Is a read replica for reporting acceptable as a later phase, or must BI stop touching the primary once collection is clustered? This makes the BI-contention test a gate or only a report.
@@ -190,9 +212,10 @@ Index changes on `events` or `messenger_messages` come only after slice 0 or 8 s
 | Exclude SQLite from every role but `all` | Product Owner, DBA | Decisions |
 | `collection_base_url` first, on its own | Product Owner | Slice 1 |
 | Build order: gating, pull, balancer, files-only, load test | Product Owner | Rollout |
-| PRAGMA out of done; a stable JSON contract instead | Product Owner | Open questions; `app:server:role` |
+| PRAGMA out of done; a stable JSON contract instead | Product Owner | Decided otherwise: PRAGMA is part of JOIN-59; the versioned JSON contract stays |
 | Fix the roadmap: scheduled task on administration; rate limits after #456 | Product Owner | Slice 0 |
-| Privacy timing needs an acceptance criterion | Product Owner, Architect | Configuration pull; Open questions |
+| Privacy timing needs an acceptance criterion; fail closed when stale | Product Owner, Architect | Decided: pause and alert after 5 minutes (Configuration pull, Done when) |
+| A cluster needs `doctrine://`; fail a server on `sync://` | Architect | Decided otherwise: `sync://` clusters are supported; `app:server:role` explains, does not fail |
 | Additivity beyond `events`: views, other tables, message classes | Product Owner, Architect, DBA | Updates across servers |
 | Updates page list stays inside the existing page | Product Owner | Updates across servers |
 | Boot-time resolver like the dashboard switch; route files split; controllers removed; lists generated with a test per role | Architect | Roles |
@@ -313,18 +336,21 @@ _By -DBA- (claude-sonnet-5-5)._
 
 _The work this spec plans, as `- [ ] …` items, each naming the role that does it. Whoever finishes an item checks it off in the same commit as the work: `- [x] … (done in JOIN-59)`._
 
-- [ ] Approver: answer the open questions (staleness, PRAGMA, `sync://`, engines, database hosting, BI on the primary, queue retention, balancer, `APP_SECRET`)
+- [x] Approver: decide staleness (pause and alert), PRAGMA (part of JOIN-59) and `sync://` clusters (supported) (done in JOIN-59)
+- [ ] Approver: answer the remaining open questions (engines, database hosting, BI on the primary, queue retention, balancer, `APP_SECRET`)
 - [ ] Product Owner: bring the anchor's done criteria in line with the answers
 - [ ] DBA: run the slice 0 database headroom test and write its report into `docs/LOAD-TESTING.md`
 - [ ] Product Owner: amend `ROADMAP.md`: the measured gate, and phase 3's text (scheduled task on administration, rate limits after #456, API and MCP on administration)
 - [ ] Back end: `collection_base_url` (slice 1)
 - [ ] Back end: `ServerRole`, the route split, controller removal generated from the route files, the command listener and service guards, the SQLite refusal, `app:server:role` with versioned JSON, and the dead mail routing removed (slice 2)
-- [ ] Back end: the configuration pull, signed health metadata and pull-after-save (slice 3)
+- [ ] Back end: the configuration pull, signed health metadata, pull-after-save, and the pause after 5 minutes with its alert through JOIN-55's destinations (slice 3)
 - [ ] Back end: `app:server:balancer-config` for Nginx and Caddy (slice 4)
 - [ ] Back end: `--files-only`, the additivity checks for tables and message classes, and the Updates page server list (slice 5)
 - [ ] DBA: confirm retention batch size and locking and whether the failed transport is purged; then a bounded age and purge for queued payloads (slice 6)
 - [ ] Back end: the two-servers-one-database fresh-install CI job (slice 7)
 - [ ] DBA: the multi-server load test with the BI query loop, and any measured index change (slice 8)
+- [ ] Docs: the generic Linux cluster guide (G1) and the Plesk cluster guide (G2), each followed once on fresh servers
+- [ ] PRAGMA: install with a role, the pull timer and workers (P1); the shared MariaDB and firewall (P2); the balancer site (P3); MCP `plan_aggregate_role` and `apply_plan` with approval in the web interface (P4)
 - [ ] Docs: a server-roles guide, the balancer guide, `docs/DATABASE.md` connection budgets, and `docs/DESIGN-DECISIONS.md` entries for roles and the configuration pull
 
 _By Claude Code (claude-opus-5-5), in Scott's JOIN-59 session._

@@ -16,6 +16,9 @@ files:
   - src/Service/AggregateConfigLoader.php
   - src/Controller/HealthController.php
   - docs/UPDATES.md
+  - docs/ALERTS.md
+  - DEPLOYMENT.md
+  - PLESK-DEPLOYMENT.md
 ---
 # Scaling phase 3: server roles sharing one database
 
@@ -27,18 +30,20 @@ Operators of self-hosted Aggregate installations whose event traffic is more tha
 
 ## Done when
 - A database headroom report (slice 0) exists for each engine and mode: database CPU and I/O, connections, commit wait, and queue statements per enhanced event, measured with a large events table, doctrine:// with workers and a BI query loop running. ROADMAP.md's phase rule becomes this measured gate.
-- A multi-server load test shows two collection servers handling at least 1.8 times one server's events per second at the same p95 for PostgreSQL and MySQL/MariaDB enhanced, and for anonymous wherever the headroom report allows it. Where the shared database is the limit (connections, commit wait, queue churn), the test reports that instead of failing silently.
+- A multi-server load test shows two collection servers handling at least 1.8 times one server's events per second at the same p95 for PostgreSQL and MySQL/MariaDB enhanced, and for anonymous wherever the headroom report allows it, with sync:// and with doctrine:// and workers. Where the shared database is the limit (connections, commit wait, queue churn), the test reports that instead of failing silently.
 - A server with no server_role, or an unknown one, behaves exactly as today: existing install, update and test paths pass unchanged. SQLite refuses every role except all.
 - On a collection or worker server, routes, controller definitions, commands, configuration writers and scheduled jobs outside its role are not registered or refuse to run, and the message names the administration server. A test boots each role and checks its routes.
-- Collection and worker servers get their configuration only from the administration server, through signed requests and per-file atomic writes that keep the server's own role. A server behind on configuration is flagged on the Updates page, and its behaviour past the staleness limit follows the decision on that question.
+- Collection and worker servers get their configuration only from the administration server, through signed requests and per-file atomic writes that keep the server's own role, and pull right after each configuration save. A server that has not pulled for 5 minutes pauses collection (503, out of the balancer's rotation) and the administration server raises an alert. A long update on the administration server does not pause collection.
 - app:server:role reports each server's role, release, configuration version, queue transport, database connection budget and requirement checks with fixes, as text and as JSON with a schema_version. The Updates page shows the same for every server, inside the existing page.
 - Reference Nginx and Caddy balancer configurations spread collection traffic, limit /api/receive per address, keep addresses out of logs and overwrite X-Forwarded-For.
 - Updating a cluster runs migrations once on the administration server, then files only on the other servers. CI rejects non-additive migrations on the tables and views the collection path and Messenger handler use, and non-additive changes to message classes such as TrackEventMessage.
 - No visitor address, User-Agent string or exact timestamp passes between servers beyond what one server handles today, config/secrets never leaves the administration server, and queued enhanced payloads have a bounded age.
-- Open: whether PRAGMA's side (install with a role, shared database and firewall, balancer site, MCP plan-and-approve) belongs here or in its own thread built on app:server:role --json.
+- A generic Linux guide and a Plesk guide take an operator through every role, the shared database, the firewall and the balancer without PRAGMA, and each is followed once on fresh servers.
+- PRAGMA sets up every role: install with a role, the shared MariaDB and the firewall between servers, the pull timer and workers, and the balancer site. The same setup works through PRAGMA's MCP server, where an agent's plan changes nothing until a person approves it in PRAGMA's web interface.
 
 ## Constraints
 - No new required service: the balancer is the existing Nginx or Caddy, and the database is the one already in use.
+- No step may require PRAGMA or another hosting panel.
 - server_role: all stays the default.
 - This phase starts before phase 2 only on a measured gate: where the headroom report shows less than about 2x headroom for an engine and mode, phase 3 waits for phase 2's batching there. The first slice amends the rule in ROADMAP.md that each phase starts only when load testing shows the previous one has run out.
 - ROADMAP.md's phase 3 text is brought in line with the spec: the scheduled task runs on administration, not on worker; rate-limit buckets sit in APCu when available (PR #456); the reporting API and MCP stay on administration.
@@ -61,4 +66,7 @@ Operators of self-hosted Aggregate installations whose event traffic is more tha
 - Configuration is pulled from the administration server, the only place YAML is edited (Scott).
 - The reporting API, MCP, OAuth sign-in, the dashboard and the scheduled task stay on the administration server; worker servers run Messenger consumers only.
 - collection_base_url ships first, on its own.
+- A collection server that has not pulled configuration for 5 minutes pauses and alerts, rather than collecting on old rules (Scott).
+- PRAGMA's side is part of JOIN-59 (Scott), but it is never required: everything PRAGMA automates is also documented for a generic Linux server and for Plesk (Scott).
+- Clusters on sync://, with collection servers writing enhanced events themselves and no worker servers, are supported; worker is optional (Scott).
 - The full spec, with the team's input and the open questions, is docs/specs/JOIN-59-server-roles.md.
