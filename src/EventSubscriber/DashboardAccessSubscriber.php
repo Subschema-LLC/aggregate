@@ -9,6 +9,7 @@ use App\Security\Access\DashboardAccessVoter;
 use App\Security\Access\DashboardPages;
 use App\Security\Access\UserAccessResolver;
 use App\Service\AggregateConfigLoader;
+use Psr\Container\ContainerInterface;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -20,6 +21,7 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
 use Symfony\Component\Security\Core\Authorization\AuthorizationCheckerInterface;
 use Symfony\Component\Security\Core\Exception\AccessDeniedException;
+use Symfony\Contracts\Service\ServiceSubscriberInterface;
 
 /**
  * Enforces DashboardPages on every dashboard request before its controller
@@ -35,15 +37,16 @@ use Symfony\Component\Security\Core\Exception\AccessDeniedException;
  * Runs after AdminAuditSubscriber starts recording, so refused changes are in
  * the audit trail as denied.
  */
-final class DashboardAccessSubscriber implements EventSubscriberInterface
+final class DashboardAccessSubscriber implements EventSubscriberInterface, ServiceSubscriberInterface
 {
     private const DASHBOARD_PATH = '#^/dashboard(?:/|$)#';
 
+    /**
+     * The locator builds the security and permission services only for a
+     * dashboard request, so collection requests never load them.
+     */
     public function __construct(
-        private readonly AuthorizationCheckerInterface $authorization,
-        private readonly TokenStorageInterface $tokens,
-        private readonly UserAccessResolver $resolver,
-        private readonly UrlGeneratorInterface $urls,
+        private readonly ContainerInterface $locator,
         private readonly AggregateConfigLoader $config,
     ) {
     }
@@ -51,6 +54,16 @@ final class DashboardAccessSubscriber implements EventSubscriberInterface
     public static function getSubscribedEvents(): array
     {
         return [KernelEvents::CONTROLLER => ['onController', -16]];
+    }
+
+    public static function getSubscribedServices(): array
+    {
+        return [
+            AuthorizationCheckerInterface::class => AuthorizationCheckerInterface::class,
+            TokenStorageInterface::class => TokenStorageInterface::class,
+            UserAccessResolver::class => UserAccessResolver::class,
+            UrlGeneratorInterface::class => UrlGeneratorInterface::class,
+        ];
     }
 
     public function onController(ControllerEvent $event): void
@@ -63,10 +76,10 @@ final class DashboardAccessSubscriber implements EventSubscriberInterface
             // A disabled dashboard answers not found from its controllers.
             return;
         }
-        if ($this->authorization->isGranted(DashboardAccessVoter::ROUTE, $request)) {
+        if ($this->locator->get(AuthorizationCheckerInterface::class)->isGranted(DashboardAccessVoter::ROUTE, $request)) {
             return;
         }
-        $user = $this->tokens->getToken()?->getUser();
+        $user = $this->locator->get(TokenStorageInterface::class)->getToken()?->getUser();
         $response = $user instanceof User ? $this->friendlyRefusal($request, $user) : null;
         if ($response === null) {
             throw new AccessDeniedException('You do not have access to this page. Ask an administrator if you need it.');
@@ -77,7 +90,7 @@ final class DashboardAccessSubscriber implements EventSubscriberInterface
     private function friendlyRefusal(Request $request, User $user): ?Response
     {
         $route = (string) $request->attributes->get('_route', '');
-        $access = $this->resolver->forUser($user);
+        $access = $this->locator->get(UserAccessResolver::class)->forUser($user);
 
         if ($route === 'app_dashboard' && $request->isMethodSafe()) {
             foreach (DashboardPages::PAGES as $page => $definition) {
@@ -121,7 +134,7 @@ final class DashboardAccessSubscriber implements EventSubscriberInterface
 
     private function redirect(string $route): Response
     {
-        return $this->private(new RedirectResponse($this->urls->generate($route), Response::HTTP_SEE_OTHER));
+        return $this->private(new RedirectResponse($this->locator->get(UrlGeneratorInterface::class)->generate($route), Response::HTTP_SEE_OTHER));
     }
 
     private function private(Response $response): Response
