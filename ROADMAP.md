@@ -174,17 +174,146 @@ checkout, or a small accessibility fix. Keep each PR focused and target
     listing does not certify any deployment's legal compliance.
   - Partner names and offerings stay out of the application; each installation
     keeps its operator's white label.
-- **Load testing: what is not measured yet.** The harness, the Load test
-  workflow and the published results are in place
-  ([load testing and capacity](docs/LOAD-TESTING.md)). Still to measure:
-  - a load generator and server on separate dedicated machines, without the
-    shared runner's noise or k6's share of the CPU;
-  - `doctrine://` with background workers, FrankenPHP, Apache, SQL Server and
-    MariaDB, and other PHP-FPM worker counts;
-  - requests for the tracker, consent and tag manager scripts, dashboard use,
-    and `app:analytics:maintain`, running during load;
-  - an installation with many registered websites;
-  - writing anonymous events with a direct insert instead of Doctrine ORM.
+## Scaling in three phases
+
+One server comes first: most installations never need more, and the
+single-server release ZIP stays the default. Each phase starts only when
+[load testing](docs/LOAD-TESTING.md) shows the one before it has run out, and
+every step stays optional. A server's limit today is its CPU, mostly PHP's time
+per event, not its memory or database, so the first phase cuts that.
+
+- **Phase 1: more events per server.** Cut PHP time per collection request,
+  with no new service, PHP extension, setting or install step. Target: at least
+  30% less server CPU per event with OPcache preloading on, and at least 15% as
+  installed, for MySQL, PostgreSQL and SQLite in both modes, measured with the
+  `compare` suite, which runs base and head on one machine. Throughput is
+  reported too, but not judged for MySQL anonymous: in November it stopped on
+  per-event commits waiting for the disk, which is phase 2's batching.
+  - *Measurements first:* before the first change lands, run a load generator
+    and server on separate dedicated machines at 2, 4 and 8 vCPU, so the sizing
+    table's before and after come from the same machines.
+  - *Direct insert:* write event rows, anonymous and enhanced, with
+    `Connection::insert()` and Doctrine's column types instead of Doctrine ORM,
+    without reading back the new ID. The rules now in the `Event` entity's
+    setters and in `Event::enforcePrivacyInvariants()` move into one function
+    that normalizes a whole row or throws, called by both the entity and the
+    writer, with a test that the two paths store the same rows on every engine.
+    Record the choice in the [design decisions](docs/DESIGN-DECISIONS.md).
+    Anonymous rows are still written during the request, and enhanced events
+    keep Messenger, whose handler uses the same writer.
+  - *A lean collection path:* `/api/receive` loads about 650 classes and builds
+    Twig and the translator. Give `DashboardAccessSubscriber` a lazy service
+    locator, as `AdminAuditSubscriber` has, so it builds its security services
+    only for dashboard routes; make `EventIngestion`'s message bus and failure
+    runner lazy; and confirm the remaining listeners with a call-graph trace. A
+    kernel test fails if a collection request builds those services again.
+  - *Preloading where PHP is reloaded after updates:* each finished update
+    writes `var/php-reload-requested`, and the Updates page's system check
+    reports OPcache, preloading, APCu and whether PHP has reloaded since, with
+    the [deployment guide's](DEPLOYMENT.md#performance) lines. PRAGMA offers
+    preloading per Aggregate site, while its PHP version serves that site alone,
+    and reloads PHP-FPM when the file appears. Aggregate has no production
+    container image, and `app:updates:apply` cannot reload PHP-FPM itself.
+  - *Smaller savings:* rate-limit buckets in APCu, when the extension is loaded
+    and PHP's workers share it, are in; `compare` showed 2–6% less server CPU
+    per anonymous event and none for enhanced events. A compiled environment
+    file with a reliable freshness check is kept only if `compare` shows at
+    least 3%.
+  - *FrankenPHP worker mode* for native FrankenPHP installations, after a state
+    audit and an entry in the load-test matrix. Like preloading, it keeps old
+    code after an in-place update, so the update must restart the workers.
+  - *Measurements still missing:* a large events table (10 and 50 million rows)
+    on 8 and 32 GB of memory, with the reporting views and
+    `app:analytics:maintain` running during load; `doctrine://` with background
+    workers; FrankenPHP, Apache, SQL Server and MariaDB, and other PHP-FPM worker
+    counts; requests for the tracker, consent and tag manager scripts, and
+    dashboard use, during load; and an installation with many registered
+    websites.
+- **Phase 2: one application server, separated workloads.** Still one
+  installation, with the heaviest work moved off the collection request and off
+  the application database.
+  - *Reads off the application database:* recommend the
+    [reporting database](docs/REPORTING-DATABASE.md) for BI tools and the
+    [forensic database](docs/FORENSIC-DATABASE.md) for investigations, each on
+    its own server, so heavy queries do not compete with event writes. Explore
+    letting the [MCP server](docs/MCP.md) and the
+    [reporting API](docs/REPORTING-API.md) read the reporting database's copies
+    when one is configured, keeping both read-only.
+  - *Queues and brokers:* enhanced events already go through Messenger. Add
+    `symfony/redis-messenger` and `symfony/amqp-messenger` (RabbitMQ) as
+    optional transports, documented with the PHP extensions they need, while
+    `sync://` and `doctrine://` keep working on shared hosting. A queue in the
+    application database moves work rather than removing it, so Redis is the
+    first broker to document for one server.
+  - *Anonymous events off the request path:* anonymous rows are written during
+    the request so that nothing more detailed than the stored row is ever kept,
+    not even in a queue. Queueing or batching only the already-sanitized,
+    hour-bucketed row keeps that guarantee, and is what the
+    [design decision](docs/DESIGN-DECISIONS.md#anonymous-events-written-immediately-enhanced-events-through-messenger)
+    names as the change that would revisit it. Kill switches, path exclusions
+    and rate limits still run before anything is queued; update the design
+    decision in the same change.
+  - *Roll-ups, only if the large-table measurement shows the reporting views
+    slowing:* incremental hourly counts that the views read, built inside
+    `AnonymousBiViewSqlBuilder`'s single definition so suppression and every
+    view's columns stay the same.
+  - *A queue-backlog alert* beside the existing [alert rules](docs/ALERTS.md),
+    since events piling up unprocessed look like a gap downstream.
+  - *Feeding exports:* when the alerts rules engine or a streaming export on
+    this roadmap (BigQuery, Fabric or Snowflake) needs events as they arrive, a
+    RabbitMQ topic exchange or Redis Streams could deliver accepted events to it
+    alongside storage. Add this only for one of those consumers, not as a general
+    event bus. Publish only what storage would accept, after sanitization and the
+    consent decision; send enhanced payloads only to consumers allowed to have
+    them; never publish IP addresses, User-Agent strings or exact anonymous
+    timestamps; and keep broker credentials in `config/secrets`. Delivery is at
+    least once, so consumers must not count a redelivered message twice.
+- **Phase 3: separate server roles.** Several servers sharing one database,
+  each running the same release with a role.
+  - *Roles:* one setting, `server_role` in YAML with an environment override,
+    chooses `all` (the default, today's single server), `administration` (the
+    dashboard, setup and updates), `collection` (`/api/receive` and the browser
+    scripts, with `DASHBOARD_ENABLED=0`), `worker` (`messenger:consume` and the
+    scheduled task) or `balancer`. The YAML-first design already lets a
+    collection server run without a login page.
+  - *The balancer role:* a reference configuration for the web server already
+    in front, rather than a proxy of Aggregate's own: Caddy on FrankenPHP
+    servers, Nginx on Nginx and PHP-FPM servers and in hosting panels. It
+    spreads collection requests over the collection servers, keeps access logs
+    off, sets forwarded headers and trusted proxies so rate limits and
+    geography see the visitor's address, checks each server's `/api/health`
+    passively, and sends the administration hostname to the administration
+    server. One balancer is a single point of failure, as one server is today;
+    document the hosting provider's load balancer for high availability.
+  - *Shared state to solve first:*
+    - *Configuration.* YAML lives on each server's disk, and the dashboard writes
+      it locally. Collection servers need identical files with one writer:
+      deployed from version control, a read-only shared mount, or a sync from the
+      administration server.
+    - *Rate limiting.* Buckets are files under `var/rate_limit`, so each server
+      counts on its own and a load balancer multiplies the effective limit. The
+      reporting API and MCP limits are in each server's cache too. Use a shared
+      store with the same HMAC keys, or limit at the load balancer.
+    - *Credentials.* API tokens and assistant sign-ins are YAML files in
+      `config/secrets`, written by the server that handles the request; an
+      assistant renewing its tokens writes about once an hour. They need one
+      shared copy, such as a shared mount, before API or MCP traffic is spread
+      over several servers.
+    - *Updates.* Servers must not serve different releases' tracker and schema
+      against one database. Only the administration server runs migrations,
+      once; then the code rolls across the others.
+    - *Scheduled jobs.* Maintenance already holds a database lease, and jobs lock
+      through `processing_tasks`, so they should run safely from any worker;
+      confirm that under load. The scheduler's own lock and its record of runs
+      are files in `var/scheduler`, per server, so the Scheduled tasks page
+      reports only the server it runs on.
+  - *Hosting panels and agents:* a command that reports the server's role and
+    what it needs from the others, with JSON output, gives a hosting panel
+    (PRAGMA first) what it needs to set up roles, workers, firewall rules
+    between the servers and the balancer. An AI agent makes those changes
+    through the panel's own MCP server, planned and approved before they apply.
+    Aggregate's [MCP server](docs/MCP.md) stays read-only, with no
+    configuration tools.
 
 ## Proposals to explore
 
@@ -274,57 +403,6 @@ checkout, or a small accessibility fix. Keep each PR focused and target
   limits that don't depend on `TRUSTED_PROXIES`. Keep path sanitization, kill
   switches, path exclusions and anonymous-mode rules identical to browser
   collection. GDPR still applies to the processing.
-- **Scale-out architecture.** Once load testing shows where one server stops,
-  explore running Aggregate as separate roles that share one database. Keep the
-  single-server install as the default, and make every step optional.
-  - **Roles:** an administration server with the dashboard, setup and updates;
-    collection servers behind a load balancer, serving `/api/receive` and the
-    browser scripts with `DASHBOARD_ENABLED=0`; and worker servers running
-    `messenger:consume` and the scheduled task. The YAML-first design already
-    lets a collection server run without a login page.
-  - **Shared state to solve first:**
-    - *Configuration.* YAML lives on each server's disk, and the dashboard writes
-      it locally. Collection servers need identical files with one writer:
-      deployed from version control, a read-only shared mount, or a sync from the
-      administration server.
-    - *Rate limiting.* Buckets are files under `var/rate_limit`, so each server
-      counts on its own and a load balancer multiplies the effective limit. The
-      reporting API and MCP limits are in each server's cache too. Use a shared
-      store with the same HMAC keys, or limit at the load balancer.
-    - *Credentials.* API tokens and assistant sign-ins are YAML files in
-      `config/secrets`, written by the server that handles the request; an
-      assistant renewing its tokens writes about once an hour. They need one
-      shared copy, such as a shared mount, before API or MCP traffic is spread
-      over several servers.
-    - *Updates.* Servers must not serve different releases' tracker and schema
-      against one database. Run migrations once, from one server, and roll the
-      code across the others.
-    - *Scheduled jobs.* Maintenance already holds a database lease, and jobs lock
-      through `processing_tasks`, so they should run safely from any worker;
-      confirm that under load. The scheduler's own lock and its record of runs
-      are files in `var/scheduler`, per server, so the Scheduled tasks page
-      reports only the server it runs on.
-  - **Queues and brokers:** enhanced events already go through Messenger. Add
-    `symfony/amqp-messenger` (RabbitMQ) and `symfony/redis-messenger` as optional
-    transports, documented with the PHP extensions they need, while `sync://` and
-    `doctrine://` keep working on shared hosting.
-  - **Anonymous events off the request path:** anonymous rows are written during
-    the request so that nothing more detailed than the stored row is ever kept,
-    not even in a queue. Queueing or batching only the already-sanitized,
-    hour-bucketed row keeps that guarantee, and is what the
-    [design decision](docs/DESIGN-DECISIONS.md#anonymous-events-written-immediately-enhanced-events-through-messenger)
-    names as the change that would revisit it. Kill switches, path exclusions and
-    rate limits still run before anything is queued; update the design decision
-    in the same change.
-  - **Feeding exports:** when the alerts rules engine or a streaming export on
-    this roadmap (BigQuery, Fabric or Snowflake) needs events as they arrive, a
-    RabbitMQ topic exchange or Redis Streams could deliver accepted events to it
-    alongside storage. Add this only for one of those consumers, not as a general
-    event bus. Publish only what storage would accept, after sanitization and the
-    consent decision; send enhanced payloads only to consumers allowed to have
-    them; never publish IP addresses, User-Agent strings or exact anonymous
-    timestamps; and keep broker credentials in `config/secrets`. Delivery is at
-    least once, so consumers must not count a redelivered message twice.
 
 ## Available foundations
 

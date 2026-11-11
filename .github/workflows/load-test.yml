@@ -49,6 +49,9 @@ on:
         type: choice
         options: [code, persistent, preload, tuned]
         default: code
+      php_extensions:
+        description: 'Extra PHP extensions for every side, comma-separated Ubuntu php8.3-* names (for example apcu); empty for none'
+        default: ''
   pull_request:
     types: [labeled]
 
@@ -113,6 +116,7 @@ jobs:
       STAGE_SECONDS: ${{ inputs.stage_seconds || '30' }}
       DATABASE_IMAGE: ${{ matrix.db.image }}
       LABEL: ${{ matrix.db.name }}, ${{ matrix.mode }}
+      PHP_EXTENSIONS: ${{ inputs.php_extensions || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -128,9 +132,19 @@ jobs:
 
       - name: Install Nginx and PHP 8.3 with PHP-FPM
         run: |
+          # Extra extensions are installed once, so base and head both have them.
+          extra=()
+          IFS=',' read -ra requested <<< "$PHP_EXTENSIONS"
+          for name in "${requested[@]}"; do
+            name=$(echo "$name" | tr -d '[:space:]')
+            [ -z "$name" ] && continue
+            [[ "$name" =~ ^[a-z0-9_-]+$ ]] || { echo "::error::Not an extension name: $name"; exit 1; }
+            extra+=("php8.3-$name")
+          done
           sudo apt-get update -qq
           sudo apt-get install -y -qq time nginx php8.3-fpm php8.3-cli php8.3-common php8.3-intl \
-            php8.3-mbstring php8.3-xml php8.3-curl php8.3-zip php8.3-sqlite3 php8.3-pgsql php8.3-mysql php8.3-opcache
+            php8.3-mbstring php8.3-xml php8.3-curl php8.3-zip php8.3-sqlite3 php8.3-pgsql php8.3-mysql php8.3-opcache \
+            "${extra[@]}"
           sudo update-alternatives --set php /usr/bin/php8.3
           php -v
           composer --version
@@ -185,7 +199,8 @@ jobs:
           fi
           memory=$(free -g | awk '/^Mem:/ {print $2}')
           model=$(lscpu | sed -n 's/^Model name: *//p' | head -n 1)
-          echo "SERVER=$(nproc) vCPU (${model}), ${memory} GB RAM, Nginx, PHP $(php -r 'echo PHP_VERSION;') FPM with ${workers} workers, k6 on the same machine" >> "$GITHUB_ENV"
+          extensions=${PHP_EXTENSIONS:+, with ${PHP_EXTENSIONS//,/, }}
+          echo "SERVER=$(nproc) vCPU (${model}), ${memory} GB RAM, Nginx, PHP $(php -r 'echo PHP_VERSION;') FPM with ${workers} workers${extensions}, k6 on the same machine" >> "$GITHUB_ENV"
 
       - name: Install k6
         run: tests/Load/server/install-k6.sh

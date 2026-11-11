@@ -60,6 +60,7 @@ class ApplicationUpdater
         private readonly SystemCheck $systemCheck,
         private readonly Toolchain $toolchain,
         private readonly ?DeploymentState $deployment = null,
+        private readonly ?PhpReloadRequest $reloadRequest = null,
     ) {
     }
 
@@ -721,6 +722,9 @@ class ApplicationUpdater
      */
     private function stepFinish(array $state): array
     {
+        // A hosting panel can watch for this and reload PHP-FPM, which keeps
+        // preloaded or unrevalidated code from before the update.
+        ($this->reloadRequest ?? new PhpReloadRequest($this->projectDir))->request((string) $state['type']);
         $this->maintenance->disable();
         $state['status'] = 'completed';
         $state['finished_at'] = time();
@@ -736,7 +740,7 @@ class ApplicationUpdater
         }
         $version = $state['type'] === 'release' ? 'release '.($state['to']['version'] ?? '') : 'commit '.($state['to']['commit'] ?? '');
 
-        return $this->say($state, 'Update complete: '.$version.'. Maintenance mode is off. If PHP OPcache does not revalidate files on your host, reload PHP (for example PHP-FPM or the web server) now.', 'success');
+        return $this->say($state, 'Update complete: '.$version.'. Maintenance mode is off. If OPcache preloads Aggregate\'s classes or does not revalidate files on your host, reload PHP-FPM or the web server now, unless your hosting panel reloads it when '.PhpReloadRequest::FILE.' appears.', 'success');
     }
 
     /**
@@ -881,7 +885,7 @@ class ApplicationUpdater
         }
         $commit = $state['to']['commit'] ?? null;
 
-        return $this->say($state, 'Post-deployment steps complete'.(is_string($commit) ? ' for commit '.$commit : '').'. Maintenance mode is off. If PHP OPcache does not revalidate files on your host, reload PHP (for example PHP-FPM or the web server) now.', 'success');
+        return $this->say($state, 'Post-deployment steps complete'.(is_string($commit) ? ' for commit '.$commit : '').'. Maintenance mode is off. If OPcache preloads Aggregate\'s classes or does not revalidate files on your host, reload PHP-FPM or the web server now, unless your hosting panel reloads it when '.PhpReloadRequest::FILE.' appears.', 'success');
     }
 
     private function deploymentState(): DeploymentState

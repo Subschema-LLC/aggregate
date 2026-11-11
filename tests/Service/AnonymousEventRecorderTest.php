@@ -7,7 +7,7 @@ namespace App\Tests\Service;
 use App\Entity\Event;
 use App\Service\AnonymousEventRecorder;
 use App\Service\InternalTrafficSettings;
-use Doctrine\ORM\EntityManagerInterface;
+use App\Service\EventRowWriter;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -17,15 +17,14 @@ final class AnonymousEventRecorderTest extends TestCase
     public function testRecorderCombinesApprovedPropertiesWithAuthoritativeTrafficFlag(bool $internalTraffic): void
     {
         $persisted = null;
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::once())
-            ->method('persist')
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::once())
+            ->method('insert')
             ->willReturnCallback(static function (object $event) use (&$persisted): void {
                 $persisted = $event;
             });
-        $entityManager->expects(self::once())->method('flush');
 
-        (new AnonymousEventRecorder($entityManager))->record(
+        (new AnonymousEventRecorder($eventWriter))->record(
             websiteToken: 'site-token',
             eventName: 'view',
             pagePath: '/pricing',
@@ -53,16 +52,15 @@ final class AnonymousEventRecorderTest extends TestCase
     public function testRecorderPersistsOneIdentifierFreeUtcHourEventSynchronously(): void
     {
         $persisted = null;
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::once())
-            ->method('persist')
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::once())
+            ->method('insert')
             ->willReturnCallback(static function (object $event) use (&$persisted): void {
                 $persisted = $event;
             });
-        $entityManager->expects(self::once())->method('flush');
 
         $occurredAt = new \DateTimeImmutable('2026-07-24 12:34:56.789012-05:00');
-        (new AnonymousEventRecorder($entityManager))->record(
+        (new AnonymousEventRecorder($eventWriter))->record(
             websiteToken: 'site-token',
             eventName: 'nav:click',
             pagePath: '/pricing',
@@ -97,15 +95,14 @@ final class AnonymousEventRecorderTest extends TestCase
     public function testRecorderPersistsInternalTrafficAsReservedJsonMetadata(): void
     {
         $persisted = null;
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::once())
-            ->method('persist')
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::once())
+            ->method('insert')
             ->willReturnCallback(static function (object $event) use (&$persisted): void {
                 $persisted = $event;
             });
-        $entityManager->expects(self::once())->method('flush');
 
-        (new AnonymousEventRecorder($entityManager))->record(
+        (new AnonymousEventRecorder($eventWriter))->record(
             websiteToken: 'site-token',
             eventName: 'view',
             pagePath: '/pricing',
@@ -126,14 +123,13 @@ final class AnonymousEventRecorderTest extends TestCase
     public function testRecorderPersistsEveryAnonymousEventAsItsOwnRowEvenWithinOneHour(): void
     {
         $persisted = [];
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::exactly(2))
-            ->method('persist')
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::exactly(2))
+            ->method('insert')
             ->willReturnCallback(static function (object $event) use (&$persisted): void {
                 $persisted[] = $event;
             });
-        $entityManager->expects(self::exactly(2))->method('flush');
-        $recorder = new AnonymousEventRecorder($entityManager);
+        $recorder = new AnonymousEventRecorder($eventWriter);
         $occurredAt = new \DateTimeImmutable('2026-07-24 17:34:56+00:00');
 
         for ($i = 0; $i < 2; ++$i) {

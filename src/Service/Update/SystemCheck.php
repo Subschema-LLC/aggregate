@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service\Update;
 
+use App\Security\IpRateLimiter;
 use App\Service\ApplicationUpdateService;
 use App\Service\FeatureFlags;
 use App\Service\InstalledRelease;
@@ -53,6 +54,7 @@ class SystemCheck
         private readonly ?PhpRequirementResolver $phpRequirement = null,
         private readonly ?DeploymentState $deployment = null,
         private readonly string $environment = 'prod',
+        private readonly ?PhpReloadRequest $reload = null,
     ) {
     }
 
@@ -178,11 +180,14 @@ class SystemCheck
             ? 'SQLite: a snapshot is saved automatically before migrations run.'
             : ucfirst($this->databaseName()).': back up the database before updating. Migrations cannot be reversed automatically, so you will be asked to confirm a backup.');
 
-        $opcache = function_exists('opcache_get_status') && filter_var(ini_get('opcache.enable'), FILTER_VALIDATE_BOOL)
-            && !filter_var(ini_get('opcache.validate_timestamps'), FILTER_VALIDATE_BOOL);
-        $add('opcache', 'PHP OPcache', $opcache ? self::WARNING : self::OK, $opcache
-            ? 'opcache.validate_timestamps is off, so PHP keeps running old code after an update until PHP is reloaded (for example PHP-FPM or the web server). Reload it after each update.'
-            : 'PHP picks up changed files after an update.');
+        // OPcache, preloading, and whether PHP reloaded after the last update.
+        foreach (($this->reload ?? new PhpReloadRequest($this->projectDir))->checks() as $row) {
+            $add($row['id'], $row['label'], $row['status'], $row['detail']);
+        }
+        $apcu = self::apcuCheck(\PHP_SAPI, extension_loaded('apcu'), function_exists('apcu_enabled') && apcu_enabled());
+        if ($apcu !== null) {
+            $add('apcu', 'PHP APCu', $apcu['status'], $apcu['detail']);
+        }
 
         $maintenance = $this->maintenance->status();
         $add('maintenance', 'Maintenance mode', $maintenance !== null && $maintenance['active'] ? self::WARNING : self::OK,
@@ -232,6 +237,30 @@ class SystemCheck
             static fn (array $check): string => $check['detail'],
             array_filter($checks ?? $this->run(), static fn (array $check): bool => $check['status'] === self::WARNING),
         ));
+    }
+
+    /**
+     * Whether the website's PHP keeps rate-limit buckets in APCu, which is
+     * optional. Null on the command line, whose APCu is not the website's.
+     *
+     * @return array{status: string, detail: string}|null
+     */
+    public static function apcuCheck(string $sapi, bool $loaded, bool $enabled): ?array
+    {
+        if ($sapi === 'cli') {
+            return null;
+        }
+        if ($loaded && $enabled && in_array($sapi, IpRateLimiter::APCU_SHARED_SAPIS, true)) {
+            return ['status' => self::OK, 'detail' => 'Enabled and shared by PHP\'s workers: rate-limit buckets are kept in memory instead of files in var/rate_limit/.'];
+        }
+        if ($loaded && $enabled) {
+            return ['status' => self::INFO, 'detail' => 'Enabled, but under this server API ('.$sapi.') each PHP process may have its own APCu, which would split the counts, so rate-limit buckets stay in files in var/rate_limit/.'];
+        }
+        if ($loaded) {
+            return ['status' => self::INFO, 'detail' => 'Installed but turned off (apc.enabled), so rate-limit buckets are files in var/rate_limit/.'];
+        }
+
+        return ['status' => self::INFO, 'detail' => 'Not installed, so rate-limit buckets are files in var/rate_limit/. Optional: with APCu (for example php'.\PHP_MAJOR_VERSION.'.'.\PHP_MINOR_VERSION.'-apcu) they are kept in memory, which took 2–6% off server CPU per anonymous event in Aggregate\'s load tests.'];
     }
 
     public function isSqlite(): bool

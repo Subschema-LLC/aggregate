@@ -20,7 +20,7 @@ use App\Service\PrivacyPolicy;
 use App\Service\PrivacySanitizer;
 use App\Service\TrackingFailureRetryRunner;
 use App\Service\WebsiteConfigManager;
-use Doctrine\ORM\EntityManagerInterface;
+use App\Service\EventRowWriter;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
@@ -83,8 +83,8 @@ final class ReceiveControllerTypedDataTest extends TestCase
             'currency' => 'USD', 'active' => false, 'nullable' => null,
         ];
         $persisted = null;
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::once())->method('persist')->willReturnCallback(static function (object $event) use (&$persisted, $enhanced): void {
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::once())->method('insert')->willReturnCallback(static function (object $event) use (&$persisted, $enhanced): void {
             self::assertInstanceOf(Event::class, $event);
             if (!$enhanced) {
                 // Later entity assignments cannot replace approved anonymous
@@ -94,15 +94,14 @@ final class ReceiveControllerTypedDataTest extends TestCase
             $event->enforcePrivacyInvariants();
             $persisted = $event;
         });
-        $entityManager->expects(self::once())->method('flush');
         $bus = $this->createMock(MessageBusInterface::class);
         $trackingFailures = $this->createStub(TrackingFailureRetryRunner::class);
         if ($enhanced) {
-            $bus->expects(self::once())->method('dispatch')->willReturnCallback(static function (object $message) use ($entityManager, $expected, $trackingFailures): Envelope {
+            $bus->expects(self::once())->method('dispatch')->willReturnCallback(static function (object $message) use ($eventWriter, $expected, $trackingFailures): Envelope {
                 self::assertInstanceOf(TrackEventMessage::class, $message);
                 self::assertSame($expected, $message->eventData);
                 $restored = unserialize(serialize($message));
-                (new TrackEventHandler($entityManager, $trackingFailures, new NullLogger()))($restored);
+                (new TrackEventHandler($eventWriter, $trackingFailures, new NullLogger()))($restored);
 
                 return new Envelope($message);
             });
@@ -110,7 +109,7 @@ final class ReceiveControllerTypedDataTest extends TestCase
             $bus->expects(self::never())->method('dispatch');
         }
 
-        $response = $this->ingest($payload, $properties, $entityManager, $bus);
+        $response = $this->ingest($payload, $properties, $eventWriter, $bus);
 
         self::assertSame(202, $response->getStatusCode());
         self::assertInstanceOf(Event::class, $persisted);
@@ -137,16 +136,15 @@ final class ReceiveControllerTypedDataTest extends TestCase
 
     public function testInvalidSavedTypeFailsClosedEvenWithoutSubmittedProperties(): void
     {
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::never())->method('persist');
-        $entityManager->expects(self::never())->method('flush');
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::never())->method('insert');
         $bus = $this->createMock(MessageBusInterface::class);
         $bus->expects(self::never())->method('dispatch');
 
         $response = $this->ingest([
             'websiteToken' => 'example-token', 'eventName' => 'view',
             'pagePath' => '/shop', 'consentState' => 'granted',
-        ], ['revenue' => ['type' => 'number']], $entityManager, $bus);
+        ], ['revenue' => ['type' => 'number']], $eventWriter, $bus);
 
         self::assertSame(500, $response->getStatusCode());
         self::assertSame(['error' => 'Ingestion failed'], json_decode((string) $response->getContent(), true, flags: JSON_THROW_ON_ERROR));
@@ -154,19 +152,18 @@ final class ReceiveControllerTypedDataTest extends TestCase
 
     public function testOverflowingJsonNumberNeverReachesAnEnhancedQueueOrEntity(): void
     {
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::once())->method('persist')->willReturnCallback(static function (object $event): void {
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::once())->method('insert')->willReturnCallback(static function (object $event): void {
             self::assertInstanceOf(Event::class, $event);
             $event->enforcePrivacyInvariants();
             self::assertSame(['quantity' => 1, InternalTrafficSettings::JSON_KEY => false], $event->getCustomData());
         });
-        $entityManager->expects(self::once())->method('flush');
         $bus = $this->createMock(MessageBusInterface::class);
         $trackingFailures = $this->createStub(TrackingFailureRetryRunner::class);
-        $bus->expects(self::once())->method('dispatch')->willReturnCallback(static function (object $message) use ($entityManager, $trackingFailures): Envelope {
+        $bus->expects(self::once())->method('dispatch')->willReturnCallback(static function (object $message) use ($eventWriter, $trackingFailures): Envelope {
             self::assertInstanceOf(TrackEventMessage::class, $message);
             self::assertSame(['quantity' => 1], $message->eventData);
-            (new TrackEventHandler($entityManager, $trackingFailures, new NullLogger()))($message);
+            (new TrackEventHandler($eventWriter, $trackingFailures, new NullLogger()))($message);
 
             return new Envelope($message);
         });
@@ -176,7 +173,7 @@ final class ReceiveControllerTypedDataTest extends TestCase
 
         $response = $this->ingest([], [
             'revenue' => ['type' => 'double'], 'quantity' => ['type' => 'integer'],
-        ], $entityManager, $bus, $rawJson);
+        ], $eventWriter, $bus, $rawJson);
 
         self::assertSame(202, $response->getStatusCode());
     }
@@ -186,8 +183,8 @@ final class ReceiveControllerTypedDataTest extends TestCase
     {
         $expected = ['utm_medium' => 'email', ...($accepted === null ? [] : ['page_sequence' => $accepted]), ...($enhanced ? ['private' => 'detail'] : [])];
         $stored = [...$expected, InternalTrafficSettings::JSON_KEY => false];
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::once())->method('persist')->willReturnCallback(static function (object $event) use ($stored, $enhanced): void {
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::once())->method('insert')->willReturnCallback(static function (object $event) use ($stored, $enhanced): void {
             self::assertInstanceOf(Event::class, $event);
             if (!$enhanced) {
                 // The persistence boundary preserves approved values even if
@@ -202,16 +199,15 @@ final class ReceiveControllerTypedDataTest extends TestCase
                 self::assertSame('00:00.000000', $event->getCreatedAt()->format('i:s.u'));
             }
         });
-        $entityManager->expects(self::once())->method('flush');
         $bus = $this->createMock(MessageBusInterface::class);
         $trackingFailures = $this->createStub(TrackingFailureRetryRunner::class);
         if ($enhanced) {
-            $bus->expects(self::once())->method('dispatch')->willReturnCallback(static function (object $message) use ($entityManager, $expected, $trackingFailures): Envelope {
+            $bus->expects(self::once())->method('dispatch')->willReturnCallback(static function (object $message) use ($eventWriter, $expected, $trackingFailures): Envelope {
                 self::assertInstanceOf(TrackEventMessage::class, $message);
                 self::assertSame($expected, $message->eventData);
                 // Queue serialization and asynchronous persistence must use
                 // the submitted page count, never recount pages later.
-                (new TrackEventHandler($entityManager, $trackingFailures, new NullLogger()))(unserialize(serialize($message)));
+                (new TrackEventHandler($eventWriter, $trackingFailures, new NullLogger()))(unserialize(serialize($message)));
 
                 return new Envelope($message);
             });
@@ -223,7 +219,7 @@ final class ReceiveControllerTypedDataTest extends TestCase
             .'"visitorId":"forged-id","sessionId":"forged-session","customData":{"pageSequenceEnabled":true,"pageSequenceMethod":"url_parameter","consentFreeProperties":["page_sequence","private"]},'
             .'"customData":{"utm_medium":"email","page_sequence":'.$numberJson.',"private":"detail"}}';
 
-        $response = $this->ingest([], ['utm_medium' => ['consent_required' => false]], $entityManager, $bus, $rawJson, ['page_sequence_enabled' => $enabled, 'page_sequence_method' => $method]);
+        $response = $this->ingest([], ['utm_medium' => ['consent_required' => false]], $eventWriter, $bus, $rawJson, ['page_sequence_enabled' => $enabled, 'page_sequence_method' => $method]);
 
         self::assertSame(202, $response->getStatusCode());
     }
@@ -246,8 +242,8 @@ final class ReceiveControllerTypedDataTest extends TestCase
     {
         $expected = ['utm_medium' => 'email', ...($accepted === null ? [] : ['entry_channel' => $accepted]), ...($enhanced ? ['private' => 'detail'] : [])];
         $stored = [...$expected, InternalTrafficSettings::JSON_KEY => false];
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::once())->method('persist')->willReturnCallback(static function (object $event) use ($stored, $enhanced): void {
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::once())->method('insert')->willReturnCallback(static function (object $event) use ($stored, $enhanced): void {
             self::assertInstanceOf(Event::class, $event);
             if (!$enhanced) {
                 // Approved anonymous values survive a later attempt to swap
@@ -257,14 +253,13 @@ final class ReceiveControllerTypedDataTest extends TestCase
             $event->enforcePrivacyInvariants();
             self::assertSame($stored, $event->getCustomData());
         });
-        $entityManager->expects(self::once())->method('flush');
         $bus = $this->createMock(MessageBusInterface::class);
         $trackingFailures = $this->createStub(TrackingFailureRetryRunner::class);
         if ($enhanced) {
-            $bus->expects(self::once())->method('dispatch')->willReturnCallback(static function (object $message) use ($entityManager, $expected, $trackingFailures): Envelope {
+            $bus->expects(self::once())->method('dispatch')->willReturnCallback(static function (object $message) use ($eventWriter, $expected, $trackingFailures): Envelope {
                 self::assertInstanceOf(TrackEventMessage::class, $message);
                 self::assertSame($expected, $message->eventData);
-                (new TrackEventHandler($entityManager, $trackingFailures, new NullLogger()))(unserialize(serialize($message)));
+                (new TrackEventHandler($eventWriter, $trackingFailures, new NullLogger()))(unserialize(serialize($message)));
 
                 return new Envelope($message);
             });
@@ -274,7 +269,7 @@ final class ReceiveControllerTypedDataTest extends TestCase
         $rawJson = '{"websiteToken":"example-token","eventName":"button_click","pagePath":"/example","consentState":"'.($enhanced ? 'granted' : 'denied').'",'
             .'"customData":{"utm_medium":"email","entry_channel":'.$valueJson.',"private":"detail"}}';
 
-        $response = $this->ingest([], ['utm_medium' => ['consent_required' => false]], $entityManager, $bus, $rawJson, ['query_parameter_persistence' => $mode]);
+        $response = $this->ingest([], ['utm_medium' => ['consent_required' => false]], $eventWriter, $bus, $rawJson, ['query_parameter_persistence' => $mode]);
 
         self::assertSame(202, $response->getStatusCode());
     }
@@ -293,15 +288,15 @@ final class ReceiveControllerTypedDataTest extends TestCase
     #[DataProvider('invalidPageSequenceSettings')]
     public function testMalformedPageSequenceSettingStopsIngestion(array $settings): void
     {
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::never())->method('persist');
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::never())->method('insert');
         $bus = $this->createMock(MessageBusInterface::class);
         $bus->expects(self::never())->method('dispatch');
 
         $response = $this->ingest([
             'websiteToken' => 'example-token', 'eventName' => 'view', 'pagePath' => '/example',
             'consentState' => 'denied', 'customData' => ['page_sequence' => 2],
-        ], [], $entityManager, $bus, configValues: $settings);
+        ], [], $eventWriter, $bus, configValues: $settings);
 
         self::assertSame(500, $response->getStatusCode());
         self::assertSame(['error' => 'Ingestion failed'], json_decode((string) $response->getContent(), true, flags: JSON_THROW_ON_ERROR));
@@ -317,14 +312,13 @@ final class ReceiveControllerTypedDataTest extends TestCase
 
     public function testUrlCounterParameterInAnHttpPayloadCannotSynthesizeAnEventProperty(): void
     {
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::once())->method('persist')->willReturnCallback(static function (object $event): void {
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::once())->method('insert')->willReturnCallback(static function (object $event): void {
             self::assertInstanceOf(Event::class, $event);
             $event->enforcePrivacyInvariants();
             self::assertSame('/example', $event->getUrl());
             self::assertSame([InternalTrafficSettings::JSON_KEY => false], $event->getCustomData());
         });
-        $entityManager->expects(self::once())->method('flush');
         $bus = $this->createMock(MessageBusInterface::class);
         $bus->expects(self::never())->method('dispatch');
 
@@ -333,7 +327,7 @@ final class ReceiveControllerTypedDataTest extends TestCase
             'pagePath' => '/example?aggregate_page_sequence=2', 'consentState' => 'denied',
             'aggregate_page_sequence' => 2,
             'customData' => ['pageSequenceEnabled' => true, 'pageSequenceMethod' => 'url_parameter'],
-        ], [], $entityManager, $bus, configValues: ['page_sequence_enabled' => true, 'page_sequence_method' => 'url_parameter']);
+        ], [], $eventWriter, $bus, configValues: ['page_sequence_enabled' => true, 'page_sequence_method' => 'url_parameter']);
 
         self::assertSame(202, $response->getStatusCode());
     }
@@ -341,8 +335,8 @@ final class ReceiveControllerTypedDataTest extends TestCase
     #[DataProvider('urlCounterPageSources')]
     public function testUrlCounterTransportIsRemovedFromPageInformationBeforeQueueingAndPersistence(string $field, string $page, bool $enhanced): void
     {
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::once())->method('persist')->willReturnCallback(static function (object $event): void {
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::once())->method('insert')->willReturnCallback(static function (object $event): void {
             self::assertInstanceOf(Event::class, $event);
             $event->enforcePrivacyInvariants();
             self::assertSame('/example', $event->getUrl());
@@ -352,11 +346,10 @@ final class ReceiveControllerTypedDataTest extends TestCase
                 self::assertStringNotContainsString($private, serialize($event));
             }
         });
-        $entityManager->expects(self::once())->method('flush');
         $bus = $this->createMock(MessageBusInterface::class);
         $trackingFailures = $this->createStub(TrackingFailureRetryRunner::class);
         if ($enhanced) {
-            $bus->expects(self::once())->method('dispatch')->willReturnCallback(static function (object $message) use ($entityManager, $trackingFailures): Envelope {
+            $bus->expects(self::once())->method('dispatch')->willReturnCallback(static function (object $message) use ($eventWriter, $trackingFailures): Envelope {
                 self::assertInstanceOf(TrackEventMessage::class, $message);
                 self::assertSame('/example', $message->pagePath);
                 self::assertSame('internal', $message->referrerChannel);
@@ -364,7 +357,7 @@ final class ReceiveControllerTypedDataTest extends TestCase
                 foreach (['aggregate_page_sequence', 'private-query', 'private-fragment'] as $private) {
                     self::assertStringNotContainsString($private, serialize($message));
                 }
-                (new TrackEventHandler($entityManager, $trackingFailures, new NullLogger()))(unserialize(serialize($message)));
+                (new TrackEventHandler($eventWriter, $trackingFailures, new NullLogger()))(unserialize(serialize($message)));
 
                 return new Envelope($message);
             });
@@ -378,7 +371,7 @@ final class ReceiveControllerTypedDataTest extends TestCase
             'referrer' => 'https://example.test/previous?aggregate_page_sequence=1&private-query=value#private-fragment',
             'consentState' => $enhanced ? 'granted' : 'denied',
             'customData' => ['page_sequence' => 2],
-        ], [], $entityManager, $bus, configValues: ['page_sequence_enabled' => true, 'page_sequence_method' => 'url_parameter']);
+        ], [], $eventWriter, $bus, configValues: ['page_sequence_enabled' => true, 'page_sequence_method' => 'url_parameter']);
 
         self::assertSame(202, $response->getStatusCode());
     }
@@ -394,9 +387,8 @@ final class ReceiveControllerTypedDataTest extends TestCase
 
     public function testAnonymousPersistenceFailureIsRecordedAsAnIngestionFailure(): void
     {
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects(self::once())->method('persist');
-        $entityManager->expects(self::once())->method('flush')->willThrowException(new \RuntimeException('write failed'));
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects(self::once())->method('insert')->willThrowException(new \RuntimeException('write failed'));
         $bus = $this->createMock(MessageBusInterface::class);
         $bus->expects(self::never())->method('dispatch');
         $trackingFailures = $this->createMock(TrackingFailureRetryRunner::class);
@@ -409,7 +401,7 @@ final class ReceiveControllerTypedDataTest extends TestCase
             'eventName' => 'view',
             'pagePath' => '/example',
             'consentState' => 'denied',
-        ], [], $entityManager, $bus, trackingFailures: $trackingFailures);
+        ], [], $eventWriter, $bus, trackingFailures: $trackingFailures);
 
         self::assertSame(500, $response->getStatusCode());
     }
@@ -417,7 +409,7 @@ final class ReceiveControllerTypedDataTest extends TestCase
     private function ingest(
         array $payload,
         array $properties,
-        EntityManagerInterface $entityManager,
+        EventRowWriter $eventWriter,
         MessageBusInterface $bus,
         ?string $rawJson = null,
         array $configValues = [],
@@ -449,7 +441,7 @@ final class ReceiveControllerTypedDataTest extends TestCase
                 new GoalEventRegistry($sanitizer, []),
                 new PrivacyPolicy($config),
                 $geo,
-                new AnonymousEventRecorder($entityManager),
+                new AnonymousEventRecorder($eventWriter),
                 new NullLogger(),
                 new CustomDataSettings($config),
                 $trackingFailures,

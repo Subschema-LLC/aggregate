@@ -1186,6 +1186,14 @@ E2E::step('two-step sign-in asks for an emailed code after the password and sign
     }
 });
 
+E2E::step('the direct event writer stores the same rows as Doctrine ORM', static function () use ($root): void {
+    $db = connection($root);
+    $before = (int) $db->fetchOne('SELECT COUNT(*) FROM events');
+    $differences = App\Tests\Support\EventRowParity::differences($db, App\Tests\Support\EventRowParity::entityManager($db, $root.'/src/Entity'));
+    E2E::check($differences === [], 'The writer and the ORM stored different rows: '.implode(' ', $differences));
+    E2E::check((int) $db->fetchOne('SELECT COUNT(*) FROM events') === $before, 'The comparison left rows behind.');
+});
+
 $version =(string) connection($root)->fetchOne(match ($driver) {
     'mysql' => 'SELECT VERSION()',
     'pgsql' => 'SHOW server_version',

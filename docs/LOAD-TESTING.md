@@ -7,6 +7,7 @@ rates until the server falls behind.
 
 - [At a glance: hits per day](#at-a-glance-hits-per-day)
 - [Results](#results)
+- [Re-run on 10 November 2026](#re-run-on-10-november-2026)
 - [Sizing a server](#sizing-a-server)
 - [Disk space](#disk-space)
 - [Where the time goes](#where-the-time-goes)
@@ -134,6 +135,18 @@ What the runs show:
 Before the YAML cache, four runs of the default configuration sustained 150–300
 per second with MySQL, 50–175 with PostgreSQL and 125–250 with SQLite.
 
+### Re-run on 10 November 2026
+
+The same `load` suite, as installed, at commit `6fa9f73`
+([run](https://github.com/Subschema-LLC/aggregate/actions/runs/42925233993))
+sustained 250 per second with PostgreSQL in both modes, 200 (anonymous) and 300
+(enhanced) with MySQL, and 200 with SQLite in both modes. Server CPU per stored
+event was 8.6–11.7 ms on AMD EPYC 9V74 runners and 12.6–14.0 ms for SQLite on
+an EPYC 7763, and PHP was 88–99% of it. SQLite, the one setup on the same CPU
+model as in October, moved about 5% either way, so the [sizing](#sizing-a-server)
+below still holds. MySQL anonymous reached its limit at about half the CPU, with
+11–22% I/O wait: every event's own commit waited on the runner's disk.
+
 ### Sizing a server
 
 The daily figures [above](#at-a-glance-hits-per-day) come from these rates per
@@ -212,10 +225,13 @@ persistent connections, put a collection request at about 13 ms of PHP time
 - **Loading classes:** 2.3–2.7 ms for about 630 classes, the part
   [OPcache preloading](../DEPLOYMENT.md#performance) removes.
 - **Parsing YAML:** 0.15 ms, about 1% of the request.
-- **Enhanced events:** passing the event through Messenger to its handler took
-  9–10 ms on PostgreSQL and SQLite. On MySQL a few commits were much slower
-  (12 ms on average, with a median request of 13 ms), which one run cannot
-  separate from noise on the shared runner.
+- **Enhanced events:** Messenger itself adds about 1 ms. In the November 2026
+  [profile](https://github.com/Subschema-LLC/aggregate/actions/runs/42925237692),
+  recording an enhanced event took 5.5 ms on MySQL, 4.2 ms of it in the
+  handler's write, and 7.2 ms on PostgreSQL, 6.3 ms of it in the handler. The
+  profile's step for the dispatch reads 9–13 ms because the synchronous
+  transport dispatches the message again inside the first dispatch and both are
+  counted; the earlier figure of 9–10 ms had the same double count.
 
 ## Optimizations
 
@@ -315,7 +331,9 @@ The `compare` suite can also keep the code the same and change one setting on
 the head side: label `compare-persistent` for persistent database connections,
 or `compare-preload` for OPcache preloading. Start any suite from **Actions →
 Load test → Run workflow**, where you can also change the stage rates, the
-comparison base and the variant. Runner time is the total of the six jobs, which
+comparison base and the variant, and add PHP extensions (`php_extensions`,
+Ubuntu's `php8.3-*` names such as `apcu`), installed once so both sides of a
+comparison have them. Runner time is the total of the six jobs, which
 run in parallel. Results appear in each job's summary and as a notice on the
 run.
 
@@ -385,4 +403,4 @@ A request counts as stored only when the response says the event was
   `app:analytics:maintain` running during load.
 - An installation with many registered websites.
 
-The [roadmap](../ROADMAP.md) tracks this work.
+Phase 1 of the [scaling roadmap](../ROADMAP.md#scaling-in-three-phases) tracks this work.

@@ -518,8 +518,16 @@ opcache.preload_user=www-data   ; the PHP-FPM pool's user
 Preloaded classes stay in memory until PHP-FPM reloads, so reload it
 (`sudo systemctl reload php8.3-fpm`) after every update, including updates from
 the dashboard's **Install update** button or `app:updates:apply`, which cannot
-reload it for you. A reload preloads again; a restart is not needed. Leave
-preloading off if your deployment cannot reload PHP-FPM.
+reload it for you. A reload preloads again; a restart is not needed. Each update
+writes `var/php-reload-requested`, which a hosting panel or a
+[systemd path unit](docs/UPDATES.md#reload-php-after-an-update) can watch to
+reload PHP-FPM for you, and the Updates page's system check says when PHP has not
+reloaded since. Leave preloading off if your deployment cannot reload PHP-FPM.
+
+Preloading applies to every site the same PHP-FPM serves (all its pools), so
+turn it on only for a PHP-FPM that serves Aggregate alone. Another site's
+classes with the same names as Aggregate's, such as `App\Kernel`, would
+replace them, and the reverse.
 
 **Reload PHP-FPM without dropping requests:** by default a PHP-FPM reload stops
 busy workers at once, which failed about 0.1% of collection requests in the
@@ -531,6 +539,13 @@ process_control_timeout = 10s
 ```
 With it, reloads during traffic failed no requests. Prefer a reload to a
 restart, which always dropped some.
+
+**APCu (optional):** with the APCu extension (on Ubuntu, `php8.3-apcu`) loaded
+and shared by PHP's workers (PHP-FPM, Apache's module or FrankenPHP), Aggregate
+keeps its per-minute rate-limit buckets in memory instead of files in
+`var/rate_limit/`: 2–6% less server CPU per anonymous event in the
+[load test](docs/LOAD-TESTING.md). Nothing to configure; the Updates page's
+system check says whether it is used.
 
 **4. Use PostgreSQL or MySQL:**
 SQLite is fine for small deployments, but use PostgreSQL or MySQL for production.
@@ -695,9 +710,11 @@ php bin/console app:updates:apply --database-backup-confirmed   # PostgreSQL, My
   `.env.local`, `config/aggregate*.yaml`, `config/websites.yaml`,
   `config/website-scopes.yaml` and `config/website-scopes/`,
   `config/tag-manager/sites/`, `config/*.local.yaml`, `config/secrets/` and `var/`.
-- After an update, reload PHP if OPcache does not revalidate file timestamps
-  (`opcache.validate_timestamps=0`), and restart workers if your process manager
-  does not restart them after the stop signal. For Docker images, rebuild and
+- After an update, reload PHP if OPcache preloads Aggregate's classes or does not
+  revalidate file timestamps (`opcache.validate_timestamps=0`); the update writes
+  `var/php-reload-requested` for a panel that [reloads it for you](docs/UPDATES.md#reload-php-after-an-update).
+  Restart workers if your process manager does not restart them after the stop
+  signal. For Docker images, rebuild and
   redeploy the image instead.
 - After every migration run, `php bin/console app:analytics:glossary:sync`
   publishes the declared [BI glossary](docs/BI-GLOSSARY.md#view-only-grants); the

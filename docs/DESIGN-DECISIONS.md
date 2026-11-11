@@ -73,6 +73,30 @@ keep up with incoming traffic.
 **What would change it.** A high-volume design that keeps the same guarantee, such
 as batching already-bucketed rows.
 
+### Event rows written with one insert, checked by the entity
+
+**Decision.** Both collection paths build an `Event` with its setters, which
+refuse or clean values, and
+[EventRowWriter](../src/Service/EventRowWriter.php) saves it with one DBAL insert
+after running `enforcePrivacyInvariants()`, instead of Doctrine ORM's `persist()`
+and `flush()`. The writer does not read back the new row's ID.
+
+**Why.** Doctrine ORM's own work around the one-row insert was the largest part
+of saving an event in the [profile](LOAD-TESTING.md#where-the-time-goes), for a
+row that is written once and never changed in the request. Keeping the entity as the only place that checks a row means the direct
+insert reuses the privacy rules rather than copying them, and a database error
+can no longer leave a closed entity manager behind.
+
+**Trade-off.** The writer keeps its own list of columns and their types, so a new
+`events` column must be added there as well as to the entity;
+`EventRowWriterTest` fails until it is. Doctrine's lifecycle callbacks do not run
+for these inserts, so anything they did must be called explicitly, as
+`insert()` does for the privacy invariants. A parity check in the fresh-install
+job compares rows written both ways on every engine.
+
+**What would change it.** A write path that cannot build an `Event`, or an ORM
+that writes one row as cheaply as a plain insert.
+
 ### Rate limiting without storing addresses
 
 **Decision.** The rate limiter keys each one-minute window on an HMAC of the

@@ -18,7 +18,7 @@ use App\Service\InternalTrafficSettings;
 use App\Service\PrivacyPolicy;
 use App\Service\PrivacySanitizer;
 use App\Service\WebsiteConfigManager;
-use Doctrine\ORM\EntityManagerInterface;
+use App\Service\EventRowWriter;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
@@ -313,14 +313,13 @@ final class ReceiveControllerDomainPolicyTest extends TestCase
         );
 
         $stored = null;
-        $entityManager = $this->createMock(EntityManagerInterface::class);
-        $entityManager->expects($allowed && $consentState === 'denied' ? self::once() : self::never())
-            ->method('persist')
+        $eventWriter = $this->createMock(EventRowWriter::class);
+        $eventWriter->expects($allowed && $consentState === 'denied' ? self::once() : self::never())
+            ->method('insert')
             ->willReturnCallback(static function (object $event) use (&$stored): void {
                 self::assertInstanceOf(Event::class, $event);
                 $stored = $event;
             });
-        $entityManager->expects($allowed && $consentState === 'denied' ? self::once() : self::never())->method('flush');
         $bus = $this->createMock(MessageBusInterface::class);
         $bus->expects($allowed && $consentState === 'granted' ? self::once() : self::never())
             ->method('dispatch')
@@ -363,7 +362,7 @@ final class ReceiveControllerDomainPolicyTest extends TestCase
                 new GoalEventRegistry($sanitizer, []),
                 new PrivacyPolicy($config),
                 $geo,
-                new AnonymousEventRecorder($entityManager),
+                new AnonymousEventRecorder($eventWriter),
                 new NullLogger(),
                 new CustomDataSettings($config),
             ),
