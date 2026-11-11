@@ -37,6 +37,8 @@ class TrackingFailureRetryRunner
         private readonly ListableReceiverInterface $failedReceiver,
         private readonly LoggerInterface $logger,
         ?\Closure $clock = null,
+        #[Autowire('%env(default::MESSENGER_TRANSPORT_DSN)%')]
+        private readonly ?string $transportDsn = null,
     ) {
         $this->clock = $clock ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
     }
@@ -54,10 +56,24 @@ class TrackingFailureRetryRunner
             return;
         }
         $details = sprintf(
-            'An enhanced event could not be written to events (%s). The message remains in the failed transport for retry.',
+            $this->isSynchronous()
+                ? 'An enhanced event could not be written to events (%s). This failure did not queue it for retry: the sync:// transport saves events during the request.'
+                : 'An enhanced event could not be written to events (%s). Messenger retries it and, if every retry fails, keeps it in the failed transport for app:tracking:retry-failed.',
             $this->shortClass($error),
         );
         $this->tasks->fail($task, $now, $details);
+    }
+
+    /**
+     * Symfony sends a failed message to the failed transport only from an
+     * asynchronous worker; under sync:// the failure reaches the request
+     * instead. An unset DSN counts as the documented sync:// default.
+     */
+    private function isSynchronous(): bool
+    {
+        $dsn = strtolower(trim($this->transportDsn ?? ''));
+
+        return $dsn === '' || str_starts_with($dsn, 'sync://');
     }
 
     public function recordIngestionFailure(string $mode, ?string $websiteToken, \Throwable $error): void
