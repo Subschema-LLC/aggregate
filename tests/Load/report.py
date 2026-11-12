@@ -141,9 +141,12 @@ def cpu_split(args: argparse.Namespace, stored_events: int) -> tuple[list[str], 
     before, after = (json.loads(Path(path).read_text()) for path in paths)
     used = {
         key: after[key] - before[key]
-        for key in ("php", "web", "database")
+        for key in ("php", "web", "database", "cli")
         if after.get(key) is not None and before.get(key) is not None
     }
+    if not used.get("cli"):
+        # Queue consumers, counted only when the run had some.
+        used.pop("cli", None)
     if args.k6_time and Path(args.k6_time).is_file():
         user, system = (float(value) for value in Path(args.k6_time).read_text().split()[:2])
         used["k6"] = user + system
@@ -151,12 +154,12 @@ def cpu_split(args: argparse.Namespace, stored_events: int) -> tuple[list[str], 
     if total <= 0:
         return [], {}
 
-    labels = {"php": "PHP", "database": "database", "web": "Nginx", "k6": "k6"}
+    labels = {"php": "PHP", "database": "database", "web": "Nginx", "cli": "queue consumers", "k6": "k6"}
     lines = ["CPU time during the run: " + ", ".join(
         f"{labels[key]} {seconds:,.0f} s ({seconds / total * 100:.0f}%)" for key, seconds in used.items()
     )]
     result = {"cpu_seconds": used}
-    server = {key: used[key] for key in ("php", "database", "web") if key in used}
+    server = {key: used[key] for key in ("php", "database", "web", "cli") if key in used}
     if stored_events > 0 and server:
         per_event = {key: seconds * 1000 / stored_events for key, seconds in server.items()}
         server_ms = sum(per_event.values())

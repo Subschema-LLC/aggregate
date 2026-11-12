@@ -4,7 +4,8 @@
 Run once before and once after a load test; the report subtracts the two to
 show how the machine's CPU was split. PHP-FPM workers must not be recycled
 during the run (pm.max_requests = 0), since a finished process takes its CPU
-time with it.
+time with it. With --cli, PHP's command-line processes that are still running,
+such as queue consumers, are counted on their own.
 
     python3 tests/Load/cpu_snapshot.py --database-image postgres:16 > cpu-before.json
 """
@@ -20,14 +21,15 @@ from pathlib import Path
 TICKS = os.sysconf("SC_CLK_TCK")
 
 
-def process_seconds(prefix: str) -> float:
-    """CPU seconds (user + system) of every process whose name starts with prefix."""
+def process_seconds(prefix: str, exclude: str | None = None) -> float:
+    """CPU seconds (user + system) of every process whose name starts with prefix but not with exclude."""
     total = 0
     for entry in Path("/proc").iterdir():
         if not entry.name.isdigit():
             continue
         try:
-            if not (entry / "comm").read_text().strip().startswith(prefix):
+            name = (entry / "comm").read_text().strip()
+            if not name.startswith(prefix) or (exclude and name.startswith(exclude)):
                 continue
             fields = (entry / "stat").read_text().rsplit(")", 1)[1].split()
         except OSError:
@@ -60,6 +62,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--php", default="php-fpm", help="Process name prefix of PHP-FPM")
     parser.add_argument("--web", default="nginx", help="Process name prefix of the web server")
+    parser.add_argument("--cli", help="Process name prefix of PHP's command line (php), counted apart from PHP-FPM")
     parser.add_argument("--database-image", help="Image of the database container, if any")
     args = parser.parse_args()
 
@@ -68,6 +71,8 @@ def main() -> None:
         "web": process_seconds(args.web),
         "database": container_seconds(args.database_image) if args.database_image else None,
     }
+    if args.cli:
+        snapshot["cli"] = process_seconds(args.cli, exclude=args.php)
     print(json.dumps(snapshot))
 
 
