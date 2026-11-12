@@ -139,7 +139,7 @@ final class ServerRoleTest extends TestCase
 
         self::assertSame(['App\\Controller\\HealthController'], $controllers['routes_health.yaml']);
         self::assertContains('App\\Controller\\ReceiveController', $controllers['routes_collection.yaml']);
-        self::assertSame(['App\\Controller\\HomeController', 'App\\Controller\\ReportingApiController', 'App\\Controller\\McpController'], $controllers['routes_admin_api.yaml']);
+        self::assertSame(['App\\Controller\\HomeController', 'App\\Controller\\ReportingApiController', 'App\\Controller\\McpController', 'App\\Controller\\ClusterConfigController'], $controllers['routes_admin_api.yaml']);
         self::assertSame([], ServerRole::controllersInRouteFile($config.'missing.yaml'));
         self::assertNotContains('App\\Controller\\McpAuthorizeController', array_merge(...array_values($controllers)),
             'MCP consent needs a dashboard session, so it stays in routes_dashboard.yaml.');

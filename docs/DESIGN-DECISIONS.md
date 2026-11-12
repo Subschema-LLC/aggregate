@@ -1129,6 +1129,33 @@ list before it runs on collection or worker servers.
 **What would change it.** A role that needs code the others must not ship, such
 as a separate collection runtime.
 
+### Configuration pulled from the administration server, verified against the database
+
+**Decision.** The other servers of a cluster pull their configuration from the
+administration server every minute (`app:cluster:sync`), over a request
+signed with a shared key and accepted only from listed addresses. The
+administration server records each new version as the fingerprint of a
+`cluster_config` run in `processing_tasks`. A server that cannot pull compares
+its own version with that record: the same version means nothing changed and
+it keeps collecting; a newer one, unfetched for five minutes, or five minutes
+without any check, pauses collection with a 503 that takes it out of the
+balancer's rotation.
+
+**Why.** One writer keeps a cluster's settings from splitting, and servers
+behind a balancer need no inbound port for a push. The database is the one
+thing every server already reaches, so it settles whether a server is behind
+when the administration server is down; an outage of that server then stops
+nobody's collection. `processing_tasks` keeps the latest row of each status
+through its purges, where the audit trail would age the record out.
+
+**Trade-off.** A change reaches the other servers within a minute or two, not
+at once. A server that is behind pauses rather than collecting under rules it
+may not have, so a long network split costs collection on that server. The
+pause limit cannot be turned off.
+
+**What would change it.** A shared configuration store every server reads
+directly, which would replace the pull but add a service to run.
+
 ### A small dashboard menu that says why an entry is missing
 
 **Decision.** A single setting is a section of an existing page, not a menu

@@ -384,6 +384,22 @@ environments:
 #   name in their messages. The ADMINISTRATION_URL environment variable takes
 #   precedence. Example: https://admin.example.com
 #
+# cluster (optional, administration server only)
+#   The servers that may pull configuration from this administration server,
+#   by the name they joined with and the address they connect from (an IP
+#   address or network). app:cluster:server adds and removes them.
+#   Example:
+#     cluster:
+#       - { name: collect-1, address: 10.0.0.11 }
+#
+# cluster_config_max_age_minutes (optional, default: 5, 1 to 60)
+#   How long a collection or worker server may go without confirming it has
+#   the newest configuration before it pauses collection (503). Cannot be
+#   turned off.
+#
+# cluster_alert_destinations (optional, default: every alert destination)
+#   The alert destinations told when a server stops pulling its configuration.
+#
 # collection_base_url (optional, default: "")
 #   Where websites send events and load the tracker, consent and tag-manager
 #   scripts, when that is not app_host: a tracking subdomain, or the balancer

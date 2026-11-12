@@ -93,7 +93,7 @@ Snippets, scripts and the consent UI point at `collection_base_url`, which defau
   - Never included: `config/secrets/`, `.env*`, users, and dashboard-only files.
 - **Signed requests:** an HMAC with `CLUSTER_KEY` over the method, path, timestamp and body hash. A request older than a minute, or from an address not in `cluster`, gets the same `404` as an unknown route.
 - **One command on every server, every minute: `app:cluster:sync`.** It does what the server's role needs, so the Linux guide, the Plesk guide and PRAGMA all set up the same single timer. The administration server's scheduled task runs only every five minutes, which is too slow for this.
-  - **On the administration server it publishes.** `ClusterConfigPublisher` hashes the whole bundle. When the hash differs from the last recorded one, it records the new version as the fingerprint of a successful `cluster_config` run in `processing_tasks` (`ProcessingTasks::succeed()`). It runs in three places: at the end of each dashboard or CLI configuration save, when `ClusterConfigController` serves the bundle, and every minute through `app:cluster:sync`.
+  - **On the administration server it publishes.** `ClusterConfigPublisher` hashes the whole bundle. When the hash differs from the last recorded one, it records the new version as the fingerprint of a successful `cluster_config` run in `processing_tasks` (`ProcessingTasks::succeed()`). It runs when `ClusterConfigController` serves the bundle and every minute through `app:cluster:sync` (built in slice 3 without a hook in each save: a save is recorded within the minute, and the servers pull within the next).
   - The minute run catches writers that bypass `AggregateConfigLoader::save()`, such as `LocalEnvironmentFile`, and files edited by hand. One publisher over the whole bundle replaces hooks in each writer.
   - **Why `processing_tasks`, not `audit_trail`:** `AuditTrail::purgeBefore()` deletes every row past its retention, so a configuration left unchanged that long would lose its record and every server would fail closed. `ProcessingTasks` keeps the latest row per `(task_type, subject, status)` through its purges (`eachPurgeableBatch()`), and `ProcessingTasks::latest('cluster_config')` reads it with one indexed query. It is an operational record, not a setting, and needs no schema change.
   - **Elsewhere it pulls.** It writes each pulled file to a sibling temporary file and `rename()`s it into place. It does not rename the whole directory, because `config/` also holds shipped framework files that are not in the bundle.
@@ -119,7 +119,7 @@ Snippets, scripts and the consent UI point at `collection_base_url`, which defau
 - **Alerting.** The administration server records each server's last successful pull (in `var/`, not a table). When one passes 5 minutes, it raises an alert through the alert destinations from JOIN-55 (signed webhook and email), and the Updates page shows the server as behind or paused.
   - Collection servers cannot alert themselves, because `config/secrets/` stays on the administration server.
   - An outage of the administration server no longer stops collection, so it is ordinary uptime monitoring rather than a data-loss incident.
-- **A long update does not pause collection.** `/api/cluster/config` keeps answering, with the configuration as it stood, while the administration server is in maintenance mode.
+- **A long update does not pause collection.** While the administration server is in maintenance mode, pulls fail, but the version recorded in the database is still each server's own, so every server stays verified. (Built in slice 3 this way rather than by serving the bundle during maintenance, which would mean checking signatures before the kernel starts.)
 - **What is left:** a hand edit on the administration server that crashes before the edit is hashed. That edit was never served either, so no server ever ran on it.
 
 ### The balancer
@@ -231,7 +231,7 @@ Index changes on `events` or `messenger_messages` come only after slice 0 or 8 s
 - [ ] **The queue in a cluster.** Slice 0 found `doctrine://` in the shared database the costliest setup, near the gate on MySQL and serialized by `NOTIFY` on PostgreSQL. Should phase 3 recommend `sync://` for clusters (collection servers write enhanced events; already supported) and make `worker` servers wait for a broker such as Redis (phase 2), or support `doctrine://` workers with that warning?
 - [ ] **Queue retention ownership.** Who owns retention of failed messages: an administration-side job, or an operator purge? And how long may enhanced payloads wait in `messenger_messages` when workers are down?
 - [ ] **Balancer.** Does `balancer` earn a role, or is `app:server:balancer-config` on the administration server enough?
-- [ ] **`APP_SECRET`.** Must it match on every server? Anything one server signs with it and another checks needs auditing in slice 2.
+- [ ] **`APP_SECRET`.** Must it match on every server? Anything one server signs with it and another checks needs auditing in slice 2. The audit in slice 3 found one such case: organization-traffic marking codes are made on the share page and checked at `/internal-traffic/verify`, both collection routes the balancer may send to different servers, so every collection server needs the same `APP_SECRET` (`app:cluster:join` takes it). Sessions, CSRF tokens and sign-in codes are administration-only, and the rate limiter's address hash is per server, so those need not match.
 
 ### Where the team's input went
 
@@ -434,7 +434,7 @@ _The work this spec plans, as `- [ ] …` items, each naming the role that does 
 - [x] Back end: the `database` load-test suite for slice 0 (done in JOIN-59)
 - [x] Back end: `collection_base_url` (slice 1) (done in JOIN-59)
 - [x] Back end: `ServerRole`, the route split, controller removal generated from the route files, the command listener and service guards, the SQLite refusal, `app:server:role` with versioned JSON, and the dead mail routing removed (slice 2) (done in JOIN-59)
-- [ ] Back end: `app:cluster:sync`, `ClusterConfigPublisher` with the `cluster_config` fingerprint in `processing_tasks`, the configuration endpoint, signed health metadata, `var/cluster_state.json`, the pause when behind or unverified, and the alert through JOIN-55's destinations (slice 3)
+- [x] Back end: `app:cluster:sync`, `ClusterConfigPublisher` with the `cluster_config` fingerprint in `processing_tasks`, the configuration endpoint, signed health metadata, `var/cluster_state.json`, the pause when behind or unverified, and the alert through JOIN-55's destinations (slice 3) (done in JOIN-59)
 - [ ] Back end: `app:server:balancer-config` for Nginx and Caddy (slice 4)
 - [ ] Back end: `--files-only`, the additivity checks for tables and message classes, and the Updates page server list (slice 5)
 - [ ] DBA: confirm retention batch size and locking and whether the failed transport is purged; then a bounded age and purge for queued payloads (slice 6)
