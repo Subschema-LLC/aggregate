@@ -391,8 +391,8 @@ settings needed). For SQL Server, `AGGREGATE_E2E_TRUST_CERTIFICATE=1` trusts a
 self-signed certificate and `AGGREGATE_E2E_SQLSRV_NATIVE=1` switches to the
 `sqlsrv://` driver after setup.
 
-[tests/Integration/cluster.php](tests/Integration/cluster.php) checks [server
-roles](docs/CONFIGURATION.md#server-roles) the same way. It copies the checkout
+[tests/Integration/cluster.php](tests/Integration/cluster.php) checks
+[server roles](docs/CONFIGURATION.md#server-roles) the same way. It copies the checkout
 into an administration server, two collection servers and, with
 `AGGREGATE_E2E_QUEUE=doctrine`, a worker, beside the checkout, sets them up with
 the cluster commands on one database, and puts Nginx in front with
