@@ -2,6 +2,8 @@
 
 namespace App\Service;
 
+use App\Service\Cluster\ServerRole;
+
 use App\Service\Operations\ConfigurationChanges;
 use Symfony\Component\Yaml\Yaml;
 
@@ -13,6 +15,7 @@ class WebsiteConfigManager
 {
     private string $configPath;
     private readonly ParsedYamlCache $parsedYaml;
+    private readonly string $projectDir;
     /** @var array{0: string, 1: array}|null The last registry built, with the hash of the content it came from. */
     private ?array $registry = null;
 
@@ -21,6 +24,7 @@ class WebsiteConfigManager
         private readonly WebsiteDomainPolicy $domainPolicy = new WebsiteDomainPolicy(),
         ?ParsedYamlCache $parsedYaml = null,
     ) {
+        $this->projectDir = $projectDir;
         $this->configPath = $projectDir . '/config/websites.yaml';
         $this->parsedYaml = $parsedYaml ?? ParsedYamlCache::forProject($projectDir);
     }
@@ -215,6 +219,7 @@ class WebsiteConfigManager
     /** Read, modify and write the same locked file, retaining symlinks and permissions. */
     private function updateDocument(callable $update): bool
     {
+        ServerRole::forProject($this->projectDir)->assertWritesConfiguration();
         // c+b creates only a missing file; it never truncates an existing one.
         $handle = @fopen($this->configPath, 'c+b');
         if ($handle === false) {

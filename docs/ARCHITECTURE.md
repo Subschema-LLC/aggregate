@@ -276,7 +276,10 @@ services, so a setting has one validation wherever it is changed.
 
 - **Dashboard:** optional. `DASHBOARD_ENABLED=0` removes the login and every
   dashboard route ([Kernel](../src/Kernel.php) loads `routes_dashboard.yaml` only
-  when it is on). Pages follow the [UI template conventions](../templates/README.md):
+  when it is on). The other routes are split by [server role](CONFIGURATION.md#server-roles):
+  `routes_health.yaml`, `routes_branding.yaml`, `routes_collection.yaml` and
+  `routes_admin_api.yaml`, each loaded only by the roles that serve it, and the
+  controllers behind the files a role leaves out are removed from its container. Pages follow the [UI template conventions](../templates/README.md):
   Twig, Bulma, Stimulus and Turbo through AssetMapper, with no Node build.
 - **Command line:** everything an administrator needs without the dashboard,
   in [src/Command](../src/Command). Examples: `app:install`,
