@@ -41,7 +41,7 @@ final class DataModelSection extends AbstractSection implements SettingsWithScop
         return 'Collection > Data model';
     }
 
-    public function target(): ?string
+    public function target(): string
     {
         return self::TARGET_SCOPE;
     }

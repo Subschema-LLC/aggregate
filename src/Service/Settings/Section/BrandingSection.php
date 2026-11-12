@@ -55,7 +55,7 @@ final class BrandingSection extends AbstractSection
         $theme = (new BrandingTheme($this->config))->toArray();
         $values = ['brand_name' => $branding->getName(), 'brand_logo_text' => $branding->getLogoText()];
         foreach (BrandingTheme::CONFIG_KEYS as $key) {
-            $values[$key] = $theme[substr($key, strlen('brand_'))] ?? null;
+            $values[$key] = $theme[substr($key, strlen('brand_'))];
         }
         $values[self::LOGO] = $branding->getLogoPath() ?? '';
 

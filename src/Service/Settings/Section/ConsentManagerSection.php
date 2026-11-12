@@ -34,7 +34,7 @@ final class ConsentManagerSection extends AbstractSection
         return 'Collection > Consent manager lite';
     }
 
-    public function target(): ?string
+    public function target(): string
     {
         return self::TARGET_SITE;
     }

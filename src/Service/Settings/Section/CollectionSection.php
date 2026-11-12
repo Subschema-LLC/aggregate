@@ -46,7 +46,7 @@ final class CollectionSection extends AbstractSection implements SettingsWithSco
         return 'Collection > Collection controls';
     }
 
-    public function target(): ?string
+    public function target(): string
     {
         return self::TARGET_SCOPE;
     }

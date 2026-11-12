@@ -30,7 +30,7 @@ final class StandaloneConsentSection extends AbstractSection
         return 'Setup > Standalone consent banner';
     }
 
-    public function target(): ?string
+    public function target(): string
     {
         return self::TARGET_SITE;
     }

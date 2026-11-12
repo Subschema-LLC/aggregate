@@ -32,7 +32,7 @@ final class TagManagerSection extends AbstractSection
         return 'Collection > Tag manager lite';
     }
 
-    public function target(): ?string
+    public function target(): string
     {
         return self::TARGET_SITE;
     }
