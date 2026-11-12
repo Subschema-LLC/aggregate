@@ -38,6 +38,34 @@ final class TagManagerSettings
         return $this->features === null || $this->features->isEnabled(TagManagerCustomCode::FEATURE);
     }
 
+    /**
+     * While custom JavaScript tags are turned off (the custom_scripts feature
+     * flag), existing ones are kept but none can be added or changed.
+     *
+     * @param array{tags: list<array>} $settings validated tag manager settings
+     */
+    public function assertNoNewCustomCode(array $settings, ?string $siteId = null): void
+    {
+        if ($this->customScriptsEnabled()) {
+            return;
+        }
+        $saved = [];
+        try {
+            foreach ($this->all($siteId)['tags'] as $tag) {
+                if ($tag['type'] === 'custom') {
+                    $saved[$tag['id']] = $tag['code'];
+                }
+            }
+        } catch (\Throwable) {
+            // Unreadable saved settings are reported by the save itself.
+        }
+        foreach ($settings['tags'] as $tag) {
+            if ($tag['type'] === 'custom' && ($saved[$tag['id']] ?? null) !== $tag['code']) {
+                throw new \InvalidArgumentException('Custom JavaScript tags are turned off for this installation on the Feature flags page. Existing ones are kept but not served, and none can be added or changed.');
+            }
+        }
+    }
+
     public function save(array $submitted, ?string $siteId = null): void
     {
         $validated = self::validate($submitted, $this->codeCacheDirectory);

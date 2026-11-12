@@ -4,9 +4,15 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\EventSubscriber\AdminAuditSubscriber;
 use App\Service\AggregateConfigLoader;
+use App\Service\Alerts\AlertSettings;
 use App\Service\ApplicationUpdateService;
+use App\Service\Cluster\BalancerConfig;
 use App\Service\Cluster\ClusterOverview;
+use App\Service\Cluster\ClusterServerList;
+use App\Service\Cluster\ClusterSettings;
+use App\Service\Cluster\ServerRole;
 use App\Service\FeatureFlags;
 use App\Service\Update\ApplicationUpdater;
 use App\Service\Update\BackgroundUpdate;
@@ -30,6 +36,7 @@ final class UpdatesController extends AbstractController
     public const SETTINGS_CSRF_TOKEN_ID = 'application_updates_settings';
     public const UPLOAD_CSRF_TOKEN_ID = 'application_updates_upload';
     public const METHOD_CSRF_TOKEN_ID = 'application_updates_method';
+    public const CLUSTER_CSRF_TOKEN_ID = 'application_updates_cluster';
 
     public function __construct(
         private readonly AggregateConfigLoader $config,
@@ -41,6 +48,8 @@ final class UpdatesController extends AbstractController
         private readonly UpdateSettings $settings,
         private readonly ?DeploymentAction $deploymentAction = null,
         private readonly ?ClusterOverview $cluster = null,
+        private readonly ?ServerRole $role = null,
+        private readonly ?AlertSettings $alerts = null,
     ) {
     }
 
@@ -66,6 +75,7 @@ final class UpdatesController extends AbstractController
             'update_detected_method' => $this->updates->detectedMethod(),
             'update_deployment_action' => ($status['installation_type'] ?? null) === 'deployment' ? $this->deploymentAction() : null,
             'update_cluster' => $this->clusterOverview(),
+            'update_cluster_settings' => $this->clusterSettings(),
         ]);
     }
 
@@ -364,6 +374,149 @@ final class UpdatesController extends AbstractController
         }
     }
 
+    #[Route('/dashboard/updates/cluster/settings', name: 'app_updates_cluster_settings', methods: ['POST'])]
+    public function saveClusterSettings(Request $request): Response
+    {
+        $this->denyUnlessPermitted();
+        if (!$this->validClusterToken($request)) {
+            return $this->toCluster();
+        }
+        $form = $request->request;
+        $destinations = match ($form->get('alert_destinations_mode')) {
+            'all' => 'all',
+            'none' => 'none',
+            'selected' => array_values(array_filter($form->all()['alert_destinations'] ?? [], 'is_string')),
+            default => null,
+        };
+        try {
+            if ($destinations === null || $destinations === []) {
+                throw new \InvalidArgumentException('Choose which alert destinations hear about a server that stops pulling: every one, none, or the ones you tick.');
+            }
+            $validated = ClusterSettings::validateSettings([
+                ClusterSettings::MAX_AGE_KEY => trim((string) $form->get('max_age_minutes')),
+                ClusterSettings::COLLECTION_PORT_KEY => trim((string) $form->get('collection_port')),
+                ClusterSettings::ALERT_DESTINATIONS_KEY => $destinations,
+            ], array_keys($this->alerts?->destinations() ?? []));
+            $this->config->updateMany(static fn (): array => $validated);
+            $this->addFlash('success', 'The cluster settings were saved. The other servers take them up on their next pull.');
+        } catch (\InvalidArgumentException|\RuntimeException $e) {
+            $this->addFlash('error', $e->getMessage());
+        }
+
+        return $this->toCluster();
+    }
+
+    #[Route('/dashboard/updates/cluster/servers/add', name: 'app_updates_cluster_server_add', methods: ['POST'])]
+    public function addClusterServer(Request $request): Response
+    {
+        $this->denyUnlessPermitted();
+        if (!$this->validClusterToken($request)) {
+            return $this->toCluster();
+        }
+        $form = $request->request;
+        try {
+            $server = (new ClusterServerList($this->config))->add(
+                trim((string) $form->get('name')),
+                trim((string) $form->get('address')),
+                (string) $form->get('role'),
+                trim((string) $form->get('port')),
+            );
+            $request->attributes->set(AdminAuditSubscriber::SUBJECT, $server['name']);
+            $this->addFlash('success', sprintf('%s (%s) may now pull configuration from %s.', $server['name'], $server['role'], $server['address']));
+            if ($server['role'] === ServerRole::COLLECTION) {
+                $this->addFlash('warning', 'Download the balancer configuration again and install it on the balancer, so it sends traffic to '.$server['name'].' too.');
+            }
+        } catch (\InvalidArgumentException|\RuntimeException $e) {
+            $this->addFlash('error', $e->getMessage());
+        }
+
+        return $this->toCluster();
+    }
+
+    #[Route('/dashboard/updates/cluster/servers/{name}/remove', name: 'app_updates_cluster_server_remove', requirements: ['name' => '[a-z0-9][a-z0-9.-]{0,62}'], methods: ['POST'])]
+    public function removeClusterServer(Request $request, string $name): Response
+    {
+        $this->denyUnlessPermitted();
+        if (!$this->validClusterToken($request)) {
+            return $this->toCluster();
+        }
+        try {
+            (new ClusterServerList($this->config))->remove($name);
+            $request->attributes->set(AdminAuditSubscriber::SUBJECT, $name);
+            $this->addFlash('success', $name.' may no longer pull configuration. If it was a collection server, download the balancer configuration again and install it on the balancer.');
+        } catch (\InvalidArgumentException|\RuntimeException $e) {
+            $this->addFlash('error', $e->getMessage());
+        }
+
+        return $this->toCluster();
+    }
+
+    /** The balancer's configuration, as app:server:balancer-config prints it. */
+    #[Route('/dashboard/updates/cluster/balancer/{format}', name: 'app_updates_cluster_balancer', requirements: ['format' => 'nginx|caddy|caddy-rate-limit'], methods: ['GET'])]
+    public function balancerConfiguration(string $format): Response
+    {
+        $this->denyUnlessPermitted();
+        try {
+            $balancer = BalancerConfig::forInstallation($this->config);
+            $text = $format === 'nginx' ? $balancer->nginx() : $balancer->caddy($format === 'caddy-rate-limit');
+        } catch (\InvalidArgumentException $e) {
+            $this->addFlash('error', $e->getMessage());
+
+            return $this->toCluster();
+        }
+        $response = new Response($text);
+        $response->headers->set('Content-Type', 'text/plain; charset=UTF-8');
+        $response->headers->set('Content-Disposition', $response->headers->makeDisposition('attachment', $format === 'nginx' ? 'aggregate-balancer.conf' : 'Caddyfile'));
+        $response->headers->set('Cache-Control', 'private, no-store');
+        $response->headers->set('X-Content-Type-Options', 'nosniff');
+
+        return $response;
+    }
+
+    private function validClusterToken(Request $request): bool
+    {
+        $token = $request->request->get('_csrf_token');
+        if (is_string($token) && $this->isCsrfTokenValid(self::CLUSTER_CSRF_TOKEN_ID, $token)) {
+            return true;
+        }
+        $this->addFlash('error', 'Invalid security token. Please try again.');
+
+        return false;
+    }
+
+    private function toCluster(): Response
+    {
+        return $this->redirect($this->generateUrl('app_updates').'#cluster-servers');
+    }
+
+    /**
+     * The cluster's settings, on an administration server, for the Servers
+     * panel's forms.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function clusterSettings(): ?array
+    {
+        if ($this->role?->role !== ServerRole::ADMINISTRATION) {
+            return null;
+        }
+        $settings = new ClusterSettings($this->config);
+        try {
+            $destinations = $this->alerts?->destinations() ?? [];
+        } catch (\Throwable) {
+            $destinations = [];
+        }
+
+        return [
+            'max_age_minutes' => $settings->maxAgeMinutes(),
+            'alert_destinations' => $settings->alertDestinations(),
+            'collection_port' => $settings->collectionPort(),
+            'destinations' => array_keys($destinations),
+            'key_set' => $settings->key() !== null,
+            'roles' => ClusterSettings::SERVER_ROLES,
+        ];
+    }
+
     /**
      * The other servers of a cluster, when this administration server has
      * any in its list, so the page shows which still need --files-only.
@@ -373,7 +526,12 @@ final class UpdatesController extends AbstractController
     private function clusterOverview(): ?array
     {
         $overview = $this->cluster?->overview();
+        if ($overview === null) {
+            return null;
+        }
 
-        return $overview !== null && $overview['servers'] !== [] ? $overview : null;
+        // An administration server shows the panel with an empty list too,
+        // so its first server can be added here.
+        return $overview['servers'] !== [] || $this->role?->role === ServerRole::ADMINISTRATION ? $overview : null;
     }
 }

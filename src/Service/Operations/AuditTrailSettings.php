@@ -162,7 +162,7 @@ class AuditTrailSettings
      *
      * @throws \InvalidArgumentException
      */
-    private static function validate(mixed $value): array
+    public static function validate(mixed $value): array
     {
         if (!is_array($value) || ($value !== [] && array_is_list($value))) {
             throw new \InvalidArgumentException(self::KEY.' must be a mapping of areas to true or false.');

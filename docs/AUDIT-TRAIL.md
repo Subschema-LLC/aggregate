@@ -147,7 +147,13 @@ and staff-data policies.
 Console commands that change something are recorded with the operating-system
 account that ran them, when they finish, with their exit status:
 `app:install`, `app:user:create`, `app:user:reset-password`,
-`app:create-website`, `app:website-scopes` (except `list`),
+`app:create-website`, `app:website domains` and `delete`, `app:user:profile`
+with a change, `app:website-scopes` (except `list`), `app:config set`, `unset`,
+`import` and `secret` (recorded as the same action as the section's page, with
+the setting as the subject), `app:collection-address` and `app:queue:retention`
+with a value, `app:cluster:settings` with an option, `app:cluster:server add`
+and `remove`, `app:cluster:key` (except `--show`), `app:cluster:join`,
+`app:internal-traffic:share-link rotate` and `revoke`,
 `app:reporting-database:configure`, `app:analytics:reporting-timezone` with a
 time zone, `app:analytics:mysql-timezones:load`, the view regeneration and
 glossary sync commands (not their `--dry-run`, `--check` or export modes),

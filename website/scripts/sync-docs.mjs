@@ -3,8 +3,9 @@
 //
 //  - links between published documents become site routes (anchors kept);
 //  - links to other repository files and folders open them on GitHub;
-//  - images from docs/images are copied into the site; external images (badges)
-//    are dropped so the site makes no third-party requests;
+//  - images from docs/images, in Markdown or in HTML src and srcset, are
+//    copied into the site; external Markdown images (badges) are dropped so
+//    the site makes no third-party requests;
 //  - each page gets front matter (title, description, source path);
 //  - links whose target file or heading does not exist, including links to a
 //    heading on the same page, are reported, and fail the run with --strict
@@ -110,6 +111,13 @@ function rewriteLine(line, source) {
   outsideCode(/(!\[[^\]]*\]\()([^)\s]+)(\))/g, (match, open, target, close) => open + rewriteTarget(target, source, true) + close);
   outsideCode(/((?<!!)\[(?:[^[\]]|\[[^\]]*\])*\]\()([^)\s]+)(\))/g, (match, open, target, close) => open + rewriteTarget(target, source, false) + close);
   outsideCode(/^(\s*\[[^\]]+\]:\s*)(\S+)/, (match, open, target) => open + rewriteTarget(target, source, false));
+  // HTML images, such as the README's <picture> logo: src holds one address,
+  // srcset a comma-separated list of addresses with optional descriptors.
+  outsideCode(/(<(?:img|source)\b[^>]*?\bsrc=")([^"]+)(")/gi, (match, open, target, close) => open + rewriteTarget(target, source, true) + close);
+  outsideCode(/(<(?:img|source)\b[^>]*?\bsrcset=")([^"]+)(")/gi, (match, open, list, close) => open + list.split(',').map((candidate) => {
+    const [target, ...descriptor] = candidate.trim().split(/\s+/);
+    return [rewriteTarget(target, source, true), ...descriptor].join(' ');
+  }).join(', ') + close);
 
   return line;
 }

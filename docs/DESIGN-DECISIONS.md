@@ -1233,34 +1233,66 @@ column or a message field takes two releases.
 **What would change it.** Blue-green deployments that switch whole servers
 behind the balancer, which would make maintenance mode unnecessary.
 
-### Every cluster setting has a command as well as YAML
+### Every cluster setting has a command, YAML and, on the administration server, a page
 
 **Decision.** Each cluster setting is a YAML setting or environment variable,
 and a command sets it with the same validation: `app:cluster:join` for a
 server's own role, name and administration address, `app:cluster:key`,
-`app:cluster:server` for the server list, `app:cluster:settings` for the
-pause limit, alert destinations and collection port, and
-`app:collection-address`. Only the collection address is also on a dashboard
-page (General settings). A server's own settings (`server_role`,
+`app:cluster:server` for the server list, `app:cluster:settings` (or
+`app:config set cluster.<setting>`) for the pause limit, alert destinations
+and collection port, and `app:collection-address`. On the administration
+server, the Updates page's Servers panel adds and removes servers, changes
+those three settings and downloads the balancer's configuration, through the
+same services (`ClusterServerList`, `ClusterSettings::validateSettings()`,
+`BalancerConfig::forInstallation()`). A server's own settings (`server_role`,
 `cluster_server_name`, `administration_url`) may be in its YAML instead of
 `.env.local`; the configuration pull keeps them, so either way survives the
-next minute. `queue_retention_days` follows the ordinary rule: YAML,
-`QUEUE_RETENTION_DAYS`, the Data lifecycle page and `app:queue:retention`.
+next minute.
 
 **Why.** A cluster is set up from a shell or by a hosting tool, often before
 any dashboard exists, and collection and worker servers have no dashboard at
-all. Commands give scripts and PRAGMA the same checks a page would.
+all. Commands give scripts and PRAGMA the same checks a page would, and the
+page gives the administrator who runs the dashboard the same reach.
 
-**Trade-off.** The server list, pause limit, alert destinations and port have
-no dashboard page; the Updates page lists the servers but does not change
-them. That is an exception to the rule that operator settings are also in the
-dashboard, recorded here. `CLUSTER_KEY` and the variables `app:cluster:join`
-writes (`DATABASE_URL`, `TRUSTED_PROXIES`, `APP_SECRET`,
-`MESSENGER_TRANSPORT_DSN`) stay out of YAML on purpose: they are secrets or
-per-server, and YAML is copied to every server.
+**Trade-off.** A server's own role, name and administration address,
+`CLUSTER_KEY`, and the variables `app:cluster:join` writes (`DATABASE_URL`,
+`TRUSTED_PROXIES`, `APP_SECRET`, `MESSENGER_TRANSPORT_DSN`) have no page: they
+belong to one server or are secrets, and the dashboard runs only on the
+administration server. They also stay out of YAML on purpose, because YAML is
+copied to every server.
 
-**What would change it.** Operators who manage clusters from the dashboard,
-which would add a page over the same services.
+**What would change it.** A way to set up a server from the administration
+server's dashboard, which would need a channel to that server this design does
+not have.
+
+### One command for every page's settings
+
+**Decision.** `app:config` reaches every setting a dashboard page changes: one
+section per page (`App\Service\Settings\SettingsSection`), named by its YAML
+keys, that calls the page's own service, so `get`, `set`, `import`, `export`,
+`unset` (for a website or group) and `secret` check and save exactly as the
+page does, and record the page's audit action. Where a page kept its checks in
+the controller (General settings, Branding, the data model's view update, the
+tag manager's custom-code guard), they moved into a service both use.
+Records with a lifecycle of their own (websites, users, tokens, alerts, the
+cluster's servers) keep their own commands. `SettingsParityTest` maps every
+page action to its command and fails for a new one without.
+
+**Why.** Scott asked for parity between the dashboard, YAML and the command
+line, and chose one generic command over a command per page: one place to
+learn and to maintain, and no way for a page to grow a setting the command
+line cannot reach without the test noticing.
+
+**Trade-off.** A section saves what its page saves, including the page's
+habit of writing every field it shows (Collection controls, Feature flags,
+the organization-traffic marker), so a command that changes one key can pin
+the others' current values in YAML. Values are typed as YAML, so text YAML
+reads differently must be quoted. Two things stay in the browser: Google's
+consent screen for BigQuery and approving an AI assistant's sign-in. The update
+signing key stays out of the dashboard.
+
+**What would change it.** A setting that cannot be expressed as YAML values,
+which would need a command of its own and an entry in the parity test.
 
 ### A small dashboard menu that says why an entry is missing
 

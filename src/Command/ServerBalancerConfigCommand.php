@@ -8,8 +8,6 @@ use App\Service\AggregateConfigLoader;
 use App\Service\Cluster\BalancerConfig;
 use App\Service\Cluster\ClusterServers;
 use App\Service\Cluster\ClusterSettings;
-use App\Service\Cluster\ServerRole;
-use App\Service\CollectionAddress;
 use App\Service\DocumentationLinks;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -101,36 +99,7 @@ final class ServerBalancerConfigCommand extends Command
 
     private function balancer(): BalancerConfig
     {
-        $collection = new CollectionAddress($this->config);
-        $collectionUrl = $collection->configuredValue();
-        if ($collectionUrl === '') {
-            throw new \InvalidArgumentException('Set the collection address to the balancer\'s address first, such as: php bin/console app:collection-address https://collect.example.com');
-        }
-        $normalized = $collection->baseUrl();
-        if ($normalized === null) {
-            throw new \InvalidArgumentException(CollectionAddress::RULE);
-        }
-        $appHost = $this->config->getWithEnvFallback('app_host', '');
-        $administrationHost = is_string($appHost) ? parse_url($appHost, \PHP_URL_HOST) : null;
-        if (is_string($administrationHost) && strcasecmp($administrationHost, (string) parse_url($normalized, \PHP_URL_HOST)) === 0) {
-            throw new \InvalidArgumentException(sprintf(
-                'The collection address has the administration server\'s host name (%s). Give the balancer a host name of its own, such as collect.%s, so the dashboard stays on the administration server.',
-                $administrationHost,
-                preg_replace('/^[^.]+\./', '', $administrationHost),
-            ));
-        }
-        $settings = new ClusterSettings($this->config);
-        $rate = $this->config->getWithEnvFallback('rate_limit_per_minute', 100);
-
-        return new BalancerConfig(
-            $normalized,
-            array_values(array_map(
-                static fn (array $server): array => ['name' => $server['name'], 'address' => $server['address'], 'port' => $server['port']],
-                $settings->serversWithRole(ServerRole::COLLECTION),
-            )),
-            is_numeric($rate) ? (int) $rate : 100,
-            $settings->collectionPort(),
-        );
+        return BalancerConfig::forInstallation($this->config);
     }
 
     /** @return list<string> */

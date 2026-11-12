@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Service\Cluster;
 
+use App\Service\AggregateConfigLoader;
+use App\Service\CollectionAddress;
+
 /**
  * The reference configuration of the balancer in front of a cluster's
  * collection servers, for Nginx or Caddy, built from the collection address
@@ -101,6 +104,45 @@ final class BalancerConfig
         $this->port = isset($parts['port']) ? (int) $parts['port'] : null;
         $this->servers = $list;
         $this->suffix = trim((string) preg_replace('/[^a-z0-9]+/', '_', $host), '_');
+    }
+
+    /**
+     * The balancer of this installation's cluster: the collection address,
+     * the collection servers in the `cluster` list and rate_limit_per_minute,
+     * for app:server:balancer-config and the Updates page alike.
+     */
+    public static function forInstallation(AggregateConfigLoader $config): self
+    {
+        $collection = new CollectionAddress($config);
+        $collectionUrl = $collection->configuredValue();
+        if ($collectionUrl === '') {
+            throw new \InvalidArgumentException('Set the collection address to the balancer\'s address first, such as: php bin/console app:collection-address https://collect.example.com');
+        }
+        $normalized = $collection->baseUrl();
+        if ($normalized === null) {
+            throw new \InvalidArgumentException(CollectionAddress::RULE);
+        }
+        $appHost = $config->getWithEnvFallback('app_host', '');
+        $administrationHost = is_string($appHost) ? parse_url($appHost, \PHP_URL_HOST) : null;
+        if (is_string($administrationHost) && strcasecmp($administrationHost, (string) parse_url($normalized, \PHP_URL_HOST)) === 0) {
+            throw new \InvalidArgumentException(sprintf(
+                'The collection address has the administration server\'s host name (%s). Give the balancer a host name of its own, such as collect.%s, so the dashboard stays on the administration server.',
+                $administrationHost,
+                preg_replace('/^[^.]+\./', '', $administrationHost),
+            ));
+        }
+        $settings = new ClusterSettings($config);
+        $rate = $config->getWithEnvFallback('rate_limit_per_minute', 100);
+
+        return new self(
+            $normalized,
+            array_values(array_map(
+                static fn (array $server): array => ['name' => $server['name'], 'address' => $server['address'], 'port' => $server['port']],
+                $settings->serversWithRole(ServerRole::COLLECTION),
+            )),
+            is_numeric($rate) ? (int) $rate : 100,
+            $settings->collectionPort(),
+        );
     }
 
     public function host(): string

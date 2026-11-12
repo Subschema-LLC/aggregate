@@ -184,6 +184,67 @@ final class ClusterSettings
     }
 
     /**
+     * The pause limit, alert destinations and collection port, as entered on
+     * the Updates page or with app:config and app:cluster:settings.
+     *
+     * @param array<string, mixed> $changes
+     * @param list<string> $destinations the alert destinations' ids
+     *
+     * @return array<string, mixed>
+     */
+    public static function validateSettings(array $changes, array $destinations): array
+    {
+        $validated = [];
+        if (array_key_exists(self::MAX_AGE_KEY, $changes)) {
+            $validated[self::MAX_AGE_KEY] = self::validMaxAgeMinutes($changes[self::MAX_AGE_KEY]);
+        }
+        if (array_key_exists(self::ALERT_DESTINATIONS_KEY, $changes)) {
+            $validated[self::ALERT_DESTINATIONS_KEY] = self::validAlertDestinations($changes[self::ALERT_DESTINATIONS_KEY], $destinations);
+        }
+        if (array_key_exists(self::COLLECTION_PORT_KEY, $changes)) {
+            $validated[self::COLLECTION_PORT_KEY] = self::validCollectionPort($changes[self::COLLECTION_PORT_KEY]);
+        }
+
+        return $validated;
+    }
+
+    /**
+     * The alert destinations a server that stopped pulling is reported to, as
+     * entered: "all" (null, every destination), "none" ([]), ids separated by
+     * commas, or a YAML list of ids, each one a destination that exists.
+     *
+     * @param list<string> $known the ids of the alert destinations
+     *
+     * @return list<string>|null null for every destination
+     */
+    public static function validAlertDestinations(mixed $value, array $known): ?array
+    {
+        if ($value === null || (is_string($value) && trim($value) === 'all')) {
+            return null;
+        }
+        if (is_string($value) && trim($value) === 'none') {
+            return [];
+        }
+        $ids = is_array($value) ? $value : explode(',', is_string($value) ? $value : '');
+        if (array_filter($ids, 'is_string') !== $ids) {
+            throw new \InvalidArgumentException('cluster_alert_destinations is a list of alert destination ids, "all" or "none".');
+        }
+        $ids = array_values(array_unique(array_filter(array_map('trim', $ids), static fn (string $id): bool => $id !== '')));
+        if ($ids === [] && !is_array($value)) {
+            throw new \InvalidArgumentException('Name the alert destinations, separated by commas, or use "all" or "none".');
+        }
+        $unknown = array_diff($ids, $known);
+        if ($unknown !== []) {
+            throw new \InvalidArgumentException(sprintf(
+                'No alert destination is called %s. Destinations are listed by app:alerts:destination list.',
+                implode(', ', $unknown),
+            ));
+        }
+
+        return $ids;
+    }
+
+    /**
      * The alert destinations told about a server that stopped pulling, or
      * null for every destination.
      *
