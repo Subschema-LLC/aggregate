@@ -955,6 +955,8 @@ only and never grant access.
 
 The `brand` entry controls where the branded identity links. Its `label` remains a backward-compatible name/wordmark fallback for existing deployments. Runtime identity, logo, theme-color, and font settings live in `config/aggregate.yaml` (or their environment overrides), so UI changes do not require rebuilding navigation configuration. Edit `items` and `account` to manage the remaining authenticated-navbar links. Each link defines exactly one Symfony `route` name (for example, `app_how_it_works`), literal `url`, or documentation topic (`docs`, see [documentation links](#documentation-links)); `label` is required, while `icon`, `route_parameters`, and an optional security `role` are supported. A link to a dashboard page also appears only for users who can view that page ([users and permissions](USERS-AND-PERMISSIONS.md)), so the shipped menu names a role only for Users. Existing flat configurations and an empty `items` list remain supported.
 
+Inside a group, a `heading` entry (`- heading: 'Settings'`) names the links after it, up to the next heading; a heading whose links are all hidden from the user is left out. The `account` entry's `logout` link may point at the sign-out route or another exit, such as a single sign-on logout page. When it is missing, not a safe link, or not for the signed-in user, the menu shows the default sign-out (`/logout`), so a custom menu can never leave users without one.
+
 Top-level items can instead group links under `children`. A group has a label
 and optional icon/role/feature, with no route or URL of its own:
 

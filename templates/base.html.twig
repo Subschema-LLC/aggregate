@@ -96,7 +96,7 @@
                 {% endif %}
                 {% for group in nav_menu.items|default([]) %}
                     {% if group.children is defined %}
-                        {% set internal_children = group.children|filter(c => c.enabled and not c.external|default(false) and c.url) %}
+                        {% set internal_children = group.children|filter(c => c.heading is not defined and c.enabled and not c.external|default(false) and c.url) %}
                         {% set matches_group = internal_children|filter(c => c.url == current_path)|length > 0 %}
                         {% if matches_group and internal_children|length > 1 %}
                             {{ component('Ui:SectionTabs', {

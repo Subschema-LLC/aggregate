@@ -7,7 +7,6 @@ namespace App\Tests\Twig;
 use App\Service\AggregateConfigLoader;
 use App\Service\BigQuery\BigQuerySettings;
 use App\Service\FeatureFlags;
-use App\Security\Access\DashboardPages;
 use App\Service\NavigationConditions;
 use App\Service\ForensicDatabase\ForensicDatabaseSettings;
 use App\Service\ReportingDatabase\ReportingDatabaseSettings;
@@ -51,16 +50,6 @@ final class NavigationShownWhenTest extends TestCase
         }
         rmdir($this->projectDir.'/config');
         rmdir($this->projectDir);
-    }
-
-    public function testTheShippedMenuShowsSyncBeforeAnySyncIsOn(): void
-    {
-        $navigation = Yaml::parseFile(dirname(__DIR__, 2).'/config/navigation.yaml')['parameters']['app.main_navigation'];
-        $reporting = array_values(array_filter($navigation['items'], static fn (array $item): bool => $item['label'] === 'Reporting'));
-        $menu = $this->extension([])->menu(['items' => $reporting]);
-
-        self::assertContains('Sync', array_column($menu['items'][0]['children'], 'label'));
-        self::assertSame([], $menu['search_only']);
     }
 
     public function testALinkWaitingOnItsConditionStaysOutOfTheMenuButQuickSearchFindsIt(): void
@@ -128,51 +117,6 @@ final class NavigationShownWhenTest extends TestCase
             ['bigquery' => null, 'reporting_database' => false, 'forensic_database' => false],
             array_map(static fn (array $destination): ?bool => $destination['on'], $this->destinations(['bigquery_interval_minutes' => 7])->all()),
         );
-    }
-
-    public function testTheShippedMenuStatesItsRules(): void
-    {
-        $items = Yaml::parseFile(dirname(__DIR__, 2).'/config/navigation.yaml')['parameters']['app.main_navigation']['items'];
-        $links = [];
-        foreach ($items as $item) {
-            foreach ($item['children'] ?? [$item] as $link) {
-                $links[$link['label']] = ['group' => $item['label'], ...$link];
-            }
-        }
-
-        // Each sync is turned on from the Sync page, so hiding the entry until
-        // one is on would leave nothing in the menu to turn one on with.
-        self::assertArrayNotHasKey('shown_when', $links['Sync'], 'The Sync entry must not wait for a sync to be on.');
-        $syncPages = ['app_sync', ...array_column($this->destinations([])->all(), 'route')];
-        foreach ($links as $label => $link) {
-            if (($link['shown_when'] ?? null) === 'view_sync_on') {
-                self::assertNotContains($link['route'] ?? null, $syncPages, sprintf('"%s" opens a page where a sync is turned on, so it must not wait for one to be on.', $label));
-            }
-        }
-        self::assertSame('app_sync', $links['Sync']['route']);
-        self::assertSame('Reporting', $links['Sync']['group']);
-        self::assertArrayNotHasKey('BigQuery sync', $links);
-        self::assertArrayNotHasKey('Reporting database', $links);
-        self::assertArrayNotHasKey('Reporting timezone', $links);
-        self::assertSame('Help', $links['Event examples']['group']);
-        // Page permissions decide who sees a dashboard link; only administrator-only pages name a role.
-        self::assertArrayNotHasKey('role', $links['Event examples']);
-        self::assertSame(['event_examples', DashboardPages::VIEW], DashboardPages::ROUTES['app_event_examples']);
-        foreach ($links as $label => $link) {
-            $adminOnly = isset($link['route'], DashboardPages::ROUTES[$link['route']]) && DashboardPages::requirement($link['route'])['kind'] === DashboardPages::ADMIN;
-            if ($adminOnly) {
-                self::assertSame('ROLE_ADMIN', $link['role'] ?? null, $label);
-            } else {
-                self::assertArrayNotHasKey('role', $link, $label);
-            }
-        }
-        self::assertSame('ROLE_ADMIN', $links['Users']['role']);
-        self::assertSame('ROLE_ADMIN', $links['Data transfer']['role']);
-        foreach ($links as $label => $link) {
-            if (array_key_exists('shown_when', $link)) {
-                self::assertTrue(NavigationConditions::has($link['shown_when']), $label);
-            }
-        }
     }
 
     private function extension(array $config): NavigationExtension

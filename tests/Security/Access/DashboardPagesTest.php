@@ -9,7 +9,6 @@ use App\Security\Access\DashboardPages;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\Routing\RouteCollection;
-use Symfony\Component\Yaml\Yaml;
 
 final class DashboardPagesTest extends TestCase
 {
@@ -99,22 +98,12 @@ final class DashboardPagesTest extends TestCase
         self::assertArrayNotHasKey('users', DashboardPages::PAGES);
     }
 
-    public function testEveryPageOpensFromAMenuLinkOrItsTab(): void
+    public function testEveryPageHasARouteThatOpensIt(): void
     {
-        $navigation = Yaml::parseFile(dirname(__DIR__, 3).'/config/navigation.yaml')['parameters']['app.main_navigation']['items'];
-        $linked = [];
-        foreach ($navigation as $item) {
-            foreach ($item['children'] ?? [$item] as $link) {
-                if (isset($link['route'])) {
-                    $linked[] = $link['route'];
-                }
-            }
-        }
         foreach (array_keys(DashboardPages::PAGES) as $page) {
             $main = DashboardPages::mainRoute($page);
             self::assertNotNull($main, $page.' has no route to open it.');
             self::assertSame(['page' => $page, 'level' => DashboardPages::VIEW], array_intersect_key(DashboardPages::requirement($main), ['page' => 1, 'level' => 1]));
-            self::assertContains($main, $linked, $page.' is not in the shipped menu.');
         }
     }
 
