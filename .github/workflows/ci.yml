@@ -70,6 +70,17 @@ jobs:
         run: php bin/phpunit
       - name: Run the rate limiter's APCu tests
         run: php -d apc.enable_cli=1 bin/phpunit tests/Security/IpRateLimiterTest.php
+      - name: Check the balancer configurations with Nginx and Caddy
+        if: matrix.php == '8.3'
+        run: |
+          # Install both without starting their services, which would compete
+          # for port 80; the test only asks each to check a configuration.
+          printf '#!/bin/sh\nexit 101\n' | sudo tee /usr/sbin/policy-rc.d >/dev/null
+          sudo chmod +x /usr/sbin/policy-rc.d
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends nginx-light caddy
+          sudo rm /usr/sbin/policy-rc.d
+          php bin/phpunit tests/Service/Cluster/BalancerConfigTest.php --fail-on-skipped
       - name: Check the production container and compile UI assets
         env:
           APP_ENV: prod

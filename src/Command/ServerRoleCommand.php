@@ -29,8 +29,9 @@ final class ServerRoleCommand extends Command
             ->addOption('json', null, InputOption::VALUE_NONE, 'Print the report as JSON, with a schema_version')
             ->setHelp(<<<'HELP'
                 The role is server_role in config/aggregate.yaml, or SERVER_ROLE, which takes precedence:
-                all (the default), administration, collection, worker or balancer. Run cache:clear after
-                changing it. Exits with 1 when a check the role needs has failed.
+                all (the default), administration, collection or worker. Run cache:clear after changing it.
+                Exits with 1 when a check the role needs has failed. The balancer runs no Aggregate: see
+                app:server:balancer-config on the administration server.
                 HELP);
     }
 
