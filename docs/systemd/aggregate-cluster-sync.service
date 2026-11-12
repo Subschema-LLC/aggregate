@@ -1,0 +1,15 @@
+# Publishes (administration server) or pulls (collection and worker servers)
+# the cluster's configuration once; aggregate-cluster-sync.timer starts it
+# every minute. Use the user PHP runs as on the website, never root.
+[Unit]
+Description=Aggregate Analytics cluster configuration sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/aggregate
+ExecStart=/usr/bin/php bin/console app:cluster:sync --no-interaction
+SyslogIdentifier=aggregate-cluster-sync

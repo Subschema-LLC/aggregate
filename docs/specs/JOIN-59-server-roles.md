@@ -452,8 +452,8 @@ _The work this spec plans, as `- [ ] …` items, each naming the role that does 
 - [x] DBA: confirm retention batch size and locking and whether the failed transport is purged; then a bounded age and purge for queued payloads (slice 6)
 - [x] Back end: the two-servers-one-database fresh-install CI job (slice 7): `tests/Integration/cluster.php`, run by the `Cluster` jobs on MariaDB 10.11 and PostgreSQL 16 with `sync://` and `doctrine://`
 - [ ] DBA: the multi-server load test with the BI query loop, and any measured index change (slice 8)
-- [ ] Docs: the generic Linux cluster guide (G1) and the Plesk cluster guide (G2), each followed once on fresh servers
+- [ ] Docs: the generic Linux cluster guide (G1) and the Plesk cluster guide (G2), each followed once on fresh servers. Written: `docs/CLUSTER.md` and the "Several servers" section of `PLESK-DEPLOYMENT.md`. G1's steps run in CI on one machine (`tests/Integration/cluster.php`). Neither has been followed on separate fresh servers, and G2's balancer directives are untested beside Plesk's own `location /`.
 - [ ] PRAGMA: install with a role, the pull timer and workers (P1); the shared MariaDB and firewall (P2); the balancer site (P3); MCP `plan_aggregate_role` and `apply_plan` with approval in the web interface (P4)
-- [ ] Docs: a server-roles guide, the balancer guide, `docs/DATABASE.md` connection budgets, and `docs/DESIGN-DECISIONS.md` entries for roles and the configuration pull
+- [ ] Docs: a server-roles guide, the balancer guide, `docs/DATABASE.md` connection budgets, and `docs/DESIGN-DECISIONS.md` entries for roles and the configuration pull. Done except `docs/DATABASE.md`: the connection budget is in `docs/CLUSTER.md` and `app:server:role` for now.
 
 _By Claude Code (claude-opus-5-5), in Scott's JOIN-59 session._

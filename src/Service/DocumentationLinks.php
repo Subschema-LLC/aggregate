@@ -93,6 +93,7 @@ final class DocumentationLinks
         'cluster' => ['configure/configuration#server-roles', 'docs/CONFIGURATION.md'],
         'cluster.configuration' => ['configure/configuration#configuration-across-servers', 'docs/CONFIGURATION.md'],
         'cluster.balancer' => ['configure/configuration#the-balancer', 'docs/CONFIGURATION.md'],
+        'cluster.guide' => ['install/several-servers', 'docs/CLUSTER.md'],
         'data-model' => ['configure/data-model', 'docs/DATA-MODEL.md'],
         'data-model.builtin-properties' => ['configure/data-model#built-in-properties', 'docs/DATA-MODEL.md'],
         'data-model.reporting-views' => ['configure/data-model#reporting-views', 'docs/DATA-MODEL.md'],
