@@ -53,13 +53,19 @@ class GoalDefinitions
      * @return array<string, array{label: string, enabled: bool, anonymous: bool}>
      *
      * @throws \InvalidArgumentException when the goals in effect are not valid
+     * @throws \RuntimeException         when a goals file cannot be read
      */
     public function all(): array
     {
         return $this->load()['goals'];
     }
 
-    /** Where the goals in effect come from: the local file, or the shipped defaults. */
+    /**
+     * Where the goals in effect come from: the local file, or the shipped defaults.
+     *
+     * @throws \InvalidArgumentException when the goals in effect are not valid
+     * @throws \RuntimeException         when a goals file cannot be read
+     */
     public function source(): string
     {
         return $this->load()['source'];
