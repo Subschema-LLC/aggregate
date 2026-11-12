@@ -177,10 +177,15 @@ checkout, or a small accessibility fix. Keep each PR focused and target
 ## Scaling in three phases
 
 One server comes first: most installations never need more, and the
-single-server release ZIP stays the default. Each phase starts only when
-[load testing](docs/LOAD-TESTING.md) shows the one before it has run out, and
-every step stays optional. A server's limit today is its CPU, mostly PHP's time
-per event, not its memory or database, so the first phase cuts that.
+single-server release ZIP stays the default. Each phase starts on a measurement,
+and every step stays optional. Phase 2 starts when
+[load testing](docs/LOAD-TESTING.md) shows one server has run out. Phase 3
+starts, for each database engine and mode, where the
+[database headroom](docs/LOAD-TESTING.md#database-headroom) test shows a shared
+database keeps up with about twice one application server's load; where it does
+not, phase 3 waits there for phase 2's batching. A server's limit today is its
+CPU, mostly PHP's time per event, not its memory or database, so the first phase
+cuts that.
 
 - **Phase 1: more events per server.** Cut PHP time per collection request,
   with no new service, PHP extension, setting or install step. Target: at least
@@ -222,13 +227,14 @@ per event, not its memory or database, so the first phase cuts that.
   - *FrankenPHP worker mode* for native FrankenPHP installations, after a state
     audit and an entry in the load-test matrix. Like preloading, it keeps old
     code after an in-place update, so the update must restart the workers.
-  - *Measurements still missing:* a large events table (10 and 50 million rows)
-    on 8 and 32 GB of memory, with the reporting views and
-    `app:analytics:maintain` running during load; `doctrine://` with background
-    workers; FrankenPHP, Apache, SQL Server and MariaDB, and other PHP-FPM worker
-    counts; requests for the tracker, consent and tag manager scripts, and
-    dashboard use, during load; and an installation with many registered
-    websites.
+  - *Measurements still missing:* the
+    [database headroom](docs/LOAD-TESTING.md#database-headroom) suite covers a
+    10 million row events table, BI reads during load and `doctrine://` with
+    consumers, on one machine. Still missing: 50 million rows on 8 and 32 GB of
+    memory, with `app:analytics:maintain` running during load; FrankenPHP,
+    Apache, SQL Server and MariaDB, and other PHP-FPM worker counts; requests for
+    the tracker, consent and tag manager scripts, and dashboard use, during
+    load; and an installation with many registered websites.
 - **Phase 2: one application server, separated workloads.** Still one
   installation, with the heaviest work moved off the collection request and off
   the application database.
@@ -269,44 +275,45 @@ per event, not its memory or database, so the first phase cuts that.
     timestamps; and keep broker credentials in `config/secrets`. Delivery is at
     least once, so consumers must not count a redelivered message twice.
 - **Phase 3: separate server roles.** Several servers sharing one database,
-  each running the same release with a role.
+  each running the same release with a role. Planned in
+  [JOIN-59](docs/specs/JOIN-59-server-roles.md).
   - *Roles:* one setting, `server_role` in YAML with an environment override,
     chooses `all` (the default, today's single server), `administration` (the
-    dashboard, setup and updates), `collection` (`/api/receive` and the browser
-    scripts, with `DASHBOARD_ENABLED=0`), `worker` (`messenger:consume` and the
-    scheduled task) or `balancer`. The YAML-first design already lets a
-    collection server run without a login page.
+    dashboard, setup, updates, the scheduled task, the reporting API and the MCP
+    server), `collection` (`/api/receive` and the browser scripts, with no
+    dashboard), `worker` (`messenger:consume`) or `balancer`. SQLite supports
+    only `all`. The YAML-first design already lets a collection server run
+    without a login page.
   - *The balancer role:* a reference configuration for the web server already
     in front, rather than a proxy of Aggregate's own: Caddy on FrankenPHP
     servers, Nginx on Nginx and PHP-FPM servers and in hosting panels. It
-    spreads collection requests over the collection servers, keeps access logs
-    off, sets forwarded headers and trusted proxies so rate limits and
-    geography see the visitor's address, checks each server's `/api/health`
-    passively, and sends the administration hostname to the administration
-    server. One balancer is a single point of failure, as one server is today;
+    spreads collection requests over the collection servers, limits
+    `/api/receive` per address, keeps access logs off, sets forwarded headers
+    and trusted proxies so geography sees the visitor's address, checks each
+    server's `/api/health` passively, and sends the administration hostname to
+    the administration server. Websites reach it at `collection_base_url`. One balancer is a single point of failure, as one server is today;
     document the hosting provider's load balancer for high availability.
   - *Shared state to solve first:*
     - *Configuration.* YAML lives on each server's disk, and the dashboard writes
-      it locally. Collection servers need identical files with one writer:
-      deployed from version control, a read-only shared mount, or a sync from the
-      administration server.
-    - *Rate limiting.* Buckets are files under `var/rate_limit`, so each server
-      counts on its own and a load balancer multiplies the effective limit. The
-      reporting API and MCP limits are in each server's cache too. Use a shared
-      store with the same HMAC keys, or limit at the load balancer.
+      it locally. The administration server stays its only writer; the others
+      pull it every minute, signed with a shared key, and stop collecting, with
+      an alert, when they fall behind a newer version it has recorded.
+    - *Rate limiting.* Buckets are per server (APCu when PHP's workers share it,
+      otherwise files under `var/rate_limit`), so several collection servers
+      would multiply the effective limit. Collection is limited at the balancer,
+      and each server's own limiter stays as a backstop. The reporting API and
+      MCP run only on the administration server, so their limits are unchanged.
     - *Credentials.* API tokens and assistant sign-ins are YAML files in
-      `config/secrets`, written by the server that handles the request; an
-      assistant renewing its tokens writes about once an hour. They need one
-      shared copy, such as a shared mount, before API or MCP traffic is spread
-      over several servers.
+      `config/secrets`, written by the server that handles the request. The
+      reporting API, MCP and their sign-in run only on the administration
+      server, so those files never leave it.
     - *Updates.* Servers must not serve different releases' tracker and schema
       against one database. Only the administration server runs migrations,
       once; then the code rolls across the others.
-    - *Scheduled jobs.* Maintenance already holds a database lease, and jobs lock
-      through `processing_tasks`, so they should run safely from any worker;
-      confirm that under load. The scheduler's own lock and its record of runs
-      are files in `var/scheduler`, per server, so the Scheduled tasks page
-      reports only the server it runs on.
+    - *Scheduled jobs.* The scheduled task runs on the administration server,
+      where its credentials are; worker servers run only Messenger consumers.
+      The scheduler's lock and its record of runs are files in `var/scheduler`,
+      so the Scheduled tasks page reports the one server that runs it.
   - *Hosting panels and agents:* a command that reports the server's role and
     what it needs from the others, with JSON output, gives a hosting panel
     (PRAGMA first) what it needs to set up roles, workers, firewall rules

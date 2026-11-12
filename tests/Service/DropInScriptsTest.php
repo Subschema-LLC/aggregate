@@ -26,7 +26,7 @@ final class DropInScriptsTest extends TestCase
     protected function setUp(): void
     {
         $this->environment = [$_ENV, $_SERVER];
-        foreach (['APP_HOST', 'JS_NAMESPACE', 'BRAND_NAME', 'ANONYMOUS_TRACKING_ENABLED', 'ANONYMOUS_EXCLUDED_PATHS'] as $key) {
+        foreach (['APP_HOST', 'COLLECTION_BASE_URL', 'JS_NAMESPACE', 'BRAND_NAME', 'ANONYMOUS_TRACKING_ENABLED', 'ANONYMOUS_EXCLUDED_PATHS'] as $key) {
             unset($_ENV[$key], $_SERVER[$key]);
         }
         $this->directory = sys_get_temp_dir().'/aggregate-drop-ins-'.bin2hex(random_bytes(8));
@@ -356,6 +356,35 @@ final class DropInScriptsTest extends TestCase
         self::assertSame($plain, $scripts->standaloneConsentScript(false, $siteId));
         $this->expectException(\InvalidArgumentException::class);
         $scripts->snippet('public-website-token', false, 'window', 'unsupported');
+    }
+
+    public function testTheCollectionAddressReplacesTheApplicationHostInEveryCollectionUrl(): void
+    {
+        $scripts = $this->scripts(['collection_base_url' => 'https://collect.example.test/']);
+        $siteId = SiteScriptConfig::idForToken('public-website-token');
+        $generated = $scripts->snippet('public-website-token')
+            .$scripts->snippet('public-website-token', true)
+            .$scripts->snippet('public-website-token', false, 'query', 'standalone')
+            .$scripts->trackerUrl('public-website-token')
+            .$scripts->tagLoader();
+
+        self::assertStringContainsString('"endpoint":"https://collect.example.test/api/receive"', $generated);
+        self::assertStringContainsString('https://collect.example.test/cmp-lite/sites/'.$siteId.'/consent.js?min=1', $generated);
+        self::assertStringContainsString('https://collect.example.test/standalone-cmp/sites/'.$siteId.'/consent.js?min=1', $generated);
+        self::assertStringContainsString('https://collect.example.test/tms-lite/sites/'.$siteId.'/lib.js?min=1', $generated);
+        self::assertStringContainsString('https://collect.example.test/aggregate.js?min=1', $generated);
+        self::assertStringContainsString('endpoint=https%3A%2F%2Fcollect.example.test%2Fapi%2Freceive', $generated);
+        self::assertStringContainsString('"https://collect.example.test/lib.js?min=1"', $generated);
+        self::assertStringNotContainsString('analytics.example.test', $generated, 'no collection URL names the administration host');
+    }
+
+    public function testAnInvalidCollectionAddressStopsSnippetsInsteadOfUsingTheApplicationHost(): void
+    {
+        $scripts = $this->scripts(['collection_base_url' => 'collect.example.test']);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Set a valid collection address in general settings');
+        $scripts->snippet('public-website-token');
     }
 
     private function scripts(array $config = []): DropInScripts
