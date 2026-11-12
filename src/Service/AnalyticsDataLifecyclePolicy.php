@@ -25,6 +25,8 @@ final class AnalyticsDataLifecyclePolicy
     /** Every other audit trail entry: administrator actions and sign-ins. */
     public const KEY_AUDIT_TRAIL_ADMIN_RETENTION_DAYS = 'audit_trail_admin_retention_days';
     public const KEY_PROCESSING_TASKS_RETENTION_DAYS = 'processing_tasks_retention_days';
+    /** Queued and failed enhanced events in messenger_messages: always purged after this many days. */
+    public const KEY_QUEUE_RETENTION_DAYS = 'queue_retention_days';
 
     public const DEFAULT_ARCHIVING_ENABLED = false;
     public const DEFAULT_ARCHIVE_AFTER_DAYS = 90;
@@ -36,6 +38,9 @@ final class AnalyticsDataLifecyclePolicy
     public const DEFAULT_AUDIT_TRAIL_RETENTION_DAYS = 365;
     public const DEFAULT_AUDIT_TRAIL_ADMIN_RETENTION_DAYS = 730;
     public const DEFAULT_PROCESSING_TASKS_RETENTION_DAYS = 90;
+    public const DEFAULT_QUEUE_RETENTION_DAYS = 7;
+    /** Queued payloads carry enhanced detail outside the events retention rules, so their age is always bounded. */
+    public const MAX_QUEUE_RETENTION_DAYS = 365;
 
     public const MIN_DAYS = 1;
     /** Record retention may be 0: keep everything. */
@@ -56,6 +61,7 @@ final class AnalyticsDataLifecyclePolicy
         self::KEY_AUDIT_TRAIL_RETENTION_DAYS => self::DEFAULT_AUDIT_TRAIL_RETENTION_DAYS,
         self::KEY_AUDIT_TRAIL_ADMIN_RETENTION_DAYS => self::DEFAULT_AUDIT_TRAIL_ADMIN_RETENTION_DAYS,
         self::KEY_PROCESSING_TASKS_RETENTION_DAYS => self::DEFAULT_PROCESSING_TASKS_RETENTION_DAYS,
+        self::KEY_QUEUE_RETENTION_DAYS => self::DEFAULT_QUEUE_RETENTION_DAYS,
     ];
 
     /** @var array<string, string> */
@@ -70,6 +76,7 @@ final class AnalyticsDataLifecyclePolicy
         self::KEY_AUDIT_TRAIL_RETENTION_DAYS => 'audit_trail_retention_days',
         self::KEY_AUDIT_TRAIL_ADMIN_RETENTION_DAYS => 'audit_trail_admin_retention_days',
         self::KEY_PROCESSING_TASKS_RETENTION_DAYS => 'processing_tasks_retention_days',
+        self::KEY_QUEUE_RETENTION_DAYS => 'queue_retention_days',
     ];
 
     public function __construct(private readonly AggregateConfigLoader $config)
@@ -126,6 +133,11 @@ final class AnalyticsDataLifecyclePolicy
         return $this->toArray()[self::KEY_PROCESSING_TASKS_RETENTION_DAYS];
     }
 
+    public function getQueueRetentionDays(): int
+    {
+        return $this->toArray()[self::KEY_QUEUE_RETENTION_DAYS];
+    }
+
     /**
      * Return effective, typed values using YAML defaults and uppercase
      * environment-variable overrides.
@@ -163,6 +175,7 @@ final class AnalyticsDataLifecyclePolicy
      *     audit_trail_retention_days: int,
      *     audit_trail_admin_retention_days: int,
      *     processing_tasks_retention_days: int,
+     *     queue_retention_days: int,
      *     environment_overrides: array<string, bool>
      * }
      */
@@ -278,6 +291,12 @@ final class AnalyticsDataLifecyclePolicy
                 self::KEY_PROCESSING_TASKS_RETENTION_DAYS,
                 self::MIN_RECORD_DAYS,
                 self::MAX_DAYS,
+            ),
+            self::KEY_QUEUE_RETENTION_DAYS => self::parseInteger(
+                $values[self::KEY_QUEUE_RETENTION_DAYS],
+                self::KEY_QUEUE_RETENTION_DAYS,
+                self::MIN_DAYS,
+                self::MAX_QUEUE_RETENTION_DAYS,
             ),
         ];
 

@@ -1182,6 +1182,28 @@ count one event twice when a server fails after receiving it.
 **What would change it.** A balancer that discovers servers from a service
 registry, or a hosting platform's load balancer configured through its API.
 
+### Queued messages are deleted after seven days, always
+
+**Decision.** Daily maintenance, on the administration server, deletes every
+message in `messenger_messages` older than `queue_retention_days` (7 by
+default, 1 to 365), from the `doctrine://` queue and the failed transport
+alike, in batches by primary key, each in its own transaction. It cannot be
+turned off. The setting is on the Data lifecycle page, in YAML with
+`QUEUE_RETENTION_DAYS`, and set by `app:queue:retention`.
+
+**Why.** Queued payloads hold the enhanced detail the events retention
+periods govern, but sat outside them: a backlog behind stopped workers, or
+the failed transport, kept it indefinitely. A cluster with `doctrine://`
+worker servers makes a long backlog likelier (Scott chose a scheduled job and
+seven days over an operator purge).
+
+**Trade-off.** An event whose message is deleted is lost, so workers down for
+a week, or a failure nobody fixed, loses those events. The tracking-failure
+alert is the warning. Seven days is short for a failed transport someone
+means to retry later; they can raise it.
+
+**What would change it.** A broker with its own message expiry (phase 2).
+
 ### The administration server migrates; the other servers update files only
 
 **Decision.** In a cluster, the administration server updates first and runs

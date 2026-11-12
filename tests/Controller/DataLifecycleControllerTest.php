@@ -47,6 +47,7 @@ final class DataLifecycleControllerTest extends TestCase
         AnalyticsDataLifecyclePolicy::KEY_AUDIT_TRAIL_RETENTION_DAYS,
         AnalyticsDataLifecyclePolicy::KEY_AUDIT_TRAIL_ADMIN_RETENTION_DAYS,
         AnalyticsDataLifecyclePolicy::KEY_PROCESSING_TASKS_RETENTION_DAYS,
+        AnalyticsDataLifecyclePolicy::KEY_QUEUE_RETENTION_DAYS,
     ];
 
     private string $projectDir;
@@ -188,6 +189,7 @@ final class DataLifecycleControllerTest extends TestCase
             AnalyticsDataLifecyclePolicy::KEY_AUDIT_TRAIL_RETENTION_DAYS => 0,
             AnalyticsDataLifecyclePolicy::KEY_AUDIT_TRAIL_ADMIN_RETENTION_DAYS => 1095,
             AnalyticsDataLifecyclePolicy::KEY_PROCESSING_TASKS_RETENTION_DAYS => 30,
+            AnalyticsDataLifecyclePolicy::KEY_QUEUE_RETENTION_DAYS => 14,
         ], Yaml::parseFile($this->projectDir.'/config/aggregate.yaml'));
     }
 
@@ -385,6 +387,7 @@ final class DataLifecycleControllerTest extends TestCase
             AnalyticsDataLifecyclePolicy::KEY_AUDIT_TRAIL_RETENTION_DAYS => 365,
             AnalyticsDataLifecyclePolicy::KEY_AUDIT_TRAIL_ADMIN_RETENTION_DAYS => 730,
             AnalyticsDataLifecyclePolicy::KEY_PROCESSING_TASKS_RETENTION_DAYS => 90,
+            AnalyticsDataLifecyclePolicy::KEY_QUEUE_RETENTION_DAYS => 7,
         ];
     }
 
@@ -409,6 +412,7 @@ final class DataLifecycleControllerTest extends TestCase
             AnalyticsDataLifecyclePolicy::KEY_AUDIT_TRAIL_RETENTION_DAYS => '0',
             AnalyticsDataLifecyclePolicy::KEY_AUDIT_TRAIL_ADMIN_RETENTION_DAYS => '1095',
             AnalyticsDataLifecyclePolicy::KEY_PROCESSING_TASKS_RETENTION_DAYS => '30',
+            AnalyticsDataLifecyclePolicy::KEY_QUEUE_RETENTION_DAYS => '14',
         ];
     }
 }
