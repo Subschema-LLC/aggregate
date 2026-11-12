@@ -6,7 +6,12 @@
 #   tests/Load/server/measure.sh OUT_DIR BASE_URL APP_ROOT MODE RATES STAGE_SECONDS [DATABASE_IMAGE]
 #
 # The website token is read from APP_ROOT/var/load-test-token. Set
-# WARMUP_SECONDS to change the warm-up (default 10).
+# WARMUP_SECONDS to change the warm-up (default 10). Set DRAIN_QUEUE=1 when
+# queue consumers run: their CPU is counted apart from PHP-FPM's, and the run
+# waits up to five minutes for the queue to empty before counting CPU and
+# stored events. Set DATABASE_COUNTERS=1, with DATABASE_IMAGE, to read the
+# database's own counters (tests/Load/db_stats.py) just outside the CPU
+# window, into db-before.json and db-after.json.
 set -euo pipefail
 # Logs are not always readable afterwards, so name the failing command in an annotation.
 trap 'status=$?; echo "::error title=$(basename "$0")::line ${LINENO}: ${BASH_COMMAND} (exit ${status})"' ERR
@@ -24,10 +29,17 @@ mkdir -p "$out"
 token=$(cat "$app_root/var/load-test-token")
 
 snapshot() {
-  python3 "$load_dir/cpu_snapshot.py" --php php-fpm --web nginx ${database_image:+--database-image "$database_image"}
+  python3 "$load_dir/cpu_snapshot.py" --php php-fpm --web nginx ${DRAIN_QUEUE:+--cli php} ${database_image:+--database-image "$database_image"}
+}
+
+counters() {
+  if [ -n "${DATABASE_COUNTERS:-}" ] && [ -n "$database_image" ]; then
+    python3 "$load_dir/db_stats.py" --image "$database_image" > "$out/db-$1.json"
+  fi
 }
 
 php "$load_dir/count-events.php" "$app_root" > "$out/before.json"
+counters before
 snapshot > "$out/cpu-before.json"
 vmstat -n -t 1 > "$out/vmstat.log" &
 vmstat_pid=$!
@@ -43,7 +55,24 @@ ulimit -n "$(ulimit -Hn)"
   -e SUMMARY_FILE="$out/k6-summary.json" \
   "$load_dir/receive.js"
 kill "$vmstat_pid"
+if [ -n "${DRAIN_QUEUE:-}" ]; then
+  waited=0
+  until [ "$(php "$load_dir/queue-depth.php" "$app_root")" = 0 ]; do
+    if [ "$waited" -ge 300 ]; then
+      echo "::warning title=$(basename "$0")::The queue was not empty after 300 s; events still queued are not counted."
+      break
+    fi
+    sleep 1
+    waited=$(( waited + 1 ))
+  done
+  echo "Queue drained in ${waited} s" > "$out/drain.txt"
+fi
 snapshot > "$out/cpu-after.json"
+if [ -n "${DATABASE_COUNTERS:-}" ]; then
+  # PostgreSQL publishes an idle connection's counters within ten seconds.
+  sleep 11
+fi
+counters after
 php "$load_dir/count-events.php" "$app_root" > "$out/after.json"
 
 python3 - "$out" <<'PY'
