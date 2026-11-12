@@ -276,10 +276,10 @@ environments:
 
 - `rate_limit_per_minute`: API requests per IP per minute (default: `100`)
 - `app_host`: Public hostname, used in dashboard integration snippets
-- `collection_base_url`: Where websites send events and load the tracker, consent and tag-manager scripts, when that is not `app_host` (default: empty, which means `app_host`; `COLLECTION_BASE_URL` environment override). Set it to a tracking subdomain, or to the balancer in front of several collection servers. Generated snippets and the [organization traffic](#organization-traffic) links use it; sign-in links, alerts and the dashboard keep `app_host`. A value that is not a plain `http(s)` URL stops snippet generation instead of falling back to `app_host`. Copy the tracking code again after changing it. Also on **General settings**
+- `collection_base_url`: Where websites send events and load the tracker, consent and tag-manager scripts, when that is not `app_host` (default: empty, which means `app_host`; `COLLECTION_BASE_URL` environment override). Set it to a tracking subdomain, or to the balancer in front of several collection servers. Generated snippets and the [organization traffic](#organization-traffic) links use it; sign-in links, alerts and the dashboard keep `app_host`. A value that is not a plain `http(s)` URL stops snippet generation instead of falling back to `app_host`. Copy the tracking code again after changing it. Also on **General settings**, and `php bin/console app:collection-address <url>` (or `--clear`)
 - `server_role`: What this server does when several servers share one database (default: `all`; `SERVER_ROLE` environment override). See [server roles](#server-roles)
 - `administration_url`: The administration server's address, which the other servers of a cluster pull configuration from and name in their messages (default: empty; `ADMINISTRATION_URL` environment override). See [server roles](#server-roles)
-- `cluster`, `cluster_config_max_age_minutes`, `cluster_alert_destinations`, `cluster_server_name`: The servers that may pull configuration, how long a server may go without the newest configuration before it pauses collection (default `5`), who is alerted, and this server's name (`CLUSTER_SERVER_NAME` environment override; default the host name). The shared key is `CLUSTER_KEY`, in `.env.local` only. See [configuration across servers](#configuration-across-servers)
+- `cluster`, `cluster_config_max_age_minutes`, `cluster_alert_destinations`, `cluster_server_name`, `cluster_collection_port`: The servers that may pull configuration, with their roles, how long a server may go without the newest configuration before it pauses collection (default `5`), who is alerted, this server's name (`CLUSTER_SERVER_NAME` environment override; default the host name), and the port the balancer reaches the collection servers at (default `80`). The shared key is `CLUSTER_KEY`, in `.env.local` only. Each has a command; see [cluster settings](#cluster-settings)
 - `documentation_url`: Address of the documentation site that dashboard help links and command-line messages point to (default: `https://subschema-llc.github.io/aggregate/`). See [documentation links](#documentation-links)
 - `brand_name`: Application name used in page titles, headings, and explanatory copy (default: `Aggregate Analytics`)
 - `brand_logo_text`: Visible text displayed beside the optional navigation logo; with a valid image, leave it empty for an image-only identity (default: `brand_name`)
@@ -394,7 +394,10 @@ precedence):
 | `administration` | The dashboard and setup, the home page, the reporting API, MCP, branding, `/api/health` | Migrations, updates, the scheduled task; the only server that changes configuration |
 | `collection` | `/api/receive`, the browser scripts, the organization-traffic pages, branding, `/api/health` | Nothing else |
 | `worker` | `/api/health` | Queue consumers (`messenger:consume`) |
-| `balancer` | `/api/health` | Nothing else |
+
+The balancer in front of the collection servers runs no Aggregate, so it has
+no role; the administration server prints its configuration (see
+[the balancer](#the-balancer)).
 
 On every role but `all` and `administration`:
 
@@ -406,7 +409,10 @@ On every role but `all` and `administration`:
   cache, status commands and `app:server:role` run everywhere; `worker` also
   runs the queue consumers;
 - configuration files refuse to change, whatever tries to change them, since
-  configuration is changed on the administration server.
+  configuration is changed on the administration server;
+- updates replace files only (`app:updates:apply --files-only`), after the
+  administration server has updated and run the migrations. See
+  [update several servers](UPDATES.md#update-several-servers).
 
 A role other than `all` needs a database other servers can reach: on SQLite,
 which keeps the database in a file on one server, every role runs as `all`.
@@ -426,10 +432,13 @@ servers pull it every minute. On the administration server:
 
 1. `php bin/console app:cluster:key` creates `CLUSTER_KEY` in `.env.local`, the
    key every request between the servers is signed with; `--show` prints it.
-2. `php bin/console app:cluster:server add collect-1 10.0.0.11` lets a server
-   pull, by its name and the address it connects from (`cluster` in YAML).
-3. Set the collection address (`collection_base_url`) to the balancer's address,
-   so tracking code sends websites there.
+2. `php bin/console app:cluster:server add collect-1 10.0.0.11 --role=collection`
+   lets a server pull, by its name, the address it connects from and its role,
+   `collection` or `worker` (`cluster` in YAML). The balancer's configuration
+   is built from the collection servers here.
+3. `php bin/console app:collection-address https://collect.example.com` sets
+   the collection address (`collection_base_url`) to the balancer's address, so
+   tracking code sends websites there.
 
 On each collection or worker server, with the same release and the shared
 database:
@@ -468,6 +477,79 @@ administration server alerts the [alert destinations](ALERTS.md)
 (`cluster_alert_destinations`, every one by default) when a server has not
 pulled for that long, and again when it is back; `app:cluster:server` lists
 each server's last pull, release and role.
+
+### Cluster settings
+
+Every cluster setting works without the dashboard: it is a YAML setting or an
+environment variable, and a command sets it with the same validation. The
+dashboard's **General settings** also has the collection address.
+
+| Setting | Where | Command |
+| --- | --- | --- |
+| `server_role` | YAML, `SERVER_ROLE` | `app:cluster:join` (writes `SERVER_ROLE`) |
+| `administration_url` | YAML, `ADMINISTRATION_URL` | `app:cluster:join` |
+| `cluster_server_name` | YAML, `CLUSTER_SERVER_NAME` | `app:cluster:join` |
+| `CLUSTER_KEY` | `.env.local` only | `app:cluster:key` |
+| `cluster` (name, address, role) | YAML | `app:cluster:server add` and `remove` |
+| `collection_base_url` | YAML, `COLLECTION_BASE_URL` | `app:collection-address` |
+| `cluster_config_max_age_minutes` (1 to 60, default 5) | YAML | `app:cluster:settings --max-age-minutes` |
+| `cluster_alert_destinations` (default every destination) | YAML | `app:cluster:settings --alert-destinations` (ids, `all` or `none`) |
+| `cluster_collection_port` (default 80) | YAML | `app:cluster:settings --collection-port` |
+
+`php bin/console app:cluster:settings` without options shows them, and
+`--json` prints them as JSON.
+
+### The balancer
+
+The balancer spreads collection traffic over the collection servers. It runs
+no Aggregate: on the administration server,
+
+```bash
+php bin/console app:server:balancer-config --nginx > aggregate-balancer.conf
+php bin/console app:server:balancer-config --caddy > Caddyfile
+```
+
+prints its configuration from the collection address, the collection servers
+in the `cluster` list, `cluster_collection_port` and `rate_limit_per_minute`.
+Run it again after changing any of them, and install the output on the
+balancer. Messages go to standard error, so the output is only the
+configuration.
+
+Both configurations:
+
+- spread requests with least connections, over the private network, keeping
+  the visitor's host name;
+- write no access log;
+- replace `X-Forwarded-For` with the address that connected, and drop
+  `X-Forwarded-Port`, so a visitor cannot choose the address the servers use
+  for rate limits and geography;
+- take a paused server out of rotation.
+
+**Nginx** also limits `POST /api/receive` per address at
+`rate_limit_per_minute`, letting that many through at once and refilling at
+that rate, and answers `429` past it. Rejections are logged at `warn`, below
+the error log's `error` level, so they are not written. Failures to reach the
+collection servers are written, with the address of the request that met
+them. A paused server's `503` sends the event on to the next server, which is
+safe because a paused server recorded nothing; so does a server that fails
+after receiving an event, which can count that one event twice. `--part=http`
+and `--part=server` split the file into the blocks for Nginx's `http` context
+and the directives inside the domain's `server` block, for a hosting panel
+that manages the server block itself. `--certificate` and `--certificate-key`
+name the certificate files; by default they are Let's Encrypt's for the
+collection host. On a server without IPv6, remove the `listen [::]` lines.
+
+**Caddy** gets its certificate itself and checks `/api/health` every five
+seconds, so a paused server leaves the rotation within seconds; its first
+`503` on `/api/receive` reaches the visitor, since Caddy does not resend a
+request it has sent. Stock Caddy has no rate limiter, so each collection
+server's own limit is the only one, counted on each server. With a Caddy built
+with [caddy-ratelimit](https://github.com/mholt/caddy-ratelimit),
+`--caddy-rate-limit` adds the same per-address limit.
+
+On each collection server, set `TRUSTED_PROXIES` to the balancer's private
+address (`app:cluster:join` takes it as `trusted_proxies`), and accept web
+traffic from the balancer only, so its limit cannot be skipped.
 
 ## Feature flags
 

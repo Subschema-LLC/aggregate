@@ -487,6 +487,39 @@ the update, discarding data recorded since. With other databases, restore your o
 backup. If the console itself cannot start, `php scripts/restore-update-files.php`
 restores the files without loading the application.
 
+## Update several servers
+
+When several servers share one database ([server roles](CONFIGURATION.md#server-roles)),
+only the administration server migrates it:
+
+1. Update the administration server as usual, with `--database-backup-confirmed`.
+   It runs the migrations.
+2. Then update each collection and worker server with
+   `php bin/console app:updates:apply --files-only` (or
+   `app:updates:deployed --files-only` for code deployed another way). This
+   skips the database backup, the migrations and the glossary sync.
+   - With release ZIPs, the update stops before changing anything if the
+     database does not have all of the release's migrations yet. Update the
+     administration server first, then run the files-only update again.
+   - With the other methods, the check runs after the files change. If it
+     fails, the server stays in maintenance mode until you run
+     `app:updates:apply --resume` after the administration server has updated.
+3. Update collection servers one at a time. Each answers 503 while its files
+   change, so the balancer sends its traffic to the others; nothing is
+   recorded on a server in maintenance.
+
+`app:updates:apply` refuses the wrong kind of update for the server's role: a
+full update on a collection or worker server, and `--files-only` on the
+administration server or a single server. The **Servers** panel on the
+administration server's Updates page, and `php bin/console app:cluster:server`,
+show each server's release and whether it has the newest configuration.
+
+Until every server runs the new release, servers on the old release keep
+writing events and queueing messages. So a release changes the `events` and
+`messenger_messages` tables only by adding nullable or defaulted columns, and
+queued message classes only gain fields with defaults; CI checks both (see
+[CONTRIBUTING.md](../CONTRIBUTING.md#tests-and-checks)).
+
 ## Command reference
 
 ```bash
@@ -497,6 +530,7 @@ php bin/console app:updates:apply --preflight      # system check as this user; 
 php bin/console app:updates:apply                  # install; add --database-backup-confirmed for non-SQLite databases
 php bin/console app:updates:apply --status         # last update and its log
 php bin/console app:updates:apply --resume         # continue a stopped update
+php bin/console app:updates:apply --files-only     # collection and worker servers, after the administration server
 php bin/console app:updates:rollback               # restore the previous files
 php bin/console app:updates:deployed --show-action # deployed another way: the commands to run after each deployment
 php bin/console app:updates:deployed               # deployed another way: run the post-deployment steps

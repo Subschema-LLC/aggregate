@@ -2,6 +2,17 @@
 
 namespace App\Message;
 
+/**
+ * An enhanced event waiting in the queue for a worker.
+ *
+ * Several servers on different releases share one queue during an update, so
+ * a message written by one release may be read by another. Its fields
+ * therefore only ever grow: a new field comes last, with a default, and is
+ * never renamed, retyped or removed (MessageContractTest checks this against
+ * tests/Fixtures/message-contracts.json). PHP's serializer skips the
+ * constructor, so __wakeup() gives a field an older release did not write
+ * its default.
+ */
 class TrackEventMessage
 {
     public function __construct(
@@ -21,4 +32,14 @@ class TrackEventMessage
         public ?string $geoArea = null,
         public ?bool $internalTraffic = null,
     ) {}
+
+    public function __wakeup(): void
+    {
+        foreach ((new \ReflectionMethod($this, '__construct'))->getParameters() as $parameter) {
+            $property = new \ReflectionProperty($this, $parameter->getName());
+            if (!$property->isInitialized($this) && $parameter->isDefaultValueAvailable()) {
+                $property->setValue($this, $parameter->getDefaultValue());
+            }
+        }
+    }
 }

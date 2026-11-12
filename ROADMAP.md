@@ -281,18 +281,20 @@ cuts that.
     chooses `all` (the default, today's single server), `administration` (the
     dashboard, setup, updates, the scheduled task, the reporting API and the MCP
     server), `collection` (`/api/receive` and the browser scripts, with no
-    dashboard), `worker` (`messenger:consume`) or `balancer`. SQLite supports
-    only `all`. The YAML-first design already lets a collection server run
-    without a login page.
-  - *The balancer role:* a reference configuration for the web server already
-    in front, rather than a proxy of Aggregate's own: Caddy on FrankenPHP
-    servers, Nginx on Nginx and PHP-FPM servers and in hosting panels. It
+    dashboard) or `worker` (`messenger:consume`). SQLite supports only `all`.
+    The YAML-first design already lets a collection server run without a login
+    page.
+  - *The balancer:* no role and no Aggregate on it. `app:server:balancer-config`
+    on the administration server prints a reference Nginx or Caddy
+    configuration rather than a proxy of Aggregate's own (JOIN-59, slice 4). It
     spreads collection requests over the collection servers, limits
-    `/api/receive` per address, keeps access logs off, sets forwarded headers
-    and trusted proxies so geography sees the visitor's address, checks each
-    server's `/api/health` passively, and sends the administration hostname to
-    the administration server. Websites reach it at `collection_base_url`. One balancer is a single point of failure, as one server is today;
-    document the hosting provider's load balancer for high availability.
+    `/api/receive` per address (Caddy only with the caddy-ratelimit module),
+    keeps access logs off, overwrites forwarded headers so geography sees the
+    visitor's address, and takes a paused server out of rotation. Websites
+    reach it at `collection_base_url`; the administration server keeps its
+    own hostname. One balancer is a single point of failure, as one server is
+    today; document the hosting provider's load balancer for high
+    availability.
   - *Shared state to solve first:*
     - *Configuration.* YAML lives on each server's disk, and the dashboard writes
       it locally. The administration server stays its only writer; the others

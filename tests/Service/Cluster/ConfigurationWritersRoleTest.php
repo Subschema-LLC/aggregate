@@ -17,7 +17,7 @@ use Symfony\Component\Yaml\Yaml;
 
 /**
  * Configuration is changed only where a role administers: a collection,
- * worker or balancer server refuses every writer, so neither a future page
+ * or worker server refuses every writer, so neither a future page
  * nor a script can split a cluster's settings, and no file changes.
  */
 final class ConfigurationWritersRoleTest extends TestCase
@@ -69,7 +69,6 @@ final class ConfigurationWritersRoleTest extends TestCase
     {
         yield ['collection'];
         yield ['worker'];
-        yield ['balancer'];
     }
 
     #[DataProvider('administeringRoles')]

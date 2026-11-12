@@ -102,8 +102,8 @@ final class ClusterJoinCommand extends Command
             throw new \InvalidArgumentException('Unknown setting(s): '.implode(', ', $unknown).'. Use '.implode(', ', self::FIELDS).'.');
         }
         $role = $settings['role'] ?? null;
-        if (!is_string($role) || !in_array($role, [ServerRole::ADMINISTRATION, ServerRole::COLLECTION, ServerRole::WORKER, ServerRole::BALANCER], true)) {
-            throw new \InvalidArgumentException('role must be administration, collection, worker or balancer.');
+        if (!is_string($role) || !in_array($role, [ServerRole::ADMINISTRATION, ServerRole::COLLECTION, ServerRole::WORKER], true)) {
+            throw new \InvalidArgumentException('role must be administration, collection or worker. The balancer runs no Aggregate: app:server:balancer-config on the administration server prints its configuration.');
         }
         $name = ClusterSettings::server($settings['name'] ?? null, '127.0.0.1')['name'];
         $variables = ['SERVER_ROLE' => $role, ClusterSettings::SERVER_NAME_VARIABLE => $name];

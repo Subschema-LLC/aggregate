@@ -14,15 +14,22 @@ use Symfony\Component\HttpFoundation\IpUtils;
  * without the newest configuration before it pauses collection.
  *
  *     cluster:
- *       - { name: collect-1, address: 10.0.0.11 }
- *       - { name: worker-1, address: 10.0.0.21 }
+ *       - { name: collect-1, address: 10.0.0.11, role: collection }
+ *       - { name: worker-1, address: 10.0.0.21, role: worker }
+ *
+ * A server's role here is what the balancer configuration is built from
+ * (app:server:balancer-config takes the collection servers); the server's
+ * own SERVER_ROLE decides what it runs.
  *     cluster_config_max_age_minutes: 5
+ *     cluster_collection_port: 80
  */
 final class ClusterSettings
 {
     public const SERVERS_KEY = 'cluster';
     public const MAX_AGE_KEY = 'cluster_config_max_age_minutes';
     public const ALERT_DESTINATIONS_KEY = 'cluster_alert_destinations';
+    public const COLLECTION_PORT_KEY = 'cluster_collection_port';
+    public const DEFAULT_COLLECTION_PORT = 80;
     public const SERVER_NAME_KEY = 'cluster_server_name';
     public const SERVER_NAME_VARIABLE = 'CLUSTER_SERVER_NAME';
     public const KEY_VARIABLE = 'CLUSTER_KEY';
@@ -30,6 +37,8 @@ final class ClusterSettings
     public const MIN_KEY_LENGTH = 32;
     public const NAME_PATTERN = '/^[a-z0-9](?:[a-z0-9.-]{0,61}[a-z0-9])?$/D';
     public const MAX_SERVERS = 64;
+    /** The roles a server in the list may have; the administration server is not in it. */
+    public const SERVER_ROLES = [ServerRole::COLLECTION, ServerRole::WORKER];
 
     public function __construct(private readonly AggregateConfigLoader $config)
     {
@@ -37,9 +46,11 @@ final class ClusterSettings
 
     /**
      * The servers that may pull configuration, by name. An entry whose name
-     * or address is not valid is left out, so it can never pull.
+     * or address is not valid is left out, so it can never pull. A role that
+     * is missing or not valid is null, which leaves the server out of the
+     * balancer configuration but lets it pull.
      *
-     * @return array<string, array{name: string, address: string}>
+     * @return array<string, array{name: string, address: string, role: ?string}>
      */
     public function servers(): array
     {
@@ -57,10 +68,22 @@ final class ClusterSettings
             } catch (\InvalidArgumentException) {
                 continue;
             }
+            $role = $entry['role'] ?? null;
+            $server['role'] = is_string($role) && in_array(strtolower(trim($role)), self::SERVER_ROLES, true) ? strtolower(trim($role)) : null;
             $servers[$server['name']] = $server;
         }
 
         return $servers;
+    }
+
+    /**
+     * The servers with that role in the list, by name.
+     *
+     * @return array<string, array{name: string, address: string, role: ?string}>
+     */
+    public function serversWithRole(string $role): array
+    {
+        return array_filter($this->servers(), static fn (array $server): bool => $server['role'] === $role);
     }
 
     /** The server of that name, when the request came from its address. */
@@ -76,11 +99,11 @@ final class ClusterSettings
 
     /**
      * A validated server entry: a lower-case name of letters, digits, dots and
-     * hyphens, and an IP address or network.
+     * hyphens, an IP address or network, and, when given, collection or worker.
      *
-     * @return array{name: string, address: string}
+     * @return array{name: string, address: string, role?: string}
      */
-    public static function server(mixed $name, mixed $address): array
+    public static function server(mixed $name, mixed $address, mixed $role = null): array
     {
         if (!is_string($name) || preg_match(self::NAME_PATTERN, $name) !== 1) {
             throw new \InvalidArgumentException('A server name is lower-case letters, digits, dots and hyphens, such as collect-1.');
@@ -89,7 +112,14 @@ final class ClusterSettings
             throw new \InvalidArgumentException('A server address is an IP address or network, such as 10.0.0.11 or 10.0.0.0/24.');
         }
 
-        return ['name' => $name, 'address' => $address];
+        if ($role === null) {
+            return ['name' => $name, 'address' => $address];
+        }
+        if (!is_string($role) || !in_array($role, self::SERVER_ROLES, true)) {
+            throw new \InvalidArgumentException('A server\'s role in the cluster list is collection or worker. The administration server is not in the list, and the balancer runs no Aggregate.');
+        }
+
+        return ['name' => $name, 'address' => $address, 'role' => $role];
     }
 
     public static function isAddress(string $address): bool
@@ -113,6 +143,38 @@ final class ClusterSettings
         $minutes = is_int($value) || (is_string($value) && ctype_digit($value)) ? (int) $value : self::DEFAULT_MAX_AGE_MINUTES;
 
         return max(1, min(60, $minutes));
+    }
+
+    /** A value for cluster_config_max_age_minutes, refused outside 1 to 60. */
+    public static function validMaxAgeMinutes(mixed $value): int
+    {
+        if ((!is_int($value) && !(is_string($value) && ctype_digit($value))) || (int) $value < 1 || (int) $value > 60) {
+            throw new \InvalidArgumentException('cluster_config_max_age_minutes is a whole number of minutes from 1 to 60.');
+        }
+
+        return (int) $value;
+    }
+
+    /**
+     * The port the balancer reaches the collection servers at over the
+     * private network: cluster_collection_port, 80 by default.
+     */
+    public function collectionPort(): int
+    {
+        try {
+            return self::validCollectionPort($this->config->get(self::COLLECTION_PORT_KEY, self::DEFAULT_COLLECTION_PORT));
+        } catch (\InvalidArgumentException) {
+            return self::DEFAULT_COLLECTION_PORT;
+        }
+    }
+
+    public static function validCollectionPort(mixed $value): int
+    {
+        if ((!is_int($value) && !(is_string($value) && ctype_digit($value))) || (int) $value < 1 || (int) $value > 65535) {
+            throw new \InvalidArgumentException('cluster_collection_port is a port number from 1 to 65535.');
+        }
+
+        return (int) $value;
     }
 
     /**

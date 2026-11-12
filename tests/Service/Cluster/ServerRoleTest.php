@@ -76,7 +76,16 @@ final class ServerRoleTest extends TestCase
 
         self::assertSame('all', $role->role);
         self::assertSame('reporting', $role->configured);
-        self::assertStringContainsString('"reporting" is not one of all, administration, collection, worker, balancer', (string) $role->problem);
+        self::assertStringContainsString('"reporting" is not one of all, administration, collection, worker', (string) $role->problem);
+    }
+
+    public function testABalancerHasNoRoleAndIsToldWhereItsConfigurationComesFrom(): void
+    {
+        $this->configure(['server_role' => 'balancer']);
+        $role = ServerRole::resolve($this->directory, 'prod');
+
+        self::assertSame(['all', 'balancer'], [$role->role, $role->configured]);
+        self::assertStringContainsString('app:server:balancer-config', (string) $role->problem);
     }
 
     #[DataProvider('sqliteUrls')]
@@ -123,7 +132,6 @@ final class ServerRoleTest extends TestCase
         yield 'administration' => ['administration', ['routes_health.yaml', 'routes_branding.yaml', 'routes_admin_api.yaml']];
         yield 'collection' => ['collection', ['routes_health.yaml', 'routes_branding.yaml', 'routes_collection.yaml']];
         yield 'worker' => ['worker', ['routes_health.yaml']];
-        yield 'balancer' => ['balancer', ['routes_health.yaml']];
     }
 
     public function testControllersAreReadFromTheRouteFilesTheyAreRemovedBy(): void
@@ -161,12 +169,23 @@ final class ServerRoleTest extends TestCase
     public static function commands(): iterable
     {
         $everywhere = ['list', 'cache:clear', 'cache:pool:prune', 'app:server:role', 'app:updates:check', 'doctrine:migrations:status', 'lint:container'];
-        $administration = ['doctrine:migrations:migrate', 'app:install', 'app:updates:apply', 'app:create-website', 'app:scheduler:run', 'app:reporting-database:configure', 'messenger:setup-transports'];
+        $administration = ['doctrine:migrations:migrate', 'app:install', 'app:create-website', 'app:scheduler:run', 'app:reporting-database:configure', 'messenger:setup-transports'];
+        // The update commands run everywhere; off the administration server they check --files-only themselves.
+        $everywhere = [...$everywhere, 'app:updates:apply', 'app:updates:deployed', 'app:updates:rollback', 'asset-map:compile'];
         yield 'all' => ['all', [...$everywhere, ...$administration, 'messenger:consume'], []];
         yield 'administration' => ['administration', [...$everywhere, ...$administration], []];
         yield 'collection' => ['collection', [...$everywhere, 'app:assets:build-js'], [...$administration, 'messenger:consume', 'app:cache-like']];
         yield 'worker' => ['worker', [...$everywhere, 'messenger:consume', 'app:tracking:retry-failed'], [...$administration, 'app:assets:build-js']];
-        yield 'balancer' => ['balancer', $everywhere, [...$administration, 'messenger:consume']];
+    }
+
+    public function testOnlyTheServerThatMigratesUpdatesWithMigrations(): void
+    {
+        self::assertNull(ServerRole::of('all')->updateRefusal(false));
+        self::assertNull(ServerRole::of('administration', self::SHARED_DATABASE)->updateRefusal(false));
+        self::assertNull(ServerRole::of('collection', self::SHARED_DATABASE)->updateRefusal(true));
+        self::assertNull(ServerRole::of('worker', self::SHARED_DATABASE)->updateRefusal(true));
+        self::assertStringContainsString('without --files-only', (string) ServerRole::of('all')->updateRefusal(true));
+        self::assertStringContainsString('then update this server with --files-only', (string) ServerRole::of('worker', self::SHARED_DATABASE)->updateRefusal(false));
     }
 
     public function testRefusalsNameTheServerThatDoesTheWork(): void

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service\Update;
 
 use App\Service\ApplicationUpdateService;
+use App\Service\Cluster\ServerRole;
 use App\Service\InstalledRelease;
 use App\Service\Operations\AdminActions;
 use App\Service\ReleasePackageVerifier;
@@ -40,7 +41,16 @@ class ApplicationUpdater
     public const RELEASE_STEPS = ['download', 'verify', 'stage', 'maintenance', 'database_backup', 'apply_files', 'handoff', 'migrations', 'glossary', 'cache', 'workers', 'finish'];
     public const GIT_STEPS = ['apply_files', 'dependencies', 'handoff', 'migrations', 'glossary', 'assets', 'cache', 'workers', 'finish'];
     public const DEPLOYMENT_STEPS = ['maintenance', 'database_backup', 'dependencies', 'handoff', 'migrations', 'glossary', 'assets', 'cache', 'workers', 'finish'];
+    /**
+     * A files-only update, on a collection or worker server, leaves the
+     * database to the administration server: no backup, no migrations and no
+     * glossary sync. It checks instead that the database already has this
+     * release's migrations, so the new code never runs on an older schema.
+     */
+    private const FILES_ONLY_SKIPPED = ['database_backup', 'glossary'];
     private const KEEP_BACKUPS = 3;
+    /** Doctrine Migrations' default table, which config/packages/doctrine_migrations.yaml keeps. */
+    private const MIGRATIONS_TABLE = 'doctrine_migration_versions';
 
     /** @var (callable(string, string): void)|null */
     private $output = null;
@@ -61,6 +71,7 @@ class ApplicationUpdater
         private readonly Toolchain $toolchain,
         private readonly ?DeploymentState $deployment = null,
         private readonly ?PhpReloadRequest $reloadRequest = null,
+        private readonly ?ServerRole $role = null,
     ) {
     }
 
@@ -71,13 +82,30 @@ class ApplicationUpdater
     }
 
     /** @return list<string> */
-    public static function stepsFor(string $type): array
+    public static function stepsFor(string $type, bool $filesOnly = false): array
     {
-        return match ($type) {
+        $steps = match ($type) {
             'git' => self::GIT_STEPS,
             'deployment' => self::DEPLOYMENT_STEPS,
             default => self::RELEASE_STEPS,
         };
+        if (!$filesOnly) {
+            return $steps;
+        }
+
+        return array_values(array_map(
+            static fn (string $step): string => $step === 'migrations' ? 'schema' : $step,
+            array_diff($steps, self::FILES_ONLY_SKIPPED),
+        ));
+    }
+
+    /**
+     * @param UpdateState $state
+     * @return list<string>
+     */
+    private static function steps(array $state): array
+    {
+        return self::stepsFor((string) $state['type'], (bool) ($state['files_only'] ?? false));
     }
 
     /** @return UpdateState|null The last recorded update, with whether it is still running */
@@ -155,7 +183,7 @@ class ApplicationUpdater
      * in $options['repository'], or the repository found next to the site, and
      * files the steps already ran for are skipped unless $options['force'] is set.
      *
-     * @param array{version?: ?string, package?: ?string, manifest?: ?string, signature?: ?string, database_backup_confirmed?: bool, deployed?: bool, commit?: ?string, repository?: ?string, force?: bool} $options
+     * @param array{version?: ?string, package?: ?string, manifest?: ?string, signature?: ?string, database_backup_confirmed?: bool, deployed?: bool, commit?: ?string, repository?: ?string, force?: bool, files_only?: bool} $options
      * @param callable(string, string): void $output
      * @return UpdateState|array{status: 'up_to_date', message: string} The final journal state, or a no-op result
      */
@@ -186,7 +214,8 @@ class ApplicationUpdater
             if ($problems !== []) {
                 throw new \RuntimeException(implode(' ', $problems));
             }
-            if (!$this->isSqlite() && !($options['database_backup_confirmed'] ?? false)) {
+            $filesOnly = (bool) ($options['files_only'] ?? false);
+            if (!$filesOnly && !$this->isSqlite() && !($options['database_backup_confirmed'] ?? false)) {
                 throw new \RuntimeException('Back up the database before updating, then confirm it with --database-backup-confirmed. Database migrations cannot be reversed automatically.');
             }
 
@@ -211,6 +240,9 @@ class ApplicationUpdater
                 'log' => [],
                 'started_at' => time(),
             ];
+            if ($filesOnly) {
+                $state['files_only'] = true;
+            }
 
             $prepared = null;
             if ($type === 'release') {
@@ -280,6 +312,9 @@ class ApplicationUpdater
                 'deployment' => 'Running the post-deployment steps ('.$id.')'.($state['to']['commit'] !== null ? ' for commit '.$state['to']['commit'] : '').'.',
                 default => 'Starting Git update '.$id.'.',
             });
+            if ($filesOnly) {
+                $state = $this->say($state, 'Files only: the administration server runs the migrations, so this server only checks the database has them.');
+            }
 
             return $this->run($state);
         } finally {
@@ -314,7 +349,7 @@ class ApplicationUpdater
             if ($state['step'] === 'handoff') {
                 // This fresh process already runs the new code: continue after the handoff.
                 $state['completed'][] = 'handoff';
-                $steps = self::stepsFor((string) $state['type']);
+                $steps = self::steps($state);
                 $state['step'] = $steps[array_search('handoff', $steps, true) + 1];
             }
             if ($state['step'] !== null && $this->stepIndex($state, $state['step']) > $this->stepIndex($state, $this->pausedAfter($state))) {
@@ -424,7 +459,7 @@ class ApplicationUpdater
      */
     private function run(array $state): array
     {
-        $steps = self::stepsFor((string) $state['type']);
+        $steps = self::steps($state);
         $start = $state['step'] === null ? 0 : max(0, (int) array_search($state['step'], $steps, true));
         for ($index = $start; $index < count($steps); ++$index) {
             $step = $steps[$index];
@@ -490,6 +525,9 @@ class ApplicationUpdater
         $plan = $this->installer->plan($staging);
         if ($plan['unwritable'] !== []) {
             throw new \RuntimeException('This user cannot write '.implode(', ', array_slice($plan['unwritable'], 0, 5)).(count($plan['unwritable']) > 5 ? ' and others' : '').'. Run the update as the user that owns the application files.');
+        }
+        if ($state['files_only'] ?? false) {
+            $this->assertMigrationsRun($this->stagedMigrations($staging), isset($state['to']['version']) ? 'release '.$state['to']['version'] : 'this release');
         }
         $summary = $this->installer->summary($plan);
         $state['report']['preview'] = [
@@ -660,6 +698,56 @@ class ApplicationUpdater
         $this->console($state, ['doctrine:migrations:migrate', '--allow-no-migration'], 3600);
 
         return $this->say($state, 'Database migrations are complete.');
+    }
+
+    /**
+     * A files-only update's check, with the new code, that the database has
+     * every migration it ships: the administration server updates first.
+     *
+     * @param UpdateState $state
+     * @return UpdateState
+     */
+    private function stepSchema(array $state): array
+    {
+        $this->assertMigrationsRun($this->stagedMigrations($this->projectDir), 'the new code');
+
+        return $this->say($state, 'The database already has this release\'s migrations.');
+    }
+
+    /**
+     * The migration classes in a release's migrations/ folder.
+     *
+     * @return list<string> like DoctrineMigrations\Version20261020000000
+     */
+    private function stagedMigrations(string $root): array
+    {
+        $versions = [];
+        foreach (glob($root.'/migrations/Version*.php') ?: [] as $file) {
+            $versions[] = 'DoctrineMigrations\\'.basename($file, '.php');
+        }
+        sort($versions);
+
+        return $versions;
+    }
+
+    /** @param list<string> $versions */
+    private function assertMigrationsRun(array $versions, string $what): void
+    {
+        try {
+            $executed = $this->connection->fetchFirstColumn('SELECT version FROM '.self::MIGRATIONS_TABLE);
+        } catch (\Throwable $e) {
+            throw new \RuntimeException('The database\'s migration list could not be read, so this server cannot check it is ready for '.$what.': '.$e->getMessage());
+        }
+        $missing = array_values(array_diff($versions, array_map('strval', $executed)));
+        if ($missing !== []) {
+            throw new \RuntimeException(sprintf(
+                'The database does not have %d migration(s) %s needs (%s). Update the administration server first; it runs the migrations. Then run this update again%s.',
+                count($missing),
+                $what,
+                implode(', ', array_map(static fn (string $version): string => substr($version, strrpos($version, '\\') + 1), array_slice($missing, 0, 3))).(count($missing) > 3 ? ', ...' : ''),
+                $what === 'the new code' ? ' with app:updates:apply --resume' : '',
+            ));
+        }
     }
 
     /**
@@ -926,6 +1014,10 @@ class ApplicationUpdater
      */
     private function stopWorkers(array $state): array
     {
+        if ($this->role !== null && $this->role->role === ServerRole::COLLECTION) {
+            // Queue consumers run on worker servers, which are updated with their own --files-only.
+            return $state;
+        }
         try {
             $this->console($state, ['messenger:stop-workers'], 120);
         } catch (\Throwable) {
@@ -1044,7 +1136,7 @@ class ApplicationUpdater
     /** @param UpdateState $state */
     private function stepIndex(array $state, string $step): int
     {
-        $steps = self::stepsFor($state['type']);
+        $steps = self::steps($state);
         $index = array_search($step, $steps, true);
 
         return $index === false ? -1 : $index;

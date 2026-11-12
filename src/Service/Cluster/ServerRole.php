@@ -16,8 +16,11 @@ use Symfony\Component\Yaml\Yaml;
  *    reporting API and the MCP server; the only server that writes
  *    configuration or runs migrations;
  *  - collection: /api/receive and the browser scripts;
- *  - worker: Messenger consumers;
- *  - balancer: nothing of Aggregate's but its health check.
+ *  - worker: Messenger consumers.
+ *
+ * The balancer in front of the collection servers runs no Aggregate, so it
+ * has no role: app:server:balancer-config on the administration server
+ * prints its configuration.
  *
  * Read when the kernel boots, the way the dashboard switch is, so the routes
  * and controllers a role does not use are never registered. A missing or
@@ -30,8 +33,7 @@ final class ServerRole
     public const ADMINISTRATION = 'administration';
     public const COLLECTION = 'collection';
     public const WORKER = 'worker';
-    public const BALANCER = 'balancer';
-    public const ROLES = [self::ALL, self::ADMINISTRATION, self::COLLECTION, self::WORKER, self::BALANCER];
+    public const ROLES = [self::ALL, self::ADMINISTRATION, self::COLLECTION, self::WORKER];
 
     public const CONFIG_KEY = 'server_role';
     public const ENVIRONMENT_VARIABLE = 'SERVER_ROLE';
@@ -48,7 +50,6 @@ final class ServerRole
         self::ADMINISTRATION => ['routes_health.yaml', 'routes_branding.yaml', 'routes_admin_api.yaml'],
         self::COLLECTION => ['routes_health.yaml', 'routes_branding.yaml', 'routes_collection.yaml'],
         self::WORKER => ['routes_health.yaml'],
-        self::BALANCER => ['routes_health.yaml'],
     ];
 
     /**
@@ -58,7 +59,7 @@ final class ServerRole
      */
     private const COMMON_COMMANDS = [
         'list', 'help', 'completion', '_complete', 'about',
-        'cache:', 'assets:install', 'importmap:', 'lint:', 'debug:', 'router:match',
+        'cache:', 'assets:install', 'asset-map:compile', 'importmap:', 'lint:', 'debug:', 'router:match',
         'doctrine:migrations:status', 'doctrine:migrations:list', 'doctrine:migrations:up-to-date',
         'app:server:role', 'app:cluster:sync', 'app:cluster:join',
         'app:updates:check', 'app:updates:verify-package', 'app:updates:maintenance',
@@ -66,14 +67,20 @@ final class ServerRole
         'app:audit:list', 'app:mcp:connection:list', 'app:tag-manager:sites',
     ];
 
+    /**
+     * Updates that only replace files, after the administration server has
+     * run the migrations: the commands check --files-only themselves.
+     */
+    private const FILES_ONLY_UPDATE_COMMANDS = ['app:updates:apply', 'app:updates:deployed', 'app:updates:rollback'];
+
     /** Commands a role adds to the common ones. `all` and `administration` may run every command. */
     private const ROLE_COMMANDS = [
-        self::COLLECTION => ['app:assets:build-js'],
+        self::COLLECTION => ['app:assets:build-js', ...self::FILES_ONLY_UPDATE_COMMANDS],
         self::WORKER => [
             'messenger:consume', 'messenger:stats', 'messenger:stop-workers',
             'messenger:failed:show', 'messenger:failed:retry', 'app:tracking:retry-failed',
+            ...self::FILES_ONLY_UPDATE_COMMANDS,
         ],
-        self::BALANCER => [],
     ];
 
     private function __construct(
@@ -131,9 +138,12 @@ final class ServerRole
         $configured = strtolower($value);
         if (!in_array($configured, self::ROLES, true)) {
             return new self(self::ALL, $configured, $source, sprintf(
-                'The server role "%s" is not one of %s, so this server runs as all.',
+                'The server role "%s" is not one of %s, so this server runs as all.%s',
                 $value,
                 implode(', ', self::ROLES),
+                $configured === 'balancer'
+                    ? ' A balancer runs no Aggregate: remove Aggregate from it and install the configuration app:server:balancer-config prints on the administration server.'
+                    : '',
             ), $administrationUrl);
         }
         if ($configured !== self::ALL && self::isSqlite($databaseUrl)) {
@@ -241,13 +251,30 @@ final class ServerRole
     /** Why this server does not do something its role leaves to another server. */
     public function refusal(string $what): string
     {
-        $elsewhere = match (true) {
-            $this->role === self::BALANCER => 'the server with the role it needs',
-            str_starts_with($what, 'messenger:') => 'a worker server',
-            default => $this->administrationServer(),
-        };
+        $elsewhere = str_starts_with($what, 'messenger:') ? 'a worker server' : $this->administrationServer();
 
         return sprintf('This is a %s server: %s runs on %s, not here.', $this->role, $what, $elsewhere);
+    }
+
+    /**
+     * Why this server cannot update this way, or null: the server that
+     * administers runs the migrations, so it never updates files only, and
+     * every other server only ever does.
+     */
+    public function updateRefusal(bool $filesOnly): ?string
+    {
+        if ($this->administers() && $filesOnly) {
+            return sprintf('This is the %s server, which runs the migrations, so it updates without --files-only.', $this->role === self::ALL ? 'only' : 'administration');
+        }
+        if (!$this->administers() && !$filesOnly) {
+            return sprintf(
+                'This is a %s server: %s runs the migrations. Update it first, then update this server with --files-only.',
+                $this->role,
+                $this->administrationServer(),
+            );
+        }
+
+        return null;
     }
 
     public function assertAdministers(string $what): void

@@ -368,6 +368,52 @@
         {% endif %}
     {% endif %}
 
+    {% if update_cluster %}
+        {% set servers_behind = update_cluster.servers|filter(server => server.same_release is same as(false) or server.newest_configuration is same as(false) or server.alerting_since is not null)|length %}
+        <details class="box update-panel" id="cluster-servers"{% if servers_behind > 0 %} open{% endif %}>
+            <summary>
+                <span>
+                    <span class="title is-4">Servers</span>
+                    {% if servers_behind > 0 %}
+                        <span class="tag is-warning is-light ml-2">{{ servers_behind }} behind</span>
+                    {% else %}
+                        <span class="tag is-success is-light ml-2">Up to date</span>
+                    {% endif %}
+                </span>
+            </summary>
+            <p class="mb-3">This server updates first and runs the migrations. Then update each server below with <code>php bin/console app:updates:apply --files-only</code> (or <code>app:updates:deployed --files-only</code>), one collection server at a time: while its files change it answers 503, so the balancer sends its traffic to the others.</p>
+            <div class="table-container">
+                <table class="table is-fullwidth">
+                    <thead>
+                        <tr><th scope="col">Server</th><th scope="col">Role</th><th scope="col">Release</th><th scope="col">Configuration</th><th scope="col">Last pull</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for server in update_cluster.servers %}
+                            <tr>
+                                <th scope="row">{{ server.name }} <span class="has-text-grey has-text-weight-normal">{{ server.address }}</span></th>
+                                <td>{{ server.role ?? 'not set' }}{% if server.reported_role and server.reported_role != server.role %} <span class="has-text-grey">(reports {{ server.reported_role }})</span>{% endif %}</td>
+                                <td>
+                                    {{ server.release ?? 'Unknown' }}
+                                    {% if server.same_release is same as(false) %}<span class="tag is-warning is-light ml-1">This server: {{ update_cluster.release }}</span>{% endif %}
+                                </td>
+                                <td>
+                                    {% if server.newest_configuration is same as(true) %}<span class="tag is-success is-light">Newest</span>
+                                    {% elseif server.newest_configuration is same as(false) %}<span class="tag is-warning is-light">Behind</span>
+                                    {% else %}<span class="has-text-grey">Unknown</span>{% endif %}
+                                </td>
+                                <td>
+                                    {% if server.last_pull_at %}<time datetime="{{ server.last_pull_at|date('c', 'UTC') }}">{{ server.last_pull_at|date('Y-m-d H:i', 'UTC') }} UTC</time>{% else %}Never{% endif %}
+                                    {% if server.alerting_since %}<span class="tag is-danger is-light ml-1">Not pulling since {{ server.alerting_since|date('H:i', 'UTC') }} UTC</span>{% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <p class="help">The list is <code>cluster</code> in <code>config/aggregate.yaml</code>, changed with <code>php bin/console app:cluster:server</code>, which also prints this table. {{ component('Ui:DocsLink', {topic: 'cluster', label: 'Server roles'}) }}</p>
+        </details>
+    {% endif %}
+
     <details class="box update-panel" id="system-check"{% if blocking_problems is not empty %} open{% endif %}>
         <summary>
             <span>
