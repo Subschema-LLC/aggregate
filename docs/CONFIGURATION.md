@@ -31,7 +31,7 @@ Configuration has separate sources of truth:
 - **Environment files and server variables:** Symfony infrastructure — database connection, the optional [reporting database](#reporting-database) connection, message queue, app secret, and explicit proxy trust. Keep deployment values in untracked local files or server configuration.
 - **`config/aggregate.yaml`** (app-level, example committed): Analytics-specific settings — application branding, privacy measurement controls, internal traffic markers and sharing token, lifecycle policy, BigQuery sync, the [email service](#transactional-email) and sender, rate limit, JS namespace, dashboard toggle, and deployment-wide feature flags.
 - **`config/secrets/`** (untracked): Credentials Aggregate writes for itself, such as the BigQuery service account key and Google sign-in, the hashes of [reporting API tokens](REPORTING-API.md#tokens) in `api-tokens.yaml`, the [AI assistant sign-in](MCP.md#sign-in) state in `mcp-oauth.yaml`, and the [email service's credential](EMAIL.md) in `email.yaml`, readable only by the application's user and kept by updates.
-- **`config/goals.yaml`** (app-level, committed): Stable conversion-goal codes and whether each is enabled for anonymous collection. Customize it in `config/goals.local.yaml` (see [Local overrides](#local-overrides-for-shipped-defaults)).
+- **`config/goals.yaml`** (app-level, committed): Stable conversion-goal codes and whether each is enabled for anonymous collection. Customize them on the **Goals** page, with `app:config goals`, or in `config/goals.local.yaml` (see [conversion goals](#conversion-goals)).
 - **`config/navigation.yaml`** (app-level, committed): Main navigation labels, icons, and link targets. Customize it in `config/navigation.local.yaml`.
 - **`config/quick_search.yaml`** (app-level, committed): Dashboard quick-search synonyms and extra entries. Customize it in `config/quick_search.local.yaml`.
 - **`config/websites.yaml`** (untracked): Website names, primary domains, allowed event-source domains, and public ingestion tokens, managed through the Websites page, YAML, or `app:create-website`.
@@ -44,11 +44,11 @@ The database holds no operator settings: it stores collected events, archives, u
 
 ### When an edit takes effect
 
-Edits to `config/aggregate.yaml`, `config/websites.yaml`, `config/website-scopes.yaml`, files under `config/website-scopes/` and the tag manager's site files take effect on the next request, whether they come from the dashboard, the command line or an editor. Aggregate reads the file a request needs and keeps only the parsed result of an unchanged file in `var/cache/<environment>/parsed-yaml`, keyed by the file's exact contents, so there is no cache to clear after an edit. A health check does not reread every website override on each poll: it notices a file that was added, removed, or whose size or modification time changed, and reads the overrides again only then. An edit that is not valid YAML, or not a valid configuration, stops collection for the websites that use it until it is fixed rather than falling back to the previous settings.
+Edits to `config/aggregate.yaml`, `config/websites.yaml`, `config/website-scopes.yaml`, files under `config/website-scopes/`, the goals (`config/goals.local.yaml`) and the tag manager's site files take effect on the next request, whether they come from the dashboard, the command line or an editor. Aggregate reads the file a request needs and keeps only the parsed result of an unchanged file in `var/cache/<environment>/parsed-yaml`, keyed by the file's exact contents, so there is no cache to clear after an edit. A health check does not reread every website override on each poll: it notices a file that was added, removed, or whose size or modification time changed, and reads the overrides again only then. An edit that is not valid YAML, or not a valid configuration, stops collection for the websites that use it until it is fixed rather than falling back to the previous settings.
 
 A few settings are built into Symfony's compiled container or into SQL, and need a step after an edit:
 
-- `dashboard_enabled` or `DASHBOARD_ENABLED`, and Symfony's own files under `config/packages/` and the `services*.yaml` and `routes*.yaml` files: run `php bin/console cache:clear`, then reload PHP-FPM gracefully. Clearing the cache also removes the parsed-YAML entries, which are rebuilt on the next request. Measured during live traffic, this fails no collection requests when PHP-FPM lets busy workers finish; see [clearing the cache under traffic](LOAD-TESTING.md#clearing-the-cache-under-traffic).
+- `dashboard_enabled` or `DASHBOARD_ENABLED`, and Symfony's own files under `config/packages/` and the `services*.yaml` and `routes*.yaml` files: run `php bin/console cache:clear`, then reload PHP-FPM gracefully. `app:dashboard on|off` removes the cache itself. Clearing the cache also removes the parsed-YAML entries, which are rebuilt on the next request. Measured during live traffic, this fails no collection requests when PHP-FPM lets busy workers finish; see [clearing the cache under traffic](LOAD-TESTING.md#clearing-the-cache-under-traffic).
 - The BI disclosure thresholds: run `php bin/console app:analytics:bi-views:regenerate` (see [BI disclosure thresholds](#bi-disclosure-thresholds)).
 
 The web installer at `/install` is optional and only needed when you want dashboard-based setup.
@@ -103,6 +103,7 @@ php bin/console app:config secret email.postmark_server_token --stdin < token.tx
 | `data-model` | Data model |
 | `tag-manager`, `consent-manager` | Tag manager lite, Consent manager lite |
 | `standalone-consent` | Setup's standalone consent banner |
+| `goals` | Goals |
 | `bi-disclosure`, `page-groups`, `bi-glossary` | BI disclosure, Page groups, BI glossary |
 | `reporting-api` | API tokens' settings (tokens: `app:api:token:*`) |
 | `bigquery`, `reporting-database`, `forensic-database` | Sync (connections: `app:reporting-database:configure`, `app:forensic-database:configure`) |
@@ -143,6 +144,9 @@ What stays out of the dashboard, and why:
   shows the key on that server.
 - `updates_signing_public_key`, the key update packages are checked against:
   a dashboard session that could change it could install any code.
+- `dashboard_enabled`: a dashboard turned off could not turn itself back on.
+  `php bin/console app:dashboard on|off` saves it and removes the cache it is
+  compiled into; `app:dashboard` alone shows it.
 
 ## Local overrides for shipped defaults
 
@@ -157,7 +161,8 @@ to the matching untracked override and edit the copy:
 | `config/quick_search.yaml` | `config/quick_search.local.yaml` |
 
 Each parameter defined in an override (for example `app.goal_events`) replaces the
-shipped parameter **as a whole**; entries are not merged. Parameters the override
+shipped parameter **as a whole**; entries are not merged. The Goals page and
+`app:config goals` write `config/goals.local.yaml` for you. Parameters the override
 does not define keep their shipped values. After an update, compare your override
 with the new default to pick up newly shipped entries, such as navigation links
 for new features. Clear the production cache after changing an override.
@@ -418,7 +423,7 @@ environments:
 - `analytics_archive_retention_days`: Archived aggregate-cell retention (default: `730`, range: `1`–`36500`)
 - `analytics_maintenance_batch_size`: Raw rows processed per maintenance batch (default: `1000`, range: `100`–`10000`)
 - `DASHBOARD_ENABLED` (env var): Boot-time dashboard feature boundary for loading dashboard routes/services. Set `0` for API-only deploys.
-- After changing dashboard feature settings (`dashboard_enabled` or `DASHBOARD_ENABLED`) in production, run `php bin/console cache:clear`.
+- After changing dashboard feature settings (`dashboard_enabled` or `DASHBOARD_ENABLED`) in production, run `php bin/console cache:clear`; `php bin/console app:dashboard on|off` saves the setting and removes the cache itself. The value is read where every other setting is: `aggregate_<environment>.yaml`, or `aggregate.yaml`'s `environments` entry over its top level.
 - Malformed YAML or invalid collection-kill-switch/path/profile/bot-traffic settings fail closed: ingestion stops and `/api/health` reports a generic configuration error. Invalid optional GeoIP lookup settings instead produce no `geo_area`.
 
 Logo images may be at most 2 MiB, 4096 pixels per axis, and 16 megapixels in total. The settings UI validates and copies uploaded logos below `var/branding` in an environment-specific directory; keep `var/branding` on persistent storage shared by all application replicas, make it writable by the PHP process, and include it in backups. Replicas that use the settings UI must also share the active `aggregate.yaml` file (or otherwise coordinate and deploy each saved revision) so every replica switches logo references together. Uploaded bytes are served as supplied, so remove EXIF/XMP or other embedded metadata before uploading. A configured `brand_logo_path` is resolved from the project root when relative, while absolute local filesystem paths are also supported. Leave it empty for a text-only identity.
@@ -1117,7 +1122,18 @@ An unknown, invalid, disabled, or anonymous-disallowed goal is omitted while the
 [Aggregate] Goal was not recorded because it is not an approved goal type.
 ```
 
-This is an allowlist warning, not a sensitive-data detector. Review every configured code and its use in context. After changing `config/goals.yaml` in production, clear the production cache so the service container is rebuilt, then run `php bin/console app:analytics:glossary:sync --env=prod` to publish updated labels. Prefer disabling retired goals to deleting their definitions so historical codes keep their labels.
+This is an allowlist warning, not a sensitive-data detector. Review every configured code and its use in context. Prefer disabling retired goals to deleting their definitions so historical codes keep their labels.
+
+The **Goals** page (under Collection), `app:config goals` and `config/goals.local.yaml` change the same goals, checked the same way. They are read when used, so a change applies from the next request without clearing the cache, including on collection servers that pull it from the administration server. Run `php bin/console app:analytics:glossary:sync --env=prod` afterwards to publish changed labels to BI tools.
+
+```bash
+php bin/console app:config get goals
+php bin/console app:config set goals.goals '{purchase: {label: Purchase, enabled: true, anonymous: true}, demo_request: {label: Demo request, enabled: true, anonymous: false}}'
+php bin/console app:config export goals > goals.yaml
+php bin/console app:config import goals --file=goals.yaml --check
+```
+
+The value is the whole set of goals: a goal left out is removed. Invalid goals in a hand-edited file allow no goal at all (events are still recorded, without one) and make `/api/health` report the configuration as invalid.
 
 ## Optional coarse geography
 

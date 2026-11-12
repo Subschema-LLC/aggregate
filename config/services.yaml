@@ -4,12 +4,12 @@
 
 imports:
     - { resource: navigation.yaml }
-    - { resource: goals.yaml }
     - { resource: quick_search.yaml }
     # Untracked operator overrides. Each file replaces the matching shipped
     # parameter as a whole and is never changed by application updates.
+    # Goals (goals.yaml and goals.local.yaml) are not imported: GoalDefinitions
+    # reads them when used, so a change applies without clearing the cache.
     - { resource: navigation.local.yaml, ignore_errors: not_found }
-    - { resource: goals.local.yaml, ignore_errors: not_found }
     - { resource: quick_search.local.yaml, ignore_errors: not_found }
 
 # Put parameters here that don't need to change on each machine where the app is deployed
@@ -279,11 +279,13 @@ services:
 
     App\Service\GoalEventRegistry:
         arguments:
-            $definitions: '%app.goal_events%'
+            # Read when used (config/goals.yaml, replaced by goals.local.yaml),
+            # so a saved change applies without clearing the cache.
+            $source: '@App\Service\GoalDefinitions'
 
     App\Service\Glossary\BiGlossarySettings:
         arguments:
-            $goalDefinitions: '%app.goal_events%'
+            $goalDefinitions: '@App\Service\GoalDefinitions'
 
     App\Service\Glossary\BuiltinGlossaryCatalog:
         arguments:

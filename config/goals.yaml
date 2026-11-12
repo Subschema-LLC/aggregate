@@ -1,9 +1,10 @@
 # yaml-language-server: $schema=../vendor/symfony/dependency-injection/Loader/schema/services.schema.json
 # Approved goal-event taxonomy. Keys are the stable values stored in events.
-# Clear the production cache after changing this file.
-# Shipped defaults: application updates replace this file. To customize it,
-# copy it to config/goals.local.yaml and edit the copy. A parameter defined
-# in the local file replaces the matching parameter here as a whole.
+# Shipped defaults: application updates replace this file. To customize the
+# goals, use the Goals page (Data model > Goals) or app:config, which write
+# config/goals.local.yaml, or copy this file there and edit the copy. Goals in
+# the local file replace these as a whole. Changes apply without clearing the
+# cache.
 parameters:
     app.goal_events:
         purchase:

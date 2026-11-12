@@ -1,0 +1,84 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Goals | {{ app_branding.name }}{% endblock %}
+
+{% block body %}
+<div class="settings-page">
+<div class="level">
+    <div class="level-left">
+        <div>
+            <h1 class="title">Goals</h1>
+            <p class="subtitle">The conversion goal codes collection accepts.</p>
+            {{ component('Ui:DocsLink', {topic: 'configuration.goals', label: 'How goals work'}) }}
+        </div>
+    </div>
+    <div class="level-right">
+        {{ component('Ui:CardControls', {class: 'page-card-controls mb-0'}) }}
+    </div>
+</div>
+<div class="columns is-centered">
+<div class="column is-10-desktop">
+<div class="box">
+    <p class="mb-4">A goal sent with an event is recorded only when its code is listed and enabled here, and, for an anonymous event, allowed without consent. Any other goal is left out while the event itself is still recorded. Goals are saved to <code>{{ goals_file }}</code>, which replaces the shipped defaults as a whole, and apply from the next request without clearing the cache. The same goals can be changed with <code>php bin/console app:config set goals.goals …</code>.</p>
+
+    {% if goals_from_defaults %}
+        <div class="notification is-info is-light">These are the shipped defaults from <code>config/goals.yaml</code>. Saving writes them, with your changes, to <code>{{ goals_file }}</code>.</div>
+    {% endif %}
+    {% if goals_error %}
+        <div class="notification is-danger is-light" role="alert">{{ goals_error }}</div>
+    {% endif %}
+
+    <form action="{{ path('app_goals_save') }}" method="post">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token('goals') }}">
+        <div class="table-container">
+        <table class="table is-fullwidth is-narrow">
+            <caption class="is-sr-only">Conversion goals</caption>
+            <thead>
+                <tr>
+                    <th scope="col">Code</th>
+                    <th scope="col">Label</th>
+                    <th scope="col">Enabled</th>
+                    <th scope="col">Without consent</th>
+                    <th scope="col">Remove</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for row in goal_rows %}
+                {% set i = loop.index0 %}
+                <tr>
+                    <td>
+                        {% if row.existing %}
+                            <input type="hidden" name="goals[{{ i }}][existing]" value="1">
+                            <input type="hidden" name="goals[{{ i }}][code]" value="{{ row.code }}">
+                            <code>{{ row.code }}</code>
+                        {% else %}
+                            <input class="input is-small is-family-monospace" type="text" name="goals[{{ i }}][code]" value="{{ row.code }}" maxlength="100" spellcheck="false" autocomplete="off" placeholder="New goal code" aria-label="New goal code">
+                        {% endif %}
+                    </td>
+                    <td><input class="input is-small" type="text" name="goals[{{ i }}][label]" value="{{ row.label }}" maxlength="191" aria-label="Label{% if row.code %} for {{ row.code }}{% endif %}"></td>
+                    <td><input type="checkbox" name="goals[{{ i }}][enabled]" value="1"{% if row.enabled %} checked{% endif %} aria-label="Enabled{% if row.code %}: {{ row.code }}{% endif %}"></td>
+                    <td><input type="checkbox" name="goals[{{ i }}][anonymous]" value="1"{% if row.anonymous %} checked{% endif %} aria-label="Allowed without consent{% if row.code %}: {{ row.code }}{% endif %}"></td>
+                    <td>{% if row.existing %}<input type="checkbox" name="goals[{{ i }}][remove]" value="1" aria-label="Remove {{ row.code }}">{% endif %}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        <div class="help content mb-4">
+            <p>A code is the value stored in <code>events.goal_event</code>, so it cannot be renamed: add a new code and disable the old one. Codes start with a letter and have at most 100 letters, digits, dots, colons, hyphens and underscores. Never put an email address, order number, account ID or other user-derived text in a code. Up to {{ max_goals }} goals.</p>
+            <p><strong>Without consent</strong> lets an anonymous event keep the goal; clear it for goals that belong to enhanced analytics only. Prefer disabling a retired goal to removing it, so past events keep their label in the BI glossary.</p>
+        </div>
+        <div class="field">
+            <div class="control">
+                <button type="submit" class="button is-link">
+                    <span class="icon"><i class="fas fa-bullseye" aria-hidden="true"></i></span>
+                    <span>Save goals</span>
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+</div>
+</div>
+</div>
+{% endblock %}

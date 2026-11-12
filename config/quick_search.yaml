@@ -127,6 +127,15 @@ parameters:
         - privacy suppression
         - minimum
         - k-anonymity
+    'Goals':
+      description: 'The conversion goal codes collection accepts'
+      synonyms:
+        - goals
+        - conversions
+        - goal events
+        - goals.yaml
+        - purchase
+        - lead
     'Page groups':
       description: 'Group page paths for the daily reporting view'
       synonyms:

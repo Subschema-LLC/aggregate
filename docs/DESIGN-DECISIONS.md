@@ -1294,6 +1294,35 @@ signing key stays out of the dashboard.
 **What would change it.** A setting that cannot be expressed as YAML values,
 which would need a command of its own and an entry in the parity test.
 
+### Goals are read when used, not compiled into the container
+
+**Decision.** `GoalDefinitions` reads `config/goals.yaml` and
+`config/goals.local.yaml` (the local file's goals replace the shipped ones as a
+whole, as before) when a goal is checked, keeping only the parsed result of an
+unchanged file. The services files no longer import them. The Goals page,
+`app:config goals` and hand edits change the same goals, checked by
+`GoalDefinitions::validate()`, and saving writes the local file only.
+
+**Why.** Goals had neither a page nor a command, and being a container
+parameter they needed a cache clear after every edit. In a cluster that was a
+bug: a pulled `goals.local.yaml` did nothing on a collection server until
+someone cleared its cache, so servers could disagree about which goals to
+keep.
+
+**Trade-off.** Goals are no longer checked when the container is built, so a
+broken hand edit no longer stops a deploy. Instead such goals allow no goal
+at all (events are still recorded without one, failing closed) and
+`/api/health` reports the configuration as invalid. The same reading,
+`BootSettings`, now gives the kernel `dashboard_enabled` from wherever the
+settings loader saved it; before, the kernel looked only at `aggregate.yaml`'s
+`environments` entry, so a top-level value or `aggregate_<env>.yaml` was
+ignored at build time. `dashboard_enabled` itself stays compiled, and stays
+off the dashboard, since a dashboard turned off could not turn itself back
+on; `app:dashboard on|off` sets it and removes the cache.
+
+**What would change it.** A goal setting that has to be known when the
+container is built.
+
 ### A small dashboard menu that says why an entry is missing
 
 **Decision.** A single setting is a section of an existing page, not a menu
