@@ -1,0 +1,79 @@
+{
+    "App\\Message\\TrackEventMessage": [
+        {
+            "name": "websiteToken",
+            "type": "string",
+            "default": false
+        },
+        {
+            "name": "eventName",
+            "type": "string",
+            "default": false
+        },
+        {
+            "name": "pagePath",
+            "type": "string",
+            "default": false
+        },
+        {
+            "name": "referrerChannel",
+            "type": "string",
+            "default": false
+        },
+        {
+            "name": "deviceClass",
+            "type": "string",
+            "default": false
+        },
+        {
+            "name": "viewportBucket",
+            "type": "string",
+            "default": false
+        },
+        {
+            "name": "screenWidth",
+            "type": "?int",
+            "default": false
+        },
+        {
+            "name": "goalEvent",
+            "type": "?string",
+            "default": false
+        },
+        {
+            "name": "eventData",
+            "type": "?array",
+            "default": false
+        },
+        {
+            "name": "generalizedUserAgent",
+            "type": "string",
+            "default": false
+        },
+        {
+            "name": "visitorId",
+            "type": "?string",
+            "default": false
+        },
+        {
+            "name": "sessionId",
+            "type": "?string",
+            "default": false
+        },
+        {
+            "name": "occurredAt",
+            "type": "DateTimeImmutable",
+            "default": false
+        },
+        {
+            "name": "geoArea",
+            "type": "?string",
+            "default": true
+        },
+        {
+            "name": "internalTraffic",
+            "type": "?bool",
+            "default": true
+        }
+    ]
+}

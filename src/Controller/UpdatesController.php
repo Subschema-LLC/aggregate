@@ -6,6 +6,7 @@ namespace App\Controller;
 
 use App\Service\AggregateConfigLoader;
 use App\Service\ApplicationUpdateService;
+use App\Service\Cluster\ClusterOverview;
 use App\Service\FeatureFlags;
 use App\Service\Update\ApplicationUpdater;
 use App\Service\Update\BackgroundUpdate;
@@ -39,6 +40,7 @@ final class UpdatesController extends AbstractController
         private readonly SystemCheck $systemCheck,
         private readonly UpdateSettings $settings,
         private readonly ?DeploymentAction $deploymentAction = null,
+        private readonly ?ClusterOverview $cluster = null,
     ) {
     }
 
@@ -63,6 +65,7 @@ final class UpdatesController extends AbstractController
             'update_method' => $this->chosenMethod(),
             'update_detected_method' => $this->updates->detectedMethod(),
             'update_deployment_action' => ($status['installation_type'] ?? null) === 'deployment' ? $this->deploymentAction() : null,
+            'update_cluster' => $this->clusterOverview(),
         ]);
     }
 
@@ -359,5 +362,18 @@ final class UpdatesController extends AbstractController
         if (!$this->features->isEnabled('updates')) {
             throw $this->createNotFoundException('Updates are disabled.');
         }
+    }
+
+    /**
+     * The other servers of a cluster, when this administration server has
+     * any in its list, so the page shows which still need --files-only.
+     *
+     * @return array{release: ?string, version: ?string, servers: list<array<string, mixed>>}|null
+     */
+    private function clusterOverview(): ?array
+    {
+        $overview = $this->cluster?->overview();
+
+        return $overview !== null && $overview['servers'] !== [] ? $overview : null;
     }
 }

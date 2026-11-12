@@ -356,6 +356,22 @@ that a migration has executed successfully on every database engine. Use a
 disposable database for real migration and query checks, and identify the engines
 you actually exercised in the PR.
 
+During a cluster update, collection and worker servers still run the previous
+release against the migrated database, so two checks keep each release
+compatible with the one before it:
+
+- `tests/Migration/MigrationAdditivityTest.php`: a migration may change
+  `events` and `messenger_messages` only by adding nullable or defaulted
+  columns, or an index built without blocking inserts (`CONCURRENTLY` with
+  `isTransactional()` returning `false` on PostgreSQL, `ALGORITHM=INPLACE,
+  LOCK=NONE` on MySQL and MariaDB). Remove or rename a column a release after
+  the code stops using it. A migration the check misreads goes in its
+  `REVIEWED` list with the reason it is safe.
+- `tests/Message/MessageContractTest.php`: a queued message class, such as
+  `TrackEventMessage`, only gains fields, at the end and with a default, and
+  sets them on messages an older release wrote (`__wakeup()`). Record new
+  fields in `tests/Fixtures/message-contracts.json`; the test prints them.
+
 [tests/Integration/fresh-install.php](tests/Integration/fresh-install.php) is that
 check. It installs the checkout through the browser setup page and `/install`,
 opens every dashboard page, collects events through the API, archives, applies

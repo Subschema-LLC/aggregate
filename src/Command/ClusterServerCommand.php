@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\Service\AggregateConfigLoader;
-use App\Service\Cluster\ClusterServers;
+use App\Service\Cluster\ClusterOverview;
 use App\Service\Cluster\ClusterSettings;
 use App\Service\Cluster\ServerRole;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -24,7 +24,7 @@ final class ClusterServerCommand extends Command
 {
     public function __construct(
         private readonly AggregateConfigLoader $config,
-        private readonly ClusterServers $servers,
+        private readonly ClusterOverview $overview,
     ) {
         parent::__construct();
     }
@@ -95,23 +95,14 @@ final class ClusterServerCommand extends Command
             return Command::FAILURE;
         }
 
-        $known = $this->servers->all();
-        $rows = [];
-        foreach ((new ClusterSettings($this->config))->servers() as $server) {
-            $record = $known[$server['name']] ?? null;
-            $rows[] = [
-                'name' => $server['name'],
-                'address' => $server['address'],
-                'role' => $server['role'],
-                'reported_role' => $record['role'] ?? null,
-                'release' => $record['release'] ?? null,
-                'last_pull_at' => isset($record['last_pull_at']) ? gmdate(\DATE_ATOM, $record['last_pull_at']) : null,
-                'version' => $record['version'] ?? null,
-                'alerting_since' => isset($record['alert_since']) ? gmdate(\DATE_ATOM, $record['alert_since']) : null,
-            ];
-        }
+        $overview = $this->overview->overview();
+        $rows = array_map(static fn (array $row): array => [
+            ...$row,
+            'last_pull_at' => $row['last_pull_at'] !== null ? gmdate(\DATE_ATOM, $row['last_pull_at']) : null,
+            'alerting_since' => $row['alerting_since'] !== null ? gmdate(\DATE_ATOM, $row['alerting_since']) : null,
+        ], $overview['servers']);
         if ($input->getOption('json')) {
-            $output->writeln(json_encode(['servers' => $rows], \JSON_PRETTY_PRINT | \JSON_UNESCAPED_SLASHES | \JSON_THROW_ON_ERROR));
+            $output->writeln(json_encode(['release' => $overview['release'], 'configuration_version' => $overview['version'], 'servers' => $rows], \JSON_PRETTY_PRINT | \JSON_UNESCAPED_SLASHES | \JSON_THROW_ON_ERROR));
 
             return Command::SUCCESS;
         }
@@ -120,11 +111,16 @@ final class ClusterServerCommand extends Command
 
             return Command::SUCCESS;
         }
-        $io->table(['Server', 'Address', 'Role', 'Release', 'Last pull (UTC)', 'Alert'], array_map(static fn (array $row): array => [
+        $io->table(['Server', 'Address', 'Role', 'Release', 'Configuration', 'Last pull (UTC)', 'Alert'], array_map(static fn (array $row): array => [
             $row['name'],
             $row['address'],
             self::roleCell($row['role'], $row['reported_role']),
-            $row['release'] ?? '-',
+            ($row['release'] ?? '-').($row['same_release'] === false ? ' (this server: '.$overview['release'].')' : ''),
+            match ($row['newest_configuration']) {
+                true => 'newest',
+                false => 'behind',
+                null => '-',
+            },
             $row['last_pull_at'] ?? 'never',
             $row['alerting_since'] !== null ? 'since '.$row['alerting_since'] : '-',
         ], $rows));

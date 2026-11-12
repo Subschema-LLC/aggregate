@@ -409,7 +409,10 @@ On every role but `all` and `administration`:
   cache, status commands and `app:server:role` run everywhere; `worker` also
   runs the queue consumers;
 - configuration files refuse to change, whatever tries to change them, since
-  configuration is changed on the administration server.
+  configuration is changed on the administration server;
+- updates replace files only (`app:updates:apply --files-only`), after the
+  administration server has updated and run the migrations. See
+  [update several servers](UPDATES.md#update-several-servers).
 
 A role other than `all` needs a database other servers can reach: on SQLite,
 which keeps the database in a file on one server, every role runs as `all`.

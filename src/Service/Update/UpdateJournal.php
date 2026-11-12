@@ -38,6 +38,7 @@ namespace App\Service\Update;
  *     finished_at?: int,
  *     superseded?: string|true,
  *     flags?: array{composer: bool, importmap: bool},
+ *     files_only?: bool,
  *     rollback?: array{files: bool, migrations: bool},
  *     files_restored?: bool,
  *     handed_off?: bool,
