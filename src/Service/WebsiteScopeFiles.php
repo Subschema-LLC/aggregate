@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Service\Cluster\ServerRole;
 use App\Service\Operations\ConfigurationChanges;
 use Symfony\Component\Yaml\Yaml;
 
@@ -72,6 +73,7 @@ final class WebsiteScopeFiles
      */
     public function writeOverlay(string $kind, string $id, array $values): void
     {
+        ServerRole::forProject($this->projectDir)->assertWritesConfiguration();
         $path = $this->overlayPath($kind, $id);
         if ($values === []) {
             if (is_file($path) && !@unlink($path)) {
@@ -132,6 +134,7 @@ final class WebsiteScopeFiles
     /** Replaces a file's content under an exclusive lock, creating its directory if needed. */
     public function write(string $path, string $yaml): void
     {
+        ServerRole::forProject($this->projectDir)->assertWritesConfiguration();
         $directory = dirname($path);
         if (!is_dir($directory) && !@mkdir($directory, 0775, true) && !is_dir($directory)) {
             throw new \RuntimeException('The website group configuration directory could not be created.');

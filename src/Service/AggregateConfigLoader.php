@@ -2,6 +2,7 @@
 
 namespace App\Service;
 
+use App\Service\Cluster\ServerRole;
 use App\Service\Operations\ConfigurationChanges;
 use Symfony\Component\Yaml\Yaml;
 use Symfony\Contracts\Service\ResetInterface;
@@ -254,6 +255,7 @@ class AggregateConfigLoader implements ResetInterface
         if ($this->scopeView) {
             throw new \RuntimeException('Website and group settings are saved to their own files, not the deployment configuration.');
         }
+        ServerRole::resolve($this->projectDir, $this->environment)->assertWritesConfiguration();
         $this->load();
         $this->assertHealthy();
 

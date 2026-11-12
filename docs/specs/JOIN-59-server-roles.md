@@ -70,8 +70,10 @@ These are also phase 1's still-missing measurements (the large table, `doctrine:
 How the gating works (Architect, with the second opinion's corrections):
 
 - **One boot-time resolver.** A `ServerRole` resolver reads the role the way `Kernel::isDashboardFeatureEnabledForBoot()` reads the dashboard switch: environment first, then `config/aggregate.yaml` under a file lock. The dashboard switch derives "off" from the role.
-- **Routes.** Split `config/routes_public.yaml` into two files, and load each by role:
-  - `routes_collection.yaml`: Receive, Script, ConsentScript, StandaloneConsentScript, TagScript, BrandingLogo, BrandingTheme, InternalTrafficPublic, Health.
+- **Routes.** `config/routes_public.yaml` is split into four files, each loaded by the roles that serve it (built in slice 2: health and branding are their own files, since more than one role serves them):
+  - `routes_health.yaml`: Health, for every role.
+  - `routes_branding.yaml`: BrandingLogo, BrandingTheme, for `all`, `administration` and `collection`.
+  - `routes_collection.yaml`: Receive, Script, ConsentScript, StandaloneConsentScript, TagScript, InternalTrafficPublic.
   - `routes_admin_api.yaml`: Home, ReportingApi, Mcp.
 - **`McpAuthorizeController` stays where it is,** in `routes_dashboard.yaml` and `services_dashboard.yaml`, because OAuth consent needs a dashboard session.
 - **Unused controllers are removed.** `Kernel::build()` removes the controller definitions for routes a role does not load, as it already does for the dashboard. The lists are generated from the route files, not kept by hand, and a test boots each role and compares its routes with this table.
@@ -431,7 +433,7 @@ _The work this spec plans, as `- [ ] …` items, each naming the role that does 
 - [x] Product Owner: amend `ROADMAP.md`: the measured gate, and phase 3's text (scheduled task on administration, rate limits after #456, API and MCP on administration) (done in JOIN-59)
 - [x] Back end: the `database` load-test suite for slice 0 (done in JOIN-59)
 - [x] Back end: `collection_base_url` (slice 1) (done in JOIN-59)
-- [ ] Back end: `ServerRole`, the route split, controller removal generated from the route files, the command listener and service guards, the SQLite refusal, `app:server:role` with versioned JSON, and the dead mail routing removed (slice 2)
+- [x] Back end: `ServerRole`, the route split, controller removal generated from the route files, the command listener and service guards, the SQLite refusal, `app:server:role` with versioned JSON, and the dead mail routing removed (slice 2) (done in JOIN-59)
 - [ ] Back end: `app:cluster:sync`, `ClusterConfigPublisher` with the `cluster_config` fingerprint in `processing_tasks`, the configuration endpoint, signed health metadata, `var/cluster_state.json`, the pause when behind or unverified, and the alert through JOIN-55's destinations (slice 3)
 - [ ] Back end: `app:server:balancer-config` for Nginx and Caddy (slice 4)
 - [ ] Back end: `--files-only`, the additivity checks for tables and message classes, and the Updates page server list (slice 5)

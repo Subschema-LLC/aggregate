@@ -4,7 +4,11 @@ files:
   - src/Kernel.php
   - src/Security/IpRateLimiter.php
   - config/aggregate.yaml.example
-  - config/routes_public.yaml
+  - config/routes_collection.yaml
+  - config/routes_admin_api.yaml
+  - config/routes_branding.yaml
+  - config/routes_health.yaml
+  - src/Service/Cluster/ServerRole.php
   - docs/LOAD-TESTING.md
   - docs/RELEASES.md
   - docs/SCHEDULED-TASKS.md
