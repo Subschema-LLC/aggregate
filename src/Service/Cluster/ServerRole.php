@@ -78,7 +78,7 @@ final class ServerRole
         self::COLLECTION => ['app:assets:build-js', ...self::FILES_ONLY_UPDATE_COMMANDS],
         self::WORKER => [
             'messenger:consume', 'messenger:stats', 'messenger:stop-workers',
-            'messenger:failed:show', 'messenger:failed:retry', 'app:tracking:retry-failed',
+            'messenger:failed:show', 'messenger:failed:retry', 'app:tracking:retry-failed', 'app:queue:retention',
             ...self::FILES_ONLY_UPDATE_COMMANDS,
         ],
     ];

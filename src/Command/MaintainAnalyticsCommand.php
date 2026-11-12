@@ -59,7 +59,7 @@ final class MaintainAnalyticsCommand extends Command
         }
 
         if (!$result->hasWork()) {
-            $io->success('Archiving, retention and record purging are all turned off; nothing changed.');
+            $io->success('Archiving, retention and record purging are all turned off, and no message is queued; nothing changed.');
 
             return Command::SUCCESS;
         }
@@ -73,6 +73,7 @@ final class MaintainAnalyticsCommand extends Command
                 ['Archive cells to delete', (string) $result->deletedArchiveCells],
                 ['Processing tasks to purge', (string) $result->purgedProcessingTasks],
                 ['Audit trail entries to purge', (string) $result->purgedAuditEntries],
+                ['Queued messages to delete', (string) $result->purgedQueuedMessages],
             ],
         );
         $io->success($result->dryRun

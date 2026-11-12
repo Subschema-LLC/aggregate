@@ -13,8 +13,10 @@ use App\Service\AnalyticsMaintenanceRunner;
 use App\Service\AnalyticsRetentionService;
 use App\Service\Operations\AuditTrail;
 use App\Service\Operations\ProcessingTasks;
+use App\Service\Operations\QueueRetention;
 use App\Service\Operations\TaskTrigger;
 use App\Tests\Service\Operations\OperationsDatabase;
+use App\Tests\Service\Operations\QueueRetentionTest;
 use Doctrine\DBAL\Connection;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
@@ -185,6 +187,25 @@ final class MaintainAnalyticsCommandTest extends TestCase
         );
     }
 
+    public function testQueuedMessagesAreDeletedAfterTheirRetentionEvenWithEverythingElseOff(): void
+    {
+        $this->writePolicy(['queue_retention_days' => 7]);
+        $operations = OperationsDatabase::connection();
+        QueueRetentionTest::queue($operations);
+        QueueRetentionTest::message($operations, 'failed', '2026-08-20 09:00:00');
+        QueueRetentionTest::message($operations, 'default', '2026-08-31 09:00:00');
+        $connection = $this->createMock(Connection::class);
+        $connection->method('executeStatement')->willReturn(1);
+
+        $tester = $this->tester($connection, $this->createStub(LoggerInterface::class), $operations, new QueueRetention($operations));
+        self::assertSame(Command::SUCCESS, $tester->execute([]));
+
+        self::assertMatchesRegularExpression('/Queued messages to delete\s+1\b/', $tester->getDisplay());
+        self::assertSame(['default'], $operations->fetchFirstColumn('SELECT queue_name FROM messenger_messages'), 'The failed message was queued 12 days before; the other, 1 day.');
+        $run = (new ProcessingTasks($operations, new AuditTrail($operations)))->latest(AnalyticsMaintenanceRunner::TASK_TYPE)['']['attempt'];
+        self::assertSame('Deleted 1 message queued for more than 7 days.', $run['details']);
+    }
+
     public function testAFailedRunIsRecordedWithoutQuotingDatabaseErrors(): void
     {
         $this->writePolicy(['audit_trail_retention_days' => 365]);
@@ -225,7 +246,7 @@ final class MaintainAnalyticsCommandTest extends TestCase
         );
     }
 
-    private function tester(Connection $connection, LoggerInterface $logger, ?Connection $operations = null): CommandTester
+    private function tester(Connection $connection, LoggerInterface $logger, ?Connection $operations = null, ?QueueRetention $queue = null): CommandTester
     {
         $operations ??= OperationsDatabase::connection();
         $audit = new AuditTrail($operations);
@@ -240,6 +261,7 @@ final class MaintainAnalyticsCommandTest extends TestCase
             new MockClock('2026-09-01 18:00:00 UTC'),
             new ProcessingTasks($operations, $audit),
             $audit,
+            $queue,
         );
 
         return new CommandTester(new MaintainAnalyticsCommand($runner, $logger));

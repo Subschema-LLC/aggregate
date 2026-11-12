@@ -630,7 +630,7 @@ An optional [JavaScript minification build](JS-BUILD.md) produces the tracker an
 
 ## Archiving and retention
 
-Administrators can edit the nine lifecycle settings at `/dashboard/data-lifecycle`: the seven `analytics_*` settings below and the two record retention periods. API-only deployments can manage the same keys in `config/aggregate.yaml`. Uppercase environment variables (for example, `ANALYTICS_RETENTION_ENABLED`) take precedence and lock the corresponding UI controls. Values are validated strictly. When archiving and retention are both enabled, each raw retention period must be at least `analytics_archive_after_days`. Whenever retention is enabled, archive retention must be at least the longer raw retention period so marked source rows cannot disappear from reporting early.
+Administrators can edit the eleven lifecycle settings at `/dashboard/data-lifecycle`: the seven `analytics_*` settings below, the three record retention periods and the queue retention period. API-only deployments can manage the same keys in `config/aggregate.yaml`. Uppercase environment variables (for example, `ANALYTICS_RETENTION_ENABLED`) take precedence and lock the corresponding UI controls. Values are validated strictly. When archiving and retention are both enabled, each raw retention period must be at least `analytics_archive_after_days`. Whenever retention is enabled, archive retention must be at least the longer raw retention period so marked source rows cannot disappear from reporting early.
 
 Maintenance runs outside the web process, once a day, from the server's one [scheduled task](SCHEDULED-TASKS.md) (`app:scheduler:run`, every five minutes). Both features are disabled by default; inspect a dry run before enabling irreversible deletion:
 
@@ -641,7 +641,7 @@ php bin/console app:analytics:maintain --dry-run
 php bin/console app:analytics:maintain
 ```
 
-Archiving creates private, unsuppressed aggregate cells and marks the source rows as archived; it does not itself delete raw rows. Retention deletes raw anonymous, raw enhanced, and archived aggregate data only after their configured periods. Backups, BI extracts, queues, failed messages, logs, and replicas need separate retention controls.
+Archiving creates private, unsuppressed aggregate cells and marks the source rows as archived; it does not itself delete raw rows. Retention deletes raw anonymous, raw enhanced, and archived aggregate data only after their configured periods. Queued and failed messages have their own period ([below](#queued-events)); backups, BI extracts, logs, and replicas need separate retention controls.
 
 ### Task and audit records
 
@@ -666,6 +666,27 @@ What the audit trail records is chosen by area under `audit_trail_areas`, on
 Purging is on by default, so set up the [scheduled task](SCHEDULED-TASKS.md)
 even when archiving and retention are off. Its dry run shows how many records would be
 purged, and each run records what it archived, deleted and purged.
+
+### Queued events
+
+Enhanced events wait in `messenger_messages` for a queue consumer when
+`MESSENGER_TRANSPORT_DSN` is `doctrine://`, and any message whose every write
+attempt failed waits there in the failed transport. Their payloads hold the
+enhanced detail the retention periods above govern, outside those periods. So
+maintenance deletes every message older than `queue_retention_days`, whether
+it was written or not, in batches of `analytics_maintenance_batch_size`, each
+in its own transaction. A deleted message's event is lost: that is the point
+when workers stay down, and the [tracking failure alert](ALERTS.md) reports
+failures before then.
+
+| Setting | Environment variable | Default | Range |
+| --- | --- | --- | --- |
+| `queue_retention_days` | `QUEUE_RETENTION_DAYS` | `7` | `1`–`365`; it cannot be turned off |
+
+`php bin/console app:queue:retention` shows how many messages wait in each
+queue and since when; `php bin/console app:queue:retention 14` sets the
+period. In a cluster, maintenance runs on the administration server, and
+worker servers can run the command to show the queue.
 
 ## Sync
 

@@ -268,6 +268,7 @@ environments:
     processing_tasks_retention_days: 90
     audit_trail_retention_days: 365
     audit_trail_admin_retention_days: 730
+    queue_retention_days: 7
 
   prod:
     rate_limit_per_minute: 100
@@ -310,6 +311,7 @@ environments:
     processing_tasks_retention_days: 90
     audit_trail_retention_days: 365
     audit_trail_admin_retention_days: 730
+    queue_retention_days: 7
 
   test:
     rate_limit_per_minute: 1000
@@ -351,6 +353,7 @@ environments:
     processing_tasks_retention_days: 90
     audit_trail_retention_days: 365
     audit_trail_admin_retention_days: 730
+    queue_retention_days: 7
 
 # Configuration options:
 #
@@ -623,6 +626,12 @@ environments:
 # audit_trail_admin_retention_days (optional, default: 730; range: 0..36500)
 #   Purge the audit trail's administrator actions and sign-ins after this many
 #   days. 0 keeps them.
+#
+# queue_retention_days (optional, default: 7; range: 1..365)
+#   Delete queued and failed enhanced events (messenger_messages) after this
+#   many days, whether a worker wrote them or not; a deleted message's event
+#   is lost. Cannot be turned off. QUEUE_RETENTION_DAYS takes precedence;
+#   app:queue:retention shows the queue and sets it.
 #
 # audit_trail_areas (optional; edited on Administration → Audit trail)
 #   What the audit trail records, by area. Areas left out take their default;

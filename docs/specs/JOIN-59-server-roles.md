@@ -157,8 +157,8 @@ Built in slice 5, with two changes. A files-only update keeps maintenance mode w
 - **Connection budget.** PostgreSQL keeps connections open by default (DESIGN-DECISIONS), so N servers × `pm.max_children`, plus consumers and the scheduled task, must stay under `max_connections`. The docs recommend PgBouncer in transaction mode for PostgreSQL clusters; Aggregate keeps no session state on a connection. MySQL and MariaDB connect per request, so their count follows requests in flight. `app:server:role` prints the budget and warns above about 70% of `max_connections`.
 - **Index write amplification.** Every insert maintains each secondary index on `events` (`docs/install_fresh.sql` lists five). An index is dropped only if slice 0 shows it unused.
 - **The queue table.** Compare the consumer's claim query with a composite `(queue_name, available_at, delivered_at)` index at three or more workers. Add it by migration only if measured, because Symfony's Doctrine transport owns that table's schema. Otherwise tune autovacuum on PostgreSQL and watch InnoDB history length on MySQL.
-- **Queue retention.** The failed transport, and a backlog behind stopped workers, keep full enhanced payloads in `messenger_messages`, outside the events retention rules. They get a bounded age and a documented purge (`Version20260724000500` already deletes `TrackEventMessage` rows, a precedent).
-- **Retention batches.** The retention and archive job, now on the administration server only, deletes in small batches so it does not hold locks or flood WAL or replication while collection servers insert.
+- **Queue retention.** The failed transport, and a backlog behind stopped workers, keep full enhanced payloads in `messenger_messages`, outside the events retention rules. They get a bounded age and a documented purge (`Version20260724000500` already deletes `TrackEventMessage` rows, a precedent). Built in slice 6: daily maintenance deletes messages older than `queue_retention_days` (7 by default, 1–365, never off), in batches by primary key; `app:queue:retention` shows and sets it, as does the Data lifecycle page.
+- **Retention batches.** The retention and archive job, now on the administration server only, deletes in small batches so it does not hold locks or flood WAL or replication while collection servers insert. Checked in slice 6: `AnalyticsRetentionService` and the archive select `analytics_maintenance_batch_size` ids (1,000 by default, 100–10,000) ordered by id with a plain, non-locking read, then delete them by primary key in chunks of 500, one transaction per batch, under the maintenance lease. Each batch locks only its own rows, and its WAL or binlog volume is bounded by the batch size. `TrackingFailureRetryRunner` does not purge the failed transport: it retries messages and acknowledges those it wrote. The queue purge above now bounds the rest.
 
 ### `app:server:role`, the contract PRAGMA builds on
 
@@ -226,7 +226,7 @@ Index changes on `events` or `messenger_messages` come only after slice 0 or 8 s
 - **Privacy lag.** A kill switch or path exclusion reaches collection servers on their next minute. A server cut off from the administration server, but not from the database, keeps collecting under the old rules for at most 5 minutes after the change is recorded, then pauses.
 - **Guides drift from PRAGMA.** PRAGMA automates the same steps the guides describe, so a change to one needs the other. Each PRAGMA slice links the guide section it automates, and `app:server:role` checks the result the same way whichever way a server was set up.
 - **A split from the database as well.** A server that can reach neither the administration server nor the database stops verifying and pauses after 5 minutes. It could not have recorded events anyway.
-- **The DBA has not yet read the retention code's batch size and locking,** nor whether `TrackingFailureRetryRunner` purges the failed transport. That is checked in slice 6.
+- **Retention batch size and locking** were checked in slice 6 (see [the database](#the-database-dba)). A DBA should still confirm a 1,000-row batch suits their replication lag.
 
 ### Open questions for the approver
 
@@ -442,7 +442,7 @@ _The work this spec plans, as `- [ ] …` items, each naming the role that does 
 - [x] Back end: `app:cluster:sync`, `ClusterConfigPublisher` with the `cluster_config` fingerprint in `processing_tasks`, the configuration endpoint, signed health metadata, `var/cluster_state.json`, the pause when behind or unverified, and the alert through JOIN-55's destinations (slice 3) (done in JOIN-59)
 - [x] Back end: `app:server:balancer-config` for Nginx and Caddy (slice 4), with `app:cluster:settings` and `app:collection-address` so every cluster setting has a command
 - [x] Back end: `--files-only`, the additivity checks for tables and message classes, and the Updates page server list (slice 5)
-- [ ] DBA: confirm retention batch size and locking and whether the failed transport is purged; then a bounded age and purge for queued payloads (slice 6)
+- [x] DBA: confirm retention batch size and locking and whether the failed transport is purged; then a bounded age and purge for queued payloads (slice 6)
 - [ ] Back end: the two-servers-one-database fresh-install CI job (slice 7)
 - [ ] DBA: the multi-server load test with the BI query loop, and any measured index change (slice 8)
 - [ ] Docs: the generic Linux cluster guide (G1) and the Plesk cluster guide (G2), each followed once on fresh servers
