@@ -36,6 +36,20 @@
             </div>
 
             <div class="field">
+                <label class="label" for="collection-base-url">Collection address</label>
+                <div class="control has-icons-left">
+                    <input class="input" type="url" id="collection-base-url" name="collection_base_url" value="{{ collection_base_url }}" maxlength="2048" placeholder="Empty: the App Host" aria-describedby="collection-base-url-help"{% if collection_base_url_overridden %} disabled{% endif %}>
+                    <span class="icon is-small is-left">
+                        <i class="fas fa-satellite-dish"></i>
+                    </span>
+                </div>
+                <p class="help" id="collection-base-url-help">
+                    Where websites send events and load the tracker, consent and tag scripts, if not the App Host: a tracking subdomain, or the balancer in front of several collection servers. Copy the tracking code again after changing it.
+                    {% if collection_base_url_overridden %}<strong>Set by the <code>COLLECTION_BASE_URL</code> environment variable</strong>, which takes precedence over this field.{% endif %}
+                </p>
+            </div>
+
+            <div class="field">
                 <label class="label" for="documentation-url">Documentation URL</label>
                 <div class="control has-icons-left">
                     <input class="input" type="url" id="documentation-url" name="documentation_url" value="{{ documentation_url }}" maxlength="2048" placeholder="Empty: no documentation links" aria-describedby="documentation-url-help"{% if documentation_url_overridden %} disabled{% endif %}>

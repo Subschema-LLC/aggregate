@@ -276,6 +276,7 @@ environments:
 
 - `rate_limit_per_minute`: API requests per IP per minute (default: `100`)
 - `app_host`: Public hostname, used in dashboard integration snippets
+- `collection_base_url`: Where websites send events and load the tracker, consent and tag-manager scripts, when that is not `app_host` (default: empty, which means `app_host`; `COLLECTION_BASE_URL` environment override). Set it to a tracking subdomain, or to the balancer in front of several collection servers. Generated snippets and the [organization traffic](#organization-traffic) links use it; sign-in links, alerts and the dashboard keep `app_host`. A value that is not a plain `http(s)` URL stops snippet generation instead of falling back to `app_host`. Copy the tracking code again after changing it. Also on **General settings**
 - `documentation_url`: Address of the documentation site that dashboard help links and command-line messages point to (default: `https://subschema-llc.github.io/aggregate/`). See [documentation links](#documentation-links)
 - `brand_name`: Application name used in page titles, headings, and explanatory copy (default: `Aggregate Analytics`)
 - `brand_logo_text`: Visible text displayed beside the optional navigation logo; with a valid image, leave it empty for an image-only identity (default: `brand_name`)

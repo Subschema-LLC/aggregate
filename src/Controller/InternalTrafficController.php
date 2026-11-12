@@ -6,6 +6,7 @@ namespace App\Controller;
 
 use App\EventSubscriber\InternalTrafficResponseSubscriber;
 use App\Service\AggregateConfigLoader;
+use App\Service\CollectionAddress;
 use App\Service\InternalTrafficMarking;
 use App\Service\InternalTrafficSettings;
 use Psr\Log\LoggerInterface;
@@ -44,7 +45,11 @@ final class InternalTrafficController extends AbstractController
             $marking = $this->marking->page();
             $token = $this->settings->getShareToken();
             if ($token !== '') {
-                $shareUrl = $this->generateUrl('app_internal_traffic_public', ['token' => $token], UrlGeneratorInterface::ABSOLUTE_URL);
+                // The marking page is served where collection is.
+                $collection = new CollectionAddress($this->config);
+                $shareUrl = $collection->configuredValue() !== '' && ($base = $collection->baseUrl()) !== null
+                    ? $base.'/internal-traffic/'.rawurlencode($token)
+                    : $this->generateUrl('app_internal_traffic_public', ['token' => $token], UrlGeneratorInterface::ABSOLUTE_URL);
             }
         } catch (\Throwable $e) {
             $this->logger->error('Failed to load internal traffic settings.', ['exception' => $e]);

@@ -367,6 +367,17 @@ environments:
 #   Public hostname used in dashboard integration snippets.
 #   Example: https://analytics.example.com
 #
+# collection_base_url (optional, default: "")
+#   Where websites send events and load the tracker, consent and tag-manager
+#   scripts, when that is not app_host: a tracking subdomain, or the balancer
+#   in front of several collection servers. Generated snippets and the
+#   organization-traffic links use it; sign-in links, alerts and the dashboard
+#   keep app_host. Empty means app_host. A value that is not a plain http(s)
+#   URL stops snippet generation rather than falling back to app_host. Copy the
+#   tracking code again after changing it. Also editable in General settings.
+#   The COLLECTION_BASE_URL environment variable takes precedence.
+#   Example: https://collect.example.com
+#
 # documentation_url (optional, default: https://subschema-llc.github.io/aggregate/)
 #   Where the dashboard's documentation and help links open; also shown in
 #   command-line messages. Page paths such as operate/updates are appended, so
