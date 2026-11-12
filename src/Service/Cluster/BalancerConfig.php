@@ -41,14 +41,14 @@ final class BalancerConfig
     private readonly string $scheme;
     private readonly string $host;
     private readonly ?int $port;
-    /** @var list<array{name: string, address: string}> */
+    /** @var list<array{name: string, address: string, port: int}> */
     private readonly array $servers;
     /** Lower-case letters, digits and underscores from the host, so two installations can share one Nginx. */
     private readonly string $suffix;
 
     /**
      * @param string $collectionUrl the collection address (collection_base_url)
-     * @param array<array{name: string, address: string}> $servers the collection servers
+     * @param array<array{name: string, address: string, port?: ?int}> $servers the collection servers, each at its port or $upstreamPort
      * @param int $ratePerMinute rate_limit_per_minute
      * @param int $upstreamPort cluster_collection_port: the port the collection servers listen on over the private network
      */
@@ -83,7 +83,11 @@ final class BalancerConfig
                     $server['name'],
                 ));
             }
-            $list[] = ['name' => $server['name'], 'address' => $server['address']];
+            $port = $server['port'] ?? $upstreamPort;
+            if ($port < 1 || $port > 65535) {
+                throw new \InvalidArgumentException('The collection servers\' port must be between 1 and 65535.');
+            }
+            $list[] = ['name' => $server['name'], 'address' => $server['address'], 'port' => $port];
         }
         if ($ratePerMinute < 1) {
             throw new \InvalidArgumentException('rate_limit_per_minute must be at least 1 for the balancer\'s limit.');
@@ -104,7 +108,7 @@ final class BalancerConfig
         return $this->host;
     }
 
-    /** @return list<array{name: string, address: string}> */
+    /** @return list<array{name: string, address: string, port: int}> */
     public function servers(): array
     {
         return $this->servers;
@@ -201,7 +205,7 @@ final class BalancerConfig
             $out[] = "\t}";
         }
         $out[] = '';
-        $upstreams = array_map(fn (array $server): string => $this->upstreamAddress($server['address']), $this->servers);
+        $upstreams = array_map(fn (array $server): string => $this->upstreamAddress($server['address'], $server['port']), $this->servers);
         $out[] = "\t# ".implode(', ', array_column($this->servers, 'name'));
         $out[] = "\treverse_proxy ".implode(' ', $upstreams).' {';
         $out[] = "\t\tlb_policy least_conn";
@@ -264,7 +268,7 @@ final class BalancerConfig
             '    # A server that fails, or answers 503 because it paused, rests for 10 seconds.',
         ];
         foreach ($this->servers as $server) {
-            $out[] = '    server '.$this->upstreamAddress($server['address']).' max_fails=1 fail_timeout=10s; # '.$server['name'];
+            $out[] = '    server '.$this->upstreamAddress($server['address'], $server['port']).' max_fails=1 fail_timeout=10s; # '.$server['name'];
         }
         $out[] = '    keepalive 16;';
         $out[] = '}';
@@ -362,9 +366,9 @@ final class BalancerConfig
         return array_map(static fn (string $line): string => $line === '' ? '' : $indent.$line, $lines);
     }
 
-    private function upstreamAddress(string $ip): string
+    private function upstreamAddress(string $ip, int $port): string
     {
-        return (str_contains($ip, ':') ? '['.$ip.']' : $ip).':'.$this->upstreamPort;
+        return (str_contains($ip, ':') ? '['.$ip.']' : $ip).':'.$port;
     }
 
     private function hostWithPort(): string

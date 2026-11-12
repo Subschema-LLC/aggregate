@@ -1121,8 +1121,10 @@ YAML-first design already let a collection server run without a login page.
 Checking roles in the writers, not only in the commands, means a future page
 or script cannot split a cluster's configuration either.
 
-**Trade-off.** The role is compiled into the cache, so changing it needs
-`cache:clear`; `app:server:role` reports a cache built for another role. The
+**Trade-off.** The role is compiled into the cache, so changing it needs a
+new cache: `app:cluster:join` removes the old one as it ends, because
+`cache:clear` run in the same second as the build it replaces keeps that
+build. `app:server:role` reports a cache built for another role. The
 command lists are kept per role, so a new command must be added to a role's
 list before it runs on collection or worker servers.
 

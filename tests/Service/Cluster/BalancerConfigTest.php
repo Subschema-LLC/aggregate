@@ -77,6 +77,15 @@ final class BalancerConfigTest extends TestCase
         self::assertStringContainsString('server 10.0.0.11:8081 ', $nginx);
     }
 
+    public function testAServerCanHaveItsOwnPort(): void
+    {
+        $balancer = new BalancerConfig('https://collect.example.com', [['name' => 'collect-1', 'address' => '10.0.0.11', 'port' => 8081], ['name' => 'collect-2', 'address' => '10.0.0.12', 'port' => null]], 100, 8080);
+
+        self::assertStringContainsString('server 10.0.0.11:8081 ', $balancer->nginx());
+        self::assertStringContainsString('server 10.0.0.12:8080 ', $balancer->nginx(), 'Without its own port, cluster_collection_port.');
+        self::assertStringContainsString('reverse_proxy 10.0.0.11:8081 10.0.0.12:8080 {', $balancer->caddy());
+    }
+
     public function testCaddySpreadsChecksHealthAndOverwritesTheForwardedAddress(): void
     {
         $caddy = (new BalancerConfig('https://collect.example.com', self::SERVERS, 100))->caddy();

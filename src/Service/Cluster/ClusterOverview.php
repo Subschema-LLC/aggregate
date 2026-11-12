@@ -16,6 +16,7 @@ use App\Service\InstalledRelease;
  * @phpstan-type ServerRow array{
  *     name: string,
  *     address: string,
+ *     port: ?int,
  *     role: ?string,
  *     reported_role: ?string,
  *     release: ?string,
@@ -60,6 +61,7 @@ class ClusterOverview
             $rows[] = [
                 'name' => $server['name'],
                 'address' => $server['address'],
+                'port' => $server['port'],
                 'role' => $server['role'],
                 'reported_role' => $record['role'] ?? null,
                 'release' => $reportedRelease,
