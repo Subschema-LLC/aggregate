@@ -49,6 +49,12 @@ Run a **database headroom** test (the `database` suite, [`docs/LOAD-TESTING.md`]
 
 These are also phase 1's still-missing measurements (the large table, `doctrine://` with workers, dedicated machines).
 
+**Results (11 November 2026, two runs; [details](../LOAD-TESTING.md#database-headroom-results-11-november-2026)).** Every engine and mode passed 2× in the final run: PostgreSQL 6.7–17.7×, MySQL 3.3–5.3×. Three findings bear on the design:
+
+- **`doctrine://` in the shared database is the weak setup.** It costs three to four times the database CPU of `sync://` and 3.9 (PostgreSQL) or 9.2 (MySQL) log syncs per event. MySQL measured 1.7× on a slower runner disk, which fails the gate. PostgreSQL's `NOTIFY` serializes commits across the database, and that lock was the main wait at half capacity. See the open question on the queue below.
+- **BI reads on MySQL hurt collection.** A full read of one view took 77–111 s on 10 million rows and raised collection's p95 2 to 44 times, to as much as 557 ms. On PostgreSQL a read took 8–14 s and p95 stayed at or below 19 ms in the final run.
+- **Collection reads no `events` index.** Dropping one is a question for the dashboard and BI reads, which slice 0 did not measure.
+
 ### Roles
 
 `server_role` in `config/aggregate.yaml`, with the `SERVER_ROLE` environment override. A missing or unknown value means `all`.
@@ -219,7 +225,8 @@ Index changes on `events` or `messenger_messages` come only after slice 0 or 8 s
 
 - [ ] **Engines.** Which engines and modes must meet 1.8×? Is SQL Server supported for roles but not load-tested?
 - [ ] **Database hosting.** Is the shared database usually self-run or managed (RDS, Cloud SQL)? This decides whether the docs recommend PgBouncer or ProxySQL, or only `max_connections`.
-- [ ] **BI on the primary.** Is a read replica for reporting acceptable as a later phase, or must BI stop touching the primary once collection is clustered? This makes the BI-contention test a gate or only a report.
+- [ ] **BI on the primary.** Is a read replica for reporting acceptable as a later phase, or must BI stop touching the primary once collection is clustered? This makes the BI-contention test a gate or only a report. Slice 0's data: tolerable on PostgreSQL at 10 million rows; on MySQL one BI refresh multiplied collection's p95 up to 44 times, so a MySQL or MariaDB cluster should send BI to the [reporting database](../REPORTING-DATABASE.md).
+- [ ] **The queue in a cluster.** Slice 0 found `doctrine://` in the shared database the costliest setup, near the gate on MySQL and serialized by `NOTIFY` on PostgreSQL. Should phase 3 recommend `sync://` for clusters (collection servers write enhanced events; already supported) and make `worker` servers wait for a broker such as Redis (phase 2), or support `doctrine://` workers with that warning?
 - [ ] **Queue retention ownership.** Who owns retention of failed messages: an administration-side job, or an operator purge? And how long may enhanced payloads wait in `messenger_messages` when workers are down?
 - [ ] **Balancer.** Does `balancer` earn a role, or is `app:server:balancer-config` on the administration server enough?
 - [ ] **`APP_SECRET`.** Must it match on every server? Anything one server signs with it and another checks needs auditing in slice 2.
@@ -420,7 +427,7 @@ _The work this spec plans, as `- [ ] …` items, each naming the role that does 
 - [x] Approver: decide staleness (pause and alert), PRAGMA (part of JOIN-59) and `sync://` clusters (supported) (done in JOIN-59)
 - [ ] Approver: answer the remaining open questions (engines, database hosting, BI on the primary, queue retention, balancer, `APP_SECRET`)
 - [ ] Product Owner: bring the anchor's done criteria in line with the answers
-- [ ] DBA: run the slice 0 database headroom test and write its report into `docs/LOAD-TESTING.md`
+- [x] DBA: run the slice 0 database headroom test and write its report into `docs/LOAD-TESTING.md` (done in JOIN-59)
 - [x] Product Owner: amend `ROADMAP.md`: the measured gate, and phase 3's text (scheduled task on administration, rate limits after #456, API and MCP on administration) (done in JOIN-59)
 - [x] Back end: the `database` load-test suite for slice 0 (done in JOIN-59)
 - [ ] Back end: `collection_base_url` (slice 1)

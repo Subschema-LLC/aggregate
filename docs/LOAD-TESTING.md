@@ -315,7 +315,7 @@ estimates how many application servers one database could keep up with. Phase 3
 goes ahead only for the engines and modes where that headroom is about 2× or
 more; elsewhere it waits for phase 2's batching. The gate and its reasons are in
 the [JOIN-59 spec](specs/JOIN-59-server-roles.md#slice-0-measure-the-shared-database-first).
-No results yet: they will be added here after the first run.
+See the [results of 11 November 2026](#database-headroom-results-11-november-2026).
 
 Each job installs a fresh copy on PostgreSQL 16 or MySQL 8.0 and gives the
 database a quarter of the runner's memory. It fills `events` with 10 million
@@ -370,6 +370,56 @@ What it cannot show: CPU and the disk are shared with PHP and k6, so it is the
 database's costs per event that carry over, not its capacity on this machine.
 A run with the database on its own machine, fed by two application servers, is
 still the real test, planned as slice 8 of JOIN-59.
+
+### Database headroom results, 11 November 2026
+
+Two runs on GitHub's 4 vCPU runners with 10 million preloaded rows. The table
+is the second, on the final code
+([run 43121752888](https://github.com/Subschema-LLC/aggregate/actions/runs/43121752888));
+the first ([run 43119511834](https://github.com/Subschema-LLC/aggregate/actions/runs/43119511834))
+is in the last column where it differed.
+
+| Setup | Database CPU per event | Log syncs per event | Headroom by CPU | Headroom by disk | Verdict |
+| --- | ---: | ---: | ---: | ---: | --- |
+| PostgreSQL, anonymous | 0.52 ms | 0.97 | 17.7× | 25.3× | 17.7×, passes (first run 15.7×) |
+| PostgreSQL, enhanced, `sync://` | 0.43 ms | 0.98 | 16.0× | 7.3× | 7.3×, passes (19.9×, on a faster disk) |
+| PostgreSQL, enhanced, `doctrine://` | 1.80 ms | 3.87 | 6.7× | 7.5× | 6.7×, passes (4.6×; it fell behind at 200 requests/s with the CPU 52% busy, which would now hold the verdict) |
+| MySQL, anonymous | 0.84 ms | 2.62, binary log included | 7.7× | 3.8× | 3.8×, passes (8.5×) |
+| MySQL, enhanced, `sync://` | 1.09 ms | 2.81 | 8.4× | 5.3× | 5.3×, passes (5.7×; disk stalls at 150 requests/s would now hold it) |
+| MySQL, enhanced, `doctrine://` | 3.20 ms | 9.23 | 3.7× | 3.3× | 3.3×, passes narrowly (1.7× on a slower disk: fails) |
+
+What they show:
+
+- **The database's share of an event is small.** Without the queue, the final
+  run's database used 0.4–1.1 ms of CPU per event against 6.5–9.2 ms for the
+  application, so on CPU one database server keeps up with 8–18 application
+  servers of its size.
+- **The disk is the nearer limit, and it varies.** The runners' disks managed
+  4,159 to 12,792 synchronous writes per second. PostgreSQL syncs its log about
+  once per event; MySQL 1.6–1.9 times for the redo log and 0.8–0.9 times for
+  the binary log, which MySQL 8.0 turns on by default. MariaDB does not, and a
+  disk with a battery-backed write cache syncs far faster than these.
+- **A queue in the same database costs the most.** `doctrine://` adds three
+  row changes and three or more reads of `messenger_messages` per event, three to four
+  times the database CPU, and 3.9 (PostgreSQL) or 9.2 (MySQL) log syncs. On
+  MySQL that put it at the gate: 1.7× and 3.3× in the two runs. On PostgreSQL
+  each queued message sends a `NOTIFY`, which takes a lock that serializes
+  committing transactions across the whole database: at half capacity, 68% of
+  the samples of busy connections were waiting on it (`Lock:object`), and more
+  servers would queue behind the same lock.
+- **BI reads hurt collection on MySQL.** Reading one whole `bi_anonymous_*` view
+  took 8–14 s on PostgreSQL and 77–111 s on MySQL. While one ran, collection's
+  p95 rose 1–98% on PostgreSQL (to at most 19 ms in the final run) and 2 to 44
+  times on MySQL, to as much as 557 ms.
+- **Collection reads no `events` index**; it only writes them. Whether one can
+  go depends on the dashboard and BI reads, which this does not measure.
+- **Connections:** PostgreSQL's default `max_connections` of 100 allows about six
+  4 vCPU servers with persistent connections (16 PHP-FPM workers each, plus any
+  consumers); larger servers have more workers and reach it sooner.
+- **Capacity on one runner is noisy; costs per event are not.** MySQL with
+  enhanced events on `sync://` sustained 350, 100 and 300 requests per second
+  in three runs, while its database CPU per event stayed at 0.88–1.09 ms. That
+  is why the estimate works from costs.
 
 ## Run the test
 
