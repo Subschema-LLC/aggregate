@@ -63,8 +63,8 @@ conflict is retried once before reporting failure. The summary includes rows wri
 label counts per locale. These are metadata counts, not traffic counts.
 
 Run sync after YAML edits, and after adding, renaming or removing a website.
-Changes to `config/goals.yaml` require clearing the production cache first, then
-running sync in production. Successful
+Goal changes (the Goals page, `app:config goals` or `config/goals.local.yaml`)
+apply without clearing the cache; run sync afterwards to publish their labels. Successful
 `app:analytics:views:regenerate` and its admin button also synchronize glossary
 columns after deploying the saved model. **Manual sync uses the saved model's
 column aliases; it does not inspect deployed view metadata.** Regenerate views

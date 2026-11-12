@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service\Cluster;
 
+use App\Service\BootSettings;
 use Symfony\Component\Yaml\Yaml;
 
 /**
@@ -100,7 +101,7 @@ final class ServerRole
     /** The role for an installation, from its environment and configuration. */
     public static function resolve(string $projectDir, string $environment): self
     {
-        $configuration = self::readConfiguration($projectDir, $environment);
+        $configuration = BootSettings::read($projectDir, $environment);
         $fromEnvironment = self::environmentValue(self::ENVIRONMENT_VARIABLE);
         $fromConfiguration = $configuration[self::CONFIG_KEY] ?? null;
         $administrationUrl = self::environmentValue(self::ADMINISTRATION_URL_VARIABLE)
@@ -320,61 +321,5 @@ final class ServerRole
     private static function isSqlite(?string $databaseUrl): bool
     {
         return $databaseUrl !== null && preg_match('~^\s*(?:pdo-)?sqlite3?:~i', $databaseUrl) === 1;
-    }
-
-    /**
-     * The effective settings, read as AggregateConfigLoader reads them:
-     * aggregate_<env>.yaml when it exists, otherwise aggregate.yaml with its
-     * `environments.<env>` values over the top level. A file that cannot be
-     * read gives no settings, so the role is `all`.
-     *
-     * @return array<string, mixed>
-     */
-    private static function readConfiguration(string $projectDir, string $environment): array
-    {
-        $environmentFile = $projectDir.'/config/aggregate_'.$environment.'.yaml';
-        $mainFile = $projectDir.'/config/aggregate.yaml';
-        try {
-            if (is_file($environmentFile)) {
-                $data = self::parseLocked($environmentFile);
-
-                return is_array($data) ? $data : [];
-            }
-            if (!is_file($mainFile)) {
-                return [];
-            }
-            $data = self::parseLocked($mainFile);
-            if (!is_array($data)) {
-                return [];
-            }
-            $environments = $data['environments'] ?? null;
-            unset($data['environments']);
-            if (is_array($environments) && is_array($environments[$environment] ?? null)) {
-                $data = array_merge($data, $environments[$environment]);
-            }
-
-            return $data;
-        } catch (\Throwable) {
-            return [];
-        }
-    }
-
-    private static function parseLocked(string $path): mixed
-    {
-        $handle = @fopen($path, 'rb');
-        if ($handle === false) {
-            throw new \RuntimeException('The application configuration could not be opened.');
-        }
-        try {
-            if (!flock($handle, LOCK_SH)) {
-                throw new \RuntimeException('The application configuration could not be locked for reading.');
-            }
-            $yaml = stream_get_contents($handle);
-
-            return is_string($yaml) && trim($yaml) !== '' ? Yaml::parse($yaml) : null;
-        } finally {
-            @flock($handle, LOCK_UN);
-            fclose($handle);
-        }
     }
 }

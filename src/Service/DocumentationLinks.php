@@ -90,6 +90,7 @@ final class DocumentationLinks
         'configuration.website-groups' => ['configure/configuration#website-groups', 'docs/CONFIGURATION.md'],
         'configuration.application' => ['configure/configuration#application-settings', 'docs/CONFIGURATION.md'],
         'configuration.command-line' => ['configure/configuration#settings-from-the-command-line', 'docs/CONFIGURATION.md'],
+        'configuration.goals' => ['configure/configuration#conversion-goals', 'docs/CONFIGURATION.md'],
         'configuration.lifecycle' => ['configure/configuration#archiving-and-retention', 'docs/CONFIGURATION.md'],
         'cluster' => ['configure/configuration#server-roles', 'docs/CONFIGURATION.md'],
         'cluster.configuration' => ['configure/configuration#configuration-across-servers', 'docs/CONFIGURATION.md'],

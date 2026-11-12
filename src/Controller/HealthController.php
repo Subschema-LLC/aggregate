@@ -9,6 +9,7 @@ use App\Service\Cluster\ClusterSignature;
 use App\Service\Cluster\ClusterState;
 use App\Service\InstalledRelease;
 use App\Service\CustomDataSettings;
+use App\Service\GoalDefinitions;
 use App\Service\WebsiteScopeCatalog;
 use Doctrine\DBAL\Connection;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -25,6 +26,7 @@ class HealthController
         private readonly ?ClusterGate $cluster = null,
         private readonly ?ClusterState $clusterState = null,
         private readonly ?InstalledRelease $release = null,
+        private readonly ?GoalDefinitions $goals = null,
     ) {}
 
     #[Route('/api/health', name: 'api_health', methods: ['GET'])]
@@ -46,6 +48,7 @@ class HealthController
             // The tracker and ingestion also depend on a valid custom-data
             // model, even when an event submits no custom properties.
             (new CustomDataSettings($this->config))->toArray();
+            $this->goals?->all();
             if ($this->scopes?->hasInvalidOverlay()) {
                 throw new \RuntimeException('Website or group configuration is invalid.');
             }

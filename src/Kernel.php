@@ -3,6 +3,7 @@
 namespace App;
 
 use App\DependencyInjection\RemoveControllersPass;
+use App\Service\BootSettings;
 use App\Service\Cluster\ServerRole;
 use Symfony\Bundle\FrameworkBundle\Kernel\MicroKernelTrait;
 use Symfony\Component\Config\Loader\LoaderInterface;
@@ -11,7 +12,6 @@ use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
 use Symfony\Component\HttpKernel\Kernel as BaseKernel;
 use Symfony\Component\Routing\Loader\Configurator\RoutingConfigurator;
-use Symfony\Component\Yaml\Yaml;
 
 class Kernel extends BaseKernel
 {
@@ -57,6 +57,7 @@ class Kernel extends BaseKernel
             'App\\Controller\\DataModelController',
             'App\\Controller\\BiGlossaryController',
             'App\\Controller\\BiPageGroupsController',
+            'App\\Controller\\GoalsController',
             'App\\Controller\\ReportingTimezoneController',
             'App\\Controller\\EventExamplesController',
             'App\\Controller\\FeatureFlagsController',
@@ -131,55 +132,15 @@ class Kernel extends BaseKernel
             return null === $parsed ? true : $parsed;
         }
 
-        $configPath = $this->getProjectDir().'/config/aggregate.yaml';
-        if (!is_file($configPath)) {
+        // Read where AggregateConfigLoader reads it (aggregate_<env>.yaml, or
+        // aggregate.yaml with its environments.<env> values over the top
+        // level), so a value saved by the loader is the one compiled here.
+        $settings = BootSettings::read($this->getProjectDir(), $this->environment);
+        if (!array_key_exists('dashboard_enabled', $settings)) {
             return true;
         }
+        $parsed = filter_var($settings['dashboard_enabled'], FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE);
 
-        try {
-            $config = $this->parseLockedYamlFile($configPath);
-        } catch (\Throwable) {
-            return true;
-        }
-
-        if (!is_array($config)) {
-            return true;
-        }
-
-        $environmentConfig = $config['environments'][$this->environment] ?? null;
-        if (!is_array($environmentConfig) || !array_key_exists('dashboard_enabled', $environmentConfig)) {
-            return true;
-        }
-
-        $parsed = filter_var($environmentConfig['dashboard_enabled'], FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE);
-        if (null !== $parsed) {
-            return $parsed;
-        }
-
-        return (bool) $environmentConfig['dashboard_enabled'];
-    }
-
-    private function parseLockedYamlFile(string $path): mixed
-    {
-        $handle = @fopen($path, 'rb');
-        if ($handle === false) {
-            throw new \RuntimeException('The application configuration could not be opened.');
-        }
-
-        try {
-            if (!flock($handle, LOCK_SH)) {
-                throw new \RuntimeException('The application configuration could not be locked for reading.');
-            }
-
-            $yaml = stream_get_contents($handle);
-            if (!is_string($yaml)) {
-                throw new \RuntimeException('The application configuration could not be read.');
-            }
-
-            return $yaml !== '' ? Yaml::parse($yaml) : null;
-        } finally {
-            @flock($handle, LOCK_UN);
-            fclose($handle);
-        }
+        return $parsed ?? (bool) $settings['dashboard_enabled'];
     }
 }

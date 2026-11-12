@@ -44,6 +44,7 @@ final class AdminActions
         'app_data_model_save' => [Area::SETTINGS, 'data_model_saved'],
         'app_bi_glossary_save' => [Area::SETTINGS, 'glossary_saved'],
         'app_bi_page_groups_save' => [Area::SETTINGS, 'page_groups_saved'],
+        'app_goals_save' => [Area::SETTINGS, 'goals_saved'],
         'app_reporting_timezone_save' => [Area::SETTINGS, 'reporting_timezone_saved'],
         'app_api_tokens_settings' => [Area::SETTINGS, 'reporting_api_settings_saved'],
         'app_audit_trail_settings' => [Area::SETTINGS, 'audit_settings_saved'],
@@ -282,6 +283,7 @@ final class AdminActions
             'app:config' => self::forConfig($argument('action'), $argument('name'), $end),
             'app:collection-address' => $text($argument('url')) !== null || $option('clear') === true ? $end(Area::SETTINGS, 'general_settings_saved') : null,
             'app:queue:retention' => $text($argument('days')) !== null ? $end(Area::SETTINGS, 'data_lifecycle_saved') : null,
+            'app:dashboard' => $text($argument('state')) !== null ? $end(Area::SETTINGS, 'dashboard_switched', $text($argument('state'))) : null,
             'app:cluster:settings' => $option('max-age-minutes') !== null || $option('alert-destinations') !== null || $option('collection-port') !== null
                 ? $end(Area::SETTINGS, 'cluster_settings_saved') : null,
             'app:cluster:server' => match ($argument('action')) {

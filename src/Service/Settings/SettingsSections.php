@@ -26,6 +26,7 @@ final class SettingsSections
         'collection' => [Area::SETTINGS, 'collection_settings_saved'],
         'bi-disclosure' => [Area::SETTINGS, 'bi_disclosure_saved'],
         'page-groups' => [Area::SETTINGS, 'page_groups_saved'],
+        'goals' => [Area::SETTINGS, 'goals_saved'],
         'reporting-timezone' => [Area::SETTINGS, 'reporting_timezone_saved'],
         'data-lifecycle' => [Area::SETTINGS, 'data_lifecycle_saved'],
         'organization-traffic' => [Area::SETTINGS, 'organization_traffic_saved'],

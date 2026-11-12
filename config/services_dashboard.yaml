@@ -25,6 +25,7 @@ services:
     App\Controller\DataModelController: ~
     App\Controller\BiGlossaryController: ~
     App\Controller\BiPageGroupsController: ~
+    App\Controller\GoalsController: ~
     App\Controller\ReportingTimezoneController: ~
     App\Controller\EventExamplesController: ~
     App\Controller\FeatureFlagsController: ~

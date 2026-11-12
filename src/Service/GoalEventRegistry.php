@@ -4,20 +4,26 @@ declare(strict_types=1);
 
 namespace App\Service;
 
-/** Resolves configured goal names without retaining rejected candidate values. */
+/**
+ * Resolves configured goal names without retaining rejected candidate values.
+ * The goals come from GoalDefinitions, read when first needed, so a saved
+ * change applies without clearing the cache; tests may pass them directly.
+ */
 final class GoalEventRegistry
 {
-    /** @var array<string, array{label: string, enabled: bool, anonymous: bool}> */
-    private array $definitions;
+    /** @var array<string, array{label: string, enabled: bool, anonymous: bool}>|null */
+    private ?array $definitions = null;
 
     /**
-     * @param array<string, mixed> $definitions
+     * @param GoalDefinitions|array<string, mixed> $source the goals, or fixed definitions for a test
      */
     public function __construct(
         private readonly PrivacySanitizer $sanitizer,
-        array $definitions,
+        private readonly GoalDefinitions|array $source,
     ) {
-        $this->definitions = $this->validateDefinitions($definitions);
+        if (is_array($source)) {
+            $this->definitions = GoalDefinitions::validate($source);
+        }
     }
 
     public function wasSubmitted(mixed $candidate): bool
@@ -44,7 +50,7 @@ final class GoalEventRegistry
             return null;
         }
 
-        $definition = $this->definitions[$goalEvent] ?? null;
+        $definition = $this->definitions()[$goalEvent] ?? null;
         if ($definition === null || !$definition['enabled']) {
             return null;
         }
@@ -56,51 +62,20 @@ final class GoalEventRegistry
         return $goalEvent;
     }
 
-    /**
-     * @param array<mixed> $definitions goal definitions as parsed from YAML; keys can be integers
-     *
-     * @return array<string, array{label: string, enabled: bool, anonymous: bool}>
-     */
-    private function validateDefinitions(array $definitions): array
+    /** @return array<string, array{label: string, enabled: bool, anonymous: bool}> */
+    private function definitions(): array
     {
-        $validated = [];
-
-        foreach ($definitions as $name => $definition) {
-            if (!is_string($name)
-                || trim($name) !== $name
-                || !PrivacySanitizer::isSafeEventName($name)) {
-                throw new \InvalidArgumentException('Configured goal names must use the safe event-name format.');
+        if ($this->source instanceof GoalDefinitions) {
+            try {
+                return $this->source->all();
+            } catch (\InvalidArgumentException|\RuntimeException) {
+                // Goals that cannot be read or are not valid allow no goal:
+                // the event is still recorded, without one, and /api/health
+                // reports the configuration as invalid.
+                return [];
             }
-
-            if (!is_array($definition)) {
-                throw new \InvalidArgumentException(sprintf('Goal definition "%s" must be a mapping.', $name));
-            }
-
-            $unexpectedKeys = array_diff(array_keys($definition), ['label', 'enabled', 'anonymous']);
-            if ($unexpectedKeys !== []) {
-                throw new \InvalidArgumentException(sprintf('Goal definition "%s" contains unsupported options.', $name));
-            }
-
-            $label = $definition['label'] ?? null;
-            if (!is_string($label) || trim($label) === '' || strlen($label) > 191) {
-                throw new \InvalidArgumentException(sprintf('Goal definition "%s" requires a non-empty label.', $name));
-            }
-
-            if (!array_key_exists('enabled', $definition) || !is_bool($definition['enabled'])) {
-                throw new \InvalidArgumentException(sprintf('Goal definition "%s" requires a boolean enabled option.', $name));
-            }
-
-            if (!array_key_exists('anonymous', $definition) || !is_bool($definition['anonymous'])) {
-                throw new \InvalidArgumentException(sprintf('Goal definition "%s" requires a boolean anonymous option.', $name));
-            }
-
-            $validated[$name] = [
-                'label' => trim($label),
-                'enabled' => $definition['enabled'],
-                'anonymous' => $definition['anonymous'],
-            ];
         }
 
-        return $validated;
+        return $this->definitions ?? [];
     }
 }

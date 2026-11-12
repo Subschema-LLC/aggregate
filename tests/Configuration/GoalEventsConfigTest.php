@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Configuration;
 
+use App\Service\GoalDefinitions;
 use App\Service\GoalEventRegistry;
 use App\Service\PrivacySanitizer;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
@@ -15,7 +16,7 @@ final class GoalEventsConfigTest extends KernelTestCase
         self::bootKernel();
 
         $container = self::getContainer();
-        $definitions = $container->getParameter('app.goal_events');
+        $definitions = $container->get(GoalDefinitions::class)->all();
         self::assertIsArray($definitions);
         self::assertNotSame([], $definitions);
 
