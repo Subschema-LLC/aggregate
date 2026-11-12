@@ -23,7 +23,7 @@ parameters:
     app.main_navigation:
         brand:
             # Backward-compatible fallback; runtime branding belongs in aggregate.yaml.
-            label: 'LS360 Analytics'
+            label: 'Aggregate Analytics'
             route: 'app_home'
 
         items:
