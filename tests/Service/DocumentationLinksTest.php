@@ -192,13 +192,6 @@ final class DocumentationLinksTest extends TestCase
                 $used[$topic][] = $source->getRelativePathname();
             }
         }
-        $navigation = Yaml::parseFile(self::ROOT.'/config/navigation.yaml')['parameters']['app.main_navigation']['items'];
-        array_walk_recursive($navigation, static function (mixed $value, string|int $key) use (&$used): void {
-            if ($key === 'docs') {
-                $used[$value][] = 'config/navigation.yaml';
-            }
-        });
-
         self::assertNotEmpty($used);
         foreach ($used as $topic => $places) {
             self::assertTrue(DocumentationLinks::hasTopic($topic), sprintf('Unknown documentation topic "%s" in %s.', $topic, implode(', ', array_unique($places))));

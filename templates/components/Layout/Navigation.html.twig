@@ -45,7 +45,11 @@
                     <summary class="navbar-item">{{ _self.label(item) }}</summary>
                     <div class="app-navigation-children">
                         {% for child in item.children %}
-                            {{ _self.link(child, 'navbar-item') }}
+                            {% if child.heading is defined %}
+                                <p class="app-navigation-heading">{{ child.heading }}</p>
+                            {% else %}
+                                {{ _self.link(child, 'navbar-item') }}
+                            {% endif %}
                         {% endfor %}
                     </div>
                 </details>

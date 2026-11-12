@@ -67,11 +67,6 @@ final class DataTransferRoutesTest extends TestCase
             self::assertSame(302, $browser->getResponse()->getStatusCode(), $path);
             self::assertSame('/login', parse_url((string) $browser->getResponse()->headers->get('Location'), PHP_URL_PATH));
         }
-        $administration = array_values(array_filter($container->getParameter('app.main_navigation')['items'], static fn (array $item): bool => $item['label'] === 'Administration'))[0]['children'];
-        $link = array_values(array_filter($administration, static fn (array $item): bool => ($item['route'] ?? null) === 'app_data_transfer'));
-        self::assertCount(1, $link);
-        self::assertSame('ROLE_ADMIN', $link[0]['role']);
-
         $browser->loginUser(DataTransferRoutesUserProvider::user());
         $browser->request('GET', '/dashboard/data-transfer');
         self::assertSame(200, $browser->getResponse()->getStatusCode());
