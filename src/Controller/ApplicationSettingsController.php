@@ -4,6 +4,7 @@ namespace App\Controller;
 
 use App\Service\AggregateConfigLoader;
 use App\Service\BrowserScriptCache;
+use App\Service\CollectionAddress;
 use App\Service\DocumentationLinks;
 use App\Service\MysqlTimeZoneTables;
 use App\Service\ReportingTimezone;
@@ -42,9 +43,12 @@ class ApplicationSettingsController extends AbstractController
             // the page still opens so they can be repaired.
             $sizes = null;
         }
+        $collection = new CollectionAddress($this->config);
 
         return $this->renderDashboardPage('settings/application.html.twig', [
             'app_host' => $this->config->getWithEnvFallback('app_host', 'http://localhost:8000'),
+            'collection_base_url' => $collection->configuredValue(),
+            'collection_base_url_overridden' => $collection->hasEnvironmentOverride(),
             'js_namespace' => TrackerNamespace::of($this->config),
             'js_namespace_ignored' => TrackerNamespace::ignored($this->config),
             'js_namespace_pattern' => TrackerNamespace::PATTERN,
@@ -168,6 +172,21 @@ class ApplicationSettingsController extends AbstractController
             'website_activity_active_days' => $activeDays,
             'website_activity_stale_days' => $staleDays,
         ];
+
+        // COLLECTION_BASE_URL takes precedence and its field is disabled. Empty
+        // means the application host, so clearing the field saves ''.
+        $collection = new CollectionAddress($this->config);
+        if (!$collection->hasEnvironmentOverride() && $request->request->has(CollectionAddress::CONFIG_KEY)) {
+            try {
+                $collectionUrl = CollectionAddress::normalize($request->request->get(CollectionAddress::CONFIG_KEY));
+            } catch (\InvalidArgumentException $exception) {
+                $this->addFlash('error', $exception->getMessage());
+                return $this->redirectToRoute('app_application_settings');
+            }
+            if ($collectionUrl !== $collection->configuredValue()) {
+                $settings[CollectionAddress::CONFIG_KEY] = $collectionUrl;
+            }
+        }
 
         // DOCUMENTATION_URL takes precedence and its field is disabled. Save only a
         // changed value, so saving other settings does not pin the default address.

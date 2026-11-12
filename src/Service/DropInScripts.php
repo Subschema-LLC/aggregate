@@ -205,11 +205,15 @@ final class DropInScripts
     }
 
 
+    /** Where websites reach collection: the collection address, else app_host. */
     private function host(): string
     {
-        $host = self::normalizeAppHost($this->config->getWithEnvFallback('app_host', 'http://localhost'));
+        $address = new CollectionAddress($this->config);
+        $host = $address->baseUrl('http://localhost');
         if ($host === null) {
-            throw new \RuntimeException('Set a valid application host URL in general settings.');
+            throw new \RuntimeException($address->configuredValue() !== ''
+                ? 'Set a valid collection address in general settings, or clear it to use the application host.'
+                : 'Set a valid application host URL in general settings.');
         }
 
         return $host;

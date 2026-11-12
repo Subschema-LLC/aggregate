@@ -430,7 +430,7 @@ _The work this spec plans, as `- [ ] …` items, each naming the role that does 
 - [x] DBA: run the slice 0 database headroom test and write its report into `docs/LOAD-TESTING.md` (done in JOIN-59)
 - [x] Product Owner: amend `ROADMAP.md`: the measured gate, and phase 3's text (scheduled task on administration, rate limits after #456, API and MCP on administration) (done in JOIN-59)
 - [x] Back end: the `database` load-test suite for slice 0 (done in JOIN-59)
-- [ ] Back end: `collection_base_url` (slice 1)
+- [x] Back end: `collection_base_url` (slice 1) (done in JOIN-59)
 - [ ] Back end: `ServerRole`, the route split, controller removal generated from the route files, the command listener and service guards, the SQLite refusal, `app:server:role` with versioned JSON, and the dead mail routing removed (slice 2)
 - [ ] Back end: `app:cluster:sync`, `ClusterConfigPublisher` with the `cluster_config` fingerprint in `processing_tasks`, the configuration endpoint, signed health metadata, `var/cluster_state.json`, the pause when behind or unverified, and the alert through JOIN-55's destinations (slice 3)
 - [ ] Back end: `app:server:balancer-config` for Nginx and Caddy (slice 4)
