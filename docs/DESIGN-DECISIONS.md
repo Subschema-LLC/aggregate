@@ -1241,16 +1241,23 @@ server's own role, name and administration address, `app:cluster:key`,
 `app:cluster:server` for the server list, `app:cluster:settings` for the
 pause limit, alert destinations and collection port, and
 `app:collection-address`. Only the collection address is also on a dashboard
-page (General settings).
+page (General settings). A server's own settings (`server_role`,
+`cluster_server_name`, `administration_url`) may be in its YAML instead of
+`.env.local`; the configuration pull keeps them, so either way survives the
+next minute. `queue_retention_days` follows the ordinary rule: YAML,
+`QUEUE_RETENTION_DAYS`, the Data lifecycle page and `app:queue:retention`.
 
 **Why.** A cluster is set up from a shell or by a hosting tool, often before
 any dashboard exists, and collection and worker servers have no dashboard at
 all. Commands give scripts and PRAGMA the same checks a page would.
 
 **Trade-off.** The server list, pause limit, alert destinations and port have
-no dashboard page yet; the Updates page will list the servers. That is an
-exception to the rule that operator settings are also in the dashboard,
-recorded here.
+no dashboard page; the Updates page lists the servers but does not change
+them. That is an exception to the rule that operator settings are also in the
+dashboard, recorded here. `CLUSTER_KEY` and the variables `app:cluster:join`
+writes (`DATABASE_URL`, `TRUSTED_PROXIES`, `APP_SECRET`,
+`MESSENGER_TRANSPORT_DSN`) stay out of YAML on purpose: they are secrets or
+per-server, and YAML is copied to every server.
 
 **What would change it.** Operators who manage clusters from the dashboard,
 which would add a page over the same services.
