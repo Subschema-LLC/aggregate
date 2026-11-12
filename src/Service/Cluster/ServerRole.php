@@ -60,7 +60,7 @@ final class ServerRole
         'list', 'help', 'completion', '_complete', 'about',
         'cache:', 'assets:install', 'importmap:', 'lint:', 'debug:', 'router:match',
         'doctrine:migrations:status', 'doctrine:migrations:list', 'doctrine:migrations:up-to-date',
-        'app:server:role',
+        'app:server:role', 'app:cluster:sync', 'app:cluster:join',
         'app:updates:check', 'app:updates:verify-package', 'app:updates:maintenance',
         'app:email:status', 'app:alerts:status', 'app:scheduler:status', 'app:api:token:list',
         'app:audit:list', 'app:mcp:connection:list', 'app:tag-manager:sites',

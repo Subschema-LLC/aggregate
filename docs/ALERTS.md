@@ -107,6 +107,15 @@ name, so a rule such as "fewer than 5 `purchase` events per week" on a busy
 website reads that website's rows for the whole window until it has found
 five, every hour. Prefer a day window for rare events on busy websites.
 
+### A cluster server that stops pulling its configuration
+
+In a [cluster](CONFIGURATION.md#configuration-across-servers), the administration
+server also alerts when another server has not pulled its configuration for
+`cluster_config_max_age_minutes` (5 by default), and again when it pulls
+again. These alerts need no rule: they go to `cluster_alert_destinations`, or
+every destination, as the same payload with the rule `cluster-config`, an
+empty `website` and the server's name as `host`.
+
 ## Rules that cannot be checked
 
 A rule keeps loading when something it depends on changes elsewhere, so one

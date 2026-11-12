@@ -88,6 +88,8 @@ services:
         tags: ['controller.service_arguments']
     App\Controller\McpController:
         tags: ['controller.service_arguments']
+    App\Controller\ClusterConfigController:
+        tags: ['controller.service_arguments']
 
     # This server's role in a cluster, read from SERVER_ROLE or
     # config/aggregate.yaml as the kernel reads it when it boots.

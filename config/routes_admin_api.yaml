@@ -1,6 +1,7 @@
 # Loaded by server role (src/Service/Cluster/ServerRole.php); see docs/CONFIGURATION.md.
 # Roles that administer: all and administration. The home page, the reporting
-# API and the MCP server with its OAuth endpoints; MCP's consent page needs a
+# API, the MCP server with its OAuth endpoints, and the configuration the
+# cluster's other servers pull; MCP's consent page needs a
 # dashboard session, so it is in routes_dashboard.yaml.
 
 home_controller:
@@ -13,4 +14,8 @@ reporting_api_controller:
 
 mcp_controller:
     resource: ../src/Controller/McpController.php
+    type: attribute
+
+cluster_config_controller:
+    resource: ../src/Controller/ClusterConfigController.php
     type: attribute

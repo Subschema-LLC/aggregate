@@ -278,7 +278,8 @@ environments:
 - `app_host`: Public hostname, used in dashboard integration snippets
 - `collection_base_url`: Where websites send events and load the tracker, consent and tag-manager scripts, when that is not `app_host` (default: empty, which means `app_host`; `COLLECTION_BASE_URL` environment override). Set it to a tracking subdomain, or to the balancer in front of several collection servers. Generated snippets and the [organization traffic](#organization-traffic) links use it; sign-in links, alerts and the dashboard keep `app_host`. A value that is not a plain `http(s)` URL stops snippet generation instead of falling back to `app_host`. Copy the tracking code again after changing it. Also on **General settings**
 - `server_role`: What this server does when several servers share one database (default: `all`; `SERVER_ROLE` environment override). See [server roles](#server-roles)
-- `administration_url`: The administration server's address, which the other servers of a cluster name in their messages (default: empty; `ADMINISTRATION_URL` environment override). See [server roles](#server-roles)
+- `administration_url`: The administration server's address, which the other servers of a cluster pull configuration from and name in their messages (default: empty; `ADMINISTRATION_URL` environment override). See [server roles](#server-roles)
+- `cluster`, `cluster_config_max_age_minutes`, `cluster_alert_destinations`, `cluster_server_name`: The servers that may pull configuration, how long a server may go without the newest configuration before it pauses collection (default `5`), who is alerted, and this server's name (`CLUSTER_SERVER_NAME` environment override; default the host name). The shared key is `CLUSTER_KEY`, in `.env.local` only. See [configuration across servers](#configuration-across-servers)
 - `documentation_url`: Address of the documentation site that dashboard help links and command-line messages point to (default: `https://subschema-llc.github.io/aggregate/`). See [documentation links](#documentation-links)
 - `brand_name`: Application name used in page titles, headings, and explanatory copy (default: `Aggregate Analytics`)
 - `brand_logo_text`: Visible text displayed beside the optional navigation logo; with a valid image, leave it empty for an image-only identity (default: `brand_name`)
@@ -418,10 +419,55 @@ exits with 1 when a check has failed. `--json` prints the same as JSON with a
 `schema_version`; within a version, fields are only added, never renamed or
 removed, so tools such as hosting panels can rely on them.
 
-Setting up the servers, the shared database and the balancer is planned in
-[JOIN-59](specs/JOIN-59-server-roles.md); until its configuration pull lands,
-copy the administration server's configuration files to the other servers
-yourself.
+### Configuration across servers
+
+Configuration is changed on the administration server only, and the other
+servers pull it every minute. On the administration server:
+
+1. `php bin/console app:cluster:key` creates `CLUSTER_KEY` in `.env.local`, the
+   key every request between the servers is signed with; `--show` prints it.
+2. `php bin/console app:cluster:server add collect-1 10.0.0.11` lets a server
+   pull, by its name and the address it connects from (`cluster` in YAML).
+3. Set the collection address (`collection_base_url`) to the balancer's address,
+   so tracking code sends websites there.
+
+On each collection or worker server, with the same release and the shared
+database:
+
+1. `php bin/console app:cluster:join --stdin` reads one JSON object and saves
+   the server's own settings in `.env.local`: `role`, `name`,
+   `administration_url`, `cluster_key`, and optionally `database_url`,
+   `trusted_proxies` (the balancer's address) and `app_secret`. Give every
+   collection server the administration server's `APP_SECRET`: organization
+   traffic codes are made on one collection server and checked on whichever the
+   balancer picks next. Secrets never go on the command line.
+2. `php bin/console cache:clear`, then reload PHP-FPM.
+
+On every server, run `php bin/console app:cluster:sync` every minute as the web
+server's user (cron or a systemd timer). On the administration server it records
+the configuration's version in `processing_tasks` when it changes and alerts
+when a server stops pulling; elsewhere it pulls `/api/cluster/config` and
+writes each changed file beside its target before renaming it into place,
+keeping the server's own `server_role`.
+
+What is shared: `config/aggregate*.yaml`, `websites.yaml`, the website group
+files, `goals.local.yaml`, the tag manager's per-site files and
+`var/branding/`. Never: `config/secrets/` (API tokens, assistant sign-ins and
+email, alert and BigQuery secrets), `.env` files, users or dashboard-only files.
+A request from a server that is not listed, from another address, signed with
+another key or more than a minute old gets a 404, as an unknown address does.
+
+A collection or worker server pauses collection (`/api/receive` and
+`/api/health` answer 503, nothing is recorded, and a worker's consumers stop
+before taking a message) when it has not confirmed its configuration for
+`cluster_config_max_age_minutes` (5 by default), or has been behind a newer
+version it cannot fetch for that long. An unreachable administration server
+alone does not pause it: when the version recorded in the database is still
+its own, nothing has changed. It resumes on its first good minute. The
+administration server alerts the [alert destinations](ALERTS.md)
+(`cluster_alert_destinations`, every one by default) when a server has not
+pulled for that long, and again when it is back; `app:cluster:server` lists
+each server's last pull, release and role.
 
 ## Feature flags
 
