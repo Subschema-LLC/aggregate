@@ -37,7 +37,8 @@ ROOT_FILES = (
 CONFIG_FILES = (
     "aggregate.yaml.example", "websites.yaml.example", "website-scopes.yaml.example", "permission-groups.yaml.example",
     "bundles.php", "preload.php",
-    "services.yaml", "services_dashboard.yaml", "routes_public.yaml", "routes_dashboard.yaml",
+    "services.yaml", "services_dashboard.yaml", "routes_dashboard.yaml",
+    "routes_health.yaml", "routes_branding.yaml", "routes_collection.yaml", "routes_admin_api.yaml",
     "navigation.yaml", "goals.yaml", "quick_search.yaml", "maintenance.php", "setup.php",
     "release.yaml", "release-signing.pub",
 )

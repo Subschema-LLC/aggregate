@@ -2,8 +2,11 @@
 
 namespace App;
 
+use App\DependencyInjection\RemoveControllersPass;
+use App\Service\Cluster\ServerRole;
 use Symfony\Bundle\FrameworkBundle\Kernel\MicroKernelTrait;
 use Symfony\Component\Config\Loader\LoaderInterface;
+use Symfony\Component\DependencyInjection\Compiler\PassConfig;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
 use Symfony\Component\HttpKernel\Kernel as BaseKernel;
@@ -14,9 +17,25 @@ class Kernel extends BaseKernel
 {
     use MicroKernelTrait;
 
+    private ?ServerRole $serverRole = null;
+
     protected function build(ContainerBuilder $container): void
     {
         parent::build($container);
+
+        // The role this container is built for: app:server:role compares it
+        // with the configured one, since changing the role needs cache:clear.
+        $container->setParameter('aggregate.server_role.compiled', $this->serverRoleForBoot()->role);
+
+        // Controllers behind the route files this role does not load. The
+        // service files are not loaded yet here, so a pass removes them.
+        $controllers = [];
+        foreach ($this->serverRoleForBoot()->skippedRouteFiles() as $file) {
+            array_push($controllers, ...ServerRole::controllersInRouteFile($this->getProjectDir().'/config/'.$file));
+        }
+        if ($controllers !== []) {
+            $container->addCompilerPass(new RemoveControllersPass($controllers), PassConfig::TYPE_BEFORE_OPTIMIZATION, 1000);
+        }
 
         if ($this->isDashboardFeatureEnabledForBoot()) {
             return;
@@ -79,7 +98,9 @@ class Kernel extends BaseKernel
 
         $routes->import($configDir.'/{routes}/'.$this->environment.'/*.{php,yaml}');
         $routes->import($configDir.'/{routes}/*.{php,yaml}');
-        $routes->import($configDir.'/routes_public.yaml');
+        foreach ($this->serverRoleForBoot()->routeFiles() as $file) {
+            $routes->import($configDir.'/'.$file);
+        }
 
         if ($this->isDashboardFeatureEnabledForBoot()) {
             $routes->import($configDir.'/routes_dashboard.yaml');
@@ -90,8 +111,19 @@ class Kernel extends BaseKernel
         }
     }
 
+    /** The server role, read once per kernel the way the dashboard switch is. */
+    private function serverRoleForBoot(): ServerRole
+    {
+        return $this->serverRole ??= ServerRole::resolve($this->getProjectDir(), $this->environment);
+    }
+
     private function isDashboardFeatureEnabledForBoot(): bool
     {
+        // Only the roles that administer have a dashboard.
+        if (!$this->serverRoleForBoot()->administers()) {
+            return false;
+        }
+
         $envValue = $_ENV['DASHBOARD_ENABLED'] ?? $_SERVER['DASHBOARD_ENABLED'] ?? null;
         if (null !== $envValue && '' !== (string) $envValue) {
             $parsed = filter_var($envValue, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE);

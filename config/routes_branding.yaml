@@ -1,0 +1,10 @@
+# Loaded by server role (src/Service/Cluster/ServerRole.php); see docs/CONFIGURATION.md.
+# Roles that serve pages: all, administration and collection.
+
+branding_logo_controller:
+    resource: ../src/Controller/BrandingLogoController.php
+    type: attribute
+
+branding_theme_controller:
+    resource: ../src/Controller/BrandingThemeController.php
+    type: attribute

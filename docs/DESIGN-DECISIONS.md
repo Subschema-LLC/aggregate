@@ -1106,6 +1106,29 @@ its views are regenerated, so a YAML edit needs that explicit step.
 
 **What would change it.** Nothing; new exceptions need a documented reason.
 
+### One release with a role per server, not separate applications
+
+**Decision.** A cluster runs the same release on every server, each with a
+role (`all`, `administration`, `collection`, `worker` or `balancer`) read when
+the kernel boots, from `SERVER_ROLE` or `server_role`. A role loads only its
+route files, removes the controllers behind the others, refuses commands
+outside it, and only `all` and `administration` change configuration, checked
+in the configuration writers themselves. A missing or unknown role, or any
+role on SQLite, is `all`, so a single server behaves exactly as before.
+
+**Why.** One release keeps updates, signing and support simple, and the
+YAML-first design already let a collection server run without a login page.
+Checking roles in the writers, not only in the commands, means a future page
+or script cannot split a cluster's configuration either.
+
+**Trade-off.** The role is compiled into the cache, so changing it needs
+`cache:clear`; `app:server:role` reports a cache built for another role. The
+command lists are kept per role, so a new command must be added to a role's
+list before it runs on collection or worker servers.
+
+**What would change it.** A role that needs code the others must not ship, such
+as a separate collection runtime.
+
 ### A small dashboard menu that says why an entry is missing
 
 **Decision.** A single setting is a section of an existing page, not a menu
