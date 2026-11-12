@@ -1,0 +1,6 @@
+# Loaded by server role (src/Service/Cluster/ServerRole.php); see docs/CONFIGURATION.md.
+# Every role: the health check balancers and monitoring read.
+
+health_controller:
+    resource: ../src/Controller/HealthController.php
+    type: attribute

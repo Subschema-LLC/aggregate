@@ -277,6 +277,8 @@ environments:
 - `rate_limit_per_minute`: API requests per IP per minute (default: `100`)
 - `app_host`: Public hostname, used in dashboard integration snippets
 - `collection_base_url`: Where websites send events and load the tracker, consent and tag-manager scripts, when that is not `app_host` (default: empty, which means `app_host`; `COLLECTION_BASE_URL` environment override). Set it to a tracking subdomain, or to the balancer in front of several collection servers. Generated snippets and the [organization traffic](#organization-traffic) links use it; sign-in links, alerts and the dashboard keep `app_host`. A value that is not a plain `http(s)` URL stops snippet generation instead of falling back to `app_host`. Copy the tracking code again after changing it. Also on **General settings**
+- `server_role`: What this server does when several servers share one database (default: `all`; `SERVER_ROLE` environment override). See [server roles](#server-roles)
+- `administration_url`: The administration server's address, which the other servers of a cluster name in their messages (default: empty; `ADMINISTRATION_URL` environment override). See [server roles](#server-roles)
 - `documentation_url`: Address of the documentation site that dashboard help links and command-line messages point to (default: `https://subschema-llc.github.io/aggregate/`). See [documentation links](#documentation-links)
 - `brand_name`: Application name used in page titles, headings, and explanatory copy (default: `Aggregate Analytics`)
 - `brand_logo_text`: Visible text displayed beside the optional navigation logo; with a valid image, leave it empty for an image-only identity (default: `brand_name`)
@@ -377,6 +379,49 @@ Environment overrides (`ANONYMOUS_MIN_CELL_COUNT`, `ANONYMOUS_GEO_MIN_CELL_COUNT
 The setting relabels `event_hour` and the event views' `event_day`. It does not change stored events, archives, goal days or geography days, which stay UTC. See [reporting timezone](BI-CONNECTION.md#reporting-timezone).
 
 **Upgrading from database-stored thresholds.** Earlier releases kept the thresholds in an `analytics_privacy_settings` table. The migration that removes it rebuilds the views with the values it found there, but it does not write them to YAML. If you had changed either threshold from its default, copy the values into `config/aggregate.yaml` before you next save the BI disclosure page or run the command; otherwise the views return to the YAML values (the defaults when unset).
+
+## Server roles
+
+One server does everything by default. When collection outgrows it, several
+servers can share one MySQL, MariaDB or PostgreSQL database, each running the
+same release with a role (`server_role`, or `SERVER_ROLE`, which takes
+precedence):
+
+| Role | Serves | Runs |
+| --- | --- | --- |
+| `all` (default) | Everything, as one server always has | The scheduled task, queue consumers, migrations |
+| `administration` | The dashboard and setup, the home page, the reporting API, MCP, branding, `/api/health` | Migrations, updates, the scheduled task; the only server that changes configuration |
+| `collection` | `/api/receive`, the browser scripts, the organization-traffic pages, branding, `/api/health` | Nothing else |
+| `worker` | `/api/health` | Queue consumers (`messenger:consume`) |
+| `balancer` | `/api/health` | Nothing else |
+
+On every role but `all` and `administration`:
+
+- the routes and controllers outside the role are not registered, and the
+  dashboard is off whatever `dashboard_enabled` says;
+- commands outside the role refuse to run and name the server that runs them,
+  for example `doctrine:migrations:migrate`, `app:install`,
+  `app:scheduler:run` and every command that changes configuration. Help, the
+  cache, status commands and `app:server:role` run everywhere; `worker` also
+  runs the queue consumers;
+- configuration files refuse to change, whatever tries to change them, since
+  configuration is changed on the administration server.
+
+A role other than `all` needs a database other servers can reach: on SQLite,
+which keeps the database in a file on one server, every role runs as `all`.
+The role is read when the cache is built, so run `php bin/console cache:clear`
+and reload PHP-FPM after changing it.
+
+`php bin/console app:server:role` shows the role, the release, the queue, the
+database's connections and what the role still needs, each with its fix, and
+exits with 1 when a check has failed. `--json` prints the same as JSON with a
+`schema_version`; within a version, fields are only added, never renamed or
+removed, so tools such as hosting panels can rely on them.
+
+Setting up the servers, the shared database and the balancer is planned in
+[JOIN-59](specs/JOIN-59-server-roles.md); until its configuration pull lands,
+copy the administration server's configuration files to the other servers
+yourself.
 
 ## Feature flags
 

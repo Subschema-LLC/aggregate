@@ -1,6 +1,6 @@
-home_controller:
-    resource: ../src/Controller/HomeController.php
-    type: attribute
+# Loaded by server role (src/Service/Cluster/ServerRole.php); see docs/CONFIGURATION.md.
+# Roles that collect: all and collection. /api/receive, the browser scripts and
+# the organization-traffic pages websites link to.
 
 receive_controller:
     resource: ../src/Controller/ReceiveController.php
@@ -22,26 +22,6 @@ tag_script_controller:
     resource: ../src/Controller/TagScriptController.php
     type: attribute
 
-health_controller:
-    resource: ../src/Controller/HealthController.php
-    type: attribute
-
-branding_logo_controller:
-    resource: ../src/Controller/BrandingLogoController.php
-    type: attribute
-
-branding_theme_controller:
-    resource: ../src/Controller/BrandingThemeController.php
-    type: attribute
-
 internal_traffic_public_controller:
     resource: ../src/Controller/InternalTrafficPublicController.php
-    type: attribute
-
-reporting_api_controller:
-    resource: ../src/Controller/ReportingApiController.php
-    type: attribute
-
-mcp_controller:
-    resource: ../src/Controller/McpController.php
     type: attribute
