@@ -372,12 +372,13 @@ environments:
 #   (everything, as one server always has), administration (the dashboard,
 #   setup, updates, the scheduled task, the reporting API and MCP; the only
 #   server that changes configuration or runs migrations), collection
-#   (/api/receive and the browser scripts), worker (queue consumers) or
-#   balancer (only the health check). Commands, pages and configuration
-#   changes outside the role refuse to run. SQLite runs every role as all.
-#   Run cache:clear after changing it. The SERVER_ROLE environment variable
-#   takes precedence. "php bin/console app:server:role" shows what the
-#   server does and what its role still needs.
+#   (/api/receive and the browser scripts) or worker (queue consumers). The
+#   balancer runs no Aggregate and has no role: app:server:balancer-config
+#   prints its configuration. Commands, pages and configuration changes
+#   outside the role refuse to run. SQLite runs every role as all. Run
+#   cache:clear after changing it. The SERVER_ROLE environment variable takes
+#   precedence, and app:cluster:join sets it. "php bin/console
+#   app:server:role" shows what the server does and what its role still needs.
 #
 # administration_url (optional, default: "")
 #   The administration server's address, which collection and worker servers
@@ -386,19 +387,28 @@ environments:
 #
 # cluster (optional, administration server only)
 #   The servers that may pull configuration from this administration server,
-#   by the name they joined with and the address they connect from (an IP
-#   address or network). app:cluster:server adds and removes them.
+#   by the name they joined with, the address they connect from (an IP
+#   address or network; for a collection server, the one address the
+#   balancer reaches it at) and their role, collection or worker. The
+#   balancer's configuration is built from the collection servers.
+#   app:cluster:server adds and removes them.
 #   Example:
 #     cluster:
-#       - { name: collect-1, address: 10.0.0.11 }
+#       - { name: collect-1, address: 10.0.0.11, role: collection }
+#       - { name: worker-1, address: 10.0.0.21, role: worker }
 #
 # cluster_config_max_age_minutes (optional, default: 5, 1 to 60)
 #   How long a collection or worker server may go without confirming it has
 #   the newest configuration before it pauses collection (503). Cannot be
-#   turned off.
+#   turned off. app:cluster:settings --max-age-minutes sets it.
 #
 # cluster_alert_destinations (optional, default: every alert destination)
 #   The alert destinations told when a server stops pulling its configuration.
+#   app:cluster:settings --alert-destinations sets it (ids, all or none).
+#
+# cluster_collection_port (optional, default: 80)
+#   The port the balancer reaches the collection servers at over the private
+#   network. app:cluster:settings --collection-port sets it.
 #
 # collection_base_url (optional, default: "")
 #   Where websites send events and load the tracker, consent and tag-manager
@@ -407,8 +417,9 @@ environments:
 #   organization-traffic links use it; sign-in links, alerts and the dashboard
 #   keep app_host. Empty means app_host. A value that is not a plain http(s)
 #   URL stops snippet generation rather than falling back to app_host. Copy the
-#   tracking code again after changing it. Also editable in General settings.
-#   The COLLECTION_BASE_URL environment variable takes precedence.
+#   tracking code again after changing it. Also editable in General settings
+#   and with app:collection-address. The COLLECTION_BASE_URL environment
+#   variable takes precedence.
 #   Example: https://collect.example.com
 #
 # documentation_url (optional, default: https://subschema-llc.github.io/aggregate/)

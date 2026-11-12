@@ -1109,7 +1109,7 @@ its views are regenerated, so a YAML edit needs that explicit step.
 ### One release with a role per server, not separate applications
 
 **Decision.** A cluster runs the same release on every server, each with a
-role (`all`, `administration`, `collection`, `worker` or `balancer`) read when
+role (`all`, `administration`, `collection` or `worker`) read when
 the kernel boots, from `SERVER_ROLE` or `server_role`. A role loads only its
 route files, removes the controllers behind the others, refuses commands
 outside it, and only `all` and `administration` change configuration, checked
@@ -1155,6 +1155,54 @@ pause limit cannot be turned off.
 
 **What would change it.** A shared configuration store every server reads
 directly, which would replace the pull but add a service to run.
+
+### The balancer runs no Aggregate; the administration server prints its configuration
+
+**Decision.** The balancer in front of the collection servers has no role.
+`app:server:balancer-config --nginx|--caddy`, on the administration server,
+prints its configuration from YAML settings: the collection address, the
+collection servers in the `cluster` list (each entry now has a role),
+`cluster_collection_port` and `rate_limit_per_minute`. Nginx limits
+`POST /api/receive` per address and passes a paused server's 503 to the next
+server; Caddy checks `/api/health`, and limits only with the caddy-ratelimit
+module.
+
+**Why.** A balancer needs Nginx or Caddy, not PHP, a release and database
+credentials. The administration server already holds the server list, the
+rate limit and the collection address, so the configuration comes from the
+same settings as everything else, and a hosting tool such as PRAGMA installs
+the output without reading Aggregate's files.
+
+**Trade-off.** Adding or removing a collection server means running the
+command again and reinstalling its output; nothing on the balancer notices by
+itself. Stock Caddy cannot limit per address, so a Caddy balancer leaves the
+limit to each server's own, counted on each server. Nginx retrying a POST can
+count one event twice when a server fails after receiving it.
+
+**What would change it.** A balancer that discovers servers from a service
+registry, or a hosting platform's load balancer configured through its API.
+
+### Every cluster setting has a command as well as YAML
+
+**Decision.** Each cluster setting is a YAML setting or environment variable,
+and a command sets it with the same validation: `app:cluster:join` for a
+server's own role, name and administration address, `app:cluster:key`,
+`app:cluster:server` for the server list, `app:cluster:settings` for the
+pause limit, alert destinations and collection port, and
+`app:collection-address`. Only the collection address is also on a dashboard
+page (General settings).
+
+**Why.** A cluster is set up from a shell or by a hosting tool, often before
+any dashboard exists, and collection and worker servers have no dashboard at
+all. Commands give scripts and PRAGMA the same checks a page would.
+
+**Trade-off.** The server list, pause limit, alert destinations and port have
+no dashboard page yet; the Updates page will list the servers. That is an
+exception to the rule that operator settings are also in the dashboard,
+recorded here.
+
+**What would change it.** Operators who manage clusters from the dashboard,
+which would add a page over the same services.
 
 ### A small dashboard menu that says why an entry is missing
 

@@ -40,7 +40,7 @@ Operators of self-hosted Aggregate installations whose event traffic is more tha
 - On a collection or worker server, routes, controller definitions, commands, configuration writers and scheduled jobs outside its role are not registered or refuse to run, and the message names the administration server. A test boots each role and checks its routes.
 - Collection and worker servers get their configuration only from the administration server, through signed requests and per-file atomic writes that keep the server's own role, by app:cluster:sync every minute. A server pauses collection (503, out of the balancer's rotation) when the administration server has recorded a newer configuration version, as a processing_tasks fingerprint, that it has not applied within 5 minutes, or when it has not verified its version for 5 minutes. An unreachable administration server alone does not pause it, and a long update on the administration server does not either. The administration server alerts on any server that has not pulled for 5 minutes.
 - app:server:role reports each server's role, release, configuration version, queue transport, database connection budget and requirement checks with fixes, as text and as JSON with a schema_version. The Updates page shows the same for every server, inside the existing page.
-- Reference Nginx and Caddy balancer configurations spread collection traffic, limit /api/receive per address, keep addresses out of logs and overwrite X-Forwarded-For.
+- On the administration server, app:server:balancer-config prints reference Nginx and Caddy balancer configurations from YAML settings. They spread collection traffic, limit /api/receive per address (Caddy only with the caddy-ratelimit module), keep addresses out of access logs, overwrite X-Forwarded-For and take paused servers out of rotation.
 - Updating a cluster runs migrations once on the administration server, then files only on the other servers. CI rejects non-additive migrations on the tables and views the collection path and Messenger handler use, and non-additive changes to message classes such as TrackEventMessage.
 - No visitor address, User-Agent string or exact timestamp passes between servers beyond what one server handles today, config/secrets never leaves the administration server, and queued enhanced payloads have a bounded age.
 - A generic Linux guide and a Plesk guide take an operator through every role, the shared database, the firewall and the balancer without PRAGMA, and each is followed once on fresh servers.
@@ -49,6 +49,7 @@ Operators of self-hosted Aggregate installations whose event traffic is more tha
 ## Constraints
 - No new required service: the balancer is the existing Nginx or Caddy, and the database is the one already in use.
 - No step may require PRAGMA or another hosting panel.
+- No setting may require the dashboard: each is YAML or an environment variable, and a command sets it with the same validation (Scott).
 - server_role: all stays the default.
 - This phase starts before phase 2 only on a measured gate: where the headroom report shows less than about 2x headroom for an engine and mode, phase 3 waits for phase 2's batching there. The first slice amends the rule in ROADMAP.md that each phase starts only when load testing shows the previous one has run out.
 - ROADMAP.md's phase 3 text is brought in line with the spec: the scheduled task runs on administration, not on worker; rate-limit buckets sit in APCu when available (PR #456); the reporting API and MCP stay on administration.
@@ -74,4 +75,7 @@ Operators of self-hosted Aggregate installations whose event traffic is more tha
 - A collection or worker server pauses collection (503) when the administration server has recorded a configuration version newer than its own for 5 minutes, or when it has not checked for 5 minutes. Being unable to reach the administration server alone does not pause it. The version is recorded as a processing_tasks fingerprint by app:cluster:sync, which runs every minute on every server (Scott, revised with the Architect).
 - PRAGMA's side is part of JOIN-59 (Scott), but it is never required: everything PRAGMA automates is also documented for a generic Linux server and for Plesk (Scott).
 - Clusters on sync://, with collection servers writing enhanced events themselves and no worker servers, are supported; worker is optional (Scott).
+- doctrine:// with worker servers on the shared database is supported too, documented and tested, with a warning that it is the costliest setup for that database (Scott).
+- The balancer has no role and runs no Aggregate: app:server:balancer-config on the administration server prints its configuration (Scott).
+- Queued and failed messages are deleted by a scheduled job on the administration server after 7 days by default (Scott).
 - The full spec, with the team's input and the open questions, is docs/specs/JOIN-59-server-roles.md.

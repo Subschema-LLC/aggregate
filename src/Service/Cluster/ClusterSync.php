@@ -18,7 +18,7 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  *    and alerts when a server has not pulled for the pause limit;
  *  - collection and worker: pull the configuration from the administration
  *    server and record what they know in var/cluster_state.json;
- *  - all and balancer: nothing.
+ *  - all: nothing.
  *
  * When a pull fails, the version recorded in the database decides: the
  * server's own version means nothing changed, so it is verified and keeps

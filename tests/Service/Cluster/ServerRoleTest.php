@@ -76,7 +76,16 @@ final class ServerRoleTest extends TestCase
 
         self::assertSame('all', $role->role);
         self::assertSame('reporting', $role->configured);
-        self::assertStringContainsString('"reporting" is not one of all, administration, collection, worker, balancer', (string) $role->problem);
+        self::assertStringContainsString('"reporting" is not one of all, administration, collection, worker', (string) $role->problem);
+    }
+
+    public function testABalancerHasNoRoleAndIsToldWhereItsConfigurationComesFrom(): void
+    {
+        $this->configure(['server_role' => 'balancer']);
+        $role = ServerRole::resolve($this->directory, 'prod');
+
+        self::assertSame(['all', 'balancer'], [$role->role, $role->configured]);
+        self::assertStringContainsString('app:server:balancer-config', (string) $role->problem);
     }
 
     #[DataProvider('sqliteUrls')]
@@ -123,7 +132,6 @@ final class ServerRoleTest extends TestCase
         yield 'administration' => ['administration', ['routes_health.yaml', 'routes_branding.yaml', 'routes_admin_api.yaml']];
         yield 'collection' => ['collection', ['routes_health.yaml', 'routes_branding.yaml', 'routes_collection.yaml']];
         yield 'worker' => ['worker', ['routes_health.yaml']];
-        yield 'balancer' => ['balancer', ['routes_health.yaml']];
     }
 
     public function testControllersAreReadFromTheRouteFilesTheyAreRemovedBy(): void
@@ -166,7 +174,6 @@ final class ServerRoleTest extends TestCase
         yield 'administration' => ['administration', [...$everywhere, ...$administration], []];
         yield 'collection' => ['collection', [...$everywhere, 'app:assets:build-js'], [...$administration, 'messenger:consume', 'app:cache-like']];
         yield 'worker' => ['worker', [...$everywhere, 'messenger:consume', 'app:tracking:retry-failed'], [...$administration, 'app:assets:build-js']];
-        yield 'balancer' => ['balancer', $everywhere, [...$administration, 'messenger:consume']];
     }
 
     public function testRefusalsNameTheServerThatDoesTheWork(): void
