@@ -584,6 +584,94 @@ sudo systemctl restart analytics-worker
 
 ---
 
+## Several servers
+
+Aggregate can run on several Plesk servers that share one database, each with
+a [server role](docs/CONFIGURATION.md#server-roles). [Several servers](docs/CLUSTER.md)
+explains the layout, the queue choice and every command; this section maps its
+steps to Plesk. You need SSH (or Plesk's **SSH Terminal** extension) on each
+server for the `bin/console` commands, run as the subscription's system user.
+
+> Not yet followed on Plesk servers: Plesk's screens are named as in Plesk
+> Obsidian, and the balancer's Nginx directives are untested beside Plesk's own.
+
+### The database server
+
+- **Remote access:** in **Tools & Settings → Database Servers**, allow remote
+  connections on the MariaDB or MySQL server. Create the `aggregate` database
+  in the administration server's subscription, and in its **User Management**
+  give each Aggregate server its own user, with **Access control** set to
+  allow connections from that server's address only.
+- **Firewall:** with the **Firewall** extension, add a rule that allows port
+  3306 (5432 for PostgreSQL) from the Aggregate servers' addresses and denies
+  it from everywhere else.
+- Do not add `charset=utf8mb4` to the database URL.
+
+### The administration server
+
+Install as in [Install from a release ZIP](#install-from-a-release-zip-no-ssh),
+with the shared database on the setup page and the
+[scheduled task](#6-add-the-scheduled-task). Then, over SSH in the site's
+folder, follow [step 2 of the guide](docs/CLUSTER.md#2-the-administration-server)
+(`app:cluster:key`, `app:cluster:join`, `app:collection-address`,
+`app:cluster:server add`). Add a second scheduled task:
+
+| Field | Value |
+| --- | --- |
+| Task type | **Run a PHP script** |
+| Script path | The site's folder followed by `bin/console` |
+| Use PHP version | The site's PHP version |
+| Arguments | `app:cluster:sync` |
+| Run | **Cron style**, `* * * * *` |
+| Notify | **Errors only** |
+
+### Each collection server
+
+1. Create the collection domain (`collect.example.com`) with its document root
+   at `public`, the same PHP version, and upload and extract the same release.
+   Do not open the setup page.
+2. Over SSH: add `10.0.0.10 admin.example.com` to `/etc/hosts` (root), then
+   join and pull as in [step 3 of the guide](docs/CLUSTER.md#3-each-collection-server),
+   as the subscription's user.
+3. Add the `app:cluster:sync` scheduled task above. No `app:scheduler:run`
+   task runs here.
+4. **Firewall:** allow ports 80 and 443 from the balancer's address only.
+5. Leave the domain on HTTP between balancer and server, or keep Plesk's
+   certificate: the balancer ends TLS for visitors either way.
+
+### Each worker server (`doctrine://` only)
+
+Upload the release to any subscription, join with `"role": "worker"`, and add
+two scheduled tasks: `app:cluster:sync` every minute, and the consumers as in
+[Option A](#option-a-plesk-scheduled-tasks-simplest)
+(`messenger:consume async --time-limit=3600`, hourly), or a systemd service
+([Option B](#option-b-systemd-recommended-for-production)).
+
+### The balancer
+
+On the administration server, print the two halves Plesk needs:
+
+```bash
+php bin/console app:server:balancer-config --nginx --part=http > aggregate-balancer-http.conf
+php bin/console app:server:balancer-config --nginx --part=server
+```
+
+On the balancer's Plesk server:
+
+1. Create `collect.example.com` with hosting, and a Let's Encrypt certificate
+   for it (**SSL/TLS Certificates**).
+2. In **Apache & nginx Settings**, turn **Proxy mode** off and paste the
+   `--part=server` output into **Additional nginx directives**. Plesk owns the
+   `listen`, `server_name` and certificate lines.
+3. As root, copy `aggregate-balancer-http.conf` to `/etc/nginx/conf.d/`, which
+   Plesk's Nginx includes in its `http` block, then run `nginx -t` and
+   `systemctl reload nginx`.
+4. If `nginx -t` reports a duplicate `location /`, Plesk's own configuration
+   for the domain already has one: say so in an issue, since the reference
+   configuration then needs a Plesk variant.
+
+Print and paste again whenever you add or remove a collection server.
+
 ## Troubleshooting
 
 ### Navigation layout or theme colors are missing

@@ -336,7 +336,7 @@ $key = Cluster::step('install the administration server', static function () use
     console('admin', ['app:cluster:key']);
     preg_match('/[A-Za-z0-9_\-+\/=]{32,}/', console('admin', ['app:cluster:key', '--show']), $match);
     Cluster::check(isset($match[0]), 'app:cluster:key --show printed no key.');
-    console('admin', ['app:cluster:join', '--stdin'], json_encode(['role' => 'administration', 'name' => 'admin', 'cluster_key' => $match[0]], \JSON_THROW_ON_ERROR));
+    console('admin', ['app:cluster:join', '--stdin'], json_encode(['role' => 'administration', 'name' => 'admin', 'cluster_key' => $match[0], 'queue' => $queue], \JSON_THROW_ON_ERROR));
     console('admin', ['app:cluster:server', 'add', 'collect-1', '127.0.0.1', '--role=collection', '--port=8101']);
     console('admin', ['app:cluster:server', 'add', 'collect-2', '127.0.0.1', '--role=collection', '--port=8102']);
     if ($queue === 'doctrine') {
@@ -352,7 +352,7 @@ $key = Cluster::step('install the administration server', static function () use
     return $match[0];
 });
 
-Cluster::step('join the other servers and pull their configuration', static function () use ($servers, $key, $secret, $databaseUrl, $transport): void {
+Cluster::step('join the other servers and pull their configuration', static function () use ($servers, $key, $secret, $databaseUrl, $queue): void {
     foreach (array_keys($servers) as $server) {
         if ($server === 'admin') {
             continue;
@@ -365,8 +365,8 @@ Cluster::step('join the other servers and pull their configuration', static func
             'database_url' => $databaseUrl,
             'trusted_proxies' => '127.0.0.1',
             'app_secret' => $secret,
+            'queue' => $queue,
         ], \JSON_THROW_ON_ERROR));
-        file_put_contents(Cluster::dir($server).'/.env.local', "MESSENGER_TRANSPORT_DSN={$transport}\n", \FILE_APPEND);
         Cluster::check(!is_file(Cluster::dir($server).'/config/websites.yaml'), $server.' has a website list before its first pull.');
         Cluster::check(!is_dir(Cluster::dir($server).'/var/cache/prod'), $server.'\'s cache, built for the role all by the join itself, was not removed.');
         $output = console($server, ['app:cluster:sync']);

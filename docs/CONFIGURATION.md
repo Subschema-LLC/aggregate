@@ -386,7 +386,8 @@ The setting relabels `event_hour` and the event views' `event_day`. It does not 
 One server does everything by default. When collection outgrows it, several
 servers can share one MySQL, MariaDB or PostgreSQL database, each running the
 same release with a role (`server_role`, or `SERVER_ROLE`, which takes
-precedence):
+precedence). [Several servers](CLUSTER.md) walks through setting one up on
+Linux, and [Plesk](../PLESK-DEPLOYMENT.md#several-servers) on Plesk.
 
 | Role | Serves | Runs |
 | --- | --- | --- |
@@ -449,7 +450,9 @@ database:
 1. `php bin/console app:cluster:join --stdin` reads one JSON object and saves
    the server's own settings in `.env.local`: `role`, `name`,
    `administration_url`, `cluster_key`, and optionally `database_url`,
-   `trusted_proxies` (the balancer's address) and `app_secret`. Give every
+   `trusted_proxies` (the balancer's address), `app_secret` and `queue`
+   (`sync` or `doctrine`, which sets `MESSENGER_TRANSPORT_DSN`; the same on
+   every server). Give every
    collection server the administration server's `APP_SECRET`: organization
    traffic codes are made on one collection server and checked on whichever the
    balancer picks next. Secrets never go on the command line.

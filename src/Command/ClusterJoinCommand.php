@@ -36,7 +36,9 @@ use Symfony\Component\Filesystem\Filesystem;
 )]
 final class ClusterJoinCommand extends Command
 {
-    private const FIELDS = ['role', 'name', 'administration_url', 'cluster_key', 'database_url', 'trusted_proxies', 'app_secret'];
+    private const FIELDS = ['role', 'name', 'administration_url', 'cluster_key', 'database_url', 'trusted_proxies', 'app_secret', 'queue'];
+    /** `queue`: where enhanced events go, the same on every server of a cluster. */
+    private const QUEUES = ['sync' => 'sync://', 'doctrine' => 'doctrine://default'];
 
     public function __construct(
         #[Autowire('%kernel.project_dir%')]
@@ -158,6 +160,13 @@ final class ClusterJoinCommand extends Command
                 throw new \InvalidArgumentException('database_url must be the shared MySQL, MariaDB or PostgreSQL database\'s URL; SQLite cannot be shared.');
             }
             $variables['DATABASE_URL'] = $database;
+        }
+        if (isset($settings['queue'])) {
+            $queue = $settings['queue'];
+            if (!is_string($queue) || !isset(self::QUEUES[$queue])) {
+                throw new \InvalidArgumentException('queue must be sync (collection servers write enhanced events themselves) or doctrine (worker servers write them from the shared database), the same on every server.');
+            }
+            $variables['MESSENGER_TRANSPORT_DSN'] = self::QUEUES[$queue];
         }
         if (isset($settings['app_secret'])) {
             $secret = $settings['app_secret'];

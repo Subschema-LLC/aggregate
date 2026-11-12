@@ -115,11 +115,12 @@ final class ClusterPauseTest extends TestCase
         $variables = ClusterJoinCommand::variables([
             'role' => 'collection', 'name' => 'collect-1', 'administration_url' => 'https://admin.example.com/',
             'cluster_key' => self::KEY, 'database_url' => 'mysql://aggregate:secret@10.0.0.5:3306/aggregate', 'trusted_proxies' => '10.0.0.2, 10.0.0.3',
+            'queue' => 'doctrine',
         ]);
         self::assertSame([
             'SERVER_ROLE' => 'collection', 'CLUSTER_SERVER_NAME' => 'collect-1', 'CLUSTER_KEY' => self::KEY,
             'ADMINISTRATION_URL' => 'https://admin.example.com', 'DATABASE_URL' => 'mysql://aggregate:secret@10.0.0.5:3306/aggregate',
-            'TRUSTED_PROXIES' => '10.0.0.2,10.0.0.3',
+            'MESSENGER_TRANSPORT_DSN' => 'doctrine://default', 'TRUSTED_PROXIES' => '10.0.0.2,10.0.0.3',
         ], $variables);
 
         foreach ([
@@ -129,6 +130,7 @@ final class ClusterPauseTest extends TestCase
             [['role' => 'collection', 'name' => 'collect-1', 'cluster_key' => self::KEY], 'administration_url'],
             [['role' => 'worker', 'name' => 'w', 'cluster_key' => self::KEY, 'administration_url' => 'https://a.example', 'database_url' => 'sqlite:///x.db'], 'SQLite cannot be shared'],
             [['role' => 'worker', 'password' => 'x'], 'Unknown setting'],
+            [['role' => 'worker', 'name' => 'w', 'cluster_key' => self::KEY, 'administration_url' => 'https://a.example', 'queue' => 'redis'], 'queue must be sync'],
         ] as [$settings, $expected]) {
             try {
                 ClusterJoinCommand::variables($settings);
