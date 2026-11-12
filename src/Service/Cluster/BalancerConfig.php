@@ -56,7 +56,7 @@ final class BalancerConfig
         string $collectionUrl,
         array $servers,
         private readonly int $ratePerMinute,
-        private readonly int $upstreamPort = 80,
+        int $upstreamPort = 80,
     ) {
         $parts = parse_url($collectionUrl);
         if (!is_array($parts) || !in_array($parts['scheme'] ?? null, ['http', 'https'], true) || empty($parts['host'])
