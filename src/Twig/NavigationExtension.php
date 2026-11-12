@@ -26,6 +26,7 @@ use Twig\TwigFunction;
 final class NavigationExtension extends AbstractExtension
 {
     private const MAX_ITEMS = 32;
+    private const DEFAULT_LOGOUT = ['label' => 'Logout', 'url' => '/logout', 'icon' => 'fas fa-sign-out-alt'];
 
     public function __construct(
         private readonly FeatureFlagsExtension $features,
@@ -80,7 +81,9 @@ final class NavigationExtension extends AbstractExtension
             'items' => $items,
             'account' => [
                 'user_icon' => $this->text($account['user_icon'] ?? null),
-                'logout' => $this->item($account['logout'] ?? null),
+                // Signing out never depends on the menu file: a navigation
+                // without a usable logout entry still gets one.
+                'logout' => $this->logout($account['logout'] ?? null),
             ],
             // Not rendered as menu entries: pages waiting for their shown_when condition.
             'search_only' => $searchOnly,
@@ -122,11 +125,20 @@ final class NavigationExtension extends AbstractExtension
             }
             $children = [];
             foreach (array_slice($item['children'], 0, self::MAX_ITEMS) as $child) {
+                // A heading names the links after it, up to the next heading.
+                if (is_array($child) && array_key_exists('heading', $child) && !array_key_exists('label', $child)) {
+                    $heading = $this->text($child['heading']);
+                    if ($heading !== null) {
+                        $children[] = ['heading' => $heading];
+                    }
+                    continue;
+                }
                 $child = $this->item($child, parentEnabled: $enabled, category: $label);
                 if ($child !== null) {
                     $children[] = $child;
                 }
             }
+            $children = self::withoutEmptyHeadings($children);
 
             return $children === [] ? null : [...$normalized, 'children' => $children];
         }
@@ -192,6 +204,40 @@ final class NavigationExtension extends AbstractExtension
         }
 
         return $link;
+    }
+
+    /**
+     * Drops a heading with no link under it (every link after it was hidden,
+     * or another heading follows), so a group never shows an empty section.
+     *
+     * @param list<array<string, mixed>> $children
+     *
+     * @return list<array<string, mixed>>
+     */
+    private static function withoutEmptyHeadings(array $children): array
+    {
+        $kept = [];
+        foreach ($children as $index => $child) {
+            $next = $children[$index + 1] ?? null;
+            if (isset($child['heading']) && ($next === null || isset($next['heading']))) {
+                continue;
+            }
+            $kept[] = $child;
+        }
+
+        return $kept;
+    }
+
+    /**
+     * The configured account exit (which may be a custom destination, such as
+     * a single sign-on logout page), or the default sign-out when it is
+     * missing, not a safe link, or not for this user.
+     */
+    private function logout(mixed $configured): array
+    {
+        return $this->item($configured)
+            ?? $this->item(self::DEFAULT_LOGOUT)
+            ?? [...self::DEFAULT_LOGOUT, 'icon' => self::DEFAULT_LOGOUT['icon'], 'enabled' => true, 'external' => false, 'logout' => true];
     }
 
     /** Destinations defined on a link: exactly one of route, url or docs (a documentation topic). */

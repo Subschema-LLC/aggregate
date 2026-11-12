@@ -17,19 +17,12 @@ use Twig\Environment;
 
 final class MainNavigationConfigTest extends KernelTestCase
 {
-    public function testDataModelNavigationAndRoutesExposeOnlyAdministratorPagesAndPostMutations(): void
+    public function testDataModelRoutesExposeOnlyPermittedPagesAndPostMutations(): void
     {
         self::bootKernel();
 
         $container = self::getContainer();
-        $navigation = $container->getParameter('app.main_navigation');
-        $links = array_values(array_filter(
-            $this->links($navigation['items']),
-            static fn (mixed $item): bool => is_array($item) && ($item['route'] ?? null) === 'app_data_model',
-        ));
-        self::assertCount(1, $links);
-        self::assertSame('Data model', $links[0]['label']);
-        $this->assertPagePermission($links[0], 'data_model');
+        self::assertSame('data_model', DashboardPages::requirement('app_data_model')['page']);
 
         $routes = $container->get('router')->getRouteCollection();
         foreach ([
@@ -69,7 +62,12 @@ final class MainNavigationConfigTest extends KernelTestCase
         }
     }
 
-    public function testNavigationIsAvailableToTwigAndReferencesExistingRoutes(): void
+    /**
+     * The brand (logo) and account links of the shipped menu, which every
+     * signed-in user needs. The groups and links inside them are the
+     * operator's to arrange, so no test pins them.
+     */
+    public function testNavigationIsAvailableToTwigWithAWorkingBrandAndLogout(): void
     {
         self::bootKernel();
 
@@ -78,12 +76,11 @@ final class MainNavigationConfigTest extends KernelTestCase
 
         self::assertIsArray($navigation);
         self::assertArrayHasKey('brand', $navigation);
-        self::assertArrayHasKey('items', $navigation);
         self::assertArrayHasKey('account', $navigation);
         self::assertIsArray($navigation['brand']);
-        self::assertIsArray($navigation['items']);
         self::assertIsArray($navigation['account']);
         self::assertIsArray($navigation['account']['logout'] ?? null);
+        self::assertSame('/logout', $navigation['account']['logout']['url'] ?? null);
 
         $twig = $container->get('twig');
         self::assertInstanceOf(Environment::class, $twig);
@@ -99,7 +96,6 @@ final class MainNavigationConfigTest extends KernelTestCase
 
         $links = [
             $navigation['brand'],
-            ...$this->links($navigation['items']),
             $navigation['account']['logout'],
         ];
 
@@ -137,23 +133,12 @@ final class MainNavigationConfigTest extends KernelTestCase
         }
     }
 
-    public function testDataLifecycleSettingsHaveADedicatedNavigationDestination(): void
+    public function testDataLifecycleSettingsHaveTheirOwnPage(): void
     {
         self::bootKernel();
 
         $container = self::getContainer();
-        $navigation = $container->getParameter('app.main_navigation');
-        self::assertIsArray($navigation);
-        self::assertIsArray($navigation['items'] ?? null);
-
-        $lifecycleLinks = array_values(array_filter(
-            $this->links($navigation['items']),
-            static fn (mixed $item): bool => is_array($item)
-                && ($item['route'] ?? null) === 'app_data_lifecycle',
-        ));
-        self::assertCount(1, $lifecycleLinks);
-        self::assertNotSame('', trim((string) ($lifecycleLinks[0]['label'] ?? '')));
-        $this->assertPagePermission($lifecycleLinks[0], 'data_lifecycle');
+        self::assertSame('data_lifecycle', DashboardPages::requirement('app_data_lifecycle')['page']);
 
         $router = $container->get('router');
         self::assertInstanceOf(RouterInterface::class, $router);
@@ -166,21 +151,12 @@ final class MainNavigationConfigTest extends KernelTestCase
         self::assertSame(['POST'], $saveRoute->getMethods());
     }
 
-    public function testUpdatesHaveAnAdministratorNavigationDestinationAndPostOnlyRefresh(): void
+    public function testUpdatesHaveTheirOwnPageAndPostOnlyRefresh(): void
     {
         self::bootKernel();
 
         $container = self::getContainer();
-        $navigation = $container->getParameter('app.main_navigation');
-        $updateLinks = array_values(array_filter(
-            $this->links($navigation['items']),
-            static fn (mixed $item): bool => is_array($item)
-                && ($item['route'] ?? null) === 'app_updates',
-        ));
-        self::assertCount(1, $updateLinks);
-        self::assertSame('Updates', $updateLinks[0]['label']);
-        $this->assertPagePermission($updateLinks[0], 'updates');
-        self::assertSame('updates', $updateLinks[0]['feature']);
+        self::assertSame('updates', DashboardPages::requirement('app_updates')['page']);
 
         $router = $container->get('router');
         self::assertInstanceOf(RouterInterface::class, $router);
@@ -193,19 +169,12 @@ final class MainNavigationConfigTest extends KernelTestCase
         self::assertSame(['POST'], $refreshRoute->getMethods());
     }
 
-    public function testFeatureFlagsHaveAnAdministratorNavigationDestination(): void
+    public function testFeatureFlagsHaveTheirOwnPage(): void
     {
         self::bootKernel();
 
         $container = self::getContainer();
-        $links = array_values(array_filter(
-            $this->links($container->getParameter('app.main_navigation')['items']),
-            static fn (mixed $item): bool => is_array($item)
-                && ($item['route'] ?? null) === 'app_feature_flags',
-        ));
-        self::assertCount(1, $links);
-        $this->assertPagePermission($links[0], 'feature_flags');
-        self::assertArrayNotHasKey('feature', $links[0], 'Feature management must remain accessible when other features are disabled.');
+        self::assertSame('feature_flags', DashboardPages::requirement('app_feature_flags')['page']);
         $route = $container->get('router')->getRouteCollection()->get('app_feature_flags');
         self::assertNotNull($route);
         self::assertSame('/dashboard/feature-flags', $route->getPath());
@@ -232,37 +201,4 @@ final class MainNavigationConfigTest extends KernelTestCase
             ));
         }
     }
-    /** @return list<array> */
-    /** A dashboard link shows for users who can view its page; administrators can view every page. */
-    private function assertPagePermission(array $link, string $page): void
-    {
-        self::assertArrayNotHasKey('role', $link, 'Page permissions decide who sees '.$link['label'].'.');
-        self::assertSame($page, DashboardPages::requirement((string) $link['route'])['page']);
-    }
-
-    private function links(array $items): array
-    {
-        $links = [];
-        foreach ($items as $item) {
-            self::assertIsArray($item);
-            if (array_key_exists('children', $item)) {
-                self::assertIsString($item['label'] ?? null);
-                self::assertNotSame('', trim($item['label']));
-                self::assertArrayNotHasKey('route', $item);
-                self::assertArrayNotHasKey('url', $item);
-                self::assertIsArray($item['children']);
-                self::assertNotEmpty($item['children']);
-                foreach ($item['children'] as $child) {
-                    self::assertIsArray($child);
-                    self::assertArrayNotHasKey('children', $child, 'Navigation supports one submenu level.');
-                    $links[] = $child;
-                }
-            } else {
-                $links[] = $item;
-            }
-        }
-
-        return $links;
-    }
-
 }

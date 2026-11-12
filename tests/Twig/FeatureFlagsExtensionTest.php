@@ -132,7 +132,8 @@ final class FeatureFlagsExtensionTest extends TestCase
         self::assertStringNotContainsString('Updates', $crawler->text());
         self::assertStringNotContainsString('Feature flags', $crawler->text());
         self::assertStringNotContainsString('Customer Analytics', $crawler->text());
-        self::assertStringNotContainsString('Logout', $crawler->text());
+        // The administrators-only exit is hidden, and the user still gets the default sign-out.
+        self::assertCount(1, $crawler->filter('a[href="/logout?_csrf_token=logout-test-token"]'));
         self::assertCount(1, $crawler->filter('a[href="/documentation"]'));
         self::assertCount(0, $crawler->filter('[aria-disabled]'));
     }
@@ -361,7 +362,9 @@ final class FeatureFlagsExtensionTest extends TestCase
         ];
         $crawler = $this->render($this->twig(), $navigation);
 
-        self::assertCount(0, $crawler->filter('a[href], details'));
+        // Every unsafe link is dropped; signing out falls back to the default link.
+        self::assertCount(0, $crawler->filter('details'));
+        self::assertSame(['/logout?_csrf_token=logout-test-token'], $crawler->filter('a[href]')->each(static fn (Crawler $link): ?string => $link->attr('href')));
         self::assertStringNotContainsString('Unsafe', $crawler->text());
         self::assertStringContainsString('operator', $crawler->text());
     }
