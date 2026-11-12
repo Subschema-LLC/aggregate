@@ -1182,6 +1182,33 @@ count one event twice when a server fails after receiving it.
 **What would change it.** A balancer that discovers servers from a service
 registry, or a hosting platform's load balancer configured through its API.
 
+### The administration server migrates; the other servers update files only
+
+**Decision.** In a cluster, the administration server updates first and runs
+the migrations. Each other server then runs `app:updates:apply --files-only`,
+which skips the database backup, the migrations and the glossary sync. A
+release update checks the staged release's migrations against the database
+before it changes anything, and every files-only update checks again with the
+new code. The update commands refuse a full update off the administration
+server and a files-only update on it. CI keeps each release usable by the one
+before it: migrations only add nullable or defaulted columns (or non-blocking
+indexes) to `events` and `messenger_messages`, and queued message classes only
+gain fields with defaults, which `__wakeup()` fills on older messages.
+
+**Why.** Migrations must run once, from the server that holds the backups
+and the scheduled task. Until the last server has its new files, the old code
+keeps writing to the same tables and the same queue, so a dropped or renamed
+column, or a message field an older release did not write, would break it.
+
+**Trade-off.** A files-only update keeps maintenance mode while files change,
+which the spec had left out. A collection server's 503 sends its traffic to the
+others, and a half-replaced code base never serves requests, but a cluster with
+a single collection server loses the events sent during its update. Removing a
+column or a message field takes two releases.
+
+**What would change it.** Blue-green deployments that switch whole servers
+behind the balancer, which would make maintenance mode unnecessary.
+
 ### Every cluster setting has a command as well as YAML
 
 **Decision.** Each cluster setting is a YAML setting or environment variable,

@@ -42,6 +42,8 @@ final class ApplicationUpdaterTest extends TestCase
     private Connection $connection;
     /** @var list<array{0: string, 1: string}> */
     private array $messages = [];
+    /** @var array<string, string> Files every release after 1.0.0 also ships. */
+    private array $extraReleaseFiles = [];
 
     protected function setUp(): void
     {
@@ -292,6 +294,49 @@ final class ApplicationUpdaterTest extends TestCase
 
         $this->expectExceptionMessage('--database-backup-confirmed');
         $this->updater()->start(['package' => $package, 'manifest' => $manifest, 'signature' => $signature], $this->record(...));
+    }
+
+    public function testFilesOnlyLeavesTheDatabaseToTheAdministrationServer(): void
+    {
+        self::assertSame(['download', 'verify', 'stage', 'maintenance', 'apply_files', 'handoff', 'schema', 'cache', 'workers', 'finish'], ApplicationUpdater::stepsFor('release', true));
+        self::assertSame(['apply_files', 'dependencies', 'handoff', 'schema', 'assets', 'cache', 'workers', 'finish'], ApplicationUpdater::stepsFor('git', true));
+        self::assertSame(['maintenance', 'dependencies', 'handoff', 'schema', 'assets', 'cache', 'workers', 'finish'], ApplicationUpdater::stepsFor('deployment', true));
+
+        $this->connection = DriverManager::getConnection(['driver' => 'pdo_mysql', 'host' => '127.0.0.1', 'dbname' => 'aggregate', 'user' => 'app']);
+        [$package, $manifest, $signature] = $this->package('2.0.0');
+        $before = $this->snapshot(except: 'var/');
+
+        // No --database-backup-confirmed is needed, since nothing here migrates. The
+        // shared database cannot be reached in this test, so the check stops it.
+        $state = $this->updater()->start(['package' => $package, 'manifest' => $manifest, 'signature' => $signature, 'files_only' => true], $this->record(...));
+
+        self::assertSame(['failed', 'stage', true], [$state['status'], $state['step'], $state['files_only']]);
+        self::assertStringContainsString('migration list could not be read', (string) $state['error']);
+        self::assertNull((new MaintenanceMode($this->project))->status(), 'Stopped before maintenance.');
+        self::assertSame($before, $this->snapshot(except: 'var/'));
+    }
+
+    public function testFilesOnlyWaitsForTheAdministrationServersMigrations(): void
+    {
+        $this->extraReleaseFiles = ['migrations/Version20990101000000.php' => '<?php', 'migrations/Version20990102000000.php' => '<?php'];
+        $this->connection->executeStatement('CREATE TABLE doctrine_migration_versions (version VARCHAR(191) PRIMARY KEY, executed_at DATETIME, execution_time INTEGER)');
+        $this->connection->executeStatement("INSERT INTO doctrine_migration_versions (version) VALUES ('DoctrineMigrations\\Version20990101000000')");
+        [$package, $manifest, $signature] = $this->package('2.0.0');
+        $before = $this->snapshot(except: 'var/');
+
+        $state = $this->updater()->start(['package' => $package, 'manifest' => $manifest, 'signature' => $signature, 'files_only' => true], $this->record(...));
+
+        self::assertSame(['failed', 'stage'], [$state['status'], $state['step']]);
+        self::assertStringContainsString('does not have 1 migration(s) release 2.0.0 needs (Version20990102000000). Update the administration server first', (string) $state['error']);
+        self::assertSame($before, $this->snapshot(except: 'var/'), 'Nothing changed: the old release keeps serving.');
+
+        $this->connection->executeStatement("INSERT INTO doctrine_migration_versions (version) VALUES ('DoctrineMigrations\\Version20990102000000')");
+        $state = $this->updater()->start(['package' => $package, 'manifest' => $manifest, 'signature' => $signature, 'files_only' => true], $this->record(...));
+
+        self::assertSame(['needs_attention', 'handoff'], [$state['status'], $state['step']], 'The fixture release cannot continue after the handoff; real releases run schema, cache and workers.');
+        self::assertNotContains('database_backup', $state['completed']);
+        self::assertNull($state['database_backup'], 'No SQLite snapshot: the database is the administration server\'s.');
+        self::assertSame('<?php // 2.0.0', $this->read('src/App.php'));
     }
 
     public function testDowngradesAreRefused(): void
@@ -597,6 +642,7 @@ final class ApplicationUpdaterTest extends TestCase
         if ($version !== '1.0.0') {
             $files['config/goals.yaml'] = "parameters: { app.goal_events: { purchase: {}, lead: {} } }\n";
             $files['src/Added.php'] = '<?php // added';
+            $files += $this->extraReleaseFiles;
         }
         ksort($files);
         $files['release-files.json'] = json_encode([

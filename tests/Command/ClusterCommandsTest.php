@@ -10,7 +10,10 @@ use App\Command\CollectionAddressCommand;
 use App\Command\ServerBalancerConfigCommand;
 use App\Service\AggregateConfigLoader;
 use App\Service\Alerts\AlertSettings;
+use App\Service\Cluster\ClusterConfigPublisher;
+use App\Service\Cluster\ClusterOverview;
 use App\Service\Cluster\ClusterServers;
+use App\Service\InstalledRelease;
 use App\Service\ParsedYamlCache;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Command\Command;
@@ -48,9 +51,9 @@ final class ClusterCommandsTest extends TestCase
     public function testTheBalancerIsBuiltFromSettingsSetOnTheCommandLine(): void
     {
         self::assertSame(0, $this->execute(new CollectionAddressCommand($this->config()), ['url' => 'https://collect.example.com/']));
-        self::assertSame(0, $this->execute(new ClusterServerCommand($this->config(), $this->servers()), ['action' => 'add', 'name' => 'collect-1', 'address' => '10.0.0.11', '--role' => 'collection']));
-        self::assertSame(0, $this->execute(new ClusterServerCommand($this->config(), $this->servers()), ['action' => 'add', 'name' => 'collect-2', 'address' => '10.0.0.12', '--role' => 'collection']));
-        self::assertSame(0, $this->execute(new ClusterServerCommand($this->config(), $this->servers()), ['action' => 'add', 'name' => 'worker-1', 'address' => '10.0.0.21', '--role' => 'worker']));
+        self::assertSame(0, $this->execute($this->serverCommand(), ['action' => 'add', 'name' => 'collect-1', 'address' => '10.0.0.11', '--role' => 'collection']));
+        self::assertSame(0, $this->execute($this->serverCommand(), ['action' => 'add', 'name' => 'collect-2', 'address' => '10.0.0.12', '--role' => 'collection']));
+        self::assertSame(0, $this->execute($this->serverCommand(), ['action' => 'add', 'name' => 'worker-1', 'address' => '10.0.0.21', '--role' => 'worker']));
         self::assertSame(0, $this->execute(new ClusterSettingsCommand($this->config(), $this->alerts()), ['--collection-port' => '8080']));
 
         self::assertSame([
@@ -123,7 +126,7 @@ final class ClusterCommandsTest extends TestCase
 
     public function testAServerIsAddedWithItsRole(): void
     {
-        $command = new ClusterServerCommand($this->config(), $this->servers());
+        $command = $this->serverCommand();
 
         self::assertSame(1, $this->execute($command, ['action' => 'add', 'name' => 'collect-1', 'address' => '10.0.0.11']));
         self::assertSame(1, $this->execute($command, ['action' => 'add', 'name' => 'collect-1', 'address' => '10.0.0.11', '--role' => 'balancer']));
@@ -135,6 +138,15 @@ final class ClusterCommandsTest extends TestCase
         self::assertSame(0, $tester->execute(['--json' => true]));
         $list = json_decode($tester->getDisplay(), true, flags: \JSON_THROW_ON_ERROR);
         self::assertSame(['collect-1', '10.0.0.11', 'collection', null], [$list['servers'][0]['name'], $list['servers'][0]['address'], $list['servers'][0]['role'], $list['servers'][0]['reported_role']]);
+        self::assertSame([null, null], [$list['servers'][0]['same_release'], $list['servers'][0]['newest_configuration']], 'It has not pulled yet.');
+        self::assertSame(str_repeat('a', 64), $list['configuration_version']);
+
+        (new ClusterServers($this->directory))->recordPull('collect-1', time(), str_repeat('b', 64), '2026.11.03', 'collection', '10.0.0.11');
+        self::assertSame(0, $tester->execute(['--json' => true]));
+        $list = json_decode($tester->getDisplay(), true, flags: \JSON_THROW_ON_ERROR);
+        self::assertSame(['2026.11.03', false, 'collection'], [$list['servers'][0]['release'], $list['servers'][0]['newest_configuration'], $list['servers'][0]['reported_role']]);
+        self::assertSame(0, $tester->execute([]));
+        self::assertStringContainsString('behind', $tester->getDisplay());
         self::assertSame('collection (reports worker)', ClusterServerCommand::roleCell('collection', 'worker'));
     }
 
@@ -204,6 +216,15 @@ final class ClusterCommandsTest extends TestCase
     private function config(): AggregateConfigLoader
     {
         return new AggregateConfigLoader($this->directory, 'prod', parsedYaml: new ParsedYamlCache($this->directory.'/cache'));
+    }
+
+    private function serverCommand(): ClusterServerCommand
+    {
+        $config = $this->config();
+        $publisher = $this->createStub(ClusterConfigPublisher::class);
+        $publisher->method('recordedVersion')->willReturn(str_repeat('a', 64));
+
+        return new ClusterServerCommand($config, new ClusterOverview($config, $this->servers(), $publisher, new InstalledRelease($this->directory)));
     }
 
     private function servers(): ClusterServers

@@ -140,7 +140,7 @@ Built in slice 4. Also: `--part=http|server` splits the Nginx file for hosting p
 ### Updates across servers
 
 1. The administration server updates first, as today: maintenance, files, migrations, `--resume`.
-2. Each other server runs `app:updates:apply --files-only`, which skips migrations and maintenance.
+2. Each other server runs `app:updates:apply --files-only`, which skips the database backup, migrations and the glossary sync (the spec first said maintenance too; see below).
 3. While servers are on mixed releases, old code runs against the new schema. CI enforces backward compatibility (PO, Architect, DBA):
    - Migrations on `events`, and on any table or view the collection path or Messenger handler writes, must be additive. That means new columns nullable or defaulted, no renames, no drops, and no `NOT NULL` without a default; a removal waits a release.
    - Message classes (`TrackEventMessage`) follow the same additive-only rule, because a message from an old collection server may sit in `messenger_messages` until a worker on the new release reads it.
@@ -149,6 +149,8 @@ Built in slice 4. Also: `--part=http|server` splits the Nginx file for hosting p
      - MySQL and MariaDB: `ALGORITHM=INPLACE, LOCK=NONE`.
      - SQL Server: `ONLINE=ON` where the edition allows it.
 4. The Updates page lists every server with its release and configuration version, inside the existing page (with a `shown_when` condition in `config/navigation.yaml` if needed).
+
+Built in slice 5, with two changes. A files-only update keeps maintenance mode while files change: a collection server's 503 sends its traffic to the other servers, and a half-replaced code base never serves. It also checks before changing anything (release ZIPs) and again with the new code that the database has the release's migrations. The message-class check found that `TrackEventMessage` could not take a new field safely: PHP's serializer skips the constructor, so a field an older release did not write was left unset. `Version20260724000500` deleted queued messages for this reason. The class now sets defaults in `__wakeup()`, and `MessageContractTest` checks it. No Updates page server list needed a `shown_when` condition: the panel shows on the administration server when the cluster list has servers.
 
 ### The database (DBA)
 
@@ -439,7 +441,7 @@ _The work this spec plans, as `- [ ] …` items, each naming the role that does 
 - [x] Back end: `ServerRole`, the route split, controller removal generated from the route files, the command listener and service guards, the SQLite refusal, `app:server:role` with versioned JSON, and the dead mail routing removed (slice 2) (done in JOIN-59)
 - [x] Back end: `app:cluster:sync`, `ClusterConfigPublisher` with the `cluster_config` fingerprint in `processing_tasks`, the configuration endpoint, signed health metadata, `var/cluster_state.json`, the pause when behind or unverified, and the alert through JOIN-55's destinations (slice 3) (done in JOIN-59)
 - [x] Back end: `app:server:balancer-config` for Nginx and Caddy (slice 4), with `app:cluster:settings` and `app:collection-address` so every cluster setting has a command
-- [ ] Back end: `--files-only`, the additivity checks for tables and message classes, and the Updates page server list (slice 5)
+- [x] Back end: `--files-only`, the additivity checks for tables and message classes, and the Updates page server list (slice 5)
 - [ ] DBA: confirm retention batch size and locking and whether the failed transport is purged; then a bounded age and purge for queued payloads (slice 6)
 - [ ] Back end: the two-servers-one-database fresh-install CI job (slice 7)
 - [ ] DBA: the multi-server load test with the BI query loop, and any measured index change (slice 8)

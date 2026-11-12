@@ -59,7 +59,7 @@ final class ServerRole
      */
     private const COMMON_COMMANDS = [
         'list', 'help', 'completion', '_complete', 'about',
-        'cache:', 'assets:install', 'importmap:', 'lint:', 'debug:', 'router:match',
+        'cache:', 'assets:install', 'asset-map:compile', 'importmap:', 'lint:', 'debug:', 'router:match',
         'doctrine:migrations:status', 'doctrine:migrations:list', 'doctrine:migrations:up-to-date',
         'app:server:role', 'app:cluster:sync', 'app:cluster:join',
         'app:updates:check', 'app:updates:verify-package', 'app:updates:maintenance',
@@ -67,12 +67,19 @@ final class ServerRole
         'app:audit:list', 'app:mcp:connection:list', 'app:tag-manager:sites',
     ];
 
+    /**
+     * Updates that only replace files, after the administration server has
+     * run the migrations: the commands check --files-only themselves.
+     */
+    private const FILES_ONLY_UPDATE_COMMANDS = ['app:updates:apply', 'app:updates:deployed', 'app:updates:rollback'];
+
     /** Commands a role adds to the common ones. `all` and `administration` may run every command. */
     private const ROLE_COMMANDS = [
-        self::COLLECTION => ['app:assets:build-js'],
+        self::COLLECTION => ['app:assets:build-js', ...self::FILES_ONLY_UPDATE_COMMANDS],
         self::WORKER => [
             'messenger:consume', 'messenger:stats', 'messenger:stop-workers',
             'messenger:failed:show', 'messenger:failed:retry', 'app:tracking:retry-failed',
+            ...self::FILES_ONLY_UPDATE_COMMANDS,
         ],
     ];
 
@@ -247,6 +254,27 @@ final class ServerRole
         $elsewhere = str_starts_with($what, 'messenger:') ? 'a worker server' : $this->administrationServer();
 
         return sprintf('This is a %s server: %s runs on %s, not here.', $this->role, $what, $elsewhere);
+    }
+
+    /**
+     * Why this server cannot update this way, or null: the server that
+     * administers runs the migrations, so it never updates files only, and
+     * every other server only ever does.
+     */
+    public function updateRefusal(bool $filesOnly): ?string
+    {
+        if ($this->administers() && $filesOnly) {
+            return sprintf('This is the %s server, which runs the migrations, so it updates without --files-only.', $this->role === self::ALL ? 'only' : 'administration');
+        }
+        if (!$this->administers() && !$filesOnly) {
+            return sprintf(
+                'This is a %s server: %s runs the migrations. Update it first, then update this server with --files-only.',
+                $this->role,
+                $this->administrationServer(),
+            );
+        }
+
+        return null;
     }
 
     public function assertAdministers(string $what): void

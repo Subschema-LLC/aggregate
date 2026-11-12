@@ -169,11 +169,23 @@ final class ServerRoleTest extends TestCase
     public static function commands(): iterable
     {
         $everywhere = ['list', 'cache:clear', 'cache:pool:prune', 'app:server:role', 'app:updates:check', 'doctrine:migrations:status', 'lint:container'];
-        $administration = ['doctrine:migrations:migrate', 'app:install', 'app:updates:apply', 'app:create-website', 'app:scheduler:run', 'app:reporting-database:configure', 'messenger:setup-transports'];
+        $administration = ['doctrine:migrations:migrate', 'app:install', 'app:create-website', 'app:scheduler:run', 'app:reporting-database:configure', 'messenger:setup-transports'];
+        // The update commands run everywhere; off the administration server they check --files-only themselves.
+        $everywhere = [...$everywhere, 'app:updates:apply', 'app:updates:deployed', 'app:updates:rollback', 'asset-map:compile'];
         yield 'all' => ['all', [...$everywhere, ...$administration, 'messenger:consume'], []];
         yield 'administration' => ['administration', [...$everywhere, ...$administration], []];
         yield 'collection' => ['collection', [...$everywhere, 'app:assets:build-js'], [...$administration, 'messenger:consume', 'app:cache-like']];
         yield 'worker' => ['worker', [...$everywhere, 'messenger:consume', 'app:tracking:retry-failed'], [...$administration, 'app:assets:build-js']];
+    }
+
+    public function testOnlyTheServerThatMigratesUpdatesWithMigrations(): void
+    {
+        self::assertNull(ServerRole::of('all')->updateRefusal(false));
+        self::assertNull(ServerRole::of('administration', self::SHARED_DATABASE)->updateRefusal(false));
+        self::assertNull(ServerRole::of('collection', self::SHARED_DATABASE)->updateRefusal(true));
+        self::assertNull(ServerRole::of('worker', self::SHARED_DATABASE)->updateRefusal(true));
+        self::assertStringContainsString('without --files-only', (string) ServerRole::of('all')->updateRefusal(true));
+        self::assertStringContainsString('then update this server with --files-only', (string) ServerRole::of('worker', self::SHARED_DATABASE)->updateRefusal(false));
     }
 
     public function testRefusalsNameTheServerThatDoesTheWork(): void
