@@ -7,6 +7,7 @@ namespace App\Service\Glossary;
 use App\Service\AggregateConfigLoader;
 use App\Service\AnonymousBiViewManager;
 use App\Service\CustomDataSettings;
+use App\Service\GoalDefinitions;
 use App\Service\PrivacySanitizer;
 use App\Service\ReportingViewManager;
 use App\Service\WebsiteConfigManager;
@@ -19,7 +20,8 @@ class BiGlossarySettings
         private readonly AggregateConfigLoader $config,
         private readonly CustomDataSettings $customData,
         private readonly BuiltinGlossaryCatalog $catalog,
-        private readonly array $goalDefinitions,
+        /** @var GoalDefinitions|array<string, array{label: string, enabled: bool, anonymous: bool}> */
+        private readonly GoalDefinitions|array $goalDefinitions,
         private readonly ?WebsiteConfigManager $websiteConfig = null,
     ) {
     }
@@ -48,7 +50,7 @@ class BiGlossarySettings
     public function dimensions(): array
     {
         $dimensions = $this->catalog->dimensions();
-        $dimensions['goal_event'] = array_keys($this->goalDefinitions);
+        $dimensions['goal_event'] = array_keys($this->goals());
         $dimensions['website_token'] = array_map('strval', array_keys($this->websites()));
         foreach ($this->customData->reportingColumns() as $column => $key) {
             // Core dimensions always keep their existing meaning.
@@ -82,7 +84,7 @@ class BiGlossarySettings
 
     public function goals(): array
     {
-        return $this->goalDefinitions;
+        return $this->goalDefinitions instanceof GoalDefinitions ? $this->goalDefinitions->all() : $this->goalDefinitions;
     }
 
     /**

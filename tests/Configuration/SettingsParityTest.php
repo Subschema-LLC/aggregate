@@ -34,6 +34,7 @@ final class SettingsParityTest extends TestCase
         'app_data_model_save' => 'app:config data-model',
         'app_bi_glossary_save' => 'app:config bi-glossary',
         'app_bi_page_groups_save' => 'app:config page-groups',
+        'app_goals_save' => 'app:config goals',
         'app_reporting_timezone_save' => 'app:config reporting-timezone',
         'app_api_tokens_settings' => 'app:config reporting-api',
         'app_audit_trail_settings' => 'app:config audit-trail',

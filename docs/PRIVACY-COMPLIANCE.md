@@ -552,7 +552,7 @@ Only administrators can change these runtime controls through the CSRF-protected
 
 The admin **Data model** page manages `custom_data_properties` and `query_parameter_mappings`, including each property's consent rule and reporting column. These settings are also available in the active YAML configuration. Review consent-free properties separately from the SQL columns needed for reporting; exposing a column does not authorize its collection.
 
-Goal definitions are deploy-time controls in `config/goals.yaml`:
+Goal definitions are server-side controls, shipped in `config/goals.yaml` and changed on the **Goals** page, with `app:config goals` or in `config/goals.local.yaml`:
 
 ```yaml
 parameters:
@@ -563,7 +563,7 @@ parameters:
             enabled: true
 ```
 
-Codes must match `[A-Za-z][A-Za-z0-9_.:-]{0,99}` and remain fixed and non-identifying. Set `anonymous: false` for an enhanced-only goal and `enabled: false` to stop future collection without erasing the definition's historical meaning. Restrict write access to this file and clear the production cache after a change, then run `php bin/console app:analytics:glossary:sync --env=prod` to update published goal labels. Disable goals instead of deleting definitions when historical labels should remain available.
+Codes must match `[A-Za-z][A-Za-z0-9_.:-]{0,99}` and remain fixed and non-identifying. Set `anonymous: false` for an enhanced-only goal and `enabled: false` to stop future collection without erasing the definition's historical meaning. Restrict who can edit the Goals page and write these files. A change applies from the next request; run `php bin/console app:analytics:glossary:sync --env=prod` to update published goal labels. Disable goals instead of deleting definitions when historical labels should remain available.
 
 The BI disclosure thresholds are deployment configuration values (`config/aggregate*.yaml`) and have their own CSRF-protected admin form:
 

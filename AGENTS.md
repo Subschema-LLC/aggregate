@@ -51,8 +51,10 @@ remain straightforward. Favor understandable designs over feature count.
   them. Every page action needs its command in `SettingsParityTest`, which fails
   until it has one. Respect existing environment precedence, including settings
   that intentionally have no environment-variable override. Never overwrite
-  unrelated settings or deployment configuration. The few exceptions (browser
-  sign-ins, per-server secrets, the update signing key) are listed in
+  unrelated settings or deployment configuration. Settings the application reads should be
+  read when used, not compiled into the container, so every entry point's
+  change applies without a cache clear. The few exceptions (browser sign-ins,
+  per-server secrets, the update signing key, the dashboard switch) are listed in
   [settings from the command line](docs/CONFIGURATION.md#settings-from-the-command-line);
   document any new one there.
 - **Keep the dashboard small.** Fold a single setting into an existing page

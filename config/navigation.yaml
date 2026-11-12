@@ -59,6 +59,9 @@ parameters:
                   - label: Data model
                     route: app_data_model
                     icon: fas fa-table-columns
+                  - label: Goals
+                    route: app_goals
+                    icon: fas fa-bullseye
             - label: Reporting
               icon: fas fa-database
               children:
