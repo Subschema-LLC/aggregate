@@ -102,9 +102,12 @@ final class ClusterSyncTest extends TestCase
         self::assertFileDoesNotExist($this->collection.'/config/permission-groups.yaml', 'Dashboard-only files are not shared.');
         $settings = Yaml::parseFile($this->collection.'/config/aggregate.yaml');
         self::assertSame('collection', $settings['server_role'], 'The server keeps its own role.');
+        self::assertSame('https://admin.example.com', $settings['administration_url'] ?? null,
+            'The server keeps the administration server\'s address set in its YAML, or it could not pull again.');
         self::assertSame('https://collect.example.com', $settings['collection_base_url']);
         self::assertSame('https://admin.example.com', $settings['app_host']);
         self::assertSame('collection', ServerRole::resolve($this->collection, 'prod')->role);
+        self::assertSame('https://admin.example.com', ServerRole::resolve($this->collection, 'prod')->administrationUrl);
 
         $state = (new ClusterState($this->collection))->read();
         self::assertSame($this->publisher->recordedVersion(), $state['version']);

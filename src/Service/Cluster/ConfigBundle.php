@@ -18,8 +18,8 @@ use Symfony\Component\Yaml\Yaml;
  *
  * A server applying a bundle writes each file beside its target and renames
  * it into place, removes the files the bundle no longer has, and keeps its
- * own server_role and cluster_server_name, so it never takes on the
- * administration server's role.
+ * own server_role, cluster_server_name and administration_url, so it never
+ * takes on the administration server's role and can always pull again.
  *
  * @phpstan-type BundleFile array{path: string, sha256: string, content: string}
  * @phpstan-type Bundle array{format: int, version: string, files: list<BundleFile>}
@@ -44,8 +44,12 @@ final class ConfigBundle
     /** Folders scanned for bundle files. */
     private const ROOTS = ['config', 'config/website-scopes', 'config/tag-manager/sites', 'var/branding'];
 
-    /** Keys a server keeps from its own configuration, whatever the bundle says. */
-    public const LOCAL_KEYS = [ServerRole::CONFIG_KEY, ClusterSettings::SERVER_NAME_KEY];
+    /**
+     * Keys a server keeps from its own configuration, whatever the bundle
+     * says: its role, its name, and the administration server's address,
+     * which it needs before its first pull and for every pull after.
+     */
+    public const LOCAL_KEYS = [ServerRole::CONFIG_KEY, ClusterSettings::SERVER_NAME_KEY, ServerRole::ADMINISTRATION_URL_KEY];
 
     public static function isBundlePath(string $path): bool
     {
@@ -162,8 +166,8 @@ final class ConfigBundle
     /**
      * Writes a received bundle into this installation: changed files are
      * written beside their targets and renamed into place one by one, files
-     * the bundle no longer has are removed, and this server's own role and
-     * name are kept in its settings.
+     * the bundle no longer has are removed, and this server's own role, name
+     * and administration address are kept in its settings.
      *
      * @param array<string, string> $files as decode() returns them
      * @return array{written: list<string>, removed: list<string>}

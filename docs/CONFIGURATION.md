@@ -461,7 +461,8 @@ server's user (cron or a systemd timer). On the administration server it records
 the configuration's version in `processing_tasks` when it changes and alerts
 when a server stops pulling; elsewhere it pulls `/api/cluster/config` and
 writes each changed file beside its target before renaming it into place,
-keeping the server's own `server_role`.
+keeping the server's own `server_role`, `cluster_server_name` and
+`administration_url`.
 
 What is shared: `config/aggregate*.yaml`, `websites.yaml`, the website group
 files, `goals.local.yaml`, the tag manager's per-site files and
