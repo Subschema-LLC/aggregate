@@ -52,8 +52,12 @@ package publication follow the [release guide](docs/RELEASES.md#publish-a-releas
 - Preserve easy installation and portability across PostgreSQL, MySQL, MariaDB,
   SQL Server, and SQLite. Consider the supported versions and SQL differences in
   the [database guide](docs/DATABASE.md).
-- Keep features usable without the dashboard. New UI settings should have a YAML
-  and/or CLI equivalent, and changes should work with the dashboard disabled.
+- Keep features usable without the dashboard. Every setting a page changes is
+  in YAML and has a command (an `app:config` section or its own command) that
+  calls the same service with the same checks, and every YAML setting has a
+  page, apart from the exceptions in
+  [settings from the command line](docs/CONFIGURATION.md#settings-from-the-command-line).
+  `SettingsParityTest` lists each page action's command.
 - Design for security, useful test coverage, scalability, maintainability,
   extensibility, and ease of use. Avoid dependencies and abstraction layers that
   add more maintenance than value.
@@ -356,6 +360,22 @@ that a migration has executed successfully on every database engine. Use a
 disposable database for real migration and query checks, and identify the engines
 you actually exercised in the PR.
 
+During a cluster update, collection and worker servers still run the previous
+release against the migrated database, so two checks keep each release
+compatible with the one before it:
+
+- `tests/Migration/MigrationAdditivityTest.php`: a migration may change
+  `events` and `messenger_messages` only by adding nullable or defaulted
+  columns, or an index built without blocking inserts (`CONCURRENTLY` with
+  `isTransactional()` returning `false` on PostgreSQL, `ALGORITHM=INPLACE,
+  LOCK=NONE` on MySQL and MariaDB). Remove or rename a column a release after
+  the code stops using it. A migration the check misreads goes in its
+  `REVIEWED` list with the reason it is safe.
+- `tests/Message/MessageContractTest.php`: a queued message class, such as
+  `TrackEventMessage`, only gains fields, at the end and with a default, and
+  sets them on messages an older release wrote (`__wakeup()`). Record new
+  fields in `tests/Fixtures/message-contracts.json`; the test prints them.
+
 [tests/Integration/fresh-install.php](tests/Integration/fresh-install.php) is that
 check. It installs the checkout through the browser setup page and `/install`,
 opens every dashboard page, collects events through the API, archives, applies
@@ -374,6 +394,25 @@ AGGREGATE_E2E_DB_PASSWORD=secret php tests/Integration/fresh-install.php
 settings needed). For SQL Server, `AGGREGATE_E2E_TRUST_CERTIFICATE=1` trusts a
 self-signed certificate and `AGGREGATE_E2E_SQLSRV_NATIVE=1` switches to the
 `sqlsrv://` driver after setup.
+
+[tests/Integration/cluster.php](tests/Integration/cluster.php) checks
+[server roles](docs/CONFIGURATION.md#server-roles) the same way. It copies the checkout
+into an administration server, two collection servers and, with
+`AGGREGATE_E2E_QUEUE=doctrine`, a worker, beside the checkout, sets them up with
+the cluster commands on one database, and puts Nginx in front with
+`app:server:balancer-config`. It checks what each role serves and refuses, the
+configuration pull, events through the balancer, a paused server's traffic
+going to the other, the balancer's rate limit, a files-only deployment and the
+queue retention purge. CI runs it on MariaDB 10.11 and PostgreSQL 16, each with
+`sync://` and `doctrine://`. It needs Nginx, an empty MySQL, MariaDB or
+PostgreSQL database, and `importmap:install` run first for the page and
+deployment checks:
+
+```bash
+AGGREGATE_E2E_DISPOSABLE=1 AGGREGATE_E2E_DRIVER=mysql AGGREGATE_E2E_QUEUE=doctrine \
+AGGREGATE_E2E_DB_HOST=127.0.0.1 AGGREGATE_E2E_DB_PORT=3306 AGGREGATE_E2E_DB_NAME=aggregate \
+AGGREGATE_E2E_DB_USER=aggregate AGGREGATE_E2E_DB_PASSWORD=secret php tests/Integration/cluster.php
+```
 
 The reporting-view suite includes an optional PostgreSQL execution test. With
 Docker running and `postgres:16-alpine` already cached locally, run:

@@ -225,6 +225,32 @@
 
             <div class="column is-full">
                 <details class="box" open>
+                    <summary><h2 class="title is-4">Queued events</h2></summary>
+                    <p class="mb-4">
+                        Enhanced events wait in <code>messenger_messages</code> for a worker, and stay there in the failed transport when every attempt to write them fails.
+                        Their details are outside the retention periods above, so maintenance deletes every message older than this, whether it was written or not. A deleted message's event is lost.
+                    </p>
+                    <div class="field">
+                        <label class="label" for="queue-retention-days">Delete queued messages after</label>
+                        <div class="field has-addons">
+                            <div class="control">
+                                <input class="input" id="queue-retention-days" name="queue_retention_days" type="number" min="1" max="365" step="1" required value="{{ settings.queue_retention_days }}" aria-describedby="queue-retention-days-help"{% if overrides.queue_retention_days %} disabled{% endif %}>
+                            </div>
+                            <div class="control"><span class="button is-static">days</span></div>
+                        </div>
+                        <p class="help" id="queue-retention-days-help">
+                            {% if overrides.queue_retention_days %}
+                                Controlled by <code>QUEUE_RETENTION_DAYS</code>.
+                            {% else %}
+                                1–365 days; it cannot be turned off. Also <code>php bin/console app:queue:retention</code>.
+                            {% endif %}
+                        </p>
+                    </div>
+                </details>
+            </div>
+
+            <div class="column is-full">
+                <details class="box" open>
                     <summary><h2 class="title is-4">Maintenance batches</h2></summary>
                     <div class="field">
                         <label class="label" for="analytics-maintenance-batch-size">Rows per batch</label>

@@ -42,12 +42,19 @@ remain straightforward. Favor understandable designs over feature count.
   holds collected events, archives, users and operational records; tables that
   publish configuration to BI tools, such as `analytics_glossary`, are generated
   from YAML and never edited directly.
-- **Provide both UI and headless configuration.** New operator settings should
-  be available in the admin UI and through CLI and/or YAML. Reuse the same
-  services and validation across entry points, and keep a single source of truth.
-  Respect existing environment precedence, including settings that intentionally
-  have no environment-variable override. Never overwrite unrelated settings or
-  deployment configuration. Document any necessary exception or existing gap.
+- **Keep the dashboard, YAML and the command line in step.** Every operator
+  setting lives in YAML, is changed on a dashboard page, and is changed from the
+  command line: through an `app:config` section (an `App\Service\Settings\SettingsSection`
+  that calls the page's own service) or a command of its own. Reuse the same
+  services and validation across entry points, and keep a single source of truth:
+  put a page's checks in a service, not the controller, so the section can call
+  them. Every page action needs its command in `SettingsParityTest`, which fails
+  until it has one. Respect existing environment precedence, including settings
+  that intentionally have no environment-variable override. Never overwrite
+  unrelated settings or deployment configuration. The few exceptions (browser
+  sign-ins, per-server secrets, the update signing key) are listed in
+  [settings from the command line](docs/CONFIGURATION.md#settings-from-the-command-line);
+  document any new one there.
 - **Keep the dashboard small.** Fold a single setting into an existing page
   rather than adding a menu entry. A page that only matters once something is
   turned on elsewhere may get a `shown_when` condition in

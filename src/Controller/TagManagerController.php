@@ -139,9 +139,7 @@ final class TagManagerController extends AbstractController
         try {
             $this->selectedSite(array_key_exists('site', $submitted) ? $submitted['site'] : '');
             $tagSettings = TagManagerForm::settings($submitted);
-            if (!$this->settings->customScriptsEnabled()) {
-                $this->assertNoNewCustomCode($tagSettings, $siteId !== '' ? $siteId : null);
-            }
+            $this->settings->assertNoNewCustomCode($tagSettings, $siteId !== '' ? $siteId : null);
             // Consent manager settings have their own page and save separately.
             $this->settings->save($tagSettings, $siteId !== '' ? $siteId : null);
             $this->addFlash('success', 'Script settings saved to YAML. Changes reach visitors within five minutes.');
@@ -341,22 +339,6 @@ final class TagManagerController extends AbstractController
      * removed but not added or changed. They are not served either way.
      * $tagSettings are already validated, so code compares as it is saved.
      */
-    private function assertNoNewCustomCode(array $tagSettings, ?string $siteId): void
-    {
-        $saved = [];
-        try {
-            foreach ($this->settings->all($siteId)['tags'] as $tag) {
-                if ($tag['type'] === 'custom') $saved[$tag['id']] = $tag['code'];
-            }
-        } catch (\Throwable) {
-            // Unreadable saved settings are reported by the save itself.
-        }
-        foreach ($tagSettings['tags'] as $tag) {
-            if ($tag['type'] === 'custom' && ($saved[$tag['id']] ?? null) !== $tag['code']) {
-                throw new \InvalidArgumentException('Custom JavaScript tags are turned off for this installation on the Feature flags page. Existing ones are kept but not served, and none can be added or changed.');
-            }
-        }
-    }
 
     /** A website the user can use, or the shared configuration for users with every website. */
     private function denyUnlessSiteUsable(mixed $siteId): void

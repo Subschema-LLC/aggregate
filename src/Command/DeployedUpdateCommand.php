@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\Service\ApplicationUpdateService;
+use App\Service\Cluster\ServerRole;
 use App\Service\DocumentationLinks;
 use App\Service\Update\ApplicationUpdater;
 use App\Service\Update\DeploymentAction;
@@ -36,6 +37,7 @@ final class DeployedUpdateCommand extends Command
         private readonly UpdateSettings $settings,
         private readonly DeploymentAction $action,
         private readonly ?DocumentationLinks $documentation = null,
+        private readonly ?ServerRole $role = null,
     ) {
         parent::__construct();
     }
@@ -47,6 +49,7 @@ final class DeployedUpdateCommand extends Command
             ->addOption('git-dir', null, InputOption::VALUE_REQUIRED, 'The deployment tool\'s Git repository, to read the deployed commit from (default: updates_deployment_repository, or this directory when it is a Git clone)')
             ->addOption('database-backup-confirmed', null, InputOption::VALUE_NONE, 'Confirm a current database backup exists (required for PostgreSQL, MySQL, MariaDB and SQL Server)')
             ->addOption('force', null, InputOption::VALUE_NONE, 'Run the steps again even when this deployment was already finished')
+            ->addOption('files-only', null, InputOption::VALUE_NONE, 'Collection and worker servers: skip the database backup, migrations and glossary sync, which the administration server runs first')
             ->addOption('show-action', null, InputOption::VALUE_NONE, 'Print the deployment action for this server and exit, without changing anything')
             ->setHelp(<<<'HELP'
 Run this after each deployment, as the user that owns the files: by hand, or from
@@ -86,6 +89,12 @@ HELP);
         if ($input->getOption('show-action')) {
             return $this->showAction($io, $output);
         }
+        $refusal = $this->role?->updateRefusal((bool) $input->getOption('files-only'));
+        if ($refusal !== null) {
+            $io->error($refusal);
+
+            return Command::FAILURE;
+        }
         try {
             $method = $this->updates->source()['method'];
             if ($method === null) {
@@ -114,6 +123,7 @@ HELP);
                 'repository' => is_string($gitDir) && $gitDir !== '' ? $gitDir : null,
                 'force' => (bool) $input->getOption('force'),
                 'database_backup_confirmed' => (bool) $input->getOption('database-backup-confirmed'),
+                'files_only' => (bool) $input->getOption('files-only'),
             ], static function (string $message, string $level) use ($output): void {
                 if ($message === '') {
                     return;

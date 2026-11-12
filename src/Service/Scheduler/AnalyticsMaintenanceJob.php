@@ -8,13 +8,15 @@ use App\Service\AnalyticsDataLifecyclePolicy;
 use App\Service\AnalyticsMaintenanceAlreadyRunning;
 use App\Service\AnalyticsMaintenanceRunner;
 use App\Service\Operations\ProcessingTasks;
+use App\Service\Operations\QueueRetention;
 use App\Service\Operations\TaskTrigger;
 use Psr\Clock\ClockInterface;
 use Psr\Log\LoggerInterface;
 
 /**
  * Analytics maintenance once a day: archiving and retention when they are on,
- * and purging old task and audit records. A run counts as due 24 hours after
+ * purging old task and audit records, and deleting queued messages older
+ * than queue_retention_days. A run counts as due 24 hours after
  * the last one started, whoever started it, so a separate daily cron line for
  * app:analytics:maintain keeps working alongside the scheduler.
  */
@@ -30,6 +32,7 @@ final class AnalyticsMaintenanceJob implements ScheduledJob
         private readonly ProcessingTasks $tasks,
         private readonly ClockInterface $clock,
         private readonly LoggerInterface $logger,
+        private readonly ?QueueRetention $queue = null,
     ) {
     }
 
@@ -63,7 +66,9 @@ final class AnalyticsMaintenanceJob implements ScheduledJob
         }
         $status['enabled'] = $policy['archiving_enabled'] || $policy['retention_enabled']
             || $policy['processing_tasks_retention_days'] > 0 || $policy['audit_trail_retention_days'] > 0
-            || $policy['audit_trail_admin_retention_days'] > 0;
+            || $policy['audit_trail_admin_retention_days'] > 0
+            // Queued messages always have a bounded age, once the queue table exists.
+            || ($this->queue?->exists() ?? false);
         if ($status['enabled']) {
             $status['next_due'] = $attempt === null ? $this->now() : $attempt['started_at']->modify('+'.self::INTERVAL_HOURS.' hours');
         }
@@ -95,12 +100,13 @@ final class AnalyticsMaintenanceJob implements ScheduledJob
         }
 
         return ['status' => 'ran', 'message' => sprintf(
-            'Archived %d, deleted %d raw events and %d archive cells, purged %d task and %d audit records.',
+            'Archived %d, deleted %d raw events and %d archive cells, purged %d task and %d audit records and %d old queued messages.',
             $result->archivedEvents,
             $result->deletedRawEvents,
             $result->deletedArchiveCells,
             $result->purgedProcessingTasks,
             $result->purgedAuditEntries,
+            $result->purgedQueuedMessages,
         )];
     }
 

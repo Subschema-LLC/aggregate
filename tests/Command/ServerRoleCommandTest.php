@@ -72,7 +72,7 @@ final class ServerRoleCommandTest extends TestCase
         $checks = array_column($report['requirements'], null, 'id');
         self::assertSame(['dashboard' => false, 'collection' => true, 'scheduled_task' => false, 'consumers' => false], $report['serves']);
         self::assertSame('error', $checks['cache']['status']);
-        self::assertSame('Run "php bin/console cache:clear", then reload PHP-FPM.', $checks['cache']['fix']);
+        self::assertSame('Remove the cache with "rm -rf var/cache/prod", then reload PHP-FPM.', $checks['cache']['fix']);
         self::assertSame('warning', $checks['connections']['status'], '120 of 151 is past 70%.');
         self::assertSame('warning', $checks['administration_url']['status']);
         self::assertSame('warning', $checks['trusted_proxies']['status']);

@@ -7,6 +7,7 @@ namespace App\Tests\Controller;
 use App\Controller\BrandingSettingsController;
 use App\Service\AggregateConfigLoader;
 use App\Service\BrandingLogoManager;
+use App\Service\BrandingSettingsService;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
@@ -486,11 +487,11 @@ final class BrandingSettingsControllerTest extends TestCase
         bool $admin = true,
         bool $csrfValid = true,
     ): BrandingSettingsController {
-        $controller = new BrandingSettingsController(
+        $controller = new BrandingSettingsController($config, new BrandingSettingsService(
             $config,
             new BrandingLogoManager($this->projectDir, 'test'),
             $this->createStub(LoggerInterface::class),
-        );
+        ));
 
         $authorizationChecker = $this->createStub(AuthorizationCheckerInterface::class);
         $authorizationChecker->method('isGranted')->willReturn($admin);

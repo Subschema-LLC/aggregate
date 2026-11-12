@@ -26,6 +26,7 @@ final class DeployedUpdateCommandTest extends TestCase
             'repository' => realpath(sys_get_temp_dir()),
             'force' => true,
             'database_backup_confirmed' => true,
+            'files_only' => false,
         ])->willReturnCallback(static function (array $options, callable $output): array {
             $output('Database migrations are complete.', 'info');
 

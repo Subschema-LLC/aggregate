@@ -127,7 +127,7 @@ class FeatureFlags
     }
 
     /** @return array<string, array{enabled?: bool, hide_from_navigation?: bool}> */
-    private function validate(mixed $flags): array
+    public function validate(mixed $flags): array
     {
         if (!is_array($flags)) {
             throw new \InvalidArgumentException('Feature flags must be a mapping.');

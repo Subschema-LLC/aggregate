@@ -70,6 +70,17 @@ jobs:
         run: php bin/phpunit
       - name: Run the rate limiter's APCu tests
         run: php -d apc.enable_cli=1 bin/phpunit tests/Security/IpRateLimiterTest.php
+      - name: Check the balancer configurations with Nginx and Caddy
+        if: matrix.php == '8.3'
+        run: |
+          # Install both without starting their services, which would compete
+          # for port 80; the test only asks each to check a configuration.
+          printf '#!/bin/sh\nexit 101\n' | sudo tee /usr/sbin/policy-rc.d >/dev/null
+          sudo chmod +x /usr/sbin/policy-rc.d
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends nginx-light caddy
+          sudo rm /usr/sbin/policy-rc.d
+          php bin/phpunit tests/Service/Cluster/BalancerConfigTest.php --fail-on-skipped
       - name: Check the production container and compile UI assets
         env:
           APP_ENV: prod
@@ -371,12 +382,95 @@ jobs:
           AGGREGATE_E2E_SQLSRV_NATIVE: ${{ matrix.native || '0' }}
         run: php tests/Integration/fresh-install.php
 
+  # Several servers on one shared database, set up from the command line as the
+  # server roles guide describes: an administration server, two collection
+  # servers behind an Nginx balancer from app:server:balancer-config, and, on
+  # doctrine://, a worker. See tests/Integration/cluster.php.
+  cluster:
+    name: Cluster (${{ matrix.database }}, ${{ matrix.queue }}://)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        database: [MariaDB 10.11, PostgreSQL 16]
+        queue: [sync, doctrine]
+        include:
+          - database: MariaDB 10.11
+            driver: mysql
+            image: mariadb:10.11
+            port: 3306
+            version: 10.11.0-MariaDB
+            extensions: pdo_mysql
+            health: --health-cmd="healthcheck.sh --connect --innodb_initialized" --health-interval=5s --health-timeout=5s --health-retries=30
+          - database: PostgreSQL 16
+            driver: pgsql
+            image: postgres:16
+            port: 5432
+            version: '16'
+            extensions: pdo_pgsql
+            health: --health-cmd="pg_isready -U aggregate" --health-interval=5s --health-timeout=5s --health-retries=30
+    services:
+      database:
+        image: ${{ matrix.image }}
+        ports:
+          - ${{ matrix.port }}:${{ matrix.port }}
+        env:
+          MARIADB_ROOT_PASSWORD: root-e2e
+          MARIADB_DATABASE: aggregate
+          MARIADB_USER: aggregate
+          MARIADB_PASSWORD: E2e-p@ss%w0rd
+          POSTGRES_DB: aggregate
+          POSTGRES_USER: aggregate
+          POSTGRES_PASSWORD: E2e-p@ss%w0rd
+        options: ${{ matrix.health }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
+        with:
+          php-version: '8.3'
+          extensions: ctype, iconv, mbstring, xml, curl, intl, sodium, zip, ${{ matrix.extensions }}
+          coverage: none
+          tools: composer:v2
+      - name: Install PHP dependencies and compile dashboard assets
+        env:
+          APP_ENV: prod
+          APP_DEBUG: '0'
+          APP_SECRET: build-only
+          DATABASE_URL: 'sqlite:///:memory:'
+        run: |
+          composer install --no-interaction --prefer-dist --no-scripts
+          php bin/console importmap:install --no-interaction
+          php bin/console asset-map:compile
+      - name: Install Nginx for the balancer
+        run: |
+          # Without starting its service: the test runs its own Nginx.
+          printf '#!/bin/sh\nexit 101\n' | sudo tee /usr/sbin/policy-rc.d >/dev/null
+          sudo chmod +x /usr/sbin/policy-rc.d
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends nginx-light
+          sudo rm /usr/sbin/policy-rc.d
+      - name: Set up the cluster and exercise it
+        env:
+          AGGREGATE_E2E_DISPOSABLE: '1'
+          AGGREGATE_E2E_DRIVER: ${{ matrix.driver }}
+          AGGREGATE_E2E_QUEUE: ${{ matrix.queue }}
+          AGGREGATE_E2E_DB_HOST: 127.0.0.1
+          AGGREGATE_E2E_DB_PORT: ${{ matrix.port }}
+          AGGREGATE_E2E_DB_NAME: aggregate
+          AGGREGATE_E2E_DB_USER: aggregate
+          AGGREGATE_E2E_DB_PASSWORD: E2e-p@ss%w0rd
+          AGGREGATE_E2E_DB_VERSION: ${{ matrix.version }}
+        run: php tests/Integration/cluster.php
+
   # Require this stable check in branch protection; matrix changes won't require
   # editing the protection rule. A failed, cancelled, or skipped job fails CI.
   ci:
     name: CI
     if: ${{ always() }}
-    needs: [php, static-analysis, javascript, release-tooling, dco, fresh-install]
+    needs: [php, static-analysis, javascript, release-tooling, dco, fresh-install, cluster]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -386,6 +480,7 @@ jobs:
       RELEASE_TOOLING_RESULT: ${{ needs.release-tooling.result }}
       DCO_RESULT: ${{ needs.dco.result }}
       FRESH_INSTALL_RESULT: ${{ needs.fresh-install.result }}
+      CLUSTER_RESULT: ${{ needs.cluster.result }}
     steps:
       - name: Require all checks to pass
         # DCO runs only for pull requests from forks and is skipped otherwise.
@@ -396,3 +491,4 @@ jobs:
           test "$RELEASE_TOOLING_RESULT" = success
           test "$DCO_RESULT" = success -o "$DCO_RESULT" = skipped
           test "$FRESH_INSTALL_RESULT" = success
+          test "$CLUSTER_RESULT" = success

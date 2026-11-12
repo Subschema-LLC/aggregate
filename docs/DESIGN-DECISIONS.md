@@ -1109,7 +1109,7 @@ its views are regenerated, so a YAML edit needs that explicit step.
 ### One release with a role per server, not separate applications
 
 **Decision.** A cluster runs the same release on every server, each with a
-role (`all`, `administration`, `collection`, `worker` or `balancer`) read when
+role (`all`, `administration`, `collection` or `worker`) read when
 the kernel boots, from `SERVER_ROLE` or `server_role`. A role loads only its
 route files, removes the controllers behind the others, refuses commands
 outside it, and only `all` and `administration` change configuration, checked
@@ -1121,13 +1121,178 @@ YAML-first design already let a collection server run without a login page.
 Checking roles in the writers, not only in the commands, means a future page
 or script cannot split a cluster's configuration either.
 
-**Trade-off.** The role is compiled into the cache, so changing it needs
-`cache:clear`; `app:server:role` reports a cache built for another role. The
+**Trade-off.** The role is compiled into the cache, so changing it needs a
+new cache: `app:cluster:join` removes the old one as it ends, because
+`cache:clear` run in the same second as the build it replaces keeps that
+build. `app:server:role` reports a cache built for another role. The
 command lists are kept per role, so a new command must be added to a role's
 list before it runs on collection or worker servers.
 
 **What would change it.** A role that needs code the others must not ship, such
 as a separate collection runtime.
+
+### Configuration pulled from the administration server, verified against the database
+
+**Decision.** The other servers of a cluster pull their configuration from the
+administration server every minute (`app:cluster:sync`), over a request
+signed with a shared key and accepted only from listed addresses. The
+administration server records each new version as the fingerprint of a
+`cluster_config` run in `processing_tasks`. A server that cannot pull compares
+its own version with that record: the same version means nothing changed and
+it keeps collecting; a newer one, unfetched for five minutes, or five minutes
+without any check, pauses collection with a 503 that takes it out of the
+balancer's rotation.
+
+**Why.** One writer keeps a cluster's settings from splitting, and servers
+behind a balancer need no inbound port for a push. The database is the one
+thing every server already reaches, so it settles whether a server is behind
+when the administration server is down; an outage of that server then stops
+nobody's collection. `processing_tasks` keeps the latest row of each status
+through its purges, where the audit trail would age the record out.
+
+**Trade-off.** A change reaches the other servers within a minute or two, not
+at once. A server that is behind pauses rather than collecting under rules it
+may not have, so a long network split costs collection on that server. The
+pause limit cannot be turned off.
+
+**What would change it.** A shared configuration store every server reads
+directly, which would replace the pull but add a service to run.
+
+### The balancer runs no Aggregate; the administration server prints its configuration
+
+**Decision.** The balancer in front of the collection servers has no role.
+`app:server:balancer-config --nginx|--caddy`, on the administration server,
+prints its configuration from YAML settings: the collection address, the
+collection servers in the `cluster` list (each entry now has a role),
+`cluster_collection_port` and `rate_limit_per_minute`. Nginx limits
+`POST /api/receive` per address and passes a paused server's 503 to the next
+server; Caddy checks `/api/health`, and limits only with the caddy-ratelimit
+module.
+
+**Why.** A balancer needs Nginx or Caddy, not PHP, a release and database
+credentials. The administration server already holds the server list, the
+rate limit and the collection address, so the configuration comes from the
+same settings as everything else, and a hosting tool such as PRAGMA installs
+the output without reading Aggregate's files.
+
+**Trade-off.** Adding or removing a collection server means running the
+command again and reinstalling its output; nothing on the balancer notices by
+itself. Stock Caddy cannot limit per address, so a Caddy balancer leaves the
+limit to each server's own, counted on each server. Nginx retrying a POST can
+count one event twice when a server fails after receiving it.
+
+**What would change it.** A balancer that discovers servers from a service
+registry, or a hosting platform's load balancer configured through its API.
+
+### Queued messages are deleted after seven days, always
+
+**Decision.** Daily maintenance, on the administration server, deletes every
+message in `messenger_messages` older than `queue_retention_days` (7 by
+default, 1 to 365), from the `doctrine://` queue and the failed transport
+alike, in batches by primary key, each in its own transaction. It cannot be
+turned off. The setting is on the Data lifecycle page, in YAML with
+`QUEUE_RETENTION_DAYS`, and set by `app:queue:retention`.
+
+**Why.** Queued payloads hold the enhanced detail the events retention
+periods govern, but sat outside them: a backlog behind stopped workers, or
+the failed transport, kept it indefinitely. A cluster with `doctrine://`
+worker servers makes a long backlog likelier (Scott chose a scheduled job and
+seven days over an operator purge).
+
+**Trade-off.** An event whose message is deleted is lost, so workers down for
+a week, or a failure nobody fixed, loses those events. The tracking-failure
+alert is the warning. Seven days is short for a failed transport someone
+means to retry later; they can raise it.
+
+**What would change it.** A broker with its own message expiry (phase 2).
+
+### The administration server migrates; the other servers update files only
+
+**Decision.** In a cluster, the administration server updates first and runs
+the migrations. Each other server then runs `app:updates:apply --files-only`,
+which skips the database backup, the migrations and the glossary sync. A
+release update checks the staged release's migrations against the database
+before it changes anything, and every files-only update checks again with the
+new code. The update commands refuse a full update off the administration
+server and a files-only update on it. CI keeps each release usable by the one
+before it: migrations only add nullable or defaulted columns (or non-blocking
+indexes) to `events` and `messenger_messages`, and queued message classes only
+gain fields with defaults, which `__wakeup()` fills on older messages.
+
+**Why.** Migrations must run once, from the server that holds the backups
+and the scheduled task. Until the last server has its new files, the old code
+keeps writing to the same tables and the same queue, so a dropped or renamed
+column, or a message field an older release did not write, would break it.
+
+**Trade-off.** A files-only update keeps maintenance mode while files change,
+which the spec had left out. A collection server's 503 sends its traffic to the
+others, and a half-replaced code base never serves requests, but a cluster with
+a single collection server loses the events sent during its update. Removing a
+column or a message field takes two releases.
+
+**What would change it.** Blue-green deployments that switch whole servers
+behind the balancer, which would make maintenance mode unnecessary.
+
+### Every cluster setting has a command, YAML and, on the administration server, a page
+
+**Decision.** Each cluster setting is a YAML setting or environment variable,
+and a command sets it with the same validation: `app:cluster:join` for a
+server's own role, name and administration address, `app:cluster:key`,
+`app:cluster:server` for the server list, `app:cluster:settings` (or
+`app:config set cluster.<setting>`) for the pause limit, alert destinations
+and collection port, and `app:collection-address`. On the administration
+server, the Updates page's Servers panel adds and removes servers, changes
+those three settings and downloads the balancer's configuration, through the
+same services (`ClusterServerList`, `ClusterSettings::validateSettings()`,
+`BalancerConfig::forInstallation()`). A server's own settings (`server_role`,
+`cluster_server_name`, `administration_url`) may be in its YAML instead of
+`.env.local`; the configuration pull keeps them, so either way survives the
+next minute.
+
+**Why.** A cluster is set up from a shell or by a hosting tool, often before
+any dashboard exists, and collection and worker servers have no dashboard at
+all. Commands give scripts and PRAGMA the same checks a page would, and the
+page gives the administrator who runs the dashboard the same reach.
+
+**Trade-off.** A server's own role, name and administration address,
+`CLUSTER_KEY`, and the variables `app:cluster:join` writes (`DATABASE_URL`,
+`TRUSTED_PROXIES`, `APP_SECRET`, `MESSENGER_TRANSPORT_DSN`) have no page: they
+belong to one server or are secrets, and the dashboard runs only on the
+administration server. They also stay out of YAML on purpose, because YAML is
+copied to every server.
+
+**What would change it.** A way to set up a server from the administration
+server's dashboard, which would need a channel to that server this design does
+not have.
+
+### One command for every page's settings
+
+**Decision.** `app:config` reaches every setting a dashboard page changes: one
+section per page (`App\Service\Settings\SettingsSection`), named by its YAML
+keys, that calls the page's own service, so `get`, `set`, `import`, `export`,
+`unset` (for a website or group) and `secret` check and save exactly as the
+page does, and record the page's audit action. Where a page kept its checks in
+the controller (General settings, Branding, the data model's view update, the
+tag manager's custom-code guard), they moved into a service both use.
+Records with a lifecycle of their own (websites, users, tokens, alerts, the
+cluster's servers) keep their own commands. `SettingsParityTest` maps every
+page action to its command and fails for a new one without.
+
+**Why.** Scott asked for parity between the dashboard, YAML and the command
+line, and chose one generic command over a command per page: one place to
+learn and to maintain, and no way for a page to grow a setting the command
+line cannot reach without the test noticing.
+
+**Trade-off.** A section saves what its page saves, including the page's
+habit of writing every field it shows (Collection controls, Feature flags,
+the organization-traffic marker), so a command that changes one key can pin
+the others' current values in YAML. Values are typed as YAML, so text YAML
+reads differently must be quoted. Two things stay in the browser: Google's
+consent screen for BigQuery and approving an AI assistant's sign-in. The update
+signing key stays out of the dashboard.
+
+**What would change it.** A setting that cannot be expressed as YAML values,
+which would need a command of its own and an entry in the parity test.
 
 ### A small dashboard menu that says why an entry is missing
 

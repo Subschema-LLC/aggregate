@@ -24,7 +24,8 @@ class Kernel extends BaseKernel
         parent::build($container);
 
         // The role this container is built for: app:server:role compares it
-        // with the configured one, since changing the role needs cache:clear.
+        // with the configured one, since changing the role needs a new cache
+        // (app:cluster:join removes the old one).
         $container->setParameter('aggregate.server_role.compiled', $this->serverRoleForBoot()->role);
 
         // Controllers behind the route files this role does not load. The

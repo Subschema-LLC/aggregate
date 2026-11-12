@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Service\Update;
 
+use App\Service\Cluster\ServerRole;
+
 /**
  * The commands to run after each deployment of code deployed another way, with
  * the paths of this server: as Plesk Git's additional deployment actions, tasks
@@ -28,6 +30,7 @@ class DeploymentAction
         private readonly Toolchain $toolchain,
         private readonly DeploymentState $deployment,
         private readonly SystemCheck $systemCheck,
+        private readonly ?ServerRole $role = null,
     ) {
     }
 
@@ -88,8 +91,12 @@ class DeploymentAction
         } elseif ($source === null) {
             $deployed[] = '--git-dir=/path/to/the/deployment/repository.git';
         }
-        $backupFlag = !$this->systemCheck->isSqlite();
-        if ($backupFlag) {
+        // Collection and worker servers leave the database to the administration server.
+        $filesOnly = $this->role !== null && !$this->role->administers();
+        $backupFlag = !$filesOnly && !$this->systemCheck->isSqlite();
+        if ($filesOnly) {
+            $deployed[] = '--files-only';
+        } elseif ($backupFlag) {
             $deployed[] = '--database-backup-confirmed';
         }
         $commands[] = implode(' ', array_map($this->quote(...), $deployed));

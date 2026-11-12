@@ -16,11 +16,13 @@ final readonly class AnalyticsMaintenanceResult
         public bool $recordPurgeEnabled = false,
         public int $purgedProcessingTasks = 0,
         public int $purgedAuditEntries = 0,
+        public bool $queuePurgeEnabled = false,
+        public int $purgedQueuedMessages = 0,
     ) {
     }
 
     public function hasWork(): bool
     {
-        return $this->archivingEnabled || $this->retentionEnabled || $this->recordPurgeEnabled;
+        return $this->archivingEnabled || $this->retentionEnabled || $this->recordPurgeEnabled || $this->queuePurgeEnabled;
     }
 }

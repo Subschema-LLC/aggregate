@@ -7,6 +7,7 @@ namespace App\Tests\Controller;
 use App\Controller\ApplicationSettingsController;
 use App\Service\AggregateConfigLoader;
 use App\Service\DocumentationLinks;
+use App\Service\GeneralSettings;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\DependencyInjection\Container;
@@ -31,7 +32,7 @@ final class ApplicationSettingsCollectionAddressTest extends TestCase
         $config = $this->config($current, false, $saved);
         [$controller, $request] = $this->controller($config, ['collection_base_url' => $submitted]);
 
-        $controller->saveSettings($request, new DocumentationLinks($config));
+        $controller->saveSettings($request, new GeneralSettings($config, new DocumentationLinks($config)));
 
         self::assertNotEmpty($request->getSession()->getFlashBag()->get($flashType));
     }
@@ -50,7 +51,7 @@ final class ApplicationSettingsCollectionAddressTest extends TestCase
         $config = $this->config('https://env-collect.example.test', true, self::BASE);
         [$controller, $request] = $this->controller($config, ['collection_base_url' => 'https://other.example.test']);
 
-        $controller->saveSettings($request, new DocumentationLinks($config));
+        $controller->saveSettings($request, new GeneralSettings($config, new DocumentationLinks($config)));
 
         self::assertNotEmpty($request->getSession()->getFlashBag()->get('success'));
     }

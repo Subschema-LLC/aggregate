@@ -6,6 +6,7 @@ use App\Service\AggregateConfigLoader;
 use App\Service\BrowserScriptCache;
 use App\Service\CollectionAddress;
 use App\Service\DocumentationLinks;
+use App\Service\GeneralSettings;
 use App\Service\MysqlTimeZoneTables;
 use App\Service\ReportingTimezone;
 use App\Service\TrackerBuilds;
@@ -141,7 +142,7 @@ class ApplicationSettingsController extends AbstractController
     }
 
     #[Route('/dashboard/settings/save', name: 'app_settings_save', methods: ['POST'])]
-    public function saveSettings(Request $request, DocumentationLinks $documentation, ?WebsiteActivityService $activityService = null): Response
+    public function saveSettings(Request $request, GeneralSettings $general, ?WebsiteActivityService $activityService = null): Response
     {
         $this->denyUnlessPermitted();
 
@@ -150,60 +151,16 @@ class ApplicationSettingsController extends AbstractController
             return $this->redirectToRoute('app_application_settings');
         }
 
-        $appHost = trim($request->request->get('app_host', ''));
-        $jsNamespace = trim($request->request->get('js_namespace', 'Aggregate'));
-        $rateLimit = (int) $request->request->get('rate_limit', 100);
-        $activeDays = max(1, min(365, (int) $request->request->get('website_activity_active_days', 1)));
-        $staleDays = max($activeDays, min(365, (int) $request->request->get('website_activity_stale_days', 3)));
-
-        if (empty($appHost)) {
-            $this->addFlash('error', 'App Host is required.');
+        $submitted = array_intersect_key($request->request->all(), array_flip([...GeneralSettings::KEYS, 'rate_limit']));
+        try {
+            $settings = $general->changes($submitted);
+        } catch (\InvalidArgumentException $exception) {
+            $this->addFlash('error', $exception->getMessage());
             return $this->redirectToRoute('app_application_settings');
-        }
-        if (!TrackerNamespace::valid($jsNamespace)) {
-            $this->addFlash('error', TrackerNamespace::RULE);
-            return $this->redirectToRoute('app_application_settings');
-        }
-
-        $settings = [
-            'app_host' => $appHost,
-            'js_namespace' => $jsNamespace,
-            'rate_limit_per_minute' => $rateLimit,
-            'website_activity_active_days' => $activeDays,
-            'website_activity_stale_days' => $staleDays,
-        ];
-
-        // COLLECTION_BASE_URL takes precedence and its field is disabled. Empty
-        // means the application host, so clearing the field saves ''.
-        $collection = new CollectionAddress($this->config);
-        if (!$collection->hasEnvironmentOverride() && $request->request->has(CollectionAddress::CONFIG_KEY)) {
-            try {
-                $collectionUrl = CollectionAddress::normalize($request->request->get(CollectionAddress::CONFIG_KEY));
-            } catch (\InvalidArgumentException $exception) {
-                $this->addFlash('error', $exception->getMessage());
-                return $this->redirectToRoute('app_application_settings');
-            }
-            if ($collectionUrl !== $collection->configuredValue()) {
-                $settings[CollectionAddress::CONFIG_KEY] = $collectionUrl;
-            }
-        }
-
-        // DOCUMENTATION_URL takes precedence and its field is disabled. Save only a
-        // changed value, so saving other settings does not pin the default address.
-        if (!$documentation->hasEnvironmentOverride() && $request->request->has('documentation_url')) {
-            try {
-                $documentationUrl = DocumentationLinks::normalize($request->request->get('documentation_url'));
-            } catch (\InvalidArgumentException $exception) {
-                $this->addFlash('error', $exception->getMessage());
-                return $this->redirectToRoute('app_application_settings');
-            }
-            if ($documentationUrl !== $documentation->configuredValue()) {
-                $settings[DocumentationLinks::CONFIG_KEY] = $documentationUrl;
-            }
         }
 
         try {
-            $this->config->setMany($settings);
+            $general->save($settings);
             // New thresholds apply when the Websites page next loads statuses.
             $activityService?->forget();
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Command;
 
+use App\Service\Cluster\ServerRole;
 use App\Service\Update\ApplicationUpdater;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -19,8 +20,10 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 )]
 final class ApplyUpdateCommand extends Command
 {
-    public function __construct(private readonly ApplicationUpdater $updater)
-    {
+    public function __construct(
+        private readonly ApplicationUpdater $updater,
+        private readonly ?ServerRole $role = null,
+    ) {
         parent::__construct();
     }
 
@@ -32,6 +35,7 @@ final class ApplyUpdateCommand extends Command
             ->addOption('manifest', null, InputOption::VALUE_REQUIRED, 'With --package: the downloaded aggregate-release.json')
             ->addOption('signature', null, InputOption::VALUE_REQUIRED, 'With --package: the downloaded aggregate-release.json.sig')
             ->addOption('database-backup-confirmed', null, InputOption::VALUE_NONE, 'Confirm a current database backup exists (required for PostgreSQL, MySQL, MariaDB and SQL Server)')
+            ->addOption('files-only', null, InputOption::VALUE_NONE, 'Collection and worker servers: replace the files only, after the administration server has updated and run the migrations')
             ->addOption('yes', 'y', InputOption::VALUE_NONE, 'Do not ask for confirmation')
             ->addOption('resume', null, InputOption::VALUE_NONE, 'Continue an interrupted update from its last step')
             ->addOption('status', null, InputOption::VALUE_NONE, 'Show the last update and exit')
@@ -68,6 +72,12 @@ stays in maintenance mode: fix the cause and run --resume, or run app:updates:ro
 
 SQLite databases are snapshotted automatically. For other databases, back up first and pass
 --database-backup-confirmed. Rolling back files does not reverse database migrations.
+
+Several servers sharing one database: update the administration server first, which runs the
+migrations, then each collection and worker server with --files-only. That skips the database
+backup, the migrations and the glossary sync, and stops before changing anything when the
+database does not have the release's migrations yet. Collection servers answer 503 while their
+files change, so the balancer sends their traffic to the others: update them one at a time.
 HELP);
     }
 
@@ -145,6 +155,13 @@ HELP);
             if ($input->getOption('resume')) {
                 $state = $this->updater->resume($write);
             } else {
+                $filesOnly = (bool) $input->getOption('files-only');
+                $refusal = $this->role?->updateRefusal($filesOnly);
+                if ($refusal !== null) {
+                    $io->error($refusal);
+
+                    return Command::FAILURE;
+                }
                 if ($this->updater->installationType() === 'deployment') {
                     $io->error('This installation is deployed another way (such as a hosting panel\'s Git deployment or CI/CD), so this command installs nothing. Deploy with that tool, then run php bin/console app:updates:deployed.');
 
@@ -157,11 +174,14 @@ HELP);
 
                         return Command::FAILURE;
                     }
-                    $io->text([
+                    $io->text($filesOnly ? [
+                        'This replaces the files in place ('.$this->updater->installationType().' installation), without migrations,',
+                        'and answers 503 while it runs, so the balancer sends requests to the other servers.',
+                    ] : [
                         'This installs the update in place ('.$this->updater->installationType().' installation), runs database migrations,',
                         'and shows a maintenance page to visitors while it runs. Your configuration files are kept.',
                     ]);
-                    if (!$this->updater->isSqlite() && !$confirmed) {
+                    if (!$filesOnly && !$this->updater->isSqlite() && !$confirmed) {
                         $confirmed = $io->confirm('Have you backed up the database? Migrations cannot be reversed automatically.', false);
                         if (!$confirmed) {
                             $io->warning('Back up the database, then run the update again.');
@@ -179,6 +199,7 @@ HELP);
                     'manifest' => $input->getOption('manifest'),
                     'signature' => $input->getOption('signature'),
                     'database_backup_confirmed' => $confirmed,
+                    'files_only' => $filesOnly,
                 ], $write);
             }
         } catch (\Throwable $e) {
