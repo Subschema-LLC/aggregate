@@ -1,4 +1,8 @@
 # Aggregate: headless, AI-ready web analytics
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/aggregate-horizontal-reverse-brand-crimson.png">
+    <img alt="AGGREGATE by Subschema" src="docs/images/aggregate-horizontal-color.png" width="600">
+</picture>
 
 **Web analytics that your BI tools and AI assistants can query, without identifying your visitors.**
 
@@ -32,7 +36,7 @@ headless administration, and database reporting through the
 using the platform with live traffic; no independent security or privacy audit
 is claimed.
 
-![Aggregate logo](docs/images/aggregate_logo_alt4.png)
+
 
 Aggregate's anonymous mode creates no visitor identifier. By default, an anonymous event holds a sanitized path, a coarse referrer channel, device and viewport buckets, and a UTC hour. It stores no visitor or session ID, IP address, User-Agent string, or exact event timestamp. Optional goals, coarse geography, organization markers, and explicitly allowlisted properties can add context; their values still need review for identifying detail.
 

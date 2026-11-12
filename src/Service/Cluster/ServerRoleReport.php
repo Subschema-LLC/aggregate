@@ -34,6 +34,8 @@ final class ServerRoleReport
         private readonly Connection $connection,
         #[Autowire('%aggregate.server_role.compiled%')]
         private readonly string $compiledRole,
+        #[Autowire('%kernel.environment%')]
+        private readonly string $environment = 'prod',
     ) {
     }
 
@@ -166,7 +168,8 @@ final class ServerRoleReport
             $this->compiledRole === $role
                 ? 'The cache was built for this role.'
                 : sprintf('The cache was built for the role %s, so this server still serves that role\'s pages and routes.', $this->compiledRole),
-            $this->compiledRole === $role ? null : 'Run "php bin/console cache:clear", then reload PHP-FPM.');
+            // cache:clear in the same second as the build it replaces keeps that build, so the folder goes.
+            $this->compiledRole === $role ? null : sprintf('Remove the cache with "rm -rf var/cache/%s", then reload PHP-FPM.', $this->environment));
 
         $add('database', $database['error'] === null ? 'ok' : 'error',
             $database['error'] ?? 'The database answers.',

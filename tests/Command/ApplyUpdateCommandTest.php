@@ -7,6 +7,7 @@ namespace App\Tests\Command;
 use App\Command\ApplyUpdateCommand;
 use App\Command\RollbackUpdateCommand;
 use App\Command\UpdateMaintenanceCommand;
+use App\Service\Cluster\ServerRole;
 use App\Service\Update\ApplicationUpdater;
 use App\Service\Update\MaintenanceMode;
 use App\Service\Update\UpdateJournal;
@@ -30,7 +31,7 @@ final class ApplyUpdateCommandTest extends TestCase
         $updater = $this->createMock(ApplicationUpdater::class);
         $updater->expects(self::once())->method('start')->with([
             'version' => '1.2.0', 'package' => null, 'manifest' => null, 'signature' => null,
-            'database_backup_confirmed' => true,
+            'database_backup_confirmed' => true, 'files_only' => false,
         ])->willReturnCallback(static function (array $options, callable $output): array {
             $output('Maintenance mode is on.', 'info');
 
@@ -54,6 +55,31 @@ final class ApplyUpdateCommandTest extends TestCase
         self::assertStringContainsString('2 locally edited application files were replaced', $display);
         self::assertStringContainsString('NEW_SETTING', $display);
         self::assertStringContainsString('The update is complete.', $display);
+    }
+
+    public function testOnlyTheAdministrationServerMigratesAndEveryOtherServerUpdatesFilesOnly(): void
+    {
+        $refused = $this->createMock(ApplicationUpdater::class);
+        $refused->expects(self::never())->method('start');
+        $database = 'mysql://aggregate:secret@10.0.0.5:3306/aggregate?serverVersion=8.0.0';
+
+        $collection = new CommandTester(new ApplyUpdateCommand($refused, ServerRole::of('collection', $database, 'https://admin.example.com')));
+        self::assertSame(1, $collection->execute(['--yes' => true, '--database-backup-confirmed' => true]));
+        self::assertStringContainsString('the administration server (https://admin.example.com) runs the migrations. Update it first, then update this server with --files-only.', preg_replace('/\s+/', ' ', $collection->getDisplay()));
+
+        foreach (['administration', 'all'] as $role) {
+            $administration = new CommandTester(new ApplyUpdateCommand($refused, ServerRole::of($role, $database)));
+            self::assertSame(1, $administration->execute(['--yes' => true, '--files-only' => true]));
+            self::assertStringContainsString('runs the migrations, so it updates without --files-only', preg_replace('/\s+/', ' ', $administration->getDisplay()));
+        }
+
+        $updater = $this->createMock(ApplicationUpdater::class);
+        $updater->method('isSqlite')->willReturn(false);
+        $updater->expects(self::once())->method('start')
+            ->with(self::callback(static fn (array $options): bool => $options['files_only'] === true && $options['database_backup_confirmed'] === false))
+            ->willReturn(['status' => 'completed', 'backup' => 'var/updates/backups/x', 'report' => []]);
+        $worker = new CommandTester(new ApplyUpdateCommand($updater, ServerRole::of('worker', $database)));
+        self::assertSame(0, $worker->execute(['--yes' => true, '--files-only' => true]), 'No database backup is asked for: nothing here migrates.');
     }
 
     public function testCodeDeployedAnotherWayIsNotInstalledHere(): void

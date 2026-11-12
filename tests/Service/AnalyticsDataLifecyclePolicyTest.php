@@ -76,6 +76,7 @@ final class AnalyticsDataLifecyclePolicyTest extends TestCase
             'audit_trail_retention_days' => 365,
             'audit_trail_admin_retention_days' => 730,
             'processing_tasks_retention_days' => 90,
+            'queue_retention_days' => 7,
         ], $policy->toArray());
     }
 
@@ -154,6 +155,7 @@ final class AnalyticsDataLifecyclePolicyTest extends TestCase
             'audit_trail_retention_days' => false,
             'audit_trail_admin_retention_days' => false,
             'processing_tasks_retention_days' => false,
+            'queue_retention_days' => false,
         ], $policy->getEnvironmentOverrides());
     }
 
@@ -170,6 +172,8 @@ final class AnalyticsDataLifecyclePolicyTest extends TestCase
 
     public static function invalidScalarValues(): iterable
     {
+        yield 'queued messages kept forever' => ['queue_retention_days', 0];
+        yield 'queued messages kept over a year' => ['queue_retention_days', 366];
         yield 'invalid archiving switch' => ['analytics_archiving_enabled', 'sometimes'];
         yield 'invalid retention switch' => ['analytics_retention_enabled', []];
         yield 'archive cutoff below minimum' => ['analytics_archive_after_days', 0];

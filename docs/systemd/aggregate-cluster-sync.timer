@@ -1,0 +1,11 @@
+[Unit]
+Description=Sync the Aggregate Analytics cluster configuration every minute
+
+[Timer]
+OnCalendar=*:*:00
+AccuracySec=5s
+# A missed minute is not made up: the next one checks again.
+Persistent=false
+
+[Install]
+WantedBy=timers.target

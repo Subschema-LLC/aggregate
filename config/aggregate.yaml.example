@@ -268,6 +268,7 @@ environments:
     processing_tasks_retention_days: 90
     audit_trail_retention_days: 365
     audit_trail_admin_retention_days: 730
+    queue_retention_days: 7
 
   prod:
     rate_limit_per_minute: 100
@@ -310,6 +311,7 @@ environments:
     processing_tasks_retention_days: 90
     audit_trail_retention_days: 365
     audit_trail_admin_retention_days: 730
+    queue_retention_days: 7
 
   test:
     rate_limit_per_minute: 1000
@@ -351,6 +353,7 @@ environments:
     processing_tasks_retention_days: 90
     audit_trail_retention_days: 365
     audit_trail_admin_retention_days: 730
+    queue_retention_days: 7
 
 # Configuration options:
 #
@@ -372,17 +375,46 @@ environments:
 #   (everything, as one server always has), administration (the dashboard,
 #   setup, updates, the scheduled task, the reporting API and MCP; the only
 #   server that changes configuration or runs migrations), collection
-#   (/api/receive and the browser scripts), worker (queue consumers) or
-#   balancer (only the health check). Commands, pages and configuration
-#   changes outside the role refuse to run. SQLite runs every role as all.
-#   Run cache:clear after changing it. The SERVER_ROLE environment variable
-#   takes precedence. "php bin/console app:server:role" shows what the
-#   server does and what its role still needs.
+#   (/api/receive and the browser scripts) or worker (queue consumers). The
+#   balancer runs no Aggregate and has no role: app:server:balancer-config
+#   prints its configuration. Commands, pages and configuration changes
+#   outside the role refuse to run. SQLite runs every role as all. The role
+#   is compiled into the cache: app:cluster:join removes the old cache; after
+#   changing it another way, run rm -rf var/cache/prod. The SERVER_ROLE
+#   environment variable takes precedence, and app:cluster:join sets it. "php bin/console
+#   app:server:role" shows what the server does and what its role still needs.
 #
 # administration_url (optional, default: "")
 #   The administration server's address, which collection and worker servers
 #   name in their messages. The ADMINISTRATION_URL environment variable takes
 #   precedence. Example: https://admin.example.com
+#
+# cluster (optional, administration server only)
+#   The servers that may pull configuration from this administration server,
+#   by the name they joined with, the address they connect from (an IP
+#   address or network; for a collection server, the one address the
+#   balancer reaches it at), their role, collection or worker, and, for a
+#   collection server not on cluster_collection_port, its port. The
+#   balancer's configuration is built from the collection servers.
+#   app:cluster:server adds and removes them.
+#   Example:
+#     cluster:
+#       - { name: collect-1, address: 10.0.0.11, role: collection }
+#       - { name: collect-2, address: 10.0.0.12, role: collection, port: 8080 }
+#       - { name: worker-1, address: 10.0.0.21, role: worker }
+#
+# cluster_config_max_age_minutes (optional, default: 5, 1 to 60)
+#   How long a collection or worker server may go without confirming it has
+#   the newest configuration before it pauses collection (503). Cannot be
+#   turned off. app:cluster:settings --max-age-minutes sets it.
+#
+# cluster_alert_destinations (optional, default: every alert destination)
+#   The alert destinations told when a server stops pulling its configuration.
+#   app:cluster:settings --alert-destinations sets it (ids, all or none).
+#
+# cluster_collection_port (optional, default: 80)
+#   The port the balancer reaches the collection servers at over the private
+#   network. app:cluster:settings --collection-port sets it.
 #
 # collection_base_url (optional, default: "")
 #   Where websites send events and load the tracker, consent and tag-manager
@@ -391,8 +423,9 @@ environments:
 #   organization-traffic links use it; sign-in links, alerts and the dashboard
 #   keep app_host. Empty means app_host. A value that is not a plain http(s)
 #   URL stops snippet generation rather than falling back to app_host. Copy the
-#   tracking code again after changing it. Also editable in General settings.
-#   The COLLECTION_BASE_URL environment variable takes precedence.
+#   tracking code again after changing it. Also editable in General settings
+#   and with app:collection-address. The COLLECTION_BASE_URL environment
+#   variable takes precedence.
 #   Example: https://collect.example.com
 #
 # documentation_url (optional, default: https://subschema-llc.github.io/aggregate/)
@@ -596,6 +629,12 @@ environments:
 # audit_trail_admin_retention_days (optional, default: 730; range: 0..36500)
 #   Purge the audit trail's administrator actions and sign-ins after this many
 #   days. 0 keeps them.
+#
+# queue_retention_days (optional, default: 7; range: 1..365)
+#   Delete queued and failed enhanced events (messenger_messages) after this
+#   many days, whether a worker wrote them or not; a deleted message's event
+#   is lost. Cannot be turned off. QUEUE_RETENTION_DAYS takes precedence;
+#   app:queue:retention shows the queue and sets it.
 #
 # audit_trail_areas (optional; edited on Administration → Audit trail)
 #   What the audit trail records, by area. Areas left out take their default;

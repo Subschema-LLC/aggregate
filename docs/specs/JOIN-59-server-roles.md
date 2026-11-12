@@ -28,6 +28,7 @@ Phase 3 lets one Aggregate installation run on several servers that share one da
   - the database server's remote access;
   - the firewall extension;
   - additional Nginx directives on the balancer's domain.
+- **Every setting works without the dashboard** (Scott): each is YAML or an environment variable, and a command sets it with the same validation (`app:cluster:join`, `app:cluster:key`, `app:cluster:server`, `app:cluster:settings`, `app:collection-address`; see `docs/CONFIGURATION.md#cluster-settings`). The dashboard may show or edit them as well.
 - **Clusters without a queue are supported** (Scott). Collection servers may write enhanced events themselves on `sync://`, with no worker servers. `worker` is optional, `app:server:role` explains the trade-off but does not fail on `sync://`, and slices 0 and 8 measure both setups.
 
 ### Slice 0: measure the shared database first
@@ -65,7 +66,7 @@ These are also phase 1's still-missing measurements (the large table, `doctrine:
 | `administration` | Dashboard and setup (`routes_dashboard.yaml`, including `McpAuthorizeController`), home and how-it-works (`HomeController`), the reporting API, MCP with its OAuth metadata and token endpoints (`/oauth/*`, `/.well-known/*` on `McpController`), branding, `/api/health`, and the configuration endpoint | Migrations, updates, the scheduled task, `app:cluster:sync` every minute (records the configuration version) |
 | `collection` | `/api/receive`, the browser scripts, `/internal-traffic`, `/branding/*`, `/api/health` | `app:cluster:sync` every minute (pulls) |
 | `worker` | `/api/health` | `messenger:consume`, `app:cluster:sync` every minute (pulls) |
-| `balancer` | Nothing of Aggregate's | `app:server:balancer-config` (open question: role or only a command) |
+| Balancer (no role) | Nothing of Aggregate's: it runs Nginx or Caddy only | Nothing; `app:server:balancer-config` on the administration server prints its configuration (Scott) |
 
 How the gating works (Architect, with the second opinion's corrections):
 
@@ -93,7 +94,7 @@ Snippets, scripts and the consent UI point at `collection_base_url`, which defau
   - Never included: `config/secrets/`, `.env*`, users, and dashboard-only files.
 - **Signed requests:** an HMAC with `CLUSTER_KEY` over the method, path, timestamp and body hash. A request older than a minute, or from an address not in `cluster`, gets the same `404` as an unknown route.
 - **One command on every server, every minute: `app:cluster:sync`.** It does what the server's role needs, so the Linux guide, the Plesk guide and PRAGMA all set up the same single timer. The administration server's scheduled task runs only every five minutes, which is too slow for this.
-  - **On the administration server it publishes.** `ClusterConfigPublisher` hashes the whole bundle. When the hash differs from the last recorded one, it records the new version as the fingerprint of a successful `cluster_config` run in `processing_tasks` (`ProcessingTasks::succeed()`). It runs in three places: at the end of each dashboard or CLI configuration save, when `ClusterConfigController` serves the bundle, and every minute through `app:cluster:sync`.
+  - **On the administration server it publishes.** `ClusterConfigPublisher` hashes the whole bundle. When the hash differs from the last recorded one, it records the new version as the fingerprint of a successful `cluster_config` run in `processing_tasks` (`ProcessingTasks::succeed()`). It runs when `ClusterConfigController` serves the bundle and every minute through `app:cluster:sync` (built in slice 3 without a hook in each save: a save is recorded within the minute, and the servers pull within the next).
   - The minute run catches writers that bypass `AggregateConfigLoader::save()`, such as `LocalEnvironmentFile`, and files edited by hand. One publisher over the whole bundle replaces hooks in each writer.
   - **Why `processing_tasks`, not `audit_trail`:** `AuditTrail::purgeBefore()` deletes every row past its retention, so a configuration left unchanged that long would lose its record and every server would fail closed. `ProcessingTasks` keeps the latest row per `(task_type, subject, status)` through its purges (`eachPurgeableBatch()`), and `ProcessingTasks::latest('cluster_config')` reads it with one indexed query. It is an operational record, not a setting, and needs no schema change.
   - **Elsewhere it pulls.** It writes each pulled file to a sibling temporary file and `rename()`s it into place. It does not rename the whole directory, because `config/` also holds shipped framework files that are not in the bundle.
@@ -119,12 +120,12 @@ Snippets, scripts and the consent UI point at `collection_base_url`, which defau
 - **Alerting.** The administration server records each server's last successful pull (in `var/`, not a table). When one passes 5 minutes, it raises an alert through the alert destinations from JOIN-55 (signed webhook and email), and the Updates page shows the server as behind or paused.
   - Collection servers cannot alert themselves, because `config/secrets/` stays on the administration server.
   - An outage of the administration server no longer stops collection, so it is ordinary uptime monitoring rather than a data-loss incident.
-- **A long update does not pause collection.** `/api/cluster/config` keeps answering, with the configuration as it stood, while the administration server is in maintenance mode.
+- **A long update does not pause collection.** While the administration server is in maintenance mode, pulls fail, but the version recorded in the database is still each server's own, so every server stays verified. (Built in slice 3 this way rather than by serving the bundle during maintenance, which would mean checking signatures before the kernel starts.)
 - **What is left:** a hand edit on the administration server that crashes before the edit is hashed. That edit was never served either, so no server ever ran on it.
 
 ### The balancer
 
-`app:server:balancer-config --nginx|--caddy` writes the reference configuration from the `cluster` list. The configuration:
+`app:server:balancer-config --nginx|--caddy`, on the administration server, prints the reference configuration from YAML settings: `collection_base_url`, the collection servers in the `cluster` list (each entry has a `role`, `collection` or `worker`, since slice 4), `cluster_collection_port` and `rate_limit_per_minute`. The balancer runs no Aggregate and has no role (Scott). The configuration:
 
 - spreads collection with least connections;
 - limits `/api/receive` per address at `rate_limit_per_minute`, answering `429`;
@@ -132,12 +133,14 @@ Snippets, scripts and the consent UI point at `collection_base_url`, which defau
 - overwrites `X-Forwarded-For` with `$remote_addr`;
 - reaches the servers over a private network.
 
-Stock Caddy has no rate limiter: its reference relies on each server's backstop, or on a build with `caddy-ratelimit`. Collection servers accept web traffic only from the balancer, so its limit cannot be skipped.
+Stock Caddy has no rate limiter: its reference relies on each server's backstop, or on a build with `caddy-ratelimit` (`--caddy-rate-limit`). Collection servers accept web traffic only from the balancer, so its limit cannot be skipped.
+
+Built in slice 4. Also: `--part=http|server` splits the Nginx file for hosting panels that own the server block (G2 checks this on Plesk); Nginx passes a paused server's `503` on with `non_idempotent`, which can also resend an event whose server failed after receiving it and so count it twice; Caddy's first `503` from a paused server reaches the visitor before the health check takes the server out.
 
 ### Updates across servers
 
 1. The administration server updates first, as today: maintenance, files, migrations, `--resume`.
-2. Each other server runs `app:updates:apply --files-only`, which skips migrations and maintenance.
+2. Each other server runs `app:updates:apply --files-only`, which skips the database backup, migrations and the glossary sync (the spec first said maintenance too; see below).
 3. While servers are on mixed releases, old code runs against the new schema. CI enforces backward compatibility (PO, Architect, DBA):
    - Migrations on `events`, and on any table or view the collection path or Messenger handler writes, must be additive. That means new columns nullable or defaulted, no renames, no drops, and no `NOT NULL` without a default; a removal waits a release.
    - Message classes (`TrackEventMessage`) follow the same additive-only rule, because a message from an old collection server may sit in `messenger_messages` until a worker on the new release reads it.
@@ -147,13 +150,15 @@ Stock Caddy has no rate limiter: its reference relies on each server's backstop,
      - SQL Server: `ONLINE=ON` where the edition allows it.
 4. The Updates page lists every server with its release and configuration version, inside the existing page (with a `shown_when` condition in `config/navigation.yaml` if needed).
 
+Built in slice 5, with two changes. A files-only update keeps maintenance mode while files change: a collection server's 503 sends its traffic to the other servers, and a half-replaced code base never serves. It also checks before changing anything (release ZIPs) and again with the new code that the database has the release's migrations. The message-class check found that `TrackEventMessage` could not take a new field safely: PHP's serializer skips the constructor, so a field an older release did not write was left unset. `Version20260724000500` deleted queued messages for this reason. The class now sets defaults in `__wakeup()`, and `MessageContractTest` checks it. No Updates page server list needed a `shown_when` condition: the panel shows on the administration server when the cluster list has servers.
+
 ### The database (DBA)
 
 - **Connection budget.** PostgreSQL keeps connections open by default (DESIGN-DECISIONS), so N servers × `pm.max_children`, plus consumers and the scheduled task, must stay under `max_connections`. The docs recommend PgBouncer in transaction mode for PostgreSQL clusters; Aggregate keeps no session state on a connection. MySQL and MariaDB connect per request, so their count follows requests in flight. `app:server:role` prints the budget and warns above about 70% of `max_connections`.
 - **Index write amplification.** Every insert maintains each secondary index on `events` (`docs/install_fresh.sql` lists five). An index is dropped only if slice 0 shows it unused.
 - **The queue table.** Compare the consumer's claim query with a composite `(queue_name, available_at, delivered_at)` index at three or more workers. Add it by migration only if measured, because Symfony's Doctrine transport owns that table's schema. Otherwise tune autovacuum on PostgreSQL and watch InnoDB history length on MySQL.
-- **Queue retention.** The failed transport, and a backlog behind stopped workers, keep full enhanced payloads in `messenger_messages`, outside the events retention rules. They get a bounded age and a documented purge (`Version20260724000500` already deletes `TrackEventMessage` rows, a precedent).
-- **Retention batches.** The retention and archive job, now on the administration server only, deletes in small batches so it does not hold locks or flood WAL or replication while collection servers insert.
+- **Queue retention.** The failed transport, and a backlog behind stopped workers, keep full enhanced payloads in `messenger_messages`, outside the events retention rules. They get a bounded age and a documented purge (`Version20260724000500` already deletes `TrackEventMessage` rows, a precedent). Built in slice 6: daily maintenance deletes messages older than `queue_retention_days` (7 by default, 1–365, never off), in batches by primary key; `app:queue:retention` shows and sets it, as does the Data lifecycle page.
+- **Retention batches.** The retention and archive job, now on the administration server only, deletes in small batches so it does not hold locks or flood WAL or replication while collection servers insert. Checked in slice 6: `AnalyticsRetentionService` and the archive select `analytics_maintenance_batch_size` ids (1,000 by default, 100–10,000) ordered by id with a plain, non-locking read, then delete them by primary key in chunks of 500, one transaction per batch, under the maintenance lease. Each batch locks only its own rows, and its WAL or binlog volume is bounded by the batch size. `TrackingFailureRetryRunner` does not purge the failed transport: it retries messages and acknowledges those it wrote. The queue purge above now bounds the rest.
 
 ### `app:server:role`, the contract PRAGMA builds on
 
@@ -210,6 +215,14 @@ The anchor's criteria, changed as the team asked:
 
 Index changes on `events` or `messenger_messages` come only after slice 0 or 8 shows they are needed.
 
+What slice 7's end-to-end run found and fixed, none of which the unit tests caught:
+
+- **`app:cluster:sync` failed on every server.** It used Symfony's `LockableTrait`, which needs `symfony/lock`, and that is not a dependency. It now holds a plain file lock in `var/cluster/sync.lock`.
+- **`cache:clear` did not reliably apply a role change.** The role is compiled into the container. Symfony's `cache:clear` treats a container built in the same second as itself as fresh and keeps it, so a scripted `app:cluster:join` followed by `cache:clear` (PRAGMA's flow) left a collection server compiled as `all` about two runs in three. `app:cluster:join` now removes the cache directory as it exits, and `app:server:role` tells operators to `rm -rf var/cache/prod`. `dashboard_enabled` is compiled the same way and its docs still say `cache:clear`. That is a pre-existing case, not changed here.
+- **Per-server ports.** The collection servers in the test share one address and differ by port, so each `cluster` entry may now carry a `port` (default `cluster_collection_port`).
+- **A server's `administration_url` in YAML was lost on its first pull** (found by the settings audit Scott asked for, not by the CI run). The pull kept only `server_role` and `cluster_server_name`, so a server given its administration address in YAML instead of `ADMINISTRATION_URL` lost it with the first configuration and could not pull again; once the configuration changed, it would have paused for good. `administration_url` is now kept like the other two.
+- **Not fixed, for the DBA:** `charset=utf8mb4` in a hand-written MariaDB `DATABASE_URL`, as Symfony's own examples write it, makes `Version20260901000000` fail with "Illegal mix of collations for operation 'UNION'". The setup page and `app:cluster:join` users who copy its URL are not affected. PRAGMA (P1) must not add the parameter. The guides (G1, G2) should say so, or the migration should stop depending on the connection collation.
+
 ### Risks
 
 - **Connections run out before CPU does.** That shows up as "too many connections" or 500s at the balancer, not as a slower p95. Slice 0 measures connections, and `app:server:role` states the budget.
@@ -221,17 +234,17 @@ Index changes on `events` or `messenger_messages` come only after slice 0 or 8 s
 - **Privacy lag.** A kill switch or path exclusion reaches collection servers on their next minute. A server cut off from the administration server, but not from the database, keeps collecting under the old rules for at most 5 minutes after the change is recorded, then pauses.
 - **Guides drift from PRAGMA.** PRAGMA automates the same steps the guides describe, so a change to one needs the other. Each PRAGMA slice links the guide section it automates, and `app:server:role` checks the result the same way whichever way a server was set up.
 - **A split from the database as well.** A server that can reach neither the administration server nor the database stops verifying and pauses after 5 minutes. It could not have recorded events anyway.
-- **The DBA has not yet read the retention code's batch size and locking,** nor whether `TrackingFailureRetryRunner` purges the failed transport. That is checked in slice 6.
+- **Retention batch size and locking** were checked in slice 6 (see [the database](#the-database-dba)). A DBA should still confirm a 1,000-row batch suits their replication lag.
 
 ### Open questions for the approver
 
 - [ ] **Engines.** Which engines and modes must meet 1.8×? Is SQL Server supported for roles but not load-tested?
 - [ ] **Database hosting.** Is the shared database usually self-run or managed (RDS, Cloud SQL)? This decides whether the docs recommend PgBouncer or ProxySQL, or only `max_connections`.
 - [ ] **BI on the primary.** Is a read replica for reporting acceptable as a later phase, or must BI stop touching the primary once collection is clustered? This makes the BI-contention test a gate or only a report. Slice 0's data: tolerable on PostgreSQL at 10 million rows; on MySQL one BI refresh multiplied collection's p95 up to 44 times, so a MySQL or MariaDB cluster should send BI to the [reporting database](../REPORTING-DATABASE.md).
-- [ ] **The queue in a cluster.** Slice 0 found `doctrine://` in the shared database the costliest setup, near the gate on MySQL and serialized by `NOTIFY` on PostgreSQL. Should phase 3 recommend `sync://` for clusters (collection servers write enhanced events; already supported) and make `worker` servers wait for a broker such as Redis (phase 2), or support `doctrine://` workers with that warning?
-- [ ] **Queue retention ownership.** Who owns retention of failed messages: an administration-side job, or an operator purge? And how long may enhanced payloads wait in `messenger_messages` when workers are down?
-- [ ] **Balancer.** Does `balancer` earn a role, or is `app:server:balancer-config` on the administration server enough?
-- [ ] **`APP_SECRET`.** Must it match on every server? Anything one server signs with it and another checks needs auditing in slice 2.
+- [x] **The queue in a cluster.** Slice 0 found `doctrine://` in the shared database the costliest setup, near the gate on MySQL and serialized by `NOTIFY` on PostgreSQL. Should phase 3 recommend `sync://` for clusters (collection servers write enhanced events; already supported) and make `worker` servers wait for a broker such as Redis (phase 2), or support `doctrine://` workers with that warning? **Answer (Scott):** Also support `doctrine://` workers. The guides and the CI cluster job cover both `sync://` and `doctrine://` with worker servers, and the docs warn that `doctrine://` is the costliest setup for the shared database.
+- [x] **Queue retention ownership.** Who owns retention of failed messages: an administration-side job, or an operator purge? And how long may enhanced payloads wait in `messenger_messages` when workers are down? **Answer (Scott):** A scheduled job on the administration server, 7 days by default (slice 6).
+- [x] **Balancer.** Does `balancer` earn a role, or is `app:server:balancer-config` on the administration server enough? **Answer (Scott):** No role; `app:server:balancer-config` on the administration server. The `balancer` value is gone from `server_role` (it never reached a release); a server configured with it runs as `all` and says why.
+- [ ] **`APP_SECRET`.** Must it match on every server? Anything one server signs with it and another checks needs auditing in slice 2. The audit in slice 3 found one such case: organization-traffic marking codes are made on the share page and checked at `/internal-traffic/verify`, both collection routes the balancer may send to different servers, so every collection server needs the same `APP_SECRET` (`app:cluster:join` takes it). Sessions, CSRF tokens and sign-in codes are administration-only, and the rate limiter's address hash is per server, so those need not match.
 
 ### Where the team's input went
 
@@ -434,14 +447,14 @@ _The work this spec plans, as `- [ ] …` items, each naming the role that does 
 - [x] Back end: the `database` load-test suite for slice 0 (done in JOIN-59)
 - [x] Back end: `collection_base_url` (slice 1) (done in JOIN-59)
 - [x] Back end: `ServerRole`, the route split, controller removal generated from the route files, the command listener and service guards, the SQLite refusal, `app:server:role` with versioned JSON, and the dead mail routing removed (slice 2) (done in JOIN-59)
-- [ ] Back end: `app:cluster:sync`, `ClusterConfigPublisher` with the `cluster_config` fingerprint in `processing_tasks`, the configuration endpoint, signed health metadata, `var/cluster_state.json`, the pause when behind or unverified, and the alert through JOIN-55's destinations (slice 3)
-- [ ] Back end: `app:server:balancer-config` for Nginx and Caddy (slice 4)
-- [ ] Back end: `--files-only`, the additivity checks for tables and message classes, and the Updates page server list (slice 5)
-- [ ] DBA: confirm retention batch size and locking and whether the failed transport is purged; then a bounded age and purge for queued payloads (slice 6)
-- [ ] Back end: the two-servers-one-database fresh-install CI job (slice 7)
+- [x] Back end: `app:cluster:sync`, `ClusterConfigPublisher` with the `cluster_config` fingerprint in `processing_tasks`, the configuration endpoint, signed health metadata, `var/cluster_state.json`, the pause when behind or unverified, and the alert through JOIN-55's destinations (slice 3) (done in JOIN-59)
+- [x] Back end: `app:server:balancer-config` for Nginx and Caddy (slice 4), with `app:cluster:settings` and `app:collection-address` so every cluster setting has a command
+- [x] Back end: `--files-only`, the additivity checks for tables and message classes, and the Updates page server list (slice 5)
+- [x] DBA: confirm retention batch size and locking and whether the failed transport is purged; then a bounded age and purge for queued payloads (slice 6)
+- [x] Back end: the two-servers-one-database fresh-install CI job (slice 7): `tests/Integration/cluster.php`, run by the `Cluster` jobs on MariaDB 10.11 and PostgreSQL 16 with `sync://` and `doctrine://`
 - [ ] DBA: the multi-server load test with the BI query loop, and any measured index change (slice 8)
-- [ ] Docs: the generic Linux cluster guide (G1) and the Plesk cluster guide (G2), each followed once on fresh servers
+- [ ] Docs: the generic Linux cluster guide (G1) and the Plesk cluster guide (G2), each followed once on fresh servers. Written: `docs/CLUSTER.md` and the "Several servers" section of `PLESK-DEPLOYMENT.md`. G1's steps run in CI on one machine (`tests/Integration/cluster.php`). Neither has been followed on separate fresh servers, and G2's balancer directives are untested beside Plesk's own `location /`.
 - [ ] PRAGMA: install with a role, the pull timer and workers (P1); the shared MariaDB and firewall (P2); the balancer site (P3); MCP `plan_aggregate_role` and `apply_plan` with approval in the web interface (P4)
-- [ ] Docs: a server-roles guide, the balancer guide, `docs/DATABASE.md` connection budgets, and `docs/DESIGN-DECISIONS.md` entries for roles and the configuration pull
+- [ ] Docs: a server-roles guide, the balancer guide, `docs/DATABASE.md` connection budgets, and `docs/DESIGN-DECISIONS.md` entries for roles and the configuration pull. Done except `docs/DATABASE.md`: the connection budget is in `docs/CLUSTER.md` and `app:server:role` for now.
 
 _By Claude Code (claude-opus-5-5), in Scott's JOIN-59 session._

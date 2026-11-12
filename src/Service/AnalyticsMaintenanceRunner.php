@@ -6,6 +6,7 @@ namespace App\Service;
 
 use App\Service\Operations\AuditTrail;
 use App\Service\Operations\ProcessingTasks;
+use App\Service\Operations\QueueRetention;
 use App\Service\Operations\TaskTrigger;
 use Psr\Clock\ClockInterface;
 
@@ -14,8 +15,10 @@ use Psr\Clock\ClockInterface;
  * those are turned on, and purges processing tasks and audit trail entries
  * older than their retention periods: job-run entries after
  * audit_trail_retention_days, administrator actions and sign-ins after
- * audit_trail_admin_retention_days. Each run that changes data is itself a
- * processing task (analytics_maintenance), so it ends in the audit trail.
+ * audit_trail_admin_retention_days. It also deletes queued and failed
+ * enhanced events older than queue_retention_days, which is never off. Each
+ * run that changes data is itself a processing task (analytics_maintenance),
+ * so it ends in the audit trail.
  */
 final class AnalyticsMaintenanceRunner
 {
@@ -30,6 +33,7 @@ final class AnalyticsMaintenanceRunner
         private readonly ClockInterface $clock,
         private readonly ProcessingTasks $tasks,
         private readonly AuditTrail $audit,
+        private readonly ?QueueRetention $queue = null,
     ) {
     }
 
@@ -45,8 +49,9 @@ final class AnalyticsMaintenanceRunner
         $auditDays = $settings['audit_trail_retention_days'];
         $adminAuditDays = $settings['audit_trail_admin_retention_days'];
         $recordPurgeEnabled = $taskDays > 0 || $auditDays > 0 || $adminAuditDays > 0;
+        $queuePurgeEnabled = $this->queue?->exists() ?? false;
 
-        if (!$archivingEnabled && !$retentionEnabled && !$recordPurgeEnabled) {
+        if (!$archivingEnabled && !$retentionEnabled && !$recordPurgeEnabled && !$queuePurgeEnabled) {
             return new AnalyticsMaintenanceResult(
                 $dryRun,
                 false,
@@ -65,6 +70,8 @@ final class AnalyticsMaintenanceRunner
         $taskCutoff = $taskDays > 0 ? $this->calendarCutoff($now, $taskDays) : null;
         $auditCutoff = $auditDays > 0 ? $this->calendarCutoff($now, $auditDays) : null;
         $adminAuditCutoff = $adminAuditDays > 0 ? $this->calendarCutoff($now, $adminAuditDays) : null;
+        // Exact, not by calendar day: a message is deleted at the first run after it is that old.
+        $queueCutoff = $now->modify('-'.$settings['queue_retention_days'].' days');
 
         if ($dryRun) {
             return new AnalyticsMaintenanceResult(
@@ -82,6 +89,8 @@ final class AnalyticsMaintenanceRunner
                 $taskCutoff !== null ? $this->tasks->countBefore($taskCutoff) : 0,
                 ($auditCutoff !== null ? $this->audit->countBefore($auditCutoff, true) : 0)
                     + ($adminAuditCutoff !== null ? $this->audit->countBefore($adminAuditCutoff, false) : 0),
+                $queuePurgeEnabled,
+                $queuePurgeEnabled ? (int) $this->queue?->countBefore($queueCutoff) : 0,
             );
         }
 
@@ -133,6 +142,7 @@ final class AnalyticsMaintenanceRunner
             $heartbeat();
             $purgedAdmin = $adminAuditCutoff !== null ? $this->audit->purgeBefore($adminAuditCutoff, $settings['batch_size'], false) : 0;
             $purgedAudit = $purgedJobRuns + $purgedAdmin;
+            $purgedQueued = $queuePurgeEnabled ? (int) $this->queue?->purgeBefore($queueCutoff, $settings['batch_size'], $heartbeat) : 0;
 
             $result = new AnalyticsMaintenanceResult(
                 false,
@@ -144,12 +154,14 @@ final class AnalyticsMaintenanceRunner
                 $recordPurgeEnabled,
                 $purgedTasks,
                 $purgedAudit,
+                $queuePurgeEnabled,
+                $purgedQueued,
             );
             $this->tasks->succeed(
                 (int) $task,
                 $this->now(),
-                $archivedEvents + $deletedRawEvents + $deletedArchiveCells + $purgedTasks + $purgedAudit,
-                self::summary($result, $archiveCutoff, $taskCutoff, [[$auditCutoff, $purgedJobRuns, 'job run'], [$adminAuditCutoff, $purgedAdmin, 'administrator']]),
+                $archivedEvents + $deletedRawEvents + $deletedArchiveCells + $purgedTasks + $purgedAudit + $purgedQueued,
+                self::summary($result, $archiveCutoff, $taskCutoff, [[$auditCutoff, $purgedJobRuns, 'job run'], [$adminAuditCutoff, $purgedAdmin, 'administrator']], $settings['queue_retention_days']),
             );
 
             return $result;
@@ -182,7 +194,7 @@ final class AnalyticsMaintenanceRunner
      *
      * @param list<array{0: ?\DateTimeImmutable, 1: int, 2: string}> $auditPurges cutoff, entries purged, kind
      */
-    private static function summary(AnalyticsMaintenanceResult $result, \DateTimeImmutable $archiveCutoff, ?\DateTimeImmutable $taskCutoff, array $auditPurges): string
+    private static function summary(AnalyticsMaintenanceResult $result, \DateTimeImmutable $archiveCutoff, ?\DateTimeImmutable $taskCutoff, array $auditPurges, int $queueDays): string
     {
         $count = static fn (int $number, string $one, string $many): string => $number.' '.($number === 1 ? $one : $many);
         $parts = [];
@@ -199,6 +211,9 @@ final class AnalyticsMaintenanceRunner
             if ($cutoff !== null) {
                 $parts[] = sprintf('purged %s from before %s', $count($purged, $kind.' audit trail entry', $kind.' audit trail entries'), $cutoff->format('Y-m-d'));
             }
+        }
+        if ($result->queuePurgeEnabled) {
+            $parts[] = sprintf('deleted %s queued for more than %d days', $count($result->purgedQueuedMessages, 'message', 'messages'), $queueDays);
         }
 
         return ucfirst(implode('; ', $parts)).'.';

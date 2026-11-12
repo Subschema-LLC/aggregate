@@ -549,7 +549,7 @@ The current schema contains:
 - `analytics_archive_events`, `analytics_archive_goals`, `analytics_archive_geo_events` and `analytics_maintenance_lock` (private archives and the maintenance lease; see [below](#analytics-archive-and-maintenance))
 - `processing_tasks` and `audit_trail` (private runs of background jobs and the audit trail; no event data; see [below](#processing-tasks-and-audit-trail))
 - `users` (dashboard auth, optional in API-only mode)
-- `messenger_messages` (used only in async queue mode)
+- `messenger_messages` (the `doctrine://` queue and the failed transport; messages older than `queue_retention_days`, 7 by default, are deleted by maintenance; see [queued events](CONFIGURATION.md#queued-events))
 
 For `privacy_mode = 'anonymous'`, `created_at` is a server-generated UTC hour boundary, not an exact event time. Identifiers, exact dimensions, and generalized User-Agent values are null. The existing `custom_data` JSON may contain properties explicitly configured with `consent_required: false` and the organization-traffic flag `org_internal_traffic`, `true` or `false` on every standard-profile event; strict-profile events carry no flag. Enhanced rows may retain other scalar properties alongside it. Collection requires no schema migration. `goal_event` may contain only an enabled code from `config/goals.yaml` whose definition permits anonymous use; rejected goals are stored as null without rejecting the underlying event. These are still individual rows and may be personal data in context, so keep `events` private. Routine BI users should query `bi_anonymous_events_v1`, which groups hourly cells and suppresses counts below `anonymous_min_cell_count`.
 

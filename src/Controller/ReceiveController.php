@@ -2,6 +2,7 @@
 
 namespace App\Controller;
 
+use App\Service\Cluster\ClusterGate;
 use App\Service\EventIngestion;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -15,8 +16,13 @@ use Symfony\Component\Routing\Annotation\Route;
 class ReceiveController
 {
     #[Route('/api/receive', name: 'api_receive', methods: ['POST'])]
-    public function __invoke(Request $request, EventIngestion $ingestion): Response
+    public function __invoke(Request $request, EventIngestion $ingestion, ?ClusterGate $cluster = null): Response
     {
+        // A cluster server whose configuration may be stale records nothing;
+        // the balancer sends the request to another server.
+        if ($cluster?->pauseReason() !== null) {
+            return $this->jsonWithCors($request, ['error' => 'Collection is paused on this server.'], Response::HTTP_SERVICE_UNAVAILABLE);
+        }
         $result = $ingestion->receive($request);
 
         return $this->jsonWithCors($request, $result->body, $result->status);

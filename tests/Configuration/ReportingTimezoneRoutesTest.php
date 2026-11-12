@@ -59,15 +59,7 @@ final class ReportingTimezoneRoutesTest extends TestCase
             self::assertSame(302, $browser->getResponse()->getStatusCode(), $path);
             self::assertSame('/login', parse_url((string) $browser->getResponse()->headers->get('Location'), PHP_URL_PATH));
         }
-        // The setting is a section of General settings, which has the menu entry.
-        $routes = [];
-        array_walk_recursive($container->getParameter('app.main_navigation')['items'], static function (mixed $value, string|int $key) use (&$routes): void {
-            if ($key === 'route') {
-                $routes[] = $value;
-            }
-        });
-        self::assertNotContains('app_reporting_timezone', $routes);
-        self::assertContains('app_application_settings', $routes);
+        // The setting is a section of General settings: its old address opens it there.
         $browser->loginUser(ReportingTimezoneRoutesUserProvider::user());
         $browser->request('GET', '/dashboard/reporting/timezone');
         self::assertSame(302, $browser->getResponse()->getStatusCode());

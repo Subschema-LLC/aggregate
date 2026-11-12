@@ -75,7 +75,6 @@ final class ServerRoleRoutesTest extends TestCase
             ['App\\Controller\\HomeController', 'App\\Controller\\McpController', 'App\\Controller\\ReportingApiController', 'App\\Controller\\WebsitesController']];
         yield 'worker' => ['worker', ['/api/health'], [...self::COLLECTION, ...self::ADMINISTRATION, ...self::BRANDING],
             ['App\\Controller\\ReceiveController', 'App\\Controller\\HomeController', 'App\\Controller\\BrandingLogoController']];
-        yield 'balancer' => ['balancer', ['/api/health'], [...self::COLLECTION, ...self::ADMINISTRATION, ...self::BRANDING], ['App\\Controller\\ReceiveController']];
     }
 
     public function testSqliteRunsEveryRoleAsAll(): void

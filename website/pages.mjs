@@ -21,6 +21,7 @@ export const sections = [
     items: [
       { source: 'DEPLOYMENT.md', route: 'install/deployment', label: 'Deployment guide' },
       { source: 'PLESK-DEPLOYMENT.md', route: 'install/plesk', label: 'Plesk' },
+      { source: 'docs/CLUSTER.md', route: 'install/several-servers', label: 'Several servers' },
       { source: 'docs/DATABASE.md', route: 'install/databases', label: 'Databases' },
     ],
   },

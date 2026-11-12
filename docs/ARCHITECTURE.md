@@ -282,7 +282,9 @@ services, so a setting has one validation wherever it is changed.
   controllers behind the files a role leaves out are removed from its container. Pages follow the [UI template conventions](../templates/README.md):
   Twig, Bulma, Stimulus and Turbo through AssetMapper, with no Node build.
 - **Command line:** everything an administrator needs without the dashboard,
-  in [src/Command](../src/Command). Examples: `app:install`,
+  in [src/Command](../src/Command). `app:config` reaches every page's settings
+  through [src/Service/Settings](../src/Service/Settings), one section per page
+  calling that page's service. Other examples: `app:install`,
   `app:create-website`, `app:user:create`, `app:user:reset-password`, `app:analytics:maintain`,
   `app:analytics:glossary:sync`, `app:scheduler:run`, `app:scheduler:status`,
   `app:bigquery:sync`, `app:reporting-database:configure`,

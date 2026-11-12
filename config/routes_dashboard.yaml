@@ -70,6 +70,10 @@ bi_page_groups_controller:
     resource: ../src/Controller/BiPageGroupsController.php
     type: attribute
 
+goals_controller:
+    resource: ../src/Controller/GoalsController.php
+    type: attribute
+
 reporting_timezone_controller:
     resource: ../src/Controller/ReportingTimezoneController.php
     type: attribute

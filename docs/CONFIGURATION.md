@@ -5,6 +5,7 @@
 Use this guide for application settings and runtime overrides. Run commands from the repository root. The complete default configuration is in [config/aggregate.yaml.example](../config/aggregate.yaml.example); copy it to the untracked `config/aggregate.yaml` before editing deployment values.
 
 - [Environment files](#environment-files)
+- [Settings from the command line](#settings-from-the-command-line)
 - [Application settings](#application-settings)
 - [Website groups](#website-groups)
 - [Website domains](#website-domains)
@@ -30,7 +31,7 @@ Configuration has separate sources of truth:
 - **Environment files and server variables:** Symfony infrastructure — database connection, the optional [reporting database](#reporting-database) connection, message queue, app secret, and explicit proxy trust. Keep deployment values in untracked local files or server configuration.
 - **`config/aggregate.yaml`** (app-level, example committed): Analytics-specific settings — application branding, privacy measurement controls, internal traffic markers and sharing token, lifecycle policy, BigQuery sync, the [email service](#transactional-email) and sender, rate limit, JS namespace, dashboard toggle, and deployment-wide feature flags.
 - **`config/secrets/`** (untracked): Credentials Aggregate writes for itself, such as the BigQuery service account key and Google sign-in, the hashes of [reporting API tokens](REPORTING-API.md#tokens) in `api-tokens.yaml`, the [AI assistant sign-in](MCP.md#sign-in) state in `mcp-oauth.yaml`, and the [email service's credential](EMAIL.md) in `email.yaml`, readable only by the application's user and kept by updates.
-- **`config/goals.yaml`** (app-level, committed): Stable conversion-goal codes and whether each is enabled for anonymous collection. Customize it in `config/goals.local.yaml` (see [Local overrides](#local-overrides-for-shipped-defaults)).
+- **`config/goals.yaml`** (app-level, committed): Stable conversion-goal codes and whether each is enabled for anonymous collection. Customize them on the **Goals** page, with `app:config goals`, or in `config/goals.local.yaml` (see [conversion goals](#conversion-goals)).
 - **`config/navigation.yaml`** (app-level, committed): Main navigation labels, icons, and link targets. Customize it in `config/navigation.local.yaml`.
 - **`config/quick_search.yaml`** (app-level, committed): Dashboard quick-search synonyms and extra entries. Customize it in `config/quick_search.local.yaml`.
 - **`config/websites.yaml`** (untracked): Website names, primary domains, allowed event-source domains, and public ingestion tokens, managed through the Websites page, YAML, or `app:create-website`.
@@ -43,14 +44,109 @@ The database holds no operator settings: it stores collected events, archives, u
 
 ### When an edit takes effect
 
-Edits to `config/aggregate.yaml`, `config/websites.yaml`, `config/website-scopes.yaml`, files under `config/website-scopes/` and the tag manager's site files take effect on the next request, whether they come from the dashboard, the command line or an editor. Aggregate reads the file a request needs and keeps only the parsed result of an unchanged file in `var/cache/<environment>/parsed-yaml`, keyed by the file's exact contents, so there is no cache to clear after an edit. A health check does not reread every website override on each poll: it notices a file that was added, removed, or whose size or modification time changed, and reads the overrides again only then. An edit that is not valid YAML, or not a valid configuration, stops collection for the websites that use it until it is fixed rather than falling back to the previous settings.
+Edits to `config/aggregate.yaml`, `config/websites.yaml`, `config/website-scopes.yaml`, files under `config/website-scopes/`, the goals (`config/goals.local.yaml`) and the tag manager's site files take effect on the next request, whether they come from the dashboard, the command line or an editor. Aggregate reads the file a request needs and keeps only the parsed result of an unchanged file in `var/cache/<environment>/parsed-yaml`, keyed by the file's exact contents, so there is no cache to clear after an edit. A health check does not reread every website override on each poll: it notices a file that was added, removed, or whose size or modification time changed, and reads the overrides again only then. An edit that is not valid YAML, or not a valid configuration, stops collection for the websites that use it until it is fixed rather than falling back to the previous settings.
 
 A few settings are built into Symfony's compiled container or into SQL, and need a step after an edit:
 
-- `dashboard_enabled` or `DASHBOARD_ENABLED`, and Symfony's own files under `config/packages/` and the `services*.yaml` and `routes*.yaml` files: run `php bin/console cache:clear`, then reload PHP-FPM gracefully. Clearing the cache also removes the parsed-YAML entries, which are rebuilt on the next request. Measured during live traffic, this fails no collection requests when PHP-FPM lets busy workers finish; see [clearing the cache under traffic](LOAD-TESTING.md#clearing-the-cache-under-traffic).
+- `dashboard_enabled` or `DASHBOARD_ENABLED`, and Symfony's own files under `config/packages/` and the `services*.yaml` and `routes*.yaml` files: run `php bin/console cache:clear`, then reload PHP-FPM gracefully. `app:dashboard on|off` removes the cache itself. Clearing the cache also removes the parsed-YAML entries, which are rebuilt on the next request. Measured during live traffic, this fails no collection requests when PHP-FPM lets busy workers finish; see [clearing the cache under traffic](LOAD-TESTING.md#clearing-the-cache-under-traffic).
 - The BI disclosure thresholds: run `php bin/console app:analytics:bi-views:regenerate` (see [BI disclosure thresholds](#bi-disclosure-thresholds)).
 
 The web installer at `/install` is optional and only needed when you want dashboard-based setup.
+
+## Settings from the command line
+
+Every setting a dashboard page changes is a YAML setting, and a command
+changes it with the page's own checks. Most go through one command,
+`app:config`, which saves them the way the page saves them; the rest
+(websites, users, tokens, alerts, the cluster's servers) have a command of
+their own, listed with each page below. Environment variables still take
+precedence, as they do over the pages.
+
+```bash
+php bin/console app:config                                  # every section and its page
+php bin/console app:config get branding                     # the values in effect
+php bin/console app:config set branding.brand_name "Acme Analytics"
+php bin/console app:config set collection.anonymous_excluded_paths "[/admin, /checkout]"
+php bin/console app:config set collection.bot_traffic drop --scope=group:shop
+php bin/console app:config unset collection.bot_traffic --scope=group:shop
+php bin/console app:config set consent-manager.enabled true --site=<script id>
+php bin/console app:config export data-lifecycle > lifecycle.yaml
+php bin/console app:config import data-lifecycle --file=lifecycle.yaml --check
+php bin/console app:config secret email.postmark_server_token --stdin < token.txt
+```
+
+- A value is read as YAML: `true`, `250`, `[a, b]`, `{enabled: true}`. Text
+  YAML cannot read, such as a color like `#336699`, is taken as it is; quote
+  text YAML would read differently (`"yes"`).
+- `--check` runs the page's checks and saves nothing. `--confirm` gives the
+  confirmation a page asks for, such as copying private views to a sync
+  destination or confirming that the forensic database is restricted.
+- `--scope=website:<script id>` or `--scope=group:<id>` saves collection
+  controls or the data model for one website or group, as the page's scope
+  menu does; `unset` gives the scope the broader setting back. `--site=<script
+  id>` names the website for the tag manager, the consent manager and the
+  standalone banner (`app:tag-manager:sites` lists the ids).
+- Secrets, such as an email service's API key or BigQuery's service account
+  key, come from standard input or `--file`, never from the command line, and
+  are never printed. `get` says only whether each is set.
+- Saving records the same audit trail entry as the page, with the
+  operating-system user who ran the command. Collection and worker servers
+  can show settings but not change them; their configuration comes from the
+  administration server.
+
+| Section | Dashboard page |
+| --- | --- |
+| `general`, `page-speed`, `reporting-timezone` | General settings |
+| `branding` | Branding (`brand_logo` takes the path of a PNG, JPEG or WebP file, or empty to remove the logo) |
+| `collection` | Collection controls |
+| `organization-traffic` | Organization traffic (the share link: `app:internal-traffic:share-link`) |
+| `data-model` | Data model |
+| `tag-manager`, `consent-manager` | Tag manager lite, Consent manager lite |
+| `standalone-consent` | Setup's standalone consent banner |
+| `goals` | Goals |
+| `bi-disclosure`, `page-groups`, `bi-glossary` | BI disclosure, Page groups, BI glossary |
+| `reporting-api` | API tokens' settings (tokens: `app:api:token:*`) |
+| `bigquery`, `reporting-database`, `forensic-database` | Sync (connections: `app:reporting-database:configure`, `app:forensic-database:configure`) |
+| `email` | Email |
+| `data-lifecycle` | Data lifecycle |
+| `audit-trail` | Audit trail's switches |
+| `feature-flags` | Feature flags |
+| `updates` | Updates' branch (the method: `app:updates:method`) |
+| `cluster` | Updates' Servers panel (the servers: `app:cluster:server`) |
+
+The page actions with a command of their own: websites (`app:create-website`,
+`app:website domains` and `delete`), website groups (`app:website-scopes`),
+users and profiles (`app:user:create`, `app:user:profile`, `app:user:access`,
+`app:user:reset-password`, `app:user:delete`, `app:permission-groups`), API
+tokens and assistant connections (`app:api:token:*`, `app:mcp:connection:*`),
+alerts (`app:alerts:rule`, `app:alerts:destination`, `app:alerts:test`),
+updates (`app:updates:*`), the cluster's servers and balancer
+(`app:cluster:server`, `app:server:balancer-config`), and the buttons that
+run something (`app:scheduler:run`, the sync commands, the view and glossary
+commands, `app:data:*`, `app:email:test`, `app:tracking:retry-failed`).
+
+What only a browser can do, and why:
+
+- **Signing in with Google for BigQuery** is Google's consent screen in a
+  browser. A service account key does the same job from the command line
+  (`app:config secret bigquery.service_account_key --file=key.json`), and
+  `app:config secret bigquery.google_sign_in --remove` signs out.
+- **Approving an AI assistant's sign-in** happens in the browser the
+  assistant signs in from. `app:api:token:create` makes an assistant token
+  instead.
+
+What stays out of the dashboard, and why:
+
+- A server's own role, name and administration address, the cluster key,
+  and the database, proxy, secret and queue variables `app:cluster:join`
+  writes to `.env.local`: they belong to one server, or are secrets, while
+  the dashboard runs only on the administration server. `app:cluster:key`
+  shows the key on that server.
+- `updates_signing_public_key`, the key update packages are checked against:
+  a dashboard session that could change it could install any code.
+- `dashboard_enabled`: a dashboard turned off could not turn itself back on.
+  `php bin/console app:dashboard on|off` saves it and removes the cache it is
+  compiled into; `app:dashboard` alone shows it.
 
 ## Local overrides for shipped defaults
 
@@ -65,7 +161,8 @@ to the matching untracked override and edit the copy:
 | `config/quick_search.yaml` | `config/quick_search.local.yaml` |
 
 Each parameter defined in an override (for example `app.goal_events`) replaces the
-shipped parameter **as a whole**; entries are not merged. Parameters the override
+shipped parameter **as a whole**; entries are not merged. The Goals page and
+`app:config goals` write `config/goals.local.yaml` for you. Parameters the override
 does not define keep their shipped values. After an update, compare your override
 with the new default to pick up newly shipped entries, such as navigation links
 for new features. Clear the production cache after changing an override.
@@ -243,7 +340,10 @@ php bin/console app:create-website --allowed-domain=example.com --allowed-domain
 php bin/console app:create-website --allow-all-domains
 ```
 
-Use YAML or the Websites page to edit existing rules. Saving rules preserves the
+Use the Websites page, YAML or `app:website domains <token>` (with
+`--allowed-domain` or `--allow-all-domains`) to edit existing rules;
+`app:website list` shows the tokens and `app:website delete <token>` removes a
+website. Saving rules preserves the
 website token, primary domain, other registrations, and unrelated YAML values.
 Changes apply to subsequent requests without clearing the application cache.
 Each token must uniquely identify one registration; duplicate tokens are rejected.
@@ -276,9 +376,10 @@ environments:
 
 - `rate_limit_per_minute`: API requests per IP per minute (default: `100`)
 - `app_host`: Public hostname, used in dashboard integration snippets
-- `collection_base_url`: Where websites send events and load the tracker, consent and tag-manager scripts, when that is not `app_host` (default: empty, which means `app_host`; `COLLECTION_BASE_URL` environment override). Set it to a tracking subdomain, or to the balancer in front of several collection servers. Generated snippets and the [organization traffic](#organization-traffic) links use it; sign-in links, alerts and the dashboard keep `app_host`. A value that is not a plain `http(s)` URL stops snippet generation instead of falling back to `app_host`. Copy the tracking code again after changing it. Also on **General settings**
+- `collection_base_url`: Where websites send events and load the tracker, consent and tag-manager scripts, when that is not `app_host` (default: empty, which means `app_host`; `COLLECTION_BASE_URL` environment override). Set it to a tracking subdomain, or to the balancer in front of several collection servers. Generated snippets and the [organization traffic](#organization-traffic) links use it; sign-in links, alerts and the dashboard keep `app_host`. A value that is not a plain `http(s)` URL stops snippet generation instead of falling back to `app_host`. Copy the tracking code again after changing it. Also on **General settings**, and `php bin/console app:collection-address <url>` (or `--clear`)
 - `server_role`: What this server does when several servers share one database (default: `all`; `SERVER_ROLE` environment override). See [server roles](#server-roles)
-- `administration_url`: The administration server's address, which the other servers of a cluster name in their messages (default: empty; `ADMINISTRATION_URL` environment override). See [server roles](#server-roles)
+- `administration_url`: The administration server's address, which the other servers of a cluster pull configuration from and name in their messages (default: empty; `ADMINISTRATION_URL` environment override). See [server roles](#server-roles)
+- `cluster`, `cluster_config_max_age_minutes`, `cluster_alert_destinations`, `cluster_server_name`, `cluster_collection_port`: The servers that may pull configuration, with their roles, how long a server may go without the newest configuration before it pauses collection (default `5`), who is alerted, this server's name (`CLUSTER_SERVER_NAME` environment override; default the host name), and the port the balancer reaches the collection servers at (default `80`). The shared key is `CLUSTER_KEY`, in `.env.local` only. Each has a command; see [cluster settings](#cluster-settings)
 - `documentation_url`: Address of the documentation site that dashboard help links and command-line messages point to (default: `https://subschema-llc.github.io/aggregate/`). See [documentation links](#documentation-links)
 - `brand_name`: Application name used in page titles, headings, and explanatory copy (default: `Aggregate Analytics`)
 - `brand_logo_text`: Visible text displayed beside the optional navigation logo; with a valid image, leave it empty for an image-only identity (default: `brand_name`)
@@ -322,7 +423,7 @@ environments:
 - `analytics_archive_retention_days`: Archived aggregate-cell retention (default: `730`, range: `1`–`36500`)
 - `analytics_maintenance_batch_size`: Raw rows processed per maintenance batch (default: `1000`, range: `100`–`10000`)
 - `DASHBOARD_ENABLED` (env var): Boot-time dashboard feature boundary for loading dashboard routes/services. Set `0` for API-only deploys.
-- After changing dashboard feature settings (`dashboard_enabled` or `DASHBOARD_ENABLED`) in production, run `php bin/console cache:clear`.
+- After changing dashboard feature settings (`dashboard_enabled` or `DASHBOARD_ENABLED`) in production, run `php bin/console cache:clear`; `php bin/console app:dashboard on|off` saves the setting and removes the cache itself. The value is read where every other setting is: `aggregate_<environment>.yaml`, or `aggregate.yaml`'s `environments` entry over its top level.
 - Malformed YAML or invalid collection-kill-switch/path/profile/bot-traffic settings fail closed: ingestion stops and `/api/health` reports a generic configuration error. Invalid optional GeoIP lookup settings instead produce no `geo_area`.
 
 Logo images may be at most 2 MiB, 4096 pixels per axis, and 16 megapixels in total. The settings UI validates and copies uploaded logos below `var/branding` in an environment-specific directory; keep `var/branding` on persistent storage shared by all application replicas, make it writable by the PHP process, and include it in backups. Replicas that use the settings UI must also share the active `aggregate.yaml` file (or otherwise coordinate and deploy each saved revision) so every replica switches logo references together. Uploaded bytes are served as supplied, so remove EXIF/XMP or other embedded metadata before uploading. A configured `brand_logo_path` is resolved from the project root when relative, while absolute local filesystem paths are also supported. Leave it empty for a text-only identity.
@@ -385,7 +486,8 @@ The setting relabels `event_hour` and the event views' `event_day`. It does not 
 One server does everything by default. When collection outgrows it, several
 servers can share one MySQL, MariaDB or PostgreSQL database, each running the
 same release with a role (`server_role`, or `SERVER_ROLE`, which takes
-precedence):
+precedence). [Several servers](CLUSTER.md) walks through setting one up on
+Linux, and [Plesk](../PLESK-DEPLOYMENT.md#several-servers) on Plesk.
 
 | Role | Serves | Runs |
 | --- | --- | --- |
@@ -393,7 +495,10 @@ precedence):
 | `administration` | The dashboard and setup, the home page, the reporting API, MCP, branding, `/api/health` | Migrations, updates, the scheduled task; the only server that changes configuration |
 | `collection` | `/api/receive`, the browser scripts, the organization-traffic pages, branding, `/api/health` | Nothing else |
 | `worker` | `/api/health` | Queue consumers (`messenger:consume`) |
-| `balancer` | `/api/health` | Nothing else |
+
+The balancer in front of the collection servers runs no Aggregate, so it has
+no role; the administration server prints its configuration (see
+[the balancer](#the-balancer)).
 
 On every role but `all` and `administration`:
 
@@ -405,12 +510,18 @@ On every role but `all` and `administration`:
   cache, status commands and `app:server:role` run everywhere; `worker` also
   runs the queue consumers;
 - configuration files refuse to change, whatever tries to change them, since
-  configuration is changed on the administration server.
+  configuration is changed on the administration server;
+- updates replace files only (`app:updates:apply --files-only`), after the
+  administration server has updated and run the migrations. See
+  [update several servers](UPDATES.md#update-several-servers).
 
 A role other than `all` needs a database other servers can reach: on SQLite,
 which keeps the database in a file on one server, every role runs as `all`.
-The role is read when the cache is built, so run `php bin/console cache:clear`
-and reload PHP-FPM after changing it.
+The role is compiled into the cache. `app:cluster:join` removes the cache
+built for the previous role as it finishes; after changing the role another
+way, remove it yourself (`rm -rf var/cache/prod`) and reload PHP-FPM. Do not
+rely on `cache:clear` for this: run within the same second as the build it
+replaces, it keeps that build.
 
 `php bin/console app:server:role` shows the role, the release, the queue, the
 database's connections and what the role still needs, each with its fix, and
@@ -418,10 +529,139 @@ exits with 1 when a check has failed. `--json` prints the same as JSON with a
 `schema_version`; within a version, fields are only added, never renamed or
 removed, so tools such as hosting panels can rely on them.
 
-Setting up the servers, the shared database and the balancer is planned in
-[JOIN-59](specs/JOIN-59-server-roles.md); until its configuration pull lands,
-copy the administration server's configuration files to the other servers
-yourself.
+### Configuration across servers
+
+Configuration is changed on the administration server only, and the other
+servers pull it every minute. On the administration server:
+
+1. `php bin/console app:cluster:key` creates `CLUSTER_KEY` in `.env.local`, the
+   key every request between the servers is signed with; `--show` prints it.
+2. `php bin/console app:cluster:server add collect-1 10.0.0.11 --role=collection`
+   lets a server pull, by its name, the address it connects from and its role,
+   `collection` or `worker` (`cluster` in YAML). The balancer's configuration
+   is built from the collection servers here.
+3. `php bin/console app:collection-address https://collect.example.com` sets
+   the collection address (`collection_base_url`) to the balancer's address, so
+   tracking code sends websites there.
+
+On each collection or worker server, with the same release and the shared
+database:
+
+1. `php bin/console app:cluster:join --stdin` reads one JSON object and saves
+   the server's own settings in `.env.local`: `role`, `name`,
+   `administration_url`, `cluster_key`, and optionally `database_url`,
+   `trusted_proxies` (the balancer's address), `app_secret` and `queue`
+   (`sync` or `doctrine`, which sets `MESSENGER_TRANSPORT_DSN`; the same on
+   every server). Give every
+   collection server the administration server's `APP_SECRET`: organization
+   traffic codes are made on one collection server and checked on whichever the
+   balancer picks next. Secrets never go on the command line.
+2. Reload PHP-FPM. The join has already removed the cache built for the
+   previous role.
+
+On every server, run `php bin/console app:cluster:sync` every minute as the web
+server's user (cron or a systemd timer). On the administration server it records
+the configuration's version in `processing_tasks` when it changes and alerts
+when a server stops pulling; elsewhere it pulls `/api/cluster/config` and
+writes each changed file beside its target before renaming it into place,
+keeping the server's own `server_role`, `cluster_server_name` and
+`administration_url`.
+
+What is shared: `config/aggregate*.yaml`, `websites.yaml`, the website group
+files, `goals.local.yaml`, the tag manager's per-site files and
+`var/branding/`. Never: `config/secrets/` (API tokens, assistant sign-ins and
+email, alert and BigQuery secrets), `.env` files, users or dashboard-only files.
+A request from a server that is not listed, from another address, signed with
+another key or more than a minute old gets a 404, as an unknown address does.
+
+A collection or worker server pauses collection (`/api/receive` and
+`/api/health` answer 503, nothing is recorded, and a worker's consumers stop
+before taking a message) when it has not confirmed its configuration for
+`cluster_config_max_age_minutes` (5 by default), or has been behind a newer
+version it cannot fetch for that long. An unreachable administration server
+alone does not pause it: when the version recorded in the database is still
+its own, nothing has changed. It resumes on its first good minute. The
+administration server alerts the [alert destinations](ALERTS.md)
+(`cluster_alert_destinations`, every one by default) when a server has not
+pulled for that long, and again when it is back; `app:cluster:server` lists
+each server's last pull, release and role.
+
+### Cluster settings
+
+Every cluster setting works without the dashboard: it is a YAML setting or an
+environment variable, and a command sets it with the same validation. On the
+administration server, the **Updates** page's **Servers** panel adds and
+removes servers, changes the pause limit, alert destinations and collection
+port, and downloads the balancer's configuration; **General settings** has the
+collection address.
+
+| Setting | Where | Command |
+| --- | --- | --- |
+| `server_role` | YAML, `SERVER_ROLE` | `app:cluster:join` (writes `SERVER_ROLE`) |
+| `administration_url` | YAML, `ADMINISTRATION_URL` | `app:cluster:join` |
+| `cluster_server_name` | YAML, `CLUSTER_SERVER_NAME` | `app:cluster:join` |
+| `CLUSTER_KEY` | `.env.local` only | `app:cluster:key` |
+| `cluster` (name, address, role, optional port) | YAML | `app:cluster:server add` and `remove` |
+| `collection_base_url` | YAML, `COLLECTION_BASE_URL` | `app:collection-address` |
+| `cluster_config_max_age_minutes` (1 to 60, default 5) | YAML | `app:cluster:settings --max-age-minutes`, `app:config set cluster.cluster_config_max_age_minutes` |
+| `cluster_alert_destinations` (default every destination) | YAML | `app:cluster:settings --alert-destinations` (ids, `all` or `none`), `app:config set cluster.cluster_alert_destinations` |
+| `cluster_collection_port` (default 80) | YAML | `app:cluster:settings --collection-port`, `app:config set cluster.cluster_collection_port` |
+
+`php bin/console app:cluster:settings` without options shows them, and
+`--json` prints them as JSON.
+
+### The balancer
+
+The balancer spreads collection traffic over the collection servers. It runs
+no Aggregate: on the administration server,
+
+```bash
+php bin/console app:server:balancer-config --nginx > aggregate-balancer.conf
+php bin/console app:server:balancer-config --caddy > Caddyfile
+```
+
+prints its configuration from the collection address, the collection servers
+in the `cluster` list (each at its own `port`, or `cluster_collection_port`)
+and `rate_limit_per_minute`.
+Run it again after changing any of them, and install the output on the
+balancer. Messages go to standard error, so the output is only the
+configuration.
+
+Both configurations:
+
+- spread requests with least connections, over the private network, keeping
+  the visitor's host name;
+- write no access log;
+- replace `X-Forwarded-For` with the address that connected, and drop
+  `X-Forwarded-Port`, so a visitor cannot choose the address the servers use
+  for rate limits and geography;
+- take a paused server out of rotation.
+
+**Nginx** also limits `POST /api/receive` per address at
+`rate_limit_per_minute`, letting that many through at once and refilling at
+that rate, and answers `429` past it. Rejections are logged at `warn`, below
+the error log's `error` level, so they are not written. Failures to reach the
+collection servers are written, with the address of the request that met
+them. A paused server's `503` sends the event on to the next server, which is
+safe because a paused server recorded nothing; so does a server that fails
+after receiving an event, which can count that one event twice. `--part=http`
+and `--part=server` split the file into the blocks for Nginx's `http` context
+and the directives inside the domain's `server` block, for a hosting panel
+that manages the server block itself. `--certificate` and `--certificate-key`
+name the certificate files; by default they are Let's Encrypt's for the
+collection host. On a server without IPv6, remove the `listen [::]` lines.
+
+**Caddy** gets its certificate itself and checks `/api/health` every five
+seconds, so a paused server leaves the rotation within seconds; its first
+`503` on `/api/receive` reaches the visitor, since Caddy does not resend a
+request it has sent. Stock Caddy has no rate limiter, so each collection
+server's own limit is the only one, counted on each server. With a Caddy built
+with [caddy-ratelimit](https://github.com/mholt/caddy-ratelimit),
+`--caddy-rate-limit` adds the same per-address limit.
+
+On each collection server, set `TRUSTED_PROXIES` to the balancer's private
+address (`app:cluster:join` takes it as `trusted_proxies`), and accept web
+traffic from the balancer only, so its limit cannot be skipped.
 
 ## Feature flags
 
@@ -502,7 +742,7 @@ An optional [JavaScript minification build](JS-BUILD.md) produces the tracker an
 
 ## Archiving and retention
 
-Administrators can edit the nine lifecycle settings at `/dashboard/data-lifecycle`: the seven `analytics_*` settings below and the two record retention periods. API-only deployments can manage the same keys in `config/aggregate.yaml`. Uppercase environment variables (for example, `ANALYTICS_RETENTION_ENABLED`) take precedence and lock the corresponding UI controls. Values are validated strictly. When archiving and retention are both enabled, each raw retention period must be at least `analytics_archive_after_days`. Whenever retention is enabled, archive retention must be at least the longer raw retention period so marked source rows cannot disappear from reporting early.
+Administrators can edit the eleven lifecycle settings at `/dashboard/data-lifecycle`: the seven `analytics_*` settings below, the three record retention periods and the queue retention period. API-only deployments can manage the same keys in `config/aggregate.yaml`. Uppercase environment variables (for example, `ANALYTICS_RETENTION_ENABLED`) take precedence and lock the corresponding UI controls. Values are validated strictly. When archiving and retention are both enabled, each raw retention period must be at least `analytics_archive_after_days`. Whenever retention is enabled, archive retention must be at least the longer raw retention period so marked source rows cannot disappear from reporting early.
 
 Maintenance runs outside the web process, once a day, from the server's one [scheduled task](SCHEDULED-TASKS.md) (`app:scheduler:run`, every five minutes). Both features are disabled by default; inspect a dry run before enabling irreversible deletion:
 
@@ -513,7 +753,7 @@ php bin/console app:analytics:maintain --dry-run
 php bin/console app:analytics:maintain
 ```
 
-Archiving creates private, unsuppressed aggregate cells and marks the source rows as archived; it does not itself delete raw rows. Retention deletes raw anonymous, raw enhanced, and archived aggregate data only after their configured periods. Backups, BI extracts, queues, failed messages, logs, and replicas need separate retention controls.
+Archiving creates private, unsuppressed aggregate cells and marks the source rows as archived; it does not itself delete raw rows. Retention deletes raw anonymous, raw enhanced, and archived aggregate data only after their configured periods. Queued and failed messages have their own period ([below](#queued-events)); backups, BI extracts, logs, and replicas need separate retention controls.
 
 ### Task and audit records
 
@@ -538,6 +778,27 @@ What the audit trail records is chosen by area under `audit_trail_areas`, on
 Purging is on by default, so set up the [scheduled task](SCHEDULED-TASKS.md)
 even when archiving and retention are off. Its dry run shows how many records would be
 purged, and each run records what it archived, deleted and purged.
+
+### Queued events
+
+Enhanced events wait in `messenger_messages` for a queue consumer when
+`MESSENGER_TRANSPORT_DSN` is `doctrine://`, and any message whose every write
+attempt failed waits there in the failed transport. Their payloads hold the
+enhanced detail the retention periods above govern, outside those periods. So
+maintenance deletes every message older than `queue_retention_days`, whether
+it was written or not, in batches of `analytics_maintenance_batch_size`, each
+in its own transaction. A deleted message's event is lost: that is the point
+when workers stay down, and the [tracking failure alert](ALERTS.md) reports
+failures before then.
+
+| Setting | Environment variable | Default | Range |
+| --- | --- | --- | --- |
+| `queue_retention_days` | `QUEUE_RETENTION_DAYS` | `7` | `1`–`365`; it cannot be turned off |
+
+`php bin/console app:queue:retention` shows how many messages wait in each
+queue and since when; `php bin/console app:queue:retention 14` sets the
+period. In a cluster, maintenance runs on the administration server, and
+worker servers can run the command to show the queue.
 
 ## Sync
 
@@ -698,6 +959,8 @@ disappears by itself once none of its links are shown. Conditions are presentati
 only and never grant access.
 
 The `brand` entry controls where the branded identity links. Its `label` remains a backward-compatible name/wordmark fallback for existing deployments. Runtime identity, logo, theme-color, and font settings live in `config/aggregate.yaml` (or their environment overrides), so UI changes do not require rebuilding navigation configuration. Edit `items` and `account` to manage the remaining authenticated-navbar links. Each link defines exactly one Symfony `route` name (for example, `app_how_it_works`), literal `url`, or documentation topic (`docs`, see [documentation links](#documentation-links)); `label` is required, while `icon`, `route_parameters`, and an optional security `role` are supported. A link to a dashboard page also appears only for users who can view that page ([users and permissions](USERS-AND-PERMISSIONS.md)), so the shipped menu names a role only for Users. Existing flat configurations and an empty `items` list remain supported.
+
+Inside a group, a `heading` entry (`- heading: 'Settings'`) names the links after it, up to the next heading; a heading whose links are all hidden from the user is left out. The `account` entry's `logout` link may point at the sign-out route or another exit, such as a single sign-on logout page. When it is missing, not a safe link, or not for the signed-in user, the menu shows the default sign-out (`/logout`), so a custom menu can never leave users without one.
 
 Top-level items can instead group links under `children`. A group has a label
 and optional icon/role/feature, with no route or URL of its own:
@@ -861,7 +1124,18 @@ An unknown, invalid, disabled, or anonymous-disallowed goal is omitted while the
 [Aggregate] Goal was not recorded because it is not an approved goal type.
 ```
 
-This is an allowlist warning, not a sensitive-data detector. Review every configured code and its use in context. After changing `config/goals.yaml` in production, clear the production cache so the service container is rebuilt, then run `php bin/console app:analytics:glossary:sync --env=prod` to publish updated labels. Prefer disabling retired goals to deleting their definitions so historical codes keep their labels.
+This is an allowlist warning, not a sensitive-data detector. Review every configured code and its use in context. Prefer disabling retired goals to deleting their definitions so historical codes keep their labels.
+
+The **Goals** page (under Collection), `app:config goals` and `config/goals.local.yaml` change the same goals, checked the same way. They are read when used, so a change applies from the next request without clearing the cache, including on collection servers that pull it from the administration server. Run `php bin/console app:analytics:glossary:sync --env=prod` afterwards to publish changed labels to BI tools.
+
+```bash
+php bin/console app:config get goals
+php bin/console app:config set goals.goals '{purchase: {label: Purchase, enabled: true, anonymous: true}, demo_request: {label: Demo request, enabled: true, anonymous: false}}'
+php bin/console app:config export goals > goals.yaml
+php bin/console app:config import goals --file=goals.yaml --check
+```
+
+The value is the whole set of goals: a goal left out is removed. Invalid goals in a hand-edited file allow no goal at all (events are still recorded, without one) and make `/api/health` report the configuration as invalid.
 
 ## Optional coarse geography
 

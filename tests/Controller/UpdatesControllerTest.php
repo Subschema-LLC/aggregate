@@ -7,6 +7,7 @@ namespace App\Tests\Controller;
 use App\Controller\UpdatesController;
 use App\Service\AggregateConfigLoader;
 use App\Service\ApplicationUpdateService;
+use App\Service\Cluster\ClusterOverview;
 use App\Service\FeatureFlags;
 use App\Service\Update\ApplicationUpdater;
 use App\Service\Update\BackgroundUpdate;
@@ -88,6 +89,32 @@ final class UpdatesControllerTest extends TestCase
         self::assertStringNotContainsString('app:updates:pull', $html);
         self::assertStringNotContainsString('<code>php bin/console app:updates:apply</code>', $html, 'No install command is suggested.');
         $this->assertInstallDisabled($html, 'The installed branch does not match updates_branch');
+    }
+
+    public function testTheAdministrationServerListsTheServersStillToUpdate(): void
+    {
+        $updates = $this->createMock(ApplicationUpdateService::class);
+        $updates->method('check')->willReturn(array_replace($this->availableStatus(), ['installation_type' => 'release', 'current_version' => '2026.11.03', 'latest_version' => '2026.11.03']));
+        $cluster = $this->createStub(ClusterOverview::class);
+        $cluster->method('overview')->willReturn(['release' => '2026.11.03', 'version' => str_repeat('a', 64), 'servers' => [
+            ['name' => 'collect-1', 'address' => '10.0.0.11', 'role' => 'collection', 'reported_role' => 'collection', 'release' => '2026.11.03', 'same_release' => true,
+                'version' => str_repeat('a', 64), 'newest_configuration' => true, 'last_pull_at' => 1_794_400_000, 'alerting_since' => null],
+            ['name' => 'worker-1', 'address' => '10.0.0.21', 'role' => 'worker', 'reported_role' => 'worker', 'release' => '2026.11.02', 'same_release' => false,
+                'version' => str_repeat('b', 64), 'newest_configuration' => false, 'last_pull_at' => 1_794_400_000, 'alerting_since' => 1_794_399_000],
+        ]]);
+
+        $html = (string) $this->controller($updates, method: 'release', cluster: $cluster)->index()->getContent();
+
+        self::assertStringContainsString('id="cluster-servers" open', $html);
+        self::assertStringContainsString('1 behind', $html);
+        self::assertStringContainsString('app:updates:apply --files-only', $html);
+        self::assertStringContainsString('collect-1', $html);
+        self::assertStringContainsString('This server: 2026.11.03', $html);
+        self::assertStringContainsString('Not pulling since', $html);
+
+        $single = $this->createStub(ClusterOverview::class);
+        $single->method('overview')->willReturn(['release' => '2026.11.03', 'version' => null, 'servers' => []]);
+        self::assertStringNotContainsString('cluster-servers', (string) $this->controller($updates, method: 'release', cluster: $single)->index()->getContent(), 'A single server shows no list.');
     }
 
     public function testPackagedReleaseShowsVersionsAndVerificationLinksWithoutGitPullInstructions(): void
@@ -750,6 +777,7 @@ php /srv/site/bin/console app:updates:deployed --git-dir=/var/www/vhosts/example
         ?string $detected = null,
         string $documentationUrl = 'https://docs.example.test/aggregate/',
         ?DeploymentAction $deploymentAction = null,
+        ?ClusterOverview $cluster = null,
     ): UpdatesController {
         $config = $this->createMock(AggregateConfigLoader::class);
         $config->method('isDashboardEnabled')->willReturn($dashboardEnabled);
@@ -768,7 +796,7 @@ php /srv/site/bin/console app:updates:deployed --git-dir=/var/www/vhosts/example
         $systemCheck = $this->createStub(SystemCheck::class);
         $systemCheck->method('run')->willReturn($checks);
         $systemCheck->method('problems')->willReturn($problems);
-        $controller = new UpdatesController($config, $updates, new FeatureFlags($config), $updater, $background ?? $this->createStub(BackgroundUpdate::class), $systemCheck, new UpdateSettings($config), $deploymentAction);
+        $controller = new UpdatesController($config, $updates, new FeatureFlags($config), $updater, $background ?? $this->createStub(BackgroundUpdate::class), $systemCheck, new UpdateSettings($config), $deploymentAction, $cluster);
 
         $authorization = $this->createMock(AuthorizationCheckerInterface::class);
         $authorization->expects($dashboardEnabled ? self::once() : self::never())

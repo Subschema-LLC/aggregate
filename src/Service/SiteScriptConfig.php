@@ -102,6 +102,21 @@ final class SiteScriptConfig
     }
 
     /**
+     * The website's consent_manager settings with $changes applied, checked
+     * exactly as saveConsent() checks them, without saving anything.
+     */
+    public function previewConsent(string $id, array $changes): array
+    {
+        $site = $this->site($id);
+        $defaultEnabled = $this->defaultConsentEnabled();
+        self::validateConsent(self::withoutRemovals($changes), $site['name'], $defaultEnabled);
+        $config = $this->configuration($id);
+        $config->assertHealthy();
+
+        return self::mergeConsent($config->all(), $changes, $site['name'], $defaultEnabled);
+    }
+
+    /**
      * Save the two related settings atomically without replacing unrelated YAML.
      * Consent keys missing from $consent keep their saved values.
      */

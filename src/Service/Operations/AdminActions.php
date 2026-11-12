@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service\Operations;
 
 use App\Service\Operations\AuditTrailSettings as Area;
+use App\Service\Settings\SettingsSections;
 use Symfony\Component\Console\Input\InputInterface;
 
 /**
@@ -43,6 +44,7 @@ final class AdminActions
         'app_data_model_save' => [Area::SETTINGS, 'data_model_saved'],
         'app_bi_glossary_save' => [Area::SETTINGS, 'glossary_saved'],
         'app_bi_page_groups_save' => [Area::SETTINGS, 'page_groups_saved'],
+        'app_goals_save' => [Area::SETTINGS, 'goals_saved'],
         'app_reporting_timezone_save' => [Area::SETTINGS, 'reporting_timezone_saved'],
         'app_api_tokens_settings' => [Area::SETTINGS, 'reporting_api_settings_saved'],
         'app_audit_trail_settings' => [Area::SETTINGS, 'audit_settings_saved'],
@@ -102,6 +104,9 @@ final class AdminActions
         'app_updates_upload' => [Area::UPDATES, 'update_package_uploaded'],
         'app_updates_method' => [Area::UPDATES, 'update_method_changed'],
         'app_updates_settings' => [Area::UPDATES, 'update_settings_saved'],
+        'app_updates_cluster_settings' => [Area::SETTINGS, 'cluster_settings_saved'],
+        'app_updates_cluster_server_add' => [Area::SETTINGS, 'cluster_server_added'],
+        'app_updates_cluster_server_remove' => [Area::SETTINGS, 'cluster_server_removed'],
         // Manual runs.
         'app_bigquery_sync' => [Area::OPERATIONS, 'bigquery_sync_started'],
         'app_reporting_database_sync' => [Area::OPERATIONS, 'reporting_database_sync_started'],
@@ -164,6 +169,26 @@ final class AdminActions
         return ['area' => $entry[0], 'action' => $entry[1]];
     }
 
+    /**
+     * What app:config records: the same area and action as the section's
+     * dashboard page, with the section as the subject; nothing when it only
+     * shows settings.
+     *
+     * @param callable(string, string, ?string): array{area: string, action: string, at: 'end', subject: ?string} $end
+     *
+     * @return array{area: string, action: string, at: 'end', subject: ?string}|null
+     */
+    private static function forConfig(mixed $action, mixed $name, callable $end): ?array
+    {
+        if (!in_array($action, ['set', 'unset', 'import', 'secret'], true) || !is_string($name) || $name === '') {
+            return null;
+        }
+        $section = explode('.', $name, 2)[0];
+        $entry = SettingsSections::AUDIT_ACTIONS[$section] ?? null;
+
+        return $entry === null ? null : $end($entry[0], $entry[1], $name);
+    }
+
     /** Whether app:user:access was asked to change anything, rather than only show access. */
     private static function changesAccess(InputInterface $input): bool
     {
@@ -204,6 +229,8 @@ final class AdminActions
             'app:user:reset-password' => $end(Area::USERS, 'password_changed', $text($argument('username'))),
             'app:user:access' => self::changesAccess($input) ? $end(Area::USERS, 'user_updated', $text($argument('username'))) : null,
             'app:user:delete' => $end(Area::USERS, 'user_deleted', $text($argument('username'))),
+            'app:user:profile' => $option('display-name') !== null || $option('email') !== null || $option('rename') !== null
+                ? $end(Area::USERS, 'user_updated', $text($argument('username'))) : null,
             'app:permission-groups' => match ($argument('action')) {
                 'create' => $end(Area::USERS, 'permission_group_created', $text($option('name'))),
                 'update' => $end(Area::USERS, 'permission_group_updated', $text($option('id'))),
@@ -211,6 +238,12 @@ final class AdminActions
                 default => null,
             },
             'app:create-website' => $end(Area::WEBSITES, 'website_created'),
+            'app:website' => match ($argument('action')) {
+                'domains' => $end(Area::WEBSITES, 'domain_rules_saved'),
+                'delete' => $end(Area::WEBSITES, 'website_deleted'),
+                default => null,
+            },
+            'app:internal-traffic:share-link' => in_array($argument('action'), ['rotate', 'revoke'], true) ? $end(Area::SETTINGS, 'organization_traffic_saved') : null,
             'app:website-scopes' => match ($argument('action')) {
                 'label' => $end(Area::WEBSITES, 'group_label_saved'),
                 'create-group' => $end(Area::WEBSITES, 'group_created', $text($option('name'))),
@@ -247,6 +280,19 @@ final class AdminActions
             'app:alerts:test' => $end(Area::OPERATIONS, 'test_alert_sent', $text($argument('destination'))),
             'app:alerts:evaluate', 'app:alerts:run' => $end(Area::OPERATIONS, 'alerts_evaluated'),
             'app:updates:method' => $text($argument('method')) !== null ? $end(Area::UPDATES, 'update_method_changed') : null,
+            'app:config' => self::forConfig($argument('action'), $argument('name'), $end),
+            'app:collection-address' => $text($argument('url')) !== null || $option('clear') === true ? $end(Area::SETTINGS, 'general_settings_saved') : null,
+            'app:queue:retention' => $text($argument('days')) !== null ? $end(Area::SETTINGS, 'data_lifecycle_saved') : null,
+            'app:dashboard' => $text($argument('state')) !== null ? $end(Area::SETTINGS, 'dashboard_switched', $text($argument('state'))) : null,
+            'app:cluster:settings' => $option('max-age-minutes') !== null || $option('alert-destinations') !== null || $option('collection-port') !== null
+                ? $end(Area::SETTINGS, 'cluster_settings_saved') : null,
+            'app:cluster:server' => match ($argument('action')) {
+                'add' => $end(Area::SETTINGS, 'cluster_server_added', $text($argument('name'))),
+                'remove' => $end(Area::SETTINGS, 'cluster_server_removed', $text($argument('name'))),
+                default => null,
+            },
+            'app:cluster:key' => $option('show') === true && $option('rotate') !== true ? null : $end(Area::SETTINGS, $option('rotate') === true ? 'cluster_key_rotated' : 'cluster_key_created'),
+            'app:cluster:join' => $end(Area::SETTINGS, 'cluster_joined'),
             'app:updates:maintenance' => match ($argument('action')) {
                 'on' => $end(Area::UPDATES, 'maintenance_turned_on'),
                 'off' => $end(Area::UPDATES, 'maintenance_turned_off'),

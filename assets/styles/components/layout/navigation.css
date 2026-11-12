@@ -282,6 +282,20 @@
     margin-bottom: 0;
 }
 
+/* A section heading inside a group: names the links below it. */
+.app-navigation-heading {
+    color: var(--app-brand-navbar-contrast);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    padding: 0.625rem 0.75rem 0.25rem;
+    text-transform: uppercase;
+}
+
+.app-navigation-heading:first-child {
+    padding-top: 0.25rem;
+}
+
 .app-navigation .app-navigation-children .navbar-item:hover,
 .app-navigation .app-navigation-children .navbar-item:focus-visible {
     background-color: var(--app-nav-tint-strong);
