@@ -9,6 +9,7 @@ use App\Service\AggregateConfigLoader;
 use App\Service\AnalyticsPrivacySettings;
 use App\Service\AnonymousBiViewManager;
 use App\Service\CustomDataSettings;
+use App\Service\DataModelViews;
 use App\Service\Glossary\GlossarySync;
 use App\Service\ReportingViewManager;
 use App\Service\TrackerBuilds;
@@ -330,44 +331,9 @@ final class DataModelController extends AbstractController
      */
     private function applyToViews(string $saved = 'Data model saved. Collection changes apply to future events.'): void
     {
-        try {
-            $status = $this->views->status();
-            if ($status['current']) {
-                $this->addFlash('success', $saved.' The reporting views already match it.');
-
-                return;
-            }
-            if ($status['removed'] !== []) {
-                $this->addFlash('success', $saved);
-                $this->addFlash('warning', 'The reporting views were not updated: '.implode(', ', $status['removed']).(count($status['removed']) === 1 ? ' is' : ' are').' no longer in the model. Removing a deployed column drops the views and their grants, so do it on purpose with Force recreate views on the Reporting views page, or restore the column.');
-
-                return;
-            }
-            $this->views->regenerate();
-            if ($this->biViews !== null && $this->privacySettings !== null && $this->settings->websiteGroupColumn() !== null) {
-                $thresholds = $this->privacySettings->getMinimumCellCounts();
-                $this->biViews->regenerate($thresholds['anonymous'], $thresholds['geo']);
-            }
-        } catch (\InvalidArgumentException $e) {
-            $this->addFlash('success', $saved);
-            $this->addFlash('warning', 'The reporting views were not updated: '.$e->getMessage());
-
-            return;
-        } catch (\Throwable $e) {
-            $this->logFailure('regenerate', $e);
-            $this->addFlash('success', $saved);
-            $this->addFlash('warning', 'The reporting views could not be updated. Check database privileges, migrations and JSON support, then use Regenerate on the Reporting views page.');
-
-            return;
-        }
-        $this->addFlash('success', $saved.' '.($status['missing'] === ReportingViewManager::VIEW_NAMES
-            ? 'The reporting views were created.'
-            : 'The reporting views were updated'.($status['added'] === [] ? '.' : ': added '.implode(', ', $status['added']).'.')));
-        try {
-            $this->glossary->sync();
-        } catch (\Throwable $error) {
-            $this->logFailure('glossary_sync', $error);
-            $this->addFlash('warning', 'The reporting views were updated, but the BI glossary was not synced. Run php bin/console app:analytics:glossary:sync after correcting its configuration or database issue.');
+        $views = new DataModelViews($this->settings, $this->views, $this->glossary, $this->logger, $this->biViews, $this->privacySettings);
+        foreach ($views->apply($saved) as [$type, $message]) {
+            $this->addFlash($type, $message);
         }
     }
 

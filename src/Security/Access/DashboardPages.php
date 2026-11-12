@@ -187,6 +187,10 @@ final class DashboardPages
         'app_updates_upload' => ['updates', self::EDIT],
         'app_updates_method' => ['updates', self::EDIT],
         'app_updates_settings' => ['updates', self::EDIT],
+        'app_updates_cluster_settings' => ['updates', self::EDIT],
+        'app_updates_cluster_server_add' => ['updates', self::EDIT],
+        'app_updates_cluster_server_remove' => ['updates', self::EDIT],
+        'app_updates_cluster_balancer' => ['updates', self::VIEW],
         'app_feature_flags' => ['feature_flags', self::VIEW],
         'app_feature_flags_save' => ['feature_flags', self::EDIT],
         // Data transfer can import accounts and copies every website's events.

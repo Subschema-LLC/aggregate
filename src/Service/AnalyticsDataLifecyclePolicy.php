@@ -50,7 +50,7 @@ final class AnalyticsDataLifecyclePolicy
     public const MAX_BATCH_SIZE = 10_000;
 
     /** @var array<string, bool|int> */
-    private const DEFAULTS = [
+    public const DEFAULTS = [
         self::KEY_ARCHIVING_ENABLED => self::DEFAULT_ARCHIVING_ENABLED,
         self::KEY_ARCHIVE_AFTER_DAYS => self::DEFAULT_ARCHIVE_AFTER_DAYS,
         self::KEY_RETENTION_ENABLED => self::DEFAULT_RETENTION_ENABLED,

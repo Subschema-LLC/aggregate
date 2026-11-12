@@ -52,8 +52,12 @@ package publication follow the [release guide](docs/RELEASES.md#publish-a-releas
 - Preserve easy installation and portability across PostgreSQL, MySQL, MariaDB,
   SQL Server, and SQLite. Consider the supported versions and SQL differences in
   the [database guide](docs/DATABASE.md).
-- Keep features usable without the dashboard. New UI settings should have a YAML
-  and/or CLI equivalent, and changes should work with the dashboard disabled.
+- Keep features usable without the dashboard. Every setting a page changes is
+  in YAML and has a command (an `app:config` section or its own command) that
+  calls the same service with the same checks, and every YAML setting has a
+  page, apart from the exceptions in
+  [settings from the command line](docs/CONFIGURATION.md#settings-from-the-command-line).
+  `SettingsParityTest` lists each page action's command.
 - Design for security, useful test coverage, scalability, maintainability,
   extensibility, and ease of use. Avoid dependencies and abstraction layers that
   add more maintenance than value.

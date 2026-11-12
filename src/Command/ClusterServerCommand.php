@@ -6,6 +6,7 @@ namespace App\Command;
 
 use App\Service\AggregateConfigLoader;
 use App\Service\Cluster\ClusterOverview;
+use App\Service\Cluster\ClusterServerList;
 use App\Service\Cluster\ClusterSettings;
 use App\Service\Cluster\ServerRole;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -57,21 +58,7 @@ final class ClusterServerCommand extends Command
         try {
             if ($action === 'add') {
                 $role = $input->getOption('role');
-                if ($role === null) {
-                    throw new \InvalidArgumentException('Give the server\'s role: --role=collection or --role=worker.');
-                }
-                $server = ClusterSettings::server($name, $input->getArgument('address'), $role);
-                $port = $input->getOption('port');
-                if ($port !== null) {
-                    $server['port'] = ClusterSettings::validCollectionPort($port);
-                }
-                $this->config->updateMany(static function (array $current) use ($server): array {
-                    $list = array_values(array_filter(is_array($current[ClusterSettings::SERVERS_KEY] ?? null) ? $current[ClusterSettings::SERVERS_KEY] : [],
-                        static fn ($entry): bool => !is_array($entry) || ($entry['name'] ?? null) !== $server['name']));
-                    $list[] = $server;
-
-                    return [ClusterSettings::SERVERS_KEY => $list];
-                });
+                $server = (new ClusterServerList($this->config))->add($name, $input->getArgument('address'), $role, $input->getOption('port'));
                 $io->success(sprintf('%s (%s) may now pull configuration from %s.', $server['name'], $role, $server['address']));
                 if ($role === ServerRole::COLLECTION) {
                     $io->note('Run app:server:balancer-config again and install its output on the balancer, so it sends traffic to '.$server['name'].' too.');
@@ -80,13 +67,7 @@ final class ClusterServerCommand extends Command
                 return Command::SUCCESS;
             }
             if ($action === 'remove') {
-                if (!is_string($name)) {
-                    throw new \InvalidArgumentException('Name the server to remove.');
-                }
-                $this->config->updateMany(static fn (array $current): array => [ClusterSettings::SERVERS_KEY => array_values(array_filter(
-                    is_array($current[ClusterSettings::SERVERS_KEY] ?? null) ? $current[ClusterSettings::SERVERS_KEY] : [],
-                    static fn ($entry): bool => !is_array($entry) || ($entry['name'] ?? null) !== $name,
-                ))]);
+                (new ClusterServerList($this->config))->remove($name);
                 $io->success($name.' may no longer pull configuration. If it was a collection server, run app:server:balancer-config again and install its output on the balancer.');
 
                 return Command::SUCCESS;

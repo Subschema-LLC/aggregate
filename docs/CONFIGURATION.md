@@ -5,6 +5,7 @@
 Use this guide for application settings and runtime overrides. Run commands from the repository root. The complete default configuration is in [config/aggregate.yaml.example](../config/aggregate.yaml.example); copy it to the untracked `config/aggregate.yaml` before editing deployment values.
 
 - [Environment files](#environment-files)
+- [Settings from the command line](#settings-from-the-command-line)
 - [Application settings](#application-settings)
 - [Website groups](#website-groups)
 - [Website domains](#website-domains)
@@ -51,6 +52,97 @@ A few settings are built into Symfony's compiled container or into SQL, and need
 - The BI disclosure thresholds: run `php bin/console app:analytics:bi-views:regenerate` (see [BI disclosure thresholds](#bi-disclosure-thresholds)).
 
 The web installer at `/install` is optional and only needed when you want dashboard-based setup.
+
+## Settings from the command line
+
+Every setting a dashboard page changes is a YAML setting, and a command
+changes it with the page's own checks. Most go through one command,
+`app:config`, which saves them the way the page saves them; the rest
+(websites, users, tokens, alerts, the cluster's servers) have a command of
+their own, listed with each page below. Environment variables still take
+precedence, as they do over the pages.
+
+```bash
+php bin/console app:config                                  # every section and its page
+php bin/console app:config get branding                     # the values in effect
+php bin/console app:config set branding.brand_name "Acme Analytics"
+php bin/console app:config set collection.anonymous_excluded_paths "[/admin, /checkout]"
+php bin/console app:config set collection.bot_traffic drop --scope=group:shop
+php bin/console app:config unset collection.bot_traffic --scope=group:shop
+php bin/console app:config set consent-manager.enabled true --site=<script id>
+php bin/console app:config export data-lifecycle > lifecycle.yaml
+php bin/console app:config import data-lifecycle --file=lifecycle.yaml --check
+php bin/console app:config secret email.postmark_server_token --stdin < token.txt
+```
+
+- A value is read as YAML: `true`, `250`, `[a, b]`, `{enabled: true}`. Text
+  YAML cannot read, such as a color like `#336699`, is taken as it is; quote
+  text YAML would read differently (`"yes"`).
+- `--check` runs the page's checks and saves nothing. `--confirm` gives the
+  confirmation a page asks for, such as copying private views to a sync
+  destination or confirming that the forensic database is restricted.
+- `--scope=website:<script id>` or `--scope=group:<id>` saves collection
+  controls or the data model for one website or group, as the page's scope
+  menu does; `unset` gives the scope the broader setting back. `--site=<script
+  id>` names the website for the tag manager, the consent manager and the
+  standalone banner (`app:tag-manager:sites` lists the ids).
+- Secrets, such as an email service's API key or BigQuery's service account
+  key, come from standard input or `--file`, never from the command line, and
+  are never printed. `get` says only whether each is set.
+- Saving records the same audit trail entry as the page, with the
+  operating-system user who ran the command. Collection and worker servers
+  can show settings but not change them; their configuration comes from the
+  administration server.
+
+| Section | Dashboard page |
+| --- | --- |
+| `general`, `page-speed`, `reporting-timezone` | General settings |
+| `branding` | Branding (`brand_logo` takes the path of a PNG, JPEG or WebP file, or empty to remove the logo) |
+| `collection` | Collection controls |
+| `organization-traffic` | Organization traffic (the share link: `app:internal-traffic:share-link`) |
+| `data-model` | Data model |
+| `tag-manager`, `consent-manager` | Tag manager lite, Consent manager lite |
+| `standalone-consent` | Setup's standalone consent banner |
+| `bi-disclosure`, `page-groups`, `bi-glossary` | BI disclosure, Page groups, BI glossary |
+| `reporting-api` | API tokens' settings (tokens: `app:api:token:*`) |
+| `bigquery`, `reporting-database`, `forensic-database` | Sync (connections: `app:reporting-database:configure`, `app:forensic-database:configure`) |
+| `email` | Email |
+| `data-lifecycle` | Data lifecycle |
+| `audit-trail` | Audit trail's switches |
+| `feature-flags` | Feature flags |
+| `updates` | Updates' branch (the method: `app:updates:method`) |
+| `cluster` | Updates' Servers panel (the servers: `app:cluster:server`) |
+
+The page actions with a command of their own: websites (`app:create-website`,
+`app:website domains` and `delete`), website groups (`app:website-scopes`),
+users and profiles (`app:user:create`, `app:user:profile`, `app:user:access`,
+`app:user:reset-password`, `app:user:delete`, `app:permission-groups`), API
+tokens and assistant connections (`app:api:token:*`, `app:mcp:connection:*`),
+alerts (`app:alerts:rule`, `app:alerts:destination`, `app:alerts:test`),
+updates (`app:updates:*`), the cluster's servers and balancer
+(`app:cluster:server`, `app:server:balancer-config`), and the buttons that
+run something (`app:scheduler:run`, the sync commands, the view and glossary
+commands, `app:data:*`, `app:email:test`, `app:tracking:retry-failed`).
+
+What only a browser can do, and why:
+
+- **Signing in with Google for BigQuery** is Google's consent screen in a
+  browser. A service account key does the same job from the command line
+  (`app:config secret bigquery.service_account_key --file=key.json`), and
+  `app:config secret bigquery.google_sign_in --remove` signs out.
+- **Approving an AI assistant's sign-in** happens in the browser the
+  assistant signs in from. `app:api:token:create` makes an assistant token
+  instead.
+
+What stays out of the dashboard, and why:
+
+- A server's own role, name and administration address, the cluster key,
+  and the database, proxy, secret and queue variables `app:cluster:join`
+  writes to `.env.local`: they belong to one server, or are secrets, while
+  the dashboard runs only on the administration server. `app:cluster:key`
+  shows the key on that server.
+- `updates_signing_public_key`, the key update packages are checked against:
+  a dashboard session that could change it could install any code.
 
 ## Local overrides for shipped defaults
 
@@ -243,7 +335,10 @@ php bin/console app:create-website --allowed-domain=example.com --allowed-domain
 php bin/console app:create-website --allow-all-domains
 ```
 
-Use YAML or the Websites page to edit existing rules. Saving rules preserves the
+Use the Websites page, YAML or `app:website domains <token>` (with
+`--allowed-domain` or `--allow-all-domains`) to edit existing rules;
+`app:website list` shows the tokens and `app:website delete <token>` removes a
+website. Saving rules preserves the
 website token, primary domain, other registrations, and unrelated YAML values.
 Changes apply to subsequent requests without clearing the application cache.
 Each token must uniquely identify one registration; duplicate tokens are rejected.
@@ -489,8 +584,11 @@ each server's last pull, release and role.
 ### Cluster settings
 
 Every cluster setting works without the dashboard: it is a YAML setting or an
-environment variable, and a command sets it with the same validation. The
-dashboard's **General settings** also has the collection address.
+environment variable, and a command sets it with the same validation. On the
+administration server, the **Updates** page's **Servers** panel adds and
+removes servers, changes the pause limit, alert destinations and collection
+port, and downloads the balancer's configuration; **General settings** has the
+collection address.
 
 | Setting | Where | Command |
 | --- | --- | --- |
@@ -500,9 +598,9 @@ dashboard's **General settings** also has the collection address.
 | `CLUSTER_KEY` | `.env.local` only | `app:cluster:key` |
 | `cluster` (name, address, role, optional port) | YAML | `app:cluster:server add` and `remove` |
 | `collection_base_url` | YAML, `COLLECTION_BASE_URL` | `app:collection-address` |
-| `cluster_config_max_age_minutes` (1 to 60, default 5) | YAML | `app:cluster:settings --max-age-minutes` |
-| `cluster_alert_destinations` (default every destination) | YAML | `app:cluster:settings --alert-destinations` (ids, `all` or `none`) |
-| `cluster_collection_port` (default 80) | YAML | `app:cluster:settings --collection-port` |
+| `cluster_config_max_age_minutes` (1 to 60, default 5) | YAML | `app:cluster:settings --max-age-minutes`, `app:config set cluster.cluster_config_max_age_minutes` |
+| `cluster_alert_destinations` (default every destination) | YAML | `app:cluster:settings --alert-destinations` (ids, `all` or `none`), `app:config set cluster.cluster_alert_destinations` |
+| `cluster_collection_port` (default 80) | YAML | `app:cluster:settings --collection-port`, `app:config set cluster.cluster_collection_port` |
 
 `php bin/console app:cluster:settings` without options shows them, and
 `--json` prints them as JSON.

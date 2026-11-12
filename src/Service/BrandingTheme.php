@@ -16,7 +16,7 @@ final class BrandingTheme
     public const DEFAULT_HEADING_FONT_FAMILY = self::DEFAULT_FONT_FAMILY;
 
     /** @var list<string> */
-    private const CONFIG_KEYS = [
+    public const CONFIG_KEYS = [
         'brand_primary_color',
         'brand_accent_color',
         'brand_navbar_color',

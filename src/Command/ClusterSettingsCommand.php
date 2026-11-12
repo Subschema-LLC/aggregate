@@ -73,7 +73,7 @@ final class ClusterSettingsCommand extends Command
             }
             $destinations = $input->getOption('alert-destinations');
             if ($destinations !== null) {
-                $changes[ClusterSettings::ALERT_DESTINATIONS_KEY] = $this->destinations((string) $destinations);
+                $changes[ClusterSettings::ALERT_DESTINATIONS_KEY] = ClusterSettings::validAlertDestinations((string) $destinations, array_keys($this->alerts->destinations()));
             }
             if ($changes !== []) {
                 $this->config->updateMany(static fn (): array => $changes);
@@ -113,31 +113,6 @@ final class ClusterSettingsCommand extends Command
         );
 
         return Command::SUCCESS;
-    }
-
-    /** @return list<string>|null null for every destination */
-    private function destinations(string $value): ?array
-    {
-        $value = trim($value);
-        if ($value === 'all') {
-            return null;
-        }
-        if ($value === 'none') {
-            return [];
-        }
-        $ids = array_values(array_unique(array_filter(array_map('trim', explode(',', $value)), static fn (string $id): bool => $id !== '')));
-        if ($ids === []) {
-            throw new \InvalidArgumentException('Name the alert destinations, separated by commas, or use "all" or "none".');
-        }
-        $unknown = array_diff($ids, array_keys($this->alerts->destinations()));
-        if ($unknown !== []) {
-            throw new \InvalidArgumentException(sprintf(
-                'No alert destination is called %s. Destinations are listed by app:alerts:destination list.',
-                implode(', ', $unknown),
-            ));
-        }
-
-        return $ids;
     }
 
     private function guide(): string
