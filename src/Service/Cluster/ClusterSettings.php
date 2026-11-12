@@ -18,8 +18,9 @@ use Symfony\Component\HttpFoundation\IpUtils;
  *       - { name: worker-1, address: 10.0.0.21, role: worker }
  *
  * A server's role here is what the balancer configuration is built from
- * (app:server:balancer-config takes the collection servers); the server's
- * own SERVER_ROLE decides what it runs.
+ * (app:server:balancer-config takes the collection servers, each at its
+ * `port` or cluster_collection_port); the server's own SERVER_ROLE decides
+ * what it runs.
  *     cluster_config_max_age_minutes: 5
  *     cluster_collection_port: 80
  */
@@ -50,7 +51,7 @@ final class ClusterSettings
      * is missing or not valid is null, which leaves the server out of the
      * balancer configuration but lets it pull.
      *
-     * @return array<string, array{name: string, address: string, role: ?string}>
+     * @return array<string, array{name: string, address: string, role: ?string, port: ?int}>
      */
     public function servers(): array
     {
@@ -70,6 +71,11 @@ final class ClusterSettings
             }
             $role = $entry['role'] ?? null;
             $server['role'] = is_string($role) && in_array(strtolower(trim($role)), self::SERVER_ROLES, true) ? strtolower(trim($role)) : null;
+            try {
+                $server['port'] = isset($entry['port']) ? self::validCollectionPort($entry['port']) : null;
+            } catch (\InvalidArgumentException) {
+                $server['port'] = null;
+            }
             $servers[$server['name']] = $server;
         }
 
@@ -79,7 +85,7 @@ final class ClusterSettings
     /**
      * The servers with that role in the list, by name.
      *
-     * @return array<string, array{name: string, address: string, role: ?string}>
+     * @return array<string, array{name: string, address: string, role: ?string, port: ?int}>
      */
     public function serversWithRole(string $role): array
     {

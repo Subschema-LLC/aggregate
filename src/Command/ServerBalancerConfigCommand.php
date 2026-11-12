@@ -125,7 +125,7 @@ final class ServerBalancerConfigCommand extends Command
         return new BalancerConfig(
             $normalized,
             array_values(array_map(
-                static fn (array $server): array => ['name' => $server['name'], 'address' => $server['address']],
+                static fn (array $server): array => ['name' => $server['name'], 'address' => $server['address'], 'port' => $server['port']],
                 $settings->serversWithRole(ServerRole::COLLECTION),
             )),
             is_numeric($rate) ? (int) $rate : 100,

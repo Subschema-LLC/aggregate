@@ -36,6 +36,7 @@ final class ClusterServerCommand extends Command
             ->addArgument('name', InputArgument::OPTIONAL, 'The server\'s name, as it joined (CLUSTER_SERVER_NAME)')
             ->addArgument('address', InputArgument::OPTIONAL, 'The address it connects from: an IP address or network. For a collection server, the one address the balancer reaches it at')
             ->addOption('role', null, InputOption::VALUE_REQUIRED, 'With add: collection or worker, as the server joined')
+            ->addOption('port', null, InputOption::VALUE_REQUIRED, 'With add, for a collection server: the port the balancer reaches it at, when not cluster_collection_port')
             ->addOption('json', null, InputOption::VALUE_NONE, 'Print the list as JSON')
             ->setHelp(<<<'HELP'
                 Examples:
@@ -60,6 +61,10 @@ final class ClusterServerCommand extends Command
                     throw new \InvalidArgumentException('Give the server\'s role: --role=collection or --role=worker.');
                 }
                 $server = ClusterSettings::server($name, $input->getArgument('address'), $role);
+                $port = $input->getOption('port');
+                if ($port !== null) {
+                    $server['port'] = ClusterSettings::validCollectionPort($port);
+                }
                 $this->config->updateMany(static function (array $current) use ($server): array {
                     $list = array_values(array_filter(is_array($current[ClusterSettings::SERVERS_KEY] ?? null) ? $current[ClusterSettings::SERVERS_KEY] : [],
                         static fn ($entry): bool => !is_array($entry) || ($entry['name'] ?? null) !== $server['name']));

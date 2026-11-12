@@ -14,6 +14,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
+use Symfony\Component\Filesystem\Filesystem;
 
 /**
  * Makes this installation a server of a cluster: its role, name, the
@@ -42,6 +43,8 @@ final class ClusterJoinCommand extends Command
         private readonly string $projectDir,
         #[Autowire('%kernel.environment%')]
         private readonly string $environment,
+        #[Autowire('%kernel.cache_dir%')]
+        private readonly ?string $cacheDir = null,
     ) {
         parent::__construct();
     }
@@ -80,13 +83,40 @@ final class ClusterJoinCommand extends Command
             $file->set($name, $value, 'Cluster (app:cluster:join)');
         }
 
+        if ($this->cacheDir !== null) {
+            self::discardCacheAtExit($this->cacheDir);
+        }
+
         $output->writeln(sprintf('This server joins the cluster as %s "%s". Saved %s in .env.local.', $variables['SERVER_ROLE'], $variables[ClusterSettings::SERVER_NAME_VARIABLE], implode(', ', array_keys($variables))));
+        $output->writeln('The cache, built for the previous role, is removed as this command ends, so the next command or request builds it for this one.');
         $output->writeln('Next:');
-        $output->writeln('  1. php bin/console cache:clear, then reload PHP-FPM, so the role takes effect.');
-        $output->writeln('  2. On the administration server: php bin/console app:cluster:server add '.$variables[ClusterSettings::SERVER_NAME_VARIABLE].' <this server\'s address>.');
-        $output->writeln('  3. Run php bin/console app:cluster:sync every minute, as the web server\'s user, and once now.');
+        $output->writeln('  1. Reload PHP-FPM.');
+        if ($variables['SERVER_ROLE'] !== ServerRole::ADMINISTRATION) {
+            $output->writeln(sprintf('  2. On the administration server: php bin/console app:cluster:server add %s <this server\'s address> --role=%s', $variables[ClusterSettings::SERVER_NAME_VARIABLE], $variables['SERVER_ROLE']));
+        }
+        $output->writeln('  '.($variables['SERVER_ROLE'] !== ServerRole::ADMINISTRATION ? '3' : '2').'. Run php bin/console app:cluster:sync every minute, as the web server\'s user, and once now.');
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * Removes the cache directory once this process has finished with it.
+     * The role is compiled into the container, and cache:clear run in the
+     * same second as the build that it would replace keeps the old one
+     * ("Cache is fresh"), so a scripted join followed by cache:clear could
+     * leave the previous role in force.
+     */
+    public static function discardCacheAtExit(string $cacheDir): void
+    {
+        register_shutdown_function(static function () use ($cacheDir): void {
+            if (!is_dir($cacheDir)) {
+                return;
+            }
+            $stale = $cacheDir.'~'.bin2hex(random_bytes(4));
+            if (@rename($cacheDir, $stale)) {
+                (new Filesystem())->remove($stale);
+            }
+        });
     }
 
     /**

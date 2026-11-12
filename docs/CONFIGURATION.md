@@ -416,8 +416,11 @@ On every role but `all` and `administration`:
 
 A role other than `all` needs a database other servers can reach: on SQLite,
 which keeps the database in a file on one server, every role runs as `all`.
-The role is read when the cache is built, so run `php bin/console cache:clear`
-and reload PHP-FPM after changing it.
+The role is compiled into the cache. `app:cluster:join` removes the cache
+built for the previous role as it finishes; after changing the role another
+way, remove it yourself (`rm -rf var/cache/prod`) and reload PHP-FPM. Do not
+rely on `cache:clear` for this: run within the same second as the build it
+replaces, it keeps that build.
 
 `php bin/console app:server:role` shows the role, the release, the queue, the
 database's connections and what the role still needs, each with its fix, and
@@ -450,14 +453,16 @@ database:
    collection server the administration server's `APP_SECRET`: organization
    traffic codes are made on one collection server and checked on whichever the
    balancer picks next. Secrets never go on the command line.
-2. `php bin/console cache:clear`, then reload PHP-FPM.
+2. Reload PHP-FPM. The join has already removed the cache built for the
+   previous role.
 
 On every server, run `php bin/console app:cluster:sync` every minute as the web
 server's user (cron or a systemd timer). On the administration server it records
 the configuration's version in `processing_tasks` when it changes and alerts
 when a server stops pulling; elsewhere it pulls `/api/cluster/config` and
 writes each changed file beside its target before renaming it into place,
-keeping the server's own `server_role`.
+keeping the server's own `server_role`, `cluster_server_name` and
+`administration_url`.
 
 What is shared: `config/aggregate*.yaml`, `websites.yaml`, the website group
 files, `goals.local.yaml`, the tag manager's per-site files and
@@ -490,7 +495,7 @@ dashboard's **General settings** also has the collection address.
 | `administration_url` | YAML, `ADMINISTRATION_URL` | `app:cluster:join` |
 | `cluster_server_name` | YAML, `CLUSTER_SERVER_NAME` | `app:cluster:join` |
 | `CLUSTER_KEY` | `.env.local` only | `app:cluster:key` |
-| `cluster` (name, address, role) | YAML | `app:cluster:server add` and `remove` |
+| `cluster` (name, address, role, optional port) | YAML | `app:cluster:server add` and `remove` |
 | `collection_base_url` | YAML, `COLLECTION_BASE_URL` | `app:collection-address` |
 | `cluster_config_max_age_minutes` (1 to 60, default 5) | YAML | `app:cluster:settings --max-age-minutes` |
 | `cluster_alert_destinations` (default every destination) | YAML | `app:cluster:settings --alert-destinations` (ids, `all` or `none`) |
@@ -510,7 +515,8 @@ php bin/console app:server:balancer-config --caddy > Caddyfile
 ```
 
 prints its configuration from the collection address, the collection servers
-in the `cluster` list, `cluster_collection_port` and `rate_limit_per_minute`.
+in the `cluster` list (each at its own `port`, or `cluster_collection_port`)
+and `rate_limit_per_minute`.
 Run it again after changing any of them, and install the output on the
 balancer. Messages go to standard error, so the output is only the
 configuration.

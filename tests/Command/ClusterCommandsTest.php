@@ -19,6 +19,7 @@ use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Filesystem\Filesystem;
+use Symfony\Component\Process\Process;
 use Symfony\Component\Yaml\Yaml;
 
 /**
@@ -52,7 +53,8 @@ final class ClusterCommandsTest extends TestCase
     {
         self::assertSame(0, $this->execute(new CollectionAddressCommand($this->config()), ['url' => 'https://collect.example.com/']));
         self::assertSame(0, $this->execute($this->serverCommand(), ['action' => 'add', 'name' => 'collect-1', 'address' => '10.0.0.11', '--role' => 'collection']));
-        self::assertSame(0, $this->execute($this->serverCommand(), ['action' => 'add', 'name' => 'collect-2', 'address' => '10.0.0.12', '--role' => 'collection']));
+        self::assertSame(1, $this->execute($this->serverCommand(), ['action' => 'add', 'name' => 'collect-2', 'address' => '10.0.0.12', '--role' => 'collection', '--port' => '70000']));
+        self::assertSame(0, $this->execute($this->serverCommand(), ['action' => 'add', 'name' => 'collect-2', 'address' => '10.0.0.12', '--role' => 'collection', '--port' => '8443']));
         self::assertSame(0, $this->execute($this->serverCommand(), ['action' => 'add', 'name' => 'worker-1', 'address' => '10.0.0.21', '--role' => 'worker']));
         self::assertSame(0, $this->execute(new ClusterSettingsCommand($this->config(), $this->alerts()), ['--collection-port' => '8080']));
 
@@ -62,7 +64,7 @@ final class ClusterCommandsTest extends TestCase
             'collection_base_url' => 'https://collect.example.com',
             'cluster' => [
                 ['name' => 'collect-1', 'address' => '10.0.0.11', 'role' => 'collection'],
-                ['name' => 'collect-2', 'address' => '10.0.0.12', 'role' => 'collection'],
+                ['name' => 'collect-2', 'address' => '10.0.0.12', 'role' => 'collection', 'port' => 8443],
                 ['name' => 'worker-1', 'address' => '10.0.0.21', 'role' => 'worker'],
             ],
             'cluster_collection_port' => 8080,
@@ -73,13 +75,13 @@ final class ClusterCommandsTest extends TestCase
         $nginx = $tester->getDisplay();
         self::assertStringStartsWith('# Aggregate balancer for collect.example.com, from', $nginx, 'Only the configuration goes to standard output.');
         self::assertStringContainsString('server 10.0.0.11:8080 max_fails=1 fail_timeout=10s; # collect-1', $nginx);
-        self::assertStringContainsString('server 10.0.0.12:8080 ', $nginx);
+        self::assertStringContainsString('server 10.0.0.12:8443 ', $nginx, 'Its own port wins over cluster_collection_port.');
         self::assertStringNotContainsString('10.0.0.21', $nginx, 'Worker servers take no web traffic.');
         self::assertStringContainsString('rate=200r/m', $nginx);
         self::assertStringContainsString('Built for collect.example.com with 2 collection server(s): collect-1, collect-2.', $tester->getErrorOutput());
 
         self::assertSame(0, $tester->execute(['--caddy' => true], ['capture_stderr_separately' => true]));
-        self::assertStringContainsString('reverse_proxy 10.0.0.11:8080 10.0.0.12:8080 {', $tester->getDisplay());
+        self::assertStringContainsString('reverse_proxy 10.0.0.11:8080 10.0.0.12:8443 {', $tester->getDisplay());
     }
 
     public function testTheBalancerNeedsACollectionAddressOfItsOwn(): void
@@ -206,6 +208,20 @@ final class ClusterCommandsTest extends TestCase
         self::assertSame(1, $this->execute(new CollectionAddressCommand($this->config()), ['url' => 'https://collect.example.com']));
         self::assertSame(1, $this->execute(new ClusterSettingsCommand($this->config(), $this->alerts()), ['--max-age-minutes' => '10']));
         self::assertSame(['app_host' => 'https://admin.example.com', 'rate_limit_per_minute' => 200], Yaml::parseFile($this->directory.'/config/aggregate.yaml'));
+    }
+
+    public function testJoinRemovesTheCacheBuiltForThePreviousRoleWhenItEnds(): void
+    {
+        $cache = $this->directory.'/var/cache/prod';
+        mkdir($cache.'/ContainerAbc', 0775, true);
+        file_put_contents($cache.'/ContainerAbc/App_KernelProdContainer.php', '<?php // built for the role all');
+        $process = new Process([\PHP_BINARY, '-r', 'require $argv[1]; App\Command\ClusterJoinCommand::discardCacheAtExit($argv[2]); echo is_dir($argv[2]) ? "kept" : "gone";',
+            dirname(__DIR__, 2).'/vendor/autoload.php', $cache]);
+        $process->mustRun();
+
+        self::assertSame('kept', $process->getOutput(), 'The process still uses its cache until it ends.');
+        self::assertDirectoryDoesNotExist($cache);
+        self::assertSame([], glob($cache.'~*') ?: [], 'Nothing is left beside it.');
     }
 
     private function execute(Command $command, array $input): int

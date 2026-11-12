@@ -7,9 +7,9 @@ namespace App\Command;
 use App\Service\Cluster\ClusterSync;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
-use Symfony\Component\Console\Command\LockableTrait;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 #[AsCommand(
     name: 'app:cluster:sync',
@@ -17,10 +17,14 @@ use Symfony\Component\Console\Output\OutputInterface;
 )]
 final class ClusterSyncCommand extends Command
 {
-    use LockableTrait;
+    /** Held while a run lasts, so a slow pull and the next minute's run never overlap. */
+    public const LOCK_FILE = 'var/cluster/sync.lock';
 
-    public function __construct(private readonly ClusterSync $sync)
-    {
+    public function __construct(
+        private readonly ClusterSync $sync,
+        #[Autowire('%kernel.project_dir%')]
+        private readonly string $projectDir,
+    ) {
         parent::__construct();
     }
 
@@ -37,7 +41,21 @@ final class ClusterSyncCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        if (!$this->lock()) {
+        // A plain file lock: symfony/lock is not a dependency.
+        $path = $this->projectDir.'/'.self::LOCK_FILE;
+        if (!is_dir(dirname($path)) && !@mkdir(dirname($path), 0775, true) && !is_dir(dirname($path))) {
+            $output->writeln('<error>'.dirname($path).' could not be created.</error>');
+
+            return Command::FAILURE;
+        }
+        $lock = @fopen($path, 'c');
+        if ($lock === false) {
+            $output->writeln('<error>'.$path.' could not be opened.</error>');
+
+            return Command::FAILURE;
+        }
+        if (!flock($lock, LOCK_EX | LOCK_NB)) {
+            fclose($lock);
             $output->writeln('The previous app:cluster:sync is still running.');
 
             return Command::SUCCESS;
@@ -45,7 +63,8 @@ final class ClusterSyncCommand extends Command
         try {
             $result = $this->sync->run();
         } finally {
-            $this->release();
+            flock($lock, LOCK_UN);
+            fclose($lock);
         }
         foreach ($result['messages'] as $message) {
             $output->writeln($message, $result['ok'] ? OutputInterface::VERBOSITY_NORMAL : OutputInterface::VERBOSITY_QUIET);

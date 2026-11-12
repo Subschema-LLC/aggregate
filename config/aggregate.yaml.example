@@ -378,9 +378,10 @@ environments:
 #   (/api/receive and the browser scripts) or worker (queue consumers). The
 #   balancer runs no Aggregate and has no role: app:server:balancer-config
 #   prints its configuration. Commands, pages and configuration changes
-#   outside the role refuse to run. SQLite runs every role as all. Run
-#   cache:clear after changing it. The SERVER_ROLE environment variable takes
-#   precedence, and app:cluster:join sets it. "php bin/console
+#   outside the role refuse to run. SQLite runs every role as all. The role
+#   is compiled into the cache: app:cluster:join removes the old cache; after
+#   changing it another way, run rm -rf var/cache/prod. The SERVER_ROLE
+#   environment variable takes precedence, and app:cluster:join sets it. "php bin/console
 #   app:server:role" shows what the server does and what its role still needs.
 #
 # administration_url (optional, default: "")
@@ -392,12 +393,14 @@ environments:
 #   The servers that may pull configuration from this administration server,
 #   by the name they joined with, the address they connect from (an IP
 #   address or network; for a collection server, the one address the
-#   balancer reaches it at) and their role, collection or worker. The
+#   balancer reaches it at), their role, collection or worker, and, for a
+#   collection server not on cluster_collection_port, its port. The
 #   balancer's configuration is built from the collection servers.
 #   app:cluster:server adds and removes them.
 #   Example:
 #     cluster:
 #       - { name: collect-1, address: 10.0.0.11, role: collection }
+#       - { name: collect-2, address: 10.0.0.12, role: collection, port: 8080 }
 #       - { name: worker-1, address: 10.0.0.21, role: worker }
 #
 # cluster_config_max_age_minutes (optional, default: 5, 1 to 60)

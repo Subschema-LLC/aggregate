@@ -215,6 +215,14 @@ The anchor's criteria, changed as the team asked:
 
 Index changes on `events` or `messenger_messages` come only after slice 0 or 8 shows they are needed.
 
+What slice 7's end-to-end run found and fixed, none of which the unit tests caught:
+
+- **`app:cluster:sync` failed on every server.** It used Symfony's `LockableTrait`, which needs `symfony/lock`, and that is not a dependency. It now holds a plain file lock in `var/cluster/sync.lock`.
+- **`cache:clear` did not reliably apply a role change.** The role is compiled into the container. Symfony's `cache:clear` treats a container built in the same second as itself as fresh and keeps it, so a scripted `app:cluster:join` followed by `cache:clear` (PRAGMA's flow) left a collection server compiled as `all` about two runs in three. `app:cluster:join` now removes the cache directory as it exits, and `app:server:role` tells operators to `rm -rf var/cache/prod`. `dashboard_enabled` is compiled the same way and its docs still say `cache:clear`. That is a pre-existing case, not changed here.
+- **Per-server ports.** The collection servers in the test share one address and differ by port, so each `cluster` entry may now carry a `port` (default `cluster_collection_port`).
+- **A server's `administration_url` in YAML was lost on its first pull** (found by the settings audit Scott asked for, not by the CI run). The pull kept only `server_role` and `cluster_server_name`, so a server given its administration address in YAML instead of `ADMINISTRATION_URL` lost it with the first configuration and could not pull again; once the configuration changed, it would have paused for good. `administration_url` is now kept like the other two.
+- **Not fixed, for the DBA:** `charset=utf8mb4` in a hand-written MariaDB `DATABASE_URL`, as Symfony's own examples write it, makes `Version20260901000000` fail with "Illegal mix of collations for operation 'UNION'". The setup page and `app:cluster:join` users who copy its URL are not affected. PRAGMA (P1) must not add the parameter. The guides (G1, G2) should say so, or the migration should stop depending on the connection collation.
+
 ### Risks
 
 - **Connections run out before CPU does.** That shows up as "too many connections" or 500s at the balancer, not as a slower p95. Slice 0 measures connections, and `app:server:role` states the budget.
@@ -443,7 +451,7 @@ _The work this spec plans, as `- [ ] …` items, each naming the role that does 
 - [x] Back end: `app:server:balancer-config` for Nginx and Caddy (slice 4), with `app:cluster:settings` and `app:collection-address` so every cluster setting has a command
 - [x] Back end: `--files-only`, the additivity checks for tables and message classes, and the Updates page server list (slice 5)
 - [x] DBA: confirm retention batch size and locking and whether the failed transport is purged; then a bounded age and purge for queued payloads (slice 6)
-- [ ] Back end: the two-servers-one-database fresh-install CI job (slice 7)
+- [x] Back end: the two-servers-one-database fresh-install CI job (slice 7): `tests/Integration/cluster.php`, run by the `Cluster` jobs on MariaDB 10.11 and PostgreSQL 16 with `sync://` and `doctrine://`
 - [ ] DBA: the multi-server load test with the BI query loop, and any measured index change (slice 8)
 - [ ] Docs: the generic Linux cluster guide (G1) and the Plesk cluster guide (G2), each followed once on fresh servers
 - [ ] PRAGMA: install with a role, the pull timer and workers (P1); the shared MariaDB and firewall (P2); the balancer site (P3); MCP `plan_aggregate_role` and `apply_plan` with approval in the web interface (P4)
