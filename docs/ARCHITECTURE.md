@@ -334,6 +334,7 @@ that decision for all four. See [JavaScript builds](JS-BUILD.md).
 | PHPUnit ([tests/](../tests)) | Services, controllers, commands and SQL generation, mostly with test doubles | `php bin/phpunit` |
 | JavaScript ([tests/JavaScript](../tests/JavaScript)) | Tracker, consent and storage behavior in Node | `node --test tests/JavaScript/*.test.js` |
 | Release tooling ([tests/Release](../tests/Release)) | Package building and signing | `python3 -m unittest discover -s tests/Release` |
+| Architecture ([tools/arch-check.php](../tools/arch-check.php)) | The FIDES rules for code in the new zones, and a baseline older code may not move away from ([moving to FIDES](FIDES-MIGRATION.md)) | `php tools/arch-check.php` |
 | Static analysis ([phpstan.dist.neon](../phpstan.dist.neon)) | PHPStan at level 5 on `src` | CI, or `php phpstan.phar analyse` with the version CI pins |
 | Fresh install ([tests/Integration/fresh-install.php](../tests/Integration/fresh-install.php)) | A full install, collection, archiving and every view on SQLite, MySQL, MariaDB, PostgreSQL and SQL Server | CI, or locally in a disposable copy |
 | Load ([tests/Load](../tests/Load)) | How many collection requests per second one server sustains, and the disk space per event, on SQLite, PostgreSQL and MySQL ([load testing](LOAD-TESTING.md)) | The Load test workflow, or k6 against a disposable copy |

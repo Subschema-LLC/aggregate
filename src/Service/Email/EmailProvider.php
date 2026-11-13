@@ -17,7 +17,8 @@ use Symfony\Component\Mime\Email;
  * their service tag and listed in descending priority (#[AsTaggedItem]).
  *
  * The transport itself comes from the bridge's own factory: a provider builds
- * its DSN (AbstractEmailProvider) and never talks to the service itself.
+ * its DSN (a Symfony Mailer Dsn object) and never talks to the service
+ * itself. EmailSettingValue holds the shared checks for its settings.
  */
 #[AutoconfigureTag(self::TAG)]
 interface EmailProvider

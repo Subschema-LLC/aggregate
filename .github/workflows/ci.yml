@@ -66,6 +66,8 @@ jobs:
           php bin/console lint:yaml config .github
           php bin/console lint:twig templates
           php bin/console lint:container
+      - name: Check the FIDES architecture rules
+        run: php tools/arch-check.php
       - name: Run PHPUnit
         run: php bin/phpunit
       - name: Run the rate limiter's APCu tests

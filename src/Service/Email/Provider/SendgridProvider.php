@@ -4,14 +4,18 @@ declare(strict_types=1);
 
 namespace App\Service\Email\Provider;
 
-use App\Service\Email\AbstractEmailProvider;
 use App\Service\Email\EmailCredential;
+use App\Service\Email\EmailProvider;
+use App\Service\Email\EmailSettingValue;
 use Symfony\Component\DependencyInjection\Attribute\AsTaggedItem;
+use Symfony\Component\Mailer\Transport;
 use Symfony\Component\Mailer\Transport\Dsn;
+use Symfony\Component\Mailer\Transport\TransportInterface;
+use Symfony\Component\Mime\Email;
 
 /** SendGrid's v3 Mail Send API, through symfony/sendgrid-mailer. */
 #[AsTaggedItem(priority: 40)]
-final class SendgridProvider extends AbstractEmailProvider
+final class SendgridProvider implements EmailProvider
 {
     public const KEY_REGION = 'email_sendgrid_region';
     public const REGIONS = ['global', 'eu'];
@@ -38,7 +42,7 @@ final class SendgridProvider extends AbstractEmailProvider
 
     public function validate(array $values, bool $selected): array
     {
-        return [self::KEY_REGION => self::choice($values, self::KEY_REGION, self::REGIONS)];
+        return [self::KEY_REGION => EmailSettingValue::choice($values, self::KEY_REGION, self::REGIONS)];
     }
 
     public function credential(): EmailCredential
@@ -46,10 +50,20 @@ final class SendgridProvider extends AbstractEmailProvider
         return new EmailCredential('sendgrid_api_key', 'API key', 'Settings → API Keys in SendGrid. Restricted access with only Mail Send is enough.');
     }
 
-    protected function dsn(array $settings, #[\SensitiveParameter] ?string $credential): Dsn
+    public function transport(Transport $factory, array $settings, #[\SensitiveParameter] ?string $credential): TransportInterface
+    {
+        return $factory->fromDsnObject($this->dsn($settings, $credential));
+    }
+
+    /** @param array<string, mixed> $settings validated email settings */
+    private function dsn(array $settings, #[\SensitiveParameter] ?string $credential): Dsn
     {
         $region = $settings[self::KEY_REGION];
 
         return new Dsn('sendgrid+api', 'default', $credential, null, null, $region === 'global' ? [] : ['region' => $region]);
+    }
+
+    public function prepare(Email $email, array $settings): void
+    {
     }
 }
