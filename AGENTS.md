@@ -238,6 +238,29 @@ Anything a new step needs after files are replaced must run in the fresh
 `--resume` process, not in the process that replaced the files. See
 [RELEASES.md](docs/RELEASES.md#update-an-installation).
 
+## Code structure: moving to FIDES
+
+The PHP code is moving to FIDES one change at a time; read
+[moving to FIDES](docs/FIDES-MIGRATION.md) before adding or restructuring
+classes. Run `php tools/arch-check.php` before you finish.
+
+- Put new code in the zones: rules true everywhere in `src/Entities/<Owner>`,
+  one use case per folder in `src/Features/<Owner>` (with its Twig fragment
+  and CSS), the outside world behind a contract in `src/Integrations/<Owner>`,
+  controllers, commands and handlers in `src/Delivery/<Owner>`, and ownerless
+  contracts in `src/Shared`.
+- Entities use only their own folder; features never use each other; the
+  core (Entities, Features, Shared) never touches the database, files,
+  network, environment or clock, and never uses code that has not moved.
+  Wrap older services in an integration instead.
+- No inheritance: compose, make classes `final`, use interfaces as contracts.
+  Only built-in exceptions may be extended, and Doctrine records may stay open.
+- Keep files under 200 lines and lines under 100 characters.
+- Older code is held by `tools/arch-check-baseline.json`: never add a finding
+  to it, and never let a listed file grow. When a change removes findings, run
+  `php tools/arch-check.php --update-baseline`. A change to an existing area
+  should port that area.
+
 ## How to deliver changes
 
 - Follow clear requests through implementation and appropriate validation. Ask

@@ -264,9 +264,11 @@ Contributors adding a first-class provider (one with its own settings on the
 page) add:
 
 1. its Symfony Mailer bridge to `composer.json`;
-2. a class in `src/Service/Email/Provider/` that implements `EmailProvider`,
-   usually by extending `AbstractEmailProvider`: its code, label, settings
-   (named `email_<code>_*`), their validation, its credential and its DSN.
+2. a final class in `src/Service/Email/Provider/` that implements
+   `EmailProvider` directly, without extending another class: its code, label,
+   settings (named `email_<code>_*`), their validation (the shared checks are
+   in `EmailSettingValue`), its credential and the transport built from its
+   DSN.
    `#[AsTaggedItem(priority: …)]` places it in the menu;
 3. optionally `templates/email_settings/_provider_<code>.html.twig` for its
    settings fields;
