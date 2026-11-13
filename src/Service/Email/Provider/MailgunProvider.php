@@ -4,15 +4,18 @@ declare(strict_types=1);
 
 namespace App\Service\Email\Provider;
 
-use App\Service\Email\AbstractEmailProvider;
 use App\Service\Email\EmailCredential;
+use App\Service\Email\EmailProvider;
+use App\Service\Email\EmailSettingValue;
 use Symfony\Component\DependencyInjection\Attribute\AsTaggedItem;
+use Symfony\Component\Mailer\Transport;
 use Symfony\Component\Mailer\Transport\Dsn;
+use Symfony\Component\Mailer\Transport\TransportInterface;
 use Symfony\Component\Mime\Email;
 
 /** Mailgun's Messages API, through symfony/mailgun-mailer. */
 #[AsTaggedItem(priority: 30)]
-final class MailgunProvider extends AbstractEmailProvider
+final class MailgunProvider implements EmailProvider
 {
     public const KEY_DOMAIN = 'email_mailgun_domain';
     public const KEY_REGION = 'email_mailgun_region';
@@ -40,15 +43,15 @@ final class MailgunProvider extends AbstractEmailProvider
 
     public function validate(array $values, bool $selected): array
     {
-        $domain = strtolower(self::text($values, self::KEY_DOMAIN, 253));
-        if ($domain !== '' && !self::isHostName($domain)) {
+        $domain = strtolower(EmailSettingValue::text($values, self::KEY_DOMAIN, 253));
+        if ($domain !== '' && !EmailSettingValue::isHostName($domain)) {
             throw new \InvalidArgumentException(self::KEY_DOMAIN.' must be a sending domain, such as mg.example.com.');
         }
         if ($selected && $domain === '') {
             throw new \InvalidArgumentException('Enter the Mailgun sending domain, such as mg.example.com.');
         }
 
-        return [self::KEY_DOMAIN => $domain, self::KEY_REGION => self::choice($values, self::KEY_REGION, self::REGIONS)];
+        return [self::KEY_DOMAIN => $domain, self::KEY_REGION => EmailSettingValue::choice($values, self::KEY_REGION, self::REGIONS)];
     }
 
     public function credential(): EmailCredential
@@ -56,7 +59,13 @@ final class MailgunProvider extends AbstractEmailProvider
         return new EmailCredential('mailgun_api_key', 'API key', 'A Mailgun sending API key for this domain, or the account’s private API key.');
     }
 
-    protected function dsn(array $settings, #[\SensitiveParameter] ?string $credential): Dsn
+    public function transport(Transport $factory, array $settings, #[\SensitiveParameter] ?string $credential): TransportInterface
+    {
+        return $factory->fromDsnObject($this->dsn($settings, $credential));
+    }
+
+    /** @param array<string, mixed> $settings validated email settings */
+    private function dsn(array $settings, #[\SensitiveParameter] ?string $credential): Dsn
     {
         return new Dsn('mailgun+api', 'default', $credential, $settings[self::KEY_DOMAIN], null, ['region' => $settings[self::KEY_REGION]]);
     }

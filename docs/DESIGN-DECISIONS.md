@@ -982,6 +982,36 @@ PHPUnit 11, which no longer gets bug fixes but is not part of release packages.
 with those options. For the Symfony version: the next LTS (8.4) and PHP 8.4 on
 the hosts this project supports.
 
+### Code moving to FIDES, checked in the build
+
+**Decision.** The PHP code is moving, one change at a time, to FIDES: code
+grouped by use case and owner in five zones under `src/` (Entities, Features,
+Integrations, Delivery, Shared), dependencies pointing inward, no inheritance
+and small files. `tools/arch-check.php` runs in CI. It holds code in the zones
+to every rule FIDES makes checkable, and holds older code to a baseline that
+names each current finding, so findings can go away but never appear. See
+[moving to FIDES](FIDES-MIGRATION.md).
+
+**Why.** Grouping by kind of code (controllers, services, repositories,
+templates) spreads one concept such as alerts across many folders, and class
+families such as the settings sections and view sync hide behavior up a chain
+of parents. People and coding agents both copy the nearest code, so the shape
+of the code is what new code becomes; a rule only holds when the build checks
+it. A rewrite would stop feature work and risk regressions for installations,
+so new zones are built beside the existing code and areas move as they are
+touched.
+
+**Trade-off.** Two structures coexist for a long time, and contributors need to
+know which applies. Symfony departs from FIDES in places: the container stays
+the wiring, settings are read when used rather than frozen at startup, PHP
+exceptions extend built-in exceptions, and Doctrine records stay open for their
+proxies. The checker reads source tokens rather than using a dependency such
+as Deptrac, so it is ours to maintain.
+
+**What would change it.** A pilot (alerts) that costs more to read and change
+than the code it replaced, or FIDES rules that cannot be met in Symfony
+without working against the framework.
+
 ### Five database engines
 
 **Decision.** PostgreSQL, MySQL, MariaDB, SQL Server and SQLite are all supported.
