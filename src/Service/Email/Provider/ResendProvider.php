@@ -4,17 +4,20 @@ declare(strict_types=1);
 
 namespace App\Service\Email\Provider;
 
-use App\Service\Email\AbstractEmailProvider;
 use App\Service\Email\EmailCredential;
+use App\Service\Email\EmailProvider;
+use App\Service\Email\EmailSettingValue;
 use Symfony\Component\DependencyInjection\Attribute\AsTaggedItem;
 use Symfony\Component\Mailer\Header\TagHeader;
+use Symfony\Component\Mailer\Transport;
 use Symfony\Component\Mailer\Transport\Dsn;
+use Symfony\Component\Mailer\Transport\TransportInterface;
 use Symfony\Component\Mime\Address;
 use Symfony\Component\Mime\Email;
 
 /** Resend's Emails API, through symfony/resend-mailer. */
 #[AsTaggedItem(priority: 25)]
-final class ResendProvider extends AbstractEmailProvider
+final class ResendProvider implements EmailProvider
 {
     public const KEY_DOMAIN = 'email_resend_domain';
 
@@ -40,8 +43,8 @@ final class ResendProvider extends AbstractEmailProvider
 
     public function validate(array $values, bool $selected): array
     {
-        $domain = strtolower(self::text($values, self::KEY_DOMAIN, 253));
-        if ($domain !== '' && !self::isHostName($domain)) {
+        $domain = strtolower(EmailSettingValue::text($values, self::KEY_DOMAIN, 253));
+        if ($domain !== '' && !EmailSettingValue::isHostName($domain)) {
             throw new \InvalidArgumentException(self::KEY_DOMAIN.' must be a sending domain, such as send.example.com.');
         }
         if ($selected && $domain === '') {
@@ -56,7 +59,13 @@ final class ResendProvider extends AbstractEmailProvider
         return new EmailCredential('resend_api_key', 'API key', 'API Keys in Resend. Sending access for this domain is enough.');
     }
 
-    protected function dsn(array $settings, #[\SensitiveParameter] ?string $credential): Dsn
+    public function transport(Transport $factory, array $settings, #[\SensitiveParameter] ?string $credential): TransportInterface
+    {
+        return $factory->fromDsnObject($this->dsn($settings, $credential));
+    }
+
+    /** @param array<string, mixed> $settings validated email settings */
+    private function dsn(array $settings, #[\SensitiveParameter] ?string $credential): Dsn
     {
         return new Dsn('resend+api', 'default', $credential);
     }

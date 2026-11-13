@@ -334,6 +334,7 @@ Run these from the repository root after installing development dependencies:
 
 ```bash
 npm ci --ignore-scripts
+php tools/arch-check.php
 php vendor/bin/phpunit
 node --test tests/JavaScript/*.test.js
 python3 -m unittest discover -s tests/Release -p 'test_*.py' -v

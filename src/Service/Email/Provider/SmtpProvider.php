@@ -4,13 +4,15 @@ declare(strict_types=1);
 
 namespace App\Service\Email\Provider;
 
-use App\Service\Email\AbstractEmailProvider;
 use App\Service\Email\EmailCredential;
+use App\Service\Email\EmailProvider;
+use App\Service\Email\EmailSettingValue;
 use Symfony\Component\DependencyInjection\Attribute\AsTaggedItem;
 use Symfony\Component\Mailer\Transport;
 use Symfony\Component\Mailer\Transport\Dsn;
 use Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport;
 use Symfony\Component\Mailer\Transport\TransportInterface;
+use Symfony\Component\Mime\Email;
 
 /**
  * Any SMTP server, such as a provider's SMTP relay or a local mail server.
@@ -19,7 +21,7 @@ use Symfony\Component\Mailer\Transport\TransportInterface;
  * sending a password and a message in the clear.
  */
 #[AsTaggedItem(priority: 20)]
-final class SmtpProvider extends AbstractEmailProvider
+final class SmtpProvider implements EmailProvider
 {
     public const KEY_HOST = 'email_smtp_host';
     public const KEY_PORT = 'email_smtp_port';
@@ -53,8 +55,8 @@ final class SmtpProvider extends AbstractEmailProvider
 
     public function validate(array $values, bool $selected): array
     {
-        $host = strtolower(self::text($values, self::KEY_HOST, 253));
-        if ($host !== '' && !self::isHostName($host) && filter_var(trim($host, '[]'), FILTER_VALIDATE_IP) === false) {
+        $host = strtolower(EmailSettingValue::text($values, self::KEY_HOST, 253));
+        if ($host !== '' && !EmailSettingValue::isHostName($host) && filter_var(trim($host, '[]'), FILTER_VALIDATE_IP) === false) {
             throw new \InvalidArgumentException(self::KEY_HOST.' must be a host name or IP address, such as smtp.example.com.');
         }
         if ($selected && $host === '') {
@@ -72,8 +74,8 @@ final class SmtpProvider extends AbstractEmailProvider
         return [
             self::KEY_HOST => $host,
             self::KEY_PORT => $port,
-            self::KEY_USERNAME => self::text($values, self::KEY_USERNAME, 255),
-            self::KEY_ENCRYPTION => self::choice($values, self::KEY_ENCRYPTION, array_keys(self::ENCRYPTION)),
+            self::KEY_USERNAME => EmailSettingValue::text($values, self::KEY_USERNAME, 255),
+            self::KEY_ENCRYPTION => EmailSettingValue::choice($values, self::KEY_ENCRYPTION, array_keys(self::ENCRYPTION)),
         ];
     }
 
@@ -84,7 +86,7 @@ final class SmtpProvider extends AbstractEmailProvider
 
     public function transport(Transport $factory, array $settings, #[\SensitiveParameter] ?string $credential): TransportInterface
     {
-        $transport = parent::transport($factory, $settings, $credential);
+        $transport = $factory->fromDsnObject($this->dsn($settings, $credential));
         if ($settings[self::KEY_ENCRYPTION] === 'starttls' && $transport instanceof EsmtpTransport) {
             $transport->setRequireTls(true);
         }
@@ -92,7 +94,8 @@ final class SmtpProvider extends AbstractEmailProvider
         return $transport;
     }
 
-    protected function dsn(array $settings, #[\SensitiveParameter] ?string $credential): Dsn
+    /** @param array<string, mixed> $settings validated email settings */
+    private function dsn(array $settings, #[\SensitiveParameter] ?string $credential): Dsn
     {
         $encryption = $settings[self::KEY_ENCRYPTION];
         $username = $settings[self::KEY_USERNAME];
@@ -105,5 +108,9 @@ final class SmtpProvider extends AbstractEmailProvider
             $settings[self::KEY_PORT],
             $encryption === 'none' ? ['auto_tls' => 'false'] : [],
         );
+    }
+
+    public function prepare(Email $email, array $settings): void
+    {
     }
 }

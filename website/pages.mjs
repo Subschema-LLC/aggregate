@@ -81,6 +81,7 @@ export const sections = [
       { source: 'CONTRIBUTING.md', route: 'contribute/contributing', label: 'Contributing' },
       { source: 'docs/ARCHITECTURE.md', route: 'contribute/architecture', label: 'Architecture tour' },
       { source: 'docs/DESIGN-DECISIONS.md', route: 'contribute/design-decisions', label: 'Design decisions' },
+      { source: 'docs/FIDES-MIGRATION.md', route: 'contribute/fides-migration', label: 'Moving to FIDES' },
       { source: 'templates/README.md', route: 'contribute/ui-templates', label: 'UI templates' },
       { source: 'AGENTS.md', route: 'contribute/coding-agents', label: 'Guide for coding agents' },
     ],
