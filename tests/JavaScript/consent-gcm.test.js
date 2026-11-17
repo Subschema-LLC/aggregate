@@ -125,3 +125,13 @@ test('a click on a data-cmp-optout element opens the opt-out through delegation'
   app.document.dispatchEvent(event);
   assert.equal(prevented, true);
 });
+
+test('a withdrawal in another tab pushes a denied update', () => {
+  const app = run({region: 'DE'});
+  app.window.AggregateConsent.setConsent({analytics: true, marketing: true});
+  app.window.dispatchEvent({type: 'storage', key: null, newValue: null});
+  const updates = consentCalls(app).filter((call) => call[1] === 'update');
+  assert.equal(updates.length, 2);
+  assert.equal(updates[1][2].analytics_storage, 'denied');
+  assert.equal(updates[1][2].ad_storage, 'denied');
+});
