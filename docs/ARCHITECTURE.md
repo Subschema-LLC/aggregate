@@ -12,7 +12,10 @@ lists where things live; this page explains how they fit together.
 
 *Select the diagram to open it at full size.*
 
-Aggregate is a Symfony application with Doctrine for database access. It has
+Aggregate is a Symfony application with Doctrine for database access. Its PHP
+code follows [FIDES](FIDES-MIGRATION.md): new code goes into five zones under
+`src/`, and the older classes this tour links to move into them as they are
+changed. It has
 two halves that share one database: **collection**, which is public and
 protected by privacy rules, and **reporting**, which is SQL views that BI tools
 read. The dashboard is an optional third part for administration.
@@ -334,7 +337,7 @@ that decision for all four. See [JavaScript builds](JS-BUILD.md).
 | PHPUnit ([tests/](../tests)) | Services, controllers, commands and SQL generation, mostly with test doubles | `php bin/phpunit` |
 | JavaScript ([tests/JavaScript](../tests/JavaScript)) | Tracker, consent and storage behavior in Node | `node --test tests/JavaScript/*.test.js` |
 | Release tooling ([tests/Release](../tests/Release)) | Package building and signing | `python3 -m unittest discover -s tests/Release` |
-| Architecture ([tools/arch-check.php](../tools/arch-check.php)) | The FIDES rules for code in the new zones, and a baseline older code may not move away from ([moving to FIDES](FIDES-MIGRATION.md)) | `php tools/arch-check.php` |
+| Architecture ([tools/arch-check.php](../tools/arch-check.php)) | The FIDES rules for code in the zones, no new files outside them, and a baseline older code may not move away from ([code structure: FIDES](FIDES-MIGRATION.md)) | `php tools/arch-check.php` |
 | Static analysis ([phpstan.dist.neon](../phpstan.dist.neon)) | PHPStan at level 5 on `src` | CI, or `php phpstan.phar analyse` with the version CI pins |
 | Fresh install ([tests/Integration/fresh-install.php](../tests/Integration/fresh-install.php)) | A full install, collection, archiving and every view on SQLite, MySQL, MariaDB, PostgreSQL and SQL Server | CI, or locally in a disposable copy |
 | Load ([tests/Load](../tests/Load)) | How many collection requests per second one server sustains, and the disk space per event, on SQLite, PostgreSQL and MySQL ([load testing](LOAD-TESTING.md)) | The Load test workflow, or k6 against a disposable copy |
@@ -344,13 +347,17 @@ that an engine accepts it. See [tests and checks](../CONTRIBUTING.md#tests-and-c
 
 ## Where to make common changes
 
+Every row below puts its new PHP in the [FIDES zones](FIDES-MIGRATION.md#where-code-goes)
+and ports the older classes it names as it changes them.
+
 | You want to | Start here | Also update |
 | --- | --- | --- |
+| Add any PHP class | Its zone: `src/Entities`, `src/Features`, `src/Integrations`, `src/Delivery` or `src/Shared` ([where code goes](FIDES-MIGRATION.md#where-code-goes)) | `config/wiring.yaml` for a new contract binding; `php tools/arch-check.php` |
 | Add an operator setting | The service that owns the behavior, reading it through `AggregateConfigLoader` | The dashboard form (optional), `config/aggregate.yaml.example`, [CONFIGURATION.md](CONFIGURATION.md), and tests with the dashboard off |
 | Collect a new dimension | Discuss it in an issue first; it changes the privacy model | `PrivacySanitizer`, `EventIngestion`, the strict profile, the views, and the [privacy guide](PRIVACY-COMPLIANCE.md) |
 | Add a column to `events` | A migration and the [Event](../src/Entity/Event.php) mapping | `EventRowWriter::COLUMN_TYPES` and `::row()`, which `EventRowWriterTest` checks against the mapping |
 | Add an event listener or subscriber | Inject what it needs only on some routes lazily: a `ServiceSubscriberInterface` locator, as `DashboardAccessSubscriber` and `SecondStepListener` do, or `#[Autowire(lazy: true)]` | `CollectionRequestFootprintTest`, which fails if a collection request loads Twig, the mailer, the ORM or the message bus |
 | Change what a reporting view returns | A new migration that adds a new versioned view (such as `_v2`), keeping the old one | SQL for all five engines, the fresh-install test, [DATABASE.md](DATABASE.md) |
 | Write engine-specific SQL | A platform branch (`instanceof PostgreSQLPlatform` and so on), as in the existing migrations | The fresh-install CI run on every engine |
-| Add a dashboard page | A controller for that page using the `DashboardAccess` trait, with form parsing and validation in a service (such as `CollectionControlsForm`); [templates/README.md](../templates/README.md) conventions and `config/navigation.yaml` | Registration in `config/routes_dashboard.yaml`, `config/services_dashboard.yaml` and the list in [Kernel](../src/Kernel.php) that removes dashboard controllers when the dashboard is off; a command-line or YAML equivalent for any setting it changes |
+| Add a dashboard page | A page folder in `src/Delivery/<Page>/` whose controller uses the `DashboardAccess` trait and places the views of the features it shows, with form parsing and validation in those features ([pages](FIDES-MIGRATION.md#the-zones-in-symfony)); `config/navigation.yaml` | Registration in `config/routes_dashboard.yaml`, `config/services_dashboard.yaml` and the list in [Kernel](../src/Kernel.php) that removes dashboard controllers when the dashboard is off; a command-line or YAML equivalent for any setting it changes |
 | Add a documentation page | A Markdown file, then `website/pages.mjs` | Links from related pages, and a `DocumentationLinks` topic if the dashboard should link to it; see [documentation site](../CONTRIBUTING.md#documentation-site) |
