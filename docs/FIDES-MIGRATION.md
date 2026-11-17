@@ -284,8 +284,13 @@ Progress:
   rule refers to (websites, groups, retention) through the entity's
   `RuleReferences` contract; `Integrations/Alerts` supplies the event-name
   check collection uses.
-- [ ] The YAML stores as integrations, absorbing the rest of
-  `AlertRuleValidator` and `AlertSettings`.
+- [x] The YAML store as integrations in `Integrations/Alerts`:
+  `AlertsMapping` reads the alerts mapping, `AlertsYaml` writes it,
+  `AlertsYamlStore` loads and saves it, `RuleReferenceChecks` checks a rule's
+  websites, groups and retention, and `CoveredWebsites` resolves what a rule
+  covers. `AlertRuleValidator` and `AlertSettings` only delegate to them; they
+  go when their callers move to the features below. `describeCondition()`
+  waits for `ListAlerts` and `normalizeInstallationUrl()` for `DeliverAlert`.
 - [ ] `AlertFired` and `AlertRecovered`, and `EvaluateAlerts` as a pure
   feature that records them.
 - [ ] `DeliverAlert` and the webhook and email integrations.
