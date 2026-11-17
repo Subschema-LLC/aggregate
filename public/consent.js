@@ -275,6 +275,8 @@
   var cmpDecidedAt = null;
   var cmpIsReady = false;
   var cmpConsented = false;
+  // The state the last decision left, which a later decision reports as previous.
+  var cmpLastState = null;
   var cmpOptOutHooks = [];
   var cmpGates = [];
   var cmpFlags = (function () {
@@ -377,13 +379,14 @@
 
   // Categories were decided, by any source. A later decision is a change.
   function cmpDecide(source, optOut) {
-    var previous = cmpConsented ? cmpSnapshot() : null;
+    var previous = cmpConsented ? cmpLastState : null;
     cmpSource = source;
     cmpDecidedAt = new Date().toISOString();
     cmpIsReady = true;
     gcmUpdate();
     if (previous) cmpEmit('cmp_change', previous); else cmpEmit('cmp_consent');
     cmpConsented = true;
+    cmpLastState = cmpSnapshot();
     if (optOut) {
       cmpEmit('cmp_optout');
       cmpOptOutHooks.slice().forEach(function (hook) { try { hook(cmpSnapshot()); } catch (error) {} });
@@ -619,6 +622,7 @@
         && categories.every(function (category) { return hasChoice(value, category); })));
     notify();
     if (chosen) cmpDecide('saved', false);
+    else gcmUpdate();
     if (panel) {
       showPanel(!chosen);
       syncCheckboxes();
