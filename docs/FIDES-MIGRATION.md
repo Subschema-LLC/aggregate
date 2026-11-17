@@ -277,6 +277,22 @@ webhooks and email partway through evaluation before saving state. The target:
 
 Ship the port as a release of its own, never mixed with feature requests.
 
+Progress:
+
+- [x] `Entities/AlertRule` and `Entities/Destination` check themselves.
+  `AlertRuleValidator` reads the alerts mapping into them and checks what a
+  rule refers to (websites, groups, retention) through the entity's
+  `RuleReferences` contract; `Integrations/Alerts` supplies the event-name
+  check collection uses.
+- [ ] The YAML stores as integrations, absorbing the rest of
+  `AlertRuleValidator` and `AlertSettings`.
+- [ ] `AlertFired` and `AlertRecovered`, and `EvaluateAlerts` as a pure
+  feature that records them.
+- [ ] `DeliverAlert` and the webhook and email integrations.
+- [ ] `SaveAlertRule`, `SendTestAlert` and `ListAlerts` with their views, and
+  the page in `Delivery/Alerts`.
+- [ ] The `app:alerts:*` commands in `Delivery/Alerts` as invokable commands.
+
 ### Phase 2: port as you touch
 
 - Every change to an existing area ports that area (rule 2 of
