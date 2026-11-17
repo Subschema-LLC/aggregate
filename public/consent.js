@@ -257,6 +257,104 @@
     return result;
   }
 
+  // The page-level consent state for testers and tag managers, and the cmp_*
+  // events. Only this script grants: nothing gated runs until cmp_consent has
+  // fired for its category. Each event fires at most once per page load, kept
+  // by a window flag so a second copy of the script cannot repeat it.
+  var cmpSource = 'default';
+  var cmpDecidedAt = null;
+  var cmpIsReady = false;
+  var cmpConsented = false;
+  var cmpOptOutHooks = [];
+  var cmpGates = [];
+  var cmpFlags = (function () {
+    try {
+      if (!window.__aggregateCmpEvents || typeof window.__aggregateCmpEvents !== 'object') window.__aggregateCmpEvents = {};
+      return window.__aggregateCmpEvents;
+    } catch (error) { return {}; }
+  })();
+  function cmpSnapshot() {
+    var granted = {necessary: true};
+    categories.forEach(function (category) { granted[category] = choices[category] === true; });
+    var signals = {gpc: false, dnt: false};
+    try {
+      signals.gpc = window.navigator.globalPrivacyControl === true;
+      signals.dnt = window.navigator.doNotTrack === '1';
+    } catch (error) {}
+    return {
+      version: '1',
+      ready: cmpIsReady,
+      region: currentRegion ? currentRegion.id : null,
+      mode: consentType() === 'implicit_us' ? 'implied' : 'explicit',
+      source: cmpSource,
+      categories: granted,
+      signals: signals,
+      saved: {exists: savedMap !== null, at: null, expires: null},
+      decidedAt: cmpDecidedAt
+    };
+  }
+  function cmpEmit(name, previous) {
+    var key = storageKey + '|' + name;
+    if (cmpFlags[key]) return;
+    cmpFlags[key] = true;
+    var snapshot = cmpSnapshot();
+    var entry = {event: name, state: snapshot};
+    var detail = {state: snapshot};
+    if (previous) { entry.previous = previous; detail.previous = previous; }
+    try { if (Array.isArray(window.dataLayer)) window.dataLayer.push(entry); } catch (error) {}
+    try { document.dispatchEvent(new CustomEvent(name, {detail: detail})); } catch (error) {}
+  }
+  function cmpEmitReady() {
+    if (cmpIsReady) return;
+    cmpIsReady = true;
+    cmpEmit('cmp_ready');
+  }
+  function cmpRunGates() {
+    if (!cmpConsented) return;
+    cmpGates.forEach(function (gate) {
+      if (gate.ran || choices[gate.category] !== true) return;
+      gate.ran = true;
+      try { gate.callback(); } catch (error) {}
+    });
+  }
+  // Categories were decided, by any source. A later decision is a change.
+  function cmpDecide(source, optOut) {
+    var previous = cmpConsented ? cmpSnapshot() : null;
+    cmpSource = source;
+    cmpDecidedAt = new Date().toISOString();
+    cmpIsReady = true;
+    if (previous) cmpEmit('cmp_change', previous); else cmpEmit('cmp_consent');
+    cmpConsented = true;
+    if (optOut) {
+      cmpEmit('cmp_optout');
+      cmpOptOutHooks.slice().forEach(function (hook) { try { hook(cmpSnapshot()); } catch (error) {} });
+    }
+    activateTags();
+    cmpRunGates();
+  }
+  function cmpStart() {
+    if (globalPrivacyControl() && !chosen) { cmpDecide('gpc', true); return; }
+    if (chosen) { cmpDecide('saved', false); return; }
+    if (consentType() === 'implicit_us') {
+      cmpEmitReady();
+      cmpDecide('implied', false);
+      return;
+    }
+    cmpEmitReady();
+  }
+  var cmpApi = {
+    // Runs the callback once, when the category is granted: at once if it
+    // already is, never if it is denied.
+    gate: function (category, callback) {
+      if (typeof category !== 'string' || typeof callback !== 'function' || categories.indexOf(category) === -1) return;
+      cmpGates.push({category: category, callback: callback, ran: false});
+      cmpRunGates();
+    },
+    onOptOut: function (callback) { if (typeof callback === 'function') cmpOptOutHooks.push(callback); },
+    openOptOut: function () { open(); }
+  };
+  Object.defineProperty(cmpApi, 'state', {enumerable: true, get: cmpSnapshot});
+
   function notify() {
     var tracker = window[consentConfig.namespace];
     if (!tracker || (typeof tracker !== 'object' && typeof tracker !== 'function')) {
@@ -290,11 +388,12 @@
 
   // Start the website's waiting tags whose category is allowed, one at a time in
   // page order: a script with src and no async attribute loads before the next
-  // starts. Only listed tag IDs run, and only after an explicit grant (or an
-  // implicit_us default grant). Withdrawal cannot stop a tag that already ran.
+  // starts. Only listed tag IDs run, and only after cmp_consent and an explicit
+  // grant (or an implicit_us default grant). Withdrawal cannot stop a tag that already ran.
   var pendingTags = [];
   var tagRunning = false;
   function activateTags() {
+    if (!cmpConsented) return;
     var found;
     try { found = document.querySelectorAll('script[type="text/plain"][data-consent-tag]'); } catch (error) { return; }
     var granted = state();
@@ -351,6 +450,7 @@
         try { window.localStorage.removeItem(storageKey); } catch (ignored) {}
       }
     }
+    cmpDecide('explicit', categories.every(function (category) { return choices[category] !== true; }));
     if (panel) {
       showPanel(false);
       preferenceButton.focus();
@@ -383,6 +483,10 @@
       applyDefaultGrants();
       notify();
       syncCheckboxes();
+      if (consentType() === 'implicit_us' && !cmpConsented && !globalPrivacyControl()) {
+        cmpEmitReady();
+        cmpDecide('implied', false);
+      }
     }
     updateBannerContent();
   }
@@ -406,8 +510,10 @@
       return function () { subscribers = subscribers.filter(function (entry) { return entry !== callback; }); };
     }
   };
+  if (!window.AggregateCMP) window.AggregateCMP = cmpApi;
   notify();
   document.dispatchEvent(new CustomEvent('aggregate:consent-ready'));
+  cmpStart();
 
   // Choices in another tab apply immediately; malformed or removed choices deny.
   window.addEventListener('storage', function (event) {
@@ -427,6 +533,7 @@
       : !!(value && typeof value === 'object' && !Array.isArray(value)
         && categories.every(function (category) { return hasChoice(value, category); })));
     notify();
+    if (chosen) cmpDecide('saved', false);
     if (panel) {
       showPanel(!chosen);
       syncCheckboxes();
