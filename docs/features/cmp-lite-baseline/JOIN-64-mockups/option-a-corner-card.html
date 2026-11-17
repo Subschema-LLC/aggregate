@@ -1,0 +1,30 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Option A: corner card</title>
+<style>
+body{margin:0;font:16px/1.5 system-ui,sans-serif;background:#eef1f5;color:#1B1F24;min-height:560px;position:relative}
+.site{padding:24px 32px;color:#6b7480}.site div{height:14px;background:#d9dee6;border-radius:4px;margin:12px 0;width:70%}
+.label{position:absolute;top:8px;right:16px;font-size:13px;background:#fff;border:1px solid #1B1F24;padding:2px 8px}
+.card{position:absolute;width:330px;bottom:16px;background:#fff;border:2px solid #1B1F24;padding:16px;border-radius:4px}
+.c1{right:16px}.c2{right:370px}
+h2{font-size:18px;margin:0 0 8px}p{margin:0 0 10px;font-size:15px}
+.btns{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+button{font:inherit;font-weight:600;padding:8px 12px;background:#fff;color:#1B1F24;border:2px solid #1B1F24;border-radius:4px;text-align:center}
+a{color:#0B5CAD}
+.x{position:absolute;top:6px;right:8px;border:0;font-size:22px;background:none;padding:2px 8px}
+.status{display:inline-block;background:#e8f1fb;border-left:4px solid #0B5CAD;padding:6px 10px;font-size:14px;margin-bottom:10px}
+.focus{outline:3px solid #0B5CAD;outline-offset:2px}
+.cap{position:absolute;top:-24px;left:0;font-size:12px;color:#444}
+</style></head><body>
+<div class="site"><b>Example shop</b><div></div><div style="width:50%"></div><div></div></div>
+<div class="label">Test mode: T5 GPC, implied region</div>
+<section class="card c2" role="dialog" aria-labelledby="t2"><span class="cap">1. Opt-out screen (opens from a footer link)</span>
+<h2 id="t2" tabindex="-1" class="focus">Do not sell or share my data</h2>
+<p>This turns off advertising and cross-site tracking on this site. Measurement that does not identify you continues.</p>
+<div class="btns"><button>Do not sell or share my data</button><button>Cancel</button></div></section>
+<section class="card c1" role="dialog" aria-labelledby="t1"><button class="x" aria-label="Close this notice">×</button>
+<span class="cap">2. First visit with GPC on</span>
+<h2 id="t1">Example shop: privacy choices</h2>
+<div class="status">Your browser's Global Privacy Control is on, so optional tracking is off.</div>
+<p>You can change this at any time.</p>
+<div class="btns"><button>Reject all optional categories</button><button>Accept all optional categories</button><button>Save selected choices</button></div>
+<p style="margin-top:10px"><a href="#">Read this website's privacy notice</a></p></section>
+</body></html>

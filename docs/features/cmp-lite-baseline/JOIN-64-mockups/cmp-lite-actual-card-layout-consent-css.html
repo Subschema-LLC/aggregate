@@ -1,0 +1,149 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>CMP Lite — Actual Card Layout (consent.css)</title>
+<style>
+:root {
+  --ac-background: #FFFFFF; --ac-text: #202124; --ac-accent: #2459B8;
+  --ac-border: #202124; --ac-button-background: #FFFFFF;
+  --ac-button-text: #202124; --ac-button-border: #202124;
+}
+body { margin: 0; font: 15px/1.55 system-ui, -apple-system, sans-serif; background: #eef2f6; color: #202124; padding: 20px; }
+.stage { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 1120px; margin: 0 auto; }
+.col-label { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #4a5568; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+.test-pill { background: #202124; color: #fff; font-family: monospace; font-size: 11px; padding: 2px 8px; border-radius: 4px; text-transform: none; }
+.ac-consent {
+  background: var(--ac-background);
+  border: 1px solid color-mix(in srgb, var(--ac-border) 24%, transparent);
+  border-radius: 12px;
+  box-shadow: 0 20px 40px -8px rgba(0,0,0,0.18), 0 4px 16px -2px rgba(0,0,0,0.08);
+  box-sizing: border-box; color: var(--ac-text);
+  padding: 1.35rem 1.45rem; position: relative;
+}
+.ac-consent-close {
+  background: transparent; border: 0; border-radius: 6px; color: var(--ac-text);
+  font-size: 1.5rem; height: 2rem; line-height: 1; position: absolute; right: 0.75rem; top: 0.75rem; width: 2rem;
+}
+.ac-consent-region {
+  align-items: center; display: flex; gap: 0.5rem; justify-content: flex-end;
+  margin-bottom: 0.75rem; padding-right: 2.25rem; flex-wrap: wrap;
+}
+.ac-consent-region label { font-size: 0.75rem; font-weight: 600; opacity: 0.8; text-transform: uppercase; }
+.ac-consent-region select {
+  background: var(--ac-background); border: 1px solid color-mix(in srgb, var(--ac-border) 30%, transparent);
+  border-radius: 6px; color: var(--ac-text); font: inherit; font-size: 0.8125rem; padding: 0.25rem 0.5rem;
+}
+.region-badge {
+  font-size: 0.75rem; background: color-mix(in srgb, var(--ac-accent) 10%, transparent);
+  color: var(--ac-accent); border: 1px solid color-mix(in srgb, var(--ac-accent) 28%, transparent);
+  border-radius: 999px; padding: 0.15rem 0.55rem; font-weight: 600;
+}
+.ac-consent h2 { font-size: 1.15rem; font-weight: 700; letter-spacing: -0.015em; line-height: 1.35; margin: 0 0 0.5rem; }
+.ac-consent h2.focused { outline: 2px solid var(--ac-accent); outline-offset: 3px; border-radius: 4px; }
+.ac-consent p { font-size: 0.875rem; line-height: 1.55; margin: 0.5rem 0; opacity: 0.92; }
+.ac-consent-details p { font-size: 0.8125rem; opacity: 0.82; }
+.ac-consent a { color: var(--ac-accent); font-weight: 500; text-decoration: underline; text-underline-offset: 2px; }
+.ac-consent-callout {
+  background: color-mix(in srgb, var(--ac-accent) 8%, transparent);
+  border-left: 3px solid var(--ac-accent);
+  border-radius: 0 8px 8px 0;
+  font-size: 0.8125rem; line-height: 1.45; margin: 0.6rem 0; padding: 0.55rem 0.75rem;
+}
+.ac-consent fieldset {
+  background-color: color-mix(in srgb, var(--ac-text) 3%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ac-border) 16%, transparent);
+  border-radius: 10px; margin: 0.85rem 0; padding: 0.65rem 0.85rem;
+}
+.ac-consent fieldset legend {
+  font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.03em; opacity: 0.85; padding: 0 0.4rem; text-transform: uppercase;
+}
+.ac-consent-category {
+  align-items: center; border-radius: 6px; display: flex; flex-wrap: wrap;
+  font-size: 0.875rem; gap: 0.6rem; margin: 0.35rem 0; padding: 0.35rem 0.45rem;
+}
+.ac-consent-category-tags { flex-basis: 100%; font-size: 0.8125rem; opacity: 0.8; padding-left: 1.65rem; }
+.ac-consent input[type="checkbox"] { accent-color: var(--ac-accent); height: 1.05rem; width: 1.05rem; margin: 0; }
+.ac-consent-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 1rem; }
+.ac-consent-actions button {
+  background: var(--ac-button-background); border: 1.5px solid var(--ac-button-border);
+  border-radius: 8px; color: var(--ac-button-text); font: inherit; font-size: 0.875rem;
+  font-weight: 600; padding: 0.55rem 0.9rem;
+}
+.ac-consent-open {
+  margin-top: 12px; background: var(--ac-button-background); border: 1.5px solid var(--ac-button-border);
+  border-radius: 9999px; box-shadow: 0 4px 14px rgba(0,0,0,0.12); color: var(--ac-button-text);
+  display: inline-flex; font-size: 0.8125rem; font-weight: 600; padding: 0.45rem 0.95rem;
+}
+</style></head><body>
+<div class="stage">
+  <div>
+    <div class="col-label"><span>1A. Card — Detection fallback (T19)</span><span class="test-pill">source: default (strict)</span></div>
+    <section class="ac-consent" role="dialog" aria-labelledby="t1">
+      <button type="button" class="ac-consent-close" aria-label="Reject all optional categories and close">×</button>
+      <div class="ac-consent-region">
+        <span class="region-badge">Location unknown · Strict rules active</span>
+        <label for="r1">Region</label>
+        <select id="r1">
+          <option selected>European Union / UK (Strict opt-in)</option>
+          <option>California &amp; US States (Opt-out)</option>
+        </select>
+      </div>
+      <h2 id="t1">Example shop: privacy choices</h2>
+      <p>Choose which optional categories to allow. Enhanced analytics uses browser identifiers and additional event details. Tags in each selected category may load third-party scripts.</p>
+      <div class="ac-consent-details">
+        <p>Coarse anonymous measurement may continue after rejection. You can change your choice here at any time.</p>
+      </div>
+      <p><a href="#privacy">Read this website’s privacy notice</a></p>
+      <fieldset>
+        <legend>Optional categories</legend>
+        <label class="ac-consent-category">
+          <input type="checkbox"> <span>Enhanced analytics</span>
+        </label>
+        <label class="ac-consent-category">
+          <input type="checkbox"> <span>Advertising</span>
+          <span class="ac-consent-category-tags">Includes: Meta Pixel, LinkedIn Insight</span>
+        </label>
+      </fieldset>
+      <div class="ac-consent-actions">
+        <button type="button">Reject all optional categories</button>
+        <button type="button">Accept all optional categories</button>
+        <button type="button">Save selected choices</button>
+      </div>
+    </section>
+  </div>
+
+  <div>
+    <div class="col-label"><span>1B. Card — Opened via [data-cmp-optout] or GPC (T5 / T10)</span><span class="test-pill">region: US-CA (detected)</span></div>
+    <section class="ac-consent" role="dialog" aria-labelledby="t2">
+      <button type="button" class="ac-consent-close" aria-label="Close this notice">×</button>
+      <div class="ac-consent-region">
+        <span class="region-badge">California (detected)</span>
+        <label for="r2">Region</label>
+        <select id="r2" title="You can switch to a stricter region">
+          <option selected>California (US-CA)</option>
+          <option>European Union / UK (Stricter — opt-in)</option>
+        </select>
+      </div>
+      <h2 id="t2" class="focused">Example shop: privacy choices</h2>
+      <div class="ac-consent-callout" role="status">
+        <strong>Global Privacy Control is on:</strong> optional categories are turned off for this visit. Click <strong>Reject all optional categories</strong> to save your opt-out, or choose specific categories below.
+      </div>
+      <p>Choose which optional categories to allow. Withdrawing removes analytics identifiers and clears declared cookies for turned-off categories.</p>
+      <p><a href="#privacy">Read this website’s privacy notice</a></p>
+      <fieldset>
+        <legend>Optional categories</legend>
+        <label class="ac-consent-category">
+          <input type="checkbox"> <span>Enhanced analytics</span>
+        </label>
+        <label class="ac-consent-category">
+          <input type="checkbox"> <span>Advertising</span>
+          <span class="ac-consent-category-tags">Includes: Meta Pixel, LinkedIn Insight</span>
+        </label>
+      </fieldset>
+      <div class="ac-consent-actions">
+        <button type="button" style="outline: 2px solid var(--ac-accent); outline-offset: 2px;">Reject all optional categories</button>
+        <button type="button">Accept all optional categories</button>
+        <button type="button">Save selected choices</button>
+      </div>
+    </section>
+    <button type="button" class="ac-consent-open">Privacy choices</button>
+  </div>
+</div>
+</body></html>
