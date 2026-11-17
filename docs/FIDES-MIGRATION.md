@@ -298,11 +298,13 @@ Progress:
   returns an `Evaluation`: the alerts to deliver and the states to save, in
   order. `AlertEvaluator` carries each one out before the next website is
   counted, so a failing count still stops only the websites after it.
-- [ ] Deciding how messages are saved with the change and dispatched (rule
-  10): a Messenger outbox needs a table on every engine and a worker or a
-  synchronous transport, while the stored incident state already acts as an
-  outbox for the current alert.
-- [ ] `DeliverAlert` and the webhook and email integrations.
+- [x] Rule 10 for alerts: the incident state is the outbox (see
+  [the design decision](DESIGN-DECISIONS.md#the-incident-state-is-the-alerts-outbox)).
+- [x] `DeliverAlert` reacts to `AlertFired` and `AlertRecovered` through the
+  `AlertChannel` and `DeliveryLog` contracts; `Integrations/Alerts` supplies
+  `AlertChannels` (webhook and `EmailAlerts`) and `TaskDeliveryLog`. Alert and
+  incident IDs are in `Entities/Incident/AlertIds`, and a rule's plain-language
+  condition in `Entities/AlertRule/RuleDescription`.
 - [ ] `SaveAlertRule`, `SendTestAlert` and `ListAlerts` with their views, and
   the page in `Delivery/Alerts`.
 - [ ] The `app:alerts:*` commands in `Delivery/Alerts` as invokable commands.
