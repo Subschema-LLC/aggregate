@@ -215,6 +215,8 @@
   var checkboxes = Object.create(null);
   var storageAvailable = true;
   var savedMap = null;
+  // True when Global Privacy Control replaced a saved grant at load.
+  var gpcOverrode = false;
 
   function readGrant(value, category) {
     try {
@@ -245,6 +247,14 @@
         savedMap = saved;
         categories.forEach(function (category) { choices[category] = readGrant(saved, category); });
         chosen = categories.every(function (category) { return hasChoice(saved, category); });
+      }
+      // An opt-out signal wins over a saved grant, and the denial is stored.
+      if (globalPrivacyControl() && categories.some(function (category) { return choices[category] === true; })) {
+        categories.forEach(function (category) { choices[category] = false; });
+        savedMap = state();
+        chosen = true;
+        gpcOverrode = true;
+        window.localStorage.setItem(storageKey, JSON.stringify(savedMap));
       }
     } else {
       applyDefaultGrants();
@@ -382,7 +392,7 @@
     cmpRunGates();
   }
   function cmpStart() {
-    if (globalPrivacyControl() && !chosen) { cmpDecide('gpc', true); return; }
+    if (globalPrivacyControl() && (!chosen || gpcOverrode)) { cmpDecide('gpc', true); return; }
     if (chosen) { cmpDecide('saved', false); return; }
     if (consentType() === 'implicit_us') {
       cmpEmitReady();
