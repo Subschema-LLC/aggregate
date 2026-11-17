@@ -1514,12 +1514,15 @@ or a destination that was down, is caught up at the next check for up to
 within one catch-up) is offered once only, as before.
 
 **Why.** It adds no table, worker or queue setting, and it keeps the
-delivery guarantees the alerts already had. Alerts could instead go through
-Symfony Messenger's existing `doctrine://` transport (the queue enhanced events
-use), which is synchronous unless a worker is configured. That would add a
-second retry mechanism next to the hourly one, and with a worker it would put
-alert payloads in `messenger_messages` under its seven-day deletion (Scott
-chose the incident state, November 2026).
+delivery guarantees the alerts already had. The alternative is Symfony
+Messenger's `async` transport, which enhanced events use. On a default
+installation `MESSENGER_TRANSPORT_DSN` is `sync://`: a message is handled at
+once in the same process and never stored, so it would add no durability.
+Only with `doctrine://` are messages saved in `messenger_messages`, and then
+the installation needs workers, alert payloads fall under the queue's
+seven-day deletion, and a destination down for hours still needs the hourly
+offer, because the transport's three retries end within seconds (Scott chose
+the incident state, November 2026).
 
 **Trade-off.** The order stays send, then save. That is safe only because
 alerts are derived again from the state each hour; it would not be safe for a
@@ -1527,7 +1530,11 @@ message that cannot be derived again. Delivery is at least once, with a stable
 `id` to de-duplicate on.
 
 **What would change it.** An alert that cannot be derived from the incident
-state, or a need to send faster than the next hourly check.
+state, a need to send faster than the next hourly check, or the first message
+in another area that cannot be derived again. That message needs a real
+outbox: saved in the same transaction as its change, for example on a
+transport that is always `doctrine://` and consumed by the scheduled task, so
+no installation needs a worker for it, and proven by a rollback test first.
 
 ### Signed release packages that keep the operator's files
 
