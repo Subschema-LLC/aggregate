@@ -7,10 +7,18 @@ namespace App\Service\Alerts;
 use App\Entities\AlertRule\WindowBreaches;
 use App\Entities\Incident\IncidentState;
 use App\Entities\Incident\UtcHour;
+use App\Entities\AlertRule\RuleDescription;
+use App\Entities\Incident\AlertIds;
+use App\Entities\Incident\DeliveryLog;
+use App\Entities\Incident\DeliveryRecord;
+use App\Features\DeliverAlert\DeliverAlert;
 use App\Features\EvaluateAlerts\EvaluateAlerts;
 use App\Features\EvaluateAlerts\Evaluation;
 use App\Features\EvaluateAlerts\HoursToEvaluate;
+use App\Integrations\Alerts\AlertChannels;
+use App\Integrations\Alerts\EmailAlerts;
 use App\Integrations\Alerts\EventCountWindowBreaches;
+use App\Integrations\Alerts\TaskDeliveryLog;
 use App\Repository\EventRepository;
 use App\Service\AggregateConfigLoader;
 use App\Service\Email\EmailPurpose;
@@ -53,15 +61,15 @@ use Symfony\Component\Clock\Clock;
 class AlertEvaluator
 {
     public const TASK_TYPE = 'alerts';
-    public const DELIVERY_TASK_TYPE = 'alerts_delivery';
-    public const AUDIT_CATEGORY = 'operations';
-    public const OP_FIRING = 'alert_firing';
-    public const OP_RECOVERED = 'alert_recovered';
-    public const OP_TEST = 'alert_test';
+    public const DELIVERY_TASK_TYPE = TaskDeliveryLog::TASK_TYPE;
+    public const AUDIT_CATEGORY = TaskDeliveryLog::AUDIT_CATEGORY;
+    public const OP_FIRING = DeliveryLog::OP_FIRING;
+    public const OP_RECOVERED = DeliveryLog::OP_RECOVERED;
+    public const OP_TEST = DeliveryLog::OP_TEST;
 
-    public const OUTCOME_SENT = 'sent';
-    public const OUTCOME_SUPPRESSED = 'suppressed';
-    public const OUTCOME_FAILED = 'failed';
+    public const OUTCOME_SENT = DeliveryLog::OUTCOME_SENT;
+    public const OUTCOME_SUPPRESSED = DeliveryLog::OUTCOME_SUPPRESSED;
+    public const OUTCOME_FAILED = DeliveryLog::OUTCOME_FAILED;
 
     public const STATE_OK = 'ok';
     public const STATE_FIRING = 'firing';
@@ -72,7 +80,7 @@ class AlertEvaluator
     public const LEASE_SECONDS = 900;
     public const MAX_CATCHUP_HOURS = HoursToEvaluate::MAX_CATCHUP_HOURS;
     /** An undelivered alert is retried at each hourly check until its window ended this many hours ago. */
-    public const RETRY_HOURS = 24;
+    public const RETRY_HOURS = DeliverAlert::RETRY_HOURS;
     public const RECENT_LIMIT = 20;
 
     private readonly ClockInterface $clock;
@@ -184,7 +192,9 @@ class AlertEvaluator
         try {
             $installation = $this->installationUrl();
             $destinations = $configured['destinations'];
-            $delivered = $this->tasks->latest(self::DELIVERY_TASK_TYPE);
+            $log = new TaskDeliveryLog($this->tasks, $this->audit, $this->clock, $trigger, $taskId, $this->tasks->latest(self::DELIVERY_TASK_TYPE));
+            $channels = new AlertChannels($this->webhookSender, new EmailAlerts($this->mailer, $trigger));
+            $deliver = new DeliverAlert($channels, $log);
 
             $states = [];
             foreach ($latest as $subject => $item) {
@@ -195,8 +205,8 @@ class AlertEvaluator
             }
             $hours = $this->evaluation->hours($cursorHour, $completedHour);
             $checked = [];
-            $run = function (Evaluation $evaluation, array $sites) use ($configured, $destinations, $installation, &$delivered, $completedHour, $trigger, $taskId, &$counts): void {
-                $this->carryOut($evaluation, $configured['rules'], $sites, $destinations, $installation, $delivered, $completedHour, $trigger, $taskId, $counts);
+            $run = function (Evaluation $evaluation, array $sites) use ($configured, $destinations, $installation, $deliver, $log, $completedHour, $trigger, &$counts): void {
+                $this->carryOut($evaluation, $configured['rules'], $sites, $destinations, $installation, $deliver, $log, $completedHour, $trigger, $counts);
             };
 
             foreach ($enabledRules as $rule) {
@@ -299,6 +309,7 @@ class AlertEvaluator
             'domain' => 'example.com',
         ];
 
+        $log = new TaskDeliveryLog($this->tasks, $this->audit, $this->clock, $trigger, null);
         $windowEnd = $this->completedUtcHour();
         $windowEndIso = self::formatIsoHour($windowEnd);
         $alertId = substr(bin2hex(random_bytes(16)), 0, 24);
@@ -324,14 +335,12 @@ class AlertEvaluator
                 ? sprintf('Test alert sent (%s; rule status unchanged).', $result['reason'])
                 : $result['reason'];
 
-            $this->recordDelivery(
+            $log->record(
                 self::OP_TEST,
                 $result['sent'] ? self::OUTCOME_SENT : self::OUTCOME_FAILED,
                 $payload['rule'],
                 $payload['host'],
                 $destination['label'],
-                $trigger->requestedBy,
-                null,
                 $reason,
             );
 
@@ -360,10 +369,12 @@ class AlertEvaluator
             $targets = $listed;
         }
 
+        $email = new EmailAlerts($this->mailer, $trigger);
+        $description = RuleDescription::condition($rule);
         $sentCount = 0;
         $lastError = null;
         foreach ($targets as $address) {
-            $emailResult = $this->sendAlertEmail($address, $rule, $payload, $trigger);
+            $emailResult = $email->sendOne($address, $payload, $description);
             if ($emailResult['sent']) {
                 ++$sentCount;
             } else {
@@ -376,14 +387,12 @@ class AlertEvaluator
             ? 'Test alert (rule status unchanged)'
             : ($lastError ?? 'Not sent: no recipient could be reached.');
 
-        $this->recordDelivery(
+        $log->record(
             self::OP_TEST,
             $allSent ? self::OUTCOME_SENT : self::OUTCOME_FAILED,
             $payload['rule'],
             $payload['host'],
             $destination['label'],
-            $trigger->requestedBy,
-            null,
             $reason,
         );
 
@@ -607,7 +616,7 @@ class AlertEvaluator
         string $type,
         string $windowEndIso,
     ): string {
-        return substr(hash('sha256', implode("\0", ['alert-v1', $installation, $ruleId, $websiteToken, $type, $windowEndIso])), 0, 24);
+        return AlertIds::alert($installation, $ruleId, $websiteToken, $type, $windowEndIso);
     }
 
     /**
@@ -620,7 +629,7 @@ class AlertEvaluator
         string $websiteToken,
         string $sinceIso,
     ): string {
-        return substr(hash('sha256', implode("\0", ['incident-v1', $installation, $ruleId, $websiteToken, $sinceIso])), 0, 24);
+        return AlertIds::incident($installation, $ruleId, $websiteToken, $sinceIso);
     }
 
     public static function formatIsoHour(\DateTimeImmutable $time): string
@@ -640,7 +649,6 @@ class AlertEvaluator
      * @param array<string, RuleConfig>                                     $rules
      * @param array<string, array<string, Site>>                            $sites covered websites by rule
      * @param array<string, DestinationConfig>                              $destinations
-     * @param array<string, array{attempt: array<string, mixed>, success: ?array<string, mixed>}> $delivered
      * @param Counts                                                        $counts
      */
     private function carryOut(
@@ -649,10 +657,10 @@ class AlertEvaluator
         array $sites,
         array $destinations,
         string $installation,
-        array &$delivered,
+        DeliverAlert $deliver,
+        DeliveryLog $log,
         \DateTimeImmutable $completedHour,
         TaskTrigger $trigger,
-        int $taskId,
         array &$counts,
     ): void {
         foreach ($evaluation->steps() as $step) {
@@ -660,258 +668,20 @@ class AlertEvaluator
                 $this->saveState($step['subject'], $step['state'], $trigger);
             } elseif ($step['kind'] === 'deleted') {
                 $this->saveState($step['subject'], IncidentState::OK, $trigger);
-                $this->recordDelivery(self::OP_RECOVERED, self::OUTCOME_SUPPRESSED, $step['rule_id'], $step['website_token'], '(none)', $trigger->requestedBy, $taskId, 'The rule was deleted while firing, so no recovery was sent.');
+                $log->record(self::OP_RECOVERED, self::OUTCOME_SUPPRESSED, $step['rule_id'], $step['website_token'], '(none)', 'The rule was deleted while firing, so no recovery was sent.');
                 ++$counts['suppressed'];
             } else {
                 $alert = $step['alert'];
                 $token = $alert->websiteToken;
                 $site = $sites[$alert->ruleId][$token] ?? $this->settings->website($token) ?? ['token' => $token, 'name' => $token, 'domain' => ''];
-                $this->deliverToAll($alert->toArray(), $rules[$alert->ruleId], $site, $destinations, $installation, $delivered, $completedHour, $trigger, $taskId, $counts, $step['retryable']);
+                $deliver->deliver($alert, $rules[$alert->ruleId], $site, $destinations, $installation, $completedHour, $step['retryable'], $counts);
             }
         }
-    }
-
-    /**
-     * @param Alert                            $alert
-     * @param RuleConfig                       $rule
-     * @param Site                             $site
-     * @param array<string, DestinationConfig> $destinations
-     * @param array<string, array{attempt: array<string, mixed>, success: ?array<string, mixed>}> $delivered
-     * @param Counts                           $counts
-     */
-    private function deliverToAll(
-        array $alert,
-        array $rule,
-        array $site,
-        array $destinations,
-        string $installation,
-        array &$delivered,
-        \DateTimeImmutable $completedHour,
-        TaskTrigger $trigger,
-        int $taskId,
-        array &$counts,
-        bool $retryable,
-    ): void {
-        $windowEnd = self::parseIsoHour($alert['window_end']);
-        if ($windowEnd === null) {
-            return;
-        }
-        $payload = $this->buildPayload($alert['type'], $rule, $site, $installation, $windowEnd, $alert['since']);
-
-        foreach ($rule['destinations'] as $destinationId) {
-            $destination = $destinations[$destinationId] ?? null;
-            if ($destination !== null) {
-                $this->deliverOne($destination, $rule, $site, $payload, $alert['since'], $windowEnd, $installation, $delivered, $completedHour, $trigger, $taskId, $counts, $retryable);
-            }
-        }
-    }
-
-    /**
-     * Sends one alert to one destination unless it already has it.
-     *
-     * @param DestinationConfig $destination
-     * @param RuleConfig        $rule
-     * @param Site              $site
-     * @param AlertPayload      $payload
-     * @param array<string, array{attempt: array<string, mixed>, success: ?array<string, mixed>}> $delivered
-     * @param Counts            $counts
-     */
-    private function deliverOne(
-        array $destination,
-        array $rule,
-        array $site,
-        array $payload,
-        string $since,
-        \DateTimeImmutable $windowEnd,
-        string $installation,
-        array &$delivered,
-        \DateTimeImmutable $completedHour,
-        TaskTrigger $trigger,
-        int $taskId,
-        array &$counts,
-        bool $retryable,
-    ): void {
-        $subject = self::deliverySubject($rule['id'], $site['token'], $destination['id']);
-        $last = $delivered[$subject]['success']['fingerprint'] ?? null;
-        $operation = $payload['type'] === 'recovered' ? self::OP_RECOVERED : self::OP_FIRING;
-
-        if ($last === $payload['id']) {
-            if ($payload['type'] === 'firing' && $retryable) {
-                ++$counts['suppressed'];
-            }
-
-            return;
-        }
-
-        if ($payload['type'] === 'recovered') {
-            $firingId = self::computeAlertId($installation, $rule['id'], $site['token'], 'firing', $since);
-            if ($last !== $firingId) {
-                $this->markDelivered($subject, $payload['id'], 'Recovery not sent: the firing alert never reached this destination.', $trigger, $delivered);
-                $this->recordDelivery($operation, self::OUTCOME_SUPPRESSED, $payload['rule'], $payload['host'], $destination['label'], $trigger->requestedBy, $taskId, 'Not sent: the firing alert for this incident never reached this destination, so its recovery is not sent either.');
-                ++$counts['suppressed'];
-
-                return;
-            }
-        }
-
-        $retryUntil = $windowEnd->modify('+'.self::RETRY_HOURS.' hours');
-        if ($retryable && $retryUntil <= $completedHour) {
-            return; // Retries ran out earlier; the last failure is in the audit trail.
-        }
-        $lastAttempt = !$retryable || $retryUntil <= $completedHour->modify('+1 hour');
-
-        if ($destination['type'] === AlertRuleValidator::TYPE_WEBHOOK) {
-            $result = $this->webhookSender->send($destination, $payload);
-            $sent = $result['sent'];
-            $reason = $result['reason'];
-        } else {
-            [$sent, $reason] = $this->emailAll($destination['recipients'] ?? [], $rule, $payload, $trigger);
-        }
-
-        if ($sent) {
-            $this->markDelivered($subject, $payload['id'], sprintf('Delivered %s alert %s.', $payload['type'], $payload['id']), $trigger, $delivered);
-            $this->recordDelivery($operation, self::OUTCOME_SENT, $payload['rule'], $payload['host'], $destination['label'], $trigger->requestedBy, $taskId, $reason);
-            ++$counts['sent'];
-
-            return;
-        }
-
-        if ($retryable) {
-            $reason = rtrim($reason, '.').'. '.($lastAttempt ? 'Gave up: no more retries for this alert.' : 'Will retry at the next hourly check.');
-        }
-        $this->recordDelivery($operation, self::OUTCOME_FAILED, $payload['rule'], $payload['host'], $destination['label'], $trigger->requestedBy, $taskId, $reason);
-        ++$counts['failed'];
-    }
-
-    /**
-     * @param list<string> $recipients
-     * @param RuleConfig   $rule
-     * @param AlertPayload $payload
-     *
-     * @return array{0: bool, 1: string}
-     */
-    private function emailAll(array $recipients, array $rule, array $payload, TaskTrigger $trigger): array
-    {
-        $sentCount = 0;
-        $lastError = null;
-        foreach ($recipients as $address) {
-            $emailResult = $this->sendAlertEmail($address, $rule, $payload, $trigger);
-            if ($emailResult['sent']) {
-                ++$sentCount;
-            } else {
-                $lastError = $emailResult['reason'];
-            }
-        }
-
-        if ($sentCount === 0) {
-            return [false, $lastError ?? 'Not sent: no recipient is listed.'];
-        }
-        if ($sentCount < count($recipients)) {
-            // Retrying would send the alert again to the recipients who already have it.
-            return [true, sprintf('Delivered to %d of %d listed recipients (id %s); the others failed: %s', $sentCount, count($recipients), $payload['id'], rtrim((string) $lastError, '.'))];
-        }
-
-        return [true, sprintf('Delivered to listed recipients (id %s)', $payload['id'])];
-    }
-
-    /**
-     * @param RuleConfig $rule
-     * @param Site       $site
-     *
-     * @return AlertPayload
-     */
-    private function buildPayload(
-        string $type,
-        array $rule,
-        array $site,
-        string $installation,
-        \DateTimeImmutable $windowEnd,
-        string $sinceIso,
-    ): array {
-        $windowEndIso = self::formatIsoHour($windowEnd);
-        $alertId = self::computeAlertId($installation, $rule['id'], $site['token'], $type, $windowEndIso);
-        $incidentId = self::computeIncidentId($installation, $rule['id'], $site['token'], $sinceIso);
-
-        return [
-            'schema_version' => '1',
-            'id' => $alertId,
-            'incident' => $incidentId,
-            'type' => $type === 'recovered' ? 'recovered' : 'firing',
-            'rule' => $rule['id'],
-            'website' => $site['token'],
-            'host' => $site['domain'] !== '' ? $site['domain'] : $site['token'],
-            'installation' => $installation,
-            'alert_condition' => AlertRuleValidator::formatAlertCondition($rule),
-            'window_end' => $windowEndIso,
-        ];
-    }
-
-    /**
-     * @param RuleConfig   $rule
-     * @param AlertPayload $payload
-     *
-     * @return array{sent: bool, reason: string}
-     */
-    private function sendAlertEmail(string $recipient, array $rule, array $payload, TaskTrigger $trigger): array
-    {
-        $title = match ($payload['type']) {
-            'recovered' => sprintf('Recovered: %s on %s', $payload['rule'], $payload['host']),
-            'test' => sprintf('Test alert: %s on %s', $payload['rule'], $payload['host']),
-            default => sprintf('Alert firing: %s on %s', $payload['rule'], $payload['host']),
-        };
-
-        $result = $this->mailer->send(
-            EmailPurpose::Alert,
-            $recipient,
-            [
-                'alert_title' => $title,
-                'alert_type' => $payload['type'],
-                'alert_rule' => $payload['rule'],
-                'alert_website' => $payload['website'],
-                'alert_host' => $payload['host'],
-                'alert_installation' => $payload['installation'],
-                'alert_condition' => $payload['alert_condition'],
-                'alert_condition_description' => AlertSettings::describeCondition($rule),
-                'alert_window_end' => $payload['window_end'],
-                'alert_id' => $payload['id'],
-                'alert_incident' => $payload['incident'],
-            ],
-            $trigger,
-        );
-
-        if ($result->sent) {
-            return ['sent' => true, 'reason' => 'Delivered to listed recipients'];
-        }
-
-        return ['sent' => false, 'reason' => TransactionalMailer::redact((string) $result->error, [$recipient])];
-    }
-
-    private function recordDelivery(
-        string $operation,
-        string $outcome,
-        string $ruleId,
-        string $websiteHost,
-        string $destinationLabel,
-        ?string $actor,
-        ?int $taskId,
-        string $details,
-    ): void {
-        $this->audit->record(
-            self::AUDIT_CATEGORY,
-            $operation,
-            $outcome,
-            $this->now(),
-            self::formatSubject($ruleId, $websiteHost, $destinationLabel),
-            $actor,
-            $taskId,
-            WebhookSender::redact($details),
-            always: true,
-        );
     }
 
     public static function formatSubject(string $ruleId, string $websiteHost, string $destinationLabel): string
     {
-        return sprintf('%s · %s · %s', $ruleId, $websiteHost, $destinationLabel);
+        return TaskDeliveryLog::subject($ruleId, $websiteHost, $destinationLabel);
     }
 
     private function saveState(string $subject, string $fingerprint, TaskTrigger $trigger): void
@@ -921,21 +691,6 @@ class AlertEvaluator
         if ($id !== null) {
             $this->tasks->succeed($id, $now, null, 'State: '.$fingerprint, null, $fingerprint);
         }
-    }
-
-    /**
-     * Records that a destination has an alert, so it is neither retried nor sent twice.
-     *
-     * @param array<string, array{attempt: array<string, mixed>, success: ?array<string, mixed>}> $delivered
-     */
-    private function markDelivered(string $subject, string $alertId, string $details, TaskTrigger $trigger, array &$delivered): void
-    {
-        $now = $this->now();
-        $id = $this->tasks->start(self::DELIVERY_TASK_TYPE, $subject, $trigger, $now);
-        if ($id !== null) {
-            $this->tasks->succeed($id, $now, null, $details, null, $alertId);
-        }
-        $delivered[$subject]['success']['fingerprint'] = $alertId;
     }
 
     /**
@@ -962,9 +717,7 @@ class AlertEvaluator
      */
     public static function deliverySubject(string $ruleId, string $websiteToken, string $destinationId): string
     {
-        $subject = $ruleId.':'.$destinationId.':'.$websiteToken;
-
-        return strlen($subject) <= 191 ? $subject : $ruleId.':'.$destinationId.':#'.hash('sha256', $websiteToken);
+        return DeliveryRecord::subject($ruleId, $websiteToken, $destinationId);
     }
 
     private function installationUrl(): string

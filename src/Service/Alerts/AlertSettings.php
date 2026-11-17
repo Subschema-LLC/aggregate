@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service\Alerts;
 
+use App\Entities\AlertRule\RuleDescription;
 use App\Integrations\Alerts\AlertsYamlStore;
 use App\Integrations\Alerts\CoveredWebsites;
 use App\Service\AggregateConfigLoader;
@@ -167,29 +168,7 @@ class AlertSettings
      */
     public static function describeCondition(array $rule): string
     {
-        $windowLabel = match ($rule['window']) {
-            AlertRuleValidator::WINDOW_HOUR => '1 hour (1 h)',
-            AlertRuleValidator::WINDOW_DAY => '1 day (24 h)',
-            AlertRuleValidator::WINDOW_WEEK => '1 week (168 h)',
-        };
-
-        if ($rule['source'] === AlertRuleValidator::SOURCE_TRACKING_FAILURES) {
-            return sprintf('More than %d tracking failures in %s', $rule['threshold'], $windowLabel);
-        }
-
-        $modeLabel = match ($rule['privacy_mode']) {
-            AlertRuleValidator::PRIVACY_ENHANCED => 'enhanced ',
-            AlertRuleValidator::PRIVACY_ANONYMOUS => 'anonymous ',
-            default => '',
-        };
-        $eventLabel = $rule['event_name'] !== '' ? sprintf('"%s" ', $rule['event_name']) : '';
-        $modeSuffix = $rule['privacy_mode'] === AlertRuleValidator::PRIVACY_ALL && $rule['event_name'] === '' ? ' (all modes)' : '';
-
-        if ($rule['condition'] === AlertRuleValidator::CONDITION_NO_EVENTS) {
-            return sprintf('No %s%sevents%s in %s', $modeLabel, $eventLabel, $modeSuffix, $windowLabel);
-        }
-
-        return sprintf('Fewer than %d %s%sevents%s in %s', $rule['threshold'], $modeLabel, $eventLabel, $modeSuffix, $windowLabel);
+        return RuleDescription::condition($rule);
     }
 
     public static function bareHost(string $domain): string

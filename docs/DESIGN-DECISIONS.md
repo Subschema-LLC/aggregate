@@ -1500,6 +1500,35 @@ relay or transform until native channel templates are added.
 **What would change it.** A requirement for sub-hour enhanced-event alerts or
 per-incident acknowledgement state that cannot fit in `processing_tasks`.
 
+### The incident state is the alerts outbox
+
+**Decision.** FIDES rule 10 (messages are recorded, saved with the change,
+then dispatched) is met for alerts by the stored incident state and the
+delivery records, not by a message queue. `EvaluateAlerts` decides each
+`AlertFired` and `AlertRecovered`; `DeliverAlert` reacts by sending the alert
+to each destination whose last delivered alert differs. The state names the
+current alert, alert IDs are derived rather than stored, and every hourly
+check offers the current alert again, so a crash between sending and saving,
+or a destination that was down, is caught up at the next check for up to
+24 hours. A closing recovery (an incident that recovered and broke again
+within one catch-up) is offered once only, as before.
+
+**Why.** It adds no table, worker or queue setting, and it keeps the
+delivery guarantees the alerts already had. Alerts could instead go through
+Symfony Messenger's existing `doctrine://` transport (the queue enhanced events
+use), which is synchronous unless a worker is configured. That would add a
+second retry mechanism next to the hourly one, and with a worker it would put
+alert payloads in `messenger_messages` under its seven-day deletion (Scott
+chose the incident state, November 2026).
+
+**Trade-off.** The order stays send, then save. That is safe only because
+alerts are derived again from the state each hour; it would not be safe for a
+message that cannot be derived again. Delivery is at least once, with a stable
+`id` to de-duplicate on.
+
+**What would change it.** An alert that cannot be derived from the incident
+state, or a need to send faster than the next hourly check.
+
 ### Signed release packages that keep the operator's files
 
 **Decision.** Releases are ZIPs signed with a key that the installation already
