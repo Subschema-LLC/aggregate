@@ -291,8 +291,17 @@ Progress:
   covers. `AlertRuleValidator` and `AlertSettings` only delegate to them; they
   go when their callers move to the features below. `describeCondition()`
   waits for `ListAlerts` and `normalizeInstallationUrl()` for `DeliverAlert`.
-- [ ] `AlertFired` and `AlertRecovered`, and `EvaluateAlerts` as a pure
-  feature that records them.
+- [x] `AlertFired` and `AlertRecovered` in `Entities/Incident`, with the
+  stored incident state, and `EvaluateAlerts` as a pure feature. It decides
+  one rule and website at a time through the `WindowBreaches` contract
+  (`Integrations/Alerts/EventCountWindowBreaches` counts the window) and
+  returns an `Evaluation`: the alerts to deliver and the states to save, in
+  order. `AlertEvaluator` carries each one out before the next website is
+  counted, so a failing count still stops only the websites after it.
+- [ ] Deciding how messages are saved with the change and dispatched (rule
+  10): a Messenger outbox needs a table on every engine and a worker or a
+  synchronous transport, while the stored incident state already acts as an
+  outbox for the current alert.
 - [ ] `DeliverAlert` and the webhook and email integrations.
 - [ ] `SaveAlertRule`, `SendTestAlert` and `ListAlerts` with their views, and
   the page in `Delivery/Alerts`.

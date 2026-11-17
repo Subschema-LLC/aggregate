@@ -197,7 +197,7 @@
         "src/Security/Access/PermissionGroupCatalog.php": 288,
         "src/Security/IpRateLimiter.php": 201,
         "src/Service/AggregateConfigLoader.php": 534,
-        "src/Service/Alerts/AlertEvaluator.php": 1147,
+        "src/Service/Alerts/AlertEvaluator.php": 979,
         "src/Service/Alerts/AlertSecrets.php": 327,
         "src/Service/Alerts/AlertSettings.php": 220,
         "src/Service/Alerts/WebhookSender.php": 241,

@@ -4,6 +4,13 @@ declare(strict_types=1);
 
 namespace App\Service\Alerts;
 
+use App\Entities\AlertRule\WindowBreaches;
+use App\Entities\Incident\IncidentState;
+use App\Entities\Incident\UtcHour;
+use App\Features\EvaluateAlerts\EvaluateAlerts;
+use App\Features\EvaluateAlerts\Evaluation;
+use App\Features\EvaluateAlerts\HoursToEvaluate;
+use App\Integrations\Alerts\EventCountWindowBreaches;
 use App\Repository\EventRepository;
 use App\Service\AggregateConfigLoader;
 use App\Service\Email\EmailPurpose;
@@ -20,9 +27,10 @@ use Psr\Log\LoggerInterface;
 use Symfony\Component\Clock\Clock;
 
 /**
- * Evaluates alert rules on completed UTC hours, keeps per-rule/website firing
- * state in processing_tasks.fingerprint, and delivers firing, recovery and
- * test alerts through WebhookSender and TransactionalMailer.
+ * Runs the hourly alert check: EvaluateAlerts decides which alerts to send
+ * and which states to save, and this class carries that out in order. It keeps
+ * per-rule/website firing state in processing_tasks.fingerprint, and delivers
+ * firing, recovery and test alerts through WebhookSender and TransactionalMailer.
  *
  * State per rule and website (task type `alerts`, subject `<rule>:<website>`):
  * `ok`, `firing:<since>` or `recovered:<window_end>:<since>`. The state names
@@ -62,18 +70,18 @@ class AlertEvaluator
     public const STATE_PROBLEM = 'problem';
 
     public const LEASE_SECONDS = 900;
-    public const MAX_CATCHUP_HOURS = 24;
+    public const MAX_CATCHUP_HOURS = HoursToEvaluate::MAX_CATCHUP_HOURS;
     /** An undelivered alert is retried at each hourly check until its window ended this many hours ago. */
     public const RETRY_HOURS = 24;
     public const RECENT_LIMIT = 20;
 
-    private const ISO_HOUR_LENGTH = 20;
-
     private readonly ClockInterface $clock;
+    private readonly WindowBreaches $breaches;
+    private readonly EvaluateAlerts $evaluation;
 
     public function __construct(
         private readonly AlertSettings $settings,
-        private readonly EventRepository $events,
+        EventRepository $events,
         private readonly ProcessingTasks $tasks,
         private readonly AuditTrail $audit,
         private readonly Connection $connection,
@@ -85,6 +93,8 @@ class AlertEvaluator
         ?ClockInterface $clock = null,
     ) {
         $this->clock = $clock ?? Clock::get();
+        $this->breaches = new EventCountWindowBreaches($events, $tasks);
+        $this->evaluation = new EvaluateAlerts($this->breaches);
     }
 
     /**
@@ -167,43 +177,52 @@ class AlertEvaluator
             return $result('busy', 'Another alert evaluation is in progress.', $completedIso);
         }
 
-        $hours = $this->hoursToEvaluate($cursorHour, $completedHour);
         /** @var Counts $counts */
         $counts = ['sent' => 0, 'suppressed' => 0, 'failed' => 0];
-        $skipped = 0;
+        $skipped = [];
 
         try {
             $installation = $this->installationUrl();
             $destinations = $configured['destinations'];
             $delivered = $this->tasks->latest(self::DELIVERY_TASK_TYPE);
+
+            $states = [];
+            foreach ($latest as $subject => $item) {
+                if ((string) $subject !== '') {
+                    $fingerprint = $item['success']['fingerprint'] ?? null;
+                    $states[(string) $subject] = $fingerprint === null ? null : (string) $fingerprint;
+                }
+            }
+            $hours = $this->evaluation->hours($cursorHour, $completedHour);
             $checked = [];
+            $run = function (Evaluation $evaluation, array $sites) use ($configured, $destinations, $installation, &$delivered, $completedHour, $trigger, $taskId, &$counts): void {
+                $this->carryOut($evaluation, $configured['rules'], $sites, $destinations, $installation, $delivered, $completedHour, $trigger, $taskId, $counts);
+            };
 
             foreach ($enabledRules as $rule) {
                 if ($this->settings->referenceProblem($rule) !== null) {
-                    ++$skipped;
+                    $skipped[] = $rule['id'];
                     continue;
                 }
                 foreach ($this->settings->coveredWebsites($rule) as $site) {
                     $subject = self::stateSubject($rule['id'], $site['token']);
                     $checked[$subject] = true;
-                    $persisted = $latest[$subject]['success']['fingerprint'] ?? null;
-                    [$state, $closing] = $this->walk($rule, $site['token'], $hours, $persisted);
-
-                    if ($closing !== null) {
-                        // Recovered and broke again during catch-up: close the earlier incident first.
-                        $this->deliverToAll($closing, $rule, $site, $destinations, $installation, $delivered, $completedHour, $trigger, $taskId, $counts, false);
-                    }
-                    $current = self::alertForState($state);
-                    if ($current !== null) {
-                        $this->deliverToAll($current, $rule, $site, $destinations, $installation, $delivered, $completedHour, $trigger, $taskId, $counts, true);
-                    }
-                    if ($state !== $persisted) {
-                        $this->saveState($subject, $state, $trigger);
-                    }
+                    $evaluation = $this->evaluation->evaluateWebsite($rule, $site['token'], $hours, $states[$subject] ?? null);
+                    $run($evaluation, [$rule['id'] => [$site['token'] => $site]]);
                 }
             }
 
-            $this->closeUncheckedIncidents($configured['rules'], $checked, $latest, $destinations, $installation, $delivered, $completedHour, $trigger, $taskId, $counts);
+            $sites = [];
+            $coverage = [];
+            foreach ($configured['rules'] as $ruleId => $rule) {
+                $coverage[$ruleId] = [];
+                foreach ($this->settings->coveredWebsites($rule) as $site) {
+                    $sites[$ruleId][$site['token']] = $site;
+                    $coverage[$ruleId][] = $site['token'];
+                }
+            }
+            $run($this->evaluation->closeUnchecked($states, $checked, $configured['rules'], $coverage, $completedHour), $sites);
+            $skipped = count($skipped);
 
             $summary = sprintf(
                 'Evaluated %d rule%s for window ending %s: %d sent, %d suppressed, %d failed.',
@@ -567,33 +586,14 @@ class AlertEvaluator
     }
 
     /**
-     * Checks whether the sliding window [hourEnd - window, hourEnd) breaches the rule.
+     * Checks whether the sliding window [hourEnd - window, hourEnd) breaches the rule;
+     * see EventCountWindowBreaches.
      *
      * @param RuleConfig $rule
      */
     public function isWindowBreached(array $rule, string $websiteToken, \DateTimeImmutable $hourEnd): bool
     {
-        $windowHours = AlertRuleValidator::windowHours($rule['window']);
-        $from = $hourEnd->modify('-'.$windowHours.' hours');
-
-        if ($rule['source'] === AlertRuleValidator::SOURCE_TRACKING_FAILURES) {
-            $cap = $rule['threshold'] + 1;
-            $count = $this->tasks->countTrackingFailuresUpTo($websiteToken, $from, $hourEnd, $cap);
-
-            return $count > $rule['threshold'];
-        }
-
-        $cap = $rule['condition'] === AlertRuleValidator::CONDITION_NO_EVENTS ? 1 : $rule['threshold'];
-        $count = $this->events->countEventsUpTo(
-            $websiteToken,
-            $from,
-            $hourEnd,
-            $cap,
-            $rule['privacy_mode'],
-            $rule['event_name'] !== '' ? $rule['event_name'] : null,
-        );
-
-        return $count < $cap;
+        return $this->breaches->isBreached($rule, $websiteToken, $hourEnd);
     }
 
     /**
@@ -625,87 +625,28 @@ class AlertEvaluator
 
     public static function formatIsoHour(\DateTimeImmutable $time): string
     {
-        return $time->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d\TH:00:00\Z');
+        return UtcHour::format($time);
     }
 
     public static function parseIsoHour(?string $value): ?\DateTimeImmutable
     {
-        if ($value === null || preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:00:00Z$/D', $value) !== 1) {
-            return null;
-        }
-        try {
-            return new \DateTimeImmutable($value, new \DateTimeZone('UTC'));
-        } catch (\Throwable) {
-            return null;
-        }
+        return UtcHour::parse($value);
     }
 
     /**
-     * Walks the hours to evaluate for one rule and website and works out the
-     * new state. Only the net change is reported: an incident that opened and
-     * closed during catch-up sends nothing, and one that closed and opened
-     * again closes the earlier incident (returned as the closing alert) before
-     * the new one fires.
-     *
-     * @param RuleConfig               $rule
-     * @param list<\DateTimeImmutable> $hours
-     *
-     * @return array{0: string, 1: ?Alert}
-     */
-    private function walk(array $rule, string $token, array $hours, ?string $persisted): array
-    {
-        $before = self::parseState($persisted);
-        $wasFiring = $before['kind'] === self::STATE_FIRING;
-        $firing = $wasFiring;
-        $since = $before['since'];
-        $persistedClosedAt = null;
-
-        foreach ($hours as $hourEnd) {
-            $breached = $this->isWindowBreached($rule, $token, $hourEnd);
-            if ($breached && !$firing) {
-                $firing = true;
-                $since = self::formatIsoHour($hourEnd);
-            } elseif (!$breached && $firing) {
-                if ($wasFiring && $persistedClosedAt === null && $since === $before['since']) {
-                    $persistedClosedAt = self::formatIsoHour($hourEnd);
-                }
-                $firing = false;
-            }
-        }
-
-        $closesPersisted = $wasFiring && $persistedClosedAt !== null && $before['since'] !== null;
-        if ($firing && $since !== null && (!$wasFiring || $since !== $before['since'])) {
-            $closing = $closesPersisted
-                ? ['type' => 'recovered', 'window_end' => (string) $persistedClosedAt, 'since' => (string) $before['since']]
-                : null;
-
-            return ['firing:'.$since, $closing];
-        }
-        if ($closesPersisted) {
-            return ['recovered:'.$persistedClosedAt.':'.$before['since'], null];
-        }
-
-        return [$persisted ?? 'ok', null];
-    }
-
-    /**
-     * Closes incidents that the main loop did not check: a rule turned off or
-     * no longer covering a website sends a recovery to its destinations; a
-     * deleted rule has no destinations left, so its state is reset and the
-     * audit trail says no recovery was sent. Recoveries that could not be
-     * delivered are retried here too.
+     * Carries out an Evaluation in order: delivers its alerts, saves its states
+     * and closes incidents of deleted rules.
      *
      * @param array<string, RuleConfig>                                     $rules
-     * @param array<string, true>                                           $checked
-     * @param array<string, array{attempt: array<string, mixed>, success: ?array<string, mixed>}> $latest
+     * @param array<string, array<string, Site>>                            $sites covered websites by rule
      * @param array<string, DestinationConfig>                              $destinations
      * @param array<string, array{attempt: array<string, mixed>, success: ?array<string, mixed>}> $delivered
      * @param Counts                                                        $counts
      */
-    private function closeUncheckedIncidents(
+    private function carryOut(
+        Evaluation $evaluation,
         array $rules,
-        array $checked,
-        array $latest,
+        array $sites,
         array $destinations,
         string $installation,
         array &$delivered,
@@ -714,64 +655,18 @@ class AlertEvaluator
         int $taskId,
         array &$counts,
     ): void {
-        foreach ($latest as $subject => $item) {
-            $subject = (string) $subject;
-            if ($subject === '' || isset($checked[$subject])) {
-                continue;
-            }
-            $before = self::parseState(isset($item['success']['fingerprint']) ? (string) $item['success']['fingerprint'] : null);
-            if ($before['kind'] !== self::STATE_FIRING && $before['kind'] !== 'recovered') {
-                continue;
-            }
-            $parts = explode(':', $subject, 2);
-            if (count($parts) !== 2 || $before['since'] === null) {
-                continue;
-            }
-            [$ruleId, $token] = $parts;
-            if (str_starts_with($token, '#')) {
-                continue;
-            }
-            $rule = $rules[$ruleId] ?? null;
-
-            if ($rule === null) {
-                if ($before['kind'] === self::STATE_FIRING) {
-                    $this->saveState($subject, 'ok', $trigger);
-                    $this->recordDelivery(self::OP_RECOVERED, self::OUTCOME_SUPPRESSED, $ruleId, $token, '(none)', $trigger->requestedBy, $taskId, 'The rule was deleted while firing, so no recovery was sent.');
-                    ++$counts['suppressed'];
-                }
-                continue;
-            }
-
-            $covered = null;
-            foreach ($this->settings->coveredWebsites($rule) as $site) {
-                if ($site['token'] === $token) {
-                    $covered = $site;
-                    break;
-                }
-            }
-            if ($rule['enabled'] && $covered !== null) {
-                // An enabled rule that still covers the website but was skipped
-                // (see referenceProblem()): its state is unknown, so keep it.
-                continue;
-            }
-            $site = $covered ?? $this->settings->website($token) ?? ['token' => $token, 'name' => $token, 'domain' => ''];
-
-            if ($before['kind'] === self::STATE_FIRING) {
-                $closeAt = self::formatIsoHour($completedHour);
-                if (strcmp($closeAt, $before['since']) <= 0) {
-                    // Turned off in the hour it fired: close at the next check, so
-                    // the recovery's window_end is later than the firing alert's.
-                    continue;
-                }
-                $closing = ['type' => 'recovered', 'window_end' => $closeAt, 'since' => $before['since']];
-                $this->deliverToAll($closing, $rule, $site, $destinations, $installation, $delivered, $completedHour, $trigger, $taskId, $counts, true);
-                $this->saveState($subject, 'recovered:'.$closing['window_end'].':'.$before['since'], $trigger);
-                continue;
-            }
-
-            $current = self::alertForState('recovered:'.$before['recovered_at'].':'.$before['since']);
-            if ($current !== null) {
-                $this->deliverToAll($current, $rule, $site, $destinations, $installation, $delivered, $completedHour, $trigger, $taskId, $counts, true);
+        foreach ($evaluation->steps() as $step) {
+            if ($step['kind'] === 'save') {
+                $this->saveState($step['subject'], $step['state'], $trigger);
+            } elseif ($step['kind'] === 'deleted') {
+                $this->saveState($step['subject'], IncidentState::OK, $trigger);
+                $this->recordDelivery(self::OP_RECOVERED, self::OUTCOME_SUPPRESSED, $step['rule_id'], $step['website_token'], '(none)', $trigger->requestedBy, $taskId, 'The rule was deleted while firing, so no recovery was sent.');
+                ++$counts['suppressed'];
+            } else {
+                $alert = $step['alert'];
+                $token = $alert->websiteToken;
+                $site = $sites[$alert->ruleId][$token] ?? $this->settings->website($token) ?? ['token' => $token, 'name' => $token, 'domain' => ''];
+                $this->deliverToAll($alert->toArray(), $rules[$alert->ruleId], $site, $destinations, $installation, $delivered, $completedHour, $trigger, $taskId, $counts, $step['retryable']);
             }
         }
     }
@@ -1048,43 +943,7 @@ class AlertEvaluator
      */
     public static function parseState(?string $fingerprint): array
     {
-        if ($fingerprint === null) {
-            return ['kind' => 'none', 'since' => null, 'recovered_at' => null];
-        }
-        if (str_starts_with($fingerprint, 'firing:')) {
-            $since = substr($fingerprint, 7);
-            if (self::parseIsoHour($since) !== null) {
-                return ['kind' => 'firing', 'since' => $since, 'recovered_at' => null];
-            }
-        }
-        if (str_starts_with($fingerprint, 'recovered:')) {
-            $rest = substr($fingerprint, 10);
-            $recoveredAt = substr($rest, 0, self::ISO_HOUR_LENGTH);
-            $since = substr($rest, self::ISO_HOUR_LENGTH + 1);
-            if (self::parseIsoHour($recoveredAt) !== null && self::parseIsoHour($since) !== null) {
-                return ['kind' => 'recovered', 'since' => $since, 'recovered_at' => $recoveredAt];
-            }
-        }
-
-        return ['kind' => 'ok', 'since' => null, 'recovered_at' => null];
-    }
-
-    /**
-     * The alert a state stands for (its current alert), or null for none.
-     *
-     * @return Alert|null
-     */
-    private static function alertForState(string $state): ?array
-    {
-        $parsed = self::parseState($state);
-        if ($parsed['kind'] === 'firing' && $parsed['since'] !== null) {
-            return ['type' => 'firing', 'window_end' => $parsed['since'], 'since' => $parsed['since']];
-        }
-        if ($parsed['kind'] === 'recovered' && $parsed['since'] !== null && $parsed['recovered_at'] !== null) {
-            return ['type' => 'recovered', 'window_end' => $parsed['recovered_at'], 'since' => $parsed['since']];
-        }
-
-        return null;
+        return IncidentState::parse($fingerprint);
     }
 
     /**
@@ -1094,9 +953,7 @@ class AlertEvaluator
      */
     public static function stateSubject(string $ruleId, string $websiteToken): string
     {
-        $subject = $ruleId.':'.$websiteToken;
-
-        return strlen($subject) <= 191 ? $subject : $ruleId.':#'.hash('sha256', $websiteToken);
+        return IncidentState::subject($ruleId, $websiteToken);
     }
 
     /**
@@ -1108,31 +965,6 @@ class AlertEvaluator
         $subject = $ruleId.':'.$destinationId.':'.$websiteToken;
 
         return strlen($subject) <= 191 ? $subject : $ruleId.':'.$destinationId.':#'.hash('sha256', $websiteToken);
-    }
-
-    /**
-     * @return list<\DateTimeImmutable>
-     */
-    private function hoursToEvaluate(?\DateTimeImmutable $cursorHour, \DateTimeImmutable $completedHour): array
-    {
-        if ($cursorHour === null || $cursorHour >= $completedHour) {
-            return [$completedHour];
-        }
-
-        $earliest = $completedHour->modify('-'.(self::MAX_CATCHUP_HOURS - 1).' hours');
-        $start = $cursorHour->modify('+1 hour');
-        if ($start < $earliest) {
-            $start = $earliest;
-        }
-
-        $hours = [];
-        $current = $start;
-        while ($current <= $completedHour) {
-            $hours[] = $current;
-            $current = $current->modify('+1 hour');
-        }
-
-        return $hours === [] ? [$completedHour] : $hours;
     }
 
     private function installationUrl(): string
