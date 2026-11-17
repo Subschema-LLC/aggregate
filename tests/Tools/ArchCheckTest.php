@@ -6,6 +6,7 @@ namespace App\Tests\Tools;
 
 use App\Tools\ArchCheck\Ratchet;
 use App\Tools\ArchCheck\SourceFile;
+use App\Tools\ArchCheck\ZoneFiles;
 use App\Tools\ArchCheck\ZoneRules;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -107,6 +108,71 @@ final class ArchCheckTest extends TestCase
 
         self::assertSame([], (new ZoneRules())->check($feature));
         self::assertSame([], (new ZoneRules())->check($adapter));
+    }
+
+    /** @return iterable<string, array{string, string, string}> path, contents, expected problem fragment */
+    public static function brokenFileRules(): iterable
+    {
+        yield 'a snake_case folder' => [
+            'src/Features/save_rule/SaveRule.php', '<?php', '"save_rule" is not PascalCase',
+        ];
+        yield 'a lower-case view' => [
+            'src/Features/SaveRule/form.html.twig', '', '"form" is not PascalCase',
+        ];
+        yield 'a style element' => [
+            'src/Features/SaveRule/SaveRule.html.twig', "<p>Hi</p>\n<style>p {}</style>", ':2: a <style> element',
+        ];
+        yield 'a style attribute' => [
+            'src/Delivery/Alerts/Alerts.html.twig', '<p style="color: red">x</p>', 'a style attribute',
+        ];
+        yield 'a script element' => [
+            'src/Delivery/Alerts/Alerts.html.twig', '<script src="/x.js"></script>', 'a <script> element',
+        ];
+        yield 'an inline handler' => [
+            'src/Features/SaveRule/SaveRule.html.twig', '<button onclick="go()">Go</button>', 'inline event handler',
+        ];
+        yield 'an entity name' => [
+            'src/Features/SaveRule/SaveRule.html.twig',
+            "{{ constant('App\\\\Entities\\\\AlertRule\\\\AlertRule::WINDOW_DAY') }}",
+            'names an entity',
+        ];
+        yield 'another feature\'s view' => [
+            'src/Features/SaveRule/SaveRule.html.twig',
+            "{% include '@Features/ListAlerts/ListAlerts.html.twig' %}",
+            'renders @Features/ListAlerts/ListAlerts.html.twig',
+        ];
+        yield 'a page template' => [
+            'src/Features/SaveRule/SaveRule.html.twig', "{% extends 'base.html.twig' %}", 'renders base.html.twig',
+        ];
+    }
+
+    #[DataProvider('brokenFileRules')]
+    public function testAZoneFileThatBreaksAFileRuleIsReported(
+        string $path,
+        string $contents,
+        string $expected,
+    ): void {
+        $problems = (new ZoneFiles())->check($path, $contents);
+
+        self::assertStringContainsString($expected, implode("\n", $problems));
+    }
+
+    public function testViewsThatKeepTheRulesPass(): void
+    {
+        $feature = <<<'TWIG'
+            {% include '@Features/SaveRule/SaveRuleFields.html.twig' with {form: form} %}
+            <p class="hint">{{ view.description }}</p>
+            TWIG;
+        $page = <<<'TWIG'
+            {% extends 'base.html.twig' %}
+            {% block body %}{{ include('@Features/ListAlerts/ListAlerts.html.twig') }}{% endblock %}
+            TWIG;
+        $files = new ZoneFiles();
+
+        self::assertSame([], $files->check('src/Features/SaveRule/SaveRule.html.twig', $feature));
+        self::assertSame([], $files->check('src/Delivery/Alerts/Alerts.html.twig', $page));
+        self::assertSame([], $files->check('src/Features/SaveRule/SaveRule.css', 'p { color: red; }'));
+        self::assertSame([], $files->check('src/Service/Old/old_file.php', '<?php'));
     }
 
     public function testTheRatchetRejectsNewFindingsAndGrowthButNotOldOnes(): void

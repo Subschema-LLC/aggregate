@@ -50,7 +50,8 @@ dashboard, database views, release packages and updates stay as they are.
 | No new code outside the zones; older code never gets worse | The ratchet in `tools/arch-check.php` |
 | Types: undefined fields, dead branches, values a view reads | PHPStan in CI |
 | Ownership, one write, messages, porting touched areas, the spread test | Review, with the pull request checklist |
-| Views only display; pages compose features; no inline CSS or JS; casing | Review, until the Twig and casing checks in [phase 0](#phase-0-guardrails) land |
+| PascalCase folders and files; views name no entity, a feature view renders only its own templates, no inline CSS or JS | `tools/arch-check.php` in CI (`ZoneFiles`) |
+| Views only display values their feature shaped; pages compose features | Review |
 
 ## The rules
 
@@ -191,7 +192,11 @@ php tools/arch-check.php
 I/O functions, superglobals or I/O packages in the core, no `extends` except a
 built-in exception, no abstract classes, every class `final` (except Doctrine
 records in Integrations), at most 200 lines per file, 100 characters per line
-and zone/owner/file deep.
+and zone/owner/file deep. **Every file in the zones**, Twig, CSS and JS
+included, has `PascalCase` folders and names; a Twig view there names no
+`App\Entities` class and holds no `<style>`, `<script>`, `style=""` or
+inline event handler; and a feature's view includes, embeds, extends or
+imports only templates in its own `@Features/<Feature>/` folder.
 
 **Older code is held by a ratchet** in `tools/arch-check-baseline.json`, which
 names every finding it holds:
@@ -254,9 +259,9 @@ No behavior change.
 - [x] The `outside-zone` ratchet: new PHP files outside the zones fail.
 - [x] FIDES 0.2 rules in this page, AGENTS.md, CONTRIBUTING.md and the pull
   request template.
-- [ ] A Twig check for zone views: no entity names, no rendering another
+- [x] A Twig check for zone views: no entity names, no rendering another
   feature's view or a page template, no inline CSS or JS (rules 13 and 14).
-- [ ] A casing check for zone folders and colocated files (rule 17).
+- [x] A casing check for zone folders and colocated files (rule 17).
 - [ ] A stricter PHPStan level for the zones than for older code (rule 18).
 
 ### Phase 1: Alerts as the pilot

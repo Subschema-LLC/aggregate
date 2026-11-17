@@ -1009,8 +1009,10 @@ FIDES in places: the container stays the wiring, settings are read when used
 rather than frozen at startup, PHP exceptions extend built-in exceptions,
 Doctrine records stay open for their proxies, and the kernel stays at
 `src/Kernel.php`. The checker reads source tokens rather than using a
-dependency such as Deptrac, so it is ours to maintain, and the Twig and casing
-rules are held by review until it checks them.
+dependency such as Deptrac, so it is ours to maintain. It checks casing and
+what a machine can see in Twig views (entity names, rendering other views,
+inline CSS and JS); whether a view only displays shaped values is held by
+review.
 
 **What would change it.** A pilot (alerts) that costs more to read and change
 than the code it replaced, or FIDES rules that cannot be met in Symfony
