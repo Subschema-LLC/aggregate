@@ -47,4 +47,4 @@ Website operators who use Consent manager lite with or without a tag manager, an
 - In-app analytics reports or charts about consent.
 
 ## Decisions
-- None yet.
+- JOIN-64, 2026-11-17: region fallback: known location with no rule gets the strictest region and no selector
