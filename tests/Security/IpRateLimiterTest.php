@@ -89,7 +89,8 @@ final class IpRateLimiterTest extends TestCase
         foreach (new \APCUIterator('/^'.preg_quote(IpRateLimiter::APCU_PREFIX, '/').'[a-f0-9]{64}$/D', APC_ITER_KEY | APC_ITER_TTL) as $entry) {
             $keys[] = $entry['key'];
             self::assertSame(120, $entry['ttl']);
-            self::assertStringNotContainsString('db8', $entry['key']);
+            // The key is an HMAC; the address itself must never appear in it.
+            self::assertStringNotContainsString('2001:db8', $entry['key']);
         }
         self::assertCount(2, $keys);
     }

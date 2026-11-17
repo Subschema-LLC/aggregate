@@ -1,0 +1,133 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>CMP Lite — Actual Bar Layout & Test Report</title>
+<style>
+:root {
+  --ac-background: #FFFFFF; --ac-text: #202124; --ac-accent: #2459B8;
+  --ac-border: #202124; --ac-button-background: #FFFFFF;
+  --ac-button-text: #202124; --ac-button-border: #202124;
+}
+body { margin: 0; font: 15px/1.55 system-ui, -apple-system, sans-serif; background: #eef2f6; color: #202124; min-height: 540px; display: flex; flex-direction: column; justify-content: space-between; }
+.page-shell { padding: 18px 28px; max-width: 980px; }
+.site-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.site-title { font-weight: 700; font-size: 18px; }
+.footer-link { font-size: 13px; color: #2459B8; text-decoration: underline; cursor: pointer; background: #fff; padding: 4px 10px; border-radius: 6px; border: 1px solid #cbd5e1; }
+.report-card {
+  background: #161b22; color: #e6edf3; border-radius: 10px; padding: 14px 18px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.5;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.14); border: 1px solid #30363d;
+}
+.report-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid #30363d; }
+.report-title { font-weight: 700; color: #79c0ff; }
+.copy-btn { background: #21262d; color: #e6edf3; border: 1px solid #30363d; border-radius: 6px; padding: 3px 10px; font: inherit; font-size: 12px; }
+.pass { color: #56d364; font-weight: 700; }
+.warn { color: #e3b341; font-weight: 700; }
+pre { margin: 0; white-space: pre-wrap; }
+
+/* Exact .ac-consent--bar grid from public/consent.css */
+.ac-consent.ac-consent--bar {
+  background: var(--ac-background);
+  border-top: 1px solid color-mix(in srgb, var(--ac-border) 24%, transparent);
+  box-shadow: 0 -10px 30px rgba(0,0,0,0.12);
+  box-sizing: border-box;
+  align-items: start; column-gap: 2rem; display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(12rem, 16rem);
+  padding: 1.1rem 3.5rem 1.1rem 2rem;
+  position: relative; width: 100%;
+}
+.ac-consent--bar > * { grid-column: 1; }
+.ac-consent-close {
+  background: transparent; border: 0; color: var(--ac-text); font-size: 1.5rem;
+  position: absolute; right: 0.9rem; top: 0.75rem; width: 2rem; height: 2rem;
+}
+.ac-consent-region {
+  align-items: center; display: flex; gap: 0.5rem; justify-content: flex-start; margin-bottom: 0.35rem;
+}
+.region-badge {
+  font-size: 0.75rem; background: color-mix(in srgb, var(--ac-accent) 10%, transparent);
+  color: var(--ac-accent); border: 1px solid color-mix(in srgb, var(--ac-accent) 28%, transparent);
+  border-radius: 999px; padding: 0.1rem 0.55rem; font-weight: 600;
+}
+.ac-consent-region label { font-size: 0.75rem; font-weight: 600; opacity: 0.8; text-transform: uppercase; margin-left: 0.4rem; }
+.ac-consent-region select {
+  background: var(--ac-background); border: 1px solid color-mix(in srgb, var(--ac-border) 30%, transparent);
+  border-radius: 6px; color: var(--ac-text); font: inherit; font-size: 0.8125rem; padding: 0.2rem 0.45rem;
+}
+.ac-consent h2 { font-size: 1.1rem; font-weight: 700; margin: 0 0 0.25rem; }
+.ac-consent p { font-size: 0.85rem; margin: 0.25rem 0; opacity: 0.92; }
+.ac-consent a { color: var(--ac-accent); font-weight: 500; text-decoration: underline; }
+.ac-consent-callout {
+  background: color-mix(in srgb, var(--ac-accent) 8%, transparent);
+  border-left: 3px solid var(--ac-accent); border-radius: 0 6px 6px 0;
+  font-size: 0.8125rem; margin: 0.4rem 0; padding: 0.4rem 0.65rem;
+}
+.ac-consent--bar fieldset {
+  background-color: color-mix(in srgb, var(--ac-text) 3%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ac-border) 16%, transparent);
+  border-radius: 10px; margin: 0.5rem 0 0; padding: 0.45rem 0.75rem;
+  display: grid; gap: 0 1.25rem; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+}
+.ac-consent fieldset legend { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; padding: 0 0.35rem; }
+.ac-consent-category { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; font-size: 0.85rem; padding: 0.25rem 0; }
+.ac-consent-category-tags { flex-basis: 100%; font-size: 0.78rem; opacity: 0.8; padding-left: 1.55rem; }
+.ac-consent input[type="checkbox"] { accent-color: var(--ac-accent); width: 1rem; height: 1rem; margin: 0; }
+.ac-consent--bar > .ac-consent-actions {
+  align-self: center; display: flex; flex-direction: column; gap: 0.5rem;
+  grid-column: 2; grid-row: 1 / span 9; margin-top: 0;
+}
+.ac-consent-actions button {
+  background: var(--ac-button-background); border: 1.5px solid var(--ac-button-border);
+  border-radius: 8px; color: var(--ac-button-text); font: inherit; font-size: 0.85rem;
+  font-weight: 600; padding: 0.5rem 0.9rem; width: 100%;
+}
+</style></head><body>
+<div class="page-shell">
+  <div class="site-header">
+    <span class="site-title">Example shop</span>
+    <span class="footer-link">&lt;a href="#privacy" data-cmp-optout&gt;Your Privacy Choices (Do Not Sell)&lt;/a&gt;</span>
+  </div>
+  <div class="report-card" role="region" aria-label="CMP Lite test report">
+    <div class="report-bar">
+      <span class="report-title">Test mode active: ?cmp_test=T5 (GPC in implied region)</span>
+      <button type="button" class="copy-btn">Copy report for ticket</button>
+    </div>
+<pre>[PASS] State        region: "US-CA" (detected) | mode: "implied" | source: "gpc" | ready: true
+[PASS] Signals      navigator.globalPrivacyControl: true | Sec-GPC: true
+[PASS] Categories   necessary: true | analytics: false | marketing: false
+[PASS] Events       1. cmp_consent (00.014s)  2. cmp_optout (00.015s) — each fired once
+[PASS] Consent Mode gtag('consent','default',{analytics_storage:'denied',ad_storage:'denied',wait_for_update:2000})
+                    gtag('consent','update',{analytics_storage:'denied',ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied'})
+[PASS] Gated tags   meta-pixel (marketing): DID NOT RUN
+[PASS] Opt-out link 1 element bound via [data-cmp-optout]</pre>
+  </div>
+</div>
+
+<section class="ac-consent ac-consent--bar" role="dialog" aria-labelledby="bar-title">
+  <button type="button" class="ac-consent-close" aria-label="Close this notice">×</button>
+  <div class="ac-consent-region">
+    <span class="region-badge">California (US-CA · detected)</span>
+    <label for="bar-reg">Switch to stricter:</label>
+    <select id="bar-reg">
+      <option selected>California (Opt-out)</option>
+      <option>European Union / UK (Strict opt-in)</option>
+    </select>
+  </div>
+  <h2 id="bar-title">Example shop: privacy choices</h2>
+  <div class="ac-consent-callout">
+    <strong>Global Privacy Control is honored:</strong> optional categories are off and saved as opted out. You can review or change categories below. <a href="#privacy">Read this website’s privacy notice</a>
+  </div>
+  <fieldset>
+    <legend>Optional categories</legend>
+    <label class="ac-consent-category">
+      <input type="checkbox"> <span>Enhanced analytics</span>
+    </label>
+    <label class="ac-consent-category">
+      <input type="checkbox"> <span>Advertising</span>
+      <span class="ac-consent-category-tags">Includes: Meta Pixel, LinkedIn Insight</span>
+    </label>
+  </fieldset>
+  <div class="ac-consent-actions">
+    <button type="button">Reject all optional categories</button>
+    <button type="button">Accept all optional categories</button>
+    <button type="button">Save selected choices</button>
+  </div>
+</section>
+</body></html>

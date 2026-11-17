@@ -1,0 +1,136 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Dashboard — Consent Manager Lite (templates/consent_manager/index.html.twig)</title>
+<style>
+body { margin: 0; padding: 20px; font: 14px/1.5 BlinkMacSystemFont, -apple-system, "Segoe UI", Roboto, sans-serif; background: #f5f7fa; color: #202124; }
+.columns { display: flex; gap: 20px; max-width: 1160px; margin: 0 auto; align-items: flex-start; }
+.col-7 { flex: 0 0 58%; }
+.col-5 { flex: 0 0 40%; position: sticky; top: 16px; }
+.box { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+.box.is-light { background: #f8fafc; border-color: #cbd5e1; padding: 14px; margin-bottom: 12px; }
+fieldset { border: 0; padding: 0; margin: 0; }
+legend { font-size: 17px; font-weight: 700; margin-bottom: 6px; }
+.help { font-size: 12.5px; color: #4a5568; margin: 4px 0 10px; line-height: 1.45; }
+.label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 4px; color: #1e293b; }
+.input, .select { width: 100%; box-sizing: border-box; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 5px; font: inherit; font-size: 13px; background: #fff; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 10px; }
+.grid-4 { display: grid; grid-template-columns: 1.1fr 1.4fr 1.5fr 1.4fr; gap: 10px; align-items: end; }
+.status-strip { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 8px 12px; font-size: 12.5px; margin-bottom: 12px; color: #1e3a8a; }
+.code-row { display: flex; gap: 8px; align-items: center; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 5px; padding: 6px 10px; font-family: monospace; font-size: 12px; }
+.btn-sm { background: #fff; border: 1px solid #94a3b8; border-radius: 4px; padding: 3px 8px; font-size: 12px; font-weight: 600; cursor: pointer; margin-left: auto; }
+.preview-tabs { display: flex; gap: 4px; margin-bottom: 10px; flex-wrap: wrap; }
+.preview-tab { font-size: 12px; padding: 4px 9px; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; font-weight: 600; color: #334155; }
+.preview-tab.is-active { background: #2459B8; color: #fff; border-color: #2459B8; }
+/* Preview banner inside .consent-preview */
+.ac-consent {
+  background: #fff; border: 1px solid rgba(32,33,36,0.24); border-radius: 12px;
+  box-shadow: 0 12px 28px -6px rgba(0,0,0,0.16); padding: 1.15rem 1.25rem; position: relative;
+}
+.ac-consent-region { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-bottom: 8px; padding-right: 28px; }
+.region-badge { font-size: 11px; background: #eff6ff; color: #2459B8; border: 1px solid #bfdbfe; border-radius: 999px; padding: 2px 8px; font-weight: 600; }
+.ac-consent h2 { font-size: 16px; margin: 0 0 6px; }
+.ac-consent p { font-size: 13px; margin: 4px 0; color: #334155; }
+.ac-consent-callout { background: #eff6ff; border-left: 3px solid #2459B8; padding: 6px 9px; font-size: 12px; margin: 6px 0; border-radius: 0 6px 6px 0; }
+.ac-consent fieldset { border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px 10px; margin: 10px 0; background: #f8fafc; }
+.ac-consent fieldset legend { font-size: 11px; text-transform: uppercase; font-weight: 700; color: #475569; margin: 0; }
+.ac-consent-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.ac-consent-actions button { background: #fff; border: 1.5px solid #202124; border-radius: 7px; padding: 6px 10px; font-size: 12.5px; font-weight: 600; }
+</style></head><body>
+<div class="columns">
+  <div class="col-7">
+    <div class="box"><fieldset>
+      <legend>Consent behavior &amp; Google Consent Mode</legend>
+      <p class="help">The banner is the only source of consent grants. When Google Consent Mode is on, it pushes a denied default first and sends an array-form <code>gtag('consent', 'update', …)</code> after checking GPC, saved choice, and region.</p>
+      <div class="grid-2">
+        <div>
+          <label class="label"><input type="checkbox" checked> Send Google Consent Mode v2 signals</label>
+          <p class="help">Maps <code>analytics</code> and <code>marketing</code> to Google storage signals. Never sets a granted default.</p>
+        </div>
+        <div>
+          <label class="label" for="wait-ms">Wait for update (ms)</label>
+          <input class="input" id="wait-ms" type="number" value="2000" min="0" max="10000">
+          <p class="help">0–10000 ms (default 2000). Passed in the initial denied default.</p>
+        </div>
+      </div>
+      <label class="label">Footer opt-out link (CCPA / US states)</label>
+      <div class="code-row">
+        <span>&lt;a href="#privacy-choices" data-cmp-optout&gt;Your Privacy Choices&lt;/a&gt;</span>
+        <button type="button" class="btn-sm">Copy snippet</button>
+      </div>
+      <p class="help">Any link or button with <code>data-cmp-optout</code> opens the banner in opt-out state. No element ID or extra switch required.</p>
+    </fieldset></div>
+
+    <div class="box"><fieldset>
+      <legend>Regional consent rules</legend>
+      <div class="status-strip">
+        <strong>Active region source:</strong> Request header (<code>CF-IPCountry</code>) + local GeoIP fallback. If a visitor’s location cannot be determined, the banner starts in your <strong>strictest region</strong> and shows the region selector as a fallback.
+      </div>
+      <div class="grid-2">
+        <div>
+          <label class="label" for="reg-mode">How visitors get a region</label>
+          <select class="select" id="reg-mode">
+            <option selected>Detect from location, with selector fallback if unknown (recommended)</option>
+            <option>Always let visitors choose from the region selector</option>
+          </select>
+        </div>
+        <div>
+          <label class="label" for="unmatched-rule">Unlisted countries / fallback region</label>
+          <select class="select" id="unmatched-rule">
+            <option selected>Strictest configured region (eu_eea — Explicit, EU-style)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="box is-light">
+        <div class="grid-4">
+          <div><label class="label">Region ID</label><input class="input" value="eu_eea"></div>
+          <div><label class="label">Display Name</label><input class="input" value="European Union &amp; UK"></div>
+          <div><label class="label">Consent type</label><select class="select"><option selected>Explicit, EU-style</option></select></div>
+          <div><label class="label">Locations (ISO codes)</label><input class="input" value="EU, EEA, GB, CH"></div>
+        </div>
+      </div>
+      <div class="box is-light">
+        <div class="grid-4">
+          <div><label class="label">Region ID</label><input class="input" value="us_optout"></div>
+          <div><label class="label">Display Name</label><input class="input" value="United States (Opt-out)"></div>
+          <div><label class="label">Consent type</label><select class="select"><option selected>Implicit, US-style</option></select></div>
+          <div><label class="label">Locations (ISO codes)</label><input class="input" value="US, US-CA, US-CO, US-CT, US-TX"></div>
+        </div>
+      </div>
+    </fieldset></div>
+  </div>
+
+  <div class="col-5">
+    <div style="font-weight:700; margin-bottom:6px;">Live Preview</div>
+    <p class="help">Switch states to check how the banner looks for each visitor path:</p>
+    <div class="preview-tabs" role="tablist">
+      <span class="preview-tab">1. EU Explicit</span>
+      <span class="preview-tab">2. US Implied</span>
+      <span class="preview-tab is-active">3. Unknown location (Fallback)</span>
+      <span class="preview-tab">4. GPC / Opt-out</span>
+    </div>
+    <div class="consent-preview" inert>
+      <section class="ac-consent">
+        <div class="ac-consent-region">
+          <span class="region-badge">Location unknown · Strict rules active</span>
+          <select style="font-size:12px; padding:2px 6px; border-radius:5px; border:1px solid #cbd5e1;">
+            <option selected>European Union &amp; UK</option>
+            <option>United States (Opt-out)</option>
+          </select>
+        </div>
+        <h2>Example shop: privacy choices</h2>
+        <div class="ac-consent-callout">We could not detect your region, so optional categories are off. Select your region above or choose below.</div>
+        <p>Choose which optional categories to allow. Enhanced analytics uses browser identifiers and additional event details.</p>
+        <fieldset>
+          <legend>Optional categories</legend>
+          <div style="font-size:13px; margin:4px 0;"><input type="checkbox"> Enhanced analytics</div>
+          <div style="font-size:13px; margin:4px 0;"><input type="checkbox"> Advertising <div style="font-size:11.5px; color:#64748b; padding-left:20px;">Includes: Meta Pixel</div></div>
+        </fieldset>
+        <div class="ac-consent-actions">
+          <button type="button">Reject all</button>
+          <button type="button">Accept all</button>
+          <button type="button">Save choices</button>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+</body></html>

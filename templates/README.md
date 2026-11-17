@@ -1,5 +1,13 @@
 # UI templates and assets
 
+This page covers the templates and assets that have not moved to FIDES yet.
+New pages, and pages whose area a change touches, follow
+[code structure: FIDES](../docs/FIDES-MIGRATION.md#the-zones-in-symfony)
+instead: a feature's Twig view, CSS and JS sit in its folder in `src/Features`,
+and a page's controller, page template, CSS and JS sit in `src/Delivery/<Page>`.
+The [Twig and Stimulus conventions](#twig-and-stimulus-conventions) below apply
+to both.
+
 UI pages use Twig, Symfony UX Twig Components, Stimulus, and AssetMapper. Route
 controllers render their feature template, such as
 [`tag_manager/index.html.twig`](tag_manager/index.html.twig). Each page extends

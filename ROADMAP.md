@@ -370,6 +370,17 @@ cuts that.
   is under development in its own repository; track template progress and
   availability there. Explore Matomo Tag Manager support where adopters need it.
 - **Extend Tag Manager Lite.** Still keep things simple but look for gaps and improvements.
+- **Consent manager lite follow-ups.** Items from the
+  [CMP Lite spec](docs/specs/CMP-Lite-Updates) left out of the first updates
+  (JOIN-64), each only for a concrete need:
+  - a `cmp-test` command that runs the spec's acceptance cases against a
+    website in headless Chromium and prints a pass or fail table, with the
+    request blocking done by the runner. Installing a release ZIP must not
+    require Chromium;
+  - Microsoft UET and Meta consent adapters beside the Google Consent Mode one,
+    writing consent to each platform and never reading it back;
+  - a GTM community template that wraps the Google Consent Mode adapter, with
+    no default table and no grant of its own.
 - **Custom HTML tags.** [Custom JavaScript tags](docs/TAG-MANAGER.md#custom-javascript)
   run script compiled into the manager. Explore a separate custom HTML action for
   vendor snippets that ship as markup, such as `<noscript>` pixels or several
