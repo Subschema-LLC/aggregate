@@ -37,7 +37,7 @@ final class TrackerBuildsCompactTest extends TestCase
                 file_put_contents($directory.'/'.$build.'.js', $template);
             }
 
-            $process = new Process([$node, '--test', 'tests/JavaScript/tracker-builds.test.js'], $projectDir, ['AGGREGATE_COMPACT_BUILDS_DIR' => $directory], timeout: 120);
+            $process = new Process([$node, '--test', '--test-reporter=tap', 'tests/JavaScript/tracker-builds.test.js'], $projectDir, ['AGGREGATE_COMPACT_BUILDS_DIR' => $directory], timeout: 120);
             $process->run();
             self::assertTrue($process->isSuccessful(), $process->getOutput().$process->getErrorOutput());
             self::assertMatchesRegularExpression('/^# fail 0$/m', $process->getOutput());
