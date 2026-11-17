@@ -129,6 +129,24 @@ final class ArchCheckTest extends TestCase
         self::assertStringNotContainsString('Enroll', $problems, 'Zone code is checked by ZoneRules, not the ratchet.');
     }
 
+    public function testANewFileOutsideTheZonesIsRejected(): void
+    {
+        $ratchet = new Ratchet();
+        $ratchet->add(new SourceFile('src/Service/Listed.php', "<?php\nnamespace App\\Service;\nfinal class Listed {}\n"));
+        $ratchet->add(new SourceFile('src/Service/Added.php', "<?php\nnamespace App\\Service;\nfinal class Added {}\n"));
+        $ratchet->add(new SourceFile('src/Kernel.php', "<?php\nnamespace App;\nfinal class Kernel {}\n"));
+        $ratchet->add(new SourceFile('src/Features/Enroll/Enroll.php', "<?php\nnamespace App\\Features\\Enroll;\nfinal class Enroll {}\n"));
+        $baseline = ['outside-zone' => ['src/Service/Listed.php' => 'not in a zone', 'src/Service/Moved.php' => 'not in a zone']];
+
+        $problems = implode("\n", $ratchet->compare($baseline));
+
+        self::assertStringContainsString('src/Service/Added.php is a new file outside the zones', $problems);
+        self::assertStringContainsString('src/Service/Moved.php is fixed', $problems);
+        self::assertStringNotContainsString('Listed', $problems);
+        self::assertStringNotContainsString('Kernel', $problems, 'Symfony expects the kernel in src/.');
+        self::assertStringNotContainsString('Enroll', $problems);
+    }
+
     public function testUpdatingTheBaselineNeverAdmitsANewFinding(): void
     {
         $ratchet = new Ratchet();

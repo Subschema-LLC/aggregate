@@ -1,0 +1,172 @@
+## Why this exists
+
+CMP Lite is a consent management layer for any AGGREGATE site, regardless of CMS, tag manager or vendor stack. Every requirement below traces to a failure seen on a client site in 2026 (Fortis and DRYMedic are the evidence, not the audience). The job is to make each failure impossible by construction, not by a per-client workaround.
+
+| # | What went wrong | Where | What it cost |
+| --- | --- | --- | --- |
+| F1 | The only US consent grant was a row in a GTM template's default table. Nobody could see it from the CMP dashboard, and setting it to denied silently turned US into click-only consent. | Fortis, Nov 16 | A full day of testing to find where the grant lived |
+| F2 | The CMP never pushed a consent update for implied-consent regions. "Honor GPC" and "Prior consent off" were dashboard settings with no Consent Mode effect until the banner script ran, and sometimes not then. | Fortis | A GPC visitor was tracked on the first attempt |
+| F3 | With the grant in a default table, tags ran whether or not the CMP loaded. "CMP down means tags blocked" was impossible without a custom watchdog and a trigger rewrite on nine tags. | Fortis | Watchdog tag, new trigger, 11 tag edits |
+| F4 | A helper tag that re-emitted the CMP's consent event checked consent state but not CMP presence. With the CMP blocked it fired anyway and loaded HubSpot, Intercom and UTM capture. | Fortis, Run E first attempt | Visitor with no banner and no opt-out was tracked |
+| F5 | The same event name was pushed by the CMP (opt-out), by a helper tag (implied grant) and nearly twice. | Fortis | Double-fire risk on every downstream tag |
+| F6 | The Do Not Sell link depended on a magic element id and a dashboard switch that was off. The theme had the text and no id. | Fortis | Link dead in production |
+| F7 | The cookie declaration was missing from the site, and the CMP's own list had HubSpot cookies as Necessary, GA cookies attributed to the CMP vendor's domain, and eleven live cookies undeclared. | Fortis | Expectation 6 fails on every clause |
+| F8 | A hard-coded vendor script in the theme loaded before consent on every page. The CMP's "block vendor" setting didn't catch inline injection. | Fortis | Tracking before consent, outside any control |
+| F9 | A custom grant would have needed region detection, which the tag manager has no access to. | Fortis | Design option killed |
+| F10 | Banner pushed consent as a data-layer event but Consent Mode stayed denied; the update never reached gtag. | DRYMedic, Jul 31 | Consent never took |
+| F11 | Testing needed three browsers, DevTools request blocking, cache disabled, and knowledge that Brave breaks Tag Assistant and Firefox serves blocked scripts from cache. | Fortis | Three hours of runs, two invalid |
+
+## Design principles
+
+1. **The CMP is the only thing that grants.** No consent default anywhere reads granted. Every grant is an explicit update pushed by CMP Lite after it has loaded and checked GPC, region and saved choice. If the CMP doesn't load, nothing is granted. Fail-closed is a property of the design, not a watchdog. (F1, F3, F4)
+2. **Consent state is one inspectable object.** `window.AggregateCMP.state` says what was granted, by what mechanism, for which region, when. A tester reads one object; they never reverse-engineer `google_tag_data`. (F1, F2, F10)
+3. **One event vocabulary, each event at most once per page.** Downstream tags trigger on CMP Lite's events, never on their own reading of consent state. (F5)
+4. **Behaviour lives in code, not in a dashboard switch the theme can't see.** The opt-out link is an API call. Region is on the state object. The declaration is a rendered component. (F6, F7, F9)
+5. **Works without a tag manager.** A plain script with a gating API is the core. GTM Consent Mode, Microsoft and Meta are adapters. (F10, and any client without GTM)
+6. **Observes what it can't control.** CMP Lite can't block an inline script in the theme, but it can report that one ran before consent. (F8)
+7. **Testable in one browser in one afternoon.** A test mode that simulates every case below, with the browser traps documented. (F11)
+
+## Consent object and events
+
+**State object**, on `window.AggregateCMP.state` and in every event payload:
+
+```json
+{
+  "version": "1",
+  "ready": true,
+  "region": "US-CA",
+  "mode": "implied",
+  "source": "gpc",
+  "categories": { "necessary": true, "preferences": false, "statistics": false, "marketing": false },
+  "signals": { "gpc": true, "dnt": false },
+  "saved": { "exists": true, "at": "2026-11-16T23:52:00Z", "expires": "2027-11-16T23:52:00Z" },
+  "decidedAt": "2026-11-16T23:52:01Z"
+}
+```
+
+`mode` is the policy for the region: `explicit` (opt-in), `implied` (opt-out). `source` is how the current categories were decided: `default` (nothing yet; all false except necessary), `implied` (granted by policy after checks passed), `explicit` (banner click), `saved` (restored from storage), `gpc` (denied by signal). `region` comes from the CMP, never from the tag manager.
+
+**Events**, pushed to `window.dataLayer` and dispatched as `CustomEvent` on `document`, each at most once per page load, guarded by a window flag:
+
+| Event | When | Payload |
+| --- | --- | --- |
+| `cmp_ready` | CMP script loaded, config fetched, region resolved, signals read. Before any grant. | state (source still `default`) |
+| `cmp_consent` | Categories decided, by any source. The one event downstream tags wait for. | state |
+| `cmp_change` | Visitor changes a saved choice (banner, preferences, opt-out link). | state, plus `previous` |
+| `cmp_optout` | Do Not Sell / GPC / Disable All. Fires with `cmp_change`; exists so cleanup tags have one trigger. | state |
+| `cmp_failed` | Config or auth fetch failed after retry. Nothing granted. | `{ reason }` |
+
+No other event names. A helper tag that re-emits any of these is a bug.
+
+## Consent modes and the grant sequence
+
+Two modes per region, set in config, with `explicit` as the default for any region not listed:
+
+| Mode | Policy | Banner | Grant |
+| --- | --- | --- | --- |
+| `explicit` | Opt-in (GDPR-style) | Blocking until a choice | Only on banner click |
+| `implied` | Opt-out (CCPA-style) | Non-blocking bar with an opt-out | Pushed by CMP Lite after the checks below pass |
+
+**Grant sequence**, identical in both modes, run once on every page load. Order is mandatory; the GPC failure on Fortis came from a gate opening before step 3.
+
+1. Push denied defaults for every category except necessary, with `wait_for_update` set from config (default 2000 ms). This is the only default CMP Lite ever sets.
+2. Load config (categories, regions, declaration, vendor list). On failure, retry once, then emit `cmp_failed` and stop. Nothing is granted.
+3. Read signals: `navigator.globalPrivacyControl`, the `Sec-GPC` request header (surfaced by the server into config), `navigator.doNotTrack` if the config says to honour it. If any opt-out signal is set: push a denied update, store the opt-out as a saved choice with `source: gpc`, emit `cmp_consent`, show the bar in a "you are opted out" state, and stop.
+4. Read saved choice from `localStorage` (primary) and a first-party cookie (fallback for storage-blocked contexts). If present and unexpired: push an update matching it, emit `cmp_consent` with `source: saved`, and stop. Expired or malformed: treat as absent.
+5. Resolve region (see below). Pick the mode.
+6. `explicit`: show the blocking banner, emit `cmp_ready`, wait. On click: push the update, store, emit `cmp_consent` with `source: explicit`.
+7. `implied`: push a granted update for the configured categories, emit `cmp_ready` then `cmp_consent` with `source: implied`, show the non-blocking bar. Nothing is stored; an implied grant is re-derived on every page so a later opt-out always wins.
+
+Step 7 is the implied grant the Fortis CMP never sent. Because it is an update and not a default, a tag manager that respects Consent Mode sees denied until CMP Lite says otherwise, and sees nothing if CMP Lite never runs.
+
+## Script gating and the fail-closed guarantee
+
+Three ways to gate a vendor, all equivalent, so a site can use whichever its stack allows:
+
+1. **Declarative.** `<script type="text/plain" data-cmp-category="marketing" data-src="https://vendor/x.js">`. CMP Lite rewrites `type` and `src` when the category is granted. Works with no tag manager and no code.
+2. **Programmatic.** `AggregateCMP.gate('marketing', () => { /* load vendor */ })`. Runs the callback once when granted, immediately if already granted, never if denied. Re-runs are the caller's problem; CMP Lite calls it at most once per page.
+3. **Event-driven.** A tag manager trigger on `cmp_consent` with a condition on `state.categories.<category>`. This is the GTM path and the only one Fortis could use.
+
+**Guarantee:** no gated script runs unless `cmp_consent` has fired with that category true. Since `cmp_consent` can only come from CMP Lite, and CMP Lite only grants after its sequence completes, a blocked or failed CMP means no gated script runs. This replaces the watchdog, the `seers_ready` trigger and the presence checks built by hand on Fortis.
+
+**Cleanup on opt-out.** `AggregateCMP.onOptOut(fn)` registers a cleanup. CMP Lite also deletes, on `cmp_optout`, every cookie listed in the declaration for a now-denied category, on the site's own domain and its parent. Sites still register vendor-specific cleanup (HubSpot's `__hs_do_not_track`, for instance) through the hook.
+
+## Opt-out link, region, declaration, pre-consent detection
+
+**Opt-out link.** `AggregateCMP.openOptOut()` opens the preferences panel in opt-out state. Any element with `data-cmp-optout` is bound automatically on `cmp_ready`. No magic ids, no dashboard switch. CMP Lite logs a warning if a page has no bound element and the region's mode is `implied`, since CCPA requires the link.
+
+**Region.** Resolved server-side and delivered in config, never guessed in the browser. Sources in priority order: a `CF-IPCountry` / `X-Country` header the AGGREGATE server reads and echoes; a lookup against the AGGREGATE server's own geo table; a config override for testing (`?cmp_region=US-CA`). US states are first-class (`US-CA`, `US-CO`, ...) because CCPA, CPA, VCDPA and the rest differ. Region is on the state object so any tag manager can read it as a variable.
+
+**Cookie declaration.** Three parts, all generated, none copy-pasted:
+
+1. *Observed cookies.* On each page view with consent granted, CMP Lite reads `document.cookie` and `localStorage` keys, posts names (not values) to the AGGREGATE server with the page and the categories granted. The server accumulates the set per site.
+2. *Declaration.* Each observed cookie gets a category, provider and purpose, assigned from a built-in vendor table (GA, GTM, HubSpot, Clarity, LinkedIn, Microsoft, Meta, Quantcast, Intercom and the rest) and overridable per site. Undeclared cookies are flagged in the dashboard within a day of first appearance.
+3. *Rendered table.* `<div data-cmp-declaration>` renders the declaration live, grouped by category, on whatever page the site puts it. Attribution is always the site's own domain, never the CMP's.
+
+A cookie that appears under a denied category after opt-out is reported as a leak, with the page it was seen on.
+
+**Pre-consent script detection.** CMP Lite cannot block an inline-injected script. It can see it. On every page load it records, from `performance.getEntriesByType('resource')`, every third-party script and beacon that started before `cmp_consent`, matched against the vendor table. The list goes to the dashboard as "ran before consent" with first-seen date, page and initiator. This is the audit finding a hard-coded theme script produces, delivered without anyone opening DevTools.
+
+## Adapters
+
+The core knows nothing about any tag manager. Adapters translate the state object into each platform's consent API, and are enabled per site in config.
+
+| Adapter | What it does | Notes |
+| --- | --- | --- |
+| Google Consent Mode v2 | Maps categories to `ad_storage`, `analytics_storage`, `ad_user_data`, `ad_personalization`, `functionality_storage`, `personalization_storage`. Pushes the denied default in step 1 and every update via `gtag('consent', ...)` on the array form of `dataLayer`. | The DRYMedic failure was a banner pushing an object, not the array form. The adapter owns the exact call. |
+| GTM template | A community template wrapping the adapter so a GTM-only client gets a tag with no custom HTML. Exposes `wait_for_update`, region overrides, nothing else. | No default table. The template never grants. |
+| Microsoft UET | `uetq.push('consent', 'update', { ad_storage })`. |  |
+| Meta | `fbq('consent', 'grant' \| 'revoke')`. |  |
+| Plain data layer | Just the events. For sites with no tag manager and no vendor consent API. | Always on. |
+
+An adapter must be idempotent: calling it twice with the same state is a no-op. Adapters never read consent from the platform; they only write.
+
+## Acceptance tests
+
+Every row is a required automated test. "Gated script" means a script registered through any of the three gating paths under `marketing`. "Consent Mode" is what the Google adapter pushed, read back from `dataLayer`.
+
+| # | Case | Setup | `source` | Events (in order, each once) | Gated script | Consent Mode |
+| --- | --- | --- | --- | --- | --- | --- |
+| T1 | Implied first visit | `US-TX`, no signals, no saved choice | `implied` | `cmp_ready`, `cmp_consent` | Runs, after `cmp_consent` | default denied, update granted |
+| T2 | Explicit first visit | `DE`, no signals, no saved choice | `default` | `cmp_ready` only | Does not run | default denied, no update |
+| T3 | Explicit, Allow All | T2 then click Allow | `explicit` | `cmp_ready`, `cmp_consent` | Runs after click | update granted |
+| T4 | Explicit, Deny All | T2 then click Deny | `explicit` | `cmp_ready`, `cmp_consent`, `cmp_optout` | Does not run | update denied |
+| T5 | GPC, implied region | `US-CA`, `globalPrivacyControl=true` | `gpc` | `cmp_consent`, `cmp_optout` | Does not run | update denied |
+| T6 | GPC, explicit region | `DE`, GPC true | `gpc` | `cmp_consent`, `cmp_optout` | Does not run | update denied |
+| T7 | Saved grant, return visit | T3 then reload | `saved` | `cmp_consent` | Runs | update granted |
+| T8 | Saved denial, return visit | T4 then reload | `saved` | `cmp_consent` | Does not run | update denied |
+| T9 | Saved denial beats implied | T8 in `US-TX` | `saved` | `cmp_consent` | Does not run | update denied |
+| T10 | Opt-out link, implied region | T1 then `openOptOut()` and confirm | `explicit` | `cmp_change`, `cmp_optout` | Already-loaded script's cleanup hook runs; declared marketing cookies deleted | update denied |
+| T11 | CMP script blocked | Request blocking on the CMP host | none; `state` undefined | none | Does not run | default denied only, if the adapter's default was inlined; otherwise nothing |
+| T12 | Config fetch fails | CMP script loads, config endpoint blocked | `default` | `cmp_failed` | Does not run | default denied, no update |
+| T13 | Config fetch slow | Config delayed 3 s, `wait_for_update` 2000 | `implied` | `cmp_ready`, `cmp_consent` at \~3 s | Runs at \~3 s | Tags that respect `wait_for_update` fire cookieless at 2 s, then update at 3 s. Document this. |
+| T14 | Storage blocked | `localStorage` throws | `implied` or `default` by region | as T1/T2 | as T1/T2 | Saved choice falls back to the first-party cookie; if that's blocked too, treated as no saved choice |
+| T15 | Hard-coded pre-consent script | Theme loads a vendor script inline | as T2 | as T2 | n/a | Dashboard shows the script under "ran before consent" within one page view |
+| T16 | Undeclared cookie | Vendor sets a cookie not in the declaration | as T1 | as T1 | n/a | Dashboard flags it within one sync |
+| T17 | Double-emit guard | Two copies of CMP Lite on one page | as T1 | each event still once | Runs once | one update |
+| T18 | Region override | `?cmp_region=DE` on a US IP | as T2 | as T2 | as T2 | Region on state is `DE` |
+
+T11 is the case that cost the most on Fortis. It passes by construction here: nothing granted means nothing runs.
+
+## Test harness and known browser traps
+
+**Test mode.** `?cmp_test=<case>` or `AggregateCMP.test(<case>)` forces the inputs for any row above (region, signals, saved choice, config failure, slow config) without touching DevTools. In test mode CMP Lite prints, to the console and to a `<pre data-cmp-report>` if present: the state object, the events emitted with timestamps, every gated script and whether it ran, every cookie set, and every third-party script that started before `cmp_consent`. That report is what a client's tester pastes into a ticket.
+
+**CLI.** `aggregate cmp-test <site-url>` runs T1–T18 in headless Chromium and prints a pass/fail table. Request blocking for T11 and T12 is done by the runner, not by hand.
+
+**Browser traps**, documented in the tester guide because each one produced an invalid run on Fortis:
+
+- *Firefox request blocking does not apply to cached responses.* Disable cache in the Network tab before any blocked-host run, or the CMP loads from cache and the run is meaningless.
+- *Brave breaks the GTM Tag Assistant debug handshake* even with Shields down. Brave users get the published container. Brave cannot be used for Preview testing; it can be used to confirm GPC (`globalPrivacyControl` is true by default).
+- *Chrome has no native GPC.* Use Firefox ("Tell websites not to sell or share my data") or a GPC extension.
+- *`wait_for_update` only delays tags that honour Consent Mode.* A Custom HTML tag on All Pages fires at Container Loaded regardless. Gate it on `cmp_consent`.
+- *A granted Consent Mode default is invisible in the CMP dashboard.* CMP Lite never sets one, so this trap can't recur, but a client migrating from another CMP should be told to check their template's default table.
+- *Tag Assistant's Consent tab shows the Google adapter's view only.* "Granted" there does not mean a gated script ran. The pass condition for a CMP-down run is "gated scripts did not run," read from the test report, not from the Consent tab.
+
+## Out of scope for Lite
+
+- IAB TCF v2 strings and vendor-list purposes. Lite uses four categories. TCF is a later tier.
+- Blocking inline scripts the theme injects. Lite detects and reports; it does not rewrite the page.
+- Server-side consent enforcement (a proxy that drops requests to denied vendors). The right answer for a Segment-style setup, and the DRYMedic direction, but it's a separate component.
+- Consent logs as legal evidence (signed, retained, exportable). Lite stores the saved choice client-side and reports counts; the evidentiary log is a paid tier.
+- Multi-language banner copy management. Config takes strings per locale; there is no editor.

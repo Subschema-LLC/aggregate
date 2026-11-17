@@ -1,0 +1,99 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>3 Layouts: Corner Card, Top/Bottom Bar, Modal Takeover</title>
+<style>
+body{margin:0;padding:16px;font:13.5px/1.45 system-ui,-apple-system,sans-serif;background:#f4f6f9;color:#1b1f24}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;max-width:1140px;margin:0 auto}
+.hdr{font-weight:700;margin:0 0 6px;font-size:13px;display:flex;justify-content:space-between;align-items:center}
+.badge{font-size:11px;background:#1b1f24;color:#fff;padding:2px 7px;border-radius:4px;font-weight:600}
+.vp{position:relative;height:380px;background:#e4e9f0;border:1px solid #b8c2cc;border-radius:8px;overflow:hidden}
+.page{padding:12px}.page b{font-size:12px;color:#4a5568}.bar-line{height:8px;background:#cbd5e0;border-radius:4px;margin:8px 0;width:80%}
+.ac{background:#fff;color:#1b1f24;border:1.5px solid #1b1f24;box-sizing:border-box;padding:12px;font-size:12px}
+.ac h2{font-size:13.5px;margin:0 0 4px;padding-right:22px}
+.ac p{margin:4px 0;color:#2d3748}
+.x{position:absolute;right:8px;top:6px;border:0;background:none;font-size:18px;font-weight:700;cursor:pointer;color:#1b1f24}
+.sublinks{display:flex;gap:10px;flex-wrap:wrap;margin:6px 0;padding-top:6px;border-top:1px solid #e2e8f0;font-size:11.5px}
+.sublinks a{color:#0B5CAD;text-decoration:underline;font-weight:600;cursor:pointer}
+.btns{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.btns button{font:inherit;font-weight:600;font-size:11.5px;background:#fff;color:#1b1f24;border:1.5px solid #1b1f24;border-radius:6px;padding:5px 9px;cursor:pointer}
+.card{position:absolute;right:10px;bottom:10px;width:265px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18)}
+.bar{position:absolute;left:0;right:0;border-left:0;border-right:0}
+.bar.top{top:0;border-top:0}
+.bar.bot{bottom:0;border-bottom:0;background:#f8fafc}
+.scrim{position:absolute;inset:0;background:rgba(15,23,42,.6)}
+.modal{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:295px;border-radius:10px;box-shadow:0 14px 34px rgba(0,0,0,.35);padding:0;overflow:hidden}
+.tabs{display:flex;background:#f1f5f9;border-bottom:1.5px solid #1b1f24;font-size:11px;font-weight:600}
+.tab{flex:1;text-align:center;padding:7px 4px;border-right:1px solid #cbd5e0;color:#475569}
+.tab.active{background:#fff;color:#0B5CAD;border-bottom:2px solid #0B5CAD;margin-bottom:-1.5px}
+.m-body{padding:10px 12px}
+.cat-row{display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #edf2f7;font-size:11.5px}
+.note{font-size:11.5px;color:#4a5568;margin:6px 0 0}
+</style></head><body><div class="grid">
+
+<div>
+  <div class="hdr"><span>1. Corner Card</span><span class="badge">Default / Implied</span></div>
+  <div class="vp">
+    <div class="page"><b>Site content</b><div class="bar-line"></div><div class="bar-line" style="width:55%"></div></div>
+    <section class="ac card" role="dialog" aria-label="Privacy choices">
+      <button class="x" title="Reject all and close">×</button>
+      <h2>Example Shop: privacy choices</h2>
+      <p>Choose which optional categories to allow. Nothing optional runs until you choose.</p>
+      <div class="sublinks">
+        <a>Trackers &amp; cookies (8)</a>
+        <a>Data request / CPRA</a>
+        <a>Privacy notice</a>
+      </div>
+      <div class="btns"><button>Reject all</button><button>Accept all</button><button>Choose</button></div>
+    </section>
+  </div>
+  <p class="note">Links open the modal directly to the Trackers or CPRA tab.</p>
+</div>
+
+<div>
+  <div class="hdr"><span>2. Full-Width Bar</span><span class="badge">Top or Bottom</span></div>
+  <div class="vp">
+    <section class="ac bar top" role="dialog" aria-label="Top bar">
+      <button class="x" title="Reject all and close">×</button>
+      <h2>Top bar option: privacy choices</h2>
+      <p>We use optional cookies only with your permission.</p>
+      <div class="sublinks">
+        <a>Trackers &amp; cookies (8)</a>
+        <a>Do Not Sell / Data request</a>
+      </div>
+      <div class="btns"><button>Reject all</button><button>Accept all</button><button>Choose</button></div>
+    </section>
+    <div class="page" style="margin-top:165px"><b>Site content visible in middle</b><div class="bar-line"></div></div>
+    <section class="ac bar bot" aria-label="Bottom bar preview">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span><b>Or Bottom Bar:</b> docks to viewport floor</span>
+        <span style="font-size:11px;color:#0B5CAD;text-decoration:underline">Trackers · CPRA</span>
+      </div>
+    </section>
+  </div>
+  <p class="note">Operator chooses <code>bar_top</code> or <code>bar_bottom</code>.</p>
+</div>
+
+<div>
+  <div class="hdr"><span>3. Modal Takeover</span><span class="badge">Explicit / Deep views</span></div>
+  <div class="vp">
+    <div class="page"><b>Site content dimmed</b><div class="bar-line"></div></div>
+    <div class="scrim"></div>
+    <section class="ac modal" role="dialog" aria-modal="true" aria-label="Modal takeover">
+      <div class="tabs" role="tablist">
+        <div class="tab active" role="tab" aria-selected="true">1. Choices</div>
+        <div class="tab" role="tab">2. Trackers (8)</div>
+        <div class="tab" role="tab">3. Data Request</div>
+      </div>
+      <div class="m-body">
+        <button class="x" style="top:32px" title="Reject all and close">×</button>
+        <h2>Your privacy choices</h2>
+        <p>Select categories or review trackers and data rights above.</p>
+        <div class="cat-row"><span><b>Necessary</b> (Always on)</span><span>Locked</span></div>
+        <div class="cat-row"><span><input type="checkbox" checked> <b>Statistics</b> (2 trackers)</span><a>View</a></div>
+        <div class="cat-row"><span><input type="checkbox"> <b>Marketing</b> (4 trackers)</span><a>View</a></div>
+        <div class="btns" style="margin-top:10px"><button>Reject all</button><button>Accept all</button><button>Save choices</button></div>
+      </div>
+    </section>
+  </div>
+  <p class="note">3-tab header keeps Choices, Trackers, and CPRA in one place.</p>
+</div>
+
+</div></body></html>

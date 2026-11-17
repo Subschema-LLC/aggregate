@@ -1,0 +1,22 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Option B: bottom bar</title>
+<style>
+body{margin:0;font:16px/1.5 system-ui,sans-serif;background:#eef1f5;color:#1B1F24;min-height:420px;position:relative}
+.site{padding:24px 32px}.site div{height:14px;background:#d9dee6;border-radius:4px;margin:12px 0;width:70%}
+.label{position:absolute;top:8px;right:16px;font-size:13px;background:#fff;border:1px solid #1B1F24;padding:2px 8px}
+.bar{position:absolute;left:0;right:0;bottom:0;background:#fff;border-top:2px solid #1B1F24;padding:14px 24px;display:flex;gap:24px;align-items:center;flex-wrap:wrap}
+.txt{flex:1 1 420px;max-width:72rem}
+h2{font-size:17px;margin:0 0 4px}p{margin:0;font-size:15px}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+button{font:inherit;font-weight:600;padding:8px 12px;background:#fff;color:#1B1F24;border:2px solid #1B1F24;border-radius:4px}
+a{color:#0B5CAD}
+.x{border:0;font-size:22px;background:none}
+.badge{display:inline-block;background:#e8f1fb;border-left:4px solid #0B5CAD;padding:2px 8px;font-size:14px;margin-right:6px}
+</style></head><body>
+<div class="site"><b>Example shop</b><div></div><div style="width:50%"></div><div></div></div>
+<div class="label">Test mode: T5 GPC, implied region</div>
+<section class="bar" role="dialog" aria-labelledby="b1">
+<div class="txt"><h2 id="b1">Example shop: privacy choices</h2>
+<p><span class="badge">GPC is on</span>Optional tracking is off because your browser says so. <a href="#">Privacy notice</a></p></div>
+<div class="btns"><button>Reject all</button><button>Accept all</button><button>Choose…</button></div>
+<button class="x" aria-label="Close this notice">×</button></section>
+</body></html>
