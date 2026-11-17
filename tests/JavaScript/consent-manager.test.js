@@ -896,12 +896,14 @@ test('implicit_us default grants start their tags before a choice, but not under
 });
 
 test('an existing dataLayer hears each change of choices once; none is created otherwise', () => {
+  // The cmp_* events share the dataLayer; this test follows the legacy aggregate_consent_update entries only.
+  const legacy = (app) => JSON.parse(JSON.stringify(app.window.dataLayer.filter((entry) => entry && entry.event === 'aggregate_consent_update')));
   const app = runtime({categories: ['analytics', 'marketing'], before: ({window}) => { window.dataLayer = []; }});
-  assert.deepEqual(JSON.parse(JSON.stringify(app.window.dataLayer)), [{event: 'aggregate_consent_update', aggregate_consent: {analytics: false, marketing: false}}]);
+  assert.deepEqual(legacy(app), [{event: 'aggregate_consent_update', aggregate_consent: {analytics: false, marketing: false}}]);
   app.window.AggregateConsent.setConsent({});
-  assert.equal(app.window.dataLayer.length, 1, 'an unchanged state is not pushed again');
+  assert.equal(legacy(app).length, 1, 'an unchanged state is not pushed again');
   app.window.AggregateConsent.setConsent({marketing: true});
-  assert.deepEqual(JSON.parse(JSON.stringify(app.window.dataLayer.at(-1))), {event: 'aggregate_consent_update', aggregate_consent: {analytics: false, marketing: true}});
+  assert.deepEqual(legacy(app).at(-1), {event: 'aggregate_consent_update', aggregate_consent: {analytics: false, marketing: true}});
   assert.equal(runtime().window.dataLayer, undefined);
   const object = runtime({before: ({window}) => { window.dataLayer = {push: () => assert.fail('not an array')}; }});
   assert.equal(typeof object.window.dataLayer.push, 'function');
