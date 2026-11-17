@@ -70,3 +70,4 @@ Each acceptance case below is an automated test that passes. T1 to T18 are the c
 
 ## Decisions
 - JOIN-64, 2026-11-17: region fallback: known location with no rule gets the strictest region and no selector
+- JOIN-64, 2026-11-17: all approve for spec JOIN-64
