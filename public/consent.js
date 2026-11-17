@@ -215,6 +215,8 @@
   var checkboxes = Object.create(null);
   var storageAvailable = true;
   var savedMap = null;
+  // True when Global Privacy Control replaced a saved grant at load.
+  var gpcOverrode = false;
 
   function readGrant(value, category) {
     try {
@@ -246,6 +248,14 @@
         categories.forEach(function (category) { choices[category] = readGrant(saved, category); });
         chosen = categories.every(function (category) { return hasChoice(saved, category); });
       }
+      // An opt-out signal wins over a saved grant, and the denial is stored.
+      if (globalPrivacyControl() && categories.some(function (category) { return choices[category] === true; })) {
+        categories.forEach(function (category) { choices[category] = false; });
+        savedMap = state();
+        chosen = true;
+        gpcOverrode = true;
+        window.localStorage.setItem(storageKey, JSON.stringify(savedMap));
+      }
     } else {
       applyDefaultGrants();
     }
@@ -256,6 +266,178 @@
     categories.forEach(function (category) { result[category] = choices[category] === true; });
     return result;
   }
+
+  // The page-level consent state for testers and tag managers, and the cmp_*
+  // events. Only this script grants: nothing gated runs until cmp_consent has
+  // fired for its category. Each event fires at most once per page load, kept
+  // by a window flag so a second copy of the script cannot repeat it.
+  var cmpSource = 'default';
+  var cmpDecidedAt = null;
+  var cmpIsReady = false;
+  var cmpConsented = false;
+  var cmpOptOutHooks = [];
+  var cmpGates = [];
+  var cmpFlags = (function () {
+    try {
+      if (!window.__aggregateCmpEvents || typeof window.__aggregateCmpEvents !== 'object') window.__aggregateCmpEvents = {};
+      return window.__aggregateCmpEvents;
+    } catch (error) { return {}; }
+  })();
+  function cmpSnapshot() {
+    var granted = {necessary: true};
+    categories.forEach(function (category) { granted[category] = choices[category] === true; });
+    var signals = {gpc: false, dnt: false};
+    try {
+      signals.gpc = window.navigator.globalPrivacyControl === true;
+      signals.dnt = window.navigator.doNotTrack === '1';
+    } catch (error) {}
+    return {
+      version: '1',
+      ready: cmpIsReady,
+      region: currentRegion ? currentRegion.id : null,
+      mode: consentType() === 'implicit_us' ? 'implied' : 'explicit',
+      source: cmpSource,
+      categories: granted,
+      signals: signals,
+      saved: {exists: savedMap !== null, at: null, expires: null},
+      decidedAt: cmpDecidedAt
+    };
+  }
+  function cmpEmit(name, previous) {
+    var key = storageKey + '|' + name;
+    if (cmpFlags[key]) return;
+    cmpFlags[key] = true;
+    var snapshot = cmpSnapshot();
+    var entry = {event: name, state: snapshot};
+    var detail = {state: snapshot};
+    if (previous) { entry.previous = previous; detail.previous = previous; }
+    try { if (Array.isArray(window.dataLayer)) window.dataLayer.push(entry); } catch (error) {}
+    try { document.dispatchEvent(new CustomEvent(name, {detail: detail})); } catch (error) {}
+  }
+  function cmpEmitReady() {
+    if (cmpIsReady) return;
+    cmpIsReady = true;
+    cmpEmit('cmp_ready');
+  }
+  function cmpRunGates() {
+    if (!cmpConsented) return;
+    cmpGates.forEach(function (gate) {
+      if (gate.ran || choices[gate.category] !== true) return;
+      gate.ran = true;
+      try { gate.callback(); } catch (error) {}
+    });
+  }
+
+  // Google Consent Mode adapter, on when googleConsentMode is true. It only
+  // writes: a denied default first (the only default this script sets), then an
+  // update after each decision, as gtag does, an array whose first item is
+  // 'consent'. Calling it twice with the same state pushes nothing.
+  var gcmOn = own(consentConfig, 'googleConsentMode') === true;
+  var gcmMap = {
+    analytics: ['analytics_storage'],
+    marketing: ['ad_storage', 'ad_user_data', 'ad_personalization'],
+    advertising: ['ad_storage', 'ad_user_data', 'ad_personalization'],
+    functional: ['functionality_storage', 'personalization_storage'],
+    preferences: ['functionality_storage', 'personalization_storage']
+  };
+  var gcmKeys = ['ad_storage', 'analytics_storage', 'ad_user_data', 'ad_personalization',
+    'functionality_storage', 'personalization_storage'];
+  var gcmLast = null;
+  var gcmDefaultPushed = false;
+  function gcmPush(command, values) {
+    try {
+      if (!Array.isArray(window.dataLayer)) {
+        if (window.dataLayer !== undefined) return;
+        window.dataLayer = [];
+      }
+      window.dataLayer.push(['consent', command, values]);
+    } catch (error) {}
+  }
+  function gcmDefault() {
+    if (!gcmOn || gcmDefaultPushed) return;
+    gcmDefaultPushed = true;
+    var wait = own(consentConfig, 'waitForUpdate');
+    var values = {};
+    gcmKeys.forEach(function (key) { values[key] = 'denied'; });
+    values.wait_for_update = typeof wait === 'number' && wait >= 0 && wait <= 10000 && wait % 1 === 0 ? wait : 2000;
+    gcmPush('default', values);
+  }
+  function gcmUpdate() {
+    if (!gcmOn) return;
+    var values = {};
+    gcmKeys.forEach(function (key) { values[key] = 'denied'; });
+    categories.forEach(function (category) {
+      if (choices[category] === true) (gcmMap[category] || []).forEach(function (key) { values[key] = 'granted'; });
+    });
+    var serialized = JSON.stringify(values);
+    if (serialized === gcmLast) return;
+    gcmLast = serialized;
+    gcmPush('update', values);
+  }
+
+  // Categories were decided, by any source. A later decision is a change.
+  function cmpDecide(source, optOut) {
+    var previous = cmpConsented ? cmpSnapshot() : null;
+    cmpSource = source;
+    cmpDecidedAt = new Date().toISOString();
+    cmpIsReady = true;
+    gcmUpdate();
+    if (previous) cmpEmit('cmp_change', previous); else cmpEmit('cmp_consent');
+    cmpConsented = true;
+    if (optOut) {
+      cmpEmit('cmp_optout');
+      cmpOptOutHooks.slice().forEach(function (hook) { try { hook(cmpSnapshot()); } catch (error) {} });
+    }
+    activateTags();
+    cmpRunGates();
+  }
+  function cmpStart() {
+    if (globalPrivacyControl() && (!chosen || gpcOverrode)) { cmpDecide('gpc', true); return; }
+    if (chosen) { cmpDecide('saved', false); return; }
+    if (consentType() === 'implicit_us') {
+      cmpEmitReady();
+      cmpDecide('implied', false);
+      return;
+    }
+    cmpEmitReady();
+  }
+
+  // Any element with data-cmp-optout opens the opt-out, including one added
+  // after this script ran, so a theme's link needs no id and no setting.
+  function optOutTarget(event) {
+    try {
+      var node = event && event.target;
+      return node && typeof node.closest === 'function' ? node.closest('[data-cmp-optout]') : null;
+    } catch (error) { return null; }
+  }
+  document.addEventListener('click', function (event) {
+    if (!optOutTarget(event)) return;
+    if (typeof event.preventDefault === 'function') event.preventDefault();
+    open();
+  });
+  // CCPA expects the link in an implied region: warn when the page has none.
+  function warnWithoutOptOut() {
+    try {
+      if (consentType() !== 'implicit_us' || document.querySelector('[data-cmp-optout]')) return;
+      console.warn('Consent manager lite: this page has no element with data-cmp-optout, '
+        + 'but its region needs an opt-out link.');
+    } catch (error) {}
+  }
+  if (document.readyState === 'complete') warnWithoutOptOut();
+  else window.addEventListener('load', warnWithoutOptOut);
+
+  var cmpApi = {
+    // Runs the callback once, when the category is granted: at once if it
+    // already is, never if it is denied.
+    gate: function (category, callback) {
+      if (typeof category !== 'string' || typeof callback !== 'function' || categories.indexOf(category) === -1) return;
+      cmpGates.push({category: category, callback: callback, ran: false});
+      cmpRunGates();
+    },
+    onOptOut: function (callback) { if (typeof callback === 'function') cmpOptOutHooks.push(callback); },
+    openOptOut: function () { open(); }
+  };
+  Object.defineProperty(cmpApi, 'state', {enumerable: true, get: cmpSnapshot});
 
   function notify() {
     var tracker = window[consentConfig.namespace];
@@ -290,11 +472,12 @@
 
   // Start the website's waiting tags whose category is allowed, one at a time in
   // page order: a script with src and no async attribute loads before the next
-  // starts. Only listed tag IDs run, and only after an explicit grant (or an
-  // implicit_us default grant). Withdrawal cannot stop a tag that already ran.
+  // starts. Only listed tag IDs run, and only after cmp_consent and an explicit
+  // grant (or an implicit_us default grant). Withdrawal cannot stop a tag that already ran.
   var pendingTags = [];
   var tagRunning = false;
   function activateTags() {
+    if (!cmpConsented) return;
     var found;
     try { found = document.querySelectorAll('script[type="text/plain"][data-consent-tag]'); } catch (error) { return; }
     var granted = state();
@@ -351,6 +534,7 @@
         try { window.localStorage.removeItem(storageKey); } catch (ignored) {}
       }
     }
+    cmpDecide('explicit', categories.every(function (category) { return choices[category] !== true; }));
     if (panel) {
       showPanel(false);
       preferenceButton.focus();
@@ -383,6 +567,10 @@
       applyDefaultGrants();
       notify();
       syncCheckboxes();
+      if (consentType() === 'implicit_us' && !cmpConsented && !globalPrivacyControl()) {
+        cmpEmitReady();
+        cmpDecide('implied', false);
+      }
     }
     updateBannerContent();
   }
@@ -406,8 +594,11 @@
       return function () { subscribers = subscribers.filter(function (entry) { return entry !== callback; }); };
     }
   };
+  if (!window.AggregateCMP) window.AggregateCMP = cmpApi;
+  gcmDefault();
   notify();
   document.dispatchEvent(new CustomEvent('aggregate:consent-ready'));
+  cmpStart();
 
   // Choices in another tab apply immediately; malformed or removed choices deny.
   window.addEventListener('storage', function (event) {
@@ -427,6 +618,7 @@
       : !!(value && typeof value === 'object' && !Array.isArray(value)
         && categories.every(function (category) { return hasChoice(value, category); })));
     notify();
+    if (chosen) cmpDecide('saved', false);
     if (panel) {
       showPanel(!chosen);
       syncCheckboxes();
