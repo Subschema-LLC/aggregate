@@ -317,12 +317,61 @@
       try { gate.callback(); } catch (error) {}
     });
   }
+
+  // Google Consent Mode adapter, on when googleConsentMode is true. It only
+  // writes: a denied default first (the only default this script sets), then an
+  // update after each decision, as gtag does, an array whose first item is
+  // 'consent'. Calling it twice with the same state pushes nothing.
+  var gcmOn = own(consentConfig, 'googleConsentMode') === true;
+  var gcmMap = {
+    analytics: ['analytics_storage'],
+    marketing: ['ad_storage', 'ad_user_data', 'ad_personalization'],
+    advertising: ['ad_storage', 'ad_user_data', 'ad_personalization'],
+    functional: ['functionality_storage', 'personalization_storage'],
+    preferences: ['functionality_storage', 'personalization_storage']
+  };
+  var gcmKeys = ['ad_storage', 'analytics_storage', 'ad_user_data', 'ad_personalization',
+    'functionality_storage', 'personalization_storage'];
+  var gcmLast = null;
+  var gcmDefaultPushed = false;
+  function gcmPush(command, values) {
+    try {
+      if (!Array.isArray(window.dataLayer)) {
+        if (window.dataLayer !== undefined) return;
+        window.dataLayer = [];
+      }
+      window.dataLayer.push(['consent', command, values]);
+    } catch (error) {}
+  }
+  function gcmDefault() {
+    if (!gcmOn || gcmDefaultPushed) return;
+    gcmDefaultPushed = true;
+    var wait = own(consentConfig, 'waitForUpdate');
+    var values = {};
+    gcmKeys.forEach(function (key) { values[key] = 'denied'; });
+    values.wait_for_update = typeof wait === 'number' && wait >= 0 && wait <= 10000 && wait % 1 === 0 ? wait : 2000;
+    gcmPush('default', values);
+  }
+  function gcmUpdate() {
+    if (!gcmOn) return;
+    var values = {};
+    gcmKeys.forEach(function (key) { values[key] = 'denied'; });
+    categories.forEach(function (category) {
+      if (choices[category] === true) (gcmMap[category] || []).forEach(function (key) { values[key] = 'granted'; });
+    });
+    var serialized = JSON.stringify(values);
+    if (serialized === gcmLast) return;
+    gcmLast = serialized;
+    gcmPush('update', values);
+  }
+
   // Categories were decided, by any source. A later decision is a change.
   function cmpDecide(source, optOut) {
     var previous = cmpConsented ? cmpSnapshot() : null;
     cmpSource = source;
     cmpDecidedAt = new Date().toISOString();
     cmpIsReady = true;
+    gcmUpdate();
     if (previous) cmpEmit('cmp_change', previous); else cmpEmit('cmp_consent');
     cmpConsented = true;
     if (optOut) {
@@ -342,6 +391,31 @@
     }
     cmpEmitReady();
   }
+
+  // Any element with data-cmp-optout opens the opt-out, including one added
+  // after this script ran, so a theme's link needs no id and no setting.
+  function optOutTarget(event) {
+    try {
+      var node = event && event.target;
+      return node && typeof node.closest === 'function' ? node.closest('[data-cmp-optout]') : null;
+    } catch (error) { return null; }
+  }
+  document.addEventListener('click', function (event) {
+    if (!optOutTarget(event)) return;
+    if (typeof event.preventDefault === 'function') event.preventDefault();
+    open();
+  });
+  // CCPA expects the link in an implied region: warn when the page has none.
+  function warnWithoutOptOut() {
+    try {
+      if (consentType() !== 'implicit_us' || document.querySelector('[data-cmp-optout]')) return;
+      console.warn('Consent manager lite: this page has no element with data-cmp-optout, '
+        + 'but its region needs an opt-out link.');
+    } catch (error) {}
+  }
+  if (document.readyState === 'complete') warnWithoutOptOut();
+  else window.addEventListener('load', warnWithoutOptOut);
+
   var cmpApi = {
     // Runs the callback once, when the category is granted: at once if it
     // already is, never if it is denied.
@@ -511,6 +585,7 @@
     }
   };
   if (!window.AggregateCMP) window.AggregateCMP = cmpApi;
+  gcmDefault();
   notify();
   document.dispatchEvent(new CustomEvent('aggregate:consent-ready'));
   cmpStart();
