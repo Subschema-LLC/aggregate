@@ -1,0 +1,32 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Dashboard: regions and Consent Mode</title>
+<style>
+body{margin:0;padding:20px;font:15px/1.5 system-ui,sans-serif;background:#f5f6f8;color:#1B1F24}
+.box{background:#fff;border:1px solid #ccd;border-radius:6px;padding:16px;max-width:640px;margin-bottom:16px}
+legend,h3{font-size:18px;font-weight:700;margin:0 0 8px}
+label{font-weight:600;display:block;margin-top:10px}
+.help{font-size:13px;color:#4a525c;margin:2px 0 0}
+input[type=text],input[type=number]{padding:6px 8px;border:1px solid #1B1F24;border-radius:4px;font:inherit;width:260px}
+.ro{background:#eef1f5;padding:6px 10px;border-radius:4px;margin-top:8px;font-size:14px}
+code{background:#eef1f5;padding:1px 4px}
+button{font:inherit;padding:4px 10px;border:1px solid #1B1F24;background:#fff;border-radius:4px}
+.opt{display:block;font-weight:400}
+</style></head><body>
+<div class="box"><fieldset style="border:0;padding:0"><legend>Regional consent rules</legend>
+<label style="margin-top:0">How is the visitor's region set?</label>
+<span class="opt"><input type="radio" name="r" checked> Detect from location (recommended)</span>
+<span class="opt"><input type="radio" name="r"> Let visitors choose</span>
+<p class="help">Detected visitors can only move to a stricter region.</p>
+<label for="loc">Region: California (opt-out). Applies to these locations</label>
+<input type="text" id="loc" value="US-CA, US-CO">
+<p class="help">Country or state codes, separated by commas. Unknown locations get the strictest region.</p>
+<div class="ro">Region detection: <b>header seen</b> (CF-IPCountry). Local database: not installed.</div></fieldset></div>
+<div class="box"><fieldset style="border:0;padding:0"><legend>Consent behavior</legend>
+<span class="opt"><input type="checkbox"> <b>Send Google Consent Mode signals</b></span>
+<p class="help">Off by default. Starts denied, then updates after the visitor's choice.</p>
+<label for="w">Wait for update (milliseconds)</label>
+<input type="number" id="w" value="2000" min="0" max="10000">
+<p class="help">0 to 10000. How long Google tags wait for the choice.</p>
+<label>Do Not Sell link for your footer</label>
+<code>&lt;a href="#" data-cmp-optout&gt;Do Not Sell or Share My Personal Information&lt;/a&gt;</code> <button>Copy</button>
+<p class="help">Any element with <code>data-cmp-optout</code> opens the opt-out. No id needed.</p></fieldset></div>
+</body></html>
