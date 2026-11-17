@@ -60,3 +60,25 @@ _By -UX Designer-._
 ## To do
 
 _The work this spec plans, as `- [ ] …` items, each naming the role that does it. Whoever finishes an item checks it off in the same commit as the work: `- [x] … (done in JOIN-41)`._
+
+Slice 1, client core (Developer):
+- [x] State object `AggregateCMP.state` and the cmp_ready, cmp_consent, cmp_change, cmp_optout events, once per page (done in JOIN-64)
+- [x] Gating API: `gate()`, `onOptOut()`, `openOptOut()`; gated scripts run only after cmp_consent (done in JOIN-64)
+- [x] Google Consent Mode adapter: denied default, gtag array-form updates, `wait_for_update` in the script (done in JOIN-64)
+- [x] `data-cmp-optout` by delegation and the implied-page warning (done in JOIN-64)
+- [ ] Fix the dataLayer assertions in tests/JavaScript/consent-manager.test.js for cmp_* entries
+- [ ] Regenerate public/consent.min.js
+- [ ] Test mode and printed report
+- [ ] `cmp_failed`, config failure and slow config (T11–T14), cookie fallback for the saved choice
+- [ ] GPC overrides a saved grant and is stored; DESIGN-DECISIONS.md entry
+- [ ] Settings `google_consent_mode` and `wait_for_update` in SiteScriptConfig, Consent manager lite page and app:config, with SettingsParityTest
+- [ ] Update docs/CONSENT-MANAGER.md: events, state, adapter, migration note, tester guide with browser traps
+
+Slice 2, server region (Developer):
+- [ ] Region from trusted header or local MMDB, Sec-GPC, strictest-region fallback (T18–T21)
+
+Slice 3, reports (Developer):
+- [ ] T15 and T16, blocked until a storage design is approved
+
+Slice 4, layouts, details, standalone (Developer):
+- [ ] Card, bar and modal layouts; trackers and cookies view; data request view; standalone mode
