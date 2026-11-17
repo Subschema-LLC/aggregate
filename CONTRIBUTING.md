@@ -70,6 +70,31 @@ and can explain, including its architectural, privacy, and licensing implication
 The author remains responsible for the contribution and for verifying the
 behavior described in the PR.
 
+## Code structure: FIDES
+
+All PHP development follows [FIDES](https://github.com/Subschema-LLC/fides).
+New code goes into five zones under `src/` (Entities, Features, Integrations,
+Delivery, Shared), dependencies point inward, nothing is built by inheritance,
+and files stay small. Code that predates the zones moves into them as it is
+touched. [Code structure: FIDES](docs/FIDES-MIGRATION.md) has the rules, where
+each kind of code goes, and how Symfony fits; read it before adding or
+restructuring classes.
+
+In short, every change:
+
+- puts new PHP files in a zone; `php tools/arch-check.php` fails a new file
+  anywhere else in `src/`;
+- ports the existing area it changes, in separate commits from any behavior
+  change, and names every intended difference in the pull request;
+- adds nothing to `tools/arch-check-baseline.json` or `phpstan-baseline.neon`,
+  and records findings it removes with `php tools/arch-check.php --update-baseline`;
+- touches its feature folder, the entities it names, at most one integration
+  and the wiring. A change that needs more is a design question for the issue
+  or pull request.
+
+The [file map](#architecture-and-file-map) below describes the code that has
+not moved yet; use it to find what to port, not as a pattern for new code.
+
 ## Feature flags for optional capabilities
 
 Consider proposing a feature flag for beta functionality, optional integrations,
@@ -467,7 +492,11 @@ changes with `php bin/console asset-map:compile`.
 
 ## Architecture and file map
 
-UI pages follow the [Twig and Stimulus conventions](templates/README.md). Route
+This map describes the code that has not moved to the
+[FIDES zones](#code-structure-fides) yet. New code, and every area a change
+touches, follows [code structure: FIDES](docs/FIDES-MIGRATION.md) instead.
+
+UI pages that have not moved follow the [Twig and Stimulus conventions](templates/README.md). Route
 templates own their page markup under `templates/<feature>/<page>.html.twig`;
 page JavaScript and CSS use matching paths under `assets/controllers/pages/`
 and `assets/styles/pages/`. Reusable Twig Components keep PascalCase names under
@@ -538,7 +567,8 @@ For an individual contribution, select `development` as the base branch and your
 working branch as the compare branch. Maintainer promotion PRs use the targets
 in the [branching strategy](#branching-strategy).
 
-Keep the change focused and follow the conventions of the surrounding code.
+Keep the change focused. Follow [FIDES](#code-structure-fides) for code
+structure, and the conventions of the surrounding code for everything else.
 Explain the concrete problem, the resulting behavior, and any configuration,
 migration, deployment, or reporting implications. Include the checks you ran and
 their results; name any relevant checks you could not run. For UI changes,

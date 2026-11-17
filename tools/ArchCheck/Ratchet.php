@@ -13,22 +13,30 @@ namespace App\Tools\ArchCheck;
  *   abstract-class   an abstract class exists to be extended (rule 8)
  *   not-final        a concrete class is open to extension (rule 8);
  *                    Doctrine entities are exempt, since their proxies extend them
- *   file-size        a file is over 200 lines (rule 15); its length is a ceiling
+ *   file-size        a file is over 200 lines (rule 16); its length is a ceiling
+ *   outside-zone     a file sits outside the five zones; new files go in a zone
  */
 final class Ratchet
 {
-    public const RULES = ['app-inheritance', 'abstract-class', 'not-final', 'file-size'];
+    public const RULES = ['app-inheritance', 'abstract-class', 'not-final', 'file-size', 'outside-zone'];
     private const MAX_LINES = 200;
     /** Data tables rather than concepts; their length is their content. */
     private const SIZE_EXEMPT = ['src/Service/BotDetection/BotUserAgentPatterns.php'];
+    /** Files Symfony expects at a fixed place outside the zones. */
+    private const LOCATION_EXEMPT = ['src/Kernel.php'];
 
     /** @var array<string, array<string, int|string>> rule => [subject => detail] */
-    private array $found = ['app-inheritance' => [], 'abstract-class' => [], 'not-final' => [], 'file-size' => []];
+    private array $found = [
+        'app-inheritance' => [], 'abstract-class' => [], 'not-final' => [], 'file-size' => [], 'outside-zone' => [],
+    ];
 
     public function add(SourceFile $file): void
     {
         if (ZoneRules::zoneOf($file->path) !== null) {
             return;
+        }
+        if (!in_array($file->path, self::LOCATION_EXEMPT, true)) {
+            $this->found['outside-zone'][$file->path] = 'not in a zone';
         }
         if ($file->lineCount > self::MAX_LINES && !in_array($file->path, self::SIZE_EXEMPT, true)) {
             $this->found['file-size'][$file->path] = $file->lineCount;
@@ -68,7 +76,13 @@ final class Ratchet
         foreach ($this->findings() as $rule => $subjects) {
             $allowed = $baseline[$rule] ?? [];
             foreach ($subjects as $subject => $detail) {
-                if (!array_key_exists($subject, $allowed)) {
+                if (!array_key_exists($subject, $allowed) && $rule === 'outside-zone') {
+                    $problems[] = sprintf(
+                        'outside-zone: %s is a new file outside the zones; put it in src/Entities, src/Features, '
+                        .'src/Integrations, src/Delivery or src/Shared',
+                        $subject,
+                    );
+                } elseif (!array_key_exists($subject, $allowed)) {
                     $problems[] = sprintf('%s: %s (%s) is new; compose or split it instead', $rule, $subject, $detail);
                 } elseif ($rule === 'file-size' && $detail > $allowed[$subject]) {
                     $problems[] = sprintf('file-size: %s grew from %d to %d lines; move the new concept into its own file', $subject, $allowed[$subject], $detail);

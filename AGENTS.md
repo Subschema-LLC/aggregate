@@ -3,7 +3,8 @@
 This is the repository guide for coding agents. Read it alongside
 [CONTRIBUTING.md](CONTRIBUTING.md), and consult the linked feature documentation
 before changing collection, storage, configuration, or deployment behavior.
-Explicit user instructions take precedence over this guide.
+Explicit user instructions take precedence over this guide. All PHP code
+follows [FIDES](docs/FIDES-MIGRATION.md); the build enforces it.
 
 ## Product purpose
 
@@ -12,6 +13,57 @@ It collects events, maintains a simple database model, and provides stable data
 contracts that people can connect to Power BI, Tableau, or another BI tool.
 Installation, operation, white labeling, and connecting existing BI tools should
 remain straightforward. Favor understandable designs over feature count.
+
+## Code structure: FIDES is required
+
+All PHP development follows FIDES; read
+[code structure: FIDES](docs/FIDES-MIGRATION.md) before adding or
+restructuring classes. Run `php tools/arch-check.php` before you finish; it
+fails the build when a rule it checks is broken.
+
+Where code goes:
+
+- A rule always true for a concept -> `src/Entities/<Owner>/`
+- Something a user or the system does -> a new folder in `src/Features/`,
+  named as an action, with its Twig view, CSS and JS
+- A dashboard page -> `src/Delivery/<Page>/` (controller, page template, page
+  CSS and JS); a command, handler or API endpoint -> `src/Delivery/<Owner>/`
+- The outside world (database, YAML, HTTP, email) or older code a feature
+  needs -> `src/Integrations/<Owner>/`, behind a contract
+- A contract no single entity owns -> `src/Shared/`; its binding ->
+  `config/wiring.yaml`
+
+Rules:
+
+1. New PHP files go in a zone. A new file elsewhere in `src/` fails the check
+   (`outside-zone`); only `src/Kernel.php` is exempt.
+2. A change to an existing area ports that area, in the same pull request or a
+   port just before it. A port changes structure, never behavior; keep it in
+   its own commits and name every intended difference.
+3. Only the owner changes its data; others call its actions. Entities use only
+   their own folder and refer to others by id.
+4. Features never use each other: one records a message, another reacts.
+5. The core (Entities, Features, Shared) never touches the database, files,
+   network, environment or clock, and never uses code that has not moved.
+   Wrap older services, such as `App\Service\Operations`, in an integration.
+6. No inheritance: compose, make classes `final`, use interfaces as
+   contracts. Only built-in exceptions may be extended, and Doctrine records
+   may stay open.
+7. One write by default; a `UnitOfWork` makes a multi-entity change visible.
+   Messages are saved with the change and dispatched after commit.
+8. Views only display values their feature shaped; a template never names an
+   entity. A page template places feature views; a feature view never renders
+   another's. CSS and JS sit with the layout, feature or page, never inline.
+9. Files under 200 lines, lines under 100 characters, never deeper than
+   `src/<Zone>/<Owner>/<File>`, and `PascalCase` for every folder and file in
+   the zones.
+10. Never add a finding to `tools/arch-check-baseline.json` or
+    `phpstan-baseline.neon`, and never let a listed file grow. When a change
+    removes findings, run `php tools/arch-check.php --update-baseline`.
+11. Comments say what is true now; history goes in the commit message.
+
+If a change touches more than its feature folder, the entities it names, one
+integration and the wiring, stop and ask whether a concept is spread too far.
 
 ## Architecture and product boundaries
 
@@ -237,29 +289,6 @@ never reverses migrations; only SQLite snapshots can be restored, on request.
 Anything a new step needs after files are replaced must run in the fresh
 `--resume` process, not in the process that replaced the files. See
 [RELEASES.md](docs/RELEASES.md#update-an-installation).
-
-## Code structure: moving to FIDES
-
-The PHP code is moving to FIDES one change at a time; read
-[moving to FIDES](docs/FIDES-MIGRATION.md) before adding or restructuring
-classes. Run `php tools/arch-check.php` before you finish.
-
-- Put new code in the zones: rules true everywhere in `src/Entities/<Owner>`,
-  one use case per folder in `src/Features/<Owner>` (with its Twig fragment
-  and CSS), the outside world behind a contract in `src/Integrations/<Owner>`,
-  controllers, commands and handlers in `src/Delivery/<Owner>`, and ownerless
-  contracts in `src/Shared`.
-- Entities use only their own folder; features never use each other; the
-  core (Entities, Features, Shared) never touches the database, files,
-  network, environment or clock, and never uses code that has not moved.
-  Wrap older services in an integration instead.
-- No inheritance: compose, make classes `final`, use interfaces as contracts.
-  Only built-in exceptions may be extended, and Doctrine records may stay open.
-- Keep files under 200 lines and lines under 100 characters.
-- Older code is held by `tools/arch-check-baseline.json`: never add a finding
-  to it, and never let a listed file grow. When a change removes findings, run
-  `php tools/arch-check.php --update-baseline`. A change to an existing area
-  should port that area.
 
 ## How to deliver changes
 
