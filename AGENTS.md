@@ -24,8 +24,10 @@ fails the build when a rule it checks is broken.
 Where code goes:
 
 - A rule always true for a concept -> `src/Entities/<Owner>/`
-- Something a user or the system does -> a new folder in `src/Features/`,
-  named as an action, with its Twig view, CSS and JS
+- Something a user or the system does -> a new folder in
+  `src/Features/<Group>/`, named as an action, with its Twig view, CSS and JS.
+  Today there is one group, `Alerts`, for everything reached from the Alerts
+  page or the `app:alerts:*` commands; add a group only for a new area
 - A dashboard page -> `src/Delivery/<Page>/` (controller, page template, page
   CSS and JS); a command, handler or API endpoint -> `src/Delivery/<Owner>/`
 - The outside world (database, YAML, HTTP, email) or older code a feature
@@ -60,7 +62,8 @@ Rules:
    that extends nothing and never renders another's. CSS and JS sit with the
    layout, feature or page, never inline.
 9. Files under 200 lines, lines under 100 characters, never deeper than
-   `src/<Zone>/<Owner>/<File>`, and `PascalCase` for every folder and file in
+   `src/<Zone>/<Owner>/<File>` (`src/Features/<Group>/<UseCase>/<File>` for
+   features), and `PascalCase` for every folder and file in
    the zones. Only a data file listed in `ZoneRules::SIZE_EXEMPT` with its
    reason may be longer.
 10. Never add a finding to `tools/arch-check-baseline.json` or

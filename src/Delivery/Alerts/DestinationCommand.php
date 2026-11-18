@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Delivery\Alerts;
 
-use App\Features\DeleteDestination\DeleteDestination;
-use App\Features\SaveDestination\SaveDestination;
-use App\Features\SaveSigningSecret\SaveSigningSecret;
+use App\Features\Alerts\DeleteDestination\DeleteDestination;
+use App\Features\Alerts\SaveDestination\SaveDestination;
+use App\Features\Alerts\SaveSigningSecret\SaveSigningSecret;
 use App\Service\Alerts\AlertRuleValidator;
 use App\Service\Alerts\AlertSecrets;
 use App\Service\Alerts\AlertSettings;

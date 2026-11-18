@@ -43,6 +43,21 @@ final class ZoneRules
         return ($parts[0] ?? '') === 'src' && in_array($parts[1] ?? '', self::ZONES, true) ? $parts[1] : null;
     }
 
+    /**
+     * The folder that owns a file: src/<Zone>/<Owner>/ in most zones, and the
+     * use case in src/Features/<Group>/<UseCase>/ (FIDES rule 16, feature
+     * groups), so features grouped together still never use each other.
+     */
+    public static function ownerOf(string $path): string
+    {
+        $parts = explode('/', $path);
+        if (($parts[1] ?? '') === 'Features') {
+            return count($parts) > 4 ? $parts[2].'/'.$parts[3] : '';
+        }
+
+        return count($parts) > 3 ? $parts[2] : '';
+    }
+
     /** @return list<string> */
     public function check(SourceFile $file): array
     {
@@ -51,9 +66,11 @@ final class ZoneRules
             return [];
         }
         $parts = explode('/', $file->path);
-        $owner = count($parts) > 3 ? $parts[2] : '';
+        $owner = self::ownerOf($file->path);
         $problems = [];
-        if (count($parts) - 1 > self::MAX_DEPTH) {
+        if ($zone === 'Features' && count($parts) !== 5) {
+            $problems[] = $file->path.': a feature sits in src/Features/<Group>/<UseCase>/<File>';
+        } elseif ($zone !== 'Features' && count($parts) - 1 > self::MAX_DEPTH) {
             $problems[] = $file->path.': deeper than zone/owner/file';
         }
         if ($file->lineCount > self::MAX_LINES && !isset(self::SIZE_EXEMPT[$file->path])) {
@@ -139,7 +156,9 @@ final class ZoneRules
         }
         $parts = explode('\\', $name);
         $target = $parts[1] ?? '';
-        $targetOwner = $parts[2] ?? '';
+        $targetOwner = $target === 'Features'
+            ? ($parts[2] ?? '').'/'.($parts[3] ?? '')
+            : ($parts[2] ?? '');
         $own = $target === $zone && ($zone === 'Shared' || $zone === 'Delivery' || $targetOwner === $owner);
         $legacy = !in_array($target, self::ZONES, true);
         $allowed = match ($zone) {

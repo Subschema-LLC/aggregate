@@ -71,7 +71,7 @@ final class ZoneFiles
             if ($zone !== 'Features') {
                 continue;
             }
-            $own = '@Features/'.explode('/', $path)[2].'/';
+            $own = '@Features/'.ZoneRules::ownerOf($path).'/';
             preg_match_all(self::TEMPLATE_REFERENCE, $line, $matches);
             foreach ($matches[3] as $index => $template) {
                 if ($matches[1][$index] === 'extends') {

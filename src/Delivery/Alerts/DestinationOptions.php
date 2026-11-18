@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Delivery\Alerts;
 
-use App\Features\SaveDestination\SecretChange;
+use App\Features\Alerts\SaveDestination\SecretChange;
 use Symfony\Component\Console\Attribute\Option;
 
 /** The options of app:alerts:destination, and the destination they describe. */

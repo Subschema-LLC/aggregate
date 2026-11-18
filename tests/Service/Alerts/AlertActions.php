@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace App\Tests\Service\Alerts;
 
-use App\Features\DeleteAlertRule\DeleteAlertRule;
-use App\Features\DeleteDestination\DeleteDestination;
-use App\Features\SaveAlertRule\SaveAlertRule;
-use App\Features\SaveDestination\SaveDestination;
-use App\Features\SaveSigningSecret\SaveSigningSecret;
+use App\Features\Alerts\DeleteAlertRule\DeleteAlertRule;
+use App\Features\Alerts\DeleteDestination\DeleteDestination;
+use App\Features\Alerts\SaveAlertRule\SaveAlertRule;
+use App\Features\Alerts\SaveDestination\SaveDestination;
+use App\Features\Alerts\SaveSigningSecret\SaveSigningSecret;
 use App\Integrations\Alerts\AlertsYamlStore;
 use App\Integrations\Alerts\FileSigningSecrets;
 use App\Integrations\Alerts\YamlAlertRules;
