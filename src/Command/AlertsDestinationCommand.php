@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace App\Command;
 
+use App\Features\DeleteDestination\DeleteDestination;
+use App\Features\SaveDestination\SaveDestination;
+use App\Features\SaveDestination\SecretChange;
+use App\Features\SaveSigningSecret\SaveSigningSecret;
 use App\Service\Alerts\AlertRuleValidator;
 use App\Service\Alerts\AlertSecrets;
 use App\Service\Alerts\AlertSettings;
@@ -27,6 +31,9 @@ final class AlertsDestinationCommand extends Command
         private readonly AlertSettings $settings,
         private readonly AlertSecrets $secrets,
         private readonly FeatureFlags $features,
+        private readonly SaveDestination $saveDestination,
+        private readonly DeleteDestination $deleteDestination,
+        private readonly SaveSigningSecret $saveSecret,
     ) {
         parent::__construct();
     }
@@ -63,7 +70,8 @@ final class AlertsDestinationCommand extends Command
         try {
             return match ($action) {
                 'list' => $this->list($io),
-                'create', 'add', 'edit', 'update' => $this->save($io, $input),
+                'create', 'add' => $this->save($io, $input, true),
+                'edit', 'update' => $this->save($io, $input, false),
                 'delete', 'remove' => $this->delete($io, $input),
                 'secret' => $this->saveSecret($io, $input),
                 default => $this->unknown($io),
@@ -105,10 +113,10 @@ final class AlertsDestinationCommand extends Command
         return Command::SUCCESS;
     }
 
-    private function save(SymfonyStyle $io, InputInterface $input): int
+    private function save(SymfonyStyle $io, InputInterface $input, bool $isNew): int
     {
         $id = $input->getOption('id') !== null ? trim((string) $input->getOption('id')) : null;
-        $existing = $id !== null && $id !== '' ? $this->settings->destination($id) : null;
+        $existing = !$isNew && $id !== null && $id !== '' ? $this->settings->destination($id) : null;
 
         $candidate = $existing ?? [];
         unset($candidate['host']);
@@ -129,12 +137,15 @@ final class AlertsDestinationCommand extends Command
             $candidate['recipients'] = $recipients;
         }
 
-        $saved = $this->settings->saveDestination($candidate);
-        if ($input->getOption('generate-secret') === true) {
-            $generated = $this->secrets->generate($saved['id']);
-            $io->writeln('Webhook signing secret (shown once, copy it now): '.$generated);
-        } elseif ($input->getOption('secret') !== null) {
-            $this->secrets->set((string) $input->getOption('secret'), $saved['id']);
+        $secret = $input->getOption('generate-secret') === true
+            ? SecretChange::generate()
+            : SecretChange::set((string) ($input->getOption('secret') ?? ''));
+        $result = $isNew
+            ? $this->saveDestination->create($candidate, $secret)
+            : $this->saveDestination->edit($candidate, $secret);
+        $saved = $result['destination'];
+        if ($result['generated_secret'] !== null) {
+            $io->writeln('Webhook signing secret (shown once, copy it now): '.$result['generated_secret']);
         }
 
         $io->success(sprintf('Saved alert destination "%s" (%s).', $saved['label'], $saved['id']));
@@ -145,8 +156,7 @@ final class AlertsDestinationCommand extends Command
     private function delete(SymfonyStyle $io, InputInterface $input): int
     {
         $id = trim((string) ($input->getOption('id') ?? ''));
-        $this->settings->deleteDestination($id);
-        $this->secrets->remove($id);
+        $this->deleteDestination->delete($id);
         $io->success(sprintf('Deleted alert destination "%s".', $id));
 
         return Command::SUCCESS;
@@ -159,18 +169,18 @@ final class AlertsDestinationCommand extends Command
             : null;
         $which = $id === null ? 'the shared webhook signing secret' : sprintf('the signing secret of destination "%s"', $id);
         if ($id !== null && $input->getOption('use-shared') === true) {
-            $this->secrets->remove($id);
+            $this->saveSecret->remove($id);
             $io->success(sprintf('Destination "%s" now signs with: %s.', $id, $this->secrets->describe($id)));
 
             return Command::SUCCESS;
         }
         if ($input->getOption('generate-secret') === true) {
-            $generated = $this->secrets->generate($id);
+            $generated = $this->saveSecret->generate($id);
             $io->writeln('Webhook signing secret (shown once, copy it now): '.$generated);
             $io->success('Generated and saved '.$which.' in '.AlertSecrets::FILE.'.');
         } else {
             $secret = (string) ($input->getOption('secret') ?? '');
-            $this->secrets->set($secret, $id);
+            $this->saveSecret->set($secret, $id);
             $io->success('Saved '.$which.' in '.AlertSecrets::FILE.'.');
         }
         if ($id === null) {

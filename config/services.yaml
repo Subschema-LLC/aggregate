@@ -3,6 +3,7 @@
 # Files in the packages/ subdirectory configure your dependencies.
 
 imports:
+    - { resource: wiring.yaml }
     - { resource: navigation.yaml }
     - { resource: quick_search.yaml }
     # Untracked operator overrides. Each file replaces the matching shipped
