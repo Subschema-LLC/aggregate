@@ -138,10 +138,11 @@ final class TagManagerController extends AbstractController
 
         try {
             $this->selectedSite(array_key_exists('site', $submitted) ? $submitted['site'] : '');
-            $tagSettings = TagManagerForm::settings($submitted);
-            $this->settings->assertNoNewCustomCode($tagSettings, $siteId !== '' ? $siteId : null);
-            // Consent manager settings have their own page and save separately.
-            $this->settings->save($tagSettings, $siteId !== '' ? $siteId : null);
+            $targetSite = $siteId !== '' ? $siteId : null;
+            $props = $this->settings->properties();
+            $syntax = $this->settings->syntax();
+            $tagSettings = TagManagerForm::settings($submitted, $props, $syntax);
+            $this->settings->save($tagSettings, $targetSite);
             $this->addFlash('success', 'Script settings saved to YAML. Changes reach visitors within five minutes.');
             foreach ($this->settings->emitWarnings($tagSettings) as $warning) {
                 $this->addFlash('warning', $warning);
@@ -211,7 +212,11 @@ final class TagManagerController extends AbstractController
         try {
             // As saving does: a malformed site is refused, not read as the shared configuration.
             $this->selectedSite($raw);
-            $settings = TagManagerForm::settings($form);
+            $settings = TagManagerForm::settings(
+                $form,
+                $this->settings->properties(),
+                $this->settings->syntax(),
+            );
             $plan = $this->preview->plan($settings, $tagId, $this->settings->trackerNamespace(), $this->settings->customScriptsEnabled());
         } catch (\InvalidArgumentException $e) {
             // A new tag is tested before it has an ID; its messages say "this tag".
@@ -333,12 +338,6 @@ final class TagManagerController extends AbstractController
             'Content-Disposition' => 'attachment; filename="'.$filename.'"',
         ]));
     }
-
-    /**
-     * With custom JavaScript switched off, existing custom tags may be kept or
-     * removed but not added or changed. They are not served either way.
-     * $tagSettings are already validated, so code compares as it is saved.
-     */
 
     /** A website the user can use, or the shared configuration for users with every website. */
     private function denyUnlessSiteUsable(mixed $siteId): void

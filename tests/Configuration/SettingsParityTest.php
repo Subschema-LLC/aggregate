@@ -146,7 +146,11 @@ final class SettingsParityTest extends TestCase
     {
         $names = [];
         $src = dirname(__DIR__, 2).'/src/';
-        $files = [...glob($src.'Command/*.php') ?: [], ...glob($src.'Delivery/*/*.php') ?: []];
+        $files = [
+            ...glob($src.'Command/*.php') ?: [],
+            ...glob($src.'Delivery/*/*.php') ?: [],
+            ...glob($src.'Delivery/*/*/*.php') ?: [],
+        ];
         foreach ($files as $file) {
             $class = 'App\\'.str_replace('/', '\\', substr($file, strlen($src), -4));
             if (!class_exists($class)) {

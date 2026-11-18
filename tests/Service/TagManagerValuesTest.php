@@ -4,12 +4,17 @@ declare(strict_types=1);
 
 namespace App\Tests\Service;
 
+use App\Integrations\TagManager\CustomDataSettingsProperties;
 use App\Service\TagManagerValues;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class TagManagerValuesTest extends TestCase
 {
+    private static function validateEvent(mixed $event, array $variables, string $label = 'The event'): array
+    {
+        return TagManagerValues::validateEvent($event, $variables, new CustomDataSettingsProperties(), $label);
+    }
     #[DataProvider('validMethods')]
     public function testApplicationMethodPathsRemainLiteralIdentifiers(string $method): void
     {
@@ -172,14 +177,14 @@ final class TagManagerValuesTest extends TestCase
         $properties = ['app' => 'facilitation', 'method' => ['$var' => 'login_method'], 'attempts' => 2, 'rate' => 0.5, 'admin' => true, 'none' => null, 'context.source' => 'nav'];
         self::assertSame(
             ['eventName' => 'login', 'customData' => $properties, 'goalEvent' => 'signup', 'pagePath' => '/account/login'],
-            TagManagerValues::validateEvent(['eventName' => 'login', 'customData' => $properties, 'goalEvent' => 'signup', 'pagePath' => '/account/login'], $variables),
+            self::validateEvent(['eventName' => 'login', 'customData' => $properties, 'goalEvent' => 'signup', 'pagePath' => '/account/login'], $variables),
         );
-        self::assertSame(['eventName' => 'login'], TagManagerValues::validateEvent(['eventName' => 'login', 'customData' => []], []), 'empty customData is left out');
+        self::assertSame(['eventName' => 'login'], self::validateEvent(['eventName' => 'login', 'customData' => []], []), 'empty customData is left out');
         self::assertSame(['eventName' => ['$var' => 'login_method'], 'goalEvent' => null, 'pagePath' => ['$var' => 'login_method']],
-            TagManagerValues::validateEvent(['eventName' => ['$var' => 'login_method'], 'goalEvent' => null, 'pagePath' => ['$var' => 'login_method']], $variables));
+            self::validateEvent(['eventName' => ['$var' => 'login_method'], 'goalEvent' => null, 'pagePath' => ['$var' => 'login_method']], $variables));
         self::assertSame(
             ['eventName' => ['$var' => 'login_method', 'from' => 'event'], 'customData' => ['method' => ['$var' => 'login_method', 'from' => 'event'], 'recent_method' => ['$var' => 'login_method']]],
-            TagManagerValues::validateEvent(['eventName' => ['$var' => 'login_method', 'from' => 'event'], 'customData' => ['method' => ['$var' => 'login_method', 'from' => 'event'], 'recent_method' => ['$var' => 'login_method', 'from' => 'recent']]], $variables),
+            self::validateEvent(['eventName' => ['$var' => 'login_method', 'from' => 'event'], 'customData' => ['method' => ['$var' => 'login_method', 'from' => 'event'], 'recent_method' => ['$var' => 'login_method', 'from' => 'recent']]], $variables),
         );
     }
 
@@ -188,7 +193,7 @@ final class TagManagerValuesTest extends TestCase
     {
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage($message);
-        TagManagerValues::validateEvent($event, ['login_method' => 'method'], 'Tag login: the event');
+        self::validateEvent($event, ['login_method' => 'method'], 'Tag login: the event');
     }
 
     public static function invalidEvents(): iterable

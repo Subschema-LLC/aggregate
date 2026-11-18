@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace App\Service;
 
-use App\Features\TagManager\TagForm\TagForm as FeatureTagForm;
+use App\Entities\TagManager\CustomCodeSyntax;
+use App\Entities\TagManager\CustomDataProperties;
+use App\Features\TagManager\SaveTagManager\TagForm as FeatureTagForm;
 
 /**
- * Adapter delegating to App\Features\TagManager\TagForm\TagForm.
+ * Adapter delegating to App\Features\TagManager\SaveTagManager\TagForm.
  */
 final class TagManagerForm
 {
@@ -32,8 +34,11 @@ final class TagManagerForm
      * @param array<string, mixed> $submitted
      * @return array{enabled: bool, variables: array<string, string>, tags: list<array>}
      */
-    public static function settings(array $submitted): array
-    {
-        return FeatureTagForm::settings($submitted);
+    public static function settings(
+        array $submitted,
+        CustomDataProperties $properties,
+        CustomCodeSyntax $syntax,
+    ): array {
+        return FeatureTagForm::settings($submitted, $properties, $syntax);
     }
 }

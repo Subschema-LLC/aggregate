@@ -7,7 +7,20 @@ namespace App\Features\TagManager\PreviewTag;
 use App\Entities\TagManager\TagManager;
 
 /**
- * Plans the isolated preview run for a single tag in a web worker.
+ * "Test this tag" on the tag manager page: runs one tag, as edited and before
+ * it is saved, against a sample event in the administrator's browser.
+ *
+ * The test runs the real public/tag-manager.js in a Web Worker
+ * (assets/tag_manager/preview_worker.js) with stand-ins for the page, the
+ * tracker and libraries, so nothing is loaded, sent or saved. No code an
+ * administrator wrote runs on the dashboard's origin: a custom JavaScript tag
+ * is replaced by a stand-in that only records that it would have run, and
+ * every other action is data the runtime reads.
+ *
+ * Variables are checked by the runtime itself: each variable the tag uses gets
+ * a probe, a method tag on the same trigger that passes the variable to a
+ * recorder. A probe that was not called names a variable the runtime could not
+ * read from the sample.
  */
 final class PreviewTag
 {

@@ -12,7 +12,6 @@ final class TagAction
     /**
      * @param array<string, mixed> $tag
      * @param array<string, string> $variables
-     * @param array<string, true>   $seenSources
      * @return array<string, mixed>
      */
     public static function validate(
@@ -21,22 +20,13 @@ final class TagAction
         array $variables,
         string $id,
         CustomDataProperties $properties,
-        array &$seenSources,
-        ?CustomCodeSyntax $syntax,
-        ?string $cacheDirectory,
-        int &$codeBytes,
+        CustomCodeSyntax $syntax,
     ): array {
         return match ($type) {
-            'script' => self::validateScript($tag, $variables, $seenSources),
+            'script' => self::validateScript($tag, $variables),
             'call' => self::validateCall($tag, $variables),
             'event' => self::validateEvent($tag, $variables, $id, $properties),
-            'custom' => self::validateCustom(
-                $tag,
-                $id,
-                $syntax,
-                $cacheDirectory,
-                $codeBytes,
-            ),
+            'custom' => self::validateCustom($tag, $id, $syntax),
             default => throw new \InvalidArgumentException(
                 'A tag type must be script, call, event or custom.',
             ),
@@ -46,14 +36,10 @@ final class TagAction
     /**
      * @param array<string, mixed> $tag
      * @param array<string, string> $variables
-     * @param array<string, true>   $seenSources
      * @return array{src: string}
      */
-    private static function validateScript(
-        array $tag,
-        array $variables,
-        array &$seenSources,
-    ): array {
+    private static function validateScript(array $tag, array $variables): array
+    {
         if (array_key_exists('method', $tag) || array_key_exists('args', $tag)
             || array_key_exists('event', $tag) || array_key_exists('code', $tag)
         ) {
@@ -62,15 +48,8 @@ final class TagAction
                 .'event to an event tag, and code to a custom tag.',
             );
         }
-        $src = TagVariables::validateSource($tag['src'] ?? null, $variables);
-        if (isset($seenSources[$src])) {
-            throw new \InvalidArgumentException(
-                'Each script tag needs a unique HTTPS URL template.',
-            );
-        }
-        $seenSources[$src] = true;
 
-        return ['src' => $src];
+        return ['src' => TagVariables::validateSource($tag['src'] ?? null, $variables)];
     }
 
     /**
@@ -135,9 +114,7 @@ final class TagAction
     private static function validateCustom(
         array $tag,
         string $id,
-        ?CustomCodeSyntax $syntax,
-        ?string $cacheDirectory,
-        int &$codeBytes,
+        CustomCodeSyntax $syntax,
     ): array {
         if (array_key_exists('src', $tag) || array_key_exists('method', $tag)
             || array_key_exists('args', $tag) || array_key_exists('event', $tag)
@@ -151,17 +128,7 @@ final class TagAction
             $tag['code'] ?? null,
             'Tag '.$id.': the custom JavaScript',
             $syntax,
-            $cacheDirectory,
         );
-        $codeBytes += strlen($code);
-        if ($codeBytes > TagCustomCode::MAX_TOTAL_BYTES) {
-            throw new \InvalidArgumentException(sprintf(
-                'Custom JavaScript for one website may total at most %s bytes, '
-                .'because every page downloads it with the tag manager. '
-                .'Load larger code with tag.loadScript().',
-                number_format(TagCustomCode::MAX_TOTAL_BYTES),
-            ));
-        }
 
         return ['code' => $code];
     }

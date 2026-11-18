@@ -45,13 +45,13 @@ final class TagManagerValues
     public static function validateEvent(
         mixed $event,
         array $variables,
+        CustomDataProperties $properties,
         string $label = 'The event',
-        ?CustomDataProperties $properties = null,
     ): array {
         return TagEvent::validate(
             $event,
             $variables,
-            $properties ?? self::defaultProperties(),
+            $properties,
             $label,
         );
     }
@@ -60,20 +60,5 @@ final class TagManagerValues
     public static function validateArguments(mixed $arguments, array $variables): array
     {
         return TagArguments::validate($arguments, $variables);
-    }
-
-    private static function defaultProperties(): CustomDataProperties
-    {
-        return new class implements CustomDataProperties {
-            public function isValidKey(string $key): bool
-            {
-                return CustomDataSettings::isValidPropertyKey($key);
-            }
-
-            public function isBuiltin(string $key): bool
-            {
-                return isset(CustomDataSettings::BUILTIN_PROPERTIES[$key]);
-            }
-        };
     }
 }

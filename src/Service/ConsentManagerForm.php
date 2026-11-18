@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
-use App\Features\Cmp\ConsentForm\ConsentForm;
+use App\Features\ConsentManager\SaveConsentManager\ConsentForm;
 
 /**
  * Adapter delegating to App\Features\Cmp\ConsentForm\ConsentForm.

@@ -15,41 +15,38 @@ final class Tag
     ];
     public const TYPES = ['script', 'call', 'event', 'custom'];
 
+    /** @param array<string, mixed> $values */
+    private function __construct(private readonly array $values)
+    {
+    }
+
     /**
-     * @param array<string, mixed> $tag
+     * @param array<string, mixed>  $candidate
      * @param array<string, string> $variables
-     * @param array<string, true>   $seenIds
-     * @param array<string, true>   $seenSources
-     * @return array<string, mixed>
      */
-    public static function validate(
-        array $tag,
+    public static function fromInput(
+        array $candidate,
         array $variables,
         CustomDataProperties $properties,
-        array &$seenIds,
-        array &$seenSources,
-        ?CustomCodeSyntax $syntax = null,
-        ?string $cacheDirectory = null,
-        int &$codeBytes = 0,
-    ): array {
-        if (array_diff(array_keys($tag), self::ALLOWED_FIELDS) !== []) {
+        CustomCodeSyntax $syntax,
+    ): self {
+        if (array_diff(array_keys($candidate), self::ALLOWED_FIELDS) !== []) {
             throw new \InvalidArgumentException(
                 'Each tag must contain only its ID, action, enabled setting, '
                 .'consent, trigger and, optionally, the tag it runs after.',
             );
         }
-        $id = $tag['id'] ?? null;
-        $type = array_key_exists('type', $tag) ? $tag['type'] : 'script';
-        $tagEnabled = array_key_exists('enabled', $tag) ? $tag['enabled'] : true;
-        $consent = array_key_exists('consent', $tag) ? $tag['consent'] : 'analytics';
+        $id = $candidate['id'] ?? null;
+        $type = array_key_exists('type', $candidate) ? $candidate['type'] : 'script';
+        $tagEnabled = array_key_exists('enabled', $candidate) ? $candidate['enabled'] : true;
+        $consent = array_key_exists('consent', $candidate) ? $candidate['consent'] : 'analytics';
         $trigger = TagTrigger::validate(
-            array_key_exists('trigger', $tag) ? $tag['trigger'] : ['type' => 'dom_ready'],
+            array_key_exists('trigger', $candidate)
+                ? $candidate['trigger']
+                : ['type' => 'dom_ready'],
         );
 
-        if (!is_string($id)
-            || preg_match('/^[A-Za-z][A-Za-z0-9_-]{0,63}$/D', $id) !== 1
-            || isset($seenIds[$id])
-        ) {
+        if (!is_string($id) || preg_match('/^[A-Za-z][A-Za-z0-9_-]{0,63}$/D', $id) !== 1) {
             throw new \InvalidArgumentException(
                 'Each tag needs a unique ID of 1–64 letters, digits, '
                 .'underscores or hyphens, beginning with a letter.',
@@ -68,18 +65,7 @@ final class Tag
             );
         }
 
-        $action = TagAction::validate(
-            $type,
-            $tag,
-            $variables,
-            $id,
-            $properties,
-            $seenSources,
-            $syntax,
-            $cacheDirectory,
-            $codeBytes,
-        );
-        $seenIds[$id] = true;
+        $action = TagAction::validate($type, $candidate, $variables, $id, $properties, $syntax);
         $entry = [
             'id' => $id,
             ...$action,
@@ -88,10 +74,61 @@ final class Tag
             'trigger' => $trigger,
             'type' => $type,
         ];
-        if (array_key_exists('after', $tag)) {
-            $entry['after'] = $tag['after'];
+        if (array_key_exists('after', $candidate)) {
+            $entry['after'] = $candidate['after'];
         }
 
-        return $entry;
+        return new self($entry);
+    }
+
+    public function toArray(): array
+    {
+        return $this->values;
+    }
+
+    public function id(): string
+    {
+        return (string) $this->values['id'];
+    }
+
+    public function type(): string
+    {
+        return (string) $this->values['type'];
+    }
+
+    public function isEnabled(): bool
+    {
+        return (bool) $this->values['enabled'];
+    }
+
+    public function consent(): string
+    {
+        return (string) $this->values['consent'];
+    }
+
+    /** @return array{type: string, event?: string} */
+    public function trigger(): array
+    {
+        return $this->values['trigger'];
+    }
+
+    public function after(): ?string
+    {
+        return isset($this->values['after']) ? (string) $this->values['after'] : null;
+    }
+
+    public function src(): ?string
+    {
+        return isset($this->values['src']) ? (string) $this->values['src'] : null;
+    }
+
+    public function method(): ?string
+    {
+        return isset($this->values['method']) ? (string) $this->values['method'] : null;
+    }
+
+    public function code(): ?string
+    {
+        return isset($this->values['code']) ? (string) $this->values['code'] : null;
     }
 }

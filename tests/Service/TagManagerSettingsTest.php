@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace App\Tests\Service;
 
+use App\Integrations\TagManager\CustomDataSettingsProperties;
+use App\Integrations\TagManager\PeastCustomCodeSyntax;
+use App\Integrations\TagManager\YamlTagManagers;
+use App\Features\TagManager\SaveTagManager\SaveTagManager;
 use App\Service\AggregateConfigLoader;
 use App\Service\FeatureFlags;
 use App\Service\TagManagerSettings;
@@ -14,6 +18,14 @@ use Symfony\Component\Yaml\Yaml;
 final class TagManagerSettingsTest extends TestCase
 {
     private string $projectDir;
+    private static CustomDataSettingsProperties $properties;
+    private static PeastCustomCodeSyntax $syntax;
+
+    public static function setUpBeforeClass(): void
+    {
+        self::$properties = new CustomDataSettingsProperties();
+        self::$syntax = new PeastCustomCodeSyntax();
+    }
 
     protected function setUp(): void
     {
@@ -59,14 +71,17 @@ final class TagManagerSettingsTest extends TestCase
         TagManagerSettings::validate(['tags' => [
             ['id' => 'encoded', 'src' => str_replace('&', '&amp;', $tracker)],
             ['id' => 'plain', 'src' => $tracker],
-        ]]);
+        ]], self::$properties, self::$syntax);
     }
 
     public function testOmittedPerTagEnabledDefaultsToTrueWithoutEnablingManager(): void
     {
         $tag = self::tag();
         unset($tag['enabled'], $tag['consent'], $tag['trigger'], $tag['type']);
-        self::assertSame(['enabled' => false, 'variables' => [], 'tags' => [self::tag()]], TagManagerSettings::validate(['tags' => [$tag]]));
+        self::assertSame(
+            ['enabled' => false, 'variables' => [], 'tags' => [self::tag()]],
+            TagManagerSettings::validate(['tags' => [$tag]], self::$properties, self::$syntax),
+        );
     }
 
     public function testExplicitNoConsentAndNamedCategoriesRemainDistinctAndReachTheCmp(): void
@@ -335,7 +350,7 @@ final class TagManagerSettingsTest extends TestCase
     {
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage($message);
-        TagManagerSettings::validate(['tags' => [$tag + ['id' => 'login-event']]]);
+        TagManagerSettings::validate(['tags' => [$tag + ['id' => 'login-event']]], self::$properties, self::$syntax);
     }
 
     public static function invalidEventTags(): iterable
@@ -353,7 +368,7 @@ final class TagManagerSettingsTest extends TestCase
     {
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage($message);
-        TagManagerSettings::validate(['tags' => $tags]);
+        TagManagerSettings::validate(['tags' => $tags], self::$properties, self::$syntax);
     }
 
     public static function invalidCustomTags(): iterable
@@ -395,7 +410,7 @@ final class TagManagerSettingsTest extends TestCase
     {
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage($message);
-        TagManagerSettings::validate(['tags' => $tags]);
+        TagManagerSettings::validate(['tags' => $tags], self::$properties, self::$syntax);
     }
 
     public static function invalidChains(): iterable
@@ -416,7 +431,7 @@ final class TagManagerSettingsTest extends TestCase
             ['id' => 'after-pixel', 'type' => 'call', 'method' => 'Pixel.track', 'trigger' => ['type' => 'data_layer', 'event' => 'purchase'], 'after' => 'pixel'],
             ['id' => 'setup', 'type' => 'call', 'method' => 'Acme.init', 'trigger' => ['type' => 'window_load']],
             ['id' => 'after-setup', 'type' => 'call', 'method' => 'Acme.track', 'after' => 'setup'],
-        ]])['tags'];
+        ]], self::$properties, self::$syntax)['tags'];
         self::assertSame(['after-pixel' => 'pixel', 'after-setup' => 'setup'], array_column(array_filter($tags, static fn (array $tag): bool => isset($tag['after'])), 'after', 'id'));
     }
 
@@ -424,15 +439,17 @@ final class TagManagerSettingsTest extends TestCase
     {
         file_put_contents($this->projectDir.'/config/aggregate.yaml', 'private_key: [not-valid');
         $this->expectException(\RuntimeException::class);
-        (new TagManagerSettings(new AggregateConfigLoader($this->projectDir, 'test')))->toBrowserConfig();
+        (new TagManagerSettings(new AggregateConfigLoader($this->projectDir, 'test'), properties: self::$properties, syntax: self::$syntax))->toBrowserConfig();
     }
 
     private function settings(array $values, bool $withFeatureFlags = false): TagManagerSettings
     {
         file_put_contents($this->projectDir.'/config/aggregate.yaml', Yaml::dump($values, 8, 2));
         $config = new AggregateConfigLoader($this->projectDir, 'test');
+        $store = new YamlTagManagers($config, properties: self::$properties, syntax: self::$syntax);
+        $saver = new SaveTagManager($store, self::$properties, self::$syntax);
 
-        return new TagManagerSettings($config, features: $withFeatureFlags ? new FeatureFlags($config) : null);
+        return new TagManagerSettings($config, features: $withFeatureFlags ? new FeatureFlags($config) : null, properties: self::$properties, syntax: self::$syntax, store: $store, saver: $saver);
     }
 
     private static function tag(string $id = 'analytics', bool $enabled = true): array

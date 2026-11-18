@@ -95,7 +95,7 @@ final class TagManagerCustomCodeTest extends TestCase
             self::assertStringStartsWith('// ', $template['code']);
             $settings = TagManagerSettings::validate(['enabled' => true, 'tags' => [[
                 'id' => $template['id'], 'type' => 'custom', 'code' => $template['code'], 'consent' => $template['consent'], 'trigger' => $template['trigger'],
-            ]]]);
+            ]]], new \App\Integrations\TagManager\CustomDataSettingsProperties(), new \App\Integrations\TagManager\PeastCustomCodeSyntax());
             self::assertSame($template['code'], $settings['tags'][0]['code'], $template['id']);
             self::assertStringNotContainsString('localStorage', $template['code'], 'templates add no browser storage');
             self::assertStringNotContainsString('document.cookie', $template['code']);

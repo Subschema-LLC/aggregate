@@ -9,9 +9,5 @@ namespace App\Entities\TagManager;
  */
 interface CustomCodeSyntax
 {
-    public function validateSyntax(
-        string $code,
-        string $path,
-        ?string $cacheDirectory = null,
-    ): void;
+    public function validateSyntax(mixed $code, string $path): void;
 }

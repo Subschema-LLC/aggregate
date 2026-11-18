@@ -20,7 +20,6 @@ final class TagManagerSettings
         private readonly AggregateConfigLoader $config,
         private readonly ?SiteScriptConfig $sites = null,
         private readonly ?FeatureFlags $features = null,
-        private readonly ?string $codeCacheDirectory = null,
         private readonly ?CustomDataProperties $properties = null,
         private readonly ?CustomCodeSyntax $syntax = null,
         private readonly ?TagManagers $store = null,
@@ -31,15 +30,20 @@ final class TagManagerSettings
     /** @return array{enabled: bool, variables: array<string, string>, tags: list<array>} */
     public function all(?string $siteId = null): array
     {
+        if ($this->store !== null) {
+            $raw = $this->store->all($siteId);
+
+            return self::validate($raw, $this->properties(), $this->syntax());
+        }
+
         $config = $this->configuration($siteId);
         $config->assertHealthy();
         $values = $config->all();
 
         return self::validate(
             array_key_exists('tag_manager', $values) ? $values['tag_manager'] : self::DEFAULTS,
-            $this->codeCacheDirectory,
-            $this->properties,
-            $this->syntax,
+            $this->properties(),
+            $this->syntax(),
         );
     }
 
@@ -54,29 +58,20 @@ final class TagManagerSettings
         if ($this->customScriptsEnabled()) {
             return;
         }
-        $saved = [];
-        try {
-            foreach ($this->all($siteId)['tags'] as $tag) {
-                if ($tag['type'] === 'custom') {
-                    $saved[$tag['id']] = $tag['code'];
-                }
-            }
-        } catch (\Throwable) {
-        }
-        foreach ($settings['tags'] as $tag) {
-            if ($tag['type'] === 'custom' && ($saved[$tag['id']] ?? null) !== $tag['code']) {
-                throw new \InvalidArgumentException('Custom JavaScript tags are turned off for this installation on the Feature flags page. Existing ones are kept but not served, and none can be added or changed.');
-            }
-        }
+        $saver = $this->saver ?? new SaveTagManager(
+            $this->store(),
+            $this->properties(),
+            $this->syntax(),
+        );
+        $saver->assertNoNewCustomCode($settings, $siteId);
     }
 
     public function save(array $submitted, ?string $siteId = null): void
     {
         $saver = $this->saver ?? new SaveTagManager(
             $this->store(),
-            $this->properties ?? self::defaultProperties(),
-            $this->syntax ?? self::defaultSyntax(),
-            $this->codeCacheDirectory,
+            $this->properties(),
+            $this->syntax(),
         );
         $saver->save($submitted, $siteId, $this->customScriptsEnabled(), $this->trackerNamespaces());
     }
@@ -122,46 +117,19 @@ final class TagManagerSettings
         return EntityTagManager::consentCategories($this->all($siteId), $this->customScriptsEnabled());
     }
 
+    public function properties(): CustomDataProperties
+    {
+        return $this->properties ?? throw new \LogicException('CustomDataProperties is required.');
+    }
+
+    public function syntax(): CustomCodeSyntax
+    {
+        return $this->syntax ?? throw new \LogicException('CustomCodeSyntax is required.');
+    }
+
     private function store(): TagManagers
     {
-        if ($this->store !== null) {
-            return $this->store;
-        }
-
-        return new class($this->config, $this->sites) implements TagManagers {
-            public function __construct(
-                private readonly AggregateConfigLoader $config,
-                private readonly ?SiteScriptConfig $sites,
-            ) {
-            }
-
-            public function all(?string $siteId = null): array
-            {
-                $cfg = $siteId !== null && $this->sites !== null ? $this->sites->configuration($siteId) : $this->config;
-                $cfg->assertHealthy();
-                $values = $cfg->all();
-
-                return array_key_exists('tag_manager', $values) && is_array($values['tag_manager'])
-                    ? $values['tag_manager']
-                    : EntityTagManager::DEFAULTS;
-            }
-
-            public function save(array $settings, ?string $siteId = null): void
-            {
-                $cfg = $siteId !== null && $this->sites !== null ? $this->sites->configuration($siteId) : $this->config;
-                if ($siteId !== null && $this->sites !== null) {
-                    $this->sites->ensureDirectory();
-                }
-                $cfg->updateMany(static function (array $current) use ($settings): array {
-                    EntityTagManager::validate($current['tag_manager'] ?? EntityTagManager::DEFAULTS, new class implements CustomDataProperties {
-                        public function isValidKey(string $key): bool { return true; }
-                        public function isBuiltin(string $key): bool { return false; }
-                    });
-
-                    return ['tag_manager' => $settings];
-                });
-            }
-        };
+        return $this->store ?? throw new \LogicException('TagManagers store is required.');
     }
 
     private function configuration(?string $siteId): AggregateConfigLoader
@@ -179,33 +147,9 @@ final class TagManagerSettings
     /** @return array{enabled: bool, variables: array<string, string>, tags: list<array>} */
     public static function validate(
         mixed $submitted,
-        ?string $codeCacheDirectory = null,
-        ?CustomDataProperties $properties = null,
-        ?CustomCodeSyntax $syntax = null,
+        CustomDataProperties $properties,
+        CustomCodeSyntax $syntax,
     ): array {
-        return EntityTagManager::validate(
-            $submitted,
-            $properties ?? self::defaultProperties(),
-            $syntax ?? self::defaultSyntax(),
-            $codeCacheDirectory,
-        );
-    }
-
-    private static function defaultProperties(): CustomDataProperties
-    {
-        return new class implements CustomDataProperties {
-            public function isValidKey(string $key): bool { return CustomDataSettings::isValidPropertyKey($key); }
-            public function isBuiltin(string $key): bool { return isset(CustomDataSettings::BUILTIN_PROPERTIES[$key]); }
-        };
-    }
-
-    private static function defaultSyntax(): CustomCodeSyntax
-    {
-        return new class implements CustomCodeSyntax {
-            public function validateSyntax(string $code, string $path, ?string $cacheDirectory = null): void
-            {
-                TagManagerCustomCode::validate($code, $path, $cacheDirectory);
-            }
-        };
+        return EntityTagManager::validate($submitted, $properties, $syntax);
     }
 }

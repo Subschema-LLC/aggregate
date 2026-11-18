@@ -81,4 +81,9 @@ final class ConsentButtons
 
         return $layout;
     }
+
+    public static function layout(mixed $layout, string $path): string
+    {
+        return self::validateLayout($layout, $path);
+    }
 }

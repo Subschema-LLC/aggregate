@@ -389,7 +389,8 @@ Progress:
 - [x] `Integrations/TagManager` provides adapter implementations:
   `YamlTagManagers`, `CustomDataSettingsProperties`, and `PeastCustomCodeSyntax`, wired in `config/wiring.yaml`.
 - [x] Features in `Features/TagManager/` per FIDES 0.3 feature groups:
-  `SaveTagManager/SaveTagManager`, `PreviewTag/PreviewTag` with `TagReferences`, and `TagForm/TagForm` with `TagFormDraft`, `TagFormVariables` and `TagFormAction`.
+  `SaveTagManager/SaveTagManager` (including form handling in `TagForm`, `TagFormDraft`, `TagFormVariables` and `TagFormAction`),
+  and `PreviewTag/PreviewTag` with `TagReferences`.
 - [x] Existing services (`TagManagerSettings`, `TagManagerValues`, `TagManagerVariables`, `TagManagerForm`, `TagManagerPreview`) delegate
   to the new entities and features without behavior changes.
 - [ ] Tag script delivery and controllers in `Delivery/TagManager`.
@@ -404,9 +405,9 @@ Progress:
   and storage contract `ConsentManagers`.
 - [x] `Integrations/ConsentManager` provides adapter implementation:
   `YamlConsentManagers`, wired in `config/wiring.yaml`.
-- [x] Features in `Features/Cmp/` per FIDES 0.3 feature groups:
-  `SaveConsentManager/SaveConsentManager` and `ConsentForm/ConsentForm` with `ConsentFormValues`,
-  `ConsentFormDraft`, `ConsentFormExtract`, `ConsentFormRegions`, `ConsentFormBehavior`, and `ConsentFormExtras`.
+- [x] Features in `Features/ConsentManager/` per FIDES 0.3 feature groups:
+  `SaveConsentManager/SaveConsentManager` (including form handling in `ConsentForm`, `ConsentFormValues`,
+  `ConsentFormDraft`, `ConsentFormExtract`, `ConsentFormRegions`, `ConsentFormBehavior`, and `ConsentFormExtras`).
 - [x] Existing services (`ConsentAppearance`, `ConsentManagerForm`, `ConsentCategories`, `SiteScriptConfig`) delegate
   to the new entities and features without behavior changes, reducing `ConsentAppearance` from 630 lines
   and `ConsentManagerForm` from 414 lines below the 200-line threshold.

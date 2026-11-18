@@ -20,6 +20,12 @@ final class TagManagerVariables
         return EntityTagVariables::validate($variables);
     }
 
+    /**
+     * A URL copied out of an HTML snippet keeps its `&amp;` separators, which a
+     * browser then requests literally, so the tracker reads `amp;token` instead
+     * of `token`. A literal entity is never a meaningful query separator, so
+     * every entry point stores and serves the plain `&` instead.
+     */
     public static function normalizeSource(string $src): string
     {
         return EntityTagVariables::normalizeSource($src);

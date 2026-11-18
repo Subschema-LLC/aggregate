@@ -17,8 +17,7 @@ final class SaveTagManager
     public function __construct(
         private readonly TagManagers $store,
         private readonly CustomDataProperties $properties,
-        private readonly ?CustomCodeSyntax $syntax = null,
-        private readonly ?string $codeCacheDirectory = null,
+        private readonly CustomCodeSyntax $syntax,
     ) {
     }
 
@@ -37,7 +36,6 @@ final class SaveTagManager
             $submitted,
             $this->properties,
             $this->syntax,
-            $this->codeCacheDirectory,
         );
 
         if (!$customScriptsEnabled) {
@@ -52,14 +50,16 @@ final class SaveTagManager
     /**
      * @param array{tags: list<array>} $settings
      */
-    private function assertNoNewCustomCode(array $settings, ?string $siteId): void
+    public function assertNoNewCustomCode(array $settings, ?string $siteId = null): void
     {
         $saved = [];
         try {
             $current = $this->store->all($siteId);
             foreach ($current['tags'] as $tag) {
                 if (($tag['type'] ?? '') === 'custom' && isset($tag['id'], $tag['code'])) {
-                    $saved[$tag['id']] = $tag['code'];
+                    $saved[$tag['id']] = rtrim(
+                        str_replace(["\r\n", "\r"], "\n", (string) $tag['code']),
+                    );
                 }
             }
         } catch (\Throwable) {
@@ -67,7 +67,8 @@ final class SaveTagManager
         }
 
         foreach ($settings['tags'] as $tag) {
-            if ($tag['type'] === 'custom' && ($saved[$tag['id']] ?? null) !== $tag['code']) {
+            $code = rtrim(str_replace(["\r\n", "\r"], "\n", (string) ($tag['code'] ?? '')));
+            if ($tag['type'] === 'custom' && ($saved[$tag['id']] ?? null) !== $code) {
                 throw new \InvalidArgumentException(
                     'Custom JavaScript tags are turned off for this installation on the Feature '
                     .'flags page. Existing ones are kept but not served, and none can be added '

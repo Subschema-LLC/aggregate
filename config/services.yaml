@@ -273,10 +273,10 @@ services:
             $forensicUrl: '%env(default::FORENSIC_DATABASE_URL)%'
             $forensicProjectDir: '%kernel.project_dir%'
 
-    App\Service\TagManagerSettings:
+    App\Integrations\TagManager\PeastCustomCodeSyntax:
         arguments:
             # Remembers custom JavaScript that passed its checks; safe to clear.
-            $codeCacheDirectory: '%kernel.cache_dir%/tag-manager-code'
+            $cacheDirectory: '%kernel.cache_dir%/tag-manager-code'
 
     App\Service\GoalEventRegistry:
         arguments:

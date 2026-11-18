@@ -12,9 +12,23 @@ use PHPUnit\Framework\TestCase;
 
 final class TagManagerPreviewTest extends TestCase
 {
+    private static \App\Integrations\TagManager\CustomDataSettingsProperties $properties;
+    private static \App\Integrations\TagManager\PeastCustomCodeSyntax $syntax;
+
+    public static function setUpBeforeClass(): void
+    {
+        self::$properties = new \App\Integrations\TagManager\CustomDataSettingsProperties();
+        self::$syntax = new \App\Integrations\TagManager\PeastCustomCodeSyntax();
+    }
+
+    private static function validate(mixed $settings): array
+    {
+        return TagManagerSettings::validate($settings, self::$properties, self::$syntax);
+    }
+
     public function testPlanServesOnlyTheTestedTagEnabledWithAProbeForEachVariableItReads(): void
     {
-        $settings = TagManagerSettings::validate([
+        $settings = self::validate([
             'enabled' => false,
             'variables' => ['program' => 'program_name', 'campus' => 'campus.name', 'unused' => 'x'],
             'tags' => [
@@ -43,7 +57,7 @@ final class TagManagerPreviewTest extends TestCase
 
     public function testAChainedTagWaitsForAStandInThatFinishesAtOnce(): void
     {
-        $settings = TagManagerSettings::validate(['enabled' => true, 'variables' => [], 'tags' => [
+        $settings = self::validate(['enabled' => true, 'variables' => [], 'tags' => [
             ['id' => 'tracker', 'src' => 'https://analytics.example/aggregate.js'],
             ['id' => 'pixel', 'type' => 'call', 'method' => 'Acme.track', 'args' => ['view'], 'consent' => 'marketing', 'after' => 'tracker'],
         ]]);
@@ -72,7 +86,7 @@ final class TagManagerPreviewTest extends TestCase
             $variables['v'.$i] = 'value'.$i;
             $data['p'.$i] = ['$var' => 'v'.$i];
         }
-        $settings = TagManagerSettings::validate(['enabled' => true, 'variables' => $variables, 'tags' => [
+        $settings = self::validate(['enabled' => true, 'variables' => $variables, 'tags' => [
             ['id' => 'many', 'type' => 'event', 'event' => ['eventName' => 'many', 'customData' => $data]],
         ]]);
 
@@ -85,7 +99,7 @@ final class TagManagerPreviewTest extends TestCase
 
     public function testCustomJavaScriptIsReplacedByAStandInAndItsCodeIsNeverCompiledIn(): void
     {
-        $settings = TagManagerSettings::validate(['enabled' => true, 'variables' => [], 'tags' => [
+        $settings = self::validate(['enabled' => true, 'variables' => [], 'tags' => [
             ['id' => 'custom-one', 'type' => 'custom', 'code' => "document.title = 'secret-marker';"],
         ]]);
         $preview = new TagManagerPreview(dirname(__DIR__, 2));

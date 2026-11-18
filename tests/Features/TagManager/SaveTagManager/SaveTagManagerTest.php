@@ -34,11 +34,8 @@ final class SaveTagManagerTest extends TestCase
         };
 
         $this->syntax = new class implements CustomCodeSyntax {
-            public function validateSyntax(
-                string $code,
-                string $path,
-                ?string $cacheDirectory = null,
-            ): void {
+            public function validateSyntax(mixed $code, string $path): void
+            {
             }
         };
     }

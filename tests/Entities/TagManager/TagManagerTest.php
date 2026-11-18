@@ -29,12 +29,9 @@ final class TagManagerTest extends TestCase
         };
 
         $this->syntax = new class implements CustomCodeSyntax {
-            public function validateSyntax(
-                string $code,
-                string $path,
-                ?string $cacheDirectory = null,
-            ): void {
-                if (str_contains($code, 'throw new Error')) {
+            public function validateSyntax(mixed $code, string $path): void
+            {
+                if (is_string($code) && str_contains($code, 'throw new Error')) {
                     throw new \InvalidArgumentException($path.' contains error.');
                 }
             }

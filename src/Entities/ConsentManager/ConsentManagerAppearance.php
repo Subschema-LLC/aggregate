@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Entities\ConsentManager;
 
 /**
- * Validates appearance, region rules and themes for consent managers.
+ * Validates appearance, buttons, theme and text for consent banners.
  */
 final class ConsentManagerAppearance
 {
@@ -13,14 +13,25 @@ final class ConsentManagerAppearance
      * @param array<string, mixed> $settings
      * @return array<string, mixed>
      */
-    public static function validate(array $settings, string $banner, string $path): array
-    {
+    public static function validate(
+        array $settings,
+        string $banner,
+        string $path,
+    ): array {
         $result = [];
         if (array_key_exists('text', $settings)) {
-            $result['text'] = ConsentText::validate($settings['text'], $banner, $path.'.text');
+            $result['text'] = ConsentText::validate(
+                $settings['text'],
+                $banner,
+                $path.'.text',
+            );
         }
         if (array_key_exists('theme', $settings)) {
-            $result['theme'] = ConsentTheme::validate($settings['theme'], $banner, $path.'.theme');
+            $result['theme'] = ConsentTheme::validate(
+                $settings['theme'],
+                $banner,
+                $path.'.theme',
+            );
         }
         if (array_key_exists('buttons', $settings)) {
             $result['buttons'] = ConsentButtons::validate(
@@ -30,7 +41,7 @@ final class ConsentManagerAppearance
             );
         }
         if (array_key_exists('layout', $settings)) {
-            $result['layout'] = ConsentButtons::validateLayout(
+            $result['layout'] = ConsentButtons::layout(
                 $settings['layout'],
                 $path.'.layout',
             );
@@ -59,21 +70,28 @@ final class ConsentManagerAppearance
                 $path.'.default_granted',
             );
         }
-        self::validateRegionSettings($settings, $banner, $result, $path);
 
-        return $result;
+        $regionFields = self::validateRegionSettings(
+            $settings,
+            $banner,
+            $path,
+            $result['consent_type'] ?? null,
+        );
+
+        return $result + $regionFields;
     }
 
     /**
      * @param array<string, mixed> $settings
-     * @param array<string, mixed> $result
+     * @return array<string, mixed>
      */
     private static function validateRegionSettings(
         array $settings,
         string $banner,
-        array &$result,
         string $path,
-    ): void {
+        ?string $consentType,
+    ): array {
+        $result = [];
         if (array_key_exists('default_region', $settings)) {
             $defReg = $settings['default_region'];
             if (is_string($defReg) && preg_match('/^[a-z0-9_-]{1,32}$/D', $defReg) === 1) {
@@ -86,40 +104,38 @@ final class ConsentManagerAppearance
             }
         }
         if (array_key_exists('regions', $settings)) {
-            $result['regions'] = ConsentRegions::validate(
+            $regions = ConsentRegions::validate(
                 $settings['regions'],
                 $banner,
                 $path.'.regions',
                 $result['default_region'] ?? null,
-                $result['consent_type'] ?? ConsentRegions::DEFAULT_CONSENT_TYPE,
+                $consentType ?? ConsentRegions::DEFAULT_CONSENT_TYPE,
             );
-            self::checkDefaultRegionMatch($result, $path);
+            $result['regions'] = $regions;
+            if (isset($result['default_region'])) {
+                $matched = false;
+                foreach ($regions as $reg) {
+                    if ($reg['id'] === $result['default_region']) {
+                        $matched = true;
+                        break;
+                    }
+                }
+                if (!$matched) {
+                    throw new \InvalidArgumentException(
+                        $path.'.default_region "'.$result['default_region']
+                        .'" does not match any configured region.',
+                    );
+                }
+            } else {
+                foreach ($regions as $reg) {
+                    if ($reg['default']) {
+                        $result['default_region'] = $reg['id'];
+                        break;
+                    }
+                }
+            }
         }
-    }
 
-    private static function checkDefaultRegionMatch(array &$result, string $path): void
-    {
-        if (isset($result['default_region'])) {
-            $matched = false;
-            foreach ($result['regions'] as $reg) {
-                if ($reg['id'] === $result['default_region']) {
-                    $matched = true;
-                    break;
-                }
-            }
-            if (!$matched) {
-                throw new \InvalidArgumentException(
-                    $path.'.default_region "'.$result['default_region']
-                    .'" does not match any configured region.',
-                );
-            }
-        } else {
-            foreach ($result['regions'] as $reg) {
-                if ($reg['default']) {
-                    $result['default_region'] = $reg['id'];
-                    break;
-                }
-            }
-        }
+        return $result;
     }
 }
