@@ -36,6 +36,16 @@ class AlertSettings
         $this->covered = new CoveredWebsites($websites, $scopes);
     }
 
+    public function store(): AlertsYamlStore
+    {
+        return $this->store;
+    }
+
+    public function coverage(): CoveredWebsites
+    {
+        return $this->covered;
+    }
+
     public function validator(): AlertRuleValidator
     {
         return $this->validator;
@@ -86,46 +96,6 @@ class AlertSettings
     public function rule(string $id): ?array
     {
         return $this->rules()[$id] ?? null;
-    }
-
-    /**
-     * Saves or updates a destination and returns the validated destination.
-     *
-     * @param array<string, mixed> $candidate
-     *
-     * @return DestinationConfig
-     */
-    public function saveDestination(array $candidate): array
-    {
-        return $this->store->saveDestination($candidate);
-    }
-
-    /**
-     * Deletes a destination when no rule references it.
-     */
-    public function deleteDestination(string $id): void
-    {
-        $this->store->deleteDestination($id);
-    }
-
-    /**
-     * Saves or updates a rule and returns the validated rule.
-     *
-     * @param array<string, mixed> $candidate
-     *
-     * @return RuleConfig
-     */
-    public function saveRule(array $candidate): array
-    {
-        return $this->store->saveRule($candidate);
-    }
-
-    /**
-     * Deletes a rule by ID.
-     */
-    public function deleteRule(string $id): void
-    {
-        $this->store->deleteRule($id);
     }
 
     /**

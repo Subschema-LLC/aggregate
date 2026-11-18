@@ -13,12 +13,19 @@ use App\Entities\Incident\DeliveryLog;
 use App\Entities\Incident\DeliveryRecord;
 use App\Features\DeliverAlert\DeliverAlert;
 use App\Features\EvaluateAlerts\EvaluateAlerts;
+use App\Features\ListAlerts\ListAlerts;
+use App\Features\SendTestAlert\SendTestAlert;
+use App\Features\SendTestAlert\TestAlertId;
 use App\Features\EvaluateAlerts\Evaluation;
 use App\Features\EvaluateAlerts\HoursToEvaluate;
 use App\Integrations\Alerts\AlertChannels;
+use App\Integrations\Alerts\AuditDeliveryHistory;
 use App\Integrations\Alerts\EmailAlerts;
 use App\Integrations\Alerts\EventCountWindowBreaches;
 use App\Integrations\Alerts\TaskDeliveryLog;
+use App\Integrations\Alerts\TaskIncidentStates;
+use App\Integrations\Alerts\YamlAlertRules;
+use App\Integrations\Alerts\YamlDestinations;
 use App\Repository\EventRepository;
 use App\Service\AggregateConfigLoader;
 use App\Service\Email\EmailPurpose;
@@ -27,9 +34,7 @@ use App\Service\FeatureFlags;
 use App\Service\Operations\AuditTrail;
 use App\Service\Operations\ProcessingTasks;
 use App\Service\Operations\TaskTrigger;
-use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
-use Doctrine\DBAL\Types\Types;
 use Psr\Clock\ClockInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Clock\Clock;
@@ -71,28 +76,29 @@ class AlertEvaluator
     public const OUTCOME_SUPPRESSED = DeliveryLog::OUTCOME_SUPPRESSED;
     public const OUTCOME_FAILED = DeliveryLog::OUTCOME_FAILED;
 
-    public const STATE_OK = 'ok';
-    public const STATE_FIRING = 'firing';
-    public const STATE_WAITING = 'waiting';
-    public const STATE_OFF = 'off';
-    public const STATE_PROBLEM = 'problem';
+    public const STATE_OK = ListAlerts::STATE_OK;
+    public const STATE_FIRING = ListAlerts::STATE_FIRING;
+    public const STATE_WAITING = ListAlerts::STATE_WAITING;
+    public const STATE_OFF = ListAlerts::STATE_OFF;
+    public const STATE_PROBLEM = ListAlerts::STATE_PROBLEM;
 
     public const LEASE_SECONDS = 900;
     public const MAX_CATCHUP_HOURS = HoursToEvaluate::MAX_CATCHUP_HOURS;
     /** An undelivered alert is retried at each hourly check until its window ended this many hours ago. */
     public const RETRY_HOURS = DeliverAlert::RETRY_HOURS;
-    public const RECENT_LIMIT = 20;
+    public const RECENT_LIMIT = ListAlerts::RECENT_LIMIT;
 
     private readonly ClockInterface $clock;
     private readonly WindowBreaches $breaches;
     private readonly EvaluateAlerts $evaluation;
+    private readonly ListAlerts $list;
 
     public function __construct(
         private readonly AlertSettings $settings,
         EventRepository $events,
         private readonly ProcessingTasks $tasks,
         private readonly AuditTrail $audit,
-        private readonly Connection $connection,
+        Connection $connection,
         private readonly WebhookSender $webhookSender,
         private readonly TransactionalMailer $mailer,
         private readonly AggregateConfigLoader $config,
@@ -103,6 +109,13 @@ class AlertEvaluator
         $this->clock = $clock ?? Clock::get();
         $this->breaches = new EventCountWindowBreaches($events, $tasks);
         $this->evaluation = new EvaluateAlerts($this->breaches);
+        $this->list = new ListAlerts(
+            new YamlAlertRules($settings->store()),
+            $settings->validator()->references(),
+            $settings->coverage(),
+            new TaskIncidentStates($tasks),
+            new AuditDeliveryHistory($connection),
+        );
     }
 
     /**
@@ -282,126 +295,18 @@ class AlertEvaluator
         ?string $ruleId = null,
     ): array {
         $this->features->assertEnabled('alerts');
-        $configured = $this->settings->toArray();
-        $destination = $configured['destinations'][$destinationId] ?? null;
-        if ($destination === null) {
-            throw new \InvalidArgumentException(sprintf('Alert destination "%s" does not exist.', $destinationId));
-        }
-
-        $rules = $configured['rules'];
-        $rule = ($ruleId !== null && isset($rules[$ruleId])) ? $rules[$ruleId] : (reset($rules) ?: [
-            'id' => 'test-rule',
-            'enabled' => true,
-            'covers' => 'all',
-            'source' => AlertRuleValidator::SOURCE_EVENTS,
-            'privacy_mode' => AlertRuleValidator::PRIVACY_ALL,
-            'event_name' => '',
-            'condition' => AlertRuleValidator::CONDITION_FEWER_THAN,
-            'threshold' => 5,
-            'window' => AlertRuleValidator::WINDOW_HOUR,
-            'destinations' => [$destinationId],
-        ]);
-
-        $sites = $this->settings->coveredWebsites($rule);
-        $site = $sites[0] ?? [
-            'token' => 'test-website-token',
-            'name' => 'Example Website',
-            'domain' => 'example.com',
-        ];
-
-        $log = new TaskDeliveryLog($this->tasks, $this->audit, $this->clock, $trigger, null);
-        $windowEnd = $this->completedUtcHour();
-        $windowEndIso = self::formatIsoHour($windowEnd);
-        $alertId = substr(bin2hex(random_bytes(16)), 0, 24);
-        $incidentId = self::computeIncidentId($this->installationUrl(), $rule['id'], $site['token'], 'test:'.$alertId);
-
-        /** @var AlertPayload $payload */
-        $payload = [
-            'schema_version' => '1',
-            'id' => $alertId,
-            'incident' => $incidentId,
-            'type' => 'test',
-            'rule' => $rule['id'],
-            'website' => $site['token'],
-            'host' => $site['domain'] !== '' ? $site['domain'] : 'example.com',
-            'installation' => $this->installationUrl(),
-            'alert_condition' => AlertRuleValidator::formatAlertCondition($rule),
-            'window_end' => $windowEndIso,
-        ];
-
-        if ($destination['type'] === AlertRuleValidator::TYPE_WEBHOOK) {
-            $result = $this->webhookSender->send($destination, $payload);
-            $reason = $result['sent']
-                ? sprintf('Test alert sent (%s; rule status unchanged).', $result['reason'])
-                : $result['reason'];
-
-            $log->record(
-                self::OP_TEST,
-                $result['sent'] ? self::OUTCOME_SENT : self::OUTCOME_FAILED,
-                $payload['rule'],
-                $payload['host'],
-                $destination['label'],
-                $reason,
-            );
-
-            return [
-                'sent' => $result['sent'],
-                'destination_label' => $destination['label'],
-                'alert_id' => $alertId,
-                'reason' => $reason,
-            ];
-        }
-
-        $listed = $destination['recipients'] ?? [];
-        if ($recipient !== null && $recipient !== '' && $recipient !== '__all__') {
-            $matched = null;
-            foreach ($listed as $addr) {
-                if (strcasecmp($addr, trim($recipient)) === 0) {
-                    $matched = $addr;
-                    break;
-                }
-            }
-            if ($matched === null) {
-                throw new \InvalidArgumentException('Choose a recipient from the destination’s configured recipient list.');
-            }
-            $targets = [$matched];
-        } else {
-            $targets = $listed;
-        }
-
-        $email = new EmailAlerts($this->mailer, $trigger);
-        $description = RuleDescription::condition($rule);
-        $sentCount = 0;
-        $lastError = null;
-        foreach ($targets as $address) {
-            $emailResult = $email->sendOne($address, $payload, $description);
-            if ($emailResult['sent']) {
-                ++$sentCount;
-            } else {
-                $lastError = $emailResult['reason'];
-            }
-        }
-
-        $allSent = $sentCount === count($targets) && $sentCount > 0;
-        $reason = $allSent
-            ? 'Test alert (rule status unchanged)'
-            : ($lastError ?? 'Not sent: no recipient could be reached.');
-
-        $log->record(
-            self::OP_TEST,
-            $allSent ? self::OUTCOME_SENT : self::OUTCOME_FAILED,
-            $payload['rule'],
-            $payload['host'],
-            $destination['label'],
-            $reason,
+        $store = $this->settings->store();
+        $send = new SendTestAlert(
+            new YamlDestinations($store),
+            new YamlAlertRules($store),
+            $this->settings->coverage(),
+            new AlertChannels($this->webhookSender, new EmailAlerts($this->mailer, $trigger)),
+            new TaskDeliveryLog($this->tasks, $this->audit, $this->clock, $trigger, null),
         );
+        $alertId = substr(bin2hex(random_bytes(16)), 0, 24);
+        $id = new TestAlertId($alertId, $this->completedUtcHour(), $this->installationUrl());
 
-        return [
-            'sent' => $allSent,
-            'destination_label' => $destination['label'],
-            'alert_id' => $alertId,
-            'reason' => $reason,
-        ];
+        return $send->send($destinationId, $recipient, $ruleId, $id);
     }
 
     /**
@@ -421,85 +326,7 @@ class AlertEvaluator
      */
     public function statuses(): array
     {
-        try {
-            $latest = $this->tasks->latest(self::TASK_TYPE);
-        } catch (\Throwable) {
-            $latest = [];
-        }
-
-        $job = $latest[''] ?? null;
-        $jobSuccess = $job !== null ? $job['success'] : null;
-        $jobAttempt = $job !== null ? $job['attempt'] : null;
-        $lastCheck = $jobAttempt !== null ? ($jobAttempt['finished_at'] ?? $jobAttempt['started_at']) : null;
-        $lastWindowEnd = $jobSuccess['fingerprint'] ?? null;
-
-        try {
-            $rules = $this->settings->rules();
-        } catch (\Throwable) {
-            $rules = [];
-        }
-
-        $status = static fn (string $state, string $label, ?string $since = null, ?string $sinceFormatted = null): array => [
-            'state' => $state,
-            'label' => $label,
-            'since' => $since,
-            'since_formatted' => $sinceFormatted,
-        ];
-
-        $ruleStatuses = [];
-        $firingCount = 0;
-
-        foreach ($rules as $id => $rule) {
-            if (!$rule['enabled']) {
-                $ruleStatuses[$id] = $status(self::STATE_OFF, 'Off');
-                continue;
-            }
-
-            $problem = $this->settings->referenceProblem($rule);
-            if ($problem !== null) {
-                $ruleStatuses[$id] = $status(self::STATE_PROBLEM, 'Not checked: '.$problem);
-                continue;
-            }
-
-            $sites = $this->settings->coveredWebsites($rule);
-            if ($sites === []) {
-                $ruleStatuses[$id] = $status(self::STATE_PROBLEM, 'Not checked: it covers no websites.');
-                continue;
-            }
-
-            $earliestFiring = null;
-            $anyEvaluated = false;
-            foreach ($sites as $site) {
-                $fingerprint = $latest[self::stateSubject($id, $site['token'])]['success']['fingerprint'] ?? null;
-                if ($fingerprint === null) {
-                    continue;
-                }
-                $anyEvaluated = true;
-                $parsed = self::parseState($fingerprint);
-                if ($parsed['kind'] === self::STATE_FIRING && $parsed['since'] !== null
-                    && ($earliestFiring === null || strcmp($parsed['since'], $earliestFiring) < 0)) {
-                    $earliestFiring = $parsed['since'];
-                }
-            }
-
-            if ($earliestFiring !== null) {
-                ++$firingCount;
-                $sinceDate = self::parseIsoHour($earliestFiring);
-                $formatted = $sinceDate !== null ? $sinceDate->format('Y-m-d H:00').' UTC' : $earliestFiring;
-                $ruleStatuses[$id] = $status(self::STATE_FIRING, 'Firing since '.$formatted, $earliestFiring, $formatted);
-            } elseif ($anyEvaluated) {
-                $ruleStatuses[$id] = $status(self::STATE_OK, 'OK');
-            } else {
-                $ruleStatuses[$id] = $status(self::STATE_WAITING, 'Waiting for the first full hour');
-            }
-        }
-
-        return [
-            'last_check' => $lastCheck,
-            'last_window_end' => $lastWindowEnd,
-            'firing_count' => $firingCount,
-            'rules' => $ruleStatuses,
-        ];
+        return $this->list->statuses();
     }
 
     /**
@@ -523,75 +350,7 @@ class AlertEvaluator
      */
     public function recentAlerts(int $limit = self::RECENT_LIMIT): array
     {
-        $operations = [self::OP_FIRING, self::OP_RECOVERED, self::OP_TEST];
-        try {
-            $total = (int) $this->connection->fetchOne(
-                'SELECT COUNT(*) FROM audit_trail WHERE operation IN (:ops)',
-                ['ops' => $operations],
-                ['ops' => ArrayParameterType::STRING],
-            );
-            $sql = $this->connection->getDatabasePlatform()->modifyLimitQuery(
-                'SELECT id, occurred_at, operation, subject, outcome, details FROM audit_trail WHERE operation IN (:ops) ORDER BY occurred_at DESC, id DESC',
-                $limit,
-            );
-            $rows = $this->connection->fetchAllAssociative(
-                $sql,
-                ['ops' => $operations],
-                ['ops' => ArrayParameterType::STRING],
-            );
-        } catch (\Throwable) {
-            return ['entries' => [], 'has_more' => false];
-        }
-
-        $entries = [];
-        foreach ($rows as $row) {
-            $time = $this->connection->convertToPHPValue($row['occurred_at'], Types::DATETIME_IMMUTABLE);
-            $occurredAt = $time instanceof \DateTimeImmutable
-                ? new \DateTimeImmutable($time->format('Y-m-d H:i:s'), new \DateTimeZone('UTC'))
-                : new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
-
-            $parts = explode(' · ', (string) ($row['subject'] ?? ''), 3);
-            $ruleId = $parts[0];
-            $website = $parts[1] ?? '';
-            $destination = $parts[2] ?? '';
-
-            $operation = (string) $row['operation'];
-            $type = match ($operation) {
-                self::OP_RECOVERED => 'recovered',
-                self::OP_TEST => 'test',
-                default => 'firing',
-            };
-            $typeLabel = match ($type) {
-                'recovered' => 'Recovered',
-                'test' => 'Test',
-                default => 'Firing',
-            };
-
-            $outcome = (string) $row['outcome'];
-            $outcomeLabel = match ($outcome) {
-                self::OUTCOME_SENT => 'Sent',
-                self::OUTCOME_SUPPRESSED => 'Suppressed',
-                default => 'Failed',
-            };
-
-            $entries[] = [
-                'id' => (int) $row['id'],
-                'occurred_at' => $occurredAt,
-                'rule' => $ruleId,
-                'website' => $website,
-                'type' => $type,
-                'type_label' => $typeLabel,
-                'destination' => $destination,
-                'outcome' => $outcome,
-                'outcome_label' => $outcomeLabel,
-                'reason' => (string) ($row['details'] ?? ''),
-            ];
-        }
-
-        return [
-            'entries' => $entries,
-            'has_more' => $total > $limit,
-        ];
+        return $this->list->recentAlerts($limit);
     }
 
     /**

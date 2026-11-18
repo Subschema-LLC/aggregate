@@ -29,4 +29,21 @@ final class AlertChannels implements AlertChannel
 
         return $this->email->sendAll($recipients, $payload, $conditionDescription);
     }
+
+    public function sendEach(
+        array $destination,
+        array $payload,
+        string $conditionDescription,
+    ): array
+    {
+        if ($destination['type'] === Destination::TYPE_WEBHOOK) {
+            return [$this->send($destination, $payload, $conditionDescription)];
+        }
+        $results = [];
+        foreach ($destination['recipients'] ?? [] as $recipient) {
+            $results[] = $this->email->sendOne($recipient, $payload, $conditionDescription);
+        }
+
+        return $results;
+    }
 }

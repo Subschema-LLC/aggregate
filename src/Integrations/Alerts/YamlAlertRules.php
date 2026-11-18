@@ -13,6 +13,11 @@ final class YamlAlertRules implements AlertRules
     {
     }
 
+    public function all(): array
+    {
+        return $this->store->load()['rules'];
+    }
+
     public function find(string $id): ?array
     {
         return $this->store->load()['rules'][$id] ?? null;

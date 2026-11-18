@@ -33,4 +33,19 @@ interface AlertChannel
      * @return array{sent: bool, reason: string}
      */
     public function send(array $destination, array $payload, string $conditionDescription): array;
+
+    /**
+     * Sends to each listed recipient on its own and returns every result, for
+     * test alerts; a webhook gives one result.
+     *
+     * @param DestinationArray $destination
+     * @param AlertPayload     $payload
+     *
+     * @return list<array{sent: bool, reason: string}>
+     */
+    public function sendEach(
+        array $destination,
+        array $payload,
+        string $conditionDescription,
+    ): array;
 }
