@@ -12,6 +12,13 @@ namespace App\Entities\AlertRule;
  */
 interface AlertRules
 {
+    /**
+     * Every rule in its saved order, keyed by ID.
+     *
+     * @return array<string, RuleArray>
+     */
+    public function all(): array;
+
     /** @return RuleArray|null */
     public function find(string $id): ?array;
 

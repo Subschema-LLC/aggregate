@@ -196,7 +196,7 @@
         "src/Security/Access/PermissionGroupCatalog.php": 288,
         "src/Security/IpRateLimiter.php": 201,
         "src/Service/AggregateConfigLoader.php": 534,
-        "src/Service/Alerts/AlertEvaluator.php": 732,
+        "src/Service/Alerts/AlertEvaluator.php": 491,
         "src/Service/Alerts/AlertSecrets.php": 327,
         "src/Service/Alerts/WebhookSender.php": 241,
         "src/Service/AnalyticsArchiveService.php": 409,
@@ -767,7 +767,7 @@
         "App\\Controller\\WebsitesController": "uses App\\Controller\\DashboardAccess"
     },
     "names-integration": {
-        "src/Service/Alerts/AlertEvaluator.php": "names App\\Integrations\\Alerts\\AlertChannels, App\\Integrations\\Alerts\\EmailAlerts, App\\Integrations\\Alerts\\EventCountWindowBreaches, App\\Integrations\\Alerts\\TaskDeliveryLog",
+        "src/Service/Alerts/AlertEvaluator.php": "names App\\Integrations\\Alerts\\AlertChannels, App\\Integrations\\Alerts\\AuditDeliveryHistory, App\\Integrations\\Alerts\\EmailAlerts, App\\Integrations\\Alerts\\EventCountWindowBreaches, App\\Integrations\\Alerts\\TaskDeliveryLog, App\\Integrations\\Alerts\\TaskIncidentStates, App\\Integrations\\Alerts\\YamlAlertRules, App\\Integrations\\Alerts\\YamlDestinations",
         "src/Service/Alerts/AlertRuleValidator.php": "names App\\Integrations\\Alerts\\AlertsMapping, App\\Integrations\\Alerts\\PrivacySanitizerEventNames, App\\Integrations\\Alerts\\RuleReferenceChecks",
         "src/Service/Alerts/AlertSettings.php": "names App\\Integrations\\Alerts\\AlertsYamlStore, App\\Integrations\\Alerts\\CoveredWebsites"
     },

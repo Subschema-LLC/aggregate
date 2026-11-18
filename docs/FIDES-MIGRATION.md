@@ -358,8 +358,12 @@ Progress:
   live in the entities and also hold for hand-edited YAML; rules about an
   action (create versus edit, never changing a secret the environment sets,
   dropping a webhook's secret when it becomes email) live in the feature.
-- [ ] `SendTestAlert` and `ListAlerts`, the feature views, and the page in
-  `Delivery/Alerts`.
+- [x] `ListAlerts` (rule statuses and recent deliveries, over the
+  `IncidentStates`, `DeliveryHistory` and `RuleCoverage` read contracts) and
+  `SendTestAlert` (over `Destinations`, `AlertRules`, `RuleCoverage`,
+  `AlertChannel` and `DeliveryLog`). `AlertEvaluator` hands its
+  `statuses()`, `recentAlerts()` and `sendTest()` to them.
+- [ ] The feature views and the page in `Delivery/Alerts`.
 - [x] The `app:alerts:*` commands in `Delivery/Alerts` as invokable commands:
   `#[AsCommand]` classes with `__invoke()`, their options in `#[MapInput]`
   classes (`RuleOptions`, `DestinationOptions`), and no `Command` base class.

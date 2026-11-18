@@ -136,6 +136,11 @@ final class DeliverAlertTest extends TestCase
             {
                 return $this->test->send($destination['id'], $payload['type']);
             }
+
+            public function sendEach(array $destination, array $payload, string $conditionDescription): array
+            {
+                return [$this->send($destination, $payload, $conditionDescription)];
+            }
         };
     }
 

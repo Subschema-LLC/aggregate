@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Integrations\Alerts;
 
 use App\Entities\AlertRule\AlertRule;
+use App\Entities\AlertRule\RuleCoverage;
 use App\Service\WebsiteConfigManager;
 use App\Service\WebsiteScopeCatalog;
 
@@ -16,7 +17,7 @@ use App\Service\WebsiteScopeCatalog;
  *
  * @phpstan-type CoveredWebsite array{token: string, name: string, domain: string}
  */
-final class CoveredWebsites
+final class CoveredWebsites implements RuleCoverage
 {
     public function __construct(
         private readonly WebsiteConfigManager $websites,
