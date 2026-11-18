@@ -1505,24 +1505,29 @@ per-incident acknowledgement state that cannot fit in `processing_tasks`.
 
 ### Features grouped by area
 
-**Decision.** Features sit one level deeper than FIDES rule 16 allows:
-`src/Features/<Group>/<UseCase>/<File>`, with the groups `Alerts`,
-`Destinations` and `Incidents`. The use-case folder stays the owner, so two
-features in one group still never use each other, and `tools/arch-check.php`
-requires every feature to be in a group (Scott chose this, November 2026).
+**Decision.** Features sit in feature groups, which FIDES rule 16 allows
+since Scott approved them as a FIDES rule (Subschema-LLC/fides#13, November
+2026): `src/Features/<Group>/<UseCase>/<File>`. There is one group today,
+`Alerts`, holding all nine alert features: rules, destinations, signing
+secrets, evaluation, delivery, the status list and test alerts. The use-case
+folder stays the owner, so two features in one group still never use each
+other, and `tools/arch-check.php` requires every feature to be in a group.
 
-**Why.** A flat list of action folders grows quickly and is hard to scan. One
-group per area keeps related use cases together, the way FIDES already gives
-pages one extra level. Entities keep their single-concept folders
+**Why.** A flat list of action folders grows quickly and is hard to scan.
+A group named for the area a person sees (the Alerts page, the
+`app:alerts:*` commands) lets a person or an AI agent go straight from the app
+to the code. Destinations and incidents exist only for alerting today, so
+separate groups for them would split one area in three. Entities keep their single-concept folders
 (`AlertRule`, `Destination`, `Incident`).
 
 **Trade-off.** One more level to open, and a group is a folder only: nothing in
 it may be shared between its features. Code two features need belongs in an
 entity or in shared.
 
-**What would change it.** A group that starts holding shared code, or FIDES
-settling on another way to group features. A matching change is proposed to
-FIDES.
+**What would change it.** Another area using destinations (update or
+sync-failure notices, say) would move the destination features into a
+`Destinations` group. A group that starts holding shared code breaks the
+rule.
 
 ### The incident state is the alerts outbox
 

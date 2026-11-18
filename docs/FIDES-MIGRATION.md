@@ -1,9 +1,11 @@
 # Code structure: FIDES
 
 Aggregate's PHP code follows [FIDES](https://github.com/Subschema-LLC/fides)
-(draft 0.3): a way of structuring server applications so each concept lives in
-one place, every piece of data has one owner, dependencies point inward and
-nothing is built by inheritance. FIDES is maintained by the project's authors.
+(draft 0.3, plus feature groups from its next release,
+[fides#13](https://github.com/Subschema-LLC/fides/pull/13)): a way of
+structuring server applications so each concept lives in one place, every
+piece of data has one owner, dependencies point inward and nothing is built
+by inheritance. FIDES is maintained by the project's authors.
 It is unrelated to Ethyca's Fides privacy platform.
 
 **FIDES is required for all development.** New code goes into the five zones
@@ -95,9 +97,9 @@ gives the reason for each.
 15. **One concept, one place:** the spread test above.
 16. **Small and shallow.** Files under about 200 lines, lines under about 100
     characters, never deeper than `src/<Zone>/<Owner>/<File>`; features sit
-    one level deeper, in `src/Features/<Group>/<UseCase>/<File>`
-    ([the design decision](DESIGN-DECISIONS.md#features-grouped-by-area)). A split names
-    its concept. A data file (a lookup table, generated code) may skip the size
+    one level deeper, in a feature group: `src/Features/<Group>/<UseCase>/<File>`
+    ([the design decision](DESIGN-DECISIONS.md#features-grouped-by-area)). A
+    split names its concept. A data file (a lookup table, generated code) may skip the size
     limit only when the checker lists it with its reason; logic never does.
 17. **Rules are required; tools are examples.** Keep Symfony's conventions and
     map the zones onto them ([inside a framework](https://github.com/Subschema-LLC/fides/blob/main/docs/frameworks.md)).
@@ -110,7 +112,7 @@ gives the reason for each.
 | You are adding | It goes in |
 | --- | --- |
 | A rule always true for a concept, its values, messages, settings, store contract and read rows | `src/Entities/<Owner>/` |
-| Something a user or the system does | `src/Features/<Group>/<UseCase>/`, named as an action, with its Twig view, CSS and JS. Groups: `Alerts`, `Destinations`, `Incidents` |
+| Something a user or the system does | `src/Features/<Group>/<UseCase>/`, named as an action, with its Twig view, CSS and JS. Group: `Alerts` |
 | A dashboard page | `src/Delivery/<Page>/`: the controller, the page template and page-only CSS and JS |
 | A command, message handler or API endpoint | `src/Delivery/<Owner>/` |
 | A database store, YAML reader, HTTP client, mailer, or an adapter over older code | `src/Integrations/<Owner>/`, behind a contract |

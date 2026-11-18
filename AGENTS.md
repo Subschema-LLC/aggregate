@@ -26,8 +26,8 @@ Where code goes:
 - A rule always true for a concept -> `src/Entities/<Owner>/`
 - Something a user or the system does -> a new folder in
   `src/Features/<Group>/`, named as an action, with its Twig view, CSS and JS.
-  The groups are `Alerts`, `Destinations` and `Incidents`; add one only for a
-  new area
+  Today there is one group, `Alerts`, for everything reached from the Alerts
+  page or the `app:alerts:*` commands; add a group only for a new area
 - A dashboard page -> `src/Delivery/<Page>/` (controller, page template, page
   CSS and JS); a command, handler or API endpoint -> `src/Delivery/<Owner>/`
 - The outside world (database, YAML, HTTP, email) or older code a feature

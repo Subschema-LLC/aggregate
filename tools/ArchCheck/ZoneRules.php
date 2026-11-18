@@ -45,8 +45,8 @@ final class ZoneRules
 
     /**
      * The folder that owns a file: src/<Zone>/<Owner>/ in most zones, and the
-     * use case in src/Features/<Group>/<UseCase>/, so features grouped together
-     * still never use each other.
+     * use case in src/Features/<Group>/<UseCase>/ (FIDES rule 16, feature
+     * groups), so features grouped together still never use each other.
      */
     public static function ownerOf(string $path): string
     {
