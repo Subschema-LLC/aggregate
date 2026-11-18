@@ -1004,13 +1004,16 @@ rewrite would stop feature work and risk regressions for installations, so the
 zones are built beside the existing code and areas move as they are touched.
 
 **Trade-off.** Two structures coexist until the last area moves, and a change
-to an older area costs more because it carries its port. Symfony departs from
-FIDES in places: the container stays the wiring, settings are read when used
-rather than frozen at startup, PHP exceptions extend built-in exceptions,
-Doctrine records stay open for their proxies, and the kernel stays at
-`src/Kernel.php`. The checker reads source tokens rather than using a
-dependency such as Deptrac, so it is ours to maintain, and the Twig and casing
-rules are held by review until it checks them.
+to an older area costs more because it carries its port. FIDES 0.3 says how it
+fits inside a framework, and Aggregate follows it: the container stays the
+wiring with every contract bound in `config/wiring.yaml`, settings are frozen
+per request rather than per process, a custom exception extends one built-in
+exception, and the kernel keeps its framework parent and trait at
+`src/Kernel.php`. Doctrine records stay open for their proxies. The checker reads source tokens rather than using a
+dependency such as Deptrac, so it is ours to maintain. It checks casing and
+what a machine can see in Twig views (entity names, rendering other views,
+inline CSS and JS); whether a view only displays shaped values is held by
+review.
 
 **What would change it.** A pilot (alerts) that costs more to read and change
 than the code it replaced, or FIDES rules that cannot be met in Symfony
@@ -1499,6 +1502,68 @@ relay or transform until native channel templates are added.
 
 **What would change it.** A requirement for sub-hour enhanced-event alerts or
 per-incident acknowledgement state that cannot fit in `processing_tasks`.
+
+### Features grouped by area
+
+**Decision.** Features sit in feature groups, which FIDES rule 16 allows
+since Scott approved them as a FIDES rule (Subschema-LLC/fides#13, November
+2026): `src/Features/<Group>/<UseCase>/<File>`. There is one group today,
+`Alerts`, holding all nine alert features: rules, destinations, signing
+secrets, evaluation, delivery, the status list and test alerts. The use-case
+folder stays the owner, so two features in one group still never use each
+other, and `tools/arch-check.php` requires every feature to be in a group.
+
+**Why.** A flat list of action folders grows quickly and is hard to scan.
+A group named for the area a person sees (the Alerts page, the
+`app:alerts:*` commands) lets a person or an AI agent go straight from the app
+to the code. Destinations and incidents exist only for alerting today, so
+separate groups for them would split one area in three. Entities keep their single-concept folders
+(`AlertRule`, `Destination`, `Incident`).
+
+**Trade-off.** One more level to open, and a group is a folder only: nothing in
+it may be shared between its features. Code two features need belongs in an
+entity or in shared.
+
+**What would change it.** Another area using destinations (update or
+sync-failure notices, say) would move the destination features into a
+`Destinations` group. A group that starts holding shared code breaks the
+rule.
+
+### The incident state is the alerts outbox
+
+**Decision.** FIDES rule 10 (messages are recorded, saved with the change,
+then dispatched) is met for alerts by the stored incident state and the
+delivery records, not by a message queue. `EvaluateAlerts` decides each
+`AlertFired` and `AlertRecovered`; `DeliverAlert` reacts by sending the alert
+to each destination whose last delivered alert differs. The state names the
+current alert, alert IDs are derived rather than stored, and every hourly
+check offers the current alert again, so a crash between sending and saving,
+or a destination that was down, is caught up at the next check for up to
+24 hours. A closing recovery (an incident that recovered and broke again
+within one catch-up) is offered once only, as before.
+
+**Why.** It adds no table, worker or queue setting, and it keeps the
+delivery guarantees the alerts already had. The alternative is Symfony
+Messenger's `async` transport, which enhanced events use. On a default
+installation `MESSENGER_TRANSPORT_DSN` is `sync://`: a message is handled at
+once in the same process and never stored, so it would add no durability.
+Only with `doctrine://` are messages saved in `messenger_messages`, and then
+the installation needs workers, alert payloads fall under the queue's
+seven-day deletion, and a destination down for hours still needs the hourly
+offer, because the transport's three retries end within seconds (Scott chose
+the incident state, November 2026).
+
+**Trade-off.** The order stays send, then save. That is safe only because
+alerts are derived again from the state each hour; it would not be safe for a
+message that cannot be derived again. Delivery is at least once, with a stable
+`id` to de-duplicate on.
+
+**What would change it.** An alert that cannot be derived from the incident
+state, a need to send faster than the next hourly check, or the first message
+in another area that cannot be derived again. That message needs a real
+outbox: saved in the same transaction as its change, for example on a
+transport that is always `doctrine://` and consumed by the scheduled task, so
+no installation needs a worker for it, and proven by a rollback test first.
 
 ### Signed release packages that keep the operator's files
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Controller;
 
+use App\Tests\Service\Alerts\AlertActions;
 use App\Controller\AlertsController;
 use App\Entity\User;
 use App\Repository\EventRepository;
@@ -328,6 +329,50 @@ final class AlertsControllerTest extends TestCase
         self::assertStringContainsString('Own secret (config/secrets/alerts.yaml)', $page);
     }
 
+    public function testADestinationsOwnSecretCanBeSetWhenOnlyTheSharedOneComesFromTheEnvironment(): void
+    {
+        $this->saveWebhook('hub');
+        $_SERVER['ALERTS_WEBHOOK_SECRET'] = 'shared-from-environment';
+        try {
+            $save = $this->request('/dashboard/alerts/secret', 'POST', [
+                '_csrf_token' => 'valid-token', 'destination_id' => 'hub', 'webhook_secret' => 'own-secret-value',
+            ]);
+            $this->controller($save)->saveSecret($save);
+            self::assertSame('own-secret-value', (new AlertSecrets($this->projectDir))->get('hub'));
+
+            $shared = $this->request('/dashboard/alerts/secret', 'POST', [
+                '_csrf_token' => 'valid-token', 'webhook_secret' => 'typed-shared',
+            ]);
+            $this->controller($shared)->saveSecret($shared);
+            self::assertSame(['The webhook signing secret is set in the environment and cannot be changed here.'], $shared->getSession()->getFlashBag()->get('error'));
+        } finally {
+            unset($_SERVER['ALERTS_WEBHOOK_SECRET']);
+        }
+    }
+
+    public function testEditingARuleThatWasDeletedMeanwhileIsRefused(): void
+    {
+        $save = $this->request('/dashboard/alerts/rules/save', 'POST', [
+            '_csrf_token' => 'valid-token', '_editing' => '1', 'id' => 'gone', 'covers' => 'all',
+            'source' => 'events', 'condition' => 'no_events', 'window' => 'day', 'destinations' => ['hub'],
+        ]);
+        $this->saveWebhook('hub');
+        $response = $this->controller($save)->saveRule($save);
+
+        self::assertSame(422, $response->getStatusCode());
+        self::assertStringContainsString('Alert rule &quot;gone&quot; does not exist.', (string) $response->getContent());
+        self::assertSame([], Yaml::parseFile($this->projectDir.'/config/aggregate.yaml')['alerts']['rules']);
+    }
+
+    private function saveWebhook(string $id): void
+    {
+        $save = $this->request('/dashboard/alerts/destinations/save', 'POST', [
+            '_csrf_token' => 'valid-token', '_editing' => '0', 'id' => $id, 'label' => ucfirst($id),
+            'type' => 'webhook', 'url' => 'https://hooks.example.com/'.$id, 'secret_choice' => 'keep',
+        ]);
+        $this->controller($save)->saveDestination($save);
+    }
+
     /**
      * @param array<string, mixed> $submitted
      * @param array<string, mixed> $query
@@ -425,6 +470,7 @@ final class AlertsControllerTest extends TestCase
         ]);
         $scheduler = new Scheduler($job, $job, $job, $job, $this->projectDir, $this->clock, new NullLogger());
 
+        $actions = new AlertActions($this->projectDir);
         $controller = new AlertsController(
             $config,
             $settings,
@@ -437,6 +483,11 @@ final class AlertsControllerTest extends TestCase
             new ReportingTimezone($config),
             $features,
             new NullLogger(),
+            $actions->saveRule,
+            $actions->deleteRule,
+            $actions->saveDestination,
+            $actions->deleteDestination,
+            $actions->saveSecret,
         );
 
         $authorization = $this->createStub(AuthorizationCheckerInterface::class);

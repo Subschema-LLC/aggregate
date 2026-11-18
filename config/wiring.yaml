@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=../vendor/symfony/dependency-injection/Loader/schema/services.schema.json
+# Distinguish Symfony services from Docker Compose during IDE autodetection.
+parameters: {}
+
+# Which integration fulfils each contract the zones state (FIDES). Symfony
+# autowires everything else; a contract-to-integration binding goes only here.
+# See docs/FIDES-MIGRATION.md.
+services:
+    App\Entities\AlertRule\AlertRules: '@App\Integrations\Alerts\YamlAlertRules'
+    App\Entities\AlertRule\EventNames: '@App\Integrations\Alerts\PrivacySanitizerEventNames'
+    App\Entities\AlertRule\RuleCoverage: '@App\Integrations\Alerts\CoveredWebsites'
+    App\Entities\AlertRule\RuleReferences: '@App\Integrations\Alerts\RuleReferenceChecks'
+    App\Entities\AlertRule\WindowBreaches: '@App\Integrations\Alerts\EventCountWindowBreaches'
+    App\Entities\Destination\Destinations: '@App\Integrations\Alerts\YamlDestinations'
+    App\Entities\Destination\SigningSecrets: '@App\Integrations\Alerts\FileSigningSecrets'
+    App\Entities\ConsentManager\ConsentManagers: '@App\Integrations\ConsentManager\YamlConsentManagers'
+    App\Entities\TagManager\CustomDataProperties: '@App\Integrations\TagManager\CustomDataSettingsProperties'
+    App\Entities\TagManager\CustomCodeSyntax: '@App\Integrations\TagManager\PeastCustomCodeSyntax'
+    App\Entities\TagManager\TagManagers: '@App\Integrations\TagManager\YamlTagManagers'
+    App\Entities\Incident\DeliveryHistory: '@App\Integrations\Alerts\AuditDeliveryHistory'
+    App\Entities\Incident\IncidentStates: '@App\Integrations\Alerts\TaskIncidentStates'

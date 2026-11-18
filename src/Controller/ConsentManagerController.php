@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Entities\ConsentManager\ConsentManagers;
+use App\Features\ConsentManager\SaveConsentManager\SaveConsentManager;
 use App\Service\AggregateConfigLoader;
 use App\Service\ConsentAppearance;
 use App\Service\ConsentCategories;
@@ -34,6 +36,8 @@ final class ConsentManagerController extends AbstractController
         private readonly SiteScriptConfig $sites,
         private readonly TagManagerSettings $tags,
         private readonly LoggerInterface $logger,
+        private readonly ?SaveConsentManager $saver = null,
+        private readonly ?ConsentManagers $store = null,
     ) {
     }
 
@@ -115,7 +119,12 @@ final class ConsentManagerController extends AbstractController
 
         try {
             $this->sites->site($siteId);
-            $this->sites->saveConsent($siteId, ConsentManagerForm::changes($submitted, $this->sites->consent($siteId)));
+            $changes = ConsentManagerForm::changes($submitted, ($this->store ?? $this->sites)->consent($siteId));
+            if ($this->saver !== null) {
+                $this->saver->save($siteId, $changes);
+            } else {
+                $this->sites->saveConsent($siteId, $changes);
+            }
             $this->addFlash('success', 'Consent manager settings saved to YAML. The hosted banner changes for visitors within five minutes; download a self-hosted copy again.');
         } catch (\InvalidArgumentException $e) {
             $this->addFlash('error', $e->getMessage());

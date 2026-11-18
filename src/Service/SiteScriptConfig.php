@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Entities\TagManager\CustomCodeSyntax;
+use App\Entities\TagManager\CustomDataProperties;
 use Symfony\Component\Yaml\Yaml;
 
 /** Registered websites own independent YAML script instances, never database rows. */
@@ -14,6 +16,8 @@ final class SiteScriptConfig
         private readonly string $projectDir,
         private readonly string $environment,
         private readonly ?AggregateConfigLoader $appConfig = null,
+        private readonly ?CustomDataProperties $properties = null,
+        private readonly ?CustomCodeSyntax $syntax = null,
     ) {
     }
 
@@ -21,11 +25,9 @@ final class SiteScriptConfig
     {
         try {
             $appConfig = $this->appConfig ?? new AggregateConfigLoader($this->projectDir, $this->environment);
-            if ($appConfig->has('consent_manager')) {
-                $cm = $appConfig->get('consent_manager');
-                if (is_array($cm) && array_key_exists('enabled', $cm) && is_bool($cm['enabled'])) {
-                    return $cm['enabled'];
-                }
+            $cm = $appConfig->has('consent_manager') ? $appConfig->get('consent_manager') : null;
+            if (is_array($cm) && isset($cm['enabled']) && is_bool($cm['enabled'])) {
+                return $cm['enabled'];
             }
         } catch (\Throwable) {
         }
@@ -94,8 +96,8 @@ final class SiteScriptConfig
         $defaultEnabled = $this->defaultConsentEnabled();
         self::validateConsent(self::withoutRemovals($consent), $site['name'], $defaultEnabled);
         $this->ensureDirectory();
-        $this->configuration($id)->updateMany(static function (array $current) use ($consent, $site, $defaultEnabled): array {
-            TagManagerSettings::validate(array_key_exists('tag_manager', $current) ? $current['tag_manager'] : TagManagerSettings::DEFAULTS);
+        $this->configuration($id)->updateMany(function (array $current) use ($consent, $site, $defaultEnabled): array {
+            TagManagerSettings::validate(array_key_exists('tag_manager', $current) ? $current['tag_manager'] : TagManagerSettings::DEFAULTS, $this->properties(), $this->syntax());
 
             return ['consent_manager' => self::mergeConsent($current, $consent, $site['name'], $defaultEnabled)];
         });
@@ -123,12 +125,12 @@ final class SiteScriptConfig
     public function save(string $id, array $tags, array $consent): void
     {
         $site = $this->site($id);
-        $tags = TagManagerSettings::validate($tags);
+        $tags = TagManagerSettings::validate($tags, $this->properties(), $this->syntax());
         $defaultEnabled = $this->defaultConsentEnabled();
         self::validateConsent(self::withoutRemovals($consent), $site['name'], $defaultEnabled);
         $this->ensureDirectory();
-        $this->configuration($id)->updateMany(static function (array $current) use ($tags, $consent, $site, $defaultEnabled): array {
-            TagManagerSettings::validate(array_key_exists('tag_manager', $current) ? $current['tag_manager'] : TagManagerSettings::DEFAULTS);
+        $this->configuration($id)->updateMany(function (array $current) use ($tags, $consent, $site, $defaultEnabled): array {
+            TagManagerSettings::validate(array_key_exists('tag_manager', $current) ? $current['tag_manager'] : TagManagerSettings::DEFAULTS, $this->properties(), $this->syntax());
 
             return ['tag_manager' => $tags, 'consent_manager' => self::mergeConsent($current, $consent, $site['name'], $defaultEnabled)];
         });
@@ -137,7 +139,8 @@ final class SiteScriptConfig
     /** The saved consent_manager with $changes applied, validated as a whole. */
     private static function mergeConsent(array $current, array $changes, string $defaultName, bool $defaultEnabled = true): array
     {
-        $saved = self::validateConsent(array_key_exists('consent_manager', $current) ? $current['consent_manager'] : [], $defaultName, $defaultEnabled);
+        $rawConsent = array_key_exists('consent_manager', $current) ? $current['consent_manager'] : [];
+        $saved = self::validateConsent($rawConsent, $defaultName, $defaultEnabled);
 
         return self::validateConsent(self::withoutRemovals(array_replace($saved, $changes)), $defaultName, $defaultEnabled);
     }
@@ -171,63 +174,23 @@ final class SiteScriptConfig
         $values = $config->all();
 
         return Yaml::dump([
-            'tag_manager' => TagManagerSettings::validate(array_key_exists('tag_manager', $values) ? $values['tag_manager'] : TagManagerSettings::DEFAULTS),
+            'tag_manager' => TagManagerSettings::validate(array_key_exists('tag_manager', $values) ? $values['tag_manager'] : TagManagerSettings::DEFAULTS, $this->properties(), $this->syntax()),
             'consent_manager' => self::validateConsent(array_key_exists('consent_manager', $values) ? $values['consent_manager'] : [], $site['name'], $this->defaultConsentEnabled()),
         ], 10, 2, Yaml::DUMP_MULTI_LINE_LITERAL_BLOCK);
     }
 
+    private function properties(): CustomDataProperties
+    {
+        return $this->properties ?? throw new \LogicException('CustomDataProperties is required.');
+    }
+
+    private function syntax(): CustomCodeSyntax
+    {
+        return $this->syntax ?? throw new \LogicException('CustomCodeSyntax is required.');
+    }
+
     private static function validateConsent(mixed $settings, string $defaultName, bool $defaultEnabled = true): array
     {
-        $supported = ['enabled', 'name', 'privacy_policy_url', 'precheck_categories', 'respect_gpc', 'categories', ...ConsentAppearance::KEYS];
-        if (!is_array($settings) || ($settings !== [] && array_is_list($settings)) || array_diff(array_keys($settings), $supported) !== []) {
-            throw new \InvalidArgumentException('Consent manager settings support only '.implode(', ', $supported).'.');
-        }
-        $enabled = array_key_exists('enabled', $settings) ? $settings['enabled'] : $defaultEnabled;
-        $name = array_key_exists('name', $settings) ? $settings['name'] : $defaultName;
-        if (!is_bool($enabled) || !is_string($name) || trim($name) === '' || strlen($name) > 120
-            || preg_match('//u', $name) !== 1 || preg_match('/[\x00-\x1f\x7f]/', $name) === 1) {
-            throw new \InvalidArgumentException('Consent controls need a YAML boolean enabled setting and a name of 1–120 UTF-8 bytes without control characters.');
-        }
-
-        $result = ['enabled' => $enabled, 'name' => trim($name)];
-        if (array_key_exists('privacy_policy_url', $settings)) {
-            $result['privacy_policy_url'] = ConsentAppearance::privacyPolicyUrl($settings['privacy_policy_url'], 'consent_manager.privacy_policy_url');
-        }
-        if (array_key_exists('precheck_categories', $settings)) {
-            $precheck = $settings['precheck_categories'];
-            if (!is_array($precheck) || ($precheck !== [] && !array_is_list($precheck))) {
-                throw new \InvalidArgumentException('consent_manager.precheck_categories must be a list of category names.');
-            }
-            $clean = [];
-            foreach ($precheck as $cat) {
-                if (!is_string($cat) || preg_match('/^[a-z][a-z0-9_-]{0,31}$/D', $cat) !== 1 || in_array($cat, ['none', 'gpc'], true)) {
-                    throw new \InvalidArgumentException('consent_manager.precheck_categories entries must be category names.');
-                }
-                if (!in_array($cat, $clean, true)) {
-                    $clean[] = $cat;
-                }
-            }
-            if ($clean !== []) {
-                $result['precheck_categories'] = $clean;
-            }
-        }
-        // Categories the banner asks about even when no enabled tag uses them.
-        if (array_key_exists('categories', $settings)) {
-            $categories = ConsentAppearance::categoryList($settings['categories'], 'consent_manager.categories');
-            if ($categories !== []) {
-                $result['categories'] = $categories;
-            }
-        }
-        // Global Privacy Control withholds the categories implicit_us grants by default.
-        if (array_key_exists('respect_gpc', $settings)) {
-            if (!is_bool($settings['respect_gpc'])) {
-                throw new \InvalidArgumentException('consent_manager.respect_gpc must be a YAML boolean (true or false).');
-            }
-            if ($settings['respect_gpc'] === false) {
-                $result['respect_gpc'] = false;
-            }
-        }
-
-        return $result + ConsentAppearance::validate($settings, ConsentAppearance::BUILTIN, 'consent_manager');
+        return \App\Entities\ConsentManager\ConsentManager::validate($settings, $defaultName, $defaultEnabled);
     }
 }

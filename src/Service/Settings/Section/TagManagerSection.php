@@ -56,7 +56,11 @@ final class TagManagerSection extends AbstractSection
     {
         $this->assertKnown($changes);
         $site = self::site($target);
-        $validated = TagManagerSettings::validate([...$this->settings->all($site), ...$changes]);
+        $validated = TagManagerSettings::validate(
+            [...$this->settings->all($site), ...$changes],
+            $this->settings->properties(),
+            $this->settings->syntax(),
+        );
         $this->settings->assertNoNewCustomCode($validated, $site);
         if ($check) {
             return [self::done(true, '')];

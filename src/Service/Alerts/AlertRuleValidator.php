@@ -5,25 +5,25 @@ declare(strict_types=1);
 namespace App\Service\Alerts;
 
 use App\Entities\AlertRule\AlertRule;
-use App\Entities\AlertRule\RuleReferences;
 use App\Entities\Destination\Destination;
 use App\Entities\Destination\Recipients;
 use App\Entities\Destination\WebhookUrl;
+use App\Integrations\Alerts\AlertsMapping;
 use App\Integrations\Alerts\PrivacySanitizerEventNames;
+use App\Integrations\Alerts\RuleReferenceChecks;
 use App\Service\AnalyticsDataLifecyclePolicy;
 use App\Service\WebsiteConfigManager;
 use App\Service\WebsiteScopeCatalog;
 
 /**
- * Reads the alerts mapping from YAML, the Alerts dashboard page and the
- * app:alerts:* commands into the AlertRule and Destination entities, and
- * checks what a rule refers to: the websites and groups it covers and the
- * retention its window must fit.
+ * The alert checks used by the Alerts dashboard page, the app:alerts:*
+ * commands and the evaluator: the AlertRule and Destination entities, the
+ * alerts mapping (AlertsMapping) and rule references (RuleReferenceChecks).
  *
  * @phpstan-import-type DestinationArray from Destination as DestinationConfig
  * @phpstan-import-type RuleArray from AlertRule as RuleConfig
  */
-class AlertRuleValidator implements RuleReferences
+class AlertRuleValidator
 {
     public const SOURCE_EVENTS = AlertRule::SOURCE_EVENTS;
     public const SOURCE_TRACKING_FAILURES = AlertRule::SOURCE_TRACKING_FAILURES;
@@ -54,21 +54,31 @@ class AlertRuleValidator implements RuleReferences
     public const MAX_RECIPIENTS = Recipients::MAX_RECIPIENTS;
     public const MAX_THRESHOLD = AlertRule::MAX_THRESHOLD;
 
+    private readonly AlertsMapping $mapping;
+    private readonly RuleReferenceChecks $references;
+
     public function __construct(
-        private readonly ?WebsiteConfigManager $websites = null,
-        private readonly ?WebsiteScopeCatalog $scopes = null,
-        private readonly ?AnalyticsDataLifecyclePolicy $lifecycle = null,
+        ?WebsiteConfigManager $websites = null,
+        ?WebsiteScopeCatalog $scopes = null,
+        ?AnalyticsDataLifecyclePolicy $lifecycle = null,
     ) {
+        $this->mapping = new AlertsMapping(new PrivacySanitizerEventNames());
+        $this->references = new RuleReferenceChecks($websites, $scopes, $lifecycle);
+    }
+
+    public function mapping(): AlertsMapping
+    {
+        return $this->mapping;
+    }
+
+    public function references(): RuleReferenceChecks
+    {
+        return $this->references;
     }
 
     /**
-     * Validates a complete alerts mapping (destinations and rules).
-     *
-     * Loading checks the shape of every rule but not whether the websites,
-     * groups and retention it depends on still match: a website removed from
-     * config/websites.yaml must not make every other rule stop. Use
-     * referenceProblem() to find rules that can no longer be checked; saving a
-     * rule checks its references (validateRule() with $checkReferences).
+     * Validates a complete alerts mapping (destinations and rules); see
+     * AlertsMapping::parse().
      *
      * @param mixed $config
      *
@@ -76,57 +86,7 @@ class AlertRuleValidator implements RuleReferences
      */
     public function validateAll(mixed $config, bool $checkReferences = false): array
     {
-        if ($config === null || $config === []) {
-            return ['destinations' => [], 'rules' => []];
-        }
-        if (!is_array($config) || array_is_list($config)) {
-            throw new \InvalidArgumentException('alerts must be a mapping with destinations and rules.');
-        }
-        $unknownTop = array_diff(array_keys($config), ['destinations', 'rules']);
-        if ($unknownTop !== []) {
-            throw new \InvalidArgumentException(sprintf('Unknown alerts setting "%s". Use destinations and rules.', (string) reset($unknownTop)));
-        }
-
-        $rawDestinations = $config['destinations'] ?? [];
-        if (!is_array($rawDestinations)) {
-            throw new \InvalidArgumentException('alerts.destinations must be a list or mapping of destinations.');
-        }
-        $destinations = [];
-        foreach ($rawDestinations as $key => $rawDestination) {
-            if (!is_array($rawDestination) || ($rawDestination !== [] && array_is_list($rawDestination))) {
-                throw new \InvalidArgumentException('Each alert destination must be a mapping.');
-            }
-            if (is_string($key) && !isset($rawDestination['id'])) {
-                $rawDestination['id'] = $key;
-            }
-            $validated = $this->validateDestination($rawDestination);
-            if (isset($destinations[$validated['id']])) {
-                throw new \InvalidArgumentException(sprintf('Duplicate alert destination ID "%s".', $validated['id']));
-            }
-            self::assertSecretNameIsFree($validated['id'], array_keys($destinations));
-            $destinations[$validated['id']] = $validated;
-        }
-
-        $rawRules = $config['rules'] ?? [];
-        if (!is_array($rawRules)) {
-            throw new \InvalidArgumentException('alerts.rules must be a list or mapping of rules.');
-        }
-        $rules = [];
-        foreach ($rawRules as $key => $rawRule) {
-            if (!is_array($rawRule) || ($rawRule !== [] && array_is_list($rawRule))) {
-                throw new \InvalidArgumentException('Each alert rule must be a mapping.');
-            }
-            if (is_string($key) && !isset($rawRule['id']) && !isset($rawRule['rule'])) {
-                $rawRule['id'] = $key;
-            }
-            $validated = $this->validateRule($rawRule, array_keys($destinations), $checkReferences);
-            if (isset($rules[$validated['id']])) {
-                throw new \InvalidArgumentException(sprintf('Duplicate alert rule ID "%s".', $validated['id']));
-            }
-            $rules[$validated['id']] = $validated;
-        }
-
-        return ['destinations' => $destinations, 'rules' => $rules];
+        return $this->mapping->parse($config, $checkReferences ? $this->references : null);
     }
 
     /**
@@ -162,12 +122,11 @@ class AlertRuleValidator implements RuleReferences
      */
     public function validateRule(array $candidate, ?array $knownDestinationIds = null, bool $checkReferences = true): array
     {
-        return AlertRule::fromInput(
+        return $this->mapping->rule(
             $candidate,
-            new PrivacySanitizerEventNames(),
-            $checkReferences ? $this : null,
             $knownDestinationIds,
-        )->toArray();
+            $checkReferences ? $this->references : null,
+        );
     }
 
     /**
@@ -180,14 +139,7 @@ class AlertRuleValidator implements RuleReferences
      */
     public function referenceProblem(array $rule): ?string
     {
-        try {
-            $this->assertCoversExist($rule['covers']);
-            $this->assertWindowFitsRetention($rule['source'], $rule['privacy_mode'], $rule['window']);
-        } catch (\InvalidArgumentException $e) {
-            return $e->getMessage();
-        }
-
-        return null;
+        return $this->references->problemWith($rule);
     }
 
     /**
@@ -212,78 +164,17 @@ class AlertRuleValidator implements RuleReferences
 
     public function assertCoversExist(string $covers): void
     {
-        if (str_starts_with($covers, 'group:')) {
-            $groupId = substr($covers, 6);
-            if ($this->scopes !== null && !$this->scopes->hasGroup($groupId)) {
-                throw new \InvalidArgumentException(sprintf('Website group "%s" does not exist.', $groupId));
-            }
-
-            return;
-        }
-        if (str_starts_with($covers, 'website:')) {
-            $token = substr($covers, 8);
-            if ($this->websites !== null && $this->websites->findOneByToken($token) === null) {
-                throw new \InvalidArgumentException(sprintf('Website "%s" is not registered in config/websites.yaml.', $token));
-            }
-        }
+        $this->references->assertCoversExist($covers);
     }
 
-    /**
-     * Destination IDs that differ only by "-" and "_" would share one secret
-     * key in config/secrets/alerts.yaml and one environment variable name.
-     *
-     * @param list<string> $existingIds
-     */
+    /** @param list<string> $existingIds */
     public static function assertSecretNameIsFree(string $id, array $existingIds): void
     {
-        foreach ($existingIds as $existing) {
-            if ($existing !== $id && AlertSecrets::envNameFor($existing) === AlertSecrets::envNameFor($id)) {
-                throw new \InvalidArgumentException(sprintf(
-                    'Destination ID "%s" is too close to "%s": IDs that differ only by "-" and "_" would share a signing secret. Choose another ID.',
-                    $id,
-                    $existing,
-                ));
-            }
-        }
+        AlertsMapping::assertSecretNameIsFree($id, $existingIds);
     }
 
     public function assertWindowFitsRetention(string $source, string $privacyMode, string $window): void
     {
-        if ($this->lifecycle === null) {
-            return;
-        }
-        try {
-            $policy = $this->lifecycle->getPolicy();
-        } catch (\Throwable) {
-            return;
-        }
-
-        $windowDays = (int) ceil(self::windowHours($window) / 24);
-        if ($source === self::SOURCE_EVENTS && $policy['retention_enabled']) {
-            $liveDays = match ($privacyMode) {
-                self::PRIVACY_ANONYMOUS => $policy['anonymous_retention_days'],
-                self::PRIVACY_ENHANCED => $policy['enhanced_retention_days'],
-                default => min($policy['anonymous_retention_days'], $policy['enhanced_retention_days']),
-            };
-            if ($windowDays > $liveDays) {
-                throw new \InvalidArgumentException(sprintf(
-                    'The %s window (%d days) is longer than the live event retention period (%d days). Shorten the window or increase retention on Data lifecycle.',
-                    $window,
-                    $windowDays,
-                    $liveDays,
-                ));
-            }
-        }
-
-        if ($source === self::SOURCE_TRACKING_FAILURES && $policy['processing_tasks_retention_days'] > 0) {
-            if ($windowDays > $policy['processing_tasks_retention_days']) {
-                throw new \InvalidArgumentException(sprintf(
-                    'The %s window (%d days) is longer than processing_tasks_retention_days (%d days).',
-                    $window,
-                    $windowDays,
-                    $policy['processing_tasks_retention_days'],
-                ));
-            }
-        }
+        $this->references->assertWindowFitsRetention($source, $privacyMode, $window);
     }
 }

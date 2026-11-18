@@ -30,8 +30,13 @@ final class SiteScriptConfigTest extends TestCase
         ]);
         $this->firstId = SiteScriptConfig::idForToken('storefront-public-token');
         $this->secondId = SiteScriptConfig::idForToken('portal-public-token');
-        $this->sites = new SiteScriptConfig(new WebsiteConfigManager($this->projectDir), $this->projectDir, 'test');
-        $this->tags = new TagManagerSettings(new AggregateConfigLoader($this->projectDir, 'test'), $this->sites);
+        $props = new \App\Integrations\TagManager\CustomDataSettingsProperties();
+        $syntax = new \App\Integrations\TagManager\PeastCustomCodeSyntax();
+        $this->sites = new SiteScriptConfig(new WebsiteConfigManager($this->projectDir), $this->projectDir, 'test', properties: $props, syntax: $syntax);
+        $loader = new AggregateConfigLoader($this->projectDir, 'test');
+        $store = new \App\Integrations\TagManager\YamlTagManagers($loader, $props, $syntax, $this->sites);
+        $saver = new \App\Features\TagManager\SaveTagManager\SaveTagManager($store, $props, $syntax);
+        $this->tags = new TagManagerSettings($loader, $this->sites, properties: $props, syntax: $syntax, store: $store, saver: $saver);
     }
 
     protected function tearDown(): void
@@ -460,7 +465,9 @@ final class SiteScriptConfigTest extends TestCase
         try {
             file_put_contents($appConfigFile, "consent_manager:\n  enabled: false\n");
             $appConfig = new AggregateConfigLoader($this->projectDir, 'test');
-            $sites = new SiteScriptConfig(new WebsiteConfigManager($this->projectDir), $this->projectDir, 'test', $appConfig);
+            $props = new \App\Integrations\TagManager\CustomDataSettingsProperties();
+            $syntax = new \App\Integrations\TagManager\PeastCustomCodeSyntax();
+            $sites = new SiteScriptConfig(new WebsiteConfigManager($this->projectDir), $this->projectDir, 'test', $appConfig, $props, $syntax);
             self::assertFalse($sites->defaultConsentEnabled());
             self::assertFalse($sites->consent($this->firstId)['enabled']);
 
@@ -477,7 +484,7 @@ final class SiteScriptConfigTest extends TestCase
     {
         return TagManagerSettings::validate(['enabled' => true, 'tags' => [
             ['id' => $id, 'src' => 'https://scripts.example/'.$id.'.js', 'consent' => $consent],
-        ]]);
+        ]], new \App\Integrations\TagManager\CustomDataSettingsProperties(), new \App\Integrations\TagManager\PeastCustomCodeSyntax());
     }
 
     public function testAdditionalCategoriesOtherTagsAndLayoutAreSavedExportedAndRemoved(): void

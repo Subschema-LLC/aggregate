@@ -68,7 +68,7 @@ final class AlertRuleValidatorAndSettingsTest extends TestCase
     {
         $settings = $this->settings();
 
-        $webhook = $settings->saveDestination([
+        $webhook = $settings->store()->saveDestination([
             'id' => 'geektown-hub',
             'label' => 'Geektown Hub',
             'type' => 'webhook',
@@ -76,7 +76,7 @@ final class AlertRuleValidatorAndSettingsTest extends TestCase
         ]);
         self::assertSame('hooks.geektown.example', $webhook['host']);
 
-        $email = $settings->saveDestination([
+        $email = $settings->store()->saveDestination([
             'id' => 'ops-email',
             'label' => 'Ops email',
             'type' => 'email',
@@ -84,7 +84,7 @@ final class AlertRuleValidatorAndSettingsTest extends TestCase
         ]);
         self::assertSame(['ops@example.com', 'oncall@example.com'], $email['recipients']);
 
-        $rule = $settings->saveRule([
+        $rule = $settings->store()->saveRule([
             'id' => 'geektown-weekly',
             'enabled' => true,
             'covers' => 'group:geektown-network',
@@ -122,15 +122,15 @@ final class AlertRuleValidatorAndSettingsTest extends TestCase
 
         // Cannot delete a destination while a rule still uses it.
         try {
-            $reloaded->deleteDestination('ops-email');
+            $reloaded->store()->deleteDestination('ops-email');
             self::fail('Expected destination in use to be rejected.');
         } catch (\InvalidArgumentException $e) {
             self::assertStringContainsString('used by rule', $e->getMessage());
         }
 
-        $reloaded->deleteRule('failures-daily');
-        $reloaded->deleteRule('geektown-weekly');
-        $reloaded->deleteDestination('ops-email');
+        $reloaded->store()->deleteRule('failures-daily');
+        $reloaded->store()->deleteRule('geektown-weekly');
+        $reloaded->store()->deleteDestination('ops-email');
         self::assertSame(['geektown-hub'], array_keys($reloaded->destinations()));
     }
 
@@ -314,9 +314,9 @@ final class AlertRuleValidatorAndSettingsTest extends TestCase
     public function testLoadingKeepsARuleWhoseWebsiteWasRemovedAndNamesTheProblem(): void
     {
         $settings = $this->settings();
-        $settings->saveDestination(['id' => 'geektown-hub', 'label' => 'Hub', 'type' => 'webhook', 'url' => 'https://hooks.geektown.example/a']);
-        $settings->saveRule(['id' => 'eu-hourly', 'covers' => 'website:'.self::TOKEN_B, 'condition' => 'no_events', 'window' => 'day', 'destinations' => ['geektown-hub']]);
-        $settings->saveRule(['id' => 'usa-hourly', 'covers' => 'website:'.self::TOKEN_A, 'condition' => 'no_events', 'window' => 'day', 'destinations' => ['geektown-hub']]);
+        $settings->store()->saveDestination(['id' => 'geektown-hub', 'label' => 'Hub', 'type' => 'webhook', 'url' => 'https://hooks.geektown.example/a']);
+        $settings->store()->saveRule(['id' => 'eu-hourly', 'covers' => 'website:'.self::TOKEN_B, 'condition' => 'no_events', 'window' => 'day', 'destinations' => ['geektown-hub']]);
+        $settings->store()->saveRule(['id' => 'usa-hourly', 'covers' => 'website:'.self::TOKEN_A, 'condition' => 'no_events', 'window' => 'day', 'destinations' => ['geektown-hub']]);
 
         file_put_contents($this->projectDir.'/config/websites.yaml', Yaml::dump([
             'websites' => [['name' => 'Geektown USA', 'token' => self::TOKEN_A, 'domain' => 'some.domain.com']],
@@ -329,13 +329,13 @@ final class AlertRuleValidatorAndSettingsTest extends TestCase
         self::assertNull($settings->referenceProblem($rules['usa-hourly']));
 
         // Other rules can still be saved, and the stale one deleted.
-        $settings->saveRule(['id' => 'usa-daily', 'covers' => 'website:'.self::TOKEN_A, 'condition' => 'no_events', 'window' => 'day', 'destinations' => ['geektown-hub']]);
-        $settings->deleteRule('eu-hourly');
+        $settings->store()->saveRule(['id' => 'usa-daily', 'covers' => 'website:'.self::TOKEN_A, 'condition' => 'no_events', 'window' => 'day', 'destinations' => ['geektown-hub']]);
+        $settings->store()->deleteRule('eu-hourly');
         self::assertSame(['usa-hourly', 'usa-daily'], array_keys($this->settings()->rules()));
 
         // Saving the stale rule itself still checks its website.
         $this->expectExceptionMessage('is not registered');
-        $this->settings()->saveRule(['id' => 'eu-again', 'covers' => 'website:'.self::TOKEN_B, 'condition' => 'no_events', 'window' => 'day', 'destinations' => ['geektown-hub']]);
+        $this->settings()->store()->saveRule(['id' => 'eu-again', 'covers' => 'website:'.self::TOKEN_B, 'condition' => 'no_events', 'window' => 'day', 'destinations' => ['geektown-hub']]);
     }
 
     public function testThresholdIsCappedSoACountNeverReadsMoreThanOneHundredThousandRows(): void

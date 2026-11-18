@@ -33,7 +33,9 @@ final class StandaloneConsentSettingsTest extends TestCase
         ]]);
         $this->firstId = SiteScriptConfig::idForToken('storefront-token');
         $this->secondId = SiteScriptConfig::idForToken('portal-token');
-        $this->sites = new SiteScriptConfig(new WebsiteConfigManager($this->projectDir), $this->projectDir, 'test');
+        $props = new \App\Integrations\TagManager\CustomDataSettingsProperties();
+        $syntax = new \App\Integrations\TagManager\PeastCustomCodeSyntax();
+        $this->sites = new SiteScriptConfig(new WebsiteConfigManager($this->projectDir), $this->projectDir, 'test', properties: $props, syntax: $syntax);
         $this->settings = new StandaloneConsentSettings($this->sites);
         $this->environment = [$_ENV, $_SERVER];
         foreach (['ANONYMOUS_TRACKING_ENABLED', 'ANONYMOUS_EXCLUDED_PATHS', 'STANDALONE_CONSENT'] as $key) {
@@ -249,7 +251,9 @@ final class StandaloneConsentSettingsTest extends TestCase
         self::assertSame($before, file_get_contents($this->sitePath($this->firstId)));
         self::assertSame(['enabled' => true, 'name' => 'Working built-in'], $this->sites->consent($this->firstId));
         $deployment = new AggregateConfigLoader($this->projectDir, 'test');
-        self::assertSame(TagManagerSettings::DEFAULTS, (new TagManagerSettings($deployment, $this->sites))->all($this->firstId));
+        $props = new \App\Integrations\TagManager\CustomDataSettingsProperties();
+        $syntax = new \App\Integrations\TagManager\PeastCustomCodeSyntax();
+        self::assertSame(TagManagerSettings::DEFAULTS, (new TagManagerSettings($deployment, $this->sites, properties: $props, syntax: $syntax))->all($this->firstId));
         self::assertFalse($deployment->hasLoadError());
         self::assertNotEmpty((new CustomDataSettings($deployment))->toBrowserConfig());
         $this->sites->saveConsent($this->firstId, ['enabled' => false, 'name' => 'Built-in edited']);

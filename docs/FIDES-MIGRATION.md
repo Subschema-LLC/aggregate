@@ -1,9 +1,11 @@
 # Code structure: FIDES
 
 Aggregate's PHP code follows [FIDES](https://github.com/Subschema-LLC/fides)
-(draft 0.2): a way of structuring server applications so each concept lives in
-one place, every piece of data has one owner, dependencies point inward and
-nothing is built by inheritance. FIDES is maintained by the project's authors.
+(draft 0.3, plus feature groups from its next release,
+[fides#13](https://github.com/Subschema-LLC/fides/pull/13)): a way of
+structuring server applications so each concept lives in one place, every
+piece of data has one owner, dependencies point inward and nothing is built
+by inheritance. FIDES is maintained by the project's authors.
 It is unrelated to Ethyca's Fides privacy platform.
 
 **FIDES is required for all development.** New code goes into the five zones
@@ -46,11 +48,14 @@ dashboard, database views, release packages and updates stay as they are.
 
 | Rule | Enforced by |
 | --- | --- |
-| Zones, import direction, purity, no inheritance, `final`, size, depth | `tools/arch-check.php` in CI |
+| Zones, import direction, purity, no inheritance or traits, `final`, size, depth | `tools/arch-check.php` in CI |
+| No container markup in the core; only `config/wiring.yaml` names integrations | `tools/arch-check.php` in CI (zones; older code by the ratchet) |
+| Every contract bound in `config/wiring.yaml`; a missing binding fails | The ratchet (`unbound-contract`) and `lint:container` in CI |
 | No new code outside the zones; older code never gets worse | The ratchet in `tools/arch-check.php` |
 | Types: undefined fields, dead branches, values a view reads | PHPStan in CI |
 | Ownership, one write, messages, porting touched areas, the spread test | Review, with the pull request checklist |
-| Views only display; pages compose features; no inline CSS or JS; casing | Review, until the Twig and casing checks in [phase 0](#phase-0-guardrails) land |
+| PascalCase folders and files; views name no entity, a feature view extends nothing and renders only its own templates, no inline CSS or JS | `tools/arch-check.php` in CI (`ZoneFiles`) |
+| Views only display values their feature shaped; pages compose features | Review |
 
 ## The rules
 
@@ -63,7 +68,8 @@ gives the reason for each.
 2. **Ownership follows consistency.** An entity owns what it must keep
    consistent and saves it in one write.
 3. **Entities stand alone** and refer to each other by id, never by holding
-   them.
+   them. A screen that needs several entities at once reads them through a
+   read model: a read-only query contract in `src/Shared/<ReadModel>/`.
 4. **One use case per feature folder,** named as an action, with its views,
    CSS and JS beside it, including any form whose submission it handles.
 5. **Features never call each other.** One records a message, another reacts.
@@ -71,12 +77,17 @@ gives the reason for each.
    the database, files, network, environment or clock directly. Features get
    the time from a clock contract and pass it in.
 7. **Dependencies point inward.** Only the wiring knows integrations exist.
-8. **No inheritance.** Compose small units; contracts are interfaces.
+8. **No inheritance.** Compose small units; contracts are interfaces. Code
+   mixed into a class (traits) counts as inheritance: none in the core, and a
+   trait the framework requires stays at the edge. A custom exception may
+   extend one built-in exception, never another custom one.
 9. **One write by default.** A `UnitOfWork` makes a multi-entity change
    visible, and saves check a version.
 10. **Messages are recorded, saved with the change, then dispatched.** Nothing
     is sent from inside a change, and every handler is safe to run twice.
-11. **Settings are declared by their owner and overridden from outside.**
+11. **Settings are declared by their owner and overridden from outside,**
+    read once per startup and frozen until the next: once per request in PHP,
+    once per run for a command or worker.
 12. **The database holds data, never configuration.**
 13. **Views only display.** A view gets plain values shaped by its feature's
     code, never names an entity and holds no rules. Output is escaped.
@@ -85,9 +96,14 @@ gives the reason for each.
     the layout, the feature or the page, in separate files, never inline.
 15. **One concept, one place:** the spread test above.
 16. **Small and shallow.** Files under about 200 lines, lines under about 100
-    characters, never deeper than `src/<Zone>/<Owner>/<File>`.
-17. **Rules are required; tools are examples.** One casing throughout:
-    `PascalCase`, as PSR-4 maps it.
+    characters, never deeper than `src/<Zone>/<Owner>/<File>`; features sit
+    one level deeper, in a feature group: `src/Features/<Group>/<UseCase>/<File>`
+    ([the design decision](DESIGN-DECISIONS.md#features-grouped-by-area)). A
+    split names its concept. A data file (a lookup table, generated code) may skip the size
+    limit only when the checker lists it with its reason; logic never does.
+17. **Rules are required; tools are examples.** Keep Symfony's conventions and
+    map the zones onto them ([inside a framework](https://github.com/Subschema-LLC/fides/blob/main/docs/frameworks.md)).
+    One casing throughout: `PascalCase`, as PSR-4 maps it.
 18. **Enforced mechanically:** the architecture check and the static analyser
     run in the build.
 
@@ -96,17 +112,18 @@ gives the reason for each.
 | You are adding | It goes in |
 | --- | --- |
 | A rule always true for a concept, its values, messages, settings, store contract and read rows | `src/Entities/<Owner>/` |
-| Something a user or the system does | `src/Features/<UseCase>/`, named as an action, with its Twig view, CSS and JS |
+| Something a user or the system does | `src/Features/<Group>/<UseCase>/`, named as an action, with its Twig view, CSS and JS. Group: `Alerts` |
 | A dashboard page | `src/Delivery/<Page>/`: the controller, the page template and page-only CSS and JS |
 | A command, message handler or API endpoint | `src/Delivery/<Owner>/` |
 | A database store, YAML reader, HTTP client, mailer, or an adapter over older code | `src/Integrations/<Owner>/`, behind a contract |
 | A contract no single entity owns, such as the clock | `src/Shared/` |
+| A read across two entities or more | A read model: its query contract and read-only rows in `src/Shared/<ReadModel>/`, answered by one query in `src/Integrations/<Owner>/` and used by features, never by delivery |
 | A binding from a contract to its integration | `config/wiring.yaml` |
 | A Doctrine record | `src/Integrations/Database/` |
 | An operator setting | Declared by its owner; the operator YAML stays where it is |
 
 Use `PascalCase` for every folder and file in the zones, matching the class:
-`src/Features/SaveAlertRule/SaveAlertRule.php`, `SaveAlertRule.html.twig`,
+`src/Features/Alerts/SaveAlertRule/SaveAlertRule.php`, `SaveAlertRule.html.twig`,
 `SaveAlertRule.css`, `SaveAlertRule.js`. Older templates and assets keep their
 snake_case paths under `templates/` and `assets/` until their area moves.
 
@@ -115,18 +132,24 @@ snake_case paths under `templates/` and `assets/` until their area moves.
 | Zone | Folder and namespace | Holds | May use |
 | --- | --- | --- | --- |
 | Entities | `src/Entities/<Owner>`, `App\Entities\<Owner>` | Rules true everywhere, values that check themselves, messages, settings, store contracts, typed read rows | Its own folder only |
-| Features | `src/Features/<Owner>`, `App\Features\<Owner>` | One use case each, with its Twig view, CSS and JS | Entities, Shared, its own folder |
+| Features | `src/Features/<Group>/<UseCase>`, `App\Features\<Group>\<UseCase>` | One use case each, with its Twig view, CSS and JS; the use case is the owner | Entities, Shared, its own folder |
 | Integrations | `src/Integrations/<Owner>`, `App\Integrations\<Owner>` | Database stores, email, HTTP clients, YAML readers; adapters over older services | Entities, Shared, its own folder, older code |
 | Delivery | `src/Delivery/<Owner>`, `App\Delivery\<Owner>` | Pages, controllers, commands, message handlers | Features, Shared, Delivery, older code |
-| Shared | `src/Shared`, `App\Shared` | Contracts no entity owns, such as a clock | Shared only |
+| Shared | `src/Shared`, `App\Shared` | Contracts no entity owns, such as a clock, and read models | Shared only |
 
 Older code may call into the zones; the core zones never call older code. An
 integration wraps an older service when a feature needs it before it is
 ported.
 
-- **Wiring.** Symfony's container stays the wiring and keeps autowiring. Every
-  contract-to-integration binding goes in one file, `config/wiring.yaml`, so
-  that part stays explicit.
+- **Wiring.** Symfony's container stays the wiring and keeps autowiring. Four
+  things stay explicit:
+  every contract is bound in one file, `config/wiring.yaml`, even when only one
+  class implements it; integration class names appear there and nowhere else;
+  the core never asks the container for anything and carries no container
+  attributes such as `#[Autowire]`; and a missing binding fails the build
+  (`lint:container` in CI). A contract whose integration needs data from one
+  run, such as who triggered it, is listed as `unbound-contract` until that run
+  gets a contract of its own.
 - **No base classes at the edge either.** A command is an invokable class with
   `#[AsCommand]`, and a controller does not extend `AbstractController`.
   Delivery classes take small injected helpers instead of `addFlash()` and
@@ -148,26 +171,39 @@ ported.
   the feature's views renders), and page assets in the page folder. No inline
   `<style>`, `style=""` or `<script>`, which also keeps a strict
   Content-Security-Policy possible.
-- **Outbox.** Messages go through a Messenger Doctrine transport on the default
-  connection, dispatched inside the store's transaction. A rollback test must
-  show they commit with the change before anything relies on it.
+- **Outbox.** For alerts, the stored incident state is the outbox
+  ([the design decision](DESIGN-DECISIONS.md#the-incident-state-is-the-alerts-outbox)).
+  The first message that cannot be derived again needs a real outbox, saved in
+  the same transaction as its change and proven by a rollback test first.
 - **Settings.** The operator YAML stays where it is: moving `aggregate.yaml` or
   `websites.yaml` would break every installation. Settings are read when used,
   so dashboard and `app:config` changes apply without a cache clear (see
-  [settings from the command line](CONFIGURATION.md#settings-from-the-command-line));
-  each request sees one fixed set of values.
+  [settings from the command line](CONFIGURATION.md#settings-from-the-command-line)).
+  `AggregateConfigLoader` reads its file once per instance, so each request,
+  command run or worker sees one fixed set of values, as FIDES 0.3 defines
+  startup for PHP.
 - **Exceptions.** PHP cannot throw an object that does not extend a built-in
-  exception, so extending one is the one allowed `extends`. A shared catch
-  uses an interface, not a parent class.
+  exception, so a custom exception extends one built-in exception, never
+  another custom one. Often a built-in exception with a clear message is
+  enough. A shared catch uses an interface, not a parent class.
+- **Traits.** No traits in the zones. An older class that mixes in an App
+  trait (`DashboardAccess`, `AccessOptions`, `ViewSyncAdmin`) is listed as
+  `app-trait` and becomes an injected helper when it moves. Only the kernel
+  keeps a framework trait, `MicroKernelTrait`.
+- **Templates.** A page template in `src/Delivery/<Page>/` may extend the
+  layout. A feature view is a fragment: it extends nothing and includes only
+  its own partials.
 - **Doctrine records.** They live in `src/Integrations/Database` and may stay
-  open (not `final`), since Doctrine's proxies extend them.
+  open (not `final`), since Doctrine's proxies extend them. A record maps
+  another entity's id as a plain column, never as an association
+  (`ManyToOne`, `OneToMany`); foreign keys stay in the schema.
 
 ### Groundwork the first zone code adds
 
 None of these exists until a change needs it. The first change that needs one
 adds it, in the same pull request, and ticks it here:
 
-- [ ] `config/wiring.yaml`, imported by `config/services.yaml`.
+- [x] `config/wiring.yaml`, imported by `config/services.yaml`.
 - [ ] The `@Features` Twig namespace, and a namespace for page templates in
   `src/Delivery`.
 - [ ] AssetMapper paths for `src/Features` and `src/Delivery`, so colocated
@@ -189,9 +225,16 @@ php tools/arch-check.php
 
 **Zone code must follow every rule:** the import table above, no clock reads,
 I/O functions, superglobals or I/O packages in the core, no `extends` except a
-built-in exception, no abstract classes, every class `final` (except Doctrine
-records in Integrations), at most 200 lines per file, 100 characters per line
-and zone/owner/file deep.
+built-in exception, no abstract classes or traits (a framework trait only at
+the edge), no container packages in the core, every class `final` (except
+Doctrine records in Integrations), at most 200 lines per file unless
+`ZoneRules::SIZE_EXEMPT` lists it with its reason, 100 characters per line and
+zone/owner/file deep (zone/group/use case/file for features). **Every file in the zones**, Twig, CSS and JS
+included, has `PascalCase` folders and names; a Twig view there names no
+`App\Entities` class and holds no `<style>`, `<script>`, `style=""` or
+inline event handler; and a feature's view includes, embeds, extends or
+imports only templates in its own `@Features/<Group>/<UseCase>/` folder and extends
+none.
 
 **Older code is held by a ratchet** in `tools/arch-check-baseline.json`, which
 names every finding it holds:
@@ -203,6 +246,9 @@ names every finding it holds:
 | `abstract-class`: an abstract class exists to be extended | 8 | 6 |
 | `not-final`: a concrete class, other than a Doctrine entity, is open | 8 | 113 |
 | `file-size`: a file over 200 lines, with its length as a ceiling | 16 | 112 |
+| `app-trait`: an `App\` trait, or a class that mixes one in | 8 (FIDES 0.3) | 39 |
+| `names-integration`: older code that names an `App\Integrations` class | 7 (FIDES 0.3) | 3 |
+| `unbound-contract`: a contract `config/wiring.yaml` does not bind | 7 (FIDES 0.3) | 2 |
 
 A new finding, or a listed file growing, fails the check. Because findings are
 listed by name, fixing one cannot pay for another, and renaming a file outside
@@ -218,7 +264,7 @@ finding. Framework classes that extend Symfony types (`Command`,
 `AbstractController`, voters, Twig extensions) are not inheritance findings in
 older code, because the ports to invokable commands and plain controllers are
 tracked as their own sweeps. `BotUserAgentPatterns` is a data table rather than
-a concept and is exempt from the size limit.
+a concept and is listed in `ZoneRules::SIZE_EXEMPT` with that reason.
 
 ## Proving a port
 
@@ -254,9 +300,13 @@ No behavior change.
 - [x] The `outside-zone` ratchet: new PHP files outside the zones fail.
 - [x] FIDES 0.2 rules in this page, AGENTS.md, CONTRIBUTING.md and the pull
   request template.
-- [ ] A Twig check for zone views: no entity names, no rendering another
+- [x] FIDES 0.3: read models, traits as inheritance, settings frozen per
+  request, size exemptions with reasons, and the four explicit wiring points,
+  with checks for traits, container packages in the core, integration names,
+  unbound contracts and feature views that extend a template.
+- [x] A Twig check for zone views: no entity names, no rendering another
   feature's view or a page template, no inline CSS or JS (rules 13 and 14).
-- [ ] A casing check for zone folders and colocated files (rule 17).
+- [x] A casing check for zone folders and colocated files (rule 17).
 - [ ] A stricter PHPStan level for the zones than for older code (rule 18).
 
 ### Phase 1: Alerts as the pilot
@@ -284,14 +334,43 @@ Progress:
   rule refers to (websites, groups, retention) through the entity's
   `RuleReferences` contract; `Integrations/Alerts` supplies the event-name
   check collection uses.
-- [ ] The YAML stores as integrations, absorbing the rest of
-  `AlertRuleValidator` and `AlertSettings`.
-- [ ] `AlertFired` and `AlertRecovered`, and `EvaluateAlerts` as a pure
-  feature that records them.
-- [ ] `DeliverAlert` and the webhook and email integrations.
-- [ ] `SaveAlertRule`, `SendTestAlert` and `ListAlerts` with their views, and
-  the page in `Delivery/Alerts`.
-- [ ] The `app:alerts:*` commands in `Delivery/Alerts` as invokable commands.
+- [x] The YAML store as integrations in `Integrations/Alerts`:
+  `AlertsMapping` reads the alerts mapping, `AlertsYaml` writes it,
+  `AlertsYamlStore` loads and saves it, `RuleReferenceChecks` checks a rule's
+  websites, groups and retention, and `CoveredWebsites` resolves what a rule
+  covers. `AlertRuleValidator` and `AlertSettings` only delegate to them; they
+  go when their callers move to the features below. `describeCondition()`
+  waits for `ListAlerts` and `normalizeInstallationUrl()` for `DeliverAlert`.
+- [x] `AlertFired` and `AlertRecovered` in `Entities/Incident`, with the
+  stored incident state, and `EvaluateAlerts` as a pure feature. It decides
+  one rule and website at a time through the `WindowBreaches` contract
+  (`Integrations/Alerts/EventCountWindowBreaches` counts the window) and
+  returns an `Evaluation`: the alerts to deliver and the states to save, in
+  order. `AlertEvaluator` carries each one out before the next website is
+  counted, so a failing count still stops only the websites after it.
+- [x] Rule 10 for alerts: the incident state is the outbox (see
+  [the design decision](DESIGN-DECISIONS.md#the-incident-state-is-the-alerts-outbox)).
+- [x] `DeliverAlert` reacts to `AlertFired` and `AlertRecovered` through the
+  `AlertChannel` and `DeliveryLog` contracts; `Integrations/Alerts` supplies
+  `AlertChannels` (webhook and `EmailAlerts`) and `TaskDeliveryLog`. Alert and
+  incident IDs are in `Entities/Incident/AlertIds`, and a rule's plain-language
+  condition in `Entities/AlertRule/RuleDescription`.
+- [x] One feature per action, shared by the Alerts page and the `app:alerts:*`
+  commands: `SaveAlertRule`, `DeleteAlertRule`, `SaveDestination`,
+  `DeleteDestination` and `SaveSigningSecret`, over the `AlertRules`,
+  `Destinations` and `SigningSecrets` contracts. Rules about valid settings
+  live in the entities and also hold for hand-edited YAML; rules about an
+  action (create versus edit, never changing a secret the environment sets,
+  dropping a webhook's secret when it becomes email) live in the feature.
+- [x] `ListAlerts` (rule statuses and recent deliveries, over the
+  `IncidentStates`, `DeliveryHistory` and `RuleCoverage` read contracts) and
+  `SendTestAlert` (over `Destinations`, `AlertRules`, `RuleCoverage`,
+  `AlertChannel` and `DeliveryLog`). `AlertEvaluator` hands its
+  `statuses()`, `recentAlerts()` and `sendTest()` to them.
+- [ ] The feature views and the page in `Delivery/Alerts`.
+- [x] The `app:alerts:*` commands in `Delivery/Alerts` as invokable commands:
+  `#[AsCommand]` classes with `__invoke()`, their options in `#[MapInput]`
+  classes (`RuleOptions`, `DestinationOptions`), and no `Command` base class.
 
 ### Phase 2: port as you touch
 
@@ -299,6 +378,40 @@ Progress:
   [what every change must do](#what-every-change-must-do)).
 - Sweep the 67 commands to invokable commands.
 - Inject a clock (`Psr\Clock\ClockInterface`) where code reads it directly.
+
+### Tag Manager port
+
+Progress:
+
+- [x] `Entities/TagManager` holds pure domain concepts and values that check themselves:
+  `TagManager`, `Tag`, `TagAction`, `TagTrigger`, `TagVariables`, `TagValues`, `TagArguments`,
+  `TagEvent`, `TagChains`, `TagCustomCode`, and contracts `TagManagers`, `CustomDataProperties` and `CustomCodeSyntax`.
+- [x] `Integrations/TagManager` provides adapter implementations:
+  `YamlTagManagers`, `CustomDataSettingsProperties`, and `PeastCustomCodeSyntax`, wired in `config/wiring.yaml`.
+- [x] Features in `Features/TagManager/` per FIDES 0.3 feature groups:
+  `SaveTagManager/SaveTagManager` (including form handling in `TagForm`, `TagFormDraft`, `TagFormVariables` and `TagFormAction`),
+  and `PreviewTag/PreviewTag` with `TagReferences`.
+- [x] Existing services (`TagManagerSettings`, `TagManagerValues`, `TagManagerVariables`, `TagManagerForm`, `TagManagerPreview`) delegate
+  to the new entities and features without behavior changes.
+- [ ] Tag script delivery and controllers in `Delivery/TagManager`.
+
+### CMP (Consent Manager) port
+
+Progress:
+
+- [x] `Entities/ConsentManager` holds pure domain concepts and values that check themselves:
+  `ConsentManager`, `ConsentManagerAppearance`, `ConsentBrowserConfig`, `ConsentTheme`, `ConsentText`,
+  `ConsentDefaultText`, `ConsentRegions`, `ConsentButtons`, `ConsentExternalTags`, `ConsentCategories`,
+  and storage contract `ConsentManagers`.
+- [x] `Integrations/ConsentManager` provides adapter implementation:
+  `YamlConsentManagers`, wired in `config/wiring.yaml`.
+- [x] Features in `Features/ConsentManager/` per FIDES 0.3 feature groups:
+  `SaveConsentManager/SaveConsentManager` (including form handling in `ConsentForm`, `ConsentFormValues`,
+  `ConsentFormDraft`, `ConsentFormExtract`, `ConsentFormRegions`, `ConsentFormBehavior`, and `ConsentFormExtras`).
+- [x] Existing services (`ConsentAppearance`, `ConsentManagerForm`, `ConsentCategories`, `SiteScriptConfig`) delegate
+  to the new entities and features without behavior changes, reducing `ConsentAppearance` from 630 lines
+  and `ConsentManagerForm` from 414 lines below the 200-line threshold.
+- [ ] Consent script delivery and controllers in `Delivery/ConsentManager`.
 
 ### Phase 3: the hard parts last
 

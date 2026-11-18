@@ -124,7 +124,7 @@ final class AlertDeliveryStateTest extends TestCase
         $websites = new WebsiteConfigManager($this->projectDir);
         $scopes = new WebsiteScopeCatalog($this->projectDir, 'test');
         $settings = new AlertSettings($config, new AlertRuleValidator($websites, $scopes), $websites, $scopes);
-        $settings->deleteRule('rule-a'); // must not throw
+        $settings->store()->deleteRule('rule-a'); // must not throw
         self::assertNull($settings->rule('rule-a'));
     }
 
