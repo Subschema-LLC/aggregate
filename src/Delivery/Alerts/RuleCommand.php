@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Delivery\Alerts;
 
-use App\Features\DeleteAlertRule\DeleteAlertRule;
-use App\Features\SaveAlertRule\RuleAlreadyExists;
-use App\Features\SaveAlertRule\SaveAlertRule;
+use App\Features\Alerts\DeleteAlertRule\DeleteAlertRule;
+use App\Features\Alerts\SaveAlertRule\RuleAlreadyExists;
+use App\Features\Alerts\SaveAlertRule\SaveAlertRule;
 use App\Service\Alerts\AlertRuleValidator;
 use App\Service\Alerts\AlertSettings;
 use App\Service\FeatureFlags;

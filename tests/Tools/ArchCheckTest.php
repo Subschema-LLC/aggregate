@@ -18,9 +18,9 @@ final class ArchCheckTest extends TestCase
     public static function brokenRules(): iterable
     {
         yield 'a feature uses another feature' => [
-            'src/Features/Enroll/Enroll.php',
-            "<?php\nnamespace App\\Features\\Enroll;\nuse App\\Features\\Drop\\Drop;\nfinal class Enroll {}\n",
-            'features/Enroll may not use Features',
+            'src/Features/Courses/Enroll/Enroll.php',
+            "<?php\nnamespace App\\Features\\Courses\\Enroll;\nuse App\\Features\\Courses\\Drop\\Drop;\nfinal class Enroll {}\n",
+            'features/Courses/Enroll may not use Features',
         ];
         yield 'an entity uses another entity' => [
             'src/Entities/Course/Course.php',
@@ -28,14 +28,14 @@ final class ArchCheckTest extends TestCase
             'entities/Course may not use Entities',
         ];
         yield 'a feature uses code that has not moved' => [
-            'src/Features/Enroll/Enroll.php',
-            "<?php\nnamespace App\\Features\\Enroll;\nfinal class Enroll { public function __construct(private \\App\\Service\\Operations\\Operations \$o) {} }\n",
+            'src/Features/Courses/Enroll/Enroll.php',
+            "<?php\nnamespace App\\Features\\Courses\\Enroll;\nfinal class Enroll { public function __construct(private \\App\\Service\\Operations\\Operations \$o) {} }\n",
             'wrap it in an integration',
         ];
         yield 'a group use reaches another feature' => [
-            'src/Features/Enroll/Enroll.php',
-            "<?php\nnamespace App\\Features\\Enroll;\nuse App\\Features\\{Drop\\Drop, Transfer\\Transfer as Move};\nfinal class Enroll {}\n",
-            'uses App\\Features\\Transfer\\Transfer',
+            'src/Features/Courses/Enroll/Enroll.php',
+            "<?php\nnamespace App\\Features\\Courses\\Enroll;\nuse App\\Features\\Courses\\{Drop\\Drop, Transfer\\Transfer as Move};\nfinal class Enroll {}\n",
+            'uses App\\Features\\Courses\\Transfer\\Transfer',
         ];
         yield 'the core imports the database' => [
             'src/Entities/Course/Course.php',
@@ -43,8 +43,8 @@ final class ArchCheckTest extends TestCase
             'must not touch the outside world',
         ];
         yield 'the core reads the clock' => [
-            'src/Features/Enroll/Enroll.php',
-            "<?php\nnamespace App\\Features\\Enroll;\nfinal class Enroll { public function at(): \\DateTimeImmutable { return new \\DateTimeImmutable(); } }\n",
+            'src/Features/Courses/Enroll/Enroll.php',
+            "<?php\nnamespace App\\Features\\Courses\\Enroll;\nfinal class Enroll { public function at(): \\DateTimeImmutable { return new \\DateTimeImmutable(); } }\n",
             'reads the clock',
         ];
         yield 'the core reads the environment' => [
@@ -58,13 +58,23 @@ final class ArchCheckTest extends TestCase
             'extends Symfony\\Bundle\\FrameworkBundle\\Controller\\AbstractController; compose instead',
         ];
         yield 'a class is open' => [
-            'src/Features/Enroll/Enroll.php',
-            "<?php\nnamespace App\\Features\\Enroll;\nclass Enroll {}\n",
+            'src/Features/Courses/Enroll/Enroll.php',
+            "<?php\nnamespace App\\Features\\Courses\\Enroll;\nclass Enroll {}\n",
             'is not final',
         ];
+        yield 'a feature outside a group' => [
+            'src/Features/Enroll/Enroll.php',
+            "<?php\nnamespace App\\Features\\Enroll;\nfinal class Enroll {}\n",
+            'a feature sits in src/Features/<Group>/<UseCase>/<File>',
+        ];
+        yield 'a feature uses another in its group' => [
+            'src/Features/Courses/Enroll/Enroll.php',
+            "<?php\nnamespace App\\Features\\Courses\\Enroll;\nuse App\\Features\\Courses\\Drop\\Drop;\nfinal class Enroll {}\n",
+            'features/Courses/Enroll may not use Features',
+        ];
         yield 'a file is too deep' => [
-            'src/Features/Enroll/Parts/Enroll.php',
-            "<?php\nnamespace App\\Features\\Enroll\\Parts;\nfinal class Enroll {}\n",
+            'src/Entities/Course/Parts/Course.php',
+            "<?php\nnamespace App\\Entities\\Course\\Parts;\nfinal class Course {}\n",
             'deeper than zone/owner/file',
         ];
         yield 'a zone class mixes in an app trait' => [
@@ -73,8 +83,8 @@ final class ArchCheckTest extends TestCase
             'uses trait App\\Controller\\DashboardAccess; compose instead',
         ];
         yield 'the core mixes in a framework trait' => [
-            'src/Features/Enroll/Enroll.php',
-            "<?php\nnamespace App\\Features\\Enroll;\nfinal class Enroll { use \\Vendor\\Helpful; }\n",
+            'src/Features/Courses/Enroll/Enroll.php',
+            "<?php\nnamespace App\\Features\\Courses\\Enroll;\nfinal class Enroll { use \\Vendor\\Helpful; }\n",
             'a framework trait stays at the edge',
         ];
         yield 'a trait in a zone' => [
@@ -83,13 +93,13 @@ final class ArchCheckTest extends TestCase
             'is a trait; compose instead',
         ];
         yield 'the core asks the container' => [
-            'src/Features/Enroll/Enroll.php',
-            "<?php\nnamespace App\\Features\\Enroll;\nuse Symfony\\Component\\DependencyInjection\\Attribute\\Autowire;\nfinal class Enroll {}\n",
+            'src/Features/Courses/Enroll/Enroll.php',
+            "<?php\nnamespace App\\Features\\Courses\\Enroll;\nuse Symfony\\Component\\DependencyInjection\\Attribute\\Autowire;\nfinal class Enroll {}\n",
             'must not depend on the container',
         ];
         yield 'a line is too long' => [
-            'src/Features/Enroll/Enroll.php',
-            "<?php\nnamespace App\\Features\\Enroll;\nfinal class Enroll {}\n// ".str_repeat('x', 100)."\n",
+            'src/Features/Courses/Enroll/Enroll.php',
+            "<?php\nnamespace App\\Features\\Courses\\Enroll;\nfinal class Enroll {}\n// ".str_repeat('x', 100)."\n",
             'characters (max 100)',
         ];
     }
@@ -104,9 +114,9 @@ final class ArchCheckTest extends TestCase
 
     public function testAZoneFileThatKeepsTheRulesPasses(): void
     {
-        $feature = new SourceFile('src/Features/Enroll/Enroll.php', <<<'PHP'
+        $feature = new SourceFile('src/Features/Courses/Enroll/Enroll.php', <<<'PHP'
             <?php
-            namespace App\Features\Enroll;
+            namespace App\Features\Courses\Enroll;
             use App\Entities\Course\Course;
             use App\Shared\Clock;
             final class Enroll
@@ -134,13 +144,13 @@ final class ArchCheckTest extends TestCase
     public static function brokenFileRules(): iterable
     {
         yield 'a snake_case folder' => [
-            'src/Features/save_rule/SaveRule.php', '<?php', '"save_rule" is not PascalCase',
+            'src/Features/Alerts/save_rule/SaveRule.php', '<?php', '"save_rule" is not PascalCase',
         ];
         yield 'a lower-case view' => [
-            'src/Features/SaveRule/form.html.twig', '', '"form" is not PascalCase',
+            'src/Features/Alerts/SaveRule/form.html.twig', '', '"form" is not PascalCase',
         ];
         yield 'a style element' => [
-            'src/Features/SaveRule/SaveRule.html.twig', "<p>Hi</p>\n<style>p {}</style>", ':2: a <style> element',
+            'src/Features/Alerts/SaveRule/SaveRule.html.twig', "<p>Hi</p>\n<style>p {}</style>", ':2: a <style> element',
         ];
         yield 'a style attribute' => [
             'src/Delivery/Alerts/Alerts.html.twig', '<p style="color: red">x</p>', 'a style attribute',
@@ -149,23 +159,23 @@ final class ArchCheckTest extends TestCase
             'src/Delivery/Alerts/Alerts.html.twig', '<script src="/x.js"></script>', 'a <script> element',
         ];
         yield 'an inline handler' => [
-            'src/Features/SaveRule/SaveRule.html.twig', '<button onclick="go()">Go</button>', 'inline event handler',
+            'src/Features/Alerts/SaveRule/SaveRule.html.twig', '<button onclick="go()">Go</button>', 'inline event handler',
         ];
         yield 'an entity name' => [
-            'src/Features/SaveRule/SaveRule.html.twig',
+            'src/Features/Alerts/SaveRule/SaveRule.html.twig',
             "{{ constant('App\\\\Entities\\\\AlertRule\\\\AlertRule::WINDOW_DAY') }}",
             'names an entity',
         ];
         yield 'another feature\'s view' => [
-            'src/Features/SaveRule/SaveRule.html.twig',
-            "{% include '@Features/ListAlerts/ListAlerts.html.twig' %}",
-            'renders @Features/ListAlerts/ListAlerts.html.twig',
+            'src/Features/Alerts/SaveRule/SaveRule.html.twig',
+            "{% include '@Features/Alerts/ListAlerts/ListAlerts.html.twig' %}",
+            'renders @Features/Alerts/ListAlerts/ListAlerts.html.twig',
         ];
         yield 'a feature view that extends its own template' => [
-            'src/Features/SaveRule/SaveRule.html.twig', "{% extends '@Features/SaveRule/Base.html.twig' %}", 'extends nothing',
+            'src/Features/Alerts/SaveRule/SaveRule.html.twig', "{% extends '@Features/Alerts/SaveRule/Base.html.twig' %}", 'extends nothing',
         ];
         yield 'a page template' => [
-            'src/Features/SaveRule/SaveRule.html.twig', "{% include 'alerts/index.html.twig' %}", 'renders alerts/index.html.twig',
+            'src/Features/Alerts/SaveRule/SaveRule.html.twig', "{% include 'alerts/index.html.twig' %}", 'renders alerts/index.html.twig',
         ];
     }
 
@@ -183,18 +193,18 @@ final class ArchCheckTest extends TestCase
     public function testViewsThatKeepTheRulesPass(): void
     {
         $feature = <<<'TWIG'
-            {% include '@Features/SaveRule/SaveRuleFields.html.twig' with {form: form} %}
+            {% include '@Features/Alerts/SaveRule/SaveRuleFields.html.twig' with {form: form} %}
             <p class="hint">{{ view.description }}</p>
             TWIG;
         $page = <<<'TWIG'
             {% extends 'base.html.twig' %}
-            {% block body %}{{ include('@Features/ListAlerts/ListAlerts.html.twig') }}{% endblock %}
+            {% block body %}{{ include('@Features/Alerts/ListAlerts/ListAlerts.html.twig') }}{% endblock %}
             TWIG;
         $files = new ZoneFiles();
 
-        self::assertSame([], $files->check('src/Features/SaveRule/SaveRule.html.twig', $feature));
+        self::assertSame([], $files->check('src/Features/Alerts/SaveRule/SaveRule.html.twig', $feature));
         self::assertSame([], $files->check('src/Delivery/Alerts/Alerts.html.twig', $page));
-        self::assertSame([], $files->check('src/Features/SaveRule/SaveRule.css', 'p { color: red; }'));
+        self::assertSame([], $files->check('src/Features/Alerts/SaveRule/SaveRule.css', 'p { color: red; }'));
         self::assertSame([], $files->check('src/Service/Old/old_file.php', '<?php'));
     }
 
@@ -203,7 +213,7 @@ final class ArchCheckTest extends TestCase
         $ratchet = new Ratchet();
         $ratchet->add(new SourceFile('src/Service/Old.php', "<?php\nnamespace App\\Service;\nclass Old extends Base {}\n"));
         $ratchet->add(new SourceFile('src/Service/Big.php', "<?php\n".str_repeat("//\n", 240)));
-        $ratchet->add(new SourceFile('src/Features/Enroll/Enroll.php', "<?php\nnamespace App\\Features\\Enroll;\nclass Enroll {}\n"));
+        $ratchet->add(new SourceFile('src/Features/Courses/Enroll/Enroll.php', "<?php\nnamespace App\\Features\\Courses\\Enroll;\nclass Enroll {}\n"));
         $baseline = [
             'app-inheritance' => ['App\\Service\\Old' => 'extends App\\Service\\Base'],
             'not-final' => ['App\\Service\\Old' => 'not final', 'App\\Service\\Gone' => 'not final'],
@@ -250,7 +260,7 @@ final class ArchCheckTest extends TestCase
         $ratchet->add(new SourceFile('src/Service/Listed.php', "<?php\nnamespace App\\Service;\nfinal class Listed {}\n"));
         $ratchet->add(new SourceFile('src/Service/Added.php', "<?php\nnamespace App\\Service;\nfinal class Added {}\n"));
         $ratchet->add(new SourceFile('src/Kernel.php', "<?php\nnamespace App;\nfinal class Kernel {}\n"));
-        $ratchet->add(new SourceFile('src/Features/Enroll/Enroll.php', "<?php\nnamespace App\\Features\\Enroll;\nfinal class Enroll {}\n"));
+        $ratchet->add(new SourceFile('src/Features/Courses/Enroll/Enroll.php', "<?php\nnamespace App\\Features\\Courses\\Enroll;\nfinal class Enroll {}\n"));
         $baseline = ['outside-zone' => ['src/Service/Listed.php' => 'not in a zone', 'src/Service/Moved.php' => 'not in a zone']];
 
         $problems = implode("\n", $ratchet->compare($baseline));

@@ -94,7 +94,9 @@ gives the reason for each.
     the layout, the feature or the page, in separate files, never inline.
 15. **One concept, one place:** the spread test above.
 16. **Small and shallow.** Files under about 200 lines, lines under about 100
-    characters, never deeper than `src/<Zone>/<Owner>/<File>`. A split names
+    characters, never deeper than `src/<Zone>/<Owner>/<File>`; features sit
+    one level deeper, in `src/Features/<Group>/<UseCase>/<File>`
+    ([the design decision](DESIGN-DECISIONS.md#features-grouped-by-area)). A split names
     its concept. A data file (a lookup table, generated code) may skip the size
     limit only when the checker lists it with its reason; logic never does.
 17. **Rules are required; tools are examples.** Keep Symfony's conventions and
@@ -108,7 +110,7 @@ gives the reason for each.
 | You are adding | It goes in |
 | --- | --- |
 | A rule always true for a concept, its values, messages, settings, store contract and read rows | `src/Entities/<Owner>/` |
-| Something a user or the system does | `src/Features/<UseCase>/`, named as an action, with its Twig view, CSS and JS |
+| Something a user or the system does | `src/Features/<Group>/<UseCase>/`, named as an action, with its Twig view, CSS and JS. Groups: `Alerts`, `Destinations`, `Incidents` |
 | A dashboard page | `src/Delivery/<Page>/`: the controller, the page template and page-only CSS and JS |
 | A command, message handler or API endpoint | `src/Delivery/<Owner>/` |
 | A database store, YAML reader, HTTP client, mailer, or an adapter over older code | `src/Integrations/<Owner>/`, behind a contract |
@@ -119,7 +121,7 @@ gives the reason for each.
 | An operator setting | Declared by its owner; the operator YAML stays where it is |
 
 Use `PascalCase` for every folder and file in the zones, matching the class:
-`src/Features/SaveAlertRule/SaveAlertRule.php`, `SaveAlertRule.html.twig`,
+`src/Features/Alerts/SaveAlertRule/SaveAlertRule.php`, `SaveAlertRule.html.twig`,
 `SaveAlertRule.css`, `SaveAlertRule.js`. Older templates and assets keep their
 snake_case paths under `templates/` and `assets/` until their area moves.
 
@@ -128,7 +130,7 @@ snake_case paths under `templates/` and `assets/` until their area moves.
 | Zone | Folder and namespace | Holds | May use |
 | --- | --- | --- | --- |
 | Entities | `src/Entities/<Owner>`, `App\Entities\<Owner>` | Rules true everywhere, values that check themselves, messages, settings, store contracts, typed read rows | Its own folder only |
-| Features | `src/Features/<Owner>`, `App\Features\<Owner>` | One use case each, with its Twig view, CSS and JS | Entities, Shared, its own folder |
+| Features | `src/Features/<Group>/<UseCase>`, `App\Features\<Group>\<UseCase>` | One use case each, with its Twig view, CSS and JS; the use case is the owner | Entities, Shared, its own folder |
 | Integrations | `src/Integrations/<Owner>`, `App\Integrations\<Owner>` | Database stores, email, HTTP clients, YAML readers; adapters over older services | Entities, Shared, its own folder, older code |
 | Delivery | `src/Delivery/<Owner>`, `App\Delivery\<Owner>` | Pages, controllers, commands, message handlers | Features, Shared, Delivery, older code |
 | Shared | `src/Shared`, `App\Shared` | Contracts no entity owns, such as a clock, and read models | Shared only |
@@ -225,11 +227,11 @@ built-in exception, no abstract classes or traits (a framework trait only at
 the edge), no container packages in the core, every class `final` (except
 Doctrine records in Integrations), at most 200 lines per file unless
 `ZoneRules::SIZE_EXEMPT` lists it with its reason, 100 characters per line and
-zone/owner/file deep. **Every file in the zones**, Twig, CSS and JS
+zone/owner/file deep (zone/group/use case/file for features). **Every file in the zones**, Twig, CSS and JS
 included, has `PascalCase` folders and names; a Twig view there names no
 `App\Entities` class and holds no `<style>`, `<script>`, `style=""` or
 inline event handler; and a feature's view includes, embeds, extends or
-imports only templates in its own `@Features/<Feature>/` folder and extends
+imports only templates in its own `@Features/<Group>/<UseCase>/` folder and extends
 none.
 
 **Older code is held by a ratchet** in `tools/arch-check-baseline.json`, which

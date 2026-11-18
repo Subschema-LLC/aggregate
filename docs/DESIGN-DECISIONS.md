@@ -1503,6 +1503,27 @@ relay or transform until native channel templates are added.
 **What would change it.** A requirement for sub-hour enhanced-event alerts or
 per-incident acknowledgement state that cannot fit in `processing_tasks`.
 
+### Features grouped by area
+
+**Decision.** Features sit one level deeper than FIDES rule 16 allows:
+`src/Features/<Group>/<UseCase>/<File>`, with the groups `Alerts`,
+`Destinations` and `Incidents`. The use-case folder stays the owner, so two
+features in one group still never use each other, and `tools/arch-check.php`
+requires every feature to be in a group (Scott chose this, November 2026).
+
+**Why.** A flat list of action folders grows quickly and is hard to scan. One
+group per area keeps related use cases together, the way FIDES already gives
+pages one extra level. Entities keep their single-concept folders
+(`AlertRule`, `Destination`, `Incident`).
+
+**Trade-off.** One more level to open, and a group is a folder only: nothing in
+it may be shared between its features. Code two features need belongs in an
+entity or in shared.
+
+**What would change it.** A group that starts holding shared code, or FIDES
+settling on another way to group features. A matching change is proposed to
+FIDES.
+
 ### The incident state is the alerts outbox
 
 **Decision.** FIDES rule 10 (messages are recorded, saved with the change,
