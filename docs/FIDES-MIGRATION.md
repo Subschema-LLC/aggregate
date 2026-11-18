@@ -360,7 +360,9 @@ Progress:
   dropping a webhook's secret when it becomes email) live in the feature.
 - [ ] `SendTestAlert` and `ListAlerts`, the feature views, and the page in
   `Delivery/Alerts`.
-- [ ] The `app:alerts:*` commands in `Delivery/Alerts` as invokable commands.
+- [x] The `app:alerts:*` commands in `Delivery/Alerts` as invokable commands:
+  `#[AsCommand]` classes with `__invoke()`, their options in `#[MapInput]`
+  classes (`RuleOptions`, `DestinationOptions`), and no `Command` base class.
 
 ### Phase 2: port as you touch
 
