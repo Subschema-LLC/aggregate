@@ -70,4 +70,19 @@ final class ConsentFormTest extends TestCase
         self::assertArrayHasKey('reject,accept', $arrangements);
         self::assertArrayHasKey('reject,save', $arrangements);
     }
+
+    public function testAGlobalPrivacyControlValueOtherThanOnOrOffSavesNothing(): void
+    {
+        foreach (['', 'x', 'true', 'on', '2'] as $value) {
+            try {
+                ConsentForm::changes(['enabled' => '1', 'name' => 'Shop', 'respect_gpc' => $value], []);
+                self::fail('A respect_gpc value of '.json_encode($value).' was accepted.');
+            } catch (\InvalidArgumentException $e) {
+                self::assertSame(
+                    'The Global Privacy Control setting must be on or off. Nothing was saved.',
+                    $e->getMessage(),
+                );
+            }
+        }
+    }
 }

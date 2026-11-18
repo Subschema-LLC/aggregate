@@ -421,7 +421,7 @@ final class DropInScriptsTest extends TestCase
             'categories' => ['preferences'], 'layout' => 'bar',
             'external_tags' => [['id' => 'chat', 'name' => 'Chat </script><script>alert(1)</script>', 'category' => 'functional']],
         ]);
-        $store = new \App\Integrations\TagManager\YamlTagManagers($loader, $sites, self::$properties, self::$syntax);
+        $store = new \App\Integrations\TagManager\YamlTagManagers($loader, self::$properties, self::$syntax, $sites);
         $saver = new \App\Features\TagManager\SaveTagManager\SaveTagManager($store, self::$properties, self::$syntax);
         $tagSettings = new TagManagerSettings($loader, $sites, properties: self::$properties, syntax: self::$syntax, store: $store, saver: $saver);
         $scripts = new DropInScripts($loader, $websites, new AppBranding($loader, $this->directory), $this->directory, $tagSettings, $sites);

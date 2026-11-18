@@ -7,6 +7,8 @@ namespace App\Tests\Features\TagManager\SaveTagManager;
 use App\Entities\TagManager\CustomCodeSyntax;
 use App\Entities\TagManager\CustomDataProperties;
 use App\Features\TagManager\SaveTagManager\TagForm;
+use App\Integrations\TagManager\CustomDataSettingsProperties;
+use App\Integrations\TagManager\PeastCustomCodeSyntax;
 use PHPUnit\Framework\TestCase;
 
 final class TagFormTest extends TestCase
@@ -107,5 +109,35 @@ final class TagFormTest extends TestCase
             'args_json' => '[]',
             'event_json' => '',
         ]));
+    }
+
+    /** "Test this tag" reads the form with these checks, so it refuses what saving refuses. */
+    public function testWithTheInstalledChecksTheFormRefusesWhatSavingRefuses(): void
+    {
+        $properties = new CustomDataSettingsProperties();
+        $syntax = new PeastCustomCodeSyntax();
+        $rows = [
+            'syntax error' => ['type' => 'custom', 'code' => 'foo('],
+            'eval' => ['type' => 'custom', 'code' => 'eval("1");'],
+            'reserved property' => [
+                'type' => 'event',
+                'event_json' => '{"eventName":"signup","customData":{"__proto__":"x"}}',
+            ],
+            'malformed property' => [
+                'type' => 'event',
+                'event_json' => '{"eventName":"signup","customData":{"has space":"x"}}',
+            ],
+        ];
+        foreach ($rows as $case => $row) {
+            $form = ['enabled' => '1', 'variables' => [], 'tags' => [
+                $row + ['id' => 'checked', 'enabled' => '1', 'consent' => 'analytics'],
+            ]];
+            try {
+                TagForm::settings($form, $properties, $syntax);
+                self::fail('The form accepted a tag with a '.$case.'.');
+            } catch (\InvalidArgumentException $e) {
+                self::assertStringStartsWith('Tag checked:', $e->getMessage(), $case);
+            }
+        }
     }
 }

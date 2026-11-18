@@ -34,7 +34,7 @@ final class SiteScriptConfigTest extends TestCase
         $syntax = new \App\Integrations\TagManager\PeastCustomCodeSyntax();
         $this->sites = new SiteScriptConfig(new WebsiteConfigManager($this->projectDir), $this->projectDir, 'test', properties: $props, syntax: $syntax);
         $loader = new AggregateConfigLoader($this->projectDir, 'test');
-        $store = new \App\Integrations\TagManager\YamlTagManagers($loader, $this->sites, $props, $syntax);
+        $store = new \App\Integrations\TagManager\YamlTagManagers($loader, $props, $syntax, $this->sites);
         $saver = new \App\Features\TagManager\SaveTagManager\SaveTagManager($store, $props, $syntax);
         $this->tags = new TagManagerSettings($loader, $this->sites, properties: $props, syntax: $syntax, store: $store, saver: $saver);
     }

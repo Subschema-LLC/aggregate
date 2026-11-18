@@ -435,6 +435,25 @@ final class TagManagerSettingsTest extends TestCase
         self::assertSame(['after-pixel' => 'pixel', 'after-setup' => 'setup'], array_column(array_filter($tags, static fn (array $tag): bool => isset($tag['after'])), 'after', 'id'));
     }
 
+    public function testWithCustomScriptsOffAnUnchangedHandWrittenCustomTagCanBeSavedAgain(): void
+    {
+        // A YAML block keeps a trailing newline; Windows editors add carriage returns.
+        $settings = $this->settings([
+            'feature_flags' => ['custom_scripts' => ['enabled' => false]],
+            'tag_manager' => ['enabled' => true, 'tags' => [
+                ['id' => 'hand', 'type' => 'custom', 'code' => "tag.emit('hand');\r\n", 'consent' => 'marketing'],
+            ]],
+        ], true);
+
+        $settings->save($settings->all());
+
+        self::assertSame("tag.emit('hand');", $settings->all()['tags'][0]['code']);
+        $changed = $settings->all();
+        $changed['tags'][0]['code'] = "tag.emit('changed');";
+        $this->expectExceptionMessage('Custom JavaScript tags are turned off');
+        $settings->save($changed);
+    }
+
     public function testMalformedApplicationYamlCannotPublishTags(): void
     {
         file_put_contents($this->projectDir.'/config/aggregate.yaml', 'private_key: [not-valid');

@@ -870,7 +870,7 @@ final class TagManagerControllerTest extends TestCase
     {
         $props = new \App\Integrations\TagManager\CustomDataSettingsProperties();
         $syntax = new \App\Integrations\TagManager\PeastCustomCodeSyntax();
-        $store = new \App\Integrations\TagManager\YamlTagManagers($this->config, $this->sites, $props, $syntax);
+        $store = new \App\Integrations\TagManager\YamlTagManagers($this->config, $props, $syntax, $this->sites);
         $saver = new \App\Features\TagManager\SaveTagManager\SaveTagManager($store, $props, $syntax);
         $settings = new TagManagerSettings($this->config, $this->sites, new FeatureFlags($this->config), $props, $syntax, $store, $saver);
         $scripts = new DropInScripts($this->config, new WebsiteConfigManager($this->projectDir), new AppBranding($this->config, $this->projectDir), $this->projectDir, $settings, $this->sites);

@@ -41,11 +41,12 @@ final class ConsentForm
         $text = ConsentFormExtract::text($form['text'] ?? [], $saved, $defaults);
         $theme = ConsentFormExtract::theme($form['theme'] ?? []);
         $buttons = ConsentFormBehavior::buttons($form['buttons'] ?? []);
-        $regions = ConsentFormRegions::regions($form, $saved);
+        // In this order, so a form with several problems reports the same one first.
+        $extras = ConsentFormExtras::extract($form);
         $privacy = trim((string) ($form['privacy_policy_url'] ?? ''));
         $precheck = ConsentFormExtract::precheck($form['precheck_categories'] ?? []);
         $behavior = ConsentFormBehavior::behavior($form);
-        $extras = ConsentFormExtras::extract($form);
+        $regions = ConsentFormRegions::regions($form, $saved);
 
         return [
             'enabled' => $form['enabled'] === '1', 'name' => $form['name'],

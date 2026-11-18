@@ -6,17 +6,15 @@ namespace App\Integrations\TagManager;
 
 use App\Entities\TagManager\CustomCodeSyntax;
 use App\Service\TagManagerCustomCode;
-use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 /**
  * Validates custom JavaScript syntax and safety via TagManagerCustomCode with filesystem caching.
  */
 final class PeastCustomCodeSyntax implements CustomCodeSyntax
 {
-    public function __construct(
-        #[Autowire('%kernel.cache_dir%/tag-manager')]
-        private readonly ?string $cacheDirectory = null,
-    ) {
+    /** $cacheDirectory is set in config/services.yaml; null checks without caching. */
+    public function __construct(private readonly ?string $cacheDirectory = null)
+    {
     }
 
     public function validateSyntax(mixed $code, string $path): void

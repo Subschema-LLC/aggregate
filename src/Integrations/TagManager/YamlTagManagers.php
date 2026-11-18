@@ -18,9 +18,9 @@ final class YamlTagManagers implements TagManagers
 {
     public function __construct(
         private readonly AggregateConfigLoader $config,
+        private readonly CustomDataProperties $properties,
+        private readonly CustomCodeSyntax $syntax,
         private readonly ?SiteScriptConfig $sites = null,
-        private readonly ?CustomDataProperties $properties = null,
-        private readonly ?CustomCodeSyntax $syntax = null,
     ) {
     }
 
@@ -33,17 +33,7 @@ final class YamlTagManagers implements TagManagers
             ? $values['tag_manager']
             : TagManager::DEFAULTS;
 
-        if ($this->properties !== null && $this->syntax !== null) {
-            return TagManager::validate($raw, $this->properties, $this->syntax);
-        }
-
-        if (!is_array($raw)) {
-            throw new \InvalidArgumentException(
-                'tag_manager must contain only enabled, variables and tags.',
-            );
-        }
-
-        return $raw;
+        return TagManager::validate($raw, $this->properties, $this->syntax);
     }
 
     public function save(array $settings, ?string $siteId = null): void
@@ -53,15 +43,14 @@ final class YamlTagManagers implements TagManagers
             $this->sites->ensureDirectory();
         }
         $config->updateMany(function (array $current) use ($settings): array {
-            if ($this->properties !== null && $this->syntax !== null) {
-                TagManager::validate(
-                    array_key_exists('tag_manager', $current)
-                        ? $current['tag_manager']
-                        : TagManager::DEFAULTS,
-                    $this->properties,
-                    $this->syntax,
-                );
-            }
+            // Hand-edited settings that no longer validate are never replaced.
+            TagManager::validate(
+                array_key_exists('tag_manager', $current)
+                    ? $current['tag_manager']
+                    : TagManager::DEFAULTS,
+                $this->properties,
+                $this->syntax,
+            );
 
             return ['tag_manager' => $settings];
         });
