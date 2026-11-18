@@ -2,8 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Delivery\Alerts;
+namespace App\Delivery\Cli\Alerts;
 
+use App\Delivery\Web\Alerts\RuleOptions;
 use App\Features\Alerts\DeleteAlertRule\DeleteAlertRule;
 use App\Features\Alerts\SaveAlertRule\RuleAlreadyExists;
 use App\Features\Alerts\SaveAlertRule\SaveAlertRule;

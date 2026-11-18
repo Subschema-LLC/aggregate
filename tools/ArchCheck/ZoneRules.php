@@ -54,6 +54,9 @@ final class ZoneRules
         if (($parts[1] ?? '') === 'Features') {
             return count($parts) > 4 ? $parts[2].'/'.$parts[3] : '';
         }
+        if (($parts[1] ?? '') === 'Delivery') {
+            return count($parts) > 4 ? $parts[3] : ($parts[2] ?? '');
+        }
 
         return count($parts) > 3 ? $parts[2] : '';
     }
@@ -70,6 +73,10 @@ final class ZoneRules
         $problems = [];
         if ($zone === 'Features' && count($parts) !== 5) {
             $problems[] = $file->path.': a feature sits in src/Features/<Group>/<UseCase>/<File>';
+        } elseif ($zone === 'Delivery') {
+            if (count($parts) > 5) {
+                $problems[] = $file->path.': deeper than zone/channel/owner/file';
+            }
         } elseif ($zone !== 'Features' && count($parts) - 1 > self::MAX_DEPTH) {
             $problems[] = $file->path.': deeper than zone/owner/file';
         }

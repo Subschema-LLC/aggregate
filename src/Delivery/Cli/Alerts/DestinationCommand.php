@@ -2,8 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Delivery\Alerts;
+namespace App\Delivery\Cli\Alerts;
 
+use App\Delivery\Web\Alerts\DestinationOptions;
 use App\Features\Alerts\DeleteDestination\DeleteDestination;
 use App\Features\Alerts\SaveDestination\SaveDestination;
 use App\Features\Alerts\SaveSigningSecret\SaveSigningSecret;

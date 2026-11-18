@@ -22,10 +22,10 @@ use Peast\Syntax\Utils;
  */
 final class TagManagerCustomCode
 {
-    public const MAX_BYTES = 20000;
+    public const MAX_BYTES = \App\Entities\TagManager\TagCustomCode::MAX_BYTES;
     /** Total for one website, which keeps its tag manager script small. */
-    public const MAX_TOTAL_BYTES = 65536;
-    public const FEATURE = 'custom_scripts';
+    public const MAX_TOTAL_BYTES = \App\Entities\TagManager\TagCustomCode::MAX_TOTAL_BYTES;
+    public const FEATURE = \App\Entities\TagManager\TagCustomCode::FEATURE;
     /** Change this when the checks change, so cached approvals are made again. */
     private const RULES_VERSION = '1';
     private const PREFIX = "(function (tag) {\n'use strict';\n";

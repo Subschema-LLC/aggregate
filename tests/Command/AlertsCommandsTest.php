@@ -4,12 +4,11 @@ declare(strict_types=1);
 
 namespace App\Tests\Command;
 
-use App\Tests\Service\Alerts\AlertActions;
-use App\Delivery\Alerts\DestinationCommand;
-use App\Delivery\Alerts\EvaluateCommand;
-use App\Delivery\Alerts\RuleCommand;
-use App\Delivery\Alerts\StatusCommand;
-use App\Delivery\Alerts\TestCommand;
+use App\Delivery\Cli\Alerts\DestinationCommand;
+use App\Delivery\Cli\Alerts\EvaluateCommand;
+use App\Delivery\Cli\Alerts\RuleCommand;
+use App\Delivery\Cli\Alerts\StatusCommand;
+use App\Delivery\Cli\Alerts\TestCommand;
 use App\Repository\EventRepository;
 use App\Service\AggregateConfigLoader;
 use App\Service\Alerts\AlertEvaluator;
@@ -27,9 +26,9 @@ use App\Service\Operations\AuditTrail;
 use App\Service\Operations\ProcessingTasks;
 use App\Service\WebsiteConfigManager;
 use App\Service\WebsiteScopeCatalog;
+use App\Tests\Service\Alerts\AlertActions;
 use App\Tests\Service\Alerts\AlertsTestDatabase;
 use App\Tests\Service\Email\EmailTestKit;
-use App\Tests\Service\Operations\OperationsDatabase;
 use Doctrine\DBAL\Connection;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;

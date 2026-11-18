@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Delivery\Alerts;
+namespace App\Delivery\Web\Alerts;
 
 use App\Service\Alerts\AlertRuleValidator;
 use Symfony\Component\Console\Attribute\Option;

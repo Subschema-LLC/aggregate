@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Delivery\Alerts;
+namespace App\Delivery\Cli\Alerts;
 
 use App\Service\Alerts\AlertEvaluator;
 use App\Service\Alerts\AlertRuleValidator;

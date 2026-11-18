@@ -193,7 +193,9 @@ final class TagScriptControllerTest extends TestCase
     {
         foreach (["admin_token: [private-value", "tag_manager:\n  enabled: 'false'", "tag_manager:\n  enabled: true\n  tags:\n    - id: broken\n      src: 'javascript:alert(1)'", "tag_manager: null"] as $yaml) {
             file_put_contents($this->projectDir.'/config/aggregate.yaml', $yaml);
-            $response = (new TagScriptController(new TagManagerSettings(new AggregateConfigLoader($this->projectDir, 'test')), $this->projectDir))(Request::create('/lib.js?min=1'));
+            $props = new \App\Integrations\TagManager\CustomDataSettingsProperties();
+            $syntax = new \App\Integrations\TagManager\PeastCustomCodeSyntax();
+            $response = (new TagScriptController(new TagManagerSettings(new AggregateConfigLoader($this->projectDir, 'test'), properties: $props, syntax: $syntax), $this->projectDir))(Request::create('/lib.js?min=1'));
             self::assertSame(503, $response->getStatusCode());
             self::assertTrue($response->headers->hasCacheControlDirective('no-store'));
             self::assertSame('/* Tag manager configuration is unavailable. No tags loaded. */', $response->getContent());
@@ -252,8 +254,10 @@ final class TagScriptControllerTest extends TestCase
     {
         file_put_contents($this->projectDir.'/config/aggregate.yaml', Yaml::dump($settings, 6, 2));
         $loader = new AggregateConfigLoader($this->projectDir, 'test');
+        $props = new \App\Integrations\TagManager\CustomDataSettingsProperties();
+        $syntax = new \App\Integrations\TagManager\PeastCustomCodeSyntax();
 
-        return new TagScriptController(new TagManagerSettings($loader, null, new FeatureFlags($loader)), $this->projectDir);
+        return new TagScriptController(new TagManagerSettings($loader, null, new FeatureFlags($loader), $props, $syntax), $this->projectDir);
     }
 
     public function testCustomJavaScriptIsCompiledIntoTheScriptAsStrictFunctionsWithoutItsCodeInTheConfiguration(): void
@@ -301,7 +305,9 @@ final class TagScriptControllerTest extends TestCase
         self::assertSame(['pixel'], array_column($config['tags'], 'id'));
         self::assertArrayNotHasKey('namespace', $config);
         $loader = new AggregateConfigLoader($this->projectDir, 'test');
-        self::assertSame(['analytics'], (new TagManagerSettings($loader, null, new FeatureFlags($loader)))->consentCategories());
+        $props = new \App\Integrations\TagManager\CustomDataSettingsProperties();
+        $syntax = new \App\Integrations\TagManager\PeastCustomCodeSyntax();
+        self::assertSame(['analytics'], (new TagManagerSettings($loader, null, new FeatureFlags($loader), $props, $syntax))->consentCategories());
     }
 
     public function testInvalidCustomJavaScriptInYamlServesNoTags(): void

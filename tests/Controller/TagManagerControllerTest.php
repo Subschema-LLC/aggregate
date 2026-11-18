@@ -60,7 +60,9 @@ final class TagManagerControllerTest extends TestCase
             ['name' => 'First shop', 'domain' => 'first.example', 'token' => 'first-public-token'],
             ['name' => 'Second shop', 'domain' => 'second.example', 'token' => 'second-public-token'],
         ]]));
-        $this->sites = new SiteScriptConfig(new WebsiteConfigManager($this->projectDir), $this->projectDir, 'test');
+        $props = new \App\Integrations\TagManager\CustomDataSettingsProperties();
+        $syntax = new \App\Integrations\TagManager\PeastCustomCodeSyntax();
+        $this->sites = new SiteScriptConfig(new WebsiteConfigManager($this->projectDir), $this->projectDir, 'test', properties: $props, syntax: $syntax);
         $this->siteId = SiteScriptConfig::idForToken('first-public-token');
         $this->otherSiteId = SiteScriptConfig::idForToken('second-public-token');
     }
@@ -866,7 +868,11 @@ final class TagManagerControllerTest extends TestCase
 
     private function controller(Request $request, bool $csrfValid = true, bool $admin = true): TagManagerController
     {
-        $settings = new TagManagerSettings($this->config, $this->sites, new FeatureFlags($this->config));
+        $props = new \App\Integrations\TagManager\CustomDataSettingsProperties();
+        $syntax = new \App\Integrations\TagManager\PeastCustomCodeSyntax();
+        $store = new \App\Integrations\TagManager\YamlTagManagers($this->config, $props, $syntax, $this->sites);
+        $saver = new \App\Features\TagManager\SaveTagManager\SaveTagManager($store, $props, $syntax);
+        $settings = new TagManagerSettings($this->config, $this->sites, new FeatureFlags($this->config), $props, $syntax, $store, $saver);
         $scripts = new DropInScripts($this->config, new WebsiteConfigManager($this->projectDir), new AppBranding($this->config, $this->projectDir), $this->projectDir, $settings, $this->sites);
         $controller = new TagManagerController($this->config, $settings, new NullLogger(), $this->sites, $scripts);
         $authorization = $this->createMock(AuthorizationCheckerInterface::class);

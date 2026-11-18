@@ -379,6 +379,40 @@ Progress:
 - Sweep the 67 commands to invokable commands.
 - Inject a clock (`Psr\Clock\ClockInterface`) where code reads it directly.
 
+### Tag Manager port
+
+Progress:
+
+- [x] `Entities/TagManager` holds pure domain concepts and values that check themselves:
+  `TagManager`, `Tag`, `TagAction`, `TagTrigger`, `TagVariables`, `TagValues`, `TagArguments`,
+  `TagEvent`, `TagChains`, `TagCustomCode`, and contracts `TagManagers`, `CustomDataProperties` and `CustomCodeSyntax`.
+- [x] `Integrations/TagManager` provides adapter implementations:
+  `YamlTagManagers`, `CustomDataSettingsProperties`, and `PeastCustomCodeSyntax`, wired in `config/wiring.yaml`.
+- [x] Features in `Features/TagManager/` per FIDES 0.3 feature groups:
+  `SaveTagManager/SaveTagManager` (including form handling in `TagForm`, `TagFormDraft`, `TagFormVariables` and `TagFormAction`),
+  and `PreviewTag/PreviewTag` with `TagReferences`.
+- [x] Existing services (`TagManagerSettings`, `TagManagerValues`, `TagManagerVariables`, `TagManagerForm`, `TagManagerPreview`) delegate
+  to the new entities and features without behavior changes.
+- [ ] Tag script delivery and controllers in `Delivery/TagManager`.
+
+### CMP (Consent Manager) port
+
+Progress:
+
+- [x] `Entities/ConsentManager` holds pure domain concepts and values that check themselves:
+  `ConsentManager`, `ConsentManagerAppearance`, `ConsentBrowserConfig`, `ConsentTheme`, `ConsentText`,
+  `ConsentDefaultText`, `ConsentRegions`, `ConsentButtons`, `ConsentExternalTags`, `ConsentCategories`,
+  and storage contract `ConsentManagers`.
+- [x] `Integrations/ConsentManager` provides adapter implementation:
+  `YamlConsentManagers`, wired in `config/wiring.yaml`.
+- [x] Features in `Features/ConsentManager/` per FIDES 0.3 feature groups:
+  `SaveConsentManager/SaveConsentManager` (including form handling in `ConsentForm`, `ConsentFormValues`,
+  `ConsentFormDraft`, `ConsentFormExtract`, `ConsentFormRegions`, `ConsentFormBehavior`, and `ConsentFormExtras`).
+- [x] Existing services (`ConsentAppearance`, `ConsentManagerForm`, `ConsentCategories`, `SiteScriptConfig`) delegate
+  to the new entities and features without behavior changes, reducing `ConsentAppearance` from 630 lines
+  and `ConsentManagerForm` from 414 lines below the 200-line threshold.
+- [ ] Consent script delivery and controllers in `Delivery/ConsentManager`.
+
 ### Phase 3: the hard parts last
 
 - **Event ingestion.** The performance-sensitive path, which FIDES itself rates
