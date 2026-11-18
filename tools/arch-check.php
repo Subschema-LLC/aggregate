@@ -49,7 +49,8 @@ sort($files);
 sort($zoneFiles);
 
 $zoneRules = new ZoneRules();
-$ratchet = new Ratchet();
+$wiringFile = $root.'/config/wiring.yaml';
+$ratchet = new Ratchet(is_file($wiringFile) ? (string) file_get_contents($wiringFile) : '');
 $problems = [];
 $fileRules = new ZoneFiles();
 foreach ($zoneFiles as $path) {

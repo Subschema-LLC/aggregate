@@ -14,6 +14,17 @@ final class ZoneRules
     public const ZONES = ['Entities', 'Features', 'Integrations', 'Delivery', 'Shared'];
     private const CORE = ['Entities', 'Features', 'Shared'];
     private const MAX_LINES = 200;
+    /**
+     * Files that are data, not logic, and may skip the size limit, each with its
+     * reason (rule 16). Logic never goes here.
+     */
+    public const SIZE_EXEMPT = [
+        'src/Service/BotDetection/BotUserAgentPatterns.php' => 'a lookup table of bot user agents',
+    ];
+    /** Packages that are the container: the core states its needs in its constructor instead. */
+    private const CONTAINER_PACKAGES = [
+        'Symfony\\Component\\DependencyInjection\\', 'Symfony\\Contracts\\Service\\',
+    ];
     private const MAX_DEPTH = 3;
     /** Packages the core may not import: they reach the database, files, network or environment. */
     private const IO_PACKAGES = [
@@ -45,7 +56,7 @@ final class ZoneRules
         if (count($parts) - 1 > self::MAX_DEPTH) {
             $problems[] = $file->path.': deeper than zone/owner/file';
         }
-        if ($file->lineCount > self::MAX_LINES) {
+        if ($file->lineCount > self::MAX_LINES && !isset(self::SIZE_EXEMPT[$file->path])) {
             $problems[] = sprintf('%s: %d lines (max %d); a concept is hiding in it', $file->path, $file->lineCount, self::MAX_LINES);
         }
         foreach ($file->longLines as $line => $length) {
@@ -53,6 +64,19 @@ final class ZoneRules
         }
         foreach ($file->classes as $class) {
             $problems = [...$problems, ...$this->checkClass($file->path, $zone, $class)];
+        }
+        foreach ($file->traitUses as $use) {
+            $fromApp = str_starts_with($use['trait'], 'App\\');
+            if ($fromApp || in_array($zone, self::CORE, true)) {
+                $problems[] = sprintf(
+                    '%s:%d: %s uses trait %s; %s',
+                    $file->path,
+                    $use['line'],
+                    $use['class'],
+                    $use['trait'],
+                    $fromApp ? 'compose instead' : 'a framework trait stays at the edge',
+                );
+            }
         }
         foreach ($file->references as $reference) {
             $reason = $this->importProblem($zone, $owner, $reference['name']);
@@ -84,6 +108,9 @@ final class ZoneRules
         if ($class['abstract']) {
             $problems[] = $where.' is abstract; compose instead';
         }
+        if ($class['kind'] === 'trait') {
+            $problems[] = $where.' is a trait; compose instead';
+        }
         $doctrineRecord = $class['entity'] && $zone === 'Integrations';
         if ($class['kind'] === 'class' && !$class['abstract'] && !$class['final'] && !$doctrineRecord) {
             $problems[] = $where.' is not final';
@@ -99,6 +126,12 @@ final class ZoneRules
             foreach (self::IO_PACKAGES as $package) {
                 if ($core && str_starts_with($name, $package)) {
                     return strtolower($zone).' must not touch the outside world';
+                }
+            }
+            foreach (self::CONTAINER_PACKAGES as $package) {
+                if ($core && str_starts_with($name, $package)) {
+                    return strtolower($zone).' must not depend on the container; '
+                        .'bind it in config/wiring.yaml';
                 }
             }
 

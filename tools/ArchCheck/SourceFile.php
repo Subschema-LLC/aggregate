@@ -26,6 +26,8 @@ final class SourceFile
     public array $references = [];
     /** @var list<array{what: string, line: int}> clock reads, I/O calls and superglobals */
     public array $outside = [];
+    /** @var list<array{class: string, trait: string, line: int}> traits mixed into a class */
+    public array $traitUses = [];
     /** @var array<int, int> line number => length, for lines over the limit */
     public array $longLines = [];
     public int $lineCount;
@@ -79,6 +81,10 @@ final class SourceFile
                 $i = $this->readUse($tokens, $i + 1, $line);
                 continue;
             }
+            if ($id === T_USE && $depth === 1 && $this->classes !== [] && ($tokens[$i + 1] ?? null) !== '(') {
+                $i = $this->readTraitUse($tokens, $i + 1, $line);
+                continue;
+            }
             match (true) {
                 $id === T_ATTRIBUTE => $entity = $entity || $this->isEntityAttribute($tokens, $i + 1),
                 in_array($id, [T_CLASS, T_INTERFACE, T_TRAIT, T_ENUM], true)
@@ -130,6 +136,34 @@ final class SourceFile
             }
         }
         $name === '' || $this->import($prefix.$name, null, $line);
+
+        return $i;
+    }
+
+    /**
+     * @param list<array{0: int, 1: string, 2: int}|string> $tokens
+     *
+     * @return int the index of the statement's `;` or `{`
+     */
+    private function readTraitUse(array $tokens, int $i, int $line): int
+    {
+        $class = $this->classes[array_key_last($this->classes)]['name'];
+        $name = '';
+        for (; !in_array($token = $tokens[$i] ?? ';', [';', '{'], true); ++$i) {
+            $text = is_array($token) ? $token[1] : $token;
+            if ($text === ',') {
+                $this->traitUses[] = ['class' => $class, 'trait' => $this->resolve($name), 'line' => $line];
+                $name = '';
+            } else {
+                $name .= $text;
+            }
+        }
+        if ($name !== '') {
+            $this->traitUses[] = ['class' => $class, 'trait' => $this->resolve($name), 'line' => $line];
+        }
+        if (($tokens[$i] ?? null) === '{') {
+            --$i; // let read() count the brace of an adaptation block
+        }
 
         return $i;
     }

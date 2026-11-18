@@ -67,6 +67,26 @@ final class ArchCheckTest extends TestCase
             "<?php\nnamespace App\\Features\\Enroll\\Parts;\nfinal class Enroll {}\n",
             'deeper than zone/owner/file',
         ];
+        yield 'a zone class mixes in an app trait' => [
+            'src/Delivery/Alerts/AlertsPage.php',
+            "<?php\nnamespace App\\Delivery\\Alerts;\nuse App\\Controller\\DashboardAccess;\nfinal class AlertsPage { use DashboardAccess; }\n",
+            'uses trait App\\Controller\\DashboardAccess; compose instead',
+        ];
+        yield 'the core mixes in a framework trait' => [
+            'src/Features/Enroll/Enroll.php',
+            "<?php\nnamespace App\\Features\\Enroll;\nfinal class Enroll { use \\Vendor\\Helpful; }\n",
+            'a framework trait stays at the edge',
+        ];
+        yield 'a trait in a zone' => [
+            'src/Shared/Helpers.php',
+            "<?php\nnamespace App\\Shared;\ntrait Helpers {}\n",
+            'is a trait; compose instead',
+        ];
+        yield 'the core asks the container' => [
+            'src/Features/Enroll/Enroll.php',
+            "<?php\nnamespace App\\Features\\Enroll;\nuse Symfony\\Component\\DependencyInjection\\Attribute\\Autowire;\nfinal class Enroll {}\n",
+            'must not depend on the container',
+        ];
         yield 'a line is too long' => [
             'src/Features/Enroll/Enroll.php',
             "<?php\nnamespace App\\Features\\Enroll;\nfinal class Enroll {}\n// ".str_repeat('x', 100)."\n",
@@ -141,8 +161,11 @@ final class ArchCheckTest extends TestCase
             "{% include '@Features/ListAlerts/ListAlerts.html.twig' %}",
             'renders @Features/ListAlerts/ListAlerts.html.twig',
         ];
+        yield 'a feature view that extends its own template' => [
+            'src/Features/SaveRule/SaveRule.html.twig', "{% extends '@Features/SaveRule/Base.html.twig' %}", 'extends nothing',
+        ];
         yield 'a page template' => [
-            'src/Features/SaveRule/SaveRule.html.twig', "{% extends 'base.html.twig' %}", 'renders base.html.twig',
+            'src/Features/SaveRule/SaveRule.html.twig', "{% include 'alerts/index.html.twig' %}", 'renders alerts/index.html.twig',
         ];
     }
 
@@ -193,6 +216,32 @@ final class ArchCheckTest extends TestCase
         self::assertStringContainsString('App\\Service\\Gone is fixed', $problems);
         self::assertStringNotContainsString('App\\Service\\Old', $problems);
         self::assertStringNotContainsString('Enroll', $problems, 'Zone code is checked by ZoneRules, not the ratchet.');
+    }
+
+    public function testTheRatchetHoldsTraitsIntegrationNamesAndUnboundContracts(): void
+    {
+        $ratchet = new Ratchet("services:\n    App\\Entities\\Course\\Courses: '@App\\Integrations\\Database\\DbCourses'\n");
+        $ratchet->add(new SourceFile('src/Controller/Page.php', "<?php\nnamespace App\\Controller;\nuse App\\Integrations\\Database\\DbCourses;\nfinal class Page { use Access; }\n"));
+        $ratchet->add(new SourceFile('src/Entities/Course/Courses.php', "<?php\nnamespace App\\Entities\\Course;\ninterface Courses {}\n"));
+        $ratchet->add(new SourceFile('src/Entities/Course/Clock.php', "<?php\nnamespace App\\Entities\\Course;\ninterface Clock {}\n"));
+
+        $findings = $ratchet->findings();
+
+        self::assertSame(['App\\Controller\\Page' => 'uses App\\Controller\\Access'], $findings['app-trait']);
+        self::assertSame(['src/Controller/Page.php' => 'names App\\Integrations\\Database\\DbCourses'], $findings['names-integration']);
+        self::assertSame(['App\\Entities\\Course\\Clock' => 'not bound in config/wiring.yaml'], $findings['unbound-contract']);
+        self::assertStringContainsString('app-trait: App\\Controller\\Page (uses App\\Controller\\Access) is new', implode("\n", $ratchet->compare([])));
+    }
+
+    public function testADataFileListedWithItsReasonSkipsTheSizeLimit(): void
+    {
+        $path = (string) array_key_first(ZoneRules::SIZE_EXEMPT);
+        $big = new SourceFile($path, "<?php\n".str_repeat("//\n", 300));
+        $ratchet = new Ratchet();
+        $ratchet->add($big);
+
+        self::assertNotSame('', ZoneRules::SIZE_EXEMPT[$path], 'Each exemption gives its reason.');
+        self::assertSame([], $ratchet->findings()['file-size']);
     }
 
     public function testANewFileOutsideTheZonesIsRejected(): void
