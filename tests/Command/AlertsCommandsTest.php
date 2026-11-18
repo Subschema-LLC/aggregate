@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace App\Tests\Command;
 
 use App\Tests\Service\Alerts\AlertActions;
-use App\Command\AlertsDestinationCommand;
-use App\Command\AlertsEvaluateCommand;
-use App\Command\AlertsRuleCommand;
-use App\Command\AlertsStatusCommand;
-use App\Command\AlertsTestCommand;
+use App\Delivery\Alerts\DestinationCommand;
+use App\Delivery\Alerts\EvaluateCommand;
+use App\Delivery\Alerts\RuleCommand;
+use App\Delivery\Alerts\StatusCommand;
+use App\Delivery\Alerts\TestCommand;
 use App\Repository\EventRepository;
 use App\Service\AggregateConfigLoader;
 use App\Service\Alerts\AlertEvaluator;
@@ -204,49 +204,49 @@ final class AlertsCommandsTest extends TestCase
         return new AlertSettings($config, $validator, $websites, $scopes);
     }
 
-    private function destinationCommand(): AlertsDestinationCommand
+    private function destinationCommand(): Command
     {
         $config = new AggregateConfigLoader($this->projectDir, 'test');
 
         $actions = new AlertActions($this->projectDir);
 
-        return new AlertsDestinationCommand($this->settings(), new AlertSecrets($this->projectDir), new FeatureFlags($config), $actions->saveDestination, $actions->deleteDestination, $actions->saveSecret);
+        return new Command(null, new DestinationCommand($this->settings(), new AlertSecrets($this->projectDir), new FeatureFlags($config), $actions->saveDestination, $actions->deleteDestination, $actions->saveSecret));
     }
 
-    private function ruleCommand(): AlertsRuleCommand
+    private function ruleCommand(): Command
     {
         $config = new AggregateConfigLoader($this->projectDir, 'test');
 
         $actions = new AlertActions($this->projectDir);
 
-        return new AlertsRuleCommand($this->settings(), new FeatureFlags($config), $actions->saveRule, $actions->deleteRule);
+        return new Command(null, new RuleCommand($this->settings(), new FeatureFlags($config), $actions->saveRule, $actions->deleteRule));
     }
 
-    private function testCommand(): AlertsTestCommand
+    private function testCommand(): Command
     {
         $config = new AggregateConfigLoader($this->projectDir, 'test');
 
-        return new AlertsTestCommand($this->evaluator(), new FeatureFlags($config));
+        return new Command(null, new TestCommand($this->evaluator(), new FeatureFlags($config)));
     }
 
-    private function evaluateCommand(): AlertsEvaluateCommand
+    private function evaluateCommand(): Command
     {
         $config = new AggregateConfigLoader($this->projectDir, 'test');
 
-        return new AlertsEvaluateCommand($this->evaluator(), new FeatureFlags($config));
+        return new Command(null, new EvaluateCommand($this->evaluator(), new FeatureFlags($config)));
     }
 
-    private function statusCommand(): AlertsStatusCommand
+    private function statusCommand(): Command
     {
         $config = new AggregateConfigLoader($this->projectDir, 'test');
 
-        return new AlertsStatusCommand(
+        return new Command(null, new StatusCommand(
             $this->settings(),
             new AlertSecrets($this->projectDir),
             $this->evaluator(),
             $this->mailer($config),
             new FeatureFlags($config),
-        );
+        ));
     }
 
     private function evaluator(): AlertEvaluator
