@@ -74,8 +74,9 @@ behavior described in the PR.
 
 All PHP development follows [FIDES](https://github.com/Subschema-LLC/fides).
 New code goes into five zones under `src/` (Entities, Features, Integrations,
-Delivery, Shared), dependencies point inward, nothing is built by inheritance,
-and files stay small. Code that predates the zones moves into them as it is
+Delivery, Shared), dependencies point inward, nothing is built by inheritance
+or traits, every contract is bound in `config/wiring.yaml`, and files stay
+small. Code that predates the zones moves into them as it is
 touched. [Code structure: FIDES](docs/FIDES-MIGRATION.md) has the rules, where
 each kind of code goes, and how Symfony fits; read it before adding or
 restructuring classes.

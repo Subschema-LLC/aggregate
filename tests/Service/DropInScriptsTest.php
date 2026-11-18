@@ -22,6 +22,14 @@ final class DropInScriptsTest extends TestCase
 {
     private string $directory;
     private array $environment;
+    private static \App\Integrations\TagManager\CustomDataSettingsProperties $properties;
+    private static \App\Integrations\TagManager\PeastCustomCodeSyntax $syntax;
+
+    public static function setUpBeforeClass(): void
+    {
+        self::$properties = new \App\Integrations\TagManager\CustomDataSettingsProperties();
+        self::$syntax = new \App\Integrations\TagManager\PeastCustomCodeSyntax();
+    }
 
     protected function setUp(): void
     {
@@ -285,7 +293,7 @@ final class DropInScriptsTest extends TestCase
         $filesystem->mirror(dirname(__DIR__, 2).'/micro-consent-dropins', $this->directory.'/micro-consent-dropins');
         $loader = new AggregateConfigLoader($this->directory, 'test');
         $websites = new WebsiteConfigManager($this->directory);
-        $sites = new SiteScriptConfig($websites, $this->directory, 'test');
+        $sites = new SiteScriptConfig($websites, $this->directory, 'test', properties: self::$properties, syntax: self::$syntax);
         $settings = new StandaloneConsentSettings($sites);
         $siteId = SiteScriptConfig::idForToken('public-website-token');
         $settings->save($siteId, ['name' => 'Choices </script>']);
@@ -393,8 +401,11 @@ final class DropInScriptsTest extends TestCase
             'app_host' => 'https://analytics.example.test', 'js_namespace' => 'ExampleAnalytics',
         ]));
         $loader = new AggregateConfigLoader($this->directory, 'test');
+        $store = new \App\Integrations\TagManager\YamlTagManagers($loader, properties: self::$properties, syntax: self::$syntax);
+        $saver = new \App\Features\TagManager\SaveTagManager\SaveTagManager($store, self::$properties, self::$syntax);
+        $tagSettings = new TagManagerSettings($loader, properties: self::$properties, syntax: self::$syntax, store: $store, saver: $saver);
 
-        return new DropInScripts($loader, new WebsiteConfigManager($this->directory), new AppBranding($loader, $this->directory), $this->directory, new TagManagerSettings($loader));
+        return new DropInScripts($loader, new WebsiteConfigManager($this->directory), new AppBranding($loader, $this->directory), $this->directory, $tagSettings);
     }
 
     public function testSiteConsentScriptAsksAboutConfiguredAndOtherTagCategoriesAndListsTheTags(): void
@@ -402,7 +413,7 @@ final class DropInScriptsTest extends TestCase
         $this->scripts();
         $loader = new AggregateConfigLoader($this->directory, 'test');
         $websites = new WebsiteConfigManager($this->directory);
-        $sites = new SiteScriptConfig($websites, $this->directory, 'test');
+        $sites = new SiteScriptConfig($websites, $this->directory, 'test', properties: self::$properties, syntax: self::$syntax);
         $siteId = SiteScriptConfig::idForToken('public-website-token');
         $sites->save($siteId, ['enabled' => true, 'tags' => [
             ['id' => 'ads', 'src' => 'https://private-provider.example.test/ads.js', 'consent' => 'marketing'],
@@ -410,7 +421,10 @@ final class DropInScriptsTest extends TestCase
             'categories' => ['preferences'], 'layout' => 'bar',
             'external_tags' => [['id' => 'chat', 'name' => 'Chat </script><script>alert(1)</script>', 'category' => 'functional']],
         ]);
-        $scripts = new DropInScripts($loader, $websites, new AppBranding($loader, $this->directory), $this->directory, new TagManagerSettings($loader, $sites), $sites);
+        $store = new \App\Integrations\TagManager\YamlTagManagers($loader, self::$properties, self::$syntax, $sites);
+        $saver = new \App\Features\TagManager\SaveTagManager\SaveTagManager($store, self::$properties, self::$syntax);
+        $tagSettings = new TagManagerSettings($loader, $sites, properties: self::$properties, syntax: self::$syntax, store: $store, saver: $saver);
+        $scripts = new DropInScripts($loader, $websites, new AppBranding($loader, $this->directory), $this->directory, $tagSettings, $sites);
         $content = $scripts->consentScript(false, $siteId)['content'];
         self::assertSame(1, preg_match('/var consentConfig = (\{.*?\});\n/', $content, $match));
         $configuration = json_decode($match[1], true, flags: JSON_THROW_ON_ERROR);

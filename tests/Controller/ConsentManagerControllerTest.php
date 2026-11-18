@@ -50,7 +50,9 @@ final class ConsentManagerControllerTest extends TestCase
             ['name' => 'First shop', 'domain' => 'first.example', 'token' => 'first-public-token'],
             ['name' => 'Second shop', 'domain' => 'second.example', 'token' => 'second-public-token'],
         ]]));
-        $this->sites = new SiteScriptConfig(new WebsiteConfigManager($this->projectDir), $this->projectDir, 'test');
+        $props = new \App\Integrations\TagManager\CustomDataSettingsProperties();
+        $syntax = new \App\Integrations\TagManager\PeastCustomCodeSyntax();
+        $this->sites = new SiteScriptConfig(new WebsiteConfigManager($this->projectDir), $this->projectDir, 'test', properties: $props, syntax: $syntax);
         $this->siteId = SiteScriptConfig::idForToken('first-public-token');
         $this->otherSiteId = SiteScriptConfig::idForToken('second-public-token');
         // The first website's enabled tags add a marketing category to its banner.
@@ -271,8 +273,12 @@ final class ConsentManagerControllerTest extends TestCase
 
     private function controller(Request $request, bool $csrfValid = true, bool $admin = true): ConsentManagerController
     {
-        $settings = new TagManagerSettings($this->config, $this->sites);
-        $controller = new ConsentManagerController($this->config, $this->sites, $settings, new NullLogger());
+        $props = new \App\Integrations\TagManager\CustomDataSettingsProperties();
+        $syntax = new \App\Integrations\TagManager\PeastCustomCodeSyntax();
+        $settings = new TagManagerSettings($this->config, $this->sites, properties: $props, syntax: $syntax);
+        $store = new \App\Integrations\ConsentManager\YamlConsentManagers($this->sites);
+        $saver = new \App\Features\ConsentManager\SaveConsentManager\SaveConsentManager($store);
+        $controller = new ConsentManagerController($this->config, $this->sites, $settings, new NullLogger(), $saver, $store);
         $authorization = $this->createStub(AuthorizationCheckerInterface::class);
         $authorization->method('isGranted')->willReturn($admin);
         $csrf = $this->createStub(CsrfTokenManagerInterface::class);

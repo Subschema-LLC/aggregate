@@ -181,12 +181,20 @@ page and in `app:alerts:status` names the secret each destination uses, so
 rotating the shared secret is never mistaken for rotating a destination's own.
 Set, generate or remove a destination's own secret on its Edit page or with
 `app:alerts:destination secret --id=<id>`. Destination IDs that differ only by
-`-` and `_` are refused, because they would share a secret.
+`-` and `_` are refused, because they would share a secret. Neither the page
+nor the command changes a secret the environment sets, since the saved one
+would be ignored: a destination's own secret is refused when
+`ALERTS_WEBHOOK_SECRET_<ID>` is set, and the shared one when
+`ALERTS_WEBHOOK_SECRET` is. Only webhook destinations have a secret: one
+turned into an email destination loses its own.
 
 ## CLI commands
 
-Every action on the Alerts page is available from the command line and shares
-the same validation:
+Every action on the Alerts page is available from the command line and goes
+through the same code, so both follow the same rules. Hand-editing
+`config/aggregate.yaml` is checked by the same rules when it is loaded.
+`create` refuses an ID that is taken, and `edit` needs an existing one; on
+`edit`, options you leave out keep their saved values:
 
 ```bash
 # View rules, statuses, redacted destinations, and recent alerts

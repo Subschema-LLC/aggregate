@@ -24,14 +24,18 @@ fails the build when a rule it checks is broken.
 Where code goes:
 
 - A rule always true for a concept -> `src/Entities/<Owner>/`
-- Something a user or the system does -> a new folder in `src/Features/`,
-  named as an action, with its Twig view, CSS and JS
+- Something a user or the system does -> a new folder in
+  `src/Features/<Group>/`, named as an action, with its Twig view, CSS and JS.
+  Add a group only for a new area (currently `Alerts`, `TagManager`, and `ConsentManager`)
 - A dashboard page -> `src/Delivery/<Page>/` (controller, page template, page
   CSS and JS); a command, handler or API endpoint -> `src/Delivery/<Owner>/`
 - The outside world (database, YAML, HTTP, email) or older code a feature
   needs -> `src/Integrations/<Owner>/`, behind a contract
 - A contract no single entity owns -> `src/Shared/`; its binding ->
   `config/wiring.yaml`
+- A read across two entities or more -> a read model: its query contract and
+  read-only rows in `src/Shared/<ReadModel>/`, answered by one query in an
+  integration and used by features
 
 Rules:
 
@@ -47,20 +51,27 @@ Rules:
    network, environment or clock, and never uses code that has not moved.
    Wrap older services, such as `App\Service\Operations`, in an integration.
 6. No inheritance: compose, make classes `final`, use interfaces as
-   contracts. Only built-in exceptions may be extended, and Doctrine records
-   may stay open.
+   contracts. No traits either; a framework trait stays at the edge. A custom
+   exception may extend one built-in exception, never another custom one, and
+   Doctrine records may stay open.
 7. One write by default; a `UnitOfWork` makes a multi-entity change visible.
    Messages are saved with the change and dispatched after commit.
 8. Views only display values their feature shaped; a template never names an
-   entity. A page template places feature views; a feature view never renders
-   another's. CSS and JS sit with the layout, feature or page, never inline.
+   entity. A page template places feature views; a feature view is a fragment
+   that extends nothing and never renders another's. CSS and JS sit with the
+   layout, feature or page, never inline.
 9. Files under 200 lines, lines under 100 characters, never deeper than
-   `src/<Zone>/<Owner>/<File>`, and `PascalCase` for every folder and file in
-   the zones.
+   `src/<Zone>/<Owner>/<File>` (`src/Features/<Group>/<UseCase>/<File>` for
+   features), and `PascalCase` for every folder and file in
+   the zones. Only a data file listed in `ZoneRules::SIZE_EXEMPT` with its
+   reason may be longer.
 10. Never add a finding to `tools/arch-check-baseline.json` or
     `phpstan-baseline.neon`, and never let a listed file grow. When a change
     removes findings, run `php tools/arch-check.php --update-baseline`.
 11. Comments say what is true now; history goes in the commit message.
+12. Every contract is bound in `config/wiring.yaml`, and only that file names
+    an integration class. The core never asks the container for anything and
+    carries no container attributes.
 
 If a change touches more than its feature folder, the entities it names, one
 integration and the wiring, stop and ask whether a concept is spread too far.

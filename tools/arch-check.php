@@ -10,35 +10,52 @@ declare(strict_types=1);
  *   php tools/arch-check.php --update-baseline  record findings that went away
  *
  * Code in src/Entities, src/Features, src/Integrations, src/Delivery and
- * src/Shared must follow every rule. Other code is held to the baseline in
+ * src/Shared must follow every rule; every file there, Twig, CSS and JS
+ * included, is also checked by ZoneFiles. Other code is held to the baseline in
  * tools/arch-check-baseline.json: findings may go away, never appear. The
  * update only removes findings; it never admits a new one.
  */
 
 use App\Tools\ArchCheck\Ratchet;
 use App\Tools\ArchCheck\SourceFile;
+use App\Tools\ArchCheck\ZoneFiles;
 use App\Tools\ArchCheck\ZoneRules;
 
 require __DIR__.'/ArchCheck/SourceFile.php';
 require __DIR__.'/ArchCheck/ZoneRules.php';
 require __DIR__.'/ArchCheck/Ratchet.php';
+require __DIR__.'/ArchCheck/ZoneFiles.php';
 
 $root = dirname(__DIR__);
 $baselineFile = __DIR__.'/arch-check-baseline.json';
 $update = in_array('--update-baseline', $argv, true);
 
 $files = [];
+$zoneFiles = [];
 $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root.'/src', FilesystemIterator::SKIP_DOTS));
 foreach ($iterator as $file) {
-    if ($file instanceof SplFileInfo && $file->getExtension() === 'php') {
-        $files[] = substr($file->getPathname(), strlen($root) + 1);
+    if (!$file instanceof SplFileInfo) {
+        continue;
+    }
+    $path = substr($file->getPathname(), strlen($root) + 1);
+    if ($file->getExtension() === 'php') {
+        $files[] = $path;
+    }
+    if (ZoneRules::zoneOf($path) !== null) {
+        $zoneFiles[] = $path;
     }
 }
 sort($files);
+sort($zoneFiles);
 
 $zoneRules = new ZoneRules();
-$ratchet = new Ratchet();
+$wiringFile = $root.'/config/wiring.yaml';
+$ratchet = new Ratchet(is_file($wiringFile) ? (string) file_get_contents($wiringFile) : '');
 $problems = [];
+$fileRules = new ZoneFiles();
+foreach ($zoneFiles as $path) {
+    $problems = [...$problems, ...$fileRules->check($path, (string) file_get_contents($root.'/'.$path))];
+}
 foreach ($files as $path) {
     $source = new SourceFile($path, (string) file_get_contents($root.'/'.$path));
     $problems = [...$problems, ...$zoneRules->check($source)];
