@@ -178,56 +178,6 @@ final class SiteScriptConfig
 
     private static function validateConsent(mixed $settings, string $defaultName, bool $defaultEnabled = true): array
     {
-        $supported = ['enabled', 'name', 'privacy_policy_url', 'precheck_categories', 'respect_gpc', 'categories', ...ConsentAppearance::KEYS];
-        if (!is_array($settings) || ($settings !== [] && array_is_list($settings)) || array_diff(array_keys($settings), $supported) !== []) {
-            throw new \InvalidArgumentException('Consent manager settings support only '.implode(', ', $supported).'.');
-        }
-        $enabled = array_key_exists('enabled', $settings) ? $settings['enabled'] : $defaultEnabled;
-        $name = array_key_exists('name', $settings) ? $settings['name'] : $defaultName;
-        if (!is_bool($enabled) || !is_string($name) || trim($name) === '' || strlen($name) > 120
-            || preg_match('//u', $name) !== 1 || preg_match('/[\x00-\x1f\x7f]/', $name) === 1) {
-            throw new \InvalidArgumentException('Consent controls need a YAML boolean enabled setting and a name of 1–120 UTF-8 bytes without control characters.');
-        }
-
-        $result = ['enabled' => $enabled, 'name' => trim($name)];
-        if (array_key_exists('privacy_policy_url', $settings)) {
-            $result['privacy_policy_url'] = ConsentAppearance::privacyPolicyUrl($settings['privacy_policy_url'], 'consent_manager.privacy_policy_url');
-        }
-        if (array_key_exists('precheck_categories', $settings)) {
-            $precheck = $settings['precheck_categories'];
-            if (!is_array($precheck) || ($precheck !== [] && !array_is_list($precheck))) {
-                throw new \InvalidArgumentException('consent_manager.precheck_categories must be a list of category names.');
-            }
-            $clean = [];
-            foreach ($precheck as $cat) {
-                if (!is_string($cat) || preg_match('/^[a-z][a-z0-9_-]{0,31}$/D', $cat) !== 1 || in_array($cat, ['none', 'gpc'], true)) {
-                    throw new \InvalidArgumentException('consent_manager.precheck_categories entries must be category names.');
-                }
-                if (!in_array($cat, $clean, true)) {
-                    $clean[] = $cat;
-                }
-            }
-            if ($clean !== []) {
-                $result['precheck_categories'] = $clean;
-            }
-        }
-        // Categories the banner asks about even when no enabled tag uses them.
-        if (array_key_exists('categories', $settings)) {
-            $categories = ConsentAppearance::categoryList($settings['categories'], 'consent_manager.categories');
-            if ($categories !== []) {
-                $result['categories'] = $categories;
-            }
-        }
-        // Global Privacy Control withholds the categories implicit_us grants by default.
-        if (array_key_exists('respect_gpc', $settings)) {
-            if (!is_bool($settings['respect_gpc'])) {
-                throw new \InvalidArgumentException('consent_manager.respect_gpc must be a YAML boolean (true or false).');
-            }
-            if ($settings['respect_gpc'] === false) {
-                $result['respect_gpc'] = false;
-            }
-        }
-
-        return $result + ConsentAppearance::validate($settings, ConsentAppearance::BUILTIN, 'consent_manager');
+        return \App\Entities\ConsentManager\ConsentManager::validate($settings, $defaultName, $defaultEnabled);
     }
 }

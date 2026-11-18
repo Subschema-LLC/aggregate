@@ -394,6 +394,24 @@ Progress:
   to the new entities and features without behavior changes.
 - [ ] Tag script delivery and controllers in `Delivery/TagManager`.
 
+### CMP (Consent Manager) port
+
+Progress:
+
+- [x] `Entities/ConsentManager` holds pure domain concepts and values that check themselves:
+  `ConsentManager`, `ConsentManagerAppearance`, `ConsentBrowserConfig`, `ConsentTheme`, `ConsentText`,
+  `ConsentDefaultText`, `ConsentRegions`, `ConsentButtons`, `ConsentExternalTags`, `ConsentCategories`,
+  and storage contract `ConsentManagers`.
+- [x] `Integrations/ConsentManager` provides adapter implementation:
+  `YamlConsentManagers`, wired in `config/wiring.yaml`.
+- [x] Features in `Features/Cmp/` per FIDES 0.3 feature groups:
+  `SaveConsentManager/SaveConsentManager` and `ConsentForm/ConsentForm` with `ConsentFormValues`,
+  `ConsentFormDraft`, `ConsentFormExtract`, `ConsentFormRegions`, `ConsentFormBehavior`, and `ConsentFormExtras`.
+- [x] Existing services (`ConsentAppearance`, `ConsentManagerForm`, `ConsentCategories`, `SiteScriptConfig`) delegate
+  to the new entities and features without behavior changes, reducing `ConsentAppearance` from 630 lines
+  and `ConsentManagerForm` from 414 lines below the 200-line threshold.
+- [ ] Consent script delivery and controllers in `Delivery/ConsentManager`.
+
 ### Phase 3: the hard parts last
 
 - **Event ingestion.** The performance-sensitive path, which FIDES itself rates
