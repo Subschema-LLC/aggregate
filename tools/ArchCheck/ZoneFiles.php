@@ -7,8 +7,9 @@ namespace App\Tools\ArchCheck;
 /**
  * Rules for every file in the zones, not only PHP: PascalCase folders and
  * files (rule 17), and for Twig views the parts of rules 13 and 14 a machine
- * can see. A view names no entity, a feature's view renders nothing outside
- * its own folder, and no view holds inline CSS or JS. Whether a view only
+ * can see. A view names no entity, a feature's view is a fragment that extends
+ * nothing and renders nothing outside its own folder, and no view holds inline
+ * CSS or JS. Whether a view only
  * displays values its feature shaped is left to review.
  */
 final class ZoneFiles
@@ -72,8 +73,14 @@ final class ZoneFiles
             }
             $own = '@Features/'.explode('/', $path)[2].'/';
             preg_match_all(self::TEMPLATE_REFERENCE, $line, $matches);
-            foreach ($matches[3] as $template) {
-                if (!str_starts_with($template, $own)) {
+            foreach ($matches[3] as $index => $template) {
+                if ($matches[1][$index] === 'extends') {
+                    $problems[] = sprintf(
+                        '%s: extends %s; a feature view is a fragment and extends nothing',
+                        $where,
+                        $template,
+                    );
+                } elseif (!str_starts_with($template, $own)) {
                     $problems[] = sprintf(
                         '%s: renders %s; a feature view renders only its own templates, '
                         .'and the page places the others',

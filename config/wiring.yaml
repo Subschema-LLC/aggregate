@@ -4,5 +4,7 @@
 services:
     App\Entities\AlertRule\AlertRules: '@App\Integrations\Alerts\YamlAlertRules'
     App\Entities\AlertRule\EventNames: '@App\Integrations\Alerts\PrivacySanitizerEventNames'
+    App\Entities\AlertRule\RuleReferences: '@App\Integrations\Alerts\RuleReferenceChecks'
+    App\Entities\AlertRule\WindowBreaches: '@App\Integrations\Alerts\EventCountWindowBreaches'
     App\Entities\Destination\Destinations: '@App\Integrations\Alerts\YamlDestinations'
     App\Entities\Destination\SigningSecrets: '@App\Integrations\Alerts\FileSigningSecrets'

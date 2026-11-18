@@ -1004,11 +1004,12 @@ rewrite would stop feature work and risk regressions for installations, so the
 zones are built beside the existing code and areas move as they are touched.
 
 **Trade-off.** Two structures coexist until the last area moves, and a change
-to an older area costs more because it carries its port. Symfony departs from
-FIDES in places: the container stays the wiring, settings are read when used
-rather than frozen at startup, PHP exceptions extend built-in exceptions,
-Doctrine records stay open for their proxies, and the kernel stays at
-`src/Kernel.php`. The checker reads source tokens rather than using a
+to an older area costs more because it carries its port. FIDES 0.3 says how it
+fits inside a framework, and Aggregate follows it: the container stays the
+wiring with every contract bound in `config/wiring.yaml`, settings are frozen
+per request rather than per process, a custom exception extends one built-in
+exception, and the kernel keeps its framework parent and trait at
+`src/Kernel.php`. Doctrine records stay open for their proxies. The checker reads source tokens rather than using a
 dependency such as Deptrac, so it is ours to maintain. It checks casing and
 what a machine can see in Twig views (entity names, rendering other views,
 inline CSS and JS); whether a view only displays shaped values is held by

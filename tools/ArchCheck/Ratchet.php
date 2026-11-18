@@ -15,34 +15,78 @@ namespace App\Tools\ArchCheck;
  *                    Doctrine entities are exempt, since their proxies extend them
  *   file-size        a file is over 200 lines (rule 16); its length is a ceiling
  *   outside-zone     a file sits outside the five zones; new files go in a zone
+ *   app-trait        an App\ trait, or a class that mixes one in (rule 8: code
+ *                    mixed into a class counts as inheritance)
+ *   names-integration  older code names an App\Integrations class; only
+ *                    config/wiring.yaml should, so swapping one is one line
+ *   unbound-contract  a contract in src/Entities or src/Shared that
+ *                    config/wiring.yaml does not bind
  */
 final class Ratchet
 {
-    public const RULES = ['app-inheritance', 'abstract-class', 'not-final', 'file-size', 'outside-zone'];
+    public const RULES = [
+        'app-inheritance', 'abstract-class', 'not-final', 'file-size', 'outside-zone', 'app-trait',
+        'names-integration', 'unbound-contract',
+    ];
     private const MAX_LINES = 200;
-    /** Data tables rather than concepts; their length is their content. */
-    private const SIZE_EXEMPT = ['src/Service/BotDetection/BotUserAgentPatterns.php'];
     /** Files Symfony expects at a fixed place outside the zones. */
     private const LOCATION_EXEMPT = ['src/Kernel.php'];
 
     /** @var array<string, array<string, int|string>> rule => [subject => detail] */
     private array $found = [
         'app-inheritance' => [], 'abstract-class' => [], 'not-final' => [], 'file-size' => [], 'outside-zone' => [],
+        'app-trait' => [], 'names-integration' => [], 'unbound-contract' => [],
     ];
+
+    /** @param string $wiring the contents of config/wiring.yaml */
+    public function __construct(private readonly string $wiring = '')
+    {
+    }
 
     public function add(SourceFile $file): void
     {
-        if (ZoneRules::zoneOf($file->path) !== null) {
+        $zone = ZoneRules::zoneOf($file->path);
+        if ($zone === 'Entities' || $zone === 'Shared') {
+            foreach ($file->classes as $class) {
+                $bound = preg_match('/^\s+'.preg_quote($class['name'], '/').'\s*:/m', $this->wiring) === 1;
+                if ($class['kind'] === 'interface' && !$bound) {
+                    $this->found['unbound-contract'][$class['name']] = 'not bound in config/wiring.yaml';
+                }
+            }
+        }
+        if ($zone !== null) {
             return;
         }
         if (!in_array($file->path, self::LOCATION_EXEMPT, true)) {
             $this->found['outside-zone'][$file->path] = 'not in a zone';
         }
-        if ($file->lineCount > self::MAX_LINES && !in_array($file->path, self::SIZE_EXEMPT, true)) {
+        if ($file->lineCount > self::MAX_LINES && !isset(ZoneRules::SIZE_EXEMPT[$file->path])) {
             $this->found['file-size'][$file->path] = $file->lineCount;
+        }
+        $integrations = [];
+        foreach ($file->references as $reference) {
+            if (str_starts_with($reference['name'], 'App\\Integrations\\')) {
+                $integrations[$reference['name']] = true;
+            }
+        }
+        if ($integrations !== []) {
+            ksort($integrations);
+            $this->found['names-integration'][$file->path] = 'names '.implode(', ', array_keys($integrations));
+        }
+        $traits = [];
+        foreach ($file->traitUses as $use) {
+            if (str_starts_with($use['trait'], 'App\\')) {
+                $traits[$use['class']][] = $use['trait'];
+            }
+        }
+        foreach ($traits as $class => $used) {
+            $this->found['app-trait'][$class] = 'uses '.implode(', ', $used);
         }
         foreach ($file->classes as $class) {
             $name = $class['name'];
+            if ($class['kind'] === 'trait') {
+                $this->found['app-trait'][$name] = 'is a trait';
+            }
             if ($class['extends'] !== null && str_starts_with($class['extends'], 'App\\')) {
                 $this->found['app-inheritance'][$name] = 'extends '.$class['extends'];
             }
