@@ -141,12 +141,14 @@ final class SettingsParityTest extends TestCase
         }
     }
 
-    /** @return list<string> every command name in src/Command */
+    /** @return list<string> every command name in src/Command and src/Delivery */
     private static function commands(): array
     {
         $names = [];
-        foreach (glob(dirname(__DIR__, 2).'/src/Command/*.php') ?: [] as $file) {
-            $class = 'App\\Command\\'.basename($file, '.php');
+        $src = dirname(__DIR__, 2).'/src/';
+        $files = [...glob($src.'Command/*.php') ?: [], ...glob($src.'Delivery/*/*.php') ?: []];
+        foreach ($files as $file) {
+            $class = 'App\\'.str_replace('/', '\\', substr($file, strlen($src), -4));
             if (!class_exists($class)) {
                 continue;
             }

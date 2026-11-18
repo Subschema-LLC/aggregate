@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Command;
+namespace App\Delivery\Alerts;
 
 use App\Service\Alerts\AlertEvaluator;
 use App\Service\Alerts\AlertRuleValidator;
@@ -11,17 +11,17 @@ use App\Service\Alerts\AlertSettings;
 use App\Service\Email\TransactionalMailer;
 use App\Service\FeatureFlags;
 use Symfony\Component\Console\Attribute\AsCommand;
+use Symfony\Component\Console\Attribute\Option;
 use Symfony\Component\Console\Command\Command;
-use Symfony\Component\Console\Input\InputInterface;
-use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
 #[AsCommand(
     name: 'app:alerts:status',
-    description: 'Show alert rules, their status, redacted destinations, last evaluation time, and recent alerts',
+    description: 'Show alert rules, their status, redacted destinations, last evaluation time, and '
+        .'recent alerts',
 )]
-final class AlertsStatusCommand extends Command
+final class StatusCommand
 {
     public function __construct(
         private readonly AlertSettings $settings,
@@ -30,23 +30,21 @@ final class AlertsStatusCommand extends Command
         private readonly TransactionalMailer $mailer,
         private readonly FeatureFlags $features,
     ) {
-        parent::__construct();
     }
 
-    protected function configure(): void
-    {
-        $this->addOption('json', null, InputOption::VALUE_NONE, 'Print the status as JSON');
-    }
-
-    protected function execute(InputInterface $input, OutputInterface $output): int
-    {
-        $io = new SymfonyStyle($input, $output);
+    public function __invoke(
+        SymfonyStyle $io,
+        OutputInterface $output,
+        #[Option('Print the status as JSON')]
+        bool $json = false,
+    ): int {
         $flagOn = $this->features->isEnabled('alerts');
 
         try {
             $configured = $this->settings->toArray();
         } catch (\Throwable $e) {
-            $io->error('The alert settings are invalid'.($e instanceof \InvalidArgumentException ? ': '.$e->getMessage() : '.'));
+            $detail = $e instanceof \InvalidArgumentException ? ': '.$e->getMessage() : '.';
+            $io->error('The alert settings are invalid'.$detail);
 
             return Command::FAILURE;
         }
@@ -83,7 +81,11 @@ final class AlertsStatusCommand extends Command
 
         $rulesSummary = [];
         foreach ($configured['rules'] as $id => $rule) {
-            $ruleStatus = $statuses['rules'][$id] ?? ['state' => AlertEvaluator::STATE_WAITING, 'label' => 'Waiting for the first full hour', 'since' => null];
+            $ruleStatus = $statuses['rules'][$id] ?? [
+                'state' => AlertEvaluator::STATE_WAITING,
+                'label' => 'Waiting for the first full hour',
+                'since' => null,
+            ];
             $rulesSummary[$id] = [
                 'id' => $id,
                 'enabled' => $rule['enabled'],
@@ -100,7 +102,7 @@ final class AlertsStatusCommand extends Command
             ];
         }
 
-        if ($input->getOption('json')) {
+        if ($json) {
             $output->writeln(json_encode([
                 'enabled' => $flagOn,
                 'last_check' => $statuses['last_check']?->format(\DATE_ATOM),
@@ -117,7 +119,8 @@ final class AlertsStatusCommand extends Command
                     'outcome' => $entry['outcome'],
                     'reason' => $entry['reason'],
                 ], $recent['entries']),
-            ], JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+            ], JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
+                | JSON_UNESCAPED_UNICODE));
 
             return $flagOn ? Command::SUCCESS : Command::FAILURE;
         }
@@ -130,7 +133,9 @@ final class AlertsStatusCommand extends Command
                 count($rulesSummary),
                 count($rulesSummary) === 1 ? '' : 's',
                 $statuses['firing_count'],
-                $statuses['last_check'] !== null ? ' As of the last check, '.$statuses['last_check']->format('Y-m-d H:i').' UTC.' : ' Waiting for the first scheduled check.',
+                $statuses['last_check'] !== null
+                    ? ' As of the last check, '.$statuses['last_check']->format('Y-m-d H:i').' UTC.'
+                    : ' Waiting for the first scheduled check.',
             ));
         }
 

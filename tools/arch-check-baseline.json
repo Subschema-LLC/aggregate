@@ -166,12 +166,11 @@
         "App\\Service\\WebsiteConfigManager": "not final"
     },
     "file-size": {
-        "src/Command/AlertsRuleCommand.php": 206,
         "src/Command/ApplyUpdateCommand.php": 265,
         "src/Command/ConfigCommand.php": 376,
         "src/Command/CreateUserCommand.php": 236,
         "src/Command/WebsiteScopesCommand.php": 238,
-        "src/Controller/AlertsController.php": 878,
+        "src/Controller/AlertsController.php": 871,
         "src/Controller/ApiTokensController.php": 288,
         "src/Controller/AuditTrailController.php": 248,
         "src/Controller/BiGlossaryController.php": 255,
@@ -279,11 +278,6 @@
     },
     "outside-zone": {
         "src/Command/AccessOptions.php": "not in a zone",
-        "src/Command/AlertsDestinationCommand.php": "not in a zone",
-        "src/Command/AlertsEvaluateCommand.php": "not in a zone",
-        "src/Command/AlertsRuleCommand.php": "not in a zone",
-        "src/Command/AlertsStatusCommand.php": "not in a zone",
-        "src/Command/AlertsTestCommand.php": "not in a zone",
         "src/Command/ApiTokenCreateCommand.php": "not in a zone",
         "src/Command/ApiTokenListCommand.php": "not in a zone",
         "src/Command/ApiTokenRevokeCommand.php": "not in a zone",
