@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Command;
 
+use App\Features\DeleteAlertRule\DeleteAlertRule;
+use App\Features\SaveAlertRule\RuleAlreadyExists;
+use App\Features\SaveAlertRule\SaveAlertRule;
 use App\Service\Alerts\AlertRuleValidator;
 use App\Service\Alerts\AlertSettings;
 use App\Service\FeatureFlags;
@@ -25,6 +28,8 @@ final class AlertsRuleCommand extends Command
     public function __construct(
         private readonly AlertSettings $settings,
         private readonly FeatureFlags $features,
+        private readonly SaveAlertRule $saveRule,
+        private readonly DeleteAlertRule $deleteRule,
     ) {
         parent::__construct();
     }
@@ -108,13 +113,12 @@ final class AlertsRuleCommand extends Command
 
     private function create(SymfonyStyle $io, InputInterface $input): int
     {
-        $id = trim((string) ($input->getOption('id') ?? ''));
-        if ($id !== '' && $this->settings->rule($id) !== null) {
-            throw new \InvalidArgumentException(sprintf('Alert rule "%s" already exists. Use edit to change it.', $id));
-        }
-
         $candidate = $this->candidateFromInput($input, []);
-        $saved = $this->settings->saveRule($candidate);
+        try {
+            $saved = $this->saveRule->create($candidate);
+        } catch (RuleAlreadyExists $e) {
+            throw new \InvalidArgumentException(sprintf('Alert rule "%s" already exists. Use edit to change it.', $e->id));
+        }
         $io->success(sprintf('Saved alert rule "%s" (%s).', $saved['id'], AlertRuleValidator::formatAlertCondition($saved)));
 
         return Command::SUCCESS;
@@ -123,13 +127,8 @@ final class AlertsRuleCommand extends Command
     private function edit(SymfonyStyle $io, InputInterface $input): int
     {
         $id = trim((string) ($input->getOption('id') ?? ''));
-        $existing = $this->settings->rule($id);
-        if ($existing === null) {
-            throw new \InvalidArgumentException(sprintf('Alert rule "%s" does not exist.', $id));
-        }
-
-        $candidate = $this->candidateFromInput($input, $existing);
-        $saved = $this->settings->saveRule($candidate);
+        $candidate = $this->candidateFromInput($input, $this->settings->rule($id) ?? ['id' => $id]);
+        $saved = $this->saveRule->edit($candidate);
         $io->success(sprintf('Updated alert rule "%s" (%s).', $saved['id'], AlertRuleValidator::formatAlertCondition($saved)));
 
         return Command::SUCCESS;
@@ -138,7 +137,7 @@ final class AlertsRuleCommand extends Command
     private function delete(SymfonyStyle $io, InputInterface $input): int
     {
         $id = trim((string) ($input->getOption('id') ?? ''));
-        $this->settings->deleteRule($id);
+        $this->deleteRule->delete($id);
         $io->success(sprintf('Deleted alert rule "%s".', $id));
 
         return Command::SUCCESS;

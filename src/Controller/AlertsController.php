@@ -4,6 +4,12 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Features\DeleteAlertRule\DeleteAlertRule;
+use App\Features\DeleteDestination\DeleteDestination;
+use App\Features\SaveAlertRule\SaveAlertRule;
+use App\Features\SaveDestination\SaveDestination;
+use App\Features\SaveDestination\SecretChange;
+use App\Features\SaveSigningSecret\SaveSigningSecret;
 use App\Service\AggregateConfigLoader;
 use App\Service\Alerts\AlertEvaluator;
 use App\Service\Alerts\AlertRuleValidator;
@@ -48,6 +54,11 @@ final class AlertsController extends AbstractController
         private readonly ReportingTimezone $reportingTimezone,
         private readonly FeatureFlags $features,
         private readonly LoggerInterface $logger,
+        private readonly SaveAlertRule $saveRule,
+        private readonly DeleteAlertRule $deleteRule,
+        private readonly SaveDestination $saveDestination,
+        private readonly DeleteDestination $deleteDestination,
+        private readonly SaveSigningSecret $saveSecret,
     ) {
     }
 
@@ -123,10 +134,7 @@ final class AlertsController extends AbstractController
         ];
 
         try {
-            if (!$isEditing && $candidate['id'] !== '' && $this->settings->rule($candidate['id']) !== null) {
-                throw new \InvalidArgumentException(sprintf('Alert rule "%s" already exists. Choose another Rule ID or edit the existing rule.', $candidate['id']));
-            }
-            $saved = $this->settings->saveRule($candidate);
+            $saved = $isEditing ? $this->saveRule->edit($candidate) : $this->saveRule->create($candidate);
             $this->addFlash('success', sprintf('Saved alert rule "%s".', $saved['id']));
 
             return $this->redirectToRoute('app_alerts');
@@ -179,7 +187,7 @@ final class AlertsController extends AbstractController
         }
 
         try {
-            $this->settings->deleteRule($id);
+            $this->deleteRule->delete($id);
             $this->addFlash('success', sprintf('Deleted alert rule "%s".', $id));
         } catch (\InvalidArgumentException $e) {
             $this->addFlash('error', $e->getMessage());
@@ -263,28 +271,16 @@ final class AlertsController extends AbstractController
         $secretChoice = (string) ($submitted['secret_choice'] ?? 'keep');
 
         try {
-            if (!$isEditing && $id !== '' && $this->settings->destination($id) !== null) {
-                throw new \InvalidArgumentException(sprintf('Alert destination "%s" already exists.', $id));
-            }
-            $changesOwnSecret = $type === AlertRuleValidator::TYPE_WEBHOOK
-                && ($secretValue !== '' || in_array($secretChoice, ['generate', 'shared'], true));
-            if ($changesOwnSecret && $id !== '' && $this->secrets->hasOwnInEnvironment($id)) {
-                throw new \InvalidArgumentException(sprintf('This destination\'s signing secret is set by %s in the environment and cannot be changed here.', AlertSecrets::envNameFor($id)));
-            }
-            $saved = $this->settings->saveDestination($candidate);
-            $generated = null;
-            if ($type === AlertRuleValidator::TYPE_WEBHOOK) {
-                if ($secretChoice === 'generate') {
-                    $generated = $this->secrets->generate($saved['id']);
-                } elseif ($secretChoice === 'shared') {
-                    $this->secrets->remove($saved['id']);
-                } elseif ($secretValue !== '') {
-                    $this->secrets->set($secretValue, $saved['id']);
-                }
-            } elseif ($existing !== null && $existing['type'] === AlertRuleValidator::TYPE_WEBHOOK) {
-                // A webhook turned into an email destination keeps no signing secret.
-                $this->secrets->remove($saved['id']);
-            }
+            $secret = match ($secretChoice) {
+                'generate' => SecretChange::generate(),
+                'shared' => SecretChange::useShared(),
+                default => SecretChange::set($secretValue),
+            };
+            $result = $isEditing
+                ? $this->saveDestination->edit($candidate, $secret)
+                : $this->saveDestination->create($candidate, $secret);
+            $saved = $result['destination'];
+            $generated = $result['generated_secret'];
 
             if ($generated !== null) {
                 return $this->renderIndex($request, [
@@ -358,8 +354,7 @@ final class AlertsController extends AbstractController
         }
 
         try {
-            $this->settings->deleteDestination($id);
-            $this->secrets->remove($id);
+            $this->deleteDestination->delete($id);
             $this->addFlash('success', sprintf('Deleted destination "%s".', $id));
         } catch (\InvalidArgumentException $e) {
             $this->addFlash('error', $e->getMessage());
@@ -388,27 +383,25 @@ final class AlertsController extends AbstractController
         $targetId = $destinationId !== '' ? $destinationId : null;
 
         try {
-            if ($this->secrets->isEnvironmentControlled($targetId)) {
-                throw new \InvalidArgumentException('The webhook signing secret is set in the environment and cannot be changed here.');
-            }
             if ($action === 'generate') {
-                $generated = $this->secrets->generate($targetId);
+                $generated = $this->saveSecret->generate($targetId);
 
                 return $this->renderIndex($request, ['generated_secret' => $generated]);
             }
             if ($action === 'remove') {
-                $this->secrets->remove($targetId);
+                $this->saveSecret->remove($targetId);
                 $this->addFlash('success', 'Removed the saved webhook signing secret.');
 
                 return $this->redirectToRoute('app_alerts');
             }
             $value = trim((string) $request->request->get('webhook_secret', ''));
             if ($value === '') {
+                $this->saveSecret->assertChangeable($targetId);
                 $this->addFlash('success', 'Kept the existing webhook signing secret.');
 
                 return $this->redirectToRoute('app_alerts');
             }
-            $this->secrets->set($value, $targetId);
+            $this->saveSecret->set($value, $targetId);
             $this->addFlash('success', 'Saved the webhook signing secret in '.AlertSecrets::FILE.'.');
         } catch (\InvalidArgumentException|\RuntimeException $e) {
             $this->addFlash('error', $e->getMessage());

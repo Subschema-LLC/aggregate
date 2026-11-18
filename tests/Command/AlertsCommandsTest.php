@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Command;
 
+use App\Tests\Service\Alerts\AlertActions;
 use App\Command\AlertsDestinationCommand;
 use App\Command\AlertsEvaluateCommand;
 use App\Command\AlertsRuleCommand;
@@ -131,6 +132,68 @@ final class AlertsCommandsTest extends TestCase
         self::assertSame(1, $evalResult['sent']);
     }
 
+    public function testCreateRefusesATakenDestinationIdAndEditNeedsAnExistingOne(): void
+    {
+        $tester = new CommandTester($this->destinationCommand());
+        $hook = ['--id' => 'hub', '--label' => 'Hub', '--type' => 'webhook', '--url' => 'https://hooks.example.com/in'];
+        self::assertSame(Command::SUCCESS, $tester->execute(['action' => 'create', ...$hook]));
+
+        self::assertSame(Command::INVALID, $tester->execute(['action' => 'create', ...$hook]));
+        self::assertStringContainsString('Alert destination "hub" already exists.', $tester->getDisplay());
+
+        self::assertSame(Command::INVALID, $tester->execute(['action' => 'edit', '--id' => 'missing', '--label' => 'Missing']));
+        self::assertStringContainsString('Alert destination "missing" does not exist.', $tester->getDisplay());
+
+        self::assertSame(Command::SUCCESS, $tester->execute(['action' => 'edit', '--id' => 'hub', '--label' => 'Ops hub']));
+        self::assertSame('Ops hub', $this->settings()->destination('hub')['label'] ?? null);
+    }
+
+    public function testTheCommandNeverWritesASecretTheEnvironmentSets(): void
+    {
+        $tester = new CommandTester($this->destinationCommand());
+        $hook = ['--id' => 'hub', '--label' => 'Hub', '--type' => 'webhook', '--url' => 'https://hooks.example.com/in'];
+        self::assertSame(Command::SUCCESS, $tester->execute(['action' => 'create', ...$hook]));
+
+        $_SERVER['ALERTS_WEBHOOK_SECRET_HUB'] = 'from-environment';
+        try {
+            self::assertSame(Command::INVALID, $tester->execute(['action' => 'edit', '--id' => 'hub', '--secret' => 'typed']));
+            $display = (string) preg_replace('/\s+/', ' ', $tester->getDisplay());
+            self::assertStringContainsString('set by ALERTS_WEBHOOK_SECRET_HUB in the environment', $display);
+            self::assertSame(Command::INVALID, $tester->execute(['action' => 'secret', '--id' => 'hub', '--generate-secret' => true]));
+        } finally {
+            unset($_SERVER['ALERTS_WEBHOOK_SECRET_HUB']);
+        }
+        self::assertFalse((new AlertSecrets($this->projectDir))->hasOwnInFile('hub'));
+    }
+
+    public function testAWebhookTurnedIntoEmailDropsItsOwnSecret(): void
+    {
+        $tester = new CommandTester($this->destinationCommand());
+        self::assertSame(Command::SUCCESS, $tester->execute([
+            'action' => 'create', '--id' => 'hub', '--label' => 'Hub', '--type' => 'webhook',
+            '--url' => 'https://hooks.example.com/in', '--generate-secret' => true,
+        ]));
+        self::assertTrue((new AlertSecrets($this->projectDir))->hasOwnInFile('hub'));
+
+        self::assertSame(Command::SUCCESS, $tester->execute([
+            'action' => 'edit', '--id' => 'hub', '--type' => 'email', '--url' => '', '--recipient' => ['ops@example.com'],
+        ]));
+
+        self::assertFalse((new AlertSecrets($this->projectDir))->hasOwnInFile('hub'));
+    }
+
+    public function testAnEmailDestinationGetsNoSigningSecret(): void
+    {
+        $tester = new CommandTester($this->destinationCommand());
+        self::assertSame(Command::SUCCESS, $tester->execute([
+            'action' => 'create', '--id' => 'ops', '--label' => 'Ops', '--type' => 'email',
+            '--recipient' => ['ops@example.com'], '--generate-secret' => true,
+        ]));
+
+        self::assertStringNotContainsString('shown once', $tester->getDisplay());
+        self::assertFalse((new AlertSecrets($this->projectDir))->hasOwnInFile('ops'));
+    }
+
     private function settings(): AlertSettings
     {
         $config = new AggregateConfigLoader($this->projectDir, 'test');
@@ -145,14 +208,18 @@ final class AlertsCommandsTest extends TestCase
     {
         $config = new AggregateConfigLoader($this->projectDir, 'test');
 
-        return new AlertsDestinationCommand($this->settings(), new AlertSecrets($this->projectDir), new FeatureFlags($config));
+        $actions = new AlertActions($this->projectDir);
+
+        return new AlertsDestinationCommand($this->settings(), new AlertSecrets($this->projectDir), new FeatureFlags($config), $actions->saveDestination, $actions->deleteDestination, $actions->saveSecret);
     }
 
     private function ruleCommand(): AlertsRuleCommand
     {
         $config = new AggregateConfigLoader($this->projectDir, 'test');
 
-        return new AlertsRuleCommand($this->settings(), new FeatureFlags($config));
+        $actions = new AlertActions($this->projectDir);
+
+        return new AlertsRuleCommand($this->settings(), new FeatureFlags($config), $actions->saveRule, $actions->deleteRule);
     }
 
     private function testCommand(): AlertsTestCommand

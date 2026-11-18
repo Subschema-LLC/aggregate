@@ -168,7 +168,7 @@ ported.
 None of these exists until a change needs it. The first change that needs one
 adds it, in the same pull request, and ticks it here:
 
-- [ ] `config/wiring.yaml`, imported by `config/services.yaml`.
+- [x] `config/wiring.yaml`, imported by `config/services.yaml`.
 - [ ] The `@Features` Twig namespace, and a namespace for page templates in
   `src/Delivery`.
 - [ ] AssetMapper paths for `src/Features` and `src/Delivery`, so colocated
@@ -310,8 +310,15 @@ Progress:
   `AlertChannels` (webhook and `EmailAlerts`) and `TaskDeliveryLog`. Alert and
   incident IDs are in `Entities/Incident/AlertIds`, and a rule's plain-language
   condition in `Entities/AlertRule/RuleDescription`.
-- [ ] `SaveAlertRule`, `SendTestAlert` and `ListAlerts` with their views, and
-  the page in `Delivery/Alerts`.
+- [x] One feature per action, shared by the Alerts page and the `app:alerts:*`
+  commands: `SaveAlertRule`, `DeleteAlertRule`, `SaveDestination`,
+  `DeleteDestination` and `SaveSigningSecret`, over the `AlertRules`,
+  `Destinations` and `SigningSecrets` contracts. Rules about valid settings
+  live in the entities and also hold for hand-edited YAML; rules about an
+  action (create versus edit, never changing a secret the environment sets,
+  dropping a webhook's secret when it becomes email) live in the feature.
+- [ ] `SendTestAlert` and `ListAlerts`, the feature views, and the page in
+  `Delivery/Alerts`.
 - [ ] The `app:alerts:*` commands in `Delivery/Alerts` as invokable commands.
 
 ### Phase 2: port as you touch
