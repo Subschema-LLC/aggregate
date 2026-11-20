@@ -324,6 +324,71 @@ cuts that.
     Aggregate's [MCP server](docs/MCP.md) stays read-only, with no
     configuration tools.
 
+## Moving all code to FIDES
+
+All new PHP code already follows [FIDES](docs/FIDES-MIGRATION.md), and the
+Alerts, Tag Manager and Consent Manager areas have moved into its zones. The
+rest of the codebase moves as it is touched, which leaves untouched areas in
+the older layout indefinitely. Convert the whole codebase deliberately instead,
+area by area, until the ratchet in `tools/arch-check-baseline.json` is empty.
+At `a91f4ca` (20 November 2026) it lists 447 files outside the zones, 113
+classes not `final`, 104 files over 200 lines, 41 inheritance chains, 39 trait
+uses, 6 abstract classes, 3 references to integrations outside the wiring and
+2 unbound contracts.
+
+- *Each port is its own pull request* that changes structure, never behavior,
+  proven as [proving a port](docs/FIDES-MIGRATION.md#proving-a-port)
+  describes, with the baseline updated to the smaller count. Privacy
+  invariants, YAML settings, the dashboard, database views, release packages
+  and updates stay as they are.
+- *Order:* follow the [migration phases](docs/FIDES-MIGRATION.md#phases), with
+  one change: port the collection path (event ingestion, the `Event` record and
+  the event writers) earlier than "the hard parts last", because the scaling
+  phase 1 *direct insert* and phase 2 of AI traffic classification below both
+  need to change it, and the ratchet stops those files growing. Apply FIDES's
+  boundaries there without slowing collection; measure each step with the
+  `compare` load-test suite.
+- *Then:* commands into `src/Delivery/Cli`, dashboard pages and their
+  controllers into `src/Delivery/<Page>`, the settings sections and the view
+  sync family to composition, and the Doctrine records into
+  `src/Integrations/Database`.
+- *Done when* the baseline holds only the exceptions FIDES-MIGRATION lists
+  (the kernel, the framework subclasses and the bot pattern table), and the
+  `outside-zone` exemption list matches them.
+
+## AI traffic classification
+
+AI crawlers, live retrieval fetchers and agentic browsers increasingly reach
+websites. Most crawlers and fetchers run no JavaScript, so the tracker never
+sees them, while agentic browsers run it under an ordinary browser User-Agent.
+Separate traffic into human, AI agent, AI live fetcher, training or search
+crawler and other automation, so reports can include, exclude or study each
+one, without fingerprints, visitor identifiers or stored addresses. Planned in
+the [AI traffic classification spec](docs/specs/AI-TRAFFIC-CLASSIFICATION.md).
+
+- *Phase 0 and 1, in review:* the classifier core in the FIDES zones (published
+  User-Agent tokens, operators' published IP range lists matched in memory,
+  cloud networks as a weighted signal, a confidence of verified, declared or
+  inferred), `app:traffic:ranges` to download the lists and
+  `app:traffic:classify` to test a request. Collection does not use them yet.
+- *Phase 2:* classify at `/api/receive` and store a nullable `traffic_class`
+  on events, after the collection path is ported (above). The existing
+  `device_class = 'bot'` label and `bot_traffic` setting keep their meaning.
+  Daily range refresh in the scheduled task, and an optional operator-supplied
+  ASN database for cloud networks.
+- *Phase 3:* an authenticated endpoint for structured proxy and CDN logs
+  (Caddy, Nginx, Cloudflare Logpush or Workers, Vector, Fluent Bit) that
+  records only non-human traffic, so crawlers and fetchers that run no
+  JavaScript are counted without double-counting people. Builds on built-in
+  server-side collection below.
+- *Phase 4:* browser signals for agentic browsers (automation flags, software
+  WebGL renderers, language mismatches, interaction entropy) reduced in the
+  page to one coarse code, after a consent and disclosure review.
+- *Phase 5:* `traffic_class` in the reporting views after disclosure review,
+  an AI assistant referrer channel, and a page-level view of AI fetches beside
+  human visits from AI assistants for answer engine optimization, read in BI
+  tools and the MCP server rather than in the app.
+
 ## Proposals to explore
 
 - **Useful insight without visit or session IDs.** Develop practical measurement

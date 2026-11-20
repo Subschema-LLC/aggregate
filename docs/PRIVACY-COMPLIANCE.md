@@ -342,6 +342,14 @@ hides automation. Pair it with the rate limit, [website domain rules](CONFIGURAT
 and the BI views' minimum event counts. The `bi_anonymous_*` views do not
 exclude `bot` rows; filter them in reports where bots should not count.
 
+A finer classification (human, AI agent, AI live fetcher, training or search
+crawler, other automation) is being built in phases; see the
+[AI traffic classification spec](specs/AI-TRAFFIC-CLASSIFICATION.md).
+`app:traffic:ranges --refresh` downloads the IP range lists that AI and search
+operators and cloud providers publish into `var/traffic-ranges/`, and
+`app:traffic:classify` shows how a User-Agent and address would be classified.
+Collection does not use either yet, and nothing they do is stored on events.
+
 ## Optional coarse geography
 
 Geography is disabled by default. When enabled, the ingestion boundary uses the request IP transiently with a local GeoLite2-Country-compatible MMDB and retains only one normalized value:
