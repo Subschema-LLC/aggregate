@@ -19,3 +19,7 @@ services:
     App\Entities\TagManager\TagManagers: '@App\Integrations\TagManager\YamlTagManagers'
     App\Entities\Incident\DeliveryHistory: '@App\Integrations\Alerts\AuditDeliveryHistory'
     App\Entities\Incident\IncidentStates: '@App\Integrations\Alerts\TaskIncidentStates'
+    App\Entities\TrafficClass\BotUserAgents: '@App\Integrations\TrafficRanges\BotDetectorUserAgents'
+    App\Entities\TrafficClass\PublishedRanges: '@App\Integrations\TrafficRanges\FileRangeStore'
+    App\Entities\TrafficClass\RangeDownloads: '@App\Integrations\TrafficRanges\HttpRangeDownloads'
+    App\Entities\TrafficClass\RangeStore: '@App\Integrations\TrafficRanges\FileRangeStore'
